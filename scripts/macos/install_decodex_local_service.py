@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Provision and install the same-UID Decodex local service on macOS.
 
-This source-install tool owns only the local development installation. It creates
-no credential copy. The transitional bridge reads the existing legacy account
-pool under its file lock and passes current credentials only to the supervised
-daemon process.
+This source-install tool owns the offline one-shot account cutover and local
+development installation. It leaves every legacy source unchanged as a cold
+backup and starts only the credential-negative vNext service after verification.
 """
 
 from __future__ import annotations
@@ -13,41 +12,46 @@ import argparse
 import base64
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 import plistlib
 import pwd
 import re
+import selectors
 import shutil
 import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
 import unicodedata
-import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
-from typing import Any
+from typing import Any, Callable
 
 
 MAPPING_SCHEMA = "decodex/reset-card-legacy-bridge/1"
+MIGRATION_MANIFEST_SCHEMA = "decodex/account-migration-manifest/1"
 LAUNCH_AGENT_LABEL = "space.decodex.local-service"
 MAX_ACCOUNT_FILE_BYTES = 4 * 1024 * 1024
 MAX_ACCOUNT_LINE_BYTES = 128 * 1024
 MAX_CONFIG_FILE_BYTES = 1024 * 1024
 MAX_MAPPING_FILE_BYTES = 64 * 1024
 MAX_LAUNCH_AGENT_FILE_BYTES = 64 * 1024
+MAX_MIGRATION_MANIFEST_BYTES = 1024 * 1024
 MAX_POSTGRES_VERSION_BYTES = 16
 LEGACY_LOCK_TIMEOUT_SECONDS = 5
 LOCAL_SERVICE_SETTLEMENT_TIMEOUT_SECONDS = 300
 LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS = 0.25
 LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS = 5
+INSTALLER_COMMAND_TIMEOUT_SECONDS = 180
+MAX_INSTALLER_CHILD_OUTPUT_BYTES = 1024 * 1024
+MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES = 8 * 1024 * 1024
 LAUNCHCTL_PRINT_NOT_FOUND_STATUS = 113
 MAX_ACCOUNTS = 64
+MAX_RUNTIME_ACCOUNTS = 512
 MAX_ACCESS_TOKEN_BYTES = 64 * 1024
 MAX_ACCOUNT_ID_BYTES = 1_024
 MAX_EMAIL_BYTES = 320
@@ -69,6 +73,14 @@ PLAN_TYPES = {
     "edu",
     "unknown",
 }
+ACCOUNT_RANDOM_NAMES = (
+    "Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana",
+    "Drew", "Eden", "Elliot", "Emery", "Evan", "Finley", "Harper", "Hayden",
+    "Iris", "Jamie", "Jordan", "Kai", "Kendall", "Lane", "Liam", "Logan",
+    "Mason", "Maya", "Mia", "Morgan", "Noah", "Nora", "Owen", "Paige",
+    "Parker", "Quinn", "Reese", "Remy", "Riley", "Rowan", "Sage", "Sasha",
+    "Sidney", "Taylor", "Theo", "Val",
+)
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
@@ -104,6 +116,11 @@ class LegacyAccount:
     provider_account_id: str
     email: str
     plan_type: str
+    disabled: bool
+    access_token: str
+    refresh_token: str
+    id_token: str
+    access_token_expires_at_unix_micros: int
 
     @property
     def provider_account_id_sha256(self) -> str:
@@ -115,8 +132,9 @@ class Enrollment:
     slot: int
     provider_account_id_sha256: str
     account_id: str
+    operation_id: str
     display_label: str
-    initial_state: str
+    enabled: bool
     plan_type: str
 
 
@@ -131,13 +149,18 @@ class InstallPaths:
     repository: Path
     root: Path
     config: Path
+    vnext_config_source: Path
+    staging_config: Path
     mapping: Path
+    migration_manifest: Path
+    credential_directory: Path
     data_directory: Path
     socket_directory: Path
     log_directory: Path
     postgres_log: Path
     service_log: Path
     legacy_accounts: Path
+    legacy_config: Path
     launch_agent: Path
     decodexd: Path
     decodex_cli: Path
@@ -146,6 +169,251 @@ class InstallPaths:
     initdb: Path
     pg_isready: Path
     psql: Path
+
+    @property
+    def server_directory(self) -> Path:
+        return self.root / "server"
+
+    @property
+    def namespace_lock(self) -> Path:
+        return self.server_directory / "decodex.lock"
+
+
+class InstallerNamespaceLock:
+    """Retained installer ownership of the existing local-listener namespace lock."""
+
+    def __init__(
+        self,
+        paths: InstallPaths,
+        uid: int,
+        directory_descriptor: int,
+        lock_descriptor: int,
+        directory_identity: tuple[int, int],
+        lock_identity: tuple[int, int, int, int, int],
+    ) -> None:
+        self.paths = paths
+        self.uid = uid
+        self.directory_descriptor = directory_descriptor
+        self.lock_descriptor = lock_descriptor
+        self.directory_identity = directory_identity
+        self.lock_identity = lock_identity
+        self.closed = False
+
+    @classmethod
+    def acquire(cls, paths: InstallPaths, uid: int) -> "InstallerNamespaceLock":
+        try:
+            directory_descriptor = open_absolute_directory(paths.server_directory)
+        except OSError as error:
+            raise InstallError("local service namespace directory is unsafe") from error
+        lock_descriptor: int | None = None
+        try:
+            directory_metadata = os.fstat(directory_descriptor)
+            require_namespace_directory(directory_metadata, uid)
+            lock_flags = os.O_RDWR
+            for flag in ("O_NOFOLLOW", "O_CLOEXEC"):
+                lock_flags |= getattr(os, flag, 0)
+            try:
+                lock_descriptor = os.open(
+                    "decodex.lock",
+                    lock_flags | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                    dir_fd=directory_descriptor,
+                )
+                os.fchmod(lock_descriptor, 0o600)
+            except FileExistsError:
+                lock_descriptor = os.open(
+                    "decodex.lock",
+                    lock_flags,
+                    dir_fd=directory_descriptor,
+                )
+            lock_metadata = os.fstat(lock_descriptor)
+            require_namespace_lock(lock_metadata, uid)
+            try:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise InstallError("local service namespace is already owned") from error
+            guard = cls(
+                paths,
+                uid,
+                directory_descriptor,
+                lock_descriptor,
+                (directory_metadata.st_dev, directory_metadata.st_ino),
+                namespace_lock_identity(lock_metadata),
+            )
+            guard.verify()
+            return guard
+        except BaseException as error:
+            if lock_descriptor is not None:
+                os.close(lock_descriptor)
+            os.close(directory_descriptor)
+            if isinstance(error, InstallError):
+                raise
+            raise InstallError("local service namespace lock is unsafe") from error
+
+    def verify(self) -> None:
+        if self.closed:
+            raise InstallError("local service namespace ownership is unavailable")
+        try:
+            held_directory = os.fstat(self.directory_descriptor)
+            held_lock = os.fstat(self.lock_descriptor)
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        require_namespace_directory(held_directory, self.uid)
+        require_namespace_lock(held_lock, self.uid)
+        try:
+            current_directory_descriptor = open_absolute_directory(
+                self.paths.server_directory
+            )
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        try:
+            current_directory = os.fstat(current_directory_descriptor)
+            require_namespace_directory(current_directory, self.uid)
+            pinned_lock = os.stat(
+                "decodex.lock",
+                dir_fd=self.directory_descriptor,
+                follow_symlinks=False,
+            )
+            require_namespace_lock(pinned_lock, self.uid)
+            current_lock = os.stat(
+                "decodex.lock",
+                dir_fd=current_directory_descriptor,
+                follow_symlinks=False,
+            )
+            require_namespace_lock(current_lock, self.uid)
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        finally:
+            os.close(current_directory_descriptor)
+        if (
+            (held_directory.st_dev, held_directory.st_ino) != self.directory_identity
+            or (current_directory.st_dev, current_directory.st_ino)
+            != self.directory_identity
+            or namespace_lock_identity(held_lock) != self.lock_identity
+            or namespace_lock_identity(pinned_lock) != self.lock_identity
+            or namespace_lock_identity(current_lock) != self.lock_identity
+        ):
+            raise InstallError("local service namespace ownership changed")
+
+    def borrow(self) -> int:
+        self.verify()
+        try:
+            descriptor = os.dup(self.lock_descriptor)
+        except OSError as error:
+            raise InstallError("local service namespace ownership is unavailable") from error
+        try:
+            os.set_inheritable(descriptor, True)
+        except BaseException:
+            os.close(descriptor)
+            raise
+        return descriptor
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        failure: OSError | None = None
+        for descriptor in (self.lock_descriptor, self.directory_descriptor):
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                failure = failure or error
+        if failure is not None:
+            raise InstallError("local service namespace ownership could not close") from failure
+
+
+def open_absolute_directory(path: Path) -> int:
+    if not path.is_absolute() or any(part in {".", ".."} for part in path.parts):
+        raise InstallError("local service namespace directory is unsafe")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open("/", flags)
+    try:
+        for component in path.parts[1:]:
+            next_descriptor = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def require_namespace_directory(metadata: os.stat_result, uid: int) -> None:
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != uid
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise InstallError("local service namespace directory is unsafe")
+
+
+def require_namespace_lock(metadata: os.stat_result, uid: int) -> None:
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != uid
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+    ):
+        raise InstallError("local service namespace lock is unsafe")
+
+
+def namespace_lock_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_uid,
+        stat.S_IMODE(metadata.st_mode),
+        metadata.st_nlink,
+    )
+
+
+@dataclass(frozen=True)
+class MigrationStagingOwner:
+    staging_config: Path
+    credential_directory: Path
+    credential_files: tuple[Path, ...]
+
+    @classmethod
+    def for_accounts(
+        cls,
+        paths: InstallPaths,
+        account_ids: list[str],
+    ) -> "MigrationStagingOwner":
+        if len(account_ids) != len(set(account_ids)) or any(
+            UUID_PATTERN.fullmatch(account_id) is None for account_id in account_ids
+        ):
+            raise InstallError("account migration cleanup ownership is invalid")
+        return cls(
+            staging_config=paths.staging_config,
+            credential_directory=paths.credential_directory,
+            credential_files=tuple(
+                paths.credential_directory / f"{account_id}.json"
+                for account_id in account_ids
+            ),
+        )
+
+    def cleanup(self) -> None:
+        failures: list[OSError] = []
+        for path in self.credential_files:
+            try:
+                path.unlink(missing_ok=True)
+            except OSError as error:
+                failures.append(error)
+        try:
+            self.credential_directory.rmdir()
+        except FileNotFoundError:
+            pass
+        except OSError as error:
+            failures.append(error)
+        try:
+            self.staging_config.unlink(missing_ok=True)
+        except OSError as error:
+            failures.append(error)
+        if failures:
+            raise InstallError(
+                "account migration staging could not be retired"
+            ) from failures[0]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -211,11 +479,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("/run/current-system/sw/bin/psql"),
     )
     parser.add_argument(
-        "--replace-config",
-        action="store_true",
-        help="Replace the current vNext config without creating a backup.",
-    )
-    parser.add_argument(
         "--no-launch",
         action="store_true",
         help="Provision files and PostgreSQL, but do not bootstrap the LaunchAgent.",
@@ -230,13 +493,18 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
         repository=repository,
         root=root,
         config=root / "config.toml",
+        vnext_config_source=root / "account-migration-vnext-source.toml",
+        staging_config=root / ".account-migration-runtime.toml",
         mapping=root / "reset-card-legacy-map.json",
+        migration_manifest=root / "account-migration-manifest.json",
+        credential_directory=root / "account-migration-credentials",
         data_directory=root / "postgres" / "data",
         socket_directory=root / "postgres" / "socket",
         log_directory=root / "logs",
         postgres_log=root / "logs" / "postgres.log",
         service_log=root / "logs" / "local-service.log",
-        legacy_accounts=args.legacy_accounts.expanduser().resolve(),
+        legacy_accounts=args.legacy_accounts.expanduser().absolute(),
+        legacy_config=(args.legacy_accounts.expanduser().absolute().parent / "config.toml"),
         launch_agent=args.launch_agent.expanduser().resolve(),
         decodexd=args.decodexd.expanduser().resolve(),
         decodex_cli=args.decodex_cli.expanduser().resolve(),
@@ -271,6 +539,48 @@ def require_private_directory(path: Path, uid: int) -> None:
         raise InstallError("legacy account directory is not private")
 
 
+def require_private_legacy_source_chain(path: Path, uid: int) -> None:
+    effective_uid = os.geteuid()
+    if uid != effective_uid:
+        raise InstallError("legacy account source owner is not the effective user")
+    try:
+        home = Path(pwd.getpwuid(effective_uid).pw_dir)
+    except (AttributeError, KeyError, TypeError) as error:
+        raise InstallError("login home authority is unavailable") from error
+    if not home.is_absolute() or not path.is_absolute() or ".." in path.parts:
+        raise InstallError("legacy account source must remain under the user home")
+    try:
+        path.parent.relative_to(home)
+    except ValueError as error:
+        raise InstallError("legacy account source must remain under the user home") from error
+
+    direct_parent = path.parent
+    try:
+        direct_metadata = direct_parent.lstat()
+    except OSError as error:
+        raise InstallError("legacy account source parent is unsafe") from error
+    if (
+        not stat.S_ISDIR(direct_metadata.st_mode)
+        or stat.S_ISLNK(direct_metadata.st_mode)
+        or direct_metadata.st_uid != effective_uid
+        or stat.S_IMODE(direct_metadata.st_mode) != 0o700
+    ):
+        raise InstallError("legacy account source parent is unsafe")
+
+    for current in direct_parent.parents:
+        try:
+            metadata = current.lstat()
+        except OSError as error:
+            raise InstallError("legacy account source parent is unsafe") from error
+        if (
+            not stat.S_ISDIR(metadata.st_mode)
+            or stat.S_ISLNK(metadata.st_mode)
+            or metadata.st_uid not in (0, effective_uid)
+            or stat.S_IMODE(metadata.st_mode) & 0o022 != 0
+        ):
+            raise InstallError("legacy account source parent is unsafe")
+
+
 def secure_legacy_file(path: Path, uid: int, *, create: bool = False) -> int:
     flags = os.O_RDWR if create else os.O_RDONLY
     if create:
@@ -287,9 +597,9 @@ def secure_legacy_file(path: Path, uid: int, *, create: bool = False) -> int:
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_uid != uid
             or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o600
         ):
             raise InstallError("legacy account file authority is unsafe")
-        os.fchmod(descriptor, 0o600)
     except BaseException:
         os.close(descriptor)
         raise
@@ -318,7 +628,14 @@ def file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
     )
 
 
-def read_owned_file(path: Path, uid: int, maximum_bytes: int, failure: str) -> bytes:
+def read_owned_file(
+    path: Path,
+    uid: int,
+    maximum_bytes: int,
+    failure: str,
+    *,
+    required_mode: int | None = None,
+) -> bytes:
     flags = os.O_RDONLY
     if hasattr(os, "O_NOFOLLOW"):
         flags |= os.O_NOFOLLOW
@@ -333,9 +650,14 @@ def read_owned_file(path: Path, uid: int, maximum_bytes: int, failure: str) -> b
             or metadata.st_uid != uid
             or metadata.st_nlink != 1
             or metadata.st_size > maximum_bytes
+            or (
+                required_mode is not None
+                and stat.S_IMODE(metadata.st_mode) != required_mode
+            )
         ):
             raise InstallError(failure)
-        os.fchmod(descriptor, 0o600)
+        if required_mode is None:
+            os.fchmod(descriptor, 0o600)
         expected_identity = file_identity(os.fstat(descriptor))
         body = read_bounded_descriptor(descriptor, maximum_bytes)
         if len(body) > maximum_bytes or file_identity(os.fstat(descriptor)) != expected_identity:
@@ -409,20 +731,35 @@ def account_from_record(record: Any) -> LegacyAccount:
             raise InstallError("legacy account shape is invalid")
         auth = record["auth"]
         outer_email = record.get("email")
+        disabled_value = record.get("disabled", False)
     else:
         auth = record
         outer_email = record.get("email")
+        disabled_value = record.get("disabled", False)
+    if not isinstance(disabled_value, bool):
+        raise InstallError("legacy account administrative state is invalid")
     tokens = auth.get("tokens")
     if not isinstance(tokens, dict):
         raise InstallError("legacy account credentials are unavailable")
     provider_account_id = bounded_scalar(tokens.get("account_id"), MAX_ACCOUNT_ID_BYTES)
     access_token = bounded_scalar(tokens.get("access_token"), MAX_ACCESS_TOKEN_BYTES)
+    refresh_token = bounded_scalar(tokens.get("refresh_token"), MAX_ACCESS_TOKEN_BYTES)
     id_token = bounded_scalar(tokens.get("id_token"), MAX_ACCESS_TOKEN_BYTES)
-    email_value = outer_email if outer_email is not None else auth.get("email")
+    email_value = (
+        outer_email
+        if outer_email is not None
+        else auth.get("email", tokens.get("email"))
+    )
     email = bounded_scalar(email_value, MAX_EMAIL_BYTES)
     if provider_account_id is None:
         raise InstallError("legacy provider account identity is invalid")
-    if access_token is None or id_token is None or email is None or "@" not in email:
+    if (
+        access_token is None
+        or refresh_token is None
+        or id_token is None
+        or email is None
+        or "@" not in email
+    ):
         raise InstallError("legacy account credentials are unavailable")
     claims = decode_id_token_claims(id_token)
     authority = claims.get("https://api.openai.com/auth")
@@ -439,15 +776,35 @@ def account_from_record(record: Any) -> LegacyAccount:
         claimed_email = bounded_scalar(claimed_email_value, MAX_EMAIL_BYTES)
         if claimed_email is None or claimed_email.lower() != email.lower():
             raise InstallError("legacy account email claims are inconsistent")
+    access_claims = decode_id_token_claims(access_token)
+    expires_at = access_claims.get("exp")
+    if (
+        not isinstance(expires_at, int)
+        or isinstance(expires_at, bool)
+        or expires_at <= 0
+        or expires_at > (2**63 - 1) // 1_000_000
+    ):
+        raise InstallError("legacy account access-token expiry is invalid")
     return LegacyAccount(
         provider_account_id=provider_account_id,
         email=email,
         plan_type=plan_type,
+        disabled=disabled_value,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        id_token=id_token,
+        access_token_expires_at_unix_micros=expires_at * 1_000_000,
     )
 
 
-def read_legacy_accounts(path: Path, uid: int) -> list[LegacyAccount]:
+def lock_and_read_legacy_accounts(
+    path: Path,
+    uid: int,
+) -> tuple[list[LegacyAccount], bytes | None, int | None]:
+    if not managed_path_exists(path, "legacy account file authority is unsafe"):
+        return [], None, None
     parent = path.parent
+    require_private_legacy_source_chain(path, uid)
     require_private_directory(parent, uid)
     lock_path = parent / f".{path.name}.lock"
     lock_descriptor = secure_legacy_file(lock_path, uid, create=True)
@@ -458,9 +815,12 @@ def read_legacy_accounts(path: Path, uid: int) -> list[LegacyAccount]:
             body = read_bounded_descriptor(descriptor, MAX_ACCOUNT_FILE_BYTES)
         finally:
             os.close(descriptor)
-    finally:
-        fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
-        os.close(lock_descriptor)
+    except BaseException:
+        try:
+            fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(lock_descriptor)
+        raise
     if len(body) > MAX_ACCOUNT_FILE_BYTES:
         raise InstallError("legacy account file exceeds the supported bound")
     try:
@@ -485,35 +845,7 @@ def read_legacy_accounts(path: Path, uid: int) -> list[LegacyAccount]:
     emails = {account.email.casefold() for account in accounts}
     if len(provider_ids) != len(accounts) or len(emails) != len(accounts):
         raise InstallError("legacy account identities are not unique")
-    return sorted(accounts, key=lambda account: account.provider_account_id)
-
-
-def read_usage_presentations() -> dict[str, dict[str, Any]]:
-    request = urllib.request.Request(
-        "http://127.0.0.1:8192/api/accounts?refresh=1",
-        headers={"Accept": "application/json"},
-    )
-    try:
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=20) as response:
-            body = response.read(MAX_ACCOUNT_FILE_BYTES + 1)
-            if len(body) > MAX_ACCOUNT_FILE_BYTES:
-                return {}
-            payload = json.loads(body)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-    rows = payload.get("accounts") if isinstance(payload, dict) else None
-    if not isinstance(rows, list) or len(rows) > MAX_ACCOUNTS:
-        return {}
-    presentations: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            return {}
-        email = bounded_scalar(row.get("email"), MAX_EMAIL_BYTES)
-        if email is None or email.casefold() in presentations:
-            return {}
-        presentations[email.casefold()] = row
-    return presentations
+    return accounts, body, lock_descriptor
 
 
 def managed_path_exists(path: Path, failure: str) -> bool:
@@ -661,12 +993,147 @@ def existing_enrollments(
     return result
 
 
+def parse_legacy_account_config(body: bytes | None) -> tuple[str | None, dict[str, int]]:
+    if body is None:
+        return None, {}
+    try:
+        lines = body.decode("utf-8").splitlines()
+    except UnicodeDecodeError as error:
+        raise InstallError("legacy account config is not UTF-8") from error
+    section = ""
+    fixed_account: str | None = None
+    offsets: dict[str, int] = {}
+    for raw_line in lines:
+        stripped = raw_line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        if stripped.startswith("["):
+            match = re.fullmatch(r"\[([^\]]+)\]", stripped)
+            if match is None:
+                raise InstallError("legacy account config section is malformed")
+            section = match.group(1)
+            continue
+        if section == "codex.accounts" and stripped.startswith("fixed_account"):
+            match = re.fullmatch(
+                r'fixed_account\s*=\s*("(?:[^"\\]|\\.)*")\s*(?:#.*)?',
+                stripped,
+            )
+            if match is None or fixed_account is not None:
+                raise InstallError("legacy fixed-account selector is malformed")
+            try:
+                fixed_account = bounded_scalar(json.loads(match.group(1)), 1024)
+            except json.JSONDecodeError as error:
+                raise InstallError("legacy fixed-account selector is malformed") from error
+            if fixed_account is None:
+                raise InstallError("legacy fixed-account selector is malformed")
+        elif section == "codex.account_names.offsets":
+            match = re.fullmatch(
+                r'(?:("(?:[^"\\]|\\.)*")|([A-Za-z0-9_-]+))\s*=\s*(-?[0-9]+)\s*(?:#.*)?',
+                stripped,
+            )
+            if match is None:
+                raise InstallError("legacy account-name offset is malformed")
+            try:
+                key = json.loads(match.group(1)) if match.group(1) else match.group(2)
+                offset = int(match.group(3)) % len(ACCOUNT_RANDOM_NAMES)
+            except (json.JSONDecodeError, ValueError) as error:
+                raise InstallError("legacy account-name offset is malformed") from error
+            if bounded_scalar(key, 128) is None or key in offsets:
+                raise InstallError("legacy account-name offset is malformed")
+            offsets[key] = offset
+    return fixed_account, offsets
+
+
+def redacted_provider_account_id(provider_account_id: str) -> str:
+    tail = provider_account_id[-6:]
+    return f"...{tail}" if tail else "unknown"
+
+
+def account_identity_hash(value: str) -> int:
+    encoded = (value.strip() or "account").encode("utf-16-le")
+    result = 2_166_136_261
+    for offset in range(0, len(encoded), 2):
+        result ^= int.from_bytes(encoded[offset : offset + 2], "little")
+        result = (result * 16_777_619) & 0xFFFFFFFF
+    return result
+
+
+def derive_legacy_labels(
+    accounts: list[LegacyAccount],
+    offsets: dict[str, int],
+) -> dict[str, str]:
+    candidates: list[tuple[str, str, str, int]] = []
+    for account in accounts:
+        seed = redacted_provider_account_id(account.provider_account_id)
+        identity_hash = account_identity_hash(seed)
+        key = f"{identity_hash:08x}"
+        preferred = (identity_hash + offsets.get(key, 0)) % len(ACCOUNT_RANDOM_NAMES)
+        candidates.append((key, account.email, account.provider_account_id_sha256, preferred))
+    labels: dict[str, str] = {}
+    used: set[str] = set()
+    for _, _, digest, preferred in sorted(candidates):
+        label = ""
+        for probe in range(len(ACCOUNT_RANDOM_NAMES)):
+            candidate = ACCOUNT_RANDOM_NAMES[(preferred + probe) % len(ACCOUNT_RANDOM_NAMES)]
+            if candidate not in used:
+                label = candidate
+                break
+        if not label:
+            base = ACCOUNT_RANDOM_NAMES[preferred]
+            suffix = 2
+            while f"{base} {suffix}" in used:
+                suffix += 1
+            label = f"{base} {suffix}"
+        used.add(label)
+        labels[digest] = label
+    return labels
+
+
+def load_existing_manifest_accounts(path: Path, uid: int) -> dict[str, dict[str, Any]]:
+    if not managed_path_exists(path, "existing account migration manifest is malformed"):
+        return {}
+    try:
+        payload = json.loads(
+            read_owned_file(
+                path,
+                uid,
+                MAX_MIGRATION_MANIFEST_BYTES,
+                "existing account migration manifest is malformed",
+            )
+        )
+    except (UnicodeDecodeError, json.JSONDecodeError) as error:
+        raise InstallError("existing account migration manifest is malformed") from error
+    if (
+        not isinstance(payload, dict)
+        or payload.get("schema") != MIGRATION_MANIFEST_SCHEMA
+        or not isinstance(payload.get("accounts"), list)
+    ):
+        raise InstallError("existing account migration manifest is malformed")
+    result: dict[str, dict[str, Any]] = {}
+    for account in payload["accounts"]:
+        if not isinstance(account, dict):
+            raise InstallError("existing account migration manifest is malformed")
+        digest = account.get("provider_account_id_sha256")
+        if (
+            not isinstance(digest, str)
+            or not HEX_DIGEST_PATTERN.fullmatch(digest)
+            or not UUID_PATTERN.fullmatch(str(account.get("account_id", "")))
+            or not UUID_PATTERN.fullmatch(str(account.get("operation_id", "")))
+            or digest in result
+        ):
+            raise InstallError("existing account migration manifest is malformed")
+        result[digest] = account
+    return result
+
+
 def build_enrollments(
     accounts: list[LegacyAccount],
     existing_mapping: dict[str, int],
     existing: dict[int, ExistingEnrollment],
-    presentations: dict[str, dict[str, Any]],
-) -> list[Enrollment]:
+    manifest_accounts: dict[str, dict[str, Any]],
+    fixed_selector: str | None,
+    offsets: dict[str, int],
+) -> tuple[list[Enrollment], str | None, list[str]]:
     digests = {account.provider_account_id_sha256 for account in accounts}
     if existing_mapping and set(existing_mapping) != digests:
         raise InstallError("legacy account set changed; explicit reconciliation is required")
@@ -678,52 +1145,65 @@ def build_enrollments(
         raise InstallError("existing mapping and enrollment config do not agree")
     if not existing_mapping and existing:
         raise InstallError("existing enrollment lacks its bridge mapping")
+    if manifest_accounts and set(manifest_accounts) != digests:
+        raise InstallError("account migration manifest source set changed")
     mapping = existing_mapping or {
         account.provider_account_id_sha256: index
         for index, account in enumerate(accounts, start=1)
     }
-    enrollments = []
-    for account in accounts:
+    derived_labels = derive_legacy_labels(accounts, offsets)
+    enrollments: list[Enrollment] = []
+    fixed_account_id: str | None = None
+    for ordinal, account in enumerate(accounts):
         slot = mapping[account.provider_account_id_sha256]
-        presentation = presentations.get(account.email.casefold(), {})
-        observed_plan = presentation.get("plan_type")
-        if observed_plan is not None and observed_plan != account.plan_type:
-            raise InstallError("legacy account plan observations do not agree")
         prior_enrollment = existing.get(slot)
-        if prior_enrollment is None:
-            label = bounded_scalar(presentation.get("random_name"), 128)
-            if label is None:
-                label = f"Account {slot:02d}"
-            account_id = str(uuid.uuid4())
-        else:
+        prior_manifest = manifest_accounts.get(account.provider_account_id_sha256)
+        if prior_enrollment is not None:
             label = prior_enrollment.display_label
             account_id = prior_enrollment.account_id
-        available_count = presentation.get("reset_credits_available_count")
-        initial_state = (
-            "depleted"
-            if isinstance(available_count, int)
-            and not isinstance(available_count, bool)
-            and available_count == 0
-            else "available"
-        )
+        elif prior_manifest is not None:
+            label = prior_manifest.get("display_label")
+            account_id = prior_manifest.get("account_id")
+            if bounded_scalar(label, 128) is None or not UUID_PATTERN.fullmatch(str(account_id)):
+                raise InstallError("existing account migration manifest is malformed")
+        else:
+            label = derived_labels[account.provider_account_id_sha256]
+            account_id = str(uuid.uuid4())
+        if prior_manifest is not None:
+            if prior_manifest.get("account_id") != account_id or prior_manifest.get("display_label") != label:
+                raise InstallError("vNext identity decisions do not agree")
+            operation_id = prior_manifest["operation_id"]
+        else:
+            operation_id = str(uuid.uuid4())
         enrollments.append(
             Enrollment(
                 slot=slot,
                 provider_account_id_sha256=account.provider_account_id_sha256,
                 account_id=account_id,
+                operation_id=operation_id,
                 display_label=label,
-                initial_state=initial_state,
+                enabled=not account.disabled,
                 plan_type=account.plan_type,
             )
         )
-    return sorted(enrollments, key=lambda enrollment: enrollment.slot)
+        if fixed_selector is not None and fixed_selector in {
+            account.email,
+            account.provider_account_id,
+            redacted_provider_account_id(account.provider_account_id),
+        }:
+            if fixed_account_id is not None:
+                raise InstallError("legacy fixed-account selector is ambiguous")
+            fixed_account_id = account_id
+    if fixed_selector is not None and fixed_account_id is None:
+        raise InstallError("legacy fixed-account selector does not resolve")
+    return enrollments, fixed_account_id, [enrollment.account_id for enrollment in enrollments]
 
 
 def toml_string(value: str | Path) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def render_config(paths: InstallPaths, uid: int, enrollments: list[Enrollment]) -> str:
+def render_config(paths: InstallPaths, uid: int) -> str:
     lines = [
         "version = 1",
         'active_profile = "local"',
@@ -737,20 +1217,6 @@ def render_config(paths: InstallPaths, uid: int, enrollments: list[Enrollment]) 
         f"host_path = {toml_string(paths.repository)}",
         "",
     ]
-    for enrollment in enrollments:
-        prefix = f"DECODEX_RESET_CARD_SLOT_{enrollment.slot:02d}"
-        lines.extend(
-            [
-                f'[server_host.reset_card_accounts."{enrollment.account_id}"]',
-                f"display_label = {toml_string(enrollment.display_label)}",
-                f'initial_state = "{enrollment.initial_state}"',
-                f'access_token_env_var = "{prefix}_ACCESS_TOKEN"',
-                f'provider_account_id_env_var = "{prefix}_ACCOUNT_ID"',
-                f'expected_email_env_var = "{prefix}_EMAIL"',
-                f'plan_type = "{enrollment.plan_type}"',
-                "",
-            ]
-        )
     lines.extend(
         [
             "[postgres]",
@@ -775,18 +1241,235 @@ def render_config(paths: InstallPaths, uid: int, enrollments: list[Enrollment]) 
     return "\n".join(lines)
 
 
-def render_mapping(enrollments: list[Enrollment]) -> bytes:
-    payload = {
-        "schema": MAPPING_SCHEMA,
-        "accounts": [
-            {
-                "slot": enrollment.slot,
-                "provider_account_id_sha256": enrollment.provider_account_id_sha256,
-            }
-            for enrollment in enrollments
-        ],
+def source_record(role: str, path: Path, body: bytes | None) -> dict[str, Any]:
+    record: dict[str, Any] = {
+        "role": role,
+        "path": str(path),
+        "present": body is not None,
+        "byte_count": None,
+        "sha256": None,
     }
-    return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if body is not None:
+        record["byte_count"] = len(body)
+        record["sha256"] = hashlib.sha256(body).hexdigest()
+    return record
+
+
+def read_optional_owned_source(
+    path: Path,
+    uid: int,
+    maximum_bytes: int,
+    failure: str,
+) -> bytes | None:
+    if not managed_path_exists(path, failure):
+        return None
+    require_private_legacy_source_chain(path, uid)
+    return read_owned_file(
+        path,
+        uid,
+        maximum_bytes,
+        failure,
+        required_mode=0o600,
+    )
+
+
+def prepare_vnext_config_source(paths: InstallPaths, uid: int) -> bytes | None:
+    archived = read_optional_owned_source(
+        paths.vnext_config_source,
+        uid,
+        MAX_CONFIG_FILE_BYTES,
+        "archived vNext account source is malformed",
+    )
+    current = read_optional_owned_source(
+        paths.config,
+        uid,
+        MAX_CONFIG_FILE_BYTES,
+        "existing Decodex config is malformed",
+    )
+    if archived is not None:
+        if current is not None and b"server_host.reset_card_accounts" in current and current != archived:
+            raise InstallError("archived and active vNext account sources do not agree")
+        return archived
+    if current is None:
+        return None
+    if b"server_host.reset_card_accounts" not in current:
+        raise InstallError("existing Decodex config has no archived account source")
+    atomic_write(paths.vnext_config_source, current, 0o600)
+    return current
+
+
+def credential_sources(
+    paths: InstallPaths,
+    accounts: list[LegacyAccount],
+    enrollments: list[Enrollment],
+    uid: int,
+) -> dict[str, str]:
+    try:
+        paths.credential_directory.mkdir(mode=0o700, parents=False, exist_ok=True)
+    except OSError as error:
+        raise InstallError("account migration credential directory is unavailable") from error
+    require_private_directory(paths.credential_directory, uid)
+    by_digest = {account.provider_account_id_sha256: account for account in accounts}
+    expected_names = {f"{enrollment.account_id}.json" for enrollment in enrollments}
+    try:
+        actual_names = {entry.name for entry in paths.credential_directory.iterdir()}
+    except OSError as error:
+        raise InstallError("account migration credential directory is unavailable") from error
+    if actual_names - expected_names:
+        raise InstallError("account migration credential directory contains unexpected files")
+    digests: dict[str, str] = {}
+    for enrollment in enrollments:
+        account = by_digest[enrollment.provider_account_id_sha256]
+        payload = {
+            "schema": "decodex/account-credential-import/1",
+            "provider": "chatgpt",
+            "provider_account_id": account.provider_account_id,
+            "provider_email": account.email,
+            "access_token": account.access_token,
+            "refresh_token": account.refresh_token,
+            "id_token": account.id_token,
+            "plan_type": account.plan_type,
+            "token_type": "bearer",
+            "access_token_expires_at_unix_micros": account.access_token_expires_at_unix_micros,
+        }
+        body = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+        atomic_write(paths.credential_directory / f"{enrollment.account_id}.json", body, 0o600)
+        digests[enrollment.account_id] = hashlib.sha256(body).hexdigest()
+    return digests
+
+
+def decision_digest(value: Any) -> str:
+    normalized = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def render_migration_manifest(
+    paths: InstallPaths,
+    uid: int,
+    sources: list[dict[str, Any]],
+    enrollments: list[Enrollment],
+    credential_digests: dict[str, str],
+    fixed_account_id: str | None,
+    order: list[str],
+) -> bytes:
+    routing: dict[str, Any] = {"mode": "balanced", "order": order}
+    if fixed_account_id is not None:
+        routing = {"mode": "fixed", "account_id": fixed_account_id, "order": order}
+    accounts = [
+        {
+            "source_ordinal": ordinal,
+            "account_id": enrollment.account_id,
+            "operation_id": enrollment.operation_id,
+            "provider": "chatgpt",
+            "provider_account_id_sha256": enrollment.provider_account_id_sha256,
+            "display_label": enrollment.display_label,
+            "enabled": enrollment.enabled,
+            "credential_source_sha256": credential_digests[enrollment.account_id],
+        }
+        for ordinal, enrollment in enumerate(enrollments)
+    ]
+    decision_fingerprints = {
+        "credentials_sha256": decision_digest(
+            [
+                {
+                    "account_id": account["account_id"],
+                    "credential_source_sha256": account["credential_source_sha256"],
+                }
+                for account in accounts
+            ]
+        ),
+        "labels_sha256": decision_digest(
+            [
+                {
+                    "account_id": account["account_id"],
+                    "display_label": account["display_label"],
+                }
+                for account in accounts
+            ]
+        ),
+        "enabled_sha256": decision_digest(
+            [
+                {"account_id": account["account_id"], "enabled": account["enabled"]}
+                for account in accounts
+            ]
+        ),
+        "routing_sha256": decision_digest(routing),
+        "provider_sha256": decision_digest(
+            [
+                {
+                    "account_id": account["account_id"],
+                    "provider": account["provider"],
+                    "provider_account_id_sha256": account[
+                        "provider_account_id_sha256"
+                    ],
+                }
+                for account in accounts
+            ]
+        ),
+        "quota_sha256": decision_digest({"policy": "reset_to_unknown"}),
+        "usage_profile_sha256": decision_digest({"policy": "start_empty"}),
+        "history_sha256": decision_digest({"policy": "do_not_import"}),
+    }
+    payload = {
+        "schema": MIGRATION_MANIFEST_SCHEMA,
+        "sources": sources,
+        "quota_policy": "reset_to_unknown",
+        "usage_profile_policy": "start_empty",
+        "history_policy": "do_not_import",
+        "decision_fingerprints": decision_fingerprints,
+        "accounts": accounts,
+        "routing": routing,
+    }
+    generated = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    if managed_path_exists(paths.migration_manifest, "account migration manifest is malformed"):
+        existing = read_owned_file(
+            paths.migration_manifest,
+            uid,
+            MAX_MIGRATION_MANIFEST_BYTES,
+            "account migration manifest is malformed",
+        )
+        try:
+            existing_payload = json.loads(existing)
+            existing_accounts = (
+                existing_payload.get("accounts")
+                if isinstance(existing_payload, dict)
+                else None
+            )
+            existing_decisions = (
+                existing_payload.get("decision_fingerprints")
+                if isinstance(existing_payload, dict)
+                else None
+            )
+            if (
+                not isinstance(existing_accounts, list)
+                or not isinstance(existing_decisions, dict)
+                or any(not isinstance(account, dict) for account in existing_accounts)
+            ):
+                raise InstallError("account migration manifest is malformed")
+            for account in existing_accounts:
+                account.pop("target", None)
+            existing_decisions["credentials_sha256"] = decision_digest(
+                [
+                    {
+                        "account_id": account.get("account_id"),
+                        "credential_source_sha256": account.get(
+                            "credential_source_sha256"
+                        ),
+                    }
+                    for account in existing_accounts
+                ]
+            )
+            if existing_payload != payload:
+                raise InstallError("account migration manifest conflicts with current sources")
+        except json.JSONDecodeError as error:
+            raise InstallError("account migration manifest is malformed") from error
+        return existing
+    return generated
 
 
 def render_launch_agent(paths: InstallPaths) -> bytes:
@@ -803,10 +1486,6 @@ def render_launch_agent(paths: InstallPaths) -> bytes:
         str(paths.socket_directory),
         "--port",
         str(POSTGRES_PORT),
-        "--legacy-accounts",
-        str(paths.legacy_accounts),
-        "--legacy-mapping",
-        str(paths.mapping),
         "--working-directory",
         str(paths.repository),
     ]
@@ -912,17 +1591,186 @@ def run(
     env: dict[str, str] | None = None,
     capture: bool = False,
     check: bool = True,
-    timeout: float | None = None,
+    timeout: float | None = INSTALLER_COMMAND_TIMEOUT_SECONDS,
+    pass_fds: tuple[int, ...] = (),
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    if timeout is None or timeout <= 0:
+        raise InstallError("installer child timeout is invalid")
+    process = subprocess.Popen(
         command,
         cwd=cwd,
         env=env,
-        check=check,
-        text=True,
-        capture_output=capture,
-        timeout=timeout,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        pass_fds=pass_fds,
+        start_new_session=True,
     )
+    stdout_bytes, stderr_bytes = communicate_bounded(
+        process,
+        command,
+        timeout,
+    )
+    stdout = stdout_bytes.decode("utf-8", errors="strict")
+    stderr = stderr_bytes.decode("utf-8", errors="strict")
+    completed = subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout if capture else None,
+        stderr if capture else None,
+    )
+    if check and process.returncode != 0:
+        raise subprocess.CalledProcessError(
+            process.returncode,
+            command,
+            output=stdout if capture else None,
+            stderr=stderr if capture else None,
+        )
+    return completed
+
+
+def terminate_bounded_process(process: subprocess.Popen[Any]) -> None:
+    process_group_id = process.pid
+    try:
+        os.killpg(process_group_id, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    time.sleep(0.25)
+    try:
+        os.killpg(process_group_id, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if process.returncode is None:
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired as error:
+            raise InstallError("installer child could not be reaped") from error
+
+
+def communicate_bounded(
+    process: subprocess.Popen[Any],
+    command: list[str],
+    timeout: float,
+) -> tuple[bytes, bytes]:
+    if process.stdout is None or process.stderr is None:
+        terminate_bounded_process(process)
+        raise InstallError("installer child output pipes are unavailable")
+    streams = {
+        process.stdout.fileno(): ("stdout", process.stdout),
+        process.stderr.fileno(): ("stderr", process.stderr),
+    }
+    chunks: dict[str, list[bytes]] = {"stdout": [], "stderr": []}
+    output_bytes = 0
+    deadline = time.monotonic() + timeout
+    selector = selectors.DefaultSelector()
+    try:
+        for descriptor in streams:
+            os.set_blocking(descriptor, False)
+            selector.register(descriptor, selectors.EVENT_READ)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(
+                    command,
+                    timeout,
+                    output=b"".join(chunks["stdout"]),
+                    stderr=b"".join(chunks["stderr"]),
+                )
+            events = selector.select(min(0.25, remaining))
+            for key, _ in events:
+                descriptor = key.fd
+                name, stream = streams[descriptor]
+                try:
+                    chunk = os.read(descriptor, 64 * 1024)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(descriptor)
+                    stream.close()
+                    continue
+                output_bytes += len(chunk)
+                if output_bytes > MAX_INSTALLER_CHILD_OUTPUT_BYTES:
+                    raise InstallError("installer child output exceeded its bound")
+                chunks[name].append(chunk)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(
+                command,
+                timeout,
+                output=b"".join(chunks["stdout"]),
+                stderr=b"".join(chunks["stderr"]),
+            )
+        process.wait(timeout=remaining)
+    except BaseException:
+        terminate_bounded_process(process)
+        raise
+    finally:
+        selector.close()
+        for _, stream in streams.values():
+            if not stream.closed:
+                stream.close()
+    return b"".join(chunks["stdout"]), b"".join(chunks["stderr"])
+
+
+def run_installer_child(
+    command: list[str],
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    cwd: Path,
+    capture: bool,
+    transition_gate_fd: int | None = None,
+) -> subprocess.CompletedProcess[str]:
+    lock_descriptor = namespace_lock.borrow()
+    gate_descriptor = (
+        os.dup(transition_gate_fd) if transition_gate_fd is not None else None
+    )
+    inherited = [lock_descriptor]
+    child_command = [
+        *command,
+        "--installer-lock-fd",
+        str(lock_descriptor),
+    ]
+    if gate_descriptor is not None:
+        inherited.append(gate_descriptor)
+        child_command.extend(["--transition-gate-fd", str(gate_descriptor)])
+    try:
+        process = subprocess.Popen(
+            child_command,
+            cwd=cwd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            pass_fds=tuple(inherited),
+            start_new_session=True,
+        )
+    finally:
+        if gate_descriptor is not None:
+            os.close(gate_descriptor)
+        os.close(lock_descriptor)
+    try:
+        stdout_bytes, stderr_bytes = communicate_bounded(
+            process,
+            child_command,
+            INSTALLER_COMMAND_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        raise InstallError("installer child timed out") from error
+    stdout = stdout_bytes.decode("utf-8", errors="strict")
+    stderr = stderr_bytes.decode("utf-8", errors="strict")
+    completed = subprocess.CompletedProcess(
+        child_command,
+        process.returncode,
+        stdout if capture else None,
+        stderr if capture else None,
+    )
+    if process.returncode != 0:
+        raise subprocess.CalledProcessError(
+            process.returncode,
+            child_command,
+            output=stdout if capture else None,
+            stderr=stderr if capture else None,
+        )
+    return completed
 
 
 def postgres_major(postgres: Path) -> int:
@@ -963,12 +1811,24 @@ def ensure_directories(paths: InstallPaths, uid: int) -> None:
         paths.data_directory,
         paths.socket_directory,
         paths.log_directory,
+        paths.server_directory,
     ]:
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         require_owned_directory(path, uid, "local service directory authority is unsafe")
         os.chmod(path, 0o700)
     service_log = open_private_append_file(paths.service_log, uid)
     os.close(service_log)
+
+
+def ensure_installer_namespace_layout(paths: InstallPaths, uid: int) -> None:
+    for path in (paths.root, paths.server_directory):
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        require_owned_directory(
+            path,
+            uid,
+            "local service namespace directory is unsafe",
+        )
+        os.chmod(path, 0o700)
 
 
 def postgres_version(paths: InstallPaths, uid: int) -> str | None:
@@ -1020,10 +1880,130 @@ def initialize_cluster(paths: InstallPaths, uid: int) -> None:
         raise InstallError("PostgreSQL 18 initialization did not complete")
 
 
+class _TemporaryPostgresOutput:
+    def __init__(
+        self,
+        process: subprocess.Popen[Any],
+        stream: Any,
+        log_descriptor: int,
+        remaining_bytes: int,
+    ) -> None:
+        self._process = process
+        self._stream = stream
+        self._log_descriptor = log_descriptor
+        self._remaining_bytes = remaining_bytes
+        self._failure: str | None = None
+        self._failure_lock = threading.Lock()
+        self._settle_requested = threading.Event()
+        self._thread = threading.Thread(
+            target=self._drain,
+            name="decodex-postgres-output",
+            daemon=True,
+        )
+
+    @property
+    def failure(self) -> str | None:
+        with self._failure_lock:
+            return self._failure
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def settle(self) -> None:
+        self._settle_requested.set()
+        self._thread.join(timeout=LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            raise InstallError("temporary PostgreSQL output did not settle")
+        failure = self.failure
+        if failure is not None:
+            raise InstallError(failure)
+
+    def _record_failure(self, message: str) -> None:
+        terminate = False
+        with self._failure_lock:
+            if self._failure is None:
+                self._failure = message
+                terminate = True
+        if terminate:
+            try:
+                self._process.send_signal(signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+    def _write_log(self, content: bytes) -> None:
+        remaining = memoryview(content)
+        while remaining:
+            written = os.write(self._log_descriptor, remaining)
+            if written <= 0:
+                raise OSError("temporary PostgreSQL log write failed")
+            remaining = remaining[written:]
+
+    def _drain(self) -> None:
+        selector = selectors.DefaultSelector()
+        try:
+            descriptor = self._stream.fileno()
+            os.set_blocking(descriptor, False)
+            selector.register(descriptor, selectors.EVENT_READ)
+            while True:
+                events = selector.select(0.25)
+                for key, _ in events:
+                    while True:
+                        try:
+                            chunk = os.read(key.fd, 64 * 1024)
+                        except BlockingIOError:
+                            break
+                        if not chunk:
+                            return
+                        accepted = chunk[: self._remaining_bytes]
+                        if accepted:
+                            self._write_log(accepted)
+                            self._remaining_bytes -= len(accepted)
+                        if len(accepted) != len(chunk):
+                            self._record_failure(
+                                "temporary PostgreSQL output exceeded its bound"
+                            )
+                if self._settle_requested.is_set():
+                    return
+        except BaseException:
+            self._record_failure("temporary PostgreSQL output could not be recorded")
+        finally:
+            selector.close()
+            try:
+                os.fsync(self._log_descriptor)
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+            try:
+                self._stream.close()
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+            try:
+                os.close(self._log_descriptor)
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+
+
+def _temporary_postgres_output(
+    process: subprocess.Popen[Any],
+) -> _TemporaryPostgresOutput | None:
+    output = getattr(process, "_decodex_temporary_postgres_output", None)
+    return output if isinstance(output, _TemporaryPostgresOutput) else None
+
+
 def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> None:
+    output = _temporary_postgres_output(process)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
+        if output is not None and output.failure is not None:
+            raise InstallError(output.failure)
         if process.poll() is not None:
+            if output is not None:
+                output.settle()
             raise InstallError("PostgreSQL exited during local-service startup")
         completed = run(
             [
@@ -1039,6 +2019,8 @@ def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> No
             check=False,
         )
         if completed.returncode == 0:
+            if output is not None and output.failure is not None:
+                raise InstallError(output.failure)
             return
         time.sleep(0.25)
     raise InstallError("PostgreSQL did not become ready")
@@ -1047,6 +2029,9 @@ def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> No
 def start_temporary_postgres(paths: InstallPaths) -> subprocess.Popen[Any]:
     log_descriptor = open_private_append_file(paths.postgres_log, os.geteuid())
     try:
+        log_size = os.fstat(log_descriptor).st_size
+        if log_size > MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES:
+            raise InstallError("temporary PostgreSQL output log exceeded its bound")
         process = subprocess.Popen(
             [
                 str(paths.postgres),
@@ -1059,36 +2044,90 @@ def start_temporary_postgres(paths: InstallPaths) -> subprocess.Popen[Any]:
                 "-h",
                 "",
             ],
-            stdout=log_descriptor,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             close_fds=True,
+            start_new_session=True,
         )
-    finally:
+    except BaseException:
         os.close(log_descriptor)
+        raise
+    if process.stdout is None:
+        os.close(log_descriptor)
+        terminate_bounded_process(process)
+        raise InstallError("temporary PostgreSQL output pipe is unavailable")
+    output = _TemporaryPostgresOutput(
+        process,
+        process.stdout,
+        log_descriptor,
+        MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES - log_size,
+    )
+    setattr(process, "_decodex_temporary_postgres_output", output)
+    try:
+        output.start()
+    except BaseException as error:
+        delattr(process, "_decodex_temporary_postgres_output")
+        process.stdout.close()
+        os.close(log_descriptor)
+        terminate_bounded_process(process)
+        raise InstallError("temporary PostgreSQL output drain could not start") from error
     try:
         wait_for_postgres(paths, process)
     except BaseException:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=10)
+        try:
+            stop_temporary_postgres(process)
+        except BaseException as error:
+            raise InstallError("temporary PostgreSQL startup cleanup failed") from error
         raise
     return process
 
 
 def stop_temporary_postgres(process: subprocess.Popen[Any]) -> None:
-    if process.poll() is not None:
-        return
-    process.send_signal(signal.SIGTERM)
+    termination_error: BaseException | None = None
     try:
-        process.wait(timeout=30)
-    except subprocess.TimeoutExpired as error:
-        process.kill()
-        process.wait(timeout=10)
-        raise InstallError("PostgreSQL did not stop gracefully") from error
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired as error:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired as reap_error:
+                    termination_error = InstallError(
+                        "temporary PostgreSQL could not be reaped"
+                    )
+                    termination_error.__cause__ = reap_error
+                else:
+                    termination_error = InstallError(
+                        "PostgreSQL did not stop gracefully"
+                    )
+                    termination_error.__cause__ = error
+        else:
+            process.wait(timeout=1)
+    except BaseException as error:
+        termination_error = error
+
+    output_error: BaseException | None = None
+    output = _temporary_postgres_output(process)
+    if output is not None:
+        try:
+            output.settle()
+        except BaseException as error:
+            output_error = error
+
+    if termination_error is not None and output_error is not None:
+        raise InstallError(
+            "temporary PostgreSQL cleanup and output validation failed"
+        ) from termination_error
+    if termination_error is not None:
+        raise termination_error
+    if output_error is not None:
+        raise output_error
 
 
 def psql_environment(paths: InstallPaths) -> dict[str, str]:
@@ -1206,52 +2245,262 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
     )
 
 
-def database_url(paths: InstallPaths, role: str) -> str:
-    return (
-        f"postgresql://{role}@/{POSTGRES_DATABASE}"
-        f"?host={paths.socket_directory.as_posix()}&port={POSTGRES_PORT}"
-    )
-
-
-def load_postgres_harness(paths: InstallPaths) -> ModuleType:
-    harness_path = paths.repository / "scripts" / "vnext" / "postgres_store_test.py"
-    spec = importlib.util.spec_from_file_location("decodex_postgres_store_test", harness_path)
-    if spec is None or spec.loader is None:
-        raise InstallError("PostgreSQL provisioning helper is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def migrate_and_provision(paths: InstallPaths, env: dict[str, str]) -> None:
-    migration_env = env.copy()
-    migration_env["DECODEX_TEST_MIGRATION_DATABASE_URL"] = database_url(
-        paths, POSTGRES_MIGRATION_ROLE
-    )
-    migration_env["DECODEX_TEST_RUNTIME_DATABASE_URL"] = database_url(
-        paths, POSTGRES_RUNTIME_ROLE
-    )
-    run(
+def run_offline_account_migration(
+    paths: InstallPaths,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    transition_gate_fd: int | None = None,
+) -> dict[str, Any]:
+    completed = run_installer_child(
         [
-            "cargo",
-            "nextest",
-            "run",
-            "-p",
-            "decodex-postgres",
-            "--test",
-            "postgres_store",
-            "--run-ignored",
-            "all",
-            "--",
-            "postgres_migration_contract",
-            "--exact",
+            str(paths.decodexd),
+            "migrate-accounts",
+            "--config",
+            str(paths.staging_config),
+            "--manifest",
+            str(paths.migration_manifest),
+            "--credential-directory",
+            str(paths.credential_directory),
+            "--launch-agent",
+            str(paths.launch_agent),
         ],
+        namespace_lock,
         cwd=paths.repository,
-        env=migration_env,
+        capture=True,
+        transition_gate_fd=transition_gate_fd,
     )
-    harness = load_postgres_harness(paths)
-    harness.provision_runtime(POSTGRES_DATABASE, POSTGRES_RUNTIME_ROLE, env)
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise InstallError("offline account migration returned an invalid result") from error
+    if (
+        not isinstance(result, dict)
+        or result.get("schema") != "decodex/account-migration-result/1"
+        or result.get("outcome") != "destinations_verified"
+        or not isinstance(result.get("manifest_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["manifest_sha256"])
+        or not isinstance(result.get("intent_recorded"), bool)
+        or result.get("receipt_completed") is not False
+    ):
+        raise InstallError("offline account migration did not verify")
+    return result
+
+
+def run_account_migration_finalizer(
+    paths: InstallPaths,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    transition_gate_fd: int | None = None,
+) -> dict[str, Any]:
+    command = [
+        str(paths.decodexd),
+        "finalize-account-migration",
+        "--config",
+        str(paths.config),
+        "--manifest",
+        str(paths.migration_manifest),
+        "--launch-agent",
+        str(paths.launch_agent),
+        "--retired-staging-config",
+        str(paths.staging_config),
+        "--retired-credential-directory",
+        str(paths.credential_directory),
+        "--retired-active-source",
+        str(paths.mapping),
+        "--retired-active-source",
+        str(paths.vnext_config_source),
+    ]
+    for asset in migration_installed_assets(paths):
+        command.extend(["--installed-asset", str(asset)])
+    completed = run_installer_child(
+        command,
+        namespace_lock,
+        cwd=paths.repository,
+        capture=True,
+        transition_gate_fd=transition_gate_fd,
+    )
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise InstallError("account migration finalizer returned an invalid result") from error
+    account_ids = result.get("account_ids") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or result.get("schema") != "decodex/account-migration-result/1"
+        or result.get("outcome") != "verified"
+        or not isinstance(result.get("manifest_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["manifest_sha256"])
+        or not isinstance(result.get("account_count"), int)
+        or not isinstance(account_ids, list)
+        or len(account_ids) > MAX_RUNTIME_ACCOUNTS
+        or result["account_count"] != len(account_ids)
+        or any(
+            not isinstance(account_id, str)
+            or not UUID_PATTERN.fullmatch(account_id)
+            for account_id in account_ids
+        )
+        or len(set(account_ids)) != len(account_ids)
+        or not isinstance(result.get("intent_recorded"), bool)
+        or result.get("receipt_completed") is not True
+    ):
+        raise InstallError("account migration retirement did not verify")
+    return result
+
+
+def run_prepared_account_migration_verifier(
+    paths: InstallPaths,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    transition_gate_fd: int | None = None,
+) -> dict[str, Any]:
+    completed = run_installer_child(
+        [
+            str(paths.decodexd),
+            "verify-prepared-account-migration",
+            "--config",
+            str(paths.config),
+            "--manifest",
+            str(paths.migration_manifest),
+            "--launch-agent",
+            str(paths.launch_agent),
+        ],
+        namespace_lock,
+        cwd=paths.repository,
+        capture=True,
+        transition_gate_fd=transition_gate_fd,
+    )
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise InstallError(
+            "prepared account migration verifier returned an invalid result"
+        ) from error
+    account_ids = result.get("account_ids") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or result.get("schema") != "decodex/account-migration-result/1"
+        or result.get("outcome") != "destinations_verified"
+        or not isinstance(result.get("manifest_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["manifest_sha256"])
+        or not isinstance(result.get("account_count"), int)
+        or not isinstance(account_ids, list)
+        or len(account_ids) > MAX_RUNTIME_ACCOUNTS
+        or result["account_count"] != len(account_ids)
+        or any(
+            not isinstance(account_id, str)
+            or not UUID_PATTERN.fullmatch(account_id)
+            for account_id in account_ids
+        )
+        or len(set(account_ids)) != len(account_ids)
+        or result.get("intent_recorded") is not False
+        or result.get("receipt_completed") is not False
+    ):
+        raise InstallError("prepared account migration destination did not verify")
+    return result
+
+
+def migration_installed_assets(paths: InstallPaths) -> list[Path]:
+    return [
+        paths.decodexd,
+        paths.decodex_cli,
+        paths.codex,
+        paths.postgres,
+        paths.pg_isready,
+    ]
+
+
+def migration_receipt_phase(
+    paths: InstallPaths,
+    environment: dict[str, str],
+) -> str | None:
+    relation = psql_scalar(
+        paths,
+        POSTGRES_DATABASE,
+        "SELECT pg_catalog.to_regclass('decodex.account_migration_receipts')::text",
+        environment,
+    )
+    if relation == "":
+        return None
+    if relation != "decodex.account_migration_receipts":
+        raise InstallError("account migration receipt authority is malformed")
+    phase = psql_scalar(
+        paths,
+        POSTGRES_DATABASE,
+        "SELECT phase FROM decodex.account_migration_receipts WHERE singleton",
+        environment,
+    )
+    if phase == "":
+        return None
+    if phase not in {"prepared", "completed"}:
+        raise InstallError("account migration receipt authority is malformed")
+    return phase
+
+
+def run_completed_account_migration_verifier(
+    paths: InstallPaths,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    transition_gate_fd: int | None = None,
+) -> dict[str, Any]:
+    command = [
+        str(paths.decodexd),
+        "verify-account-migration",
+        "--config",
+        str(paths.config),
+        "--launch-agent",
+        str(paths.launch_agent),
+        "--retired-staging-config",
+        str(paths.staging_config),
+        "--retired-credential-directory",
+        str(paths.credential_directory),
+        "--retired-active-source",
+        str(paths.mapping),
+        "--retired-active-source",
+        str(paths.vnext_config_source),
+    ]
+    for asset in migration_installed_assets(paths):
+        command.extend(["--installed-asset", str(asset)])
+    completed = run_installer_child(
+        command,
+        namespace_lock,
+        cwd=paths.repository,
+        capture=True,
+        transition_gate_fd=transition_gate_fd,
+    )
+    try:
+        result = json.loads(completed.stdout)
+    except json.JSONDecodeError as error:
+        raise InstallError("account migration verifier returned an invalid result") from error
+    account_ids = result.get("account_ids") if isinstance(result, dict) else None
+    if (
+        not isinstance(result, dict)
+        or result.get("schema") != "decodex/account-migration-result/1"
+        or result.get("outcome") != "verified"
+        or not isinstance(result.get("manifest_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["manifest_sha256"])
+        or not isinstance(result.get("account_count"), int)
+        or not isinstance(account_ids, list)
+        or len(account_ids) > MAX_RUNTIME_ACCOUNTS
+        or result["account_count"] != len(account_ids)
+        or any(
+            not isinstance(account_id, str)
+            or not UUID_PATTERN.fullmatch(account_id)
+            for account_id in account_ids
+        )
+        or len(set(account_ids)) != len(account_ids)
+        or result.get("intent_recorded") is not False
+        or result.get("receipt_completed") is not True
+    ):
+        raise InstallError("completed account migration did not verify")
+    return result
+
+
+def retire_active_migration_sources(paths: InstallPaths) -> None:
+    for path in [paths.mapping, paths.vnext_config_source]:
+        try:
+            path.unlink(missing_ok=True)
+        except OSError as error:
+            raise InstallError("active legacy account bridge could not be retired") from error
 
 
 def parse_launch_agent_pid(output: str) -> int | None:
@@ -1490,10 +2739,7 @@ def bootstrap_service(paths: InstallPaths, uid: int) -> None:
             raise InstallError("local service could not be started") from error
 
 
-def query_reset_card(
-    paths: InstallPaths,
-    arguments: list[str],
-) -> dict[str, Any] | None:
+def query_accounts(paths: InstallPaths) -> dict[str, Any] | None:
     try:
         completed = run(
             [
@@ -1502,8 +2748,8 @@ def query_reset_card(
                 str(paths.root),
                 "--output",
                 "json",
-                "reset-card",
-                *arguments,
+                "account",
+                "list",
             ],
             cwd=paths.repository,
             capture=True,
@@ -1520,8 +2766,9 @@ def query_reset_card(
         return None
     if (
         not isinstance(document, dict)
-        or document.get("schema") != "decodex/reset-card-cli/1"
-        or document.get("outcome") != "available"
+        or document.get("schema") != "decodex/cli-account/1"
+        or document.get("command") != "list"
+        or document.get("outcome") != "success"
     ):
         return None
     return document
@@ -1590,13 +2837,8 @@ def query_doctor(paths: InstallPaths) -> bool:
 
 
 def account_ids_from_result(document: dict[str, Any]) -> list[str] | None:
-    if document.get("command") != "accounts":
-        return None
     result = document.get("result")
-    if not isinstance(result, dict) or result.get("outcome") != "available":
-        return None
-    data = result.get("data")
-    accounts = data.get("accounts") if isinstance(data, dict) else None
+    accounts = result.get("accounts") if isinstance(result, dict) else None
     if not isinstance(accounts, list):
         return None
     account_ids: list[str] = []
@@ -1610,47 +2852,26 @@ def account_ids_from_result(document: dict[str, Any]) -> list[str] | None:
     return account_ids
 
 
-def inventory_is_available(document: dict[str, Any], account_id: str) -> bool:
-    if document.get("command") != "list":
-        return False
-    result = document.get("result")
-    if not isinstance(result, dict) or result.get("outcome") != "available":
-        return False
-    data = result.get("data")
-    return isinstance(data, dict) and data.get("account_id") == account_id
-
-
 def wait_for_service(paths: InstallPaths, expected_account_ids: set[str]) -> None:
     deadline = time.monotonic() + 180
-    last_issue = "reset-card service did not answer"
+    last_issue = "account service did not answer"
     while time.monotonic() < deadline:
         if not query_doctor(paths):
             last_issue = "local-service authority is unavailable"
             time.sleep(1)
             continue
-        accounts_document = query_reset_card(paths, ["accounts"])
+        accounts_document = query_accounts(paths)
         account_ids = (
             account_ids_from_result(accounts_document)
             if accounts_document is not None
             else None
         )
         if account_ids is None:
-            last_issue = "reset-card account discovery is unavailable"
+            last_issue = "account registry is unavailable"
         elif set(account_ids) != expected_account_ids:
-            last_issue = "reset-card account discovery set does not agree"
+            last_issue = "account registry set does not agree"
         else:
-            inventories_ready = True
-            for account_id in account_ids:
-                inventory = query_reset_card(
-                    paths,
-                    ["list", "--account", account_id],
-                )
-                if inventory is None or not inventory_is_available(inventory, account_id):
-                    inventories_ready = False
-                    last_issue = "reset-card inventory is unavailable"
-                    break
-            if inventories_ready:
-                return
+            return
         time.sleep(1)
     raise InstallError(last_issue)
 
@@ -1684,56 +2905,245 @@ def validate_host(paths: InstallPaths) -> int:
         ("psql", paths.psql),
     ]:
         require_regular_executable(path, name)
-    if postgres_major(paths.postgres) != 18:
-        raise InstallError("PostgreSQL 18 is required")
     return uid
+
+
+def install_under_namespace_lock(
+    paths: InstallPaths,
+    uid: int,
+    namespace_lock: InstallerNamespaceLock,
+    *,
+    launch_requested: bool,
+    transition_checkpoint: Callable[[str], None] | None = None,
+    transition_gate_fd: int | None = None,
+) -> tuple[dict[str, Any], list[str], bool]:
+    def checkpoint(name: str) -> None:
+        if transition_checkpoint is not None:
+            transition_checkpoint(name)
+
+    current_config = read_optional_owned_source(
+        paths.config,
+        uid,
+        MAX_CONFIG_FILE_BYTES,
+        "existing Decodex config is malformed",
+    )
+    completed_result: dict[str, Any] | None = None
+    if (
+        current_config is not None
+        and b"server_host.reset_card_accounts" not in current_config
+    ):
+        initialize_cluster(paths, uid)
+        postgres = start_temporary_postgres(paths)
+        try:
+            environment = psql_environment(paths)
+            ensure_roles_and_database(paths, environment)
+            receipt_phase = migration_receipt_phase(paths, environment)
+            if receipt_phase == "completed":
+                completed_result = run_completed_account_migration_verifier(
+                    paths,
+                    namespace_lock,
+                    transition_gate_fd=transition_gate_fd,
+                )
+                checkpoint("completed_receipt_verified")
+            elif receipt_phase == "prepared":
+                if not managed_path_exists(
+                    paths.migration_manifest,
+                    "prepared account migration manifest is unavailable",
+                ):
+                    raise InstallError(
+                        "prepared account migration manifest is unavailable"
+                    )
+                manifest_accounts = load_existing_manifest_accounts(
+                    paths.migration_manifest,
+                    uid,
+                )
+                run_prepared_account_migration_verifier(
+                    paths,
+                    namespace_lock,
+                    transition_gate_fd=transition_gate_fd,
+                )
+                checkpoint("destination_reverified")
+                MigrationStagingOwner.for_accounts(
+                    paths,
+                    [
+                        str(account["account_id"])
+                        for account in manifest_accounts.values()
+                    ],
+                ).cleanup()
+                checkpoint("staging_retired")
+                retire_active_migration_sources(paths)
+                checkpoint("active_legacy_retired")
+                checkpoint("before_finalizer")
+                completed_result = run_account_migration_finalizer(
+                    paths,
+                    namespace_lock,
+                    transition_gate_fd=transition_gate_fd,
+                )
+                checkpoint("final_receipt_recorded")
+            else:
+                raise InstallError(
+                    "active vNext config has no account migration receipt"
+                )
+        finally:
+            stop_temporary_postgres(postgres)
+
+    if completed_result is not None:
+        migration_result = completed_result
+        enrollments = completed_result["account_ids"]
+    else:
+        accounts, account_pool_body, legacy_lock = lock_and_read_legacy_accounts(
+            paths.legacy_accounts,
+            uid,
+        )
+        staging_owner: MigrationStagingOwner | None = None
+        try:
+            vnext_config_body = prepare_vnext_config_source(paths, uid)
+            if managed_path_exists(paths.legacy_config, "legacy account config is malformed"):
+                require_private_legacy_source_chain(paths.legacy_config, uid)
+            legacy_config_body = read_optional_owned_source(
+                paths.legacy_config,
+                uid,
+                MAX_CONFIG_FILE_BYTES,
+                "legacy account config is malformed",
+            )
+            mapping_body = read_optional_owned_source(
+                paths.mapping,
+                uid,
+                MAX_MAPPING_FILE_BYTES,
+                "existing reset-card mapping is malformed",
+            )
+            existing_mapping = load_existing_mapping(paths.mapping, uid)
+            existing = (
+                existing_enrollments(paths.vnext_config_source, uid)
+                if vnext_config_body is not None
+                else {}
+            )
+            if bool(existing_mapping) != bool(existing):
+                raise InstallError("vNext UUID bridge and account source do not agree")
+            fixed_selector, offsets = parse_legacy_account_config(legacy_config_body)
+            prior_manifest = load_existing_manifest_accounts(paths.migration_manifest, uid)
+            planned, fixed_account_id, order = build_enrollments(
+                accounts,
+                existing_mapping,
+                existing,
+                prior_manifest,
+                fixed_selector,
+                offsets,
+            )
+            staging_owner = MigrationStagingOwner.for_accounts(
+                paths,
+                [enrollment.account_id for enrollment in planned],
+            )
+            config = render_config(paths, uid).encode("utf-8")
+            launch_agent = render_launch_agent(paths)
+            credential_digests = credential_sources(paths, accounts, planned, uid)
+            sources = [
+                source_record("legacy_account_pool", paths.legacy_accounts, account_pool_body),
+                source_record("legacy_account_config", paths.legacy_config, legacy_config_body),
+                source_record("vnext_uuid_bridge", paths.mapping, mapping_body),
+                source_record(
+                    "vnext_account_config",
+                    paths.vnext_config_source,
+                    vnext_config_body,
+                ),
+            ]
+            manifest = render_migration_manifest(
+                paths,
+                uid,
+                sources,
+                planned,
+                credential_digests,
+                fixed_account_id,
+                order,
+            )
+            atomic_write(paths.staging_config, config, 0o600)
+            atomic_write(paths.migration_manifest, manifest, 0o600)
+            atomic_write(paths.launch_agent, launch_agent, 0o600)
+
+            initialize_cluster(paths, uid)
+            postgres = start_temporary_postgres(paths)
+            try:
+                environment = psql_environment(paths)
+                ensure_roles_and_database(paths, environment)
+                prepared = run_offline_account_migration(
+                    paths,
+                    namespace_lock,
+                    transition_gate_fd=transition_gate_fd,
+                )
+                checkpoint("destination_verified")
+                canonical_manifest = read_owned_file(
+                    paths.migration_manifest,
+                    uid,
+                    MAX_MIGRATION_MANIFEST_BYTES,
+                    "account migration manifest is malformed",
+                )
+                expected_digest = decision_digest(json.loads(canonical_manifest))
+                if prepared["manifest_sha256"] != expected_digest:
+                    raise InstallError("offline account migration intent identity differs")
+                checkpoint("before_config_swap")
+                atomic_write(paths.config, config, 0o600)
+                checkpoint("config_swapped")
+                staging_owner.cleanup()
+                checkpoint("staging_retired")
+                retire_active_migration_sources(paths)
+                checkpoint("active_legacy_retired")
+                checkpoint("before_finalizer")
+                migration_result = run_account_migration_finalizer(
+                    paths,
+                    namespace_lock,
+                    transition_gate_fd=transition_gate_fd,
+                )
+                checkpoint("final_receipt_recorded")
+            finally:
+                stop_temporary_postgres(postgres)
+            if migration_result["manifest_sha256"] != expected_digest:
+                raise InstallError("account migration receipt identity differs")
+            enrollments = [enrollment.account_id for enrollment in planned]
+        finally:
+            cleanup_error: BaseException | None = None
+            if staging_owner is not None:
+                try:
+                    staging_owner.cleanup()
+                except BaseException as error:
+                    cleanup_error = error
+            if legacy_lock is not None:
+                try:
+                    fcntl.flock(legacy_lock, fcntl.LOCK_UN)
+                finally:
+                    os.close(legacy_lock)
+            if cleanup_error is not None:
+                raise cleanup_error
+
+    launch = launch_requested
+    checkpoint("launch_decided")
+    return migration_result, enrollments, launch
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     paths = install_paths(args)
     uid = validate_host(paths)
-    ensure_directories(paths, uid)
-    accounts = read_legacy_accounts(paths.legacy_accounts, uid)
-    existing_mapping = load_existing_mapping(paths.mapping, uid)
-    config_exists = managed_path_exists(
-        paths.config,
-        "existing Decodex config is malformed",
-    )
-    existing = existing_enrollments(paths.config, uid) if config_exists else {}
-    if config_exists and (not existing_mapping or not existing):
-        if not args.replace_config:
-            raise InstallError("existing config requires explicit --replace-config")
-        existing = {}
-    enrollments = build_enrollments(
-        accounts,
-        existing_mapping,
-        existing,
-        read_usage_presentations(),
-    )
-    config = render_config(paths, uid, enrollments).encode("utf-8")
-    mapping = render_mapping(enrollments)
-    launch_agent = render_launch_agent(paths)
-
+    ensure_installer_namespace_layout(paths, uid)
+    if postgres_major(paths.postgres) != 18:
+        raise InstallError("PostgreSQL 18 is required")
     bootout_service(paths, uid)
-    initialize_cluster(paths, uid)
-    postgres = start_temporary_postgres(paths)
+    namespace_lock = InstallerNamespaceLock.acquire(paths, uid)
     try:
-        environment = psql_environment(paths)
-        ensure_roles_and_database(paths, environment)
-        migrate_and_provision(paths, environment)
+        ensure_directories(paths, uid)
+        migration_result, enrollments, launch = install_under_namespace_lock(
+            paths,
+            uid,
+            namespace_lock,
+            launch_requested=not args.no_launch,
+        )
     finally:
-        stop_temporary_postgres(postgres)
+        namespace_lock.close()
 
-    atomic_write(paths.mapping, mapping, 0o600)
-    atomic_write(paths.config, config, 0o600)
-    atomic_write(paths.launch_agent, launch_agent, 0o600)
-
-    if not args.no_launch:
+    if launch:
         bootstrap_service(paths, uid)
         wait_for_service(
             paths,
-            {enrollment.account_id for enrollment in enrollments},
+            set(enrollments),
         )
 
     print(
@@ -1742,9 +3152,10 @@ def main(argv: list[str] | None = None) -> int:
                 "schema": "decodex/local-service-install/1",
                 "outcome": "success",
                 "account_count": len(enrollments),
+                "migration_manifest_sha256": migration_result["manifest_sha256"],
                 "postgres_major": 18,
                 "launch_agent": LAUNCH_AGENT_LABEL,
-                "launched": not args.no_launch,
+                "launched": launch,
             },
             sort_keys=True,
             separators=(",", ":"),

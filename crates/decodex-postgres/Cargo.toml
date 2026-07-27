@@ -9,7 +9,13 @@ repository.workspace = true
 version.workspace    = true
 
 [features]
-test-support = []
+account-migration-transition-gate = ["test-support"]
+test-support                      = []
+
+[[bin]]
+name              = "decodex-account-migration-transition-fixture"
+path              = "src/bin/account_migration_transition_fixture.rs"
+required-features = ["account-migration-transition-gate"]
 
 [dependencies]
 deadpool-postgres = "=0.14.1"

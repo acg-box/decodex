@@ -17,6 +17,7 @@
 //! compose a scheduler, dispatch work, switch
 //! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
 
+mod account_lifecycle;
 mod accounts;
 mod authority;
 mod continuations;
@@ -47,6 +48,12 @@ mod wakes;
 mod work_items;
 
 pub use self::{
+	account_lifecycle::{
+		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
+		AccountCommandReceiptLease, AccountLifecycleMutation, AccountLifecycleMutationOutcome,
+		AccountLifecycleRejection, AccountMigrationReceipt, AccountOperationPreparation,
+		AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome,
+	},
 	continuations::{ContinuationPlanEffect, PlanContinuation},
 	conversations::{
 		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
@@ -109,21 +116,24 @@ pub use self::{
 	},
 };
 pub use decodex_core::{
-	AcceptedPolicyRevision, AccountId, AccountState, AdmissionDescriptorDigest,
-	AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint,
-	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
-	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
-	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
-	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ExactCommitEvidence,
-	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
-	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedExecutionId,
-	ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,
-	ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase,
-	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
-	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
-	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
-	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
-	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
+	AcceptedPolicyRevision, AccountId, AccountLifecycleReadiness, AccountOperation,
+	AccountOperationId, AccountOperationKind, AccountOperationPhase, AccountProvider,
+	AccountQuotaWindow, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+	AccountSelectionRecovery, AccountState, AdmissionDescriptorDigest, AdmittedRepositoryIdentity,
+	Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint, AllocateRepositoryCommand,
+	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand, CanonicalCommitIntent,
+	CanonicalOperationDescriptor, CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest,
+	ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
+	CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
+	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
+	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
+	ExecutorContractVersion, ManagedExecutionId, ManagedRepositoryError, ManagedRepositoryFacts,
+	ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity,
+	ManagedRunLifecycle, ManagedRunPhase, ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId,
+	NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId,
+	ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy,
+	PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
+	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
 	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind,
 	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
 	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
@@ -135,8 +145,8 @@ pub use decodex_core::{
 	ProjectRepositoryBinding, ProjectStatus, ProviderAttempt, ProviderAttemptConsumer,
 	ProviderAttemptError, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
 	ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
-	ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
-	ProviderRequestKeys, ProviderTerminalOutcome, RegistrationEvidence,
+	ProviderEvidenceSource, ProviderIdentity, ProviderPositiveEvidence, ProviderRequestId,
+	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RegistrationEvidence,
 	RegistrationReadbackRequest, RegistrationTarget, RepositoryAdmissionDescriptor,
 	RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts, RepositoryAdmittedGitLayout,
 	RepositoryAllocationId, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
@@ -239,13 +249,17 @@ impl PostgresStore {
 		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
-	/// Parse and prepare the five V22 retained-title SQL sources without executing them.
+	/// Parse and prepare every changed V22/V27 embedded SQL source without executing it.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
-	pub async fn prepare_retained_title_sql_fixture(
-		client: &TokioClient,
-	) -> Result<(), StoreError> {
-		experiments::prepare_retained_title_sql(client).await
+	pub async fn prepare_changed_sql_fixture(client: &TokioClient) -> Result<usize, StoreError> {
+		let retained_title = experiments::prepare_retained_title_sql(client).await?;
+		let account_lifecycle = account_lifecycle::prepare_account_lifecycle_sql(client).await?;
+		let process_generation =
+			process_generations::prepare_account_bound_process_generation_sql(client).await?;
+		let reset_card = reset_cards::prepare_account_bound_reset_card_sql(client).await?;
+
+		Ok(retained_title + account_lifecycle + process_generation + reset_card)
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -266,6 +280,200 @@ impl PostgresStore {
 		let runtime = connection_config(config, config.runtime(), runtime_password);
 
 		Self::connect(migration, runtime, config.expected_peer_uid()).await
+	}
+
+	/// Apply embedded migrations and install the exact steady-state runtime authority through one
+	/// single-use migration connection. No migration credential enters the retained runtime pool.
+	#[cfg(unix)]
+	pub async fn migrate_and_provision_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+	) -> Result<(), StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = async {
+			migrations::run(&mut client).await?;
+			authority::provision_runtime(&client, config.database(), config.runtime().user())
+				.await?;
+			migrations::verify(&client).await
+		}
+		.await;
+		drop(client);
+		pool.close();
+
+		result
+	}
+
+	/// Apply the account-cutover migration with one session-local manifest handoff. If V27 already
+	/// committed, this entrypoint performs exact receipt readback and does not write a second intent.
+	#[cfg(unix)]
+	pub async fn migrate_account_cutover_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+		manifest_sha256: &str,
+		manifest: &Value,
+		account_count: u32,
+	) -> Result<bool, StoreError> {
+		if manifest_sha256.len() != 64
+			|| !manifest_sha256
+				.bytes()
+				.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+			|| account_count > 512
+		{
+			return Err(StoreError::InvalidInput("account migration handoff is invalid"));
+		}
+		ensure_credential_negative_json(manifest)?;
+		let count = i32::try_from(account_count)
+			.map_err(|_| StoreError::InvalidInput("migration account count overflows"))?;
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = async {
+			let history_exists: bool = client
+				.query_one(
+					"SELECT pg_catalog.to_regclass('public.refinery_schema_history') IS NOT NULL",
+					&[],
+				)
+				.await?
+				.get(0);
+			let v27_applied = history_exists
+				&& client
+					.query_opt(
+						"SELECT 1 FROM public.refinery_schema_history WHERE version=27",
+						&[],
+					)
+					.await?
+					.is_some();
+			if !v27_applied {
+				client
+					.batch_execute(
+						"CREATE TEMPORARY TABLE pg_temp.decodex_account_migration_handoff(\
+						 manifest_sha256 text NOT NULL,\
+						 manifest jsonb NOT NULL,\
+						 account_count integer NOT NULL\
+						 ) ON COMMIT PRESERVE ROWS",
+					)
+					.await?;
+				client
+					.execute(
+						"INSERT INTO pg_temp.decodex_account_migration_handoff(\
+						 manifest_sha256,manifest,account_count) VALUES($1,$2,$3)",
+						&[&manifest_sha256, manifest, &count],
+					)
+					.await?;
+			}
+			migrations::run(&mut client).await?;
+			if !v27_applied {
+				let remaining: i64 = client
+					.query_one(
+						"SELECT pg_catalog.count(*) \
+						 FROM pg_temp.decodex_account_migration_handoff",
+						&[],
+					)
+					.await?
+					.get(0);
+				if remaining != 0 {
+					return Err(StoreError::Incompatible(
+						"V27 did not consume the account migration handoff".into(),
+					));
+				}
+			}
+			let receipt = client
+				.query_opt(
+					"SELECT manifest_sha256,manifest,account_count \
+					 FROM decodex.account_migration_receipts WHERE singleton",
+					&[],
+				)
+				.await?
+				.ok_or_else(|| {
+					StoreError::Incompatible(
+						"account cutover migration intent is absent after V27".into(),
+					)
+				})?;
+			let receipt_manifest: Value = receipt.get(1);
+			if receipt.get::<_, &str>(0) != manifest_sha256
+				|| &receipt_manifest != manifest
+				|| receipt.get::<_, i32>(2) != count
+			{
+				return Err(StoreError::IdempotencyConflict);
+			}
+			authority::provision_runtime(&client, config.database(), config.runtime().user()).await?;
+			migrations::verify(&client).await?;
+			Ok(!v27_applied)
+		}
+		.await;
+		drop(client);
+		pool.close();
+
+		result
+	}
+
+	/// Read the completed installer-only account migration receipt through one single-use
+	/// migration connection. The steady-state runtime role receives no receipt-table authority.
+	#[cfg(unix)]
+	pub async fn read_completed_account_migration_receipt_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+	) -> Result<Option<AccountMigrationReceipt>, StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let client = checkout(&pool, &connector).await?;
+		let row = client
+			.query_opt(
+				"SELECT manifest_sha256,manifest,destination_receipt,retirement_receipt,account_count \
+				 FROM decodex.account_migration_receipts \
+				 WHERE singleton AND phase='completed'",
+				&[],
+			)
+			.await?;
+		let receipt = row
+			.map(|row| {
+				let manifest: Value = row.get(1);
+				let destination_receipt: Value = row.get(2);
+				let retirement_receipt: Value = row.get(3);
+				ensure_credential_negative_json(&manifest)?;
+				ensure_credential_negative_json(&destination_receipt)?;
+				ensure_credential_negative_json(&retirement_receipt)?;
+				let account_count = u32::try_from(row.get::<_, i32>(4)).map_err(|_| {
+					StoreError::Incompatible("migration account count is malformed".into())
+				})?;
+				Ok::<AccountMigrationReceipt, StoreError>(AccountMigrationReceipt {
+					manifest_sha256: row.get(0),
+					manifest,
+					destination_receipt,
+					retirement_receipt,
+					account_count,
+				})
+			})
+			.transpose()?;
+		drop(client);
+		pool.close();
+		Ok(receipt)
 	}
 
 	/// Connect two explicit identities to one Unix-socket endpoint. The migration
@@ -360,6 +568,58 @@ impl PostgresStore {
 		let connector = verified_socket_connect(&config, expected_peer_uid)?;
 
 		Self::migrate_with_connector(config, connector).await
+	}
+
+	/// Install or verify one external ProcessGeneration execution epoch through a single-use
+	/// migration connection. The runtime pool never receives table authority or this method's
+	/// external digest from PostgreSQL.
+	#[cfg(unix)]
+	pub async fn provision_process_execution_authorization_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+		authorization: &ProcessExecutionAuthorization,
+	) -> Result<(), StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let transaction = client.transaction().await?;
+		transaction
+			.execute(
+				"INSERT INTO decodex.process_generation_execution_epochs(\
+				 execution_epoch_id,authorization_digest,authorized_at,retired_at) \
+				 VALUES($1::text::uuid,$2,pg_catalog.clock_timestamp(),NULL) \
+				 ON CONFLICT (execution_epoch_id) DO NOTHING",
+				&[&authorization.epoch_id.as_str(), &authorization.authorization_digest],
+			)
+			.await?;
+		let active = transaction
+			.query(
+				"SELECT execution_epoch_id::text,authorization_digest \
+				 FROM decodex.process_generation_execution_epochs \
+				 WHERE retired_at IS NULL FOR UPDATE",
+				&[],
+			)
+			.await?;
+		if active.len() != 1
+			|| active[0].get::<_, &str>(0) != authorization.epoch_id.as_str()
+			|| active[0].get::<_, &str>(1) != authorization.authorization_digest.as_str()
+		{
+			return Err(StoreError::InvalidInput(
+				"active ProcessGeneration execution authorization conflicts",
+			));
+		}
+		transaction.commit().await?;
+		drop(client);
+		pool.close();
+		Ok(())
 	}
 
 	/// Apply the immutable migration ledger only through V7 for V8 boundary fixtures.
@@ -499,6 +759,35 @@ impl PostgresStore {
 		let pool = Pool::builder(manager).max_size(1).build()?;
 		let mut client = checkout(&pool, &connector).await?;
 		let result = migrations::run_through_v13(&mut client).await;
+
+		drop(client);
+
+		pool.close();
+
+		result
+	}
+
+	/// Apply the immutable migration ledger only through V26 for the V27 account cutover gate.
+	#[cfg(all(unix, feature = "test-support"))]
+	#[doc(hidden)]
+	pub async fn migrate_fixture_through_v26(
+		mut config: Config,
+		expected_peer_uid: u32,
+	) -> Result<(), StoreError> {
+		validate_connection(&config)?;
+
+		let connector = verified_socket_connect(&config, expected_peer_uid)?;
+
+		pin_session_search_path(&mut config);
+
+		let manager = Manager::from_connect(
+			config,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = migrations::run_through_v26(&mut client).await;
 
 		drop(client);
 

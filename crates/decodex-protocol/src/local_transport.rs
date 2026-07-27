@@ -15,6 +15,7 @@ use std::{
 	fmt::{Debug, Display, Formatter},
 	path::{Path, PathBuf},
 };
+#[cfg(target_os = "macos")] use std::{fs::File, os::fd::RawFd};
 
 use decodex_core::{DecodexPaths, LocalTrustPolicy};
 
@@ -142,6 +143,17 @@ impl LocalTransportAuthority {
 		{
 			Err(LocalTransportRefusal::UnsupportedPlatform)
 		}
+	}
+
+	/// Validate and retain one installer-shaped inherited descriptor without acquiring a lock.
+	#[cfg(target_os = "macos")]
+	#[doc(hidden)]
+	pub fn validate_installer_namespace_lock_fd(
+		&self,
+		raw_fd: RawFd,
+	) -> Result<File, LocalTransportRefusal> {
+		self.verify_process_owner()?;
+		platform::validate_installer_namespace_lock_fd(self, raw_fd)
 	}
 
 	fn endpoint_path(&self) -> &Path {
@@ -652,6 +664,50 @@ mod platform {
 		Ok(())
 	}
 
+	#[cfg(target_os = "macos")]
+	pub(super) fn validate_installer_namespace_lock_fd(
+		authority: &LocalTransportAuthority,
+		raw_fd: RawFd,
+	) -> Result<File, LocalTransportRefusal> {
+		if raw_fd < 3 {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+		// SAFETY: `F_GETFD` reads descriptor flags and retains no process memory pointer.
+		let inherited_flags = unsafe { libc::fcntl(raw_fd, libc::F_GETFD) };
+		if inherited_flags == -1 {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+		// SAFETY: `F_GETFD` proved that this process owns an open descriptor. Ownership
+		// transfers to the returned file and the installer retains its original duplicate.
+		let file = unsafe { File::from_raw_fd(raw_fd) };
+		let directory =
+			DirectoryBinding::open(authority.endpoint_path(), authority.service_owner_uid)?;
+		let metadata = file.metadata().map_err(|_| LocalTransportRefusal::UnsafeEndpoint)?;
+		let identity = LockIdentity::from_metadata(&metadata);
+		if !secure_namespace_lock_metadata(&metadata, authority.service_owner_uid) {
+			return Err(LocalTransportRefusal::UnsafeEndpoint);
+		}
+		directory.verify_namespace_lock_file(&file, identity)?;
+		// SAFETY: the owned descriptor remains open and `F_GETFD` retains no pointer.
+		let descriptor_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+		if descriptor_flags == -1 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+		// SAFETY: the owned descriptor remains open and the integer flags are valid.
+		let close_on_exec = unsafe {
+			libc::fcntl(file.as_raw_fd(), libc::F_SETFD, descriptor_flags | libc::FD_CLOEXEC)
+		};
+		if close_on_exec == -1 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+		// SAFETY: `F_GETFD` reads back the flags of the still-owned descriptor.
+		let applied_flags = unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) };
+		if applied_flags == -1 || applied_flags & libc::FD_CLOEXEC == 0 {
+			return Err(LocalTransportRefusal::EndpointUnavailable);
+		}
+		Ok(file)
+	}
+
 	pub(super) fn remove_publication(
 		authority: &LocalTransportAuthority,
 		listener: &UnixListener,
@@ -799,11 +855,17 @@ mod platform {
 			&self,
 			namespace_lock: &NamespaceLock,
 		) -> Result<(), LocalTransportRefusal> {
+			self.verify_namespace_lock_file(&namespace_lock.file, namespace_lock.identity)
+		}
+
+		fn verify_namespace_lock_file(
+			&self,
+			file: &File,
+			expected: LockIdentity,
+		) -> Result<(), LocalTransportRefusal> {
 			let current_directory = self.verify()?;
-			let held_metadata = namespace_lock
-				.file
-				.metadata()
-				.map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
+			let held_metadata =
+				file.metadata().map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
 			let held = LockIdentity::from_metadata(&held_metadata);
 			let pinned = lock_identity(&self.directory, NAMESPACE_LOCK_NAME)
 				.map_err(|_| LocalTransportRefusal::EndpointReplaced)?;
@@ -813,9 +875,9 @@ mod platform {
 			if !secure_namespace_lock_metadata(&held_metadata, self.expected_uid)
 				|| !secure_namespace_lock(pinned, self.expected_uid)
 				|| !secure_namespace_lock(current, self.expected_uid)
-				|| held != namespace_lock.identity
-				|| pinned != namespace_lock.identity
-				|| current != namespace_lock.identity
+				|| held != expected
+				|| pinned != expected
+				|| current != expected
 			{
 				return Err(LocalTransportRefusal::EndpointReplaced);
 			}

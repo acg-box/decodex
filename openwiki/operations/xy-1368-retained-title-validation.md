@@ -4,7 +4,7 @@ This document owns the bounded validation commands for the V14-V22 retained-titl
 
 ## Preparation command
 
-Run this command once before the source boundary freezes:
+Run this command once after the source boundary freezes:
 
 ```console
 cargo make check-vnext-retained-title-preparation
@@ -12,11 +12,11 @@ cargo make check-vnext-retained-title-preparation
 
 The command uses one private PostgreSQL 18 cluster. It reports three complete stages:
 
-1. It checks the full V1-V22 migration syntax and applies the full migration ledger.
-2. It parses and prepares all five changed embedded PostgreSQL statements in one Rust process.
-3. It emits the generated schema and configured-authority inventory digests.
+1. It checks the full V1-V27 migration syntax, applies a fresh full ledger, and verifies a V24-to-V27 closed-authority upgrade.
+2. It parses and prepares all 27 changed V22/V27 embedded PostgreSQL statements in one Rust process.
+3. It verifies the generated schema and configured-authority digests, including the exact 23 migration-owned function sources and 196 final function contracts in `authority.rs`.
 
-The command does not execute the five prepared statements.
+The command does not execute the prepared statements.
 
 ## Semantic boundary command
 

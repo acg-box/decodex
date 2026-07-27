@@ -896,6 +896,139 @@ Normal Slice-1 and Slice-3 startup must not use the legacy watcher, mapping brid
 credential environment projection, helper, `:8192`, or dual account UI. No legacy
 history is imported.
 
+#### Populated V26 account migration transition
+
+Candidate 3 was materially rejected at exact index tree
+`ef66d028ff447c4507b6d37de0835166a6fd7f26`. A populated V26 account becomes
+`enabled=false` under V27. A normal normalized manifest requests `enabled=true`.
+The rejected implementation supplied desired `true` where the existing-row import
+requires current `false`, so PostgreSQL returned `stale_account` before any credential
+effect. This was the third material XY-1422 candidate rejection. Candidate 4 is not
+authorized until this authority checkpoint has independent approval.
+
+Candidate 4 was then frozen at exact worktree tree
+`adb9cbb784d2a8afb3dc0c25648571ff43f76511`. Its first canonical invocation stopped
+during shared setup with `legacy account source parent is unsafe`. Its second canonical
+invocation stopped during shared setup because the synthetic passwd record had no
+`pw_name`. Neither invocation ran a semantic migration case. These results are failure
+provenance, not acceptance evidence.
+
+A one-line `pw_name` patch is rejected. The repaired harness must use the real
+`pwd.getpwuid(euid)` record and its real `pw_dir`, where `euid` is the process
+effective UID. It must pass explicit operator-provided source paths in a run-unique,
+gate-owned, exact-0700 fixture subtree below that real home and must not access live
+default `~/.codex/decodex` sources. It must use the
+[source-path security boundary](account-lifecycle-authority.md#source-path-security-boundary):
+exact private modes at the direct source boundary, and the non-writable-ancestor rule
+above it. It must not change the real home mode or use ambient `HOME`, a synthetic
+passwd record, or a fallback. POSIX mode and no-follow evidence does not prove arbitrary
+ACL absence. The gate must keep ACL semantics as an explicit residual and
+non-regression boundary.
+
+The canonical boundary command is:
+
+```sh
+cargo make test-vnext-account-migration-transition
+```
+
+The task is a required XY-1422 account-lifecycle stage. Its implementation must be a
+direct member of the repository `test` aggregate and therefore of `cargo make check`.
+It follows the canonical Rust and V27 PostgreSQL mechanical preparation and precedes
+the fresh exact-tree XY-1422 review. It is not hidden inside
+`test-vnext-postgres-store`, because that PostgreSQL aggregate cannot by itself prove
+the cross-store migration entrypoint and host credential binding. Do not run a
+separate focused copy immediately before the same `cargo make check` invocation.
+
+One invocation must exercise the real V26-to-V27 migration and the real
+`decodexd` migration, finalization, and completed-verification entrypoints. It must not
+mock the migration process. On macOS, it verifies exact Keychain metadata without
+printing credential material. The invocation must cover:
+
+- populated V26 normal and disabled accounts, plus absent normal and disabled
+  accounts;
+- exact credential binding and exact account and routing revision transitions;
+- same-digest resume and replay without extra effects or revisions, and
+  different-digest refusal before effects;
+- matching positive credential bindings and conflicts in provider, version, writer
+  operation, fingerprint, store binding, current account tuple, or source;
+- crashes after manifest preparation, Keychain creation, `store_applied`,
+  PostgreSQL credential commit, administration, routing, retirement, and before the
+  final receipt;
+- one installer-held `decodex.lock` open-file-description lineage across migration,
+  installer configuration and retirement effects, finalization, completed
+  verification, and the launch decision;
+- deterministic external contention barriers before and during the migration child,
+  after that child exits, during installer configuration swap and retirement,
+  before, during, and after finalizer and completed-verifier children, and through
+  the launch decision; at each barrier, a separate open file description must fail
+  `LOCK_EX|LOCK_NB`;
+- exact holder lifetimes: child death leaves the installer guard locked; installer
+  death with a surviving child duplicate remains locked until that child closes it;
+  final-holder close releases the flock, after which a new installer can acquire only
+  for exact same-digest resume;
+- borrowed-FD open-file and metadata validation, close-on-exec exclusion from child
+  descendants, direct ordinary invocation refusal, malformed or identity-drifted FD
+  refusal before effects, and live-daemon exclusion, without child-side lock-state,
+  parent-identity, or same-UID-imitation claims;
+- `prepared` before Keychain creation, operation-descriptor-first replay, and
+  phase-derived `AbsentInitialize` and `ExistingHydrate` recovery without generic
+  cancellation or state-based reclassification;
+- exact absent revisions
+  `no row -> prepared:1 -> store_applied:1 -> committed:2 -> administration:2`,
+  exact credential-empty existing revisions
+  `start:r -> prepared:r -> store_applied:r -> committed:r+1 -> administration:r+1|r+2`,
+  separate routing revision, terminal-operation handling, and no new operation
+  identity or replay revision;
+- completed-verifier refusal after label, enabled, routing, provider, credential
+  version, writer operation, fingerprint, or store/PostgreSQL binding drift;
+- credentials before desired administration, routing after final account projection,
+  retirement before the completed receipt, and daemon launch only after completion;
+  and
+- exclusion from selection, Reset Card, and spawn admission until exact credentials
+  and final enabled state agree.
+
+The repaired gate must use a bounded stage graph. Each meaningful stage and case reports
+`passed`, `failed`, or a typed `blocked` result that names its failed dependency. Fatal
+login-identity, source-path, executable, or toolchain setup blocks only its true
+dependents. Independent no-follow path, inherited-FD, namespace-lock, and live-daemon
+refusal branches continue when safe. One shared outer failure path must not block those
+branches. The final bounded report collects all reasonably discoverable case mismatches.
+
+The gate must select `postgres`, `initdb`, `pg_isready`, and `psql` from one coherent
+PostgreSQL 18 toolchain. It must use a collision-safe endpoint. An unreserved endpoint
+derived only from the gate process ID is insufficient.
+
+The gate must use fresh, run-unique, gate-owned Keychain Account UUIDs. Before any
+mutation, it must prove that each selected identity is absent. Any pre-existing item
+causes refusal before mutation. The gate records the exact set of items that it creates
+and deletes only that set during unconditional cleanup. Cleanup failure fails the gate.
+The gate must use the same protected credential API and exact metadata contract as
+production. It must not place credential bytes in process arguments, make a value-only
+or long-lived backup, or restore a user item. Conflict and drift cases use separate
+gate-owned identities or exact metadata-preserving operations. They never delete and
+recreate a positive item.
+
+The gate must exercise the installer-owned operator orchestration, the real migration,
+the prepared verifier, the finalizer, the completed verifier, and the final launch
+decision. It must prove live-daemon exclusion. At the required intermediate states, it
+must attempt selection, Reset Card, and spawn admission and prove the required refusal.
+The harness can use only the approved checkpoint and fault-injection boundaries. It
+must not duplicate product authority.
+
+Every gate-owned process, worker, lock, temporary path, PostgreSQL instance, and
+Keychain item must have bounded unconditional cleanup. Process cleanup must bind the
+exact process identity and must not trust a reusable PID alone. Every cleanup error is a
+gate failure.
+
+After the source and harness repair is frozen, an independent review must bind its
+verdict to that exact tree. Only then can the Manager authorize exactly one replacement
+`cargo make test-vnext-account-migration-transition` invocation. A focused copy and an
+automatic retry are prohibited. The gate must not create a command-patch-command
+staircase.
+
+The rejected-candidate cause and option decision are retained in
+[the XY-1422 populated V26 migration reset](../evidence/xy-1422-populated-v26-migration-reset.md).
+
 ### Later automatic routing acceptance
 
 [XY-1304](https://linear.app/hack-ink/issue/XY-1304) remains failed and fail-closed only

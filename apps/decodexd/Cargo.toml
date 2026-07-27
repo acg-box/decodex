@@ -8,16 +8,15 @@ name                 = "decodexd"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+account-migration-transition-gate = ["decodex-runtime/account-migration-transition-gate"]
+
 [dependencies]
-base64          = { workspace = true }
 clap            = { workspace = true }
 decodex-runtime = { workspace = true }
 libc            = { workspace = true }
-serde           = { workspace = true }
 serde_json      = { workspace = true }
-sha2            = { workspace = true }
 tokio           = { workspace = true }
-zeroize         = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

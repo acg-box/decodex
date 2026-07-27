@@ -27,7 +27,14 @@ mod wake;
 mod work_item;
 
 pub use self::{
-	account::{AccountError, AccountId, AccountState},
+	account::{
+		AccountError, AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
+		AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
+		AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+		AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+		AccountSelectionRecovery, AccountState, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+	},
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
 		lead_status_for_project,
@@ -43,8 +50,8 @@ pub use self::{
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
-		ProfileName, RemoteProfile, RepositoryName, ResetCardAccountConfig, ServerHostConfig,
-		ServerProfile, ServerRepositoryPath,
+		ProfileName, RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile,
+		ServerRepositoryPath,
 	},
 	continuation::{
 		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
@@ -116,10 +123,11 @@ pub use self::{
 		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
 	},
 	process_generation::{
-		MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES, ProcessAccountQuarantine,
-		ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind, ProcessDeathEvidence,
-		ProcessDeathEvidenceId, ProcessDeathEvidenceKind, ProcessExecutionAuthorization,
-		ProcessExecutionEpochId, ProcessGeneration, ProcessGenerationError, ProcessGenerationId,
+		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
+		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
+		ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+		ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
+		ProcessGenerationAccountBinding, ProcessGenerationError, ProcessGenerationId,
 		ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity, ProcessIsolationKind,
 		ProcessRunnerIdentity, ProcessStartIdentity,
 	},

@@ -40,7 +40,9 @@ const PROVIDER_ATTEMPT_MIGRATION: &str =
 	include_str!("../migrations/V24__provider_attempt_authority.sql");
 const EXECUTION_COORDINATOR_MIGRATION: &str =
 	include_str!("../migrations/V26__execution_coordinator_cutover.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 22] = [
+const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
+	include_str!("../migrations/V27__mac_account_lifecycle.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 23] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -63,6 +65,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 22] = [
 	PROCESS_GENERATION_MIGRATION,
 	PROVIDER_ATTEMPT_MIGRATION,
 	EXECUTION_COORDINATOR_MIGRATION,
+	MAC_ACCOUNT_LIFECYCLE_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -367,7 +370,7 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 197] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1632,6 +1635,139 @@ static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 		"plpgsql",
 		"v",
 	),
+	table_function_contract(
+		"read_account_registry_exact",
+		"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+		"read_account_registry_exact(\n\tp_account_id uuid,\n\tp_limit bigint\n)",
+		"p_account_id uuid, p_limit bigint",
+		"TABLE(account_id uuid, display_label text, enabled boolean, state decodex.account_state, revision bigint, provider_kind decodex.account_provider_kind, provider_account_id text, credential_store_schema_version integer, credential_version bigint, credential_fingerprint text, credential_writer_operation_id uuid, tombstoned boolean, lifecycle_readiness text, unsettled_operation_id uuid, unsettled_kind decodex.account_operation_kind, unsettled_phase decodex.account_operation_phase, unsettled_recovery_code text, five_hour_disposition text, five_hour_used_percent integer, five_hour_resets_at_micros bigint, five_hour_observed_at_micros bigint, five_hour_error_code decodex.account_quota_observation_error, seven_day_disposition text, seven_day_used_percent integer, seven_day_resets_at_micros bigint, seven_day_observed_at_micros bigint, seven_day_error_code decodex.account_quota_observation_error)",
+		"s",
+	),
+	table_function_contract(
+		"read_reset_card_account_admission_exact",
+		"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
+		"read_reset_card_account_admission_exact(\n\tp_account_id uuid,p_callback_profile_sha256 text\n)",
+		"p_account_id uuid, p_callback_profile_sha256 text",
+		"TABLE(state decodex.account_state, revision bigint, enabled boolean, tombstoned boolean, credential_store_schema_version integer, credential_version bigint, credential_fingerprint text, credential_writer_operation_id uuid, provider_kind decodex.account_provider_kind, provider_account_id text, credential_store_observation decodex.account_store_observation, operation_unsettled boolean, callback_profile_ready boolean)",
+		"v",
+	),
+	table_function_contract(
+		"prepare_account_operation_exact",
+		"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+		"prepare_account_operation_exact(\n\tp_operation_id uuid,p_account_id uuid,p_kind decodex.account_operation_kind,\n\tp_display_label text,p_enabled boolean,p_expected_account_revision bigint,\n\tp_expected_store_schema_version integer,p_expected_credential_version bigint,\n\tp_expected_credential_fingerprint text,p_expected_credential_writer_operation_id uuid,\n\tp_target_store_schema_version integer,p_target_credential_version bigint,\n\tp_target_credential_fingerprint text,p_target_credential_writer_operation_id uuid,\n\tp_provider_kind decodex.account_provider_kind,p_provider_account_id text\n)",
+		"p_operation_id uuid, p_account_id uuid, p_kind decodex.account_operation_kind, p_display_label text, p_enabled boolean, p_expected_account_revision bigint, p_expected_store_schema_version integer, p_expected_credential_version bigint, p_expected_credential_fingerprint text, p_expected_credential_writer_operation_id uuid, p_target_store_schema_version integer, p_target_credential_version bigint, p_target_credential_fingerprint text, p_target_credential_writer_operation_id uuid, p_provider_kind decodex.account_provider_kind, p_provider_account_id text",
+		"TABLE(result_code text, account_revision bigint, phase decodex.account_operation_phase)",
+		"v",
+	),
+	table_function_contract(
+		"set_account_operation_target_exact",
+		"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+		"set_account_operation_target_exact(\n\tp_operation_id uuid,p_target_store_schema_version integer,\n\tp_target_credential_version bigint,p_target_credential_fingerprint text,\n\tp_target_credential_writer_operation_id uuid\n)",
+		"p_operation_id uuid, p_target_store_schema_version integer, p_target_credential_version bigint, p_target_credential_fingerprint text, p_target_credential_writer_operation_id uuid",
+		"TABLE(result_code text, account_revision bigint, phase decodex.account_operation_phase)",
+		"v",
+	),
+	table_function_contract(
+		"advance_account_operation_exact",
+		"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+		"advance_account_operation_exact(\n\tp_operation_id uuid,p_expected_phase decodex.account_operation_phase,\n\tp_target_phase decodex.account_operation_phase,p_recovery_code text\n)",
+		"p_operation_id uuid, p_expected_phase decodex.account_operation_phase, p_target_phase decodex.account_operation_phase, p_recovery_code text",
+		"TABLE(result_code text, account_revision bigint, phase decodex.account_operation_phase)",
+		"v",
+	),
+	table_function_contract(
+		"read_unsettled_account_operations_exact",
+		"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+		"read_unsettled_account_operations_exact(p_limit bigint)",
+		"p_limit bigint",
+		"SETOF decodex.account_operations",
+		"s",
+	),
+	FunctionContract {
+		name: "read_account_operation_exact",
+		lookup_signature: "decodex.read_account_operation_exact(pg_catalog.uuid)",
+		migration_signature: "read_account_operation_exact(p_operation_id uuid)",
+		arguments: "p_operation_id uuid",
+		result: "SETOF decodex.account_operations",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	table_function_contract(
+		"update_account_administration_exact",
+		"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+		"update_account_administration_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_display_label text,p_enabled boolean\n)",
+		"p_account_id uuid, p_expected_revision bigint, p_display_label text, p_enabled boolean",
+		"TABLE(result_code text, revision bigint)",
+		"v",
+	),
+	table_function_contract(
+		"replace_account_routing_control_exact",
+		"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+		"replace_account_routing_control_exact(\n\tp_expected_revision bigint,p_mode decodex.account_selection_mode,\n\tp_fixed_account_id uuid,p_order uuid[]\n)",
+		"p_expected_revision bigint, p_mode decodex.account_selection_mode, p_fixed_account_id uuid, p_order uuid[]",
+		"TABLE(result_code text, revision bigint)",
+		"v",
+	),
+	FunctionContract {
+		name: "read_account_routing_control_exact",
+		lookup_signature: "decodex.read_account_routing_control_exact()",
+		migration_signature: "read_account_routing_control_exact()",
+		arguments: "",
+		result: "TABLE(mode decodex.account_selection_mode, fixed_account_id uuid, revision bigint, account_order uuid[])",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	exact_function_contract(
+		"observe_account_quota_exact",
+		"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+		"observe_account_quota_exact(\n\tp_account_id uuid,p_duration_minutes integer,p_used_percent integer,\n\tp_resets_at_micros bigint,p_observed_at_micros bigint\n)",
+		"p_account_id uuid, p_duration_minutes integer, p_used_percent integer, p_resets_at_micros bigint, p_observed_at_micros bigint",
+		"text",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"observe_account_quota_error_exact",
+		"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+		"observe_account_quota_error_exact(\n\tp_account_id uuid,p_duration_minutes integer,\n\tp_error_code decodex.account_quota_observation_error,p_observed_at_micros bigint\n)",
+		"p_account_id uuid, p_duration_minutes integer, p_error_code decodex.account_quota_observation_error, p_observed_at_micros bigint",
+		"text",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"observe_account_store_exact",
+		"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+		"observe_account_store_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_expected_schema integer,\n\tp_expected_version bigint,p_expected_fingerprint text,p_expected_writer_operation_id uuid,\n\tp_expected_provider decodex.account_provider_kind,p_expected_provider_account_id text,\n\tp_observation decodex.account_store_observation\n)",
+		"p_account_id uuid, p_expected_revision bigint, p_expected_schema integer, p_expected_version bigint, p_expected_fingerprint text, p_expected_writer_operation_id uuid, p_expected_provider decodex.account_provider_kind, p_expected_provider_account_id text, p_observation decodex.account_store_observation",
+		"text",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"attest_codex_account_capability_exact",
+		"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+		"attest_codex_account_capability_exact(\n\tp_build_identity text,p_executable_sha256 text,p_schema_sha256 text,\n\tp_callback_profile_sha256 text,p_login_chatgpt_auth_tokens boolean,p_refresh_callback boolean\n)",
+		"p_build_identity text, p_executable_sha256 text, p_schema_sha256 text, p_callback_profile_sha256 text, p_login_chatgpt_auth_tokens boolean, p_refresh_callback boolean",
+		"text",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"record_account_migration_receipt_exact",
+		"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
+		"record_account_migration_receipt_exact(\n\tp_manifest_sha256 text,p_manifest jsonb,p_destination_receipt jsonb,\n\tp_retirement_receipt jsonb,p_account_count integer\n)",
+		"p_manifest_sha256 text, p_manifest jsonb, p_destination_receipt jsonb, p_retirement_receipt jsonb, p_account_count integer",
+		"text",
+		"plpgsql",
+		"v",
+	),
 	trigger_contract(
 		"enforce_process_generation_transition",
 		"decodex.enforce_process_generation_transition()",
@@ -1649,9 +1785,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 	),
 	table_function_contract(
 		"prepare_process_generation_exact",
-		"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
-		"prepare_process_generation_exact(\n\tp_generation_id uuid,\n\tp_account_id uuid,\n\tp_execution_epoch_id uuid,\n\tp_authorization_digest text,\n\tp_runner_identity text,\n\tp_intended_boot_id text,\n\tp_control_kind decodex.process_generation_control_kind,\n\tp_isolation_kind decodex.process_generation_isolation_kind\n)",
-		"p_generation_id uuid, p_account_id uuid, p_execution_epoch_id uuid, p_authorization_digest text, p_runner_identity text, p_intended_boot_id text, p_control_kind decodex.process_generation_control_kind, p_isolation_kind decodex.process_generation_isolation_kind",
+		"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+		"prepare_process_generation_exact(\n\tp_generation_id uuid,p_account_id uuid,p_execution_epoch_id uuid,\n\tp_authorization_digest text,p_runner_identity text,p_intended_boot_id text,\n\tp_control_kind decodex.process_generation_control_kind,\n\tp_isolation_kind decodex.process_generation_isolation_kind,\n\tp_initial_account_revision bigint,p_credential_store_schema_version integer,\n\tp_credential_version bigint,p_credential_fingerprint text,\n\tp_credential_writer_operation_id uuid,\n\tp_provider_kind decodex.account_provider_kind,p_provider_account_id text,\n\tp_refresh_callback_profile_sha256 text,\n\tp_reset_card_outbox_id bigint,p_reset_card_worker_id uuid,p_reset_card_claim_token uuid\n)",
+		"p_generation_id uuid, p_account_id uuid, p_execution_epoch_id uuid, p_authorization_digest text, p_runner_identity text, p_intended_boot_id text, p_control_kind decodex.process_generation_control_kind, p_isolation_kind decodex.process_generation_isolation_kind, p_initial_account_revision bigint, p_credential_store_schema_version integer, p_credential_version bigint, p_credential_fingerprint text, p_credential_writer_operation_id uuid, p_provider_kind decodex.account_provider_kind, p_provider_account_id text, p_refresh_callback_profile_sha256 text, p_reset_card_outbox_id bigint, p_reset_card_worker_id uuid, p_reset_card_claim_token uuid",
 		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, created_at_micros bigint, updated_at_micros bigint)",
 		"v",
 	),
@@ -1707,9 +1843,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 	table_function_contract(
 		"read_process_generations_exact",
 		"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
-		"read_process_generations_exact(\n\tp_account_id uuid,\n\tp_include_dead boolean,\n\tp_after_generation_id uuid,\n\tp_limit bigint\n)",
+		"read_process_generations_exact(\n\tp_account_id uuid,p_include_dead boolean,p_after_generation_id uuid,p_limit bigint\n)",
 		"p_account_id uuid, p_include_dead boolean, p_after_generation_id uuid, p_limit bigint",
-		"TABLE(generation_id uuid, account_id uuid, execution_epoch_id uuid, runner_identity text, intended_boot_id text, control_kind decodex.process_generation_control_kind, isolation_kind decodex.process_generation_isolation_kind, bound_boot_id text, process_id bigint, process_start_id text, process_group_id bigint, session_id bigint, state decodex.process_generation_state, revision bigint, authority_loss_reason decodex.process_generation_loss_reason, death_evidence_id uuid, created_at_micros bigint, updated_at_micros bigint)",
+		"TABLE(generation_id uuid, account_id uuid, execution_epoch_id uuid, runner_identity text, intended_boot_id text, control_kind decodex.process_generation_control_kind, isolation_kind decodex.process_generation_isolation_kind, bound_boot_id text, process_id bigint, process_start_id text, process_group_id bigint, session_id bigint, state decodex.process_generation_state, revision bigint, authority_loss_reason decodex.process_generation_loss_reason, death_evidence_id uuid, created_at_micros bigint, updated_at_micros bigint, initial_account_revision bigint, credential_store_schema_version integer, credential_version bigint, credential_fingerprint text, credential_writer_operation_id uuid, provider_kind decodex.account_provider_kind, provider_account_id text, refresh_callback_profile_sha256 text)",
 		"s",
 	),
 	trigger_contract(
@@ -1795,7 +1931,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 182] = [
 		"s",
 	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 70] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 85] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -1851,7 +1987,22 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 70] = [
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind)",
+	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
+	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+	"decodex.read_account_operation_exact(pg_catalog.uuid)",
+	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.read_account_routing_control_exact()",
+	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -1867,6 +2018,164 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 70] = [
 	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
 	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
 ];
+const RUNTIME_TYPE_NAMES: &[&str] = &[
+	"decodex.account_state",
+	"decodex.outbox_state",
+	"decodex.effect_state",
+	"decodex.conversation_status",
+	"decodex.runtime_session_state",
+	"decodex.turn_role",
+	"decodex.side_effect_state",
+	"decodex.history_item_kind",
+	"decodex.history_item_status",
+	"decodex.turn_status",
+	"decodex.artifact_status",
+	"decodex.context_source_kind",
+	"decodex.transition_kind",
+	"decodex.context_source_disposition",
+	"decodex.command_receipt_state",
+	"decodex.canonical_uuid_v4_text",
+	"decodex.project_status",
+	"decodex.agent_role",
+	"decodex.agent_status",
+	"decodex.program_state",
+	"decodex.objective_state",
+	"decodex.quota_window_class",
+	"decodex.observation_confidence",
+	"decodex.role_profile_role",
+	"decodex.work_item_priority",
+	"decodex.work_item_state",
+	"decodex.work_item_edge_kind",
+	"decodex.work_item_blocker_kind",
+	"decodex.managed_run_lifecycle",
+	"decodex.managed_run_phase",
+	"decodex.managed_run_wait_reason",
+	"decodex.execution_assignment_role",
+	"decodex.managed_repository_phase",
+	"decodex.repository_operation_kind",
+	"decodex.repository_operation_state",
+	"decodex.repository_ambiguity",
+	"decodex.repository_authority_transition_kind",
+	"decodex.repository_evidence_kind",
+	"decodex.routing_member_disposition",
+	"decodex.codex_capability",
+	"decodex.capability_evidence_state",
+	"decodex.routing_blocker",
+	"decodex.codex_experiment_observation_kind",
+	"decodex.process_generation_state",
+	"decodex.process_generation_control_kind",
+	"decodex.process_generation_isolation_kind",
+	"decodex.process_generation_loss_reason",
+	"decodex.process_generation_death_evidence_kind",
+	"decodex.provider_attempt_state",
+	"decodex.provider_attempt_consumer_kind",
+	"decodex.provider_attempt_unknown_reason",
+	"decodex.provider_attempt_evidence_source",
+	"decodex.provider_attempt_terminal_outcome",
+	"decodex.account_provider_kind",
+	"decodex.account_operation_kind",
+	"decodex.account_operation_phase",
+	"decodex.account_selection_mode",
+	"decodex.account_store_observation",
+	"decodex.account_quota_observation_error",
+];
+
+pub(crate) async fn provision_runtime(
+	client: &Client,
+	database: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError> {
+	let identifiers = client
+		.query_one(
+			"SELECT pg_catalog.quote_ident($1), pg_catalog.quote_ident($2), \
+			 pg_catalog.current_database()",
+			&[&database, &runtime_role],
+		)
+		.await?;
+	let database_identifier: String = identifiers.try_get(0)?;
+	let runtime_identifier: String = identifiers.try_get(1)?;
+	let connected_database: String = identifiers.try_get(2)?;
+	if connected_database != database {
+		return Err(StoreError::InvalidInput(
+			"runtime authority provisioning database differs from the connected database",
+		));
+	}
+
+	let runtime_types = RUNTIME_TYPE_NAMES.join(", ");
+	let runtime_functions = RUNTIME_EXECUTE_FUNCTIONS.join(", ");
+	let sql = format!(
+		r#"
+REVOKE ALL PRIVILEGES ON DATABASE {database_identifier} FROM {runtime_identifier};
+GRANT CONNECT ON DATABASE {database_identifier} TO {runtime_identifier};
+REVOKE ALL PRIVILEGES ON SCHEMA public, decodex FROM {runtime_identifier};
+GRANT USAGE ON SCHEMA public, decodex TO {runtime_identifier};
+REVOKE ALL PRIVILEGES ON TABLE public.refinery_schema_history FROM {runtime_identifier};
+GRANT SELECT ON TABLE public.refinery_schema_history TO {runtime_identifier};
+REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA decodex FROM {runtime_identifier};
+REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA decodex FROM {runtime_identifier};
+REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA decodex FROM {runtime_identifier};
+REVOKE ALL PRIVILEGES ON TYPE {runtime_types} FROM {runtime_identifier};
+GRANT SELECT ON TABLE decodex.accounts TO {runtime_identifier};
+GRANT SELECT, INSERT, UPDATE ON TABLE
+  decodex.quota_windows,
+  decodex.command_receipts,
+  decodex.leases,
+  decodex.conversations,
+  decodex.artifacts,
+  decodex.turns,
+  decodex.history_items,
+  decodex.managed_repositories
+TO {runtime_identifier};
+GRANT SELECT, INSERT ON TABLE
+  decodex.quota_exclusions,
+  decodex.blob_objects,
+  decodex.artifact_revisions,
+  decodex.context_packs,
+  decodex.context_pack_sources,
+  decodex.transition_proposals,
+  decodex.activity,
+  decodex.repository_admissions,
+  decodex.repository_authority_transitions,
+  decodex.repository_operations,
+  decodex.repository_operation_events,
+  decodex.repository_operation_evidence,
+  decodex.repository_operation_results
+TO {runtime_identifier};
+GRANT SELECT ON TABLE
+  decodex.profile_snapshots,
+  decodex.account_snapshots,
+  decodex.runtime_sessions,
+  decodex.history_item_versions,
+  decodex.history_cursors,
+  decodex.projects,
+  decodex.agents,
+  decodex.policies,
+  decodex.policy_revisions,
+  decodex.programs,
+  decodex.objectives,
+  decodex.objective_completion_evidence,
+  decodex.work_items,
+  decodex.work_item_objectives,
+  decodex.work_item_edges,
+  decodex.work_item_readiness_blockers,
+  decodex.work_item_acceptances,
+  decodex.managed_runs,
+  decodex.managed_run_assignments
+TO {runtime_identifier};
+GRANT DELETE ON TABLE decodex.blob_objects TO {runtime_identifier};
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {runtime_identifier};
+GRANT USAGE ON SEQUENCE
+  decodex.activity_sequence_seq,
+  decodex.outbox_id_seq
+TO {runtime_identifier};
+GRANT USAGE ON TYPE {runtime_types} TO {runtime_identifier};
+GRANT EXECUTE ON FUNCTION {runtime_functions} TO {runtime_identifier};
+"#,
+	);
+	client.batch_execute(&sql).await?;
+
+	Ok(())
+}
 const SAFETY_FUNCTIONS: [&str; 74] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
@@ -2095,7 +2404,7 @@ WITH set_roles AS (
   WHERE role.rolname = session_user
      OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
 ), expected(table_name, can_select, can_insert, can_update, can_delete) AS (VALUES
-  ('accounts', true, true, true, false),
+  ('accounts', true, false, false, false),
   ('quota_windows', true, true, true, false),
   ('quota_exclusions', true, true, false, false),
   ('command_receipts', true, true, true, false),
@@ -2176,6 +2485,12 @@ WITH set_roles AS (
 	,('provider_attempts', false, false, false, false)
 	,('provider_attempt_positive_evidence', false, false, false, false)
 	,('provider_attempt_transitions', false, false, false, false)
+	,('account_operations', false, false, false, false)
+	,('account_routing_control', false, false, false, false)
+	,('account_routing_order', false, false, false, false)
+	,('account_quota_facts', false, false, false, false)
+	,('codex_account_capability', false, false, false, false)
+	,('account_migration_receipts', false, false, false, false)
 ), allowed_relations(
   schema_name, table_name, can_select, can_insert, can_update, can_delete
 ) AS (
@@ -4053,22 +4368,14 @@ SELECT
         pg_catalog.convert_to(contract, 'UTF8')
     )::pg_catalog.text
     FROM contract_rows
-    -- XY-1400 through XY-1402 keep the frozen V22 digest until the prohibited unified
-    -- PostgreSQL gate can capture and accept the complete V26 manifest. Exact V23-V26
-    -- functions, triggers, execution dependencies, and runtime privileges still use semantic
-    -- inventories. The deferred gate must refresh this digest before executable acceptance.
-    WHERE pg_catalog.strpos(identity::pg_catalog.text, 'process_generation') = 0
-      AND pg_catalog.strpos(contract, 'process_generation') = 0
-      AND pg_catalog.strpos(identity::pg_catalog.text, 'provider_attempt') = 0
-      AND pg_catalog.strpos(contract, 'provider_attempt') = 0
   ),
   NOT EXISTS (
     SELECT 1 FROM dependency_rows AS dependency WHERE NOT dependency.resolved
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xe7, 0xc1, 0x4f, 0x9e, 0x94, 0x6a, 0xf3, 0xd6, 0x24, 0x2b, 0xe9, 0xa9, 0x76, 0x61, 0xe2, 0x50,
-	0xea, 0xdf, 0xe7, 0xf7, 0x04, 0x37, 0xfe, 0xc3, 0x06, 0xf4, 0xf4, 0xe6, 0x9f, 0xa8, 0x37, 0xef,
+	0xb2, 0x67, 0x88, 0x48, 0x5a, 0xb0, 0x32, 0xdc, 0x89, 0xe0, 0xa1, 0x82, 0xf8, 0x65, 0x7a, 0x43,
+	0xc7, 0x5b, 0x5f, 0x8d, 0xd5, 0x17, 0x02, 0x50, 0x9b, 0x4a, 0xdf, 0xb4, 0x14, 0x75, 0x5e, 0x39,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -4565,14 +4872,10 @@ SELECT pg_catalog.jsonb_agg(
     pg_catalog.convert_to(contract, 'UTF8')
 )::pg_catalog.text
 FROM contract_rows
-WHERE pg_catalog.strpos(identity, 'process_generation') = 0
-  AND pg_catalog.strpos(contract, 'process_generation') = 0
-  AND pg_catalog.strpos(identity, 'provider_attempt') = 0
-  AND pg_catalog.strpos(contract, 'provider_attempt') = 0
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0xeb, 0x03, 0x3c, 0xc3, 0xa8, 0xb8, 0x45, 0x7a, 0xd6, 0xc4, 0xc4, 0x59, 0x20, 0x3a, 0xb9, 0xf3,
-	0x0e, 0x12, 0x55, 0xf2, 0x14, 0xed, 0x3c, 0x73, 0x89, 0x5f, 0xdd, 0xe1, 0xb4, 0xfb, 0x0d, 0x1a,
+	0x67, 0xc3, 0x20, 0x23, 0xcf, 0x42, 0x07, 0xb1, 0xad, 0xce, 0x47, 0xa4, 0xec, 0x23, 0x8b, 0x58,
+	0x26, 0xe8, 0xe0, 0xb6, 0x10, 0xec, 0x87, 0x33, 0x93, 0xdf, 0xfe, 0xa2, 0x08, 0x48, 0x1b, 0xf8,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -4774,6 +5077,10 @@ struct SemanticAuthorityEvidence {
 #[derive(Debug)]
 struct FinalizedSemanticAuthority {
 	observations: Vec<SemanticAuthorityObservation>,
+	#[cfg_attr(
+		not(any(test, feature = "test-support")),
+		expect(dead_code, reason = "serialized only by test-support authority evidence")
+	)]
 	fingerprint: String,
 }
 
@@ -4894,6 +5201,10 @@ impl FinalizedSemanticAuthority {
 		})
 	}
 
+	#[cfg_attr(
+		not(any(test, feature = "test-support")),
+		expect(dead_code, reason = "serialized only by test-support authority evidence")
+	)]
 	fn to_json(&self) -> serde_json::Value {
 		serde_json::json!({
 			"schema": SEMANTIC_AUTHORITY_SCHEMA,
@@ -5194,6 +5505,21 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "fire_waiting_usage_wake_exact"
 			| "cancel_waiting_usage_wake_exact"
 			| "read_waiting_usage_wake_transition_exact"
+			| "read_account_registry_exact"
+			| "read_reset_card_account_admission_exact"
+			| "prepare_account_operation_exact"
+			| "set_account_operation_target_exact"
+			| "advance_account_operation_exact"
+			| "read_unsettled_account_operations_exact"
+			| "read_account_operation_exact"
+			| "update_account_administration_exact"
+			| "replace_account_routing_control_exact"
+			| "read_account_routing_control_exact"
+			| "observe_account_quota_exact"
+			| "observe_account_quota_error_exact"
+			| "observe_account_store_exact"
+			| "attest_codex_account_capability_exact"
+			| "record_account_migration_receipt_exact"
 			| "prepare_process_generation_exact"
 			| "bind_process_generation_identity_exact"
 			| "mark_process_generation_ready_exact"
@@ -5897,15 +6223,20 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 22);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 182);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 23);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 197);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
 			.sum::<usize>();
-		// V26 removes four V12 functions and the superseded V14, V16, and V17
-		// definitions. Replacement bodies remain covered by their final contracts below.
-		assert_eq!(created_function_count - 7, FUNCTION_CONTRACTS.len());
+		let dropped_function_count = CANONICAL_FUNCTION_MIGRATIONS
+			.into_iter()
+			.map(|migration| migration.matches("DROP FUNCTION decodex.").count())
+			.sum::<usize>();
+		// V26 drops seven superseded functions. V27 drops two process-generation
+		// signatures before creating their account-bound replacements.
+		assert_eq!(dropped_function_count, 9);
+		assert_eq!(created_function_count - dropped_function_count, FUNCTION_CONTRACTS.len());
 
 		let mut lookup_signatures = HashSet::new();
 

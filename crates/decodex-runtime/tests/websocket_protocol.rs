@@ -181,6 +181,10 @@ impl Application for FixtureApplication {
 					},
 				})
 			},
+			_ => Err(CommandError::ApplicationUnavailable {
+				message: WireText::new("fixture command is unavailable")
+					.expect("fixture failure is bounded"),
+			}),
 		}
 	}
 
@@ -490,7 +494,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 }
 
 #[tokio::test]
-async fn previous_minor_keeps_v1_2_queries_but_refuses_reset_card_surfaces() {
+async fn previous_minor_keeps_v1_3_queries_but_refuses_account_surfaces() {
 	let (_temp, transport) = local_transport();
 	let application = FixtureApplication::default();
 	let mut bound = server("previous-feature-gate", application.clone(), ServerConfig::default())
@@ -515,16 +519,12 @@ async fn previous_minor_keeps_v1_2_queries_but_refuses_reset_card_surfaces() {
 		ClientMessage::Query(QueryEnvelope {
 			version: PREVIOUS_MINOR_VERSION,
 			query_id: QueryId::new("reset-query").expect("bounded query ID"),
-			payload: QueryPayload::ListResetCardAccounts,
+			payload: QueryPayload::ListAccounts,
 		}),
 	)
 	.await;
 	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
 	assert_eq!(application.queries(), 1);
-
-	send(&mut client, reset_card_command(PREVIOUS_MINOR_VERSION, 1, "previous-reset-key")).await;
-	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
-	assert_eq!(application.executions(), 0);
 
 	execute_and_receive_event(&mut client, PREVIOUS_MINOR_VERSION, 1).await;
 	assert_eq!(application.executions(), 1);
@@ -534,7 +534,7 @@ async fn previous_minor_keeps_v1_2_queries_but_refuses_reset_card_surfaces() {
 }
 
 #[tokio::test]
-async fn v1_3_reset_card_events_never_cross_the_v1_2_subscriber_boundary() {
+async fn v1_3_reset_card_events_reach_the_previous_minor_subscriber() {
 	let (_temp, transport) = local_transport();
 	let application = FixtureApplication::default();
 	let mut bound =
@@ -557,6 +557,11 @@ async fn v1_3_reset_card_events_never_cross_the_v1_2_subscriber_boundary() {
 
 	assert_eq!(event.version, CURRENT_VERSION);
 	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+	let ServerMessage::Event(previous_event) = receive(&mut previous).await else {
+		panic!("V1.3 subscriber must receive the retained reset-card event");
+	};
+	assert_eq!(previous_event.version, PREVIOUS_MINOR_VERSION);
+	assert!(matches!(previous_event.payload, EventPayload::ResetCardOperationAccepted { .. }));
 	send(&mut previous, doctor_query_for(PREVIOUS_MINOR_VERSION, 2)).await;
 	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
 		panic!("previous-minor subscriber must remain usable after a filtered reset-card event");

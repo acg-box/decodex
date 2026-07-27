@@ -18,7 +18,10 @@ use crate::{
 	},
 };
 use decodex_core::{
-	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, admit_manual_reset_card_use,
+	AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+	CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
+	ProviderIdentity, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
+	admit_manual_reset_card_use,
 };
 
 const PROTOCOL: &str = "decodex/reset-card-operation/1";
@@ -30,6 +33,35 @@ const MAX_PRIVATE_PROVIDER_KEY_BYTES: usize = 1_024;
 const PRIVATE_EFFECT_FIELD: &str = "reset_card_effect";
 const PRIVATE_PROVIDER_KEY_FIELD: &str = "provider_idempotency_key_hex";
 const PRIVATE_CREDIT_ID_FIELD: &str = "provider_credit_id_hex";
+const PRIVATE_WRITER_OPERATION_ID_FIELD: &str = "credential_writer_operation_id";
+const ACCOUNT_LIFECYCLE_LOCK_SQL: &str =
+	"SELECT pg_catalog.pg_advisory_xact_lock(1422,pg_catalog.hashtext($1))";
+const RESET_CARD_ACCOUNT_ADMISSION_SQL: &str = "SELECT state::text,revision,enabled,tombstoned, \
+	 credential_store_schema_version,credential_version,credential_fingerprint, \
+	 credential_writer_operation_id::text,provider_kind::text,provider_account_id, \
+	 credential_store_observation::text,operation_unsettled,callback_profile_ready \
+	 FROM decodex.read_reset_card_account_admission_exact($1::text::uuid,$2)";
+const BIND_RESET_CARD_CREDIT_SQL: &str = "UPDATE decodex.outbox SET \
+	 payload=jsonb_set(payload,'{reset_card_effect,provider_credit_id_hex}', \
+	   to_jsonb($4::text),true) \
+	 WHERE id=$1 AND aggregate_kind='reset_card_operation' AND state='in_flight' \
+	 AND lease_holder=$2::text::uuid AND claim_token=$3::text::uuid \
+	 AND lease_expires_at > clock_timestamp() AND effect_state='not_started' \
+	 AND jsonb_typeof(payload->'reset_card_effect')='object' \
+	 AND (payload->'reset_card_effect') ? 'provider_idempotency_key_hex' \
+	 AND payload #>> '{reset_card_effect,credential_writer_operation_id}'=$5::text \
+	 AND ((payload->'reset_card_effect') \
+	   - 'provider_idempotency_key_hex' - 'provider_credit_id_hex' \
+	   - 'credential_writer_operation_id')='{}'::jsonb \
+	 AND (NOT ((payload->'reset_card_effect') ? 'provider_credit_id_hex') \
+	   OR payload #>> '{reset_card_effect,provider_credit_id_hex}'=$4::text)";
+const INSTALL_RESET_CARD_PRIVATE_EFFECT_SQL: &str = "UPDATE decodex.outbox SET \
+	 payload=jsonb_set(payload,'{reset_card_effect}', \
+	   jsonb_build_object('provider_idempotency_key_hex',$3::text, \
+	     'credential_writer_operation_id',$4::text),true) \
+	 WHERE aggregate_kind='reset_card_operation' AND aggregate_id=$1 \
+	 AND aggregate_revision=$2 AND state='pending' \
+	 AND NOT payload ? 'reset_card_effect'";
 const RENEW_RESET_CARD_CLAIM_SQL: &str = "WITH write_time AS (SELECT clock_timestamp() AS value) \
 	 UPDATE decodex.outbox \
 	 SET lease_acquired_at=write_time.value, \
@@ -63,6 +95,8 @@ pub struct ResetCardClaim {
 	pub account_id: AccountId,
 	/// Account revision fenced by preparation.
 	pub account_revision: i64,
+	/// Immutable credential/provider/callback snapshot admitted before the effect.
+	pub process_binding: ProcessGenerationAccountBinding,
 	/// Public card descriptor.
 	pub descriptor: ResetCardDescriptor,
 	/// Exact provider identifier, once durably bound before the effect fence.
@@ -177,6 +211,7 @@ impl PostgresStore {
 		command: &CommandIdentity,
 		account_id: &AccountId,
 		expected_revision: i64,
+		process_binding: &ProcessGenerationAccountBinding,
 		descriptor: ResetCardDescriptor,
 	) -> Result<ResetCardPreparation, StoreError> {
 		if expected_revision < 1 {
@@ -206,6 +241,7 @@ impl PostgresStore {
 			command,
 			account_id,
 			expected_revision,
+			process_binding,
 			descriptor,
 		)
 		.await
@@ -271,10 +307,47 @@ impl PostgresStore {
 			ResetCardPreparationReplay::Absent => Ok(None),
 			ResetCardPreparationReplay::Pending { claim_expired: false } =>
 				Err(StoreError::ResetCardCommitOutcomeUnknown),
-			ResetCardPreparationReplay::Pending { claim_expired: true } => self
-				.prepare_reset_card_operation(command, account_id, expected_revision, descriptor)
-				.await
-				.map(Some),
+			ResetCardPreparationReplay::Pending { claim_expired: true } => {
+				let actual_revision = self
+					.read_account_registry(Some(account_id), 1)
+					.await?
+					.into_iter()
+					.next()
+					.map(|account| account.revision);
+				let Some(actual_revision) =
+					actual_revision.filter(|actual| *actual > expected_revision)
+				else {
+					return Ok(None);
+				};
+				let rejection = ResetCardPreparationRejection::RevisionChanged {
+					expected: expected_revision,
+					actual: actual_revision,
+				};
+				let mut client = self.pool().get().await?;
+
+				match reserve_command(&mut client, command, &command_descriptor).await? {
+					CommandClaim::Owned(reservation) => {
+						let response = rejection_response(account_id, rejection);
+						drop(client);
+
+						if self.complete_reset_card_rejection(&reservation, &response).await.is_ok()
+						{
+							Err(rejection.store_error(account_id))
+						} else {
+							Err(StoreError::ResetCardCommitOutcomeUnknown)
+						}
+					},
+					CommandClaim::Completed(response) =>
+						match preparation_from_response(response) {
+							Ok(prepared) => {
+								ensure_operation_exists(&client, &command.key).await?;
+
+								Ok(Some(prepared))
+							},
+							Err(error) => Err(error),
+						},
+				}
+			},
 			ResetCardPreparationReplay::Completed(prepared) => Ok(Some(prepared)),
 		}
 	}
@@ -417,26 +490,22 @@ impl PostgresStore {
 			.get()
 			.await?
 			.execute(
-				"UPDATE decodex.outbox SET \
-				   payload=jsonb_set(payload,'{reset_card_effect,provider_credit_id_hex}', \
-				     to_jsonb($4::text),true) \
-				 WHERE id=$1 AND aggregate_kind='reset_card_operation' AND state='in_flight' \
-				   AND lease_holder=$2::text::uuid AND claim_token=$3::text::uuid \
-				   AND lease_expires_at > clock_timestamp() AND effect_state='not_started' \
-				   AND jsonb_typeof(payload->'reset_card_effect')='object' \
-				   AND (payload->'reset_card_effect') ? 'provider_idempotency_key_hex' \
-				   AND ((payload->'reset_card_effect') \
-				     - 'provider_idempotency_key_hex' - 'provider_credit_id_hex')='{}'::jsonb \
-				   AND (NOT ((payload->'reset_card_effect') ? 'provider_credit_id_hex') \
-				     OR payload #>> '{reset_card_effect,provider_credit_id_hex}'=$4::text)",
-				&[&claim.id, &worker_id, &claim.claim_token, &encoded_credit_id],
+				BIND_RESET_CARD_CREDIT_SQL,
+				&[
+					&claim.id,
+					&worker_id,
+					&claim.claim_token,
+					&encoded_credit_id,
+					&claim.process_binding.credential.writer_operation_id.as_str(),
+				],
 			)
 			.await?;
 
 		if updated == 1 { Ok(()) } else { Err(StoreError::OwnershipLost("reset-card claim")) }
 	}
 
-	/// Atomically admit the exact account revision and cross the reset-card effect fence.
+	/// Atomically recheck the retained provider/store binding and cross the reset-card effect
+	/// fence. Administrative revision changes do not revoke already-accepted work.
 	///
 	/// A public-selection advisory lock and oldest-operation check prevent two logical keys from
 	/// concurrently consuming the same card. The account share lock keeps its exact revision and
@@ -462,6 +531,7 @@ impl PostgresStore {
 				&[&selection_lock],
 			)
 			.await?;
+		transaction.query_one(ACCOUNT_LIFECYCLE_LOCK_SQL, &[&claim.account_id.as_str()]).await?;
 		let oldest: i64 = transaction
 			.query_one(
 				"SELECT id FROM decodex.outbox \
@@ -494,23 +564,27 @@ impl PostgresStore {
 
 		let account = transaction
 			.query_opt(
-				"SELECT state::text,revision FROM decodex.accounts \
-				 WHERE account_id=$1::text::uuid FOR SHARE",
-				&[&claim.account_id.as_str()],
+				RESET_CARD_ACCOUNT_ADMISSION_SQL,
+				&[
+					&claim.account_id.as_str(),
+					&claim.process_binding.refresh_callback_profile_sha256,
+				],
 			)
 			.await?
 			.ok_or(StoreError::InvalidInput("reset-card account is not enrolled"))?;
 		let state = account_state(account.get(0))?;
-		let actual_revision: i64 = account.get(1);
-		if actual_revision != claim.account_revision {
-			return Err(StoreError::RevisionConflict {
-				entity: format!("account/{}", claim.account_id),
-				expected: Some(claim.account_revision),
-				actual: Some(actual_revision),
-			});
-		}
 		admit_manual_reset_card_use(state)
 			.map_err(|_| StoreError::InvalidInput("account state rejects manual reset-card use"))?;
+		if account.get::<_, bool>(3)
+			|| account.get::<_, &str>(10) != "exact"
+			|| account.get::<_, bool>(11)
+			|| !account.get::<_, bool>(12)
+			|| !row_matches_process_binding(&account, &claim.process_binding)
+		{
+			return Err(StoreError::InvalidInput(
+				"account lifecycle rejects manual reset-card use",
+			));
+		}
 
 		let updated = transaction
 			.execute(
@@ -614,6 +688,22 @@ impl PostgresStore {
 	}
 }
 
+#[cfg(feature = "test-support")]
+pub(crate) async fn prepare_account_bound_reset_card_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	const SOURCES: [&str; 4] = [
+		ACCOUNT_LIFECYCLE_LOCK_SQL,
+		RESET_CARD_ACCOUNT_ADMISSION_SQL,
+		BIND_RESET_CARD_CREDIT_SQL,
+		INSTALL_RESET_CARD_PRIVATE_EFFECT_SQL,
+	];
+	for source in SOURCES {
+		client.prepare(source).await?;
+	}
+	Ok(SOURCES.len())
+}
+
 enum ResetCardPreparationReplay {
 	Absent,
 	Pending { claim_expired: bool },
@@ -662,13 +752,14 @@ async fn persist_reset_card_preparation(
 	command: &CommandIdentity,
 	account_id: &AccountId,
 	expected_revision: i64,
+	process_binding: &ProcessGenerationAccountBinding,
 	descriptor: ResetCardDescriptor,
 ) -> Result<(), ResetCardPreparationPersistenceError> {
+	transaction.query_one(ACCOUNT_LIFECYCLE_LOCK_SQL, &[&account_id.as_str()]).await?;
 	let account = transaction
 		.query_opt(
-			"SELECT state::text, revision FROM decodex.accounts \
-			 WHERE account_id=$1::text::uuid FOR SHARE",
-			&[&account_id.as_str()],
+			RESET_CARD_ACCOUNT_ADMISSION_SQL,
+			&[&account_id.as_str(), &process_binding.refresh_callback_profile_sha256],
 		)
 		.await?
 		.ok_or(ResetCardPreparationPersistenceError::Rejected(
@@ -688,8 +779,21 @@ async fn persist_reset_card_preparation(
 	admit_manual_reset_card_use(state).map_err(|_| {
 		ResetCardPreparationPersistenceError::Rejected(ResetCardPreparationRejection::StateRejected)
 	})?;
+	if process_binding.account_revision != expected_revision
+		|| !account.get::<_, bool>(2)
+		|| account.get::<_, bool>(3)
+		|| account.get::<_, &str>(10) != "exact"
+		|| account.get::<_, bool>(11)
+		|| !account.get::<_, bool>(12)
+		|| !row_matches_process_binding(&account, process_binding)
+	{
+		return Err(ResetCardPreparationPersistenceError::Rejected(
+			ResetCardPreparationRejection::StateRejected,
+		));
+	}
 
-	let public_payload = operation_public_payload(account_id, expected_revision, descriptor);
+	let public_payload =
+		operation_public_payload(account_id, expected_revision, process_binding, descriptor);
 	let aggregate_id = operation_aggregate_id(&command.key);
 
 	append_activity_and_outbox(
@@ -703,15 +807,11 @@ async fn persist_reset_card_preparation(
 	)
 	.await?;
 	let encoded_provider_key = encode_private_text(&command.key);
+	let writer_operation_id = process_binding.credential.writer_operation_id.as_str();
 	let private_projection_updated = transaction
 		.execute(
-			"UPDATE decodex.outbox SET \
-			   payload=jsonb_set(payload,'{reset_card_effect}', \
-			     jsonb_build_object('provider_idempotency_key_hex',$3::text),true) \
-			 WHERE aggregate_kind='reset_card_operation' AND aggregate_id=$1 \
-			   AND aggregate_revision=$2 AND state='pending' \
-			   AND NOT payload ? 'reset_card_effect'",
-			&[&aggregate_id, &1_i64, &encoded_provider_key],
+			INSTALL_RESET_CARD_PRIVATE_EFFECT_SQL,
+			&[&aggregate_id, &1_i64, &encoded_provider_key, &writer_operation_id],
 		)
 		.await?;
 	if private_projection_updated != 1 {
@@ -725,6 +825,17 @@ async fn persist_reset_card_preparation(
 	finish_command(transaction, reservation, &response).await?;
 
 	Ok(())
+}
+
+fn row_matches_process_binding(row: &Row, binding: &ProcessGenerationAccountBinding) -> bool {
+	let credential = &binding.credential;
+	let Ok(version) = i64::try_from(credential.version.get()) else { return false };
+	row.get::<_, Option<i32>>(4) == Some(i32::from(credential.schema_version.get()))
+		&& row.get::<_, Option<i64>>(5) == Some(version)
+		&& row.get::<_, Option<&str>>(6) == Some(credential.fingerprint.as_str())
+		&& row.get::<_, Option<&str>>(7) == Some(credential.writer_operation_id.as_str())
+		&& row.get::<_, Option<&str>>(8) == Some(provider_text(credential.provider.provider()))
+		&& row.get::<_, Option<&str>>(9) == Some(credential.provider.account_id())
 }
 
 enum UnknownCommitReadback<T> {
@@ -765,6 +876,9 @@ fn reset_card_claim(row: Row) -> Result<ResetCardClaim, StoreError> {
 	let private_effect = private_effect.as_object().ok_or_else(|| {
 		incompatible_error("stored reset-card private effect material is malformed")
 	})?;
+	let writer_operation_id = required_str(private_effect, PRIVATE_WRITER_OPERATION_ID_FIELD)?;
+	let process_binding =
+		process_binding_from_operation(operation, account_revision, writer_operation_id)?;
 	let provider_idempotency_key = decode_private_text(
 		required_str(private_effect, PRIVATE_PROVIDER_KEY_FIELD)?,
 		MAX_PRIVATE_PROVIDER_KEY_BYTES,
@@ -781,7 +895,7 @@ fn reset_card_claim(row: Row) -> Result<ResetCardClaim, StoreError> {
 				.and_then(decode_exact_credit_id)
 		})
 		.transpose()?;
-	let expected_private_fields = usize::from(exact_credit_id.is_some()) + 1;
+	let expected_private_fields = usize::from(exact_credit_id.is_some()) + 2;
 	if private_effect.len() != expected_private_fields {
 		return incompatible("stored reset-card private effect material has unknown fields");
 	}
@@ -797,6 +911,7 @@ fn reset_card_claim(row: Row) -> Result<ResetCardClaim, StoreError> {
 		claim_token: row.get(1),
 		account_id,
 		account_revision,
+		process_binding,
 		descriptor,
 		exact_credit_id,
 		provider_idempotency_key,
@@ -846,15 +961,70 @@ fn outcome_from_receipt(receipt: &Value) -> Result<ResetCardConsumeOutcome, Stor
 fn operation_public_payload(
 	account_id: &AccountId,
 	account_revision: i64,
+	process_binding: &ProcessGenerationAccountBinding,
 	descriptor: ResetCardDescriptor,
 ) -> Value {
+	let credential = &process_binding.credential;
 	json!({
 		"schema": PROTOCOL,
 		"account_id": account_id.as_str(),
 		"account_revision": account_revision,
+		"credential_store_schema_version": credential.schema_version.get(),
+		"credential_version": credential.version.get(),
+		"credential_fingerprint": credential.fingerprint.as_str(),
+		"provider_kind": provider_text(credential.provider.provider()),
+		"provider_account_id": credential.provider.account_id(),
+		"refresh_callback_profile_sha256": process_binding.refresh_callback_profile_sha256,
 		"granted_at_unix_seconds": descriptor.granted_at().unix_seconds(),
 		"expires_at_unix_seconds": descriptor.expires_at().unix_seconds(),
 	})
+}
+
+fn process_binding_from_operation(
+	operation: &serde_json::Map<String, Value>,
+	account_revision: i64,
+	writer_operation_id: &str,
+) -> Result<ProcessGenerationAccountBinding, StoreError> {
+	let schema = u16::try_from(required_i64(operation, "credential_store_schema_version")?)
+		.ok()
+		.and_then(|value| CredentialStoreSchemaVersion::new(value).ok())
+		.ok_or_else(|| incompatible_error("stored reset-card credential schema is invalid"))?;
+	let version = u64::try_from(required_i64(operation, "credential_version")?)
+		.ok()
+		.and_then(|value| CredentialVersion::new(value).ok())
+		.ok_or_else(|| incompatible_error("stored reset-card credential version is invalid"))?;
+	let fingerprint =
+		CredentialFingerprint::new(required_str(operation, "credential_fingerprint")?).map_err(
+			|_| incompatible_error("stored reset-card credential fingerprint is invalid"),
+		)?;
+	let writer_operation_id = AccountOperationId::new(writer_operation_id)
+		.map_err(|_| incompatible_error("stored reset-card credential writer is invalid"))?;
+	let provider_kind = match required_str(operation, "provider_kind")? {
+		"chatgpt" => AccountProvider::Chatgpt,
+		_ => return incompatible("stored reset-card provider kind is invalid"),
+	};
+	let provider =
+		ProviderIdentity::new(provider_kind, required_str(operation, "provider_account_id")?)
+			.map_err(|_| incompatible_error("stored reset-card provider identity is invalid"))?;
+	let credential = CredentialBinding {
+		schema_version: schema,
+		version,
+		fingerprint,
+		provider,
+		writer_operation_id,
+	};
+	ProcessGenerationAccountBinding::new(
+		account_revision,
+		credential,
+		required_str(operation, "refresh_callback_profile_sha256")?,
+	)
+	.map_err(|_| incompatible_error("stored reset-card process binding is invalid"))
+}
+
+fn provider_text(provider: AccountProvider) -> &'static str {
+	match provider {
+		AccountProvider::Chatgpt => "chatgpt",
+	}
 }
 
 fn preparation_response(
@@ -1002,7 +1172,6 @@ fn account_state(value: &str) -> Result<AccountState, StoreError> {
 		"depleted" => Ok(AccountState::Depleted),
 		"auth_failed" => Ok(AccountState::AuthFailed),
 		"plugin_unready" => Ok(AccountState::PluginUnready),
-		"disabled" => Ok(AccountState::Disabled),
 		_ => incompatible("stored account state is invalid"),
 	}
 }
@@ -1107,12 +1276,38 @@ mod tests {
 		encode_private_text, operation_aggregate_id, operation_public_payload,
 	};
 	use crate::{AccountId, StoreError};
-	use decodex_core::{ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp};
+	use decodex_core::{
+		AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
+		ProviderIdentity, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
+	};
 
 	fn descriptor(granted: i64, expires: i64) -> ResetCardDescriptor {
 		ResetCardDescriptor::new(
 			ResetCardTimestamp::from_unix_seconds(granted).unwrap(),
 			ResetCardTimestamp::from_unix_seconds(expires).unwrap(),
+		)
+		.unwrap()
+	}
+
+	fn process_binding(revision: i64) -> ProcessGenerationAccountBinding {
+		ProcessGenerationAccountBinding::new(
+			revision,
+			CredentialBinding {
+				schema_version: CredentialStoreSchemaVersion::V1,
+				version: CredentialVersion::new(1).unwrap(),
+				fingerprint: CredentialFingerprint::new(
+					"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				)
+				.unwrap(),
+				provider: ProviderIdentity::new(AccountProvider::Chatgpt, "provider-account")
+					.unwrap(),
+				writer_operation_id: AccountOperationId::new(
+					"71000000-0000-4000-8000-000000000010",
+				)
+				.unwrap(),
+			},
+			"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
 		)
 		.unwrap()
 	}
@@ -1155,7 +1350,8 @@ mod tests {
 	#[test]
 	fn public_operation_payload_excludes_private_effect_material() {
 		let account_id = AccountId::new("10000000-0000-0000-0000-000000000001").unwrap();
-		let payload = operation_public_payload(&account_id, 7, descriptor(100, 200));
+		let binding = process_binding(7);
+		let payload = operation_public_payload(&account_id, 7, &binding, descriptor(100, 200));
 		let rendered = payload.to_string();
 
 		assert_eq!(
@@ -1165,6 +1361,7 @@ mod tests {
 		assert!(!rendered.contains("exact_credit"));
 		assert!(!rendered.contains("provider_idempotency"));
 		assert!(!rendered.contains("reset_card_effect"));
+		assert!(!rendered.contains(binding.credential.writer_operation_id.as_str()));
 	}
 
 	#[test]
@@ -1187,6 +1384,7 @@ mod tests {
 			claim_token: "private-claim-token".into(),
 			account_id: AccountId::new("10000000-0000-0000-0000-000000000001").unwrap(),
 			account_revision: 3,
+			process_binding: process_binding(3),
 			descriptor: descriptor(100, 200),
 			exact_credit_id: Some("private-provider-credit".into()),
 			provider_idempotency_key: "private-provider-retry".into(),

@@ -1,0 +1,1380 @@
+//! Credential-negative PostgreSQL account lifecycle authority.
+
+use std::collections::BTreeSet;
+
+use decodex_core::{
+	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
+	AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
+	AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+	AccountState, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
+	CredentialVersion, ProviderIdentity,
+};
+use serde_json::Value;
+use tokio_postgres::IsolationLevel;
+
+use crate::{
+	CommandIdentity, PostgresStore, StoreError,
+	accounts::{
+		CommandClaim, CommandDescriptor, CommandReservation, finish_command, reserve_command,
+	},
+};
+
+const ACCOUNT_COMMAND_PROTOCOL: &str = "decodex/account-command/1";
+const READ_ACCOUNT_REGISTRY_ALL_SQL: &str = "SELECT account_id::text,display_label,enabled,state::text,revision,\
+	 provider_kind::text,provider_account_id,credential_store_schema_version,\
+	 credential_version,credential_fingerprint,credential_writer_operation_id::text,\
+	 tombstoned,lifecycle_readiness,unsettled_operation_id::text,\
+	 unsettled_kind::text,unsettled_phase::text,unsettled_recovery_code,\
+	 five_hour_disposition,five_hour_used_percent,five_hour_resets_at_micros,\
+	 five_hour_observed_at_micros,five_hour_error_code::text,\
+	 seven_day_disposition,seven_day_used_percent,seven_day_resets_at_micros,\
+	 seven_day_observed_at_micros,seven_day_error_code::text \
+	 FROM decodex.read_account_registry_exact(NULL,$1)";
+const READ_ACCOUNT_REGISTRY_SQL: &str = "SELECT account_id::text,display_label,enabled,state::text,revision,\
+	 provider_kind::text,provider_account_id,credential_store_schema_version,\
+	 credential_version,credential_fingerprint,credential_writer_operation_id::text,\
+	 tombstoned,lifecycle_readiness,unsettled_operation_id::text,\
+	 unsettled_kind::text,unsettled_phase::text,unsettled_recovery_code,\
+	 five_hour_disposition,five_hour_used_percent,five_hour_resets_at_micros,\
+	 five_hour_observed_at_micros,five_hour_error_code::text,\
+	 seven_day_disposition,seven_day_used_percent,seven_day_resets_at_micros,\
+	 seven_day_observed_at_micros,seven_day_error_code::text \
+	 FROM decodex.read_account_registry_exact($1::text::uuid,$2)";
+const READ_ACCOUNT_EXACT_SQL: &str = "SELECT account_id::text,display_label,enabled,state::text,revision,\
+	 provider_kind::text,provider_account_id,credential_store_schema_version,\
+	 credential_version,credential_fingerprint,credential_writer_operation_id::text,\
+	 tombstoned,lifecycle_readiness,unsettled_operation_id::text,\
+	 unsettled_kind::text,unsettled_phase::text,unsettled_recovery_code,\
+	 five_hour_disposition,five_hour_used_percent,five_hour_resets_at_micros,\
+	 five_hour_observed_at_micros,five_hour_error_code::text,\
+	 seven_day_disposition,seven_day_used_percent,seven_day_resets_at_micros,\
+	 seven_day_observed_at_micros,seven_day_error_code::text \
+	 FROM decodex.read_account_registry_exact($1::text::uuid,1)";
+const READ_ACCOUNT_ROUTING_SQL: &str = "SELECT mode::text,fixed_account_id::text,revision,\
+	 ARRAY(SELECT value::text FROM pg_catalog.unnest(account_order) AS value) \
+	 FROM decodex.read_account_routing_control_exact()";
+const PREPARE_ACCOUNT_OPERATION_SQL: &str = "SELECT result_code,account_revision,phase::text \
+	 FROM decodex.prepare_account_operation_exact(\
+	 $1::text::uuid,$2::text::uuid,$3::text::decodex.account_operation_kind,\
+	 $4,$5,$6,$7,$8,$9,$10::text::uuid,$11,$12,$13,$14::text::uuid,\
+	 $15::text::decodex.account_provider_kind,$16)";
+const ADVANCE_ACCOUNT_OPERATION_SQL: &str = "SELECT result_code,account_revision,phase::text \
+	 FROM decodex.advance_account_operation_exact(\
+	 $1::text::uuid,$2::text::decodex.account_operation_phase,\
+	 $3::text::decodex.account_operation_phase,$4)";
+const SET_ACCOUNT_OPERATION_TARGET_SQL: &str = "SELECT result_code,account_revision,phase::text \
+	 FROM decodex.set_account_operation_target_exact($1::text::uuid,$2,$3,$4,$5::text::uuid)";
+const READ_UNSETTLED_ACCOUNT_OPERATIONS_SQL: &str = "SELECT operation_id::text,account_id::text,kind::text,phase::text,\
+		 expected_account_revision,requested_display_label,requested_enabled,\
+		 expected_store_schema_version,expected_credential_version,\
+	 expected_credential_fingerprint,expected_credential_writer_operation_id::text,\
+	 target_store_schema_version,target_credential_version,target_credential_fingerprint,\
+	 target_credential_writer_operation_id::text,provider_kind::text,provider_account_id \
+	 FROM decodex.read_unsettled_account_operations_exact($1)";
+const READ_ACCOUNT_OPERATION_SQL: &str = "SELECT operation_id::text,account_id::text,kind::text,phase::text,\
+		 expected_account_revision,requested_display_label,requested_enabled,\
+		 expected_store_schema_version,expected_credential_version,\
+	 expected_credential_fingerprint,expected_credential_writer_operation_id::text,\
+	 target_store_schema_version,target_credential_version,target_credential_fingerprint,\
+	 target_credential_writer_operation_id::text,provider_kind::text,provider_account_id \
+	 FROM decodex.read_account_operation_exact($1::text::uuid)";
+const UPDATE_ACCOUNT_ADMINISTRATION_SQL: &str = "SELECT result_code,revision \
+	 FROM decodex.update_account_administration_exact($1::text::uuid,$2,$3,$4)";
+const REPLACE_ACCOUNT_ROUTING_SQL: &str = "SELECT result_code,revision \
+	 FROM decodex.replace_account_routing_control_exact(\
+	 $1,$2::text::decodex.account_selection_mode,$3::text::uuid,$4::text[]::uuid[])";
+const OBSERVE_ACCOUNT_QUOTA_SQL: &str =
+	"SELECT decodex.observe_account_quota_exact($1::text::uuid,$2,$3,$4,$5)";
+const OBSERVE_ACCOUNT_QUOTA_ERROR_SQL: &str = "SELECT decodex.observe_account_quota_error_exact(\
+	 $1::text::uuid,$2,$3::text::decodex.account_quota_observation_error,$4)";
+const OBSERVE_ACCOUNT_STORE_SQL: &str = "SELECT decodex.observe_account_store_exact(\
+	 $1::text::uuid,$2,$3,$4,$5,$6::text::uuid,\
+	 $7::text::decodex.account_provider_kind,$8,\
+	 $9::text::decodex.account_store_observation)";
+const ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL: &str =
+	"SELECT decodex.attest_codex_account_capability_exact($1,$2,$3,$4,$5,$6)";
+const RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL: &str = "SELECT decodex.record_account_migration_receipt_exact(\
+	 $1,$2::jsonb,$3::jsonb,$4::jsonb,$5)";
+
+/// Exact input persisted before the Account Service performs a Keychain effect.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountOperationPreparation {
+	/// Stable finite operation identity.
+	pub operation_id: AccountOperationId,
+	/// Account changed by the operation.
+	pub account_id: AccountId,
+	/// Operation effect class.
+	pub kind: AccountOperationKind,
+	/// New-account operator label, when required.
+	pub display_label: Option<String>,
+	/// New-account administrative switch, when required.
+	pub enabled: Option<bool>,
+	/// Exact registry revision before an existing-account effect.
+	pub expected_account_revision: Option<i64>,
+	/// Exact credential binding before the effect.
+	pub expected: Option<CredentialBinding>,
+	/// Exact credential binding after the effect, when known.
+	pub target: Option<CredentialBinding>,
+	/// Non-secret provider identity for the operation.
+	pub provider: ProviderIdentity,
+}
+
+/// Credential-negative operation mutation projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountLifecycleMutation {
+	/// Account revision observed after the transition.
+	pub account_revision: i64,
+	/// Resulting finite operation phase.
+	pub phase: AccountOperationPhase,
+}
+
+/// Closed rejection from account lifecycle persistence.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountLifecycleRejection {
+	/// The stable operation identity already has another descriptor.
+	IdentityConflict,
+	/// Another operation for the account is unsettled.
+	OperationUnsettled,
+	/// The operation shape or bounded input is invalid.
+	InvalidRequest,
+	/// The requested account does not exist.
+	AccountMissing,
+	/// The expected account revision or credential binding is stale.
+	StaleAccount,
+	/// Existing work prevents logout.
+	AccountInUse,
+	/// The requested operation does not exist.
+	OperationMissing,
+	/// The expected operation phase is stale.
+	StaleOperation,
+}
+
+/// Result of preparing or advancing one finite operation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountLifecycleMutationOutcome {
+	/// The requested transition committed for the first time.
+	Applied(AccountLifecycleMutation),
+	/// The exact requested transition was already committed.
+	Replayed(AccountLifecycleMutation),
+	/// A deterministic guard rejected the transition.
+	Rejected {
+		/// Stable rejection class.
+		rejection: AccountLifecycleRejection,
+		/// Current account revision and operation phase.
+		actual: AccountLifecycleMutation,
+	},
+}
+
+/// Result of a revisioned rename or administrative enablement update.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountAdministrationOutcome {
+	/// The administrative projection is current.
+	Updated {
+		/// Current account revision.
+		revision: i64,
+	},
+	/// A deterministic guard rejected the update.
+	Rejected {
+		/// Stable rejection class.
+		rejection: AccountLifecycleRejection,
+		/// Current account revision, or zero when no account exists.
+		revision: i64,
+	},
+}
+
+/// Result of replacing fixed/balanced mode and complete user-owned order.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum RoutingControlOutcome {
+	/// The routing controls are current.
+	Updated {
+		/// Current routing-control revision.
+		revision: i64,
+	},
+	/// The expected routing revision was stale.
+	Stale {
+		/// Current routing-control revision.
+		revision: i64,
+	},
+	/// The requested order was not an exact visible-account permutation.
+	InvalidOrder {
+		/// Current routing-control revision.
+		revision: i64,
+	},
+}
+
+/// Credential-negative result of one exact host-store observation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountStoreObservation {
+	/// The exact credential binding was observed.
+	Exact,
+	/// No credential item exists.
+	Missing,
+	/// Credential schema, version, fingerprint, or writer differs.
+	Mismatch,
+	/// The provider identity differs.
+	ProviderMismatch,
+	/// The host credential store could not be read.
+	Unavailable,
+}
+
+/// Exact Codex build and generated/live callback profile persisted as readiness evidence.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CodexAccountCapabilityAttestation {
+	/// Stable Codex build identity.
+	pub build_identity: String,
+	/// Digest of the exact Codex executable.
+	pub executable_sha256: String,
+	/// Digest of the generated app-server schema.
+	pub schema_sha256: String,
+	/// Digest of the live refresh-callback profile.
+	pub callback_profile_sha256: String,
+	/// Whether initial ChatGPT token projection is available.
+	pub login_chatgpt_auth_tokens: bool,
+	/// Whether the required refresh callback is live.
+	pub refresh_callback: bool,
+}
+
+/// Completed normalized migration and destination verification receipt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountMigrationReceipt {
+	/// Digest of the normalized source manifest.
+	pub manifest_sha256: String,
+	/// Credential-negative normalized source manifest.
+	pub manifest: Value,
+	/// Exact destination verification receipt.
+	pub destination_receipt: Value,
+	/// Exact source-retirement receipt.
+	pub retirement_receipt: Value,
+	/// Number of migrated account entries.
+	pub account_count: u32,
+}
+
+/// Closed logical account command kind retained in durable request receipts.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AccountCommandKind {
+	/// Enroll from shared Codex credentials.
+	Enroll,
+	/// Import an explicit credential file.
+	Import,
+	/// Replace one account label.
+	Rename,
+	/// Replace one account enablement switch.
+	SetEnabled,
+	/// Delete credentials and tombstone an account.
+	Logout,
+	/// Replace selection mode and complete routing order.
+	ConfigureRouting,
+	/// Rotate one account credential bundle.
+	Refresh,
+	/// Reconcile one finite credential operation.
+	Recover,
+}
+impl AccountCommandKind {
+	const fn as_str(self) -> &'static str {
+		match self {
+			Self::Enroll => "enroll_account",
+			Self::Import => "import_account_credential_file",
+			Self::Rename => "rename_account",
+			Self::SetEnabled => "set_account_enabled",
+			Self::Logout => "logout_account",
+			Self::ConfigureRouting => "configure_account_routing",
+			Self::Refresh => "refresh_account",
+			Self::Recover => "recover_account_operation",
+		}
+	}
+}
+
+/// Owned durable command claim. The inner fencing token is not caller-visible.
+pub struct AccountCommandReceiptLease(CommandReservation);
+
+/// New receipt ownership or exact completed public result replay.
+pub enum AccountCommandReceiptClaim {
+	/// The caller owns the current fencing token.
+	Owned(AccountCommandReceiptLease),
+	/// The exact completed public result was replayed.
+	Replayed(Value),
+}
+
+impl PostgresStore {
+	/// Read the complete non-tombstoned account skeleton and routing control in one snapshot.
+	pub async fn read_account_registry_snapshot(
+		&self,
+		limit: u16,
+	) -> Result<(Vec<AccountRecord>, AccountRoutingControl), StoreError> {
+		if !(1..=512).contains(&limit) {
+			return Err(StoreError::InvalidInput(
+				"account registry limit must be between 1 and 512",
+			));
+		}
+		let limit = i64::from(limit);
+		let mut client = self.pool().get().await?;
+		let transaction = client
+			.build_transaction()
+			.isolation_level(IsolationLevel::RepeatableRead)
+			.read_only(true)
+			.start()
+			.await?;
+		let rows = transaction.query(READ_ACCOUNT_REGISTRY_ALL_SQL, &[&limit]).await?;
+		let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
+		let accounts = rows.into_iter().map(parse_account).collect::<Result<Vec<_>, _>>()?;
+		let routing = parse_routing_control(&routing_row)?;
+		validate_registry_snapshot(&accounts, &routing)?;
+		transaction.commit().await?;
+
+		Ok((accounts, routing))
+	}
+
+	/// Reserve or replay one credential-negative logical account command.
+	pub async fn reserve_account_command(
+		&self,
+		command: &CommandIdentity,
+		kind: AccountCommandKind,
+		entity_id: &str,
+		expected_revision: Option<i64>,
+	) -> Result<AccountCommandReceiptClaim, StoreError> {
+		if entity_id.is_empty() || entity_id.len() > 256 || entity_id.chars().any(char::is_control)
+		{
+			return Err(StoreError::InvalidInput("account command entity identity is invalid"));
+		}
+		if expected_revision.is_some_and(|revision| revision < 1) {
+			return Err(StoreError::InvalidInput("account command revision must be positive"));
+		}
+		let descriptor = CommandDescriptor {
+			protocol_version: ACCOUNT_COMMAND_PROTOCOL,
+			operation: kind.as_str(),
+			project_scope: "global",
+			scope_id: "accounts".to_owned(),
+			entity_id: entity_id.to_owned(),
+			expected_revision,
+			payload_hash: None,
+			payload_length: None,
+		};
+		let mut client = self.pool().get().await?;
+		match reserve_command(&mut client, command, &descriptor).await? {
+			CommandClaim::Owned(reservation) =>
+				Ok(AccountCommandReceiptClaim::Owned(AccountCommandReceiptLease(reservation))),
+			CommandClaim::Completed(response) => Ok(AccountCommandReceiptClaim::Replayed(response)),
+		}
+	}
+
+	/// Complete one owned logical account command with its exact bounded public result.
+	pub async fn complete_account_command(
+		&self,
+		lease: AccountCommandReceiptLease,
+		result: &Value,
+	) -> Result<(), StoreError> {
+		validate_account_command_response(result)?;
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		finish_command(&transaction, &lease.0, result).await?;
+		transaction.commit().await?;
+		Ok(())
+	}
+
+	/// Read one or all credential-negative account projections.
+	pub async fn read_account_registry(
+		&self,
+		account_id: Option<&AccountId>,
+		limit: u16,
+	) -> Result<Vec<AccountRecord>, StoreError> {
+		if !(1..=512).contains(&limit) {
+			return Err(StoreError::InvalidInput(
+				"account registry limit must be between 1 and 512",
+			));
+		}
+		let account_id = account_id.map(AccountId::as_str);
+		let limit = i64::from(limit);
+		let rows = self
+			.pool()
+			.get()
+			.await?
+			.query(READ_ACCOUNT_REGISTRY_SQL, &[&account_id, &limit])
+			.await?;
+
+		rows.into_iter().map(parse_account).collect()
+	}
+
+	/// Persist a finite account operation before any provider or Keychain effect.
+	pub async fn prepare_account_operation(
+		&self,
+		preparation: &AccountOperationPreparation,
+	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
+		if preparation.expected_account_revision.is_some_and(|revision| revision < 1) {
+			return Err(StoreError::InvalidInput("expected account revision must be positive"));
+		}
+		let (expected_schema, expected_version, expected_fingerprint, expected_writer) =
+			binding_parameters(preparation.expected.as_ref())?;
+		let (target_schema, target_version, target_fingerprint, target_writer) =
+			binding_parameters(preparation.target.as_ref())?;
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				PREPARE_ACCOUNT_OPERATION_SQL,
+				&[
+					&preparation.operation_id.as_str(),
+					&preparation.account_id.as_str(),
+					&operation_kind_text(preparation.kind),
+					&preparation.display_label,
+					&preparation.enabled,
+					&preparation.expected_account_revision,
+					&expected_schema,
+					&expected_version,
+					&expected_fingerprint,
+					&expected_writer,
+					&target_schema,
+					&target_version,
+					&target_fingerprint,
+					&target_writer,
+					&provider_text(preparation.provider.provider()),
+					&preparation.provider.account_id(),
+				],
+			)
+			.await?;
+
+		parse_mutation_outcome(&row, true)
+	}
+
+	/// Advance one exact operation along an allowed finite transition.
+	pub async fn advance_account_operation(
+		&self,
+		operation_id: &AccountOperationId,
+		expected: AccountOperationPhase,
+		target: AccountOperationPhase,
+		recovery_code: Option<&str>,
+	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
+		if recovery_code.is_some_and(|code| {
+			code.is_empty()
+				|| code.len() > 128
+				|| !code.bytes().enumerate().all(|(index, byte)| {
+					if index == 0 {
+						byte.is_ascii_lowercase()
+					} else {
+						byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+					}
+				})
+		}) {
+			return Err(StoreError::InvalidInput("account recovery code is invalid"));
+		}
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				ADVANCE_ACCOUNT_OPERATION_SQL,
+				&[
+					&operation_id.as_str(),
+					&operation_phase_text(expected),
+					&operation_phase_text(target),
+					&recovery_code,
+				],
+			)
+			.await?;
+
+		parse_mutation_outcome(&row, false)
+	}
+
+	/// Advance or replay one account operation and complete its exact logical-command result in the
+	/// same PostgreSQL transaction.
+	pub async fn complete_account_operation_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		expected: AccountOperationPhase,
+		target: AccountOperationPhase,
+		recovery_code: Option<&str>,
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(
+				&AccountLifecycleMutationOutcome,
+				Option<&AccountOperation>,
+				Option<&AccountRecord>,
+			) -> Result<Value, StoreError>
+			+ Send,
+	{
+		if recovery_code.is_some_and(|code| {
+			code.is_empty()
+				|| code.len() > 128
+				|| !code.bytes().enumerate().all(|(index, byte)| {
+					if index == 0 {
+						byte.is_ascii_lowercase()
+					} else {
+						byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_'
+					}
+				})
+		}) {
+			return Err(StoreError::InvalidInput("account recovery code is invalid"));
+		}
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(
+				ADVANCE_ACCOUNT_OPERATION_SQL,
+				&[
+					&operation_id.as_str(),
+					&operation_phase_text(expected),
+					&operation_phase_text(target),
+					&recovery_code,
+				],
+			)
+			.await?;
+		let outcome = parse_mutation_outcome(&row, false)?;
+		let operation = transaction
+			.query_opt(READ_ACCOUNT_OPERATION_SQL, &[&operation_id.as_str()])
+			.await?
+			.map(parse_operation)
+			.transpose()?;
+		let account = match operation.as_ref() {
+			Some(operation) => transaction
+				.query_opt(READ_ACCOUNT_EXACT_SQL, &[&operation.account_id.as_str()])
+				.await?
+				.map(parse_account)
+				.transpose()?,
+			None => None,
+		};
+		let response = build_response(&outcome, operation.as_ref(), account.as_ref())?;
+		validate_account_command_response(&response)?;
+		finish_command(&transaction, &lease.0, &response).await?;
+		transaction.commit().await?;
+		Ok(response)
+	}
+
+	/// Attach the exact provider refresh result before the Keychain compare-and-swap effect.
+	pub async fn set_account_operation_target(
+		&self,
+		operation_id: &AccountOperationId,
+		target: &CredentialBinding,
+	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
+		let schema = i32::from(target.schema_version.get());
+		let version = i64::try_from(target.version.get()).map_err(|_| {
+			StoreError::InvalidInput("credential version overflows PostgreSQL bigint")
+		})?;
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				SET_ACCOUNT_OPERATION_TARGET_SQL,
+				&[
+					&operation_id.as_str(),
+					&schema,
+					&version,
+					&target.fingerprint.as_str(),
+					&target.writer_operation_id.as_str(),
+				],
+			)
+			.await?;
+
+		parse_mutation_outcome(&row, false)
+	}
+
+	/// Read every operation that still blocks admission, including typed manual recovery.
+	pub async fn read_unsettled_account_operations(
+		&self,
+		limit: u16,
+	) -> Result<Vec<AccountOperation>, StoreError> {
+		if !(1..=512).contains(&limit) {
+			return Err(StoreError::InvalidInput(
+				"account operation limit must be between 1 and 512",
+			));
+		}
+		let limit = i64::from(limit);
+		let rows = self
+			.pool()
+			.get()
+			.await?
+			.query(READ_UNSETTLED_ACCOUNT_OPERATIONS_SQL, &[&limit])
+			.await?;
+
+		rows.into_iter().map(parse_operation).collect()
+	}
+
+	/// Read one exact lifecycle operation, including a terminal operation needed for replay.
+	pub async fn read_account_operation(
+		&self,
+		operation_id: &AccountOperationId,
+	) -> Result<Option<AccountOperation>, StoreError> {
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_opt(READ_ACCOUNT_OPERATION_SQL, &[&operation_id.as_str()])
+			.await?;
+
+		row.map(parse_operation).transpose()
+	}
+
+	/// Rename, enable, or disable one account at an exact registry revision.
+	pub async fn update_account_administration(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+		display_label: Option<&str>,
+		enabled: Option<bool>,
+	) -> Result<AccountAdministrationOutcome, StoreError> {
+		if expected_revision < 1 {
+			return Err(StoreError::InvalidInput("expected account revision must be positive"));
+		}
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				UPDATE_ACCOUNT_ADMINISTRATION_SQL,
+				&[&account_id.as_str(), &expected_revision, &display_label, &enabled],
+			)
+			.await?;
+		let code: &str = row.get(0);
+		let revision = row.get(1);
+		match code {
+			"updated" => Ok(AccountAdministrationOutcome::Updated { revision }),
+			code => Ok(AccountAdministrationOutcome::Rejected {
+				rejection: parse_rejection(code)?,
+				revision,
+			}),
+		}
+	}
+
+	/// Apply one administrative mutation and complete its logical command receipt atomically.
+	pub async fn update_account_administration_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		account_id: &AccountId,
+		expected_revision: i64,
+		display_label: Option<&str>,
+		enabled: Option<bool>,
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(
+				&AccountAdministrationOutcome,
+				Option<&AccountRecord>,
+			) -> Result<Value, StoreError>
+			+ Send,
+	{
+		if expected_revision < 1 {
+			return Err(StoreError::InvalidInput("expected account revision must be positive"));
+		}
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(
+				UPDATE_ACCOUNT_ADMINISTRATION_SQL,
+				&[&account_id.as_str(), &expected_revision, &display_label, &enabled],
+			)
+			.await?;
+		let revision = row.get(1);
+		let outcome = match row.get::<_, &str>(0) {
+			"updated" => AccountAdministrationOutcome::Updated { revision },
+			code => AccountAdministrationOutcome::Rejected {
+				rejection: parse_rejection(code)?,
+				revision,
+			},
+		};
+		let account = if matches!(outcome, AccountAdministrationOutcome::Updated { .. }) {
+			transaction
+				.query_opt(READ_ACCOUNT_EXACT_SQL, &[&account_id.as_str()])
+				.await?
+				.map(parse_account)
+				.transpose()?
+		} else {
+			None
+		};
+		let response = build_response(&outcome, account.as_ref())?;
+		validate_account_command_response(&response)?;
+		finish_command(&transaction, &lease.0, &response).await?;
+		transaction.commit().await?;
+		Ok(response)
+	}
+
+	/// Read fixed/balanced mode and the complete deterministic user order.
+	pub async fn read_account_routing_control(&self) -> Result<AccountRoutingControl, StoreError> {
+		let row = self.pool().get().await?.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
+		parse_routing_control(&row)
+	}
+
+	/// Replace mode and complete order in one revisioned PostgreSQL transaction.
+	pub async fn replace_account_routing_control(
+		&self,
+		expected_revision: i64,
+		mode: &AccountSelectionMode,
+		order: &[AccountId],
+	) -> Result<RoutingControlOutcome, StoreError> {
+		let (mode_text, fixed) = match mode {
+			AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
+			AccountSelectionMode::Balanced => ("balanced", None),
+		};
+		let order =
+			order.iter().map(|account_id| account_id.as_str().to_owned()).collect::<Vec<_>>();
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				REPLACE_ACCOUNT_ROUTING_SQL,
+				&[&expected_revision, &mode_text, &fixed, &order],
+			)
+			.await?;
+		let revision = row.get(1);
+		match row.get::<_, &str>(0) {
+			"updated" => Ok(RoutingControlOutcome::Updated { revision }),
+			"stale_control" => Ok(RoutingControlOutcome::Stale { revision }),
+			"invalid_order" => Ok(RoutingControlOutcome::InvalidOrder { revision }),
+			_ => Err(incompatible("account routing result")),
+		}
+	}
+
+	/// Replace routing and complete its logical command receipt in the same transaction.
+	pub async fn replace_account_routing_control_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_revision: i64,
+		mode: &AccountSelectionMode,
+		order: &[AccountId],
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(&RoutingControlOutcome, &AccountRoutingControl) -> Result<Value, StoreError>
+			+ Send,
+	{
+		let (mode_text, fixed) = match mode {
+			AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
+			AccountSelectionMode::Balanced => ("balanced", None),
+		};
+		let order =
+			order.iter().map(|account_id| account_id.as_str().to_owned()).collect::<Vec<_>>();
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(
+				REPLACE_ACCOUNT_ROUTING_SQL,
+				&[&expected_revision, &mode_text, &fixed, &order],
+			)
+			.await?;
+		let revision = row.get(1);
+		let outcome = match row.get::<_, &str>(0) {
+			"updated" => RoutingControlOutcome::Updated { revision },
+			"stale_control" => RoutingControlOutcome::Stale { revision },
+			"invalid_order" => RoutingControlOutcome::InvalidOrder { revision },
+			_ => return Err(incompatible("account routing result")),
+		};
+		let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
+		let routing = parse_routing_control(&routing_row)?;
+		let response = build_response(&outcome, &routing)?;
+		validate_account_command_response(&response)?;
+		finish_command(&transaction, &lease.0, &response).await?;
+		transaction.commit().await?;
+		Ok(response)
+	}
+
+	/// Persist one of the two quota windows used for deterministic initial selection.
+	pub async fn observe_account_quota(
+		&self,
+		account_id: &AccountId,
+		fact: AccountQuotaWindow,
+		observed_at_unix_micros: i64,
+	) -> Result<(), StoreError> {
+		let duration = i32::try_from(fact.duration_minutes)
+			.map_err(|_| StoreError::InvalidInput("quota duration overflows"))?;
+		let used = i32::from(fact.used_percent);
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				OBSERVE_ACCOUNT_QUOTA_SQL,
+				&[
+					&account_id.as_str(),
+					&duration,
+					&used,
+					&fact.resets_at_unix_micros,
+					&observed_at_unix_micros,
+				],
+			)
+			.await?
+			.get(0);
+		if code == "observed" {
+			Ok(())
+		} else {
+			Err(StoreError::InvalidInput("quota fact rejected"))
+		}
+	}
+
+	/// Persist one bounded row-scoped quota observation failure.
+	pub async fn observe_account_quota_error(
+		&self,
+		account_id: &AccountId,
+		duration_minutes: u32,
+		error: AccountQuotaObservationError,
+		observed_at_unix_micros: i64,
+	) -> Result<(), StoreError> {
+		let duration = i32::try_from(duration_minutes)
+			.map_err(|_| StoreError::InvalidInput("quota duration overflows"))?;
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				OBSERVE_ACCOUNT_QUOTA_ERROR_SQL,
+				&[
+					&account_id.as_str(),
+					&duration,
+					&quota_error_text(error),
+					&observed_at_unix_micros,
+				],
+			)
+			.await?
+			.get(0);
+		if code == "observed" {
+			Ok(())
+		} else {
+			Err(StoreError::InvalidInput("quota error rejected"))
+		}
+	}
+
+	/// Persist the last exact host-store observation against one unchanged registry binding.
+	pub async fn observe_account_store(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+		expected: &CredentialBinding,
+		observation: AccountStoreObservation,
+	) -> Result<bool, StoreError> {
+		let schema = i32::from(expected.schema_version.get());
+		let version = i64::try_from(expected.version.get()).map_err(|_| {
+			StoreError::InvalidInput("credential version overflows PostgreSQL bigint")
+		})?;
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				OBSERVE_ACCOUNT_STORE_SQL,
+				&[
+					&account_id.as_str(),
+					&expected_revision,
+					&schema,
+					&version,
+					&expected.fingerprint.as_str(),
+					&expected.writer_operation_id.as_str(),
+					&provider_text(expected.provider.provider()),
+					&expected.provider.account_id(),
+					&store_observation_text(observation),
+				],
+			)
+			.await?
+			.get(0);
+		match code.as_str() {
+			"observed" => Ok(true),
+			"stale_account" => Ok(false),
+			_ => Err(incompatible("account store observation result")),
+		}
+	}
+
+	/// Persist exact-build generated/live callback readiness. Unsupported facts remain unready.
+	pub async fn attest_codex_account_capability(
+		&self,
+		attestation: &CodexAccountCapabilityAttestation,
+	) -> Result<bool, StoreError> {
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL,
+				&[
+					&attestation.build_identity,
+					&attestation.executable_sha256,
+					&attestation.schema_sha256,
+					&attestation.callback_profile_sha256,
+					&attestation.login_chatgpt_auth_tokens,
+					&attestation.refresh_callback,
+				],
+			)
+			.await?
+			.get(0);
+		Ok(code == "ready")
+	}
+
+	/// Strictly read back the singleton canonical manifest identity committed with V27.
+	pub async fn prepare_account_migration_intent(
+		&self,
+		manifest_sha256: &str,
+		manifest: &Value,
+		account_count: u32,
+	) -> Result<bool, StoreError> {
+		let count = i32::try_from(account_count)
+			.map_err(|_| StoreError::InvalidInput("migration account count overflows"))?;
+		crate::ensure_credential_negative_json(manifest)?;
+		let absent: Option<&Value> = None;
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
+				&[&manifest_sha256, manifest, &absent, &absent, &count],
+			)
+			.await?
+			.get(0);
+		match code.as_str() {
+			"replayed" => Ok(false),
+			"absent" => Err(StoreError::Incompatible(
+				"account migration intent committed with V27 is absent".into(),
+			)),
+			"identity_conflict" => Err(StoreError::IdempotencyConflict),
+			_ => Err(incompatible("account migration intent readback result")),
+		}
+	}
+
+	/// Complete the idempotent one-shot receipt after destination and retirement readback.
+	pub async fn record_account_migration_receipt(
+		&self,
+		receipt: &AccountMigrationReceipt,
+	) -> Result<bool, StoreError> {
+		let count = i32::try_from(receipt.account_count)
+			.map_err(|_| StoreError::InvalidInput("migration account count overflows"))?;
+		let code: String = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
+				&[
+					&receipt.manifest_sha256,
+					&receipt.manifest,
+					&receipt.destination_receipt,
+					&receipt.retirement_receipt,
+					&count,
+				],
+			)
+			.await?
+			.get(0);
+		match code.as_str() {
+			"recorded" => Ok(true),
+			"replayed" => Ok(false),
+			"prepared" => Err(StoreError::Incompatible(
+				"account migration completion remained prepared".into(),
+			)),
+			"identity_conflict" => Err(StoreError::IdempotencyConflict),
+			_ => Err(incompatible("account migration receipt result")),
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+pub(crate) async fn prepare_account_lifecycle_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	const SOURCES: [&str; 16] = [
+		READ_ACCOUNT_REGISTRY_ALL_SQL,
+		READ_ACCOUNT_REGISTRY_SQL,
+		READ_ACCOUNT_EXACT_SQL,
+		READ_ACCOUNT_ROUTING_SQL,
+		PREPARE_ACCOUNT_OPERATION_SQL,
+		ADVANCE_ACCOUNT_OPERATION_SQL,
+		SET_ACCOUNT_OPERATION_TARGET_SQL,
+		READ_UNSETTLED_ACCOUNT_OPERATIONS_SQL,
+		READ_ACCOUNT_OPERATION_SQL,
+		UPDATE_ACCOUNT_ADMINISTRATION_SQL,
+		REPLACE_ACCOUNT_ROUTING_SQL,
+		OBSERVE_ACCOUNT_QUOTA_SQL,
+		OBSERVE_ACCOUNT_QUOTA_ERROR_SQL,
+		OBSERVE_ACCOUNT_STORE_SQL,
+		ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL,
+		RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
+	];
+	for source in SOURCES {
+		client.prepare(source).await?;
+	}
+	Ok(SOURCES.len())
+}
+
+fn parse_account(row: tokio_postgres::Row) -> Result<AccountRecord, StoreError> {
+	let account_id = parse_account_id(row.get::<_, String>(0))?;
+	let label: String = row.get(1);
+	let enabled: bool = row.get(2);
+	let observed_state = parse_account_state(row.get(3))?;
+	let revision: i64 = row.get(4);
+	let provider = parse_optional_provider(row.get(5), row.get(6))?;
+	let credential =
+		parse_optional_binding(row.get(7), row.get(8), row.get(9), row.get(10), provider.as_ref())?;
+	let lifecycle_readiness = parse_lifecycle_readiness(row.get(12))?;
+	let unsettled_operation =
+		parse_operation_status(row.get(13), row.get(14), row.get(15), row.get(16))?;
+	let five_hour_quota = parse_quota(
+		AccountQuotaWindow::FIVE_HOURS_MINUTES,
+		row.get(17),
+		row.get(18),
+		row.get(19),
+		row.get(20),
+		row.get(21),
+	)?;
+	let seven_day_quota = parse_quota(
+		AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+		row.get(22),
+		row.get(23),
+		row.get(24),
+		row.get(25),
+		row.get(26),
+	)?;
+	if revision < 1 || label.is_empty() || label.len() > 128 {
+		return Err(incompatible("account registry projection"));
+	}
+	Ok(AccountRecord {
+		account_id,
+		label,
+		enabled,
+		revision,
+		observed_state,
+		lifecycle_readiness,
+		credential,
+		unsettled_operation,
+		five_hour_quota,
+		seven_day_quota,
+		tombstoned: row.get(11),
+	})
+}
+
+fn parse_routing_control(row: &tokio_postgres::Row) -> Result<AccountRoutingControl, StoreError> {
+	let mode = match row.get::<_, &str>(0) {
+		"fixed" => AccountSelectionMode::Fixed(parse_account_id(
+			row.get::<_, Option<String>>(1)
+				.ok_or_else(|| incompatible("fixed account identity"))?,
+		)?),
+		"balanced" => AccountSelectionMode::Balanced,
+		_ => return Err(incompatible("account selection mode")),
+	};
+	let revision: i64 = row.get(2);
+	let order = row
+		.get::<_, Vec<String>>(3)
+		.into_iter()
+		.map(parse_account_id)
+		.collect::<Result<Vec<_>, _>>()?;
+	if revision < 1 {
+		return Err(incompatible("account routing revision"));
+	}
+
+	Ok(AccountRoutingControl { revision, mode, order })
+}
+
+fn validate_registry_snapshot(
+	accounts: &[AccountRecord],
+	routing: &AccountRoutingControl,
+) -> Result<(), StoreError> {
+	let universe =
+		accounts.iter().map(|account| account.account_id.clone()).collect::<BTreeSet<_>>();
+	let ordered = routing.order.iter().cloned().collect::<BTreeSet<_>>();
+	if universe.len() != accounts.len()
+		|| ordered.len() != routing.order.len()
+		|| universe != ordered
+		|| accounts.iter().any(|account| account.tombstoned)
+	{
+		return Err(incompatible("account registry routing universe"));
+	}
+	if let AccountSelectionMode::Fixed(account_id) = &routing.mode
+		&& !universe.contains(account_id)
+	{
+		return Err(incompatible("fixed account routing target"));
+	}
+	Ok(())
+}
+
+fn parse_operation_status(
+	operation_id: Option<String>,
+	kind: Option<&str>,
+	phase: Option<&str>,
+	recovery_code: Option<String>,
+) -> Result<Option<AccountOperationStatus>, StoreError> {
+	match (operation_id, kind, phase) {
+		(None, None, None) if recovery_code.is_none() => Ok(None),
+		(Some(operation_id), Some(kind), Some(phase)) => Ok(Some(AccountOperationStatus {
+			operation_id: AccountOperationId::new(operation_id)
+				.map_err(|_| incompatible("account operation identity"))?,
+			kind: parse_operation_kind(kind)?,
+			phase: parse_operation_phase(phase)?,
+			recovery_code,
+		})),
+		_ => Err(incompatible("partial unsettled account operation")),
+	}
+}
+
+fn parse_operation(row: tokio_postgres::Row) -> Result<AccountOperation, StoreError> {
+	let operation_id = AccountOperationId::new(row.get::<_, String>(0))
+		.map_err(|_| incompatible("account operation identity"))?;
+	let account_id = parse_account_id(row.get(1))?;
+	let kind = parse_operation_kind(row.get(2))?;
+	let phase = parse_operation_phase(row.get(3))?;
+	let provider = parse_optional_provider(row.get(15), row.get(16))?
+		.ok_or_else(|| incompatible("account operation provider"))?;
+	let expected =
+		parse_optional_binding(row.get(7), row.get(8), row.get(9), row.get(10), Some(&provider))?;
+	let target = parse_optional_binding(
+		row.get(11),
+		row.get(12),
+		row.get(13),
+		row.get(14),
+		Some(&provider),
+	)?;
+	Ok(AccountOperation {
+		operation_id,
+		account_id,
+		kind,
+		phase,
+		expected_account_revision: row.get(4),
+		requested_display_label: row.get(5),
+		requested_enabled: row.get(6),
+		expected,
+		target,
+	})
+}
+
+type OptionalBindingParameters<'a> = (Option<i32>, Option<i64>, Option<&'a str>, Option<&'a str>);
+
+fn binding_parameters(
+	binding: Option<&CredentialBinding>,
+) -> Result<OptionalBindingParameters<'_>, StoreError> {
+	match binding {
+		Some(binding) => Ok((
+			Some(i32::from(binding.schema_version.get())),
+			Some(i64::try_from(binding.version.get()).map_err(|_| {
+				StoreError::InvalidInput("credential version overflows PostgreSQL bigint")
+			})?),
+			Some(binding.fingerprint.as_str()),
+			Some(binding.writer_operation_id.as_str()),
+		)),
+		None => Ok((None, None, None, None)),
+	}
+}
+
+fn parse_optional_binding(
+	schema: Option<i32>,
+	version: Option<i64>,
+	fingerprint: Option<String>,
+	writer_operation_id: Option<String>,
+	provider: Option<&ProviderIdentity>,
+) -> Result<Option<CredentialBinding>, StoreError> {
+	match (schema, version, fingerprint, writer_operation_id, provider) {
+		(None, None, None, None, _) => Ok(None),
+		(
+			Some(schema),
+			Some(version),
+			Some(fingerprint),
+			Some(writer_operation_id),
+			Some(provider),
+		) => Ok(Some(CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::new(
+				u16::try_from(schema).map_err(|_| incompatible("credential schema"))?,
+			)
+			.map_err(|_| incompatible("credential schema"))?,
+			version: CredentialVersion::new(
+				u64::try_from(version).map_err(|_| incompatible("credential version"))?,
+			)
+			.map_err(|_| incompatible("credential version"))?,
+			fingerprint: CredentialFingerprint::new(fingerprint)
+				.map_err(|_| incompatible("credential fingerprint"))?,
+			provider: provider.clone(),
+			writer_operation_id: AccountOperationId::new(writer_operation_id)
+				.map_err(|_| incompatible("credential writer operation identity"))?,
+		})),
+		_ => Err(incompatible("partial credential binding")),
+	}
+}
+
+fn parse_optional_provider(
+	kind: Option<&str>,
+	account_id: Option<String>,
+) -> Result<Option<ProviderIdentity>, StoreError> {
+	match (kind, account_id) {
+		(None, None) => Ok(None),
+		(Some("chatgpt"), Some(account_id)) =>
+			ProviderIdentity::new(AccountProvider::Chatgpt, account_id)
+				.map(Some)
+				.map_err(|_| incompatible("provider identity")),
+		_ => Err(incompatible("partial provider identity")),
+	}
+}
+
+fn parse_quota(
+	duration: u32,
+	status: &str,
+	used: Option<i32>,
+	resets_micros: Option<i64>,
+	observed_micros: Option<i64>,
+	error: Option<&str>,
+) -> Result<AccountQuotaWindowObservation, StoreError> {
+	let disposition = match (status, used, resets_micros, error) {
+		("unknown", None, None, None) if observed_micros.is_none() =>
+			AccountQuotaDisposition::Unknown,
+		("current", Some(used), Some(resets), None) => AccountQuotaDisposition::Current(
+			AccountQuotaWindow::new(
+				duration,
+				u8::try_from(used).map_err(|_| incompatible("quota percentage"))?,
+				resets,
+			)
+			.map_err(|_| incompatible("quota window"))?,
+		),
+		("stale", Some(used), Some(resets), None) => AccountQuotaDisposition::Stale(
+			AccountQuotaWindow::new(
+				duration,
+				u8::try_from(used).map_err(|_| incompatible("quota percentage"))?,
+				resets,
+			)
+			.map_err(|_| incompatible("quota window"))?,
+		),
+		("error", None, None, Some(error)) =>
+			AccountQuotaDisposition::Error(parse_quota_error(error)?),
+		_ => return Err(incompatible("quota observation shape")),
+	};
+	Ok(AccountQuotaWindowObservation {
+		duration_minutes: duration,
+		observed_at_unix_micros: observed_micros,
+		disposition,
+	})
+}
+
+fn parse_mutation_outcome(
+	row: &tokio_postgres::Row,
+	prepare: bool,
+) -> Result<AccountLifecycleMutationOutcome, StoreError> {
+	let code: &str = row.get(0);
+	let actual = AccountLifecycleMutation {
+		account_revision: row.get(1),
+		phase: parse_operation_phase(row.get(2))?,
+	};
+	if code == "replayed" {
+		return Ok(AccountLifecycleMutationOutcome::Replayed(actual));
+	}
+	if (prepare && code == "prepared") || (!prepare && code == "advanced") {
+		return Ok(AccountLifecycleMutationOutcome::Applied(actual));
+	}
+	Ok(AccountLifecycleMutationOutcome::Rejected { rejection: parse_rejection(code)?, actual })
+}
+
+fn parse_rejection(value: &str) -> Result<AccountLifecycleRejection, StoreError> {
+	match value {
+		"identity_conflict" => Ok(AccountLifecycleRejection::IdentityConflict),
+		"operation_unsettled" => Ok(AccountLifecycleRejection::OperationUnsettled),
+		"invalid_request" => Ok(AccountLifecycleRejection::InvalidRequest),
+		"account_missing" => Ok(AccountLifecycleRejection::AccountMissing),
+		"stale_account" => Ok(AccountLifecycleRejection::StaleAccount),
+		"account_in_use" => Ok(AccountLifecycleRejection::AccountInUse),
+		"operation_missing" => Ok(AccountLifecycleRejection::OperationMissing),
+		"stale_operation" => Ok(AccountLifecycleRejection::StaleOperation),
+		_ => Err(incompatible("account lifecycle result")),
+	}
+}
+
+fn parse_account_id(value: String) -> Result<AccountId, StoreError> {
+	AccountId::new(value).map_err(|_| incompatible("account identity"))
+}
+
+fn parse_account_state(value: &str) -> Result<AccountState, StoreError> {
+	match value {
+		"unavailable" => Ok(AccountState::Unavailable),
+		"unknown" => Ok(AccountState::Unknown),
+		"available" => Ok(AccountState::Available),
+		"depleted" => Ok(AccountState::Depleted),
+		"auth_failed" => Ok(AccountState::AuthFailed),
+		"plugin_unready" => Ok(AccountState::PluginUnready),
+		_ => Err(incompatible("account state")),
+	}
+}
+
+fn parse_lifecycle_readiness(value: &str) -> Result<AccountLifecycleReadiness, StoreError> {
+	match value {
+		"ready" => Ok(AccountLifecycleReadiness::Ready),
+		"credential_absent" => Ok(AccountLifecycleReadiness::CredentialAbsent),
+		"store_unavailable" => Ok(AccountLifecycleReadiness::StoreUnavailable),
+		"store_mismatch" => Ok(AccountLifecycleReadiness::StoreMismatch),
+		"provider_mismatch" => Ok(AccountLifecycleReadiness::ProviderMismatch),
+		"operation_unsettled" => Ok(AccountLifecycleReadiness::OperationUnsettled),
+		"callback_capability_unready" => Ok(AccountLifecycleReadiness::CallbackCapabilityUnready),
+		"tombstoned" => Ok(AccountLifecycleReadiness::Tombstoned),
+		_ => Err(incompatible("account lifecycle readiness")),
+	}
+}
+
+const fn operation_kind_text(value: AccountOperationKind) -> &'static str {
+	match value {
+		AccountOperationKind::Enroll => "enroll",
+		AccountOperationKind::Import => "import",
+		AccountOperationKind::Refresh => "refresh",
+		AccountOperationKind::Logout => "logout",
+	}
+}
+fn parse_operation_kind(value: &str) -> Result<AccountOperationKind, StoreError> {
+	match value {
+		"enroll" => Ok(AccountOperationKind::Enroll),
+		"import" => Ok(AccountOperationKind::Import),
+		"refresh" => Ok(AccountOperationKind::Refresh),
+		"logout" => Ok(AccountOperationKind::Logout),
+		_ => Err(incompatible("account operation kind")),
+	}
+}
+const fn operation_phase_text(value: AccountOperationPhase) -> &'static str {
+	match value {
+		AccountOperationPhase::Prepared => "prepared",
+		AccountOperationPhase::ProviderEffectPending => "provider_effect_pending",
+		AccountOperationPhase::StoreApplied => "store_applied",
+		AccountOperationPhase::Committed => "committed",
+		AccountOperationPhase::Cancelled => "cancelled",
+		AccountOperationPhase::RecoveryRequired => "recovery_required",
+	}
+}
+fn parse_operation_phase(value: &str) -> Result<AccountOperationPhase, StoreError> {
+	match value {
+		"prepared" => Ok(AccountOperationPhase::Prepared),
+		"provider_effect_pending" => Ok(AccountOperationPhase::ProviderEffectPending),
+		"store_applied" => Ok(AccountOperationPhase::StoreApplied),
+		"committed" => Ok(AccountOperationPhase::Committed),
+		"cancelled" => Ok(AccountOperationPhase::Cancelled),
+		"recovery_required" => Ok(AccountOperationPhase::RecoveryRequired),
+		_ => Err(incompatible("account operation phase")),
+	}
+}
+const fn provider_text(value: AccountProvider) -> &'static str {
+	match value {
+		AccountProvider::Chatgpt => "chatgpt",
+	}
+}
+const fn store_observation_text(value: AccountStoreObservation) -> &'static str {
+	match value {
+		AccountStoreObservation::Exact => "exact",
+		AccountStoreObservation::Missing => "missing",
+		AccountStoreObservation::Mismatch => "mismatch",
+		AccountStoreObservation::ProviderMismatch => "provider_mismatch",
+		AccountStoreObservation::Unavailable => "unavailable",
+	}
+}
+const fn quota_error_text(value: AccountQuotaObservationError) -> &'static str {
+	match value {
+		AccountQuotaObservationError::ProviderUnavailable => "provider_unavailable",
+		AccountQuotaObservationError::ProtocolUnavailable => "protocol_unavailable",
+		AccountQuotaObservationError::AccountMismatch => "account_mismatch",
+		AccountQuotaObservationError::UnsupportedWindow => "unsupported_window",
+	}
+}
+fn parse_quota_error(value: &str) -> Result<AccountQuotaObservationError, StoreError> {
+	match value {
+		"provider_unavailable" => Ok(AccountQuotaObservationError::ProviderUnavailable),
+		"protocol_unavailable" => Ok(AccountQuotaObservationError::ProtocolUnavailable),
+		"account_mismatch" => Ok(AccountQuotaObservationError::AccountMismatch),
+		"unsupported_window" => Ok(AccountQuotaObservationError::UnsupportedWindow),
+		_ => Err(incompatible("quota observation error")),
+	}
+}
+fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
+	let bytes = serde_json::to_vec(value)
+		.map_err(|_| StoreError::InvalidInput("account command result is invalid"))?;
+	if bytes.len() > 256 * 1024 {
+		return Err(StoreError::InvalidInput("account command result is invalid"));
+	}
+	crate::ensure_credential_negative_json(value)
+}
+fn incompatible(value: &'static str) -> StoreError {
+	StoreError::Incompatible(format!("stored {value} is malformed"))
+}

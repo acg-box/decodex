@@ -29,6 +29,10 @@ pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 /// Notification methods required by the accepted schema receipt.
 pub const REQUIRED_NOTIFICATION_METHODS: &[&str] =
 	&["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"];
+/// Exact account-auth request initiated by the supported Codex build.
+pub const ACCOUNT_LOGIN_METHOD: &str = "account/login/start";
+/// Exact credential-refresh request initiated by the supported Codex build.
+pub const ACCOUNT_REFRESH_CALLBACK_METHOD: &str = "account/chatgptAuthTokens/refresh";
 #[doc(hidden)]
 pub const MAX_SCHEMA_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
 
@@ -202,13 +206,26 @@ impl GeneratedSchemaEvidence {
 		validate_generated_directory_budget(directory)?;
 
 		let request = read_json(directory.join("ClientRequest.json"))?;
+		let server_request = read_json(directory.join("ServerRequest.json"))?;
 		let notification = read_json(directory.join("ServerNotification.json"))?;
 		let aggregate_path = directory.join("codex_app_server_protocol.v2.schemas.json");
 		let aggregate = read_json(&aggregate_path)?;
 		let collaboration = read_optional_json(directory.join("v2/ThreadReadResponse.json"))?;
 		let thread_start = read_optional_json(directory.join("v2/ThreadStartParams.json"))?;
+		let login_params = read_json(directory.join("v2/LoginAccountParams.json"))?;
+		let refresh_params = read_json(directory.join("v2/ChatgptAuthTokensRefreshParams.json"))?;
+		let refresh_response =
+			read_json(directory.join("v2/ChatgptAuthTokensRefreshResponse.json"))?;
 		let request_methods = extract_methods(&request)?;
+		let server_request_methods = extract_methods(&server_request)?;
 		let notification_methods = extract_methods(&notification)?;
+		validate_account_callback_contract(
+			&request_methods,
+			&server_request_methods,
+			&login_params,
+			&refresh_params,
+			&refresh_response,
+		)?;
 		let native_collaboration = collaboration
 			.as_ref()
 			.is_some_and(|schema| validate_collaboration_schema(schema).is_ok());
@@ -216,8 +233,12 @@ impl GeneratedSchemaEvidence {
 			thread_start.as_ref().is_some_and(validate_paginated_history_schema);
 		let mut actual_digests = [
 			("ClientRequest.json", &request),
+			("ServerRequest.json", &server_request),
 			("ServerNotification.json", &notification),
 			("codex_app_server_protocol.v2.schemas.json", &aggregate),
+			("v2/LoginAccountParams.json", &login_params),
+			("v2/ChatgptAuthTokensRefreshParams.json", &refresh_params),
+			("v2/ChatgptAuthTokensRefreshResponse.json", &refresh_response),
 		]
 		.into_iter()
 		.map(|(name, value)| (name.to_owned(), canonical_digest(value)))
@@ -258,6 +279,11 @@ impl GeneratedSchemaEvidence {
 
 	pub fn contract(&self) -> &SchemaContract {
 		&self.contract
+	}
+
+	/// Canonical generated-schema fingerprint bound into callback and ProcessGeneration facts.
+	pub fn account_callback_profile_sha256(&self) -> &str {
+		&self.fingerprint
 	}
 }
 
@@ -376,6 +402,107 @@ fn extract_methods(value: &Value) -> Result<BTreeSet<String>, Vec<String>> {
 		.collect::<BTreeSet<_>>();
 
 	if methods.is_empty() { Err(vec!["schema:method-enum".into()]) } else { Ok(methods) }
+}
+
+fn validate_account_callback_contract(
+	client_methods: &BTreeSet<String>,
+	server_methods: &BTreeSet<String>,
+	login: &Value,
+	refresh_params: &Value,
+	refresh_response: &Value,
+) -> Result<(), Vec<String>> {
+	let mut missing = Vec::new();
+	if !client_methods.contains(ACCOUNT_LOGIN_METHOD) {
+		missing.push(format!("request:{ACCOUNT_LOGIN_METHOD}"));
+	}
+	if !server_methods.contains(ACCOUNT_REFRESH_CALLBACK_METHOD) {
+		missing.push(format!("server-request:{ACCOUNT_REFRESH_CALLBACK_METHOD}"));
+	}
+	if !has_tagged_object(
+		login,
+		"type",
+		"chatgptAuthTokens",
+		&["accessToken", "chatgptAccountId", "chatgptPlanType"],
+		&["accessToken", "chatgptAccountId"],
+	) {
+		missing.push("schema:account-login-chatgpt-auth-tokens".into());
+	}
+	if !has_object_shape(refresh_params, &["reason", "previousAccountId"], &["reason"])
+		|| !contains_enum_value(refresh_params, "unauthorized")
+	{
+		missing.push("schema:account-refresh-params".into());
+	}
+	if !has_object_shape(
+		refresh_response,
+		&["accessToken", "chatgptAccountId", "chatgptPlanType"],
+		&["accessToken", "chatgptAccountId"],
+	) {
+		missing.push("schema:account-refresh-response".into());
+	}
+
+	if missing.is_empty() { Ok(()) } else { Err(missing) }
+}
+
+fn has_tagged_object(
+	value: &Value,
+	tag: &str,
+	tag_value: &str,
+	properties: &[&str],
+	required: &[&str],
+) -> bool {
+	match value {
+		Value::Object(object) => {
+			let tagged =
+				object.get("properties").and_then(Value::as_object).is_some_and(|fields| {
+					fields.get(tag).is_some_and(|schema| contains_enum_value(schema, tag_value))
+						&& properties.iter().all(|name| fields.contains_key(*name))
+						&& required_fields(object, required)
+				});
+			tagged
+				|| object
+					.values()
+					.any(|nested| has_tagged_object(nested, tag, tag_value, properties, required))
+		},
+		Value::Array(values) => values
+			.iter()
+			.any(|nested| has_tagged_object(nested, tag, tag_value, properties, required)),
+		_ => false,
+	}
+}
+
+fn has_object_shape(value: &Value, properties: &[&str], required: &[&str]) -> bool {
+	match value {
+		Value::Object(object) => {
+			let shaped =
+				object.get("properties").and_then(Value::as_object).is_some_and(|fields| {
+					properties.iter().all(|name| fields.contains_key(*name))
+						&& required_fields(object, required)
+				});
+			shaped || object.values().any(|nested| has_object_shape(nested, properties, required))
+		},
+		Value::Array(values) =>
+			values.iter().any(|nested| has_object_shape(nested, properties, required)),
+		_ => false,
+	}
+}
+
+fn required_fields(object: &Map<String, Value>, required: &[&str]) -> bool {
+	object.get("required").and_then(Value::as_array).is_some_and(|fields| {
+		required.iter().all(|name| fields.iter().any(|field| field.as_str() == Some(*name)))
+	})
+}
+
+fn contains_enum_value(value: &Value, expected: &str) -> bool {
+	match value {
+		Value::Object(object) =>
+			object
+				.get("enum")
+				.and_then(Value::as_array)
+				.is_some_and(|values| values.iter().any(|value| value.as_str() == Some(expected)))
+				|| object.values().any(|nested| contains_enum_value(nested, expected)),
+		Value::Array(values) => values.iter().any(|nested| contains_enum_value(nested, expected)),
+		_ => false,
+	}
 }
 
 fn canonical_digest(value: &Value) -> String {

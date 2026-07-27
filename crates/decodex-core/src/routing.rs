@@ -661,44 +661,7 @@ pub fn decide_routing(
 	snapshot: &RoutingDecisionSnapshot,
 ) -> Result<RoutingDecision, RoutingKernelError> {
 	let members = &snapshot.members;
-	if members.is_empty()
-		|| members.iter().enumerate().any(|(index, member)| member.position != index + 1)
-		|| members.iter().enumerate().any(|(index, member)| {
-			members[..index].iter().any(|prior| prior.account_id == member.account_id)
-		}) || members.iter().filter(|member| member.sticky).count() > 1
-		|| members.iter().any(|member| {
-			(member.disposition == RoutingMemberDisposition::Excluded)
-				!= member.blockers.contains(&RoutingBlocker::ExcludedByPolicy)
-		}) {
-		return Err(RoutingKernelError::MalformedSnapshot);
-	}
-	let mut facts_by_member = Vec::with_capacity(members.len());
-	for member in members {
-		let facts = snapshot
-			.quota_facts
-			.iter()
-			.filter(|fact| fact.account_id == member.account_id)
-			.collect::<Vec<_>>();
-		if facts.len() != 2
-			|| facts[0].window != QuotaWindowClass::FiveHour
-			|| facts[0].duration_minutes != 300
-			|| facts[1].window != QuotaWindowClass::SevenDay
-			|| facts[1].duration_minutes != 10_080
-		{
-			return Err(RoutingKernelError::MalformedSnapshot);
-		}
-		facts_by_member.push(facts);
-	}
-	if snapshot.quota_facts.len() != members.len() * 2 {
-		return Err(RoutingKernelError::MalformedSnapshot);
-	}
-	if snapshot.capability_facts.len() != members.len() * CodexCapability::ALL.len()
-		|| snapshot.capability_facts.iter().enumerate().any(|(index, fact)| {
-			fact.account_id != members[index / CodexCapability::ALL.len()].account_id
-				|| fact.capability != CodexCapability::ALL[index % CodexCapability::ALL.len()]
-		}) {
-		return Err(RoutingKernelError::MalformedSnapshot);
-	}
+	let facts_by_member = validated_quota_facts(snapshot)?;
 
 	let included = members
 		.iter()
@@ -805,6 +768,51 @@ pub fn decide_routing(
 		exclusions,
 		causes,
 	})
+}
+
+fn validated_quota_facts(
+	snapshot: &RoutingDecisionSnapshot,
+) -> Result<Vec<Vec<&RoutingDecisionQuotaFact>>, RoutingKernelError> {
+	let members = &snapshot.members;
+	if members.is_empty()
+		|| members.iter().enumerate().any(|(index, member)| member.position != index + 1)
+		|| members.iter().enumerate().any(|(index, member)| {
+			members[..index].iter().any(|prior| prior.account_id == member.account_id)
+		}) || members.iter().filter(|member| member.sticky).count() > 1
+		|| members.iter().any(|member| {
+			(member.disposition == RoutingMemberDisposition::Excluded)
+				!= member.blockers.contains(&RoutingBlocker::ExcludedByPolicy)
+		}) {
+		return Err(RoutingKernelError::MalformedSnapshot);
+	}
+	let mut facts_by_member = Vec::with_capacity(members.len());
+	for member in members {
+		let facts = snapshot
+			.quota_facts
+			.iter()
+			.filter(|fact| fact.account_id == member.account_id)
+			.collect::<Vec<_>>();
+		if facts.len() != 2
+			|| facts[0].window != QuotaWindowClass::FiveHour
+			|| facts[0].duration_minutes != 300
+			|| facts[1].window != QuotaWindowClass::SevenDay
+			|| facts[1].duration_minutes != 10_080
+		{
+			return Err(RoutingKernelError::MalformedSnapshot);
+		}
+		facts_by_member.push(facts);
+	}
+	if snapshot.quota_facts.len() != members.len() * 2 {
+		return Err(RoutingKernelError::MalformedSnapshot);
+	}
+	if snapshot.capability_facts.len() != members.len() * CodexCapability::ALL.len()
+		|| snapshot.capability_facts.iter().enumerate().any(|(index, fact)| {
+			fact.account_id != members[index / CodexCapability::ALL.len()].account_id
+				|| fact.capability != CodexCapability::ALL[index % CodexCapability::ALL.len()]
+		}) {
+		return Err(RoutingKernelError::MalformedSnapshot);
+	}
+	Ok(facts_by_member)
 }
 
 fn no_route(

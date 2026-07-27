@@ -533,37 +533,7 @@ fn parse_mutation(
 fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError> {
 	let attempt_id = ProviderAttemptId::new(row.get::<_, String>(0))
 		.map_err(|_| incompatible_value("ProviderAttempt identity"))?;
-	let consumer = match row.get::<_, &str>(1) {
-		"conversation_turn" => ProviderAttemptConsumer::ConversationTurn {
-			conversation_id: ConversationId::new(required_optional_text(
-				&row,
-				2,
-				"Conversation identity",
-			)?)
-			.map_err(|_| incompatible_value("Conversation identity"))?,
-			turn_id: TurnId::new(required_optional_text(&row, 3, "Turn identity")?)
-				.map_err(|_| incompatible_value("Turn identity"))?,
-		},
-		"managed_run_execution" => ProviderAttemptConsumer::ManagedRunExecution {
-			managed_run_id: ManagedRunId::new(required_optional_text(
-				&row,
-				4,
-				"ManagedRun identity",
-			)?)
-			.map_err(|_| incompatible_value("ManagedRun identity"))?,
-			managed_run_revision: row
-				.get::<_, Option<i64>>(5)
-				.filter(|revision| *revision > 0)
-				.ok_or_else(|| incompatible_value("ManagedRun revision"))?,
-			execution_id: ManagedExecutionId::new(required_optional_text(
-				&row,
-				6,
-				"ManagedRun execution identity",
-			)?)
-			.map_err(|_| incompatible_value("ManagedRun execution identity"))?,
-		},
-		_ => return Err(incompatible_value("ProviderAttempt consumer kind")),
-	};
+	let consumer = parse_consumer(&row)?;
 	let continuation_plan_id = row.get::<_, String>(7);
 	let routing_decision_id = row.get::<_, String>(8);
 	if !is_canonical_uuid(&continuation_plan_id) || !is_canonical_uuid(&routing_decision_id) {
@@ -594,22 +564,7 @@ fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError
 		.map_err(|_| incompatible_value("provider correlation key"))?;
 	let provider_keys = ProviderRequestKeys::new(idempotency, correlation)
 		.map_err(|_| incompatible_value("provider request keys"))?;
-	let predecessor = row
-		.get::<_, Option<String>>(19)
-		.map(ProviderAttemptId::new)
-		.transpose()
-		.map_err(|_| incompatible_value("predecessor ProviderAttempt identity"))?;
-	let acknowledgement = row.get::<_, Option<String>>(20);
-	let duplicate_risk = match (predecessor, acknowledgement) {
-		(None, None) => ProviderDuplicateRisk::OriginalIntent,
-		(Some(predecessor_attempt_id), Some(acknowledgement_digest))
-			if is_sha256(&acknowledgement_digest) =>
-			ProviderDuplicateRisk::AcknowledgedSuccessor {
-				predecessor_attempt_id,
-				acknowledgement_digest,
-			},
-		_ => return Err(incompatible_value("duplicate-risk acknowledgement")),
-	};
+	let duplicate_risk = parse_duplicate_risk(&row)?;
 	let state = parse_state(row.get(21))?;
 	let unknown_reason = row.get::<_, Option<&str>>(22).map(parse_unknown_reason).transpose()?;
 	let terminal_evidence_id = row
@@ -658,6 +613,59 @@ fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError
 		revision,
 		created_at_micros,
 		updated_at_micros,
+	})
+}
+
+fn parse_consumer(row: &tokio_postgres::Row) -> Result<ProviderAttemptConsumer, StoreError> {
+	Ok(match row.get::<_, &str>(1) {
+		"conversation_turn" => ProviderAttemptConsumer::ConversationTurn {
+			conversation_id: ConversationId::new(required_optional_text(
+				row,
+				2,
+				"Conversation identity",
+			)?)
+			.map_err(|_| incompatible_value("Conversation identity"))?,
+			turn_id: TurnId::new(required_optional_text(row, 3, "Turn identity")?)
+				.map_err(|_| incompatible_value("Turn identity"))?,
+		},
+		"managed_run_execution" => ProviderAttemptConsumer::ManagedRunExecution {
+			managed_run_id: ManagedRunId::new(required_optional_text(
+				row,
+				4,
+				"ManagedRun identity",
+			)?)
+			.map_err(|_| incompatible_value("ManagedRun identity"))?,
+			managed_run_revision: row
+				.get::<_, Option<i64>>(5)
+				.filter(|revision| *revision > 0)
+				.ok_or_else(|| incompatible_value("ManagedRun revision"))?,
+			execution_id: ManagedExecutionId::new(required_optional_text(
+				row,
+				6,
+				"ManagedRun execution identity",
+			)?)
+			.map_err(|_| incompatible_value("ManagedRun execution identity"))?,
+		},
+		_ => return Err(incompatible_value("ProviderAttempt consumer kind")),
+	})
+}
+
+fn parse_duplicate_risk(row: &tokio_postgres::Row) -> Result<ProviderDuplicateRisk, StoreError> {
+	let predecessor = row
+		.get::<_, Option<String>>(19)
+		.map(ProviderAttemptId::new)
+		.transpose()
+		.map_err(|_| incompatible_value("predecessor ProviderAttempt identity"))?;
+	let acknowledgement = row.get::<_, Option<String>>(20);
+	Ok(match (predecessor, acknowledgement) {
+		(None, None) => ProviderDuplicateRisk::OriginalIntent,
+		(Some(predecessor_attempt_id), Some(acknowledgement_digest))
+			if is_sha256(&acknowledgement_digest) =>
+			ProviderDuplicateRisk::AcknowledgedSuccessor {
+				predecessor_attempt_id,
+				acknowledgement_digest,
+			},
+		_ => return Err(incompatible_value("duplicate-risk acknowledgement")),
 	})
 }
 

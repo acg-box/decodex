@@ -33,10 +33,7 @@ use libc::{
 	F_ADD_SEALS, F_GET_SEALS, F_SEAL_EXEC, F_SEAL_GROW, F_SEAL_SEAL, F_SEAL_SHRINK, F_SEAL_WRITE,
 	MFD_ALLOW_SEALING, MFD_CLOEXEC, MFD_EXEC,
 };
-use serde::{
-	Deserialize, Serialize,
-	de::{DeserializeOwned, IgnoredAny},
-};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{self};
 use sha2::{Digest as _, Sha256};
 use tempfile::{NamedTempFile, TempDir};
@@ -74,13 +71,17 @@ use decodex_codex::{
 	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
 	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
 	ThreadSummary, UnavailableReason,
-	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
+	schema::{
+		ACCOUNT_LOGIN_METHOD, GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract,
+		SchemaMarker,
+	},
 };
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
-	ProcessGenerationId, ProcessGenerationIntent, ProcessIsolationKind, ProcessRunnerIdentity,
-	ResetCardConsumeOutcome,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
+	ProcessIsolationKind, ProcessRunnerIdentity, ResetCardConsumeOutcome,
 };
+use decodex_postgres::CodexAccountCapabilityAttestation;
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
@@ -127,6 +128,51 @@ pub(super) trait CredentialVault: Send + Sync {
 	) -> Result<AccountIdentity, CredentialVaultError>;
 }
 
+/// Process-bound service for the exact Codex ChatGPT refresh server request.
+pub(super) trait AccountRefreshCallback: Send + Sync {
+	/// Serialize one callback through the daemon Account Service and return only response fields.
+	fn refresh(
+		&self,
+		account_id: &AccountId,
+		initial_binding: &ProcessGenerationAccountBinding,
+		reason: &str,
+		previous_provider_account_id: Option<&str>,
+	) -> Result<ChatgptRefreshProjection, CredentialVaultError>;
+}
+
+/// Secret-bearing callback response retained only through one zeroizing JSON write.
+pub(super) struct ChatgptRefreshProjection {
+	access_token: Zeroizing<String>,
+	provider_account_id: String,
+	plan_type: Option<String>,
+}
+impl ChatgptRefreshProjection {
+	pub(super) fn new(
+		access_token: String,
+		provider_account_id: String,
+		plan_type: Option<String>,
+	) -> Result<Self, CredentialVaultError> {
+		if access_token.is_empty()
+			|| provider_account_id.is_empty()
+			|| provider_account_id.len() > 512
+			|| provider_account_id.chars().any(char::is_control)
+		{
+			return Err(CredentialVaultError::ProjectionRejected);
+		}
+		Ok(Self { access_token: Zeroizing::new(access_token), provider_account_id, plan_type })
+	}
+}
+impl Debug for ChatgptRefreshProjection {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ChatgptRefreshProjection")
+			.field("access_token", &"[REDACTED]")
+			.field("provider_account_id", &self.provider_account_id)
+			.field("plan_type", &self.plan_type)
+			.finish()
+	}
+}
+
 /// Immutable shared-home account authority. There is intentionally no rebinding API.
 ///
 /// ```compile_fail
@@ -143,6 +189,8 @@ pub(super) trait CredentialVault: Send + Sync {
 pub(super) struct AccountBinding {
 	account_id: AccountId,
 	expected_codex_home: PathBuf,
+	process_binding: Option<ProcessGenerationAccountBinding>,
+	refresh_callback: Option<Arc<dyn AccountRefreshCallback>>,
 }
 impl AccountBinding {
 	/// Bind one child to the account resolved from the child's immutable Codex home.
@@ -151,7 +199,24 @@ impl AccountBinding {
 			.filter(|home| !home.is_empty())
 			.ok_or(SupervisionError::InvalidBinding)?;
 
-		Ok(Self { account_id, expected_codex_home: PathBuf::from(home).join(".codex") })
+		Ok(Self {
+			account_id,
+			expected_codex_home: PathBuf::from(home).join(".codex"),
+			process_binding: None,
+			refresh_callback: None,
+		})
+	}
+
+	/// Bind an account-ready launch to exact registry/store/provider/callback facts.
+	pub(super) fn shared_home_bound(
+		account_id: AccountId,
+		process_binding: ProcessGenerationAccountBinding,
+		refresh_callback: Arc<dyn AccountRefreshCallback>,
+	) -> Result<Self, SupervisionError> {
+		let mut binding = Self::shared_home(account_id)?;
+		binding.process_binding = Some(process_binding);
+		binding.refresh_callback = Some(refresh_callback);
+		Ok(binding)
 	}
 
 	#[cfg(test)]
@@ -159,6 +224,8 @@ impl AccountBinding {
 		Self {
 			account_id: AccountId::new("10000000-0000-4000-8000-000000000001").unwrap(),
 			expected_codex_home,
+			process_binding: None,
+			refresh_callback: None,
 		}
 	}
 
@@ -166,12 +233,16 @@ impl AccountBinding {
 	#[cfg(test)]
 	#[doc(hidden)]
 	pub fn fixture(account_id: AccountId, expected_codex_home: PathBuf) -> Self {
-		Self { account_id, expected_codex_home }
+		Self { account_id, expected_codex_home, process_binding: None, refresh_callback: None }
 	}
 
 	/// Exact non-secret account selected before process creation.
 	pub fn account_id(&self) -> &AccountId {
 		&self.account_id
+	}
+
+	fn process_binding(&self) -> Result<&ProcessGenerationAccountBinding, SupervisionError> {
+		self.process_binding.as_ref().ok_or(SupervisionError::InvalidBinding)
 	}
 }
 
@@ -424,6 +495,44 @@ impl AppServerCommand {
 	}
 }
 
+/// Prove the exact supported Codex image and generated account callback contract at startup.
+pub(crate) fn attest_account_callback_capability(
+	working_directory: impl Into<PathBuf>,
+	timeout: Duration,
+) -> Result<CodexAccountCapabilityAttestation, ProbeError> {
+	let command = AppServerCommand::new(working_directory)?;
+	let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
+	let marker = SchemaMarker::accepted();
+	SchemaContract::validate(marker.clone())
+		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
+	let home = env::var_os("HOME")
+		.filter(|home| !home.is_empty())
+		.ok_or(SupervisionError::InvalidBinding)?;
+	let expected_codex_home = PathBuf::from(home).join(".codex");
+	let (build, generated, guard) = attest_executable_for_home(
+		&command,
+		&expected_codex_home,
+		Some(marker.canonical_digests()),
+		timeout,
+		None,
+	)?;
+	if guard.is_some() {
+		return Err(SupervisionError::CleanupUnavailable.into());
+	}
+	capability.attest_build(&command, &build)?;
+	let schema_sha256 = generated.fingerprint.clone();
+	let callback_profile_sha256 = generated.account_callback_profile_sha256().to_owned();
+
+	Ok(CodexAccountCapabilityAttestation {
+		build_identity: STDIO_ONLY_ATTESTED_VERSION.to_owned(),
+		executable_sha256: hex_digest(&command.executable_digest),
+		schema_sha256,
+		callback_profile_sha256,
+		login_chatgpt_auth_tokens: true,
+		refresh_callback: true,
+	})
+}
+
 impl Debug for AppServerCommand {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("AppServerCommand").finish_non_exhaustive()
@@ -528,8 +637,10 @@ pub(crate) struct AttestedAppServerLaunch {
 	command: AppServerCommand,
 	binding: AccountBinding,
 	build: BuildId,
+	generated: GeneratedSchemaEvidence,
 	runner_identity: ProcessRunnerIdentity,
 	capability: ExactBuildLaunchCapability,
+	timeout: Duration,
 	guard: RunnerPermit,
 }
 impl AttestedAppServerLaunch {
@@ -538,10 +649,6 @@ impl AttestedAppServerLaunch {
 	/// The current accepted exact profile is the source-attested 0.145.0-alpha.18 macOS image.
 	/// Every other version or image, including an unrecorded Linux image, remains disabled until
 	/// an accepted exact profile is added.
-	#[expect(
-		dead_code,
-		reason = "sealed until an accepted product composition supplies launch input"
-	)]
 	pub(super) fn attest(
 		command: AppServerCommand,
 		binding: AccountBinding,
@@ -556,18 +663,24 @@ impl AttestedAppServerLaunch {
 		let marker = SchemaMarker::accepted();
 		SchemaContract::validate(marker.clone())
 			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
-		let (build, _generated, guard) = attest_executable(
+		let process_binding = binding.process_binding()?;
+		let (build, generated, guard) = attest_executable(
 			&command,
 			&binding,
 			Some(marker.canonical_digests()),
 			timeout,
 			Some(guard),
 		)?;
+		if generated.account_callback_profile_sha256()
+			!= process_binding.refresh_callback_profile_sha256
+		{
+			return Err(SupervisionError::LaunchCapabilityUnavailable.into());
+		}
 		capability.attest_build(&command, &build)?;
 		let runner_identity = attested_launch_identity(&command, &binding, &build, capability)?;
 		let guard = guard.ok_or(SupervisionError::CleanupUnavailable)?;
 
-		Ok(Self { command, binding, build, runner_identity, capability, guard })
+		Ok(Self { command, binding, build, generated, runner_identity, capability, timeout, guard })
 	}
 
 	/// Derive all durable pre-spawn facts that belong to the opaque launch authority.
@@ -588,50 +701,145 @@ impl AttestedAppServerLaunch {
 		}
 	}
 
+	/// Return the immutable account binding covered by this launch manifest.
+	pub(crate) fn account_binding(&self) -> &ProcessGenerationAccountBinding {
+		self.binding
+			.process_binding
+			.as_ref()
+			.expect("attested launch always has an account binding")
+	}
+
 	/// Spawn the exact retained image. This method returns an error only before a child exists.
 	pub(crate) fn spawn(self) -> Result<AttestedProcessChild, SupervisionError> {
 		if ExactBuildLaunchCapability::attest_profile(&self.command)? != self.capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
 		self.capability.attest_build(&self.command, &self.build)?;
-		let mut command =
-			configured_attested_app_server_process(&self.command, &self.binding, self.capability)?;
-		let child = command.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+		let process = SupervisedProcess::spawn_attested(
+			self.command,
+			self.binding,
+			self.guard,
+			self.capability,
+		)?;
 
-		Ok(AttestedProcessChild { owner: ProcessGroupOwner::new(child, Some(self.guard)) })
+		Ok(AttestedProcessChild {
+			process,
+			build: self.build,
+			generated: self.generated,
+			timeout: self.timeout,
+			initialized: false,
+		})
 	}
 }
 
-/// Exact newly spawned child plus the existing daemon-local capacity authority.
+/// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
 pub(crate) struct AttestedProcessChild {
-	owner: ProcessGroupOwner,
+	process: SupervisedProcess,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	timeout: Duration,
+	initialized: bool,
 }
 impl AttestedProcessChild {
 	pub(crate) fn process_id(&self) -> u32 {
-		self.owner.process_id()
+		self.process.process_id()
 	}
 
 	pub(crate) fn try_wait(&mut self) -> io::Result<Option<ExitStatus>> {
-		self.owner.try_wait()
+		self.process.owner.try_wait()
 	}
 
 	pub(crate) fn may_signal_process_group(&self) -> bool {
-		self.owner.may_signal_process_group()
+		self.process.owner.may_signal_process_group()
 	}
 
 	pub(crate) fn has_private_lifetime_channels(&self) -> bool {
-		self.owner
-			.child
-			.as_ref()
-			.is_some_and(|child| child.stdin.is_some() && child.stdout.is_some())
+		self.process.owner.child.is_some() && self.process.owner.pump.is_some()
 	}
 
 	/// Close private lifetime channels without returning either raw protocol handle.
 	pub(crate) fn close_private_lifetime_channels(&mut self) {
-		if let Some(child) = self.owner.child.as_mut() {
-			drop(child.stdin.take());
-			drop(child.stdout.take());
+		self.process.stdin = Box::new(io::sink());
+	}
+
+	/// Initialize and project one exact credential only after ProcessGeneration identity binding.
+	pub(super) fn initialize_reset_card(
+		&mut self,
+		vault: &dyn CredentialVault,
+	) -> Result<(), ResetCardProcessError> {
+		if self.initialized {
+			return Err(ResetCardProcessError::ProcessUnavailable);
 		}
+		let reset_profile = ResetCardCapabilityProfile::from_schema(self.generated.contract());
+		if !reset_profile.is_supported() {
+			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
+		}
+		let mut cache = CapabilityCache::default();
+		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
+		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
+			.map_err(ResetCardProcessError::from_probe)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	/// Read one complete inventory and re-attest the immutable account before returning it.
+	pub(super) fn read_reset_card_inventory(
+		&mut self,
+	) -> Result<ResetCardInventory, ResetCardProcessError> {
+		if !self.initialized {
+			return Err(ResetCardProcessError::ProcessUnavailable);
+		}
+		let inventory = read_reset_card_inventory(&mut self.process, self.timeout)?;
+		re_attest_reset_card_account(&mut self.process, self.timeout)?;
+		Ok(inventory)
+	}
+
+	/// Prove the exact login, unauthorized refresh callback, and provider readback path once.
+	pub(super) fn prove_refresh_callback(&mut self) -> Result<(), ResetCardProcessError> {
+		if !self.initialized {
+			return Err(ResetCardProcessError::ProcessUnavailable);
+		}
+		let provider_account_id = self
+			.process
+			.binding
+			.process_binding()
+			.map_err(ResetCardProcessError::from_supervision)?
+			.credential
+			.provider
+			.account_id()
+			.to_owned();
+		self.process
+			.request_rpc::<_, CredentialProjectionResponse>(
+				ACCOUNT_LOGIN_METHOD,
+				&ChatgptAuthParams {
+					kind: "chatgptAuthTokens",
+					access_token: "decodex-invalid-callback-capability-probe",
+					chatgpt_account_id: &provider_account_id,
+					chatgpt_plan_type: None,
+				},
+				self.timeout,
+			)
+			.map_err(|error| {
+				ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::RefreshProbe)
+			})?;
+		let _ = read_reset_card_inventory(&mut self.process, self.timeout)?;
+		re_attest_reset_card_account(&mut self.process, self.timeout)
+	}
+
+	/// Consume one fenced credit, read back inventory, and re-attest the account.
+	pub(super) fn consume_reset_card(
+		&mut self,
+		credit_id: ExactResetCreditId,
+		idempotency_key: ResetCardIdempotencyKey,
+	) -> Result<ResetCardConsumeReadback, ResetCardProcessError> {
+		if !self.initialized {
+			return Err(ResetCardProcessError::ProcessUnavailable);
+		}
+		let outcome =
+			consume_reset_card(&mut self.process, self.timeout, credit_id, idempotency_key)?;
+		let inventory = read_reset_card_inventory(&mut self.process, self.timeout)?;
+		re_attest_reset_card_account(&mut self.process, self.timeout)?;
+		Ok(ResetCardConsumeReadback { outcome, inventory })
 	}
 }
 
@@ -846,6 +1054,42 @@ impl SupervisedProcess {
 		Self::spawn_inner(command, binding, Some(guard))
 	}
 
+	fn spawn_attested(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		guard: RunnerPermit,
+		capability: ExactBuildLaunchCapability,
+	) -> Result<Self, SupervisionError> {
+		verify_executable(&command)?;
+		run_before_spawn_test(&command);
+		verify_executable(&command)?;
+		run_after_verification_test(&command);
+		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
+		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
+		let reader_limit_exceeded = Arc::clone(&protocol_limit_exceeded);
+		let (owner, stdin) = spawn_attested_protocol_process(
+			&command,
+			&binding,
+			guard,
+			capability,
+			sender,
+			reader_limit_exceeded,
+		)?;
+
+		Ok(Self {
+			owner,
+			stdin,
+			stdout: receiver,
+			protocol_limit_exceeded,
+			binding,
+			#[cfg(test)]
+			command,
+			expected_account_identity: None,
+			next_request_id: 1,
+			abandoned_request_ids: BTreeSet::new(),
+		})
+	}
+
 	fn spawn_inner(
 		command: AppServerCommand,
 		binding: AccountBinding,
@@ -1029,16 +1273,73 @@ impl SupervisedProcess {
 				}
 			}
 
-			if header.method.is_some()
-				&& let Some(id) = header.id
-			{
-				self.write_json(&serde_json::json!({
-					"id": id,
-					"error": {"code": -32_601, "message": "account-bound adapter does not service requests"}
-				}))
-				.map_err(rpc_supervision)?;
+			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
+				self.service_inbound_request(id, method, &line).map_err(rpc_supervision)?;
 			}
 		}
+	}
+
+	fn service_inbound_request(
+		&mut self,
+		id: u64,
+		method: &str,
+		line: &[u8],
+	) -> Result<(), ProbeError> {
+		if method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD {
+			return self.write_json(&OutboundRpcError {
+				id,
+				error: OutboundRpcErrorBody {
+					code: -32_601,
+					message: "account-bound adapter does not service this request",
+				},
+			});
+		}
+		let request: ChatgptRefreshRequest =
+			serde_json::from_slice(line).map_err(|_| SupervisionError::InvalidProtocol)?;
+		if request.id != id
+			|| request.method != decodex_codex::schema::ACCOUNT_REFRESH_CALLBACK_METHOD
+			|| request.params.reason != "unauthorized"
+			|| request.params.previous_account_id.as_ref().is_some_and(|value| {
+				value.is_empty() || value.len() > 512 || value.chars().any(char::is_control)
+			}) {
+			return Err(SupervisionError::InvalidProtocol.into());
+		}
+		let account_id = self.binding.account_id.clone();
+		let process_binding = self.binding.process_binding()?.clone();
+		let callback = self
+			.binding
+			.refresh_callback
+			.as_ref()
+			.cloned()
+			.ok_or(SupervisionError::LaunchCapabilityUnavailable)?;
+		let projection = match callback.refresh(
+			&account_id,
+			&process_binding,
+			&request.params.reason,
+			request.params.previous_account_id.as_deref(),
+		) {
+			Ok(projection) => projection,
+			Err(_) => {
+				return self.write_json(&OutboundRpcError {
+					id,
+					error: OutboundRpcErrorBody {
+						code: -32_001,
+						message: "account credential refresh unavailable",
+					},
+				});
+			},
+		};
+		if projection.provider_account_id != process_binding.credential.provider.account_id() {
+			return Err(SupervisionError::AccountChanged.into());
+		}
+		self.write_json(&OutboundRpcSuccess {
+			id,
+			result: ChatgptRefreshResponse {
+				access_token: projection.access_token.as_str(),
+				chatgpt_account_id: projection.provider_account_id.as_str(),
+				chatgpt_plan_type: projection.plan_type.as_deref(),
+			},
+		})
 	}
 
 	pub(super) fn start_retained_title_thread(
@@ -1362,6 +1663,33 @@ fn spawn_protocol_process(
 	Ok((owner, Box::new(stdin)))
 }
 
+fn spawn_attested_protocol_process(
+	command: &AppServerCommand,
+	binding: &AccountBinding,
+	guard: RunnerPermit,
+	capability: ExactBuildLaunchCapability,
+	sender: SyncSender<InboundFrame>,
+	protocol_limit_exceeded: Arc<AtomicBool>,
+) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
+	let mut process = configured_attested_app_server_process(command, binding, capability)?;
+	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+	let mut owner = ProcessGroupOwner::new(child, Some(guard));
+	let (stdin, stdout) = match owner.child_mut() {
+		ManagedChild::Standard(child) => {
+			let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
+			let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+
+			(stdin, stdout)
+		},
+		#[cfg(target_os = "macos")]
+		ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
+	};
+	let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
+	owner.attach_pump(pump);
+
+	Ok((owner, Box::new(stdin)))
+}
+
 /// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct ReadOnlyProbeResult {
@@ -1631,6 +1959,7 @@ impl Debug for ResetCardConsumeReadback {
 pub(super) enum ResetCardProcessMethod {
 	InventoryRead,
 	Consume,
+	RefreshProbe,
 }
 
 /// Sanitized reset-card process failure.
@@ -2147,7 +2476,48 @@ enum CredentialProjectionResponseKind {
 #[derive(Deserialize)]
 pub(super) struct InboundHeader {
 	id: Option<u64>,
-	method: Option<IgnoredAny>,
+	method: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ChatgptRefreshRequest {
+	id: u64,
+	method: String,
+	params: ChatgptRefreshParams,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct ChatgptRefreshParams {
+	reason: String,
+	previous_account_id: Option<String>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcSuccess<T> {
+	id: u64,
+	result: T,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ChatgptRefreshResponse<'a> {
+	access_token: &'a str,
+	chatgpt_account_id: &'a str,
+	chatgpt_plan_type: Option<&'a str>,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcError {
+	id: u64,
+	error: OutboundRpcErrorBody,
+}
+
+#[derive(Serialize)]
+struct OutboundRpcErrorBody {
+	code: i32,
+	message: &'static str,
 }
 
 #[cfg(test)]
@@ -3412,6 +3782,43 @@ fn attested_launch_identity(
 	hash_launch_field(&mut digest, b"environment-name", PRIVATE_STDIO_STARTUP_ENV.as_bytes());
 	hash_launch_field(&mut digest, b"environment-value", PRIVATE_STDIO_STARTUP_VALUE.as_bytes());
 	hash_launch_field(&mut digest, b"account", binding.account_id.as_str().as_bytes());
+	let process_binding = binding.process_binding()?;
+	hash_launch_field(
+		&mut digest,
+		b"account-revision",
+		process_binding.account_revision.to_string().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"credential-store-schema",
+		process_binding.credential.schema_version.get().to_string().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"credential-version",
+		process_binding.credential.version.get().to_string().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"credential-fingerprint",
+		process_binding.credential.fingerprint.as_str().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"credential-writer-operation",
+		process_binding.credential.writer_operation_id.as_str().as_bytes(),
+	);
+	hash_launch_field(&mut digest, b"provider-kind", b"chatgpt");
+	hash_launch_field(
+		&mut digest,
+		b"provider-account",
+		process_binding.credential.provider.account_id().as_bytes(),
+	);
+	hash_launch_field(
+		&mut digest,
+		b"refresh-callback-profile",
+		process_binding.refresh_callback_profile_sha256.as_bytes(),
+	);
 	hash_launch_field(&mut digest, b"capability", capability.identity().as_bytes());
 
 	ProcessRunnerIdentity::new(format!("sha256:{}", hex_digest(&digest.finalize())))
@@ -3802,12 +4209,28 @@ fn attest_executable(
 	timeout: Duration,
 	guard: Option<RunnerPermit>,
 ) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
+	attest_executable_for_home(
+		command,
+		&binding.expected_codex_home,
+		expected_digests,
+		timeout,
+		guard,
+	)
+}
+
+fn attest_executable_for_home(
+	command: &AppServerCommand,
+	expected_codex_home: &Path,
+	expected_digests: Option<&BTreeMap<String, String>>,
+	timeout: Duration,
+	guard: Option<RunnerPermit>,
+) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
 	let deadline = Instant::now() + timeout;
 	let version_output = NamedTempFile::new().map_err(|_| SupervisionError::PreflightFailed)?;
 	let version_writer = version_output.reopen().map_err(|_| SupervisionError::PreflightFailed)?;
 	let (version_status, guard) = run_preflight_command(
 		command,
-		binding,
+		expected_codex_home,
 		&command.version_args,
 		Stdio::from(version_writer),
 		preflight_remaining(deadline)?,
@@ -3837,7 +4260,7 @@ fn attest_executable(
 
 	let (status, guard) = run_preflight_command(
 		command,
-		binding,
+		expected_codex_home,
 		&schema_args,
 		Stdio::null(),
 		preflight_remaining(deadline)?,
@@ -3876,7 +4299,7 @@ fn preflight_remaining(deadline: Instant) -> Result<Duration, SupervisionError> 
 
 fn run_preflight_command(
 	command: &AppServerCommand,
-	binding: &AccountBinding,
+	expected_codex_home: &Path,
 	args: &[OsString],
 	stdout: Stdio,
 	timeout: Duration,
@@ -3898,7 +4321,7 @@ fn run_preflight_command(
 		.stdout(stdout)
 		.stderr(Stdio::null());
 
-	configure_child_environment(&mut process, binding)?;
+	configure_home_environment(&mut process, expected_codex_home)?;
 	configure_process_session(&mut process, Some(max_file_bytes));
 
 	let started = Instant::now();
@@ -3971,7 +4394,14 @@ fn configure_child_environment(
 	command: &mut Command,
 	binding: &AccountBinding,
 ) -> Result<(), SupervisionError> {
-	let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+	configure_home_environment(command, &binding.expected_codex_home)
+}
+
+fn configure_home_environment(
+	command: &mut Command,
+	expected_codex_home: &Path,
+) -> Result<(), SupervisionError> {
+	let home = expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
 
 	command.env_clear().env("HOME", home).env("PATH", CHILD_PATH);
 
@@ -4048,7 +4478,7 @@ fn terminate_process_group(
 }
 
 fn observe_owned_child_exit(
-	child: &mut Child,
+	child: &mut ManagedChild,
 	may_signal_process_group: &mut bool,
 ) -> Result<bool, SupervisionError> {
 	match child.try_wait() {

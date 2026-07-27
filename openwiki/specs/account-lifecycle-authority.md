@@ -237,6 +237,46 @@ No live `:8192` response is migration authority. An additional source is rejecte
 its role and fingerprint are part of the same manifest. The canonical manifest digest
 covers the sorted source entries and all normalized output below.
 
+### Source-path security boundary
+
+The one-shot migration source must remain below the real login home from
+`pwd.getpwuid(euid).pw_dir`, where `euid` is the process effective UID. The canonical
+gate must not read or mutate live default sources under `~/.codex/decodex`. It supplies
+explicit operator-provided source paths in one run-unique, gate-owned fixture subtree
+below that real login home. The fixture subtree has exact mode 0700 and every source
+path in it must pass the same predicate below. This fixture location selects gate data;
+it does not replace the login-home authority. Ambient `HOME`, a synthetic passwd
+record, a different login-home or root authority, and a weaker fallback predicate are
+not authority.
+
+Each present source file and each generated credential file must be opened without
+following a symbolic link. It must be a regular file that is owned by the effective
+UID, has one link, and has exact mode 0600. Each direct source or secret-bearing parent
+and the generated credential directory must be reached without following a symbolic
+link. It must be a directory that is owned by the effective UID and has exact mode
+0700.
+
+Every ancestor above that direct private boundary must be a directory reached without
+symbolic-link traversal. An ancestor can be owned only by the effective UID or by root.
+In both cases, group and other write bits must be clear (`mode & 022 == 0`). Reject an
+ancestor that has another owner. Read or execute bits for group or other do not make an
+ancestor unsafe. Thus, an effective-UID-owned ancestor with mode 0750 or 0755 can pass,
+while the direct private boundary and files remain 0700 and 0600.
+
+The installer and each Rust migration child must enforce the same predicate. They must
+not change the mode of the real login home to make migration pass. They must not create
+a weaker compatibility path.
+
+This is a POSIX path predicate. Owner, type, link, mode, and no-follow checks do not
+prove that arbitrary ACL entries are absent. ACL semantics remain an explicit residual
+and non-regression boundary. This amendment does not authorize an ACL change, and an
+acceptance record must not claim that modes 0700 and 0600 prove every ACL property.
+
+This path-policy amendment does not change `ExistingHydrate`, `AbsentInitialize`,
+operation-first replay, the exact revision sequences, continuous installer lock
+lineage, child capability limits, receipt ordering, or the no-new-ledger and
+no-new-public-API decisions.
+
 Each normalized account entry contains the source ordinal, target Account UUID,
 provider kind and identity, label, enabled value, target credential version, and target
 provider binding. The routing entry contains exactly one mode (`fixed` or `balanced`),
@@ -250,6 +290,197 @@ derivation, then deterministic `Account NN`. An absent destination starts at cre
 version 1. A verified exact existing destination retains its positive version; any other
 existing destination is a conflict.
 
+### Migration transition
+
+The normalized manifest defines the final desired account administration. It does not
+define the current-state precondition for an existing-row credential import.
+
+The normalized manifest freezes each account's Account UUID, operation ID, provider
+and target binding, and desired administration. When migration requires a credential
+mutation, the finite account-operation descriptor is persisted atomically at
+preparation and becomes the transition identity. It has one of these private typed
+forms:
+
+| Transition | Required behavior |
+| --- | --- |
+| `AbsentInitialize { expected_revision: None }` | PostgreSQL has no non-tombstoned Account UUID and the HostCredentialStore has no item. The existing finite import operation uses the manifest label and enabled value as initial administration. The exact target starts at credential version 1. |
+| `ExistingHydrate { revision, display_label, enabled }` | PostgreSQL already has the Account UUID. For a credential-empty account, the complete current tuple is the existing-row credential-import precondition. After the exact credential binding is durable in the HostCredentialStore and PostgreSQL, the executor applies the manifest label and enabled value through the existing exact administration operation. An already exact positive target is verified without a credential mutation; another positive binding is a conflict. |
+
+These names describe a private migration plan. They are not public protocol types,
+PostgreSQL operation kinds, durable migration states, or a fourth authority owner.
+`account_migration.rs` owns transition selection, final administration, routing,
+receipt sequencing, and destination verification. `account_service.rs` maps the plan
+to the existing finite credential operation.
+
+After the manifest is frozen and before the first destination or credential mutation,
+the Account Service uses one narrow cutover entry point. On the same single-use
+PostgreSQL migration connection, it creates a session-local typed handoff that contains
+exactly the manifest SHA-256 digest, canonical manifest JSON, and account count. V27
+creates the receipt authority before its first account mutation, consumes the exact
+handoff, and commits the prepared singleton receipt and all V27 effects in one
+transaction. A populated V26 database without the exact handoff fails before mutation.
+An empty or fresh migration can omit the handoff; if one is present, V27 consumes it
+exactly. The handoff is not durable authority and ends with the connection. After V27,
+`prepare_migration_intent` is exact no-insert readback. An absent receipt remains
+absent and fails closed.
+
+The singleton manifest intent freezes the exact migration target: Account UUID,
+provider binding, positive credential version, writer operation ID, credential
+fingerprint, and the exact PostgreSQL/HostCredentialStore binding. A verified existing
+positive credential binding can continue only when it equals this target. Same-digest
+resume or replay accepts only this target. A different provider, version, writer,
+fingerprint, store binding, account tuple, or manifest digest fails closed. Migration
+never overwrites or downgrades another valid positive credential binding.
+
+#### Cutover lock capability
+
+The macOS installer is the one physical cutover coordinator and the normal operator
+entry point. Before it spawns a migration child or changes any destination,
+credential, configuration, or retirement state, it opens and verifies
+`server/decodex.lock` and acquires the same exclusive nonblocking `flock` as the local
+listener. It verifies the same no-follow server-directory and lock-path type,
+configured owner, mode, link count, device, and inode authority.
+
+The installer owns one RAII guard for its original descriptor and locked open file
+description. It does not unlock, close, replace, or unlink that authority until the
+final launch decision or failure cleanup. It retains the guard through migration-child
+completion, its own final-configuration swap, exact staging and active-legacy
+retirement, finalizer or completed-verifier children, and completed receipt. This uses
+the existing `decodex.lock`; migration must not create another lock name or a separate
+migration lock. The installer releases its guard last on success or after exact
+failure cleanup.
+
+For each `decodexd` migration, finalizer, or completed-verifier spawn, the installer
+passes one `dup`-derived borrowed descriptor through an explicit installer-only
+inherited-FD capability and retains its original guard. It makes only the borrowed
+descriptor inheritable for that spawn and closes its parent-side duplicate after the
+spawn. The child validates only facts that its descriptor and filesystem view can
+establish:
+
+- the inherited descriptor is open and refers to a regular file with the exact device,
+  inode, configured owner, mode, and link count;
+- the current server-directory path passes the required no-follow directory identity
+  and metadata checks;
+- the current `decodex.lock` path is reached without following links and is a regular
+  file whose identity and metadata match the inherited descriptor; and
+- it is immediately marked close-on-exec for all child descendants.
+
+The child does not call `flock`, open a contention probe, or claim that it can prove
+the installer identity, the current lock state, or whether an otherwise identical
+descriptor came from `dup` instead of an independent open. It never unlocks, unlinks,
+or replaces the lock. It closes only its borrowed descriptor on exit and cannot close
+the installer's descriptor.
+
+A missing FD, invalid descriptor, wrong file type or metadata, pathname mismatch, or
+identity drift returns a typed operator refusal before PostgreSQL, Keychain,
+configuration, or retirement effects. Direct ordinary invocation without the explicit
+borrowed-FD shape also refuses before effects. Migration, finalization, and completed
+verification are hidden installer commands, not supported standalone authority
+surfaces.
+
+Physical continuity proof belongs to the installer coordinator's source ownership and
+the external canonical gate, not to child self-attestation. Within this cooperative
+same-UID boundary, installer construction establishes that its borrowed descriptors
+refer to the retained open file description. An intentional same-UID caller can
+imitate the capability shape; this is outside the confinement claim. The capability
+is not a public protocol, durable token, generic lock framework, cryptographic parent
+identity, or hostile same-UID defense.
+
+The flock remains held while any descriptor for the locked open file description
+survives. Child death leaves the installer's original guard held. Abrupt installer
+death leaves the flock held while a child duplicate survives. The flock releases only
+after the final such descriptor closes. Only then can another installer acquire the
+verified lock for exact same-digest resume.
+
+#### Operation-first replay
+
+After singleton manifest intent and target validation, migration reads the exact
+manifest operation ID before it classifies current account or store state. If that
+operation exists, its immutable account, `Import` kind, provider binding, target
+binding, and operation identity must equal the manifest-owned facts. Its persisted
+expected revision, requested label, and requested enabled value must form one valid
+`AbsentInitialize` or `ExistingHydrate` descriptor. That descriptor remains the
+transition identity. Migration then resumes or reconciles the operation from its
+persisted phase. A descriptor or target difference fails closed.
+
+State-based `AbsentInitialize` or `ExistingHydrate` classification occurs only when
+the manifest operation ID does not exist. Preparation atomically persists the selected
+descriptor and applies the existing PostgreSQL equality and revision checks. Another
+unsettled operation for the account is a conflict. An `AbsentInitialize` operation
+that already created its PostgreSQL row remains
+`AbsentInitialize { expected_revision: None }` after restart. The new row does not
+reclassify it as `ExistingHydrate`.
+
+Migration-aware recovery owns manifest-bound `Import` phases after lock, intent, and
+target validation. Generic startup reconciliation must defer such an operation. It
+must not cancel a manifest-bound import in `prepared` or `recovery_required` before
+migration can create or verify the exact Keychain item. This exception does not apply
+to another account operation or to normal runtime recovery.
+
+The allowed account-revision sequence is:
+
+| Transition | Exact revision sequence |
+| --- | --- |
+| `AbsentInitialize` | Before preparation, no row exists. Preparation creates revision 1. `prepared` and `store_applied` remain at 1. Credential commit produces revision 2. Desired administration is an exact no-change at 2 because initialization persisted the same manifest label and enabled value. A different persisted initialization is an identity conflict, not an update to revision 3. |
+| Credential-empty `ExistingHydrate` | The account starts at revision `r`. `prepared` and `store_applied` remain at `r`. Credential commit produces `r+1`. Exact administration remains at `r+1` when the manifest label and enabled value already match, or produces `r+2` when either desired value changes. |
+
+In particular, a populated V26 account that V27 initializes with `enabled=false`
+hydrates with current `false` and then applies a normal manifest's desired `true`. It
+must not pass desired `true` as the existing-row import precondition. Routing has its
+own revision and changes only after all final account projections. Same-digest replay
+adds no account or routing revision.
+
+A matching `committed` operation resumes at final administration and verification. A
+matching `prepared` or `store_applied` operation resumes from that exact phase. A
+matching manifest-bound `recovery_required` Import remains owned by migration-aware
+recovery after the same manifest, operation, transition descriptor, provider, target
+binding, and credential source are validated under the installer and account locks.
+Migration first reads the exact target from the HostCredentialStore. An exact target
+continues the existing operation. `NotFound` permits one create-if-absent attempt with
+the same source bundle and target binding. Create success or `AlreadyExists` followed
+by exact target readback moves the existing operation through `store_applied` to
+`committed`. Unavailable, mismatched, corrupt, or ambiguous store state remains
+`recovery_required` and returns typed not-ready. Cancellation of a manifest-bound
+Import is forbidden in both `prepared` and `recovery_required`. An already `cancelled`
+or identity-conflicting operation also refuses. Migration does not invent another
+operation ID, reset the phase, reclassify the transition, or broaden normal runtime
+recovery.
+
+The ordered transition is:
+
+1. The installer acquires and verifies the existing namespace lock capability.
+2. The migration child validates its borrowed capability.
+3. V27 consumes the session-local exact handoff and commits or replays the singleton
+   manifest intent with its account-cutover effects.
+4. Read and resume the exact manifest operation, or classify state only when it does
+   not exist.
+5. Complete or reconcile the existing finite credential operation.
+6. Apply manifest label and enabled state through exact administration.
+7. Replace routing only after every final account projection is verified.
+8. Verify the complete PostgreSQL and HostCredentialStore destination.
+9. The installer swaps final configuration and retires staging secrets and active
+   legacy authority while it retains the lock.
+10. The finalizer validates its borrowed capability and commits the completed
+    destination and retirement receipt.
+11. The installer decides whether to launch, then releases its lock last.
+
+Restart recovery preserves this order across the manifest intent, operation
+`prepared` before Keychain create, Keychain create, `store_applied`, PostgreSQL
+credential commit, administration, routing, retirement, and final-receipt
+checkpoints. Exact same-digest replay must not add a credential write,
+administration revision, routing revision, or second receipt.
+
+Completed-state verification compares current state with the completed destination
+receipt. It checks label, enabled state, routing mode and complete order, provider
+binding, credential version, writer operation ID, fingerprint, and exact
+HostCredentialStore/PostgreSQL binding. Drift fails closed before daemon launch.
+
+Migration must not enable an existing account before exact credential binding, relax
+existing-row equality or revision checks, change the V27 fail-closed
+`enabled=false` backfill, add a migration ledger or migration-specific durable
+operation kind, add fallback authority, or expand into SwiftUI, GPUI, Quick Task, or
+remote behavior.
+
 The import policies are explicit and fixed:
 
 | Data | Policy |
@@ -260,9 +491,9 @@ The import policies are explicit and fixed:
 | usage and profile projection | Start empty and obtain fresh provider observations later. |
 | account, Codex thread, and execution history | Do not import. |
 
-The Account Service commits one idempotent migration intent for the manifest digest,
-creates or verifies each store item, verifies every PostgreSQL projection, and commits
-one credential-negative receipt. The same digest resumes or replays. Source, mapping,
+The Account Service supplies one session-local manifest handoff to V27, creates or
+verifies each store item, verifies every PostgreSQL projection, and completes one
+credential-negative receipt. The same digest resumes or replays. Source, mapping,
 destination, provider, or policy drift fails closed. Source bytes remain untouched as
 cold evidence.
 
