@@ -32,14 +32,22 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 	bundle: &Path,
 	out: &Path,
 ) -> Result<()> {
+	let bundle_payload = crate::load_json(bundle)?;
+	crate::validate_expected_schema(&bundle_payload, crate::BUNDLE_SCHEMA, "Bundle")?;
+	let temp_parent = root.join("target/radar-analysis");
+
+	std::fs::create_dir_all(&temp_parent)?;
+	let temp_dir = tempfile::tempdir_in(temp_parent)?;
+	let copied_bundle = temp_dir.path().join("bundle.json");
+
+	crate::write_json(&copied_bundle, &bundle_payload)?;
+
 	let mut command = helper_command(root, request, RUN_CODEX_ANALYSIS_SCRIPT);
 
 	command.arg("--allow-ai-analysis-boundary");
 	command.args([
 		"--bundle",
-		&crate::path_arg(root, bundle),
-		"--out",
-		&crate::path_arg(root, out),
+		&crate::path_arg(root, &copied_bundle),
 		"--repo-root",
 		&root.display().to_string(),
 		"--codex-bin",
@@ -50,7 +58,13 @@ pub(in crate::release_delta::backfill) fn run_codex_analysis(
 		command.args(["--model", model]);
 	}
 
-	run_helper(command, RUN_CODEX_ANALYSIS_SCRIPT)
+	let output = run_helper(command, RUN_CODEX_ANALYSIS_SCRIPT)?;
+	let payload: serde_json::Value = serde_json::from_slice(&output).map_err(|error| {
+		eyre::eyre!("{RUN_CODEX_ANALYSIS_SCRIPT} returned invalid JSON: {error}")
+	})?;
+
+	crate::validate_analysis_draft(&payload)?;
+	crate::write_json(out, &payload)
 }
 
 pub(in crate::release_delta::backfill) fn run_refresh_release_delta(
@@ -95,11 +109,11 @@ fn helper_command(
 	command
 }
 
-fn run_helper(mut command: Command, script: &str) -> Result<()> {
+fn run_helper(mut command: Command, script: &str) -> Result<Vec<u8>> {
 	let output = command.output()?;
 
 	if output.status.success() {
-		return Ok(());
+		return Ok(output.stdout);
 	}
 
 	let stderr = String::from_utf8_lossy(&output.stderr).trim().to_owned();

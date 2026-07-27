@@ -16,7 +16,7 @@ pub(super) fn recent_commits(
 	api: &GitHubApi,
 	repo: &str,
 	search_limit: usize,
-) -> Result<(String, Vec<RecentCommit>)> {
+) -> Result<(String, String, Vec<RecentCommit>)> {
 	let default_branch = crate::repo_default_branch(api, repo)?;
 	let url = format!(
 		"https://api.github.com/repos/{repo}/commits?sha={}&per_page={search_limit}",
@@ -27,8 +27,12 @@ pub(super) fn recent_commits(
 		eyre::bail!("Expected commits list payload from GitHub API");
 	};
 	let commits = items.iter().filter_map(recent_commit_from_value).collect::<Vec<_>>();
+	let upstream_head = commits
+		.first()
+		.map(|commit| commit.sha.clone())
+		.ok_or_else(|| eyre::eyre!("GitHub returned no valid upstream commits"))?;
 
-	Ok((default_branch, commits))
+	Ok((default_branch, upstream_head, commits))
 }
 
 pub(super) fn maybe_promote_commit_to_pr(
@@ -37,10 +41,7 @@ pub(super) fn maybe_promote_commit_to_pr(
 	commit_sha: &str,
 ) -> Result<Option<u64>> {
 	let url = format!("https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls");
-	let pulls = match api.get_paginated(&url) {
-		Ok(pulls) => pulls,
-		Err(_) => return Ok(None),
-	};
+	let pulls = api.get_paginated(&url)?;
 
 	Ok(pulls.first().and_then(|first| first.get("number")).and_then(Value::as_u64))
 }

@@ -1,21 +1,20 @@
-use crate::{Map, Path, RadarRefreshQueueReport, Value};
+use crate::{Map, RadarRefreshQueueReport, RefreshWriteReport, Value};
 
 pub(crate) fn queue_report(
 	queue: &Value,
-	changed: bool,
+	refresh: RefreshWriteReport,
 	ledger_enabled: bool,
-	root: &Path,
-	queue_out: &Path,
 ) -> RadarRefreshQueueReport {
 	let counts = queue.get("counts").and_then(Value::as_object);
 
 	RadarRefreshQueueReport {
-		changed,
+		material_changed: refresh.material_changed,
+		written: refresh.written,
+		refreshed_at: refresh.refreshed_at,
 		recent_commits_scanned: count_field(counts, "recent_commits_scanned"),
 		published_subjects_seen: count_field(counts, "published_subjects_seen"),
 		subjects_queued: count_field(counts, "subjects_queued"),
 		ledger_enabled,
-		queue_out: crate::absolute_repo_path(root, queue_out),
 	}
 }
 

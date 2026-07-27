@@ -20,34 +20,20 @@ fn accepts_valid_upstream_review_upgrade_action_and_rejects_stale_action() {
 }
 
 #[test]
-fn path_validation_accepts_historical_upstream_review_linear_followup_only_before_cutoff() {
-	let mut review = fixtures::valid_upstream_review();
-
-	review["reviewed_at"] = serde_json::json!("2026-06-11T20:07:07Z");
-	review["next_actions"][0]["type"] = serde_json::json!("linear_followup");
-
-	assertions::assert_errors(&review, ["next_actions[0].type must be one of"]);
-	assertions::assert_path_errors(
-		".agent/automations/radar/cache/github/reviews/openai-codex-pr-25018.review.json",
-		&review,
-		[],
-	);
-
-	review["reviewed_at"] = serde_json::json!("2026-06-12T00:00:00Z");
-
-	assertions::assert_path_errors(
-		".agent/automations/radar/cache/github/reviews/openai-codex-pr-25018.review.json",
-		&review,
-		["next_actions[0].type must be one of"],
-	);
-}
-
-#[test]
 fn accepts_valid_upstream_impact_and_rejects_bad_angle() {
 	let mut impact = fixtures::valid_upstream_impact();
 
 	assertions::assert_errors(&impact, []);
 
+	impact.as_object_mut().expect("impact should be an object").remove("reviewed_at");
+
+	assertions::assert_errors(&impact, ["reviewed_at must be a non-empty string"]);
+
+	impact["reviewed_at"] = serde_json::json!("not-a-timestamp");
+
+	assertions::assert_errors(&impact, ["reviewed_at must be an RFC3339 timestamp"]);
+
+	impact["reviewed_at"] = serde_json::json!("2026-06-01T00:00:00Z");
 	impact["publisher_angle"] = serde_json::json!("viral_thread");
 
 	assertions::assert_errors(&impact, ["publisher_angle must be one of"]);
