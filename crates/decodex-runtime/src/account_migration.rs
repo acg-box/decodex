@@ -10,8 +10,10 @@ use std::{
 	io::{Read as _, Take, Write as _},
 	os::{
 		fd::RawFd,
-		unix::ffi::OsStrExt as _,
-		unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
+		unix::{
+			ffi::OsStrExt as _,
+			fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
+		},
 	},
 	path::{Component, Path, PathBuf},
 	sync::Arc,
@@ -509,8 +511,7 @@ pub async fn exercise_account_migration_admission_for_gate(
 	const BUILD_IDENTITY: &str = "codex-cli 0.145.0-alpha.18";
 	const EXECUTABLE_SHA256: &str =
 		"f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9";
-	const SCHEMA_SHA256: &str =
-		"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+	const SCHEMA_SHA256: &str = "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 	const CALLBACK_SHA256: &str =
 		"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 	const OBSERVED_AT_MICROS: i64 = 2_000_000_000_000_000;
@@ -520,8 +521,8 @@ pub async fn exercise_account_migration_admission_for_gate(
 		return Err(OfflineAccountMigrationError::InvalidManifest);
 	}
 	let config_bytes = read_private_file(config_path, MAX_MANIFEST_BYTES)?;
-	let config =
-		DecodexConfig::parse(&config_bytes).map_err(|_| OfflineAccountMigrationError::InvalidConfig)?;
+	let config = DecodexConfig::parse(&config_bytes)
+		.map_err(|_| OfflineAccountMigrationError::InvalidConfig)?;
 	validate_configured_local_authority(&config)?;
 	let migration_password = credential(config.postgres().migration())?;
 	let runtime_password = credential(config.postgres().runtime())?;
@@ -614,9 +615,7 @@ pub async fn exercise_account_migration_admission_for_gate(
 	let idempotency_key = format!("xy1422-{boundary}-{}", account_id.as_str());
 	let reset_card_admission = match (
 		boundary,
-		reset_card
-			.prepare(&idempotency_key, &account_id, expected_revision, descriptor)
-			.await,
+		reset_card.prepare(&idempotency_key, &account_id, expected_revision, descriptor).await,
 	) {
 		("unsettled", Err(ResetCardServiceError::AccountStateRejected)) => "refused",
 		("completed", Ok(_)) => "admitted",
@@ -647,8 +646,8 @@ pub async fn exercise_account_migration_recovery_for_gate(
 	let run = load_account_migration_gate_run(run_descriptor)?;
 	let config_path = run.paths.root().as_path().join(".account-migration-runtime.toml");
 	let config_bytes = read_private_file(&config_path, MAX_MANIFEST_BYTES)?;
-	let config =
-		DecodexConfig::parse(&config_bytes).map_err(|_| OfflineAccountMigrationError::InvalidConfig)?;
+	let config = DecodexConfig::parse(&config_bytes)
+		.map_err(|_| OfflineAccountMigrationError::InvalidConfig)?;
 	validate_configured_local_authority(&config)?;
 	let manifest_path = run.paths.root().as_path().join("account-migration-manifest.json");
 	let manifest = parse_manifest(&read_private_file(&manifest_path, MAX_MANIFEST_BYTES)?)?;
@@ -671,10 +670,7 @@ pub async fn exercise_account_migration_recovery_for_gate(
 			return Err(OfflineAccountMigrationError::InvalidManifest);
 		}
 	}
-	let account = manifest
-		.accounts
-		.first()
-		.ok_or(OfflineAccountMigrationError::InvalidManifest)?;
+	let account = manifest.accounts.first().ok_or(OfflineAccountMigrationError::InvalidManifest)?;
 	let account_id = account.account_id.clone();
 	let operation_id = account.operation_id.clone();
 	let migration_password = credential(config.postgres().migration())?;
@@ -688,8 +684,7 @@ pub async fn exercise_account_migration_recovery_for_gate(
 	.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?;
 	let credentials: Arc<dyn HostCredentialStore> =
 		Arc::new(MacosKeychainCredentialStore::new(&run.paths));
-	let service =
-		AccountService::new(store.clone(), credentials, Arc::new(OfflineRefresher));
+	let service = AccountService::new(store.clone(), credentials, Arc::new(OfflineRefresher));
 	let before_operation = store
 		.read_account_operation(&operation_id)
 		.await
@@ -724,14 +719,12 @@ pub async fn exercise_account_migration_recovery_for_gate(
 			.read_account_operation(&operation_id)
 			.await
 			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?
-			.as_ref()
-			!= Some(&before_operation)
+			.as_ref() != Some(&before_operation)
 		|| service
 			.inspect(&account_id)
 			.await
 			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?
-			.account
-			!= before_account
+			.account != before_account
 	{
 		return Err(OfflineAccountMigrationError::DestinationMismatch);
 	}
@@ -743,11 +736,8 @@ pub async fn exercise_account_migration_recovery_for_gate(
 	};
 	let request =
 		serde_json::to_vec(&payload).map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
-	let identity = CommandIdentity::new(
-		format!("xy1422-{}-{phase}-cancel", run.run_id),
-		&request,
-	)
-	.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
+	let identity = CommandIdentity::new(format!("xy1422-{}-{phase}-cancel", run.run_id), &request)
+		.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
 	let lease = match store
 		.reserve_account_command(
 			&identity,
@@ -851,8 +841,10 @@ pub async fn hold_account_migration_live_daemon_for_gate(
 	let authority =
 		LocalTransportAuthority::new(paths, LocalTrustPolicy::SameUid, Some(effective_uid))
 			.map_err(|_| OfflineAccountMigrationError::InstallerLockUnavailable)?;
-	let listener =
-		authority.bind().await.map_err(|_| OfflineAccountMigrationError::InstallerLockUnavailable)?;
+	let listener = authority
+		.bind()
+		.await
+		.map_err(|_| OfflineAccountMigrationError::InstallerLockUnavailable)?;
 	barrier
 		.write_all(b"live_daemon_ready\n")
 		.map_err(|_| OfflineAccountMigrationError::InstallerLockUnavailable)?;
@@ -2273,7 +2265,7 @@ pub(crate) fn verify_gate_credential_source(
 pub(crate) fn read_account_migration_gate_file(
 	path: &Path,
 	max_bytes: u64,
-) -> Result<Vec<u8>, OfflineAccountMigrationError> {
+) -> Result<Zeroizing<Vec<u8>>, OfflineAccountMigrationError> {
 	verify_migration_source_parents(path)?;
 	read_private_file(path, max_bytes)
 }
@@ -2299,10 +2291,9 @@ pub(crate) fn load_account_migration_gate_run(
 		return Err(OfflineAccountMigrationError::InvalidPath);
 	}
 	let bytes = read_account_migration_gate_file(path, 4096)?;
-	let descriptor: AccountMigrationGateRunDescriptor =
-		serde_json::from_slice(&bytes).map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
-	if descriptor.schema != ACCOUNT_MIGRATION_GATE_RUN_SCHEMA
-		|| descriptor.run_id != derived_run_id
+	let descriptor: AccountMigrationGateRunDescriptor = serde_json::from_slice(&bytes)
+		.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
+	if descriptor.schema != ACCOUNT_MIGRATION_GATE_RUN_SCHEMA || descriptor.run_id != derived_run_id
 	{
 		return Err(OfflineAccountMigrationError::InvalidManifest);
 	}
@@ -2314,8 +2305,8 @@ pub(crate) fn load_account_migration_gate_run(
 	// SAFETY: `geteuid` has no arguments and cannot fail.
 	let effective_uid = unsafe { libc::geteuid() };
 	for directory in [&fixture_root, &root] {
-		let metadata =
-			fs::symlink_metadata(directory).map_err(|_| OfflineAccountMigrationError::InvalidPath)?;
+		let metadata = fs::symlink_metadata(directory)
+			.map_err(|_| OfflineAccountMigrationError::InvalidPath)?;
 		if metadata.file_type().is_symlink()
 			|| !metadata.is_dir()
 			|| metadata.uid() != effective_uid
@@ -2324,9 +2315,8 @@ pub(crate) fn load_account_migration_gate_run(
 			return Err(OfflineAccountMigrationError::InvalidPath);
 		}
 	}
-	let paths = DecodexRoot::new(root)
-		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?
-		.paths();
+	let paths =
+		DecodexRoot::new(root).map_err(|_| OfflineAccountMigrationError::InvalidPath)?.paths();
 	Ok(AccountMigrationGateRun { run_id: descriptor.run_id, fixture_root, paths })
 }
 
@@ -2366,8 +2356,7 @@ pub(crate) fn account_migration_gate_uuid(run_id: &str, slot: &str, purpose: &st
 }
 
 #[cfg(feature = "account-migration-transition-gate")]
-pub(crate) fn account_migration_gate_login_home(
-) -> Result<PathBuf, OfflineAccountMigrationError> {
+pub(crate) fn account_migration_gate_login_home() -> Result<PathBuf, OfflineAccountMigrationError> {
 	// SAFETY: `geteuid` has no arguments and cannot fail.
 	real_login_home(unsafe { libc::geteuid() })
 }
@@ -2469,9 +2458,7 @@ fn verify_private_ancestor_chain(
 	Ok(())
 }
 
-fn verify_path_below_real_login_home(
-	path: &Path,
-) -> Result<u32, OfflineAccountMigrationError> {
+fn verify_path_below_real_login_home(path: &Path) -> Result<u32, OfflineAccountMigrationError> {
 	if !path.is_absolute()
 		|| path
 			.components()
@@ -2482,9 +2469,8 @@ fn verify_path_below_real_login_home(
 	// SAFETY: `geteuid` has no arguments and cannot fail.
 	let effective_uid = unsafe { libc::geteuid() };
 	let home = real_login_home(effective_uid)?;
-	let relative = path
-		.strip_prefix(&home)
-		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?;
+	let relative =
+		path.strip_prefix(&home).map_err(|_| OfflineAccountMigrationError::InvalidPath)?;
 	if relative.as_os_str().is_empty() {
 		return Err(OfflineAccountMigrationError::InvalidPath);
 	}
