@@ -3,8 +3,9 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use crate::{
-	DEFAULT_SOCIAL_LOCKS_DIR, DEFAULT_SOCIAL_POSTS_DIR, DEFAULT_SOCIAL_RESERVATIONS_DIR,
-	SocialReservePublishRequest, prelude::Result,
+	DEFAULT_SOCIAL_CANDIDATES_DIR, DEFAULT_SOCIAL_LOCKS_DIR, DEFAULT_SOCIAL_POSTS_DIR,
+	DEFAULT_SOCIAL_RESERVATIONS_DIR, SocialReservePublishRequest, SocialTerminalizeSkipRequest,
+	prelude::Result,
 };
 
 #[derive(Debug, Args)]
@@ -19,8 +20,50 @@ impl SocialCommand {
 			SocialSubcommand::RenewBrowserLease(args) => args.run(),
 			SocialSubcommand::ReleaseBrowserLease(args) => args.release(),
 			SocialSubcommand::ReservePublish(args) => args.run(),
+			SocialSubcommand::TerminalizeSkip(args) => args.run(),
 			SocialSubcommand::VerifyBrowserLease(args) => args.verify(),
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct SocialTerminalizeSkipCommand {
+	#[arg(long = "candidate", value_name = "FILE")]
+	candidate_path: PathBuf,
+	#[arg(long)]
+	day: String,
+	#[arg(long, default_value = "Asia/Shanghai")]
+	timezone: String,
+	#[arg(long, value_name = "DIR", default_value = DEFAULT_SOCIAL_CANDIDATES_DIR)]
+	candidates_dir: PathBuf,
+	#[arg(long, value_name = "DIR", default_value = DEFAULT_SOCIAL_RESERVATIONS_DIR)]
+	reservations_dir: PathBuf,
+	#[arg(long, value_name = "DIR", default_value = DEFAULT_SOCIAL_POSTS_DIR)]
+	posts_dir: PathBuf,
+	#[arg(long, value_name = "DIR", default_value = DEFAULT_SOCIAL_LOCKS_DIR)]
+	locks_dir: PathBuf,
+	#[arg(long, default_value_t = 8)]
+	daily_limit: usize,
+	#[arg(long)]
+	dry_run: bool,
+}
+impl SocialTerminalizeSkipCommand {
+	fn run(&self) -> Result<()> {
+		let report = crate::terminalize_social_skip(&SocialTerminalizeSkipRequest {
+			candidate_path: self.candidate_path.clone(),
+			candidates_dir: self.candidates_dir.clone(),
+			reservations_dir: self.reservations_dir.clone(),
+			posts_dir: self.posts_dir.clone(),
+			locks_dir: self.locks_dir.clone(),
+			day: self.day.clone(),
+			timezone: self.timezone.clone(),
+			daily_limit: self.daily_limit,
+			dry_run: self.dry_run,
+		})?;
+
+		println!("{}", serde_json::to_string_pretty(&report)?);
+
+		Ok(())
 	}
 }
 
@@ -167,6 +210,8 @@ enum SocialSubcommand {
 	ReleaseBrowserLease(SocialBrowserLeaseTokenCommand),
 	/// Atomically reserve one social publish slot before browser compose.
 	ReservePublish(Box<SocialReservePublishCommand>),
+	/// Atomically terminalize one quality-skip candidate without opening X.
+	TerminalizeSkip(SocialTerminalizeSkipCommand),
 	/// Verify the exact X browser lease immediately before a public write.
 	VerifyBrowserLease(SocialBrowserLeaseTokenCommand),
 }

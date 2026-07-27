@@ -6996,8 +6996,10 @@ def read_private_authority_receipt(path: Path) -> tuple[bytes, str]:
 		or any(component in {"", ".", ".."} for component in parent_components)
 	):
 		raise TestFailure("Phase A receipt location is invalid")
-	directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(
-		os, "O_CLOEXEC", 0
+	directory_flags = (
+		getattr(os, "O_SEARCH", os.O_RDONLY)
+		| getattr(os, "O_DIRECTORY", 0)
+		| getattr(os, "O_CLOEXEC", 0)
 	)
 	no_follow = getattr(os, "O_NOFOLLOW", 0)
 	parent_descriptor: int | None = None

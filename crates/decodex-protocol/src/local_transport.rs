@@ -367,7 +367,7 @@ mod platform {
 
 	use libc::{
 		AT_FDCWD, AT_SYMLINK_NOFOLLOW, LOCK_EX, LOCK_NB, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL,
-		O_NOFOLLOW, O_RDONLY, O_RDWR, S_IFMT, S_IFREG, S_IFSOCK, mode_t, sockaddr_un, stat,
+		O_NOFOLLOW, O_RDWR, S_IFMT, S_IFREG, S_IFSOCK, mode_t, sockaddr_un, stat,
 	};
 	use tokio::{
 		net::{UnixListener, UnixStream},
@@ -385,6 +385,10 @@ mod platform {
 	const CANONICAL_NAME: &CStr = c"decodex.sock";
 	const STAGE_NAME: &CStr = c"decodex.sock.stage";
 	const NAMESPACE_LOCK_NAME: &CStr = c"decodex.lock";
+	#[cfg(target_vendor = "apple")]
+	const DIRECTORY_ACCESS: libc::c_int = libc::O_SEARCH;
+	#[cfg(not(target_vendor = "apple"))]
+	const DIRECTORY_ACCESS: libc::c_int = libc::O_RDONLY;
 
 	pub(super) async fn bind(
 		authority: &LocalTransportAuthority,
@@ -1200,7 +1204,11 @@ mod platform {
 	fn open_directory(parent: RawFd, name: &CStr) -> io::Result<File> {
 		// SAFETY: `parent` is a directory or `AT_FDCWD`, and `name` is NUL-terminated.
 		let descriptor = unsafe {
-			libc::openat(parent, name.as_ptr(), O_RDONLY | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC)
+			libc::openat(
+				parent,
+				name.as_ptr(),
+				DIRECTORY_ACCESS | O_DIRECTORY | O_NOFOLLOW | O_CLOEXEC,
+			)
 		};
 
 		if descriptor == -1 {
