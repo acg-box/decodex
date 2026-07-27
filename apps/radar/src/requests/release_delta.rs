@@ -52,18 +52,20 @@ impl Default for RadarRefreshReleaseDeltaRequest {
 }
 
 /// Summary of a release-delta refresh.
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct RadarRefreshReleaseDeltaReport {
-	/// Whether the checked-in release-delta artifact was rewritten.
-	pub(crate) changed: bool,
+	/// Whether source identity or content changed.
+	pub(crate) material_changed: bool,
+	/// Whether this run refreshed the artifact on disk.
+	pub(crate) written: bool,
+	/// Timestamp carried by the successful observation.
+	pub(crate) refreshed_at: String,
 	/// Stable release selected for the default comparison.
 	pub(crate) stable_tag_name: String,
 	/// Prerelease selected for the default comparison.
 	pub(crate) prerelease_tag_name: String,
 	/// Number of precomputed comparison entries.
 	pub(crate) comparisons: usize,
-	/// Release-delta artifact path that was written or compared.
-	pub(crate) out: PathBuf,
 }
 
 /// Request to backfill unpublished signals from a release-delta comparison window.

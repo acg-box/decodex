@@ -1,4 +1,6 @@
 mod bundle;
+mod cache;
+mod content;
 mod ledger;
 mod refresh;
 mod render;
@@ -9,6 +11,8 @@ use clap::Subcommand;
 use crate::{
 	cli::commands::{
 		bundle::RadarBundleCommand,
+		cache::RadarCacheGcCommand,
+		content::{RadarContentEligibilityCommand, RadarReviewNextCommand},
 		ledger::RadarLedgerCommand,
 		refresh::{
 			RadarBackfillReleaseRangeCommand, RadarRefreshReleaseDeltaCommand,
@@ -24,6 +28,12 @@ use crate::{
 pub(super) enum RadarSubcommand {
 	/// Validate Radar JSON artifacts.
 	Validate(RadarValidateCommand),
+	/// Apply deterministic retention to the owner-only local Radar cache.
+	CacheGc(RadarCacheGcCommand),
+	/// Prove one reviewed queue subject is eligible for content consideration.
+	ContentEligibility(RadarContentEligibilityCommand),
+	/// Select at most one queued subject for a source-review pass.
+	ReviewNext(RadarReviewNextCommand),
 	/// Refresh the upstream Codex review queue artifact.
 	RefreshUpstreamQueue(RadarRefreshUpstreamQueueCommand),
 	/// Refresh the release-delta artifact.
@@ -41,6 +51,9 @@ impl RadarSubcommand {
 	pub(super) fn run(&self) -> Result<()> {
 		match self {
 			Self::Validate(args) => args.run(),
+			Self::CacheGc(args) => args.run(),
+			Self::ContentEligibility(args) => args.run(),
+			Self::ReviewNext(args) => args.run(),
 			Self::RefreshUpstreamQueue(args) => args.run(),
 			Self::RefreshReleaseDelta(args) => args.run(),
 			Self::Bundle(args) => args.run(),

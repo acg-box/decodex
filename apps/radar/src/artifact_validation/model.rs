@@ -10,12 +10,6 @@ pub(crate) struct ArtifactValidation {
 	pub(crate) errors: Vec<String>,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub(crate) struct ArtifactValidationOptions {
-	pub(super) allow_historical_archive_retention: bool,
-	pub(super) allow_historical_upstream_review_linear_followup: bool,
-}
-
 #[derive(Debug)]
 pub(crate) struct ValidationState {
 	pub(super) seen_signal_slugs: BTreeMap<String, PathBuf>,

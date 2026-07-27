@@ -1,7 +1,7 @@
 //! Top-level Radar command operations.
 
 use crate::{
-	BUNDLE_SCHEMA, GitHubApi, GithubClient, PathBuf, RadarBundleBuildRequest,
+	BUNDLE_SCHEMA, GitHubApi, GithubClient, Path, PathBuf, RadarBundleBuildRequest,
 	RadarBundleValidateRequest, RadarRefreshQueueReport, RadarRefreshQueueRequest,
 	RadarRenderSignalReport, RadarRenderSignalRequest, RadarValidateRequest, RadarValidationReport,
 	RefreshKind, SIGNAL_SCHEMA, ValidationState, eyre, prelude::Result,
@@ -9,7 +9,7 @@ use crate::{
 
 pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarRefreshQueueReport> {
 	let root = crate::repo_root()?;
-	let api = GitHubApi::new(crate::github_token(request.token_env.as_deref()))?;
+	let api = GitHubApi::new(crate::github_token(request.token_env.as_deref())?)?;
 	let build = crate::build_review_queue(request, &root, &api)?;
 	let errors = crate::validate_artifact_errors(&build.queue);
 
@@ -18,33 +18,57 @@ pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarR
 	}
 	if request.dry_run {
 		println!("{}", crate::pretty_json(&build.queue)?);
+		let out = crate::absolute_repo_path(&root, &request.queue_out);
+		let refresh = crate::inspect_json_refresh(&out, &build.queue, RefreshKind::Queue)?;
 
-		return Ok(crate::queue_report(
-			&build.queue,
-			false,
-			build.ledger_enabled,
-			&root,
-			&request.queue_out,
-		));
+		return Ok(crate::queue_report(&build.queue, refresh, build.ledger_enabled));
 	}
 
 	let out = crate::absolute_repo_path(&root, &request.queue_out);
-	let changed = crate::write_json_if_material_changed(&out, &build.queue, RefreshKind::Queue)?;
+	let refresh = crate::refresh_json(&out, &build.queue, RefreshKind::Queue)?;
 
-	Ok(crate::queue_report(&build.queue, changed, build.ledger_enabled, &root, &request.queue_out))
+	Ok(crate::queue_report(&build.queue, refresh, build.ledger_enabled))
 }
 
 /// Validate the requested Radar artifact paths.
 pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidationReport> {
+	let uses_default_paths = request.paths.is_empty();
+	if request.bootstrap && !uses_default_paths {
+		eyre::bail!(
+			"RADAR_BOOTSTRAP_SCOPE: --bootstrap is valid only for the empty fixed generated cache"
+		);
+	}
 	let paths = crate::validation_paths(&request.paths);
-	let files = crate::collect_json_files(&paths)?;
+	if uses_default_paths {
+		validate_default_cache_presence(Path::new("."), request.bootstrap)?;
+	}
+	let cache_gc = if uses_default_paths && !request.bootstrap {
+		Some(crate::cache_gc(&crate::RadarCacheGcRequest::default())?)
+	} else {
+		None
+	};
+	let files = crate::collect_json_files(&paths, uses_default_paths)?;
+	let max_age_hours = request
+		.max_age_hours
+		.or_else(|| uses_default_paths.then_some(crate::DEFAULT_SOURCE_MAX_AGE_HOURS));
+
+	if max_age_hours == Some(0) {
+		eyre::bail!("source freshness limit must be at least one hour");
+	}
+
 	let mut state = ValidationState::new();
 	let mut errors = Vec::new();
+	let now = crate::OffsetDateTime::now_utc();
 
 	for path in &files {
 		let payload = crate::load_json(path)?;
 		let validation = crate::validate_artifact_for_path(path, &payload);
 
+		if let Some(max_age_hours) = max_age_hours
+			&& (!uses_default_paths || crate::is_default_source_snapshot(path))
+		{
+			crate::validate_source_freshness(path, &payload, max_age_hours, now, &mut errors);
+		}
 		if validation.schema.as_deref() == Some(SIGNAL_SCHEMA) {
 			crate::validate_signal_slug_uniqueness(path, &payload, &mut state, &mut errors);
 		}
@@ -55,15 +79,77 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 	}
 
 	if errors.is_empty() {
-		Ok(RadarValidationReport { checked_files: files.len() })
+		Ok(RadarValidationReport { checked_files: files.len(), cache_gc })
 	} else {
 		Err(eyre::eyre!("Radar validation failed:\n- {}", errors.join("\n- ")))
 	}
 }
 
+pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> Result<()> {
+	if bootstrap {
+		let cache_root = root.join(crate::DEFAULT_CACHE_ROOT);
+		let cache = crate::private_fs::PrivateCache::open_or_create(&cache_root)?;
+		let lock = cache.lock()?;
+
+		if lock.bootstrap_cache_is_empty()? {
+			return Ok(());
+		}
+
+		eyre::bail!(
+			"RADAR_BOOTSTRAP_NONEMPTY: --bootstrap requires a completely empty generated cache"
+		);
+	}
+	let cache_root = root.join(crate::DEFAULT_CACHE_ROOT);
+	let cache = match crate::private_fs::PrivateCache::open_existing(&cache_root) {
+		Ok(cache) => cache,
+		Err(error)
+			if error
+				.chain()
+				.find_map(|cause| cause.downcast_ref::<std::io::Error>())
+				.is_some_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+		{
+			eyre::bail!(
+				"Radar daily validation requires current source snapshots; generated cache is \
+				 missing"
+			);
+		},
+		Err(error) => return Err(error),
+	};
+	let lock = cache.lock()?;
+	let missing = [
+		("review_queue", crate::DEFAULT_QUEUE_OUT),
+		("release_delta", crate::DEFAULT_RELEASE_DELTA_OUT),
+	]
+	.into_iter()
+	.filter_map(|(label, path)| {
+		Path::new(path)
+			.strip_prefix(crate::DEFAULT_CACHE_ROOT)
+			.ok()
+			.map(|relative| (label, relative))
+	})
+	.map(|(label, relative)| {
+		lock.cache().metadata(relative).map(|identity| identity.is_none().then_some(label))
+	})
+	.collect::<Result<Vec<_>>>()?
+	.into_iter()
+	.flatten()
+	.collect::<Vec<_>>();
+
+	if missing.is_empty() {
+		Ok(())
+	} else {
+		eyre::bail!(
+			"Radar daily validation requires current source snapshots; missing: {}. Run the \
+			 refresh commands first, or use `radar validate --bootstrap` only for an explicit \
+			 empty-cache bootstrap",
+			missing.join(", ")
+		);
+	}
+}
+
 /// Build a deterministic GitHub change bundle and write it to disk.
 pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf> {
-	let token = crate::github_token(request.token_env.as_deref());
+	let token = crate::github_token(request.token_env.as_deref())?;
 	let client = GithubClient::new(token.as_deref())?;
 	let bundle = match (request.pr, request.commit.as_deref()) {
 		(Some(pr_number), _) => client.build_pr_bundle(&request.repo, pr_number, &request.notes)?,
@@ -71,7 +157,7 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf>
 			let promoted_pr = if request.force_commit_only {
 				None
 			} else {
-				client.maybe_promote_commit_to_pr(&request.repo, commit_sha)
+				client.maybe_promote_commit_to_pr(&request.repo, commit_sha)?
 			};
 
 			match promoted_pr {
@@ -109,7 +195,7 @@ pub(crate) fn validate_bundles(
 	}
 
 	if errors.is_empty() {
-		Ok(RadarValidationReport { checked_files: files.len() })
+		Ok(RadarValidationReport { checked_files: files.len(), cache_gc: None })
 	} else {
 		Err(eyre::eyre!("Bundle validation failed:\n- {}", errors.join("\n- ")))
 	}

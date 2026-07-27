@@ -1,25 +1,16 @@
-use std::time::Duration;
-
-use reqwest::blocking::Client;
 use serde_json::Value;
 
 use crate::{
-	github_bundle_client::request::GITHUB_REQUEST_TIMEOUT_SECONDS,
+	GitHubApi,
 	prelude::{Result, eyre},
 };
 
 pub(crate) struct GithubClient {
-	pub(in crate::github_bundle_client) http: Client,
-	pub(in crate::github_bundle_client) token: Option<String>,
+	pub(in crate::github_bundle_client) api: GitHubApi,
 }
 impl GithubClient {
 	pub(crate) fn new(token: Option<&str>) -> Result<Self> {
-		Ok(Self {
-			http: Client::builder()
-				.timeout(Duration::from_secs(GITHUB_REQUEST_TIMEOUT_SECONDS))
-				.build()?,
-			token: token.map(str::to_owned),
-		})
+		Ok(Self { api: GitHubApi::new(token.map(str::to_owned))? })
 	}
 
 	pub(crate) fn build_pr_bundle(
@@ -54,15 +45,19 @@ impl GithubClient {
 		crate::build_commit_bundle_from_sources(repo, &commit, &default_branch, notes)
 	}
 
-	pub(crate) fn maybe_promote_commit_to_pr(&self, repo: &str, commit_sha: &str) -> Option<u64> {
-		let pulls = self
-			.github_paginated(&format!(
-				"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls"
-			))
-			.ok()?;
-		let first = pulls.first()?.as_object()?;
+	pub(crate) fn maybe_promote_commit_to_pr(
+		&self,
+		repo: &str,
+		commit_sha: &str,
+	) -> Result<Option<u64>> {
+		let pulls = self.github_paginated(&format!(
+			"https://api.github.com/repos/{repo}/commits/{commit_sha}/pulls"
+		))?;
+		let Some(first) = pulls.first().and_then(Value::as_object) else {
+			return Ok(None);
+		};
 
-		first.get("number").and_then(Value::as_u64)
+		Ok(first.get("number").and_then(Value::as_u64))
 	}
 
 	fn repo_default_branch(&self, repo: &str) -> Result<String> {

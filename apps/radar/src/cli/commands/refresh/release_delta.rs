@@ -50,7 +50,7 @@ impl RadarRefreshReleaseDeltaCommand {
 			dry_run: self.dry_run,
 		})?;
 
-		println!("{report:#?}");
+		println!("{}", serde_json::to_string_pretty(&report)?);
 
 		Ok(())
 	}
