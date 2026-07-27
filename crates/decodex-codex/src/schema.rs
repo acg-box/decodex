@@ -708,6 +708,36 @@ mod tests {
 	}
 
 	#[test]
+	fn marker_validation_rejects_the_rust_v0_145_0_schema_digest_set() {
+		let mut marker = SchemaMarker::accepted();
+		for (file, digest) in [
+			(
+				"ClientRequest.json",
+				"92085c18742dd355e5afa7d570170c74629635082e8e3341a952068735dc28b2",
+			),
+			(
+				"ServerNotification.json",
+				"97c6bf194b9edfa1e2ffe62547e4497fa5ea8a1af5c94687956b69966ac6f9e2",
+			),
+			(
+				"codex_app_server_protocol.v2.schemas.json",
+				"27f8d983f19d8e1a5548d52176de0a460fb05aaf2a72110f913c6f4af2bd4f27",
+			),
+		] {
+			marker.canonical_sha256.insert(file.into(), digest.into());
+		}
+
+		assert_eq!(
+			SchemaContract::validate(marker).unwrap_err(),
+			[
+				"digest:ClientRequest.json",
+				"digest:ServerNotification.json",
+				"digest:codex_app_server_protocol.v2.schemas.json",
+			]
+		);
+	}
+
+	#[test]
 	fn canonical_digest_ignores_json_object_order() {
 		let first: serde_json::Value =
 			serde_json::from_str(r#"{"b":2,"a":{"d":4,"c":3}}"#).unwrap();
