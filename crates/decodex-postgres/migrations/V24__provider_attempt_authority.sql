@@ -187,7 +187,8 @@ CREATE TABLE decodex.provider_attempt_positive_evidence (
 	source decodex.provider_attempt_evidence_source NOT NULL,
 	outcome decodex.provider_attempt_terminal_outcome NOT NULL,
 	provider_key text NOT NULL CHECK (
-		pg_catalog.octet_length(provider_key) BETWEEN 1 AND 512
+		pg_catalog.octet_length(provider_key) >= 1
+		AND pg_catalog.octet_length(provider_key) <= 512
 		AND provider_key COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 	),
 	provider_receipt_id text,
@@ -207,19 +208,22 @@ CREATE TABLE decodex.provider_attempt_positive_evidence (
 		(
 			provider_receipt_id IS NULL
 			OR (
-				pg_catalog.octet_length(provider_receipt_id) BETWEEN 1 AND 512
+				pg_catalog.octet_length(provider_receipt_id) >= 1
+				AND pg_catalog.octet_length(provider_receipt_id) <= 512
 				AND provider_receipt_id COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 			)
 		) AND (
 			provider_thread_id IS NULL
 			OR (
-				pg_catalog.octet_length(provider_thread_id) BETWEEN 1 AND 512
+				pg_catalog.octet_length(provider_thread_id) >= 1
+				AND pg_catalog.octet_length(provider_thread_id) <= 512
 				AND provider_thread_id COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 			)
 		) AND (
 			provider_turn_id IS NULL
 			OR (
-				pg_catalog.octet_length(provider_turn_id) BETWEEN 1 AND 512
+				pg_catalog.octet_length(provider_turn_id) >= 1
+				AND pg_catalog.octet_length(provider_turn_id) <= 512
 				AND provider_turn_id COLLATE pg_catalog."C" !~ '[[:cntrl:]]'
 			)
 		)
