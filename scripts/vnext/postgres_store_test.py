@@ -7804,7 +7804,7 @@ def populate_authority_capture_database(
 	database: str, env: dict[str, str]
 ) -> None:
 	psql_as(
-		RUNTIME_ROLE,
+		MIGRATION_ROLE,
 		database,
 		"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
 		"('10000000-0000-4000-8000-000000001300','XY-1300 capture fixture')",
