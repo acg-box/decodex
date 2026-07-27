@@ -5,6 +5,15 @@ pub(crate) fn valid_upstream_impact() -> Value {
 		"schema": "upstream_impact/v1",
 		"slug": "openai-codex-pr-22414",
 		"repo": "openai/codex",
+		"reviewed_at": "2026-06-01T00:00:00Z",
+		"review_lineage": {
+			"artifact_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+			"slug": "openai-codex-pr-22414",
+			"subject_kind": "pr",
+			"subject_id": "22414",
+			"upstream_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			"commit_shas": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
+		},
 		"source_refs": {
 			"items": [
 				{

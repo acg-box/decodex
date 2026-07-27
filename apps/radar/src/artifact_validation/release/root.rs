@@ -15,6 +15,7 @@ pub(crate) fn validate_release_delta(entry: &Map<String, Value>, errors: &mut Ve
 	if !support::is_non_empty_string(entry.get("generated_at")) {
 		errors.push("generated_at must be a non-empty string".into());
 	}
+	support::validate_rfc3339_field(entry, "generated_at", errors);
 
 	let tag_prefix = support::string_field(entry, "tag_prefix").unwrap_or_default();
 

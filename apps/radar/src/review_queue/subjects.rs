@@ -53,7 +53,7 @@ pub(super) fn append_commit_sha(subject: &mut Value, sha: &str) {
 	}
 }
 
-pub(super) fn sort_queue_subjects(mut subjects: Vec<Value>) -> Vec<Value> {
+pub(crate) fn sort_queue_subjects(mut subjects: Vec<Value>) -> Vec<Value> {
 	subjects.sort_by_key(queue_sort_key);
 
 	subjects

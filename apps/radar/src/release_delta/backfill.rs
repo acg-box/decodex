@@ -70,6 +70,8 @@ pub(crate) fn backfill_release_range(
 
 	crate::validate(&RadarValidateRequest {
 		paths: vec![crate::resolve_against(&root, &request.signals_dir)],
+		max_age_hours: None,
+		bootstrap: false,
 	})?;
 	execution::run_refresh_release_delta(request, &request.release_delta, false)?;
 

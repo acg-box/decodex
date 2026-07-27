@@ -4823,6 +4823,8 @@ version = "0.2.0"
 dependencies = [
  "clap",
  "color-eyre",
+ "getrandom 0.4.2",
+ "libc",
  "regex",
  "reqwest",
  "rusqlite",

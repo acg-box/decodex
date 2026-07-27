@@ -18,12 +18,12 @@ use self::{
 };
 use crate::{
 	BTreeMap, BTreeSet, GitHubApi, HashSet, Path, RELEASE_DELTA_SCHEMA,
-	RadarRefreshReleaseDeltaReport, RadarRefreshReleaseDeltaRequest, RefreshKind, Value,
-	absolute_repo_path, extract_commit_sha_from_url, extract_pr_number_from_url, eyre,
-	github_token, iter, load_json, optional_value_string, pretty_json, repo_root,
-	required_value_i64, required_value_string, serde_json, sorted_json_files, string_array,
-	string_array_from_value, utc_now_iso, validate_artifact_errors, validate_signal_file,
-	write_json_if_material_changed,
+	RadarRefreshReleaseDeltaReport, RadarRefreshReleaseDeltaRequest, RefreshKind,
+	RefreshWriteReport, Value, absolute_repo_path, extract_commit_sha_from_url,
+	extract_pr_number_from_url, eyre, github_token, inspect_json_refresh, iter, load_json,
+	optional_value_string, pretty_json, refresh_json, repo_root, required_value_i64,
+	required_value_string, serde_json, sorted_json_files, string_array, string_array_from_value,
+	utc_now_iso, validate_artifact_errors, validate_signal_file,
 };
 
 #[derive(Clone, Debug)]

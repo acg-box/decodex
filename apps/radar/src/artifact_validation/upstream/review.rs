@@ -2,14 +2,11 @@ use serde_json::{Map, Value};
 
 use crate::{
 	SIGNAL_CONFIDENCE, UPSTREAM_SUBJECT_KINDS,
-	artifact_validation::{
-		constants::UPSTREAM_REVIEW_ACTION_TYPES, model::ArtifactValidationOptions, support,
-	},
+	artifact_validation::{constants::UPSTREAM_REVIEW_ACTION_TYPES, support},
 };
 
 pub(in crate::artifact_validation) fn validate_upstream_review(
 	entry: &Map<String, Value>,
-	options: ArtifactValidationOptions,
 	errors: &mut Vec<String>,
 ) {
 	for field in ["slug", "repo", "reviewed_at", "observed_change"] {
@@ -17,6 +14,8 @@ pub(in crate::artifact_validation) fn validate_upstream_review(
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+	support::validate_rfc3339_field(entry, "reviewed_at", errors);
+	support::validate_git_object_id(entry.get("upstream_head"), "upstream_head", errors);
 
 	if support::string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
 		errors.push("repo must be owner/name".into());
@@ -35,7 +34,7 @@ pub(in crate::artifact_validation) fn validate_upstream_review(
 		errors.push(format!("confidence must be one of {}", support::choices(SIGNAL_CONFIDENCE)));
 	}
 
-	validate_upstream_review_actions(entry.get("next_actions"), options, errors);
+	validate_upstream_review_actions(entry.get("next_actions"), errors);
 }
 
 fn validate_upstream_review_subject_object(subject: Option<&Value>, errors: &mut Vec<String>) {
@@ -55,11 +54,7 @@ fn validate_upstream_review_subject_object(subject: Option<&Value>, errors: &mut
 		errors.push("subject.subject_id must be a non-empty string".into());
 	}
 
-	support::validate_optional_string_list(
-		subject.get("commit_shas"),
-		"subject.commit_shas",
-		errors,
-	);
+	support::validate_git_object_id_list(subject.get("commit_shas"), "subject.commit_shas", errors);
 }
 
 fn validate_upstream_review_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
@@ -101,11 +96,7 @@ fn validate_upstream_review_optional_strings(entry: &Map<String, Value>, errors:
 	}
 }
 
-fn validate_upstream_review_actions(
-	next_actions: Option<&Value>,
-	options: ArtifactValidationOptions,
-	errors: &mut Vec<String>,
-) {
+fn validate_upstream_review_actions(next_actions: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(next_actions) = support::non_empty_array(next_actions) else {
 		errors.push("next_actions must be a non-empty list".into());
 
@@ -118,12 +109,7 @@ fn validate_upstream_review_actions(
 
 			continue;
 		};
-		let legacy_linear_followup = options.allow_historical_upstream_review_linear_followup
-			&& support::string_field(action, "type") == Some("linear_followup");
-
-		if !legacy_linear_followup
-			&& !support::matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES)
-		{
+		if !support::matches_one_of(action.get("type"), UPSTREAM_REVIEW_ACTION_TYPES) {
 			errors.push(format!(
 				"next_actions[{index}].type must be one of {}",
 				support::choices(UPSTREAM_REVIEW_ACTION_TYPES)
