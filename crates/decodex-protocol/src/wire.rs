@@ -1865,12 +1865,17 @@ pub enum CommandPayload {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
-	/// Atomically replace selection mode and complete deterministic user-owned order.
-	ConfigureAccountRouting {
-		/// Exact optimistic routing-control revision.
-		expected_routing_revision: EntityRevision,
-		/// Replacement initial-selection mode.
-		mode: AccountSelectionModeDto,
+	/// Select one fixed account under routing-control and account revision guards.
+	SetFixedAccountSelection {
+		/// Canonical fixed account identity.
+		account_id: EntityId,
+		/// Exact optimistic revision of the fixed account.
+		expected_account_revision: EntityRevision,
+	},
+	/// Select balanced initial account routing under the routing-control revision guard.
+	SetBalancedAccountSelection,
+	/// Replace the complete deterministic user-owned account order.
+	SetAccountOrder {
 		/// Complete replacement visible-account order.
 		order: Vec<EntityId>,
 	},
@@ -1902,7 +1907,9 @@ impl CommandPayload {
 			| Self::RenameAccount { .. }
 			| Self::SetAccountEnabled { .. }
 			| Self::LogoutAccount { .. }
-			| Self::ConfigureAccountRouting { .. }
+			| Self::SetFixedAccountSelection { .. }
+			| Self::SetBalancedAccountSelection
+			| Self::SetAccountOrder { .. }
 			| Self::RefreshAccount { .. }
 			| Self::RecoverAccountOperation { .. } =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
@@ -2523,8 +2530,10 @@ pub enum AccountCommandRejectionDto {
 	InvalidRequest,
 	/// The requested account does not exist.
 	AccountNotFound,
-	/// The expected revision does not match current state.
+	/// The expected account revision does not match current state.
 	StaleAccount,
+	/// The expected routing-control revision does not match current state.
+	StaleRoutingControl,
 	/// Existing work prevents logout.
 	AccountInUse,
 	/// Another lifecycle operation is unsettled.
@@ -2655,9 +2664,17 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-		CommandPayload::ConfigureAccountRouting { expected_routing_revision, mode, order } => {
-			if expected_routing_revision.0 == 0
-				|| command.expected_revision != Some(*expected_routing_revision)
+		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
+			validate_canonical_account(account_id)?;
+			if !positive_expected || expected_account_revision.0 == 0 {
+				return Err("account routing or target account revision is invalid");
+			}
+			Ok(())
+		},
+		CommandPayload::SetBalancedAccountSelection =>
+			positive_expected.then_some(()).ok_or("account routing revision is required"),
+		CommandPayload::SetAccountOrder { order } => {
+			if !positive_expected
 				|| order.len() > 512
 				|| order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
 			{
@@ -2666,11 +2683,6 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			let unique = order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
 			if unique.len() != order.len() {
 				return Err("account routing order contains duplicates");
-			}
-			if let AccountSelectionModeDto::Fixed(account_id) = mode
-				&& !unique.contains(account_id.as_str())
-			{
-				return Err("fixed account target is outside routing order");
 			}
 			Ok(())
 		},
@@ -2927,17 +2939,17 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountInitialSelectionResult, CURRENT_VERSION, CausationId, ClientCommandId,
-		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, PREVIOUS_MINOR_VERSION, QueryId,
-		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		WireText,
+		AccountCommandRejectionDto, AccountInitialSelectionResult, CURRENT_VERSION, CausationId,
+		ClientCommandId, CommandError, CorrelationId, EntityId, EventPayload, HistoryCursorToken,
+		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
+		PREVIOUS_MINOR_VERSION, QueryId, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload,
+		ServerId, ServerInstanceId, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
-			ResumeCursor,
+			ResumeCursor, decode_client_message,
 		},
 	};
 
@@ -2959,6 +2971,95 @@ mod tests {
 		assert!(encoded.contains("\"type\":\"command\""));
 		assert!(encoded.contains("\"name\":\"refresh_system_observation\""));
 		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
+	}
+
+	#[test]
+	fn account_routing_commands_have_three_clean_break_wire_shapes() {
+		let account_id =
+			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let other_id =
+			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let fixed = CommandPayload::SetFixedAccountSelection {
+			account_id: account_id.clone(),
+			expected_account_revision: EntityRevision(7),
+		};
+		let balanced = CommandPayload::SetBalancedAccountSelection;
+		let order =
+			CommandPayload::SetAccountOrder { order: vec![other_id.clone(), account_id.clone()] };
+
+		assert_eq!(
+			serde_json::to_value(&fixed).unwrap(),
+			serde_json::json!({
+				"name": "set_fixed_account_selection",
+				"arguments": {
+					"account_id": account_id.as_str(),
+					"expected_account_revision": 7,
+				},
+			}),
+		);
+		assert_eq!(
+			serde_json::to_value(&balanced).unwrap(),
+			serde_json::json!({"name": "set_balanced_account_selection"}),
+		);
+		assert_eq!(
+			serde_json::to_value(&order).unwrap(),
+			serde_json::json!({
+				"name": "set_account_order",
+				"arguments": {"order": [other_id.as_str(), account_id.as_str()]},
+			}),
+		);
+		assert!(
+			serde_json::from_value::<CommandPayload>(serde_json::json!({
+				"name": "configure_account_routing",
+				"arguments": {
+					"expected_routing_revision": 1,
+					"mode": {"mode": "balanced"},
+					"order": [],
+				},
+			}))
+			.is_err(),
+		);
+
+		let command = |payload, expected_revision| {
+			ClientMessage::Command(CommandEnvelope {
+				version: CURRENT_VERSION,
+				client_command_id: ClientCommandId::new("routing-command").unwrap(),
+				idempotency_key: IdempotencyKey::new("routing-key").unwrap(),
+				expected_revision,
+				correlation_id: CorrelationId::new("routing-command").unwrap(),
+				causation_id: None,
+				payload,
+			})
+		};
+		let is_rejected = |payload, expected_revision| {
+			let encoded = serde_json::to_string(&command(payload, expected_revision)).unwrap();
+			decode_client_message(&encoded).is_err()
+		};
+		assert!(is_rejected(
+			CommandPayload::SetFixedAccountSelection {
+				account_id: account_id.clone(),
+				expected_account_revision: EntityRevision(0),
+			},
+			Some(EntityRevision(1)),
+		));
+		assert!(is_rejected(CommandPayload::SetBalancedAccountSelection, Some(EntityRevision(0)),));
+		assert!(is_rejected(
+			CommandPayload::SetAccountOrder { order: vec![account_id.clone(), account_id] },
+			Some(EntityRevision(1)),
+		));
+
+		let stale_account = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::StaleAccount,
+			actual_revision: Some(EntityRevision(7)),
+		};
+		let stale_routing = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::StaleRoutingControl,
+			actual_revision: Some(EntityRevision(3)),
+		};
+		assert_ne!(
+			serde_json::to_value(stale_account).unwrap(),
+			serde_json::to_value(stale_routing).unwrap(),
+		);
 	}
 
 	#[test]

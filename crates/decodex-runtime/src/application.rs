@@ -527,42 +527,41 @@ impl ServiceApplication {
 					)
 					.await
 			},
-			CommandPayload::ConfigureAccountRouting { expected_routing_revision, mode, order } => {
-				let expected = i64::try_from(expected_routing_revision.0).map_err(|_| {
-					account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-				})?;
-				let mode = selection_mode_from_wire(mode)?;
+			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
+				let expected_routing_revision = required_expected_revision(command)?;
+				let account_id = account_id_from_wire(account_id)?;
+				let expected_account_revision = i64::try_from(expected_account_revision.0)
+					.map_err(|_| {
+						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+					})?;
+				service
+					.set_fixed_selection_command(
+						lease,
+						expected_routing_revision,
+						&account_id,
+						expected_account_revision,
+						|outcome| encode_account_command_receipt(&routing_command_result(outcome)),
+					)
+					.await
+			},
+			CommandPayload::SetBalancedAccountSelection => {
+				let expected_routing_revision = required_expected_revision(command)?;
+				service
+					.set_balanced_selection_command(lease, expected_routing_revision, |outcome| {
+						encode_account_command_receipt(&routing_command_result(outcome))
+					})
+					.await
+			},
+			CommandPayload::SetAccountOrder { order } => {
+				let expected_routing_revision = required_expected_revision(command)?;
 				let order =
 					order.iter().map(account_id_from_wire).collect::<Result<Vec<_>, _>>()?;
 				service
-					.replace_selection_command(
+					.set_account_order_command(
 						lease,
-						expected,
-						&mode,
+						expected_routing_revision,
 						&order,
-						|outcome, routing| {
-							let result = match outcome {
-								RoutingControlOutcome::Updated { .. } =>
-									routing_dto(routing.clone())
-										.map_err(|_| {
-											application_unavailable(
-												"account routing result is incompatible",
-											)
-										})
-										.and_then(account_routing_publication),
-								RoutingControlOutcome::Stale { revision } =>
-									Err(account_rejection(
-										AccountCommandRejectionDto::StaleAccount,
-										u64::try_from(*revision).ok().map(EntityRevision),
-									)),
-								RoutingControlOutcome::InvalidOrder { revision } =>
-									Err(account_rejection(
-										AccountCommandRejectionDto::RoutingOrderInvalid,
-										u64::try_from(*revision).ok().map(EntityRevision),
-									)),
-							};
-							encode_account_command_receipt(&result)
-						},
+						|outcome| encode_account_command_receipt(&routing_command_result(outcome)),
 					)
 					.await
 			},
@@ -820,7 +819,9 @@ impl Application for ServiceApplication {
 			| CommandPayload::RenameAccount { .. }
 			| CommandPayload::SetAccountEnabled { .. }
 			| CommandPayload::LogoutAccount { .. }
-			| CommandPayload::ConfigureAccountRouting { .. }
+			| CommandPayload::SetFixedAccountSelection { .. }
+			| CommandPayload::SetBalancedAccountSelection
+			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
 			| CommandPayload::RecoverAccountOperation { .. } => self.execute_account_command(command).await,
 			CommandPayload::RefreshSystemObservation { .. } =>
@@ -1205,8 +1206,12 @@ fn account_command_descriptor(
 			(AccountCommandKind::SetEnabled, account_id.as_str()),
 		CommandPayload::LogoutAccount { account_id, .. } =>
 			(AccountCommandKind::Logout, account_id.as_str()),
-		CommandPayload::ConfigureAccountRouting { .. } =>
-			(AccountCommandKind::ConfigureRouting, "account-routing"),
+		CommandPayload::SetFixedAccountSelection { .. } =>
+			(AccountCommandKind::SetFixedSelection, "account-routing"),
+		CommandPayload::SetBalancedAccountSelection =>
+			(AccountCommandKind::SetBalancedSelection, "account-routing"),
+		CommandPayload::SetAccountOrder { .. } =>
+			(AccountCommandKind::SetAccountOrder, "account-routing"),
 		CommandPayload::RefreshAccount { account_id, .. } =>
 			(AccountCommandKind::Refresh, account_id.as_str()),
 		CommandPayload::RecoverAccountOperation { operation_id, .. } =>
@@ -1234,16 +1239,18 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
-		CommandPayload::ConfigureAccountRouting { expected_routing_revision, mode, order } => {
-			if command.expected_revision != Some(*expected_routing_revision)
-				|| expected_routing_revision.0 == 0
-			{
-				return Err(account_rejection(
-					AccountCommandRejectionDto::InvalidRequest,
-					command.expected_revision,
-				));
+		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
+			let _ = account_id_from_wire(account_id)?;
+			let _ = required_expected_revision(command)?;
+			if expected_account_revision.0 == 0 {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
 			}
-			let _ = selection_mode_from_wire(mode)?;
+		},
+		CommandPayload::SetBalancedAccountSelection => {
+			let _ = required_expected_revision(command)?;
+		},
+		CommandPayload::SetAccountOrder { order } => {
+			let _ = required_expected_revision(command)?;
 			for account_id in order {
 				let _ = account_id_from_wire(account_id)?;
 			}
@@ -1273,16 +1280,6 @@ fn required_expected_revision(command: &CommandEnvelope) -> Result<i64, CommandE
 		.and_then(|revision| i64::try_from(revision.0).ok())
 		.filter(|revision| *revision > 0)
 		.ok_or_else(|| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
-}
-
-fn selection_mode_from_wire(
-	mode: &AccountSelectionModeDto,
-) -> Result<AccountSelectionMode, CommandError> {
-	match mode {
-		AccountSelectionModeDto::Fixed(account_id) =>
-			account_id_from_wire(account_id).map(AccountSelectionMode::Fixed),
-		AccountSelectionModeDto::Balanced => Ok(AccountSelectionMode::Balanced),
-	}
 }
 
 fn account_changed_publication(
@@ -1334,6 +1331,32 @@ fn account_routing_publication(
 		result: ResultPayload::AccountRoutingChanged { routing: routing.clone() },
 		event: EventPayload::AccountRoutingChanged { routing },
 	})
+}
+
+fn routing_command_result(
+	outcome: &RoutingControlOutcome,
+) -> Result<ApplicationPublication, CommandError> {
+	match outcome {
+		RoutingControlOutcome::Updated { routing } => routing_dto(routing.clone())
+			.map_err(|_| application_unavailable("account routing result is incompatible"))
+			.and_then(account_routing_publication),
+		RoutingControlOutcome::StaleRoutingControl { revision } => Err(account_rejection(
+			AccountCommandRejectionDto::StaleRoutingControl,
+			u64::try_from(*revision).ok().map(EntityRevision),
+		)),
+		RoutingControlOutcome::StaleAccount { revision } => Err(account_rejection(
+			AccountCommandRejectionDto::StaleAccount,
+			u64::try_from(*revision).ok().map(EntityRevision),
+		)),
+		RoutingControlOutcome::AccountMissing =>
+			Err(account_rejection(AccountCommandRejectionDto::AccountNotFound, None)),
+		RoutingControlOutcome::InvalidOrder { revision } => Err(account_rejection(
+			AccountCommandRejectionDto::RoutingOrderInvalid,
+			u64::try_from(*revision).ok().map(EntityRevision),
+		)),
+		RoutingControlOutcome::InvalidRequest =>
+			Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
+	}
 }
 
 fn account_recovery_publication(
@@ -1711,12 +1734,18 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
-	use decodex_postgres::{ResetCardFailureCode, ResetCardOperationStatus};
-	use decodex_protocol::{ResetCardError, ResetCardOperationResult};
+	use decodex_postgres::{
+		AccountLifecycleRejection, ResetCardFailureCode, ResetCardOperationStatus,
+	};
+	use decodex_protocol::{
+		AccountCommandRejectionDto, CommandError, ResetCardError, ResetCardOperationResult,
+	};
 
 	use super::{
-		ACCOUNT_COMMAND_RECEIPT_SCHEMA, ResetCardServiceError, StoredAccountCommandOutcome,
-		decode_account_command_receipt, operation_query_result,
+		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, ResetCardServiceError,
+		StoredAccountCommandOutcome, account_lifecycle_command_error,
+		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
+		operation_query_result,
 	};
 
 	#[test]
@@ -1764,5 +1793,32 @@ mod tests {
 
 		assert!(decode_account_command_receipt(unknown_envelope).is_err());
 		assert!(decode_account_command_receipt(unknown_result).is_err());
+	}
+
+	#[test]
+	fn provider_identity_conflicts_complete_and_replay_typed_provider_mismatch() {
+		let error = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::ProviderMismatch,
+			actual_revision: None,
+		};
+		assert_eq!(lifecycle_rejection(AccountLifecycleRejection::IdentityConflict, 0), error,);
+		assert_eq!(account_lifecycle_command_error(AccountLifecycleError::ProviderMismatch), error,);
+		let encoded = encode_account_command_receipt(&Err(error.clone()))
+			.expect("typed provider-mismatch rejection must encode");
+		assert_eq!(
+			encoded,
+			serde_json::json!({
+				"outcome": "rejected",
+				"data": {
+					"schema": "decodex/account-command-result/1",
+					"error": {
+						"reason": "account_command_rejected",
+						"rejection": "provider_mismatch",
+					},
+				},
+			}),
+		);
+		assert_eq!(decode_account_command_receipt(encoded.clone()), Ok(Err(error.clone())));
+		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 }

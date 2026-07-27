@@ -81,9 +81,17 @@ const READ_ACCOUNT_OPERATION_SQL: &str = "SELECT operation_id::text,account_id::
 	 FROM decodex.read_account_operation_exact($1::text::uuid)";
 const UPDATE_ACCOUNT_ADMINISTRATION_SQL: &str = "SELECT result_code,revision \
 	 FROM decodex.update_account_administration_exact($1::text::uuid,$2,$3,$4)";
-const REPLACE_ACCOUNT_ROUTING_SQL: &str = "SELECT result_code,revision \
-	 FROM decodex.replace_account_routing_control_exact(\
+const SET_FIXED_ACCOUNT_SELECTION_SQL: &str = "SELECT result_code,routing_revision,account_revision \
+	 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)";
+const SET_BALANCED_ACCOUNT_SELECTION_SQL: &str = "SELECT result_code,routing_revision \
+	 FROM decodex.set_balanced_account_selection_exact($1)";
+const SET_ACCOUNT_ORDER_SQL: &str = "SELECT result_code,routing_revision \
+	 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])";
+const REPLACE_ACCOUNT_ROUTING_FOR_MIGRATION_SQL: &str = "SELECT result_code,revision \
+	 FROM decodex.replace_account_routing_control_for_migration_exact(\
 	 $1,$2::text::decodex.account_selection_mode,$3::text::uuid,$4::text[]::uuid[])";
+const LOCK_ACCOUNT_ROUTING_FOR_MIGRATION_SQL: &str =
+	"SELECT decodex.lock_account_routing_universe_exact(false)";
 const OBSERVE_ACCOUNT_QUOTA_SQL: &str =
 	"SELECT decodex.observe_account_quota_exact($1::text::uuid,$2,$3,$4,$5)";
 const OBSERVE_ACCOUNT_QUOTA_ERROR_SQL: &str = "SELECT decodex.observe_account_quota_error_exact(\
@@ -183,24 +191,33 @@ pub enum AccountAdministrationOutcome {
 	},
 }
 
-/// Result of replacing fixed/balanced mode and complete user-owned order.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+/// Result of one public routing-control mutation.
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RoutingControlOutcome {
-	/// The routing controls are current.
+	/// The requested routing mutation committed.
 	Updated {
-		/// Current routing-control revision.
-		revision: i64,
+		/// Complete routing projection at the new revision.
+		routing: AccountRoutingControl,
 	},
 	/// The expected routing revision was stale.
-	Stale {
+	StaleRoutingControl {
 		/// Current routing-control revision.
 		revision: i64,
 	},
+	/// The fixed target's expected account revision was stale.
+	StaleAccount {
+		/// Current target-account revision.
+		revision: i64,
+	},
+	/// The fixed target is not an enrolled, non-tombstoned routing member.
+	AccountMissing,
 	/// The requested order was not an exact visible-account permutation.
 	InvalidOrder {
 		/// Current routing-control revision.
 		revision: i64,
 	},
+	/// The bounded command input was invalid.
+	InvalidRequest,
 }
 
 /// Credential-negative result of one exact host-store observation.
@@ -263,8 +280,12 @@ pub enum AccountCommandKind {
 	SetEnabled,
 	/// Delete credentials and tombstone an account.
 	Logout,
-	/// Replace selection mode and complete routing order.
-	ConfigureRouting,
+	/// Select one fixed account.
+	SetFixedSelection,
+	/// Select balanced account routing.
+	SetBalancedSelection,
+	/// Replace the complete account order.
+	SetAccountOrder,
 	/// Rotate one account credential bundle.
 	Refresh,
 	/// Reconcile one finite credential operation.
@@ -278,7 +299,9 @@ impl AccountCommandKind {
 			Self::Rename => "rename_account",
 			Self::SetEnabled => "set_account_enabled",
 			Self::Logout => "logout_account",
-			Self::ConfigureRouting => "configure_account_routing",
+			Self::SetFixedSelection => "set_fixed_account_selection",
+			Self::SetBalancedSelection => "set_balanced_account_selection",
+			Self::SetAccountOrder => "set_account_order",
 			Self::Refresh => "refresh_account",
 			Self::Recover => "recover_account_operation",
 		}
@@ -696,74 +719,140 @@ impl PostgresStore {
 		parse_routing_control(&row)
 	}
 
-	/// Replace mode and complete order in one revisioned PostgreSQL transaction.
-	pub async fn replace_account_routing_control(
+	/// Select one fixed account under independent routing and account revision guards.
+	pub async fn set_fixed_account_selection(
 		&self,
-		expected_revision: i64,
-		mode: &AccountSelectionMode,
-		order: &[AccountId],
+		expected_routing_revision: i64,
+		account_id: &AccountId,
+		expected_account_revision: i64,
 	) -> Result<RoutingControlOutcome, StoreError> {
-		let (mode_text, fixed) = match mode {
-			AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
-			AccountSelectionMode::Balanced => ("balanced", None),
-		};
-		let order =
-			order.iter().map(|account_id| account_id.as_str().to_owned()).collect::<Vec<_>>();
-		let row = self
-			.pool()
-			.get()
-			.await?
-			.query_one(
-				REPLACE_ACCOUNT_ROUTING_SQL,
-				&[&expected_revision, &mode_text, &fixed, &order],
-			)
-			.await?;
-		let revision = row.get(1);
-		match row.get::<_, &str>(0) {
-			"updated" => Ok(RoutingControlOutcome::Updated { revision }),
-			"stale_control" => Ok(RoutingControlOutcome::Stale { revision }),
-			"invalid_order" => Ok(RoutingControlOutcome::InvalidOrder { revision }),
-			_ => Err(incompatible("account routing result")),
+		validate_routing_revision(expected_routing_revision)?;
+		if expected_account_revision < 1 {
+			return Err(StoreError::InvalidInput("expected account revision must be positive"));
 		}
-	}
-
-	/// Replace routing and complete its logical command receipt in the same transaction.
-	pub async fn replace_account_routing_control_command<F>(
-		&self,
-		lease: AccountCommandReceiptLease,
-		expected_revision: i64,
-		mode: &AccountSelectionMode,
-		order: &[AccountId],
-		build_response: F,
-	) -> Result<Value, StoreError>
-	where
-		F: FnOnce(&RoutingControlOutcome, &AccountRoutingControl) -> Result<Value, StoreError>
-			+ Send,
-	{
-		let (mode_text, fixed) = match mode {
-			AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
-			AccountSelectionMode::Balanced => ("balanced", None),
-		};
-		let order =
-			order.iter().map(|account_id| account_id.as_str().to_owned()).collect::<Vec<_>>();
 		let mut client = self.pool().get().await?;
 		let transaction = client.transaction().await?;
 		let row = transaction
 			.query_one(
-				REPLACE_ACCOUNT_ROUTING_SQL,
-				&[&expected_revision, &mode_text, &fixed, &order],
+				SET_FIXED_ACCOUNT_SELECTION_SQL,
+				&[&expected_routing_revision, &account_id.as_str(), &expected_account_revision],
 			)
 			.await?;
-		let revision = row.get(1);
-		let outcome = match row.get::<_, &str>(0) {
-			"updated" => RoutingControlOutcome::Updated { revision },
-			"stale_control" => RoutingControlOutcome::Stale { revision },
-			"invalid_order" => RoutingControlOutcome::InvalidOrder { revision },
-			_ => return Err(incompatible("account routing result")),
-		};
-		let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
-		let routing = parse_routing_control(&routing_row)?;
-		let response = build_response(&outcome, &routing)?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, true).await?;
+		transaction.commit().await?;
+		Ok(outcome)
+	}
+
+	/// Select one fixed account and complete its logical command receipt atomically.
+	pub async fn set_fixed_account_selection_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_routing_revision: i64,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+	{
+		validate_routing_revision(expected_routing_revision)?;
+		if expected_account_revision < 1 {
+			return Err(StoreError::InvalidInput("expected account revision must be positive"));
+		}
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(
+				SET_FIXED_ACCOUNT_SELECTION_SQL,
+				&[&expected_routing_revision, &account_id.as_str(), &expected_account_revision],
+			)
+			.await?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, true).await?;
+		let response = build_response(&outcome)?;
+		validate_account_command_response(&response)?;
+		finish_command(&transaction, &lease.0, &response).await?;
+		transaction.commit().await?;
+		Ok(response)
+	}
+
+	/// Select balanced routing while preserving the complete account order.
+	pub async fn set_balanced_account_selection(
+		&self,
+		expected_routing_revision: i64,
+	) -> Result<RoutingControlOutcome, StoreError> {
+		validate_routing_revision(expected_routing_revision)?;
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(SET_BALANCED_ACCOUNT_SELECTION_SQL, &[&expected_routing_revision])
+			.await?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, false).await?;
+		transaction.commit().await?;
+		Ok(outcome)
+	}
+
+	/// Select balanced routing and complete its logical command receipt atomically.
+	pub async fn set_balanced_account_selection_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_routing_revision: i64,
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+	{
+		validate_routing_revision(expected_routing_revision)?;
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(SET_BALANCED_ACCOUNT_SELECTION_SQL, &[&expected_routing_revision])
+			.await?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, false).await?;
+		let response = build_response(&outcome)?;
+		validate_account_command_response(&response)?;
+		finish_command(&transaction, &lease.0, &response).await?;
+		transaction.commit().await?;
+		Ok(response)
+	}
+
+	/// Replace the complete account order while preserving selection mode and fixed target.
+	pub async fn set_account_order(
+		&self,
+		expected_routing_revision: i64,
+		order: &[AccountId],
+	) -> Result<RoutingControlOutcome, StoreError> {
+		validate_routing_revision(expected_routing_revision)?;
+		let order = routing_order_parameters(order)?;
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(SET_ACCOUNT_ORDER_SQL, &[&expected_routing_revision, &order])
+			.await?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, false).await?;
+		transaction.commit().await?;
+		Ok(outcome)
+	}
+
+	/// Replace the account order and complete its logical command receipt atomically.
+	pub async fn set_account_order_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		expected_routing_revision: i64,
+		order: &[AccountId],
+		build_response: F,
+	) -> Result<Value, StoreError>
+	where
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+	{
+		validate_routing_revision(expected_routing_revision)?;
+		let order = routing_order_parameters(order)?;
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		let row = transaction
+			.query_one(SET_ACCOUNT_ORDER_SQL, &[&expected_routing_revision, &order])
+			.await?;
+		let outcome = parse_routing_control_outcome(&transaction, &row, false).await?;
+		let response = build_response(&outcome)?;
 		validate_account_command_response(&response)?;
 		finish_command(&transaction, &lease.0, &response).await?;
 		transaction.commit().await?;
@@ -965,11 +1054,56 @@ impl PostgresStore {
 	}
 }
 
+pub(crate) async fn replace_account_routing_for_migration_explicit(
+	client: &mut tokio_postgres::Client,
+	mode: &AccountSelectionMode,
+	order: &[AccountId],
+) -> Result<AccountRoutingControl, StoreError> {
+	let (mode_text, fixed) = match mode {
+		AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
+		AccountSelectionMode::Balanced => ("balanced", None),
+	};
+	let order = routing_order_parameters(order)?;
+	let transaction = client.transaction().await?;
+	transaction.query_one(LOCK_ACCOUNT_ROUTING_FOR_MIGRATION_SQL, &[]).await?;
+	let expected_revision: i64 = transaction
+		.query_one("SELECT revision FROM decodex.account_routing_control WHERE singleton", &[])
+		.await?
+		.get(0);
+	validate_routing_revision(expected_revision)?;
+	let row = transaction
+		.query_one(
+			REPLACE_ACCOUNT_ROUTING_FOR_MIGRATION_SQL,
+			&[&expected_revision, &mode_text, &fixed, &order],
+		)
+		.await?;
+	let revision: i64 = row.get(1);
+	match row.get::<_, &str>(0) {
+		"updated" => {
+			let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
+			let routing = parse_routing_control(&routing_row)?;
+			if routing.revision != revision {
+				return Err(incompatible("account migration routing revision"));
+			}
+			transaction.commit().await?;
+			Ok(routing)
+		},
+		"stale_routing_control" => Err(StoreError::RevisionConflict {
+			entity: "account-routing".into(),
+			expected: Some(expected_revision),
+			actual: Some(revision),
+		}),
+		"invalid_order" =>
+			Err(StoreError::InvalidInput("account migration routing order is invalid")),
+		_ => Err(incompatible("account migration routing result")),
+	}
+}
+
 #[cfg(feature = "test-support")]
 pub(crate) async fn prepare_account_lifecycle_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
-	const SOURCES: [&str; 16] = [
+	const SOURCES: [&str; 18] = [
 		READ_ACCOUNT_REGISTRY_ALL_SQL,
 		READ_ACCOUNT_REGISTRY_SQL,
 		READ_ACCOUNT_EXACT_SQL,
@@ -980,7 +1114,9 @@ pub(crate) async fn prepare_account_lifecycle_sql(
 		READ_UNSETTLED_ACCOUNT_OPERATIONS_SQL,
 		READ_ACCOUNT_OPERATION_SQL,
 		UPDATE_ACCOUNT_ADMINISTRATION_SQL,
-		REPLACE_ACCOUNT_ROUTING_SQL,
+		SET_FIXED_ACCOUNT_SELECTION_SQL,
+		SET_BALANCED_ACCOUNT_SELECTION_SQL,
+		SET_ACCOUNT_ORDER_SQL,
 		OBSERVE_ACCOUNT_QUOTA_SQL,
 		OBSERVE_ACCOUNT_QUOTA_ERROR_SQL,
 		OBSERVE_ACCOUNT_STORE_SQL,
@@ -1057,8 +1193,62 @@ fn parse_routing_control(row: &tokio_postgres::Row) -> Result<AccountRoutingCont
 	if revision < 1 {
 		return Err(incompatible("account routing revision"));
 	}
+	let members = order.iter().cloned().collect::<BTreeSet<_>>();
+	if members.len() != order.len() {
+		return Err(incompatible("account routing order"));
+	}
+	if let AccountSelectionMode::Fixed(account_id) = &mode
+		&& !members.contains(account_id)
+	{
+		return Err(incompatible("fixed account routing target"));
+	}
 
 	Ok(AccountRoutingControl { revision, mode, order })
+}
+
+async fn parse_routing_control_outcome(
+	transaction: &tokio_postgres::Transaction<'_>,
+	row: &tokio_postgres::Row,
+	fixed_selection: bool,
+) -> Result<RoutingControlOutcome, StoreError> {
+	let routing_revision: i64 = row.get(1);
+	let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
+	let routing = parse_routing_control(&routing_row)?;
+	if routing.revision != routing_revision {
+		return Err(incompatible("account routing mutation revision"));
+	}
+	match row.get::<_, &str>(0) {
+		"updated" => Ok(RoutingControlOutcome::Updated { routing }),
+		"stale_routing_control" =>
+			Ok(RoutingControlOutcome::StaleRoutingControl { revision: routing_revision }),
+		"stale_account" if fixed_selection => {
+			let revision: i64 = row.get(2);
+			if revision < 1 {
+				return Err(incompatible("fixed account revision"));
+			}
+			Ok(RoutingControlOutcome::StaleAccount { revision })
+		},
+		"account_missing" if fixed_selection => Ok(RoutingControlOutcome::AccountMissing),
+		"invalid_order" if !fixed_selection =>
+			Ok(RoutingControlOutcome::InvalidOrder { revision: routing_revision }),
+		"invalid_request" => Ok(RoutingControlOutcome::InvalidRequest),
+		_ => Err(incompatible("account routing result")),
+	}
+}
+
+fn validate_routing_revision(revision: i64) -> Result<(), StoreError> {
+	if revision < 1 {
+		Err(StoreError::InvalidInput("expected routing revision must be positive"))
+	} else {
+		Ok(())
+	}
+}
+
+fn routing_order_parameters(order: &[AccountId]) -> Result<Vec<String>, StoreError> {
+	if order.len() > 512 || order.iter().cloned().collect::<BTreeSet<_>>().len() != order.len() {
+		return Err(StoreError::InvalidInput("account routing order is invalid"));
+	}
+	Ok(order.iter().map(|account_id| account_id.as_str().to_owned()).collect())
 }
 
 fn validate_registry_snapshot(

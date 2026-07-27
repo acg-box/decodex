@@ -592,9 +592,16 @@ impl ResetCardRuntime {
 		expected_revision: i64,
 		descriptor: ResetCardDescriptor,
 	) -> Result<Option<ResetCardPreparation>, ResetCardServiceError> {
+		let callback_profile = self.inner.accounts.reset_card_callback_profile();
 		self.inner
 			.store
-			.replay_reset_card_preparation(command, account_id, expected_revision, descriptor)
+			.replay_reset_card_preparation(
+				command,
+				account_id,
+				expected_revision,
+				descriptor,
+				callback_profile.as_deref(),
+			)
 			.await
 			.map_err(map_prepare_store_error)
 	}
@@ -1493,6 +1500,8 @@ fn map_prepare_store_error(error: StoreError) -> ResetCardServiceError {
 		StoreError::RevisionConflict { actual: Some(actual), .. } =>
 			ResetCardServiceError::ExpectedRevisionMismatch { actual },
 		StoreError::RevisionConflict { .. } => ResetCardServiceError::AccountChanged,
+		StoreError::InvalidInput("account state rejects manual reset-card use") =>
+			ResetCardServiceError::AccountStateRejected,
 		StoreError::InvalidInput(_) => ResetCardServiceError::InvalidRequest,
 		StoreError::CapacityExhausted(_) => ResetCardServiceError::ResourceExhausted,
 		_ => ResetCardServiceError::ProductStateUnavailable,

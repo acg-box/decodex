@@ -424,6 +424,38 @@ impl PostgresStore {
 		result
 	}
 
+	/// Replace the frozen account-migration routing projection through one short-lived migration
+	/// connection. The retained runtime pool has no authority for this migration-only SQL routine.
+	#[cfg(unix)]
+	pub async fn replace_account_routing_for_migration_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+		mode: &decodex_core::AccountSelectionMode,
+		order: &[AccountId],
+	) -> Result<decodex_core::AccountRoutingControl, StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = account_lifecycle::replace_account_routing_for_migration_explicit(
+			&mut client,
+			mode,
+			order,
+		)
+		.await;
+		drop(client);
+		pool.close();
+
+		result
+	}
+
 	/// Read the completed installer-only account migration receipt through one single-use
 	/// migration connection. The steady-state runtime role receives no receipt-table authority.
 	#[cfg(unix)]

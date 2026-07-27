@@ -180,13 +180,16 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
 	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
 	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
 	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-	"decodex.replace_account_routing_control_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
+	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
 	"decodex.read_account_routing_control_exact()",
 	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
@@ -383,6 +386,29 @@ fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn std::erro
 	Ok((migration, runtime))
 }
 
+#[cfg(feature = "test-support")]
+async fn account_routing_projection(
+	transaction: &tokio_postgres::Transaction<'_>,
+) -> Result<(String, Option<String>, i64, Vec<String>), tokio_postgres::Error> {
+	let row = transaction
+		.query_one(
+			"SELECT mode::text,fixed_account_id::text,revision, \
+			 ARRAY(SELECT value::text FROM pg_catalog.unnest(account_order) AS value) \
+			 FROM decodex.read_account_routing_control_exact()",
+			&[],
+		)
+		.await?;
+	Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
+}
+
+#[cfg(feature = "test-support")]
+fn assert_account_routing_universe_error(error: &tokio_postgres::Error) {
+	assert_eq!(
+		error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
+		Some("account_routing_universe_complete"),
+	);
+}
+
 fn isolated_blob_store() -> Result<BlobStore, Box<dyn std::error::Error>> {
 	let blob_root = env::var("DECODEX_TEST_BLOB_ROOT")?;
 
@@ -472,6 +498,529 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let transaction = client.transaction().await?;
+	let first_account = "72000000-0000-4000-8000-000000000001";
+	let second_account = "72000000-0000-4000-8000-000000000002";
+	let first_writer = "73000000-0000-4000-8000-000000000001";
+	let second_writer = "73000000-0000-4000-8000-000000000002";
+	let first_fingerprint = "a".repeat(64);
+	let second_fingerprint = "b".repeat(64);
+
+	transaction
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET mode='balanced',fixed_account_id=NULL,\
+			 revision=revision+1,updated_at=pg_catalog.clock_timestamp() WHERE singleton;\
+			 DELETE FROM decodex.account_routing_order;\
+			 UPDATE decodex.accounts SET enabled=false,credential_store_schema_version=NULL,\
+			 credential_version=NULL,credential_fingerprint=NULL,\
+			 credential_writer_operation_id=NULL,credential_store_observation='missing',\
+			 credential_store_observed_at=pg_catalog.clock_timestamp(),\
+			 tombstoned_at=pg_catalog.clock_timestamp(),revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp()",
+		)
+		.await?;
+	for (account_id, label, provider_id, fingerprint, writer) in [
+		(
+			first_account,
+			"Routing A",
+			"routing-contract-a",
+			first_fingerprint.as_str(),
+			first_writer,
+		),
+		(
+			second_account,
+			"Routing B",
+			"routing-contract-b",
+			second_fingerprint.as_str(),
+			second_writer,
+		),
+	] {
+		transaction
+			.execute(
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at\
+				 ) VALUES (\
+				 $1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,$5::text::uuid,\
+				 'exact',pg_catalog.clock_timestamp())",
+				&[&account_id, &label, &provider_id, &fingerprint, &writer],
+			)
+			.await?;
+		transaction
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 SELECT $1::text::uuid,COALESCE(pg_catalog.max(position)+1,0) \
+				 FROM decodex.account_routing_order",
+				&[&account_id],
+			)
+			.await?;
+	}
+	transaction
+		.execute(
+			"UPDATE decodex.account_routing_control SET revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp() WHERE singleton",
+			&[],
+		)
+		.await?;
+
+	let (_, _, seeded_revision, seeded_order) = account_routing_projection(&transaction).await?;
+	let fixed = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&seeded_revision, &first_account, &1_i64],
+		)
+		.await?;
+	assert_eq!(fixed.get::<_, &str>(0), "updated");
+	assert_eq!(fixed.get::<_, i64>(2), 1);
+	let (mode, fixed_target, fixed_revision, fixed_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(fixed_revision, fixed.get::<_, i64>(1));
+	assert!(fixed_revision > seeded_revision);
+	assert_eq!(mode, "fixed");
+	assert_eq!(fixed_target.as_deref(), Some(first_account));
+	assert_eq!(fixed_order, seeded_order);
+	let fixed_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&fixed_revision, &first_account, &1_i64],
+		)
+		.await?;
+	assert_eq!(fixed_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(fixed_no_change.get::<_, i64>(1), fixed_revision);
+
+	let stale_routing = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&seeded_revision],
+		)
+		.await?;
+	assert_eq!(stale_routing.get::<_, &str>(0), "stale_routing_control");
+	assert_eq!(stale_routing.get::<_, i64>(1), fixed_revision);
+
+	let stale_account = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&fixed_revision, &first_account, &2_i64],
+		)
+		.await?;
+	assert_eq!(stale_account.get::<_, &str>(0), "stale_account");
+	assert_eq!(stale_account.get::<_, i64>(1), fixed_revision);
+	assert_eq!(stale_account.get::<_, i64>(2), 1);
+
+	let reversed_order = seeded_order.iter().rev().cloned().collect::<Vec<_>>();
+	let ordered = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&fixed_revision, &reversed_order],
+		)
+		.await?;
+	assert_eq!(ordered.get::<_, &str>(0), "updated");
+	let (mode, fixed_target, ordered_revision, current_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(ordered_revision, ordered.get::<_, i64>(1));
+	assert_eq!(mode, "fixed");
+	assert_eq!(fixed_target.as_deref(), Some(first_account));
+	assert_eq!(current_order, reversed_order);
+	let order_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&ordered_revision, &reversed_order],
+		)
+		.await?;
+	assert_eq!(order_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(order_no_change.get::<_, i64>(1), ordered_revision);
+
+	let incomplete_order = reversed_order[..reversed_order.len().saturating_sub(1)].to_vec();
+	let incomplete = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&ordered_revision, &incomplete_order],
+		)
+		.await?;
+	assert_eq!(incomplete.get::<_, &str>(0), "invalid_order");
+	assert_eq!(incomplete.get::<_, i64>(1), ordered_revision);
+	assert_eq!(account_routing_projection(&transaction).await?.3, reversed_order);
+
+	let balanced = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&ordered_revision],
+		)
+		.await?;
+	assert_eq!(balanced.get::<_, &str>(0), "updated");
+	let (mode, fixed_target, balanced_revision, balanced_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(balanced_revision, balanced.get::<_, i64>(1));
+	assert_eq!(mode, "balanced");
+	assert_eq!(fixed_target, None);
+	assert_eq!(balanced_order, reversed_order);
+	let balanced_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&balanced_revision],
+		)
+		.await?;
+	assert_eq!(balanced_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(balanced_no_change.get::<_, i64>(1), balanced_revision);
+
+	transaction.batch_execute("SAVEPOINT migration_partial_routing").await?;
+	transaction
+		.execute(
+			"DELETE FROM decodex.account_routing_order WHERE account_id=$1::text::uuid",
+			&[&second_account],
+		)
+		.await?;
+	let migration_repair = transaction
+		.query_one(
+			"SELECT result_code,revision \
+			 FROM decodex.replace_account_routing_control_for_migration_exact(\
+			 $1,'balanced',NULL,$2::text[]::uuid[])",
+			&[&balanced_revision, &seeded_order],
+		)
+		.await?;
+	assert_eq!(migration_repair.get::<_, &str>(0), "updated");
+	assert_eq!(account_routing_projection(&transaction).await?.3, seeded_order);
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT migration_partial_routing; \
+			 RELEASE SAVEPOINT migration_partial_routing",
+		)
+		.await?;
+
+	transaction.batch_execute("SAVEPOINT missing_routing_member").await?;
+	transaction
+		.execute(
+			"DELETE FROM decodex.account_routing_order WHERE account_id=$1::text::uuid",
+			&[&second_account],
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT missing_readback").await?;
+	let missing_readback = transaction
+		.query_one("SELECT * FROM decodex.read_account_routing_control_exact()", &[])
+		.await
+		.expect_err("strict routing readback must reject a missing visible member");
+	assert_account_routing_universe_error(&missing_readback);
+	transaction
+		.batch_execute("ROLLBACK TO SAVEPOINT missing_readback; RELEASE SAVEPOINT missing_readback")
+		.await?;
+	transaction.batch_execute("SAVEPOINT missing_fixed").await?;
+	let missing_fixed = transaction
+		.query_one(
+			"SELECT * FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&balanced_revision, &first_account, &1_i64],
+		)
+		.await
+		.expect_err("fixed selection must reject a partial stored routing universe");
+	assert_account_routing_universe_error(&missing_fixed);
+	transaction
+		.batch_execute("ROLLBACK TO SAVEPOINT missing_fixed; RELEASE SAVEPOINT missing_fixed")
+		.await?;
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT missing_routing_member; \
+			 RELEASE SAVEPOINT missing_routing_member",
+		)
+		.await?;
+
+	transaction.batch_execute("SAVEPOINT tombstoned_routing_member").await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.accounts(\
+			 account_id,display_label,state,enabled,tombstoned_at\
+			 ) VALUES ($1::text::uuid,'Tombstoned routing member','unknown',false,\
+			 pg_catalog.clock_timestamp())",
+			&[&"72000000-0000-4000-8000-000000000003"],
+		)
+		.await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.account_routing_order(account_id,position) \
+			 VALUES ($1::text::uuid,2)",
+			&[&"72000000-0000-4000-8000-000000000003"],
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT tombstoned_balanced").await?;
+	let tombstoned_balanced = transaction
+		.query_one(
+			"SELECT * FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&balanced_revision],
+		)
+		.await
+		.expect_err("balanced selection must reject a tombstoned stored routing member");
+	assert_account_routing_universe_error(&tombstoned_balanced);
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_balanced; \
+			 RELEASE SAVEPOINT tombstoned_balanced",
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT tombstoned_readback").await?;
+	let tombstoned_readback = transaction
+		.query_one("SELECT * FROM decodex.read_account_routing_control_exact()", &[])
+		.await
+		.expect_err("strict routing readback must reject a tombstoned stored member");
+	assert_account_routing_universe_error(&tombstoned_readback);
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_readback; \
+			 RELEASE SAVEPOINT tombstoned_readback",
+		)
+		.await?;
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_routing_member; \
+			 RELEASE SAVEPOINT tombstoned_routing_member",
+		)
+		.await?;
+
+	let migration_replacement = transaction
+		.query_one(
+			"SELECT result_code,revision \
+			 FROM decodex.replace_account_routing_control_for_migration_exact(\
+			 $1,$2::text::decodex.account_selection_mode,$3::text::uuid,$4::text[]::uuid[])",
+			&[&balanced_revision, &"fixed", &second_account, &seeded_order],
+		)
+		.await?;
+	assert_eq!(migration_replacement.get::<_, &str>(0), "updated");
+	let (mode, fixed_target, migration_revision, migration_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(migration_revision, migration_replacement.get::<_, i64>(1));
+	assert_eq!(mode, "fixed");
+	assert_eq!(fixed_target.as_deref(), Some(second_account));
+	assert_eq!(migration_order, seeded_order);
+
+	transaction.rollback().await?;
+	drop(client);
+	connection_task.await??;
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_account_routing_and_logout_share_one_lock_order()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut owner, owner_connection) = migration.connect(NoTls).await?;
+	let owner_connection_task = tokio::spawn(owner_connection);
+	let setup = owner.transaction().await?;
+	let logout_account = "72100000-0000-4000-8000-000000000001";
+	let retained_account = "72100000-0000-4000-8000-000000000002";
+	let logout_writer = "73100000-0000-4000-8000-000000000001";
+	let retained_writer = "73100000-0000-4000-8000-000000000002";
+	let logout_operation = "74100000-0000-4000-8000-000000000001";
+	let fingerprint = "c".repeat(64);
+	setup
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET mode='balanced',fixed_account_id=NULL,\
+			 revision=revision+1,updated_at=pg_catalog.clock_timestamp() WHERE singleton;\
+			 DELETE FROM decodex.account_routing_order;\
+			 UPDATE decodex.accounts SET enabled=false,credential_store_schema_version=NULL,\
+			 credential_version=NULL,credential_fingerprint=NULL,\
+			 credential_writer_operation_id=NULL,credential_store_observation='missing',\
+			 credential_store_observed_at=pg_catalog.clock_timestamp(),\
+			 tombstoned_at=pg_catalog.clock_timestamp(),revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp()",
+		)
+		.await?;
+	for (position, account_id, writer, provider_id) in [
+		(0_i32, logout_account, logout_writer, "routing-logout-a"),
+		(1_i32, retained_account, retained_writer, "routing-logout-b"),
+	] {
+		setup
+			.execute(
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at\
+				 ) VALUES (\
+				 $1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,$5::text::uuid,\
+				 'exact',pg_catalog.clock_timestamp())",
+				&[
+					&account_id,
+					&format!("Routing logout {position}"),
+					&provider_id,
+					&fingerprint,
+					&writer,
+				],
+			)
+			.await?;
+		setup
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 VALUES ($1::text::uuid,$2)",
+				&[&account_id, &position],
+			)
+			.await?;
+	}
+	setup
+		.execute(
+			"INSERT INTO decodex.account_operations(\
+			 operation_id,account_id,kind,phase,expected_account_revision,\
+			 expected_store_schema_version,expected_credential_version,\
+			 expected_credential_fingerprint,expected_credential_writer_operation_id,\
+			 provider_kind,provider_account_id\
+			 ) VALUES (\
+			 $1::text::uuid,$2::text::uuid,'logout','store_applied',1,1,1,$3,\
+			 $4::text::uuid,'chatgpt',$5)",
+			&[
+				&logout_operation,
+				&logout_account,
+				&fingerprint,
+				&logout_writer,
+				&"routing-logout-a",
+			],
+		)
+		.await?;
+	let expected_routing_revision: i64 = setup
+		.query_one(
+			"UPDATE decodex.account_routing_control \
+			 SET revision=revision+1,updated_at=pg_catalog.clock_timestamp() \
+			 WHERE singleton RETURNING revision",
+			&[],
+		)
+		.await?
+		.get(0);
+	setup
+		.batch_execute(
+			"CREATE FUNCTION public.xy1422_pause_logout_routing_lock() \
+			 RETURNS trigger LANGUAGE plpgsql AS $$ \
+			 BEGIN \
+			   IF NEW.account_id='72100000-0000-4000-8000-000000000001'::uuid \
+			     AND OLD.tombstoned_at IS NULL AND NEW.tombstoned_at IS NOT NULL \
+			   THEN PERFORM pg_catalog.pg_sleep(0.25); END IF; \
+			   RETURN NEW; \
+			 END \
+			 $$;\
+			 REVOKE ALL ON FUNCTION public.xy1422_pause_logout_routing_lock() FROM PUBLIC;\
+			 CREATE TRIGGER xy1422_pause_logout_routing_lock \
+			 AFTER UPDATE ON decodex.accounts FOR EACH ROW \
+			 EXECUTE FUNCTION public.xy1422_pause_logout_routing_lock()",
+		)
+		.await?;
+	setup.commit().await?;
+
+	let mut logout_client_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut logout_client_config);
+	let logout_task = tokio::spawn(async move {
+		let (mut client, connection) =
+			logout_client_config.connect(NoTls).await.expect("logout connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("logout transaction");
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.advance_account_operation_exact(\
+				 $1::text::uuid,'store_applied','committed',NULL)",
+				&[&logout_operation],
+			)
+			.await
+			.expect("logout result")
+			.get(0);
+		transaction.commit().await.expect("logout transaction commit");
+		drop(client);
+		connection_task.await.expect("logout connection task").expect("logout connection");
+		code
+	});
+	time::sleep(Duration::from_millis(50)).await;
+	let mut fixed_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut fixed_config);
+	let fixed_task = tokio::spawn(async move {
+		let (mut client, connection) = fixed_config.connect(NoTls).await.expect("fixed connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("fixed transaction");
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.set_fixed_account_selection_exact(\
+				 $1,$2::text::uuid,$3)",
+				&[&expected_routing_revision, &logout_account, &1_i64],
+			)
+			.await
+			.expect("fixed selection result")
+			.get(0);
+		transaction.commit().await.expect("fixed transaction commit");
+		drop(client);
+		connection_task.await.expect("fixed connection task").expect("fixed connection");
+		code
+	});
+	time::sleep(Duration::from_millis(20)).await;
+	let mut order_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut order_config);
+	let order_task = tokio::spawn(async move {
+		let (mut client, connection) = order_config.connect(NoTls).await.expect("order connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("order transaction");
+		let order = vec![retained_account.to_owned(), logout_account.to_owned()];
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.set_account_order_exact(\
+				 $1,$2::text[]::uuid[])",
+				&[&expected_routing_revision, &order],
+			)
+			.await
+			.expect("account order result")
+			.get(0);
+		transaction.commit().await.expect("order transaction commit");
+		drop(client);
+		connection_task.await.expect("order connection task").expect("order connection");
+		code
+	});
+
+	let logout_code = time::timeout(Duration::from_secs(5), logout_task)
+		.await
+		.expect("logout must not deadlock")?;
+	let fixed_code = time::timeout(Duration::from_secs(5), fixed_task)
+		.await
+		.expect("fixed selection must not deadlock")?;
+	let order_code = time::timeout(Duration::from_secs(5), order_task)
+		.await
+		.expect("account order must not deadlock")?;
+	assert_eq!(logout_code, "advanced");
+	assert_eq!(fixed_code, "stale_routing_control");
+	assert_eq!(order_code, "stale_routing_control");
+	let final_routing = owner
+		.query_one(
+			"SELECT mode::text,fixed_account_id::text, \
+			 ARRAY(SELECT value::text FROM pg_catalog.unnest(account_order) AS value) \
+			 FROM decodex.read_account_routing_control_exact()",
+			&[],
+		)
+		.await?;
+	assert_eq!(final_routing.get::<_, &str>(0), "balanced");
+	assert_eq!(final_routing.get::<_, Option<&str>>(1), None);
+	assert_eq!(final_routing.get::<_, Vec<String>>(2), vec![retained_account.to_owned()]);
+
+	owner
+		.batch_execute(
+			"DROP TRIGGER xy1422_pause_logout_routing_lock ON decodex.accounts;\
+			 DROP FUNCTION public.xy1422_pause_logout_routing_lock()",
+		)
+		.await?;
+	drop(owner);
+	owner_connection_task.await??;
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 V27 preparation harness"]
 #[cfg(feature = "test-support")]
 async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
@@ -481,7 +1030,7 @@ async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
-	assert_eq!(source_count, 27);
+	assert_eq!(source_count, 29);
 	println!("decodex_changed_sql_prepared={source_count}");
 
 	drop(client);
