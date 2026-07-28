@@ -2544,7 +2544,7 @@ def run_expected_migration_replay(
     namespace_lock: Any,
     label: str,
 ) -> dict[str, Any]:
-    failure_categories = {
+    display_failure_categories = {
         "offline account migration inherited namespace lock is unavailable": (
             "installer_lock_unavailable"
         ),
@@ -2563,16 +2563,34 @@ def run_expected_migration_replay(
         ),
         "offline account migration receipt conflicts": "receipt_conflict",
     }
+    debug_failure_categories = {
+        "Error: InstallerLockUnavailable": "installer_lock_unavailable",
+        "Error: InvalidPath": "invalid_path",
+        "Error: InvalidConfig": "invalid_config",
+        "Error: InvalidManifest": "invalid_manifest",
+        "Error: SourceChanged": "source_changed",
+        "Error: InvalidCredentialSource": "invalid_credential_source",
+        "Error: PostgresUnavailable": "postgres_unavailable",
+        "Error: DestinationMismatch": "destination_mismatch",
+        "Error: RuntimeRetirementUnverified": "runtime_retirement_unverified",
+        "Error: ExecutionAuthorizationUnavailable": (
+            "execution_authorization_unavailable"
+        ),
+        "Error: ReceiptConflict": "receipt_conflict",
+    }
     try:
         return installer.run_offline_account_migration(paths, namespace_lock)
     except subprocess.CalledProcessError as error:
         stderr = error.stderr if isinstance(error.stderr, str) else ""
-        matched = [
+        matched = {
             category
-            for message, category in failure_categories.items()
+            for message, category in display_failure_categories.items()
             if message in stderr
-        ]
-        category = matched[0] if len(matched) == 1 else "unclassified"
+        }
+        debug_category = debug_failure_categories.get(stderr.strip())
+        if debug_category is not None:
+            matched.add(debug_category)
+        category = matched.pop() if len(matched) == 1 else "unclassified"
         raise GateFailure(
             f"{label} replay failed: returncode={error.returncode}; "
             f"category={category}"
