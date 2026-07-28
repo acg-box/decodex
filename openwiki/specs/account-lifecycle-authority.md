@@ -192,10 +192,12 @@ Codex build must prove all of these facts:
 - the exact build, schema fingerprint, and callback capability profile are cached and
   bound to launch authority.
 
-Unsupported, unprobed, contradictory, or changed builds fail closed. The current vNext
-adapter replies method-not-found to inbound app-server requests. That source behavior
-does not service the refresh callback and therefore cannot satisfy `AccountLifecycle`,
-`MacDogfoodReady`, or runner readiness. Initial token projection alone is insufficient.
+Unsupported, unprobed, contradictory, or changed builds fail closed. The current exact
+`codex-cli 0.146.0-alpha.3.1` adapter services the root refresh request through the Account
+Service and returns the root refresh response. This source capability can satisfy
+`AccountLifecycle`, `MacDogfoodReady`, and runner readiness only when the exact-image,
+generated-schema, and live callback preflights also pass. Initial token projection alone is
+insufficient.
 
 The supported macOS build must also prove that device login can write to an isolated
 daemon-readable auth backend without changing ambient `~/.codex`. Ambient `Use in
