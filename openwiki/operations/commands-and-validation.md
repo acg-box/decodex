@@ -878,8 +878,9 @@ snapshot, then starts the canonical final image suspended and checks its full so
 snapshot-rooted CDHash, dynamic path, session, and process group before resume. Private FIFO
 endpoints are atomic close-on-exec and have no live names before user code starts. This canonical
 macOS image preserves process-attributed network-extension routing without moving Reset Card
-ownership into Swift. The Codex adapter owns the typed schema/capability contracts but exposes no
-launch surface.
+ownership into Swift. The child receives only the fixed `HOME`, system `PATH`, and
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` projection. The Codex adapter owns the typed
+schema/capability contracts but exposes no launch surface.
 Markers are not capability promises. Focused tests cover the golden, exact-build cache
 conflicts, scripted fake server, structural history/collaboration-schema rejection, fixed
 production command construction, bounded executable/preflight/schema/frame/queue/result
