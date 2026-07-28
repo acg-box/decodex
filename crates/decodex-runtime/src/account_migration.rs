@@ -595,7 +595,7 @@ pub async fn exercise_account_migration_admission_for_gate(
 
 	let initial_selection = match (boundary, service.select_initial(OBSERVED_AT_MICROS).await) {
 		("unsettled", Err(failure))
-			if failure.account_id.as_ref() == Some(&account_id)
+			if failure.account_id.is_none()
 				&& failure.recovery == AccountSelectionRecovery::ResolveCredentialOperation =>
 			"refused",
 		("completed", Ok(selected))
