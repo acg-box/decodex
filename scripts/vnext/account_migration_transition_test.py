@@ -2578,6 +2578,14 @@ def run_expected_migration_replay(
         ),
         "Error: ReceiptConflict": "receipt_conflict",
     }
+    failure_stages = {
+        "credential_install",
+        "administration_update",
+        "administration_rejected",
+        "administration_readback",
+        "revision_mismatch",
+        "destination_binding",
+    }
     try:
         return installer.run_offline_account_migration(paths, namespace_lock)
     except subprocess.CalledProcessError as error:
@@ -2587,13 +2595,21 @@ def run_expected_migration_replay(
             for message, category in display_failure_categories.items()
             if message in stderr
         }
-        debug_category = debug_failure_categories.get(stderr.strip())
-        if debug_category is not None:
-            matched.add(debug_category)
+        observed_stages = []
+        for line in stderr.splitlines():
+            debug_category = debug_failure_categories.get(line)
+            if debug_category is not None:
+                matched.add(debug_category)
+            prefix = "decodex-account-migration-gate-failure:"
+            if line.startswith(prefix):
+                stage = line.removeprefix(prefix)
+                if stage in failure_stages:
+                    observed_stages.append(stage)
         category = matched.pop() if len(matched) == 1 else "unclassified"
+        stage = observed_stages[-1] if observed_stages else "unclassified"
         raise GateFailure(
             f"{label} replay failed: returncode={error.returncode}; "
-            f"category={category}"
+            f"category={category}; stage={stage}"
         ) from error
 
 

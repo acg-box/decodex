@@ -520,6 +520,17 @@ impl CredentialRefreshPort for OfflineRefresher {
 	}
 }
 
+fn account_migration_error_at(
+	stage: &'static str,
+	error: OfflineAccountMigrationError,
+) -> OfflineAccountMigrationError {
+	#[cfg(feature = "account-migration-transition-gate")]
+	eprintln!("decodex-account-migration-gate-failure:{stage}");
+	#[cfg(not(feature = "account-migration-transition-gate"))]
+	let _ = stage;
+	error
+}
+
 /// Exercise the existing runtime admission owners without starting a daemon worker.
 #[cfg(feature = "account-migration-transition-gate")]
 pub async fn exercise_account_migration_admission_for_gate(
@@ -1065,7 +1076,12 @@ pub async fn run_offline_account_migration(
 					prepared.bundle,
 				)
 				.await
-				.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+				.map_err(|_| {
+					account_migration_error_at(
+						"credential_install",
+						OfflineAccountMigrationError::DestinationMismatch,
+					)
+				})?,
 			None => initial_by_id
 				.get(&account.account_id)
 				.cloned()
@@ -1079,21 +1095,37 @@ pub async fn run_offline_account_migration(
 				Some(account.enabled),
 			)
 			.await
-			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?
-		{
+			.map_err(|_| {
+				account_migration_error_at(
+					"administration_update",
+					OfflineAccountMigrationError::DestinationMismatch,
+				)
+			})? {
 			AccountAdministrationOutcome::Updated { .. } => {},
 			AccountAdministrationOutcome::Rejected { .. } =>
-				return Err(OfflineAccountMigrationError::DestinationMismatch),
+				return Err(account_migration_error_at(
+					"administration_rejected",
+					OfflineAccountMigrationError::DestinationMismatch,
+				)),
 		}
 		let record = service
 			.inspect(&account.account_id)
 			.await
-			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?
+			.map_err(|_| {
+				account_migration_error_at(
+					"administration_readback",
+					OfflineAccountMigrationError::DestinationMismatch,
+				)
+			})?
 			.account;
 		if expected_final_revision.is_some_and(|revision| record.revision != revision) {
-			return Err(OfflineAccountMigrationError::DestinationMismatch);
+			return Err(account_migration_error_at(
+				"revision_mismatch",
+				OfflineAccountMigrationError::DestinationMismatch,
+			));
 		}
-		verify_account_destination(account, &record, credentials.as_ref())?;
+		verify_account_destination(account, &record, credentials.as_ref())
+			.map_err(|error| account_migration_error_at("destination_binding", error))?;
 		#[cfg(feature = "account-migration-transition-gate")]
 		account_migration_transition_checkpoint(
 			"administration_applied",
