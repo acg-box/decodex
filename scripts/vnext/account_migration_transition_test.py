@@ -2579,12 +2579,26 @@ def run_expected_migration_replay(
         "Error: ReceiptConflict": "receipt_conflict",
     }
     failure_stages = {
+        "credential_store_open",
+        "operation_read",
+        "operation_descriptor",
+        "unexpected_account",
+        "account_classification",
+        "existing_binding",
+        "existing_credential_absence",
+        "new_credential_absence",
+        "expected_final_revision",
+        "missing_replay_account",
         "credential_install",
         "administration_update",
         "administration_rejected",
         "administration_readback",
         "revision_mismatch",
         "destination_binding",
+        "routing_replace",
+        "routing_readback",
+        "routing_projection",
+        "destination_accounts",
     }
     try:
         return installer.run_offline_account_migration(paths, namespace_lock)

@@ -968,10 +968,12 @@ pub async fn run_offline_account_migration(
 	let paths = DecodexRoot::new(root.to_path_buf())
 		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?
 		.paths();
-	let credentials = Arc::new(
-		MacosKeychainCredentialStore::new(&paths)
-			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
-	);
+	let credentials = Arc::new(MacosKeychainCredentialStore::new(&paths).map_err(|_| {
+		account_migration_error_at(
+			"credential_store_open",
+			OfflineAccountMigrationError::DestinationMismatch,
+		)
+	})?);
 	#[cfg(feature = "account-migration-transition-gate")]
 	account_migration_transition_checkpoint("credential_store_opened", None)?;
 	let credential_store: Arc<dyn HostCredentialStore> = credentials.clone();
@@ -994,14 +996,18 @@ pub async fn run_offline_account_migration(
 
 	let mut persisted_transitions = BTreeMap::new();
 	for account in &manifest.accounts {
-		let operation = service
-			.read_migration_operation(&account.operation_id)
-			.await
-			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?;
+		let operation =
+			service.read_migration_operation(&account.operation_id).await.map_err(|_| {
+				account_migration_error_at(
+					"operation_read",
+					OfflineAccountMigrationError::DestinationMismatch,
+				)
+			})?;
 		let transition = operation
 			.as_ref()
 			.map(|operation| migration_transition_from_operation(account, operation))
-			.transpose()?;
+			.transpose()
+			.map_err(|error| account_migration_error_at("operation_descriptor", error))?;
 		if persisted_transitions.insert(account.account_id.clone(), transition).is_some() {
 			return Err(OfflineAccountMigrationError::InvalidManifest);
 		}
@@ -1015,7 +1021,10 @@ pub async fn run_offline_account_migration(
 		.map(|inspection| (inspection.account.account_id.clone(), inspection.account))
 		.collect::<BTreeMap<_, _>>();
 	if !initial_by_id.keys().all(|account_id| expected_ids.contains(account_id)) {
-		return Err(OfflineAccountMigrationError::DestinationMismatch);
+		return Err(account_migration_error_at(
+			"unexpected_account",
+			OfflineAccountMigrationError::DestinationMismatch,
+		));
 	}
 
 	for account in &manifest.accounts {
@@ -1034,13 +1043,19 @@ pub async fn run_offline_account_migration(
 			Some(transition) => Some(transition),
 			None => match initial_by_id.get(&account.account_id) {
 				Some(record) if record.tombstoned || record.unsettled_operation.is_some() =>
-					return Err(OfflineAccountMigrationError::DestinationMismatch),
+					return Err(account_migration_error_at(
+						"account_classification",
+						OfflineAccountMigrationError::DestinationMismatch,
+					)),
 				Some(record) if record.credential.is_some() => {
-					verify_account_destination_binding(account, record, credentials.as_ref())?;
+					verify_account_destination_binding(account, record, credentials.as_ref())
+						.map_err(|error| account_migration_error_at("existing_binding", error))?;
 					None
 				},
 				Some(record) => {
-					require_credential_absent(account, credentials.as_ref())?;
+					require_credential_absent(account, credentials.as_ref()).map_err(|error| {
+						account_migration_error_at("existing_credential_absence", error)
+					})?;
 					Some(AccountMigrationTransition::ExistingHydrate {
 						revision: record.revision,
 						display_label: record.label.clone(),
@@ -1048,7 +1063,9 @@ pub async fn run_offline_account_migration(
 					})
 				},
 				None => {
-					require_credential_absent(account, credentials.as_ref())?;
+					require_credential_absent(account, credentials.as_ref()).map_err(|error| {
+						account_migration_error_at("new_credential_absence", error)
+					})?;
 					Some(AccountMigrationTransition::AbsentInitialize { expected_revision: None })
 				},
 			},
@@ -1062,7 +1079,8 @@ pub async fn run_offline_account_migration(
 					account.enabled,
 				)
 			})
-			.transpose()?;
+			.transpose()
+			.map_err(|error| account_migration_error_at("expected_final_revision", error))?;
 		let record = match transition {
 			Some(transition) => service
 				.install_migrated_credentials(
@@ -1082,10 +1100,12 @@ pub async fn run_offline_account_migration(
 						OfflineAccountMigrationError::DestinationMismatch,
 					)
 				})?,
-			None => initial_by_id
-				.get(&account.account_id)
-				.cloned()
-				.ok_or(OfflineAccountMigrationError::DestinationMismatch)?,
+			None => initial_by_id.get(&account.account_id).cloned().ok_or_else(|| {
+				account_migration_error_at(
+					"missing_replay_account",
+					OfflineAccountMigrationError::DestinationMismatch,
+				)
+			})?,
 		};
 		match service
 			.update_administration(
@@ -1140,21 +1160,32 @@ pub async fn run_offline_account_migration(
 		&manifest.order,
 	)
 	.await
-	.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?;
+	.map_err(|_| {
+		account_migration_error_at(
+			"routing_replace",
+			OfflineAccountMigrationError::DestinationMismatch,
+		)
+	})?;
 	#[cfg(feature = "account-migration-transition-gate")]
 	account_migration_transition_checkpoint("routing_applied", None)?;
 
-	let (final_accounts, final_routing) = service
-		.list_snapshot()
-		.await
-		.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?;
+	let (final_accounts, final_routing) = service.list_snapshot().await.map_err(|_| {
+		account_migration_error_at(
+			"routing_readback",
+			OfflineAccountMigrationError::DestinationMismatch,
+		)
+	})?;
 	if final_routing.mode != manifest.routing
 		|| final_routing.order != manifest.order
 		|| final_accounts.len() != manifest.accounts.len()
 	{
-		return Err(OfflineAccountMigrationError::DestinationMismatch);
+		return Err(account_migration_error_at(
+			"routing_projection",
+			OfflineAccountMigrationError::DestinationMismatch,
+		));
 	}
-	verify_destination_accounts(&manifest, final_accounts, credentials.as_ref())?;
+	verify_destination_accounts(&manifest, final_accounts, credentials.as_ref())
+		.map_err(|error| account_migration_error_at("destination_accounts", error))?;
 	verify_sources(&manifest.sources)?;
 	verify_credential_sources(&options.credential_directory, &manifest.accounts)?;
 
