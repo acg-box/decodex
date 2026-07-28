@@ -135,6 +135,11 @@ impl DecodexPaths {
 		self.join("server/identity")
 	}
 
+	/// Owner-only external ProcessGeneration execution authorization.
+	pub fn process_execution_authorization_file(&self) -> PathBuf {
+		self.join("server/process-execution-authorization")
+	}
+
 	/// Fixed owner-only local product endpoint.
 	pub fn local_transport_socket(&self) -> PathBuf {
 		self.join("server/decodex.sock")

@@ -9,28 +9,44 @@ outside the runtime rewrite until their owners adopt them.
 
 OpenWiki is the repo-local project knowledge surface for agents and maintainers. Runtime authority lives in source, project contracts, tests, manifests, and local runtime state; OpenWiki explains where to start and what to watch before editing.
 
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](specs/private-artifact/README.md) is the sole normative
-authority. Private-artifact text elsewhere in OpenWiki, including this page, is a nonnormative
-navigation and current-status projection.
+XY-1403 retires the private-artifact lane at the exact repository effective point
+defined in the [retirement decision](specs/private-artifact/decision.md#repository-effective-point).
+The [private-artifact archive](specs/private-artifact/README.md) is historical
+evidence only after that point. It is not a runtime or future-work input.
 
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
 - [Design rationale](decisions/design-rationale.md): why Decodex keeps loop graphs internal, autonomy authority typed, MCP/skills split, the site static, and Radar/Publisher bounded.
-- [vNext authority decision](decisions/vnext-authority.md): the accepted product, ownership,
-  state-authority, cutover, and delivery decision outside the private-artifact carve-out.
+- [vNext authority decision](decisions/vnext-authority.md): the accepted product,
+  ownership, state-authority, cutover, delivery, and private-artifact retirement
+  decision.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
-  protocol, account continuity, non-goals, and migration contract outside the private-artifact
-  carve-out.
+  protocol, account continuity, non-goals, clean-cutover contract, and retained-title
+  Git evidence boundary.
+- [Account lifecycle authority](specs/account-lifecycle-authority.md): the three-owner
+  PostgreSQL/HostCredentialStore/Account Service boundary, MacDogfoodReady, final
+  readiness, refresh/recovery, ordinary import, and clean startup.
+- [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
+  pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
+  exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
+  adversarial acceptance matrix.
+- [XY-1401 ProviderAttempt authority](specs/provider-attempt-authority.md): generic
+  Conversation/ManagedRun consumer binding, exact V16/V17/ProcessGeneration lineage,
+  positive-only reconciliation, restore projection, duplicate-risk fencing, and the deferred
+  acceptance matrix.
+- [XY-1402 stateless execution coordination](specs/execution-coordinator-authority.md):
+  closed Conversation/ManagedRun consumer integration, exact cause projection, V12
+  retirement, production isolation, and the deferred unified acceptance matrix.
 - [vNext gate manifest](specs/vnext-gates.md): ordered feasibility and implementation gates,
-  downstream issue ownership, and decision-changing falsifiers outside the private-artifact
-  carve-out.
-- [Private-artifact authority package](specs/private-artifact/README.md): sole normative
-  private-artifact decision, semantic modules, fixed authority data, and future delivery contract.
+  downstream issue ownership, private-artifact retirement, and decision-changing
+  falsifiers.
+- [Private-artifact design archive](specs/private-artifact/README.md): frozen historical
+  decision, semantic modules, protected authority data, receipts, and retirement
+  controls. It contains no executable or future vNext obligation.
 - [XY-1262 Codex runtime proof](evidence/vnext-codex-runtime-proof.md): shared-home, ownership, schema, collaboration, cross-account, fallback, crash, and typed-quota evidence for the Codex feasibility gate.
 - [XY-1345 exact-command authority proof](evidence/xy-1345-exact-command-authority.md): corrected pure-PostgreSQL command authority, deterministic/concurrency schedules, privilege/catalog closure, restore receipt, and V9/V10 ownership order.
-- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): accepted exact APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility; no-replace outcomes, preservation, durability boundaries, manifest identities, and future enablement gates.
+- [XY-1372 private-artifact capability evidence](evidence/xy-1372-private-artifact-capabilities.md): historical accepted APFS, OrbStack overlayfs, and OrbStack virtiofs feasibility provenance; it authorizes no current platform or delivery gate.
 - [Lane Authority v2](decisions/lane-authority-v2.md): superseded historical target retained as architecture and incident provenance; C1-C7 are frozen and must not be implemented.
 - [Drift audits](evidence/drift-audits.md): public-safe evidence notes, current MCP remote-control watched claims, reverse checks, validation commands, and stop conditions.
 - [v0.2 freeze receipt](evidence/v0.2-freeze.md): exact trusted tag, cold-config and automation inventory, frozen legacy work, preserved incident evidence, cleanup ownership, and the unresolved SQLite-backup gap.
@@ -68,7 +84,20 @@ navigation and current-status projection.
   experiment persistence protocol. Forward-only V22 repairs its retained-title authority for the
   pinned two-effect protocol. It stores the exact nullable-name `thread/start` request and response.
   It then fences one `thread/name/set`. Only exact-ID `thread/read` can attest the prepared title.
-  Positive observations and V17 same-thread authority require that attestation. V16 adds inert
+  Positive observations and V17 same-thread authority require that attestation. Forward-only V23
+  adds durable ProcessGeneration intent, exact identity, append-only positive death evidence, and
+  account-local quarantine. Runtime has function-only ProcessSupervisor authority and no relation
+  DML. Forward-only V24 adds one generic ProviderAttempt authority for Conversation Turns and
+  ManagedRun executions, append-only transition and positive-evidence histories, restore
+  projection, and bounded positive-only reconciliation. Runtime has function-only
+  ProviderAttemptService authority and no relation DML. Forward-only V25 adds the
+  closed route and wait enum vocabulary in its own transaction. Forward-only V26 removes the
+  drained V12 ManagedRun-local submitted-turn and effect-barrier authority. It makes V14,
+  V16, and V17 generic over an ordinary Conversation Turn or one ManagedRun execution,
+  adds exact route-cause and reconciliation projection, and retains V16, V17,
+  ProcessSupervisor, and ProviderAttemptService as the sole writers of their accepted
+  decisions. Its zero-sized ExecutionCoordinator stores no state and is not connected to
+  a production root. V16 adds inert
   atomic routing decisions over a
   PostgreSQL-authored locked universe, exact evidence references, duration-typed depletion
   exclusions, and pure-kernel readback. No production root reaches either boundary and they enable no
@@ -92,13 +121,17 @@ navigation and current-status projection.
   scalar RuntimeSession/profile/account snapshot identities are cross-domain provenance, while
   RuntimeSession aggregate/event/kind markers, complete session or snapshot objects, and outbox
   links to activity carrying those ownership shapes remain migration-owner-only.
-- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Its live dispatch guard remains fail-closed on XY-1304.
+- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Current dispatch is disabled. Slice 1 can enable only the fenced initial-selection path; XY-1304 remains later automatic fallback/wake acceptance.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
-- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate; the GPUI binary remains a disabled print-and-exit stub while the authority-defined XY-1269 P/K/L/S slices are still unimplemented. Its checked-in diagnostic still says XY-1263 remains failed; that text is stale, and P must align it with the accepted foundation and disabled slice posture before P validation.
+- `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition roots. The client roots depend only on the protocol crate. GPUI opens a real shell and window, but every destination is placeholder-only and not usable. Slice 1 owns Accounts/Conversation/Health; Slice 2 owns Project/Work/Run; Slice 3 owns the Mac package.
 - `apps/decodex/` is the frozen v0.2 package. It remains in Git for provenance but is excluded from Cargo workspace membership and must not be used by vNext.
 - `apps/radar/` is the Radar auxiliary tool for upstream review queues, release deltas, artifact validation, signal rendering, and bundle generation (`apps/radar/README.md`, `apps/radar/src/lib.rs`).
 - `apps/decodex-publisher/` validates and reserves Decodex-owned social artifacts (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`).
-- `apps/decodex-app/` is a native macOS UI over local Decodex account-pool state and may launch `decodex serve` when no default local server is available (`apps/decodex-app/README.md`).
+- `apps/decodex-app/` is the current native macOS account UI. It is a
+  credential-negative client of the daemon-owned
+  [Account Lifecycle Authority](specs/account-lifecycle-authority.md) and does not
+  contain a local account pool, helper/server path, credential authority, or service
+  lifecycle owner (`apps/decodex-app/README.md`).
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
@@ -128,14 +161,17 @@ idempotency whose lookup and capacity namespace are bound to the negotiated prot
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
 server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
-query. The `decodex` and GPUI roots
+query, plus a read-only immutable execution-decision query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
 API-only V1.3 diagnostic clients. `decodex reset-card` is the active manual reset-card
-client. GPUI still reports its disabled state.
+client. GPUI opens its real shell, but its destinations remain placeholders.
 
-The reset-card service uses only configured vNext account UUIDs. It admits accounts in
-`available` or `depleted` state. Clients select a card by its public grant and expiry
-timestamps and send the exact account revision. `decodexd` alone reads the credential
+The reset-card service uses only configured vNext account UUIDs. A durable terminal
+receipt replays before current account gates. New admission and the pre-effect fence both
+require enabled state, AccountLifecycle readiness, no unsettled account operation, and
+exact Registry/store revision, credential fingerprint/version, and provider agreement.
+Clients select a card by its public grant and expiry timestamps and send the exact account
+revision. `decodexd` alone reads the credential
 vault, starts and attests the Codex process, resolves the opaque provider credit ID,
 persists that exact ID and the logical-command idempotency key before the effect, consumes
 the card, and reconciles fresh provider state. Restart recovery reuses the same exact ID
@@ -152,6 +188,27 @@ then creates one absolute session/command deadline and harvests `join_next_with_
 empty. Already registered provider work keeps its own bounded process deadline and must
 settle before exact endpoint cleanup and lock release. This boundary serializes legitimate
 daemons. It does not claim confinement against hostile code that already has the same UID.
+
+When PostgreSQL is ready, daemon bootstrap projects restored nonterminal
+ProcessGenerations to `death_unknown`, performs one positive-only reconciliation pass, and
+continues background reconciliation. Same-boot uncertainty remains local to its account. The
+runtime exposes an exact diagnostic/reconciliation/owned-termination port, but no protocol,
+CLI, routing, or production spawn path.
+
+Daemon bootstrap also projects every present nonterminal ProviderAttempt to `unknown`, performs
+one bounded positive-only reconciliation pass, and continues background reconciliation. A
+replacement can reconcile the original attempt but cannot replay it. Process death, boot change,
+EOF, timeout, restart, missing results, and negative search cannot prove `not_submitted`. The
+runtime exposes bounded redacted diagnostics and exact positive-receipt reconciliation, but no
+provider gateway or live dispatch path.
+
+The crate-private stateless ExecutionCoordinator can sequence one persisted V16 decision, one V17
+plan, one ProcessSupervisor-owned live fence, and one ProviderAttempt preparation. It consumes
+the fresh prepared capability and returns only an inert projection. It has no retained service,
+lifecycle, retry state, receipt, or durable relation. Its only protocol surface is a read-only
+immutable execution-decision query. No protocol command, CLI, scheduler, application service,
+Codex adapter, credential owner, UI, or daemon composition root can start the sequence or authorize
+dispatch.
 
 When PostgreSQL is ready, daemon bootstrap also opens the accepted pinned repository executor,
 retains the single PostgreSQL/executor/saga composition, and completes bounded readback-only
@@ -174,11 +231,11 @@ superuser/BYPASSRLS, database/schema/table DDL, TRUNCATE,
 grant options, trigger authority, `session_replication_role` SET/ALTER SYSTEM, or any other
 retention bypass. The effective login value must be `origin`. Readiness requires a closed inventory
 of every runtime-callable Decodex function with exact signatures, overloads, metadata, settings, and
-source bodies matching the canonical embedded migrations. The 142 expected safety/state/retention
+source bodies matching the canonical embedded migrations. The 146 expected safety/state/retention
 triggers must also remain enabled, correctly shaped, and bound to their canonical functions; no
 additional user trigger, rule, policy, RLS mode, or noncanonical expression dependency may add an
-indirect execution path on a runtime relation. One canonical PostgreSQL 18 schema manifest also
-attests every shipped relation/column, default, constraint, index, enum label, and internal
+indirect execution path on a runtime relation. The accepted V22 canonical PostgreSQL 18 schema
+manifest attests its complete historical relation/column, default, constraint, index, enum-label, and internal
 constraint-trigger binding together with each stable catalog dependency identity. It includes
 foreign keys whose Decodex relation is either the child or
 the referenced parent, so external cascades and internally generated execution paths fail closed.
@@ -188,20 +245,30 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly forty-four narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly sixty-one narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
-running/resume guard, one command-complete ManagedRun safety consumer, twelve inert V14/V15/V22
+running/resume guard, twelve inert V14/V15/V22
 routing and causal-experiment entrypoints, the inert V16 exact routing-decision entrypoint, V17's inert
 exact continuation command plus strict readback, and V18's four exact wake commands plus strict
-readback.
+readback, plus V23's eight ProcessSupervisor fence, transition, projection, evidence, and read
+entrypoints, plus V24's seven ProviderAttemptService preparation, transition, positive-evidence,
+projection, and read entrypoints, one trigger-only Turn-reservation helper, and V26's immutable
+execution-decision and ManagedRun execution-projection read functions. The helper has a
+fixed search path, runs as the migration owner, and grants no direct runtime or PUBLIC execution.
+The historical V24 boundary has an exact semantic inventory overlay for its 84-relation,
+184-function, 75-safety-function, 154-trigger, 69-runtime-function, and ten-post-V22-enum
+shape. V26 has the current 80-relation, 182-function, 74-safety-function, 146-trigger,
+70-runtime-function semantic inventory. Full S0/R1/R2 V26 manifest capture and digest refreeze
+remain in the deferred unified gate.
 A selected V16 decision commits either one positive-evidence-bound same-thread plan or one Context
 Pack, fallback RuntimeSession, and plan in the same transaction. Runtime cannot insert
 cursor, exact-receipt, RoleProfile, RuntimeSession, RuntimeSession snapshot, WorkItem, ManagedRun,
-assignment, submitted-turn receipt, effect-lineage, routing-decision, decision-member, decision-quota,
+assignment, routing-decision, decision-member, decision-quota,
 decision-capability, decision-blocker, decision-exclusion, continuation-plan, waiting-usage wake
-transition, or waiting-usage wake head rows or execute trigger/private helpers directly.
+transition, waiting-usage wake head, ProviderAttempt, provider-attempt evidence, or
+provider-attempt transition rows or execute trigger/private helpers directly.
 The two bound identity sequences require
 USAGE only; UPDATE/`setval`, SELECT, ownership, grant options, and SET-reachable surplus authority
 are unsafe. Explicit qualification keeps bootstrap correct under a hostile runtime `search_path`.
@@ -267,11 +334,13 @@ writer lock and sealed by the immutable parent with an exact contiguous source c
 cannot append, alter, delete, or commit an incomplete source manifest after persistence.
 
 The API-only diagnostic CLI operations `decodex status` and `decodex doctor` are active.
-The `decodex reset-card accounts`, `list`, `use`, and `status` operations are active
-clients of the common daemon service. Other unsupported or mutating product CLI operations
-remain unavailable and belong to later slices, as do
-scheduling, account routing, a general PostgreSQL administration plane, live Codex dispatch,
-an authenticated HTTP artifact path, remote or cross-UID binding, and GPUI product behavior.
+The `decodex account` lifecycle operations and the `decodex reset-card list`, `use`, and `status`
+operations are active clients of the common daemon service. Other unsupported product CLI
+operations remain unavailable in current source. Delivery proceeds through exactly three slices:
+Accounts/Quick Task/minimal Accounts-Conversation-Health GPUI; then the bounded managed-work
+flow and Project-Work-Run GPUI; then the two-account restart E2E and Mac package. A general
+PostgreSQL administration plane, authenticated HTTP artifact path, and remote or cross-UID
+binding remain later work.
 Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
 TLS remain outside this boundary and belong to the later remote-security gate.
 
@@ -302,7 +371,7 @@ cargo run -p decodexd
 cargo run -p decodexd -- --version
 cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
-cargo run -p decodex-cli -- reset-card accounts
+cargo run -p decodex-cli -- account list
 cargo run -p decodex-gpui
 cargo test -p decodex-core --all-targets --all-features
 cargo make test-vnext-architecture
@@ -317,7 +386,7 @@ Unix service supervisor used by the macOS source installer. The CLI selects
 the configured active profile by default; `--profile NAME` selects an explicit declared
 profile and `--root PATH` selects a typed Decodex root. Human output is the default and
 diagnostic `--output json` emits `decodex/cli-diagnostics/1`; reset-card JSON emits
-`decodex/reset-card-cli/1`. GPUI still reports its disabled state.
+`decodex/reset-card-cli/1`. GPUI opens a real shell with placeholder-only destinations.
 For a targeted Rust gate,
 prefer
 `cargo check --all-features --all-targets --workspace` or
@@ -336,10 +405,11 @@ PostgreSQL, Swift, and signed app-staging checks described in
   bounded vNext setup model and stores only a PostgreSQL credential environment-variable
   name, never its value.
 - Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
-  lanes, or the legacy operator transport. The macOS local source installer has
-  one explicit migration bridge for an exact configured legacy account set. The
-  bridge projects current credentials only to the supervised daemon environment;
-  it is not product-state authority or a fallback.
+  lanes, or the legacy operator transport. A legacy macOS account watcher or
+  daemon-environment projection is not Mac dogfood authority. Old local credentials can enter vNext only through temporary private files and the
+  ordinary public account import command. This finite operator action is not an installed
+  migration feature. Startup and packaging must not use a watcher, environment bridge,
+  helper/`:8192` service, mapping, or fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.
 - For project knowledge work, update OpenWiki directly and keep it aligned with source, tests, and manifests.
@@ -353,16 +423,21 @@ without live dispatch. XY-1267 established PostgreSQL-backed product state and d
 transactions. XY-1306 established the typed `~/.decodex` path/config/blob/cache child of
 XY-1268; XY-1307 supplied daemon bootstrap/doctor; XY-1308 supplies the API-only CLI and
 end-to-end diagnostic matrix.
-Account routing, remote security, HTTP artifacts, and GPUI product work remain with their
-later owners and gates.
-The private-artifact API and runtime composition are not implemented. The accepted
-[private-artifact authority package](specs/private-artifact/README.md), not the vNext decision,
-authority contract, gate manifest, or XY-1372 evidence, is the sole normative subsystem authority.
-Those other pages now provide navigation, current status, or evidence only. The package
-[delivery module](specs/private-artifact/operations-delivery.md) defines CORE-FREEZE, ACC, the
-future PostgreSQL preparation and retained-title task contracts, one mechanical preparation pass,
-and unified validation. All are future delivery contracts. Their appearance in documentation does
-not claim that the behavior or command exists. AR-CLOSE accepts signed C2 as the cutover baseline
-by policy, with historical semantic fidelity explicitly unproven, and quarantines the historical
-private corpus outside runtime and normal workflows. Private rereview is not a prerequisite. A0
-and D0a can begin from the accepted AR-CLOSE identity; the later dependency graph is unchanged.
+Limited initial account routing and minimal GPUI are Slice-1 work. Automatic fallback and
+wake remain with XY-1304; remote security, HTTP artifacts, and broader GPUI remain with
+their later owners and gates.
+The private-artifact API and runtime composition are not implemented and are no
+longer vNext targets. At and after the XY-1403 repository effective point, the
+[private-artifact archive](specs/private-artifact/README.md) preserves the complete
+former design and receipt anchors as historical evidence. Its rules, A0/A1/B/D0a/C/D
+delivery graph, CORE-FREEZE, ACC, preparation tasks, mechanical pass, and unified
+validation are historical and non-executable. They do not define dependencies or
+future work.
+
+XY-1369 and XY-1370 keep their bounded operator checks and produce canonical
+privacy-safe Git attestations and digests for XY-1363. XY-1363 consumes the exact
+accepted receipt identities and uses the accepted V22 one-shot title path. This
+replacement creates no service, schema, storage system, runtime route, platform
+layer, issue, compatibility path, or product Artifact. The existing
+Artifact/BlobStore boundary remains unchanged, and production dispatch remains
+disabled.

@@ -17,12 +17,13 @@ use tokio_tungstenite::{
 };
 
 use crate::{
+	AccountInitialSelectionResult, AccountInspectResult, AccountSelectionModeDto, AccountsResult,
 	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
-	CommandOutcome, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardAccountsResult, ResetCardDescriptorDto,
-	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision,
+	IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload,
+	ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
+	ServerId, ServerMessage, VersionRefusal,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -392,22 +393,6 @@ impl ResetCardClient {
 		&self.profile
 	}
 
-	/// List the bounded vNext accounts admitted for manual reset-card use.
-	pub async fn accounts(&self) -> Result<ResetCardAccountsResult, ClientFailure> {
-		self.require_local_profile()?;
-		let payload = time::timeout(
-			self.timeout,
-			self.query_inner("decodex-reset-card-accounts", QueryPayload::ListResetCardAccounts),
-		)
-		.await
-		.map_err(|_| ClientFailure::ProtocolTimeout)??;
-
-		match payload {
-			QueryResultPayload::ResetCardAccounts(result) => Ok(result),
-			_ => Err(ClientFailure::ProtocolMalformed),
-		}
-	}
-
 	/// Read one fresh complete public reset-card inventory.
 	pub async fn list(
 		&self,
@@ -424,15 +409,13 @@ impl ResetCardClient {
 
 		match payload {
 			QueryResultPayload::ResetCards(result) => {
-				if matches!(
-					&result,
+				let mismatched = match &result {
 					ResetCardInventoryResult::Available { account_id, .. }
-						if account_id != &expected_account_id
-				) {
-					Err(ClientFailure::ProtocolMalformed)
-				} else {
-					Ok(result)
-				}
+					| ResetCardInventoryResult::ObservationFailed { account_id, .. } =>
+						account_id != &expected_account_id,
+					ResetCardInventoryResult::Unavailable { .. } => false,
+				};
+				if mismatched { Err(ClientFailure::ProtocolMalformed) } else { Ok(result) }
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
@@ -815,6 +798,331 @@ impl ResetCardClient {
 	}
 }
 
+/// Verified response to one versioned daemon-owned account command.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+pub enum AccountCommandResponse {
+	/// The exact logical command completed or replayed its durable public result.
+	Applied {
+		/// Entity revision committed by the command.
+		entity_revision: EntityRevision,
+		/// Typed exact command result.
+		result: Box<ResultPayload>,
+	},
+	/// A typed deterministic guard rejected the logical command.
+	Rejected {
+		/// Stable deterministic rejection.
+		error: CommandError,
+	},
+	/// A send was attempted, so local transport failure cannot prove non-dispatch.
+	PotentiallyDispatched {
+		/// Sanitized local transport failure.
+		failure: ClientFailure,
+	},
+}
+
+/// Same-UID V1.4 client for daemon-owned account queries and lifecycle commands.
+pub struct AccountClient {
+	transport: ResetCardClient,
+}
+impl AccountClient {
+	/// Build a local account client with the bounded account-operation deadline.
+	pub const fn new(profile: ClientProfile) -> Self {
+		Self { transport: ResetCardClient::new(profile) }
+	}
+
+	/// Read the canonical fast PostgreSQL-only account skeleton and routing controls.
+	pub async fn list(&self) -> Result<AccountsResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport.query_inner("decodex-accounts-list", QueryPayload::ListAccounts),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::Accounts(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Inspect one exact account row without provider inventory work.
+	pub async fn inspect(
+		&self,
+		account_id: EntityId,
+	) -> Result<AccountInspectResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = account_id.clone();
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport.query_inner(
+				"decodex-account-inspect",
+				QueryPayload::InspectAccount { account_id },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::Account(result) => {
+				if matches!(&result, AccountInspectResult::Available(account) if account.account_id != expected)
+				{
+					Err(ClientFailure::ProtocolMalformed)
+				} else {
+					Ok(result)
+				}
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Evaluate fixed or balanced initial selection without creating work.
+	pub async fn initial_selection(&self) -> Result<AccountInitialSelectionResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport.query_inner(
+				"decodex-account-initial-selection",
+				QueryPayload::GetInitialAccountSelection,
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::InitialAccountSelection(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Select one fixed account under routing-control and target-account revision guards.
+	pub async fn set_fixed_account_selection(
+		&self,
+		account_id: EntityId,
+		expected_account_revision: EntityRevision,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision },
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Select balanced initial routing under one routing-control revision.
+	pub async fn set_balanced_account_selection(
+		&self,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetBalancedAccountSelection,
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Replace the complete deterministic account order under one routing-control revision.
+	pub async fn set_account_order(
+		&self,
+		order: Vec<EntityId>,
+		expected_routing_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::SetAccountOrder { order },
+			Some(expected_routing_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Execute one V1.4 lifecycle command exactly once on one connection.
+	pub async fn execute(
+		&self,
+		payload: CommandPayload,
+		expected_revision: Option<EntityRevision>,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if !matches!(
+			&payload,
+			CommandPayload::EnrollAccountFromSharedCodex { .. }
+				| CommandPayload::ImportAccountCredentialFile { .. }
+				| CommandPayload::RenameAccount { .. }
+				| CommandPayload::SetAccountEnabled { .. }
+				| CommandPayload::LogoutAccount { .. }
+				| CommandPayload::SetFixedAccountSelection { .. }
+				| CommandPayload::SetBalancedAccountSelection
+				| CommandPayload::SetAccountOrder { .. }
+				| CommandPayload::RefreshAccount { .. }
+				| CommandPayload::RecoverAccountOperation { .. }
+		) {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let dispatch_attempted = AtomicBool::new(false);
+		let result = time::timeout(
+			self.transport.timeout,
+			self.execute_inner(payload, expected_revision, idempotency_key, &dispatch_attempted),
+		)
+		.await;
+		let result = match result {
+			Ok(result) => result,
+			Err(_) => Err(ClientFailure::ProtocolTimeout),
+		};
+		match result {
+			Ok(response) => Ok(response),
+			Err(failure) if dispatch_attempted.load(Ordering::Acquire) =>
+				Ok(AccountCommandResponse::PotentiallyDispatched { failure }),
+			Err(failure) => Err(failure),
+		}
+	}
+
+	async fn execute_inner(
+		&self,
+		payload: CommandPayload,
+		expected_revision: Option<EntityRevision>,
+		idempotency_key: IdempotencyKey,
+		dispatch_attempted: &AtomicBool,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		let mut socket = self.transport.connect().await?;
+		let client_command_id = ClientCommandId::new(idempotency_key.as_str().to_owned())
+			.map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let correlation_id = CorrelationId::new(idempotency_key.as_str().to_owned())
+			.map_err(|_| ClientFailure::ProtocolMalformed)?;
+		let command = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: client_command_id.clone(),
+			idempotency_key: idempotency_key.clone(),
+			expected_revision,
+			correlation_id,
+			causation_id: None,
+			payload: payload.clone(),
+		});
+		dispatch_attempted.store(true, Ordering::Release);
+		self.transport.send(&mut socket, command).await?;
+		let mut receipt_disposition = None;
+		for _ in 0..MAX_INTERLEAVED_MESSAGES {
+			match self.transport.receive(&mut socket).await? {
+				ServerMessage::CommandReceipt(receipt) => {
+					self.transport
+						.verify_version_and_server(receipt.version, &receipt.server_id)?;
+					if receipt_disposition.is_some()
+						|| receipt.client_command_id != client_command_id
+						|| receipt.idempotency_key != idempotency_key
+						|| (receipt.disposition != ReceiptDisposition::Duplicate
+							&& receipt.original_client_command_id != client_command_id)
+					{
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+					receipt_disposition = Some(receipt.disposition);
+				},
+				ServerMessage::CommandResult(result) => {
+					self.transport.verify_version_and_server(result.version, &result.server_id)?;
+					let Some(disposition) = receipt_disposition else {
+						return Err(ClientFailure::ProtocolMalformed);
+					};
+					if result.client_command_id != client_command_id
+						|| result.idempotency_key != idempotency_key
+						|| (disposition == ReceiptDisposition::Refused
+							&& result.outcome != CommandOutcome::Rejected)
+					{
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+					return match (
+						result.outcome,
+						result.entity_revision,
+						result.payload,
+						result.error,
+					) {
+						(CommandOutcome::Succeeded, Some(entity_revision), Some(result), None)
+							if account_result_matches(&payload, entity_revision, &result) =>
+							Ok(AccountCommandResponse::Applied {
+								entity_revision,
+								result: Box::new(result),
+							}),
+						(CommandOutcome::Rejected, None, None, Some(error))
+							if !matches!(error, CommandError::AcceptanceUnknown) =>
+							Ok(AccountCommandResponse::Rejected { error }),
+						(
+							CommandOutcome::AcceptanceUnknown,
+							None,
+							None,
+							Some(CommandError::AcceptanceUnknown),
+						) => Ok(AccountCommandResponse::PotentiallyDispatched {
+							failure: ClientFailure::ApplicationAcceptanceUnknown,
+						}),
+						_ => Err(ClientFailure::ProtocolMalformed),
+					};
+				},
+				ServerMessage::Event(event) =>
+					self.transport.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Refusal(refusal) =>
+					return Err(self.transport.refusal_failure(refusal)),
+				_ => return Err(ClientFailure::ProtocolMalformed),
+			}
+		}
+		Err(ClientFailure::ProtocolBackpressure)
+	}
+}
+
+fn account_result_matches(
+	command: &CommandPayload,
+	entity_revision: EntityRevision,
+	result: &ResultPayload,
+) -> bool {
+	if entity_revision.0 == 0 {
+		return false;
+	}
+	match (command, result) {
+		(
+			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::ImportAccountCredentialFile { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::RenameAccount { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::SetAccountEnabled { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::RefreshAccount { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		) => account_id == &account.account_id && entity_revision == account.account_revision,
+		(
+			CommandPayload::LogoutAccount { account_id, .. },
+			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
+		) => account_id == result_id && *tombstone_revision == entity_revision,
+		(
+			CommandPayload::SetFixedAccountSelection { account_id, .. },
+			ResultPayload::AccountRoutingChanged { routing },
+		) =>
+			routing.revision == entity_revision
+				&& routing.mode == AccountSelectionModeDto::Fixed(account_id.clone()),
+		(
+			CommandPayload::SetBalancedAccountSelection,
+			ResultPayload::AccountRoutingChanged { routing },
+		) =>
+			routing.revision == entity_revision && routing.mode == AccountSelectionModeDto::Balanced,
+		(
+			CommandPayload::SetAccountOrder { order },
+			ResultPayload::AccountRoutingChanged { routing },
+		) => routing.revision == entity_revision && routing.order.as_slice() == order.as_slice(),
+		(
+			CommandPayload::RecoverAccountOperation { operation_id, .. },
+			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },
+		) => operation_id == result_id,
+		_ => false,
+	}
+}
+
 /// Closed client-side failures. External parser, socket, host, database, user,
 /// and server-provided text cannot inhabit this type.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -997,16 +1305,16 @@ mod tests {
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
-		CURRENT_VERSION, Channel, ClientCommandId, ClientFailure, ClientMessage, ClientProfile,
-		CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor,
-		DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus,
-		EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-		LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind, ProtocolVersion, QueryId,
-		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
-		RefusalEnvelope, ResetCardAccountDto, ResetCardAccountsResult, ResetCardAdmissionState,
-		ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
-		ResetCardOperationResult, ResultPayload, RetainedSessionFailure, ServerId, ServerMessage,
-		ServerWelcome, SnapshotEnvelope, SupportedVersions, VersionRefusal, WireText,
+		AccountClient, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure, ClientMessage,
+		ClientProfile, CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope,
+		CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue,
+		DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
+		IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
+		ProtocolVersion, QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
+		ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
+		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
+		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, SupportedVersions,
+		VersionRefusal, WireText,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
@@ -1194,9 +1502,9 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_retain_the_v1_3_v1_2_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 1, minor: 3 });
-		assert_eq!(PREVIOUS_MINOR_VERSION, ProtocolVersion { major: 1, minor: 2 });
+	fn protocol_constants_retain_the_v1_4_v1_3_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 1, minor: 4 });
+		assert_eq!(PREVIOUS_MINOR_VERSION, ProtocolVersion { major: 1, minor: 3 });
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -1208,13 +1516,14 @@ max_entry_bytes = 0
 			local_transport: None,
 			expected_server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 		};
+		let accounts = AccountClient::new(profile.clone());
 		let client = ResetCardClient::new(profile);
 		let account = EntityId::new("40000000-0000-4000-8000-000000000001")
 			.expect("test operation must succeed");
 		let key = IdempotencyKey::new("remote-reset-key").expect("test operation must succeed");
 		let descriptor = ResetCardDescriptorDto::new(1, 2).expect("test operation must succeed");
 
-		assert_eq!(client.accounts().await.unwrap_err(), ClientFailure::RemoteMutationUnsupported);
+		assert_eq!(accounts.list().await.unwrap_err(), ClientFailure::RemoteMutationUnsupported);
 		assert_eq!(
 			client.list(account.clone()).await.unwrap_err(),
 			ClientFailure::RemoteMutationUnsupported
@@ -1232,11 +1541,10 @@ max_entry_bytes = 0
 	async fn fixture(
 		initial: Vec<Message>,
 		query: Vec<Message>,
-	) -> (ClientProfile, JoinHandle<()>) {
+	) -> (ClientProfile, JoinHandle<()>, TempDir) {
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
-			let _temp = temp;
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
@@ -1293,13 +1601,14 @@ max_entry_bytes = 0
 			ServerId::new(SERVER_ID).expect("test operation must succeed"),
 		);
 
-		(profile, task)
+		(profile, task, temp)
 	}
 
 	#[tokio::test]
 	async fn client_accepts_only_a_fully_verified_typed_report() {
 		let expected = report();
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![result(expected.clone())]).await;
 		let actual = DoctorClient::new(profile).query().await.expect("test operation must succeed");
 
 		assert_eq!(actual, expected);
@@ -1332,7 +1641,7 @@ max_entry_bytes = 0
 		];
 
 		for report in incomplete {
-			let (profile, task) = fixture(initial(SERVER_ID), vec![result(report)]).await;
+			let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![result(report)]).await;
 
 			assert_eq!(
 				DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1352,7 +1661,8 @@ max_entry_bytes = 0
 			reversed,
 		)
 		.expect("test operation must succeed");
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(reversed.clone())]).await;
+		let (profile, task, _temp) =
+			fixture(initial(SERVER_ID), vec![result(reversed.clone())]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.expect("test operation must succeed"),
@@ -1393,7 +1703,7 @@ max_entry_bytes = 0
 				server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 				refusal,
 			}));
-			let (profile, task) = fixture(vec![response], Vec::new()).await;
+			let (profile, task, _temp) = fixture(vec![response], Vec::new()).await;
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
@@ -1410,7 +1720,7 @@ max_entry_bytes = 0
 				supported: SupportedVersions::current(),
 			}),
 		);
-		let (profile, task) = fixture(vec![wrong_version], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![wrong_version], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1428,7 +1738,7 @@ max_entry_bytes = 0
 			},
 		);
 
-		let (profile, task) = fixture(wrong_protocol, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_protocol, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1439,7 +1749,7 @@ max_entry_bytes = 0
 
 		let wrong_backpressure =
 			refusal("wrong-server", Refusal::Backpressure { queue_capacity: 1 });
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_backpressure]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1455,7 +1765,7 @@ max_entry_bytes = 0
 
 		wrong_welcome.truncate(1);
 
-		let (profile, task) = fixture(wrong_welcome, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_welcome, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1472,7 +1782,7 @@ max_entry_bytes = 0
 			cursor: Cursor(0),
 			reconnect: ReconnectMode::Snapshot,
 		}));
-		let (profile, task) = fixture(vec![wrong_welcome_version], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![wrong_welcome_version], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1490,7 +1800,7 @@ max_entry_bytes = 0
 			items: Vec::new(),
 		}));
 
-		let (profile, task) = fixture(wrong_snapshot, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_snapshot, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1505,7 +1815,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_result_identity]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1520,7 +1830,7 @@ max_entry_bytes = 0
 			report().checks().to_vec(),
 		)
 		.expect("test operation must succeed");
-		let (profile, task) =
+		let (profile, task, _temp) =
 			fixture(initial(SERVER_ID), vec![result(wrong_report_identity)]).await;
 
 		assert_eq!(
@@ -1538,7 +1848,7 @@ max_entry_bytes = 0
 
 		wrong_report = serde_json::from_value(encoded.into()).expect("test operation must succeed");
 
-		let (profile, task) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![result(wrong_report)]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1559,7 +1869,7 @@ max_entry_bytes = 0
 			items: Vec::new(),
 		}));
 
-		let (profile, task) = fixture(wrong_snapshot_version, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_snapshot_version, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1574,7 +1884,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_result_version]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1589,7 +1899,7 @@ max_entry_bytes = 0
 			query_id: QueryId::new("wrong-query").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
 		}));
-		let (profile, task) = fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![wrong_query_id]).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1602,7 +1912,7 @@ max_entry_bytes = 0
 
 		wrong_order[1] = result(report());
 
-		let (profile, task) = fixture(wrong_order, Vec::new()).await;
+		let (profile, task, _temp) = fixture(wrong_order, Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1618,7 +1928,7 @@ max_entry_bytes = 0
 			(event(PREVIOUS_MINOR_VERSION, SERVER_ID), ClientFailure::ProtocolMinorMismatch),
 			(event(CURRENT_VERSION, "wrong-server"), ClientFailure::ServerIdentityMismatch),
 		] {
-			let (profile, task) = fixture(initial(SERVER_ID), vec![event]).await;
+			let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![event]).await;
 
 			assert_eq!(DoctorClient::new(profile).query().await.unwrap_err(), expected);
 
@@ -1627,40 +1937,11 @@ max_entry_bytes = 0
 
 		let expected = report();
 		let responses = vec![event(CURRENT_VERSION, SERVER_ID), result(expected.clone())];
-		let (profile, task) = fixture(initial(SERVER_ID), responses).await;
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), responses).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.expect("test operation must succeed"),
 			expected
-		);
-
-		task.await.expect("test operation must succeed");
-	}
-
-	#[tokio::test]
-	async fn reset_card_account_query_accepts_interleaved_verified_events() {
-		let accounts = ResetCardAccountsResult::Available {
-			accounts: vec![ResetCardAccountDto {
-				account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
-					.expect("test operation must succeed"),
-				display_label: WireText::new("Primary").expect("test operation must succeed"),
-				account_revision: EntityRevision(7),
-				admission_state: ResetCardAdmissionState::Depleted,
-			}],
-		};
-		let result = typed(ServerMessage::QueryResult(QueryResultEnvelope {
-			version: CURRENT_VERSION,
-			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
-			query_id: QueryId::new("decodex-reset-card-accounts")
-				.expect("test operation must succeed"),
-			payload: QueryResultPayload::ResetCardAccounts(accounts.clone()),
-		}));
-		let (profile, task) =
-			fixture(initial(SERVER_ID), vec![event(CURRENT_VERSION, SERVER_ID), result]).await;
-
-		assert_eq!(
-			ResetCardClient::new(profile).accounts().await.expect("test operation must succeed"),
-			accounts
 		);
 
 		task.await.expect("test operation must succeed");
@@ -2137,7 +2418,7 @@ max_entry_bytes = 0
 			ClientFailure::ProtocolDisconnected,
 		);
 
-		let (profile, task) =
+		let (profile, task, _temp) =
 			fixture(vec![Message::Text("untrusted-parser-marker".into())], Vec::new()).await;
 		let error = DoctorClient::new(profile).query().await.unwrap_err();
 
@@ -2147,7 +2428,7 @@ max_entry_bytes = 0
 		task.await.expect("test operation must succeed");
 
 		let oversized = Message::Text("x".repeat(super::MAX_CLIENT_MESSAGE_BYTES + 1).into());
-		let (profile, task) = fixture(vec![oversized], Vec::new()).await;
+		let (profile, task, _temp) = fixture(vec![oversized], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -2159,7 +2440,6 @@ max_entry_bytes = 0
 		let (temp, authority) = local_transport();
 		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let task = tokio::spawn(async move {
-			let _temp = temp;
 			let stream = listener.accept().await.expect("test operation must succeed");
 			let mut socket =
 				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
@@ -2177,5 +2457,6 @@ max_entry_bytes = 0
 
 		task.abort();
 		let _ = task.await;
+		drop(temp);
 	}
 }

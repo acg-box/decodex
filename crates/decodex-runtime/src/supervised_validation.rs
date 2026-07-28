@@ -204,10 +204,12 @@ pub enum ValidationSupervisionError {
 impl Display for ValidationSupervisionError {
 	fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Self::InvalidAuthority(reason) =>
-				write!(formatter, "invalid validation authority: {reason}"),
-			Self::StateObservation(reason) =>
-				write!(formatter, "protected-state observation failed: {reason}"),
+			Self::InvalidAuthority(reason) => {
+				write!(formatter, "invalid validation authority: {reason}")
+			},
+			Self::StateObservation(reason) => {
+				write!(formatter, "protected-state observation failed: {reason}")
+			},
 			Self::Spawn(error) => write!(formatter, "validation process spawn failed: {error}"),
 		}
 	}

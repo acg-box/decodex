@@ -11,9 +11,10 @@ use serde::Serialize;
 use tokio::time;
 
 use decodex_protocol::{
-	ClientFailure, ClientProfile, CommandError, EntityId, EntityRevision, IdempotencyKey,
-	ResetCardAccountsResult, ResetCardClient, ResetCardConsumeResponse, ResetCardDescriptorDto,
-	ResetCardError, ResetCardInventoryResult, ResetCardOperationResult, ResetCardOutcome,
+	AccountQuotaStateDto, AccountQuotaWindowDto, ClientFailure, ClientProfile, CommandError,
+	EntityId, EntityRevision, IdempotencyKey, ResetCardClient, ResetCardConsumeResponse,
+	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardOperationResult,
+	ResetCardOutcome,
 };
 
 use crate::{CommandOutput, OutputFormat, load_client_profile};
@@ -25,8 +26,6 @@ const OPERATION_POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Reset-card operations served by the common daemon authority.
 #[derive(Clone, Eq, PartialEq, Subcommand)]
 pub enum ResetCardCommand {
-	/// List vNext accounts admitted for manual reset-card use.
-	Accounts,
 	/// Read one account's complete public reset-card inventory.
 	List {
 		/// Canonical vNext account UUID.
@@ -64,7 +63,6 @@ pub enum ResetCardCommand {
 impl Debug for ResetCardCommand {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Accounts => formatter.write_str("Accounts"),
 			Self::List { account } =>
 				formatter.debug_struct("List").field("account", account).finish(),
 			Self::Use {
@@ -200,10 +198,6 @@ pub(crate) async fn execute(
 	let client = ResetCardClient::new(profile.clone());
 
 	match command {
-		ResetCardCommand::Accounts => match client.accounts().await {
-			Ok(result) => render_accounts(format, &profile, &result),
-			Err(failure) => render_client_failure(command_name, format, failure),
-		},
 		ResetCardCommand::List { account } => {
 			let account = match parse_account_id(account) {
 				Ok(account) => account,
@@ -340,7 +334,6 @@ fn accepted_state_after_poll(
 impl ResetCardCommand {
 	const fn name(&self) -> &'static str {
 		match self {
-			Self::Accounts => "accounts",
 			Self::List { .. } => "list",
 			Self::Use { .. } => "use",
 			Self::Status { .. } => "status",
@@ -385,60 +378,6 @@ fn parse_account_id(value: String) -> Result<EntityId, InputFailure> {
 	EntityId::new(value).map_err(|_| InputFailure::InvalidAccountId)
 }
 
-fn render_accounts(
-	format: OutputFormat,
-	profile: &ClientProfile,
-	result: &ResetCardAccountsResult,
-) -> CommandOutput {
-	let (outcome, exit_code) = match result {
-		ResetCardAccountsResult::Available { .. } => ("available", 0),
-		ResetCardAccountsResult::Unavailable { .. } => ("unavailable", 1),
-	};
-	let text = match format {
-		OutputFormat::Json => serde_json::to_string(&QueryDocument {
-			schema: RESET_CARD_OUTPUT_SCHEMA,
-			command: "accounts",
-			outcome,
-			authority: authority_document(profile),
-			result,
-		})
-		.expect("bounded reset-card account result serialization cannot fail"),
-		OutputFormat::Human => match result {
-			ResetCardAccountsResult::Available { accounts } => {
-				let mut output = format!(
-					"reset-card accounts: {} available\nprofile: {}\nserver: {}",
-					accounts.len(),
-					profile.name(),
-					profile.expected_server_id().as_str(),
-				);
-
-				for account in accounts {
-					let _ = write!(
-						output,
-						"\n{} revision={} state={} label={}",
-						account.account_id.as_str(),
-						account.account_revision.0,
-						admission_state_name(account.admission_state),
-						account.display_label.as_str(),
-					);
-				}
-
-				output
-			},
-			ResetCardAccountsResult::Unavailable { error } => {
-				format!(
-					"reset-card accounts unavailable: {}\nprofile: {}\nserver: {}",
-					reset_error_name(*error),
-					profile.name(),
-					profile.expected_server_id().as_str(),
-				)
-			},
-		},
-	};
-
-	CommandOutput { text, exit_code, error_stream: false }
-}
-
 fn render_inventory(
 	format: OutputFormat,
 	profile: &ClientProfile,
@@ -446,6 +385,7 @@ fn render_inventory(
 ) -> CommandOutput {
 	let (outcome, exit_code) = match result {
 		ResetCardInventoryResult::Available { .. } => ("available", 0),
+		ResetCardInventoryResult::ObservationFailed { .. } => ("observation_failed", 1),
 		ResetCardInventoryResult::Unavailable { .. } => ("unavailable", 1),
 	};
 	let text = match format {
@@ -463,6 +403,8 @@ fn render_inventory(
 				account_revision,
 				available_count,
 				cards,
+				five_hour_quota: _,
+				seven_day_quota: _,
 			} => {
 				let mut output = format!(
 					concat!(
@@ -487,6 +429,25 @@ fn render_inventory(
 
 				output
 			},
+			ResetCardInventoryResult::ObservationFailed {
+				account_id,
+				account_revision,
+				five_hour_quota,
+				seven_day_quota,
+				error,
+			} => format!(
+				concat!(
+					"reset-card observation failed for {} (revision {}): {}\n",
+					"five_hour={}\nseven_day={}\nprofile: {}\nserver: {}"
+				),
+				account_id.as_str(),
+				account_revision.0,
+				reset_error_name(*error),
+				quota_summary(five_hour_quota),
+				quota_summary(seven_day_quota),
+				profile.name(),
+				profile.expected_server_id().as_str(),
+			),
 			ResetCardInventoryResult::Unavailable { error } => {
 				format!(
 					"reset-card inventory unavailable: {}\nprofile: {}\nserver: {}",
@@ -499,6 +460,20 @@ fn render_inventory(
 	};
 
 	CommandOutput { text, exit_code, error_stream: false }
+}
+
+fn quota_summary(quota: &AccountQuotaWindowDto) -> String {
+	let observed =
+		quota.observed_at_unix_micros.map_or_else(|| "none".to_owned(), |value| value.to_string());
+	let result = match quota.result {
+		AccountQuotaStateDto::Unknown => "unknown".to_owned(),
+		AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros } =>
+			format!("current:{used_percent}:{resets_at_unix_micros}"),
+		AccountQuotaStateDto::Stale { used_percent, resets_at_unix_micros } =>
+			format!("stale:{used_percent}:{resets_at_unix_micros}"),
+		AccountQuotaStateDto::Error { error } => format!("error:{error:?}"),
+	};
+	format!("{}:{observed}:{result}", quota.duration_minutes)
 }
 
 fn authority_document(profile: &ClientProfile) -> AuthorityDocument<'_> {
@@ -779,13 +754,6 @@ const fn reset_error_name(error: ResetCardError) -> &'static str {
 	}
 }
 
-const fn admission_state_name(state: decodex_protocol::ResetCardAdmissionState) -> &'static str {
-	match state {
-		decodex_protocol::ResetCardAdmissionState::Available => "available",
-		decodex_protocol::ResetCardAdmissionState::Depleted => "depleted",
-	}
-}
-
 const fn command_error_name(error: &CommandError) -> &'static str {
 	match error {
 		CommandError::ExpectedRevisionMismatch { .. } => "expected_revision_mismatch",
@@ -793,6 +761,7 @@ const fn command_error_name(error: &CommandError) -> &'static str {
 		CommandError::IdempotencyCapacityExceeded { .. } => "idempotency_capacity_exceeded",
 		CommandError::ApplicationUnavailable { .. } => "application_unavailable",
 		CommandError::AcceptanceUnknown => "acceptance_unknown",
+		CommandError::AccountCommandRejected { .. } => "account_command_rejected",
 	}
 }
 
@@ -838,8 +807,8 @@ mod tests {
 	use clap::{CommandFactory as _, Parser as _};
 	use decodex_protocol::{
 		ClientFailure, ClientProfile, CommandError, EntityId, EntityRevision, IdempotencyKey,
-		ResetCardAccountsResult, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
-		ResetCardOperationResult, ResetCardOutcome,
+		ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardOperationResult,
+		ResetCardOutcome,
 	};
 
 	use crate::{Cli, Command, OutputFormat};
@@ -924,8 +893,6 @@ cache = {{}}
 	fn reset_card_surface_parses_exact_commands_and_requires_confirmation() {
 		Cli::command().debug_assert();
 
-		let accounts = Cli::try_parse_from(["decodex", "reset-card", "accounts"])
-			.expect("test operation must succeed");
 		let list = Cli::try_parse_from([
 			"decodex",
 			"reset-card",
@@ -962,7 +929,6 @@ cache = {{}}
 		])
 		.expect("test operation must succeed");
 
-		assert!(matches!(accounts.command, Command::ResetCard(super::ResetCardCommand::Accounts)));
 		assert!(matches!(list.command, Command::ResetCard(super::ResetCardCommand::List { .. })));
 		assert!(matches!(
 			use_card.command,
@@ -1029,7 +995,9 @@ cache = {{}}
 		let cli = Cli::try_parse_from([
 			"decodex",
 			"reset-card",
-			"accounts",
+			"list",
+			"--account",
+			"40000000-0000-4000-8000-000000000001",
 			"--expected-server-id",
 			SERVER_ID,
 		])
@@ -1198,7 +1166,9 @@ cache = {{}}
 		let root = prepare_client_root(&temp, "remote");
 
 		let output = super::execute(
-			super::ResetCardCommand::Accounts,
+			super::ResetCardCommand::List {
+				account: "40000000-0000-4000-8000-000000000001".to_owned(),
+			},
 			OutputFormat::Json,
 			Some(&root),
 			None,
@@ -1213,13 +1183,8 @@ cache = {{}}
 	}
 
 	#[test]
-	fn account_and_inventory_json_bind_the_selected_profile_and_server() {
+	fn inventory_json_binds_the_selected_profile_and_server() {
 		let profile = local_profile();
-		let accounts = super::render_accounts(
-			OutputFormat::Json,
-			&profile,
-			&ResetCardAccountsResult::Unavailable { error: ResetCardError::VaultUnavailable },
-		);
 		let inventory = super::render_inventory(
 			OutputFormat::Json,
 			&profile,
@@ -1228,13 +1193,11 @@ cache = {{}}
 			},
 		);
 
-		for output in [accounts, inventory] {
-			let value: serde_json::Value =
-				serde_json::from_str(output.text()).expect("test operation must succeed");
+		let value: serde_json::Value =
+			serde_json::from_str(inventory.text()).expect("test operation must succeed");
 
-			assert_eq!(value["authority"]["profile_name"], "selected");
-			assert_eq!(value["authority"]["server_id"], SERVER_ID);
-		}
+		assert_eq!(value["authority"]["profile_name"], "selected");
+		assert_eq!(value["authority"]["server_id"], SERVER_ID);
 	}
 
 	#[test]

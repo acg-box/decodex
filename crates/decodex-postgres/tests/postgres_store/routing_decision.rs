@@ -3,8 +3,9 @@ use tokio_postgres::{Client, Config};
 
 use super::expected_peer_uid;
 use decodex_core::{
-	CodexCapability, ConversationId, ManagedRunId, RoutingCapabilityState, RoutingCommandOutcome,
-	RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId,
+	CodexCapability, ConversationId, ExecutionConsumer, ManagedExecutionId, ManagedRunId,
+	RoutingCapabilityState, RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition,
+	RuntimeSessionId,
 };
 use decodex_postgres::{
 	AccountId, AccountState, CommandIdentity, CreateConversation, CreateRuntimeSession,
@@ -40,11 +41,13 @@ pub(super) struct RoutingFixture {
 	pub selected_account_id: AccountId,
 	pub selected_runtime_session_id: RuntimeSessionId,
 	pub selected_thread_id: String,
+	pub selected_managed_run_id: ManagedRunId,
 	pub stale_policy_id: String,
 }
 
 struct RunFixture {
 	managed_run_id: ManagedRunId,
+	execution_id: ManagedExecutionId,
 	runtime_session_id: RuntimeSessionId,
 	thread_id: String,
 }
@@ -93,6 +96,7 @@ pub(super) async fn assert_routing_decision_contract(
 		selected_account_id: AccountId::new(SELECTED_ACCOUNT_ID)?,
 		selected_runtime_session_id: setup.selected_run.runtime_session_id,
 		selected_thread_id: setup.selected_run.thread_id,
+		selected_managed_run_id: setup.selected_run.managed_run_id,
 		stale_policy_id: STALE_POLICY_ID.to_owned(),
 	})
 }
@@ -201,8 +205,14 @@ async fn assert_rolled_back_routing_decision(
 	let rolled_back: Vec<u8> = owner
 		.query_one(
 			"SELECT decodex.route_account_exact('decodex/exact-command/1',\
-			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,$3::text::uuid,1)",
-			&[&uuid(0xb6, 1), &SELECTED_POLICY_ID, &selected_run.managed_run_id.as_str()],
+			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,'managed_run_execution',\
+			 NULL,NULL,NULL,NULL,NULL,$3::text::uuid,1,$4::text::uuid)",
+			&[
+				&uuid(0xb6, 1),
+				&SELECTED_POLICY_ID,
+				&selected_run.managed_run_id.as_str(),
+				&selected_run.execution_id.as_str(),
+			],
 		)
 		.await?
 		.get(0);
@@ -307,14 +317,24 @@ async fn assert_alternate_routing_decisions(
 	let no_route = success(store.route_account("v16-no-route", no_route_request).await?)?;
 	assert_eq!(no_route.decision.kind, RoutingDecisionKind::NoRoute);
 	assert!(no_route.decision.exclusions.is_empty());
+	let stale_consumer = match &no_route_request.consumer {
+		ExecutionConsumer::ManagedRunExecution { managed_run_id, execution_id, .. } =>
+			ExecutionConsumer::ManagedRunExecution {
+				managed_run_id: managed_run_id.clone(),
+				managed_run_revision: 2,
+				execution_id: execution_id.clone(),
+			},
+		ExecutionConsumer::ConversationTurn { .. } =>
+			return Err("V16 ManagedRun fixture has an ordinary consumer".into()),
+	};
 	let stale = store
 		.route_account(
 			"v16-stale-lineage",
-			&RouteAccount { expected_managed_run_revision: 2, ..no_route_request.clone() },
+			&RouteAccount { consumer: stale_consumer, ..no_route_request.clone() },
 		)
 		.await?;
 	assert!(matches!(stale, RoutingCommandOutcome::Rejected(ref rejection)
-		if rejection.code == "stale_managed_run"));
+		if rejection.code == "stale_consumer"));
 	let cancel_waiting = success(store.route_account("v16-cancel-waiting", cancel_request).await?)?;
 	let stale_waiting = success(store.route_account("v16-stale-waiting", stale_request).await?)?;
 	assert_eq!(cancel_waiting.decision.kind, RoutingDecisionKind::WaitingUsage);
@@ -470,6 +490,7 @@ async fn create_run(
 	assert!(matches!(outcome, RuntimeSessionCommandOutcome::Success(_)));
 	let work_item_id = uuid(0xc5, marker);
 	let managed_run_id = ManagedRunId::new(uuid(0xc6, marker))?;
+	let execution_id = ManagedExecutionId::new(uuid(0xc8, marker))?;
 	let initial_work_item = owner
 		.query_one(
 			r#"WITH operation AS (SELECT pg_catalog.clock_timestamp() AS operation_time)
@@ -525,14 +546,7 @@ async fn create_run(
 			&[&managed_run_id.as_str(), &PROJECT_ID, &runtime_session_id.as_str()],
 		)
 		.await?;
-	owner
-		.execute(
-			"INSERT INTO decodex.managed_run_effect_barriers(managed_run_id,project_id,work_item_id)\
-			 VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid)",
-			&[&managed_run_id.as_str(), &PROJECT_ID, &work_item_id],
-		)
-		.await?;
-	Ok(RunFixture { managed_run_id, runtime_session_id, thread_id })
+	Ok(RunFixture { managed_run_id, execution_id, runtime_session_id, thread_id })
 }
 
 async fn publish_evidence(
@@ -614,13 +628,17 @@ async fn create_policy_snapshot_and_request(
 		)
 		.await?;
 	assert!(matches!(policy, RoutingCommandOutcome::Success(_)));
+	let consumer = ExecutionConsumer::ManagedRunExecution {
+		managed_run_id: run.managed_run_id.clone(),
+		managed_run_revision: 1,
+		execution_id: run.execution_id.clone(),
+	};
 	let snapshot = store
 		.resolve_routing_snapshot(
 			&format!("v16-snapshot-{marker}"),
 			routing_policy_id,
 			1,
-			&run.managed_run_id,
-			1,
+			&consumer,
 		)
 		.await?;
 	assert!(
@@ -631,8 +649,7 @@ async fn create_policy_snapshot_and_request(
 		operation_id: uuid(0xe1, marker),
 		routing_policy_id: routing_policy_id.to_owned(),
 		expected_routing_policy_revision: 1,
-		managed_run_id: run.managed_run_id.clone(),
-		expected_managed_run_revision: 1,
+		consumer,
 	})
 }
 
@@ -736,8 +753,7 @@ pub(super) async fn create_stale_evidence_snapshot(
 				"v17-stale-evidence-snapshot",
 				STALE_EVIDENCE_POLICY_ID,
 				1,
-				&routing.selected_request.managed_run_id,
-				1,
+				&routing.selected_request.consumer,
 			)
 			.await?,
 	)?;

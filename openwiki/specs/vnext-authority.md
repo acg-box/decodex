@@ -1,7 +1,8 @@
 # Decodex vNext Authority Contract
 
-Status: normative target contract except for the private-artifact subsystem; implementation is
-gate-controlled.
+Status: normative target contract; implementation is gate-controlled. The XY-1403
+private-artifact retirement takes effect only at the exact repository effective point
+in the [retirement decision](private-artifact/decision.md#repository-effective-point).
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
@@ -18,6 +19,7 @@ Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 | WorkItem | Concrete board item/execution request; `inbox`, `planned`, `ready`, `running`, `review`, `blocked`, `done`, or `canceled`. |
 | Conversation | Durable logical dialogue presented by Decodex; `open` or `archived`. |
 | RuntimeSession | Codex thread segment bound to an account, process, and immutable RoleProfile snapshot; `starting`, `active`, `ended`, or `diverged`. |
+| ProviderAttempt | One durable external Codex turn effect bound to one Conversation Turn or ManagedRun execution, accepted runtime authorities, request identity, and positive-only outcome evidence. |
 | ManagedRun | Controlled WorkItem execution with independent lifecycle, phase, and wait reason as defined below. |
 | Automation | Deterministic trigger targeting a Program, WorkItem, Advisor, or Lead; `enabled`, `paused`, or `retired`. It is not an agent. |
 | ContextRevision | Immutable, inspectable, provenance-linked long-term context snapshot. |
@@ -72,31 +74,30 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - lifecycle: `queued`, `active`, `waiting`, `terminal`;
 - phase: `prepare`, `execute`, `validate`, `review`, `repair`, `land`, `close`;
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
-  `reviewer_unavailable`, `reviewer_failed`.
+  `reconciliation`, `reviewer_unavailable`, `reviewer_failed`, `reviewer_ambiguous`.
 
-The inert V12 boundary persists only `waiting` ManagedRuns that remain blocked. Every run is
-foreign-key bound to its exact Project, canonical WorkItem, and authoritative RuntimeSession
-revision. Task and Reviewer assignments are exact-run RuntimeSession identities whose closed role
-type cannot represent Advisor or Lead and contains no durable Agent identity. Effect lineage is
-foreign-key bound to one run and one barrier. Barrier states are `guarded` or permanently `closed`;
-both deny effects, and there is no open state or positive execution transition in V12.
+Before V26, the inert V12 boundary persisted only `waiting` ManagedRuns that remained blocked.
+Every run was foreign-key bound to its exact Project, canonical WorkItem, and authoritative
+RuntimeSession revision. Task and Reviewer assignments remain exact-run RuntimeSession identities.
+Their closed role type cannot represent Advisor or Lead and contains no durable Agent identity.
+V12 effect lineage was foreign-key bound to one run and one barrier. Barrier states were `guarded`
+or permanently `closed`; both denied effects.
 
-The only V12 mutation consumes a positively observed unknown exact turn, a Decodex-owned exact
-submitted-turn receipt, or an explicit inconclusive observation. It atomically preserves a blocked
-waiting run, records divergence only from positive unknown-turn evidence, closes the barrier once,
-and stores exact replay bytes. A stale submitted receipt and an inconclusive observation remain
-fail-closed without asserting divergence. Missing, empty, exhausted, not-found, scan-exhaustion,
-no-event, or method-result absence is not an input and cannot authorize progress. Experiment
-creation, observation production, run creation/acquisition, scheduling, dispatch, progress,
-validation, completion, review verdicts, repair, and landing remain outside V12 and blocked by
-XY-1304 or later owners.
+The historical V12 mutation consumed a positively observed unknown exact turn, a Decodex-owned
+exact submitted-turn receipt, or an explicit inconclusive observation. It preserved a blocked
+waiting run and recorded divergence only from positive unknown-turn evidence. Missing, empty,
+exhausted, not-found, scan-exhaustion, no-event, or method-result absence never authorized
+progress.
 
-The safety transaction reserves its exact receipt and validates input before acquiring hierarchy
-coordinator 1271, then the run-scoped 1338 lock, before any run/session/barrier/Turn read or lock.
-V12 also forward-repairs the V3 Turn and HistoryItem invoker-rights guards for V10's SELECT-only
-RuntimeSession authority: they read but never row-lock RuntimeSessions, retain their legal
-Conversation and Turn row locks, and accept direct hierarchy DML only in `READ COMMITTED`.
-Unsupported isolation fails retryably with `40001`; it never authorizes a stale absence decision.
+V26 removes the drained V12 submitted-turn, safety-input, effect, and barrier relations and their
+exact writer. The cutover stops if any live row or V12 exact-command receipt remains. It does not
+create a compatibility or fallback writer. The V3 Turn and HistoryItem invoker-rights repairs that
+V12 introduced remain current and independent of the retired ManagedRun-local effect authority.
+
+V24 cuts external-turn authority over to the generic ProviderAttempt owner. V12 submitted-turn
+receipts, safety inputs, and effect barriers are not inputs to ProviderAttempt submission or
+outcome. V25/V26 adapt V14, V16, and V17 for both consumer paths and retire the old V12 shapes.
+ProviderAttempt remains the sole external-turn attempt, receipt, and ambiguity authority.
 
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
@@ -114,8 +115,9 @@ replayed.
 | PR/check/merge readback | GitHub |
 | Large tool output and evidence bytes | content-addressed local blob store, with PostgreSQL metadata |
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
-| Credentials | host credential-vault boundary; PostgreSQL stores account metadata/health, never ordinary credential rows |
-| v0.2 state | cold backup/tag and historical evidence only; vNext never reads it as runtime input |
+| Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
+| Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
+| v0.2 state | final vNext runtime and installer read none; an operator can copy local credentials once through ordinary vNext account imports and then delete the frozen account pool |
 
 PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
@@ -124,6 +126,13 @@ SwiftUI menubar, CLI, and MCP are clients/adapters over common application servi
 never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is single-host
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
+
+The account ownership, refresh, recovery, platform-store, clean-cutover, and readiness
+contract is [Account Lifecycle Authority](account-lifecycle-authority.md). An account's
+versioned `enabled` value is independent from observed health and quota. Enable, disable,
+fixed selection, balanced selection, and account-order changes are deterministic
+versioned CAS commands. The environment-backed projection and legacy account watcher are
+retired and cannot be a normal Slice-1 or Slice-3 runtime dependency.
 
 `decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
 trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
@@ -146,9 +155,11 @@ own effect retry.
 
 The public selection contract contains one canonical vNext Account UUID, its exact
 optimistic revision, and one credential-negative card descriptor made from grant and
-expiry timestamps. Accounts in `available` or `depleted` state admit the manual service.
-All other states reject it. Manual reset-card admission does not enable account routing,
-conversation dispatch, or quota-driven fallback.
+expiry timestamps. New admission requires `enabled=true`, AccountLifecycle readiness,
+no unsettled account operation, and exact agreement among the account revision,
+HostCredentialStore version and fingerprint, and provider binding. Observed quota or
+health does not replace these gates. Manual Reset Card use does not enable conversation
+dispatch or automatic fallback.
 
 The Codex adapter must prove that one generated schema advertises both
 `account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
@@ -166,10 +177,12 @@ must fail before transport until authenticated remote reset-card transport exist
 
 The daemon persists a credential-negative account-binding fingerprint over the account
 UUID and configured provider identity fields. Restart must reject drift, and generic
-account mutation cannot replace or remove the binding. Same-key replay precedes current
-vault, account-state, and revision gates. The effect fence atomically checks the exact
-revision, admitted state, and selected oldest public descriptor. A terminal
-effect-present readback erases the private exact-ID and provider-key projection while it
+account mutation cannot replace or remove the binding. A terminal same-key receipt
+replays unconditionally before any current account, store, provider, readiness, or
+enabled-state check. New work and the pre-effect fence both require `enabled=true`,
+AccountLifecycle readiness, no unsettled operation, and exact account revision,
+credential version/fingerprint, provider binding, and selected oldest public descriptor.
+A terminal effect-present readback erases the private exact-ID and provider-key projection while it
 retains the public receipt, reconciliation status, and replay result. Generic retention
 must not prune this reset-card ledger. A terminal pre-effect rejection or exhausted
 `not_started` claim also erases the private projection.
@@ -188,20 +201,33 @@ consume invocation, dispatch classification, and terminal handle removal.
 
 <a id="private-artifact-authority"></a>
 
-### Private artifact projection (nonnormative)
+### Private artifact retirement
 
-This section is a nonnormative projection. The accepted
-[private-artifact authority package](private-artifact/README.md) is the sole normative authority
-for the subsystem. Read its [decision](private-artifact/decision.md), then its ordered semantic
-modules, for exact rules and inventories. Text elsewhere in this contract about Artifact entities,
-the general blob store, filesystem paths, repositories, or validation does not amend that package.
+At and after the
+[repository effective point](private-artifact/decision.md#repository-effective-point),
+vNext has no private-artifact subsystem, API, runtime composition, controller,
+PostgreSQL authority, executor, platform contract, garbage collector, delivery lane,
+or future acceptance program. The
+[private-artifact archive](private-artifact/README.md) preserves the former design as
+historical evidence only. Its rule markers, inventories, dependency edges,
+A0/A1/B/D0a/C/D phases, CORE-FREEZE, ACC, preparation, and unified validation are
+non-executable and cannot authorize future work.
 
-The package defines a future subsystem and a future delivery sequence. The current product source
-does not implement the package-defined private-artifact API or runtime composition. The future
-source freeze, acceptance work, command surfaces, preparation pass, and unified validation are
-owned only by the package
-[operations and delivery contract](private-artifact/operations-delivery.md). Their names in a
-projection are not evidence that they exist.
+The accepted Artifact entity and BlobStore contract in this document remain
+unchanged. XY-1369 and XY-1370 use bounded canonical privacy-safe Git evidence for
+the exact retained-title receipts that XY-1363 consumes. That transport creates no
+new product Artifact, service, schema, storage system, runtime route, platform layer,
+issue, or compatibility path. Raw schema and other private or unbounded output do
+not enter Git, Linear, Artifact, logs, or receipts.
+
+XY-1373's former moving-core integration and landing condition is historical and
+non-executable. Its later cancellation preserves its complete history, parent, and
+`relatedTo` relations and does not claim that integration completed. The later automatic
+fallback and wake paths stay disabled until the separate reviewed XY-1304 amendment.
+
+XY-1371 and the XY-1378-XY-1391 private-artifact execution graph are also inactive
+historical planning provenance. Repository authority already retired that program.
+They cannot gate the delivery slices or restore a private-artifact authority.
 
 ### Managed repository authority
 
@@ -437,12 +463,18 @@ cross-run communication is delivered by Decodex as turns to recipient Conversati
 
 ## Account continuity and profiles
 
-Each app-server process is bound to one account. Shared `~/.codex` supplies configuration
-and plugins; per-process credentials are never switched under a live runner. Account
-state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`,
-`plugin_unready`, or `disabled`. Each quota window stores its class/duration, remaining amount, reset time,
-observation time, and confidence; 5-hour and 7-day windows are never inferred from
-positional primary/secondary ordering.
+The [account lifecycle authority](account-lifecycle-authority.md) assigns
+credential-negative state to PostgreSQL, secret bundles to one HostCredentialStore, and
+all account operations to the `decodexd` Account Service. Each app-server process is
+bound to one Account UUID. Shared `~/.codex` supplies configuration, plugins, rollout
+files, and Codex thread visibility. A refresh callback can supply a newer access token
+for the same account, but the account and provider identity never switch under a live
+runner. Account
+observed state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`, or
+`plugin_unready`. Administrative `enabled` is a separate versioned boolean; no observed
+state sets or clears it. Each quota window stores its class/duration, remaining amount,
+reset time, observation time, and confidence; 5-hour and 7-day windows are never inferred
+from positional primary/secondary ordering.
 
 `plugin_unready` is inert reserved state; no first-release passive probe sets it.
 Codex 0.144.2 and 0.144.4 expose no stable passive complete account-owned plugin,
@@ -521,8 +553,68 @@ rejected before it exists. Cargo metadata proves the current
 workspace production dependency graph and absence of synthetic features on normal edges; compile-fail
 contracts prove the launcher and capacity authority are not crate API. Neither proves call provenance,
 the absence of future wrappers, or Rust friend visibility against arbitrary new downstream
-dependencies. Daemon/host crash can orphan OS descendants; restart reconstructs neither assignment
-nor launch authority and requires fresh exact PostgreSQL observations.
+dependencies. This dormant manual path is not product ProcessGeneration authority and cannot grant
+restart launch permission.
+
+### Durable ProcessGeneration authority
+
+XY-1400 implements the accepted XY-1398 V3 contract in
+[the ProcessGeneration authority specification](process-generation-authority.md).
+`ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
+protected executable snapshot and derives the durable launch-manifest identity and exact command.
+The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
+sanitized environment, account, initial account revision, canonical credential version and
+fingerprint, provider identity, and exact-build startup/lifetime/account-callback capability. No
+caller can pair an independent digest with a raw command. The supervisor commits this intent in
+V23 before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
+transition, and readback carry the same non-secret binding. No new process or effect ledger is
+added. The supervisor then binds the exact PID, process-start identity, process group, and session.
+
+The current lifetime profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
+sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
+argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
+raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
+contains a protocol writer. Other builds, including an unrecorded Linux image, fail closed before
+profile-dependent preflights. Generic session/descriptor setup does not install
+`PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
+Linux lifetime capability. `decodexd` remains the only product daemon.
+
+This profile does not prove AccountLifecycle readiness. Current vNext rejects inbound app-server
+requests with method-not-found, so it cannot service `account/chatgptAuthTokens/refresh`.
+MacDogfoodReady requires a positive exact-build callback receipt and a typed daemon gateway.
+Generated types, version text, or upstream implementation presence alone are insufficient.
+Unsupported builds and callback shapes fail closed before account launch.
+
+The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
+All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only
+from positive generation-bound evidence: positive spawn non-creation, owned-child wait, exact
+Linux pidfd exit with group quiescence, exact macOS kqueue `NOTE_EXIT` with group quiescence,
+exact owned termination exit, or proof that the prior boot ended. PID or process-group absence,
+reuse, timeout, lease expiry, row absence, EOF, restart, identity mismatch, and negative search
+are never death evidence.
+
+Same-boot uncertainty blocks replacement only for the bound account. Reconciliation continues for
+other generations. On macOS, EOF is only a best-effort shutdown request. A restored process can
+receive a read-only exact kqueue witness after an exact pre-match and before the final exact
+recheck, but it is never adopted, reacquired, proxied, terminated, or signaled. If it exits before
+witness attachment, same-boot quarantine remains until boot change. Exact termination is
+available only while the original supervisor retains the unreaped child, and it never signals
+after reap.
+
+An external execution epoch and digest prevent PostgreSQL restore readback from becoming spawn
+authority. Replay never returns a fresh fence. An ambiguous rollback does not authorize launch.
+Persisted Codex thread identity carries Conversation continuity; process survival does not create
+or continue a RuntimeSession.
+
+ProcessGeneration proves replacement safety only. It does not prove provider non-submission,
+effect cancellation, or credential revocation. V24 keeps an unproved authorized ProviderAttempt
+`unknown`; process exit or boot change cannot make it `not_submitted`, a replacement cannot replay
+it, and any successor is a distinct user-authorized effect with duplicate-risk acknowledgement.
+The generic attempt transaction consumes one accepted V16 decision, V17 RuntimeSession, and ready
+ProcessGeneration without creating or changing them. XY-1400 adds no account selection, routing,
+ProviderAttempt storage, remote authentication, UI, packaging, release, or live dispatch.
+A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
+alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
 ### Durable routing-policy and candidate-set authority
 
@@ -540,7 +632,8 @@ authorization authority.
 
 One snapshot binds, under the database locks that establish its revision boundary:
 
-- the exact accepted routing Policy revision and canonical user-owned account order;
+- the exact accepted routing Policy revision, versioned `fixed` or `balanced` mode,
+  optional fixed Account UUID, and canonical user-owned account order;
 - every current account-inventory member exactly once, with an explicit included or excluded
   disposition and an exact account revision;
 - sticky affinity, when present, plus the exact source RuntimeSession identity and revision;
@@ -553,6 +646,13 @@ Completeness is fail-closed. A duplicate, omitted, foreign, newly added, concurr
 revision-changed inventory member; an unbound sticky source; or an unknown required fact blocks the
 snapshot or decision. Silence never means excluded, eligible, or non-applicable.
 
+Selection and pure quota or reconciliation waits classify only included members after independent
+eligibility. Excluded members remain ineligible and do not alter those wait classifications.
+`no_route` instead projects the complete policy-member universe: every excluded member retains
+`excluded_by_policy` and its other persisted blockers, and every included member retains its exact
+blockers. An all-excluded universe is an explicit cause-complete `no_route`; a cause-free
+`no_route` is invalid.
+
 `decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
 does not establish provenance or completeness. PostgreSQL atomically persists the resulting V16
 decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one
@@ -562,7 +662,8 @@ One app-server process remains bound to one account, credentials never switch in
 and the separate 300-minute and 10080-minute quota facts for separate accounts are never merged.
 
 Sticky affinity wins only when the bound member is independently eligible under the same complete
-snapshot. Every known depleted window excludes its account until reset. Unknown, stale,
+snapshot. Eligibility requires the independent versioned `enabled=true` fact; observed health does
+not imply enablement. Every known depleted window excludes its account until reset. Unknown, stale,
 incompatible, disabled, authentication-failed, missing-duration, low-confidence, or precision-
 incompatible evidence blocks eligibility. When every otherwise eligible account is excluded only
 by usage, V16 persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
@@ -577,34 +678,35 @@ passive-receipt tracking. Host-owned before/after receipts prove causal no-mutat
 and cannot establish account-owned readiness.
 
 XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
-authority without changing V15. After an exact V16 decision, XY-1360 owns
-same-thread continuation when exact positive account/profile/build evidence permits it, otherwise
-one atomic Context-Pack plus RuntimeSession fallback that preserves Conversation and ManagedRun
-identity. It allocates no V17 in advance. XY-1361 composes these authorities with production
-dispatch still structurally disabled. Ambiguous-turn replay remains blocked until the accepted
-ManagedRun submitted-turn, effect-barrier, repository/worktree/Git, and artifact authorities
-reconcile it; routing never owns or weakens that boundary.
+authority without changing V15. After an exact V16 decision, V17 owns same-thread continuation
+when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
+Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
+Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
+V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Current production
+dispatch stays structurally disabled until its applicable slice gate passes. Ambiguous-turn
+replay remains blocked by ProviderAttempt. ManagedRun
+consumes the attempt result and keeps only domain lifecycle authority.
+Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
+owns or weakens those boundaries.
 
-Those paragraphs define the target behavior, not current enablement. Until the separate
-[XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
-passes and repository authority explicitly enables it, all of the following are hard
-default-disabled in every production, dogfood, cutover, and release configuration:
+Those paragraphs define retained final routing authority, not current implementation.
+Slice 1 enables only initial selection after the Slice-1 subset of MacDogfoodReady
+passes: `fixed` considers its exact target, and `balanced` selects the first fully eligible
+account in canonical order.
+Selection evaluates both quota windows and returns a typed no-route or all-depleted
+result. Recovery is an explicit versioned enable/disable, mode, or order command followed
+by a new task. It does not rebind or replay a thread.
 
-- sticky-account assignment and policy-based account assignment;
-- a quota-driven exclusion causing selection or assignment of another account;
-- `waiting_usage` scheduling or wakeup;
-- automatic same-thread continuation on another account;
-- automatic creation or dispatch of a Context-Pack fallback RuntimeSession; and
-- replay of a turn after an ambiguous outcome or any possible side effect.
+[XY-1304](https://linear.app/hack-ink/issue/XY-1304) is the later acceptance owner for
+automatic cross-account same-thread fallback and all-depleted scheduler wake. Until its
+separate reviewed enablement amendment, those paths and automatic Context-Pack fallback
+remain hard disabled. It does not block Quick Task, Project/Lead, ManagedRun, GPUI, or
+first Mac dogfood. Replay after an ambiguous outcome remains prohibited independent of
+XY-1304 and is reconciled by ProviderAttempt.
 
-Foundation code may represent these states, persist inert metadata, calculate pure
-decisions, and test transactions with synthetic fixtures only where the gate manifest
-permits it. It must not submit a turn, assign a fallback runner, schedule a wake, or
-transition a live ManagedRun through these paths. Unknown, missing-duration, stale,
-low-confidence, auth-failed, plugin-unready, and disabled account/quota facts never imply
-availability. In particular, unknown or stale quota is fail-closed: no assignment and no
-automatic fallback is permitted; the unavailable/unknown condition must be surfaced for
-human resolution or bounded observation.
+Unknown, missing-duration, stale, low-confidence, auth-failed, capability-unready, or
+disabled facts never imply eligibility. An all-depleted Slice-1 result exposes reset
+evidence and waits for explicit retry; it does not schedule a wake.
 
 Readiness outside the accepted capability-applicability rule cannot authorize account eligibility,
 assignment, reassignment, fallback, scheduling, wakeup, continuation, or production routing. A
@@ -636,24 +738,36 @@ versions match exactly; server supports current and previous minor for UI/server
 Large artifacts use authenticated HTTP, never WebSocket snapshots. Non-loopback binding
 remains disabled until authentication, TLS, authorization, and redaction gates pass.
 
-GPUI is the primary workspace and exposes the Advisor inbox; Projects with persistent
-Lead Conversations; Quick Tasks; Program/Objective/WorkItem board; Run, review, repair,
-and landing state; agent/thread/automation graph and causal timeline; accounts, plugin
-readiness (typed `unknown` in the first release), global RoleProfiles, and system health.
-Users can always talk to Advisor or a
-Project Lead, start Quick Tasks, intervene in WorkItems/ManagedRuns, and inspect all
-agent/message/automation relationships. SwiftUI is a thin accounts/run-health menubar
-client over the restricted protocol. GPUI caches are bounded, disposable,
-cursor-paginated, and keyed by server/schema/content hash; project opening never eagerly
-loads all history.
+GPUI is the primary workspace. Current source opens a real shell and window, but all
+destinations are placeholders and the app is not usable. Slice 1 delivers minimal
+Accounts, Conversation, and Health destinations with Quick Task. Slice 2 delivers
+Project, Work, and Run destinations for the bounded managed-work flow. Graph/timeline,
+automation, broad history presentation, and polish are later obligations. SwiftUI stays
+a thin accounts/run-health menubar client over the restricted protocol. GPUI caches are
+bounded, disposable, cursor-paginated, and keyed by server/schema/content hash; project
+opening never eagerly loads all history.
 
-## Migration and delivery
+## Clean cutover and delivery
 
-Cutover has no availability requirement. Stop v0.2, tag the trusted `main`, and preserve
-cold copies of old SQLite/config/automation inventory plus incident scenarios. Start
-vNext with empty PostgreSQL product state. Do not import old Codex sessions, SQLite
-execution state, Linear lanes, or Codex-created tasks. Recreate Projects and Automations
+Cutover has no availability requirement. Stop v0.2 and start vNext with empty PostgreSQL
+execution and control-plane state. Import each local account once through the ordinary
+versioned account-import command from an owner-private temporary file. Verify the
+PostgreSQL account and routing readback, the exact HostCredentialStore binding, and the
+per-account Reset Card readback. Then delete the temporary import files and the retired
+local account source.
+
+The product has no account-migration manifest, bulk importer, migration receipt,
+migration state machine, migration finalizer, compatibility fallback, or dual account
+authority. It imports no quota, usage/profile projection, account history, Codex
+sessions, SQLite execution state, Linear lanes, or Codex-created tasks. Normal startup
+reads only vNext PostgreSQL and HostCredentialStore authority. Recreate selected Projects
 explicitly from reviewed inventory.
+
+Delivery has exactly three dependencies: Accounts/Quick Task/Accounts-Conversation-Health
+GPUI, then the bounded Project/Lead/ManagedRun flow and Project-Work-Run GPUI, then the
+two-account self-hosting restart E2E and Mac package. The exact gates and the
+MacDogfoodReady-versus-final deferred table are in the
+[gate manifest](vnext-gates.md#delivery-slices).
 
 Freeze/close PR #1092 and do not cherry-pick its implementation wholesale. Every task
 uses a focused worktree branch and PR directly into `main`; there is no long-lived vNext

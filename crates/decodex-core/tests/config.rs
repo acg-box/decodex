@@ -14,8 +14,8 @@ use tempfile::NamedTempFile;
 use toml as _;
 
 use decodex_core::{
-	ConfigError, DecodexClientConfig, DecodexConfig, LocalTrustPolicy, MAX_CONFIG_BYTES,
-	MAX_RESET_CARD_ITEMS, PathError, ServerIdentity, ServerProfile,
+	ConfigError, DecodexClientConfig, DecodexConfig, LocalTrustPolicy, MAX_CONFIG_BYTES, PathError,
+	ServerIdentity, ServerProfile,
 };
 use support::{SERVER_ID, TestRoot};
 
@@ -82,98 +82,6 @@ fn valid_configuration_keeps_profiles_and_server_host_paths_explicit() {
 		Some("DECODEX_POSTGRES_RUNTIME_PASSWORD")
 	);
 	assert_eq!(config.cache().limits().max_entries(), 128);
-	assert!(config.server_host().reset_card_accounts().is_empty());
-}
-
-#[test]
-fn reset_card_accounts_are_uuid_keyed_and_retain_only_vault_references() {
-	let input = support::valid_config().replace(
-		"[postgres]",
-		r#"[server_host.reset_card_accounts."10000000-0000-4000-8000-000000000001"]
-display_label = "Primary Pro"
-initial_state = "depleted"
-access_token_env_var = "DECODEX_RESET_PRIMARY_ACCESS_TOKEN"
-provider_account_id_env_var = "DECODEX_RESET_PRIMARY_ACCOUNT_ID"
-expected_email_env_var = "DECODEX_RESET_PRIMARY_EMAIL"
-plan_type = "pro"
-
-[postgres]"#,
-	);
-	let config = DecodexConfig::parse(input.as_bytes()).expect("reset-card account config");
-	let (account_id, account) =
-		config.server_host().reset_card_accounts().first_key_value().expect("account");
-
-	assert_eq!(account_id.as_str(), "10000000-0000-4000-8000-000000000001");
-	assert_eq!(account.display_label(), "Primary Pro");
-	assert_eq!(account.initial_state(), decodex_core::AccountState::Depleted);
-	assert_eq!(account.access_token_env_var(), "DECODEX_RESET_PRIMARY_ACCESS_TOKEN");
-	assert_eq!(account.provider_account_id_env_var(), "DECODEX_RESET_PRIMARY_ACCOUNT_ID");
-	assert_eq!(account.expected_email_env_var(), "DECODEX_RESET_PRIMARY_EMAIL");
-	assert_eq!(account.plan_type(), "pro");
-	let debug = format!("{config:?}");
-
-	assert!(!debug.contains("Primary Pro"));
-	assert!(!debug.contains("DECODEX_RESET_PRIMARY"));
-}
-
-#[test]
-fn reset_card_account_projection_uses_the_shared_collection_bound() {
-	fn config_with_accounts(count: usize) -> String {
-		let accounts = (0..count)
-			.map(|index| {
-				format!(
-					r#"[server_host.reset_card_accounts."10000000-0000-4000-8000-{index:012x}"]
-display_label = "Account {index}"
-initial_state = "depleted"
-access_token_env_var = "DECODEX_RESET_ACCESS_{index}"
-provider_account_id_env_var = "DECODEX_RESET_ACCOUNT_{index}"
-expected_email_env_var = "DECODEX_RESET_EMAIL_{index}"
-plan_type = "pro"
-"#,
-				)
-			})
-			.collect::<String>();
-
-		support::valid_config().replace("[postgres]", &format!("{accounts}\n[postgres]"))
-	}
-
-	assert_eq!(MAX_RESET_CARD_ITEMS, 64);
-	assert!(DecodexConfig::parse(config_with_accounts(64).as_bytes()).is_ok());
-	assert_eq!(
-		DecodexConfig::parse(config_with_accounts(65).as_bytes()).unwrap_err(),
-		ConfigError::InvalidResetCardAccount,
-	);
-}
-
-#[test]
-fn reset_card_account_enrollment_rejects_unsafe_identity_state_and_references() {
-	let enrolled = support::valid_config().replace(
-		"[postgres]",
-		r#"[server_host.reset_card_accounts."10000000-0000-4000-8000-000000000001"]
-display_label = "Primary"
-initial_state = "depleted"
-access_token_env_var = "DECODEX_RESET_ACCESS"
-provider_account_id_env_var = "DECODEX_RESET_ACCOUNT"
-expected_email_env_var = "DECODEX_RESET_EMAIL"
-plan_type = "pro"
-
-[postgres]"#,
-	);
-
-	for invalid in [
-		enrolled.replace("10000000-0000-4000-8000-000000000001", "legacy-account-fingerprint"),
-		enrolled.replace("initial_state = \"depleted\"", "initial_state = \"disabled\""),
-		enrolled.replace("plan_type = \"pro\"", "plan_type = \"private-plan\""),
-		enrolled.replace(
-			"provider_account_id_env_var = \"DECODEX_RESET_ACCOUNT\"",
-			"provider_account_id_env_var = \"DECODEX_RESET_ACCESS\"",
-		),
-	] {
-		assert_eq!(
-			DecodexConfig::parse(invalid.as_bytes()).unwrap_err(),
-			ConfigError::InvalidResetCardAccount
-		);
-	}
 }
 
 #[test]

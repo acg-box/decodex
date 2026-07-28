@@ -5,9 +5,18 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	let account: ResetCardAccountRecord
 	let inventory: ResetCardInventory?
 	let error: ResetCardClientError?
+	let isRefreshing: Bool
 
 	var id: String {
 		account.accountID
+	}
+
+	var fiveHourQuota: ResetCardQuotaWindow {
+		inventory?.fiveHourQuota ?? account.fiveHourQuota
+	}
+
+	var sevenDayQuota: ResetCardQuotaWindow {
+		inventory?.sevenDayQuota ?? account.sevenDayQuota
 	}
 
 	var targets: [ResetCardUseTarget] {
@@ -24,6 +33,11 @@ struct ResetCardAccountState: Identifiable, Equatable {
 			)
 		}
 	}
+}
+
+private enum ResetCardInventoryRead: Sendable {
+	case available(accountID: String, ResetCardInventory)
+	case failed(accountID: String, ResetCardClientError)
 }
 
 struct ResetCardStoreMessage: Equatable {
@@ -167,52 +181,90 @@ final class ResetCardStore {
 
 		var shouldRetry = false
 		do {
-			let discovered = try await client.accounts()
-			var refreshed = [ResetCardAccountState]()
-			refreshed.reserveCapacity(discovered.count)
-
-			for account in discovered {
-				guard Task.isCancelled == false else {
-					return .complete
-				}
-
-				do {
-					let inventory = try await client.inventory(for: account)
-					let currentAccount = ResetCardAccountRecord(
-						authority: inventory.authority,
-						accountID: account.accountID,
-						displayLabel: account.displayLabel,
-						accountRevision: inventory.accountRevision,
-						admissionState: account.admissionState
-					)
-					refreshed.append(
-						ResetCardAccountState(
-							account: currentAccount,
-							inventory: inventory,
-							error: nil
-						)
-					)
-				} catch {
-					let clientError = Self.clientError(error)
-					shouldRetry = shouldRetry || clientError.isRetryableReadFailure
-					refreshed.append(
-						ResetCardAccountState(
-							account: account,
-							inventory: nil,
-							error: clientError
-						)
-					)
-				}
+			let retainedAuthorities = Set(
+				accounts.compactMap { $0.account.authority ?? $0.inventory?.authority }
+			)
+			guard retainedAuthorities.count <= 1 else {
+				throw ResetCardClientError.invalidResponse
 			}
-
-			accounts = refreshed
+			let retainedAuthority = retainedAuthorities.first
+			let discovered = try await client.accounts(authority: retainedAuthority)
+			let previousByID = Dictionary(
+				uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
+			)
+			accounts = discovered.map { account in
+				let previous = previousByID[account.accountID]
+				let authority = retainedAuthority
+					?? previous?.account.authority
+					?? previous?.inventory?.authority
+				let boundAccount = Self.account(account, authority: authority)
+				let retainsInventory = previous?.account.accountRevision == account.accountRevision
+				return ResetCardAccountState(
+					account: boundAccount,
+					inventory: retainsInventory ? previous?.inventory : nil,
+					error: nil,
+					isRefreshing: true
+				)
+			}
 			if message?.tone == .error, isPendingRecoveryBlocked == false {
 				message = nil
+			}
+
+			let client = self.client
+			var expectedAuthority = retainedAuthority
+			await withTaskGroup(of: ResetCardInventoryRead.self) { group in
+				for state in accounts {
+					let account = state.account
+					group.addTask {
+						do {
+							return .available(
+								accountID: account.accountID,
+								try await client.inventory(for: account)
+							)
+						} catch {
+							return .failed(
+								accountID: account.accountID,
+								Self.clientError(error)
+							)
+						}
+					}
+				}
+
+				for await read in group {
+					guard Task.isCancelled == false else {
+						return
+					}
+					switch read {
+					case .available(let accountID, let inventory):
+						guard expectedAuthority == nil || expectedAuthority == inventory.authority else {
+							applyInventoryFailure(
+								.invalidResponse,
+								accountID: accountID
+							)
+							continue
+						}
+						expectedAuthority = inventory.authority
+						if let error = inventory.observationError {
+							shouldRetry = shouldRetry || error.isRetryableReadFailure
+						}
+						applyInventory(inventory, accountID: accountID)
+					case .failed(let accountID, let error):
+						shouldRetry = shouldRetry || error.isRetryableReadFailure
+						applyInventoryFailure(error, accountID: accountID)
+					}
+				}
 			}
 		} catch {
 			let clientError = Self.clientError(error)
 			shouldRetry = clientError.isRetryableReadFailure
-			accounts = []
+			accounts = accounts.map {
+				ResetCardAccountState(
+					account: $0.account,
+					inventory: $0.inventory,
+					error: $0.error,
+					isRefreshing: false
+				)
+			}
 			message = ResetCardStoreMessage(
 				tone: .error,
 				text: clientError.localizedDescription
@@ -316,6 +368,12 @@ final class ResetCardStore {
 
 	func dismissMessage() {
 		message = nil
+	}
+
+	func accountLabel(for accountID: String) -> String {
+		accounts.first(where: { $0.account.accountID == accountID })?
+			.account.displayLabel
+			?? "Account …\(accountID.suffix(8))"
 	}
 
 	private func submit(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
@@ -506,28 +564,76 @@ final class ResetCardStore {
 		let existing = accounts[index]
 		do {
 			let inventory = try await client.inventory(for: existing.account)
-			let account = ResetCardAccountRecord(
-				authority: inventory.authority,
-				accountID: existing.account.accountID,
-				displayLabel: existing.account.displayLabel,
-				accountRevision: inventory.accountRevision,
-				admissionState: existing.account.admissionState
-			)
-			accounts[index] = ResetCardAccountState(
-				account: account,
-				inventory: inventory,
-				error: nil
-			)
+			applyInventory(inventory, accountID: accountID)
 		} catch {
-			accounts[index] = ResetCardAccountState(
-				account: existing.account,
-				inventory: nil,
-				error: Self.clientError(error)
-			)
+			applyInventoryFailure(Self.clientError(error), accountID: accountID)
 		}
 	}
 
-	private static func clientError(_ error: Error) -> ResetCardClientError {
+	private func applyInventory(
+		_ inventory: ResetCardInventory,
+		accountID: String
+	) {
+		guard inventory.accountID == accountID,
+			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
+		else {
+			applyInventoryFailure(.invalidResponse, accountID: accountID)
+			return
+		}
+		let existing = accounts[index].account
+		let account = ResetCardAccountRecord(
+			authority: inventory.authority,
+			accountID: existing.accountID,
+			displayLabel: existing.displayLabel,
+			accountRevision: inventory.accountRevision,
+			enabled: existing.enabled,
+			observedState: existing.observedState,
+			lifecycleReadiness: existing.lifecycleReadiness,
+			fiveHourQuota: inventory.fiveHourQuota,
+			sevenDayQuota: inventory.sevenDayQuota
+		)
+		accounts[index] = ResetCardAccountState(
+			account: account,
+			inventory: inventory,
+			error: nil,
+			isRefreshing: false
+		)
+	}
+
+	private func applyInventoryFailure(
+		_ error: ResetCardClientError,
+		accountID: String
+	) {
+		guard let index = accounts.firstIndex(where: { $0.account.accountID == accountID }) else {
+			return
+		}
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: error,
+			isRefreshing: false
+		)
+	}
+
+	private static func account(
+		_ account: ResetCardAccountRecord,
+		authority: ResetCardAuthority?
+	) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: account.accountID,
+			displayLabel: account.displayLabel,
+			accountRevision: account.accountRevision,
+			enabled: account.enabled,
+			observedState: account.observedState,
+			lifecycleReadiness: account.lifecycleReadiness,
+			fiveHourQuota: account.fiveHourQuota,
+			sevenDayQuota: account.sevenDayQuota
+		)
+	}
+
+	nonisolated private static func clientError(_ error: Error) -> ResetCardClientError {
 		error as? ResetCardClientError ?? .invalidResponse
 	}
 

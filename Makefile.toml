@@ -193,10 +193,10 @@ args = [
 ]
 
 # Build
-# | task       | type      | cwd  |
-# | ---------- | --------- | ---- |
-# | build      | composite |      |
-# | build-node | command   | site |
+# | task                                      | type      | cwd  |
+# | ----------------------------------------- | --------- | ---- |
+# | build                                     | composite |      |
+# | build-node                                | command   | site |
 
 [tasks.build]
 clear = true
