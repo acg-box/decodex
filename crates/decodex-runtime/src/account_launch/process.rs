@@ -27,6 +27,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use libc::{EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM};
 #[cfg(target_os = "linux")]
 use libc::{
@@ -112,6 +113,9 @@ const QUARANTINE_SLOT_READY: u8 = 2;
 const QUARANTINE_SLOT_WORKING: u8 = 3;
 const QUARANTINE_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
 const RESET_CARD_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
+const CALLBACK_PROBE_PLAN_TYPE: &str = "business";
+const CALLBACK_PROBE_EMAIL: &str = "decodex-callback-capability-probe.invalid";
+const CALLBACK_PROBE_SIGNATURE: &[u8] = b"decodex-callback-capability-probe";
 #[cfg(test)]
 static ZEROIZED_INBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
@@ -808,14 +812,15 @@ impl AttestedProcessChild {
 			.provider
 			.account_id()
 			.to_owned();
+		let probe_access_token = callback_probe_access_token(&provider_account_id)?;
 		self.process
 			.request_rpc::<_, CredentialProjectionResponse>(
 				ACCOUNT_LOGIN_METHOD,
 				&ChatgptAuthParams {
 					kind: "chatgptAuthTokens",
-					access_token: "decodex-invalid-callback-capability-probe",
+					access_token: probe_access_token.as_str(),
 					chatgpt_account_id: &provider_account_id,
-					chatgpt_plan_type: None,
+					chatgpt_plan_type: Some(CALLBACK_PROBE_PLAN_TYPE),
 				},
 				self.timeout,
 			)
@@ -841,6 +846,31 @@ impl AttestedProcessChild {
 		re_attest_reset_card_account(&mut self.process, self.timeout)?;
 		Ok(ResetCardConsumeReadback { outcome, inventory })
 	}
+}
+
+fn callback_probe_access_token(
+	provider_account_id: &str,
+) -> Result<Zeroizing<String>, ResetCardProcessError> {
+	// This exact build refreshes external auth after a read-only cloud-config 401, but not after
+	// `account/rateLimits/read`. A business-shaped, invalidly signed JWT reaches that path without
+	// creating a thread or turn. The separate RPC account ID and this claim stay bound to the
+	// immutable ProcessGeneration provider; the Account Service supplies the real successor token.
+	// Omitting the user ID makes the cloud-config cache identity incomplete and forces a read.
+	// After a successful callback, Codex writes any resulting cache under the refreshed real
+	// identity.
+	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
+	let payload = serde_json::to_vec(&serde_json::json!({
+		"email": CALLBACK_PROBE_EMAIL,
+		"https://api.openai.com/auth": {
+			"chatgpt_plan_type": CALLBACK_PROBE_PLAN_TYPE,
+			"chatgpt_account_id": provider_account_id,
+		},
+	}))
+	.map_err(|_| ResetCardProcessError::InvalidProviderResponse)?;
+	let payload = URL_SAFE_NO_PAD.encode(payload);
+	let signature = URL_SAFE_NO_PAD.encode(CALLBACK_PROBE_SIGNATURE);
+
+	Ok(Zeroizing::new(format!("{header}.{payload}.{signature}")))
 }
 
 /// Exact active-account identity retained only in zeroizing, redacted process memory.
@@ -4562,21 +4592,25 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
+	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use serde::{
 		Serialize,
 		ser::{Error as _, SerializeMap as _},
 	};
+	use serde_json::Value;
 	use tempfile::TempDir;
 
 	use crate::account_launch::{
 		RunnerCapacity, RunnerPermit,
 		process::{
-			self, AccountBinding, AccountIdentity, AppServerCommand, CredentialProjection,
+			self, AccountBinding, AccountIdentity, AppServerCommand, CALLBACK_PROBE_EMAIL,
+			CALLBACK_PROBE_PLAN_TYPE, CALLBACK_PROBE_SIGNATURE, CredentialProjection,
 			CredentialProjectionResponse, CredentialVault, CredentialVaultError,
 			ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
 			PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe,
 			ResetCardProcessError, ResetCardProcessMethod, ResetCardProcessRunner, RpcError,
 			ShutdownOutcome, SupervisedProcess, SupervisionError, UnavailableCredentialVault,
+			callback_probe_access_token,
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -5222,6 +5256,32 @@ mod tests {
 		] {
 			assert!(serde_json::from_slice::<CredentialProjectionResponse>(json).is_err());
 		}
+	}
+
+	#[test]
+	fn callback_probe_token_is_a_nonsecret_business_jwt_bound_to_the_provider() {
+		let provider_account_id = "provider-account-for-callback-proof";
+		let token = callback_probe_access_token(provider_account_id).unwrap();
+		let parts = token.split('.').collect::<Vec<_>>();
+
+		assert_eq!(parts.len(), 3);
+		let header: Value =
+			serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
+		let payload: Value =
+			serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
+		assert_eq!(header, serde_json::json!({"alg": "none", "typ": "JWT"}));
+		assert_eq!(payload["email"], CALLBACK_PROBE_EMAIL);
+		assert_eq!(
+			payload["https://api.openai.com/auth"]["chatgpt_plan_type"],
+			CALLBACK_PROBE_PLAN_TYPE
+		);
+		assert!(payload["https://api.openai.com/auth"].get("chatgpt_user_id").is_none());
+		assert_eq!(
+			payload["https://api.openai.com/auth"]["chatgpt_account_id"],
+			provider_account_id
+		);
+		assert_eq!(URL_SAFE_NO_PAD.decode(parts[2]).unwrap(), CALLBACK_PROBE_SIGNATURE);
+		assert_ne!(*token, *callback_probe_access_token("different-provider-account").unwrap());
 	}
 
 	#[test]
