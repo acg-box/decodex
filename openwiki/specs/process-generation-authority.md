@@ -66,19 +66,21 @@ facts agree:
 - the environment policy is clear-then-set with exact `HOME`, `PATH`, and
   `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` startup-state values;
 - the exact-build profile derives one macOS private-stdio lifetime capability; and
-- the working directory and protected snapshot remain inside the opaque authority.
+- the working directory, protected reference snapshot, and canonical macOS execution identity
+  remain inside the opaque authority.
 
-The launch-manifest SHA-256 binds its schema, protected-snapshot execution policy,
-platform, control and session-isolation kinds, `BuildId`, exact image digest, command
-identity, ordered arguments, working directory, complete sanitized environment,
-account, initial account revision, canonical credential version and fingerprint,
-provider binding, and exact-build account capability. `ProcessSupervisor` derives
-durable `runner_identity` from this object. Its spawn API accepts no
-caller-supplied runner digest, raw `Command`, command arguments, environment, account,
-or control kind. After a fresh fence, the object re-attests the retained profile,
-constructs the command internally, and executes the same protected snapshot.
-Unsupported platform, argument, and image profiles reject before a profile-dependent
-version or schema preflight can spawn a child.
+The launch-manifest SHA-256 binds its schema, macOS canonical-suspended execution policy,
+platform, control and session-isolation kinds, `BuildId`, exact image digest, command identity,
+ordered arguments, working directory, complete sanitized environment, account, initial account
+revision, canonical credential version and fingerprint, provider binding, and exact-build account
+capability. `ProcessSupervisor` derives durable `runner_identity` from this object. Its spawn API
+accepts no caller-supplied runner digest, raw `Command`, command arguments, environment, account, or
+control kind. After a fresh fence, the object re-attests the retained profile and constructs the
+command internally. On macOS, version and schema preflights execute the protected snapshot. The
+final app-server executes the canonical image while suspended, and it resumes only after the
+snapshot-rooted dynamic code identity, canonical path, session, and process group match.
+Unsupported platform, argument, and image profiles reject before a profile-dependent version or
+schema preflight can spawn a child.
 
 The current accepted profile is intentionally narrow:
 
@@ -87,7 +89,7 @@ The current accepted profile is intentionally narrow:
 | Platform evidence | macOS arm64 |
 | Version | `codex-cli 0.146.0-alpha.3.1` |
 | Executable SHA-256 | `6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223` |
-| Command | protected snapshot with argv0 set to the resolved Codex path and fixed `app-server --stdio` arguments |
+| Command | canonical Codex path as both executable and argv0, suspended before user code, with fixed `app-server --stdio` arguments |
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` selects `DisabledEphemeral`; no remote-control argument |
 | Protocol boundary | Child stdin and stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
 | Capability | `codex-app-server-private-stdio-disabled-ephemeral-startup-v1` |
@@ -289,7 +291,7 @@ tree without enabling provider effects or production dispatch.
 | Manifest refreeze | Capture PostgreSQL 18 source S0, restore R1, and second restore R2. Require S0=R1 and R1=R2. Regenerate and accept complete V23 schema and configured-authority digests. Remove the temporary `process_generation` exclusion that keeps the accepted V22 digest base during this source-only slice. |
 | ACL and catalog hostility | Prove the expected 81 relations, 172 functions, 70 safety functions, 147 triggers, 62 runtime-callable functions, five new enums, exact ownership, no PUBLIC authority, no runtime relation DML, no grant option, closed dependencies, hostile `search_path`, overload/default-ACL rejection, and populated restore parity. |
 | State machine | Exercise every legal transition. Reject every illegal transition, combined bind/state transition, identity rewrite, partial identity, history rewrite, deletion, truncation, explicit-null or stale revision, cross-generation evidence, and malformed evidence shape. |
-| Opaque launch mismatch | Prove that callers cannot mismatch runner identity, executable image, command, argv0, fixed arguments, working directory, environment, account, initial account revision, credential version/fingerprint, provider binding, BuildId, or exact-build capability. Prove that only the retained protected snapshot can reach exec. |
+| Opaque launch mismatch | Prove that callers cannot mismatch runner identity, executable image, command, argv0, fixed arguments, working directory, environment, account, initial account revision, credential version/fingerprint, provider binding, BuildId, or exact-build capability. Prove that macOS preflights execute only the retained protected snapshot and that the final app-server executes only the canonical path after snapshot-rooted suspended dynamic attestation. |
 | Credential binding and readback | Rotate, remove, replace, disable, or change the provider between prepare, fence, spawn, callback, and ready. Every stale combination rejects or quarantines without a second launch. Intent, manifest, V23 row, transition readback, and diagnostics agree on the canonical non-secret binding. No credential material is stored. |
 | Exact-build private stdio | For each accepted profile, prove fixed `app-server --stdio`, environment clearing, the exact startup marker, absence of a remote-control argument, `DisabledEphemeral` startup selection, no raw stdin/stdout or generic protocol writer in any returned capability, and rejection of changed images, versions, arguments, environment, or capability. Prove the exact `account/chatgptAuthTokens/refresh` callback round trip and reject unknown callback methods or shapes. Unsupported profiles reject before version/schema preflight spawn. The gateway source-rejects alternate-control RPCs before enablement. |
 | Fence concurrency | Exercise replay, changed-intent conflict, same-account competitors, credential rotation, provider disagreement, different-account progress, epoch retirement, account deletion, transaction abort, deadlock, serialization failure, lost commit result, and restart. Only one fresh fence can authorize spawn. |

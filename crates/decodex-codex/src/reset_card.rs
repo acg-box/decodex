@@ -536,45 +536,47 @@ impl<'de> Deserialize<'de> for ZeroizingWireText {
 
 fn decode_quota_windows(
 	by_limit_id: Option<&Value>,
-	legacy: Option<&Value>,
+	default_snapshot: Option<&Value>,
 ) -> [AccountRateLimitObservation; 2] {
 	let mut decoded =
 		BTreeMap::<u32, Result<AccountQuotaWindow, AccountQuotaObservationError>>::new();
-	let buckets = by_limit_id
-		.and_then(Value::as_object)
-		.filter(|buckets| !buckets.is_empty())
-		.map(|buckets| buckets.values().collect::<Vec<_>>())
-		.or_else(|| legacy.map(|bucket| vec![bucket]));
-
-	let Some(buckets) = buckets.filter(|buckets| buckets.len() <= 64) else {
+	let bucket = match by_limit_id {
+		Some(Value::Object(buckets)) if buckets.len() <= 64 =>
+			buckets.get("codex").or(default_snapshot),
+		Some(Value::Object(_)) =>
+			return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable),
+		Some(Value::Null) | None => default_snapshot,
+		Some(_) => return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable),
+	};
+	let Some(bucket) = bucket else {
 		return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
 	};
-	for bucket in buckets {
-		let Some(bucket) = bucket.as_object() else {
-			return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
+	let Some(bucket) = bucket.as_object() else {
+		return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
+	};
+	for field in ["primary", "secondary"] {
+		let window = match bucket.get(field) {
+			Some(Value::Object(window)) => window,
+			Some(Value::Null) | None => continue,
+			Some(_) =>
+				return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable),
 		};
-		for field in ["primary", "secondary"] {
-			let Some(window) = bucket.get(field) else { continue };
-			let Some(window) = window.as_object() else {
-				return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
-			};
-			let Some(duration) = window
-				.get("windowDurationMins")
-				.and_then(Value::as_u64)
-				.and_then(|value| u32::try_from(value).ok())
-			else {
-				continue;
-			};
-			if !matches!(
-				duration,
-				AccountQuotaWindow::FIVE_HOURS_MINUTES | AccountQuotaWindow::SEVEN_DAYS_MINUTES
-			) {
-				continue;
-			}
-			let parsed = parse_quota_window(duration, window);
-			if decoded.insert(duration, parsed).is_some() {
-				decoded.insert(duration, Err(AccountQuotaObservationError::ProtocolUnavailable));
-			}
+		let Some(duration) = window
+			.get("windowDurationMins")
+			.and_then(Value::as_u64)
+			.and_then(|value| u32::try_from(value).ok())
+		else {
+			continue;
+		};
+		if !matches!(
+			duration,
+			AccountQuotaWindow::FIVE_HOURS_MINUTES | AccountQuotaWindow::SEVEN_DAYS_MINUTES
+		) {
+			continue;
+		}
+		let parsed = parse_quota_window(duration, window);
+		if decoded.insert(duration, parsed).is_some() {
+			decoded.insert(duration, Err(AccountQuotaObservationError::ProtocolUnavailable));
 		}
 	}
 
@@ -657,7 +659,10 @@ fn map_descriptor_error(error: ResetCardError) -> ResetCardProtocolError {
 mod tests {
 	use std::collections::BTreeSet;
 
-	use decodex_core::{ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp};
+	use decodex_core::{
+		AccountQuotaObservationError, AccountQuotaWindow, ResetCardConsumeOutcome,
+		ResetCardDescriptor, ResetCardTimestamp,
+	};
 	use serde_json::{Value, json};
 
 	use crate::{
@@ -684,6 +689,18 @@ mod tests {
 			"rateLimitResetCredits": {
 				"availableCount": available_count,
 				"credits": credits
+			}
+		}))
+		.unwrap()
+	}
+
+	fn inventory_with_limits(rate_limits: Value, rate_limits_by_limit_id: Value) -> Vec<u8> {
+		serde_json::to_vec(&json!({
+			"rateLimits": rate_limits,
+			"rateLimitsByLimitId": rate_limits_by_limit_id,
+			"rateLimitResetCredits": {
+				"availableCount": 0,
+				"credits": []
 			}
 		}))
 		.unwrap()
@@ -742,6 +759,126 @@ mod tests {
 		assert_eq!(
 			inventory.resolve_exact_credit_id(descriptor(100, 200)).unwrap().as_str(),
 			"private-credit"
+		);
+	}
+
+	#[test]
+	fn quota_windows_select_the_canonical_codex_bucket_from_a_multi_bucket_response() {
+		let default_snapshot = json!({
+			"primary": {
+				"usedPercent": 12,
+				"windowDurationMins": 300,
+				"resetsAt": 2_000
+			},
+			"secondary": {
+				"usedPercent": 34,
+				"windowDurationMins": 10_080,
+				"resetsAt": 3_000
+			}
+		});
+		let bytes = inventory_with_limits(
+			default_snapshot.clone(),
+			json!({
+				"codex": default_snapshot,
+				"codex_bengalfox": {
+					"primary": {
+						"usedPercent": 56,
+						"windowDurationMins": 300,
+						"resetsAt": 4_000
+					},
+					"secondary": {
+						"usedPercent": 78,
+						"windowDurationMins": 10_080,
+						"resetsAt": 5_000
+					}
+				}
+			}),
+		);
+		let inventory = decode_reset_card_inventory(&bytes).unwrap();
+
+		assert_eq!(
+			inventory.quota_windows()[0].result(),
+			Ok(AccountQuotaWindow::new(300, 12, 2_000_000_000).unwrap())
+		);
+		assert_eq!(
+			inventory.quota_windows()[1].result(),
+			Ok(AccountQuotaWindow::new(10_080, 34, 3_000_000_000).unwrap())
+		);
+	}
+
+	#[test]
+	fn quota_windows_fall_back_to_the_required_single_bucket_view() {
+		let default_snapshot = json!({
+			"primary": {
+				"usedPercent": 21,
+				"windowDurationMins": 300,
+				"resetsAt": 6_000
+			},
+			"secondary": {
+				"usedPercent": 43,
+				"windowDurationMins": 10_080,
+				"resetsAt": 7_000
+			}
+		});
+		for by_limit_id in [
+			json!(null),
+			json!({
+				"codex_other": {
+					"primary": {
+						"usedPercent": 65,
+						"windowDurationMins": 10_080,
+						"resetsAt": 8_000
+					}
+				}
+			}),
+		] {
+			let bytes = inventory_with_limits(default_snapshot.clone(), by_limit_id);
+			let inventory = decode_reset_card_inventory(&bytes).unwrap();
+
+			assert_eq!(
+				inventory.quota_windows()[0].result(),
+				Ok(AccountQuotaWindow::new(300, 21, 6_000_000_000).unwrap())
+			);
+			assert_eq!(
+				inventory.quota_windows()[1].result(),
+				Ok(AccountQuotaWindow::new(10_080, 43, 7_000_000_000).unwrap())
+			);
+		}
+
+		let malformed = inventory_with_limits(json!({}), json!(["not", "a", "map"]));
+		let inventory = decode_reset_card_inventory(&malformed).unwrap();
+		assert_eq!(
+			inventory.quota_windows()[0].result(),
+			Err(AccountQuotaObservationError::ProtocolUnavailable)
+		);
+		assert_eq!(
+			inventory.quota_windows()[1].result(),
+			Err(AccountQuotaObservationError::ProtocolUnavailable)
+		);
+	}
+
+	#[test]
+	fn nullable_windows_remain_independent_missing_window_observations() {
+		let bytes = inventory_with_limits(
+			json!({
+				"primary": {
+					"usedPercent": 9,
+					"windowDurationMins": 300,
+					"resetsAt": 9_000
+				},
+				"secondary": null
+			}),
+			json!(null),
+		);
+		let inventory = decode_reset_card_inventory(&bytes).unwrap();
+
+		assert_eq!(
+			inventory.quota_windows()[0].result(),
+			Ok(AccountQuotaWindow::new(300, 9, 9_000_000_000).unwrap())
+		);
+		assert_eq!(
+			inventory.quota_windows()[1].result(),
+			Err(AccountQuotaObservationError::UnsupportedWindow)
 		);
 	}
 
