@@ -92,9 +92,9 @@ const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
 const PRIVATE_STDIO_CAPABILITY_ID: &str =
 	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
 const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
-const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.145.0-alpha.18";
+const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.146.0-alpha.3.1";
 const STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256: &str =
-	"f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9";
+	"6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
 const THREAD_LIST_LIMIT: usize = 100;
 const THREAD_SEARCH_LIMIT: usize = 10;
@@ -646,7 +646,7 @@ pub(crate) struct AttestedAppServerLaunch {
 impl AttestedAppServerLaunch {
 	/// Construct the launch only inside the existing account-launch owner.
 	///
-	/// The current accepted exact profile is the source-attested 0.145.0-alpha.18 macOS image.
+	/// The current accepted exact profile is the source-attested 0.146.0-alpha.3.1 macOS image.
 	/// Every other version or image, including an unrecorded Linux image, remains disabled until
 	/// an accepted exact profile is added.
 	pub(super) fn attest(
@@ -4728,6 +4728,9 @@ mod tests {
 		if mode == "schema-symlink" {
 			schema_args.push("--schema-symlink".into());
 		}
+		if mode == "nested-refresh-schema" {
+			schema_args.push("--nested-refresh-only".into());
+		}
 		if mode == "preflight-orphan-error" {
 			schema_args.push("--preflight-fail".into());
 		}
@@ -5333,6 +5336,25 @@ mod tests {
 		.run(&mut CapabilityCache::default());
 
 		assert!(matches!(result, Err(ProbeError::SchemaMissing { .. })));
+		assert!(!marker_path.exists());
+	}
+
+	#[test]
+	fn retired_nested_refresh_schema_layout_fails_before_app_server_spawn() {
+		let temp = TempDir::new().unwrap();
+		let marker_path = temp.path().join("spawned");
+		let result = ReadOnlyProbe::new_for_test(
+			fake_command("nested-refresh-schema", temp.path(), Some(&marker_path)),
+			binding(),
+			SchemaMarker::accepted(),
+			Duration::from_secs(5),
+		)
+		.run(&mut CapabilityCache::default());
+
+		assert_eq!(
+			result.unwrap_err(),
+			ProbeError::SchemaMissing { markers: vec!["schema:document".into()] }
+		);
 		assert!(!marker_path.exists());
 	}
 
