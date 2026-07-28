@@ -560,7 +560,7 @@ independent runner digest or raw `Command`. After spawn, it persists the exact b
 process-start, process-group, and session identities.
 
 The current launch profile accepts only the source-attested macOS
-`codex-cli 0.145.0-alpha.18` image and forces
+`codex-cli 0.146.0-alpha.3.1` image and forces
 `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`. This is exact-build startup-state
 evidence: it selects disabled-ephemeral remote-control mode, but it is not a permanent denial
 policy. The supervisor retains child stdin and stdout privately for lifetime ownership.

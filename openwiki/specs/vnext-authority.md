@@ -570,7 +570,7 @@ V23 before a fresh fence can authorize one spawn. Intent, launch manifest, prepa
 transition, and readback carry the same non-secret binding. No new process or effect ledger is
 added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
-The current lifetime profile accepts only the recorded macOS `codex-cli 0.145.0-alpha.18` image. It
+The current lifetime profile accepts only the recorded macOS `codex-cli 0.146.0-alpha.3.1` image. It
 sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
 argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
 raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
@@ -579,10 +579,9 @@ profile-dependent preflights. Generic session/descriptor setup does not install
 `PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
 Linux lifetime capability. `decodexd` remains the only product daemon.
 
-This profile does not prove AccountLifecycle readiness. Current vNext rejects inbound app-server
-requests with method-not-found, so it cannot service `account/chatgptAuthTokens/refresh`.
-MacDogfoodReady requires a positive exact-build callback receipt and a typed daemon gateway.
-Generated types, version text, or upstream implementation presence alone are insufficient.
+This profile proves AccountLifecycle readiness only after a positive exact-build callback receipt
+and the typed daemon gateway pass the generated-schema and callback-shape preflights. Generated
+types, version text, or upstream implementation presence alone are insufficient.
 Unsupported builds and callback shapes fail closed before account launch.
 
 The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
