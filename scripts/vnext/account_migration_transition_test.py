@@ -2538,6 +2538,47 @@ def restore_operation(
     )
 
 
+def run_expected_migration_replay(
+    installer: Any,
+    paths: Any,
+    namespace_lock: Any,
+    label: str,
+) -> dict[str, Any]:
+    failure_categories = {
+        "offline account migration inherited namespace lock is unavailable": (
+            "installer_lock_unavailable"
+        ),
+        "offline account migration path is unsafe": "invalid_path",
+        "offline account migration configuration is invalid": "invalid_config",
+        "offline account migration manifest is invalid": "invalid_manifest",
+        "offline account migration source changed": "source_changed",
+        "offline account credential source is invalid": "invalid_credential_source",
+        "offline account migration PostgreSQL is unavailable": "postgres_unavailable",
+        "offline account migration destination verification failed": (
+            "destination_mismatch"
+        ),
+        "normal runtime retirement is not verified": "runtime_retirement_unverified",
+        "ProcessGeneration execution authorization is unavailable": (
+            "execution_authorization_unavailable"
+        ),
+        "offline account migration receipt conflicts": "receipt_conflict",
+    }
+    try:
+        return installer.run_offline_account_migration(paths, namespace_lock)
+    except subprocess.CalledProcessError as error:
+        stderr = error.stderr if isinstance(error.stderr, str) else ""
+        matched = [
+            category
+            for message, category in failure_categories.items()
+            if message in stderr
+        ]
+        category = matched[0] if len(matched) == 1 else "unclassified"
+        raise GateFailure(
+            f"{label} replay failed: returncode={error.returncode}; "
+            f"category={category}"
+        ) from error
+
+
 def verify_replay_and_drift(
     installer: Any,
     paths: Any,
@@ -2545,7 +2586,12 @@ def verify_replay_and_drift(
 ) -> None:
     before = destination_snapshot(installer, paths)
     keychain_before = protected_store_snapshot(paths)
-    replay = installer.run_offline_account_migration(paths, namespace_lock)
+    replay = run_expected_migration_replay(
+        installer,
+        paths,
+        namespace_lock,
+        "same_digest",
+    )
     if replay["intent_recorded"] or replay["receipt_completed"]:
         raise GateFailure("same-digest replay reported a new durable transition")
     if before != destination_snapshot(installer, paths):
@@ -2562,9 +2608,11 @@ def verify_replay_and_drift(
     try:
         positive_before = destination_snapshot(installer, paths)
         positive_keychain = protected_store_snapshot(paths)
-        positive_replay = installer.run_offline_account_migration(
+        positive_replay = run_expected_migration_replay(
+            installer,
             paths,
             namespace_lock,
+            "positive_binding",
         )
         if positive_replay["intent_recorded"] or positive_replay["receipt_completed"]:
             raise GateFailure("matching positive binding reported a new transition")
