@@ -4114,7 +4114,9 @@ WITH catalog_context AS MATERIALIZED (
       pg_catalog.pg_get_indexdef(index.indexrelid), index.indnatts, index.indnkeyatts,
       index.indisunique, index.indnullsnotdistinct, index.indisprimary,
       index.indisexclusion, index.indimmediate, index.indisclustered,
-      index.indisvalid, index.indcheckxmin, index.indisready, index.indislive,
+      index.indisvalid,
+      -- The HOT-chain transaction-horizon flag is not index definition.
+      index.indisready, index.indislive,
 		index.indisreplident,
       COALESCE((
         SELECT pg_catalog.jsonb_agg(
@@ -6094,6 +6096,7 @@ mod tests {
 		] {
 			assert!(SCHEMA_CONTRACT_SQL.contains(required), "{required}");
 		}
+		assert!(!SCHEMA_CONTRACT_SQL.contains("indcheckxmin"));
 		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.pg_describe_object"));
 		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.regprocedure"));
 		assert!(!SCHEMA_CONTRACT_SQL.contains("ORDER BY privilege.grantee"));
