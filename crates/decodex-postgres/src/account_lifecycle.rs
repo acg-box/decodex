@@ -335,7 +335,6 @@ impl PostgresStore {
 		let transaction = client
 			.build_transaction()
 			.isolation_level(IsolationLevel::RepeatableRead)
-			.read_only(true)
 			.start()
 			.await?;
 		let rows = transaction.query(READ_ACCOUNT_REGISTRY_ALL_SQL, &[&limit]).await?;
