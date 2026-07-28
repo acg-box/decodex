@@ -60,15 +60,7 @@ pub(in crate::release_delta::backfill) fn published_pr_numbers(
 	let mut published = BTreeSet::new();
 	let mut files = Vec::new();
 
-	for entry in fs::read_dir(signals_dir)? {
-		let path = entry?.path();
-
-		if path.extension().is_some_and(|extension| extension == "json") {
-			files.push(path);
-		}
-	}
-
-	files.sort();
+	files.extend(crate::sorted_json_files(signals_dir)?);
 
 	for path in files {
 		let payload = crate::load_json(&path)?;

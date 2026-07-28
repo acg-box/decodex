@@ -1,5 +1,6 @@
 //! Canonical Radar-owned repository paths.
 
+pub(crate) const DEFAULT_CACHE_ROOT: &str = ".agent/automations/radar/cache";
 pub(crate) const DEFAULT_CONFIG_PATH: &str = "automations/radar/radar.toml";
 pub(crate) const DEFAULT_LEDGER_PATH: &str = ".agent/automations/radar/cache/github/radar.sqlite3";
 pub(crate) const DEFAULT_QUEUE_OUT: &str =
@@ -13,6 +14,17 @@ pub(crate) const RUN_CODEX_ANALYSIS_SCRIPT: &str =
 	"automations/radar/scripts/github/run_codex_analysis.py";
 pub(crate) const DEFAULT_BUNDLES_DIR: &str = ".agent/automations/radar/cache/github/bundles";
 pub(crate) const DEFAULT_ANALYSIS_DIR: &str = ".agent/automations/radar/cache/generated/analysis";
+pub(crate) const REVIEW_QUEUE_RELATIVE_PATH: &str = "github/review-queue/openai-codex-latest.json";
+pub(crate) const RETAINED_CACHE_COLLECTIONS: &[&str] = &[
+	"github/bundles",
+	"github/review-queue",
+	"github/reviews",
+	"github/impact",
+	"github/control-plane-upgrades",
+	"site-content/signals",
+	"site-content/release-deltas",
+	"generated",
+];
 pub(crate) const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	".agent/automations/radar/cache/github/bundles",
 	".agent/automations/radar/cache/github/review-queue",

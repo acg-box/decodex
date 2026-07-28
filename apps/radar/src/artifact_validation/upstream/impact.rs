@@ -9,17 +9,19 @@ pub(in crate::artifact_validation) fn validate_upstream_impact(
 	entry: &Map<String, Value>,
 	errors: &mut Vec<String>,
 ) {
-	for field in ["slug", "repo", "observed_change"] {
+	for field in ["slug", "repo", "reviewed_at", "observed_change"] {
 		if !support::is_non_empty_string(entry.get(field)) {
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+	support::validate_rfc3339_field(entry, "reviewed_at", errors);
 
 	if support::string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
 		errors.push("repo must be owner/name".into());
 	}
 
 	validate_upstream_impact_source_refs(entry.get("source_refs"), errors);
+	validate_review_lineage(entry.get("review_lineage"), errors);
 
 	if !support::matches_one_of(entry.get("public_signal_decision"), &["defer", "publish", "skip"])
 	{
@@ -46,6 +48,41 @@ pub(in crate::artifact_validation) fn validate_upstream_impact(
 	for field in ["candidate_followups", "social_notes", "caveats"] {
 		support::validate_optional_string_list(entry.get(field), field, errors);
 	}
+}
+
+fn validate_review_lineage(lineage: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(lineage) = lineage.and_then(Value::as_object) else {
+		errors.push("review_lineage must be an object".into());
+
+		return;
+	};
+
+	support::validate_sha256(
+		lineage.get("artifact_sha256"),
+		"review_lineage.artifact_sha256",
+		errors,
+	);
+	for field in ["slug", "subject_id"] {
+		if !support::is_non_empty_string(lineage.get(field)) {
+			errors.push(format!("review_lineage.{field} must be a non-empty string"));
+		}
+	}
+	if !support::matches_one_of(lineage.get("subject_kind"), crate::UPSTREAM_SUBJECT_KINDS) {
+		errors.push(format!(
+			"review_lineage.subject_kind must be one of {}",
+			support::choices(crate::UPSTREAM_SUBJECT_KINDS)
+		));
+	}
+	support::validate_git_object_id(
+		lineage.get("upstream_head"),
+		"review_lineage.upstream_head",
+		errors,
+	);
+	support::validate_git_object_id_list(
+		lineage.get("commit_shas"),
+		"review_lineage.commit_shas",
+		errors,
+	);
 }
 
 fn validate_upstream_impact_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {

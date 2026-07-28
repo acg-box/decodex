@@ -5,7 +5,7 @@ mod commits;
 mod published;
 mod subjects;
 
-pub(crate) use self::commits::RecentCommit;
+pub(crate) use self::{commits::RecentCommit, subjects::sort_queue_subjects};
 
 use std::{collections::BTreeMap, path::Path};
 
@@ -26,7 +26,7 @@ pub(super) fn build_review_queue(
 	root: &Path,
 	api: &GitHubApi,
 ) -> Result<QueueBuild> {
-	let (default_branch, commits) =
+	let (default_branch, upstream_head, commits) =
 		commits::recent_commits(api, &request.repo, request.search_limit)?;
 	let recent_commits_scanned = commits.len();
 	let (published_prs, published_shas) =
@@ -94,7 +94,7 @@ pub(super) fn build_review_queue(
 		}
 	}
 
-	if let Some(ledger) = &mut ledger {
+	if let Some(ledger) = ledger {
 		ledger.commit()?;
 	}
 
@@ -102,6 +102,7 @@ pub(super) fn build_review_queue(
 	let queue = review_queue_payload(
 		request,
 		&default_branch,
+		&upstream_head,
 		recent_commits_scanned,
 		published_seen,
 		ordered_subjects,
@@ -113,6 +114,7 @@ pub(super) fn build_review_queue(
 fn review_queue_payload(
 	request: &RadarRefreshQueueRequest,
 	default_branch: &str,
+	upstream_head: &str,
 	recent_commits_scanned: usize,
 	published_seen: usize,
 	subjects: Vec<Value>,
@@ -128,6 +130,7 @@ fn review_queue_payload(
 		"generated_at": crate::utc_now_iso()?,
 		"source": {
 			"default_branch": default_branch,
+			"upstream_head": upstream_head,
 			"search_limit": request.search_limit,
 			"signals_dir": request.signals_dir.to_string_lossy(),
 		},

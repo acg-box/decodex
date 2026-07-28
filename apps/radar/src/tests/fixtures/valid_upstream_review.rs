@@ -5,10 +5,11 @@ pub(crate) fn valid_upstream_review() -> Value {
 		"schema": "upstream_review/v1",
 		"slug": "openai-codex-pr-22414",
 		"repo": "openai/codex",
+		"upstream_head": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"subject": {
 			"subject_kind": "pr",
 			"subject_id": "22414",
-			"commit_shas": ["abc123"]
+			"commit_shas": ["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"]
 		},
 		"source_refs": {
 			"items": [

@@ -38,7 +38,14 @@ Release deltas compare release objects and summarize material changes. They shou
 
 ## Radar ledger and retention
 
-The Radar ledger tracks artifact links, statuses, and release/archive state. Retention distinguishes hot raw artifacts, warm curated artifacts, and cold archived artifacts. Generated heavy artifacts stay out of source unless a manifest or curated summary is intentionally checked in.
+The Radar ledger is bounded, disposable, owner-only working state for current artifact
+links, review status, commit observations, and source-cache trace. It has no remote
+retention or recovery role. Raw generated artifacts and the ledger stay outside source.
+Curated public content can enter Git only through a separate reviewed source change.
+Radar prunes local collections and ledger rows oldest-first and fails closed instead of
+resetting an oversized ledger. Retention covers every current Radar writer
+collection and removes abandoned internal temporary files while the cache-wide lock
+is held.
 
 ## Control-plane upgrade candidates
 

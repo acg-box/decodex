@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import sys
 from pathlib import Path
@@ -13,7 +14,7 @@ from analysis_runner.paths import SCRIPT_HOME, repo_root_from
 if str(SCRIPT_HOME) not in sys.path:
     sys.path.insert(0, str(SCRIPT_HOME))
 
-from contracts import dump_json, load_json, validate_analysis_draft, validate_bundle  # noqa: E402
+from contracts import load_json, validate_analysis_draft, validate_bundle  # noqa: E402
 
 
 ALLOW_ANALYSIS_ENV = "DECODEX_ALLOW_CODEX_ANALYSIS"
@@ -30,7 +31,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--bundle", required=True, help="Path to github_change_bundle/v1 JSON.")
-    parser.add_argument("--out", required=True, help="Path to write the validated analysis JSON.")
     parser.add_argument("--repo-root", help="Repository root for codex exec. Defaults to the current repo root.")
     parser.add_argument("--codex-bin", default="codex", help="Codex executable to invoke.")
     parser.add_argument("--model", help="Optional Codex model override.")
@@ -51,6 +51,8 @@ def main() -> None:
         )
 
     bundle_path = Path(args.bundle)
+    if ".agent/automations/radar/cache" in bundle_path.as_posix():
+        raise SystemExit("Python analysis helper must not read the private Radar cache directly")
     bundle = load_json(bundle_path)
     bundle_validation = validate_bundle(bundle)
     if not bundle_validation.ok:
@@ -62,5 +64,4 @@ def main() -> None:
     if not validation.ok:
         raise SystemExit("Analysis draft validation failed:\n- " + "\n- ".join(validation.errors))
 
-    dump_json(args.out, payload)
-    print(args.out)
+    print(json.dumps(payload, indent=2, sort_keys=True))
