@@ -115,11 +115,13 @@ profile-dependent preflights. Every other version, image, argument shape, enviro
 or capability also fails closed. A version string or protocol `CapabilityProfile`
 alone cannot mint launch authority.
 
-MacDogfoodReady requires a new exact-build account-capability receipt for the callback.
+MacDogfoodReady requires an exact-build account-capability receipt for the callback.
 Version text, generated request types, or upstream implementation presence alone is not
-proof. An unsupported build or callback shape fails closed before account launch. The
-current private-stdio lifetime profile remains valid only for its accepted pre-dispatch
-scope; it cannot be used to claim AccountLifecycle readiness.
+proof. The current exact `codex-cli 0.146.0-alpha.3.1` profile handles the root refresh
+request and response, but it mints readiness only after the exact-image, generated-schema,
+and live callback preflights pass. An unsupported build or callback shape fails closed
+before account launch. The private-stdio lifetime profile does not independently claim
+AccountLifecycle readiness.
 
 ## Fence and child control
 
