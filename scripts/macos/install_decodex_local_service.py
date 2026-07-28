@@ -1826,12 +1826,29 @@ def install_under_namespace_lock(
     try:
         environment = psql_environment(paths)
         ensure_roles_and_database(paths, environment)
+        provision_local_product_state(paths)
     finally:
         stop_temporary_postgres(postgres)
 
     namespace_lock.verify()
     verify_daemon_wrapper(paths, daemon_wrapper, require_launch_agent=True)
     verify_signed_cli(paths.decodex_cli, team_identifier)
+
+
+def provision_local_product_state(paths: InstallPaths) -> None:
+    try:
+        run(
+            [
+                str(paths.decodexd),
+                "provision-local",
+                "--root",
+                str(paths.root),
+            ],
+            cwd=paths.repository,
+            capture=True,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise InstallError("local product-state provisioning failed") from error
 
 
 def main(argv: Optional[list[str]] = None) -> int:
