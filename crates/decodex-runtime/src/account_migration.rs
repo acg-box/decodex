@@ -2852,7 +2852,6 @@ fn verify_installed_assets(
 			|| (metadata.uid() != effective_uid && metadata.uid() != 0)
 			|| metadata.permissions().mode() & 0o022 != 0
 			|| metadata.permissions().mode() & 0o111 == 0
-			|| metadata.nlink() != 1
 			|| metadata.len() == 0
 			|| metadata.len() > MAX_INSTALLED_ASSET_BYTES
 		{
@@ -3023,5 +3022,38 @@ impl Display for OfflineAccountMigrationError {
 				"ProcessGeneration execution authorization is unavailable",
 			Self::ReceiptConflict => "offline account migration receipt conflicts",
 		})
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn installed_assets_accept_exact_hard_link_and_reject_writable_asset()
+	-> Result<(), Box<dyn Error>> {
+		let temporary = tempfile::tempdir()?;
+		let executable = temporary.path().join("decodex-tool");
+		let alias = temporary.path().join("decodex-tool-alias");
+		let body = b"#!/bin/sh\nexit 0\n";
+		fs::write(&executable, body)?;
+		fs::set_permissions(&executable, fs::Permissions::from_mode(0o755))?;
+		fs::hard_link(&executable, &alias)?;
+
+		let assets = verify_installed_assets(std::slice::from_ref(&executable))?;
+		assert_eq!(assets.len(), 1);
+		assert_eq!(assets[0].name, "decodex-tool");
+		assert_eq!(
+			assets[0].path,
+			executable
+				.to_str()
+				.ok_or_else(|| std::io::Error::other("temporary path is not UTF-8"))?
+		);
+		assert_eq!(assets[0].sha256, sha256(body));
+		assert_eq!(assets[0].byte_count, u64::try_from(body.len())?);
+
+		fs::set_permissions(&executable, fs::Permissions::from_mode(0o775))?;
+		assert!(verify_installed_assets(&[executable]).is_err());
+		Ok(())
 	}
 }
