@@ -2719,16 +2719,14 @@ def verify_replay_and_drift(
     by_account = {account["account_id"]: account for account in manifest["accounts"]}
     existing = CASES[1]
     target = by_account[existing.account_id]["target"]
+    # The exact current administration tuple is verified before commit. After commit it has no
+    # independent owner-separated anchor, so this bootstrap-superuser corruption probe retains
+    # only terminal fields that can be compared with the manifest or final destination.
     mutations = (
         (
             f"expected_account_revision={existing.v26_revision + 1}",
             f"expected_account_revision={existing.v26_revision}",
         ),
-        (
-            "requested_display_label='Existing Normal'",
-            "requested_display_label='V26 Existing Normal'",
-        ),
-        ("requested_enabled=true", "requested_enabled=false"),
         (
             "target_credential_version=2",
             f"target_credential_version={target['credential_version']}",
@@ -4738,7 +4736,7 @@ def verify_prepared_replay_stage(
             "same_digest": "no_new_effect",
             "positive_binding": "no_new_operation",
             "different_digest": "refused",
-            "operation_descriptor_and_terminal_drift_cases": 8,
+            "operation_descriptor_and_terminal_drift_cases": 6,
             "manifest_store_binding_drift_cases": 2,
             "source_digest_drift": "refused",
         }
