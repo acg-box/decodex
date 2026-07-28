@@ -39,6 +39,20 @@ def jwt(claims: dict[str, object]) -> str:
 class LocalServiceInstallerTests(unittest.TestCase):
     def setUp(self):
         self.module = load_module()
+        self.inspect_wrapper_patcher = mock.patch.object(
+            self.module,
+            "inspect_daemon_wrapper",
+            side_effect=lambda paths: self.daemon_wrapper(paths),
+        )
+        self.verify_wrapper_patcher = mock.patch.object(
+            self.module,
+            "verify_daemon_wrapper",
+            side_effect=lambda _paths, expected, **_kwargs: expected,
+        )
+        self.inspect_wrapper_patcher.start()
+        self.verify_wrapper_patcher.start()
+        self.addCleanup(self.inspect_wrapper_patcher.stop)
+        self.addCleanup(self.verify_wrapper_patcher.stop)
 
     def account_record(
         self,
@@ -87,7 +101,14 @@ class LocalServiceInstallerTests(unittest.TestCase):
             legacy_accounts=root / "legacy/accounts.jsonl",
             legacy_config=root / "legacy/config.toml",
             launch_agent=root / "space.decodex.local-service.plist",
-            decodexd=root / "bin/decodexd",
+            decodexd=(
+                root
+                / "bin"
+                / "decodexd.app"
+                / "Contents"
+                / "MacOS"
+                / "decodexd"
+            ),
             decodex_cli=root / "bin/decodex",
             codex=root / "codex-bin/codex",
             postgres=root / "bin/postgres",
@@ -95,6 +116,223 @@ class LocalServiceInstallerTests(unittest.TestCase):
             pg_isready=root / "bin/pg_isready",
             psql=root / "bin/psql",
         )
+
+    def daemon_wrapper(self, paths):
+        wrapper = paths.daemon_wrapper
+        return {
+            "schema": "decodex/daemon-wrapper/1",
+            "wrapper_path": str(wrapper),
+            "executable_path": str(paths.decodexd),
+            "executable_sha256": "1" * 64,
+            "executable_byte_count": 1024,
+            "info_plist_path": str(wrapper / "Contents/Info.plist"),
+            "info_plist_sha256": "2" * 64,
+            "bundle_identifier": "box.acg.decodex.daemon",
+            "bundle_executable": "decodexd",
+            "bundle_package_type": "APPL",
+            "background_only": True,
+            "embedded_profile_path": str(
+                wrapper / "Contents/embedded.provisionprofile"
+            ),
+            "embedded_profile_sha256": "3" * 64,
+            "team_identifier": "T54QFA7W2S",
+            "application_identifier": "T54QFA7W2S.box.acg.decodex.daemon",
+            "profile_expires_at": "2099-01-01T00:00:00Z",
+            "profile_channel": "development",
+            "signed_entitlements_sha256": "4" * 64,
+            "keychain_access_groups": [
+                "T54QFA7W2S.box.acg.decodex.daemon"
+            ],
+            "signature_identity_sha256": "5" * 64,
+        }
+
+    def namespace_lock(self, root: Path):
+        paths = self.paths(root)
+        paths.server_directory.mkdir(parents=True, mode=0o700)
+        os.chmod(paths.server_directory, 0o700)
+        return paths, self.module.InstallerNamespaceLock.acquire(
+            paths,
+            os.geteuid(),
+        )
+
+    def assert_fresh_namespace_lock(self, paths):
+        acquired = self.module.InstallerNamespaceLock.acquire(
+            paths,
+            os.geteuid(),
+        )
+        acquired.close()
+
+    def test_namespace_lock_borrow_stays_non_inheritable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths, namespace_lock = self.namespace_lock(Path(temp))
+            descriptor = namespace_lock.borrow()
+            try:
+                self.assertFalse(os.get_inheritable(descriptor))
+            finally:
+                os.close(descriptor)
+                namespace_lock.close()
+            self.assert_fresh_namespace_lock(paths)
+
+    def test_transition_gate_dup_failure_closes_namespace_duplicate(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths, namespace_lock = self.namespace_lock(Path(temp))
+            borrowed = os.dup(namespace_lock.lock_descriptor)
+            with (
+                mock.patch.object(namespace_lock, "borrow", return_value=borrowed),
+                mock.patch.object(
+                    self.module.os,
+                    "dup",
+                    side_effect=OSError("injected transition-gate dup failure"),
+                ),
+                self.assertRaisesRegex(OSError, "transition-gate dup failure"),
+            ):
+                self.module.run_installer_child(
+                    ["child"],
+                    namespace_lock,
+                    cwd=Path(temp),
+                    capture=True,
+                    transition_gate_fd=namespace_lock.lock_descriptor,
+                )
+            with self.assertRaises(OSError):
+                os.fstat(borrowed)
+            namespace_lock.close()
+            self.assert_fresh_namespace_lock(paths)
+
+    def test_popen_failure_closes_installer_child_duplicates(self):
+        with tempfile.TemporaryDirectory() as temp:
+            paths, namespace_lock = self.namespace_lock(Path(temp))
+            transition_read, transition_write = os.pipe()
+            duplicates: list[int] = []
+            real_dup = os.dup
+
+            def record_dup(descriptor):
+                duplicate = real_dup(descriptor)
+                duplicates.append(duplicate)
+                return duplicate
+
+            try:
+                with (
+                    mock.patch.object(self.module.os, "dup", side_effect=record_dup),
+                    mock.patch.object(
+                        self.module.subprocess,
+                        "Popen",
+                        side_effect=OSError("injected spawn failure"),
+                    ) as popen,
+                    self.assertRaisesRegex(OSError, "injected spawn failure"),
+                ):
+                    self.module.run_installer_child(
+                        ["child"],
+                        namespace_lock,
+                        cwd=Path(temp),
+                        capture=True,
+                        transition_gate_fd=transition_read,
+                    )
+                self.assertEqual(2, len(duplicates))
+                for descriptor in duplicates:
+                    with self.assertRaises(OSError):
+                        os.fstat(descriptor)
+                self.assertTrue(popen.call_args.kwargs["close_fds"])
+                self.assertEqual(
+                    tuple(duplicates),
+                    popen.call_args.kwargs["pass_fds"],
+                )
+            finally:
+                os.close(transition_read)
+                os.close(transition_write)
+                namespace_lock.close()
+            self.assert_fresh_namespace_lock(paths)
+
+    def test_post_spawn_failure_reaps_owned_child_and_closes_duplicates(self):
+        primary_error = self.module.InstallError("injected post-spawn failure")
+        with tempfile.TemporaryDirectory() as temp:
+            paths, namespace_lock = self.namespace_lock(Path(temp))
+            process = mock.Mock()
+            process.poll.return_value = None
+            process.stdout.closed = False
+            process.stderr.closed = False
+            duplicates: list[int] = []
+            real_dup = os.dup
+
+            def record_dup(descriptor):
+                duplicate = real_dup(descriptor)
+                duplicates.append(duplicate)
+                return duplicate
+
+            with (
+                mock.patch.object(self.module.os, "dup", side_effect=record_dup),
+                mock.patch.object(
+                    self.module.subprocess,
+                    "Popen",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "communicate_bounded",
+                    side_effect=primary_error,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "terminate_bounded_process",
+                ) as terminate,
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "injected post-spawn failure",
+                ) as raised,
+            ):
+                self.module.run_installer_child(
+                    ["child"],
+                    namespace_lock,
+                    cwd=Path(temp),
+                    capture=True,
+                )
+            self.assertIs(primary_error, raised.exception)
+            terminate.assert_called_once_with(process)
+            process.stdout.close.assert_called_once_with()
+            process.stderr.close.assert_called_once_with()
+            for descriptor in duplicates:
+                with self.assertRaises(OSError):
+                    os.fstat(descriptor)
+            namespace_lock.close()
+            self.assert_fresh_namespace_lock(paths)
+
+    def test_cleanup_failure_is_secondary_to_installer_child_failure(self):
+        primary_error = self.module.InstallError("injected post-spawn failure")
+        cleanup_error = self.module.InstallError("injected cleanup failure")
+        with tempfile.TemporaryDirectory() as temp:
+            paths, namespace_lock = self.namespace_lock(Path(temp))
+            process = mock.Mock()
+            process.poll.return_value = None
+            with (
+                mock.patch.object(
+                    self.module.subprocess,
+                    "Popen",
+                    return_value=process,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "communicate_bounded",
+                    side_effect=primary_error,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "terminate_bounded_process",
+                    side_effect=cleanup_error,
+                ),
+                self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "injected post-spawn failure",
+                ) as raised,
+            ):
+                self.module.run_installer_child(
+                    ["child"],
+                    namespace_lock,
+                    cwd=Path(temp),
+                    capture=True,
+                )
+            self.assertIs(primary_error, raised.exception)
+            self.assertIs(cleanup_error, raised.exception.__cause__)
+            namespace_lock.close()
+            self.assert_fresh_namespace_lock(paths)
 
     def test_account_parser_cross_checks_identity_without_exposing_values(self):
         record = self.account_record()
@@ -165,9 +403,14 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 {enrollments[0].account_id: "a" * 64},
                 fixed_account_id,
                 order,
+                self.daemon_wrapper(paths),
             ).decode()
-            plist_bytes = self.module.render_launch_agent(paths)
+            plist_bytes = self.module.render_launch_agent(
+                paths,
+                self.daemon_wrapper(paths),
+            )
             plist = plist_bytes.decode()
+            manifest_document = json.loads(manifest)
             plist_document = plistlib.loads(plist_bytes)
 
         combined = config + manifest + plist
@@ -179,7 +422,20 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertIn('"schema":"decodex/account-migration-manifest/1"', manifest)
         self.assertIn('"quota_policy":"reset_to_unknown"', manifest)
         self.assertIn('"history_policy":"do_not_import"', manifest)
+        self.assertIn('"daemon_wrapper":', manifest)
+        self.assertEqual(
+            self.daemon_wrapper(paths),
+            manifest_document["daemon_wrapper"],
+        )
+        self.assertNotIn(
+            "daemon_wrapper",
+            manifest_document["decision_fingerprints"],
+        )
         self.assertIn("supervise-local", plist)
+        self.assertEqual(
+            str(paths.decodexd),
+            plist_document["ProgramArguments"][0],
+        )
         self.assertEqual(
             {"HOME", "PATH"},
             set(plist_document["EnvironmentVariables"]),
@@ -1323,11 +1579,24 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "",
             )
             namespace_lock = mock.Mock()
-            with mock.patch.object(
-                self.module,
-                "run_installer_child",
-                return_value=completed,
-            ) as run:
+            descriptor = self.daemon_wrapper(paths)
+            with (
+                mock.patch.object(
+                    self.module,
+                    "inspect_daemon_wrapper",
+                    return_value=descriptor,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "verify_daemon_wrapper",
+                    return_value=descriptor,
+                ),
+                mock.patch.object(
+                    self.module,
+                    "run_installer_child",
+                    return_value=completed,
+                ) as run,
+            ):
                 self.assertEqual(
                     result,
                     self.module.run_completed_account_migration_verifier(
@@ -1348,7 +1617,12 @@ class LocalServiceInstallerTests(unittest.TestCase):
     def test_installed_launch_agent_contract_requires_exact_drain_settings(self):
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
-            paths.launch_agent.write_bytes(self.module.render_launch_agent(paths))
+            paths.launch_agent.write_bytes(
+                self.module.render_launch_agent(
+                    paths,
+                    self.daemon_wrapper(paths),
+                )
+            )
             paths.launch_agent.chmod(0o600)
             self.assertTrue(
                 self.module.installed_launch_agent_supports_graceful_drain(
@@ -1356,7 +1630,12 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 )
             )
 
-            legacy = plistlib.loads(self.module.render_launch_agent(paths))
+            legacy = plistlib.loads(
+                self.module.render_launch_agent(
+                    paths,
+                    self.daemon_wrapper(paths),
+                )
+            )
             legacy["KeepAlive"] = True
             legacy["ExitTimeOut"] = 360
             paths.launch_agent.write_bytes(plistlib.dumps(legacy))

@@ -18,6 +18,7 @@ mod account_launch;
 mod account_service;
 mod application;
 mod bootstrap;
+#[cfg(target_os = "macos")] mod daemon_wrapper;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;
@@ -58,6 +59,11 @@ pub use account_service::{
 };
 pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;
+#[cfg(target_os = "macos")]
+pub use daemon_wrapper::{
+	DaemonWrapperDescriptor, DaemonWrapperError, daemon_wrapper_descriptor_sha256,
+	inspect_current_daemon_wrapper, verify_current_daemon_wrapper,
+};
 pub use decodex_protocol::ServerId;
 #[cfg(target_os = "macos")] pub use host_credentials::MacosKeychainCredentialStore;
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
