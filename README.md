@@ -139,9 +139,9 @@ runtime.
   release-delta, signal rendering, validation, and local ledger workflows.
 - `apps/decodex-publisher/` owns the standalone Publisher auxiliary tool for social
   candidate, reservation, and post validation/workflows.
-- `apps/decodex-app/` owns the native macOS app. Its legacy account controls use the
-  bundled Rust app helper. Its vNext reset-card panel uses the bundled active CLI as a
-  client of `decodexd`.
+- `apps/decodex-app/` owns the native macOS app. Its single account surface uses the
+  bundled active CLI as a credential-negative client of `decodexd`; it does not bundle
+  or start the frozen v0.2 helper or HTTP control plane.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
 - `openwiki/` owns the repo-local project knowledge surface.
@@ -375,50 +375,10 @@ the external automation boundary, are summarized in
 
 ## Frozen v0.2 operator listener
 
-`decodex serve` owns the local operator listener. Published snapshots,
-current-lane updates, and local operator controls flow through the
-`/dashboard/control` WebSocket. The HTTP surface is kept to `GET /livez` and
-the local account-control API used by Decodex App.
-
-For Decodex App preview, use one mock operator server:
-
-```sh
-node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399
-node dev/operator-dashboard-mock.mjs --listen-address 127.0.0.1:57399 --use-codex-auth
-```
-
-That single mock listener serves `GET /api/accounts` and the operator WebSocket
-at `ws://127.0.0.1:57399/dashboard/control`. When previewing Decodex App against
-the mock, point the App at the same base URL with
-`DECODEX_APP_SERVER_URL=http://127.0.0.1:57399`; do not start a second mock server for
-the App. This environment variable is authoritative: when it is set, Decodex App
-connects only to that server and reports an error instead of falling back to the
-default `127.0.0.1:8192` runtime.
-
-```sh
-DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 open -n target/decodex-app/Decodex.app
-DECODEX_APP_SERVER_URL=http://127.0.0.1:57399 decodex app \
-  --bundle target/decodex-app/Decodex.app --new
-```
-
-Use hidden `decodex serve --dev --listen-address <ADDR>` only when
-developing local account/app snapshot APIs against real runtime state while explicitly
-avoiding scheduler activity. Dev mode deliberately does not register projects, poll
-Linear, dispatch work, or accept `--config`. Decodex App's normal
-fallback server is ordinary `decodex serve --listen-address 127.0.0.1:8192`; the CLI
-owns the default scheduler cadences. App launch connects to an
-existing live default listener instead of starting a duplicate server only when
-`DECODEX_APP_SERVER_URL` is unset. Keep exactly one owner for the default listener:
-if Decodex App's bundled helper is listening on `127.0.0.1:8192`, remove any
-standalone launchd job or extra `decodex serve --listen-address 127.0.0.1:8192`
-process that would collide with it. `decodex app` opens the installed Decodex App by
-default and preserves the caller's environment, including any explicit
-`DECODEX_APP_SERVER_URL` override. Use `--bundle <APP_BUNDLE>` and `--new` when
-previewing a staged app. For App preview UI work, prefer the single mock server
-above.
-
-The operator listener semantics and local-vs-external state boundary live in
-[`openwiki/workflows/runtime-operator-workflows.md`](openwiki/workflows/runtime-operator-workflows.md).
+The excluded `apps/decodex/` v0.2 source still documents its historical HTTP operator
+listener. It is not an active workspace member, is not packaged by the current macOS
+App, and is not an account authority. The current App uses only the vNext CLI over the
+same-UID Unix service.
 
 ## Development
 

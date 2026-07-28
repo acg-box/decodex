@@ -68,7 +68,7 @@ const INFO_PLIST_AUTHORITY: &[u8] = include_bytes!("../../../apps/decodexd/packa
 /// Fixed non-secret identity of the current signed `decodexd` wrapper.
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
-pub struct DaemonWrapperDescriptor {
+pub(crate) struct DaemonWrapperDescriptor {
 	schema: String,
 	wrapper_path: String,
 	executable_path: String,
@@ -92,26 +92,6 @@ pub struct DaemonWrapperDescriptor {
 }
 
 impl DaemonWrapperDescriptor {
-	/// Return the canonical absolute wrapper path.
-	pub fn wrapper_path(&self) -> &str {
-		&self.wrapper_path
-	}
-
-	/// Return the canonical absolute wrapper-main path.
-	pub fn executable_path(&self) -> &str {
-		&self.executable_path
-	}
-
-	/// Return the verified wrapper-main SHA-256.
-	pub(crate) fn executable_sha256(&self) -> &str {
-		&self.executable_sha256
-	}
-
-	/// Return the verified wrapper-main byte count.
-	pub(crate) fn executable_byte_count(&self) -> u64 {
-		self.executable_byte_count
-	}
-
 	/// Return the one verified daemon Keychain access group.
 	pub(crate) fn keychain_access_group(&self) -> &str {
 		self.keychain_access_groups.first().map_or("", String::as_str)
@@ -996,17 +976,9 @@ fn validate_descriptor(descriptor: &DaemonWrapperDescriptor) -> Result<(), Daemo
 	Ok(())
 }
 
-/// Return the Python-compatible canonical SHA-256 of one strict descriptor.
-pub fn daemon_wrapper_descriptor_sha256(
-	descriptor: &DaemonWrapperDescriptor,
-) -> Result<String, DaemonWrapperError> {
-	validate_descriptor(descriptor)?;
-	let value = serde_json::to_value(descriptor).map_err(|_| DaemonWrapperError)?;
-	Ok(sha256(&canonical_json(&value)?))
-}
-
 /// Inspect the wrapper that contains the current process executable.
-pub fn inspect_current_daemon_wrapper() -> Result<DaemonWrapperDescriptor, DaemonWrapperError> {
+pub(crate) fn inspect_current_daemon_wrapper() -> Result<DaemonWrapperDescriptor, DaemonWrapperError>
+{
 	let executable = env::current_exe().map_err(|_| DaemonWrapperError)?;
 	let executable = fs::canonicalize(&executable).map_err(|_| DaemonWrapperError)?;
 	let macos = executable.parent().ok_or(DaemonWrapperError)?;
@@ -1075,41 +1047,6 @@ pub fn inspect_current_daemon_wrapper() -> Result<DaemonWrapperDescriptor, Daemo
 	};
 	validate_descriptor(&descriptor)?;
 	Ok(descriptor)
-}
-
-/// Re-inspect the current wrapper and require exact canonical descriptor equality.
-pub fn verify_current_daemon_wrapper(
-	expected: &DaemonWrapperDescriptor,
-) -> Result<DaemonWrapperDescriptor, DaemonWrapperError> {
-	validate_descriptor(expected)?;
-	let current = inspect_current_daemon_wrapper()?;
-	let expected_json = serde_json::to_value(expected).map_err(|_| DaemonWrapperError)?;
-	let current_json = serde_json::to_value(&current).map_err(|_| DaemonWrapperError)?;
-	if canonical_json(&expected_json)? != canonical_json(&current_json)? {
-		return Err(DaemonWrapperError);
-	}
-	Ok(current)
-}
-
-/// Require one LaunchAgent document to execute the exact verified wrapper main.
-pub(crate) fn verify_launch_agent_daemon_wrapper(
-	body: &[u8],
-	expected: &DaemonWrapperDescriptor,
-) -> Result<(), DaemonWrapperError> {
-	validate_descriptor(expected)?;
-	if body.is_empty() || body.len() > MAX_PLIST_BYTES {
-		return Err(DaemonWrapperError);
-	}
-	let launch_agent = plutil_json_bytes(body.to_vec())?;
-	let arguments = launch_agent
-		.as_object()
-		.and_then(|document| document.get("ProgramArguments"))
-		.and_then(Value::as_array)
-		.ok_or(DaemonWrapperError)?;
-	match arguments.first().and_then(Value::as_str) {
-		Some(executable) if executable == expected.executable_path => Ok(()),
-		_ => Err(DaemonWrapperError),
-	}
 }
 
 #[cfg(test)]

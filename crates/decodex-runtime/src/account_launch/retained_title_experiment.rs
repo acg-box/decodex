@@ -233,8 +233,9 @@ pub async fn run_manual_retained_title_experiment(
 		},
 		CodexExperimentCreationFenceOutcome::ReplayedAmbiguous { .. } =>
 			read_start_receipt(&store, &identity, &request).await?,
-		CodexExperimentCreationFenceOutcome::Rejected(_) =>
-			return Err(ManualRetainedTitleExperimentError::PersistenceRejected),
+		CodexExperimentCreationFenceOutcome::Rejected(_) => {
+			return Err(ManualRetainedTitleExperimentError::PersistenceRejected);
+		},
 	};
 
 	let title_request_digest = retained_title_name_set_request_digest(
@@ -286,14 +287,16 @@ pub async fn run_manual_retained_title_experiment(
 				timeout,
 			) {
 				Ok(_) => true,
-				Err(RpcError::MethodRejected(_)) =>
-					return Err(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous),
+				Err(RpcError::MethodRejected(_)) => {
+					return Err(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous);
+				},
 				Err(RpcError::Supervision(_)) => false,
 			}
 		},
 		CodexExperimentTitleSetFenceOutcome::ReplayedReadbackOnly { .. } => false,
-		CodexExperimentTitleSetFenceOutcome::Rejected(_) =>
-			return Err(ManualRetainedTitleExperimentError::PersistenceRejected),
+		CodexExperimentTitleSetFenceOutcome::Rejected(_) => {
+			return Err(ManualRetainedTitleExperimentError::PersistenceRejected);
+		},
 	};
 
 	let read = process

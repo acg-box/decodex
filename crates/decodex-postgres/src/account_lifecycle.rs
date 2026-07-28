@@ -87,11 +87,6 @@ const SET_BALANCED_ACCOUNT_SELECTION_SQL: &str = "SELECT result_code,routing_rev
 	 FROM decodex.set_balanced_account_selection_exact($1)";
 const SET_ACCOUNT_ORDER_SQL: &str = "SELECT result_code,routing_revision \
 	 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])";
-const REPLACE_ACCOUNT_ROUTING_FOR_MIGRATION_SQL: &str = "SELECT result_code,revision \
-	 FROM decodex.replace_account_routing_control_for_migration_exact(\
-	 $1,$2::text::decodex.account_selection_mode,$3::text::uuid,$4::text[]::uuid[])";
-const LOCK_ACCOUNT_ROUTING_FOR_MIGRATION_SQL: &str =
-	"SELECT decodex.lock_account_routing_universe_exact(false)";
 const OBSERVE_ACCOUNT_QUOTA_SQL: &str =
 	"SELECT decodex.observe_account_quota_exact($1::text::uuid,$2,$3,$4,$5)";
 const OBSERVE_ACCOUNT_QUOTA_ERROR_SQL: &str = "SELECT decodex.observe_account_quota_error_exact(\
@@ -102,8 +97,6 @@ const OBSERVE_ACCOUNT_STORE_SQL: &str = "SELECT decodex.observe_account_store_ex
 	 $9::text::decodex.account_store_observation)";
 const ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL: &str =
 	"SELECT decodex.attest_codex_account_capability_exact($1,$2,$3,$4,$5,$6)";
-const RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL: &str = "SELECT decodex.record_account_migration_receipt_exact(\
-	 $1,$2::jsonb,$3::jsonb,$4::jsonb,$5)";
 
 /// Exact input persisted before the Account Service performs a Keychain effect.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -250,21 +243,6 @@ pub struct CodexAccountCapabilityAttestation {
 	pub login_chatgpt_auth_tokens: bool,
 	/// Whether the required refresh callback is live.
 	pub refresh_callback: bool,
-}
-
-/// Completed normalized migration and destination verification receipt.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct AccountMigrationReceipt {
-	/// Digest of the normalized source manifest.
-	pub manifest_sha256: String,
-	/// Credential-negative normalized source manifest.
-	pub manifest: Value,
-	/// Exact destination verification receipt.
-	pub destination_receipt: Value,
-	/// Exact source-retirement receipt.
-	pub retirement_receipt: Value,
-	/// Number of migrated account entries.
-	pub account_count: u32,
 }
 
 /// Closed logical account command kind retained in durable request receipts.
@@ -986,123 +964,13 @@ impl PostgresStore {
 			.get(0);
 		Ok(code == "ready")
 	}
-
-	/// Strictly read back the singleton canonical manifest identity committed with V27.
-	pub async fn prepare_account_migration_intent(
-		&self,
-		manifest_sha256: &str,
-		manifest: &Value,
-		account_count: u32,
-	) -> Result<bool, StoreError> {
-		let count = i32::try_from(account_count)
-			.map_err(|_| StoreError::InvalidInput("migration account count overflows"))?;
-		crate::ensure_credential_negative_json(manifest)?;
-		let absent: Option<&Value> = None;
-		let code: String = self
-			.pool()
-			.get()
-			.await?
-			.query_one(
-				RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
-				&[&manifest_sha256, manifest, &absent, &absent, &count],
-			)
-			.await?
-			.get(0);
-		match code.as_str() {
-			"replayed" => Ok(false),
-			"absent" => Err(StoreError::Incompatible(
-				"account migration intent committed with V27 is absent".into(),
-			)),
-			"identity_conflict" => Err(StoreError::IdempotencyConflict),
-			_ => Err(incompatible("account migration intent readback result")),
-		}
-	}
-
-	/// Complete the idempotent one-shot receipt after destination and retirement readback.
-	pub async fn record_account_migration_receipt(
-		&self,
-		receipt: &AccountMigrationReceipt,
-	) -> Result<bool, StoreError> {
-		let count = i32::try_from(receipt.account_count)
-			.map_err(|_| StoreError::InvalidInput("migration account count overflows"))?;
-		let code: String = self
-			.pool()
-			.get()
-			.await?
-			.query_one(
-				RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
-				&[
-					&receipt.manifest_sha256,
-					&receipt.manifest,
-					&receipt.destination_receipt,
-					&receipt.retirement_receipt,
-					&count,
-				],
-			)
-			.await?
-			.get(0);
-		match code.as_str() {
-			"recorded" => Ok(true),
-			"replayed" => Ok(false),
-			"prepared" => Err(StoreError::Incompatible(
-				"account migration completion remained prepared".into(),
-			)),
-			"identity_conflict" => Err(StoreError::IdempotencyConflict),
-			_ => Err(incompatible("account migration receipt result")),
-		}
-	}
-}
-
-pub(crate) async fn replace_account_routing_for_migration_explicit(
-	client: &mut tokio_postgres::Client,
-	mode: &AccountSelectionMode,
-	order: &[AccountId],
-) -> Result<AccountRoutingControl, StoreError> {
-	let (mode_text, fixed) = match mode {
-		AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
-		AccountSelectionMode::Balanced => ("balanced", None),
-	};
-	let order = routing_order_parameters(order)?;
-	let transaction = client.transaction().await?;
-	transaction.query_one(LOCK_ACCOUNT_ROUTING_FOR_MIGRATION_SQL, &[]).await?;
-	let expected_revision: i64 = transaction
-		.query_one("SELECT revision FROM decodex.account_routing_control WHERE singleton", &[])
-		.await?
-		.get(0);
-	validate_routing_revision(expected_revision)?;
-	let row = transaction
-		.query_one(
-			REPLACE_ACCOUNT_ROUTING_FOR_MIGRATION_SQL,
-			&[&expected_revision, &mode_text, &fixed, &order],
-		)
-		.await?;
-	let revision: i64 = row.get(1);
-	match row.get::<_, &str>(0) {
-		"updated" => {
-			let routing_row = transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?;
-			let routing = parse_routing_control(&routing_row)?;
-			if routing.revision != revision {
-				return Err(incompatible("account migration routing revision"));
-			}
-			transaction.commit().await?;
-			Ok(routing)
-		},
-		"stale_routing_control" => Err(StoreError::RevisionConflict {
-			entity: "account-routing".into(),
-			expected: Some(expected_revision),
-			actual: Some(revision),
-		}),
-		"invalid_order" =>
-			Err(StoreError::InvalidInput("account migration routing order is invalid")),
-		_ => Err(incompatible("account migration routing result")),
-	}
 }
 
 #[cfg(feature = "test-support")]
 pub(crate) async fn prepare_account_lifecycle_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
-	const SOURCES: [&str; 18] = [
+	const SOURCES: [&str; 17] = [
 		READ_ACCOUNT_REGISTRY_ALL_SQL,
 		READ_ACCOUNT_REGISTRY_SQL,
 		READ_ACCOUNT_EXACT_SQL,
@@ -1120,7 +988,6 @@ pub(crate) async fn prepare_account_lifecycle_sql(
 		OBSERVE_ACCOUNT_QUOTA_ERROR_SQL,
 		OBSERVE_ACCOUNT_STORE_SQL,
 		ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL,
-		RECORD_ACCOUNT_MIGRATION_RECEIPT_SQL,
 	];
 	for source in SOURCES {
 		client.prepare(source).await?;

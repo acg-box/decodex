@@ -195,7 +195,6 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
 	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
 	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
-	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
 	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -681,30 +680,6 @@ async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::E
 	assert_eq!(balanced_no_change.get::<_, &str>(0), "updated");
 	assert_eq!(balanced_no_change.get::<_, i64>(1), balanced_revision);
 
-	transaction.batch_execute("SAVEPOINT migration_partial_routing").await?;
-	transaction
-		.execute(
-			"DELETE FROM decodex.account_routing_order WHERE account_id=$1::text::uuid",
-			&[&second_account],
-		)
-		.await?;
-	let migration_repair = transaction
-		.query_one(
-			"SELECT result_code,revision \
-			 FROM decodex.replace_account_routing_control_for_migration_exact(\
-			 $1,'balanced',NULL,$2::text[]::uuid[])",
-			&[&balanced_revision, &seeded_order],
-		)
-		.await?;
-	assert_eq!(migration_repair.get::<_, &str>(0), "updated");
-	assert_eq!(account_routing_projection(&transaction).await?.3, seeded_order);
-	transaction
-		.batch_execute(
-			"ROLLBACK TO SAVEPOINT migration_partial_routing; \
-			 RELEASE SAVEPOINT migration_partial_routing",
-		)
-		.await?;
-
 	transaction.batch_execute("SAVEPOINT missing_routing_member").await?;
 	transaction
 		.execute(
@@ -790,22 +765,6 @@ async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::E
 			 RELEASE SAVEPOINT tombstoned_routing_member",
 		)
 		.await?;
-
-	let migration_replacement = transaction
-		.query_one(
-			"SELECT result_code,revision \
-			 FROM decodex.replace_account_routing_control_for_migration_exact(\
-			 $1,$2::text::decodex.account_selection_mode,$3::text::uuid,$4::text[]::uuid[])",
-			&[&balanced_revision, &"fixed", &second_account, &seeded_order],
-		)
-		.await?;
-	assert_eq!(migration_replacement.get::<_, &str>(0), "updated");
-	let (mode, fixed_target, migration_revision, migration_order) =
-		account_routing_projection(&transaction).await?;
-	assert_eq!(migration_revision, migration_replacement.get::<_, i64>(1));
-	assert_eq!(mode, "fixed");
-	assert_eq!(fixed_target.as_deref(), Some(second_account));
-	assert_eq!(migration_order, seeded_order);
 
 	transaction.rollback().await?;
 	drop(client);
@@ -1030,7 +989,7 @@ async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
-	assert_eq!(source_count, 29);
+	assert_eq!(source_count, 28);
 	println!("decodex_changed_sql_prepared={source_count}");
 
 	drop(client);

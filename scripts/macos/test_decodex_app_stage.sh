@@ -14,21 +14,18 @@ app_path="$stage_dir/Decodex.app"
 
 test -d "$app_path"
 test -x "$app_path/Contents/MacOS/DecodexApp"
-test -x "$app_path/Contents/Helpers/decodex"
-test -x "$app_path/Contents/Helpers/decodex-app-helper"
-test -x "$app_path/Contents/Helpers/decodexd"
 test -x "$app_path/Contents/Helpers/decodex-cli"
+test ! -e "$app_path/Contents/Helpers/decodex"
+test ! -e "$app_path/Contents/Helpers/decodex-app-helper"
+test ! -e "$app_path/Contents/Helpers/decodexd"
 test -f "$app_path/Contents/Info.plist"
 test -f "$app_path/Contents/Resources/AppIcon.icns"
 test -f "$app_path/Contents/Resources/StatusBarIcon.png"
 
 codesign --verify --deep --strict "$app_path"
-codesign --verify --strict "$app_path/Contents/Helpers/decodex"
-codesign --verify --strict "$app_path/Contents/Helpers/decodex-app-helper"
-codesign --verify --strict "$app_path/Contents/Helpers/decodexd"
 codesign --verify --strict "$app_path/Contents/Helpers/decodex-cli"
-"$app_path/Contents/Helpers/decodex" --help | grep -q 'serve'
-"$app_path/Contents/Helpers/decodex-cli" reset-card --help | grep -q 'accounts'
+"$app_path/Contents/Helpers/decodex-cli" reset-card --help |
+  grep -Fq 'Consume one explicitly selected public reset-card descriptor'
 codesign_details="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
 grep -q '^TeamIdentifier=' <<<"$codesign_details"
 grep -q 'flags=.*runtime' <<<"$codesign_details"

@@ -173,35 +173,24 @@ decodex-publisher validate-social
 
 ## Native Decodex App
 
-`apps/decodex-app/` is the current pre-cutover SwiftPM macOS app for the local account
-pool (`apps/decodex-app/README.md`). The following list describes current behavior,
-not final vNext account authority. It:
+`apps/decodex-app/` is the current SwiftPM macOS menu-bar client
+(`apps/decodex-app/README.md`). It:
 
-- Lists stored accounts without token material.
-- Pins future Decodex runs to one account or returns to balanced selection.
-- Forces Codex to use a stored account by writing `auth.json`. This is current legacy
-  behavior, not Slice-1 authority. Final `Use in Codex`
-  requires a supported, capability-probed ambient-auth adapter and fails closed when
-  no adapter is available.
-- Shows vNext reset cards from the common daemon service. The first click starts a
+- Reads the complete account skeleton from the common daemon service and renders one
+  UUID-keyed row for every account in canonical routing order.
+- Loads quota windows and Reset Cards independently for each row. One slow or failed
+  provider request does not hide the other accounts.
+- Uses Reset Cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click first persists a pending attempt,
   then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
   public grant/expiry descriptor, and one idempotency key. `decodexd` owns credentials,
   app-server, the opaque credit ID, the provider effect, and durable recovery.
-- Runs isolated Codex device login and imports the resulting auth file. The App
-  honors an explicit `CODEX_CLI_PATH` override; otherwise it resolves the login
-  executable from the Codex macOS application registered with Launch Services,
-  then falls back to a `codex` executable in the inherited `PATH`.
-- Removes stored accounts from the local pool.
 - Invokes the bundled `decodex-cli` for active vNext reset-card requests. The bundle
-  also distributes `decodexd`, but Swift does not start it or inject credentials.
-  Operators must run the independently configured daemon service. The macOS
-  source-install path provisions this service with
+  contains no server or credential helper, and Swift does not start a service or
+  inject credentials. Operators run the independently configured daemon service.
+  The macOS source-install path provisions that service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
-  PostgreSQL and daemon process generations. Separate bundled
-  legacy `decodex` and `decodex-app-helper` executables remain as pre-cutover
-  account scaffolding; they have no vNext reset-card authority and are not part of
-  MacDogfoodReady or the final account lifecycle.
+  PostgreSQL and daemon process generations.
 - Retries bounded startup-only Reset Card reads while the independently supervised
   service becomes ready. It does not retry consume, replace an idempotency key, or
   take service lifecycle ownership.
@@ -210,22 +199,17 @@ not final vNext account authority. It:
   server UUID, selection, and idempotency key. It never substitutes a new key for that
   pending card.
 
-Final enrollment must first prove that the supported Codex build can isolate login
-output without changing ambient `~/.codex`. Current file behavior is evidence for that
-proof, not a stable Codex auth-backend contract.
-
 The reset-card path is not the scheduler, project registry owner, credential owner,
 app-server process owner, or runtime authority. Its bounded private journal retains at
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
-The separate Swift legacy account path and bundled helper remain package/app residues
-without backend authority. XY-1427 and the package work remove that UI and bundle
-surface. Slice-1 backend startup already uses the clean
+There is one Swift account surface and one bundled vNext CLI. The package has no legacy
+account store, helper, HTTP control plane, or dual UI. Slice-1 backend startup uses the clean
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md) with no watcher,
 credential environment projection, helper, mapping, or `:8192` service.
 See [Runtime architecture](../architecture/runtime-architecture.md) for the shared
 service flow and [Commands and validation](../operations/commands-and-validation.md)
-for the pre-cutover Swift and staging checks.
+for the Swift and staging checks.
 
 Build/stage commands:
 

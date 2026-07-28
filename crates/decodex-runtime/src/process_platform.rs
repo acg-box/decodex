@@ -147,8 +147,9 @@ impl Display for ProcessPlatformError {
 			Self::Unsupported => formatter.write_str("the host has no accepted ProcessGeneration adapter"),
 			Self::BootIdentity(error) => write!(formatter, "boot identity failed: {error}"),
 			Self::ProcessIdentity(error) => write!(formatter, "process identity failed: {error}"),
-			Self::Observation(error) =>
-				write!(formatter, "process exit observation failed: {error}"),
+			Self::Observation(error) => {
+				write!(formatter, "process exit observation failed: {error}")
+			},
 			Self::Signal(error) => write!(formatter, "exact owned-process signal failed: {error}"),
 		}
 	}
