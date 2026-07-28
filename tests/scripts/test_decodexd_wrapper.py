@@ -69,8 +69,14 @@ class DecodexdWrapperTests(unittest.TestCase):
             return b"", b""
         if "--entitlements" in command:
             return plistlib.dumps(self.entitlements), b""
-        if "--extract-certificates" in command:
-            prefix = Path(command[command.index("--extract-certificates") + 1])
+        extract_arguments = [
+            argument
+            for argument in command
+            if argument.startswith("--extract-certificates=")
+        ]
+        if extract_arguments:
+            self.assertEqual(1, len(extract_arguments))
+            prefix = Path(extract_arguments[0].split("=", 1)[1])
             prefix.with_name(prefix.name + "0").write_bytes(
                 self.leaf_certificate
             )
@@ -89,11 +95,11 @@ class DecodexdWrapperTests(unittest.TestCase):
             )
         if "-r-" in command:
             return (
-                b"",
                 (
                     'designated => anchor apple generic and identifier '
                     '"box.acg.decodex.daemon"\n'
                 ).encode(),
+                b"Executable=/private/tmp/decodexd.app/Contents/MacOS/decodexd\n",
             )
         raise AssertionError("unexpected codesign command")
 
@@ -258,13 +264,21 @@ class DecodexdWrapperTests(unittest.TestCase):
         certificate_commands = [
             command
             for command in self.commands
-            if "--extract-certificates" in command
+            if any(
+                argument.startswith("--extract-certificates=")
+                for argument in command
+            )
         ]
         self.assertTrue(certificate_commands)
         for command in certificate_commands:
-            prefix = Path(
-                command[command.index("--extract-certificates") + 1]
-            )
+            extract_arguments = [
+                argument
+                for argument in command
+                if argument.startswith("--extract-certificates=")
+            ]
+            self.assertEqual(1, len(extract_arguments))
+            self.assertNotIn("--extract-certificates", command)
+            prefix = Path(extract_arguments[0].split("=", 1)[1])
             self.assertFalse(prefix.parent.exists())
 
     def test_descriptor_rejects_missing_extra_duplicate_and_wrong_fields(self):

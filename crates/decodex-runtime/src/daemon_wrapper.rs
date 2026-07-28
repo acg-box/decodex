@@ -29,6 +29,7 @@ const BUNDLE_EXECUTABLE: &str = "decodexd";
 const BUNDLE_PACKAGE_TYPE: &str = "APPL";
 const TEAM_IDENTIFIER: &str = "T54QFA7W2S";
 const APPLICATION_IDENTIFIER: &str = "T54QFA7W2S.box.acg.decodex.daemon";
+const PROFILE_ACCESS_GROUP: &str = "T54QFA7W2S.*";
 const PROFILE_CHANNEL: &str = "development";
 
 const CODESIGN_PATH: &str = "/usr/bin/codesign";
@@ -338,7 +339,7 @@ fn codesign_requirement(wrapper: &Path) -> Result<String, DaemonWrapperError> {
 	let mut command = Command::new(CODESIGN_PATH);
 	command.args(["-d", "-r-"]).arg(wrapper);
 	let output = run_bounded_child(command, None)?;
-	String::from_utf8(output.stderr).map_err(|_| DaemonWrapperError)
+	String::from_utf8(output.stdout).map_err(|_| DaemonWrapperError)
 }
 
 fn extracted_leaf_certificate(wrapper: &Path) -> Result<Vec<u8>, DaemonWrapperError> {
@@ -349,7 +350,9 @@ fn extracted_leaf_certificate(wrapper: &Path) -> Result<Vec<u8>, DaemonWrapperEr
 	let prefix = temporary.path().join("certificate");
 	let result = (|| {
 		let mut command = Command::new(CODESIGN_PATH);
-		command.args(["-d", "--extract-certificates"]).arg(&prefix).arg(wrapper);
+		let mut extract_argument = OsString::from("--extract-certificates=");
+		extract_argument.push(&prefix);
+		command.arg("-d").arg(extract_argument).arg(wrapper);
 		run_bounded_child(command, None)?;
 
 		let mut indexed = BTreeMap::new();
@@ -604,8 +607,7 @@ fn validate_profile(value: &Value) -> Result<ProfileIdentity, DaemonWrapperError
 				!= Some(APPLICATION_IDENTIFIER)
 				|| values.get("com.apple.developer.team-identifier").and_then(Value::as_str)
 					!= Some(TEAM_IDENTIFIER)
-				|| !exact_string_array(values.get("keychain-access-groups"), APPLICATION_IDENTIFIER)
-				|| values.get("get-task-allow") != Some(&Value::Bool(true))
+				|| !exact_string_array(values.get("keychain-access-groups"), PROFILE_ACCESS_GROUP)
 		}) {
 		return Err(DaemonWrapperError);
 	}
@@ -1071,8 +1073,7 @@ mod tests {
 			"Entitlements": {
 				"com.apple.application-identifier": APPLICATION_IDENTIFIER,
 				"com.apple.developer.team-identifier": TEAM_IDENTIFIER,
-				"keychain-access-groups": [APPLICATION_IDENTIFIER],
-				"get-task-allow": true,
+				"keychain-access-groups": [PROFILE_ACCESS_GROUP],
 			},
 		});
 		let profile = validate_profile(&valid).unwrap();
@@ -1097,6 +1098,16 @@ mod tests {
 			Value::String(APPLICATION_IDENTIFIER.to_owned()),
 		);
 		assert!(validate_profile(&legacy_application_key).is_err());
+
+		let mut signed_group_as_profile_allowlist = valid.clone();
+		signed_group_as_profile_allowlist["Entitlements"]["keychain-access-groups"] =
+			json!([APPLICATION_IDENTIFIER]);
+		assert!(validate_profile(&signed_group_as_profile_allowlist).is_err());
+
+		let mut extra_profile_group = valid.clone();
+		extra_profile_group["Entitlements"]["keychain-access-groups"] =
+			json!([PROFILE_ACCESS_GROUP, "T54QFA7W2S.extra"]);
+		assert!(validate_profile(&extra_profile_group).is_err());
 
 		for changed in [
 			json!({"TeamIdentifier": ["WRONG"]}),
@@ -1130,7 +1141,7 @@ mod tests {
 		assert_eq!(identity["team_identifier"], TEAM_IDENTIFIER);
 		assert_eq!(identity["leaf_certificate_sha256"], leaf_sha256);
 		let expected = format!(
-			r#"{{"certificate_authorities":["Apple Development: Decodex Test","Apple Worldwide Developer Relations Certification Authority"],"cdhash":"abcdef0123456789abcdef0123456789abcdef01","code_directory":"v=20500 size=512 flags=0x10000(runtime) hashes=8","designated_requirement":"anchor apple generic and identifier \"box.acg.decodex.daemon\"","identifier":"box.acg.decodex.daemon","leaf_certificate_sha256":"{leaf_sha256}","team_identifier":"T54QFA7W2S"}}"#
+			r#"{{"cdhash":"abcdef0123456789abcdef0123456789abcdef01","certificate_authorities":["Apple Development: Decodex Test","Apple Worldwide Developer Relations Certification Authority"],"code_directory":"v=20500 size=512 flags=0x10000(runtime) hashes=8","designated_requirement":"anchor apple generic and identifier \"box.acg.decodex.daemon\"","identifier":"box.acg.decodex.daemon","leaf_certificate_sha256":"{leaf_sha256}","team_identifier":"T54QFA7W2S"}}"#
 		);
 		assert_eq!(canonical_json(&identity).unwrap(), expected.as_bytes());
 		assert!(
