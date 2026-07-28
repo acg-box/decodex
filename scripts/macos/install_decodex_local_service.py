@@ -1787,7 +1787,10 @@ def terminate_bounded_process(process: subprocess.Popen[Any]) -> None:
         os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
         pass
-    time.sleep(0.25)
+    try:
+        process.wait(timeout=0.25)
+    except subprocess.TimeoutExpired:
+        pass
     try:
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:

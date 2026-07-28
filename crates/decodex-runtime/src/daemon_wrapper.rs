@@ -18,6 +18,15 @@ use std::{
 };
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use core_foundation::{
+	array::CFArray,
+	base::CFRange,
+	boolean::CFBoolean,
+	data::CFData,
+	dictionary::CFDictionary,
+	propertylist::{CFPropertyList, create_with_data, kCFPropertyListImmutable},
+	string::CFString,
+};
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 use sha2::{Digest as _, Sha256};
@@ -293,6 +302,148 @@ fn security_profile(path: &Path) -> Result<Vec<u8>, DaemonWrapperError> {
 	let mut command = Command::new(SECURITY_PATH);
 	command.args(["cms", "-D", "-i"]).arg(path);
 	Ok(run_bounded_child(command, None)?.stdout)
+}
+
+fn property_list_dictionary(value: CFPropertyList) -> Result<CFDictionary, DaemonWrapperError> {
+	value.downcast_into::<CFDictionary>().ok_or(DaemonWrapperError)
+}
+
+fn property_list_value(
+	dictionary: &CFDictionary,
+	name: &str,
+) -> Result<Option<CFPropertyList>, DaemonWrapperError> {
+	let (keys, values) = dictionary.get_keys_and_values();
+	for (key, value) in keys.into_iter().zip(values) {
+		// SAFETY: the dictionary retains each non-null property-list key and value for this loop.
+		let key = unsafe { CFPropertyList::wrap_under_get_rule(key) }
+			.downcast_into::<CFString>()
+			.ok_or(DaemonWrapperError)?;
+		if key.to_string() == name {
+			// SAFETY: the dictionary retains the matching non-null property-list value.
+			return Ok(Some(unsafe { CFPropertyList::wrap_under_get_rule(value) }));
+		}
+	}
+	Ok(None)
+}
+
+fn required_property_list_value(
+	dictionary: &CFDictionary,
+	name: &str,
+) -> Result<CFPropertyList, DaemonWrapperError> {
+	property_list_value(dictionary, name)?.ok_or(DaemonWrapperError)
+}
+
+fn property_list_string(value: CFPropertyList) -> Result<String, DaemonWrapperError> {
+	value.downcast_into::<CFString>().map(|value| value.to_string()).ok_or(DaemonWrapperError)
+}
+
+fn property_list_array(value: CFPropertyList) -> Result<Vec<CFPropertyList>, DaemonWrapperError> {
+	let array = value.downcast_into::<CFArray>().ok_or(DaemonWrapperError)?;
+	let mut values =
+		Vec::with_capacity(usize::try_from(array.len()).map_err(|_| DaemonWrapperError)?);
+	for value in array.get_values(CFRange::init(0, array.len())) {
+		// SAFETY: the array retains each non-null property-list value for this loop.
+		values.push(unsafe { CFPropertyList::wrap_under_get_rule(value) });
+	}
+	Ok(values)
+}
+
+fn property_list_string_array(value: CFPropertyList) -> Result<Vec<Value>, DaemonWrapperError> {
+	property_list_array(value)?
+		.into_iter()
+		.map(|value| property_list_string(value).map(Value::String))
+		.collect()
+}
+
+fn property_list_data_array(value: CFPropertyList) -> Result<Vec<Value>, DaemonWrapperError> {
+	property_list_array(value)?
+		.into_iter()
+		.map(|value| {
+			value
+				.downcast_into::<CFData>()
+				.map(|value| Value::String(STANDARD.encode(value.bytes())))
+				.ok_or(DaemonWrapperError)
+		})
+		.collect()
+}
+
+fn property_list_bool(value: CFPropertyList) -> Result<bool, DaemonWrapperError> {
+	value.downcast_into::<CFBoolean>().map(bool::from).ok_or(DaemonWrapperError)
+}
+
+fn profile_expiration_date(body: &[u8]) -> Result<String, DaemonWrapperError> {
+	let mut command = Command::new(PLUTIL_PATH);
+	command.args([
+		"-extract",
+		"ExpirationDate",
+		"raw",
+		"-expect",
+		"date",
+		"-n",
+		"-o",
+		"-",
+		"--",
+		"-",
+	]);
+	let output = run_bounded_child(command, Some(body.to_vec()))?;
+	String::from_utf8(output.stdout).map_err(|_| DaemonWrapperError)
+}
+
+fn profile_value(body: &[u8]) -> Result<Value, DaemonWrapperError> {
+	if body.len() > MAX_PROFILE_BYTES {
+		return Err(DaemonWrapperError);
+	}
+	let (profile, _) = create_with_data(CFData::from_buffer(body), kCFPropertyListImmutable)
+		.map_err(|_| DaemonWrapperError)?;
+	// SAFETY: `create_with_data` returned one owned non-null property-list reference.
+	let profile = unsafe { CFPropertyList::wrap_under_create_rule(profile) };
+	let profile = property_list_dictionary(profile)?;
+	let entitlements =
+		property_list_dictionary(required_property_list_value(&profile, "Entitlements")?)?;
+
+	let mut entitlement_value = Map::new();
+	for name in ["com.apple.application-identifier", "com.apple.developer.team-identifier"] {
+		entitlement_value.insert(
+			name.to_owned(),
+			Value::String(property_list_string(required_property_list_value(
+				&entitlements,
+				name,
+			)?)?),
+		);
+	}
+	entitlement_value.insert(
+		"keychain-access-groups".to_owned(),
+		Value::Array(property_list_string_array(required_property_list_value(
+			&entitlements,
+			"keychain-access-groups",
+		)?)?),
+	);
+
+	let mut value = Map::new();
+	for name in ["TeamIdentifier", "ApplicationIdentifierPrefix", "ProvisionedDevices"] {
+		value.insert(
+			name.to_owned(),
+			Value::Array(property_list_string_array(required_property_list_value(
+				&profile, name,
+			)?)?),
+		);
+	}
+	value.insert("ExpirationDate".to_owned(), Value::String(profile_expiration_date(body)?));
+	value.insert(
+		"DeveloperCertificates".to_owned(),
+		Value::Array(property_list_data_array(required_property_list_value(
+			&profile,
+			"DeveloperCertificates",
+		)?)?),
+	);
+	value.insert("Entitlements".to_owned(), Value::Object(entitlement_value));
+	if let Some(all_devices) = property_list_value(&profile, "ProvisionsAllDevices")? {
+		value.insert(
+			"ProvisionsAllDevices".to_owned(),
+			Value::Bool(property_list_bool(all_devices)?),
+		);
+	}
+	Ok(Value::Object(value))
 }
 
 fn plutil_json_path(path: &Path) -> Result<Value, DaemonWrapperError> {
@@ -881,7 +1032,7 @@ pub fn inspect_current_daemon_wrapper() -> Result<DaemonWrapperDescriptor, Daemo
 		return Err(DaemonWrapperError);
 	}
 	let decoded_profile = security_profile(&profile_path)?;
-	let profile = plutil_json_bytes(decoded_profile)?;
+	let profile = profile_value(&decoded_profile)?;
 	let profile_identity = validate_profile(&profile)?;
 	codesign_verify(wrapper)?;
 	let entitlements = codesign_entitlements(wrapper)?;
@@ -1122,6 +1273,48 @@ mod tests {
 		] {
 			assert!(validate_profile(&changed).is_err());
 		}
+	}
+
+	#[test]
+	fn profile_property_list_preserves_data_and_date_authority() {
+		let document = format!(
+			r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>TeamIdentifier</key>
+	<array><string>{TEAM_IDENTIFIER}</string></array>
+	<key>ApplicationIdentifierPrefix</key>
+	<array><string>{TEAM_IDENTIFIER}</string></array>
+	<key>ExpirationDate</key>
+	<date>2099-01-01T00:00:00Z</date>
+	<key>ProvisionedDevices</key>
+	<array><string>device</string></array>
+	<key>DeveloperCertificates</key>
+	<array><data>{DER_CERTIFICATE_BASE64}</data></array>
+	<key>DER-Encoded-Profile</key>
+	<data>AA==</data>
+	<key>Entitlements</key>
+	<dict>
+		<key>com.apple.application-identifier</key>
+		<string>{APPLICATION_IDENTIFIER}</string>
+		<key>com.apple.developer.team-identifier</key>
+		<string>{TEAM_IDENTIFIER}</string>
+		<key>keychain-access-groups</key>
+		<array><string>{PROFILE_ACCESS_GROUP}</string></array>
+	</dict>
+</dict>
+</plist>
+"#,
+		);
+		let value = profile_value(document.as_bytes()).unwrap();
+		let profile = validate_profile(&value).unwrap();
+		assert_eq!(profile.expires_at, "2099-01-01T00:00:00Z");
+		assert!(profile_contains_leaf(&profile, DER_CERTIFICATE));
+
+		let mut all_devices = value;
+		all_devices["ProvisionsAllDevices"] = Value::Bool(true);
+		assert!(validate_profile(&all_devices).is_err());
 	}
 
 	#[test]
