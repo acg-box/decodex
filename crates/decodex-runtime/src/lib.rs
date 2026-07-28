@@ -42,7 +42,8 @@ pub use account_service::{
 	AccountService, ChatgptTokenProjection, CredentialRefreshError, StartupAccountReconciliation,
 };
 pub use application::{Application, ApplicationPublication};
-pub use bootstrap::ServiceBootstrap;
+pub use bootstrap::{LocalProvisionError, ServiceBootstrap};
+pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;
 #[cfg(target_os = "macos")] pub use host_credentials::MacosKeychainCredentialStore;
 pub use host_credentials::{
@@ -81,12 +82,15 @@ pub use websocket::{
 
 #[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
 
-use decodex_core::DecodexRoot;
-
 /// The vNext service assembly selected by the `decodexd` composition root.
 #[derive(Clone, Copy, Debug)]
 pub struct ServiceComposition;
 impl ServiceComposition {
+	/// Apply ordinary migrations and exact runtime ACLs once under installer authority.
+	pub async fn provision_local(root: DecodexRoot) -> Result<(), LocalProvisionError> {
+		bootstrap::provision_local(root).await
+	}
+
 	/// Acquire singleton authority, then bootstrap the platform-default typed root.
 	pub async fn bootstrap_default() -> ServiceBootstrap {
 		bootstrap::bootstrap_default().await

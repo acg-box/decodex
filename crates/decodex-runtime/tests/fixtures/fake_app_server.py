@@ -28,9 +28,10 @@ if sys.argv[1] == "generate-json-schema":
         index = sys.argv.index("--orphan-pid")
         child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
         Path(sys.argv[index + 1]).write_text(str(child.pid))
-    requests = ["initialize", "account/read", "thread/start", "thread/list", "thread/search", "thread/read", "thread/resume", "thread/name/set", "turn/start", "account/rateLimits/read", "collaborationMode/list", "thread/archive"]
+    requests = ["initialize", "account/read", "account/login/start", "thread/start", "thread/list", "thread/search", "thread/read", "thread/resume", "thread/name/set", "turn/start", "account/rateLimits/read", "collaborationMode/list", "thread/archive"]
     if "--reset-card" in sys.argv:
         requests.append("account/rateLimitResetCredit/consume")
+    server_requests = ["account/chatgptAuthTokens/refresh"]
     notifications = ["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"]
     if "--missing-required" in sys.argv:
         requests.remove("thread/list")
@@ -46,6 +47,7 @@ if sys.argv[1] == "generate-json-schema":
         return {"oneOf": [{"properties": {"method": {"enum": [method]}}} for method in methods]}
 
     (output / "ClientRequest.json").write_text(json.dumps(method_schema(requests)))
+    (output / "ServerRequest.json").write_text(json.dumps(method_schema(server_requests)))
     (output / "ServerNotification.json").write_text(json.dumps(method_schema(notifications)))
     collaboration = {
         "definitions": {
@@ -92,6 +94,45 @@ if sys.argv[1] == "generate-json-schema":
     }
     (output / "codex_app_server_protocol.v2.schemas.json").write_text(json.dumps({"schema": "fake"}))
     (output / "v2").mkdir()
+    login = {
+        "oneOf": [
+            {
+                "type": "object",
+                "required": ["accessToken", "chatgptAccountId"],
+                "properties": {
+                    "type": {"enum": ["chatgptAuthTokens"]},
+                    "accessToken": {"type": "string"},
+                    "chatgptAccountId": {"type": "string"},
+                    "chatgptPlanType": {"type": ["string", "null"]},
+                },
+            }
+        ]
+    }
+    refresh_params = {
+        "type": "object",
+        "required": ["reason"],
+        "properties": {
+            "reason": {"enum": ["unauthorized"]},
+            "previousAccountId": {"type": ["string", "null"]},
+        },
+    }
+    refresh_response = {
+        "type": "object",
+        "required": ["accessToken", "chatgptAccountId"],
+        "properties": {
+            "accessToken": {"type": "string"},
+            "chatgptAccountId": {"type": "string"},
+            "chatgptPlanType": {"type": ["string", "null"]},
+        },
+    }
+    (output / "v2/LoginAccountParams.json").write_text(json.dumps(login))
+    refresh_root = output / "v2" if "--nested-refresh-only" in sys.argv else output
+    (refresh_root / "ChatgptAuthTokensRefreshParams.json").write_text(
+        json.dumps(refresh_params)
+    )
+    (refresh_root / "ChatgptAuthTokensRefreshResponse.json").write_text(
+        json.dumps(refresh_response)
+    )
     if "--false-collaboration" in sys.argv:
         collaboration = {"description": "collabAgentToolCall parentThreadId agentNickname agentRole subAgentActivity"}
     collaboration_output = "{" if malformed_optional else json.dumps(collaboration)
@@ -129,7 +170,7 @@ if sys.argv[1] == "generate-json-schema":
 
 assert sys.argv[1] == "serve"
 mode = sys.argv[2]
-if mode in ("mark-spawn", "schema-missing"):
+if mode in ("mark-spawn", "schema-missing", "nested-refresh-schema"):
     Path(sys.argv[3]).write_text("spawned")
 if mode in ("orphan-exit", "orphan-stubborn", "orphan-error", "orphan-timeout"):
     child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
@@ -187,7 +228,7 @@ for line in sys.stdin:
                 "id": server_request_id,
                 "error": {
                     "code": -32601,
-                    "message": "account-bound adapter does not service requests",
+                    "message": "account-bound adapter does not service this request",
                 },
             }
         if mode == "escaped-error":

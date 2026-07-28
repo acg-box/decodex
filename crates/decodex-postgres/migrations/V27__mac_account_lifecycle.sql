@@ -285,8 +285,8 @@ SET search_path=pg_catalog,decodex AS $$
 			WHEN NOT EXISTS (
 				SELECT 1 FROM decodex.codex_account_capability AS capability
 				WHERE capability.singleton
-					AND capability.build_identity='codex-cli 0.145.0-alpha.18'
-					AND capability.executable_sha256='f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9'
+					AND capability.build_identity='codex-cli 0.146.0-alpha.3.1'
+					AND capability.executable_sha256='6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223'
 					AND capability.login_chatgpt_auth_tokens AND capability.refresh_callback
 			) THEN 'callback_capability_unready'
 			WHEN account.credential_store_observation='exact' THEN 'ready'
@@ -357,8 +357,8 @@ BEGIN
 		EXISTS (
 			SELECT 1 FROM decodex.codex_account_capability AS capability
 			WHERE capability.singleton
-				AND capability.build_identity='codex-cli 0.145.0-alpha.18'
-				AND capability.executable_sha256='f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9'
+				AND capability.build_identity='codex-cli 0.146.0-alpha.3.1'
+				AND capability.executable_sha256='6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223'
 				AND capability.schema_sha256 ~ '^[0-9a-f]{64}$'
 				AND capability.callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 				AND capability.login_chatgpt_auth_tokens
@@ -1006,8 +1006,8 @@ BEGIN
 		callback_profile_sha256=EXCLUDED.callback_profile_sha256,
 		login_chatgpt_auth_tokens=EXCLUDED.login_chatgpt_auth_tokens,
 		refresh_callback=EXCLUDED.refresh_callback,observed_at=pg_catalog.clock_timestamp();
-	RETURN CASE WHEN p_build_identity='codex-cli 0.145.0-alpha.18'
-		AND p_executable_sha256='f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9'
+	RETURN CASE WHEN p_build_identity='codex-cli 0.146.0-alpha.3.1'
+		AND p_executable_sha256='6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223'
 		AND p_schema_sha256 ~ '^[0-9a-f]{64}$'
 		AND p_callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 		AND p_login_chatgpt_auth_tokens AND p_refresh_callback
@@ -1118,8 +1118,8 @@ BEGIN
 		SELECT 1 FROM decodex.codex_account_capability AS capability
 		WHERE capability.singleton AND capability.login_chatgpt_auth_tokens
 			AND capability.refresh_callback
-			AND capability.build_identity='codex-cli 0.145.0-alpha.18'
-			AND capability.executable_sha256='f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9'
+			AND capability.build_identity='codex-cli 0.146.0-alpha.3.1'
+			AND capability.executable_sha256='6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223'
 			AND capability.callback_profile_sha256=p_refresh_callback_profile_sha256)
 	THEN RETURN QUERY SELECT 'callback_capability_unready',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
 	IF EXISTS (SELECT 1 FROM decodex.process_generations AS generation

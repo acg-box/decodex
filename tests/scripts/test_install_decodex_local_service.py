@@ -617,6 +617,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         self.module,
                         "ensure_roles_and_database",
                     ) as provision,
+                    mock.patch.object(
+                        self.module,
+                        "provision_local_product_state",
+                    ) as provision_product_state,
                 ):
                     self.module.install_under_namespace_lock(
                         paths,
@@ -639,7 +643,29 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertEqual(verify_cli.call_count, 2)
         initialize.assert_called_once_with(paths, os.geteuid())
         provision.assert_called_once_with(paths, {"PGUSER": "owner"})
+        provision_product_state.assert_called_once_with(paths)
         stop.assert_called_once_with(process)
+
+    def test_product_state_provision_uses_only_the_installed_daemon(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            with mock.patch.object(
+                self.module,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "", ""),
+            ) as run:
+                self.module.provision_local_product_state(paths)
+
+        run.assert_called_once_with(
+            [
+                str(paths.decodexd),
+                "provision-local",
+                "--root",
+                str(paths.root),
+            ],
+            cwd=paths.repository,
+            capture=True,
+        )
 
     def test_installed_config_readback_must_match_before_database_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

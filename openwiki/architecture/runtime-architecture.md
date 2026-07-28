@@ -560,7 +560,7 @@ independent runner digest or raw `Command`. After spawn, it persists the exact b
 process-start, process-group, and session identities.
 
 The current launch profile accepts only the source-attested macOS
-`codex-cli 0.145.0-alpha.18` image and forces
+`codex-cli 0.146.0-alpha.3.1` image and forces
 `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`. This is exact-build startup-state
 evidence: it selects disabled-ephemeral remote-control mode, but it is not a permanent denial
 policy. The supervisor retains child stdin and stdout privately for lifetime ownership.
@@ -568,12 +568,13 @@ policy. The supervisor retains child stdin and stdout privately for lifetime own
 protocol writer. Every other build, including the current unrecorded Linux image, fails closed
 before profile-dependent version or schema preflight spawn.
 
-That accepted lifetime profile is not an AccountLifecycle readiness receipt. Current vNext
-responds method-not-found to every inbound app-server request and therefore cannot service
-`account/chatgptAuthTokens/refresh`. Slice 1 requires positive exact-build callback proof
-and rechecks the account revision, credential version/fingerprint, provider binding, and
-enabled state immediately before the ProcessGeneration fence. Unsupported callback profiles
-fail closed before account launch.
+That accepted lifetime profile is not by itself an AccountLifecycle readiness receipt. The
+exact `codex-cli 0.146.0-alpha.3.1` profile recognizes the root
+`account/chatgptAuthTokens/refresh` request and response schemas and services that callback
+through the Account Service. Readiness is issued only after the exact executable, generated
+schema, and live callback preflights pass. The callback path rechecks the account revision,
+credential version/fingerprint, provider binding, and enabled state immediately before the
+ProcessGeneration fence. Unsupported callback profiles fail closed before account launch.
 
 The supported-OS adapter owns boot and process identity, generic session/descriptor setup, exact
 owned signaling, group observation, and positive exit witnesses. Linux uses `/proc` start ticks

@@ -5,7 +5,7 @@ mod service_supervisor;
 use std::{error::Error, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use decodex_runtime::{ServerConfig, ServiceComposition};
+use decodex_runtime::{DecodexRoot, ServerConfig, ServiceComposition};
 #[cfg(test)] use {libc as _, tempfile as _};
 
 #[derive(Parser)]
@@ -19,6 +19,12 @@ struct Cli {
 enum Command {
 	/// Serve the same-UID Decodex vNext protocol.
 	Serve,
+	/// Provision the local PostgreSQL schema and steady-state runtime authority.
+	#[command(hide = true)]
+	ProvisionLocal {
+		#[arg(long)]
+		root: PathBuf,
+	},
 	/// Supervise the ordinary local PostgreSQL and decodexd service generation.
 	SuperviseLocal {
 		#[arg(long)]
@@ -40,6 +46,8 @@ enum Command {
 async fn main() -> Result<(), Box<dyn Error>> {
 	match Cli::parse().command {
 		None | Some(Command::Serve) => serve().await,
+		Some(Command::ProvisionLocal { root }) =>
+			ServiceComposition::provision_local(DecodexRoot::new(root)?).await.map_err(Into::into),
 		Some(Command::SuperviseLocal {
 			postgres,
 			pg_isready,
@@ -123,6 +131,8 @@ impl ShutdownSignals {
 
 #[cfg(test)]
 mod tests {
+	use std::path::PathBuf;
+
 	use clap::{CommandFactory as _, Parser as _};
 
 	use super::{Cli, Command};
@@ -134,6 +144,19 @@ mod tests {
 
 		let explicit = Cli::try_parse_from(["decodexd", "serve"]).expect("parse explicit serve");
 		assert!(matches!(explicit.command, Some(Command::Serve)));
+
+		let provision = Cli::try_parse_from([
+			"decodexd",
+			"provision-local",
+			"--root",
+			"/private/tmp/decodex-root",
+		])
+		.expect("parse local provision");
+		assert!(matches!(
+			provision.command,
+			Some(Command::ProvisionLocal { root })
+				if root == PathBuf::from("/private/tmp/decodex-root")
+		));
 
 		Cli::command().debug_assert();
 	}

@@ -85,21 +85,21 @@ The current accepted profile is intentionally narrow:
 | Field | Accepted value |
 | --- | --- |
 | Platform evidence | macOS arm64 |
-| Version | `codex-cli 0.145.0-alpha.18` |
-| Executable SHA-256 | `f0b214b476e04175bee104fe441caea874baeef3efc3828bfb79e972266156a9` |
+| Version | `codex-cli 0.146.0-alpha.3.1` |
+| Executable SHA-256 | `6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223` |
 | Command | protected snapshot with argv0 set to the resolved Codex path and fixed `app-server --stdio` arguments |
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` selects `DisabledEphemeral`; no remote-control argument |
 | Protocol boundary | Child stdin and stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
 | Capability | `codex-app-server-private-stdio-disabled-ephemeral-startup-v1` |
-| Account callback readiness | Not accepted. Current vNext rejects every inbound app-server request with method-not-found, including `account/chatgptAuthTokens/refresh`. |
+| Account callback readiness | Accepted only after the generated schema, callback shape, and exact image preflights pass. |
 
-The exact image receipt is
-[XY-1357 natural quota timestamp evidence](../evidence/xy-1357-natural-quota-timestamp.md).
+The current exact image and callback receipt is
+[the Codex 0.146 account-callback receipt](../evidence/xy-1422-codex-0146-account-callback.md).
 For the same exact tag, Codex reads the marker at startup and selects
 `DisabledEphemeral` for stdio without a remote-control argument in the upstream
-[CLI selection](https://github.com/openai/codex/blob/rust-v0.145.0-alpha.18/codex-rs/cli/src/main.rs)
+[CLI selection](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.3.1/codex-rs/cli/src/main.rs)
 and
-[remote-control transport module](https://github.com/openai/codex/blob/rust-v0.145.0-alpha.18/codex-rs/app-server-transport/src/transport/remote_control/mod.rs).
+[remote-control transport module](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.3.1/codex-rs/app-server-transport/src/transport/remote_control/mod.rs).
 The marker is startup-state evidence only. It is not a permanent denial policy: the
 same exact build can process an alternate-control enable RPC if a protocol writer can
 send one. This pre-dispatch slice therefore returns no raw stdin, raw stdout, generic
@@ -115,11 +115,13 @@ profile-dependent preflights. Every other version, image, argument shape, enviro
 or capability also fails closed. A version string or protocol `CapabilityProfile`
 alone cannot mint launch authority.
 
-MacDogfoodReady requires a new exact-build account-capability receipt for the callback.
+MacDogfoodReady requires an exact-build account-capability receipt for the callback.
 Version text, generated request types, or upstream implementation presence alone is not
-proof. An unsupported build or callback shape fails closed before account launch. The
-current private-stdio lifetime profile remains valid only for its accepted pre-dispatch
-scope; it cannot be used to claim AccountLifecycle readiness.
+proof. The current exact `codex-cli 0.146.0-alpha.3.1` profile handles the root refresh
+request and response, but it mints readiness only after the exact-image, generated-schema,
+and live callback preflights pass. An unsupported build or callback shape fails closed
+before account launch. The private-stdio lifetime profile does not independently claim
+AccountLifecycle readiness.
 
 ## Fence and child control
 
