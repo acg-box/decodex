@@ -3650,7 +3650,11 @@ def wait_worker_checkpoint(
         if event is None:
             raise GateFailure(f"installer exited before checkpoint {target}")
         if event.startswith("worker_error_"):
-            raise GateFailure("installer worker failed before its target checkpoint")
+            failure = event.partition("|")[0]
+            raise GateFailure(
+                "installer worker failed before its target checkpoint: "
+                f"{failure}; seen={','.join(seen)}"
+            )
         assert_contended(paths.namespace_lock)
         seen.append(event.partition("|")[0])
         if event.partition("|")[0] == target:
