@@ -119,6 +119,15 @@ class GateContractTests(unittest.TestCase):
             "test-sandboxed",
         )
 
+    def test_retired_account_migration_gate_has_no_task_or_source(self) -> None:
+        serialized_tasks = json.dumps(self.tasks, sort_keys=True)
+        self.assertNotIn("account-migration-transition", serialized_tasks)
+        self.assertNotIn("build-vnext-account-migration-transition", self.tasks)
+        self.assertNotIn("test-vnext-account-migration-transition", self.tasks)
+        self.assertFalse(
+            (REPO_ROOT / "scripts/vnext/account_migration_transition_test.py").exists()
+        )
+
     def test_vstyle_is_a_read_only_explicit_audit(self) -> None:
         self.assertEqual(
             self.tasks["audit-vstyle-rust"],

@@ -1,9 +1,10 @@
 //! Inert, exactly-once continuation plans over persisted V16 decisions.
 
 use decodex_core::{
-	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationEffectBarrierState,
-	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, ConversationId,
-	MAX_INLINE_HISTORY_BYTES, ManagedRunId, RuntimeSessionId, SameThreadContinuationEvidence,
+	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlan,
+	ContinuationPlanKind, ContinuationRejection, ConversationId, ExecutionConsumer,
+	MAX_INLINE_HISTORY_BYTES, ManagedExecutionId, ManagedRunId, ProviderAttemptId,
+	ProviderEvidenceId, RuntimeSessionId, SameThreadContinuationEvidence, TurnId,
 };
 use serde_json::Value;
 use sha2::{Digest as _, Sha256};
@@ -25,8 +26,8 @@ pub struct PlanContinuation {
 	pub operation_id: String,
 	/// Exact persisted selected V16 routing decision to consume.
 	pub routing_decision_id: String,
-	/// Positive ManagedRun revision that must match the decision's complete persisted lineage.
-	pub expected_managed_run_revision: i64,
+	/// Positive Conversation or ManagedRun revision that must match persisted decision lineage.
+	pub expected_consumer_revision: i64,
 	/// Caller-allocated identity for the one immutable continuation plan.
 	pub plan_id: String,
 	/// Preallocated RuntimeSession identity used only when the authority selects fallback.
@@ -182,8 +183,8 @@ impl PostgresStore {
 		] {
 			validate_uuid(value, label)?;
 		}
-		if request.expected_managed_run_revision <= 0 {
-			return Err(StoreError::InvalidInput("ManagedRun revision must be positive"));
+		if request.expected_consumer_revision <= 0 {
+			return Err(StoreError::InvalidInput("execution consumer revision must be positive"));
 		}
 		validate_context_pack(
 			&crate::PersistContextPack {
@@ -219,7 +220,7 @@ impl PostgresStore {
 		if plan.plan_id != request.plan_id
 			|| plan.operation_id != request.operation_id
 			|| plan.routing_decision_id != request.routing_decision_id
-			|| plan.managed_run_revision != request.expected_managed_run_revision
+			|| plan.consumer.domain_revision() != request.expected_consumer_revision
 		{
 			return incompatible("stored continuation response is cross-linked");
 		}
@@ -266,7 +267,7 @@ impl PostgresStore {
 				&idempotency_key,
 				&request.operation_id,
 				&request.routing_decision_id,
-				&request.expected_managed_run_revision,
+				&request.expected_consumer_revision,
 				&request.plan_id,
 				&request.fallback_runtime_session_id,
 				&request.fallback_account_snapshot_id,
@@ -356,7 +357,7 @@ fn parse_rejection(effect: &Value) -> Result<ContinuationRejection, StoreError> 
 		"invalid_input" => Ok(ContinuationRejection::InvalidInput),
 		"missing_decision" => Ok(ContinuationRejection::MissingDecision),
 		"decision_not_selected" => Ok(ContinuationRejection::DecisionNotSelected),
-		"stale_managed_run_revision" => Ok(ContinuationRejection::StaleManagedRunRevision),
+		"stale_consumer_revision" => Ok(ContinuationRejection::StaleConsumerRevision),
 		"decision_already_consumed" => Ok(ContinuationRejection::DecisionAlreadyConsumed),
 		"invalid_context_pack" => Ok(ContinuationRejection::InvalidContextPack),
 		"fallback_identity_conflict" => Ok(ContinuationRejection::FallbackIdentityConflict),
@@ -367,38 +368,100 @@ fn parse_rejection(effect: &Value) -> Result<ContinuationRejection, StoreError> 
 fn parse_same_thread_evidence(
 	effect: &Value,
 	kind: ContinuationPlanKind,
+	consumer: &ExecutionConsumer,
 ) -> Result<Option<SameThreadContinuationEvidence>, StoreError> {
 	match kind {
-		ContinuationPlanKind::SameThread => Ok(Some(SameThreadContinuationEvidence {
-			routing_evidence_id: optional_text(effect, "routing_evidence_id")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread evidence is absent".into()))?
-				.to_owned(),
-			routing_evidence_revision: optional_positive_i64(effect, "routing_evidence_revision")?
-				.ok_or_else(|| {
-					StoreError::Incompatible("same-thread evidence revision is absent".into())
-				})?,
-			schema_fingerprint: optional_text(effect, "schema_fingerprint")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread schema is absent".into()))?
-				.to_owned(),
-			experiment_id: optional_text(effect, "codex_experiment_id")?
-				.ok_or_else(|| StoreError::Incompatible("same-thread experiment is absent".into()))?
-				.to_owned(),
-			experiment_revision: optional_positive_i64(effect, "codex_experiment_revision")?
-				.ok_or_else(|| {
-					StoreError::Incompatible("same-thread experiment revision is absent".into())
-				})?,
-			observation_id: optional_text(effect, "codex_observation_id")?
-				.ok_or_else(|| {
-					StoreError::Incompatible("same-thread observation is absent".into())
-				})?
-				.to_owned(),
-		})),
+		ContinuationPlanKind::SameThread => match consumer {
+			ExecutionConsumer::ManagedRunExecution { .. } =>
+				Ok(Some(SameThreadContinuationEvidence::CausalExperiment {
+					routing_evidence_id: optional_text(effect, "routing_evidence_id")?
+						.ok_or_else(|| {
+							StoreError::Incompatible(
+								"same-thread routing evidence is absent".into(),
+							)
+						})?
+						.to_owned(),
+					routing_evidence_revision: optional_positive_i64(
+						effect,
+						"routing_evidence_revision",
+					)?
+					.ok_or_else(|| {
+						StoreError::Incompatible(
+							"same-thread routing evidence revision is absent".into(),
+						)
+					})?,
+					schema_fingerprint: optional_text(effect, "schema_fingerprint")?
+						.ok_or_else(|| {
+							StoreError::Incompatible("same-thread schema is absent".into())
+						})?
+						.to_owned(),
+					experiment_id: optional_text(effect, "codex_experiment_id")?
+						.ok_or_else(|| {
+							StoreError::Incompatible("same-thread experiment is absent".into())
+						})?
+						.to_owned(),
+					experiment_revision: optional_positive_i64(
+						effect,
+						"codex_experiment_revision",
+					)?
+					.ok_or_else(|| {
+						StoreError::Incompatible("same-thread experiment revision is absent".into())
+					})?,
+					observation_id: optional_text(effect, "codex_observation_id")?
+						.ok_or_else(|| {
+							StoreError::Incompatible("same-thread observation is absent".into())
+						})?
+						.to_owned(),
+				})),
+			ExecutionConsumer::ConversationTurn { .. } =>
+				Ok(Some(SameThreadContinuationEvidence::ProviderAttempt {
+					attempt_id: ProviderAttemptId::new(
+						optional_text(effect, "same_thread_provider_attempt_id")?
+							.ok_or_else(|| {
+								StoreError::Incompatible(
+									"same-thread ProviderAttempt is absent".into(),
+								)
+							})?
+							.to_owned(),
+					)
+					.map_err(|_| {
+						StoreError::Incompatible(
+							"same-thread ProviderAttempt identity is invalid".into(),
+						)
+					})?,
+					attempt_revision: optional_positive_i64(
+						effect,
+						"same_thread_provider_attempt_revision",
+					)?
+					.ok_or_else(|| {
+						StoreError::Incompatible(
+							"same-thread ProviderAttempt revision is absent".into(),
+						)
+					})?,
+					evidence_id: ProviderEvidenceId::new(
+						optional_text(effect, "same_thread_provider_evidence_id")?
+							.ok_or_else(|| {
+								StoreError::Incompatible(
+									"same-thread provider evidence is absent".into(),
+								)
+							})?
+							.to_owned(),
+					)
+					.map_err(|_| {
+						StoreError::Incompatible(
+							"same-thread provider evidence identity is invalid".into(),
+						)
+					})?,
+				})),
+		},
 		ContinuationPlanKind::ContextPackFallback => {
 			for key in [
 				"routing_evidence_id",
 				"schema_fingerprint",
 				"codex_experiment_id",
 				"codex_observation_id",
+				"same_thread_provider_attempt_id",
+				"same_thread_provider_evidence_id",
 			] {
 				if optional_text(effect, key)?.is_some() {
 					return incompatible("fallback plan carries same-thread evidence");
@@ -406,11 +469,48 @@ fn parse_same_thread_evidence(
 			}
 			if optional_positive_i64(effect, "routing_evidence_revision")?.is_some()
 				|| optional_positive_i64(effect, "codex_experiment_revision")?.is_some()
+				|| optional_positive_i64(effect, "same_thread_provider_attempt_revision")?.is_some()
 			{
 				return incompatible("fallback plan carries same-thread evidence revision");
 			}
 			Ok(None)
 		},
+	}
+}
+
+fn parse_consumer(effect: &Value) -> Result<ExecutionConsumer, StoreError> {
+	match text(effect, "consumer_kind")? {
+		"conversation_turn" => Ok(ExecutionConsumer::ConversationTurn {
+			conversation_id: ConversationId::new(uuid_text(effect, "consumer_conversation_id")?)
+				.map_err(|_| {
+					StoreError::Incompatible("consumer Conversation identity is invalid".into())
+				})?,
+			conversation_revision: positive_i64(effect, "conversation_revision")?,
+			source_runtime_session_id: RuntimeSessionId::new(uuid_text(
+				effect,
+				"source_runtime_session_id",
+			)?)
+			.map_err(|_| {
+				StoreError::Incompatible("source RuntimeSession identity is invalid".into())
+			})?,
+			source_runtime_session_revision: positive_i64(
+				effect,
+				"source_runtime_session_revision",
+			)?,
+			turn_id: TurnId::new(uuid_text(effect, "turn_id")?).map_err(|_| {
+				StoreError::Incompatible("consumer Turn identity is invalid".into())
+			})?,
+		}),
+		"managed_run_execution" => Ok(ExecutionConsumer::ManagedRunExecution {
+			managed_run_id: ManagedRunId::new(uuid_text(effect, "managed_run_id")?)
+				.map_err(|_| StoreError::Incompatible("ManagedRun identity is invalid".into()))?,
+			managed_run_revision: positive_i64(effect, "managed_run_revision")?,
+			execution_id: ManagedExecutionId::new(uuid_text(effect, "managed_execution_id")?)
+				.map_err(|_| {
+					StoreError::Incompatible("ManagedRun execution identity is invalid".into())
+				})?,
+		}),
+		_ => incompatible("stored execution consumer kind is unknown"),
 	}
 }
 
@@ -424,9 +524,10 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			"codex_observation_id",
 			"codex_thread_id",
 			"conversation_id",
+			"consumer_conversation_id",
+			"consumer_kind",
+			"conversation_revision",
 			"dispatch_enabled",
-			"effect_barrier_revision",
-			"effect_barrier_state",
 			"effect_digest",
 			"effect_digest_source",
 			"fallback_context_pack_id",
@@ -435,6 +536,7 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			"kind",
 			"managed_run_id",
 			"managed_run_revision",
+			"managed_execution_id",
 			"operation",
 			"operation_id",
 			"outbox_effects",
@@ -445,10 +547,13 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 			"routing_evidence_id",
 			"routing_evidence_revision",
 			"schema_fingerprint",
+			"same_thread_provider_attempt_id",
+			"same_thread_provider_attempt_revision",
+			"same_thread_provider_evidence_id",
 			"selected_account_id",
 			"source_runtime_session_id",
 			"source_runtime_session_revision",
-			"submitted_turn_receipt_count",
+			"turn_id",
 		],
 	)?;
 	let kind = match text(effect, "kind")? {
@@ -456,7 +561,8 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 		"context_pack_fallback" => ContinuationPlanKind::ContextPackFallback,
 		_ => return incompatible("stored continuation kind is unknown"),
 	};
-	let same_thread_evidence = parse_same_thread_evidence(effect, kind)?;
+	let consumer = parse_consumer(effect)?;
+	let same_thread_evidence = parse_same_thread_evidence(effect, kind, &consumer)?;
 	let codex_thread_id = optional_text(effect, "codex_thread_id")?.map(str::to_owned);
 	let fallback_context_pack_id =
 		optional_text(effect, "fallback_context_pack_id")?.map(str::to_owned);
@@ -488,22 +594,23 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 	if boolean(effect, "replay_permitted")? || boolean(effect, "dispatch_enabled")? {
 		return incompatible("continuation plan unexpectedly authorizes execution");
 	}
-	let effect_barrier_state = match text(effect, "effect_barrier_state")? {
-		"guarded" => ContinuationEffectBarrierState::Guarded,
-		"closed" => ContinuationEffectBarrierState::Closed,
-		_ => return incompatible("stored continuation effect-barrier state is unknown"),
-	};
-	let effect_barrier_revision = positive_i64(effect, "effect_barrier_revision")?;
-	let submitted_turn_receipt_count = nonnegative_i64(effect, "submitted_turn_receipt_count")?;
+	let conversation_id = ConversationId::new(uuid_text(effect, "conversation_id")?)
+		.map_err(|_| StoreError::Incompatible("Conversation identity is invalid".into()))?;
+	if matches!(
+		&consumer,
+		ExecutionConsumer::ConversationTurn {
+			conversation_id: consumer_conversation_id,
+			..
+		} if *consumer_conversation_id != conversation_id
+	) {
+		return incompatible("ordinary continuation consumer is cross-linked");
+	}
 	Ok(ContinuationPlan {
 		plan_id: uuid_text(effect, "plan_id")?,
 		operation_id: uuid_text(effect, "operation_id")?,
 		routing_decision_id: uuid_text(effect, "routing_decision_id")?,
-		managed_run_id: ManagedRunId::new(uuid_text(effect, "managed_run_id")?)
-			.map_err(|_| StoreError::Incompatible("ManagedRun identity is invalid".into()))?,
-		managed_run_revision: positive_i64(effect, "managed_run_revision")?,
-		conversation_id: ConversationId::new(uuid_text(effect, "conversation_id")?)
-			.map_err(|_| StoreError::Incompatible("Conversation identity is invalid".into()))?,
+		consumer,
+		conversation_id,
 		source_runtime_session_id: RuntimeSessionId::new(uuid_text(
 			effect,
 			"source_runtime_session_id",
@@ -519,9 +626,6 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 		fallback_context_pack_id,
 		fallback_runtime_session_id,
 		same_thread_evidence,
-		effect_barrier_state,
-		effect_barrier_revision,
-		submitted_turn_receipt_count,
 		replay_permitted: false,
 		dispatch_enabled: false,
 		planned_at_micros: positive_i64(effect, "planned_at_micros")?,
@@ -667,13 +771,6 @@ fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreE
 		}),
 		None => incompatible("stored continuation optional revision is missing"),
 	}
-}
-fn nonnegative_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_i64)
-		.filter(|number| *number >= 0)
-		.ok_or_else(|| StoreError::Incompatible(format!("stored continuation {key} is malformed")))
 }
 fn boolean(value: &Value, key: &str) -> Result<bool, StoreError> {
 	value

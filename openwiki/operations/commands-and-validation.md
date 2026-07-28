@@ -2,10 +2,10 @@
 
 Use this page when deciding which command validates a change. It summarizes current task-runner authority and maps test families to source areas.
 
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
-authority. Any private-artifact command or validation text on this page is a nonnormative current
-status or future delivery projection.
+The XY-1403 private-artifact retirement takes effect only at the exact
+[repository effective point](../specs/private-artifact/decision.md#repository-effective-point).
+At and after that point, the private-artifact archive defines no command or
+validation authority.
 
 ## Task runner authority
 
@@ -79,27 +79,29 @@ that exact formatter toolchain once; formatting fails closed when it is unavaila
 rustup toolchain install nightly-2026-07-16 --profile minimal --component cargo --component rustfmt
 ```
 
-## Future private-artifact delivery contracts
+## Retired private-artifact delivery contracts
 
-The package [operations and delivery module](../specs/private-artifact/operations-delivery.md)
-owns the exact contracts. The following table describes their status without copying their path
-sets, inventories, arguments, or receipt schemas:
+The archived
+[operations and delivery module](../specs/private-artifact/operations-delivery.md)
+preserves the former contracts. Every item in this table is historical and
+non-executable:
 
-| Contract | Current status and future boundary |
+| Former contract | Disposition |
 | --- | --- |
-| CORE-FREEZE | Future read-only source-inspection freeze after the package-defined source phases. It is a receipt boundary, not a current task or implemented runtime feature. |
-| ACC | Future bounded acceptance-authoring phase that starts only from an exact CORE-FREEZE receipt. It has not changed the current tests, wrapper, task runner, or runbook. |
-| `check-vnext-postgres-preparation` | Future mechanical preparation task that ACC must add. It is absent from the current `Makefile.toml`; the existing retained-title preparation task is not an alias or substitute. |
-| `test-vnext-retained-title-core` | The task name exists today with the historical V14-V22 boundary. Its package-defined V1-V23 behavior and version-2 receipts are future ACC work and are not implemented by the current task. |
-| Single mechanical preparation pass | Future post-ACC pass over the exact frozen candidate. It is not a command that this projection can run or claim as completed. |
-| Unified complete validation protocol | Future gate after the mechanical pass, with the package-defined bounded repair policy. No current focused task or historical receipt satisfies it. |
+| A0/A1/B/D0a/C/D and their delivery edges | Retired. They are not phases, dependencies, issue work, or future obligations. |
+| CORE-FREEZE | Retired. It is not a receipt boundary or current or future task. |
+| ACC | Retired. It cannot authorize acceptance-source changes. |
+| `check-vnext-postgres-preparation` | Retired package proposal. Do not add it from the archive. |
+| Package-defined `test-vnext-retained-title-core` behavior | Retired. The existing task name and current behavior come only from checked-in task, wrapper, and runbook authority. |
+| Single mechanical preparation pass | Retired. Do not run or recreate it from the archive. |
+| Unified complete validation protocol | Retired. It is not an acceptance or enablement gate. |
 
 The immutable [XY-1368 retained-title freeze](../specs/xy-1368-retained-title-freeze.md) is V22
-historical evidence only. It is not current command or task-runner authority. Until future ACC
-changes land, current executable command names and behavior come from `Makefile.toml`, the current
-wrapper source, and the current
-[XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer future
-package-defined behavior from those current surfaces.
+historical evidence only. It is not current command or task-runner authority.
+Current executable command names and behavior come from `Makefile.toml`, the current
+wrapper source, and the unchanged
+[XY-1368 validation runbook](xy-1368-retained-title-validation.md). Do not infer
+retired package behavior from those current surfaces.
 
 ## Same-UID Unix transport validation
 
@@ -137,6 +139,31 @@ owns namespace, stale recovery, replacement, permission, peer, and path-length c
 `crates/decodex-runtime/tests/websocket_protocol.rs` owns WebSocket continuity and
 zero-survivor service settlement. `apps/decodexd/tests/signal_shutdown.rs` owns real
 process signal and crash-recovery behavior.
+
+## XY-1402 source-only validation boundary
+
+XY-1402 is pre-core-freeze source work. Do not run a formatter, build, compiler,
+lint or static analysis, migration or SQL parser, test, fixture, generator,
+service, VM, UI or Accessibility check, live Codex experiment, account operation,
+or provider effect for its candidate. Bounded source inspection and the required
+signed commit receipt are not executable acceptance.
+
+V25 adds the execution route and wait enum vocabulary in a separate committed
+transaction. V26 is the current execution-coordination cutover. It removes the drained V12
+ManagedRun-local submitted-turn and effect-barrier authority. Its source inventory
+contains 80 relations, 182 functions, 74 safety functions, 146
+safety/state/retention triggers, and 70 runtime-callable functions. The accepted
+schema and configured-authority digests stay frozen at the V22 boundary until the
+later unified gate derives and verifies the integrated V26 values.
+
+The later gate must bind its results to the exact candidate tree. It must run the
+complete [XY-1402 deferred acceptance matrix](../specs/execution-coordinator-authority.md#deferred-acceptance-matrix).
+That matrix includes clean and populated migration, drain, historical
+cross-link, and ambiguity falsifiers, S0/R1/R2 manifests, ACL closure, both
+consumer shapes, route causes, quota separation and aging, RuntimeSession
+continuity, ProcessGeneration fencing, ProviderAttempt capability consumption
+and ambiguity, same-UID transport, concurrency, hostile cross-links, and reverse
+production isolation.
 
 ## Vstyle audit authority
 
@@ -194,6 +221,11 @@ PostgreSQL authority digest changes use an explicit derivation phase followed by
 phase:
 
 ```sh
+# Run the one-shot R1 prerequisite gate only when the Manager authorizes this exact clean tree.
+python3 scripts/vnext/postgres_store_test.py \
+  --capture-authority-restore-prerequisite-v2 \
+  /absolute/private/directory/postgres-restore-prerequisite-r1.json
+
 # Run Phase A from one clean committed repaired pre-digest tree.
 python3 scripts/vnext/postgres_store_test.py \
   --capture-authority-candidate /absolute/private/directory/postgres-authority-candidate.json
@@ -204,6 +236,114 @@ python3 scripts/vnext/postgres_store_test.py \
   /absolute/private/directory/postgres-authority-candidate.json \
   /absolute/private/directory/postgres-authority-acceptance.json
 ```
+
+`--capture-authority-restore-prerequisite-v2` is the only spelling for the replacement gate. The v1
+spelling has no alias. This gate is not a focused mode, Phase A, Phase B, or the aggregate. Its
+output path must be absolute, outside the source tree, in an exact operator-owned private directory,
+and absent before the command starts. The Manager authorizes one invocation on one exact clean HEAD
+and tree. The gate does not provide cross-process once-only state.
+
+One state owner records this ordered execution prefix: `cli`, `output_contract`,
+`source_binding_preflight`, `temporary_root`, `tool_discovery`, `toolchain_preflight`,
+`private_work`, `cluster_init`, `cluster_start`, `role_setup`, `source_binding_gate_start`,
+`toolchain_gate_start`, `server_version`, `definition_binding`, `source_database_created`,
+`source_migrated`, `source_provisioned`, `source_populated`, `source_semantic_authority`,
+`source_archive_created`, `archive_declaration_guarded`, `restore_database_fresh_template0`,
+`restore_pgcrypto_absent`, `restore_prerequisite_created`, `restored_once`,
+`restored_once_semantic_authority`, `semantic_authority_equal`, `invocation_policy`,
+`source_binding_gate_end`, `toolchain_gate_end`, `privacy_validation`, and
+`stopped_after_restored_once`. A receipt cannot claim a checkpoint until its action succeeds.
+
+The separate lifecycle owners are `cluster_stop`, `private_work_cleanup`, `cleanup_finalization`,
+`receipt_validation`, `receipt_source_binding`, and `receipt_publication`. Actual lifecycle state
+derives the ordered required cleanup sequence. `cluster_stop` is present only after cluster stop
+becomes applicable. `private_work_cleanup` is present only after private work exists. The only valid
+sequences are empty, `private_work_cleanup`, or `cluster_stop` then `private_work_cleanup`. Each
+required owner has pending, active, or completed state. `cleanup_finalization` is always an explicit
+fail-closed transition after that sequence.
+
+The exact reason set is `contract_invalid`, `authority_unavailable`, `changed`, `operation_failed`,
+`archive_declaration_invalid`, `target_not_fresh`, `duplicate_invocation`,
+`invocation_policy_failed`, `semantic_authority_changed`, `cleanup_failed`, `receipt_invalid`,
+`publication_failed`, `interrupted`, and `harness_corruption`. The definition binds the exact
+allowed checkpoint and reason pairs. The expected pairs are:
+
+- `cli`, `output_contract`, `temporary_root`, `definition_binding`, `privacy_validation`, and
+  `stopped_after_restored_once` use `contract_invalid`.
+- `source_binding_preflight`, `tool_discovery`, `toolchain_preflight`, and `server_version` use
+  `authority_unavailable`.
+- `source_binding_gate_start`, `source_binding_gate_end`, `toolchain_gate_start`, and
+  `toolchain_gate_end` use `authority_unavailable` or `changed`.
+- `private_work`, `cluster_init`, `cluster_start`, `role_setup`,
+  `restore_database_fresh_template0`, `restore_prerequisite_created`, and `restored_once` use
+  `operation_failed`.
+- `source_database_created`, `source_migrated`, `source_provisioned`, `source_populated`,
+  `source_semantic_authority`, `source_archive_created`, and `restored_once_semantic_authority` use
+  `operation_failed` or `duplicate_invocation`.
+- `archive_declaration_guarded` uses `archive_declaration_invalid` or `duplicate_invocation`.
+- `restore_pgcrypto_absent` uses `operation_failed` or `target_not_fresh`.
+- `semantic_authority_equal` uses `semantic_authority_changed`.
+- `invocation_policy` uses `duplicate_invocation` or `invocation_policy_failed`.
+- `cluster_stop` and `private_work_cleanup` use `cleanup_failed`.
+- `cleanup_finalization` has no expected operation failure.
+- `receipt_validation` uses `receipt_invalid`; `receipt_source_binding` uses
+  `authority_unavailable` or `changed`; and `receipt_publication` uses `publication_failed`.
+
+Every owner also permits `interrupted` and `harness_corruption`. An unexpected assertion, type,
+key, or invariant failure is `harness_corruption` at the active owner. The first primary failure is
+immutable. Before the first action, after an action before transition, between actions, and during
+finalization, one active or pending cleanup owner remains authoritative. Cleanup has fixed status and
+can become primary only when no execution primary exists. An execution primary keeps only the fixed
+secondary `cleanup_failed` reason. `cleanup_status=passed` proves that the completed cleanup sequence
+equals the required sequence and that finalization completed. Publication cannot relabel an earlier
+primary.
+
+The gate creates S0 once with the unchanged authority-mode setup. It migrates, provisions,
+populates, and runs the complete Rust semantic-authority owner once. It creates one custom dump.
+Before it creates R1, it uses the selected PostgreSQL 18 `pg_restore` to inspect the private TOC.
+The closed PostgreSQL 18 list parser requires one active `pgcrypto` `EXTENSION` declaration. It
+rejects an absent, duplicate, disabled, malformed, or ambiguous declaration. The guard does not
+retain or publish a TOC line, owner, ACL, OID, role, SQL, connection, path, or discovered object.
+
+After the guard passes, the shared restore helper creates R1 from `template0`. It connects as the
+canonical migration role and proves that `pgcrypto` is absent. It then executes exactly
+`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';`. The ordinary
+`pg_restore --exit-on-error` command stays under the bootstrap identity. It does not use `--role`,
+`--use-set-session-authorization`, `--no-owner`, or `--no-acl`. The helper does not run a migration
+or runtime provisioning after restore. The full Rust semantic-authority owner runs once at R1.
+The same guard and helper own each future Phase A R1 and R2 target.
+
+The gate stops after R1 for every outcome. It does not create R2, derive a manifest digest, publish
+an authority candidate, run Phase B, or run the aggregate. A pass publishes one immutable,
+create-only, mode-0600, file-fsynced and directory-fsynced
+`decodex/postgres-restore-prerequisite-r1-gate/2` receipt. The receipt has `acceptance=false`. It
+contains the exact source binding, PostgreSQL toolchain fingerprint, definition fingerprint
+`53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a`, the complete validated
+checkpoint prefix, the exact required and completed cleanup-owner sequences, completed cleanup
+finalization, and fixed invocation-policy Booleans. The definition schema is
+`decodex/postgres-restore-prerequisite-r1-definition/2`.
+
+A failure uses `decodex/postgres-restore-prerequisite-r1-diagnostic/2`. It contains the validated
+source binding, or null before source validation, the immutable primary checkpoint and reason, the
+validated completed prefix, fixed cleanup status, and the optional fixed secondary cleanup reason.
+It also carries the exact required and completed cleanup-owner sequences, completed finalization,
+and the fixed `failure_document_repaired` Boolean. It includes the existing closed
+semantic-authority diagnostic only when a semantic owner has the primary failure. It cannot contain
+raw exception text, a command, child output, environment, path, selected tool name, database, role,
+owner, ACL, OID, SQL, connection, TOC content, catalog row, count, or discovered identity. Failure
+document construction and repair belong to `receipt_validation`. Incomplete or corrupt cleanup
+state produces one fixed privacy-safe repaired diagnostic and preserves a valid earlier primary.
+When the output contract is valid, the owner tries to publish one create-only failure receipt after
+cleanup. It also writes the same canonical diagnostic to standard error for publication-failure
+recovery. A fixed `receipt_validation/harness_corruption` fallback remains available if normal
+construction or durable publication fails. The raw-error `StageOrchestrator` remains separate.
+
+The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. That result did not prove
+that candidate 3 reached the archive guard, prerequisite, restore, or R1 semantic owner. Candidate 3
+remains frozen and unadjudicated. The three-rejected-candidate threshold is not crossed unless one
+source-bound replacement result exercises and rejects candidate 3. A v2 pass authorizes only a
+later decision about revised Phase A. This v2 source is unexecuted, and it makes no acceptance
+claim.
 
 Phase A must start from one clean committed repaired tree. Its mismatch array is the exact ordered
 subset of `schema`, then `configured_authority`: it may be empty, contain either one component, or
@@ -217,8 +357,9 @@ commit/tree, exact mismatch set/order, and the corresponding same-tree or digest
 
 The capture-only mode migrates and provisions an isolated PostgreSQL 18 database, captures raw
 source S0, first-restore R1, and second-restore R2 evidence, and separately proves the exact
-V13-to-V22 one-grantee runtime ACL delta from raw catalogs. The same non-digest semantic verifier
-used by production readiness must pass at S0, R1, and R2 before it atomically publishes
+V13-to-V22 one-grantee runtime ACL delta from raw catalogs. The same immutable
+semantic-authority contract used by production readiness must pass at S0, R1, and R2 before the
+command atomically publishes
 `decodex/postgres-authority-candidate/3`; the Phase A mismatch set must be exactly the canonical
 zero-, one-, or two-component subset described above, while complete, unique, resolved manifests,
 migration ledger,
@@ -232,7 +373,12 @@ failure or interruption after the link is an ambiguous producer outcome resolved
 immutable receipt. Exit status and stdout are not evidence. The receipt has `acceptance=false`; it
 never substitutes for the normal aggregate. Phase B alone validates the exact immutable receipt,
 its hash and Phase A HEAD/tree, and the exact transition authorized by the mismatch array. It then
-repeats S0→R1→R2, requires every semantic predicate and restore edge to pass with zero digest
+repeats S0→R1→R2. Each checkpoint must contain the Rust-owned versioned definition, its ordered
+Boolean observations, and its emitted fingerprint. Python independently recomputes the
+domain-separated, length-prefixed SHA-256 fingerprint and compares it with the emitted value and
+the one supported value. It rejects malformed, missing, duplicate, extra, reordered, non-Boolean,
+false, or checkpoint-divergent evidence without a copied predicate inventory or Rust source
+inspection. Phase B requires every semantic predicate and restore edge to pass with zero digest
 mismatches, and publishes
 the only `acceptance=true` receipt bound to both trees and the Phase A receipt hash. Existing
 malformed, substituted, duplicate, or mismatched receipts fail closed. A zero-mismatch acceptance
@@ -241,10 +387,27 @@ the Phase A receipt; existing receipts remain provenance only and cannot attest 
 their recorded binding. For one or two mismatches, any unreported array change or other source
 delta invalidates the candidate.
 
+Phase A candidate capture uses a dedicated semantic parser path. It first validates the complete
+artifact shape, component structure, database binding, Rust-emitted definition, ordered Boolean
+observations, emitted fingerprint, independently recomputed fingerprint, and supported fingerprint.
+If one or more observations are false, it raises the exception-only
+`decodex/postgres-semantic-authority-diagnostic/2` diagnostic. The diagnostic has only `schema`,
+`source_binding`, `checkpoint`, `definition_fingerprint`, and `failures`. The source binding has
+only the exact lowercase 40-hex `head` and `tree`. The checkpoint is `source`, `restored_once`, or
+`restored_twice`. The nonempty failure array is complete and uses definition order. Each item has
+only the fingerprint-bound `predicate` and its fixed Rust-defined `failure_policy`. Canonical JSON
+uses sorted keys, compact separators, and ASCII escaping. The diagnostic does not contain passed
+observations, a concrete runtime-derived failure class, SQL, catalog or role data, counts, paths,
+raw evidence or errors, candidate mismatches, or schema, configured-authority, manifest, or
+mismatch digest values. The supported `definition_fingerprint` is its only digest. This branch
+stops before semantic summary hashing, digest derivation, mismatch construction, and receipt
+publication. Malformed evidence remains `artifact_malformed` and does not echo attempted
+predicate text. The shared retained-title loader keeps its immediate all-pass requirement.
+
 The current [XY-1368 retained-title validation](xy-1368-retained-title-validation.md) documents the
 two historical V22-era partial-boundary command surfaces that still exist in source. Neither
 command authorizes full-check publication or production enablement, and neither implements the
-future private-artifact delivery contracts above.
+retired private-artifact delivery contracts above.
 
 The normal aggregate uses one explicit stage report. Configuration and cluster preflight are fatal:
 mode/argument validation, clean source binding, temporary-root validation, PostgreSQL tool
@@ -252,7 +415,8 @@ discovery, temporary cluster initialization/start, and base-role creation must a
 semantic work is scheduled. Phase A/B instead validate their private output and receipt/source
 lineage directly, outside the aggregate scheduler. Meaningful aggregate suites then report `passed`,
 `failed`, or `blocked`. Ordinary `TestFailure` leaves independent branches schedulable but blocks
-every declared consumer of the failed prerequisite. RoleProfile, RuntimeSession, migration-boundary,
+every declared consumer of the failed prerequisite. RoleProfile, RuntimeSession, ManagedRun V26,
+migration-boundary,
 blob-restart, primary-store, managed-repository, account-composition, bootstrap/doctor, collation,
 authority safety, hostile-search-path, primary restore, redaction, default-ACL restore,
 authority-drift, and final-evidence work are all represented. A restore-owning suite cannot pass
@@ -283,9 +447,9 @@ primary `TestFailure` includes a bounded, secret-marker-redacted tail of `postgr
 stopped cluster is removed; no log or cluster retention is introduced. After PostgreSQL has
 started, teardown and final stage-report emission still run. The semantic/stage failure is selected
 before aggregate output and report emission, so cleanup or emission failures are recorded without
-replacing it. The
-`decodex/postgres-aggregate-stage-report/1` document is emitted only by the normal aggregate;
-focused and Phase A/B capture modes preserve their direct output/receipt behavior and never emit it.
+replacing it. The normal aggregate emits `decodex/postgres-aggregate-stage-report/1`. The focused
+ManagedRun mode emits `decodex/postgres-managed-run-v26-stage-report/1`. Other focused modes and
+Phase A/B capture modes preserve their direct output or receipt behavior.
 
 An unavailable or incomplete raw schema/authority component publishes no receipt. Before its private
 cluster is removed, the capture emits a versioned, bounded diagnostic to the operator-owned combined
@@ -295,9 +459,30 @@ database failures contain SQLSTATE and primary message; non-database failures us
 Malformed artifacts report only classification, expected binding, byte length/hash when readable,
 and a bounded parser error. Diagnostic text and identities are length-bounded and secret-marker
 redacted; full manifests and raw contracts are never emitted.
-Semantic diagnostics contain only the checkpoint and the complete bounded set of false canonical
-predicate names; they never contain SQL, ACL bodies, object identities, connection data, or paths.
+Semantic `/2` diagnostics contain only the schema, exact source binding, canonical checkpoint,
+supported definition fingerprint, and complete definition-ordered failure objects. Each failure
+contains only its false canonical predicate name and fixed failure policy. These diagnostics never
+contain SQL, ACL bodies, object identities, connection data, paths, or other digest values.
 
+The PostgreSQL integration command uses an isolated PostgreSQL 18 cluster and fixture-only roles.
+Its authority matrix contains 28 unsafe roots and six incompatible roots. The new unsafe root adds
+a migration-owned, runtime-executable `public` `SECURITY DEFINER` routine. Direct runtime
+ManagedRun mutation is rejected first. The routine then performs one valid ManagedRun
+revision/divergence mutation, while the Decodex relation, routine, trigger, rule, and policy
+inventories stay unchanged. Production verification must reject this unexpected runtime entry.
+
+Runtime entry closure evaluates the login identity and every inherited or `SET ROLE`-reachable
+identity. Effective privileges include `PUBLIC` and column grants. The verifier rejects unexpected
+privileges on non-system relation-like objects and unexpected runtime-executable non-system
+security-definer normal functions, procedures, or window functions. Aggregate rows are excluded
+because PostgreSQL `CREATE AGGREGATE` has no `SECURITY DEFINER` capability. The one external
+execution dependency is exact `public.digest(bytea,text)` from `pgcrypto` 1.4, including extension
+membership, namespace, owner relationship, metadata, and ACL. Existing scenarios continue to cover
+direct and indirect authority, DDL, relation/ledger/sequence mutation, grant options, trigger drift,
+extension control, canonical-function drift, external cascades, ledger tampering, and absent
+`pgcrypto`.
+
+The following historical V9 detail remains part of the retained test surface.
 The XY-1267/XY-1307 integration command and XY-1264 storage proof are intentionally separate because they require an intended macOS host with one PostgreSQL 18 distribution. Each creates and removes its own isolated temporary checksummed cluster with TCP disabled and never enumerates or changes an existing service. The PostgreSQL command provisions fixture-only migration/runtime roles, proves least-privilege daemon bootstrap, and rejects 27 unsafe roots covering direct, inherited, NOINHERIT/SET-only, and membership-admin paths to forbidden role attributes, PostgreSQL 18 namespace-object ownership (including distinct collation, conversion, operator, and text-search cases), DDL, table/ledger/sequence mutation, grant options, `session_replication_role` SET/ALTER SYSTEM, retention bypass, trigger drift, extension-member control, an indirect public-function trigger, and a genuinely additional function. It closes every runtime-callable Decodex function over exact signatures, overloads, metadata, settings, and canonical source. At the frozen V9 boundary, all 72 shipped functions have the exact secure `pg_catalog, decodex` function-local search path, and all 52 non-internal shipped trigger bindings—including deferred constraint triggers—have exact catalog attestations. The 16 shipped security definers comprise three V3 cursor/history functions, eleven V5-V7 Project/Policy/Program/Objective command entrypoints, and two V9 RoleProfile command entrypoints; runtime cannot insert cursors or execute capture directly. The additional fixture-only seventy-third function is migration-owned, runtime-executable, `SECURITY DEFINER`, configured with an unsafe setting, and is invoked as runtime to perform owner-authority trigger DDL before fixture restoration and independent rejection. The separate substitution fixture replaces a shipped safety body without changing its signature. The indirect-trigger fixture proves runtime DML executes a public definer function despite direct `EXECUTE`, protected-table `UPDATE`, and `TRIGGER` all being denied. The extension fixture proves a public runtime-owned extension can transactionally drop it. Six incompatible roots cover missing ledger SELECT, canonical-function drift, a dropped credential constraint with demonstrated credential insertion, an external child cascade with demonstrated runtime-mediated deletion, a same-count tampered migration ledger, and absent `pgcrypto`. The canonical PostgreSQL 18 schema manifest closes defaults, constraints on both foreign-key sides, indexes, enums, and internal constraint-trigger semantics. Descriptor-pinned socket unit fixtures reject a same-UID pre-planted endpoint in a world-writable configured directory, a mismatched operator UID pin, replaced ancestors, replaced endpoints, and deterministic replacement between precheck and failed connect; an unchanged secure stale socket maps to unreachable. An isolated daemon fixture starts Ready, replaces the configured endpoint, and proves a fresh V1.3 doctor query becomes unsafe-host-path without migration or repinning. The runtime protocol tests keep mutation receipt lookup/capacity independent across V1.2/V1.3 and prove repeated, ordered, concurrent live queries neither replay nor consume receipts. The adapter contract tampers a ledger name at constant row count, proves read-only live revalidation reports it as incompatible, restores the ledger, and revalidates successfully; a terminal direct-adapter fixture removes `pgcrypto` in its own disposable database and proves the missing extension is incompatible without restoration. The harness also exercises an in-flight Rust BlobSession across an immediate PostgreSQL restart: the old session loses its hash lock and transaction-B connection, its stale claim cannot complete, and a reassigned exact retry verifies already-published bytes before committing metadata. It also proves `setval` denial, same-signature callable hostile-`search_path` safety, Turkish ICU credential behavior, and populated dump/restore. The XY-1264 proof additionally exercises rollback, blob, and cache behavior (`crates/decodex-postgres/src/socket.rs`, `crates/decodex-runtime/tests/bootstrap_doctor.rs`, `scripts/vnext/postgres_store_test.py`, `spikes/vnext-storage/proof.py`, `spikes/vnext-storage/README.md`).
 
 The V10 extension raised the closed production inventory to 80 functions, 59 non-internal
@@ -332,16 +517,14 @@ SELECT-only access to six ManagedRun/effect/readback relations and EXECUTE on on
 safety entrypoint; it has no ManagedRun creation, acquisition, activation, progress, completion,
 assignment, submitted-receipt production, or effect-lineage writer authority. Task and Reviewer
 assignments bind exact RuntimeSessions and cannot encode Advisor, Lead, or durable Agent identity.
-The barrier has only fail-closed `guarded` and `closed` states. The focused command
-`cargo make test-vnext-postgres-managed-runs` retains those historical V12 definition checks while
-binding them to the current integrated V1-V22 ledger and 142-trigger inventory. It covers
-Project/WorkItem/RuntimeSession FK scope,
-state algebra, unknown-turn divergence with an active turn retained, current/stale submitted
-receipts, explicit inconclusive input, rollback/retry, durable cross-key input replay, exactly-once
-barrier closure, exact revisioned restart readback, runtime-role Turn and HistoryItem writes through
-the V12 forward-repaired invoker guards, fail-closed non-`READ COMMITTED` hierarchy DML, and the
-receipt-before-1271-before-1338 unknown-turn/Turn-insert schedule, plus clean V1-to-V22 bootstrap
-and populated restore.
+The barrier has only fail-closed `guarded` and `closed` states. V26 removes the drained V12 local
+barrier authority and adds execution-coordinator readback. One `managed_run_v26_suite` stage owns
+the focused ManagedRun mode and the normal PostgreSQL aggregate. The stage owns its database,
+migration, runtime provisioning, baseline capture, V26 behavior, post-behavior capture, dump,
+restore, restored capture, and restored behavior. Exact nextest selection must fail when it selects
+zero tests. Final aggregate evidence depends on this stage. Source parsing, copied predicate
+inventories, regular-expression control-flow proofs, and AST reachability proofs are not part of
+this validation boundary.
 The final schema produced by every migration version must be a PostgreSQL 18 dump/restore fixed
 point so the one exact full-manifest digest remains identical before and after logical restore.
 Cross-database manifest identity is semantic rather than catalog-local: every relation, column,
@@ -407,7 +590,7 @@ compatibility targets.
 ## Managed repository frozen-tree validation
 
 This section describes the managed-repository and historical V22 frozen-tree boundary. It does not
-define or satisfy the future private-artifact unified validation protocol.
+define or satisfy the retired private-artifact unified validation protocol.
 
 Managed-repository stage-two work has no pre-freeze execution gate. Do not run compile, test,
 check, Clippy, format, migration, wrapper, matrix, doctest, behavioral, app, or benchmark commands
@@ -498,7 +681,8 @@ Use the owner path to choose the first validation surface:
   assignment, append-only evidence, compare-and-swap, transaction completeness, receipt
   provenance, retention, and restart loads.
 - `crates/decodex-codex/`: typed shared-home Codex adapter foundation; live dispatch is
-  default-disabled by the failed XY-1304 gate.
+  disabled in current source. Slice 1 may enable only fenced initial fixed/balanced
+  selection; XY-1304 remains the later automatic fallback/wake gate.
 - `crates/decodex-runtime/`: `decodexd` lifecycle assembly over the four narrow owners;
   for managed repositories it sequences accepted owners but creates no state or receipt
   authority. XY-1351 owns the first shared saga path.
@@ -509,7 +693,10 @@ Use the owner path to choose the first validation surface:
 - `plugins/decodex/`: installable Decodex runtime/operator plugin source, including planning, runtime ops, commit, and landing skills/hooks.
 - `automations/radar/` and `automations/decodex/`: repo-local Codex App automation sources; generated Radar and Publisher artifacts stay under `.agent/automations/**/cache`.
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
-- `apps/decodex-app/`: native SwiftPM macOS app for local account-pool management and bundled Decodex helper/server workflows.
+- `apps/decodex-app/`: current native SwiftPM macOS account UI. It contains one
+  daemon-protocol account surface under
+  [Account Lifecycle Authority](../specs/account-lifecycle-authority.md), with no
+  local account pool, helper/server workflow, or dual authority.
 - `spikes/vnext-storage/`: isolated XY-1264 PostgreSQL, blob, and bounded-cache feasibility proof; validate it with `cargo make test-vnext-storage-proof` and use [the evidence record](../evidence/vnext-storage-feasibility.md) for accepted choices and boundaries.
 - `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation,
   and `scripts/macos/` owns macOS app packaging checks and the source-install local
@@ -558,7 +745,7 @@ The active vNext CLI starts in `apps/decodex-cli/src/lib.rs`. Use these commands
 the shared reset-card service:
 
 ```sh
-decodex reset-card accounts
+decodex account list
 decodex reset-card list --account UUID
 decodex reset-card use \
   --account UUID \
@@ -570,8 +757,8 @@ decodex reset-card use \
 decodex reset-card status --idempotency-key KEY
 ```
 
-Create and persist the key before `use`; the CLI does not generate it. `accounts` and
-`list` JSON include an `authority` object with `profile_name` and `server_id`. Retain
+Create and persist the key before `use`; the CLI does not generate it. The account registry and
+reset-card inventory responses retain the selected profile and stable server authority. Retain
 that authority when a selection or pending operation crosses commands:
 
 ```sh
@@ -770,7 +957,8 @@ Use `site/README.md`, `site/src/`, `site/package.json`, and `openwiki/integratio
 
 ## Native macOS app checks
 
-The app is outside the Cargo workspace (`Cargo.toml`). Commands from `apps/decodex-app/README.md`:
+The app is outside the Cargo workspace (`Cargo.toml`). Commands from
+`apps/decodex-app/README.md`:
 
 ```sh
 swift build --package-path apps/decodex-app -c release
@@ -780,37 +968,18 @@ scripts/macos/test_decodex_app_stage.sh
 python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
-The Swift suite covers reset-card architecture boundaries, stable CLI decoding,
-second-click confirmation, bounded startup read recovery, bounded pending-journal
-safety, and same-key restart recovery.
-Together with the focused PostgreSQL proof, it verifies the native client relationship to
-the shared [runtime service](../architecture/runtime-architecture.md); the native app's
-full boundary is documented with the other [auxiliary tools](../integrations/plugins-automations-and-auxiliary-tools.md).
+The Swift suite covers one all-account list, UUID-keyed progressive Reset Card rows,
+stable CLI decoding, second-click confirmation, bounded startup recovery, and durable
+use replay. The staged package contains only the Swift app and vNext CLI. It contains
+no daemon, legacy `decodex`, app helper, loopback server, `:8192` client, account-pool
+reader, or migration tool. The separately installed and signed local service owns the
+daemon wrapper and PostgreSQL generation.
 
-The staging script builds Swift and Rust release artifacts and copies four signed
-executables into the app bundle: legacy `decodex` and `decodex-app-helper` for
-unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNext.
-It verifies all four.
-
-The local-service installer test verifies credential-negative config, bridge mapping,
-and LaunchAgent output. The installed `decodexd supervise-local` process owns one
-foreground PostgreSQL generation and one daemon generation. PostgreSQL exit or
-endpoint replacement stops the old daemon before the supervisor exits. After an
-atomic legacy account-file replacement, only a changed credential projection stops
-and restarts the daemon so its process-scoped environment receives current values.
-The LaunchAgent uses `KeepAlive = { SuccessfulExit = false }` and `ExitTimeOut=60`.
-For an installed job with that exact contract, the installer sends SIGTERM while the
-job remains loaded, lets the supervisor use its 240-second daemon and 30-second
-PostgreSQL bounds, waits for the job to become inactive, and then removes it. A legacy
-job receives one direct removal fallback, and that removal can use the remaining
-300-second settlement bound instead of the five-second control-command bound. Both paths bind the captured process tree by
-PID and full start time and wait at most 300 seconds before replacement; a concurrent
-removal cannot bypass that wait. PostgreSQL readiness probes name the existing
-`postgres` database so they do not emit missing-default-database warnings.
-The bridge requires the
-same UID, a private parent directory, private regular account and lock files, one
-link per file, bounded input, unique provider identities and email identities, and
-an exact slot-to-digest mapping.
+The local-service installer test starts from a fresh empty product database and verifies
+credential-negative config, the signed wrapper, one `supervise-local` LaunchAgent,
+doctor readiness, and an empty account list. The installer never reads, copies, or
+deletes an old account pool. Local credentials are imported afterward with the ordinary
+public account command, followed by one restart for exact-build callback attestation.
 
 ## Radar and Publisher checks
 

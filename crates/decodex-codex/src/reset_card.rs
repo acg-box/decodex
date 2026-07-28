@@ -1,14 +1,16 @@
 use std::{
-	collections::BTreeSet,
+	collections::{BTreeMap, BTreeSet},
 	error::Error,
 	fmt::{Debug, Display, Formatter},
 };
 
 pub use decodex_core::MAX_RESET_CARD_ITEMS as MAX_RESET_CARDS_PER_INVENTORY;
 use decodex_core::{
-	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardError, ResetCardTimestamp,
+	AccountQuotaObservationError, AccountQuotaWindow, ResetCardConsumeOutcome, ResetCardDescriptor,
+	ResetCardError, ResetCardTimestamp,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
+use serde_json::Value;
 use zeroize::Zeroizing;
 
 use crate::{SchemaContract, protocol::MAX_APP_SERVER_FRAME_BYTES};
@@ -117,9 +119,12 @@ impl AvailableResetCardObservation {
 pub struct ResetCardInventory {
 	available_cards: Vec<AvailableResetCardObservation>,
 	exact_ids: Vec<ExactResetCreditId>,
+	quota_windows: [AccountRateLimitObservation; 2],
 }
 impl ResetCardInventory {
 	fn from_wire(wire: ResetCardInventoryWire) -> Result<Self, ResetCardProtocolError> {
+		let quota_windows =
+			decode_quota_windows(wire.rate_limits_by_limit_id.as_ref(), wire.rate_limits.as_ref());
 		let summary =
 			wire.rate_limit_reset_credits.ok_or(ResetCardProtocolError::DetailsUnavailable)?;
 		let credits = summary.credits.ok_or(ResetCardProtocolError::DetailsUnavailable)?;
@@ -170,7 +175,7 @@ impl ResetCardInventory {
 			return Err(ResetCardProtocolError::InventoryCountMismatch);
 		}
 
-		Ok(Self { available_cards, exact_ids })
+		Ok(Self { available_cards, exact_ids, quota_windows })
 	}
 
 	/// Number of complete available cards in this exact observation.
@@ -181,6 +186,11 @@ impl ResetCardInventory {
 	/// Public complete cards in provider order.
 	pub fn available_cards(&self) -> &[AvailableResetCardObservation] {
 		&self.available_cards
+	}
+
+	/// Return independent duration-typed quota observations decoded from this exact response.
+	pub const fn quota_windows(&self) -> &[AccountRateLimitObservation; 2] {
+		&self.quota_windows
 	}
 
 	/// Test whether the complete private inventory still contains one persisted exact identifier.
@@ -218,7 +228,26 @@ impl Debug for ResetCardInventory {
 		formatter
 			.debug_struct("ResetCardInventory")
 			.field("available_cards", &self.available_cards)
+			.field("quota_windows", &self.quota_windows)
 			.finish()
+	}
+}
+
+/// One required duration-typed quota result from the exact inventory response.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct AccountRateLimitObservation {
+	duration_minutes: u32,
+	result: Result<AccountQuotaWindow, AccountQuotaObservationError>,
+}
+impl AccountRateLimitObservation {
+	/// Exact required window duration.
+	pub const fn duration_minutes(self) -> u32 {
+		self.duration_minutes
+	}
+
+	/// Closed fact or bounded row-scoped error for this duration.
+	pub const fn result(self) -> Result<AccountQuotaWindow, AccountQuotaObservationError> {
+		self.result
 	}
 }
 impl<'de> Deserialize<'de> for ResetCardInventory {
@@ -459,6 +488,10 @@ impl Display for ResetCardResolutionError {
 #[serde(rename_all = "camelCase")]
 struct ResetCardInventoryWire {
 	#[serde(default)]
+	rate_limits: Option<Value>,
+	#[serde(default)]
+	rate_limits_by_limit_id: Option<Value>,
+	#[serde(default)]
 	rate_limit_reset_credits: Option<ResetCardSummaryWire>,
 }
 
@@ -499,6 +532,104 @@ impl<'de> Deserialize<'de> for ZeroizingWireText {
 	{
 		Ok(Self(Zeroizing::new(String::deserialize(deserializer)?)))
 	}
+}
+
+fn decode_quota_windows(
+	by_limit_id: Option<&Value>,
+	legacy: Option<&Value>,
+) -> [AccountRateLimitObservation; 2] {
+	let mut decoded =
+		BTreeMap::<u32, Result<AccountQuotaWindow, AccountQuotaObservationError>>::new();
+	let buckets = by_limit_id
+		.and_then(Value::as_object)
+		.filter(|buckets| !buckets.is_empty())
+		.map(|buckets| buckets.values().collect::<Vec<_>>())
+		.or_else(|| legacy.map(|bucket| vec![bucket]));
+
+	let Some(buckets) = buckets.filter(|buckets| buckets.len() <= 64) else {
+		return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
+	};
+	for bucket in buckets {
+		let Some(bucket) = bucket.as_object() else {
+			return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
+		};
+		for field in ["primary", "secondary"] {
+			let Some(window) = bucket.get(field) else { continue };
+			let Some(window) = window.as_object() else {
+				return required_quota_errors(AccountQuotaObservationError::ProtocolUnavailable);
+			};
+			let Some(duration) = window
+				.get("windowDurationMins")
+				.and_then(Value::as_u64)
+				.and_then(|value| u32::try_from(value).ok())
+			else {
+				continue;
+			};
+			if !matches!(
+				duration,
+				AccountQuotaWindow::FIVE_HOURS_MINUTES | AccountQuotaWindow::SEVEN_DAYS_MINUTES
+			) {
+				continue;
+			}
+			let parsed = parse_quota_window(duration, window);
+			if decoded.insert(duration, parsed).is_some() {
+				decoded.insert(duration, Err(AccountQuotaObservationError::ProtocolUnavailable));
+			}
+		}
+	}
+
+	[
+		quota_result(&decoded, AccountQuotaWindow::FIVE_HOURS_MINUTES),
+		quota_result(&decoded, AccountQuotaWindow::SEVEN_DAYS_MINUTES),
+	]
+}
+
+fn parse_quota_window(
+	duration_minutes: u32,
+	window: &serde_json::Map<String, Value>,
+) -> Result<AccountQuotaWindow, AccountQuotaObservationError> {
+	let used_percent = window
+		.get("usedPercent")
+		.and_then(Value::as_u64)
+		.and_then(|value| u8::try_from(value).ok())
+		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
+	let resets_at_seconds = window
+		.get("resetsAt")
+		.and_then(Value::as_i64)
+		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
+	let resets_at_micros = resets_at_seconds
+		.checked_mul(1_000_000)
+		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
+	AccountQuotaWindow::new(duration_minutes, used_percent, resets_at_micros)
+		.map_err(|_| AccountQuotaObservationError::ProtocolUnavailable)
+}
+
+fn quota_result(
+	decoded: &BTreeMap<u32, Result<AccountQuotaWindow, AccountQuotaObservationError>>,
+	duration_minutes: u32,
+) -> AccountRateLimitObservation {
+	AccountRateLimitObservation {
+		duration_minutes,
+		result: decoded
+			.get(&duration_minutes)
+			.copied()
+			.unwrap_or(Err(AccountQuotaObservationError::UnsupportedWindow)),
+	}
+}
+
+const fn required_quota_errors(
+	error: AccountQuotaObservationError,
+) -> [AccountRateLimitObservation; 2] {
+	[
+		AccountRateLimitObservation {
+			duration_minutes: AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			result: Err(error),
+		},
+		AccountRateLimitObservation {
+			duration_minutes: AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+			result: Err(error),
+		},
+	]
 }
 
 fn is_bounded_scalar(value: &str, max_bytes: usize) -> bool {

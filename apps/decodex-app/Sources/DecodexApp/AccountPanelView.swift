@@ -1,173 +1,159 @@
 import AppKit
-import Foundation
 import SwiftUI
 
 struct AccountPanelView: View {
-	let store: AccountStore
-	let resetCardStore: ResetCardStore
-	let loginWindowState: LoginWindowState
-	@Environment(\.colorScheme) var colorScheme
-	@State var accountScrollOffset: CGFloat = 0
-	@State var armedLogoutAccountID: String?
-	@State var deletingLogoutAccountID: String?
-	@State var logoutErrorMessage: String?
-	@State var measuredAccountListContentHeight: CGFloat = 0
-	@State var panelScreenVisibleFrame: CGRect?
-	@AppStorage("decodex.operator.accountPrivacy") var accountPrivacy = AccountPrivacy.hiddenValue
+	let store: ResetCardStore
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var panelScreenVisibleFrame: CGRect?
 
 	var body: some View {
 		GlassEffectContainer(spacing: 6) {
-			panelContent
-		}
-		.background {
-			LoginPanelPresenter(
-				store: store,
-				state: loginWindowState,
-				isPresented: loginWindowState.isPresented,
-				mode: loginWindowState.mode
-			)
-			.frame(width: 0, height: 0)
-		}
-		.onDisappear {
-			disarmLogout()
-		}
-	}
+			VStack(alignment: .leading, spacing: 7) {
+				header
 
-	private var panelContent: some View {
-		return VStack(alignment: .leading, spacing: 6) {
-			header
-			accountSummary
-
-			if telemetryMatrixIsVisible {
-				AccountTelemetryMatrixView(
-					aggregate: accountProfileAggregate,
-					usageEstimate: store.accountList?.usageEstimate,
-					accounts: store.accounts
-				)
-				.transition(.panelSection)
-			}
-
-			if let notice = store.notice {
-				NoticeView(notice: notice, onDismiss: store.clearNotice)
-					.id(notice.id)
+				if let message = store.message {
+					ResetCardMessageView(message: message) {
+						store.dismissMessage()
+					}
 					.transition(.panelSection)
+				}
+
+				if store.pendingAttempts.isEmpty == false {
+					ResetCardPendingAttemptsView(store: store)
+						.transition(.panelSection)
+				}
+
+				accountContent
 			}
-
-			if let usageProbeError = store.accountList?.usageProbeError {
-				NoticeView(
-					notice: .error(
-						"Some usage data is unavailable",
-						details: usageProbeError
-					)
-				)
-					.transition(.panelSection)
-			}
-
-			VNextResetCardsSectionView(store: resetCardStore)
-				.transition(.panelSection)
-
-			Group {
-				if store.isInitialLoading {
-					loadingState
-				} else if store.accounts.isEmpty {
-					emptyState
-				} else {
-					accountList
+			.frame(width: AccountPanelLayout.panelWidth)
+			.padding(9)
+			.modernGlassSurface(cornerRadius: 18, depth: .panel)
+			.controlSize(.small)
+			.symbolRenderingMode(.hierarchical)
+			.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
+			.sizesPanelWindowToContent { visibleFrame in
+				if panelScreenVisibleFrame != visibleFrame {
+					panelScreenVisibleFrame = visibleFrame
 				}
 			}
-			.transition(.panelSection)
-		}
-		.frame(width: 322)
-		.padding(9)
-		.modernGlassSurface(
-			cornerRadius: 18,
-			depth: .panel
-		)
-		.controlSize(.small)
-		.symbolRenderingMode(.hierarchical)
-		.animation(PanelMotion.panelLayout, value: panelAnimationKey)
-		.sizesPanelWindowToContent { visibleFrame in
-			if panelScreenVisibleFrame != visibleFrame {
-				panelScreenVisibleFrame = visibleFrame
-			}
 		}
 	}
 
-	private var accountList: some View {
-		ScrollView(.vertical, showsIndicators: false) {
-			accountRows
-				.background(accountScrollProbe)
-				.background(accountRowsHeightProbe)
-		}
-		.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
-		.frame(height: accountListViewportHeight)
-		.overlay(alignment: .trailing) {
-			AccountListScrollIndicatorView(
-				contentHeight: accountListContentHeight,
-				viewportHeight: accountListViewportHeight,
-				scrollOffset: accountScrollOffset
-			)
-			.padding(.trailing, 1)
-		}
-		.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
-			let maxOffset = max(0, accountListContentHeight - accountListViewportHeight)
-			accountScrollOffset = min(max(0, -minY), maxOffset)
-		}
-		.onPreferenceChange(AccountRowsHeightPreferenceKey.self) { height in
-			let measuredHeight = ceil(height)
-			if abs(measuredAccountListContentHeight - measuredHeight) > 0.5 {
-				measuredAccountListContentHeight = measuredHeight
+	private var header: some View {
+		HStack(alignment: .center, spacing: 8) {
+			Image(nsImage: AppAssets.statusBarIcon)
+				.resizable()
+				.renderingMode(.template)
+				.scaledToFit()
+				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+				.frame(width: 20, height: 20)
+				.frame(width: 28, height: 28)
+				.accessibilityHidden(true)
+
+			VStack(alignment: .leading, spacing: 2) {
+				Text("Decodex")
+					.font(PanelFont.headerTitle)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				Text(headerSubtitle)
+					.font(PanelFont.headerSubtitle)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
 			}
-		}
-		.onChange(of: accountListNeedsScrolling) { _, needsScrolling in
-			if needsScrolling == false {
-				accountScrollOffset = 0
-			}
-		}
-	}
+			.layoutPriority(1)
 
-	private var accountRows: some View {
-		let accounts = store.accounts
+			Spacer(minLength: 4)
 
-		return VStack(spacing: 0) {
-			ForEach(Array(accounts.enumerated()), id: \.element.id) { index, account in
-				let runs = operatorCurrentLaneCards(for: account)
-
-				AccountRowView(
-					account: account,
-					runs: runs,
-					displayName: displayName(for: account),
-					showsDivider: index < accounts.count - 1,
-					isLogoutArmed: armedLogoutAccountID == account.id,
-					isLogoutPending: deletingLogoutAccountID == account.id,
-					logoutErrorMessage: armedLogoutAccountID == account.id ? logoutErrorMessage : nil,
-					usageRefillAnimation: store.usageRefillAnimations[account.accountFingerprint],
-					useInCodex: {
-						Task {
-							await store.useInCodex(account)
-						}
-					},
-					routeRunsHere: {
-						Task {
-							await store.select(account)
-						}
-					},
-					login: {
-						presentLogin(.account(displayName(for: account)))
-					},
-					logout: {
-						requestLogout(account)
-					},
-					cancelLogout: {
-						disarmLogout()
-					},
-					confirmLogout: {
-						confirmLogout(account)
+			PanelIconButtonView(
+				symbol: "arrow.clockwise",
+				tint: PanelPalette.secondaryText(colorScheme),
+				isActive: false,
+				isDisabled: store.isRefreshing || store.submittingKey != nil,
+				isSubtle: true,
+				size: 22,
+				action: {
+					Task {
+						await store.refresh()
 					}
+				},
+				help: "Refresh accounts and Reset Cards"
+			)
+
+			PanelIconButtonView(
+				symbol: "power",
+				tint: PanelPalette.secondaryText(colorScheme),
+				isActive: false,
+				isSubtle: true,
+				size: 22,
+				action: {
+					NSApplication.shared.terminate(nil)
+				},
+				help: "Quit Decodex"
+			)
+		}
+		.padding(.horizontal, 2)
+	}
+
+	private var headerSubtitle: String {
+		if store.isInitialLoading, store.accounts.isEmpty {
+			return "Loading accounts"
+		}
+		let count = store.accounts.count
+		return "\(count) account\(count == 1 ? "" : "s") · usage and Reset Cards"
+	}
+
+	@ViewBuilder
+	private var accountContent: some View {
+		if store.accounts.isEmpty {
+			emptyOrLoadingState
+		} else {
+			ScrollView(.vertical, showsIndicators: true) {
+				LazyVStack(alignment: .leading, spacing: AccountPanelLayout.accountRowSpacing) {
+					ForEach(store.accounts) { state in
+						ResetCardAccountRow(
+							state: state,
+							store: store
+						)
+					}
+				}
+				.padding(.trailing, 2)
+			}
+			.frame(
+				height: AccountPanelLayout.accountListHeight(
+					accountCount: store.accounts.count,
+					windowVisibleFrame: panelScreenVisibleFrame
 				)
-				.transition(.accountRowRemoval)
+			)
+			.accessibilityLabel("Decodex accounts")
+		}
+	}
+
+	private var emptyOrLoadingState: some View {
+		HStack(alignment: .center, spacing: 8) {
+			if store.isInitialLoading {
+				ProgressView()
+					.controlSize(.small)
+			} else {
+				Image(systemName: store.hasLoaded ? "person.2.slash" : "bolt.horizontal.circle")
+					.font(PanelFont.emptyIcon)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			}
+
+			VStack(alignment: .leading, spacing: 2) {
+				Text(store.isInitialLoading ? "Loading accounts" : "No accounts")
+					.font(PanelFont.emptyTitle)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				Text(
+					store.hasLoaded
+						? "Import an account with the Decodex CLI, then refresh."
+						: "The account service has not returned a complete list."
+				)
+				.font(PanelFont.emptyBody)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.fixedSize(horizontal: false, vertical: true)
 			}
 		}
-		.animation(PanelMotion.accountRemoval, value: accounts.map(\.id))
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(9)
+		.modernGlassSurface(cornerRadius: 9, depth: .row)
 	}
 }

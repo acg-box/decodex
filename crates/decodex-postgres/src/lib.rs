@@ -4,23 +4,27 @@
 //! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
 //! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
 //! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
-//! immutable global RoleProfiles, inert ManagedRuns, fail-closed effect barriers, and current-row
+//! immutable global RoleProfiles, inert ManagedRuns, and current-row
 //! managed-repository authority with append-only operations/evidence, plus revisioned routing
 //! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
 //! Codex experiment intent, two one-shot fences, exact start receipts, retained-title
 //! attestations, and positive observations, plus atomic routing decisions and
 //! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
 //! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
-//! cancellation, supersession, and fresh-routing requests. It does not compose a scheduler,
-//! dispatch work, switch credentials, advance runs,
-//! replay turns or effects, or expose protocol/client behavior.
+//! cancellation, supersession, and fresh-routing requests, plus durable fenced ProcessGenerations,
+//! exact process identities, append-only positive death evidence, generic ProviderAttempts
+//! with positive-only outcome evidence, and read-only execution-decision projection. It does not
+//! compose a scheduler, dispatch work, switch
+//! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
 
+mod account_lifecycle;
 mod accounts;
 mod authority;
 mod continuations;
 mod conversations;
 mod error;
 mod exact_commands;
+mod execution_decisions;
 mod experiments;
 mod leases;
 mod managed_repositories;
@@ -28,8 +32,10 @@ mod managed_runs;
 mod migrations;
 mod outbox;
 mod policies;
+mod process_generations;
 mod programs;
 mod project_agents;
+mod provider_attempts;
 mod quota;
 mod reset_cards;
 mod role_profiles;
@@ -42,6 +48,12 @@ mod wakes;
 mod work_items;
 
 pub use self::{
+	account_lifecycle::{
+		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
+		AccountCommandReceiptLease, AccountLifecycleMutation, AccountLifecycleMutationOutcome,
+		AccountLifecycleRejection, AccountOperationPreparation, AccountStoreObservation,
+		CodexAccountCapabilityAttestation, RoutingControlOutcome,
+	},
 	continuations::{ContinuationPlanEffect, PlanContinuation},
 	conversations::{
 		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
@@ -49,6 +61,7 @@ pub use self::{
 		StoredArtifact, StoredConversation,
 	},
 	error::{BootstrapFailure, StoreError},
+	execution_decisions::{ExecutionDecisionReadback, ExecutionQuotaExclusion},
 	experiments::{
 		AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
 		CodexExperimentCreationFenceOutcome, CodexExperimentStartReceipt,
@@ -61,12 +74,17 @@ pub use self::{
 		RepositoryPreparationOutcome, RepositoryReadbackEvidence, RepositoryReadbackWork,
 		RepositoryReconciliationOutcome, RepositoryRestartState,
 	},
-	managed_runs::{
-		ManagedRunEffectBarrier, ManagedRunEffectBarrierState, ManagedRunEffectKind,
-		ManagedRunEffectLineage, ManagedRunSafetyEffect, ManagedRunSafetyOutcome,
-		ManagedRunSafetyRejection, StoredManagedRun,
+	managed_runs::{ManagedRunProviderAttempt, StoredManagedRun},
+	process_generations::{
+		FreshProcessGenerationFence, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
 	},
 	programs::{ObjectiveRecord, ProgramRecord, UpdateProgramContext},
+	provider_attempts::{
+		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
+		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
+		ProviderAttemptRejection,
+	},
 	reset_cards::{
 		ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus, ResetCardPreparation,
 	},
@@ -98,35 +116,47 @@ pub use self::{
 	},
 };
 pub use decodex_core::{
-	AcceptedPolicyRevision, AccountId, AccountState, AdmissionDescriptorDigest,
-	AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint,
-	AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
-	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
-	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
-	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, EffectId, ExactCommitEvidence,
-	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
-	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedRepositoryError,
-	ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError,
-	ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
-	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
-	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
-	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
-	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
-	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence, Program,
+	AcceptedPolicyRevision, AccountId, AccountLifecycleReadiness, AccountOperation,
+	AccountOperationId, AccountOperationKind, AccountOperationPhase, AccountProvider,
+	AccountQuotaWindow, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+	AccountSelectionRecovery, AccountState, AdmissionDescriptorDigest, AdmittedRepositoryIdentity,
+	Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint, AllocateRepositoryCommand,
+	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand, CanonicalCommitIntent,
+	CanonicalOperationDescriptor, CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest,
+	ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
+	CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
+	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
+	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
+	ExecutorContractVersion, ManagedExecutionId, ManagedRepositoryError, ManagedRepositoryFacts,
+	ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity,
+	ManagedRunLifecycle, ManagedRunPhase, ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId,
+	NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId,
+	ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy,
+	PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
+	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
+	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind,
+	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
+	ProcessGenerationError, ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState,
+	ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity, ProcessStartIdentity, Program,
 	ProgramCorrelationId, ProgramError, ProgramId, ProgramMetric, ProgramObservationId,
 	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
 	Project, ProjectAuthority, ProjectId, ProjectMetadata, ProjectMetadataValue,
-	ProjectRepositoryBinding, ProjectStatus, RegistrationEvidence, RegistrationReadbackRequest,
-	RegistrationTarget, RepositoryAdmissionDescriptor, RepositoryAdmissionDescriptorVersion,
-	RepositoryAdmissionFacts, RepositoryAdmittedGitLayout, RepositoryAllocationId,
-	RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor, RepositoryCommitActorEmail,
-	RepositoryCommitActorName, RepositoryCommitMessage, RepositoryContentRevision,
-	RepositoryEvidenceId, RepositoryGitRegistrationRole, RepositoryIdentity,
-	RepositoryObservationPath, RepositoryObservedObjectType, RepositoryOperationId,
-	RepositoryOperationKind, RepositoryOperationResult, RepositoryOperationState,
-	RepositoryPathObservation, RepositoryPathRegistrationRole, RepositoryReferenceName,
-	RepositoryRegistrationId, ReviewCadence, SafetyObservationId, SameThreadContinuationEvidence,
-	SubmittedTurnReceiptId, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
+	ProjectRepositoryBinding, ProjectStatus, ProviderAttempt, ProviderAttemptConsumer,
+	ProviderAttemptError, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+	ProviderAttemptUnknownReason, ProviderDuplicateRisk, ProviderEvidenceId,
+	ProviderEvidenceSource, ProviderIdentity, ProviderPositiveEvidence, ProviderRequestId,
+	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RegistrationEvidence,
+	RegistrationReadbackRequest, RegistrationTarget, RepositoryAdmissionDescriptor,
+	RepositoryAdmissionDescriptorVersion, RepositoryAdmissionFacts, RepositoryAdmittedGitLayout,
+	RepositoryAllocationId, RepositoryAmbiguity, RepositoryAuthorityTip, RepositoryCommitActor,
+	RepositoryCommitActorEmail, RepositoryCommitActorName, RepositoryCommitMessage,
+	RepositoryContentRevision, RepositoryEvidenceId, RepositoryGitRegistrationRole,
+	RepositoryIdentity, RepositoryObservationPath, RepositoryObservedObjectType,
+	RepositoryOperationId, RepositoryOperationKind, RepositoryOperationResult,
+	RepositoryOperationState, RepositoryPathObservation, RepositoryPathRegistrationRole,
+	RepositoryReferenceName, RepositoryRegistrationId, ReviewCadence,
+	SameThreadContinuationEvidence, WaitingUsageWakeCommandOutcome, WaitingUsageWakeLease,
 	WaitingUsageWakeRejection, WaitingUsageWakeState, WaitingUsageWakeTerminalReason,
 	WaitingUsageWakeTransition, WaitingUsageWakeTransitionKind, WorkItem, WorkItemCorrelationId,
 	WorkItemEdge, WorkItemEdgeKind, WorkItemError, WorkItemId, WorkItemNode, WorkItemObjectiveRef,
@@ -202,23 +232,34 @@ impl PostgresStore {
 		authority::execution_path_contract_fixture()
 	}
 
-	/// Evaluate the production non-digest authority predicates for capture-only evidence.
+	/// Evaluate the production runtime-routine authority query without exporting catalog values.
+	#[cfg(feature = "test-support")]
+	#[doc(hidden)]
+	pub async fn runtime_routine_authority_fixture(client: &TokioClient) -> Result<(), StoreError> {
+		authority::runtime_routine_authority_fixture(client).await
+	}
+
+	/// Evaluate and serialize the finalized production semantic-authority contract.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
 	pub async fn semantic_authority_fixture(
 		client: &TokioClient,
 		runtime_role: &str,
-	) -> Result<Vec<(&'static str, bool)>, StoreError> {
+	) -> Result<serde_json::Value, StoreError> {
 		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
-	/// Parse and prepare the five V22 retained-title SQL sources without executing them.
+	/// Parse and prepare every changed V22/V27 embedded SQL source without executing it.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
-	pub async fn prepare_retained_title_sql_fixture(
-		client: &TokioClient,
-	) -> Result<(), StoreError> {
-		experiments::prepare_retained_title_sql(client).await
+	pub async fn prepare_changed_sql_fixture(client: &TokioClient) -> Result<usize, StoreError> {
+		let retained_title = experiments::prepare_retained_title_sql(client).await?;
+		let account_lifecycle = account_lifecycle::prepare_account_lifecycle_sql(client).await?;
+		let process_generation =
+			process_generations::prepare_account_bound_process_generation_sql(client).await?;
+		let reset_card = reset_cards::prepare_account_bound_reset_card_sql(client).await?;
+
+		Ok(retained_title + account_lifecycle + process_generation + reset_card)
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.
@@ -239,6 +280,37 @@ impl PostgresStore {
 		let runtime = connection_config(config, config.runtime(), runtime_password);
 
 		Self::connect(migration, runtime, config.expected_peer_uid()).await
+	}
+
+	/// Apply embedded migrations and install the exact steady-state runtime authority through one
+	/// single-use migration connection. No migration credential enters the retained runtime pool.
+	#[cfg(unix)]
+	pub async fn migrate_and_provision_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+	) -> Result<(), StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let result = async {
+			migrations::run(&mut client).await?;
+			authority::provision_runtime(&client, config.database(), config.runtime().user())
+				.await?;
+			migrations::verify(&client).await
+		}
+		.await;
+		drop(client);
+		pool.close();
+
+		result
 	}
 
 	/// Connect two explicit identities to one Unix-socket endpoint. The migration
@@ -333,6 +405,58 @@ impl PostgresStore {
 		let connector = verified_socket_connect(&config, expected_peer_uid)?;
 
 		Self::migrate_with_connector(config, connector).await
+	}
+
+	/// Install or verify one external ProcessGeneration execution epoch through a single-use
+	/// migration connection. The runtime pool never receives table authority or this method's
+	/// external digest from PostgreSQL.
+	#[cfg(unix)]
+	pub async fn provision_process_execution_authorization_explicit(
+		config: &PostgresConnectionConfig,
+		migration_password: Option<&str>,
+		authorization: &ProcessExecutionAuthorization,
+	) -> Result<(), StoreError> {
+		let mut migration = connection_config(config, config.migration(), migration_password);
+		validate_connection(&migration)?;
+		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
+		pin_session_search_path(&mut migration);
+		let manager = Manager::from_connect(
+			migration,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager).max_size(1).build()?;
+		let mut client = checkout(&pool, &connector).await?;
+		let transaction = client.transaction().await?;
+		transaction
+			.execute(
+				"INSERT INTO decodex.process_generation_execution_epochs(\
+				 execution_epoch_id,authorization_digest,authorized_at,retired_at) \
+				 VALUES($1::text::uuid,$2,pg_catalog.clock_timestamp(),NULL) \
+				 ON CONFLICT (execution_epoch_id) DO NOTHING",
+				&[&authorization.epoch_id.as_str(), &authorization.authorization_digest],
+			)
+			.await?;
+		let active = transaction
+			.query(
+				"SELECT execution_epoch_id::text,authorization_digest \
+				 FROM decodex.process_generation_execution_epochs \
+				 WHERE retired_at IS NULL FOR UPDATE",
+				&[],
+			)
+			.await?;
+		if active.len() != 1
+			|| active[0].get::<_, &str>(0) != authorization.epoch_id.as_str()
+			|| active[0].get::<_, &str>(1) != authorization.authorization_digest.as_str()
+		{
+			return Err(StoreError::InvalidInput(
+				"active ProcessGeneration execution authorization conflicts",
+			));
+		}
+		transaction.commit().await?;
+		drop(client);
+		pool.close();
+		Ok(())
 	}
 
 	/// Apply the immutable migration ledger only through V7 for V8 boundary fixtures.

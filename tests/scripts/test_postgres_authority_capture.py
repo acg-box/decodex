@@ -20,6 +20,18 @@ SPEC.loader.exec_module(POSTGRES_STORE_TEST)
 
 SOURCE_BINDING = {"head": "a" * 40, "tree": "b" * 40}
 DATABASE = "decodex_xy1300_authority_capture"
+FIXTURE_SEMANTIC_AUTHORITY_DEFINITION = {
+    "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
+    "predicates": [
+        {"name": "fixture_unsafe", "classification": "unsafe"},
+        {"name": "fixture_incompatible", "classification": "incompatible"},
+    ],
+}
+FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT = (
+    POSTGRES_STORE_TEST.semantic_authority_definition_fingerprint(
+        FIXTURE_SEMANTIC_AUTHORITY_DEFINITION
+    )
+)
 
 
 def component(*, available, complete, error=None, manifest=None):
@@ -47,13 +59,37 @@ def envelope(schema, authority=None, binding=None):
         ),
         "binding": binding,
         "semantic_authority": {
-            "predicates": [
-                {"name": name, "passed": True}
-                for name in POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES
+            "definition": json.loads(json.dumps(
+                FIXTURE_SEMANTIC_AUTHORITY_DEFINITION
+            )),
+            "fingerprint": FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT,
+            "observations": [
+                {"name": predicate["name"], "passed": True}
+                for predicate in FIXTURE_SEMANTIC_AUTHORITY_DEFINITION["predicates"]
             ],
             "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
         },
         "sequence_state": [],
+    }
+
+
+def semantic_authority_evidence(predicates, passed):
+    if len(predicates) != len(passed):
+        raise ValueError("semantic authority fixture cardinality differs")
+    definition = {
+        "predicates": json.loads(json.dumps(predicates)),
+        "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
+    }
+    return {
+        "definition": definition,
+        "fingerprint": (
+            POSTGRES_STORE_TEST.semantic_authority_definition_fingerprint(definition)
+        ),
+        "observations": [
+            {"name": predicate["name"], "passed": observation}
+            for predicate, observation in zip(predicates, passed)
+        ],
+        "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
     }
 
 
@@ -101,6 +137,16 @@ def runtime_authority(database):
 
 
 class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
+    def setUp(self):
+        self.supported_fingerprint = mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT",
+            FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT,
+        )
+
+        self.supported_fingerprint.start()
+        self.addCleanup(self.supported_fingerprint.stop)
+
     def test_bootstrap_config_rejects_overlong_local_transport_path(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary) / ("x" * 104)
@@ -151,6 +197,27 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
                 DATABASE,
                 source_binding=SOURCE_BINDING,
                 secret_markers=("xy1300-secret",),
+            )
+        message = str(failure.exception)
+        return artifact, message, json.loads(message[message.index("{") :])
+
+    def candidate_failure(
+        self,
+        document,
+        *,
+        checkpoint="source",
+        database=DATABASE,
+        source_binding=SOURCE_BINDING,
+        secret_markers=("xy1300-secret",),
+    ):
+        artifact = json.dumps(document, separators=(",", ":")).encode()
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+            POSTGRES_STORE_TEST.parse_candidate_capture_manifest(
+                artifact,
+                checkpoint,
+                database,
+                source_binding=source_binding,
+                secret_markers=secret_markers,
             )
         message = str(failure.exception)
         return artifact, message, json.loads(message[message.index("{") :])
@@ -473,37 +540,509 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
                 )
                 self.assertEqual(evidence, expected)
 
-    def test_semantic_authority_failure_reports_only_bounded_predicate_names(self):
-        document = envelope(component(available=True, complete=True, manifest="[]"))
-        for predicate in document["semantic_authority"]["predicates"]:
-            if predicate["name"] in {"schema_usage", "exact_table_authority"}:
-                predicate["passed"] = False
+    def test_candidate_semantic_failure_is_complete_ordered_canonical_and_redacted(self):
+        predicates = [
+            {"name": "zeta_unsafe", "classification": "unsafe"},
+            {
+                "name": "alpha_conditional",
+                "classification": "unsafe_if_excess_otherwise_incompatible",
+            },
+            {"name": "middle_incompatible", "classification": "incompatible"},
+        ]
+        private_database = "decodex_private_database"
+        private_error = "private-error-text"
+        private_sql = "SELECT private_catalog_value"
+        private_path = "/private/authority-candidate.json"
+        document = envelope(
+            component(
+                available=True,
+                complete=True,
+                manifest=json.dumps([
+                    [
+                        "relation",
+                        ["private_role", private_path],
+                        json.dumps([private_sql]),
+                    ],
+                ]),
+            ),
+            authority=component(
+                available=False,
+                complete=False,
+                error=json.dumps({
+                    "classification": "database_error",
+                    "message": private_error,
+                    "message_truncated": False,
+                    "schema": POSTGRES_STORE_TEST.MANIFEST_QUERY_ERROR_SCHEMA,
+                    "sqlstate": "42501",
+                }),
+            ),
+            binding={
+                key: private_database
+                for key in (
+                    "requested",
+                    "migration_url",
+                    "runtime_url",
+                    "observed_migration",
+                    "observed_runtime",
+                )
+            },
+        )
+        document["sequence_state"] = [{
+            "actual_count": 41,
+            "credential": "private-credential",
+            "expected_count": 40,
+        }]
+        document["semantic_authority"] = semantic_authority_evidence(
+            predicates, [False, False, True]
+        )
+        fingerprint = document["semantic_authority"]["fingerprint"]
 
-        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
-            POSTGRES_STORE_TEST.require_capture_semantic_authority(
-                document, "source", secret_markers=("xy1300-secret",)
+        with mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT",
+            fingerprint,
+        ):
+            _, message, result = self.candidate_failure(
+                document,
+                database=private_database,
+                secret_markers=(
+                    private_database,
+                    private_error,
+                    private_sql,
+                    private_path,
+                    "private-credential",
+                ),
             )
 
-        message = str(failure.exception)
-        diagnostic = json.loads(message[message.index("{") :])
-        self.assertEqual(diagnostic, {
+        expected = {
             "checkpoint": "source",
-            "failed_predicates": ["exact_table_authority", "schema_usage"],
-            "predicate_count": len(POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_PREDICATES),
-            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "definition_fingerprint": fingerprint,
+            "failures": [
+                {"failure_policy": "unsafe", "predicate": "zeta_unsafe"},
+                {
+                    "failure_policy": (
+                        "unsafe_if_excess_otherwise_incompatible"
+                    ),
+                    "predicate": "alpha_conditional",
+                },
+            ],
+            "schema": "decodex/postgres-semantic-authority-diagnostic/2",
+            "source_binding": SOURCE_BINDING,
+        }
+        serialized = json.dumps(
+            expected, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+        )
+        self.assertEqual(
+            message,
+            "authority candidate semantic diagnostic: " + serialized,
+        )
+        self.assertEqual(result, expected)
+        self.assertEqual(set(result), {
+            "checkpoint",
+            "definition_fingerprint",
+            "failures",
+            "schema",
+            "source_binding",
         })
-        self.assertNotIn(DATABASE, message)
+        self.assertTrue(all(
+            set(failure) == {"failure_policy", "predicate"}
+            for failure in result["failures"]
+        ))
+        for forbidden in (
+            "middle_incompatible",
+            private_database,
+            private_error,
+            private_sql,
+            private_path,
+            "private_role",
+            "private-credential",
+            "actual_count",
+            "expected_count",
+            "concrete_class",
+            "all_passed",
+            "evidence_sha256",
+            "predicate_count",
+            "row_count",
+            "observations",
+            "manifest",
+            "actual_sha256",
+            "expected_sha256",
+            "candidate_digest_mismatch",
+        ):
+            self.assertNotIn(forbidden, message)
 
-    def test_semantic_authority_evidence_requires_the_canonical_predicate_order(self):
+    def test_candidate_semantic_malformed_inputs_never_emit_failure_identities(self):
+        def false_document():
+            document = envelope(
+                component(available=True, complete=True, manifest="[]")
+            )
+            document["semantic_authority"]["observations"][0]["passed"] = False
+            return document
+
+        def unsupported_definition(document):
+            predicates = [
+                *document["semantic_authority"]["definition"]["predicates"],
+                {"name": "attempted_extra", "classification": "unsafe"},
+            ]
+            document["semantic_authority"] = semantic_authority_evidence(
+                predicates, [False, True, True]
+            )
+
+        mutations = {
+            "shape": lambda document: document.__setitem__("extra", True),
+            "wrong_schema": lambda document: document["semantic_authority"].__setitem__(
+                "schema", "decodex/attempted-semantic-authority/99"
+            ),
+            "wrong_definition_schema": (
+                lambda document: document["semantic_authority"]["definition"].__setitem__(
+                    "schema", "decodex/attempted-definition/99"
+                )
+            ),
+            "wrong_emitted_fingerprint": (
+                lambda document: document["semantic_authority"].__setitem__(
+                    "fingerprint", "0" * 64
+                )
+            ),
+            "unsupported_recomputed_fingerprint": unsupported_definition,
+            "invalid_name": (
+                lambda document: document["semantic_authority"]["definition"][
+                    "predicates"
+                ][0].__setitem__("name", "attempted-name")
+            ),
+            "unknown_policy": (
+                lambda document: document["semantic_authority"]["definition"][
+                    "predicates"
+                ][0].__setitem__("classification", "attempted_policy")
+            ),
+            "missing_observation": (
+                lambda document: document["semantic_authority"][
+                    "observations"
+                ].pop()
+            ),
+            "extra_observation": (
+                lambda document: document["semantic_authority"][
+                    "observations"
+                ].append({"name": "attempted_extra", "passed": True})
+            ),
+            "duplicate_observation": (
+                lambda document: document["semantic_authority"][
+                    "observations"
+                ].__setitem__(
+                    1,
+                    {
+                        "name": document["semantic_authority"]["observations"][0][
+                            "name"
+                        ],
+                        "passed": True,
+                    },
+                )
+            ),
+            "reordered_observation": (
+                lambda document: document["semantic_authority"][
+                    "observations"
+                ].reverse()
+            ),
+            "non_boolean": (
+                lambda document: document["semantic_authority"]["observations"][
+                    0
+                ].__setitem__("passed", 1)
+            ),
+            "database_binding": (
+                lambda document: document["binding"].__setitem__(
+                    "requested", "attempted_database"
+                )
+            ),
+        }
+        for case, mutate in mutations.items():
+            with self.subTest(case=case):
+                document = false_document()
+                mutate(document)
+                _, message, result = self.candidate_failure(document)
+                self.assertEqual(
+                    result["artifact"]["classification"], "artifact_malformed"
+                )
+                self.assertNotIn("failures", message)
+                self.assertNotIn("fixture_unsafe", message)
+                self.assertNotIn("attempted", message)
+
+        for case, checkpoint, source_binding in (
+            ("invalid_checkpoint", "restored", SOURCE_BINDING),
+            (
+                "invalid_source_binding",
+                "source",
+                {"head": "A" * 40, "tree": "b" * 40},
+            ),
+        ):
+            with self.subTest(case=case):
+                _, message, result = self.candidate_failure(
+                    false_document(),
+                    checkpoint=checkpoint,
+                    source_binding=source_binding,
+                )
+                self.assertEqual(
+                    result["artifact"]["classification"], "artifact_malformed"
+                )
+                self.assertNotIn("failures", message)
+                self.assertNotIn("fixture_unsafe", message)
+                self.assertNotIn(checkpoint, message)
+
+    def test_candidate_semantic_serialization_and_redaction_fail_closed(self):
         document = envelope(component(available=True, complete=True, manifest="[]"))
-        predicates = document["semantic_authority"]["predicates"]
-        predicates[0], predicates[1] = predicates[1], predicates[0]
+        failed_predicate = document["semantic_authority"]["observations"][0]["name"]
+        document["semantic_authority"]["observations"][0]["passed"] = False
 
+        with mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "_serialize_semantic_authority_diagnostic",
+            side_effect=TypeError("attempted serialization detail"),
+        ):
+            _, serialization_message, serialization_result = self.candidate_failure(
+                document
+            )
+        _, redaction_message, redaction_result = self.candidate_failure(
+            document, secret_markers=(failed_predicate,)
+        )
+
+        for message, result in (
+            (serialization_message, serialization_result),
+            (redaction_message, redaction_result),
+        ):
+            self.assertEqual(
+                result["artifact"]["classification"], "artifact_malformed"
+            )
+            self.assertNotIn("failures", message)
+            self.assertNotIn(failed_predicate, message)
+            self.assertNotIn("attempted serialization detail", message)
+
+    def test_candidate_semantic_all_true_path_preserves_summary(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        artifact = json.dumps(document, separators=(",", ":")).encode()
+
+        parsed, summary = POSTGRES_STORE_TEST.parse_candidate_capture_manifest(
+            artifact,
+            "source",
+            DATABASE,
+            source_binding=SOURCE_BINDING,
+            secret_markers=("xy1300-secret",),
+        )
+
+        evidence = document["semantic_authority"]
+        self.assertEqual(parsed, document)
+        self.assertEqual(summary, {
+            "all_passed": True,
+            "definition_schema": (
+                POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DEFINITION_SCHEMA
+            ),
+            "evidence_sha256": hashlib.sha256(json.dumps(
+                evidence,
+                sort_keys=True,
+                separators=(",", ":"),
+                ensure_ascii=True,
+            ).encode()).hexdigest(),
+            "fingerprint": FIXTURE_SEMANTIC_AUTHORITY_FINGERPRINT,
+            "observation_count": 2,
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_SCHEMA,
+        })
+
+    def test_shared_retained_title_loader_still_rejects_false_evidence(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        document["semantic_authority"]["observations"][0]["passed"] = False
+        with tempfile.TemporaryDirectory() as directory:
+            artifact_path = Path(directory) / "retained-title.json"
+            artifact_path.write_text(json.dumps(document), encoding="utf-8")
+            with self.assertRaises(POSTGRES_STORE_TEST.TestFailure) as failure:
+                POSTGRES_STORE_TEST.load_capture_manifest(
+                    artifact_path,
+                    "retained_title",
+                    DATABASE,
+                    source_binding=SOURCE_BINDING,
+                    secret_markers=("xy1300-secret",),
+                )
+
+        message = str(failure.exception)
+        result = json.loads(message[message.index("{") :])
+        self.assertEqual(result["artifact"]["classification"], "artifact_malformed")
+        self.assertNotIn("authority candidate semantic diagnostic", message)
+        self.assertNotIn("fixture_unsafe", message)
+
+    def test_phase_a_false_semantic_path_stops_before_digest_or_receipt_work(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        document["semantic_authority"]["observations"][0]["passed"] = False
+        artifact = json.dumps(document, separators=(",", ":")).encode()
+
+        with tempfile.TemporaryDirectory() as directory:
+            work = Path(directory)
+
+            def write_manifest(path, *_args, **_kwargs):
+                path.write_bytes(artifact)
+
+            with mock.patch.multiple(
+                POSTGRES_STORE_TEST,
+                authority_candidate_phase_fields=mock.DEFAULT,
+                authority_manifest_evidence=mock.DEFAULT,
+                capture_migration_ledger=mock.DEFAULT,
+                capture_runtime_authority=mock.DEFAULT,
+                capture_upgrade_anchor_binding=mock.DEFAULT,
+                capture_upgrade_runtime_authority=mock.DEFAULT,
+                capture_upgrade_type_bindings=mock.DEFAULT,
+                capture_zero_grantee_migration_authority=mock.DEFAULT,
+                create_database=mock.DEFAULT,
+                dump_schema_manifest=mock.DEFAULT,
+                frozen_source_binding=mock.DEFAULT,
+                provision_runtime=mock.DEFAULT,
+                psql=mock.DEFAULT,
+                psql_as=mock.DEFAULT,
+                run=mock.DEFAULT,
+                run_migration=mock.DEFAULT,
+                run_migration_through_v24=mock.DEFAULT,
+                rust_digest_constant=mock.DEFAULT,
+                set_contract_urls=mock.DEFAULT,
+            ) as patched:
+                patched["frozen_source_binding"].return_value = SOURCE_BINDING
+                patched["psql"].return_value = json.dumps({
+                    "major": 18,
+                    "version": "PostgreSQL 18",
+                    "version_num": 180000,
+                })
+                patched["capture_migration_ledger"].return_value = []
+                patched["dump_schema_manifest"].side_effect = write_manifest
+
+                with self.assertRaisesRegex(
+                    POSTGRES_STORE_TEST.TestFailure,
+                    "^authority candidate semantic diagnostic: ",
+                ):
+                    POSTGRES_STORE_TEST.run_authority_candidate_capture(
+                        Path(directory),
+                        5432,
+                        work,
+                        work / "postgres.log",
+                        {},
+                        (),
+                    )
+
+                self.assertEqual(
+                    patched["frozen_source_binding"].call_count, 1
+                )
+                patched["rust_digest_constant"].assert_not_called()
+                patched["authority_manifest_evidence"].assert_not_called()
+                patched["authority_candidate_phase_fields"].assert_not_called()
+                patched["run"].assert_not_called()
+
+    def test_semantic_authority_definition_fingerprint_is_independently_recomputed(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        observations = POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+            document["semantic_authority"]
+        )
+        self.assertEqual(
+            [observation["name"] for observation in observations],
+            ["fixture_unsafe", "fixture_incompatible"],
+        )
+
+        document["semantic_authority"]["fingerprint"] = "0" * 64
         with self.assertRaisesRegex(
-            POSTGRES_STORE_TEST.TestFailure, "predicate contract differs"
+            POSTGRES_STORE_TEST.TestFailure, "emitted fingerprint differs"
         ):
             POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
                 document["semantic_authority"]
+            )
+
+    def test_semantic_authority_definition_must_match_the_supported_fingerprint(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        with mock.patch.object(
+            POSTGRES_STORE_TEST,
+            "SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT",
+            "f" * 64,
+        ):
+            with self.assertRaisesRegex(
+                POSTGRES_STORE_TEST.TestFailure, "definition is not supported"
+            ):
+                POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                    document["semantic_authority"]
+                )
+
+    def test_semantic_authority_evidence_rejects_reordered_observations(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        observations = document["semantic_authority"]["observations"]
+        observations[0], observations[1] = observations[1], observations[0]
+
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "observation order differs"
+        ):
+            POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                document["semantic_authority"]
+            )
+
+    def test_semantic_authority_evidence_rejects_missing_duplicate_and_extra_observations(self):
+        mutations = {
+            "missing": lambda observations: observations.pop(),
+            "duplicate": lambda observations: observations.__setitem__(
+                1, {"name": observations[0]["name"], "passed": True}
+            ),
+            "extra": lambda observations: observations.append(
+                {"name": "fixture_extra", "passed": True}
+            ),
+        }
+        for case, mutate in mutations.items():
+            with self.subTest(case=case):
+                document = envelope(
+                    component(available=True, complete=True, manifest="[]")
+                )
+                mutate(document["semantic_authority"]["observations"])
+                with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+                    POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                        document["semantic_authority"]
+                    )
+
+    def test_semantic_authority_evidence_rejects_non_boolean_and_false_observations(self):
+        for case, value, pattern in (
+            ("non_boolean", 1, "invalid semantic authority observation"),
+            ("false", False, "failed observation"),
+        ):
+            with self.subTest(case=case):
+                document = envelope(
+                    component(available=True, complete=True, manifest="[]")
+                )
+                document["semantic_authority"]["observations"][0]["passed"] = value
+                with self.assertRaisesRegex(
+                    POSTGRES_STORE_TEST.TestFailure, pattern
+                ):
+                    POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                        document["semantic_authority"]
+                    )
+
+    def test_semantic_authority_evidence_rejects_malformed_definition(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        document["semantic_authority"]["definition"]["predicates"][0]["extra"] = True
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "definition predicate"
+        ):
+            POSTGRES_STORE_TEST.validate_semantic_authority_evidence(
+                document["semantic_authority"]
+            )
+
+    def test_semantic_authority_checkpoint_evidence_must_not_diverge(self):
+        document = envelope(component(available=True, complete=True, manifest="[]"))
+        _, summary = POSTGRES_STORE_TEST.parse_candidate_capture_manifest(
+            json.dumps(document, separators=(",", ":")).encode(),
+            "source",
+            DATABASE,
+            source_binding=SOURCE_BINDING,
+            secret_markers=("xy1300-secret",),
+        )
+        checkpoints = {
+            "source": summary,
+            "restored_once": dict(summary),
+            "restored_twice": dict(summary),
+        }
+        POSTGRES_STORE_TEST.require_semantic_authority_checkpoint_parity(
+            checkpoints
+        )
+        checkpoints["restored_twice"]["evidence_sha256"] = "f" * 64
+        with self.assertRaisesRegex(
+            POSTGRES_STORE_TEST.TestFailure, "differs across checkpoints"
+        ):
+            POSTGRES_STORE_TEST.require_semantic_authority_checkpoint_parity(
+                checkpoints
             )
 
     def test_private_receipt_read_is_descriptor_pinned_and_bounded(self):
@@ -1016,6 +1555,574 @@ class PostgresAuthorityCaptureDiagnosticTests(unittest.TestCase):
         self.assertEqual(result["source_binding"], SOURCE_BINDING)
         self.assertEqual([item["component"] for item in result["components"]], ["schema"])
         self.assertNotIn("restored", json.dumps(result, sort_keys=True))
+
+
+class RestorePrerequisiteGateStateTests(unittest.TestCase):
+    SECRET = "xy1421_private_secret_marker"
+
+    def complete_until(self, state, target=None):
+        for checkpoint in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_EXECUTION_CHECKPOINTS:
+            if checkpoint == target:
+                return
+            def complete(checkpoint=checkpoint):
+                if checkpoint == "output_contract":
+                    state.bind_output_path(Path("/private/tmp/xy1421-receipt.json"))
+                elif checkpoint == "source_binding_preflight":
+                    state.bind_source(SOURCE_BINDING)
+                elif checkpoint == "toolchain_preflight":
+                    state.bind_toolchain("c" * 64)
+                elif checkpoint == "private_work":
+                    state.bind_secret_markers((self.SECRET,))
+                elif checkpoint == "invocation_policy":
+                    state.bind_invocation_policy({
+                        name: True
+                        for name in (
+                            POSTGRES_STORE_TEST
+                            .RESTORE_PREREQUISITE_INVOCATION_POLICIES
+                        )
+                    })
+            state.run(checkpoint, complete)
+        if target is not None:
+            raise AssertionError(f"unknown checkpoint: {target}")
+
+    def execution_failure(self, checkpoint, error):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, checkpoint)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run(checkpoint, lambda: (_ for _ in ()).throw(error))
+        state.ensure_cleanup_finalized_without_work()
+        return state, state.failure_document()
+
+    def completed_state(self, *, cleanup_required=False):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state)
+        state.begin_cleanup(cleanup_required, cleanup_required)
+        if cleanup_required:
+            for owner in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS:
+                state.run_cleanup(owner, lambda: None)
+                state.complete_cleanup_owner(owner)
+        state.begin_cleanup_finalization()
+        state.finish_cleanup()
+        return state
+
+    def semantic_failure(self, checkpoint):
+        semantic_checkpoint = {
+            "source_semantic_authority": "source",
+            "restored_once_semantic_authority": "restored_once",
+        }[checkpoint]
+        return POSTGRES_STORE_TEST.SemanticAuthorityDiagnostic(json.dumps({
+            "checkpoint": semantic_checkpoint,
+            "definition_fingerprint": (
+                POSTGRES_STORE_TEST.SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+            ),
+            "failures": [{
+                "failure_policy": "unsafe",
+                "predicate": "fixture_unsafe",
+            }],
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "source_binding": SOURCE_BINDING,
+        }, sort_keys=True, separators=(",", ":")))
+
+    def test_postgres_toolchain_fingerprint_uses_fixed_order_and_binds_state(self):
+        expected_order = ("initdb", "pg_ctl", "psql", "pg_dump", "pg_restore")
+        self.assertEqual(POSTGRES_STORE_TEST.POSTGRES_TOOL_NAMES, expected_order)
+        payloads = {
+            name: b"inert PostgreSQL fixture\0" + name.encode("ascii")
+            for name in expected_order
+        }
+        versions = {
+            name: f"{name} (PostgreSQL) 18.0 fixture\n".encode("ascii")
+            for name in expected_order
+        }
+        environment = {"LC_ALL": "C"}
+
+        with tempfile.TemporaryDirectory() as directory:
+            fixture_directory = Path(directory)
+            fixture_directory.chmod(0o700)
+            tools = {}
+            for name in expected_order:
+                path = fixture_directory / name
+                path.write_bytes(payloads[name])
+                path.chmod(0o700)
+                tools[name] = path.resolve(strict=True)
+
+            with mock.patch.object(
+                POSTGRES_STORE_TEST,
+                "postgres_tool_version",
+                side_effect=[versions[name] for name in expected_order],
+            ) as version_reader:
+                fingerprint = POSTGRES_STORE_TEST.postgres_toolchain_fingerprint(
+                    tools, environment
+                )
+
+        self.assertEqual(
+            version_reader.call_args_list,
+            [mock.call(tools[name], name, environment) for name in expected_order],
+        )
+        expected = hashlib.sha256(b"decodex/postgres-toolchain-authority/1\0")
+        for name in expected_order:
+            for value in (
+                name.encode("ascii"),
+                hashlib.sha256(payloads[name]).digest(),
+                hashlib.sha256(versions[name]).digest(),
+            ):
+                expected.update(len(value).to_bytes(4, "big"))
+                expected.update(value)
+        self.assertEqual(fingerprint, expected.hexdigest())
+        self.assertRegex(fingerprint, r"\A[0-9a-f]{64}\Z")
+
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, "toolchain_preflight")
+        bound = state.run(
+            "toolchain_preflight", lambda: state.bind_toolchain(fingerprint)
+        )
+        self.assertEqual(bound, fingerprint)
+        self.assertEqual(state.toolchain_fingerprint, fingerprint)
+        self.assertEqual(state.completed_checkpoints[-1], "toolchain_preflight")
+
+    def test_representative_execution_failures_have_distinct_fixed_owners(self):
+        cases = (
+            (
+                "outer",
+                "output_contract",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "contract_invalid",
+            ),
+            (
+                "cluster",
+                "cluster_start",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "operation_failed",
+            ),
+            (
+                "preflight",
+                "toolchain_preflight",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "authority_unavailable",
+            ),
+            (
+                "s0",
+                "source_migrated",
+                POSTGRES_STORE_TEST.TestFailure(self.SECRET),
+                "operation_failed",
+            ),
+            (
+                "archive",
+                "archive_declaration_guarded",
+                POSTGRES_STORE_TEST.AuthorityRestoreTargetFailure(
+                    "archive_declaration_guarded", "archive_declaration_invalid"
+                ),
+                "archive_declaration_invalid",
+            ),
+            (
+                "helper",
+                "restore_pgcrypto_absent",
+                POSTGRES_STORE_TEST.AuthorityRestoreTargetFailure(
+                    "restore_pgcrypto_absent", "target_not_fresh"
+                ),
+                "target_not_fresh",
+            ),
+            (
+                "semantic",
+                "restored_once_semantic_authority",
+                self.semantic_failure("restored_once_semantic_authority"),
+                "operation_failed",
+            ),
+        )
+        owners = []
+        for case, checkpoint, error, reason in cases:
+            with self.subTest(case=case):
+                _, diagnostic = self.execution_failure(checkpoint, error)
+                self.assertEqual(diagnostic["primary_checkpoint"], checkpoint)
+                self.assertEqual(diagnostic["primary_reason"], reason)
+                owners.append(diagnostic["primary_checkpoint"])
+                if case == "semantic":
+                    self.assertIsNotNone(
+                        diagnostic["semantic_authority_diagnostic"]
+                    )
+                else:
+                    self.assertIsNone(
+                        diagnostic["semantic_authority_diagnostic"]
+                    )
+        self.assertEqual(len(owners), len(set(owners)))
+
+    def cleanup_fault_state(self, point, *, prior_primary=False, system_exit=False):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        if prior_primary:
+            self.complete_until(state, "source_migrated")
+            with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+                state.run(
+                    "source_migrated",
+                    lambda: (_ for _ in ()).throw(
+                        POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                    ),
+                )
+        else:
+            self.complete_until(state)
+
+        def inject(current):
+            if current == point:
+                error = (
+                    SystemExit(self.SECRET)
+                    if system_exit else KeyboardInterrupt(self.SECRET)
+                )
+                raise error
+
+        with mock.patch.object(POSTGRES_STORE_TEST.shutil, "rmtree"):
+            POSTGRES_STORE_TEST.cleanup_restore_prerequisite_gate(
+                state,
+                Path("/private/tmp/xy1421-private-work"),
+                Path("/private/tmp/xy1421-private-work/postgres"),
+                {},
+                True,
+                fault_injector=inject,
+            )
+        return state, state.failure_document()
+
+    def test_cleanup_faults_keep_the_exact_pending_owner_and_never_pass(self):
+        cases = (
+            ("before_first_cleanup_owner", "cluster_stop", ()),
+            (
+                "after_cluster_stop_action_before_transition",
+                "cluster_stop",
+                (),
+            ),
+            (
+                "between_cluster_stop_and_private_work_cleanup",
+                "private_work_cleanup",
+                ("cluster_stop",),
+            ),
+            (
+                "after_private_work_cleanup_action_before_transition",
+                "private_work_cleanup",
+                ("cluster_stop",),
+            ),
+            (
+                "during_cleanup_finalization",
+                "cleanup_finalization",
+                ("cluster_stop", "private_work_cleanup"),
+            ),
+        )
+        for point, owner, completed in cases:
+            with self.subTest(point=point):
+                state, diagnostic = self.cleanup_fault_state(
+                    point,
+                    system_exit=point == "during_cleanup_finalization",
+                )
+                self.assertEqual(diagnostic["primary_checkpoint"], owner)
+                self.assertEqual(diagnostic["primary_reason"], "interrupted")
+                self.assertNotEqual(
+                    diagnostic["primary_checkpoint"], "receipt_validation"
+                )
+                self.assertEqual(diagnostic["cleanup_status"], "failed")
+                self.assertTrue(diagnostic["cleanup_finalized"])
+                self.assertEqual(
+                    diagnostic["required_cleanup_owners"],
+                    ["cluster_stop", "private_work_cleanup"],
+                )
+                self.assertEqual(
+                    diagnostic["completed_cleanup_owners"], list(completed)
+                )
+                self.assertIsNone(diagnostic["secondary_cleanup_reason"])
+                self.assertNotEqual(state.cleanup_status, "passed")
+
+        for point in (
+            "between_cluster_stop_and_private_work_cleanup",
+            "during_cleanup_finalization",
+        ):
+            with self.subTest(point=point, prior_primary=True):
+                _, diagnostic = self.cleanup_fault_state(
+                    point, prior_primary=True
+                )
+                self.assertEqual(
+                    (diagnostic["primary_checkpoint"], diagnostic["primary_reason"]),
+                    ("source_migrated", "operation_failed"),
+                )
+                self.assertEqual(diagnostic["cleanup_status"], "failed")
+                self.assertEqual(
+                    diagnostic["secondary_cleanup_reason"], "cleanup_failed"
+                )
+
+        operation_state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(operation_state)
+        with mock.patch.object(
+            POSTGRES_STORE_TEST.shutil,
+            "rmtree",
+            side_effect=OSError(self.SECRET),
+        ):
+            POSTGRES_STORE_TEST.cleanup_restore_prerequisite_gate(
+                operation_state,
+                Path("/private/tmp/xy1421-private-work"),
+                Path("/private/tmp/xy1421-private-work/postgres"),
+                {},
+                True,
+            )
+        operation_diagnostic = operation_state.failure_document()
+        self.assertEqual(
+            (
+                operation_diagnostic["primary_checkpoint"],
+                operation_diagnostic["primary_reason"],
+            ),
+            ("private_work_cleanup", "cleanup_failed"),
+        )
+        self.assertNotIn(
+            self.SECRET,
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                operation_diagnostic
+            ),
+        )
+
+    def test_cleanup_pass_requires_owner_completion_and_finalization(self):
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        state.begin_cleanup(True, True)
+        with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+            _ = state.cleanup_status
+        for owner in POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS:
+            state.run_cleanup(owner, lambda: None)
+            with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+                _ = state.cleanup_status
+            state.complete_cleanup_owner(owner)
+        state.begin_cleanup_finalization()
+        with self.assertRaises(POSTGRES_STORE_TEST.HarnessCorruption):
+            _ = state.cleanup_status
+        state.finish_cleanup()
+        self.assertEqual(state.cleanup_status, "passed")
+        self.assertEqual(
+            state.required_cleanup_owners,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+        )
+        self.assertEqual(
+            state.completed_cleanup_owners,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLEANUP_OWNERS,
+        )
+        self.assertTrue(state.cleanup_finalization_completed)
+
+    def test_receipt_validation_and_publication_have_fixed_owners(self):
+        validation_state = self.completed_state()
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            validation_state.run_receipt_lifecycle(
+                "receipt_validation",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+                ),
+            )
+        validation_diagnostic = validation_state.failure_document()
+        self.assertEqual(
+            (
+                validation_diagnostic["primary_checkpoint"],
+                validation_diagnostic["primary_reason"],
+            ),
+            ("receipt_validation", "receipt_invalid"),
+        )
+
+        source_state = self.completed_state()
+        source_state.run_receipt_lifecycle("receipt_validation", lambda: None)
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            source_state.run_receipt_lifecycle(
+                "receipt_source_binding",
+                lambda: (_ for _ in ()).throw(
+                    POSTGRES_STORE_TEST.RestorePrerequisiteExpectedFailure("changed")
+                ),
+            )
+        source_diagnostic = source_state.failure_document()
+        self.assertEqual(
+            (
+                source_diagnostic["primary_checkpoint"],
+                source_diagnostic["primary_reason"],
+            ),
+            ("receipt_source_binding", "changed"),
+        )
+
+        publication_state = self.completed_state()
+        publication_state.run_receipt_lifecycle(
+            "receipt_validation", lambda: None
+        )
+        publication_state.run_receipt_lifecycle(
+            "receipt_source_binding", lambda: None
+        )
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            publication_state.run_receipt_lifecycle(
+                "receipt_publication",
+                lambda: (_ for _ in ()).throw(OSError(self.SECRET)),
+            )
+        publication_diagnostic = publication_state.failure_document()
+        self.assertEqual(
+            (
+                publication_diagnostic["primary_checkpoint"],
+                publication_diagnostic["primary_reason"],
+            ),
+            ("receipt_publication", "publication_failed"),
+        )
+
+    def test_progress_and_diagnostic_serialization_are_closed(self):
+        _, diagnostic = self.execution_failure(
+            "cluster_start", RuntimeError(self.SECRET + " raw payload")
+        )
+        serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                diagnostic
+            )
+        )
+        self.assertEqual(diagnostic["primary_reason"], "harness_corruption")
+        self.assertNotIn(self.SECRET, serialized)
+        self.assertNotIn("raw payload", serialized)
+
+        malformed = dict(diagnostic)
+        malformed["extra"] = self.SECRET
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+        malformed = dict(diagnostic)
+        malformed["primary_reason"] = "archive_declaration_invalid"
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+        malformed = dict(diagnostic)
+        malformed["completed_checkpoints"] = [
+            *diagnostic["completed_checkpoints"],
+            "cluster_start",
+        ]
+        with self.assertRaises(POSTGRES_STORE_TEST.TestFailure):
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                malformed
+            )
+
+        state = POSTGRES_STORE_TEST.RestorePrerequisiteGateState()
+        self.complete_until(state, "source_semantic_authority")
+        raw_semantic = POSTGRES_STORE_TEST.SemanticAuthorityDiagnostic(json.dumps({
+            "checkpoint": "source",
+            "definition_fingerprint": (
+                POSTGRES_STORE_TEST.SUPPORTED_SEMANTIC_AUTHORITY_FINGERPRINT
+            ),
+            "failures": [{
+                "failure_policy": "unsafe",
+                "predicate": self.SECRET,
+            }],
+            "schema": POSTGRES_STORE_TEST.SEMANTIC_AUTHORITY_DIAGNOSTIC_SCHEMA,
+            "source_binding": SOURCE_BINDING,
+        }, sort_keys=True, separators=(",", ":")))
+        with self.assertRaises(POSTGRES_STORE_TEST.RestorePrerequisiteGateAbort):
+            state.run(
+                "source_semantic_authority",
+                lambda: (_ for _ in ()).throw(raw_semantic),
+            )
+        state.ensure_cleanup_finalized_without_work()
+        semantic_serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                state.failure_document()
+            )
+        )
+        self.assertNotIn(self.SECRET, semantic_serialized)
+        self.assertEqual(state.primary_reason, "harness_corruption")
+
+    def test_failure_document_cleanup_corruption_uses_the_fixed_owned_fallback(self):
+        prior_state, _ = self.execution_failure(
+            "source_migrated", POSTGRES_STORE_TEST.TestFailure(self.SECRET)
+        )
+        prior_state._cleanup_status = self.SECRET
+        repaired = prior_state.run_receipt_lifecycle(
+            "receipt_validation",
+            prior_state.failure_document_with_fixed_fallback,
+            recovery=True,
+        )
+        serialized = (
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                repaired
+            )
+        )
+        self.assertEqual(
+            (repaired["primary_checkpoint"], repaired["primary_reason"]),
+            ("source_migrated", "operation_failed"),
+        )
+        self.assertEqual(repaired["cleanup_status"], "failed")
+        self.assertEqual(
+            repaired["secondary_cleanup_reason"], "cleanup_failed"
+        )
+        self.assertTrue(repaired["failure_document_repaired"])
+        self.assertNotIn(self.SECRET, serialized)
+
+        no_primary = self.completed_state(cleanup_required=True)
+        no_primary._cleanup_finalization_status = self.SECRET
+        repaired_no_primary = no_primary.run_receipt_lifecycle(
+            "receipt_validation",
+            no_primary.failure_document_with_fixed_fallback,
+            recovery=True,
+        )
+        self.assertEqual(
+            (
+                repaired_no_primary["primary_checkpoint"],
+                repaired_no_primary["primary_reason"],
+            ),
+            ("cleanup_finalization", "harness_corruption"),
+        )
+        self.assertEqual(repaired_no_primary["cleanup_status"], "failed")
+        self.assertIsNone(repaired_no_primary["secondary_cleanup_reason"])
+        self.assertNotIn(
+            self.SECRET,
+            POSTGRES_STORE_TEST.canonical_restore_prerequisite_gate_diagnostic(
+                repaired_no_primary
+            ),
+        )
+
+    def test_v2_identity_and_mechanical_definition_fingerprint_are_exact(self):
+        self.assertEqual(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_CLI,
+            "--capture-authority-restore-prerequisite-v2",
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_GATE_SCHEMA.endswith("/2")
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DIAGNOSTIC_SCHEMA.endswith("/2")
+        )
+        self.assertTrue(
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DEFINITION_SCHEMA.endswith("/2")
+        )
+        source = SCRIPT.read_text(encoding="utf-8")
+        for retired in (
+            '"--capture-authority-restore-prerequisite' + '"',
+            "decodex/postgres-restore-prerequisite-r1-gate/" + "1",
+            "decodex/postgres-restore-prerequisite-r1-diagnostic/" + "1",
+            "decodex/postgres-restore-prerequisite-r1-definition/" + "1",
+        ):
+            self.assertNotIn(retired, source)
+        self.assertNotIn(
+            "gate", POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_ALLOWED_REASONS
+        )
+        self.assertNotIn(
+            "stage_failed",
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DIAGNOSTIC_REASONS,
+        )
+        definition = POSTGRES_STORE_TEST.restore_prerequisite_definition()
+        fingerprint = hashlib.sha256(json.dumps(
+            definition,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        ).encode("utf-8")).hexdigest()
+        self.assertEqual(
+            fingerprint,
+            POSTGRES_STORE_TEST.RESTORE_PREREQUISITE_DEFINITION_FINGERPRINT,
+        )
+        self.assertEqual(
+            fingerprint,
+            "53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a",
+        )
+        self.assertEqual(
+            fingerprint,
+            POSTGRES_STORE_TEST.restore_prerequisite_definition_fingerprint(),
+        )
+
+        pass_state = self.completed_state(cleanup_required=True)
+        receipt = POSTGRES_STORE_TEST.restore_prerequisite_gate_receipt(pass_state)
+        self.assertEqual(
+            POSTGRES_STORE_TEST.validate_restore_prerequisite_gate_receipt(receipt),
+            receipt,
+        )
+        self.assertFalse(receipt["acceptance"])
+        self.assertTrue(receipt["passed"])
 
 
 if __name__ == "__main__":

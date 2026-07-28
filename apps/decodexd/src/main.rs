@@ -1,11 +1,9 @@
 //! Sole Decodex vNext server composition root.
 
-#[cfg(unix)] mod local_supervisor;
+mod service_supervisor;
 
-use std::error::Error;
-#[cfg(unix)] use std::path::PathBuf;
+use std::{error::Error, path::PathBuf};
 
-#[cfg(unix)] use clap::Args;
 use clap::{Parser, Subcommand};
 use decodex_runtime::{ServerConfig, ServiceComposition};
 #[cfg(test)] use {libc as _, tempfile as _};
@@ -21,60 +19,44 @@ struct Cli {
 enum Command {
 	/// Serve the same-UID Decodex vNext protocol.
 	Serve,
-	/// Supervise the local PostgreSQL and credential-injected daemon processes.
-	#[cfg(unix)]
-	SuperviseLocal(SuperviseLocalArgs),
-}
-
-#[cfg(unix)]
-#[derive(Args)]
-struct SuperviseLocalArgs {
-	/// PostgreSQL 18 foreground server executable.
-	#[arg(long)]
-	postgres: PathBuf,
-	/// PostgreSQL 18 readiness probe executable.
-	#[arg(long)]
-	pg_isready: PathBuf,
-	/// Initialized PostgreSQL 18 data directory.
-	#[arg(long)]
-	data_directory: PathBuf,
-	/// Private PostgreSQL Unix socket directory.
-	#[arg(long)]
-	socket_directory: PathBuf,
-	/// PostgreSQL Unix socket port.
-	#[arg(long)]
-	port: u16,
-	/// Legacy account-pool JSONL file read under its writer lock.
-	#[arg(long)]
-	legacy_accounts: PathBuf,
-	/// Non-secret legacy-to-vNext slot mapping manifest.
-	#[arg(long)]
-	legacy_mapping: PathBuf,
-	/// Working directory inherited by supervised children.
-	#[arg(long)]
-	working_directory: PathBuf,
+	/// Supervise the ordinary local PostgreSQL and decodexd service generation.
+	SuperviseLocal {
+		#[arg(long)]
+		postgres: PathBuf,
+		#[arg(long)]
+		pg_isready: PathBuf,
+		#[arg(long)]
+		data_directory: PathBuf,
+		#[arg(long)]
+		socket_directory: PathBuf,
+		#[arg(long)]
+		port: u16,
+		#[arg(long)]
+		working_directory: PathBuf,
+	},
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
 	match Cli::parse().command {
 		None | Some(Command::Serve) => serve().await,
-		#[cfg(unix)]
-		Some(Command::SuperviseLocal(arguments)) => {
-			local_supervisor::supervise(local_supervisor::LocalSupervisorConfig {
-				postgres: arguments.postgres,
-				pg_isready: arguments.pg_isready,
-				data_directory: arguments.data_directory,
-				socket_directory: arguments.socket_directory,
-				port: arguments.port,
-				legacy_accounts: arguments.legacy_accounts,
-				legacy_mapping: arguments.legacy_mapping,
-				working_directory: arguments.working_directory,
-			})
-			.await?;
-
-			Ok(())
-		},
+		Some(Command::SuperviseLocal {
+			postgres,
+			pg_isready,
+			data_directory,
+			socket_directory,
+			port,
+			working_directory,
+		}) => service_supervisor::supervise(service_supervisor::ServiceSupervisorConfig {
+			postgres,
+			pg_isready,
+			data_directory,
+			socket_directory,
+			port,
+			working_directory,
+		})
+		.await
+		.map_err(Into::into),
 	}
 }
 

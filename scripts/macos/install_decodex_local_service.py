@@ -1,78 +1,56 @@
 #!/usr/bin/env python3
-"""Provision and install the same-UID Decodex local service on macOS.
+"""Install the current same-UID Decodex local service on macOS.
 
-This source-install tool owns only the local development installation. It creates
-no credential copy. The transitional bridge reads the existing legacy account
-pool under its file lock and passes current credentials only to the supervised
-daemon process.
+This installer provisions only the current architecture. It creates or verifies
+the local PostgreSQL cluster, canonical configuration, and user LaunchAgent. It
+does not discover, read, transform, retain, or delete account sources.
 """
 
 from __future__ import annotations
 
 import argparse
-import base64
 import fcntl
 import hashlib
-import importlib.util
 import json
 import os
 import plistlib
 import pwd
 import re
+import selectors
 import shutil
 import signal
 import stat
 import subprocess
 import sys
+import threading
 import time
-import unicodedata
-import urllib.request
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from types import ModuleType
-from typing import Any
+from typing import Any, Optional, Union
 
 
-MAPPING_SCHEMA = "decodex/reset-card-legacy-bridge/1"
 LAUNCH_AGENT_LABEL = "space.decodex.local-service"
-MAX_ACCOUNT_FILE_BYTES = 4 * 1024 * 1024
-MAX_ACCOUNT_LINE_BYTES = 128 * 1024
 MAX_CONFIG_FILE_BYTES = 1024 * 1024
-MAX_MAPPING_FILE_BYTES = 64 * 1024
 MAX_LAUNCH_AGENT_FILE_BYTES = 64 * 1024
 MAX_POSTGRES_VERSION_BYTES = 16
-LEGACY_LOCK_TIMEOUT_SECONDS = 5
 LOCAL_SERVICE_SETTLEMENT_TIMEOUT_SECONDS = 300
 LOCAL_SERVICE_SETTLEMENT_POLL_SECONDS = 0.25
 LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS = 5
+INSTALLER_COMMAND_TIMEOUT_SECONDS = 180
+MAX_INSTALLER_CHILD_OUTPUT_BYTES = 1024 * 1024
+MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES = 8 * 1024 * 1024
 LAUNCHCTL_PRINT_NOT_FOUND_STATUS = 113
-MAX_ACCOUNTS = 64
-MAX_ACCESS_TOKEN_BYTES = 64 * 1024
-MAX_ACCOUNT_ID_BYTES = 1_024
-MAX_EMAIL_BYTES = 320
 POSTGRES_PORT = 55_432
 POSTGRES_DATABASE = "decodex"
-POSTGRES_MIGRATION_ROLE = "decodex_migration"
+POSTGRES_SCHEMA_ROLE = "decodex_migration"
 POSTGRES_RUNTIME_ROLE = "decodex_runtime"
-PLAN_TYPES = {
-    "free",
-    "go",
-    "plus",
-    "pro",
-    "prolite",
-    "team",
-    "self_serve_business_usage_based",
-    "business",
-    "enterprise_cbp_usage_based",
-    "enterprise",
-    "edu",
-    "unknown",
-}
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 HEX_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+DAEMON_WRAPPER_TOOL = Path(__file__).resolve().with_name("decodexd_wrapper.py")
+CODESIGN = Path("/usr/bin/codesign")
 
 
 class InstallError(RuntimeError):
@@ -94,36 +72,9 @@ class ProcessRecord:
 @dataclass(frozen=True)
 class ServiceObservation:
     loaded: bool
-    active_process_id: int | None
-    root: ProcessIdentity | None
+    active_process_id: Optional[int]
+    root: Optional[ProcessIdentity]
     generation: frozenset[ProcessIdentity]
-
-
-@dataclass(frozen=True)
-class LegacyAccount:
-    provider_account_id: str
-    email: str
-    plan_type: str
-
-    @property
-    def provider_account_id_sha256(self) -> str:
-        return hashlib.sha256(self.provider_account_id.encode("utf-8")).hexdigest()
-
-
-@dataclass(frozen=True)
-class Enrollment:
-    slot: int
-    provider_account_id_sha256: str
-    account_id: str
-    display_label: str
-    initial_state: str
-    plan_type: str
-
-
-@dataclass(frozen=True)
-class ExistingEnrollment:
-    account_id: str
-    display_label: str
 
 
 @dataclass(frozen=True)
@@ -131,13 +82,11 @@ class InstallPaths:
     repository: Path
     root: Path
     config: Path
-    mapping: Path
     data_directory: Path
     socket_directory: Path
     log_directory: Path
     postgres_log: Path
     service_log: Path
-    legacy_accounts: Path
     launch_agent: Path
     decodexd: Path
     decodex_cli: Path
@@ -147,12 +96,212 @@ class InstallPaths:
     pg_isready: Path
     psql: Path
 
+    @property
+    def server_directory(self) -> Path:
+        return self.root / "server"
 
-def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    @property
+    def namespace_lock(self) -> Path:
+        return self.server_directory / "decodex.lock"
+
+    @property
+    def daemon_wrapper(self) -> Path:
+        try:
+            contents = self.decodexd.parent.parent
+            wrapper = contents.parent
+        except IndexError as error:
+            raise InstallError("daemon wrapper main path is invalid") from error
+        if (
+            self.decodexd.name != "decodexd"
+            or self.decodexd.parent.name != "MacOS"
+            or contents.name != "Contents"
+            or wrapper.name != "decodexd.app"
+        ):
+            raise InstallError("daemon wrapper main path is invalid")
+        return wrapper
+
+
+class InstallerNamespaceLock:
+    """Retain exclusive ownership of the local-listener namespace during install."""
+
+    def __init__(
+        self,
+        paths: InstallPaths,
+        uid: int,
+        directory_descriptor: int,
+        lock_descriptor: int,
+        directory_identity: tuple[int, int],
+        lock_identity: tuple[int, int, int, int, int],
+    ) -> None:
+        self.paths = paths
+        self.uid = uid
+        self.directory_descriptor = directory_descriptor
+        self.lock_descriptor = lock_descriptor
+        self.directory_identity = directory_identity
+        self.lock_identity = lock_identity
+        self.closed = False
+
+    @classmethod
+    def acquire(cls, paths: InstallPaths, uid: int) -> "InstallerNamespaceLock":
+        try:
+            directory_descriptor = open_absolute_directory(paths.server_directory)
+        except OSError as error:
+            raise InstallError("local service namespace directory is unsafe") from error
+        lock_descriptor: Optional[int] = None
+        try:
+            directory_metadata = os.fstat(directory_descriptor)
+            require_namespace_directory(directory_metadata, uid)
+            lock_flags = os.O_RDWR
+            for flag in ("O_NOFOLLOW", "O_CLOEXEC"):
+                lock_flags |= getattr(os, flag, 0)
+            try:
+                lock_descriptor = os.open(
+                    "decodex.lock",
+                    lock_flags | os.O_CREAT | os.O_EXCL,
+                    0o600,
+                    dir_fd=directory_descriptor,
+                )
+                os.fchmod(lock_descriptor, 0o600)
+            except FileExistsError:
+                lock_descriptor = os.open(
+                    "decodex.lock",
+                    lock_flags,
+                    dir_fd=directory_descriptor,
+                )
+            lock_metadata = os.fstat(lock_descriptor)
+            require_namespace_lock(lock_metadata, uid)
+            try:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise InstallError("local service namespace is already owned") from error
+            guard = cls(
+                paths,
+                uid,
+                directory_descriptor,
+                lock_descriptor,
+                (directory_metadata.st_dev, directory_metadata.st_ino),
+                namespace_lock_identity(lock_metadata),
+            )
+            guard.verify()
+            return guard
+        except BaseException as error:
+            if lock_descriptor is not None:
+                os.close(lock_descriptor)
+            os.close(directory_descriptor)
+            if isinstance(error, InstallError):
+                raise
+            raise InstallError("local service namespace lock is unsafe") from error
+
+    def verify(self) -> None:
+        if self.closed:
+            raise InstallError("local service namespace ownership is unavailable")
+        try:
+            held_directory = os.fstat(self.directory_descriptor)
+            held_lock = os.fstat(self.lock_descriptor)
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        require_namespace_directory(held_directory, self.uid)
+        require_namespace_lock(held_lock, self.uid)
+        try:
+            current_directory_descriptor = open_absolute_directory(
+                self.paths.server_directory
+            )
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        try:
+            current_directory = os.fstat(current_directory_descriptor)
+            require_namespace_directory(current_directory, self.uid)
+            pinned_lock = os.stat(
+                "decodex.lock",
+                dir_fd=self.directory_descriptor,
+                follow_symlinks=False,
+            )
+            require_namespace_lock(pinned_lock, self.uid)
+            current_lock = os.stat(
+                "decodex.lock",
+                dir_fd=current_directory_descriptor,
+                follow_symlinks=False,
+            )
+            require_namespace_lock(current_lock, self.uid)
+        except OSError as error:
+            raise InstallError("local service namespace ownership changed") from error
+        finally:
+            os.close(current_directory_descriptor)
+        if (
+            (held_directory.st_dev, held_directory.st_ino) != self.directory_identity
+            or (current_directory.st_dev, current_directory.st_ino)
+            != self.directory_identity
+            or namespace_lock_identity(held_lock) != self.lock_identity
+            or namespace_lock_identity(pinned_lock) != self.lock_identity
+            or namespace_lock_identity(current_lock) != self.lock_identity
+        ):
+            raise InstallError("local service namespace ownership changed")
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        failure: Optional[OSError] = None
+        for descriptor in (self.lock_descriptor, self.directory_descriptor):
+            try:
+                os.close(descriptor)
+            except OSError as error:
+                failure = failure or error
+        if failure is not None:
+            raise InstallError("local service namespace ownership could not close") from failure
+
+
+def open_absolute_directory(path: Path) -> int:
+    if not path.is_absolute() or any(part in {".", ".."} for part in path.parts):
+        raise InstallError("local service namespace directory is unsafe")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open("/", flags)
+    try:
+        for component in path.parts[1:]:
+            next_descriptor = os.open(component, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = next_descriptor
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def require_namespace_directory(metadata: os.stat_result, uid: int) -> None:
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != uid
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise InstallError("local service namespace directory is unsafe")
+
+
+def require_namespace_lock(metadata: os.stat_result, uid: int) -> None:
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or metadata.st_uid != uid
+        or stat.S_IMODE(metadata.st_mode) != 0o600
+        or metadata.st_nlink != 1
+    ):
+        raise InstallError("local service namespace lock is unsafe")
+
+
+def namespace_lock_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_uid,
+        stat.S_IMODE(metadata.st_mode),
+        metadata.st_nlink,
+    )
+
+
+def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     home = Path.home()
     discovered_codex = shutil.which("codex")
     parser = argparse.ArgumentParser(
-        description="Provision the Decodex PostgreSQL 18 local service and LaunchAgent."
+        description="Install the current Decodex PostgreSQL 18 local service."
     )
     parser.add_argument(
         "--repository",
@@ -161,11 +310,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument("--root", type=Path, default=home / ".decodex")
     parser.add_argument(
-        "--legacy-accounts",
-        type=Path,
-        default=home / ".codex" / "decodex" / "accounts.jsonl",
-    )
-    parser.add_argument(
         "--launch-agent",
         type=Path,
         default=home / "Library" / "LaunchAgents" / f"{LAUNCH_AGENT_LABEL}.plist",
@@ -173,7 +317,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--decodexd",
         type=Path,
-        default=home / ".local" / "bin" / "decodexd",
+        default=(
+            home
+            / ".local"
+            / "bin"
+            / "decodexd.app"
+            / "Contents"
+            / "MacOS"
+            / "decodexd"
+        ),
     )
     parser.add_argument(
         "--decodex-cli",
@@ -211,11 +363,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         default=Path("/run/current-system/sw/bin/psql"),
     )
     parser.add_argument(
-        "--replace-config",
-        action="store_true",
-        help="Replace the current vNext config without creating a backup.",
-    )
-    parser.add_argument(
         "--no-launch",
         action="store_true",
         help="Provision files and PostgreSQL, but do not bootstrap the LaunchAgent.",
@@ -230,13 +377,11 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
         repository=repository,
         root=root,
         config=root / "config.toml",
-        mapping=root / "reset-card-legacy-map.json",
         data_directory=root / "postgres" / "data",
         socket_directory=root / "postgres" / "socket",
         log_directory=root / "logs",
         postgres_log=root / "logs" / "postgres.log",
         service_log=root / "logs" / "local-service.log",
-        legacy_accounts=args.legacy_accounts.expanduser().resolve(),
         launch_agent=args.launch_agent.expanduser().resolve(),
         decodexd=args.decodexd.expanduser().resolve(),
         decodex_cli=args.decodex_cli.expanduser().resolve(),
@@ -250,78 +395,44 @@ def install_paths(args: argparse.Namespace) -> InstallPaths:
 
 def require_regular_executable(path: Path, name: str) -> None:
     try:
-        metadata = path.stat()
+        metadata = path.lstat()
     except OSError as error:
         raise InstallError(f"{name} executable is unavailable") from error
-    if not stat.S_ISREG(metadata.st_mode) or not os.access(path, os.X_OK):
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or not os.access(path, os.X_OK)
+    ):
         raise InstallError(f"{name} executable is unavailable")
 
 
-def require_private_directory(path: Path, uid: int) -> None:
+def contains_control(value: str) -> bool:
+    return any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+
+
+def managed_path_exists(path: Path, failure: str) -> bool:
     try:
         metadata = path.lstat()
+    except FileNotFoundError:
+        return False
     except OSError as error:
-        raise InstallError("legacy account directory is unavailable") from error
-    if (
-        not stat.S_ISDIR(metadata.st_mode)
-        or stat.S_ISLNK(metadata.st_mode)
-        or metadata.st_uid != uid
-        or stat.S_IMODE(metadata.st_mode) != 0o700
-    ):
-        raise InstallError("legacy account directory is not private")
+        raise InstallError(failure) from error
+    if stat.S_ISLNK(metadata.st_mode):
+        raise InstallError(failure)
+    return True
 
 
-def secure_legacy_file(path: Path, uid: int, *, create: bool = False) -> int:
-    flags = os.O_RDWR if create else os.O_RDONLY
-    if create:
-        flags |= os.O_CREAT
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
-    try:
-        descriptor = os.open(path, flags, 0o600)
-    except OSError as error:
-        raise InstallError("legacy account file authority is unsafe") from error
-    try:
-        metadata = os.fstat(descriptor)
-        if (
-            not stat.S_ISREG(metadata.st_mode)
-            or metadata.st_uid != uid
-            or metadata.st_nlink != 1
-        ):
-            raise InstallError("legacy account file authority is unsafe")
-        os.fchmod(descriptor, 0o600)
-    except BaseException:
-        os.close(descriptor)
-        raise
-    return descriptor
-
-
-def read_bounded_descriptor(descriptor: int, maximum_bytes: int) -> bytes:
-    chunks: list[bytes] = []
-    remaining = maximum_bytes + 1
-    while remaining > 0:
-        chunk = os.read(descriptor, min(64 * 1024, remaining))
-        if not chunk:
-            break
-        chunks.append(chunk)
-        remaining -= len(chunk)
-    return b"".join(chunks)
-
-
-def file_identity(metadata: os.stat_result) -> tuple[int, int, int, int, int]:
-    return (
-        metadata.st_dev,
-        metadata.st_ino,
-        metadata.st_size,
-        metadata.st_mtime_ns,
-        metadata.st_ctime_ns,
-    )
-
-
-def read_owned_file(path: Path, uid: int, maximum_bytes: int, failure: str) -> bytes:
-    flags = os.O_RDONLY
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+def read_owned_file(
+    path: Path,
+    uid: int,
+    maximum_bytes: int,
+    failure: str,
+    *,
+    required_mode: Optional[int] = None,
+) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags)
     except OSError as error:
@@ -332,398 +443,35 @@ def read_owned_file(path: Path, uid: int, maximum_bytes: int, failure: str) -> b
             not stat.S_ISREG(metadata.st_mode)
             or metadata.st_uid != uid
             or metadata.st_nlink != 1
+            or metadata.st_size < 0
             or metadata.st_size > maximum_bytes
+            or (
+                required_mode is not None
+                and stat.S_IMODE(metadata.st_mode) != required_mode
+            )
         ):
             raise InstallError(failure)
-        os.fchmod(descriptor, 0o600)
-        expected_identity = file_identity(os.fstat(descriptor))
-        body = read_bounded_descriptor(descriptor, maximum_bytes)
-        if len(body) > maximum_bytes or file_identity(os.fstat(descriptor)) != expected_identity:
+        chunks: list[bytes] = []
+        remaining = maximum_bytes + 1
+        while remaining > 0:
+            chunk = os.read(descriptor, min(64 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        body = b"".join(chunks)
+        if len(body) > maximum_bytes:
             raise InstallError(failure)
         return body
-    except OSError as error:
-        raise InstallError(failure) from error
     finally:
         os.close(descriptor)
 
 
-def acquire_legacy_lock(descriptor: int) -> None:
-    deadline = time.monotonic() + LEGACY_LOCK_TIMEOUT_SECONDS
-    while True:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-            return
-        except BlockingIOError as error:
-            if time.monotonic() >= deadline:
-                raise InstallError("legacy account lock is unavailable") from error
-            time.sleep(0.05)
-
-
-def bounded_scalar(value: Any, limit: int) -> str | None:
-    if not isinstance(value, str):
-        return None
-    encoded = value.encode("utf-8")
-    if (
-        not encoded
-        or len(encoded) > limit
-        or value.strip() != value
-        or contains_control(value)
-    ):
-        return None
-    return value
-
-
-def contains_control(value: str) -> bool:
-    return any(unicodedata.category(character).startswith("C") for character in value)
-
-
-def decode_id_token_claims(token: str) -> dict[str, Any]:
-    components = token.split(".")
-    if len(components) != 3 or any(not component for component in components):
-        raise InstallError("legacy account identity token is malformed")
-    payload = components[1]
-    payload += "=" * (-len(payload) % 4)
-    try:
-        decoded = base64.b64decode(
-            payload.encode("ascii"),
-            altchars=b"-_",
-            validate=True,
-        )
-        claims = json.loads(decoded)
-    except (UnicodeEncodeError, ValueError, json.JSONDecodeError) as error:
-        raise InstallError("legacy account identity token is malformed") from error
-    if not isinstance(claims, dict):
-        raise InstallError("legacy account identity token is malformed")
-    return claims
-
-
-def account_from_record(record: Any) -> LegacyAccount:
-    if not isinstance(record, dict):
-        raise InstallError("legacy account record is malformed")
-    has_tokens = record.get("tokens") is not None
-    has_auth = record.get("auth") is not None
-    if has_tokens == has_auth:
-        raise InstallError("legacy account shape is invalid")
-    if has_auth:
-        if not isinstance(record.get("auth"), dict):
-            raise InstallError("legacy account shape is invalid")
-        auth = record["auth"]
-        outer_email = record.get("email")
-    else:
-        auth = record
-        outer_email = record.get("email")
-    tokens = auth.get("tokens")
-    if not isinstance(tokens, dict):
-        raise InstallError("legacy account credentials are unavailable")
-    provider_account_id = bounded_scalar(tokens.get("account_id"), MAX_ACCOUNT_ID_BYTES)
-    access_token = bounded_scalar(tokens.get("access_token"), MAX_ACCESS_TOKEN_BYTES)
-    id_token = bounded_scalar(tokens.get("id_token"), MAX_ACCESS_TOKEN_BYTES)
-    email_value = outer_email if outer_email is not None else auth.get("email")
-    email = bounded_scalar(email_value, MAX_EMAIL_BYTES)
-    if provider_account_id is None:
-        raise InstallError("legacy provider account identity is invalid")
-    if access_token is None or id_token is None or email is None or "@" not in email:
-        raise InstallError("legacy account credentials are unavailable")
-    claims = decode_id_token_claims(id_token)
-    authority = claims.get("https://api.openai.com/auth")
-    if not isinstance(authority, dict):
-        raise InstallError("legacy account identity token lacks account authority")
-    claimed_account_id = bounded_scalar(
-        authority.get("chatgpt_account_id"), MAX_ACCOUNT_ID_BYTES
-    )
-    plan_type = bounded_scalar(authority.get("chatgpt_plan_type"), 64)
-    if claimed_account_id != provider_account_id or plan_type not in PLAN_TYPES:
-        raise InstallError("legacy account identity claims are inconsistent")
-    claimed_email_value = claims.get("email")
-    if claimed_email_value is not None:
-        claimed_email = bounded_scalar(claimed_email_value, MAX_EMAIL_BYTES)
-        if claimed_email is None or claimed_email.lower() != email.lower():
-            raise InstallError("legacy account email claims are inconsistent")
-    return LegacyAccount(
-        provider_account_id=provider_account_id,
-        email=email,
-        plan_type=plan_type,
-    )
-
-
-def read_legacy_accounts(path: Path, uid: int) -> list[LegacyAccount]:
-    parent = path.parent
-    require_private_directory(parent, uid)
-    lock_path = parent / f".{path.name}.lock"
-    lock_descriptor = secure_legacy_file(lock_path, uid, create=True)
-    try:
-        acquire_legacy_lock(lock_descriptor)
-        descriptor = secure_legacy_file(path, uid)
-        try:
-            body = read_bounded_descriptor(descriptor, MAX_ACCOUNT_FILE_BYTES)
-        finally:
-            os.close(descriptor)
-    finally:
-        fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
-        os.close(lock_descriptor)
-    if len(body) > MAX_ACCOUNT_FILE_BYTES:
-        raise InstallError("legacy account file exceeds the supported bound")
-    try:
-        text = body.decode("utf-8")
-    except UnicodeDecodeError as error:
-        raise InstallError("legacy account file is not UTF-8") from error
-    accounts = []
-    for line in text.splitlines():
-        if len(line.encode("utf-8")) > MAX_ACCOUNT_LINE_BYTES:
-            raise InstallError("legacy account record exceeds the supported bound")
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
-        try:
-            record = json.loads(stripped)
-        except json.JSONDecodeError as error:
-            raise InstallError("legacy account record is malformed") from error
-        accounts.append(account_from_record(record))
-    if not accounts or len(accounts) > MAX_ACCOUNTS:
-        raise InstallError("legacy account count is outside the supported bound")
-    provider_ids = {account.provider_account_id for account in accounts}
-    emails = {account.email.casefold() for account in accounts}
-    if len(provider_ids) != len(accounts) or len(emails) != len(accounts):
-        raise InstallError("legacy account identities are not unique")
-    return sorted(accounts, key=lambda account: account.provider_account_id)
-
-
-def read_usage_presentations() -> dict[str, dict[str, Any]]:
-    request = urllib.request.Request(
-        "http://127.0.0.1:8192/api/accounts?refresh=1",
-        headers={"Accept": "application/json"},
-    )
-    try:
-        opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
-        with opener.open(request, timeout=20) as response:
-            body = response.read(MAX_ACCOUNT_FILE_BYTES + 1)
-            if len(body) > MAX_ACCOUNT_FILE_BYTES:
-                return {}
-            payload = json.loads(body)
-    except (OSError, ValueError, json.JSONDecodeError):
-        return {}
-    rows = payload.get("accounts") if isinstance(payload, dict) else None
-    if not isinstance(rows, list) or len(rows) > MAX_ACCOUNTS:
-        return {}
-    presentations: dict[str, dict[str, Any]] = {}
-    for row in rows:
-        if not isinstance(row, dict):
-            return {}
-        email = bounded_scalar(row.get("email"), MAX_EMAIL_BYTES)
-        if email is None or email.casefold() in presentations:
-            return {}
-        presentations[email.casefold()] = row
-    return presentations
-
-
-def managed_path_exists(path: Path, failure: str) -> bool:
-    try:
-        path.lstat()
-    except FileNotFoundError:
-        return False
-    except OSError as error:
-        raise InstallError(failure) from error
-    return True
-
-
-def load_existing_mapping(path: Path, uid: int) -> dict[str, int]:
-    if not managed_path_exists(path, "existing reset-card mapping is malformed"):
-        return {}
-    try:
-        payload = json.loads(
-            read_owned_file(
-                path,
-                uid,
-                MAX_MAPPING_FILE_BYTES,
-                "existing reset-card mapping is malformed",
-            ).decode("utf-8")
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise InstallError("existing reset-card mapping is malformed") from error
-    if not isinstance(payload, dict) or set(payload) != {"schema", "accounts"}:
-        raise InstallError("existing reset-card mapping is malformed")
-    if payload["schema"] != MAPPING_SCHEMA or not isinstance(payload["accounts"], list):
-        raise InstallError("existing reset-card mapping is malformed")
-    mapping: dict[str, int] = {}
-    slots: set[int] = set()
-    for row in payload["accounts"]:
-        if not isinstance(row, dict) or set(row) != {
-            "slot",
-            "provider_account_id_sha256",
-        }:
-            raise InstallError("existing reset-card mapping is malformed")
-        slot = row["slot"]
-        digest = row["provider_account_id_sha256"]
-        if (
-            not isinstance(slot, int)
-            or isinstance(slot, bool)
-            or not 1 <= slot <= MAX_ACCOUNTS
-            or not isinstance(digest, str)
-            or not HEX_DIGEST_PATTERN.fullmatch(digest)
-            or slot in slots
-            or digest in mapping
-        ):
-            raise InstallError("existing reset-card mapping is malformed")
-        mapping[digest] = slot
-        slots.add(slot)
-    if sorted(slots) != list(range(1, len(slots) + 1)):
-        raise InstallError("existing reset-card mapping slots are not contiguous")
-    return mapping
-
-
-def existing_enrollments(
-    config_path: Path,
-    uid: int,
-) -> dict[int, ExistingEnrollment]:
-    if not managed_path_exists(config_path, "existing Decodex config is malformed"):
-        return {}
-    try:
-        lines = read_owned_file(
-            config_path,
-            uid,
-            MAX_CONFIG_FILE_BYTES,
-            "existing Decodex config is malformed",
-        ).decode("utf-8").splitlines()
-    except UnicodeDecodeError as error:
-        raise InstallError("existing Decodex config is malformed") from error
-    result: dict[int, ExistingEnrollment] = {}
-    current_account_id: str | None = None
-    current_reference: str | None = None
-    current_display_label: str | None = None
-
-    def finish_account() -> None:
-        nonlocal current_account_id, current_reference, current_display_label
-        if current_account_id is None:
-            return
-        if current_reference is None or current_display_label is None:
-            raise InstallError("existing reset-card enrollment is not bridge-owned")
-        match = re.fullmatch(
-            r"DECODEX_RESET_CARD_SLOT_([0-9]{2})_ACCESS_TOKEN",
-            current_reference,
-        )
-        if match is None:
-            raise InstallError("existing reset-card enrollment is not bridge-owned")
-        slot = int(match.group(1))
-        if not 1 <= slot <= MAX_ACCOUNTS:
-            raise InstallError("existing reset-card enrollment has an invalid slot")
-        if slot in result:
-            raise InstallError("existing reset-card enrollment has duplicate slots")
-        result[slot] = ExistingEnrollment(
-            account_id=current_account_id,
-            display_label=current_display_label,
-        )
-        current_account_id = None
-        current_reference = None
-        current_display_label = None
-
-    for line in lines:
-        stripped = line.strip()
-        if stripped.startswith("["):
-            finish_account()
-            match = re.fullmatch(
-                r'\[server_host\.reset_card_accounts\."([^"]+)"\]',
-                stripped,
-            )
-            if match is not None:
-                account_id = match.group(1)
-                if not UUID_PATTERN.fullmatch(account_id):
-                    raise InstallError("existing reset-card enrollment is malformed")
-                current_account_id = account_id
-            elif stripped.startswith("[server_host.reset_card_accounts."):
-                raise InstallError("existing reset-card enrollment is malformed")
-            continue
-        if current_account_id is not None:
-            match = re.fullmatch(r'access_token_env_var\s*=\s*"([^"]+)"', stripped)
-            if match is not None:
-                if current_reference is not None:
-                    raise InstallError("existing reset-card enrollment is malformed")
-                current_reference = match.group(1)
-                continue
-            if re.match(r"access_token_env_var\s*=", stripped):
-                raise InstallError("existing reset-card enrollment is malformed")
-            if re.match(r"display_label\s*=", stripped):
-                match = re.fullmatch(
-                    r'display_label\s*=\s*("(?:[^"\\]|\\.)*")',
-                    stripped,
-                )
-                if match is None or current_display_label is not None:
-                    raise InstallError("existing reset-card enrollment is malformed")
-                try:
-                    decoded_label = json.loads(match.group(1))
-                except json.JSONDecodeError as error:
-                    raise InstallError(
-                        "existing reset-card enrollment is malformed"
-                    ) from error
-                current_display_label = bounded_scalar(decoded_label, 128)
-                if current_display_label is None:
-                    raise InstallError("existing reset-card enrollment is malformed")
-    finish_account()
-    return result
-
-
-def build_enrollments(
-    accounts: list[LegacyAccount],
-    existing_mapping: dict[str, int],
-    existing: dict[int, ExistingEnrollment],
-    presentations: dict[str, dict[str, Any]],
-) -> list[Enrollment]:
-    digests = {account.provider_account_id_sha256 for account in accounts}
-    if existing_mapping and set(existing_mapping) != digests:
-        raise InstallError("legacy account set changed; explicit reconciliation is required")
-    if (
-        existing_mapping
-        and existing
-        and set(existing_mapping.values()) != set(existing)
-    ):
-        raise InstallError("existing mapping and enrollment config do not agree")
-    if not existing_mapping and existing:
-        raise InstallError("existing enrollment lacks its bridge mapping")
-    mapping = existing_mapping or {
-        account.provider_account_id_sha256: index
-        for index, account in enumerate(accounts, start=1)
-    }
-    enrollments = []
-    for account in accounts:
-        slot = mapping[account.provider_account_id_sha256]
-        presentation = presentations.get(account.email.casefold(), {})
-        observed_plan = presentation.get("plan_type")
-        if observed_plan is not None and observed_plan != account.plan_type:
-            raise InstallError("legacy account plan observations do not agree")
-        prior_enrollment = existing.get(slot)
-        if prior_enrollment is None:
-            label = bounded_scalar(presentation.get("random_name"), 128)
-            if label is None:
-                label = f"Account {slot:02d}"
-            account_id = str(uuid.uuid4())
-        else:
-            label = prior_enrollment.display_label
-            account_id = prior_enrollment.account_id
-        available_count = presentation.get("reset_credits_available_count")
-        initial_state = (
-            "depleted"
-            if isinstance(available_count, int)
-            and not isinstance(available_count, bool)
-            and available_count == 0
-            else "available"
-        )
-        enrollments.append(
-            Enrollment(
-                slot=slot,
-                provider_account_id_sha256=account.provider_account_id_sha256,
-                account_id=account_id,
-                display_label=label,
-                initial_state=initial_state,
-                plan_type=account.plan_type,
-            )
-        )
-    return sorted(enrollments, key=lambda enrollment: enrollment.slot)
-
-
-def toml_string(value: str | Path) -> str:
+def toml_string(value: Union[str, Path]) -> str:
     return json.dumps(str(value), ensure_ascii=False)
 
 
-def render_config(paths: InstallPaths, uid: int, enrollments: list[Enrollment]) -> str:
+def render_config(paths: InstallPaths, uid: int) -> bytes:
     lines = [
         "version = 1",
         'active_profile = "local"',
@@ -736,62 +484,160 @@ def render_config(paths: InstallPaths, uid: int, enrollments: list[Enrollment]) 
         "[server_host.repositories.decodex]",
         f"host_path = {toml_string(paths.repository)}",
         "",
+        "[postgres]",
+        f"socket_directory = {toml_string(paths.socket_directory)}",
+        f"expected_peer_uid = {uid}",
+        f"port = {POSTGRES_PORT}",
+        f'database = "{POSTGRES_DATABASE}"',
+        "",
+        "[postgres.migration]",
+        f'user = "{POSTGRES_SCHEMA_ROLE}"',
+        "",
+        "[postgres.runtime]",
+        f'user = "{POSTGRES_RUNTIME_ROLE}"',
+        "",
+        "[cache]",
+        "max_entries = 2048",
+        "max_bytes = 134217728",
+        "max_entry_bytes = 4194304",
+        "",
     ]
-    for enrollment in enrollments:
-        prefix = f"DECODEX_RESET_CARD_SLOT_{enrollment.slot:02d}"
-        lines.extend(
+    return "\n".join(lines).encode("utf-8")
+
+
+def daemon_wrapper_digest(value: Any) -> str:
+    try:
+        normalized = json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    except (TypeError, ValueError, UnicodeEncodeError) as error:
+        raise InstallError("daemon wrapper descriptor is malformed") from error
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def inspect_daemon_wrapper(paths: InstallPaths) -> dict[str, Any]:
+    try:
+        completed = run(
             [
-                f'[server_host.reset_card_accounts."{enrollment.account_id}"]',
-                f"display_label = {toml_string(enrollment.display_label)}",
-                f'initial_state = "{enrollment.initial_state}"',
-                f'access_token_env_var = "{prefix}_ACCESS_TOKEN"',
-                f'provider_account_id_env_var = "{prefix}_ACCOUNT_ID"',
-                f'expected_email_env_var = "{prefix}_EMAIL"',
-                f'plan_type = "{enrollment.plan_type}"',
-                "",
-            ]
+                sys.executable,
+                str(DAEMON_WRAPPER_TOOL),
+                "inspect",
+                "--wrapper",
+                str(paths.daemon_wrapper),
+            ],
+            cwd=paths.repository,
+            capture=True,
         )
-    lines.extend(
-        [
-            "[postgres]",
-            f"socket_directory = {toml_string(paths.socket_directory)}",
-            f"expected_peer_uid = {uid}",
-            f"port = {POSTGRES_PORT}",
-            f'database = "{POSTGRES_DATABASE}"',
-            "",
-            "[postgres.migration]",
-            f'user = "{POSTGRES_MIGRATION_ROLE}"',
-            "",
-            "[postgres.runtime]",
-            f'user = "{POSTGRES_RUNTIME_ROLE}"',
-            "",
-            "[cache]",
-            "max_entries = 2048",
-            "max_bytes = 134217728",
-            "max_entry_bytes = 4194304",
-            "",
-        ]
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise InstallError("daemon wrapper identity did not verify") from error
+    try:
+        result = json.loads(completed.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise InstallError("daemon wrapper inspector returned an invalid result") from error
+    if (
+        not isinstance(result, dict)
+        or set(result) != {"schema", "descriptor", "descriptor_sha256"}
+        or result.get("schema") != "decodex/daemon-wrapper-result/1"
+        or not isinstance(result.get("descriptor"), dict)
+        or not isinstance(result.get("descriptor_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["descriptor_sha256"])
+        or daemon_wrapper_digest(result["descriptor"]) != result["descriptor_sha256"]
+        or result["descriptor"].get("executable_path") != str(paths.decodexd)
+    ):
+        raise InstallError("daemon wrapper identity did not verify")
+    return result["descriptor"]
+
+
+def verify_daemon_wrapper(
+    paths: InstallPaths,
+    expected: dict[str, Any],
+    *,
+    require_launch_agent: bool,
+) -> dict[str, Any]:
+    current = inspect_daemon_wrapper(paths)
+    if daemon_wrapper_digest(current) != daemon_wrapper_digest(expected):
+        raise InstallError("daemon wrapper identity differs")
+    if require_launch_agent:
+        body = read_owned_file(
+            paths.launch_agent,
+            os.geteuid(),
+            MAX_LAUNCH_AGENT_FILE_BYTES,
+            "LaunchAgent is malformed",
+            required_mode=0o600,
+        )
+        try:
+            launch_agent = plistlib.loads(body)
+        except (TypeError, ValueError, plistlib.InvalidFileException) as error:
+            raise InstallError("LaunchAgent is malformed") from error
+        arguments = (
+            launch_agent.get("ProgramArguments")
+            if isinstance(launch_agent, dict)
+            else None
+        )
+        if (
+            not isinstance(arguments, list)
+            or not arguments
+            or arguments[0] != expected.get("executable_path")
+        ):
+            raise InstallError("LaunchAgent daemon wrapper identity differs")
+    return current
+
+
+def verify_signed_cli(path: Path, expected_team_identifier: str) -> dict[str, str]:
+    if (
+        not expected_team_identifier
+        or contains_control(expected_team_identifier)
+        or len(expected_team_identifier.encode("utf-8")) > 64
+    ):
+        raise InstallError("daemon wrapper signing identity is invalid")
+    try:
+        run(
+            [
+                str(CODESIGN),
+                "--verify",
+                "--strict",
+                "--all-architectures",
+                str(path),
+            ],
+            capture=True,
+        )
+        details = run(
+            [str(CODESIGN), "-d", "--verbose=4", str(path)],
+            capture=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise InstallError("Decodex CLI signature did not verify") from error
+    output = "\n".join(
+        part for part in (details.stdout, details.stderr) if isinstance(part, str)
     )
-    return "\n".join(lines)
-
-
-def render_mapping(enrollments: list[Enrollment]) -> bytes:
-    payload = {
-        "schema": MAPPING_SCHEMA,
-        "accounts": [
-            {
-                "slot": enrollment.slot,
-                "provider_account_id_sha256": enrollment.provider_account_id_sha256,
-            }
-            for enrollment in enrollments
-        ],
+    identifiers = re.findall(r"^Identifier=(.+)$", output, re.MULTILINE)
+    teams = re.findall(r"^TeamIdentifier=(.+)$", output, re.MULTILINE)
+    code_directories = re.findall(r"^CodeDirectory .+$", output, re.MULTILINE)
+    if (
+        len(identifiers) != 1
+        or not identifiers[0]
+        or contains_control(identifiers[0])
+        or teams != [expected_team_identifier]
+        or len(code_directories) != 1
+        or "(runtime)" not in code_directories[0]
+    ):
+        raise InstallError("Decodex CLI signature did not verify")
+    return {
+        "identifier": identifiers[0],
+        "team_identifier": teams[0],
     }
-    return (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
 
 
-def render_launch_agent(paths: InstallPaths) -> bytes:
+def render_launch_agent(
+    paths: InstallPaths,
+    daemon_wrapper: dict[str, Any],
+) -> bytes:
     arguments = [
-        str(paths.decodexd),
+        daemon_wrapper["executable_path"],
         "supervise-local",
         "--postgres",
         str(paths.postgres),
@@ -803,10 +649,6 @@ def render_launch_agent(paths: InstallPaths) -> bytes:
         str(paths.socket_directory),
         "--port",
         str(POSTGRES_PORT),
-        "--legacy-accounts",
-        str(paths.legacy_accounts),
-        "--legacy-mapping",
-        str(paths.mapping),
         "--working-directory",
         str(paths.repository),
     ]
@@ -818,8 +660,6 @@ def render_launch_agent(paths: InstallPaths) -> bytes:
             "PATH": launch_agent_path(paths),
         },
         "RunAtLoad": True,
-        # A successful supervised drain leaves the loaded job inactive until the installer
-        # removes it. Unexpected failures remain restartable.
         "KeepAlive": {"SuccessfulExit": False},
         "ExitTimeOut": 60,
         "ThrottleInterval": 5,
@@ -864,8 +704,7 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
     require_owned_directory(path.parent, uid, "installation destination is unsafe")
     candidate = path.parent / f".{path.name}.install-{uuid.uuid4().hex}"
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     candidate_created = False
     try:
         descriptor = os.open(candidate, flags, mode)
@@ -888,9 +727,7 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
             or stat.S_IMODE(metadata.st_mode) != mode
         ):
             raise InstallError("installed file authority is unsafe")
-        directory_flags = os.O_RDONLY
-        if hasattr(os, "O_DIRECTORY"):
-            directory_flags |= os.O_DIRECTORY
+        directory_flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
         directory = os.open(path.parent, directory_flags)
         try:
             os.fsync(directory)
@@ -908,21 +745,132 @@ def atomic_write(path: Path, content: bytes, mode: int) -> None:
 def run(
     command: list[str],
     *,
-    cwd: Path | None = None,
-    env: dict[str, str] | None = None,
+    cwd: Optional[Path] = None,
+    env: Optional[dict[str, str]] = None,
     capture: bool = False,
     check: bool = True,
-    timeout: float | None = None,
+    timeout: Optional[float] = INSTALLER_COMMAND_TIMEOUT_SECONDS,
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    if timeout is None or timeout <= 0:
+        raise InstallError("installer child timeout is invalid")
+    process = subprocess.Popen(
         command,
         cwd=cwd,
         env=env,
-        check=check,
-        text=True,
-        capture_output=capture,
-        timeout=timeout,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        start_new_session=True,
     )
+    stdout_bytes, stderr_bytes = communicate_bounded(process, command, timeout)
+    stdout = stdout_bytes.decode("utf-8", errors="strict")
+    stderr = stderr_bytes.decode("utf-8", errors="strict")
+    completed = subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout if capture else None,
+        stderr if capture else None,
+    )
+    if check and process.returncode != 0:
+        raise subprocess.CalledProcessError(
+            process.returncode,
+            command,
+            output=stdout if capture else None,
+            stderr=stderr if capture else None,
+        )
+    return completed
+
+
+def terminate_bounded_process(process: subprocess.Popen[Any]) -> None:
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+    try:
+        process.wait(timeout=0.25)
+    except subprocess.TimeoutExpired:
+        pass
+    try:
+        os.killpg(process.pid, signal.SIGKILL)
+    except ProcessLookupError:
+        pass
+    if process.returncode is None:
+        try:
+            process.wait(timeout=10)
+        except subprocess.TimeoutExpired as error:
+            raise InstallError("installer child could not be reaped") from error
+
+
+def communicate_bounded(
+    process: subprocess.Popen[Any],
+    command: list[str],
+    timeout: float,
+) -> tuple[bytes, bytes]:
+    if process.stdout is None or process.stderr is None:
+        primary_error = InstallError("installer child output pipes are unavailable")
+        try:
+            terminate_bounded_process(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
+        raise primary_error
+    streams = {
+        process.stdout.fileno(): ("stdout", process.stdout),
+        process.stderr.fileno(): ("stderr", process.stderr),
+    }
+    chunks: dict[str, list[bytes]] = {"stdout": [], "stderr": []}
+    output_bytes = 0
+    deadline = time.monotonic() + timeout
+    selector = selectors.DefaultSelector()
+    try:
+        for descriptor in streams:
+            os.set_blocking(descriptor, False)
+            selector.register(descriptor, selectors.EVENT_READ)
+        while selector.get_map():
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise subprocess.TimeoutExpired(
+                    command,
+                    timeout,
+                    output=b"".join(chunks["stdout"]),
+                    stderr=b"".join(chunks["stderr"]),
+                )
+            events = selector.select(min(0.25, remaining))
+            for key, _ in events:
+                descriptor = key.fd
+                name, stream = streams[descriptor]
+                try:
+                    chunk = os.read(descriptor, 64 * 1024)
+                except BlockingIOError:
+                    continue
+                if not chunk:
+                    selector.unregister(descriptor)
+                    stream.close()
+                    continue
+                output_bytes += len(chunk)
+                if output_bytes > MAX_INSTALLER_CHILD_OUTPUT_BYTES:
+                    raise InstallError("installer child output exceeded its bound")
+                chunks[name].append(chunk)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(
+                command,
+                timeout,
+                output=b"".join(chunks["stdout"]),
+                stderr=b"".join(chunks["stderr"]),
+            )
+        process.wait(timeout=remaining)
+    except BaseException as primary_error:
+        try:
+            terminate_bounded_process(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
+        raise
+    finally:
+        selector.close()
+        for _, stream in streams.values():
+            if not stream.closed:
+                stream.close()
+    return b"".join(chunks["stdout"]), b"".join(chunks["stderr"])
 
 
 def postgres_major(postgres: Path) -> int:
@@ -935,8 +883,7 @@ def postgres_major(postgres: Path) -> int:
 
 def open_private_append_file(path: Path, uid: int) -> int:
     flags = os.O_WRONLY | os.O_CREAT | os.O_APPEND
-    if hasattr(os, "O_NOFOLLOW"):
-        flags |= os.O_NOFOLLOW
+    flags |= getattr(os, "O_NOFOLLOW", 0)
     try:
         descriptor = os.open(path, flags, 0o600)
     except OSError as error:
@@ -957,13 +904,14 @@ def open_private_append_file(path: Path, uid: int) -> int:
 
 
 def ensure_directories(paths: InstallPaths, uid: int) -> None:
-    for path in [
+    for path in (
         paths.root,
         paths.data_directory.parent,
         paths.data_directory,
         paths.socket_directory,
         paths.log_directory,
-    ]:
+        paths.server_directory,
+    ):
         path.mkdir(parents=True, exist_ok=True, mode=0o700)
         require_owned_directory(path, uid, "local service directory authority is unsafe")
         os.chmod(path, 0o700)
@@ -971,7 +919,18 @@ def ensure_directories(paths: InstallPaths, uid: int) -> None:
     os.close(service_log)
 
 
-def postgres_version(paths: InstallPaths, uid: int) -> str | None:
+def ensure_installer_namespace_layout(paths: InstallPaths, uid: int) -> None:
+    for path in (paths.root, paths.server_directory):
+        path.mkdir(parents=True, exist_ok=True, mode=0o700)
+        require_owned_directory(
+            path,
+            uid,
+            "local service namespace directory is unsafe",
+        )
+        os.chmod(path, 0o700)
+
+
+def postgres_version(paths: InstallPaths, uid: int) -> Optional[str]:
     version_file = paths.data_directory / "PG_VERSION"
     if not managed_path_exists(version_file, "PostgreSQL cluster version is unsafe"):
         return None
@@ -1020,10 +979,129 @@ def initialize_cluster(paths: InstallPaths, uid: int) -> None:
         raise InstallError("PostgreSQL 18 initialization did not complete")
 
 
+class _TemporaryPostgresOutput:
+    def __init__(
+        self,
+        process: subprocess.Popen[Any],
+        stream: Any,
+        log_descriptor: int,
+        remaining_bytes: int,
+    ) -> None:
+        self._process = process
+        self._stream = stream
+        self._log_descriptor = log_descriptor
+        self._remaining_bytes = remaining_bytes
+        self._failure: Optional[str] = None
+        self._failure_lock = threading.Lock()
+        self._settle_requested = threading.Event()
+        self._thread = threading.Thread(
+            target=self._drain,
+            name="decodex-postgres-output",
+            daemon=True,
+        )
+
+    @property
+    def failure(self) -> Optional[str]:
+        with self._failure_lock:
+            return self._failure
+
+    def start(self) -> None:
+        self._thread.start()
+
+    def settle(self) -> None:
+        self._settle_requested.set()
+        self._thread.join(timeout=LOCAL_SERVICE_CONTROL_TIMEOUT_SECONDS)
+        if self._thread.is_alive():
+            raise InstallError("temporary PostgreSQL output did not settle")
+        if self.failure is not None:
+            raise InstallError(self.failure)
+
+    def _record_failure(self, message: str) -> None:
+        terminate = False
+        with self._failure_lock:
+            if self._failure is None:
+                self._failure = message
+                terminate = True
+        if terminate:
+            try:
+                self._process.send_signal(signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+
+    def _write_log(self, content: bytes) -> None:
+        remaining = memoryview(content)
+        while remaining:
+            written = os.write(self._log_descriptor, remaining)
+            if written <= 0:
+                raise OSError("temporary PostgreSQL log write failed")
+            remaining = remaining[written:]
+
+    def _drain(self) -> None:
+        selector = selectors.DefaultSelector()
+        try:
+            descriptor = self._stream.fileno()
+            os.set_blocking(descriptor, False)
+            selector.register(descriptor, selectors.EVENT_READ)
+            while True:
+                events = selector.select(0.25)
+                for key, _ in events:
+                    while True:
+                        try:
+                            chunk = os.read(key.fd, 64 * 1024)
+                        except BlockingIOError:
+                            break
+                        if not chunk:
+                            return
+                        accepted = chunk[: self._remaining_bytes]
+                        if accepted:
+                            self._write_log(accepted)
+                            self._remaining_bytes -= len(accepted)
+                        if len(accepted) != len(chunk):
+                            self._record_failure(
+                                "temporary PostgreSQL output exceeded its bound"
+                            )
+                if self._settle_requested.is_set():
+                    return
+        except BaseException:
+            self._record_failure("temporary PostgreSQL output could not be recorded")
+        finally:
+            selector.close()
+            try:
+                os.fsync(self._log_descriptor)
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+            try:
+                self._stream.close()
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+            try:
+                os.close(self._log_descriptor)
+            except OSError:
+                self._record_failure(
+                    "temporary PostgreSQL output could not be recorded"
+                )
+
+
+def _temporary_postgres_output(
+    process: subprocess.Popen[Any],
+) -> Optional[_TemporaryPostgresOutput]:
+    output = getattr(process, "_decodex_temporary_postgres_output", None)
+    return output if isinstance(output, _TemporaryPostgresOutput) else None
+
+
 def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> None:
+    output = _temporary_postgres_output(process)
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline:
+        if output is not None and output.failure is not None:
+            raise InstallError(output.failure)
         if process.poll() is not None:
+            if output is not None:
+                output.settle()
             raise InstallError("PostgreSQL exited during local-service startup")
         completed = run(
             [
@@ -1039,6 +1117,8 @@ def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> No
             check=False,
         )
         if completed.returncode == 0:
+            if output is not None and output.failure is not None:
+                raise InstallError(output.failure)
             return
         time.sleep(0.25)
     raise InstallError("PostgreSQL did not become ready")
@@ -1047,6 +1127,9 @@ def wait_for_postgres(paths: InstallPaths, process: subprocess.Popen[Any]) -> No
 def start_temporary_postgres(paths: InstallPaths) -> subprocess.Popen[Any]:
     log_descriptor = open_private_append_file(paths.postgres_log, os.geteuid())
     try:
+        log_size = os.fstat(log_descriptor).st_size
+        if log_size > MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES:
+            raise InstallError("temporary PostgreSQL output log exceeded its bound")
         process = subprocess.Popen(
             [
                 str(paths.postgres),
@@ -1059,36 +1142,90 @@ def start_temporary_postgres(paths: InstallPaths) -> subprocess.Popen[Any]:
                 "-h",
                 "",
             ],
-            stdout=log_descriptor,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             close_fds=True,
+            start_new_session=True,
         )
-    finally:
+    except BaseException:
         os.close(log_descriptor)
+        raise
+    if process.stdout is None:
+        os.close(log_descriptor)
+        terminate_bounded_process(process)
+        raise InstallError("temporary PostgreSQL output pipe is unavailable")
+    output = _TemporaryPostgresOutput(
+        process,
+        process.stdout,
+        log_descriptor,
+        MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES - log_size,
+    )
+    setattr(process, "_decodex_temporary_postgres_output", output)
+    try:
+        output.start()
+    except BaseException as error:
+        delattr(process, "_decodex_temporary_postgres_output")
+        process.stdout.close()
+        os.close(log_descriptor)
+        terminate_bounded_process(process)
+        raise InstallError("temporary PostgreSQL output drain could not start") from error
     try:
         wait_for_postgres(paths, process)
     except BaseException:
-        if process.poll() is None:
-            process.terminate()
-            try:
-                process.wait(timeout=30)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=10)
+        try:
+            stop_temporary_postgres(process)
+        except BaseException as error:
+            raise InstallError("temporary PostgreSQL startup cleanup failed") from error
         raise
     return process
 
 
 def stop_temporary_postgres(process: subprocess.Popen[Any]) -> None:
-    if process.poll() is not None:
-        return
-    process.send_signal(signal.SIGTERM)
+    termination_error: Optional[BaseException] = None
     try:
-        process.wait(timeout=30)
-    except subprocess.TimeoutExpired as error:
-        process.kill()
-        process.wait(timeout=10)
-        raise InstallError("PostgreSQL did not stop gracefully") from error
+        if process.poll() is None:
+            process.send_signal(signal.SIGTERM)
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired as error:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired as reap_error:
+                    termination_error = InstallError(
+                        "temporary PostgreSQL could not be reaped"
+                    )
+                    termination_error.__cause__ = reap_error
+                else:
+                    termination_error = InstallError(
+                        "PostgreSQL did not stop gracefully"
+                    )
+                    termination_error.__cause__ = error
+        else:
+            process.wait(timeout=1)
+    except BaseException as error:
+        termination_error = error
+
+    output_error: Optional[BaseException] = None
+    output = _temporary_postgres_output(process)
+    if output is not None:
+        try:
+            output.settle()
+        except BaseException as error:
+            output_error = error
+
+    if termination_error is not None and output_error is not None:
+        raise InstallError(
+            "temporary PostgreSQL cleanup and output validation failed"
+        ) from termination_error
+    if termination_error is not None:
+        raise termination_error
+    if output_error is not None:
+        raise output_error
 
 
 def psql_environment(paths: InstallPaths) -> dict[str, str]:
@@ -1131,7 +1268,7 @@ def psql_scalar(paths: InstallPaths, database: str, sql: str, env: dict[str, str
 
 
 def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
-    for role in [POSTGRES_MIGRATION_ROLE, POSTGRES_RUNTIME_ROLE]:
+    for role in (POSTGRES_SCHEMA_ROLE, POSTGRES_RUNTIME_ROLE):
         exists = psql_scalar(
             paths,
             "postgres",
@@ -1176,7 +1313,7 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
             paths,
             "postgres",
             f"CREATE DATABASE {POSTGRES_DATABASE} WITH TEMPLATE template0 "
-            f"ENCODING 'UTF8' OWNER {POSTGRES_MIGRATION_ROLE}",
+            f"ENCODING 'UTF8' OWNER {POSTGRES_SCHEMA_ROLE}",
             env,
         )
     owner = psql_scalar(
@@ -1187,12 +1324,12 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
         f"WHERE database.datname='{POSTGRES_DATABASE}'",
         env,
     )
-    if owner != POSTGRES_MIGRATION_ROLE:
+    if owner != POSTGRES_SCHEMA_ROLE:
         raise InstallError("existing Decodex database has an unexpected owner")
     psql_scalar(
         paths,
         POSTGRES_DATABASE,
-        f"GRANT USAGE, CREATE ON SCHEMA public TO {POSTGRES_MIGRATION_ROLE}",
+        f"GRANT USAGE, CREATE ON SCHEMA public TO {POSTGRES_SCHEMA_ROLE}",
         env,
     )
     psql_scalar(
@@ -1200,61 +1337,13 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
         "postgres",
         f"REVOKE CREATE ON DATABASE {POSTGRES_DATABASE} FROM PUBLIC; "
         f"GRANT CONNECT, CREATE ON DATABASE {POSTGRES_DATABASE} "
-        f"TO {POSTGRES_MIGRATION_ROLE}; "
+        f"TO {POSTGRES_SCHEMA_ROLE}; "
         f"GRANT CONNECT ON DATABASE {POSTGRES_DATABASE} TO {POSTGRES_RUNTIME_ROLE}",
         env,
     )
 
 
-def database_url(paths: InstallPaths, role: str) -> str:
-    return (
-        f"postgresql://{role}@/{POSTGRES_DATABASE}"
-        f"?host={paths.socket_directory.as_posix()}&port={POSTGRES_PORT}"
-    )
-
-
-def load_postgres_harness(paths: InstallPaths) -> ModuleType:
-    harness_path = paths.repository / "scripts" / "vnext" / "postgres_store_test.py"
-    spec = importlib.util.spec_from_file_location("decodex_postgres_store_test", harness_path)
-    if spec is None or spec.loader is None:
-        raise InstallError("PostgreSQL provisioning helper is unavailable")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[spec.name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def migrate_and_provision(paths: InstallPaths, env: dict[str, str]) -> None:
-    migration_env = env.copy()
-    migration_env["DECODEX_TEST_MIGRATION_DATABASE_URL"] = database_url(
-        paths, POSTGRES_MIGRATION_ROLE
-    )
-    migration_env["DECODEX_TEST_RUNTIME_DATABASE_URL"] = database_url(
-        paths, POSTGRES_RUNTIME_ROLE
-    )
-    run(
-        [
-            "cargo",
-            "nextest",
-            "run",
-            "-p",
-            "decodex-postgres",
-            "--test",
-            "postgres_store",
-            "--run-ignored",
-            "all",
-            "--",
-            "postgres_migration_contract",
-            "--exact",
-        ],
-        cwd=paths.repository,
-        env=migration_env,
-    )
-    harness = load_postgres_harness(paths)
-    harness.provision_runtime(POSTGRES_DATABASE, POSTGRES_RUNTIME_ROLE, env)
-
-
-def parse_launch_agent_pid(output: str) -> int | None:
+def parse_launch_agent_pid(output: str) -> Optional[int]:
     match = re.search(r"^\s*pid = ([1-9][0-9]*)\s*$", output, re.MULTILINE)
     return int(match.group(1)) if match is not None else None
 
@@ -1322,7 +1411,8 @@ def process_parent_map(deadline: float) -> dict[int, ProcessRecord]:
 
 
 def process_generation(
-    root_process_id: int, processes: dict[int, ProcessRecord]
+    root_process_id: int,
+    processes: dict[int, ProcessRecord],
 ) -> frozenset[ProcessIdentity]:
     if root_process_id not in processes:
         return frozenset()
@@ -1343,7 +1433,8 @@ def process_generation(
 
 
 def wait_for_process_generation_exit(
-    process_identities: set[ProcessIdentity], deadline: float
+    process_identities: set[ProcessIdentity],
+    deadline: float,
 ) -> None:
     if not process_identities:
         return
@@ -1374,6 +1465,7 @@ def installed_launch_agent_supports_graceful_drain(path: Path, uid: int) -> bool
             uid,
             MAX_LAUNCH_AGENT_FILE_BYTES,
             "installed LaunchAgent is unavailable",
+            required_mode=0o600,
         )
         document = plistlib.loads(body)
     except (InstallError, ValueError, plistlib.InvalidFileException):
@@ -1490,10 +1582,7 @@ def bootstrap_service(paths: InstallPaths, uid: int) -> None:
             raise InstallError("local service could not be started") from error
 
 
-def query_reset_card(
-    paths: InstallPaths,
-    arguments: list[str],
-) -> dict[str, Any] | None:
+def query_accounts(paths: InstallPaths) -> Optional[dict[str, Any]]:
     try:
         completed = run(
             [
@@ -1502,8 +1591,8 @@ def query_reset_card(
                 str(paths.root),
                 "--output",
                 "json",
-                "reset-card",
-                *arguments,
+                "account",
+                "list",
             ],
             cwd=paths.repository,
             capture=True,
@@ -1520,8 +1609,9 @@ def query_reset_card(
         return None
     if (
         not isinstance(document, dict)
-        or document.get("schema") != "decodex/reset-card-cli/1"
-        or document.get("outcome") != "available"
+        or document.get("schema") != "decodex/cli-account/1"
+        or document.get("command") != "list"
+        or document.get("outcome") != "success"
     ):
         return None
     return document
@@ -1589,15 +1679,20 @@ def query_doctor(paths: InstallPaths) -> bool:
     return critical_doctor_is_ready(document)
 
 
-def account_ids_from_result(document: dict[str, Any]) -> list[str] | None:
-    if document.get("command") != "accounts":
-        return None
+def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
     result = document.get("result")
-    if not isinstance(result, dict) or result.get("outcome") != "available":
+    if (
+        not isinstance(result, dict)
+        or set(result) != {"outcome", "data"}
+        or result.get("outcome") != "available"
+    ):
         return None
     data = result.get("data")
-    accounts = data.get("accounts") if isinstance(data, dict) else None
-    if not isinstance(accounts, list):
+    if not isinstance(data, dict) or set(data) != {"accounts", "routing"}:
+        return None
+    accounts = data.get("accounts")
+    routing = data.get("routing")
+    if not isinstance(accounts, list) or not isinstance(routing, dict):
         return None
     account_ids: list[str] = []
     for account in accounts:
@@ -1607,50 +1702,54 @@ def account_ids_from_result(document: dict[str, Any]) -> list[str] | None:
         account_ids.append(account_id)
     if len(set(account_ids)) != len(account_ids):
         return None
+    order = routing.get("order")
+    revision = routing.get("revision")
+    mode = routing.get("mode")
+    if (
+        type(revision) is not int
+        or revision <= 0
+        or not isinstance(order, list)
+        or any(
+            not isinstance(account_id, str)
+            or not UUID_PATTERN.fullmatch(account_id)
+            for account_id in order
+        )
+        or len(order) != len(set(order))
+        or set(order) != set(account_ids)
+        or not isinstance(mode, dict)
+        or mode.get("mode") not in {"balanced", "fixed"}
+    ):
+        return None
+    if mode["mode"] == "balanced":
+        if set(mode) != {"mode"}:
+            return None
+    else:
+        if (
+            set(mode) != {"mode", "account_id"}
+            or mode.get("account_id") not in account_ids
+        ):
+            return None
     return account_ids
 
 
-def inventory_is_available(document: dict[str, Any], account_id: str) -> bool:
-    if document.get("command") != "list":
-        return False
-    result = document.get("result")
-    if not isinstance(result, dict) or result.get("outcome") != "available":
-        return False
-    data = result.get("data")
-    return isinstance(data, dict) and data.get("account_id") == account_id
-
-
-def wait_for_service(paths: InstallPaths, expected_account_ids: set[str]) -> None:
+def wait_for_service(paths: InstallPaths) -> list[str]:
     deadline = time.monotonic() + 180
-    last_issue = "reset-card service did not answer"
+    last_issue = "account service did not answer"
     while time.monotonic() < deadline:
         if not query_doctor(paths):
             last_issue = "local-service authority is unavailable"
             time.sleep(1)
             continue
-        accounts_document = query_reset_card(paths, ["accounts"])
+        accounts_document = query_accounts(paths)
         account_ids = (
             account_ids_from_result(accounts_document)
             if accounts_document is not None
             else None
         )
         if account_ids is None:
-            last_issue = "reset-card account discovery is unavailable"
-        elif set(account_ids) != expected_account_ids:
-            last_issue = "reset-card account discovery set does not agree"
+            last_issue = "account registry is unavailable"
         else:
-            inventories_ready = True
-            for account_id in account_ids:
-                inventory = query_reset_card(
-                    paths,
-                    ["list", "--account", account_id],
-                )
-                if inventory is None or not inventory_is_available(inventory, account_id):
-                    inventories_ready = False
-                    last_issue = "reset-card inventory is unavailable"
-                    break
-            if inventories_ready:
-                return
+            return account_ids
         time.sleep(1)
     raise InstallError(last_issue)
 
@@ -1669,12 +1768,11 @@ def validate_host(paths: InstallPaths) -> int:
         raise InstallError("the current user home is unavailable") from error
     if not (paths.repository / "Cargo.toml").is_file():
         raise InstallError("repository root is invalid")
-    expected_root = user_home / ".decodex"
-    if paths.root != expected_root:
+    if paths.root != user_home / ".decodex":
         raise InstallError("the local service root must be the platform default")
     if paths.codex.name != "codex":
         raise InstallError("Codex executable name is invalid")
-    for name, path in [
+    for name, path in (
         ("decodexd", paths.decodexd),
         ("Decodex CLI", paths.decodex_cli),
         ("Codex", paths.codex),
@@ -1682,69 +1780,100 @@ def validate_host(paths: InstallPaths) -> int:
         ("initdb", paths.initdb),
         ("pg_isready", paths.pg_isready),
         ("psql", paths.psql),
-    ]:
+        ("codesign", CODESIGN),
+    ):
         require_regular_executable(path, name)
-    if postgres_major(paths.postgres) != 18:
-        raise InstallError("PostgreSQL 18 is required")
     return uid
 
 
-def main(argv: list[str] | None = None) -> int:
-    args = parse_args(argv)
-    paths = install_paths(args)
-    uid = validate_host(paths)
+def install_under_namespace_lock(
+    paths: InstallPaths,
+    uid: int,
+    namespace_lock: InstallerNamespaceLock,
+    daemon_wrapper: dict[str, Any],
+) -> None:
+    namespace_lock.verify()
     ensure_directories(paths, uid)
-    accounts = read_legacy_accounts(paths.legacy_accounts, uid)
-    existing_mapping = load_existing_mapping(paths.mapping, uid)
-    config_exists = managed_path_exists(
-        paths.config,
-        "existing Decodex config is malformed",
-    )
-    existing = existing_enrollments(paths.config, uid) if config_exists else {}
-    if config_exists and (not existing_mapping or not existing):
-        if not args.replace_config:
-            raise InstallError("existing config requires explicit --replace-config")
-        existing = {}
-    enrollments = build_enrollments(
-        accounts,
-        existing_mapping,
-        existing,
-        read_usage_presentations(),
-    )
-    config = render_config(paths, uid, enrollments).encode("utf-8")
-    mapping = render_mapping(enrollments)
-    launch_agent = render_launch_agent(paths)
+    verify_daemon_wrapper(paths, daemon_wrapper, require_launch_agent=False)
+    team_identifier = daemon_wrapper.get("team_identifier")
+    if not isinstance(team_identifier, str):
+        raise InstallError("daemon wrapper signing identity is invalid")
+    verify_signed_cli(paths.decodex_cli, team_identifier)
 
-    bootout_service(paths, uid)
+    config = render_config(paths, uid)
+    launch_agent = render_launch_agent(paths, daemon_wrapper)
+    atomic_write(paths.config, config, 0o600)
+    atomic_write(paths.launch_agent, launch_agent, 0o600)
+    if read_owned_file(
+        paths.config,
+        uid,
+        MAX_CONFIG_FILE_BYTES,
+        "installed Decodex config differs",
+        required_mode=0o600,
+    ) != config:
+        raise InstallError("installed Decodex config differs")
+    if read_owned_file(
+        paths.launch_agent,
+        uid,
+        MAX_LAUNCH_AGENT_FILE_BYTES,
+        "installed LaunchAgent differs",
+        required_mode=0o600,
+    ) != launch_agent:
+        raise InstallError("installed LaunchAgent differs")
+
     initialize_cluster(paths, uid)
     postgres = start_temporary_postgres(paths)
     try:
         environment = psql_environment(paths)
         ensure_roles_and_database(paths, environment)
-        migrate_and_provision(paths, environment)
     finally:
         stop_temporary_postgres(postgres)
 
-    atomic_write(paths.mapping, mapping, 0o600)
-    atomic_write(paths.config, config, 0o600)
-    atomic_write(paths.launch_agent, launch_agent, 0o600)
+    namespace_lock.verify()
+    verify_daemon_wrapper(paths, daemon_wrapper, require_launch_agent=True)
+    verify_signed_cli(paths.decodex_cli, team_identifier)
 
-    if not args.no_launch:
-        bootstrap_service(paths, uid)
-        wait_for_service(
+
+def main(argv: Optional[list[str]] = None) -> int:
+    args = parse_args(argv)
+    paths = install_paths(args)
+    uid = validate_host(paths)
+    daemon_wrapper = inspect_daemon_wrapper(paths)
+    team_identifier = daemon_wrapper.get("team_identifier")
+    if not isinstance(team_identifier, str):
+        raise InstallError("daemon wrapper signing identity is invalid")
+    verify_signed_cli(paths.decodex_cli, team_identifier)
+    ensure_installer_namespace_layout(paths, uid)
+    if postgres_major(paths.postgres) != 18:
+        raise InstallError("PostgreSQL 18 is required")
+
+    bootout_service(paths, uid)
+    namespace_lock = InstallerNamespaceLock.acquire(paths, uid)
+    try:
+        install_under_namespace_lock(
             paths,
-            {enrollment.account_id for enrollment in enrollments},
+            uid,
+            namespace_lock,
+            daemon_wrapper,
         )
+    finally:
+        namespace_lock.close()
+
+    launch = not args.no_launch
+    account_ids: list[str] = []
+    if launch:
+        bootstrap_service(paths, uid)
+        account_ids = wait_for_service(paths)
 
     print(
         json.dumps(
             {
                 "schema": "decodex/local-service-install/1",
                 "outcome": "success",
-                "account_count": len(enrollments),
+                "account_count": len(account_ids),
                 "postgres_major": 18,
                 "launch_agent": LAUNCH_AGENT_LABEL,
-                "launched": not args.no_launch,
+                "launched": launch,
             },
             sort_keys=True,
             separators=(",", ":"),

@@ -271,6 +271,90 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(store.pendingAttempts, [attempt])
 	}
 
+	func testRefreshPublishesRowsAndCompletesEachInventoryIndependently() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let firstAccount = Self.account(authority: nil)
+		let secondAccount = ResetCardAccountRecord(
+			authority: nil,
+			accountID: "33333333-3333-4333-8333-333333333333",
+			displayLabel: "Account B",
+			accountRevision: 11,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let firstInventory = try Self.inventory
+		let secondInventory = ResetCardInventory(
+			authority: Self.authority,
+			accountID: secondAccount.accountID,
+			accountRevision: secondAccount.accountRevision,
+			cards: [],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+		let client = ProgressiveResetCardClient(
+			accounts: [firstAccount, secondAccount],
+			inventories: [
+				firstAccount.accountID: firstInventory,
+				secondAccount.accountID: secondInventory,
+			],
+			blockedAccountID: secondAccount.accountID
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refresh = Task {
+			await store.refresh()
+		}
+		try await waitUntil {
+			store.accounts.map(\.id) == [
+				firstAccount.accountID,
+				secondAccount.accountID,
+			]
+				&& store.accounts[0].inventory == firstInventory
+				&& store.accounts[0].isRefreshing == false
+				&& store.accounts[1].inventory == nil
+				&& store.accounts[1].isRefreshing
+		}
+
+		await client.releaseBlockedAccount()
+		await refresh.value
+
+		XCTAssertEqual(store.accounts.map(\.inventory), [firstInventory, secondInventory])
+		XCTAssertTrue(store.accounts.allSatisfy { $0.isRefreshing == false })
+	}
+
+	func testRefreshPinsTheAccountListToTheEstablishedAuthority() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ScriptedResetCardClient(
+			accountSteps: [],
+			accountFallback: .value([Self.account(authority: nil)]),
+			inventoryFallback: .value(try Self.inventory)
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.refresh()
+
+		let authorities = await client.accountAuthorities()
+		XCTAssertEqual(authorities.count, 2)
+		XCTAssertNil(authorities[0])
+		XCTAssertEqual(authorities[1], Self.authority)
+		XCTAssertEqual(store.accounts.map(\.account.authority), [Self.authority])
+	}
+
 	func testExplicitUseDispatchesOnlyOnce() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -336,13 +420,23 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 	)
 
-	private static let account = ResetCardAccountRecord(
-		authority: authority,
-		accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
-		displayLabel: "Account A",
-		accountRevision: 7,
-		admissionState: .depleted
-	)
+	private static let account = account(authority: authority)
+
+	private static func account(
+		authority: ResetCardAuthority?
+	) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
+			displayLabel: "Account A",
+			accountRevision: 7,
+			enabled: true,
+			observedState: .depleted,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+	}
 
 	private static var inventory: ResetCardInventory {
 		get throws {
@@ -355,7 +449,24 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 						grantedAtUnixSeconds: 100,
 						expiresAtUnixSeconds: 200
 					),
-				]
+				],
+				fiveHourQuota: ResetCardQuotaWindow(
+					durationMinutes: 300,
+					observedAtUnixMicros: 1_000_000,
+					state: .current(
+						usedPercent: 100,
+						resetsAtUnixMicros: 2_000_000
+					)
+				),
+				sevenDayQuota: ResetCardQuotaWindow(
+					durationMinutes: 10_080,
+					observedAtUnixMicros: 1_000_000,
+					state: .stale(
+						usedPercent: 80,
+						resetsAtUnixMicros: 3_000_000
+					)
+				),
+				observationError: nil
 			)
 		}
 	}
@@ -398,6 +509,7 @@ private actor ScriptedResetCardClient: ResetCardClient {
 	private var statusSteps: [ClientStep<ResetCardOperationState>]
 	private let statusFallback: ClientStep<ResetCardOperationState>
 	private var counts = ClientCallCounts(accounts: 0, inventory: 0, status: 0, use: 0)
+	private var requestedAccountAuthorities = [ResetCardAuthority?]()
 
 	init(
 		accountSteps: [ClientStep<[ResetCardAccountRecord]>],
@@ -415,7 +527,10 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		self.statusFallback = statusFallback
 	}
 
-	func accounts() async throws -> [ResetCardAccountRecord] {
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		requestedAccountAuthorities.append(authority)
 		counts = ClientCallCounts(
 			accounts: counts.accounts + 1,
 			inventory: counts.inventory,
@@ -465,6 +580,10 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		counts
 	}
 
+	func accountAuthorities() -> [ResetCardAuthority?] {
+		requestedAccountAuthorities
+	}
+
 	private static func resolve<Value: Sendable>(
 		_ step: ClientStep<Value>
 	) throws -> Value {
@@ -474,6 +593,53 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		case .failure(let error):
 			throw error
 		}
+	}
+}
+
+private actor ProgressiveResetCardClient: ResetCardClient {
+	private let accountRecords: [ResetCardAccountRecord]
+	private let inventories: [String: ResetCardInventory]
+	private let blockedAccountID: String
+	private var isReleased = false
+
+	init(
+		accounts: [ResetCardAccountRecord],
+		inventories: [String: ResetCardInventory],
+		blockedAccountID: String
+	) {
+		accountRecords = accounts
+		self.inventories = inventories
+		self.blockedAccountID = blockedAccountID
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		accountRecords
+	}
+
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		if account.accountID == blockedAccountID {
+			while isReleased == false {
+				try await Task.sleep(for: .milliseconds(1))
+			}
+		}
+		guard let inventory = inventories[account.accountID] else {
+			throw ResetCardClientError.invalidResponse
+		}
+		return inventory
+	}
+
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.notFound
+	}
+
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.prepared
+	}
+
+	func releaseBlockedAccount() {
+		isReleased = true
 	}
 }
 

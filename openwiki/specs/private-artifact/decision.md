@@ -1,6 +1,263 @@
-# Private-artifact authority decision
+# Private-artifact authority retirement decision
 
-## Decision and boundary
+Status: XY-1403 Option 1 exact-candidate review is approved for commit
+`6f03833a33d82f3d1fff00d45b518e8701fbd582`, tree
+`50d531b59bc818bf94f358398d3e8d1b33d26eed`, in Linear comment
+`669ea305-3709-4aa3-ae59-df3e68e41cee`. PR landing and Linear closure remain
+pending.
+
+## Approved disposition
+
+The authority packet is top-level Linear comment
+`3e1aa5eb-f7d8-449d-8b2e-a3a419d13a63`. It has no parent or quoted text. Its
+exact body is 15,671 UTF-8 bytes with SHA-256
+`cfec22459a6519ddd7489e99dd7eaa1df134452f41d40fc717a5238195d93e31`.
+It ends with
+`XY_1403_PA_DISPOSITION_RESEARCH_V2_READY_FOR_FRESH_SKEPTIC`.
+Fresh isolated skeptic R2 approval is top-level comment
+`0cbeeb1e-4416-4d78-a9ba-d98b37fd9092`. It ends with
+`XY_1403_PA_DISPOSITION_SKEPTIC_R2_APPROVED`.
+
+Select Option 1. Retire the private-artifact lane from the Decodex vNext product.
+Preserve its complete history. Replace only the retained-title evidence transport
+with existing bounded canonical privacy-safe Git evidence. Keep the accepted
+Artifact/BlobStore boundary unchanged for ordinary product evidence.
+
+The design-proportionality verdict is `over-designed`. The retired package specifies
+a reducer, PostgreSQL authority, executor, platform matrix, controllers, garbage
+collection, CORE-FREEZE, ACC, and a validation program. No current named vNext
+capability requires that machinery. The only remaining concrete consumers are the
+XY-1369 and XY-1370 receipts that XY-1363 uses.
+
+Do not retain the package as a deferred future subsystem. That option preserves
+specification cost and ambiguous authority without a current requirement. Do not
+implement the package. Accepted XY-1398 through XY-1402 do not require private-artifact
+execution, publication, service, or routing authority.
+
+This disposition creates no service, schema, storage system, runtime route, platform
+layer, issue, or compatibility path. It does not change source, tests, migrations,
+routing, ProcessGeneration, ProviderAttempt, ExecutionCoordinator,
+`openwiki/specs/xy-1368-retained-title-freeze.md`, or
+`openwiki/operations/xy-1368-retained-title-validation.md`. Production dispatch
+remains structurally disabled.
+
+## Repository effective point
+
+The required repository base is commit
+`ffde6da9e186bfdee85f388da9b90ffdd8c94f3f`, tree
+`a14a991fbbaa9b27b79a6df504afab6d0ef3925a`. At that base, the
+private-artifact subtree is `881a7d25801a4795a343d620164ed74a6dae136c`.
+The pre-retirement `authority/package.manifest` SHA-256 is
+`f88d5706b08e70170531dcda991d841c3b43543cf96a77500c0304f4a469753e`.
+The selected S1 commit `061fce893db973a8eee76c619b15250eda9a522e` is
+not an ancestor of the required base. It is not current authority and must not land.
+
+Option 1 becomes repository authority only when all these conditions hold:
+
+1. Fresh independent skeptic R2 unconditionally approves the exact V2 packet.
+2. One bounded repository candidate receives exact-candidate review.
+3. That candidate lands on the authoritative integration branch.
+4. The landed commit, tree, and complete sixteen-path change set are read back.
+
+The landed repository commit is the exact product-authority effective point. A task
+branch or candidate commit is not that point. Only after the landed readback can the
+Manager apply and read back the complete Linear transition. Linear is a projection.
+It is not the product-authority effective point.
+
+Before the effective point, the package at the required base remains repository
+authority. All private-artifact implementation and moving-core integration stay
+stopped. XY-1373 remains `In Progress`. This candidate authorizes no package rule,
+delivery edge, command, validation, or downstream start before landing.
+
+At and after the effective point, every former package rule, delivery edge, semantic
+module, A0/A1/B/D0a/C/D obligation, CORE-FREEZE boundary, ACC boundary, preparation
+contract, and unified validation requirement is historical and non-executable for
+vNext. No former item is active work, deferred work, a dependency, or a future-work
+inventory.
+
+## Protected historical evidence
+
+Keep these files byte-identical:
+
+- `authority/rules.tsv`
+- `authority/inventories.json`
+- `authority/source-census.tsv`
+- `authority/v22-baseline.tsv`
+- `authority/v22-function-contracts.rs.txt`
+- `authority/v22-relations.tsv`
+- `authority/v22-runtime-execute-functions.rs.txt`
+- `corpus/index.tsv`
+
+These files describe the retired design. They are not a current rule ledger,
+dependency graph, runtime input, validation input, or future-work inventory. Their
+rule IDs, owner paths, inventories, snapshots, source mappings, and corpus
+fingerprints have historical meaning only. Do not read protected private provenance
+to implement or validate this disposition. Do not delete, move, rewrite, summarize,
+or reinterpret it.
+
+The raw historical corpus remains quarantined in place. No Decodex runtime, tool,
+task, validation, indexer, automatic discovery, or normal workflow has an edge to
+read, copy, migrate, index, discover, or consume it. Retirement does not authorize
+access, relocation, or deletion.
+
+Preserve every issue, comment, attachment, failure record, receipt, parent relation,
+and `relatedTo` relation. This retirement changes current authority. It does not
+rewrite history or claim historical semantic fidelity.
+
+## Smallest retained-title evidence replacement
+
+Use no new issue, service, schema, storage system, runtime route, platform layer,
+compatibility path, or product Artifact.
+
+- **XY-1369:** Keep the no-DDL, read-only configuration, socket, role, ledger, and
+  account-revision preflight. After teardown and cleanup, emit one bounded,
+  canonical, privacy-safe record. Commit only reviewed public-safe fields and their
+  digest as Git evidence. Exclude raw errors, paths, account or role text,
+  credentials, provider data, and unrestricted output.
+- **XY-1370:** Keep exact executable identity, build attestation, bounded schema
+  generation, complete digest comparison, process-group teardown, and temporary-data
+  control. Raw schema stays private. It must not enter Git, Linear, Artifact, logs,
+  or the receipt. Commit one bounded public-safe attestation and digest as Git
+  evidence.
+- **XY-1363:** Consume the exact accepted XY-1369 and XY-1370 Git receipt identities.
+  Bind fresh experiment identities and one explicit new effect budget. Use the
+  accepted V22 one-shot path: one non-ephemeral thread start, one separately fenced
+  title set, exact-ID title, marker, cwd, and thread attestation, normal indexing,
+  and positive Desktop discovery of that exact title and thread ID. Do not submit a
+  turn, retry, adopt, infer absence, or use broad search.
+
+Each receipt binds the exact source commit, executable and build, configuration
+contract, request identity, bounded output contract, digest, disposition, and
+reviewer acceptance. A digest mismatch, missing field, unbounded output, private-data
+exposure, incomplete teardown, cleanup ambiguity, or negative inference rejects the
+receipt.
+
+The existing Artifact/BlobStore remains the accepted content-addressed boundary for
+ordinary product evidence. The three retained-title operator gates need no new
+product Artifact.
+
+## Preserved receipt anchors
+
+Keep these public anchors as historical provenance:
+
+- C2 and AR-CLOSE chain:
+  `a3a9c0dae384ac5e9ec257e54713d09505ddc595`,
+  `019f58a31b976056c000b73de3ec46b89284c6eb`,
+  `333b5948f57134909f1bff2ca6458700ba0ea43b`, and integration
+  `bdc2387b1ded0fde6feec20fbba46a8a8225f734`.
+- Pre-retirement package: tree
+  `881a7d25801a4795a343d620164ed74a6dae136c` and manifest SHA-256
+  `f88d5706b08e70170531dcda991d841c3b43543cf96a77500c0304f4a469753e`.
+- XY-1373 stacked authority: base
+  `226e808bf95727638321d2e7eaab09f63d3bcda0`, accepted commit
+  `4daf4dd809411bc83d7ea912e6b99612d4c9572a`, acceptance comment
+  `10a76cfa-7e86-4f0c-8127-b7824b528fb9`, succession comment
+  `bf27e6e1-5e55-4b63-9652-94d8bd22187d`, and successor package commit
+  `4ebcec86e45a8c96752079c898857dff2334da2d`.
+- Selected but unlanded S1: commit
+  `061fce893db973a8eee76c619b15250eda9a522e`, tree
+  `9dd9a68cb2da7457010fbdb0783c79f5a11b092e`, package
+  `886400e84030e84f823d1fdf4f33694d94dbe545`, manifest
+  `8966c41d3a559a457d3ccb888882ad3bba2b9aa272b77791af089ae7c310f549`,
+  and approval comment `6cdb3a23-ab81-4ae0-81e9-94685e4dd7d1`.
+- Rejected A1 candidate
+  `5934e4bf85aeac2e47e27b87aa2faaedb4834436` and review comment
+  `cafc6da6-cf1c-453a-945c-ee5ce073d4b3`.
+- Rejected XY-1395 route-and-cutover pairs:
+  `177f8b50-768d-4fae-a6ce-e44ec1d463bf` /
+  `d4659464-39ba-4583-9849-b53c5cdef623`,
+  `c3136e50-f870-4f62-bb67-7624eb030096` /
+  `97af9024-c7a4-4c9b-8e24-0c80b41ea857`, and
+  `316e4e4e-761e-48c7-82d0-2c6039283ce2` /
+  `aa8a4dd4-5c70-4beb-8456-0d91ed84cf05`. These pairs remain a
+  terminal stop on the rejected mixed boundary.
+- XY-1363 failure fingerprint
+  `28fb89b9e03293079dffdd534fc205b9d0ac48c5ec109f9ea4f48fa295def0ce`.
+- XY-1369 rejected fingerprint
+  `b7de5bb6eb5b820509808408bc84ba8ca1efb6ddeb2c91c41a9a9dfb44586723`.
+- XY-1370 rejected fingerprint
+  `1d177046ed871f3142673323dc8077ffeb12f470a2466ba5ba63c82914ec494b`.
+- All accepted and rejected-cycle comments and terminal markers for XY-1398 through
+  XY-1402.
+
+Accepted source continuity remains:
+
+- XY-1399 commit `d32786ea2f8454eaf9d746f9a3bba81f9e27aef8`, tree
+  `d1c5883d56d45df74a2cbab4e62f021869590ad4`.
+- XY-1400 commit `7ffd71451c28e3226a8610a042a5ce0691248bd7`, tree
+  `3194e3f170ac9a9077e2f5f19212f24bfcb44b48`.
+- XY-1401 commit `1187f84abcb585db2bf80d901d25fbdbdb3c21dd`, tree
+  `f744615f586e5d33adf785171b08f51b3cc2e29a`.
+- XY-1402 commit `ffde6da9e186bfdee85f388da9b90ffdd8c94f3f`, tree
+  `a14a991fbbaa9b27b79a6df504afab6d0ef3925a`.
+
+## XY-1373 historical disposition
+
+After the repository effective point and landed readback, the later indivisible
+Manager transition changes XY-1373 from `In Progress` to `Canceled`. Its complete
+repository history, comments, parent XY-1371, and `relatedTo` relations to XY-1374
+and XY-1371 remain provenance. Its former moving-core integration and landing
+condition becomes historical and non-executable. Cancellation does not claim that
+the integration completed.
+
+The Manager must read back XY-1373 with every other state, removed edge, retained
+edge, parent, and `relatedTo` relation in the V2 transition packet. A missing,
+extra, or partial result is a mismatch. It authorizes no downstream start. This
+repository candidate does not mutate Linear.
+
+## Rollback and fail-closed behavior
+
+Before the repository effective point, the existing package remains authoritative,
+XY-1373 remains `In Progress`, and all private-artifact implementation and
+moving-core integration remain stopped.
+
+After the effective point:
+
+- Do not use a Linear inverse as authority rollback.
+- Revert the complete repository disposition only through one reviewed commit and
+  only if no replacement receipt or downstream work has started.
+- A permitted complete rollback includes XY-1373 and restores its exact pre-state
+  with the complete Linear packet. Never reopen or restore XY-1373 alone.
+- If dependent work has started, use a new forward authority amendment.
+- Apply no partial package, projection, issue, edge, or XY-1373 rollback.
+- Any repository and Linear mismatch stops the complete transition. This includes
+  XY-1373 not being `Canceled`, a changed parent or `relatedTo` relation, or use of
+  its historical moving-core condition as executable work.
+- A partial Linear result authorizes neither retired-lane work nor XY-1369,
+  XY-1370, XY-1363, or XY-1304 progress.
+- Production dispatch remains disabled until normal integrated acceptance and a
+  separate reviewed XY-1304 enablement amendment.
+
+## Falsifiers and stop rule
+
+Reopen the architecture only if direct evidence proves at least one condition:
+
+- A named accepted vNext capability requires semantics that Artifact, BlobStore,
+  and Git cannot provide.
+- Retained-title evidence cannot preserve current identity, privacy, durability,
+  or ambiguity rules without private-artifact machinery.
+- Current source contains a landed private-artifact writer, consumer, or durable
+  state that requires transfer.
+- A legal, hostile-same-UID, multi-host, or new product-retention requirement
+  makes the retired subsystem indispensable.
+- Retirement would change routing, ProcessGeneration, ProviderAttempt,
+  ExecutionCoordinator, or an accepted XY-1399 through XY-1402 receipt.
+- Historical package or raw-corpus provenance cannot remain preserved without
+  reading, moving, rewriting, or deleting protected data.
+
+Without one falsifier and a new reviewed authority amendment, the historical
+package cannot authorize work. The three rejected XY-1395 mixed designs remain
+stopped. Production dispatch remains disabled.
+
+## Frozen historical package decision
+
+The remainder of this file preserves the former package decision. Every rule
+marker, owner, precedence statement, requirement, future statement, and modal verb
+below describes the retired design only at and after the repository effective
+point. It is not a current rule, dependency, runtime input, validation input, or
+future vNext obligation.
+
+### Decision and boundary
 
 <a id="rule-PA-DEC-0001"></a>
 **[rule:PA-DEC-0001]** Use this fixed package as the single cumulative authority
@@ -33,7 +290,7 @@ The package owns only these files:
 `corpus/index.tsv` is nonnormative. All other package members have the roles that
 `authority/package.manifest` records. The manifest does not include itself.
 
-## Authority and precedence
+### Authority and precedence
 
 <a id="rule-PA-DEC-0002"></a>
 **[rule:PA-DEC-0002]** Apply package authority in this order:
@@ -56,7 +313,7 @@ incorporates the AR-CLOSE amendment directly instead of creating an overlay.
 Projections are navigation only. A projection must not contain a package rule marker
 or duplicate an exact package inventory.
 
-## Traceability domains
+### Traceability domains
 
 <a id="rule-PA-DEC-0003"></a>
 **[rule:PA-DEC-0003]** Every row in `authority/rules.tsv` has exactly one
@@ -105,7 +362,7 @@ owner. Successor edges are later-only and acyclic. The census contains all and o
 accepted product-semantic units. Package governance, research metadata, evidence
 binding, owner/delivery policy, and focused acceptance have no census row.
 
-## Stable package-native origins
+### Stable package-native origins
 
 The following origins are closed. A package change must not add an origin without an
 explicit Manager scope decision.
@@ -123,7 +380,7 @@ explicit Manager scope decision.
 | `PKG-NATIVE-009` | Privacy, rejected-candidate isolation, and package process risks | The accepted package must be self-contained without committing private provenance or rejected prose | `PA-DEC-0005` |
 | `PKG-NATIVE-010` | Signed C2 cutover, historical-corpus quarantine, accepted semantic-fidelity residual, external-authority preservation, and zero private-review channel components | Explicit AR-CLOSE risk acceptance replaces the package-native historical semantic-rereview prerequisite | `PA-CLOSE-0001`, `PA-CLOSE-0002`, `PA-CLOSE-0003` |
 
-## C2 cutover and historical provenance
+### C2 cutover and historical provenance
 
 <a id="rule-PA-CLOSE-0001"></a>
 **[rule:PA-CLOSE-0001]** Accept signed C2 commit
@@ -170,7 +427,7 @@ helper, and this amendment adds no runtime or normal-workflow edge. The vNext
 authority contract remains the owner of the state, RoleProfile, and RuntimeSession
 product semantics; this package-native rule prevents AR-CLOSE from weakening them.
 
-## Change and review control
+### Change and review control
 
 <a id="rule-PA-DEC-0004"></a>
 **[rule:PA-DEC-0004]** AR-PKG froze one component identity from the raw bytes of
@@ -187,7 +444,7 @@ binding in one candidate. A governance-only change leaves unaffected corpus and
 product-semantic files byte-identical but still regenerates every affected package
 identity. Do not create another overlay amendment as current authority.
 
-## Privacy, rejected evidence, and process risks
+### Privacy, rejected evidence, and process risks
 
 <a id="rule-PA-DEC-0005"></a>
 **[rule:PA-DEC-0005]** Do not commit raw session payloads, private paths, session

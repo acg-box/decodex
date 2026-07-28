@@ -9,12 +9,13 @@ version        = 1
 # The API-only CLI uses the active profile unless `--profile NAME` is supplied:
 #   decodex status
 #   decodex doctor --output json
-#   decodex reset-card accounts
-# It verifies the negotiated V1.3 contract and stable server identity before it accepts
+#   decodex account list
+#   decodex reset-card list --account 10000000-0000-4000-8000-000000000001
+# It verifies the negotiated V1.4 contract and stable server identity before it accepts
 # daemon results. `--root PATH` selects another typed Decodex root for isolated
 # operation or tests. Use `--profile NAME --expected-server-id UUID` to retain an
-# authority returned by reset-card account discovery. Reset-card operations currently
-# reject remote profiles until authenticated remote transport exists.
+# explicitly pinned authority. Reset-card operations currently reject remote profiles
+# until authenticated remote transport exists.
 
 # Local means the client and decodexd share one owner effective UID on one host.
 # The fixed endpoint is ~/.decodex/server/decodex.sock. Replace 501 with the
@@ -40,20 +41,6 @@ port                     = 49152
 # separate from client profiles and must never be interpreted as client-local paths.
 [server_host.repositories.decodex]
 host_path = "/absolute/path/on/server/to/decodex"
-
-# Optional manual reset-card accounts. The table key is the canonical vNext account UUID.
-# Configuration stores only non-secret metadata and names of environment variables.
-# Set the referenced environment variables only for the decodexd process. Do not put
-# their values in this file. `initial_state` must be `available` or `depleted`; both
-# states admit manual inventory reads and reset-card use.
-#
-# [server_host.reset_card_accounts."10000000-0000-4000-8000-000000000001"]
-# display_label                   = "Primary ChatGPT account"
-# initial_state                   = "available"
-# access_token_env_var            = "DECODEX_RESET_PRIMARY_ACCESS_TOKEN"
-# provider_account_id_env_var     = "DECODEX_RESET_PRIMARY_ACCOUNT_ID"
-# expected_email_env_var          = "DECODEX_RESET_PRIMARY_EMAIL"
-# plan_type                       = "pro"
 
 # Explicit PostgreSQL endpoint data for the server host. decodexd uses the migration
 # identity only for forward migration and verification, then retains a separately

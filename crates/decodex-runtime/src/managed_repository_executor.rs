@@ -211,12 +211,14 @@ impl ManagedRepositoryExecutor {
 
 		match path_is_missing(descriptor.worktree_absolute_path.as_path()) {
 			Ok(true) => {},
-			Ok(false) =>
+			Ok(false) => {
 				return ExecutionAttempt::ConsumedWithoutInvocation(
 					ExecutionFailure::TargetOccupied,
-				),
-			Err(error) =>
-				return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::from(error)),
+				);
+			},
+			Err(error) => {
+				return ExecutionAttempt::ConsumedWithoutInvocation(ExecutionFailure::from(error));
+			},
 		}
 		let prepared = match self.prepare_operation(descriptor, admission.descriptor(), false) {
 			Ok(prepared) => prepared,
@@ -405,10 +407,11 @@ impl ManagedRepositoryExecutor {
 		}
 		let _index_pin = match FilePin::acquire(&index) {
 			Ok(pin) => pin,
-			Err(_) =>
+			Err(_) => {
 				return ExecutionAttempt::ConsumedWithoutInvocation(
 					ExecutionFailure::PrivateIndexConflict,
-				),
+				);
+			},
 		};
 		if adjacent_lock_exists(&index).unwrap_or(true) {
 			return ExecutionAttempt::ConsumedWithoutInvocation(
@@ -432,10 +435,11 @@ impl ManagedRepositoryExecutor {
 			next_head,
 		) {
 			Ok(false) => {},
-			_ =>
+			_ => {
 				return ExecutionAttempt::ConsumedWithoutInvocation(
 					ExecutionFailure::PreconditionMismatch,
-				),
+				);
+			},
 		}
 
 		let add = vec![OsString::from("add"), OsString::from("--all"), OsString::from("--")];
@@ -467,12 +471,13 @@ impl ManagedRepositoryExecutor {
 		) {
 			Ok(output) => match parse_single_revision(&output.stdout) {
 				Some(tree) if tree == intent.tree.as_str() => tree.to_owned(),
-				_ =>
+				_ => {
 					return self.finish_effect(
 						prepared,
 						admission.descriptor(),
 						Err(ExecutionFailure::UnexpectedOutput),
-					),
+					);
+				},
 			},
 			Err(error) => return self.finish_effect(prepared, admission.descriptor(), Err(error)),
 		};
@@ -506,12 +511,13 @@ impl ManagedRepositoryExecutor {
 		) {
 			Ok(output) => match parse_single_revision(&output.stdout) {
 				Some(commit) if commit == next_head.as_str() => commit.to_owned(),
-				_ =>
+				_ => {
 					return self.finish_effect(
 						prepared,
 						admission.descriptor(),
 						Err(ExecutionFailure::UnexpectedOutput),
-					),
+					);
+				},
 			},
 			Err(error) => return self.finish_effect(prepared, admission.descriptor(), Err(error)),
 		};
