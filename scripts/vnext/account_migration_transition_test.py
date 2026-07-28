@@ -9,6 +9,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import plistlib
 import pwd
 import re
 import secrets
@@ -30,13 +31,74 @@ sys.dont_write_bytecode = True
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INSTALLER_PATH = REPO_ROOT / "scripts/macos/install_decodex_local_service.py"
+DAEMON_WRAPPER_PATH = REPO_ROOT / "scripts/macos/decodexd_wrapper.py"
 KEYCHAIN_SERVICE = "box.acg.decodex.credentials.v1"
+KEYCHAIN_ACCESS_GROUP = "T54QFA7W2S.box.acg.decodex.daemon"
 ACCOUNT_MIGRATION_GATE_RUN_SCHEMA = "decodex/account-migration-gate-run/1"
 ACCOUNT_MIGRATION_GATE_RUN_FILE = "account-migration-gate-run.json"
 GATE_TIMEOUT_SECONDS = 180.0
 SUBPROCESS_TIMEOUT_SECONDS = 60.0
 MAX_SUBPROCESS_OUTPUT_BYTES = 256 * 1024
+MAX_PROVISIONING_PROFILE_CANDIDATES = 128
 MACOS_UNIX_PATH_BYTES = 104
+PROTECTED_STORE_PHASES = (
+    "first_add",
+    "first_metadata_readback",
+    "duplicate_add",
+    "no_overwrite_readback",
+    "exact_delete",
+    "final_absence",
+)
+PROTECTED_STORE_SUCCESS_CATEGORIES = (
+    "created",
+    "exact",
+    "already_exists",
+    "exact_unchanged",
+    "deleted",
+    "absent",
+)
+PROTECTED_STORE_FAILURE_CATEGORIES = frozenset(
+    {
+        "unavailable",
+        "not_found",
+        "already_exists",
+        "version_conflict",
+        "fingerprint_mismatch",
+        "provider_mismatch",
+        "account_mismatch",
+        "writer_mismatch",
+        "unsupported_schema",
+        "invalid_bundle",
+        "corrupt_bundle",
+        "not_absent",
+        "unexpected_success",
+        "mismatch",
+        "present",
+        "blocked",
+        "not_owned",
+    }
+)
+HOST_CREDENTIAL_METADATA_FIELDS = frozenset(
+    {
+        "schema",
+        "present",
+        "service",
+        "account",
+        "store_schema_version",
+        "provider",
+        "provider_account_id",
+        "credential_version",
+        "writer_operation_id",
+        "fingerprint_sha256",
+        "label",
+        "access_group",
+        "description",
+        "accessibility",
+        "synchronizing",
+        "access_control_present",
+        "protected_keychain",
+    }
+)
 
 
 class GateFailure(RuntimeError):
@@ -195,8 +257,12 @@ def communicate_bounded_subprocess(
     timeout: float,
 ) -> tuple[bytes, bytes]:
     if timeout <= 0 or process.stdout is None or process.stderr is None:
-        terminate_bounded_subprocess(process)
-        raise GateFailure("bounded subprocess configuration is invalid")
+        primary_error = GateFailure("bounded subprocess configuration is invalid")
+        try:
+            terminate_bounded_subprocess(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
+        raise primary_error
     streams = {
         process.stdout.fileno(): ("stdout", process.stdout),
         process.stderr.fileno(): ("stderr", process.stderr),
@@ -233,10 +299,18 @@ def communicate_bounded_subprocess(
             raise GateFailure("bounded subprocess timed out")
         process.wait(timeout=remaining)
     except subprocess.TimeoutExpired as error:
-        terminate_bounded_subprocess(process)
-        raise GateFailure("bounded subprocess timed out") from error
-    except BaseException:
-        terminate_bounded_subprocess(process)
+        primary_error = GateFailure("bounded subprocess timed out")
+        primary_error.__cause__ = error
+        try:
+            terminate_bounded_subprocess(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
+        raise primary_error
+    except BaseException as primary_error:
+        try:
+            terminate_bounded_subprocess(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
         raise
     finally:
         selector.close()
@@ -325,6 +399,7 @@ def bounded_run(
         stdin=subprocess.DEVNULL,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
+        close_fds=True,
         pass_fds=pass_fds,
         start_new_session=True,
     )
@@ -349,6 +424,18 @@ def load_installer() -> Any:
         raise GateFailure("installer module is unavailable")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def load_daemon_wrapper() -> Any:
+    spec = importlib.util.spec_from_file_location(
+        "xy1422_decodexd_wrapper",
+        DAEMON_WRAPPER_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise GateFailure("daemon wrapper module is unavailable")
+    module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
@@ -583,6 +670,109 @@ def preflight_installer(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def preflight_daemon_wrapper_signing(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    identity: LoginIdentity = context["identity"]
+    wrapper = load_daemon_wrapper()
+    try:
+        completed = bounded_run(
+            [str(wrapper.SECURITY), "find-identity", "-v", "-p", "codesigning"],
+            timeout=30,
+            check=True,
+        )
+        output = completed.stdout.decode("utf-8", errors="strict")
+    except (
+        OSError,
+        UnicodeDecodeError,
+        subprocess.CalledProcessError,
+    ) as error:
+        raise GateFailure("code-signing identity inventory is unavailable") from error
+    identity_hashes = frozenset(
+        match.group(1).lower()
+        for line in output.splitlines()
+        if (
+            match := re.fullmatch(
+                r'\s*[0-9]+\)\s+([0-9a-fA-F]{40})\s+".*"',
+                line,
+            )
+        )
+    )
+    if not identity_hashes:
+        raise GateFailure("code-signing identity inventory is empty")
+
+    profile_directories = (
+        identity.home
+        / "Library/Developer/Xcode/UserData/Provisioning Profiles",
+        identity.home / "Library/MobileDevice/Provisioning Profiles",
+    )
+    candidates: list[Path] = []
+    observed_entries = 0
+    for directory in profile_directories:
+        try:
+            metadata = directory.lstat()
+        except FileNotFoundError:
+            continue
+        except OSError as error:
+            raise GateFailure("provisioning-profile directory is unavailable") from error
+        if (
+            stat.S_ISLNK(metadata.st_mode)
+            or not stat.S_ISDIR(metadata.st_mode)
+            or metadata.st_uid != identity.uid
+            or metadata.st_mode & 0o022
+        ):
+            raise GateFailure("provisioning-profile directory is unsafe")
+        try:
+            entries = sorted(directory.iterdir(), key=lambda path: path.name)
+        except OSError as error:
+            raise GateFailure("provisioning-profile inventory is unavailable") from error
+        observed_entries += len(entries)
+        if observed_entries > MAX_PROVISIONING_PROFILE_CANDIDATES:
+            raise GateFailure("provisioning-profile inventory exceeded its bound")
+        for entry in entries:
+            try:
+                entry_metadata = entry.lstat()
+            except OSError as error:
+                raise GateFailure("provisioning-profile candidate is unavailable") from error
+            if (
+                stat.S_ISLNK(entry_metadata.st_mode)
+                or not stat.S_ISREG(entry_metadata.st_mode)
+                or entry_metadata.st_uid != identity.uid
+                or entry_metadata.st_mode & 0o022
+            ):
+                continue
+            candidates.append(entry)
+
+    matches: list[tuple[Path, str]] = []
+    for profile in candidates:
+        try:
+            _, document = wrapper._profile_document(profile)
+            _, certificates = wrapper.validate_profile(document)
+        except wrapper.WrapperError:
+            continue
+        certificate_hashes = {
+            hashlib.sha1(certificate, usedforsecurity=False).hexdigest()
+            for certificate in certificates
+        }
+        for signing_identity in sorted(identity_hashes & certificate_hashes):
+            matches.append((profile, signing_identity))
+    if len(matches) != 1:
+        raise GateFailure(
+            "one unique matching development profile and signing identity is required"
+        )
+    profile, signing_identity = matches[0]
+    context["daemon_wrapper_module"] = wrapper
+    context["daemon_wrapper_profile"] = profile
+    context["daemon_wrapper_signing_identity"] = signing_identity
+    return {
+        "profile_directories_checked": len(profile_directories),
+        "profile_candidates_checked": len(candidates),
+        "matching_pairs": 1,
+        "team_identifier": wrapper.TEAM_IDENTIFIER,
+        "profile_channel": wrapper.PROFILE_CHANNEL,
+    }
+
+
 def create_fixture_root(context: dict[str, Any]) -> dict[str, Any]:
     fixture_root: Path = context["fixture_root"]
     os.mkdir(fixture_root, 0o700)
@@ -675,6 +865,29 @@ def setup_fixture(context: dict[str, Any], installer: Any) -> dict[str, Any]:
             decodexd=decodexd,
             migration_fixture=fixture_root / "unavailable-migration-fixture",
         )
+    wrapper = context.get("daemon_wrapper_module")
+    profile = context.get("daemon_wrapper_profile")
+    signing_identity = context.get("daemon_wrapper_signing_identity")
+    if (
+        wrapper is None
+        or not isinstance(profile, Path)
+        or not isinstance(signing_identity, str)
+    ):
+        raise GateFailure("daemon wrapper signing authority is unavailable")
+    binary_directory = fixture_root / "bin"
+    binary_directory.mkdir(mode=0o700)
+    descriptor = wrapper.compose_wrapper(
+        artifacts.decodexd,
+        profile,
+        signing_identity,
+        binary_directory / wrapper.WRAPPER_NAME,
+    )
+    artifacts = replace(
+        artifacts,
+        decodexd=Path(descriptor["executable_path"]),
+    )
+    context["artifacts"] = artifacts
+    context["daemon_wrapper"] = descriptor
     paths = make_paths(
         installer,
         fixture_root,
@@ -713,6 +926,8 @@ def setup_fixture(context: dict[str, Any], installer: Any) -> dict[str, Any]:
         "source_count": 4,
         "credential_conflict_sources": 2,
         "credential_gate_descriptor": "strict_run_token_only",
+        "daemon_wrapper_sha256": installer.daemon_wrapper_digest(descriptor),
+        "daemon_wrapper_main": descriptor["executable_path"],
     }
 
 
@@ -1314,33 +1529,39 @@ def live_daemon_exclusion(
     paths: Any,
     uid: int,
 ) -> dict[str, Any]:
-    parent, child = socket.socketpair()
-    barrier_descriptor = os.dup(child.fileno())
-    process = None
-    identity = None
-    gate = GateSocket(parent)
+    parent: socket.socket | None = None
+    child: socket.socket | None = None
+    barrier_descriptor: int | None = None
+    process: subprocess.Popen[Any] | None = None
+    identity: Any = None
+    result: dict[str, Any] | None = None
+    primary_error: BaseException | None = None
     try:
-        try:
-            process = subprocess.Popen(
-                [
-                    str(paths.decodexd),
-                    "account-migration-live-daemon-gate",
-                    "--root",
-                    str(paths.root),
-                    "--barrier-fd",
-                    str(barrier_descriptor),
-                ],
-                cwd=REPO_ROOT,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                pass_fds=(barrier_descriptor,),
-                start_new_session=True,
-            )
-            identity = capture_process_identity(installer, process.pid)
-        finally:
-            os.close(barrier_descriptor)
-            child.close()
+        parent, child = socket.socketpair()
+        gate = GateSocket(parent)
+        barrier_descriptor = os.dup(child.fileno())
+        process = subprocess.Popen(
+            [
+                str(paths.decodexd),
+                "account-migration-live-daemon-gate",
+                "--root",
+                str(paths.root),
+                "--barrier-fd",
+                str(barrier_descriptor),
+            ],
+            cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+            pass_fds=(barrier_descriptor,),
+            start_new_session=True,
+        )
+        os.close(barrier_descriptor)
+        barrier_descriptor = None
+        child.close()
+        child = None
+        identity = capture_process_identity(installer, process.pid)
         event = gate.next_event(lambda: process is not None and process.poll() is None)
         if event != "live_daemon_ready":
             raise GateFailure("real local transport owner did not reach its barrier")
@@ -1378,18 +1599,59 @@ def live_daemon_exclusion(
             or (paths.server_directory / "decodex.sock.stage").exists()
         ):
             raise GateFailure("live-daemon gate left a socket publication")
-        return {
+        result = {
             "owner": "LocalTransportAuthority",
             "installer_refused": True,
             "publication_cleaned": True,
         }
-    finally:
-        if process is not None and process.poll() is None:
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_error: BaseException | None = None
+    if barrier_descriptor is not None:
+        try:
+            os.close(barrier_descriptor)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if child is not None:
+        try:
+            child.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None and process.poll() is None:
+        try:
             if identity is None:
                 terminate_direct_child_without_identity(process)
             else:
                 terminate_owned_process(installer, process, identity)
-        gate.connection.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None:
+        for stream in (process.stdout, process.stderr):
+            if stream is None or stream.closed:
+                continue
+            try:
+                stream.close()
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+    if parent is not None:
+        try:
+            parent.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    try:
+        assert_reacquirable(paths.namespace_lock)
+    except BaseException as error:
+        cleanup_error = cleanup_error or error
+    if primary_error is not None:
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
+        raise primary_error
+    if cleanup_error is not None:
+        raise cleanup_error
+    if result is None:
+        raise GateFailure("live-daemon exclusion produced no result")
+    return result
 
 
 def account_migration_admission_gate(
@@ -1571,7 +1833,8 @@ def validate_host_credential_metadata(
     expected: dict[str, Any] | None,
 ) -> None:
     if (
-        document.get("schema")
+        set(document) != HOST_CREDENTIAL_METADATA_FIELDS
+        or document.get("schema")
         != "decodex/account-migration-credential-gate-readback/1"
         or document.get("service") != KEYCHAIN_SERVICE
         or document.get("account") != account_id
@@ -1587,6 +1850,7 @@ def validate_host_credential_metadata(
             "writer_operation_id",
             "fingerprint_sha256",
             "label",
+            "access_group",
             "description",
             "accessibility",
             "synchronizing",
@@ -1611,6 +1875,7 @@ def validate_host_credential_metadata(
         or not isinstance(document.get("fingerprint_sha256"), str)
         or not re.fullmatch(r"[0-9a-f]{64}", document["fingerprint_sha256"])
         or document.get("label") != "box.acg.decodex"
+        or document.get("access_group") != KEYCHAIN_ACCESS_GROUP
         or document.get("description")
         != "Decodex daemon account credential bundle"
         or document.get("accessibility") != "cku"
@@ -1618,6 +1883,92 @@ def validate_host_credential_metadata(
         or document.get("access_control_present") is not True
     ):
         raise GateFailure("protected-store exact metadata differs")
+
+
+def validate_protected_store_conflict_report(
+    report: dict[str, Any],
+) -> dict[str, Any]:
+    if (
+        set(report)
+        != {
+            "schema",
+            "complete",
+            "phases",
+            "readback",
+            "primary_failure",
+            "cleanup_failure",
+        }
+        or report.get("schema")
+        != "decodex/account-migration-credential-gate-conflict/1"
+        or type(report.get("complete")) is not bool
+        or not isinstance(report.get("phases"), list)
+        or len(report["phases"]) != len(PROTECTED_STORE_PHASES)
+    ):
+        raise GateFailure("protected-store report malformed")
+
+    observed: list[tuple[str, str]] = []
+    for index, phase in enumerate(report["phases"]):
+        if (
+            not isinstance(phase, dict)
+            or set(phase) != {"phase", "category"}
+            or phase.get("phase") != PROTECTED_STORE_PHASES[index]
+            or not isinstance(phase.get("category"), str)
+            or phase["category"]
+            not in (
+                PROTECTED_STORE_FAILURE_CATEGORIES
+                | {PROTECTED_STORE_SUCCESS_CATEGORIES[index]}
+            )
+        ):
+            raise GateFailure("protected-store report malformed")
+        observed.append((phase["phase"], phase["category"]))
+
+    failures: list[tuple[str, str] | None] = []
+    for field in ("primary_failure", "cleanup_failure"):
+        failure = report[field]
+        if failure is None:
+            failures.append(None)
+            continue
+        if (
+            not isinstance(failure, dict)
+            or set(failure) != {"phase", "category"}
+            or not isinstance(failure.get("phase"), str)
+            or not isinstance(failure.get("category"), str)
+            or (failure["phase"], failure["category"]) not in observed
+            or failure["category"] not in PROTECTED_STORE_FAILURE_CATEGORIES
+        ):
+            raise GateFailure("protected-store report malformed")
+        failures.append((failure["phase"], failure["category"]))
+
+    success = observed == list(
+        zip(PROTECTED_STORE_PHASES, PROTECTED_STORE_SUCCESS_CATEGORIES, strict=True)
+    )
+    if (
+        report["complete"] is not success
+        or success != (failures == [None, None])
+        or (success and not isinstance(report.get("readback"), dict))
+        or (not success and report.get("readback") is not None
+            and not isinstance(report["readback"], dict))
+    ):
+        raise GateFailure("protected-store report malformed")
+    if not success:
+        diagnostic = failures[0] or failures[1]
+        if diagnostic is None:
+            diagnostic = next(
+                (
+                    observed_phase
+                    for observed_phase, expected_category in zip(
+                        observed,
+                        PROTECTED_STORE_SUCCESS_CATEGORIES,
+                        strict=True,
+                    )
+                    if observed_phase[1] != expected_category
+                ),
+                None,
+            )
+        if diagnostic is None or diagnostic[1] not in PROTECTED_STORE_FAILURE_CATEGORIES:
+            raise GateFailure("protected-store report malformed")
+        raise GateFailure(f"protected-store {diagnostic[0]} {diagnostic[1]}")
+    return report["readback"]
 
 
 class CredentialOwnership:
@@ -1705,12 +2056,21 @@ class CredentialOwnership:
         manifest_count = len(CASES) if paths.migration_manifest.exists() else 0
         report = host_credential_gate(paths, "cleanup_run")
         if (
-            report.get("schema")
+            set(report)
+            != {
+                "schema",
+                "finite_slot_count",
+                "manifest_account_count",
+                "conflict_slot_checked",
+                "deleted",
+                "absence_verified",
+            }
+            or report.get("schema")
             != "decodex/account-migration-credential-gate-cleanup/1"
             or report.get("finite_slot_count") != len(CASES) + 1
             or report.get("manifest_account_count") != manifest_count
             or report.get("conflict_slot_checked") is not True
-            or not isinstance(report.get("deleted"), int)
+            or type(report.get("deleted")) is not int
             or report["deleted"] < 0
             or report["deleted"] > len(CASES) + 1
             or report.get("absence_verified") is not True
@@ -1793,6 +2153,83 @@ def adopt_manifest_operation_ids(
     }
 
 
+def verify_daemon_wrapper_manifest_binding(
+    context: dict[str, Any],
+) -> dict[str, Any]:
+    installer = context["installer"]
+    paths = context["paths"]
+    expected = context["daemon_wrapper"]
+    wrapper = context["daemon_wrapper_module"]
+    try:
+        manifest = json.loads(paths.migration_manifest.read_bytes())
+    except (OSError, json.JSONDecodeError) as error:
+        raise GateFailure("frozen daemon wrapper manifest is unavailable") from error
+    fingerprints = (
+        manifest.get("decision_fingerprints")
+        if isinstance(manifest, dict)
+        else None
+    )
+    if (
+        not isinstance(fingerprints, dict)
+        or manifest.get("daemon_wrapper") != expected
+        or any(
+            not isinstance(key, str) or "wrapper" in key
+            for key in fingerprints
+        )
+    ):
+        raise GateFailure("frozen daemon wrapper manifest binding differs")
+    current = installer.inspect_daemon_wrapper(paths)
+    if current != expected:
+        raise GateFailure("current daemon wrapper differs from the frozen manifest")
+    try:
+        launch_agent = plistlib.loads(paths.launch_agent.read_bytes())
+    except (
+        OSError,
+        ValueError,
+        plistlib.InvalidFileException,
+    ) as error:
+        raise GateFailure("daemon wrapper LaunchAgent is malformed") from error
+    arguments = (
+        launch_agent.get("ProgramArguments")
+        if isinstance(launch_agent, dict)
+        else None
+    )
+    if (
+        not isinstance(arguments, list)
+        or not arguments
+        or arguments[0] != expected.get("executable_path")
+    ):
+        raise GateFailure("daemon wrapper LaunchAgent binding differs")
+    installed_assets = installer.migration_installed_assets(paths)
+    executable = Path(expected["executable_path"])
+    if installed_assets.count(executable) != 1:
+        raise GateFailure("daemon wrapper installed-asset binding differs")
+    descriptor_only_paths = {
+        Path(expected["info_plist_path"]),
+        Path(expected["embedded_profile_path"]),
+    }
+    if any(path in installed_assets for path in descriptor_only_paths):
+        raise GateFailure("descriptor-only wrapper assets became installed assets")
+    executable_body = wrapper.read_regular(
+        executable,
+        wrapper.MAX_EXECUTABLE_BYTES,
+        "daemon wrapper executable is unavailable",
+        executable=True,
+    )
+    if (
+        len(executable_body) != expected.get("executable_byte_count")
+        or hashlib.sha256(executable_body).hexdigest()
+        != expected.get("executable_sha256")
+    ):
+        raise GateFailure("daemon wrapper installed-asset identity differs")
+    return {
+        "manifest_descriptor_sha256": installer.daemon_wrapper_digest(expected),
+        "launch_agent_main_bound": True,
+        "wrapper_main_installed_asset_count": 1,
+        "descriptor_only_assets_excluded": True,
+    }
+
+
 def protected_store_snapshot(paths: Any) -> str:
     expectations = manifest_credential_expectations(paths)
     documents = []
@@ -1823,16 +2260,7 @@ def verify_protected_store_contract_and_conflict(
     ):
         raise GateFailure("protected-store conflict sources escaped their finite slots")
     report = host_credential_gate(paths, "prove_conflict")
-    if (
-        report.get("schema")
-        != "decodex/account-migration-credential-gate-conflict/1"
-        or report.get("create_if_absent") != "created"
-        or report.get("conflict") != "already_exists_without_overwrite"
-        or report.get("cleanup") != "exact_created_binding_deleted"
-        or not isinstance(report.get("readback"), dict)
-    ):
-        raise GateFailure("protected-store conflict report differed")
-    created = report["readback"]
+    created = validate_protected_store_conflict_report(report)
     expected = {
         "provider_account_id": case.provider_account_id,
         "writer_operation_id": case.operation_id,
@@ -2687,42 +3115,312 @@ def wrong_identity_descriptor_refusal(paths: Any) -> dict[str, Any]:
     return {"wrong_identity_refused": True}
 
 
+def aliased_descriptor_refusal(
+    installer: Any,
+    paths: Any,
+    uid: int,
+) -> dict[str, Any]:
+    namespace_lock: Any = None
+    descriptor: int | None = None
+    result: dict[str, Any] | None = None
+    primary_error: BaseException | None = None
+    try:
+        namespace_lock = installer.InstallerNamespaceLock.acquire(paths, uid)
+        before = fixture_tree_snapshot(paths.root.parent)
+        descriptor = namespace_lock.borrow()
+        completed = bounded_run(
+            [
+                *migration_command(paths),
+                "--installer-lock-fd",
+                str(descriptor),
+                "--transition-gate-fd",
+                str(descriptor),
+            ],
+            cwd=REPO_ROOT,
+            pass_fds=(descriptor,),
+            check=False,
+            timeout=30,
+        )
+        if completed.returncode == 0:
+            raise GateFailure("aliased installer and transition descriptors succeeded")
+        if before != fixture_tree_snapshot(paths.root.parent):
+            raise GateFailure("aliased descriptor refusal changed fixture state")
+        result = {
+            "same_valid_descriptor_refused": True,
+            "fixture_unchanged": True,
+            "fresh_lock_acquired": True,
+        }
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_error: BaseException | None = None
+    if descriptor is not None:
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            cleanup_error = error
+    if namespace_lock is not None:
+        try:
+            namespace_lock.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if primary_error is not None:
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
+        raise primary_error
+    if cleanup_error is not None:
+        raise cleanup_error
+    if result is None:
+        raise GateFailure("aliased descriptor refusal produced no result")
+    return result
+
+
+def pre_spawn_cleanup_fault(
+    installer: Any,
+    paths: Any,
+    uid: int,
+    fault_point: str,
+) -> dict[str, Any]:
+    allowed = {
+        "lock_acquisition",
+        "lock_duplicate",
+        "socket_creation",
+        "transition_gate_duplicate",
+    }
+    if fault_point not in allowed:
+        raise GateFailure("pre-spawn cleanup fault point is invalid")
+    namespace_lock: Any = None
+    parent: socket.socket | None = None
+    child: socket.socket | None = None
+    lock_descriptor: int | None = None
+    gate_descriptor: int | None = None
+    injected_error = GateFailure(f"injected cleanup fault after {fault_point}")
+    primary_error: BaseException | None = None
+    injected = False
+    try:
+        namespace_lock = installer.InstallerNamespaceLock.acquire(paths, uid)
+        if fault_point == "lock_acquisition":
+            injected = True
+            raise injected_error
+        lock_descriptor = namespace_lock.borrow()
+        if fault_point == "lock_duplicate":
+            injected = True
+            raise injected_error
+        parent, child = socket.socketpair()
+        if fault_point == "socket_creation":
+            injected = True
+            raise injected_error
+        gate_descriptor = os.dup(child.fileno())
+        injected = True
+        raise injected_error
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_error: BaseException | None = None
+    for descriptor in (gate_descriptor, lock_descriptor):
+        if descriptor is None:
+            continue
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    for connection in (child, parent):
+        if connection is None:
+            continue
+        try:
+            connection.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if namespace_lock is not None:
+        try:
+            namespace_lock.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if not injected or primary_error is not injected_error:
+        if primary_error is not None and cleanup_error is not None:
+            raise primary_error from cleanup_error
+        if primary_error is not None:
+            raise primary_error
+        raise GateFailure("pre-spawn cleanup fault did not execute")
+    if cleanup_error is not None:
+        raise injected_error from cleanup_error
+    return {
+        "fault_point": fault_point,
+        "primary_failure_preserved": True,
+        "resources_closed": True,
+        "fresh_lock_acquired": True,
+    }
+
+
+def post_spawn_cleanup_fault(
+    installer: Any,
+    paths: Any,
+    uid: int,
+    fault_point: str,
+) -> dict[str, Any]:
+    if fault_point not in {"spawn", "child_identity_capture"}:
+        raise GateFailure("post-spawn cleanup fault point is invalid")
+    namespace_lock: Any = None
+    parent: socket.socket | None = None
+    child: socket.socket | None = None
+    lock_descriptor: int | None = None
+    gate_descriptor: int | None = None
+    process: subprocess.Popen[Any] | None = None
+    identity: Any = None
+    injected_error = GateFailure(f"injected cleanup fault after {fault_point}")
+    primary_error: BaseException | None = None
+    injected = False
+    try:
+        namespace_lock = installer.InstallerNamespaceLock.acquire(paths, uid)
+        parent, child = socket.socketpair()
+        lock_descriptor = namespace_lock.borrow()
+        gate_descriptor = os.dup(child.fileno())
+        command = [
+            *migration_command(paths),
+            "--installer-lock-fd",
+            str(lock_descriptor),
+            "--transition-gate-fd",
+            str(gate_descriptor),
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+            pass_fds=(lock_descriptor, gate_descriptor),
+            start_new_session=True,
+        )
+        os.close(lock_descriptor)
+        lock_descriptor = None
+        os.close(gate_descriptor)
+        gate_descriptor = None
+        child.close()
+        child = None
+        if fault_point == "spawn":
+            injected = True
+            raise injected_error
+        identity = capture_process_identity(installer, process.pid)
+        injected = True
+        raise injected_error
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_error: BaseException | None = None
+    for descriptor in (gate_descriptor, lock_descriptor):
+        if descriptor is None:
+            continue
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if child is not None:
+        try:
+            child.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None and process.poll() is None:
+        try:
+            if identity is None:
+                terminate_direct_child_without_identity(process)
+            else:
+                terminate_owned_process(installer, process, identity)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None:
+        for stream in (process.stdout, process.stderr):
+            if stream is None or stream.closed:
+                continue
+            try:
+                stream.close()
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+    if parent is not None:
+        try:
+            parent.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if namespace_lock is not None:
+        try:
+            namespace_lock.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if not injected or primary_error is not injected_error:
+        if primary_error is not None and cleanup_error is not None:
+            raise primary_error from cleanup_error
+        if primary_error is not None:
+            raise primary_error
+        raise GateFailure("post-spawn cleanup fault did not execute")
+    if cleanup_error is not None:
+        raise injected_error from cleanup_error
+    return {
+        "fault_point": fault_point,
+        "primary_failure_preserved": True,
+        "owned_child_reaped": True,
+        "resources_closed": True,
+        "fresh_lock_acquired": True,
+    }
+
+
 def valid_descriptor_cloexec_refusal(
     installer: Any,
     paths: Any,
     uid: int,
 ) -> dict[str, Any]:
-    namespace_lock = installer.InstallerNamespaceLock.acquire(paths, uid)
-    parent, child = socket.socketpair()
-    lock_descriptor = namespace_lock.borrow()
-    gate_descriptor = os.dup(child.fileno())
-    process = None
-    identity = None
-    gate = GateSocket(parent)
-    before = fixture_tree_snapshot(paths.root.parent)
-    command = [
-        *migration_command(paths),
-        "--installer-lock-fd",
-        str(lock_descriptor),
-        "--transition-gate-fd",
-        str(gate_descriptor),
-    ]
+    namespace_lock: Any = None
+    parent: socket.socket | None = None
+    child: socket.socket | None = None
+    lock_descriptor: int | None = None
+    gate_descriptor: int | None = None
+    process: subprocess.Popen[Any] | None = None
+    identity: Any = None
+    result: dict[str, Any] | None = None
+    primary_error: BaseException | None = None
+    command: list[str] = []
     try:
-        try:
-            process = subprocess.Popen(
-                command,
-                cwd=REPO_ROOT,
-                stdin=subprocess.DEVNULL,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                pass_fds=(lock_descriptor, gate_descriptor),
-                start_new_session=True,
-            )
-            identity = capture_process_identity(installer, process.pid)
-        finally:
-            os.close(lock_descriptor)
-            os.close(gate_descriptor)
-            child.close()
+        namespace_lock = installer.InstallerNamespaceLock.acquire(paths, uid)
+        before = fixture_tree_snapshot(paths.root.parent)
+        parent, child = socket.socketpair()
+        gate = GateSocket(parent)
+        lock_descriptor = namespace_lock.borrow()
+        gate_descriptor = os.dup(child.fileno())
+        command = [
+            *migration_command(paths),
+            "--installer-lock-fd",
+            str(lock_descriptor),
+            "--transition-gate-fd",
+            str(gate_descriptor),
+        ]
+        process = subprocess.Popen(
+            command,
+            cwd=REPO_ROOT,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            close_fds=True,
+            pass_fds=(lock_descriptor, gate_descriptor),
+            start_new_session=True,
+        )
+        os.close(lock_descriptor)
+        lock_descriptor = None
+        os.close(gate_descriptor)
+        gate_descriptor = None
+        child.close()
+        child = None
+        identity = capture_process_identity(installer, process.pid)
         event = gate.next_event(lambda: process is not None and process.poll() is None)
         if event != "installer_lock_cloexec_verified":
             raise GateFailure("valid borrowed descriptor did not reach the CLOEXEC proof")
@@ -2735,21 +3433,67 @@ def valid_descriptor_cloexec_refusal(
             raise GateFailure("CLOEXEC refusal child emitted an unexpected report")
         if before != fixture_tree_snapshot(paths.root.parent):
             raise GateFailure("CLOEXEC refusal child changed fixture state")
-        return {
+        result = {
             "borrowed_descriptor_validated": True,
             "descendant_descriptor_excluded": True,
             "post_proof_missing_config_refused": True,
             "stderr_bounded": len(stderr),
         }
-    finally:
-        if process is not None and process.poll() is None:
+    except BaseException as error:
+        primary_error = error
+
+    cleanup_error: BaseException | None = None
+    for descriptor in (gate_descriptor, lock_descriptor):
+        if descriptor is None:
+            continue
+        try:
+            os.close(descriptor)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if child is not None:
+        try:
+            child.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None and process.poll() is None:
+        try:
             if identity is None:
                 terminate_direct_child_without_identity(process)
             else:
                 terminate_owned_process(installer, process, identity)
-        gate.connection.close()
-        namespace_lock.close()
-        assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if process is not None:
+        for stream in (process.stdout, process.stderr):
+            if stream is None or stream.closed:
+                continue
+            try:
+                stream.close()
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+    if parent is not None:
+        try:
+            parent.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if namespace_lock is not None:
+        try:
+            namespace_lock.close()
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+    if primary_error is not None:
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
+        raise primary_error
+    if cleanup_error is not None:
+        raise cleanup_error
+    if result is None:
+        raise GateFailure("CLOEXEC refusal produced no result")
+    return result
 
 
 def path_drift_descriptor_refusal(
@@ -2808,9 +3552,30 @@ def spawn_installer_worker(
     paths: Any,
     uid: int,
 ) -> tuple[int, Any, GateSocket]:
-    parent, child = socket.socketpair()
-    pid = os.fork()
+    parent: socket.socket | None = None
+    child: socket.socket | None = None
+    try:
+        parent, child = socket.socketpair()
+        pid = os.fork()
+    except BaseException as primary_error:
+        cleanup_error: BaseException | None = None
+        for connection in (child, parent):
+            if connection is None:
+                continue
+            try:
+                connection.close()
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
+        raise
     if pid == 0:
+        assert parent is not None
+        assert child is not None
         parent.close()
         namespace_lock = None
         try:
@@ -2843,12 +3608,27 @@ def spawn_installer_worker(
         finally:
             if namespace_lock is not None:
                 namespace_lock.close()
+    assert parent is not None
+    assert child is not None
     child.close()
     try:
         identity = capture_process_identity(installer, pid)
-    except BaseException:
-        parent.close()
-        wait_owned_worker(pid, time.monotonic() + GATE_TIMEOUT_SECONDS)
+    except BaseException as primary_error:
+        cleanup_error: BaseException | None = None
+        try:
+            parent.close()
+        except BaseException as error:
+            cleanup_error = error
+        try:
+            wait_owned_worker(pid, time.monotonic() + GATE_TIMEOUT_SECONDS)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        try:
+            assert_reacquirable(paths.namespace_lock)
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
         raise
     return pid, identity, GateSocket(parent)
 
@@ -3368,6 +4148,124 @@ def complete_installer_resume(
     }
 
 
+def verify_completed_daemon_wrapper_binding(
+    installer: Any,
+    paths: Any,
+    namespace_lock: Any,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    expected = manifest.get("daemon_wrapper")
+    if not isinstance(expected, dict):
+        raise GateFailure("completed manifest has no daemon wrapper binding")
+    try:
+        retirement = json.loads(
+            sql(
+                installer,
+                paths,
+                "SELECT retirement_receipt::text "
+                "FROM decodex.account_migration_receipts WHERE singleton",
+            )
+        )
+    except json.JSONDecodeError as error:
+        raise GateFailure("completed retirement receipt is malformed") from error
+    digest = installer.daemon_wrapper_digest(expected)
+    assets = retirement.get("installed_assets") if isinstance(retirement, dict) else None
+    matches = (
+        [
+            asset
+            for asset in assets
+            if isinstance(asset, dict)
+            and asset.get("path") == expected.get("executable_path")
+        ]
+        if isinstance(assets, list)
+        else []
+    )
+    wrapper_asset_index = (
+        next(
+            index
+            for index, asset in enumerate(assets)
+            if isinstance(asset, dict)
+            and asset.get("path") == expected.get("executable_path")
+        )
+        if matches
+        else -1
+    )
+    descriptor_only_paths = {
+        expected.get("info_plist_path"),
+        expected.get("embedded_profile_path"),
+    }
+    if (
+        not isinstance(retirement, dict)
+        or retirement.get("daemon_wrapper_verified") is not True
+        or retirement.get("daemon_wrapper_identity_sha256") != digest
+        or len(matches) != 1
+        or matches[0].get("sha256") != expected.get("executable_sha256")
+        or matches[0].get("byte_count") != expected.get("executable_byte_count")
+        or any(
+            isinstance(asset, dict)
+            and asset.get("path") in descriptor_only_paths
+            for asset in (assets if isinstance(assets, list) else [])
+        )
+    ):
+        raise GateFailure("completed daemon wrapper receipt binding differs")
+    installer.verify_daemon_wrapper(
+        paths,
+        expected,
+        require_launch_agent=True,
+    )
+
+    original_launch_agent = paths.launch_agent.read_bytes()
+    try:
+        launch_agent = plistlib.loads(original_launch_agent)
+        arguments = launch_agent.get("ProgramArguments")
+        if not isinstance(arguments, list) or not arguments:
+            raise GateFailure("completed LaunchAgent is malformed")
+        arguments[0] = str(paths.decodex_cli)
+        paths.launch_agent.write_bytes(
+            plistlib.dumps(launch_agent, sort_keys=True)
+        )
+        expect_install_refusal(
+            lambda: installer.run_completed_account_migration_verifier(
+                paths,
+                namespace_lock,
+            ),
+            "completed verification accepted LaunchAgent wrapper drift",
+        )
+    finally:
+        paths.launch_agent.write_bytes(original_launch_agent)
+
+    executable = Path(expected["executable_path"])
+    original_executable = executable.read_bytes()
+    if not original_executable:
+        raise GateFailure("completed daemon wrapper executable is empty")
+    tampered = bytearray(original_executable)
+    tampered[-1] ^= 1
+    try:
+        executable.write_bytes(tampered)
+        expect_install_refusal(
+            lambda: installer.run_completed_account_migration_verifier(
+                paths,
+                namespace_lock,
+            ),
+            "completed verification accepted current wrapper drift",
+        )
+    finally:
+        executable.write_bytes(original_executable)
+    installer.verify_daemon_wrapper(
+        paths,
+        expected,
+        require_launch_agent=True,
+    )
+    return {
+        "receipt_descriptor_digest_bound": True,
+        "wrapper_main_installed_asset_count": 1,
+        "wrapper_main_installed_asset_index": wrapper_asset_index,
+        "descriptor_only_assets_excluded": True,
+        "launch_agent_drift_refused": True,
+        "current_wrapper_drift_refused": True,
+    }
+
+
 def completed_verifier_drift(
     installer: Any,
     paths: Any,
@@ -3399,6 +4297,20 @@ def completed_verifier_drift(
                 "WHERE singleton",
             )
         )
+        wrapper_binding = verify_completed_daemon_wrapper_binding(
+            installer,
+            paths,
+            namespace_lock,
+            manifest,
+        )
+        expected_wrapper = manifest["daemon_wrapper"]
+        wrapper_identity_sha256 = installer.daemon_wrapper_digest(
+            expected_wrapper
+        )
+        wrapper_asset_index = wrapper_binding[
+            "wrapper_main_installed_asset_index"
+        ]
+        drift_digest = "e" * 64
         target = {
             row["account_id"]: row["target"] for row in manifest["accounts"]
         }[account.account_id]
@@ -3507,6 +4419,40 @@ def completed_verifier_drift(
                 "pg_catalog.jsonb_set(destination_receipt,"
                 "'{accounts,1,store_schema_version}','1'::jsonb) WHERE singleton",
             ),
+            (
+                "daemon_wrapper_verified",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                "'{daemon_wrapper_verified}','false'::jsonb) WHERE singleton",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                "'{daemon_wrapper_verified}','true'::jsonb) WHERE singleton",
+            ),
+            (
+                "daemon_wrapper_identity",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                "'{daemon_wrapper_identity_sha256}',"
+                f"pg_catalog.to_jsonb('{drift_digest}'::text)) WHERE singleton",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                "'{daemon_wrapper_identity_sha256}',"
+                f"pg_catalog.to_jsonb('{wrapper_identity_sha256}'::text)) "
+                "WHERE singleton",
+            ),
+            (
+                "daemon_wrapper_installed_asset",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                f"'{{installed_assets,{wrapper_asset_index},sha256}}',"
+                f"pg_catalog.to_jsonb('{drift_digest}'::text)) WHERE singleton",
+                "UPDATE decodex.account_migration_receipts SET retirement_receipt="
+                "pg_catalog.jsonb_set(retirement_receipt,"
+                f"'{{installed_assets,{wrapper_asset_index},sha256}}',"
+                "pg_catalog.to_jsonb("
+                f"'{expected_wrapper['executable_sha256']}'::text)) "
+                "WHERE singleton",
+            ),
         )
         drift_failures = []
         for name, mutation, restore in mutations:
@@ -3535,6 +4481,7 @@ def completed_verifier_drift(
         return {
             "drift_cases": len(mutations),
             "quota_unknown_not_required": True,
+            "daemon_wrapper": wrapper_binding,
         }
     finally:
         stop_owned_postgres(installer, postgres)
@@ -3901,6 +4848,11 @@ def main() -> int:
         lambda: preflight_build_artifacts(context),
     )
     graph.run("preflight_installer", (), lambda: preflight_installer(context))
+    graph.run(
+        "preflight_daemon_wrapper_signing",
+        ("preflight_identity",),
+        lambda: preflight_daemon_wrapper_signing(context),
+    )
     preflight_dependencies = (
         "preflight_identity",
         "preflight_paths",
@@ -3910,6 +4862,7 @@ def main() -> int:
         "preflight_migration_fixture_artifact",
         "preflight_build_artifacts",
         "preflight_installer",
+        "preflight_daemon_wrapper_signing",
     )
     graph.run(
         "preflight_complete",
@@ -3944,6 +4897,8 @@ def main() -> int:
             "fixture_root",
             "preflight_complete",
             "preflight_installer",
+            "preflight_build_artifacts",
+            "preflight_daemon_wrapper_signing",
         ),
         lambda: setup_fixture(context, context["installer"]),
     )
@@ -3980,6 +4935,15 @@ def main() -> int:
         lambda: wrong_identity_descriptor_refusal(context["paths"]),
     )
     graph.run(
+        "aliased_descriptor_refusal",
+        ("fixture_setup", "preflight_decodexd_artifact"),
+        lambda: aliased_descriptor_refusal(
+            context["installer"],
+            context["paths"],
+            context["identity"].uid,
+        ),
+    )
+    graph.run(
         "valid_descriptor_cloexec_refusal",
         (
             "fixture_setup",
@@ -3992,6 +4956,37 @@ def main() -> int:
             context["identity"].uid,
         ),
     )
+    for fault_point in (
+        "lock_acquisition",
+        "lock_duplicate",
+        "socket_creation",
+        "transition_gate_duplicate",
+    ):
+        graph.run(
+            f"cleanup_fault_{fault_point}",
+            ("fixture_setup", "preflight_installer"),
+            lambda fault_point=fault_point: pre_spawn_cleanup_fault(
+                context["installer"],
+                context["paths"],
+                context["identity"].uid,
+                fault_point,
+            ),
+        )
+    for fault_point in ("spawn", "child_identity_capture"):
+        graph.run(
+            f"cleanup_fault_{fault_point}",
+            (
+                "fixture_setup",
+                "preflight_system_executables",
+                "preflight_decodexd_artifact",
+            ),
+            lambda fault_point=fault_point: post_spawn_cleanup_fault(
+                context["installer"],
+                context["paths"],
+                context["identity"].uid,
+                fault_point,
+            ),
+        )
 
     def external_contention() -> dict[str, Any]:
         lock = context["installer"].InstallerNamespaceLock.acquire(
@@ -4065,6 +5060,9 @@ def main() -> int:
 
     def bind_frozen_manifest() -> dict[str, Any]:
         evidence = adopt_manifest_operation_ids(context["paths"], ownership)
+        evidence["daemon_wrapper"] = verify_daemon_wrapper_manifest_binding(
+            context
+        )
         context["manifest_identity"] = evidence
         return evidence
 

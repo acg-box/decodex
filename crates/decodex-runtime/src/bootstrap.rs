@@ -336,11 +336,11 @@ async fn bootstrap_macos_account_runtime(
 	let Ok(refresher) = OpenAiCredentialRefresher::new() else {
 		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication));
 	};
-	let service = Arc::new(AccountService::new(
-		postgres.clone(),
-		Arc::new(MacosKeychainCredentialStore::new(paths)),
-		Arc::new(refresher),
-	));
+	let Ok(credentials) = MacosKeychainCredentialStore::new(paths) else {
+		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	};
+	let service =
+		Arc::new(AccountService::new(postgres.clone(), Arc::new(credentials), Arc::new(refresher)));
 	let attestation = match attest_account_callback_capability(
 		paths.root().as_path().to_owned(),
 		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,

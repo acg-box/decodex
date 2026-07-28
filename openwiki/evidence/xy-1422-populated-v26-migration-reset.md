@@ -177,15 +177,62 @@ authority owner.
 The selected design is proportionate only while migration has continuous offline
 namespace-lock ownership. Online migration requires a new proportionality review.
 
-Candidate 4 remains unauthorized for a replacement gate run until the path and harness
-repair is frozen and receives independent exact-tree approval. The canonical
-implementation gate is
+## Consumed transition gate and daemon-wrapper reset
+
+The canonical transition gate ran once from signed commit
+`7a703c0f0f8492601f93f2ebaa959ce03e0f1cf1`, tree
+`5b9a7b864294150a5e03d82cc8cc7bba0ee18368`, with run identifier
+`fcb7d020c85db4bf`. It returned 18 passed stages, 4 failed stages, and 60 stages
+blocked by those failures. The private 20,548-byte run log has SHA-256
+`9b84c9a5d2620092ad51502097f7d8189792827e45a151ed2d2aafec1c98523b`.
+The gate was not retried.
+
+The three descriptor and lock failures form one causal chain. The installer borrowed
+a duplicate lock descriptor and tried to make it inheritable before the gate's cleanup
+scope. macOS returned `EPERM`. The original installer guard then remained open in the
+gate process. The later independent contention and path-drift stages failed when they
+tried to acquire that leaked lock, before either core assertion ran. The repair keeps
+the parent duplicate non-inheritable, transfers it only through the exact
+`Popen(pass_fds=...)` call, and starts conditional cleanup after the first acquired
+resource in both the production child runner and gate.
+
+The protected-store stage failed only as `protected-store prove_conflict failed`.
+The harness discarded the exact Security.framework status, so
+`errSecMissingEntitlement (-34018)` is a high-confidence explanation, not an observed
+fact. Independent signature readback established the material product defect: the raw
+debug daemon, the raw daemon helper in the current outer app, the installed
+`~/.local/bin/decodexd`, and the outer app had no usable Data Protection Keychain
+entitlement and embedded-profile context. Apple requires an app-like wrapper for a
+daemon that claims the restricted application identifier and Keychain group. The
+production repair is therefore required even if a future typed gate result identifies
+another immediate Security.framework status.
+
+Cleanup for the consumed run passed. Final absence was verified for all five run-owned
+Keychain identities, the run recorded no owned item, global cleanup recorded no
+deletion, the fixture and owned processes were removed, and the live default
+credential source was not accessed. The failed self-contained conflict probe did not
+retain enough phase evidence to prove whether it made and removed a transient item.
+No manual Keychain action followed.
+
+The replacement source must use one fixed app-like `decodexd` wrapper, bind its full
+non-secret identity through the existing migration manifest and receipt, use its exact
+application identifier as the only explicit Keychain access group, and provide closed
+non-secret protected-store phase/category evidence. A development-profile wrapper is
+only local dogfood evidence. Real `gui/<uid>` LaunchAgent protected-store acceptance
+remains required before `MacDogfoodReady`. File-based Keychain, weaker accessibility,
+plaintext or environment fallback, gate-only signing, a shared group, arbitrary CRUD,
+generic packaging, identity/profile fallback, a new ledger, and notarization expansion
+remain rejected.
+
+Candidate 4 remains unauthorized for a replacement gate run until this authority and
+the bounded source repair are frozen and receive independent exact-tree approval. The
+canonical implementation gate is
 `cargo make test-vnext-account-migration-transition`.
 
 ## Evidence limit
 
 The original reset used exact-tree source inspection and an independent skeptic review.
-This amendment also uses the frozen Candidate 4 tree, the two existing failed canonical
-run records, and independent root-cause and skeptic verdicts. This documentation
-checkpoint ran no formatter, compile, test, gate, PostgreSQL, Keychain, installer, or
-runtime command.
+This amendment also uses the frozen Candidate 4 tree, the existing failed canonical run
+records including the consumed log digest above, and independent root-cause and skeptic
+verdicts. This documentation checkpoint ran no formatter, compile, test, gate,
+PostgreSQL, Keychain, installer, or runtime command.
