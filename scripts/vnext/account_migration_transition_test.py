@@ -3643,6 +3643,7 @@ def wait_worker_checkpoint(
     gate: GateSocket,
     paths: Any,
     target: str,
+    target_account_id: str | None = None,
 ) -> list[str]:
     seen = []
     while True:
@@ -3656,8 +3657,18 @@ def wait_worker_checkpoint(
                 f"{failure}; seen={','.join(seen)}"
             )
         assert_contended(paths.namespace_lock)
-        seen.append(event.partition("|")[0])
-        if event.partition("|")[0] == target:
+        event_name, separator, event_account_id = event.partition("|")
+        seen.append(event_name)
+        if (
+            event_name == target
+            and (
+                target_account_id is None
+                or (
+                    separator == "|"
+                    and event_account_id == target_account_id
+                )
+            )
+        ):
             if "installer_lock_cloexec_verified" not in seen:
                 raise GateFailure("installer child effect preceded the CLOEXEC proof")
             if target in {
@@ -3785,6 +3796,7 @@ def crash_installer_at(
     uid: int,
     checkpoint: str,
     *,
+    target_account_id: str | None = None,
     at_checkpoint: Callable[[], dict[str, Any] | None] | None = None,
 ) -> dict[str, Any]:
     pid, identity, gate = spawn_installer_worker(installer, paths, uid)
@@ -3798,6 +3810,7 @@ def crash_installer_at(
             gate,
             paths,
             checkpoint,
+            target_account_id,
         )
         if at_checkpoint is not None:
             evidence = at_checkpoint()
@@ -3836,6 +3849,7 @@ def create_recovery_required_from_prewrite_unavailable(
             gate,
             paths,
             "operation_prepared",
+            case.account_id,
         )
         account_checkpoint_state(
             installer,
@@ -5202,6 +5216,7 @@ def main() -> int:
                         context["paths"],
                         context["identity"].uid,
                         checkpoint,
+                        target_account_id=case.account_id,
                         at_checkpoint=capture_checkpoint,
                     )
                 ),
