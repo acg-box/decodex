@@ -119,20 +119,14 @@ class GateContractTests(unittest.TestCase):
             "test-sandboxed",
         )
 
-    def test_account_migration_transition_gate_remains_standalone(self) -> None:
-        task_name = "test-vnext-account-migration-transition"
-        self.assertEqual(
-            self.tasks[task_name],
-            {
-                "workspace": False,
-                "dependencies": ["build-vnext-account-migration-transition"],
-                "command": "python3",
-                "args": ["scripts/vnext/account_migration_transition_test.py"],
-            },
+    def test_retired_account_migration_gate_has_no_task_or_source(self) -> None:
+        serialized_tasks = json.dumps(self.tasks, sort_keys=True)
+        self.assertNotIn("account-migration-transition", serialized_tasks)
+        self.assertNotIn("build-vnext-account-migration-transition", self.tasks)
+        self.assertNotIn("test-vnext-account-migration-transition", self.tasks)
+        self.assertFalse(
+            (REPO_ROOT / "scripts/vnext/account_migration_transition_test.py").exists()
         )
-        for owner, task in self.tasks.items():
-            with self.subTest(task=owner):
-                self.assertNotIn(task_name, task.get("dependencies", []))
 
     def test_vstyle_is_a_read_only_explicit_audit(self) -> None:
         self.assertEqual(

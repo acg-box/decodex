@@ -283,7 +283,15 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 		defer { fixture.remove() }
 		let first = try makeAttempt(1)
 		let second = ResetCardUseAttempt(
-			target: first.target,
+			target: ResetCardUseTarget(
+				authority: ResetCardAuthority(
+					profileName: "other",
+					serverID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+				),
+				accountID: first.target.accountID,
+				expectedRevision: first.target.expectedRevision + 1,
+				descriptor: first.target.descriptor
+			),
 			idempotencyKey: "018f0f9e-7b6e-4a31-8f4c-000000000002"
 		)
 
@@ -293,6 +301,46 @@ final class ResetCardPendingAttemptStoreTests: XCTestCase {
 				.insert(second)
 		)
 		XCTAssertEqual(fixture.store.load(), .available([first]))
+	}
+
+	func testDuplicateTargetsInAnExistingJournalBlockDispatchRecovery() throws {
+		let fixture = try makeFixture()
+		defer { fixture.remove() }
+		let first = try makeAttempt(1)
+		let second = ResetCardUseAttempt(
+			target: ResetCardUseTarget(
+				authority: ResetCardAuthority(
+					profileName: "other",
+					serverID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+				),
+				accountID: first.target.accountID,
+				expectedRevision: first.target.expectedRevision + 1,
+				descriptor: first.target.descriptor
+			),
+			idempotencyKey: "018f0f9e-7b6e-4a31-8f4c-000000000002"
+		)
+		XCTAssertEqual(fixture.store.insert(first), [first])
+		var document = try XCTUnwrap(
+			JSONSerialization.jsonObject(
+				with: Data(contentsOf: fixture.journalURL)
+			) as? [String: Any]
+		)
+		var attempts = try XCTUnwrap(document["attempts"] as? [[String: Any]])
+		let encodedSecond = try XCTUnwrap(
+			JSONSerialization.jsonObject(with: JSONEncoder().encode(second))
+				as? [String: Any]
+		)
+		attempts.append(encodedSecond)
+		document["attempts"] = attempts
+		let changed = try JSONSerialization.data(withJSONObject: document)
+		try changed.write(to: fixture.journalURL)
+
+		XCTAssertEqual(
+			fixture.store.load(),
+			.recoveryBlocked([first, second])
+		)
+		XCTAssertNil(fixture.store.insert(try makeAttempt(3)))
+		XCTAssertEqual(try Data(contentsOf: fixture.journalURL), changed)
 	}
 
 	private func makeAttempt(_ index: Int = 1) throws -> ResetCardUseAttempt {

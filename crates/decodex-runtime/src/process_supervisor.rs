@@ -596,8 +596,9 @@ impl ProcessGenerationControl {
 		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 			PrepareProcessGenerationOutcome::Replayed(_)
-			| PrepareProcessGenerationOutcome::Rejected { .. } =>
-				return Err(ProcessSupervisorError::AuthorityConflict),
+			| PrepareProcessGenerationOutcome::Rejected { .. } => {
+				return Err(ProcessSupervisorError::AuthorityConflict);
+			},
 		};
 
 		let child = match launch.spawn() {
@@ -847,18 +848,20 @@ impl ProcessGenerationControl {
 						.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
 						.insert(key.clone(), witness);
 				},
-				ExactProcessObservation::NotObserved =>
+				ExactProcessObservation::NotObserved => {
 					return Ok(ProcessGenerationReconciliation::Quarantined {
 						state: generation.state,
 						observation: ProcessGenerationObservation::SameBootNotObserved,
-					}),
-				ExactProcessObservation::IdentityMismatch { observed } =>
+					});
+				},
+				ExactProcessObservation::IdentityMismatch { observed } => {
 					return Ok(ProcessGenerationReconciliation::Quarantined {
 						state: generation.state,
 						observation: ProcessGenerationObservation::SameBootIdentityMismatch {
 							observed,
 						},
-					}),
+					});
+				},
 			}
 		}
 

@@ -868,217 +868,22 @@ added. No retained-title evidence gate enables production routing.
 
 ### Account lifecycle and Mac dogfood gate
 
-The [account lifecycle authority](account-lifecycle-authority.md) is the normative
-XY-1423 correction. XY-1422 must satisfy the Slice-1 subset of MacDogfoodReady before
-Slice 1 can claim Accounts, Quick Task, or limited initial routing. Final
-AccountLifecycleReady is a later product gate and does not block the three Mac slices.
+The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V27
+PostgreSQL database with an empty Account Registry, verifies the signed daemon wrapper
+and same-UID Unix transport, imports test accounts through the ordinary public account
+command, restarts once for exact-build callback attestation, and verifies list, routing,
+quota, Reset Card readback, use, and terminal replay.
 
-```text
-XY-1423 account authority
--> XY-1422 acceptance of the Slice-1 subset of MacDogfoodReady
--> Slice 1 -> Slice 2
--> Slice 3 and full MacDogfoodReady acceptance
+The source and installed package must contain no account-pool reader, mapping bridge,
+helper or `:8192` owner, token environment projection, migration manifest, migration
+receipt, migration-only command, finalizer, transition fixture, or compatibility
+fallback. Static reverse scans and package inspection enforce this closed set.
 
-V14-V21 accepted routing foundations -> XY-1304 later automatic fallback/wake acceptance
-```
-
-Slice 1 proves Keychain-backed credentials, finite credential CAS and reconciliation,
-independent enabled state, exact-version fixed/balanced/order commands, separate 300 and
-10080 quota windows, exact-build `account/chatgptAuthTokens/refresh` support, and one
-offline idempotent normalized migration. Current generic rejection of inbound app-server
-requests cannot satisfy that callback gate. Reset Card new admission and pre-effect
-execution use the exact account/store/provider fences in the account authority; terminal
-receipt replay remains unconditional. V23 ProcessGeneration carries the canonical
-credential version, fingerprint, provider binding, and account revision in its existing
-intent/manifest/readback. No new ledger is permitted.
-
-Normal Slice-1 and Slice-3 startup must not use the legacy watcher, mapping bridge,
-credential environment projection, helper, `:8192`, or dual account UI. No legacy
-history is imported.
-
-#### Populated V26 account migration transition
-
-Candidate 3 was materially rejected at exact index tree
-`ef66d028ff447c4507b6d37de0835166a6fd7f26`. A populated V26 account becomes
-`enabled=false` under V27. A normal normalized manifest requests `enabled=true`.
-The rejected implementation supplied desired `true` where the existing-row import
-requires current `false`, so PostgreSQL returned `stale_account` before any credential
-effect. This was the third material XY-1422 candidate rejection. Candidate 4 is not
-authorized until this authority checkpoint has independent approval.
-
-Candidate 4 was then frozen at exact worktree tree
-`adb9cbb784d2a8afb3dc0c25648571ff43f76511`. Its first canonical invocation stopped
-during shared setup with `legacy account source parent is unsafe`. Its second canonical
-invocation stopped during shared setup because the synthetic passwd record had no
-`pw_name`. Neither invocation ran a semantic migration case. These results are failure
-provenance, not acceptance evidence.
-
-A one-line `pw_name` patch is rejected. The repaired harness must use the real
-`pwd.getpwuid(euid)` record and its real `pw_dir`, where `euid` is the process
-effective UID. It must pass explicit operator-provided source paths in a run-unique,
-gate-owned, exact-0700 fixture subtree below that real home and must not access live
-default `~/.codex/decodex` sources. It must use the
-[source-path security boundary](account-lifecycle-authority.md#source-path-security-boundary):
-exact private modes at the direct source boundary, and the non-writable-ancestor rule
-above it. It must not change the real home mode or use ambient `HOME`, a synthetic
-passwd record, or a fallback. POSIX mode and no-follow evidence does not prove arbitrary
-ACL absence. The gate must keep ACL semantics as an explicit residual and
-non-regression boundary.
-
-The canonical boundary command is:
-
-```sh
-cargo make test-vnext-account-migration-transition
-```
-
-This single-use XY-1422 account-lifecycle transition gate is standalone. It is not a
-member of `test`, `test-headless`, either sandboxed test aggregate, `check`, or another
-ordinary aggregate. Invocation is prohibited until a fresh review of the exact tree
-authorizes exactly one run. The gate follows the canonical Rust and V27 PostgreSQL
-mechanical preparation. It remains separate from `test-vnext-postgres-store`, because
-that PostgreSQL aggregate cannot by itself prove the cross-store migration entrypoint
-and host credential binding. A focused copy and an automatic retry are prohibited.
-
-One invocation must exercise the real V26-to-V27 migration and the real
-`decodexd` migration, finalization, and completed-verification entrypoints. It must not
-mock the migration process. On macOS, it verifies exact Keychain metadata without
-printing credential material. The gate composes the exact feature-built candidate as
-the same fixed app-like daemon wrapper required by production. It never executes a raw
-workspace `decodexd` for a protected-store or migration effect. The invocation must
-cover:
-
-- populated V26 normal and disabled accounts, plus absent normal and disabled
-  accounts;
-- exact credential binding and exact account and routing revision transitions;
-- same-digest resume and replay without extra effects or revisions, and
-  different-digest refusal before effects;
-- matching positive credential bindings and conflicts in provider, version, writer
-  operation, fingerprint, store binding, current account tuple, or source;
-- crashes after manifest preparation, Keychain creation, `store_applied`,
-  PostgreSQL credential commit, administration, routing, retirement, and before the
-  final receipt;
-- one installer-held `decodex.lock` open-file-description lineage across migration,
-  installer configuration and retirement effects, finalization, completed
-  verification, and the launch decision;
-- deterministic external contention barriers before and during the migration child,
-  after that child exits, during installer configuration swap and retirement,
-  before, during, and after finalizer and completed-verifier children, and through
-  the launch decision; at each barrier, a separate open file description must fail
-  `LOCK_EX|LOCK_NB`;
-- exact holder lifetimes: child death leaves the installer guard locked; installer
-  death with a surviving child duplicate remains locked until that child closes it;
-  final-holder close releases the flock, after which a new installer can acquire only
-  for exact same-digest resume;
-- borrowed-FD open-file and metadata validation, close-on-exec exclusion from child
-  descendants, direct ordinary invocation refusal, malformed or identity-drifted FD
-  refusal before effects, and live-daemon exclusion, without child-side lock-state,
-  parent-identity, or same-UID-imitation claims;
-- a non-inheritable parent duplicate transferred only by the exact
-  `Popen(pass_fds=...)` spawn, plus failure injection after lock acquisition,
-  descriptor duplication, transition-gate duplication, socket creation, spawn, and
-  child-identity capture; every case preserves its primary error, reports any cleanup
-  error separately, closes every owned resource, and proves fresh lock acquisition;
-- one fixed wrapper with bundle identifier `box.acg.decodex.daemon`, main
-  `Contents/MacOS/decodexd`, strict signature, hardened runtime, embedded profile,
-  team `T54QFA7W2S`, application identifier and sole effective signed Keychain access
-  group `T54QFA7W2S.box.acg.decodex.daemon`, canonical profile allowlist
-  `T54QFA7W2S.*`, and device-bound profile channel `development`;
-- `prepared` before Keychain creation, operation-descriptor-first replay, and
-  phase-derived `AbsentInitialize` and `ExistingHydrate` recovery without generic
-  cancellation or state-based reclassification;
-- exact absent revisions
-  `no row -> prepared:1 -> store_applied:1 -> committed:2 -> administration:2`,
-  exact credential-empty existing revisions
-  `start:r -> prepared:r -> store_applied:r -> committed:r+1 -> administration:r+1|r+2`,
-  separate routing revision, terminal-operation handling, and no new operation
-  identity or replay revision;
-- completed-verifier refusal after label, enabled, routing, provider, credential
-  version, writer operation, fingerprint, or store/PostgreSQL binding drift;
-- credentials before desired administration, routing after final account projection,
-  retirement before the completed receipt, and daemon launch only after completion;
-  and
-- exclusion from selection, Reset Card, and spawn admission until exact credentials
-  and final enabled state agree.
-
-The repaired gate must use a bounded stage graph. Each meaningful stage and case reports
-`passed`, `failed`, or a typed `blocked` result that names its failed dependency. Fatal
-login-identity, source-path, executable, or toolchain setup blocks only its true
-dependents. Independent no-follow path, inherited-FD, namespace-lock, and live-daemon
-refusal branches continue when safe. One shared outer failure path must not block those
-branches. The final bounded report collects all reasonably discoverable case mismatches.
-
-The gate must select `postgres`, `initdb`, `pg_isready`, and `psql` from one coherent
-PostgreSQL 18 toolchain. It must use a collision-safe endpoint. An unreserved endpoint
-derived only from the gate process ID is insufficient.
-
-The gate must use fresh, run-unique, gate-owned Keychain Account UUIDs. Before any
-mutation, it must prove that each selected identity is absent. Any pre-existing item
-causes refusal before mutation. The gate records the exact set of items that it creates
-and deletes only that set during unconditional cleanup. Cleanup failure fails the gate.
-The gate must use the same protected credential API and exact metadata contract as
-production. It must not place credential bytes in process arguments, make a value-only
-or long-lived backup, or restore a user item. Conflict and drift cases use separate
-gate-owned identities or exact metadata-preserving operations. They never delete and
-recreate a positive item.
-
-Every store operation and metadata search sets the wrapper's exact application
-identifier as `kSecAttrAccessGroup`, and metadata readback verifies `agrp`. The five
-credential slots remain derived only from the run descriptor. The finite
-protected-store proof reports a closed non-secret phase and category for first add,
-first metadata readback, duplicate add, no-overwrite readback, exact delete, and final
-absence. It does not emit credential material, raw stderr, host paths, or an arbitrary
-OSStatus surface.
-
-Wrapper preflight rejects a raw binary; a wrong bundle identifier, executable, team,
-application identifier, or access group; a missing, expired, or wrong-channel profile;
-profile, entitlement, or signature disagreement; an invalid signature; candidate
-executable drift; and a LaunchAgent target outside the wrapper main. The normalized
-migration manifest and existing prepared/completed receipt bind the exact non-secret
-wrapper descriptor. The retirement receipt binds its canonical identity digest, and
-the installed-asset set contains exactly one matching wrapper executable. Both the
-installer and the corresponding Rust child inspect current identity at the initial,
-prepared, final, and completed boundaries. The installer alone performs the post-final
-check immediately before the launch decision. These checks reject executable,
-byte-count, `Info.plist`, profile, team, application-identifier, expiry, channel,
-entitlement, access-group, signature, LaunchAgent, or installed-asset drift. Completed
-verification obtains the frozen descriptor from PostgreSQL when the source manifest
-is absent. Exact replay adds no credential write, account or routing revision, or
-receipt. Profile expiry after preparation fails closed and does not authorize
-automatic profile renewal or manifest rebinding.
-
-The gate must exercise the installer-owned operator orchestration, the real migration,
-the prepared verifier, the finalizer, the completed verifier, and the final launch
-decision. It must prove live-daemon exclusion. At the required intermediate states, it
-must attempt selection, Reset Card, and spawn admission and prove the required refusal.
-The harness can use only the approved checkpoint and fault-injection boundaries. It
-must not duplicate product authority.
-
-Every gate-owned process, worker, lock, temporary path, PostgreSQL instance, and
-Keychain item must have bounded unconditional cleanup. Process cleanup must bind the
-exact process identity and must not trust a reusable PID alone. Every cleanup error is a
-gate failure.
-
-After the source and harness repair is frozen, an independent review must bind its
-verdict to that exact tree. Only then can the Manager authorize exactly one replacement
-`cargo make test-vnext-account-migration-transition` invocation. A focused copy and an
-automatic retry are prohibited. The gate must not create a command-patch-command
-staircase.
-
-A green replacement transition gate accepts only the migration-transition source and
-its direct wrapper composition. Before `MacDogfoodReady` or the production
-protected-store composition can be accepted, installer/package acceptance must also
-run one finite, gate-owned protected-store operation from the real `gui/<uid>`
-LaunchAgent context and perform unconditional exact cleanup. A development profile can
-support that local dogfood proof. It is not public distribution or notarization
-evidence.
-
-This repair does not authorize a file-based Keychain, weaker accessibility,
-plaintext or environment fallback, gate-only signing, a shared or general Keychain
-group, arbitrary Keychain CRUD, a generic package builder, profile or identity
-fallback, a new ledger, notarization, or public-distribution work.
-
-The rejected-candidate cause and option decision are retained in
-[the XY-1422 populated V26 migration reset](../evidence/xy-1422-populated-v26-migration-reset.md).
+The local operator moves existing credentials through temporary owner-private
+`decodex/account-credential-import/1` files and the same public import command. This
+finite host action is not a repository gate or installed product feature. The operator
+deletes temporary inputs and old account authority only after all destination accounts
+and Reset Cards verify.
 
 ### Later automatic routing acceptance
 
@@ -1274,23 +1079,26 @@ core-freeze gate before any acceptance or enablement claim.
 
 The Slice-3 Mac cutover requires XY-1422 MacDogfoodReady, replacement behavior evidence,
 the representative two-account E2E and restart evidence, one accepted Mac package, and
-the frozen v0.2 inventory. XY-1304 is not a cutover prerequisite while automatic fallback
-and wake remain disabled. Broader final-product cutover retains each later feature's own
-gate.
+the frozen v0.2 inventory. XY-1304 is not a cutover prerequisite while automatic
+fallback and wake remain disabled. Broader final-product cutover retains each later
+feature's own gate.
 
-The procedure stops v0.2, verifies the trusted tag and cold backup, initializes empty
-PostgreSQL execution/control-plane state, runs at most the normalized one-shot account
-migration, explicitly recreates selected Projects, and starts only vNext. It imports no
-legacy execution or Codex thread history and enables no dual authority. Normal startup
-must not read a migration source or mapping and must not use the legacy watcher,
-credential environment projection, helper, `:8192`, or dual account UI.
+The procedure stops v0.2, initializes empty PostgreSQL execution/control-plane state,
+imports each retained account once through the ordinary versioned account-import
+command, verifies the resulting PostgreSQL, HostCredentialStore, routing, and Reset Card
+readback, deletes the temporary import files and retired account source, explicitly
+recreates selected Projects, and starts only vNext. It creates no backup or rollback
+path. It imports no legacy execution or Codex thread history and enables no dual
+authority. Normal startup must not read a migration source or mapping and must not use
+the legacy watcher, credential environment projection, helper, `:8192`, or dual account
+UI. The product contains no generic account-migration runner, manifest, receipt,
+finalizer, compatibility branch, or migration gate.
 
 The repository-owned XY-1261 receipt is
-[the v0.2 freeze receipt](../evidence/v0.2-freeze.md). A destructive-removal task must
-verify its exact external readbacks and resolve every recorded stop condition first. In
-particular, the receipt records that the legacy SQLite database was already absent before
-the freeze; its retirement sentinel is not a database backup, and later work must not
-silently treat that acceptance gap as restored evidence.
+[the v0.2 freeze receipt](../evidence/v0.2-freeze.md). It is historical repository
+provenance, not a runtime input, migration authority, backup requirement, or rollback
+path. The local clean cutover validates only the retained vNext account and Reset Card
+state before it removes the retired source.
 
 ## Stop conditions
 

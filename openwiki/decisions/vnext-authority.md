@@ -39,13 +39,14 @@ order are deterministic versioned CAS controls. The immediate boundary is
 MacDogfoodReady; final AccountLifecycleReady adds Linux, ambient Codex auth, full account
 presentation, and later automatic routing obligations.
 
-The continuously watched legacy account file and environment-only access-token projection
-are pre-cutover scaffolding, not a complete account pool. Normal Mac dogfood startup reads
-neither. One explicit offline migration fingerprints every source and normalizes
-credentials, labels, enabled state, routing mode/order, and provider identity. Quota,
-usage/profile projections, account history, and Codex history reset or remain unimported.
-Shared normal `~/.codex` remains Codex configuration, plugin, rollout, and thread
-visibility authority.
+The continuously watched legacy account file and environment-only access-token
+projection are retired. Normal Mac dogfood startup and installation cannot read either
+one. A clean local cutover creates an empty current database and uses the ordinary
+versioned account-import command once per local credential. After public readback
+verifies every account and routing control, the operator deletes the temporary import
+files and old account source. The product has no bulk migration, compatibility reader,
+dual authority, or fallback. Shared normal `~/.codex` remains Codex configuration,
+plugin, rollout, and thread visibility authority.
 
 The exact protected Codex build must positively prove the
 `account/chatgptAuthTokens/refresh` callback before readiness. Current generic rejection

@@ -14,7 +14,6 @@
 mod account_import;
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
-#[cfg(target_os = "macos")] mod account_migration;
 mod account_service;
 mod application;
 mod bootstrap;
@@ -38,36 +37,14 @@ pub use account_launch::retained_title_experiment::{
 	ManualRetainedTitleExperimentError, ManualRetainedTitleExperimentReport,
 	run_manual_retained_title_experiment,
 };
-#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-pub use account_migration::{
-	AccountMigrationAdmissionGateReport, AccountMigrationLiveDaemonGateReport,
-	AccountMigrationRecoveryGateReport, exercise_account_migration_admission_for_gate,
-	exercise_account_migration_recovery_for_gate, hold_account_migration_live_daemon_for_gate,
-};
-#[cfg(target_os = "macos")]
-pub use account_migration::{
-	OfflineAccountMigrationDestinationVerifyOptions, OfflineAccountMigrationError,
-	OfflineAccountMigrationFinalizeOptions, OfflineAccountMigrationOptions,
-	OfflineAccountMigrationReport, OfflineAccountMigrationVerifyOptions,
-	finalize_offline_account_migration, run_offline_account_migration,
-	verify_completed_offline_account_migration,
-	verify_prepared_offline_account_migration_destination,
-};
 pub use account_service::{
 	AccountInspection, AccountLifecycleError, AccountSelectionFailure, AccountSelectionResult,
 	AccountService, ChatgptTokenProjection, CredentialRefreshError, StartupAccountReconciliation,
 };
 pub use application::{Application, ApplicationPublication};
 pub use bootstrap::ServiceBootstrap;
-#[cfg(target_os = "macos")]
-pub use daemon_wrapper::{
-	DaemonWrapperDescriptor, DaemonWrapperError, daemon_wrapper_descriptor_sha256,
-	inspect_current_daemon_wrapper, verify_current_daemon_wrapper,
-};
 pub use decodex_protocol::ServerId;
 #[cfg(target_os = "macos")] pub use host_credentials::MacosKeychainCredentialStore;
-#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-pub use host_credentials::run_account_migration_credential_gate;
 pub use host_credentials::{
 	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
 };

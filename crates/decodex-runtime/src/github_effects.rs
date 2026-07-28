@@ -1086,8 +1086,9 @@ pub(crate) fn reconcile_pull_request_dispatch<P: GitHubEffectProvider + ?Sized>(
 				GitHubPullRequestDispatchReceipt { authority, spec },
 			);
 		},
-		Err(failure) =>
-			return GitHubPullRequestDispatchResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) => {
+			return GitHubPullRequestDispatchResolution::Ambiguous(collection_ambiguity(failure));
+		},
 	};
 	match reconcile_pull_request_present(&authority, &spec, None, inventory) {
 		PullRequestPresence::Terminal(terminal) => return terminal.into_dispatch(),
@@ -1113,8 +1114,9 @@ pub(crate) fn reconcile_pull_request_readback<P: GitHubEffectProvider + ?Sized>(
 				GitHubPullRequestContinuation { authority, spec, response_identity, reason },
 			);
 		},
-		Err(failure) =>
-			return GitHubPullRequestReadbackResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) => {
+			return GitHubPullRequestReadbackResolution::Ambiguous(collection_ambiguity(failure));
+		},
 	};
 	match reconcile_pull_request_present(&authority, &spec, response_identity, inventory) {
 		PullRequestPresence::Terminal(terminal) => terminal,
@@ -1151,8 +1153,9 @@ pub(crate) fn reconcile_check_dispatch<P: GitHubEffectProvider + ?Sized>(
 				suite_contract,
 			});
 		},
-		Err(failure) =>
-			return GitHubCheckDispatchResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) => {
+			return GitHubCheckDispatchResolution::Ambiguous(collection_ambiguity(failure));
+		},
 	};
 	match reconcile_check_present(&authority, &spec, &suite_contract, None, inventory) {
 		CheckPresence::Terminal(terminal) => return terminal.into_dispatch(),
@@ -1182,8 +1185,9 @@ pub(crate) fn reconcile_check_readback<P: GitHubEffectProvider + ?Sized>(
 				reason,
 			});
 		},
-		Err(failure) =>
-			return GitHubCheckReadbackResolution::Ambiguous(collection_ambiguity(failure)),
+		Err(failure) => {
+			return GitHubCheckReadbackResolution::Ambiguous(collection_ambiguity(failure));
+		},
 	};
 	match reconcile_check_present(&authority, &spec, &suite_contract, response_identity, inventory)
 	{
@@ -1419,10 +1423,12 @@ where
 		}
 
 		match (metadata.has_next_page, metadata.next_cursor.clone()) {
-			(true, None) =>
-				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::MissingNextCursor)),
-			(false, Some(_)) =>
-				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::UnexpectedNextCursor)),
+			(true, None) => {
+				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::MissingNextCursor));
+			},
+			(false, Some(_)) => {
+				return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::UnexpectedNextCursor));
+			},
 			(true, Some(next)) => {
 				if cursor.as_ref() == Some(&next) || !seen_cursors.insert(next.clone()) {
 					return Err(CollectionFailure::Ambiguous(GitHubAmbiguity::CursorCycle));
@@ -1518,11 +1524,12 @@ fn reconcile_pull_request_present(
 	let mut candidate = None;
 	for observation in inventory.objects {
 		let marker = match &observation.marker {
-			GitHubProviderField::Redacted =>
+			GitHubProviderField::Redacted => {
 				return PullRequestPresence::Terminal(PullRequestTerminal::Ambiguous(ambiguity(
 					GitHubAmbiguity::ProviderRedacted,
 					Some(summary),
-				))),
+				)));
+			},
 			GitHubProviderField::Visible(marker) => marker,
 		};
 		let marker_matches = marker.as_ref() == Some(&authority.marker);
@@ -1598,11 +1605,12 @@ fn reconcile_check_present(
 	let mut all = Vec::with_capacity(inventory.objects.len());
 	for observation in inventory.objects {
 		let marker = match &observation.marker {
-			GitHubProviderField::Redacted =>
+			GitHubProviderField::Redacted => {
 				return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(
 					GitHubAmbiguity::ProviderRedacted,
 					Some(summary),
-				))),
+				)));
+			},
 			GitHubProviderField::Visible(marker) => marker,
 		};
 		if matches!(&observation.spec, GitHubProviderField::Redacted) {
@@ -1681,11 +1689,12 @@ fn reconcile_check_present(
 		&all,
 	) {
 		Ok(required) => required,
-		Err(reason) =>
+		Err(reason) => {
 			return CheckPresence::Terminal(CheckTerminal::Ambiguous(ambiguity(
 				reason,
 				Some(summary),
-			))),
+			)));
+		},
 	};
 	CheckPresence::Terminal(CheckTerminal::Completed(GitHubCheckCompletion {
 		observation,

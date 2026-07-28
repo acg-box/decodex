@@ -22,11 +22,11 @@ evidence only after that point. It is not a runtime or future-work input.
   ownership, state-authority, cutover, delivery, and private-artifact retirement
   decision.
 - [vNext authority contract](specs/vnext-authority.md): normative entities, runtime boundaries,
-  protocol, account continuity, non-goals, migration contract, and retained-title
+  protocol, account continuity, non-goals, clean-cutover contract, and retained-title
   Git evidence boundary.
 - [Account lifecycle authority](specs/account-lifecycle-authority.md): the three-owner
   PostgreSQL/HostCredentialStore/Account Service boundary, MacDogfoodReady, final
-  readiness, refresh/recovery, normalized one-shot migration, and clean startup.
+  readiness, refresh/recovery, ordinary import, and clean startup.
 - [XY-1400 ProcessGeneration authority](specs/process-generation-authority.md): durable
   pre-spawn fencing, opaque exact-build launch attestation, macOS positive-death quarantine,
   exact process identity, ProviderAttempt ambiguity handoff, restore safety, and the deferred
@@ -127,7 +127,11 @@ evidence only after that point. It is not a runtime or future-work input.
 - `apps/decodex/` is the frozen v0.2 package. It remains in Git for provenance but is excluded from Cargo workspace membership and must not be used by vNext.
 - `apps/radar/` is the Radar auxiliary tool for upstream review queues, release deltas, artifact validation, signal rendering, and bundle generation (`apps/radar/README.md`, `apps/radar/src/lib.rs`).
 - `apps/decodex-publisher/` validates and reserves Decodex-owned social artifacts (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`).
-- `apps/decodex-app/` is the current native macOS account UI. Its local account pool and helper launch are pre-cutover legacy surfaces. The final app is a protocol client of the daemon-owned [Account Lifecycle Authority](specs/account-lifecycle-authority.md) and does not own credentials or service lifecycle (`apps/decodex-app/README.md`).
+- `apps/decodex-app/` is the current native macOS account UI. It is a
+  credential-negative client of the daemon-owned
+  [Account Lifecycle Authority](specs/account-lifecycle-authority.md) and does not
+  contain a local account pool, helper/server path, credential authority, or service
+  lifecycle owner (`apps/decodex-app/README.md`).
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
@@ -402,10 +406,9 @@ PostgreSQL, Swift, and signed app-staging checks described in
   name, never its value.
 - Do not route vNext product state through `apps/decodex`, legacy SQLite, Linear
   lanes, or the legacy operator transport. A legacy macOS account watcher or
-  daemon-environment projection is not Mac dogfood authority. The new system can
-  consume legacy account state only in the explicit offline
-  one-shot migration in [Account Lifecycle Authority](specs/account-lifecycle-authority.md).
-  Normal Slice-1 and Slice-3 startup must not use the watcher, environment bridge,
+  daemon-environment projection is not Mac dogfood authority. Old local credentials can enter vNext only through temporary private files and the
+  ordinary public account import command. This finite operator action is not an installed
+  migration feature. Startup and packaging must not use a watcher, environment bridge,
   helper/`:8192` service, mapping, or fallback.
 - Use `decodex commit` and `decodex land` for Decodex-owned commit/landing authority; the installable plugin hook blocks raw `git commit` and `gh pr merge` inside Decodex scope (`plugins/decodex/scripts/decodex_lifecycle_hook`).
 - PostgreSQL is the vNext product-state authority when explicitly configured; unavailable is the only supported service state otherwise, with no fallback authority.

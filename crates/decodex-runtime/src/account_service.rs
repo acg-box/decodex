@@ -14,13 +14,13 @@ use std::{
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
 	AccountOperationKind, AccountOperationPhase, AccountRecord, AccountSelectionMode,
-	AccountSelectionRecovery, CredentialBinding, CredentialVersion, PostgresConnectionConfig,
+	AccountSelectionRecovery, CredentialBinding, CredentialVersion,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
 use decodex_postgres::{
 	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountLifecycleMutationOutcome,
-	AccountMigrationReceipt, AccountOperationPreparation, AccountStoreObservation,
-	CodexAccountCapabilityAttestation, PostgresStore, RoutingControlOutcome, StoreError,
+	AccountOperationPreparation, AccountStoreObservation, CodexAccountCapabilityAttestation,
+	PostgresStore, RoutingControlOutcome, StoreError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -41,23 +41,6 @@ const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
-
-#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-fn migration_transition_checkpoint(
-	name: &str,
-	account_id: &AccountId,
-) -> Result<(), AccountLifecycleError> {
-	crate::account_migration::account_migration_transition_checkpoint(name, Some(account_id))
-		.map_err(|_| AccountLifecycleError::InvalidOperation)
-}
-
-#[cfg(not(all(target_os = "macos", feature = "account-migration-transition-gate")))]
-fn migration_transition_checkpoint(
-	_name: &str,
-	_account_id: &AccountId,
-) -> Result<(), AccountLifecycleError> {
-	Ok(())
-}
 
 pub(crate) struct CredentialRefreshResult {
 	returned_provider: ProviderIdentity,
@@ -323,25 +306,6 @@ pub enum AccountManualRecoveryOutcome {
 	StillRequiresRecovery,
 }
 
-/// Private offline-migration precondition mapped onto the existing Import operation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) enum AccountMigrationTransition {
-	/// Initialize an account that was absent when the operation was first prepared.
-	AbsentInitialize {
-		/// Absence is represented by the existing nullable revision precondition.
-		expected_revision: Option<i64>,
-	},
-	/// Hydrate credentials against the complete current PostgreSQL account tuple.
-	ExistingHydrate {
-		/// Current account revision at first preparation.
-		revision: i64,
-		/// Current label at first preparation.
-		display_label: String,
-		/// Current administrative state at first preparation.
-		enabled: bool,
-	},
-}
-
 /// Sole account lifecycle coordinator in `decodexd`.
 pub struct AccountService {
 	store: PostgresStore,
@@ -352,25 +316,6 @@ pub struct AccountService {
 	callback_profile_sha256: Mutex<Option<String>>,
 }
 impl AccountService {
-	/// Apply or strictly replay the V27 account-cutover intent on one single-use migration
-	/// connection before this service can coordinate a destination effect.
-	pub(crate) async fn migrate_account_cutover(
-		config: &PostgresConnectionConfig,
-		migration_password: Option<&str>,
-		manifest_sha256: &str,
-		manifest: &Value,
-		account_count: u32,
-	) -> Result<bool, AccountLifecycleError> {
-		Ok(PostgresStore::migrate_account_cutover_explicit(
-			config,
-			migration_password,
-			manifest_sha256,
-			manifest,
-			account_count,
-		)
-		.await?)
-	}
-
 	/// Assemble one coordinator from its three narrow infrastructure ports.
 	pub(crate) fn new(
 		store: PostgresStore,
@@ -493,10 +438,11 @@ impl AccountService {
 	{
 		let imported = match read_shared_codex_credential() {
 			Ok(imported) => imported,
-			Err(error) =>
+			Err(error) => {
 				return self
 					.complete_account_command_error(lease, error.into(), build_response)
-					.await,
+					.await;
+			},
 		};
 		self.install_credentials_command(
 			lease,
@@ -530,10 +476,11 @@ impl AccountService {
 	{
 		let imported = match read_explicit_credential_file(source_descriptor) {
 			Ok(imported) => imported,
-			Err(error) =>
+			Err(error) => {
 				return self
 					.complete_account_command_error(lease, error.into(), build_response)
-					.await,
+					.await;
+			},
 		};
 		self.install_credentials_command(
 			lease,
@@ -547,221 +494,6 @@ impl AccountService {
 			build_response,
 		)
 		.await
-	}
-
-	/// Read the exact manifest operation before migration classifies current account state.
-	pub(crate) async fn read_migration_operation(
-		&self,
-		operation_id: &AccountOperationId,
-	) -> Result<Option<AccountOperation>, AccountLifecycleError> {
-		Ok(self.store.read_account_operation(operation_id).await?)
-	}
-
-	/// Execute or resume one manifest-bound Import through its exact persisted phase.
-	#[allow(clippy::too_many_arguments)] // The transition, desired administration, and exact credential target are independent authority inputs.
-	pub(crate) async fn install_migrated_credentials(
-		&self,
-		operation_id: AccountOperationId,
-		account_id: AccountId,
-		transition: AccountMigrationTransition,
-		desired_label: String,
-		desired_enabled: bool,
-		provider: ProviderIdentity,
-		target: CredentialBinding,
-		bundle: CredentialSecretBundle,
-	) -> Result<AccountRecord, AccountLifecycleError> {
-		if target.writer_operation_id != operation_id || target.provider != provider {
-			return Err(AccountLifecycleError::InvalidOperation);
-		}
-		let mut bundle = Some(bundle);
-		let (expected_account_revision, requested_display_label, requested_enabled) =
-			match &transition {
-				AccountMigrationTransition::AbsentInitialize { expected_revision: None } =>
-					(None, desired_label, desired_enabled),
-				AccountMigrationTransition::AbsentInitialize { expected_revision: Some(_) } =>
-					return Err(AccountLifecycleError::InvalidOperation),
-				AccountMigrationTransition::ExistingHydrate {
-					revision,
-					display_label,
-					enabled,
-				} if *revision > 0 => (Some(*revision), display_label.clone(), *enabled),
-				AccountMigrationTransition::ExistingHydrate { .. } =>
-					return Err(AccountLifecycleError::InvalidOperation),
-			};
-		let lock = self.lock_for(&account_id)?;
-		let _guard = lock.lock().await;
-		let preparation = AccountOperationPreparation {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			kind: AccountOperationKind::Import,
-			display_label: Some(requested_display_label),
-			enabled: Some(requested_enabled),
-			expected_account_revision,
-			expected: None,
-			target: Some(target.clone()),
-			provider,
-		};
-		let persisted = self.store.read_account_operation(&operation_id).await?;
-		let phase = match persisted.as_ref() {
-			Some(operation) => {
-				self.require_migration_operation(operation, &preparation)?;
-				operation.phase
-			},
-			None => accepted_phase(self.store.prepare_account_operation(&preparation).await?)?,
-		};
-		if matches!(
-			phase,
-			AccountOperationPhase::Prepared
-				| AccountOperationPhase::StoreApplied
-				| AccountOperationPhase::RecoveryRequired
-		) {
-			self.require_migration_precommit_state(&operation_id, &transition, phase).await?;
-		}
-		if phase == AccountOperationPhase::Prepared {
-			migration_transition_checkpoint("operation_prepared", &account_id)?;
-			let bundle = bundle.take().ok_or(AccountLifecycleError::InvalidOperation)?;
-			match self.credentials.create(&account_id, &target, bundle) {
-				Ok(()) => {},
-				Err(CredentialStoreError::AlreadyExists)
-					if self.credentials.read_exact(&account_id, &target).is_ok() => {},
-				Err(error) => {
-					self.recover_or_cancel(
-						&operation_id,
-						AccountOperationPhase::Prepared,
-						"credential_create_failed",
-						store_effect_may_be_ambiguous(error),
-					)
-					.await?;
-					return Err(error.into());
-				},
-			}
-			migration_transition_checkpoint("keychain_applied", &account_id)?;
-			accepted_phase(
-				self.store
-					.advance_account_operation(
-						&operation_id,
-						AccountOperationPhase::Prepared,
-						AccountOperationPhase::StoreApplied,
-						None,
-					)
-					.await?,
-			)?;
-			migration_transition_checkpoint("store_applied", &account_id)?;
-		} else if phase == AccountOperationPhase::StoreApplied {
-			migration_transition_checkpoint("store_applied", &account_id)?;
-		}
-		match phase {
-			AccountOperationPhase::Prepared | AccountOperationPhase::StoreApplied => {
-				self.credentials.read_exact(&account_id, &target)?;
-				self.commit_store_applied(&operation_id).await?;
-			},
-			AccountOperationPhase::Committed => {
-				self.credentials.read_exact(&account_id, &target)?;
-			},
-			AccountOperationPhase::RecoveryRequired => {
-				let operation = self
-					.store
-					.read_account_operation(&operation_id)
-					.await?
-					.ok_or(AccountLifecycleError::InvalidOperation)?;
-				self.require_migration_operation(&operation, &preparation)?;
-				let target_ready = match self.credentials.read_exact(&account_id, &target) {
-					Ok(_) => true,
-					Err(CredentialStoreError::NotFound) => {
-						let bundle =
-							bundle.take().ok_or(AccountLifecycleError::InvalidOperation)?;
-						match self.credentials.create(&account_id, &target, bundle) {
-							Ok(()) => true,
-							Err(CredentialStoreError::AlreadyExists) =>
-								self.credentials.read_exact(&account_id, &target).is_ok(),
-							Err(_) => false,
-						}
-					},
-					Err(_) => false,
-				};
-				if !target_ready {
-					return Err(AccountLifecycleError::NotReady(
-						AccountLifecycleReadiness::OperationUnsettled,
-					));
-				}
-				migration_transition_checkpoint("keychain_applied", &account_id)?;
-				accepted_phase(
-					self.store
-						.advance_account_operation(
-							&operation_id,
-							AccountOperationPhase::RecoveryRequired,
-							AccountOperationPhase::StoreApplied,
-							None,
-						)
-						.await?,
-				)?;
-				migration_transition_checkpoint("store_applied", &account_id)?;
-				self.commit_store_applied(&operation_id).await?;
-			},
-			AccountOperationPhase::Cancelled | AccountOperationPhase::ProviderEffectPending =>
-				return Err(AccountLifecycleError::InvalidOperation),
-		}
-		migration_transition_checkpoint("credential_committed", &account_id)?;
-		let account = self.load_account(&account_id).await?;
-		if account.credential.as_ref() != Some(&target) {
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		Ok(account)
-	}
-
-	async fn require_migration_precommit_state(
-		&self,
-		operation_id: &AccountOperationId,
-		transition: &AccountMigrationTransition,
-		phase: AccountOperationPhase,
-	) -> Result<(), AccountLifecycleError> {
-		let operation = self
-			.store
-			.read_account_operation(operation_id)
-			.await?
-			.ok_or(AccountLifecycleError::InvalidOperation)?;
-		let account = self.load_account(&operation.account_id).await?;
-		let (revision, display_label, enabled) = match transition {
-			AccountMigrationTransition::AbsentInitialize { expected_revision: None } =>
-				(1, operation.requested_display_label.as_deref(), operation.requested_enabled),
-			AccountMigrationTransition::ExistingHydrate { revision, display_label, enabled } =>
-				(*revision, Some(display_label.as_str()), Some(*enabled)),
-			AccountMigrationTransition::AbsentInitialize { expected_revision: Some(_) } =>
-				return Err(AccountLifecycleError::InvalidOperation),
-		};
-		let unsettled = account.unsettled_operation.as_ref();
-		if account.revision != revision
-			|| account.label != display_label.unwrap_or_default()
-			|| Some(account.enabled) != enabled
-			|| account.credential.is_some()
-			|| account.tombstoned
-			|| unsettled.map(|status| &status.operation_id) != Some(operation_id)
-			|| unsettled.map(|status| status.kind) != Some(AccountOperationKind::Import)
-			|| unsettled.map(|status| status.phase) != Some(phase)
-		{
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		Ok(())
-	}
-
-	fn require_migration_operation(
-		&self,
-		operation: &AccountOperation,
-		expected: &AccountOperationPreparation,
-	) -> Result<(), AccountLifecycleError> {
-		if operation.operation_id != expected.operation_id
-			|| operation.account_id != expected.account_id
-			|| operation.kind != AccountOperationKind::Import
-			|| operation.expected_account_revision != expected.expected_account_revision
-			|| operation.requested_display_label.as_ref() != expected.display_label.as_ref()
-			|| operation.requested_enabled != expected.enabled
-			|| operation.expected.is_some()
-			|| operation.target.as_ref() != expected.target.as_ref()
-			|| operation.target.as_ref().map(|target| &target.provider) != Some(&expected.provider)
-		{
-			return Err(AccountLifecycleError::InvalidOperation);
-		}
-		Ok(())
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -803,14 +535,15 @@ impl AccountService {
 		let phase = match self.store.prepare_account_operation(&preparation).await? {
 			AccountLifecycleMutationOutcome::Applied(mutation)
 			| AccountLifecycleMutationOutcome::Replayed(mutation) => mutation.phase,
-			AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+			AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
 				return self
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::OperationRejected(rejection),
 						build_response,
 					)
-					.await,
+					.await;
+			},
 		};
 		if phase == AccountOperationPhase::Prepared {
 			if let Err(error) = self.credentials.create(&preparation.account_id, &target, bundle)
@@ -1072,25 +805,27 @@ impl AccountService {
 		let mut build_response = Some(build_response);
 		let account = match self.load_account(account_id).await {
 			Ok(account) => account,
-			Err(error) =>
+			Err(error) => {
 				return self
 					.complete_account_command_error(
 						lease,
 						error,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 		};
 		let current = match account.credential.clone() {
 			Some(current) => current,
-			None =>
+			None => {
 				return self
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::CredentialAbsent,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 		};
 		if let Some(operation) = self.store.read_account_operation(&operation_id).await? {
 			if let Err(error) = self.require_operation_identity(
@@ -1107,7 +842,7 @@ impl AccountService {
 					.await;
 			}
 			match operation.phase {
-				AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied =>
+				AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
 					return self
 						.complete_account_operation_success(
 							lease,
@@ -1116,8 +851,9 @@ impl AccountService {
 							AccountOperationPhase::Committed,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
-				AccountOperationPhase::Cancelled =>
+						.await;
+				},
+				AccountOperationPhase::Cancelled => {
 					return self
 						.complete_account_operation_error(
 							lease,
@@ -1128,8 +864,9 @@ impl AccountService {
 							AccountLifecycleError::InvalidOperation,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
-				AccountOperationPhase::RecoveryRequired =>
+						.await;
+				},
+				AccountOperationPhase::RecoveryRequired => {
 					return self
 						.complete_account_operation_error(
 							lease,
@@ -1142,8 +879,9 @@ impl AccountService {
 							),
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
-				AccountOperationPhase::Prepared =>
+						.await;
+				},
+				AccountOperationPhase::Prepared => {
 					return self
 						.complete_account_operation_error(
 							lease,
@@ -1154,7 +892,8 @@ impl AccountService {
 							AccountLifecycleError::InvalidOperation,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 				AccountOperationPhase::ProviderEffectPending => {
 					let Some(target) = operation.target.as_ref() else {
 						return self
@@ -1219,14 +958,15 @@ impl AccountService {
 		}
 		let stored = match self.read_exact_for_admission(&account).await {
 			Ok(stored) => stored,
-			Err(error) =>
+			Err(error) => {
 				return self
 					.complete_account_command_error(
 						lease,
 						error,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 		};
 		let preparation = AccountOperationPreparation {
 			operation_id: operation_id.clone(),
@@ -1243,22 +983,24 @@ impl AccountService {
 			AccountLifecycleMutationOutcome::Applied(mutation)
 			| AccountLifecycleMutationOutcome::Replayed(mutation)
 				if mutation.phase == AccountOperationPhase::Prepared => {},
-			AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+			AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
 				return self
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::OperationRejected(rejection),
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
-			_ =>
+					.await;
+			},
+			_ => {
 				return self
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::InvalidOperation,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 		}
 		accepted_phase(
 			self.store
@@ -1274,7 +1016,7 @@ impl AccountService {
 		let refreshed =
 			match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await {
 				Ok(refreshed) => refreshed,
-				Err(_) =>
+				Err(_) => {
 					return self
 						.complete_account_operation_error(
 							lease,
@@ -1285,11 +1027,12 @@ impl AccountService {
 							AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous),
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 			};
 		let refreshed = match refreshed {
 			Ok(refreshed) => refreshed,
-			Err(error @ CredentialRefreshError::Rejected) =>
+			Err(error @ CredentialRefreshError::Rejected) => {
 				return self
 					.complete_account_operation_error(
 						lease,
@@ -1300,8 +1043,9 @@ impl AccountService {
 						AccountLifecycleError::Refresh(error),
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
-			Err(error) =>
+					.await;
+			},
+			Err(error) => {
 				return self
 					.complete_account_operation_error(
 						lease,
@@ -1312,12 +1056,13 @@ impl AccountService {
 						AccountLifecycleError::Refresh(error),
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 		};
 		let target =
 			match refreshed_credential_target(&current, account_id, &operation_id, &refreshed) {
 				Ok(target) => target,
-				Err(AccountLifecycleError::ProviderMismatch) =>
+				Err(AccountLifecycleError::ProviderMismatch) => {
 					return self
 						.complete_account_operation_error(
 							lease,
@@ -1328,7 +1073,8 @@ impl AccountService {
 							AccountLifecycleError::ProviderMismatch,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 				Err(error) => return Err(error),
 			};
 		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
@@ -1547,25 +1293,27 @@ impl AccountService {
 		if phase.is_none() {
 			let account = match self.load_account(account_id).await {
 				Ok(account) => account,
-				Err(error) =>
+				Err(error) => {
 					return self
 						.complete_account_command_error(
 							lease,
 							error,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 			};
 			let credential = match account.credential.clone() {
 				Some(credential) => credential,
-				None =>
+				None => {
 					return self
 						.complete_account_command_error(
 							lease,
 							AccountLifecycleError::CredentialAbsent,
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 			};
 			let preparation = AccountOperationPreparation {
 				operation_id: operation_id.clone(),
@@ -1581,20 +1329,21 @@ impl AccountService {
 			match self.store.prepare_account_operation(&preparation).await? {
 				AccountLifecycleMutationOutcome::Applied(mutation)
 				| AccountLifecycleMutationOutcome::Replayed(mutation) => phase = Some(mutation.phase),
-				AccountLifecycleMutationOutcome::Rejected { rejection, .. } =>
+				AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
 					return self
 						.complete_account_command_error(
 							lease,
 							AccountLifecycleError::OperationRejected(rejection),
 							build_response.take().expect("builder is retained"),
 						)
-						.await,
+						.await;
+				},
 			}
 			expected = Some(credential);
 		}
 		let phase = phase.expect("logout preparation or replay has one phase");
 		match phase {
-			AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied =>
+			AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
 				return self
 					.complete_account_operation_success(
 						lease,
@@ -1603,8 +1352,9 @@ impl AccountService {
 						AccountOperationPhase::Committed,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
-			AccountOperationPhase::Cancelled =>
+					.await;
+			},
+			AccountOperationPhase::Cancelled => {
 				return self
 					.complete_account_operation_error(
 						lease,
@@ -1615,9 +1365,10 @@ impl AccountService {
 						AccountLifecycleError::InvalidOperation,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 			AccountOperationPhase::RecoveryRequired
-			| AccountOperationPhase::ProviderEffectPending =>
+			| AccountOperationPhase::ProviderEffectPending => {
 				return self
 					.complete_account_operation_error(
 						lease,
@@ -1630,7 +1381,8 @@ impl AccountService {
 						),
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 			AccountOperationPhase::Prepared => {},
 		}
 		let Some(expected) = expected else {
@@ -1999,27 +1751,6 @@ impl AccountService {
 			.await?)
 	}
 
-	/// Strictly replay the singleton canonical migration identity already committed with V27.
-	pub async fn prepare_migration_intent(
-		&self,
-		manifest_sha256: &str,
-		manifest: &Value,
-		account_count: u32,
-	) -> Result<bool, AccountLifecycleError> {
-		Ok(self
-			.store
-			.prepare_account_migration_intent(manifest_sha256, manifest, account_count)
-			.await?)
-	}
-
-	/// Persist or replay one exact completed offline migration receipt.
-	pub async fn record_migration_receipt(
-		&self,
-		receipt: &AccountMigrationReceipt,
-	) -> Result<bool, AccountLifecycleError> {
-		Ok(self.store.record_account_migration_receipt(receipt).await?)
-	}
-
 	/// Select one initial account. This never creates automatic same-thread fallback or wake work.
 	pub async fn select_initial(
 		&self,
@@ -2058,11 +1789,12 @@ impl AccountService {
 						recovery: AccountSelectionRecovery::ResolveCredentialOperation,
 					})?;
 					match self.selection_candidate(account, now_unix_micros) {
-						Ok(_) =>
+						Ok(_) => {
 							return Ok(AccountSelectionResult {
 								account: account.clone(),
 								callback_profile_sha256,
-							}),
+							});
+						},
 						Err(recovery) if first_failure.is_none() => {
 							first_failure = Some((account.account_id.clone(), recovery));
 						},
@@ -2129,8 +1861,9 @@ impl AccountService {
 			) => Some(AccountManualRecoveryOutcome::Committed),
 			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) =>
 				Some(AccountManualRecoveryOutcome::Cancelled),
-			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) =>
-				return Err(AccountLifecycleError::InvalidOperation),
+			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) => {
+				return Err(AccountLifecycleError::InvalidOperation);
+			},
 			_ => None,
 		};
 		if let Some(outcome) = replayed {
@@ -2194,14 +1927,15 @@ impl AccountService {
 			) => Some(AccountManualRecoveryOutcome::Committed),
 			(AccountOperationPhase::Cancelled, AccountManualRecoveryAction::CancelBeforeEffect) =>
 				Some(AccountManualRecoveryOutcome::Cancelled),
-			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) =>
+			(AccountOperationPhase::Committed | AccountOperationPhase::Cancelled, _) => {
 				return self
 					.complete_recovery_command_error(
 						lease,
 						AccountLifecycleError::InvalidOperation,
 						build_response.take().expect("builder is retained"),
 					)
-					.await,
+					.await;
+			},
 			_ => None,
 		};
 		if let Some(outcome) = terminal_replay {
@@ -2535,14 +2269,18 @@ impl AccountService {
 		}
 		match account.lifecycle_readiness {
 			AccountLifecycleReadiness::Ready => {},
-			AccountLifecycleReadiness::CredentialAbsent =>
-				return Err(AccountSelectionRecovery::EnrollCredentials),
-			AccountLifecycleReadiness::OperationUnsettled =>
-				return Err(AccountSelectionRecovery::ResolveCredentialOperation),
-			AccountLifecycleReadiness::CallbackCapabilityUnready =>
-				return Err(AccountSelectionRecovery::UpgradeCodex),
-			AccountLifecycleReadiness::ProviderMismatch =>
-				return Err(AccountSelectionRecovery::RestoreProviderAgreement),
+			AccountLifecycleReadiness::CredentialAbsent => {
+				return Err(AccountSelectionRecovery::EnrollCredentials);
+			},
+			AccountLifecycleReadiness::OperationUnsettled => {
+				return Err(AccountSelectionRecovery::ResolveCredentialOperation);
+			},
+			AccountLifecycleReadiness::CallbackCapabilityUnready => {
+				return Err(AccountSelectionRecovery::UpgradeCodex);
+			},
+			AccountLifecycleReadiness::ProviderMismatch => {
+				return Err(AccountSelectionRecovery::RestoreProviderAgreement);
+			},
 			_ => return Err(AccountSelectionRecovery::RepairCredentialStore),
 		}
 		let five = account

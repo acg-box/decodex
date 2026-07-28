@@ -62,6 +62,8 @@ struct ResetCardPendingAttemptStore {
 		let isValid = document.schema == Self.schema
 			&& document.attempts.count <= Self.maximumAttempts
 			&& recovered == document.attempts
+			&& Set(document.attempts.map(LogicalTarget.init)).count
+				== document.attempts.count
 
 		return isValid ? .available(recovered) : .recoveryBlocked(recovered)
 	}
@@ -691,5 +693,15 @@ struct ResetCardPendingAttemptStore {
 	private struct Document: Codable {
 		let schema: String
 		let attempts: [ResetCardUseAttempt]
+	}
+
+	private struct LogicalTarget: Hashable {
+		let accountID: String
+		let descriptor: ResetCardDescriptor
+
+		init(_ attempt: ResetCardUseAttempt) {
+			accountID = attempt.target.accountID
+			descriptor = attempt.target.descriptor
+		}
 	}
 }
