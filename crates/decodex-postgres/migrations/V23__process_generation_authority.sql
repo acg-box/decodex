@@ -493,15 +493,15 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.process_generations
+	UPDATE decodex.process_generations AS target
 	SET bound_boot_id = p_bound_boot_id,
 		process_id = p_process_id,
 		process_start_id = p_process_start_id,
 		process_group_id = p_process_group_id,
 		session_id = p_session_id,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE generation_id = p_generation_id;
+	WHERE target.generation_id = p_generation_id;
 	RETURN QUERY SELECT 'bound', p_expected_revision + 1,
 		'starting'::decodex.process_generation_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -550,9 +550,9 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.process_generations
-	SET state = 'ready', revision = revision + 1, updated_at = now_value
-	WHERE generation_id = p_generation_id;
+	UPDATE decodex.process_generations AS target
+	SET state = 'ready', revision = target.revision + 1, updated_at = now_value
+	WHERE target.generation_id = p_generation_id;
 	RETURN QUERY SELECT 'ready', p_expected_revision + 1,
 		'ready'::decodex.process_generation_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -601,12 +601,12 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.process_generations
+	UPDATE decodex.process_generations AS target
 	SET state = 'stopping',
 		authority_loss_reason = NULL,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE generation_id = p_generation_id;
+	WHERE target.generation_id = p_generation_id;
 	RETURN QUERY SELECT 'stopping', p_expected_revision + 1,
 		'stopping'::decodex.process_generation_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -656,12 +656,12 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.process_generations
+	UPDATE decodex.process_generations AS target
 	SET state = 'death_unknown',
 		authority_loss_reason = p_reason,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE generation_id = p_generation_id;
+	WHERE target.generation_id = p_generation_id;
 	RETURN QUERY SELECT 'death_unknown', p_expected_revision + 1,
 		'death_unknown'::decodex.process_generation_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -793,25 +793,25 @@ BEGIN
 	);
 
 	IF generation.state = 'ready' THEN
-		UPDATE decodex.process_generations
-		SET state = 'stopping', revision = revision + 1, updated_at = observed
-		WHERE generation_id = p_generation_id;
+		UPDATE decodex.process_generations AS target
+		SET state = 'stopping', revision = target.revision + 1, updated_at = observed
+		WHERE target.generation_id = p_generation_id;
 	ELSIF generation.state = 'starting' THEN
-		UPDATE decodex.process_generations
+		UPDATE decodex.process_generations AS target
 		SET state = 'death_unknown',
 			authority_loss_reason = 'control_authority_lost',
-			revision = revision + 1,
+			revision = target.revision + 1,
 			updated_at = observed
-		WHERE generation_id = p_generation_id;
+		WHERE target.generation_id = p_generation_id;
 	END IF;
 
-	UPDATE decodex.process_generations
+	UPDATE decodex.process_generations AS target
 	SET state = 'dead',
 		authority_loss_reason = NULL,
 		death_evidence_id = p_evidence_id,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = observed
-	WHERE generation_id = p_generation_id;
+	WHERE target.generation_id = p_generation_id;
 
 	SELECT * INTO generation FROM decodex.process_generations
 	WHERE generation_id = p_generation_id;
