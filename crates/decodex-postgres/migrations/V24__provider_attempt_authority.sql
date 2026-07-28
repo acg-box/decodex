@@ -1255,11 +1255,11 @@ BEGIN
 	END IF;
 
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.provider_attempts
+	UPDATE decodex.provider_attempts AS target
 	SET state = 'dispatch_authorized',
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE attempt_id = p_attempt_id;
+	WHERE target.attempt_id = p_attempt_id;
 	RETURN QUERY SELECT 'dispatch_authorized', p_expected_revision + 1,
 		'dispatch_authorized'::decodex.provider_attempt_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -1308,11 +1308,11 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.provider_attempts
+	UPDATE decodex.provider_attempts AS target
 	SET state = 'canceled',
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE attempt_id = p_attempt_id;
+	WHERE target.attempt_id = p_attempt_id;
 	RETURN QUERY SELECT 'canceled', p_expected_revision + 1,
 		'canceled'::decodex.provider_attempt_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -1386,12 +1386,12 @@ BEGIN
 		RETURN;
 	END IF;
 	now_value := pg_catalog.clock_timestamp();
-	UPDATE decodex.provider_attempts
+	UPDATE decodex.provider_attempts AS target
 	SET state = 'unknown',
 		unknown_reason = p_reason,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = now_value
-	WHERE attempt_id = p_attempt_id;
+	WHERE target.attempt_id = p_attempt_id;
 	RETURN QUERY SELECT 'unknown', p_expected_revision + 1,
 		'unknown'::decodex.provider_attempt_state,
 		(extract(epoch FROM now_value)*1000000)::bigint;
@@ -1580,13 +1580,13 @@ BEGIN
 		p_witness_digest,
 		observed
 	);
-	UPDATE decodex.provider_attempts
+	UPDATE decodex.provider_attempts AS target
 	SET state = p_outcome::text::decodex.provider_attempt_state,
 		unknown_reason = NULL,
 		terminal_evidence_id = p_evidence_id,
-		revision = revision + 1,
+		revision = target.revision + 1,
 		updated_at = observed
-	WHERE attempt_id = p_attempt_id;
+	WHERE target.attempt_id = p_attempt_id;
 	RETURN QUERY SELECT
 		p_outcome::text,
 		p_expected_revision + 1,
