@@ -5,22 +5,30 @@ use std::{
 	io::ErrorKind,
 	path::{Path, PathBuf},
 	sync::Arc,
+	time::Duration,
 };
 
+#[cfg(target_os = "macos")] use crate::host_credentials::MacosKeychainCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
-	account_launch::{ResetCardRuntime, ResetCardVaultStatus},
+	account_launch::{ResetCardRuntime, ResetCardVaultStatus, attest_account_callback_capability},
+	account_service::{AccountInspection, AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ServiceApplication},
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 	},
+	process_supervisor::{
+		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
+	},
+	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptReadiness},
 };
 use decodex_codex::CodexAdapter;
 use decodex_core::{
-	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
-	PostgresIdentityConfig, ProductState as _, ServerIdentity, ServerProfile,
+	AccountLifecycleReadiness, AccountRecord, AccountRoutingControl, Availability, BlobStore,
+	ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError, PostgresIdentityConfig,
+	ProcessExecutionAuthorization, ProductState as _, ServerIdentity, ServerProfile,
 };
-use decodex_postgres::{BootstrapFailure, PostgresStore};
+use decodex_postgres::{BootstrapFailure, CodexAccountCapabilityAttestation, PostgresStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
 	DoctorStatus, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal, ServerId,
@@ -32,6 +40,8 @@ const DATABASE_UNREACHABLE: &str = "configured PostgreSQL is unreachable";
 const DATABASE_INCOMPATIBLE: &str = "configured PostgreSQL is incompatible";
 const DATABASE_AUTHORITY_UNSAFE: &str = "configured PostgreSQL runtime authority is unsafe";
 const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unavailable";
+const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
+const UNAVAILABLE_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
 
 /// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
@@ -40,7 +50,12 @@ pub struct ServiceBootstrap {
 	managed_repositories: Option<ManagedRepositoryRuntime>,
 	managed_repository_readiness: ManagedRepositoryReadiness,
 	managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+	process_generations: Option<ProcessGenerationControl>,
+	process_generation_readiness: ProcessGenerationReadiness,
+	provider_attempts: Option<ProviderAttemptControl>,
+	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
+	accounts: Option<Arc<AccountService>>,
 	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
 	// Keep the one acquired daemon capability last so an unbound bootstrap
@@ -68,6 +83,26 @@ impl ServiceBootstrap {
 		self.managed_repository_readiness
 	}
 
+	/// Return the independent ProcessGeneration service readiness.
+	pub const fn process_generation_readiness(&self) -> ProcessGenerationReadiness {
+		self.process_generation_readiness
+	}
+
+	/// Borrow the exact diagnostic/reconciliation port while this owner retains authority.
+	pub const fn process_generation_control(&self) -> Option<&ProcessGenerationControl> {
+		self.process_generations.as_ref()
+	}
+
+	/// Return the independent ProviderAttempt restore and reconciliation readiness.
+	pub const fn provider_attempt_readiness(&self) -> ProviderAttemptReadiness {
+		self.provider_attempt_readiness
+	}
+
+	/// Borrow the bounded positive-reconciliation port while this owner retains authority.
+	pub const fn provider_attempt_control(&self) -> Option<&ProviderAttemptControl> {
+		self.provider_attempts.as_ref()
+	}
+
 	/// Move the already-owned same-UID listener into the server lifecycle.
 	pub async fn bind(self, config: ServerConfig) -> Result<BoundServer, ServerError> {
 		let Self {
@@ -76,7 +111,12 @@ impl ServiceBootstrap {
 			managed_repositories,
 			managed_repository_readiness,
 			managed_repository_startup_error,
+			process_generations,
+			process_generation_readiness: _,
+			provider_attempts,
+			provider_attempt_readiness: _,
 			blob_store,
+			accounts,
 			reset_cards,
 			doctor,
 			daemon_authority,
@@ -89,14 +129,16 @@ impl ServiceBootstrap {
 				managed_repositories,
 				managed_repository_readiness,
 				managed_repository_startup_error,
+				process_generations,
+				provider_attempts,
 				CodexAdapter::unavailable(),
 				blob_store,
 				doctor,
 			)
+			.with_accounts(accounts)
 			.with_reset_cards(reset_cards),
 			config,
 		);
-
 		Ok(server.bind_listener(listener))
 	}
 }
@@ -202,8 +244,26 @@ async fn bootstrap_with_authority(
 		ProductStore::Available(postgres) => Some(postgres.clone()),
 		ProductStore::Unavailable { .. } => None,
 	};
+	let (process_generations, process_generation_readiness) = match postgres.clone() {
+		Some(postgres) => match ProcessGenerationControl::start(postgres).await {
+			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
+			Err(ProcessSupervisorError::Platform) =>
+				(None, ProcessGenerationReadiness::PlatformUnavailable),
+			Err(_) => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProcessGenerationReadiness::ProductStateUnavailable),
+	};
+	#[cfg(target_os = "macos")]
+	let process_execution_authorization = ProcessExecutionAuthorization::load(&paths).ok();
+	let (provider_attempts, provider_attempt_readiness) = match postgres.clone() {
+		Some(postgres) => match ProviderAttemptControl::start(postgres).await {
+			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
+			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+		},
+		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
+	};
 	let (managed_repositories, managed_repository_readiness, managed_repository_startup_error) =
-		match postgres {
+		match postgres.clone() {
 			Some(postgres) => match ManagedRepositoryRuntime::start(postgres).await {
 				Ok(runtime) => (Some(runtime), ManagedRepositoryReadiness::Ready, None),
 				Err(error) => {
@@ -215,34 +275,25 @@ async fn bootstrap_with_authority(
 			},
 			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
 		};
-	let reset_cards = match (&store, loaded.as_ref()) {
-		(ProductStore::Available(postgres), Ok(config)) => {
-			match ResetCardRuntime::start(
-				postgres.clone(),
-				config.server_host(),
-				paths.root().as_path().to_owned(),
+	#[cfg(target_os = "macos")]
+	let (accounts, reset_cards) = match postgres.clone() {
+		Some(postgres) => {
+			let (service, runtime, status) = bootstrap_macos_account_runtime(
+				postgres,
+				&paths,
+				process_generations.clone(),
+				process_execution_authorization.clone(),
 			)
-			.await
-			{
-				Ok(runtime) => {
-					vault = match runtime.vault_status() {
-						ResetCardVaultStatus::NotConfigured =>
-							DoctorStatus::Unknown(DoctorIssue::NotProbed),
-						ResetCardVaultStatus::Ready => DoctorStatus::Ready,
-						ResetCardVaultStatus::Unavailable =>
-							DoctorStatus::Unavailable(DoctorIssue::Authentication),
-					};
-
-					Some(runtime)
-				},
-				Err(_) => {
-					vault = DoctorStatus::Unavailable(DoctorIssue::Integrity);
-
-					None
-				},
-			}
+			.await;
+			vault = status;
+			(service, runtime)
 		},
-		_ => None,
+		None => (None, None),
+	};
+	#[cfg(not(target_os = "macos"))]
+	let (accounts, reset_cards) = {
+		vault = DoctorStatus::Unavailable(DoctorIssue::Authentication);
+		(None, None)
 	};
 	let doctor = doctor_report(
 		server_id.clone(),
@@ -263,10 +314,146 @@ async fn bootstrap_with_authority(
 		managed_repositories,
 		managed_repository_readiness,
 		managed_repository_startup_error,
+		process_generations,
+		process_generation_readiness,
+		provider_attempts,
+		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
+		accounts,
 		reset_cards,
 		doctor,
 		daemon_authority: Ok(listener),
+	}
+}
+
+#[cfg(target_os = "macos")]
+async fn bootstrap_macos_account_runtime(
+	postgres: PostgresStore,
+	paths: &DecodexPaths,
+	process_generations: Option<ProcessGenerationControl>,
+	execution_authorization: Option<ProcessExecutionAuthorization>,
+) -> (Option<Arc<AccountService>>, Option<ResetCardRuntime>, DoctorStatus) {
+	let Ok(refresher) = OpenAiCredentialRefresher::new() else {
+		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication));
+	};
+	let Ok(credentials) = MacosKeychainCredentialStore::new(paths) else {
+		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	};
+	let service =
+		Arc::new(AccountService::new(postgres.clone(), Arc::new(credentials), Arc::new(refresher)));
+	let attestation = match attest_account_callback_capability(
+		paths.root().as_path().to_owned(),
+		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
+	) {
+		Ok(attestation) => attestation,
+		Err(_) => {
+			let _ = service.attest_callback_capability(unavailable_callback_attestation()).await;
+			let _ = service.reconcile_startup().await;
+			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		},
+	};
+	let mut closed_attestation = attestation.clone();
+	closed_attestation.login_chatgpt_auth_tokens = false;
+	closed_attestation.refresh_callback = false;
+	if service.attest_callback_capability(closed_attestation.clone()).await.is_err()
+		|| service.reconcile_startup().await.is_err()
+	{
+		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	}
+	let (Some(process_generations), Some(execution_authorization)) =
+		(process_generations, execution_authorization)
+	else {
+		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	};
+	let inventory = match service.list_snapshot().await {
+		Ok((accounts, routing)) => bootstrap_vault_inventory(&accounts, &routing),
+		Err(_) => BootstrapVaultInventory::Unavailable,
+	};
+	let probe_account = match inventory {
+		BootstrapVaultInventory::ReadyEmpty => None,
+		BootstrapVaultInventory::Probe(account) => Some(account),
+		BootstrapVaultInventory::Unavailable => {
+			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		},
+	};
+	if probe_account.is_some() && service.arm_callback_capability_probe(&attestation).await.is_err()
+	{
+		let _ = service.attest_callback_capability(closed_attestation).await;
+		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	}
+	let runtime = match ResetCardRuntime::start(
+		postgres,
+		Arc::clone(&service),
+		process_generations,
+		execution_authorization,
+		paths.root().as_path().to_owned(),
+	) {
+		Ok(runtime) => runtime,
+		Err(_) => {
+			let _ = service.attest_callback_capability(closed_attestation).await;
+			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		},
+	};
+	let Some(probe_account) = probe_account else {
+		return (Some(service), Some(runtime), DoctorStatus::Ready);
+	};
+	let proved = runtime.prove_callback_capability(&probe_account).await.is_ok();
+	if !proved || !service.attest_callback_capability(attestation).await.unwrap_or(false) {
+		let _ = service.attest_callback_capability(closed_attestation).await;
+		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+	}
+	let status = match runtime.vault_status() {
+		ResetCardVaultStatus::NotConfigured => DoctorStatus::Unknown(DoctorIssue::NotProbed),
+		ResetCardVaultStatus::Ready => DoctorStatus::Ready,
+		ResetCardVaultStatus::Unavailable => DoctorStatus::Unavailable(DoctorIssue::Authentication),
+	};
+	(Some(service), Some(runtime), status)
+}
+
+enum BootstrapVaultInventory {
+	ReadyEmpty,
+	Probe(AccountRecord),
+	Unavailable,
+}
+
+fn bootstrap_vault_inventory(
+	accounts: &[AccountInspection],
+	routing: &AccountRoutingControl,
+) -> BootstrapVaultInventory {
+	let enabled = accounts.iter().filter(|candidate| candidate.account.enabled).collect::<Vec<_>>();
+	if enabled.is_empty() {
+		return BootstrapVaultInventory::ReadyEmpty;
+	}
+	if enabled.iter().any(|candidate| {
+		candidate.account.tombstoned
+			|| candidate.account.credential.is_none()
+			|| candidate.account.unsettled_operation.is_some()
+			|| candidate.readiness != AccountLifecycleReadiness::CallbackCapabilityUnready
+			|| candidate.account.lifecycle_readiness
+				!= AccountLifecycleReadiness::CallbackCapabilityUnready
+	}) {
+		return BootstrapVaultInventory::Unavailable;
+	}
+	routing
+		.order
+		.iter()
+		.find_map(|account_id| {
+			enabled
+				.iter()
+				.find(|candidate| candidate.account.account_id == *account_id)
+				.map(|candidate| candidate.account.clone())
+		})
+		.map_or(BootstrapVaultInventory::Unavailable, BootstrapVaultInventory::Probe)
+}
+
+fn unavailable_callback_attestation() -> CodexAccountCapabilityAttestation {
+	CodexAccountCapabilityAttestation {
+		build_identity: "unavailable".to_owned(),
+		executable_sha256: UNAVAILABLE_SHA256.to_owned(),
+		schema_sha256: UNAVAILABLE_SHA256.to_owned(),
+		callback_profile_sha256: UNAVAILABLE_SHA256.to_owned(),
+		login_chatgpt_auth_tokens: false,
+		refresh_callback: false,
 	}
 }
 
@@ -295,7 +482,12 @@ fn bootstrap_without_authority(
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
 		managed_repository_startup_error: None,
+		process_generations: None,
+		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
+		provider_attempts: None,
+		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
+		accounts: None,
 		reset_cards: None,
 		doctor,
 		daemon_authority: Err(refusal),
@@ -323,7 +515,12 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		managed_repositories: None,
 		managed_repository_readiness: ManagedRepositoryReadiness::ProductStateUnavailable,
 		managed_repository_startup_error: None,
+		process_generations: None,
+		process_generation_readiness: ProcessGenerationReadiness::ProductStateUnavailable,
+		provider_attempts: None,
+		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
+		accounts: None,
 		reset_cards: None,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),
@@ -511,7 +708,11 @@ async fn connect_database(config: &DecodexConfig) -> (ProductStore, DoctorStatus
 
 #[cfg(test)]
 mod tests {
-	use crate::bootstrap;
+	use crate::{account_service::AccountInspection, bootstrap};
+	use decodex_core::{
+		AccountId, AccountLifecycleReadiness, AccountQuotaWindow, AccountQuotaWindowObservation,
+		AccountRecord, AccountRoutingControl, AccountSelectionMode, AccountState,
+	};
 	use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
 
 	#[test]
@@ -526,5 +727,62 @@ mod tests {
 			identity.status,
 			DoctorStatus::Unavailable(DoctorIssue::ServerIdentityUnavailable)
 		);
+	}
+
+	#[test]
+	fn account_vault_is_ready_empty_but_rejects_enabled_credential_loss() {
+		let account_id =
+			AccountId::new("10000000-0000-4000-8000-000000000001").expect("canonical account ID");
+		let routing = AccountRoutingControl {
+			revision: 1,
+			mode: AccountSelectionMode::Balanced,
+			order: vec![account_id.clone()],
+		};
+		let missing = AccountInspection {
+			account: AccountRecord {
+				account_id,
+				label: "Account".to_owned(),
+				enabled: false,
+				revision: 1,
+				observed_state: AccountState::Unknown,
+				lifecycle_readiness: AccountLifecycleReadiness::CredentialAbsent,
+				credential: None,
+				unsettled_operation: None,
+				five_hour_quota: AccountQuotaWindowObservation::unknown(
+					AccountQuotaWindow::FIVE_HOURS_MINUTES,
+				)
+				.expect("supported quota window"),
+				seven_day_quota: AccountQuotaWindowObservation::unknown(
+					AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+				)
+				.expect("supported quota window"),
+				tombstoned: false,
+			},
+			readiness: AccountLifecycleReadiness::CredentialAbsent,
+		};
+
+		assert!(matches!(
+			bootstrap::bootstrap_vault_inventory(
+				&[],
+				&AccountRoutingControl {
+					revision: 1,
+					mode: AccountSelectionMode::Balanced,
+					order: Vec::new(),
+				}
+			),
+			bootstrap::BootstrapVaultInventory::ReadyEmpty
+		));
+		assert!(matches!(
+			bootstrap::bootstrap_vault_inventory(std::slice::from_ref(&missing), &routing),
+			bootstrap::BootstrapVaultInventory::ReadyEmpty
+		));
+
+		let mut enabled_missing = missing;
+		enabled_missing.account.enabled = true;
+
+		assert!(matches!(
+			bootstrap::bootstrap_vault_inventory(&[enabled_missing], &routing),
+			bootstrap::BootstrapVaultInventory::Unavailable
+		));
 	}
 }

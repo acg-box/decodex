@@ -2,7 +2,10 @@
 //!
 //! These values carry no routing, scheduling, credential, dispatch, or turn-replay capability.
 
-use crate::{AccountId, ConversationId, ManagedRunId, RuntimeSessionId};
+use crate::{
+	AccountId, ConversationId, ExecutionConsumer, ProviderAttemptId, ProviderEvidenceId,
+	RuntimeSessionId,
+};
 
 /// The two mutually exclusive continuation effects.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -13,32 +16,35 @@ pub enum ContinuationPlanKind {
 	ContextPackFallback,
 }
 
-/// Exact fail-closed ManagedRun effect-barrier state retained by a continuation plan.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ContinuationEffectBarrierState {
-	/// Initial inert state; no effect may execute.
-	Guarded,
-	/// Permanently closed by one accepted ManagedRun safety input.
-	Closed,
-}
-
 /// Exact positive evidence retained for a same-thread plan.
 ///
 /// Construction of this mechanism-neutral value alone does not prove persisted provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct SameThreadContinuationEvidence {
-	/// Identity of the persisted positive compatibility evidence selected for this plan.
-	pub routing_evidence_id: String,
-	/// Positive immutable revision of that persisted routing evidence.
-	pub routing_evidence_revision: i64,
-	/// Exact capability-schema fingerprint recorded by the compatibility evidence.
-	pub schema_fingerprint: String,
-	/// Identity of the compatibility experiment whose result the evidence records.
-	pub experiment_id: String,
-	/// Positive immutable revision of that compatibility experiment.
-	pub experiment_revision: i64,
-	/// Identity of the positive thread-read observation retained by the evidence.
-	pub observation_id: String,
+pub enum SameThreadContinuationEvidence {
+	/// Positive V15 causal experiment evidence retained for a ManagedRun.
+	CausalExperiment {
+		/// Identity of the persisted positive compatibility evidence selected for this plan.
+		routing_evidence_id: String,
+		/// Positive immutable revision of that persisted routing evidence.
+		routing_evidence_revision: i64,
+		/// Exact capability-schema fingerprint recorded by the compatibility evidence.
+		schema_fingerprint: String,
+		/// Identity of the compatibility experiment whose result the evidence records.
+		experiment_id: String,
+		/// Positive immutable revision of that compatibility experiment.
+		experiment_revision: i64,
+		/// Identity of the positive thread-read observation retained by the evidence.
+		observation_id: String,
+	},
+	/// Positive exact-thread readback retained from the original ordinary ProviderAttempt.
+	ProviderAttempt {
+		/// Original attempt that owns the positive result.
+		attempt_id: ProviderAttemptId,
+		/// Positive attempt revision at which the evidence became terminal.
+		attempt_revision: i64,
+		/// Exact positive evidence identity.
+		evidence_id: ProviderEvidenceId,
+	},
 }
 
 /// One immutable, inert, exactly-once plan produced from one selected V16 decision.
@@ -53,10 +59,8 @@ pub struct ContinuationPlan {
 	pub operation_id: String,
 	/// Identity of the one persisted V16 routing decision consumed by the plan.
 	pub routing_decision_id: String,
-	/// ManagedRun whose identity is preserved across either continuation shape.
-	pub managed_run_id: ManagedRunId,
-	/// Positive immutable ManagedRun revision against which the plan was authorized.
-	pub managed_run_revision: i64,
+	/// Exact ordinary or managed consumer preserved from the V16 decision.
+	pub consumer: ExecutionConsumer,
 	/// Conversation whose identity is preserved across either continuation shape.
 	pub conversation_id: ConversationId,
 	/// RuntimeSession from which the continuation was planned.
@@ -76,12 +80,6 @@ pub struct ContinuationPlan {
 	pub fallback_runtime_session_id: Option<RuntimeSessionId>,
 	/// Exact positive compatibility evidence for same-thread continuation; absent for fallback.
 	pub same_thread_evidence: Option<SameThreadContinuationEvidence>,
-	/// Closed effect-barrier state retained from the same canonical persisted plan effect.
-	pub effect_barrier_state: ContinuationEffectBarrierState,
-	/// Positive immutable revision of the retained ManagedRun effect barrier.
-	pub effect_barrier_revision: i64,
-	/// Nonnegative number of submitted-turn receipts observed by the authority.
-	pub submitted_turn_receipt_count: i64,
 	/// Required to remain `false`; the plan never authorizes replay of a submitted turn.
 	pub replay_permitted: bool,
 	/// Required to remain `false`; the inert plan grants no dispatch authority.
@@ -99,8 +97,8 @@ pub enum ContinuationRejection {
 	MissingDecision,
 	/// The persisted decision is not a selected-account decision and cannot be continued.
 	DecisionNotSelected,
-	/// The ManagedRun or its required revision-bound lineage is stale or incompatible.
-	StaleManagedRunRevision,
+	/// The Conversation or ManagedRun revision-bound lineage is stale or incompatible.
+	StaleConsumerRevision,
 	/// The decision was already consumed by a different exact command or plan identity.
 	DecisionAlreadyConsumed,
 	/// The fallback Context Pack failed the authority's canonical content or lineage checks.

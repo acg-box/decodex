@@ -21,6 +21,11 @@ mod runtime_sessions;
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
 
+#[cfg(feature = "test-support")]
+mod v24_migrations {
+	refinery::embed_migrations!("migrations");
+}
+
 use std::{
 	collections::{BTreeMap, HashSet},
 	env,
@@ -154,10 +159,9 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.assess_work_item_readiness_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text)",
 	"decodex.accept_work_item_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
-	"decodex.apply_managed_run_safety_input_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.managed_run_safety_input_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
 	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
-	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
@@ -165,14 +169,47 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
 	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
-	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
+	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.register_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.claim_due_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fire_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.cancel_waiting_usage_wake_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.read_account_registry_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_reset_card_account_admission_exact(pg_catalog.uuid,pg_catalog.text)",
+	"decodex.prepare_account_operation_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.account_operation_kind,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text)",
+	"decodex.set_account_operation_target_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
+	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
+	"decodex.read_account_operation_exact(pg_catalog.uuid)",
+	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
+	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
+	"decodex.read_account_routing_control_exact()",
+	"decodex.observe_account_quota_exact(pg_catalog.uuid,pg_catalog.int4,pg_catalog.int4,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
+	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
+	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_process_generation_death_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.process_generation_loss_reason)",
+	"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
+	"decodex.project_process_generations_after_supervisor_loss_exact()",
+	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.cancel_provider_attempt_exact(pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.mark_provider_attempt_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_unknown_reason)",
+	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
+	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
+	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
 ];
 const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_lease_operation_time()",
@@ -221,7 +258,6 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.forbid_managed_run_immutable_mutation()",
 	"decodex.enforce_managed_run_assignment_scope()",
 	"decodex.enforce_managed_run_state()",
-	"decodex.enforce_effect_barrier_state()",
 	"decodex.enforce_managed_run_event_namespace()",
 	"decodex.forbid_managed_repository_history_mutation()",
 	"decodex.enforce_managed_repository_projection()",
@@ -242,6 +278,14 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.enforce_waiting_usage_wake_transition_complete()",
 	"decodex.enforce_waiting_usage_wake_head_projection()",
 	"decodex.enforce_waiting_usage_wake_event_namespace()",
+	"decodex.enforce_process_generation_transition()",
+	"decodex.record_process_generation_transition()",
+	"decodex.forbid_process_generation_history_mutation()",
+	"decodex.enforce_provider_attempt_transition()",
+	"decodex.enforce_provider_attempt_binding()",
+	"decodex.record_provider_attempt_transition()",
+	"decodex.enforce_provider_attempt_turn_materialization()",
+	"decodex.forbid_provider_attempt_history_mutation()",
 ];
 const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	(
@@ -341,6 +385,29 @@ fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn std::erro
 	Ok((migration, runtime))
 }
 
+#[cfg(feature = "test-support")]
+async fn account_routing_projection(
+	transaction: &tokio_postgres::Transaction<'_>,
+) -> Result<(String, Option<String>, i64, Vec<String>), tokio_postgres::Error> {
+	let row = transaction
+		.query_one(
+			"SELECT mode::text,fixed_account_id::text,revision, \
+			 ARRAY(SELECT value::text FROM pg_catalog.unnest(account_order) AS value) \
+			 FROM decodex.read_account_routing_control_exact()",
+			&[],
+		)
+		.await?;
+	Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
+}
+
+#[cfg(feature = "test-support")]
+fn assert_account_routing_universe_error(error: &tokio_postgres::Error) {
+	assert_eq!(
+		error.as_db_error().and_then(tokio_postgres::error::DbError::constraint),
+		Some("account_routing_universe_complete"),
+	);
+}
+
 fn isolated_blob_store() -> Result<BlobStore, Box<dyn std::error::Error>> {
 	let blob_root = env::var("DECODEX_TEST_BLOB_ROOT")?;
 
@@ -430,16 +497,500 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V22 preparation harness"]
+#[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
 #[cfg(feature = "test-support")]
-async fn postgres_retained_title_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>>
-{
+async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+	let transaction = client.transaction().await?;
+	let first_account = "72000000-0000-4000-8000-000000000001";
+	let second_account = "72000000-0000-4000-8000-000000000002";
+	let first_writer = "73000000-0000-4000-8000-000000000001";
+	let second_writer = "73000000-0000-4000-8000-000000000002";
+	let first_fingerprint = "a".repeat(64);
+	let second_fingerprint = "b".repeat(64);
+
+	transaction
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET mode='balanced',fixed_account_id=NULL,\
+			 revision=revision+1,updated_at=pg_catalog.clock_timestamp() WHERE singleton;\
+			 DELETE FROM decodex.account_routing_order;\
+			 UPDATE decodex.accounts SET enabled=false,credential_store_schema_version=NULL,\
+			 credential_version=NULL,credential_fingerprint=NULL,\
+			 credential_writer_operation_id=NULL,credential_store_observation='missing',\
+			 credential_store_observed_at=pg_catalog.clock_timestamp(),\
+			 tombstoned_at=pg_catalog.clock_timestamp(),revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp()",
+		)
+		.await?;
+	for (account_id, label, provider_id, fingerprint, writer) in [
+		(
+			first_account,
+			"Routing A",
+			"routing-contract-a",
+			first_fingerprint.as_str(),
+			first_writer,
+		),
+		(
+			second_account,
+			"Routing B",
+			"routing-contract-b",
+			second_fingerprint.as_str(),
+			second_writer,
+		),
+	] {
+		transaction
+			.execute(
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at\
+				 ) VALUES (\
+				 $1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,$5::text::uuid,\
+				 'exact',pg_catalog.clock_timestamp())",
+				&[&account_id, &label, &provider_id, &fingerprint, &writer],
+			)
+			.await?;
+		transaction
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 SELECT $1::text::uuid,COALESCE(pg_catalog.max(position)+1,0) \
+				 FROM decodex.account_routing_order",
+				&[&account_id],
+			)
+			.await?;
+	}
+	transaction
+		.execute(
+			"UPDATE decodex.account_routing_control SET revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp() WHERE singleton",
+			&[],
+		)
+		.await?;
+
+	let (_, _, seeded_revision, seeded_order) = account_routing_projection(&transaction).await?;
+	let fixed = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&seeded_revision, &first_account, &1_i64],
+		)
+		.await?;
+	assert_eq!(fixed.get::<_, &str>(0), "updated");
+	assert_eq!(fixed.get::<_, i64>(2), 1);
+	let (mode, fixed_target, fixed_revision, fixed_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(fixed_revision, fixed.get::<_, i64>(1));
+	assert!(fixed_revision > seeded_revision);
+	assert_eq!(mode, "fixed");
+	assert_eq!(fixed_target.as_deref(), Some(first_account));
+	assert_eq!(fixed_order, seeded_order);
+	let fixed_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&fixed_revision, &first_account, &1_i64],
+		)
+		.await?;
+	assert_eq!(fixed_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(fixed_no_change.get::<_, i64>(1), fixed_revision);
+
+	let stale_routing = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&seeded_revision],
+		)
+		.await?;
+	assert_eq!(stale_routing.get::<_, &str>(0), "stale_routing_control");
+	assert_eq!(stale_routing.get::<_, i64>(1), fixed_revision);
+
+	let stale_account = transaction
+		.query_one(
+			"SELECT result_code,routing_revision,account_revision \
+			 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&fixed_revision, &first_account, &2_i64],
+		)
+		.await?;
+	assert_eq!(stale_account.get::<_, &str>(0), "stale_account");
+	assert_eq!(stale_account.get::<_, i64>(1), fixed_revision);
+	assert_eq!(stale_account.get::<_, i64>(2), 1);
+
+	let reversed_order = seeded_order.iter().rev().cloned().collect::<Vec<_>>();
+	let ordered = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&fixed_revision, &reversed_order],
+		)
+		.await?;
+	assert_eq!(ordered.get::<_, &str>(0), "updated");
+	let (mode, fixed_target, ordered_revision, current_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(ordered_revision, ordered.get::<_, i64>(1));
+	assert_eq!(mode, "fixed");
+	assert_eq!(fixed_target.as_deref(), Some(first_account));
+	assert_eq!(current_order, reversed_order);
+	let order_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&ordered_revision, &reversed_order],
+		)
+		.await?;
+	assert_eq!(order_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(order_no_change.get::<_, i64>(1), ordered_revision);
+
+	let incomplete_order = reversed_order[..reversed_order.len().saturating_sub(1)].to_vec();
+	let incomplete = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_account_order_exact($1,$2::text[]::uuid[])",
+			&[&ordered_revision, &incomplete_order],
+		)
+		.await?;
+	assert_eq!(incomplete.get::<_, &str>(0), "invalid_order");
+	assert_eq!(incomplete.get::<_, i64>(1), ordered_revision);
+	assert_eq!(account_routing_projection(&transaction).await?.3, reversed_order);
+
+	let balanced = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&ordered_revision],
+		)
+		.await?;
+	assert_eq!(balanced.get::<_, &str>(0), "updated");
+	let (mode, fixed_target, balanced_revision, balanced_order) =
+		account_routing_projection(&transaction).await?;
+	assert_eq!(balanced_revision, balanced.get::<_, i64>(1));
+	assert_eq!(mode, "balanced");
+	assert_eq!(fixed_target, None);
+	assert_eq!(balanced_order, reversed_order);
+	let balanced_no_change = transaction
+		.query_one(
+			"SELECT result_code,routing_revision \
+			 FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&balanced_revision],
+		)
+		.await?;
+	assert_eq!(balanced_no_change.get::<_, &str>(0), "updated");
+	assert_eq!(balanced_no_change.get::<_, i64>(1), balanced_revision);
+
+	transaction.batch_execute("SAVEPOINT missing_routing_member").await?;
+	transaction
+		.execute(
+			"DELETE FROM decodex.account_routing_order WHERE account_id=$1::text::uuid",
+			&[&second_account],
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT missing_readback").await?;
+	let missing_readback = transaction
+		.query_one("SELECT * FROM decodex.read_account_routing_control_exact()", &[])
+		.await
+		.expect_err("strict routing readback must reject a missing visible member");
+	assert_account_routing_universe_error(&missing_readback);
+	transaction
+		.batch_execute("ROLLBACK TO SAVEPOINT missing_readback; RELEASE SAVEPOINT missing_readback")
+		.await?;
+	transaction.batch_execute("SAVEPOINT missing_fixed").await?;
+	let missing_fixed = transaction
+		.query_one(
+			"SELECT * FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)",
+			&[&balanced_revision, &first_account, &1_i64],
+		)
+		.await
+		.expect_err("fixed selection must reject a partial stored routing universe");
+	assert_account_routing_universe_error(&missing_fixed);
+	transaction
+		.batch_execute("ROLLBACK TO SAVEPOINT missing_fixed; RELEASE SAVEPOINT missing_fixed")
+		.await?;
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT missing_routing_member; \
+			 RELEASE SAVEPOINT missing_routing_member",
+		)
+		.await?;
+
+	transaction.batch_execute("SAVEPOINT tombstoned_routing_member").await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.accounts(\
+			 account_id,display_label,state,enabled,tombstoned_at\
+			 ) VALUES ($1::text::uuid,'Tombstoned routing member','unknown',false,\
+			 pg_catalog.clock_timestamp())",
+			&[&"72000000-0000-4000-8000-000000000003"],
+		)
+		.await?;
+	transaction
+		.execute(
+			"INSERT INTO decodex.account_routing_order(account_id,position) \
+			 VALUES ($1::text::uuid,2)",
+			&[&"72000000-0000-4000-8000-000000000003"],
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT tombstoned_balanced").await?;
+	let tombstoned_balanced = transaction
+		.query_one(
+			"SELECT * FROM decodex.set_balanced_account_selection_exact($1)",
+			&[&balanced_revision],
+		)
+		.await
+		.expect_err("balanced selection must reject a tombstoned stored routing member");
+	assert_account_routing_universe_error(&tombstoned_balanced);
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_balanced; \
+			 RELEASE SAVEPOINT tombstoned_balanced",
+		)
+		.await?;
+	transaction.batch_execute("SAVEPOINT tombstoned_readback").await?;
+	let tombstoned_readback = transaction
+		.query_one("SELECT * FROM decodex.read_account_routing_control_exact()", &[])
+		.await
+		.expect_err("strict routing readback must reject a tombstoned stored member");
+	assert_account_routing_universe_error(&tombstoned_readback);
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_readback; \
+			 RELEASE SAVEPOINT tombstoned_readback",
+		)
+		.await?;
+	transaction
+		.batch_execute(
+			"ROLLBACK TO SAVEPOINT tombstoned_routing_member; \
+			 RELEASE SAVEPOINT tombstoned_routing_member",
+		)
+		.await?;
+
+	transaction.rollback().await?;
+	drop(client);
+	connection_task.await??;
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_account_routing_and_logout_share_one_lock_order()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut owner, owner_connection) = migration.connect(NoTls).await?;
+	let owner_connection_task = tokio::spawn(owner_connection);
+	let setup = owner.transaction().await?;
+	let logout_account = "72100000-0000-4000-8000-000000000001";
+	let retained_account = "72100000-0000-4000-8000-000000000002";
+	let logout_writer = "73100000-0000-4000-8000-000000000001";
+	let retained_writer = "73100000-0000-4000-8000-000000000002";
+	let logout_operation = "74100000-0000-4000-8000-000000000001";
+	let fingerprint = "c".repeat(64);
+	setup
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET mode='balanced',fixed_account_id=NULL,\
+			 revision=revision+1,updated_at=pg_catalog.clock_timestamp() WHERE singleton;\
+			 DELETE FROM decodex.account_routing_order;\
+			 UPDATE decodex.accounts SET enabled=false,credential_store_schema_version=NULL,\
+			 credential_version=NULL,credential_fingerprint=NULL,\
+			 credential_writer_operation_id=NULL,credential_store_observation='missing',\
+			 credential_store_observed_at=pg_catalog.clock_timestamp(),\
+			 tombstoned_at=pg_catalog.clock_timestamp(),revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp()",
+		)
+		.await?;
+	for (position, account_id, writer, provider_id) in [
+		(0_i32, logout_account, logout_writer, "routing-logout-a"),
+		(1_i32, retained_account, retained_writer, "routing-logout-b"),
+	] {
+		setup
+			.execute(
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at\
+				 ) VALUES (\
+				 $1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,$5::text::uuid,\
+				 'exact',pg_catalog.clock_timestamp())",
+				&[
+					&account_id,
+					&format!("Routing logout {position}"),
+					&provider_id,
+					&fingerprint,
+					&writer,
+				],
+			)
+			.await?;
+		setup
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 VALUES ($1::text::uuid,$2)",
+				&[&account_id, &position],
+			)
+			.await?;
+	}
+	setup
+		.execute(
+			"INSERT INTO decodex.account_operations(\
+			 operation_id,account_id,kind,phase,expected_account_revision,\
+			 expected_store_schema_version,expected_credential_version,\
+			 expected_credential_fingerprint,expected_credential_writer_operation_id,\
+			 provider_kind,provider_account_id\
+			 ) VALUES (\
+			 $1::text::uuid,$2::text::uuid,'logout','store_applied',1,1,1,$3,\
+			 $4::text::uuid,'chatgpt',$5)",
+			&[
+				&logout_operation,
+				&logout_account,
+				&fingerprint,
+				&logout_writer,
+				&"routing-logout-a",
+			],
+		)
+		.await?;
+	let expected_routing_revision: i64 = setup
+		.query_one(
+			"UPDATE decodex.account_routing_control \
+			 SET revision=revision+1,updated_at=pg_catalog.clock_timestamp() \
+			 WHERE singleton RETURNING revision",
+			&[],
+		)
+		.await?
+		.get(0);
+	setup
+		.batch_execute(
+			"CREATE FUNCTION public.xy1422_pause_logout_routing_lock() \
+			 RETURNS trigger LANGUAGE plpgsql AS $$ \
+			 BEGIN \
+			   IF NEW.account_id='72100000-0000-4000-8000-000000000001'::uuid \
+			     AND OLD.tombstoned_at IS NULL AND NEW.tombstoned_at IS NOT NULL \
+			   THEN PERFORM pg_catalog.pg_sleep(0.25); END IF; \
+			   RETURN NEW; \
+			 END \
+			 $$;\
+			 REVOKE ALL ON FUNCTION public.xy1422_pause_logout_routing_lock() FROM PUBLIC;\
+			 CREATE TRIGGER xy1422_pause_logout_routing_lock \
+			 AFTER UPDATE ON decodex.accounts FOR EACH ROW \
+			 EXECUTE FUNCTION public.xy1422_pause_logout_routing_lock()",
+		)
+		.await?;
+	setup.commit().await?;
+
+	let mut logout_client_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut logout_client_config);
+	let logout_task = tokio::spawn(async move {
+		let (mut client, connection) =
+			logout_client_config.connect(NoTls).await.expect("logout connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("logout transaction");
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.advance_account_operation_exact(\
+				 $1::text::uuid,'store_applied','committed',NULL)",
+				&[&logout_operation],
+			)
+			.await
+			.expect("logout result")
+			.get(0);
+		transaction.commit().await.expect("logout transaction commit");
+		drop(client);
+		connection_task.await.expect("logout connection task").expect("logout connection");
+		code
+	});
+	time::sleep(Duration::from_millis(50)).await;
+	let mut fixed_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut fixed_config);
+	let fixed_task = tokio::spawn(async move {
+		let (mut client, connection) = fixed_config.connect(NoTls).await.expect("fixed connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("fixed transaction");
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.set_fixed_account_selection_exact(\
+				 $1,$2::text::uuid,$3)",
+				&[&expected_routing_revision, &logout_account, &1_i64],
+			)
+			.await
+			.expect("fixed selection result")
+			.get(0);
+		transaction.commit().await.expect("fixed transaction commit");
+		drop(client);
+		connection_task.await.expect("fixed connection task").expect("fixed connection");
+		code
+	});
+	time::sleep(Duration::from_millis(20)).await;
+	let mut order_config = migration.clone();
+	PostgresStore::pin_session_search_path_fixture(&mut order_config);
+	let order_task = tokio::spawn(async move {
+		let (mut client, connection) = order_config.connect(NoTls).await.expect("order connection");
+		let connection_task = tokio::spawn(connection);
+		let transaction = client.transaction().await.expect("order transaction");
+		let order = vec![retained_account.to_owned(), logout_account.to_owned()];
+		let code: String = transaction
+			.query_one(
+				"SELECT result_code FROM decodex.set_account_order_exact(\
+				 $1,$2::text[]::uuid[])",
+				&[&expected_routing_revision, &order],
+			)
+			.await
+			.expect("account order result")
+			.get(0);
+		transaction.commit().await.expect("order transaction commit");
+		drop(client);
+		connection_task.await.expect("order connection task").expect("order connection");
+		code
+	});
+
+	let logout_code = time::timeout(Duration::from_secs(5), logout_task)
+		.await
+		.expect("logout must not deadlock")?;
+	let fixed_code = time::timeout(Duration::from_secs(5), fixed_task)
+		.await
+		.expect("fixed selection must not deadlock")?;
+	let order_code = time::timeout(Duration::from_secs(5), order_task)
+		.await
+		.expect("account order must not deadlock")?;
+	assert_eq!(logout_code, "advanced");
+	assert_eq!(fixed_code, "stale_routing_control");
+	assert_eq!(order_code, "stale_routing_control");
+	let final_routing = owner
+		.query_one(
+			"SELECT mode::text,fixed_account_id::text, \
+			 ARRAY(SELECT value::text FROM pg_catalog.unnest(account_order) AS value) \
+			 FROM decodex.read_account_routing_control_exact()",
+			&[],
+		)
+		.await?;
+	assert_eq!(final_routing.get::<_, &str>(0), "balanced");
+	assert_eq!(final_routing.get::<_, Option<&str>>(1), None);
+	assert_eq!(final_routing.get::<_, Vec<String>>(2), vec![retained_account.to_owned()]);
+
+	owner
+		.batch_execute(
+			"DROP TRIGGER xy1422_pause_logout_routing_lock ON decodex.accounts;\
+			 DROP FUNCTION public.xy1422_pause_logout_routing_lock()",
+		)
+		.await?;
+	drop(owner);
+	owner_connection_task.await??;
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V27 preparation harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
 	PostgresStore::pin_session_search_path_fixture(&mut runtime);
 
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	PostgresStore::prepare_retained_title_sql_fixture(&client).await?;
+	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
+	assert_eq!(source_count, 28);
+	println!("decodex_changed_sql_prepared={source_count}");
 
 	drop(client);
 	connection_task.await??;
@@ -454,6 +1005,26 @@ async fn postgres_migration_through_v13_fixture() -> Result<(), Box<dyn std::err
 	let (migration, _) = separated_configs("DECODEX_TEST")?;
 
 	PostgresStore::migrate_fixture_through_v13(migration, expected_peer_uid()).await?;
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires the isolated PostgreSQL 18 V24 migration harness"]
+#[cfg(feature = "test-support")]
+async fn postgres_migration_through_v24_fixture() -> Result<(), Box<dyn std::error::Error>> {
+	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
+	PostgresStore::pin_session_search_path_fixture(&mut migration);
+	let (mut client, connection) = migration.connect(NoTls).await?;
+	let connection_task = tokio::spawn(connection);
+
+	v24_migrations::migrations::runner()
+		.set_target(refinery::Target::Version(24))
+		.run_async(&mut client)
+		.await?;
+
+	drop(client);
+	connection_task.await??;
 
 	Ok(())
 }
@@ -593,16 +1164,11 @@ async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::erro
 		},
 		"sequence_state": sequence_state,
 	});
-	if let Some(predicates) = semantic_authority {
-		manifest.as_object_mut().ok_or("manifest envelope is not an object")?.insert(
-			"semantic_authority".into(),
-			serde_json::json!({
-				"predicates": predicates.into_iter().map(|(name, passed)| {
-					serde_json::json!({"name": name, "passed": passed})
-				}).collect::<Vec<_>>(),
-				"schema": "decodex/postgres-semantic-authority/1",
-			}),
-		);
+	if let Some(semantic_authority) = semantic_authority {
+		manifest
+			.as_object_mut()
+			.ok_or("manifest envelope is not an object")?
+			.insert("semantic_authority".into(), semantic_authority);
 	}
 	let manifest = serde_json::to_string(&manifest)?;
 
@@ -1038,6 +1604,364 @@ async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Resul
 	Ok(())
 }
 
+#[cfg(feature = "test-support")]
+#[derive(Clone, Copy)]
+enum FocusedAuthorityCheckpoint {
+	RuntimeRoutineAuthority,
+	SemanticAuthority,
+	ConfiguredAuthority,
+	SchemaAuthority,
+	StoreConnect,
+}
+
+#[cfg(feature = "test-support")]
+impl FocusedAuthorityCheckpoint {
+	const fn name(self) -> &'static str {
+		match self {
+			Self::RuntimeRoutineAuthority => "runtime_routine_authority",
+			Self::SemanticAuthority => "semantic_authority",
+			Self::ConfiguredAuthority => "configured_authority",
+			Self::SchemaAuthority => "schema_authority",
+			Self::StoreConnect => "store_connect",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+#[derive(Clone, Copy)]
+enum FocusedAuthorityClassification {
+	Ready,
+	ContractRejected,
+	StoreError,
+	HarnessError,
+}
+
+#[cfg(feature = "test-support")]
+impl FocusedAuthorityClassification {
+	const fn name(self) -> &'static str {
+		match self {
+			Self::Ready => "ready",
+			Self::ContractRejected => "contract_rejected",
+			Self::StoreError => "store_error",
+			Self::HarnessError => "harness_error",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+impl AuthorityStoreError {
+	const fn checkpoint_name(self) -> &'static str {
+		match self {
+			Self::UnsafeAuthority => "UnsafeAuthority",
+			Self::Incompatible => "Incompatible",
+			Self::Migration => "Migration",
+			Self::Database => "Database",
+			Self::Pool => "Pool",
+			Self::UnsafeHostPath => "UnsafeHostPath",
+			Self::SocketUnavailable => "SocketUnavailable",
+			Self::Other => "Other",
+		}
+	}
+}
+
+#[cfg(feature = "test-support")]
+const fn focused_bootstrap_name(failure: BootstrapFailure) -> &'static str {
+	match failure {
+		BootstrapFailure::Authentication => "Authentication",
+		BootstrapFailure::Unreachable => "Unreachable",
+		BootstrapFailure::Incompatible => "Incompatible",
+		BootstrapFailure::UnsafeAuthority => "UnsafeAuthority",
+		BootstrapFailure::UnsafeHostPath => "UnsafeHostPath",
+	}
+}
+
+#[cfg(feature = "test-support")]
+fn focused_authority_record(
+	checkpoint: FocusedAuthorityCheckpoint,
+	classification: FocusedAuthorityClassification,
+) -> serde_json::Map<String, Value> {
+	let mut record = serde_json::Map::new();
+	record.insert(
+		"schema".into(),
+		Value::String("decodex/postgres-focused-authority-checkpoint/1".into()),
+	);
+	record.insert("checkpoint".into(), Value::String(checkpoint.name().into()));
+	record.insert("classification".into(), Value::String(classification.name().into()));
+	record
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_record(
+	checkpoint: FocusedAuthorityCheckpoint,
+	classification: FocusedAuthorityClassification,
+) {
+	println!("{}", Value::Object(focused_authority_record(checkpoint, classification)));
+}
+
+#[cfg(feature = "test-support")]
+fn focused_authority_database_error(error: &StoreError) -> Option<&tokio_postgres::Error> {
+	match error {
+		StoreError::Database(error)
+		| StoreError::Pool(deadpool_postgres::PoolError::Backend(error)) => Some(error),
+		_ => None,
+	}
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_store_error(
+	checkpoint: FocusedAuthorityCheckpoint,
+	error: &StoreError,
+	force_client_or_connection: bool,
+) {
+	let (store_error, bootstrap) = authority_store_error(error);
+	let mut record =
+		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
+	record.insert("store_error".into(), Value::String(store_error.checkpoint_name().into()));
+	record.insert("bootstrap".into(), Value::String(focused_bootstrap_name(bootstrap).into()));
+	if let Some(database) = focused_authority_database_error(error) {
+		if force_client_or_connection {
+			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+		} else if let Some(sqlstate) = database.code() {
+			record.insert("database_origin".into(), Value::String("server".into()));
+			record.insert("sqlstate".into(), Value::String(sqlstate.code().into()));
+		} else {
+			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+		}
+	}
+	println!("{}", Value::Object(record));
+}
+
+#[cfg(feature = "test-support")]
+fn emit_focused_authority_client_task_error(checkpoint: FocusedAuthorityCheckpoint) {
+	let mut record =
+		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
+	record.insert("store_error".into(), Value::String("Database".into()));
+	record.insert("bootstrap".into(), Value::String("Unreachable".into()));
+	record.insert("database_origin".into(), Value::String("client_or_connection".into()));
+	println!("{}", Value::Object(record));
+}
+
+#[cfg(feature = "test-support")]
+async fn close_focused_authority_client(
+	client: Client,
+	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+) -> Result<(), Option<tokio_postgres::Error>> {
+	drop(client);
+	match connection_task.await {
+		Ok(Ok(())) => Ok(()),
+		Ok(Err(error)) => Err(Some(error)),
+		Err(_) => Err(None),
+	}
+}
+
+#[cfg(feature = "test-support")]
+async fn stop_focused_authority_gate(
+	client: Client,
+	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
+) -> bool {
+	let _ = close_focused_authority_client(client, connection_task).await;
+	false
+}
+
+#[cfg(feature = "test-support")]
+fn focused_semantic_authority_state(artifact: &Value) -> Option<bool> {
+	let observations = artifact.get("observations")?.as_array()?;
+	if observations.is_empty() {
+		return None;
+	}
+	let mut ready = true;
+	for observation in observations {
+		ready &= observation.get("passed")?.as_bool()?;
+	}
+	Some(ready)
+}
+
+#[cfg(feature = "test-support")]
+#[allow(clippy::too_many_lines)] // One complete focused authority-checkpoint matrix.
+async fn focused_authority_checkpoint_gate(scenario: &AuthorityScenario) -> bool {
+	let runtime_checkpoint = FocusedAuthorityCheckpoint::RuntimeRoutineAuthority;
+	let migration = match Config::from_str(&scenario.baseline_migration_url) {
+		Ok(config) => config,
+		Err(_) => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let mut runtime = match Config::from_str(&scenario.baseline_runtime_url) {
+		Ok(config) => config,
+		Err(_) => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let migration_role = match migration.get_user() {
+		Some(role) => role.to_owned(),
+		None => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	let runtime_role = match runtime.get_user() {
+		Some(role) => role.to_owned(),
+		None => {
+			emit_focused_authority_record(
+				runtime_checkpoint,
+				FocusedAuthorityClassification::HarnessError,
+			);
+			return false;
+		},
+	};
+	PostgresStore::pin_session_search_path_fixture(&mut runtime);
+	let (client, connection) = match runtime.connect(NoTls).await {
+		Ok(connection) => connection,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(runtime_checkpoint, &error, true);
+			return false;
+		},
+	};
+	let connection_task = tokio::spawn(connection);
+
+	match PostgresStore::runtime_routine_authority_fixture(&client).await {
+		Ok(()) =>
+			emit_focused_authority_record(runtime_checkpoint, FocusedAuthorityClassification::Ready),
+		Err(error) => {
+			emit_focused_authority_store_error(runtime_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	}
+
+	let semantic_checkpoint = FocusedAuthorityCheckpoint::SemanticAuthority;
+	match PostgresStore::semantic_authority_fixture(&client, &runtime_role).await {
+		Ok(artifact) => match focused_semantic_authority_state(&artifact) {
+			Some(true) => emit_focused_authority_record(
+				semantic_checkpoint,
+				FocusedAuthorityClassification::Ready,
+			),
+			Some(false) => {
+				emit_focused_authority_record(
+					semantic_checkpoint,
+					FocusedAuthorityClassification::ContractRejected,
+				);
+				return stop_focused_authority_gate(client, connection_task).await;
+			},
+			None => {
+				emit_focused_authority_record(
+					semantic_checkpoint,
+					FocusedAuthorityClassification::HarnessError,
+				);
+				return stop_focused_authority_gate(client, connection_task).await;
+			},
+		},
+		Err(error) => {
+			emit_focused_authority_store_error(semantic_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	}
+
+	let configured_checkpoint = FocusedAuthorityCheckpoint::ConfiguredAuthority;
+	let configured_row = match client
+		.query_one(
+			PostgresStore::configured_authority_sql_fixture(),
+			&[&migration_role, &runtime_role],
+		)
+		.await
+	{
+		Ok(row) => row,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(configured_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let configured_manifest: Option<String> = match configured_row.try_get(0) {
+		Ok(manifest) => manifest,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(configured_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	if configured_manifest.is_none() {
+		emit_focused_authority_record(
+			configured_checkpoint,
+			FocusedAuthorityClassification::ContractRejected,
+		);
+		return stop_focused_authority_gate(client, connection_task).await;
+	}
+	emit_focused_authority_record(configured_checkpoint, FocusedAuthorityClassification::Ready);
+
+	let schema_checkpoint = FocusedAuthorityCheckpoint::SchemaAuthority;
+	let schema_row = match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await
+	{
+		Ok(row) => row,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let schema_manifest: Option<String> = match schema_row.try_get(0) {
+		Ok(manifest) => manifest,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	let schema_complete: bool = match schema_row.try_get(1) {
+		Ok(complete) => complete,
+		Err(error) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, false);
+			return stop_focused_authority_gate(client, connection_task).await;
+		},
+	};
+	if schema_manifest.is_none() || !schema_complete {
+		emit_focused_authority_record(
+			schema_checkpoint,
+			FocusedAuthorityClassification::ContractRejected,
+		);
+		return stop_focused_authority_gate(client, connection_task).await;
+	}
+	match close_focused_authority_client(client, connection_task).await {
+		Ok(()) =>
+			emit_focused_authority_record(schema_checkpoint, FocusedAuthorityClassification::Ready),
+		Err(Some(error)) => {
+			let error = StoreError::Database(error);
+			emit_focused_authority_store_error(schema_checkpoint, &error, true);
+			return false;
+		},
+		Err(None) => {
+			emit_focused_authority_client_task_error(schema_checkpoint);
+			return false;
+		},
+	}
+
+	let store_checkpoint = FocusedAuthorityCheckpoint::StoreConnect;
+	match authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
+		.await
+	{
+		Ok(()) => {
+			emit_focused_authority_record(store_checkpoint, FocusedAuthorityClassification::Ready);
+			true
+		},
+		Err(error) => {
+			emit_focused_authority_store_error(store_checkpoint, &error, false);
+			false
+		},
+	}
+}
+
 struct AuthorityCausalEvidence {
 	failures: Vec<String>,
 	complete: bool,
@@ -1228,7 +2152,7 @@ async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 authority classification harness"]
-async fn postgres_authority_classification_matrix() {
+async fn postgres_authority_classification_matrix() -> std::process::ExitCode {
 	let scenarios = authority_scenarios();
 	let unsafe_count = scenarios
 		.iter()
@@ -1253,9 +2177,9 @@ async fn postgres_authority_classification_matrix() {
 	let identities =
 		scenarios.iter().map(|scenario| scenario.case_id.as_str()).collect::<HashSet<_>>();
 
-	assert_eq!(unsafe_count, 27, "unsafe authority scenario count");
+	assert_eq!(unsafe_count, 28, "unsafe authority scenario count");
 	assert_eq!(incompatible_count, 6, "incompatible authority scenario count");
-	assert_eq!(unsafe_store_count, 27, "StoreError::UnsafeAuthority scenario count");
+	assert_eq!(unsafe_store_count, 28, "StoreError::UnsafeAuthority scenario count");
 	assert_eq!(incompatible_store_count, 5, "StoreError::Incompatible scenario count");
 	assert_eq!(migration_store_count, 1, "StoreError::Migration scenario count");
 	assert_eq!(identities.len(), scenarios.len(), "authority scenario identities are unique");
@@ -1276,6 +2200,15 @@ async fn postgres_authority_classification_matrix() {
 		"ledger-tamper is migration failure projected as incompatible"
 	);
 
+	#[cfg(feature = "test-support")]
+	if !focused_authority_checkpoint_gate(
+		scenarios.first().expect("authority scenario inventory is nonempty"),
+	)
+	.await
+	{
+		return std::process::ExitCode::FAILURE;
+	}
+
 	let mut failures = Vec::new();
 	for scenario in &scenarios {
 		for failure in evaluate_authority_scenario(scenario).await {
@@ -1288,6 +2221,7 @@ async fn postgres_authority_classification_matrix() {
 		"PostgreSQL authority classification matrix failures:\n{}",
 		failures.join("\n")
 	);
+	std::process::ExitCode::SUCCESS
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -5775,33 +6709,34 @@ async fn assert_account_launch_authority(
 
 	assert!(store.account_is_ready_at_revision(account_id, available.revision).await?);
 
-	let disabled_mutation = AccountMutation {
+	let unavailable_mutation = AccountMutation {
 		account_id: account_id.clone(),
 		display_label: "Primary metadata".into(),
-		state: AccountState::Disabled,
-		metadata: serde_json::json!({"observation": "manual_fixture_disabled"}),
+		state: AccountState::Unavailable,
+		metadata: serde_json::json!({"observation": "manual_fixture_unavailable"}),
 		expected_revision: Some(available.revision),
 	};
 	let command = CommandIdentity::new(
-		"account-disabled-after-readiness-observation",
-		b"account-disabled-after-readiness-observation-v1",
+		"account-unavailable-after-readiness-observation",
+		b"account-unavailable-after-readiness-observation-v1",
 	)?;
-	let disabled =
-		time::timeout(Duration::from_secs(1), store.mutate_account(&command, &disabled_mutation))
-			.await
-			.expect("a completed readiness observation retains no row lock")?;
+	let unavailable = time::timeout(
+		Duration::from_secs(1),
+		store.mutate_account(&command, &unavailable_mutation),
+	)
+	.await
+	.expect("a completed readiness observation retains no row lock")?;
 
-	assert_eq!(disabled.state, AccountState::Disabled);
+	assert_eq!(unavailable.state, AccountState::Unavailable);
 	assert!(!store.account_is_ready_at_revision(account_id, available.revision).await?);
 
-	let mut revision = disabled.revision;
+	let mut revision = unavailable.revision;
 
 	for (index, state) in [
 		AccountState::Unknown,
 		AccountState::Depleted,
 		AccountState::AuthFailed,
 		AccountState::PluginUnready,
-		AccountState::Disabled,
 		AccountState::Unavailable,
 	]
 	.into_iter()

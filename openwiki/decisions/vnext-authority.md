@@ -1,7 +1,8 @@
 # Decodex vNext Authority Decision
 
-Status: accepted repository authority for vNext, with private-artifact authority carved out to the
-accepted package linked below.
+Status: accepted repository authority for vNext. The XY-1403 private-artifact
+retirement takes effect only at the exact repository effective point in the
+[retirement decision](../specs/private-artifact/decision.md#repository-effective-point).
 
 Tracking issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-vnext-authority-contract-and-supersede-lane-authority-v2)
 
@@ -28,6 +29,32 @@ manifests, configuration, remote catalogs, process binding, and user declaration
 observed account readiness. The first-release doctor result remains typed `unknown` for plugins;
 `plugin_unready` is inert reserved state. XY-1336 tracks the upstream receipt gap outside the
 vNext critical path and neither closes nor blocks XY-1275.
+
+XY-1423 account-lifecycle authority correction accepted for the vNext replacement
+boundary: PostgreSQL owns credential-negative account product state, a narrow
+HostCredentialStore owns only versioned secret bundles, and the `decodexd` Account
+Service coordinates every account operation. Versioned `enabled` state is independent
+from observed health and quota. Fixed selection, balanced selection, and complete account
+order are deterministic versioned CAS controls. The immediate boundary is
+MacDogfoodReady; final AccountLifecycleReady adds Linux, ambient Codex auth, full account
+presentation, and later automatic routing obligations.
+
+The continuously watched legacy account file and environment-only access-token
+projection are retired. Normal Mac dogfood startup and installation cannot read either
+one. A clean local cutover creates an empty current database and uses the ordinary
+versioned account-import command once per local credential. After public readback
+verifies every account and routing control, the operator deletes the temporary import
+files and old account source. The product has no bulk migration, compatibility reader,
+dual authority, or fallback. Shared normal `~/.codex` remains Codex configuration,
+plugin, rollout, and thread visibility authority.
+
+The exact protected Codex build must positively prove the
+`account/chatgptAuthTokens/refresh` callback before readiness. Current generic rejection
+of inbound app-server requests fails that gate. The existing V23 ProcessGeneration
+intent, manifest, fence, and readback bind the initial account revision, canonical
+credential version/fingerprint, provider identity, and callback profile; no new ledger
+is added. The normative details are in
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 
 XY-1274 quota-authority amendment accepted 2026-07-16: quota storage accepts only exact
 product-valid Unix microseconds, and no layer may round or truncate an ingress timestamp.
@@ -161,13 +188,19 @@ Ingress retains the exact raw provider timestamp value. UTC Unix-microsecond con
 exact and rejects every rounding or truncation path. V14 through V16 remain precision-agnostic and
 fail closed, allowing XY-1357 natural provider evidence to remain in the unified post-freeze gate.
 
-After V16, XY-1360 owns same-thread continuation and one atomic Context-Pack fallback;
-XY-1361 owns runtime orchestration while production dispatch remains structurally disabled;
-XY-1362 owns `waiting_usage` wake lifecycle under scheduler authority; and XY-1363 owns
-retained-title Codex Desktop discovery evidence. Ambiguous-turn replay and repository,
-worktree, Git, and artifact reconciliation remain in the accepted ManagedRun and repository-
-effect authorities, not routing. XY-1304 is only the final aggregate live gate and the owner of
-a separate reviewed enablement amendment.
+Mac Slice 1 uses V14/V16 only for quota-aware initial selection. `fixed` considers one
+target. `balanced` selects the first fully eligible account in canonical order. Recovery
+is an explicit versioned enable/disable, mode, or order change followed by a new task.
+Unknown or stale quota is ineligible, and all-depleted waits for explicit retry.
+
+After V16, XY-1360 retains same-thread continuation and atomic Context-Pack fallback;
+XY-1362 retains the `waiting_usage` wake lifecycle; and XY-1363 retains title-discovery
+evidence. These are later obligations. XY-1304 owns only aggregate acceptance and a
+separate reviewed enablement amendment for automatic cross-account same-thread fallback
+and all-depleted wake. It does not block Quick Task, Project/Lead, ManagedRun, GPUI, or
+first Mac dogfood. Ambiguous-turn replay and repository, worktree, Git, and artifact
+reconciliation remain in ProviderAttempt and the accepted repository-effect authorities,
+not routing.
 
 The rejected dirty combined XY-1304/V14 candidate, its partial fourth repair, its caller-
 authoritative request shape, Rust authorization wrapper used as provenance, global
@@ -175,35 +208,48 @@ authoritative request shape, Rust authorization wrapper used as provenance, glob
 exclusion -> RuntimeSession -> decision composition are superseded evidence only. They must not
 be repaired, revived, or wholesale transplanted.
 
-Private-artifact authority is cut over to the accepted
-[private-artifact authority package](../specs/private-artifact/README.md). That package is the
-sole normative authority for the subsystem. All private-artifact text on this page is a
-nonnormative navigation and status projection. The package replaces the earlier XY-1373 and
-XY-1371 authority wording; the
-[XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md) remains
-evidence, not a second contract.
+XY-1403 selects Option 1. At and after its exact repository effective point, the
+private-artifact lane is retired from vNext. The
+[private-artifact archive](../specs/private-artifact/README.md) preserves the former
+package and all public receipt anchors as historical evidence. Its rule ledger,
+inventories, source census, V22 snapshots, corpus index, semantic modules, delivery
+edges, A0/A1/B/D0a/C/D phases, CORE-FREEZE, ACC, preparation, and unified validation
+are historical and non-executable. They are not current authority, runtime inputs,
+dependencies, or future-work inventory.
 
-AR-CLOSE accepts signed C2 commit
-`019f58a31b976056c000b73de3ec46b89284c6eb` and tree
-`a56976663774b1e901e27fdf4c5276a7e9c84cb8` as the private-artifact cutover
-baseline by explicit policy. This projection binds amended package tree
-`881a7d25801a4795a343d620164ed74a6dae136c` and raw
+The [XY-1372 capability evidence](../evidence/xy-1372-private-artifact-capabilities.md)
+also remains historical evidence. It does not authorize a runtime, gate, platform
+requirement, or downstream experiment. XY-1373's former moving-core integration and
+landing condition is historical and non-executable. Its later cancellation preserves
+its history, comments, parent XY-1371, and `relatedTo` relations to XY-1374 and
+XY-1371. Cancellation does not claim that the integration completed.
+
+XY-1371 and the XY-1378-XY-1391 private-artifact execution graph are inactive
+historical planning provenance. Repository authority already retired that program.
+They cannot gate a delivery slice or restore a private-artifact authority layer.
+
+Only the retained-title evidence transport changes. XY-1369 and XY-1370 keep their
+bounded operator checks and commit reviewed public-safe attestations and digests as
+canonical Git evidence. Raw errors, paths, account or role text, credentials,
+provider data, raw schema, and unrestricted output stay out of Git and receipts.
+XY-1363 consumes the exact accepted Git receipt identities and uses the accepted V22
+one-shot title path. No new service, schema, storage system, runtime route, platform
+layer, issue, compatibility path, or product Artifact is created.
+
+The accepted Artifact/BlobStore boundary for ordinary content-addressed product
+evidence does not change. The external empty-state cutover and user-owned
+RoleProfile/RuntimeSession authority also remain intact. Later automatic fallback and
+wake remain disabled until the separate reviewed XY-1304 enablement amendment.
+
+Historical AR-CLOSE and pre-retirement package identities remain provenance. In
+particular, keep signed C2 commit
+`019f58a31b976056c000b73de3ec46b89284c6eb`, tree
+`a56976663774b1e901e27fdf4c5276a7e9c84cb8`, package tree
+`881a7d25801a4795a343d620164ed74a6dae136c`, and raw pre-retirement
 `authority/package.manifest` SHA-256
 `f88d5706b08e70170531dcda991d841c3b43543cf96a77500c0304f4a469753e`.
-Read the package [decision](../specs/private-artifact/decision.md) and semantic modules for exact
-rules and inventories. Read its
-[operations and delivery contract](../specs/private-artifact/operations-delivery.md) for the
-future implementation, freeze, acceptance, preparation, and validation sequence. None of those
-future private-artifact runtime, API, task, or validation behaviors is implemented by this
-authority amendment.
-
-Package identity and public consistency do not prove historical semantic fidelity. The package
-accepts the residual risk of an unknown historical omission, mistranscription, or census-mapping
-error. It quarantines the historical private corpus in place as non-runtime provenance with no
-read, copy, migration, indexing, automatic-discovery, or normal-workflow edge. It adds no private
-review channel or runtime component. The source census and corpus-derived product semantics remain
-unchanged. AR-CLOSE acceptance permits A0 and D0a to begin; the later dependency graph is unchanged.
-The external empty-state cutover and user-owned RoleProfile/RuntimeSession authority remain intact.
+These identities prove bytes only. They do not prove historical semantic fidelity
+or restore package authority.
 
 The V1 trust boundary is one trusted single-host service. `decodexd` remains the sole
 repository-effect owner. Its in-process repository executor is a correctness,
@@ -236,8 +282,9 @@ workers must not silently reinterpret either source.
 Within vNext work, authority descends in this order:
 
 1. explicit user direction and checked-in project policy;
-2. for the private-artifact subsystem, the accepted private-artifact authority package; for all
-   other vNext scope, this decision, the vNext authority contract, and the vNext gate manifest;
+2. this decision, the vNext authority contract, and the vNext gate manifest,
+   including the XY-1403 private-artifact retirement; the retired package is
+   historical evidence only;
 3. accepted project policies and versioned domain/protocol contracts created under
    those documents;
 4. source, tests, migrations, and operational runbooks implementing an accepted gate;
@@ -286,6 +333,20 @@ vNext owner and a focused gate/test make that behavior authoritative.
 - Work lands through focused task branches/PRs directly to `main`; there is no long-lived
   vNext branch.
 
+Delivery uses exactly three vertical slices:
+
+1. Accounts, Quick Task, and minimal Accounts/Conversation/Health GPUI, with no normal
+   legacy watcher, credential environment projection, helper, or `:8192` authority.
+2. Minimal Project/Lead/global Advisor entry, bounded Context Revision, WorkItem,
+   ManagedRun, the existing repository saga, Task-Reviewer result, explicit human
+   acceptance, and Project/Work/Run GPUI.
+3. One representative two-account self-hosting repository E2E across restart boundaries
+   and one Mac package, including clean-startup proof against legacy account authority.
+
+The dependency recommendation is `Slice 1 -> Slice 2 -> Slice 3`. Current GPUI opens a
+real shell and window, but its destinations are placeholder-only and not usable. The
+slices replace the former component-first/global-gate sequence.
+
 ## XY-1262 gate split
 
 The XY-1262 foundation gate is accepted only for the evidence scope enumerated in the
@@ -297,12 +358,13 @@ integrity evidence, and pure duration-typed quota policy. This acceptance does n
 claim global Codex title search, live quota-driven routing, automatic continuation, or
 release readiness.
 
-The separate [XY-1262 live account-routing enablement gate](https://linear.app/hack-ink/issue/XY-1304)
-remains failed and fail-closed. The bounded foundation work named by the manifest may
-proceed after its own dependencies, but no live-routing, managed production execution,
-dogfood, cutover, or release path may use the disabled capabilities until that later gate
-passes through another explicit repository authority amendment. Unknown or stale quota
-facts never establish eligibility.
+The separate [XY-1262 automatic-routing gate](https://linear.app/hack-ink/issue/XY-1304)
+remains failed and fail-closed for automatic cross-account same-thread fallback and
+all-depleted wake. It is not a global gate for the three slices. Slice 1 can use eligible
+quota-aware fixed or balanced initial selection and manual recovery after its own account,
+callback, ProcessGeneration, and ProviderAttempt fences pass. Unknown or stale quota never
+establishes eligibility. Automatic fallback and wake still require a later explicit
+repository authority amendment.
 
 ## Rejected alternatives and falsifiers
 

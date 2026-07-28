@@ -2,12 +2,9 @@
 
 This page explains the active vNext ownership skeleton and preserves a map of the
 excluded v0.2 source for provenance. Checked-in manifests, source, tests, and the vNext
-authority documents remain authoritative, subject to the private-artifact carve-out below.
-
-For the private-artifact subsystem, the accepted
-[private-artifact authority package](../specs/private-artifact/README.md) is the sole normative
-authority. Any private-artifact statement on this page is a nonnormative architecture or status
-projection.
+authority documents remain authoritative. The XY-1403 private-artifact retirement
+takes effect only at the exact
+[repository effective point](../specs/private-artifact/decision.md#repository-effective-point).
 
 ## Workspace shape
 
@@ -31,8 +28,9 @@ vNext runtime boundary:
   Context Pack revisions, and inert transition proposals.
 - `decodex-codex`: typed app-server contracts, schema/live capability negotiation, and
   redacted event normalization. It depends only on core, performs no SQL, owns no database
-  connection, and exposes no child-launch surface. Live turn dispatch remains unavailable
-  while XY-1304 is failed.
+  connection, and exposes no child-launch surface. Current live turn dispatch is
+  unavailable. Slice 1 can enable its fenced initial-selection path; XY-1304 governs only
+  later automatic fallback and wake.
 - `decodex-runtime`: service lifecycle, connection/session execution, resumable event
   publication, idempotency receipts, private immutable-account process supervision, and the
   sole PostgreSQL/Codex adapter composition; depends on the other four owners plus the
@@ -70,7 +68,15 @@ client/configuration/protocol failure. The `reset-card` command family is a thin
 client for the shared daemon service and uses `decodex/reset-card-cli/1` JSON. The CLI has
 no credential, Codex-process, provider-ID, PostgreSQL, or effect authority.
 
-`decodexd` is the only V1 server composition root. It derives
+`decodexd` is the only V1 server composition root. It reads the bounded active-profile
+configuration, acquires and publishes the non-cloneable local listener, and retains its
+one namespace lock before it creates the stable server identity, opens product storage,
+connects to PostgreSQL, projects supervisor loss, or starts any daemon-local mutation
+service. A process that cannot acquire the listener returns the typed transport refusal
+without a PostgreSQL connection or product-state mutation. The bootstrap owner moves that
+same listener into the lifecycle task without another bind or lock acquisition.
+
+The daemon derives
 `~/.decodex/server/decodex.sock` from the typed root. The server directory must have the
 configured owner and exact mode 0700. A persistent regular `decodex.lock` must have that
 owner, exact mode 0600, and one link. The daemon takes one nonblocking exclusive `flock`
@@ -113,17 +119,20 @@ An established stream retains the kernel peer fact that admission proved. A late
 change does not revoke that stream. A new connection or reconnect performs fresh endpoint
 and peer checks and fails closed.
 
-One top-level runtime task owns the listener and namespace lock. One `JoinSet` owns every
+One top-level runtime task owns the listener and namespace lock. It also directly polls
+the ProcessGeneration and ProviderAttempt background reconciliation futures. Those
+futures are not detached tasks and cannot outlive the lifecycle. One `JoinSet` owns every
 session and command task. The owner assigns a monotonic stable spawn ID and a closed
 session/command kind before each spawn and maps it to the Tokio task ID. Requested
-shutdown, listener-invalidating refusal, child panic, or unexpected child failure starts
-one stopping phase and creates one absolute, non-extendable deadline. Sessions receive a
-cooperative stop signal. The owner closes command ingress and receives through `None`, so
-a buffered submission or outstanding pre-close permit cannot escape task accounting.
-Commands received before the deadline enter the same task set. A submission that crosses
-an outstanding permit after the deadline receives a stable task identity but its command
-future is never polled. The owner harvests `join_next_with_id`; it calls `abort_all` once
-only if the deadline expires, and it continues harvesting through `None`.
+shutdown, listener-invalidating refusal, child panic, unexpected child failure, or early
+service-future completion starts one stopping phase and creates one absolute,
+non-extendable deadline. Sessions receive a cooperative stop signal. The owner closes
+command ingress and receives through `None`, so a buffered submission or outstanding
+pre-close permit cannot escape task accounting. Commands received before the deadline
+enter the same task set. A submission that crosses an outstanding permit after the
+deadline receives a stable task identity but its command future is never polled. The
+owner harvests `join_next_with_id`; it calls `abort_all` once only if the deadline
+expires, and it continues harvesting through `None`.
 
 The same top-level task also owns daemon service futures. Reset Card has no detached worker
 or heartbeat task. At the start of stopping, the application synchronously closes provider
@@ -140,10 +149,13 @@ expected counts, panic, failure, forced-cancellation, and owner-integrity counts
 lowest stable identity in each abnormal task class, and endpoint and cleanup refusals.
 Its deterministic rank is cleanup refusal, endpoint refusal, owner integrity, child
 panic, unexpected child failure, forced deadline, then requested shutdown. Stable task
-ties use the lowest spawn ID. Cleanup starts only after the task set is empty. It removes
-only the retained canonical socket identity, closes the listener, and releases the
-namespace lock last. A mismatch preserves the observed entry and returns a cleanup
-refusal.
+ties use the lowest spawn ID. After all owned command and session tasks are harvested,
+the lifecycle signals each daemon-local service future and polls it to completion. An
+in-flight reconciliation pass completes while the namespace lock remains held. The
+lifecycle then drops the application and its services. It removes only the retained
+canonical socket identity, closes the listener, and releases the namespace lock as the
+final authority operation. A mismatch preserves the observed entry and returns a
+cleanup refusal.
 
 Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
@@ -179,14 +191,12 @@ PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket
 change stops the service child before the supervisor exits. Launchd then starts one new
 coherent generation. Swift does not participate in this lifecycle.
 
-The current source installer also has one bounded local migration bridge. It maps an exact
-set of legacy provider identities to independent vNext UUID slots through SHA-256 selectors.
-It reads the credential file under the existing lock and passes values only through the
-service child's environment. An atomic file replacement causes a graceful daemon restart
-only when the injected credential projection changes. Account-set, identity, permission,
-or mapping drift fails closed. This bridge does
-not make legacy account storage a product-state authority, and it does not add a runtime
-fallback when PostgreSQL is unavailable.
+The source installer provisions only the latest credential-negative service. It writes
+the typed config and LaunchAgent, initializes a fresh PostgreSQL 18 database, and starts
+one `supervise-local` generation. It does not read or retire old account sources.
+Normal startup has no watcher, mapping input, helper or `:8192` dependency, credential
+environment projection, migration state, or fallback. Existing local credentials enter
+the new authority only through ordinary account import after installation.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -213,7 +223,7 @@ non-internal trigger bindings, including regular and deferred constraint trigger
 mask, row/statement level, constraint and deferral state, origin-enabled mode, and function binding,
 then compares
 each bound function's exact metadata and `pg_proc.prosrc` bytes with the canonical body embedded in
-the immutable forward migration ledger through V22. It additionally closes the entire runtime-callable `decodex` function
+the immutable forward migration ledger through V23. It additionally closes the entire runtime-callable `decodex` function
 namespace over exact signatures and overloads, argument/result shape, language, volatility,
 parallel/strict/set behavior, planner metadata, exact security-invoker/definer state and exact per-function settings,
 and canonical source. Unexpected functions, overloads, owner-executed functions, or unsafe settings
@@ -244,16 +254,89 @@ exactly table SELECT. Ownership, SET-reachable authority, table or column grant 
 TRUNCATE, REFERENCES, TRIGGER, and MAINTAIN are unsafe; missing SELECT is incompatible before the
 history row query runs. The ordered ledger must exactly match every embedded migration version,
 name, and checksum; missing, extra, duplicate, reordered, or tampered identity is incompatible.
-V14–V19 bind intended runtime enum and command privileges through the exact migration-owned V12
-ManagedRun-safety procedure ACL. The binding accepts zero runtime grantees for
+V14–V19 historically bind intended runtime enum and command privileges through the exact
+migration-owned V12 ManagedRun-safety procedure ACL. V26 retires that procedure and derives the
+same runtime principal from the accepted V24 ProviderAttempt preparation procedure before it
+revokes V12 authority. The binding accepts zero runtime grantees for
 migrate-before-provision and exactly one direct, non-grantable runtime grantee for an already
-provisioned database; ambiguous owners, grantors, overloads, or grantees fail closed. V19 uses the
-same binding when revoking its internal explicit-time entry points. Production authority failures
+provisioned database; ambiguous owners, grantors, overloads, or grantees fail closed. Production authority failures
 remain generic. Authority digest changes use two explicit phases. Phase A's capture-only PostgreSQL
 18 mode migrates and provisions a non-default runtime principal, captures normalized manifests at
 source S0, first restore R1, and second restore R2 without constructing `PostgresStore`, and
-uses the same canonical non-digest semantic authority verifier as production readiness at every
-checkpoint. It atomically publishes a versioned summary receipt only when the mismatch array is the
+uses the same finalized semantic-authority contract as production readiness at every checkpoint.
+One shared restore-target prerequisite now owns the future Phase A R1 and R2 boundary and the
+separate one-shot R1 prerequisite gate. Before target creation, a closed PostgreSQL 18
+`pg_restore` list parser privately proves that the custom archive has exactly one active
+`pgcrypto` extension declaration. It rejects absent, duplicate, disabled, malformed, or ambiguous
+declarations without retaining or publishing raw TOC data. After the guard, the helper creates a
+fresh `template0` target, proves that `pgcrypto` is absent, and connects as the migration role to
+execute exactly
+`CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA public VERSION '1.4';`. The ordinary restore
+keeps `--exit-on-error` under the bootstrap identity and adds no owner, ACL, role, or session
+authorization override. No migration or runtime provisioning follows a restore.
+
+The replacement `--capture-authority-restore-prerequisite-v2` gate binds one clean HEAD and tree,
+the selected PostgreSQL 18 toolchain, the v2 pass and diagnostic schemas, and definition fingerprint
+`53bb20b8e43a6199c3aa578269cee8b941ed549fd8f10db0dce361a03016524a`. One sequential state owner
+covers CLI selection, preflight, private work, cluster initialization and start, role setup, S0,
+archive creation, the restore helper, semantic checks, cleanup, receipt validation, final source
+binding, and publication. Completed execution checkpoints can be only a validated prefix. The first
+fixed checkpoint and reason are immutable. Actual lifecycle state derives one exact cleanup-owner
+sequence: empty before private work exists, `private_work_cleanup` after private work exists, or
+`cluster_stop` followed by `private_work_cleanup` after cluster stop becomes applicable. Each
+required owner moves from pending to active to completed. `cleanup_finalization` is a separate
+fail-closed owner. Cleanup can be `passed` only when the required sequence is complete and
+finalization is complete. The receipt carries both sequences and the finalization proof.
+
+An interruption before an action, after an action but before its transition, between actions, or
+during finalization belongs to the active or pending cleanup owner. Expected cleanup operation
+failure is `cleanup_failed`; an interruption is `interrupted`; and unexpected cleanup state is
+`harness_corruption`. A cleanup failure is secondary when an execution primary exists. Otherwise,
+the exact cleanup owner becomes primary. Receipt validation, source binding, and publication also
+have separate owners and cannot replace an earlier primary failure.
+
+The gate creates, migrates, provisions, populates, and semantically verifies S0 once. It dumps once,
+guards and restores fresh R1 once, and runs the same full semantic owner once at R1. Explicit
+in-process counters reject a duplicate prerequisite or restore. The gate stops before R2, digest
+derivation, candidate publication, Phase B, and the aggregate. Pass and failure receipts are
+canonical, create-only, mode 0600, file-fsynced, and directory-fsynced. A failure receipt contains
+only the fixed v2 projection. It contains no raw exception, command, child output, environment,
+path, selected tool name, database, role, owner, ACL, OID, SQL, connection, TOC content, catalog
+row, count, or discovered identity. The same canonical failure diagnostic goes to standard error
+for publication-failure recovery. The raw-error `StageOrchestrator` remains outside this privacy
+boundary. Failure-document construction and repair stay under `receipt_validation`. Incomplete or
+corrupt cleanup proof produces one fixed `failure_document_repaired=true` diagnostic. It preserves
+a valid earlier primary, uses only fixed lifecycle values, and never emits exception text. The
+fixed `receipt_validation/harness_corruption` diagnostic remains available on standard error if
+normal construction or durable publication cannot complete.
+
+The v1 gate ran once and returned ownerless `gate/stage_failed` evidence. It did not prove that the
+archive guard, prerequisite, restore, or R1 semantic authority ran. The v1 spelling and schemas are
+retired and have no alias. Candidate 3 remains frozen and unadjudicated. A source-bound v2 result
+must exercise and reject candidate 3 before the three-rejected-candidate threshold is crossed. The
+Manager owns cross-process one-shot authorization. A v2 pass has `acceptance=false` and permits only
+a later decision about revised Phase A. This v2 source is unexecuted and does not establish
+acceptance.
+Rust is the sole owner of this closed, ordered, typed contract. It preserves the prior 39
+predicate descriptors and appends one unsafe identity for unexpected runtime-executable
+security-definer authority. Finalization rejects a missing, duplicate, unknown, reordered, or
+misclassified observation before production verification or fixture serialization can consume it.
+The immutable artifact contains the versioned ordered definition, its observations, and a SHA-256
+fingerprint. The fingerprint input starts with a domain string and then uses big-endian
+32-bit byte lengths for both schema strings and every UTF-8 descriptor field.
+Python independently applies this encoding. It requires the emitted fingerprint and the one
+supported fingerprint to match, binds each Boolean observation to the definition in order, and
+requires identical complete artifacts at S0, R1, and R2. Python does not contain a predicate list
+and does not inspect Rust source for semantic authority.
+The runtime verifier examines the login identity and each inherited or `SET ROLE`-reachable
+identity. Effective privileges include `PUBLIC` and column grants. Non-system relation-like entry
+objects are closed to the exact Decodex and migration-ledger allowlist. Every runtime-executable
+non-system `SECURITY DEFINER` normal function, procedure, or window function must be an expected
+runtime entry. Aggregate rows are excluded because PostgreSQL `CREATE AGGREGATE` has no
+`SECURITY DEFINER` capability. The required `public.digest(bytea,text)` dependency is bound to the
+exact `pgcrypto` 1.4 extension membership, namespace, owner relationship, function metadata, and
+default ACL.
+Phase A atomically publishes a versioned summary receipt only when the mismatch array is the
 exact ordered subset of the post-V21 schema-contract digest followed by the configured-authority digest:
 zero, either singleton, or both in canonical order. Unrelated, duplicate, or reordered mismatches
 fail closed. Semantic predicates, ledger, binding, identity, and both S0=R1 and R1=R2 restore edges
@@ -301,6 +384,11 @@ validation remains on those direct entrypoints rather than entering the aggregat
 preflight, meaningful semantic suites form explicit prerequisite edges and produce only `passed`,
 `failed`, or `blocked`: an ordinary expected failure blocks its consumers while independent
 branches continue.
+One `managed_run_v26_suite` stage owns the ManagedRun V26 database, migration, runtime
+provisioning, baseline capture, source behavior, post-behavior capture, dump, restore, restored
+capture, and restored behavior. The focused ManagedRun mode and the normal aggregate call this same
+stage owner. Its exact test selectors use nextest's zero-selection failure mode. Final aggregate
+evidence depends on this stage.
 Required nested restore results are promoted to their owning suite, so a capture, restore, parity,
 or production-check failure cannot be reported as owner success. One private live-doctor mutation
 SQL executor owns every ordinary, role-as, and secret-bearing mutation child, SQL delivery state,
@@ -321,10 +409,11 @@ assertion/key/type failures, corrupt report state, source-binding or redaction f
 unexpected exceptions stop new scheduling as harness corruption. Before cluster start the same
 outer owner attempts direct removal of a created private work directory without reporting cluster
 teardown. Once the cluster has started, teardown and final report emission always remain eligible.
-The process-visible primary is selected before aggregate output/report emission; cleanup or emission corruption remains
-secondary when an earlier semantic failure exists. Only the normal aggregate emits
-`decodex/postgres-aggregate-stage-report/1`; focused suites and Phase A/B receipt modes retain their
-direct output/capture behavior and never enter that report path.
+The process-visible primary is selected before aggregate output/report emission; cleanup or
+emission corruption remains secondary when an earlier semantic failure exists. The normal
+aggregate emits `decodex/postgres-aggregate-stage-report/1`. The focused ManagedRun mode emits
+`decodex/postgres-managed-run-v26-stage-report/1` from the same stage owner. Other focused suites
+and Phase A/B receipt modes retain their direct output or capture behavior.
 
 The three bound identity sequences must be exact. Runtime receives USAGE only on the activity and
 outbox sequences; the migration-owned history-version sequence remains inaccessible. SELECT,
@@ -445,13 +534,144 @@ wakeup. There is no queue-full or
 contended-admission leak: the 65th permit is rejected before spawn. The failed attempt cannot launch
 another group. PostgreSQL's
 exact revision/state predicate excludes stale, unavailable, unknown, depleted,
-authentication-failed, plugin-unready, and disabled observations. A fresh daemon starts with no
-persisted capacity or assignment authority, but uncatchable daemon/host termination can orphan an OS
-process group because the in-memory quarantine is not an external process supervisor. Restart never
-adopts such a group or recreates authority; a later observation requires
-fresh exact PostgreSQL pre- and post-observations for the same manually selected account. There is no account
+authentication-failed, plugin-unready, and a current conflated disabled observation. That
+disabled shape is source evidence, not target authority; Slice 1 uses the independent
+versioned `enabled` boolean. A fresh daemon starts with no
+persisted capacity or assignment authority. This feature-gated manual path remains nonproduction
+and does not construct a V23 ProcessGeneration or create restart authority. There is no account
 inventory, automatic selector, weighting, stickiness, fallback, quota wake, or live routing API;
-XY-1304 remains the separate failed dispatch gate.
+it is current source evidence only. Slice 1 adds limited initial fixed/balanced selection
+through the owning V14/V16 and account authorities. XY-1304 remains the later automatic
+fallback/wake gate.
+
+### Durable ProcessGeneration supervision
+
+V23 adds the durable ProcessGeneration owner described in
+[the XY-1400 authority specification](../specs/process-generation-authority.md). PostgreSQL
+commits one account-exclusive `starting` intent before `ProcessSupervisor` can receive a fresh
+spawn fence. Replay is readback only. One private `AttestedAppServerLaunch` retains the protected
+executable snapshot and derives the intent's account and launch-manifest hash. That hash binds the
+exact image and BuildId, command, fixed `app-server --stdio` arguments, working directory,
+clear-then-set environment, account, initial account revision, canonical credential
+version/fingerprint, provider binding, and exact-build startup/lifetime/account-callback
+capability. The same non-secret facts are part of the existing V23 intent, prepare fence,
+ready transition, and strict readback. No new ledger is added. The supervisor accepts no
+independent runner digest or raw `Command`. After spawn, it persists the exact boot, PID,
+process-start, process-group, and session identities.
+
+The current launch profile accepts only the source-attested macOS
+`codex-cli 0.145.0-alpha.18` image and forces
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`. This is exact-build startup-state
+evidence: it selects disabled-ephemeral remote-control mode, but it is not a permanent denial
+policy. The supervisor retains child stdin and stdout privately for lifetime ownership.
+`FencedProcess` and every returned ProcessGeneration capability expose no raw channel or generic
+protocol writer. Every other build, including the current unrecorded Linux image, fails closed
+before profile-dependent version or schema preflight spawn.
+
+That accepted lifetime profile is not an AccountLifecycle readiness receipt. Current vNext
+responds method-not-found to every inbound app-server request and therefore cannot service
+`account/chatgptAuthTokens/refresh`. Slice 1 requires positive exact-build callback proof
+and rechecks the account revision, credential version/fingerprint, provider binding, and
+enabled state immediately before the ProcessGeneration fence. Unsupported callback profiles
+fail closed before account launch.
+
+The supported-OS adapter owns boot and process identity, generic session/descriptor setup, exact
+owned signaling, group observation, and positive exit witnesses. Linux uses `/proc` start ticks
+and pidfd. macOS uses `KERN_BOOTTIME`, `proc_pidinfo`, and a one-shot kqueue `NOTE_EXIT` filter.
+Both use a new session. Generic retained-title and preflight setup grants no ProcessGeneration
+lifetime capability and does not install Linux `PR_SET_PDEATHSIG`. No exact Linux lifetime profile
+is accepted. A future parent-death primitive must be reachable only through such a profile. On
+macOS, stdio EOF is only a best-effort request and is not death evidence. Only the original
+unreaped child can authorize a group signal. A restored same-boot process can receive only a
+read-only exact witness; it is not adopted, reacquired, proxied, terminated, or signaled.
+
+Daemon startup projects present `starting`, `ready`, and `stopping` rows to
+`death_unknown` and runs one positive-only pass. The server lifecycle then owns and polls
+bounded background reconciliation until shutdown. An old boot is positive prior-boot death proof.
+Same-boot absence, mismatch, an unbound identity, timeout, and group absence alone remain
+uncertain. The partial unique account index derives account-local quarantine without another
+writer. One item failure does not disable the store, managed repositories, or reconciliation for
+other accounts.
+
+On macOS, a restored generation becomes `dead` only after the attached exact kqueue witness returns
+`EVFILT_PROC/NOTE_EXIT` and the process group is quiescent, or after boot change. If the process
+exits before witness attachment, the event cannot be reconstructed and the account stays
+quarantined for the rest of the boot. ProcessGeneration makes no claim about credential revocation
+or provider-effect outcome; XY-1401 retains that ambiguity in ProviderAttempt.
+
+### Durable ProviderAttempt authority
+
+V24 adds the generic ProviderAttempt owner described in
+[the XY-1401 authority specification](../specs/provider-attempt-authority.md).
+One PostgreSQL preparation transaction binds exactly one reserved Conversation Turn identity or
+ManagedRun execution to its accepted V17 plan, V16 decision, RuntimeSession, selected account,
+live ready ProcessGeneration revision and epoch, request identity and digest, and provider
+idempotency or correlation keys. The Conversation owner can materialize the reserved Turn later;
+an existing Turn must match the same Conversation and accepted RuntimeSession.
+The fixed-search-path reservation trigger runs as the migration owner because runtime has Turn
+DML but no ProviderAttempt relation access; runtime and PUBLIC cannot execute the helper directly.
+Unreserved Turn writes pass, and conflicting reserved materialization fails closed.
+ProviderAttemptService selects no account and creates no RuntimeSession or Turn.
+
+The ordinary machine is `prepared -> canceled | dispatch_authorized`,
+`dispatch_authorized -> succeeded | failed_definitive | not_submitted | unknown`, and
+`unknown -> succeeded | failed_definitive | not_submitted` only from positive evidence.
+Restore projects present prepared and dispatch-authorized rows to `unknown` under the shared
+execution restore gate. A late positive result stays bound to the original attempt after process
+death. A replacement reconciles but cannot recreate a fresh dispatch fence.
+
+Daemon bootstrap completes restore projection and one bounded positive-only reconciliation pass
+before it reports ProviderAttempt readiness. The server lifecycle then owns and polls bounded
+background passes until shutdown. Diagnostics omit provider keys and request digests. The current
+composition has no provider evidence adapter that can dispatch, no public consumer for the fresh
+fence, and an unavailable `CodexAdapter`.
+V26 removes the drained V12 ManagedRun submitted-turn, effect, safety-input, and effect-barrier
+authority. No compatibility or fallback V12 writer remains.
+
+`ServiceBootstrap` exposes independent ProcessGeneration and ProviderAttempt readiness and
+authority-bound borrowed runtime ports. Neither port is cloneable or can escape its bootstrap
+owner. The ProcessGeneration port provides bounded or exact diagnostics, exact positive-only
+reconciliation, and exact owned-child termination. The ProviderAttempt port provides bounded
+redacted diagnostics, exact positive-only reconciliation, and an exact positive receipt
+operation. ProcessGeneration spawn and ready remain crate-private and have no caller.
+`CodexAdapter::unavailable()` remains in the daemon composition.
+No protocol, CLI, scheduler, routing, RuntimeSession, ProviderAttempt, credential, remote-auth, or
+UI path reaches ProcessGeneration spawn. Production dispatch remains structurally disabled.
+A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
+`remoteControl/enable` and all alternate-control RPCs before dispatch can be enabled. This slice
+does not implement that gateway.
+
+### Stateless execution coordination
+
+V25 adds the closed enum vocabulary in one transaction. V26 and the zero-sized
+`ExecutionCoordinator` implement the
+[XY-1402 source projection](../specs/execution-coordinator-authority.md). V14, V16, and V17 now
+preserve one closed consumer union. The ordinary variant binds a Conversation and reserved Turn to
+its exact source RuntimeSession. The managed variant binds one ManagedRun revision and one distinct
+managed execution. Ordinary work does not acquire ManagedRun state.
+
+V16 remains the sole account eligibility and selection writer. It loads the complete persisted V14
+universe. It preserves each 300-minute and 10,080-minute fact independently and applies sticky
+affinity only after eligibility. It classifies both quota facts at its own decision instant, so a
+fact that ages after V14 retains the exact stale or reset-elapsed cause. Pure current positive quota
+depletion produces `waiting_usage`. Pure unresolved ProcessGeneration or ProviderAttempt authority produces
+`waiting_reconciliation`. Any mixed set remains `no_route` with every exact cause and no wake or
+task failure. Selection and both pure waits inspect only included members. A `no_route` uses the
+complete persisted policy-member universe, retains `excluded_by_policy` for every excluded member,
+and cannot be cause-free.
+
+V17 remains the sole RuntimeSession continuation writer. An ordinary Conversation can reuse its
+thread only from positive exact-thread evidence on the original ProviderAttempt. A ManagedRun can
+use the accepted V15/V22 causal experiment. Every other case uses the atomic Context Pack and
+fallback RuntimeSession transaction. V17 never writes ProviderAttempt state, and ProviderAttempt
+never creates or rewrites RuntimeSession state.
+
+The coordinator consumes one persisted V16 decision, one V17 plan, one ProcessSupervisor-owned
+live `FencedProcess`, and ProviderAttemptService preparation. It consumes the fresh prepared
+capability and returns only an inert attempt projection. It retains no service, lifecycle, retry,
+receipt, process, attempt, or ambiguity state. Its method and the process fence are crate-private.
+The read-only V1 execution-decision query exposes no mutation capability. No production
+composition root can start coordination or authorize provider dispatch.
 
 The accepted XY-1355 target adds no live execution path here. V14 makes PostgreSQL the sole owner
 of a revisioned complete routing-policy snapshot over the entire account inventory, canonical
@@ -557,8 +777,10 @@ the parent seals their exact contiguous count, and database triggers reject subs
 insert/update/delete poisoning while the deferred parent reference prevents orphan commits. Persisted
 rollover/fallback rows are proposals only: their schema
 forces dispatch disabled. This slice exposes no account selection, live turn start/resume/steer,
-automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake; XY-1304 remains the
-separate failed enablement gate. XY-1358/V15 owns experiment creation and positive-only observation
+automatic rollover, Context-Pack dispatch, ambiguous replay, or scheduler wake in current source.
+Slice 1 later enables only eligible quota-aware fixed/balanced initial selection and manual
+recovery. XY-1304 remains the separate later automatic fallback/wake gate and does not block
+Quick Task, Project/Lead, ManagedRun, GPUI, or first Mac dogfood. XY-1358/V15 owns experiment creation and positive-only observation
 authority; XY-1360 owns continuation and atomic Context-Pack fallback; XY-1362 owns scheduler wake;
 XY-1276 owns production Quick Task creation. XY-1272 owns only PostgreSQL
 configured-principal and ACL authority closure against V8. XY-1345 owns accepted exact-command
@@ -721,44 +943,44 @@ and executor/readback mechanics against this contract, and XY-1351 owns the firs
 V13 is accepted. The routing migration order is XY-1356/V14 complete policy and candidate-set
 authority, XY-1358/V15 causal experiment authority, XY-1359/V16 atomic routing decisions, then
 XY-1360/V17 continuation authority after source inspection proved durable atomic fallback state was
-required. XY-1361 composes these boundaries only with production dispatch disabled. The
-existing ManagedRun barrier, submitted-turn receipt, and repository/worktree/Git/artifact
-reconciliation authorities retain ambiguous-effect ownership; routing never reclassifies or
-replays those effects.
+required. XY-1361 first composed these boundaries with production dispatch disabled. V25/V26 then
+makes V14, V16, and V17 consumer-generic and retires the drained V12 ManagedRun barrier and
+submitted-turn authority. Repository, worktree, Git, and artifact reconciliation owners remain
+unchanged. Routing never reclassifies or replays their effects.
 
-V16 is the sole routing-decision authority. It adds a pure routing kernel and one
+V16 is the sole routing-decision authority. It uses a pure routing kernel and one
 operation-specific PostgreSQL exact command. The command selects and locks the immutable V14
-snapshot and its current policy, run, account, compatibility, capability, blocker, and quota
+snapshot and its current policy, exact Conversation or ManagedRun consumer, account,
+compatibility, capability, blocker, process, attempt, and quota
 sources; callers provide no candidate array or evidence. It persists one inert `selected`,
-`waiting_usage`, or `no_route` row together with complete member, quota, capability, blocker, and
+`waiting_usage`, `waiting_reconciliation`, or `no_route` row together with complete member, quota,
+capability, blocker, and
 normalized exact-depletion references in the same transaction. Five-hour and seven-day facts,
 raw timestamp text, source identity, exact microsecond precision, and evidence revision remain
 separate. Missing or inexact provenance cannot establish eligibility. The adapter strictly reads
-the database result back through the pure kernel. The disabled XY-1361 runtime orchestration may
-invoke exactly one V16 command per request, but no daemon, application, protocol, scheduler, Codex,
-credential, or UI composition root constructs that orchestration. Digest regeneration plus
+the database result back through the pure kernel. The XY-1402 coordinator may invoke exactly one
+V16 command per request, but its method is crate-private and no daemon, application, protocol
+command, scheduler, Codex, credential, or UI composition root can call it. Digest regeneration plus
 executable validation remain deferred to the integrated freeze.
 
-V17 consumes only one persisted selected V16 decision identity plus its expected ManagedRun
-revision. PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
+V17 consumes only one persisted selected V16 decision identity plus its exact consumer revision.
+PostgreSQL derives the selected account, V14 snapshot, source RuntimeSession,
 Conversation, RoleProfile snapshot, and evidence universe; callers cannot provide candidates,
-policy, exclusions, compatibility, or selection. One qualifying same-thread path requires exactly
-one canonical V22-bridged experiment lineage whose bound thread equals the source RuntimeSession
-thread, a fresh attested exact `thread_read_item`, exact selected account/revision/build/RoleProfile facts,
-and supported initialize/account-read/thread-read/paginated-history evidence from the exact V14
-profile. Unknown, stale, negative, mismatched, incomplete, or ambiguous evidence selects the
+policy, exclusions, compatibility, or selection. A qualifying ManagedRun same-thread path requires
+one canonical V22-bridged experiment lineage and exact positive thread attestation. A qualifying
+ordinary Conversation same-thread path requires positive exact-thread evidence from the original
+ProviderAttempt. Each path must bind the source RuntimeSession, thread, selected account, and
+consumer. Unknown, stale, negative, mismatched, incomplete, or ambiguous evidence selects the
 fallback path rather than inferring compatibility.
 
 The fallback path validates the complete deterministic Context-Pack encoding and manifest, stages
 any content-addressed bytes under the existing blob coordination, then inserts its Context Pack,
 selected-account snapshot, starting RuntimeSession, continuation plan, audit rows, outbox rows, and
 exact receipt in one PostgreSQL transaction. A unique decision link makes both paths mutually
-exclusive and exactly once across keys and replay. The plan snapshots the accepted ManagedRun
-effect barrier and submitted-turn receipt count, while `replay_permitted` and `dispatch_enabled`
-are structurally false. No ManagedRun identity or Conversation identity changes, no turn is
-submitted or replayed. The disabled XY-1361 runtime orchestration consumes one exact V17 plan only
-for a selected V16 decision; no daemon, application, protocol, scheduler, credential, Codex, or UI
-composition root constructs it. Schema and configured-authority digest regeneration and all
+exclusive and exactly once across keys and replay. `replay_permitted` and `dispatch_enabled` are
+structurally false. No ManagedRun identity or Conversation identity changes, and no Turn is
+submitted or replayed. The XY-1402 coordinator consumes one exact V17 plan only for a selected V16
+decision. No production root can call that method. Schema and configured-authority digest regeneration and all
 executable acceptance remain deferred to the single integrated post-freeze gate, so ordinary
 runtime readiness continues to fail closed on this moving-core tree.
 
@@ -818,14 +1040,13 @@ acceptance boundary.
 No production crate or application imports or constructs a V15/V22 experiment execution root.
 The V22 manual Rust runner requires its explicit Cargo feature and binary target. `decodexd`,
 protocol handlers, routing orchestration, and schedulers do not enable or import it. The runner has
-no turn, list, search, archive, retry, adoption, routing, or dispatch API. XY-1361 now owns the only
-disabled runtime orchestration over
-V16 and V17: it makes one exact V16 decision per request, consumes one exact V17 plan only for
-`selected`, and exposes only inert handoff facts for `waiting_usage`. It does not import V18 or
+no turn, list, search, archive, retry, adoption, routing, or dispatch API. XY-1402 replaces the
+disabled stateful routing wrapper with a zero-sized coordinator over V16, V17, a live
+ProcessGeneration fence, and ProviderAttempt preparation. The coordinator does not import V18 or
 provide scheduler registration, claiming, firing, cancellation, supersession, credentials, Codex
-mutation, dispatch, replay, or production enablement. The V1 protocol vocabulary remains unchanged
-and exposes none of these authority commands. Production dispatch remains disabled until the
-separate enablement gate.
+mutation, dispatch, replay, or production enablement. The V1 protocol adds only a read-only
+immutable decision projection. It exposes none of the authority commands. Production dispatch
+remains disabled until the separate aggregate gate and enablement amendment.
 The production runtime composes the already accepted repository owners exactly once during daemon bootstrap.
 When PostgreSQL is available, it opens the pinned executor, constructs the repository saga over the
 same `PostgresStore`, and performs bounded readback-only restart reconciliation before the protocol
@@ -881,21 +1102,23 @@ fail closed on any value that would require rounding or truncation. Natural char
 retained-title Desktop discovery remain post-freeze evidence owned by XY-1357 and XY-1363,
 respectively; neither is a runtime authority path.
 
-## Future private-artifact runtime projection
+## Retired private-artifact runtime projection
 
-The package [foundations](../specs/private-artifact/foundations.md),
-[persistence and GC](../specs/private-artifact/persistence-gc.md), and
-[executor contract](../specs/private-artifact/executor-platform.md) define the target subsystem.
-This page does not restate their rules or exact inventories. Existing text below about the general
-Decodex root, blob store, repositories, Artifact revisions, and filesystem helpers describes
-current or other accepted surfaces. It does not grant private-artifact authority or change the
-package.
+At and after the repository effective point, vNext has no private-artifact runtime,
+API, controller, status surface, command composition, PostgreSQL authority, executor,
+platform layer, or garbage collector. The archived
+[foundations](../specs/private-artifact/foundations.md),
+[persistence and GC](../specs/private-artifact/persistence-gc.md),
+[executor contract](../specs/private-artifact/executor-platform.md), and
+[operations design](../specs/private-artifact/operations-delivery.md) are historical
+and non-executable. Their rules, inventories, delivery edges, CORE-FREEZE, ACC,
+preparation, and unified validation terms cannot authorize current or future work.
 
-The package-defined private-artifact runtime, API, controller, status, and command composition is
-not implemented in the current workspace. Its CORE-FREEZE, ACC, preparation, and unified
-validation boundaries are future delivery contracts in the package
-[operations module](../specs/private-artifact/operations-delivery.md), not current runtime
-capabilities.
+Existing text below about the general Decodex root, BlobStore, repositories, Artifact
+revisions, and filesystem helpers describes accepted non-private-artifact surfaces.
+XY-1403 does not change them. The retained-title evidence path uses bounded canonical
+privacy-safe Git receipts and creates no new runtime route, platform layer, storage
+system, schema, compatibility path, or product Artifact.
 
 ## Owned vNext paths, configuration, blobs, and cache
 
@@ -946,6 +1169,35 @@ XY-1307 consumes that data at the runtime composition boundary; core itself stil
 no database. No CLI, remote listener/security, or credential-vault implementation is part
 of the core foundation.
 
+## Account lifecycle and credential authority
+
+The Mac dogfood and final runtime follow the
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md). PostgreSQL owns
+credential-negative account state, independent versioned enablement, routing controls,
+and finite operation receipts. One versioned
+HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enrollment,
+import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
+callbacks, runner projection, account observations, and recovery.
+
+The macOS HostCredentialStore uses non-synchronizing Keychain generic-password items. The
+Account Service is its only reader and writer. Exact create, read, compare-and-swap rotate,
+and delete operations remain inside that single-write boundary. MacDogfoodReady also
+requires the complete Account Service, exact-build refresh callback, provider adapter,
+PostgreSQL lifecycle state, startup reconciliation, and clean-start package proof.
+Final AccountLifecycleReady additionally requires the Linux store, ambient Codex auth,
+full bounded account presentation, and later automatic fallback/wake acceptance.
+
+Runner processes use the shared normal `~/.codex`. Initial credentials enter only the
+private app-server process protocol, not process arguments or a long-lived environment.
+The Account UUID and provider binding never change in a live process. Same-account token
+refresh does not create account rebinding.
+
+For new work, `fixed` considers one configured account and `balanced` selects the first
+fully eligible account in versioned canonical order. Both check separate 300-minute and
+10080-minute quota facts. Manual recovery uses versioned enable/disable, mode, or order
+commands and then submits a new task. Automatic cross-account same-thread fallback and
+all-depleted wake remain later XY-1304 obligations.
+
 ## Manual reset-card service
 
 Protocol V1.3 exposes bounded account discovery, complete reset-card inventory, manual
@@ -962,11 +1214,15 @@ transport. The stable JSON account and inventory projections include the selecte
 profile name and verified server UUID. A caller can retain that authority on later
 calls with `--profile NAME --expected-server-id UUID`.
 
-`decodexd` is the sole credential, app-server process, exact-ID, mutation, and effect
-owner. Configuration enrolls at most 64 UUID-keyed accounts and stores only non-secret
-labels, an initial `available` or `depleted` state, a closed plan type, and three distinct
-environment-variable references. Only the daemon resolves those references. Both
-`available` and `depleted` admit the manual operation; other account states fail closed.
+`decodexd` is the sole account-operation, app-server process, exact-ID, mutation, and
+effect coordinator. In Mac dogfood and the final runtime, Reset Card obtains one exact versioned bundle
+through the Account Service and HostCredentialStore. PostgreSQL stores only the UUID,
+revision, provider binding evidence, and non-secret account state. New admission requires
+`enabled=true`, AccountLifecycle readiness, no unsettled account operation, an admitted
+observed state, and exact Registry/HostCredentialStore agreement on account revision,
+credential version/fingerprint, and provider binding. The final pre-effect transaction
+repeats every check. The current environment-variable references are pre-cutover
+projection only.
 
 Before any reset-card read or consume, the Codex adapter requires the generated schema to
 advertise both `account/rateLimits/read` and
@@ -992,10 +1248,11 @@ rejects binding drift. A preexisting account can initialize a missing fingerprin
 when it has no unsettled reset-card operation. Generic account mutation cannot replace
 or remove an established binding.
 
-The reset-card ledger is not part of generic outbox pruning. Same-key replay is checked
-before current vault, account-state, and revision gates. The effect-start transaction
-checks the exact revision, admitted state, and oldest matching public descriptor before
-it releases the provider call. After terminal authoritative readback proves the effect
+The reset-card ledger is not part of generic outbox pruning. A durable terminal same-key
+receipt replays unconditionally before current enabled, readiness, store, provider,
+account-state, operation, and revision gates. New work alone reaches the admission and
+effect-start checks above, including the oldest matching public descriptor. After
+terminal authoritative readback proves the effect
 present, PostgreSQL removes the private exact credit ID and provider-key projection
 atomically while it retains the public receipt, reconciliation result, status, and
 same-key replay. A terminal pre-effect rejection or exhausted `not_started` claim also
@@ -1169,10 +1426,12 @@ identity for re-attestation. Archive, paginated persisted history, and native co
 remain explicitly `not_probed` while their side-effect/event gates are closed. Paginated
 history schema evidence comes from the structural `ThreadStartParams.historyMode` /
 `ThreadHistoryMode` contract, never from a list cursor.
-`DispatchGate` has no enabled state and denies thread start/resume, turn start/steer/
-interrupt, and approval responses under XY-1304. The composition root therefore still
-reports conversation execution unavailable even though schema validation, read-only
-probing, normalization, and supervision are implemented.
+Current `DispatchGate` has no enabled state and denies thread start/resume, turn
+start/steer/interrupt, and approval responses. The composition root therefore reports
+conversation execution unavailable even though schema validation, read-only probing,
+normalization, and supervision are implemented. Slice 1 must replace that current-source
+posture only for its fenced initial-selection/Quick Task flow. XY-1304 is required later
+for automatic fallback and wake, not for this limited enablement.
 
 ## Frozen v0.2 runtime provenance
 
@@ -1245,7 +1504,11 @@ Recent source adds a baseline guard before ordinary, Program, and retry dispatch
 
 ## Long-running control plane
 
-`decodex serve` calls `orchestrator::run_control_plane` through `apps/decodex/src/cli/control_commands/serve.rs`. The operator listener default is `127.0.0.1:8192` in README examples and OpenWiki operator notes. `--dev` is hidden and is only for isolated endpoint testing; it does not represent normal scheduling.
+The excluded frozen v0.2 `decodex serve` source calls
+`orchestrator::run_control_plane` through
+`apps/decodex/src/cli/control_commands/serve.rs`. Its historical operator listener
+default is `127.0.0.1:8192`. The active workspace, local service, and macOS App do not
+build, package, start, or connect to that listener.
 
 Each daemon tick (`apps/decodex/src/orchestrator/daemon.rs`):
 

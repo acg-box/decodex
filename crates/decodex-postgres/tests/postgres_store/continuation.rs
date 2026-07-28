@@ -8,19 +8,15 @@ use super::{
 use decodex_core::{
 	BlobStore, CodexExperimentCommandOutcome, CodexExperimentIdentity,
 	CodexExperimentObservationKind, ContextPack, ContextPackInput, ContextPackPolicy,
-	ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlanKind,
-	ContinuationRejection, ManagedRunSafetyInput, PinnedContextSource, PossibleSideEffects,
-	ProjectId, SafetyObservationId, TurnId,
+	ContinuationCommandOutcome, ContinuationPlanKind, ContinuationRejection, PinnedContextSource,
+	PossibleSideEffects, SameThreadContinuationEvidence,
 };
 use decodex_postgres::{
 	AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
 	CodexExperimentCreationFenceOutcome, CodexExperimentTitleSetFenceOutcome,
-	ContinuationPlanEffect, FenceCodexExperimentTitleSet, ManagedRunSafetyOutcome,
-	PlanContinuation, PostgresStore, PrepareCodexExperiment, RecordCodexExperimentObservation,
-	RouteAccount,
+	ContinuationPlanEffect, FenceCodexExperimentTitleSet, PlanContinuation, PostgresStore,
+	PrepareCodexExperiment, RecordCodexExperimentObservation, RouteAccount,
 };
-
-const SUBMITTED_RECEIPT_ID: &str = "f1000000-0000-4000-8000-000000000017";
 
 pub(super) async fn assert_continuation_contract(
 	store: &PostgresStore,
@@ -37,7 +33,6 @@ pub(super) async fn assert_continuation_contract(
 	let (same_thread, same_thread_request) =
 		assert_same_thread_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
-	assert_historical_lineage_survives_managed_run_advance(store, owner, routing).await?;
 	assert_lineage_and_restart_contract(
 		owner,
 		(migration, runtime),
@@ -50,153 +45,10 @@ pub(super) async fn assert_continuation_contract(
 	Ok(())
 }
 
-async fn assert_historical_lineage_survives_managed_run_advance(
-	store: &PostgresStore,
-	owner: &Client,
-	routing: &RoutingFixture,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let experiment_id = uuid(0xef, 1);
-	let attempt_id = uuid(0xef, 2);
-	let marker = format!("decodex.experiment.v1:{experiment_id}");
-	let identity = CodexExperimentIdentity {
-		experiment_id: experiment_id.clone(),
-		managed_run_id: routing.selected_request.managed_run_id.clone(),
-		managed_run_revision: 1,
-		routing_snapshot_id: routing.selected.decision.snapshot_id.clone(),
-		account_id: routing.selected_account_id.clone(),
-		account_revision: 1,
-		role_profile_revision: 1,
-		build_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-		repository_cwd: "/srv/vnext-acceptance".into(),
-		thread_title: format!("V15 stale authority {marker}"),
-	};
-	assert!(matches!(
-		store
-			.prepare_codex_experiment(
-				"v15-stale-authority-prepare",
-				&PrepareCodexExperiment { identity },
-			)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	let project_id: String = owner
-		.query_one(
-			"SELECT project_id::text FROM decodex.managed_runs WHERE managed_run_id=$1::text::uuid",
-			&[&routing.selected_request.managed_run_id.as_str()],
-		)
-		.await?
-		.get(0);
-	let outcome = store
-		.apply_managed_run_safety_input(
-			"v17-run-revision-advance",
-			&ProjectId::new(project_id)?,
-			&routing.selected_request.managed_run_id,
-			1,
-			&ManagedRunSafetyInput::PositivelyObservedUnknownTurn {
-				observation_id: SafetyObservationId::new(uuid(0xef, 3))?,
-				runtime_session_id: routing.selected_runtime_session_id.clone(),
-				turn_id: TurnId::new("ef000000-0000-1000-8000-000000000003")?,
-			},
-		)
-		.await?;
-	let ManagedRunSafetyOutcome::Success(effect) = outcome else {
-		return Err("ManagedRun revision advance was rejected".into());
-	};
-	assert_eq!(effect.managed_run_revision, 2);
-	assert!(effect.runtime_session_diverged);
-	let fence = store
-		.mark_codex_experiment_creation_possible(
-			"v15-stale-authority-fence",
-			&experiment_id,
-			1,
-			&attempt_id,
-		)
-		.await?;
-	let CodexExperimentCreationFenceOutcome::Rejected(rejection) = fence else {
-		return Err("stale V15 authority granted fresh creation permission".into());
-	};
-	assert_eq!(rejection.operation, "mark_codex_experiment_creation_possible");
-	assert_eq!(rejection.code, "creation_not_authorized");
-	let stale_fence_absent: bool = owner
-		.query_one(
-			concat!(
-				"SELECT experiment.revision=1 AND experiment.state='prepared'",
-				"AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_revisions AS revision ",
-				"WHERE revision.experiment_id=experiment.experiment_id AND revision.revision=2)",
-				"AND NOT EXISTS (SELECT 1 FROM decodex.codex_experiment_creation_attempts AS attempt ",
-				"WHERE attempt.experiment_id=experiment.experiment_id)",
-				"FROM decodex.codex_experiments AS experiment ",
-				"WHERE experiment.experiment_id=$1::text::uuid",
-			),
-			&[&experiment_id],
-		)
-		.await?
-		.get(0);
-	assert!(stale_fence_absent);
-
-	let lineage = owner
-		.query_one(
-			concat!(
-				"SELECT run.revision=2 AND run.runtime_session_revision=2 ",
-				"AND session.revision=2 AND session.state='diverged',",
-				"EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment ",
-				"WHERE experiment.managed_run_id=run.managed_run_id) AND ",
-				"NOT EXISTS (SELECT 1 FROM decodex.codex_experiments AS experiment ",
-				"LEFT JOIN decodex.routing_snapshots AS snapshot ",
-				"ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=",
-				"(experiment.routing_snapshot_id,experiment.managed_run_id,",
-				"experiment.managed_run_revision)",
-				"WHERE experiment.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),",
-				"EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision ",
-				"WHERE decision.managed_run_id=run.managed_run_id) AND ",
-				"NOT EXISTS (SELECT 1 FROM decodex.routing_decisions AS decision ",
-				"LEFT JOIN decodex.routing_snapshots AS snapshot ",
-				"ON (snapshot.snapshot_id,snapshot.managed_run_id,snapshot.managed_run_revision)=",
-				"(decision.snapshot_id,decision.managed_run_id,decision.managed_run_revision)",
-				"WHERE decision.managed_run_id=run.managed_run_id AND snapshot.snapshot_id IS NULL),",
-				"EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan ",
-				"WHERE plan.managed_run_id=run.managed_run_id) AND ",
-				"NOT EXISTS (SELECT 1 FROM decodex.continuation_plans AS plan ",
-				"LEFT JOIN decodex.routing_decisions AS decision ",
-				"ON (decision.decision_id,decision.managed_run_id,decision.managed_run_revision)=",
-				"(plan.routing_decision_id,plan.managed_run_id,plan.managed_run_revision)",
-				"WHERE plan.managed_run_id=run.managed_run_id AND decision.decision_id IS NULL)",
-				"FROM decodex.managed_runs AS run ",
-				"JOIN decodex.runtime_sessions AS session ",
-				"ON session.runtime_session_id=run.runtime_session_id ",
-				"WHERE run.managed_run_id=$1::text::uuid",
-			),
-			&[&routing.selected_request.managed_run_id.as_str()],
-		)
-		.await?;
-	for index in 0..4 {
-		assert!(lineage.get::<_, bool>(index), "historical run lineage assertion {index}");
-	}
-	Ok(())
-}
-
 async fn prepare_continuation_fixture(
 	owner: &Client,
 	routing: &RoutingFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	owner
-		.execute(
-			concat!(
-				"INSERT INTO decodex.managed_run_submitted_turn_receipts(",
-				"receipt_id,managed_run_id,project_id,runtime_session_id,runtime_session_revision,",
-				"turn_id,submitted_at) SELECT $1::text::uuid,run.managed_run_id,run.project_id,",
-				"run.runtime_session_id,run.runtime_session_revision,$2::text::uuid,",
-				"pg_catalog.clock_timestamp() FROM decodex.managed_runs AS run ",
-				"WHERE run.managed_run_id=$3::text::uuid",
-			),
-			&[
-				&SUBMITTED_RECEIPT_ID,
-				&"f2000000-0000-1000-8000-000000000017",
-				&routing.selected_request.managed_run_id.as_str(),
-			],
-		)
-		.await?;
-
 	owner.batch_execute("BEGIN").await?;
 	let rollback_response: Vec<u8> = owner
 		.query_one(
@@ -239,7 +91,7 @@ async fn assert_missing_fallback_contract(
 	)?;
 	assert_eq!(missing.plan.kind, ContinuationPlanKind::ContextPackFallback);
 	assert!(missing.fallback_context_pack.is_some());
-	assert_barrier(&missing.plan);
+	assert_inert_plan(&missing.plan);
 	let replay_inventory = continuation_effect_inventory(owner, &missing_request).await?;
 	assert_eq!(replay_inventory["activity"].as_array().map(|rows| rows.len()), Some(3),);
 	assert_eq!(replay_inventory["outbox"].as_array().map(|rows| rows.len()), Some(3),);
@@ -343,7 +195,7 @@ async fn assert_alternate_fallback_contracts(
 			.await?,
 	)?;
 	assert_eq!(mismatch.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_barrier(&mismatch.plan);
+	assert_inert_plan(&mismatch.plan);
 
 	let stale_evidence_decision = route_selected(store, routing, 6).await?;
 	let stale_snapshot_id = create_stale_evidence_snapshot(store, owner, routing).await?;
@@ -360,7 +212,7 @@ async fn assert_alternate_fallback_contracts(
 	)?;
 	assert_ne!(stale_snapshot_id, stale_evidence_decision.decision.snapshot_id);
 	assert_eq!(stale_evidence.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_barrier(&stale_evidence.plan);
+	assert_inert_plan(&stale_evidence.plan);
 
 	let ambiguous_decision = route_selected(store, routing, 4).await?;
 	create_ambiguous_creation_fence(store, routing, 4, &ambiguous_decision.decision.snapshot_id)
@@ -376,7 +228,7 @@ async fn assert_alternate_fallback_contracts(
 			.await?,
 	)?;
 	assert_eq!(ambiguous.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_barrier(&ambiguous.plan);
+	assert_inert_plan(&ambiguous.plan);
 	Ok(())
 }
 
@@ -412,6 +264,17 @@ async fn assert_same_thread_contract(
 		.same_thread_evidence
 		.as_ref()
 		.expect("same-thread response carries typed evidence");
+	let SameThreadContinuationEvidence::CausalExperiment {
+		routing_evidence_id,
+		routing_evidence_revision,
+		schema_fingerprint,
+		experiment_id,
+		experiment_revision,
+		observation_id,
+	} = evidence
+	else {
+		return Err("ManagedRun same-thread plan carries ProviderAttempt evidence".into());
+	};
 	let persisted = owner
 		.query_one(
 			concat!(
@@ -422,14 +285,14 @@ async fn assert_same_thread_contract(
 			&[&same_thread.plan.plan_id],
 		)
 		.await?;
-	assert_eq!(persisted.get::<_, String>(0), evidence.routing_evidence_id);
-	assert_eq!(persisted.get::<_, i64>(1), evidence.routing_evidence_revision);
-	assert_eq!(persisted.get::<_, String>(2), evidence.schema_fingerprint);
-	assert_eq!(persisted.get::<_, String>(3), evidence.experiment_id);
-	assert_eq!(persisted.get::<_, i64>(4), evidence.experiment_revision);
-	assert_eq!(persisted.get::<_, String>(5), evidence.observation_id);
+	assert_eq!(persisted.get::<_, String>(0), routing_evidence_id.as_str());
+	assert_eq!(persisted.get::<_, i64>(1), *routing_evidence_revision);
+	assert_eq!(persisted.get::<_, String>(2), schema_fingerprint.as_str());
+	assert_eq!(persisted.get::<_, String>(3), experiment_id.as_str());
+	assert_eq!(persisted.get::<_, i64>(4), *experiment_revision);
+	assert_eq!(persisted.get::<_, String>(5), observation_id.as_str());
 	assert!(same_thread.fallback_context_pack.is_none());
-	assert_barrier(&same_thread.plan);
+	assert_inert_plan(&same_thread.plan);
 	Ok((same_thread, same_thread_request))
 }
 
@@ -442,7 +305,7 @@ async fn assert_stale_revision_contract(
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let stale_decision = route_selected(store, routing, 5).await?;
 	let stale_request = PlanContinuation {
-		expected_managed_run_revision: 2,
+		expected_consumer_revision: 2,
 		..plan_request(5, &stale_decision.decision_id)
 	};
 	let stale_inventory = continuation_effect_inventory(owner, &stale_request).await?;
@@ -452,7 +315,7 @@ async fn assert_stale_revision_contract(
 		store
 			.plan_continuation(blob_store, "v17-stale-revision", &stale_request, fallback_pack,)
 			.await?,
-		ContinuationCommandOutcome::Rejected(ContinuationRejection::StaleManagedRunRevision)
+		ContinuationCommandOutcome::Rejected(ContinuationRejection::StaleConsumerRevision)
 	));
 	assert_eq!(receipt_count(owner, "v17-stale-revision").await?, 1);
 	let stale_plan_rows: i64 = owner
@@ -479,23 +342,20 @@ async fn assert_lineage_and_restart_contract(
 	let lineage = owner
 		.query_one(
 			concat!(
-				"SELECT plan.effect_barrier_state::text,plan.effect_barrier_revision,",
-				"plan.submitted_turn_receipt_count,NOT plan.replay_permitted,NOT plan.dispatch_enabled,",
-				"(SELECT count(*) FROM decodex.managed_run_submitted_turn_receipts ",
-				"WHERE managed_run_id=plan.managed_run_id AND receipt_id=$2::text::uuid)=1,",
+				"SELECT NOT plan.replay_permitted,NOT plan.dispatch_enabled,",
+				"plan.consumer_kind='managed_run_execution',",
+				"plan.managed_run_id IS NOT NULL AND plan.managed_run_revision=1 ",
+				"AND plan.managed_execution_id IS NOT NULL,",
 				"(SELECT count(*) FROM decodex.activity WHERE aggregate_kind='continuation_plan'",
 				"AND aggregate_id=plan.plan_id::text AND event_kind='continuation_plan_created')=1,",
 				"(SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='continuation_plan'",
 				"AND aggregate_id=plan.plan_id::text)=1 ",
 				"FROM decodex.continuation_plans AS plan WHERE plan.plan_id=$1::text::uuid",
 			),
-			&[&same_thread.plan.plan_id, &SUBMITTED_RECEIPT_ID],
+			&[&same_thread.plan.plan_id],
 		)
 		.await?;
-	assert_eq!(lineage.get::<_, String>(0), "guarded");
-	assert_eq!(lineage.get::<_, i64>(1), 1);
-	assert_eq!(lineage.get::<_, i64>(2), 1);
-	for index in 3..8 {
+	for index in 0..6 {
 		assert!(lineage.get::<_, bool>(index), "V17 lineage assertion {index}");
 	}
 	let (migration, runtime) = configs;
@@ -519,7 +379,7 @@ async fn create_ambiguous_creation_fence(
 	let experiment_id = uuid(0xe8, marker);
 	let mut identity = CodexExperimentIdentity {
 		experiment_id: experiment_id.clone(),
-		managed_run_id: routing.selected_request.managed_run_id.clone(),
+		managed_run_id: routing.selected_managed_run_id.clone(),
 		managed_run_revision: 1,
 		routing_snapshot_id: snapshot_id.to_owned(),
 		account_id: routing.selected_account_id.clone(),
@@ -583,7 +443,7 @@ async fn fallback_pack(
 		pinned: PinnedContextSource::new(
 			"vnext-acceptance-source",
 			1,
-			"PostgreSQL retains the exact continuation barrier.",
+			"PostgreSQL retains the exact inert continuation plan.",
 		)?,
 		optional_sources: vec![],
 	})?)
@@ -593,7 +453,7 @@ fn plan_request(marker: u8, decision_id: &str) -> PlanContinuation {
 	PlanContinuation {
 		operation_id: uuid(0xf4, marker),
 		routing_decision_id: decision_id.to_owned(),
-		expected_managed_run_revision: 1,
+		expected_consumer_revision: 1,
 		plan_id: uuid(0xf5, marker),
 		fallback_runtime_session_id: uuid(0xf6, marker),
 		fallback_account_snapshot_id: uuid(0xf7, marker),
@@ -631,7 +491,7 @@ async fn create_positive_experiment(
 	let marker_text = format!("decodex.experiment.v1:{experiment_id}");
 	let identity = CodexExperimentIdentity {
 		experiment_id: experiment_id.clone(),
-		managed_run_id: routing.selected_request.managed_run_id.clone(),
+		managed_run_id: routing.selected_managed_run_id.clone(),
 		managed_run_revision: 1,
 		routing_snapshot_id: snapshot_id.to_owned(),
 		account_id: routing.selected_account_id.clone(),
@@ -768,10 +628,7 @@ fn continuation_success<T>(
 	}
 }
 
-fn assert_barrier(plan: &decodex_core::ContinuationPlan) {
-	assert_eq!(plan.effect_barrier_state, ContinuationEffectBarrierState::Guarded);
-	assert_eq!(plan.effect_barrier_revision, 1);
-	assert_eq!(plan.submitted_turn_receipt_count, 1);
+fn assert_inert_plan(plan: &decodex_core::ContinuationPlan) {
 	assert!(!plan.replay_permitted);
 	assert!(!plan.dispatch_enabled);
 }
@@ -868,7 +725,10 @@ pub(super) async fn assert_restored_continuation_contract(
 				"(SELECT count(*) FROM decodex.continuation_plans ",
 				"WHERE kind='context_pack_fallback' AND fallback_context_pack_id IS NOT NULL ",
 				"AND fallback_runtime_session_id IS NOT NULL)=4,",
-				"(SELECT bool_and(submitted_turn_receipt_count=1 AND effect_barrier_revision=1)",
+				"(SELECT bool_and(consumer_kind='managed_run_execution' ",
+				"AND managed_run_id IS NOT NULL AND managed_run_revision=1 ",
+				"AND managed_execution_id IS NOT NULL AND NOT replay_permitted ",
+				"AND NOT dispatch_enabled)",
 				"FROM decodex.continuation_plans)",
 			),
 			&[],

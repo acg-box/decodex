@@ -7,6 +7,7 @@ mod cache;
 mod config;
 mod continuation;
 mod conversation;
+mod execution;
 mod experiment;
 mod identity;
 mod managed_repository;
@@ -14,8 +15,10 @@ mod managed_run;
 #[cfg(unix)] mod path_unix;
 mod paths;
 mod policy;
+mod process_generation;
 mod program;
 mod project;
+mod provider_attempt;
 mod quota;
 mod reset_card;
 mod routing;
@@ -24,7 +27,14 @@ mod wake;
 mod work_item;
 
 pub use self::{
-	account::{AccountError, AccountId, AccountState},
+	account::{
+		AccountError, AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
+		AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
+		AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+		AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
+		AccountSelectionRecovery, AccountState, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+	},
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
 		lead_status_for_project,
@@ -40,12 +50,12 @@ pub use self::{
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
 		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
-		ProfileName, RemoteProfile, RepositoryName, ResetCardAccountConfig, ServerHostConfig,
-		ServerProfile, ServerRepositoryPath,
+		ProfileName, RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile,
+		ServerRepositoryPath,
 	},
 	continuation::{
-		ContinuationCommandOutcome, ContinuationEffectBarrierState, ContinuationPlan,
-		ContinuationPlanKind, ContinuationRejection, SameThreadContinuationEvidence,
+		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
+		SameThreadContinuationEvidence,
 	},
 	conversation::{
 		AccountSnapshot, ArtifactId, ArtifactReference, ArtifactStatus, ContextPack,
@@ -61,6 +71,7 @@ pub use self::{
 		RuntimeSessionState, Turn, TurnId, TurnRole, TurnStatus, compile_context_pack,
 		contains_credential_material, is_canonical_media_type, is_credential_metadata_key,
 	},
+	execution::ExecutionConsumer,
 	experiment::{
 		CodexExperimentCommandOutcome, CodexExperimentCreationPossible, CodexExperimentIdentity,
 		CodexExperimentObservation, CodexExperimentObservationKind, CodexExperimentPrepared,
@@ -100,9 +111,9 @@ pub use self::{
 		resolve_operation_assignment, worktree_ready_readback_request,
 	},
 	managed_run::{
-		EffectId, ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
-		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunSafetyInput,
-		ManagedRunState, ManagedRunWaitReason, SafetyObservationId, SubmittedTurnReceiptId,
+		ExecutionAssignment, ExecutionAssignmentRole, ManagedRunError, ManagedRunId,
+		ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase, ManagedRunState,
+		ManagedRunWaitReason,
 	},
 	paths::{DecodexPaths, DecodexRoot, PathError},
 	policy::{
@@ -110,6 +121,15 @@ pub use self::{
 		MAX_POLICY_SNAPSHOT_KEY_BYTES, MAX_POLICY_SNAPSHOT_VALUE_BYTES, Policy, PolicyError,
 		PolicyId, PolicyProvenance, PolicyRepository, PolicyRevision, PolicyRevisionAcceptance,
 		PolicyRevisionId, PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp,
+	},
+	process_generation::{
+		BoundProcessGeneration, MAX_PROCESS_IDENTITY_BYTES, MAX_PROCESS_RUNNER_IDENTITY_BYTES,
+		ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity,
+		ProcessControlKind, ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
+		ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
+		ProcessGenerationAccountBinding, ProcessGenerationError, ProcessGenerationId,
+		ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity, ProcessIsolationKind,
+		ProcessRunnerIdentity, ProcessStartIdentity,
 	},
 	program::{
 		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,
@@ -128,6 +148,14 @@ pub use self::{
 		ProjectRepository, ProjectRepositoryBinding, ProjectStatus, RepositoryIdentity,
 		ServerProjectPath,
 	},
+	provider_attempt::{
+		MAX_PROVIDER_EVIDENCE_IDENTITY_BYTES, MAX_PROVIDER_REQUEST_KEY_BYTES, ManagedExecutionId,
+		ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptError, ProviderAttemptId,
+		ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
+		ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource,
+		ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey, ProviderRequestKeys,
+		ProviderTerminalOutcome,
+	},
 	quota::{
 		AccountQuotaClassification, AccountQuotaFacts, AccountQuotaObservation, AccountReadyAt,
 		AllAccountsQuotaFacts, AuthenticationObservation, MalformedObservation,
@@ -144,12 +172,12 @@ pub use self::{
 	},
 	routing::{
 		CodexCapability, RoutingBlocker, RoutingCapabilityState, RoutingCommandOutcome,
-		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionExclusion, RoutingDecisionKind,
-		RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingEvidenceEffect,
-		RoutingKernelError, RoutingMemberDisposition, RoutingNoRouteReason, RoutingPolicyEffect,
-		RoutingPolicyMember, RoutingRejection, RoutingSnapshot, RoutingSnapshotCapabilityFact,
-		RoutingSnapshotMember, RoutingSnapshotQuotaFact, RoutingTimestampPrecision,
-		RoutingTimestampProvenance, decide_routing,
+		RoutingDecision, RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion,
+		RoutingDecisionKind, RoutingDecisionQuotaFact, RoutingDecisionSnapshot,
+		RoutingEvidenceEffect, RoutingKernelError, RoutingMemberDisposition, RoutingNoRouteReason,
+		RoutingPolicyEffect, RoutingPolicyMember, RoutingRejection, RoutingSnapshot,
+		RoutingSnapshotCapabilityFact, RoutingSnapshotMember, RoutingSnapshotQuotaFact,
+		RoutingTimestampPrecision, RoutingTimestampProvenance, decide_routing,
 	},
 	storage::StorageError,
 	wake::{

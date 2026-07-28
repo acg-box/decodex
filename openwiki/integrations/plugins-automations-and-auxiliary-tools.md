@@ -173,29 +173,24 @@ decodex-publisher validate-social
 
 ## Native Decodex App
 
-`apps/decodex-app/` is a SwiftPM macOS app for the local account pool (`apps/decodex-app/README.md`). It:
+`apps/decodex-app/` is the current SwiftPM macOS menu-bar client
+(`apps/decodex-app/README.md`). It:
 
-- Lists stored accounts without token material.
-- Pins future Decodex runs to one account or returns to balanced selection.
-- Forces Codex to use a stored account by writing `auth.json`.
-- Shows vNext reset cards from the common daemon service. The first click starts a
+- Reads the complete account skeleton from the common daemon service and renders one
+  UUID-keyed row for every account in canonical routing order.
+- Loads quota windows and Reset Cards independently for each row. One slow or failed
+  provider request does not hide the other accounts.
+- Uses Reset Cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click first persists a pending attempt,
   then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
   public grant/expiry descriptor, and one idempotency key. `decodexd` owns credentials,
   app-server, the opaque credit ID, the provider effect, and durable recovery.
-- Runs isolated Codex device login and imports the resulting auth file. The App
-  honors an explicit `CODEX_CLI_PATH` override; otherwise it resolves the login
-  executable from the Codex macOS application registered with Launch Services,
-  then falls back to a `codex` executable in the inherited `PATH`.
-- Removes stored accounts from the local pool.
 - Invokes the bundled `decodex-cli` for active vNext reset-card requests. The bundle
-  also distributes `decodexd`, but Swift does not start it or inject credentials.
-  Operators must run the independently configured daemon service. The macOS
-  source-install path provisions this service with
+  contains no server or credential helper, and Swift does not start a service or
+  inject credentials. Operators run the independently configured daemon service.
+  The macOS source-install path provisions that service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
-  PostgreSQL and daemon process generations. Separate bundled
-  legacy `decodex` and `decodex-app-helper` executables remain for unrelated existing
-  account UI; they have no vNext reset-card authority.
+  PostgreSQL and daemon process generations.
 - Retries bounded startup-only Reset Card reads while the independently supervised
   service becomes ready. It does not retry consume, replace an idempotency key, or
   take service lifecycle ownership.
@@ -208,10 +203,13 @@ The reset-card path is not the scheduler, project registry owner, credential own
 app-server process owner, or runtime authority. Its bounded private journal retains at
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
-The separate legacy account path may still manage its existing local `decodex serve`
-lifecycle. See [Runtime architecture](../architecture/runtime-architecture.md) for the
-shared service flow and [Commands and validation](../operations/commands-and-validation.md)
-for the direct Swift and staging checks.
+There is one Swift account surface and one bundled vNext CLI. The package has no legacy
+account store, helper, HTTP control plane, or dual UI. Slice-1 backend startup uses the clean
+[Account Lifecycle Authority](../specs/account-lifecycle-authority.md) with no watcher,
+credential environment projection, helper, mapping, or `:8192` service.
+See [Runtime architecture](../architecture/runtime-architecture.md) for the shared
+service flow and [Commands and validation](../operations/commands-and-validation.md)
+for the Swift and staging checks.
 
 Build/stage commands:
 

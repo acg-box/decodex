@@ -170,8 +170,9 @@ where
 		prepared: RepositoryPreparationOutcome,
 	) -> Result<ManagedRepositorySagaOutcome, StoreError> {
 		let receipt = match prepared {
-			RepositoryPreparationOutcome::ExistingExact(operation, _) =>
-				return Ok(ManagedRepositorySagaOutcome::ExistingExact(operation)),
+			RepositoryPreparationOutcome::ExistingExact(operation, _) => {
+				return Ok(ManagedRepositorySagaOutcome::ExistingExact(operation));
+			},
 			RepositoryPreparationOutcome::Prepared { receipt, .. } => receipt,
 		};
 		let effects = &mut self.effects;
@@ -182,11 +183,12 @@ where
 			})
 			.await?;
 		let (dispatch, repository, operation, serialization_release_confirmed) = match fenced {
-			RepositoryDispatchFenceOutcome::Terminal { repository, operation } =>
+			RepositoryDispatchFenceOutcome::Terminal { repository, operation } => {
 				return Ok(ManagedRepositorySagaOutcome::TerminalWithoutDispatch {
 					operation,
 					repository,
-				}),
+				});
+			},
 			RepositoryDispatchFenceOutcome::Authorized {
 				dispatch,
 				repository,
