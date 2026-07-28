@@ -980,8 +980,9 @@ cover:
   error separately, closes every owned resource, and proves fresh lock acquisition;
 - one fixed wrapper with bundle identifier `box.acg.decodex.daemon`, main
   `Contents/MacOS/decodexd`, strict signature, hardened runtime, embedded profile,
-  team `T54QFA7W2S`, application identifier and sole effective Keychain access group
-  `T54QFA7W2S.box.acg.decodex.daemon`, and profile channel `development`;
+  team `T54QFA7W2S`, application identifier and sole effective signed Keychain access
+  group `T54QFA7W2S.box.acg.decodex.daemon`, canonical profile allowlist
+  `T54QFA7W2S.*`, and device-bound profile channel `development`;
 - `prepared` before Keychain creation, operation-descriptor-first replay, and
   phase-derived `AbsentInitialize` and `ExistingHydrate` recovery without generic
   cancellation or state-based reclassification;

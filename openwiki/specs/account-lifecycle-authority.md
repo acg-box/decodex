@@ -91,10 +91,14 @@ or retired artifact. It is never an Account Lifecycle execution entry.
 
 The wrapper has one fixed `Info.plist`, a valid hardened-runtime signature, an embedded
 provisioning profile, and exact signed entitlements. The profile, signature, and
-entitlements must agree on bundle identifier, application identifier, team, and the
-single effective access group. The signed entitlement and access-group sets are closed:
-missing, extra, or duplicate values refuse. This checkpoint accepts only the
-`development` profile channel. It is not public distribution or notarization evidence.
+entitlements must agree on bundle identifier, application identifier, and team. The
+macOS provisioning profile must contain the single canonical team allowlist
+`T54QFA7W2S.*`; the signed entitlement must narrow that allowlist to the sole effective
+group `T54QFA7W2S.box.acg.decodex.daemon`. Both sets are closed: missing, extra, or
+duplicate values refuse. The profile must contain at least one registered device and
+must not be an all-device profile. This proves the `development` profile channel
+without applying the non-macOS `get-task-allow` profile rule. It is not public
+distribution or notarization evidence.
 The wrapper composer and verifier are deterministic and daemon-specific. They do not
 accept arbitrary identities, profiles, entitlements, groups, channels, or fallback
 binaries. SwiftUI and the CLI remain clients and receive no Keychain authority.

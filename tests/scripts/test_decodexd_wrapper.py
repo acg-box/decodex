@@ -43,8 +43,13 @@ class DecodexdWrapperTests(unittest.TestCase):
             "ProvisionedDevices": ["device"],
             "DeveloperCertificates": [self.leaf_certificate],
             "Entitlements": {
-                **self.module.EXPECTED_ENTITLEMENTS,
-                "get-task-allow": True,
+                "com.apple.application-identifier": (
+                    self.module.APPLICATION_IDENTIFIER
+                ),
+                "com.apple.developer.team-identifier": (
+                    self.module.TEAM_IDENTIFIER
+                ),
+                "keychain-access-groups": self.module.PROFILE_ACCESS_GROUPS,
             },
         }
 
@@ -301,6 +306,17 @@ class DecodexdWrapperTests(unittest.TestCase):
         }
         del wrong_key["Entitlements"]["com.apple.application-identifier"]
         variants["legacy_application_key"] = wrong_key
+        wrong_access_group = self.valid_profile()
+        wrong_access_group["Entitlements"]["keychain-access-groups"] = (
+            self.module.ACCESS_GROUPS
+        )
+        variants["signed_group_used_as_profile_allowlist"] = wrong_access_group
+        extra_access_group = self.valid_profile()
+        extra_access_group["Entitlements"]["keychain-access-groups"] = [
+            *self.module.PROFILE_ACCESS_GROUPS,
+            "OTHER.*",
+        ]
+        variants["extra_profile_access_group"] = extra_access_group
         missing_certificates = self.valid_profile()
         del missing_certificates["DeveloperCertificates"]
         variants["missing_certificates"] = missing_certificates
