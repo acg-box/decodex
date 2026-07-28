@@ -239,7 +239,10 @@ def terminate_bounded_subprocess(process: subprocess.Popen[Any]) -> None:
         os.killpg(process_group_id, signal.SIGTERM)
     except ProcessLookupError:
         pass
-    time.sleep(0.25)
+    try:
+        process.wait(timeout=0.25)
+    except subprocess.TimeoutExpired:
+        pass
     try:
         os.killpg(process_group_id, signal.SIGKILL)
     except ProcessLookupError:
@@ -3422,7 +3425,7 @@ def valid_descriptor_cloexec_refusal(
         child = None
         identity = capture_process_identity(installer, process.pid)
         event = gate.next_event(lambda: process is not None and process.poll() is None)
-        if event != "installer_lock_cloexec_verified":
+        if event is None or event.partition("|")[0] != "installer_lock_cloexec_verified":
             raise GateFailure("valid borrowed descriptor did not reach the CLOEXEC proof")
         assert_contended(paths.namespace_lock)
         gate.continue_child()
