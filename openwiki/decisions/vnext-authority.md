@@ -49,11 +49,12 @@ dual authority, or fallback. Shared normal `~/.codex` remains Codex configuratio
 plugin, rollout, and thread visibility authority.
 
 The exact protected Codex build must positively prove the
-`account/chatgptAuthTokens/refresh` callback before readiness. Current generic rejection
-of inbound app-server requests fails that gate. The existing V23 ProcessGeneration
-intent, manifest, fence, and readback bind the initial account revision, canonical
-credential version/fingerprint, provider identity, and callback profile; no new ledger
-is added. The normative details are in
+`account/chatgptAuthTokens/refresh` callback before readiness. The current exact
+`codex-cli 0.146.0-alpha.3.1` profile handles the root refresh request and response through
+the Account Service, subject to exact-image, generated-schema, and live callback
+preflights. The existing V23 ProcessGeneration intent, manifest, fence, and readback bind
+the initial account revision, canonical credential version/fingerprint, provider identity,
+and callback profile; no new ledger is added. The normative details are in
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
 
 XY-1274 quota-authority amendment accepted 2026-07-16: quota storage accepts only exact
