@@ -370,7 +370,7 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 199] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1729,19 +1729,11 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	),
 	exact_function_contract(
 		"lock_account_routing_universe_exact",
-		"decodex.lock_account_routing_universe_exact(pg_catalog.bool)",
-		"lock_account_routing_universe_exact(p_require_complete boolean)",
-		"p_require_complete boolean",
+		"decodex.lock_account_routing_universe_exact()",
+		"lock_account_routing_universe_exact()",
+		"",
 		"boolean",
 		"plpgsql",
-		"v",
-	),
-	table_function_contract(
-		"replace_account_routing_control_for_migration_exact",
-		"decodex.replace_account_routing_control_for_migration_exact(pg_catalog.int8,decodex.account_selection_mode,pg_catalog.uuid,pg_catalog._uuid)",
-		"replace_account_routing_control_for_migration_exact(\n\tp_expected_revision bigint,p_mode decodex.account_selection_mode,\n\tp_fixed_account_id uuid,p_order uuid[]\n)",
-		"p_expected_revision bigint, p_mode decodex.account_selection_mode, p_fixed_account_id uuid, p_order uuid[]",
-		"TABLE(result_code text, revision bigint)",
 		"v",
 	),
 	FunctionContract {
@@ -1788,15 +1780,6 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
 		"attest_codex_account_capability_exact(\n\tp_build_identity text,p_executable_sha256 text,p_schema_sha256 text,\n\tp_callback_profile_sha256 text,p_login_chatgpt_auth_tokens boolean,p_refresh_callback boolean\n)",
 		"p_build_identity text, p_executable_sha256 text, p_schema_sha256 text, p_callback_profile_sha256 text, p_login_chatgpt_auth_tokens boolean, p_refresh_callback boolean",
-		"text",
-		"plpgsql",
-		"v",
-	),
-	exact_function_contract(
-		"record_account_migration_receipt_exact",
-		"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
-		"record_account_migration_receipt_exact(\n\tp_manifest_sha256 text,p_manifest jsonb,p_destination_receipt jsonb,\n\tp_retirement_receipt jsonb,p_account_count integer\n)",
-		"p_manifest_sha256 text, p_manifest jsonb, p_destination_receipt jsonb, p_retirement_receipt jsonb, p_account_count integer",
 		"text",
 		"plpgsql",
 		"v",
@@ -1964,7 +1947,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		"s",
 	),
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 87] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 86] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -2036,7 +2019,6 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 87] = [
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
 	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
 	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
-	"decodex.record_account_migration_receipt_exact(pg_catalog.text,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.jsonb,pg_catalog.int4)",
 	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -2525,7 +2507,6 @@ WITH set_roles AS (
 	,('account_routing_order', false, false, false, false)
 	,('account_quota_facts', false, false, false, false)
 	,('codex_account_capability', false, false, false, false)
-	,('account_migration_receipts', false, false, false, false)
 ), allowed_relations(
   schema_name, table_name, can_select, can_insert, can_update, can_delete
 ) AS (
@@ -5558,7 +5539,6 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "observe_account_quota_error_exact"
 			| "observe_account_store_exact"
 			| "attest_codex_account_capability_exact"
-			| "record_account_migration_receipt_exact"
 			| "prepare_process_generation_exact"
 			| "bind_process_generation_identity_exact"
 			| "mark_process_generation_ready_exact"
@@ -6264,7 +6244,7 @@ mod tests {
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
 		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 23);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 199);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())

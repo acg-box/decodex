@@ -2,34 +2,14 @@ import AppKit
 import SwiftUI
 
 enum AccountPanelLayout {
-	static let accountListScrollSpace = "account-list-scroll"
 	static let screenVerticalMargin: CGFloat = 44
 	static let panelVerticalPadding: CGFloat = 18
-	static let sectionSpacing: CGFloat = 6
-	static let headerHeight: CGFloat = 28
-	static let accountSummaryHeight: CGFloat = 31
-	static let telemetryHorizontalPadding: CGFloat = 7
-	static let telemetryTopPadding: CGFloat = 7
-	static let telemetryBottomPadding: CGFloat = 2
-	static let telemetryVerticalPadding: CGFloat = telemetryTopPadding + telemetryBottomPadding
-	static let telemetryRowSpacing: CGFloat = 5
-	static let telemetryProfileHeight: CGFloat = 50
-	static let telemetryPoolHeight: CGFloat = 16
-	static let telemetryPoolMeasuredHeight: CGFloat = 29
-	static let noticeHeight: CGFloat = 30
-	static let vNextResetCardsHeight: CGFloat = 118
-	static let minimumScrollableListHeight: CGFloat = 312
-
-	static func resolvedAccountListContentHeight(
-		measured: CGFloat,
-		estimated: CGFloat
-	) -> CGFloat {
-		guard measured.isFinite, measured > 0 else {
-			return estimated
-		}
-
-		return ceil(measured)
-	}
+	static let panelWidth: CGFloat = 344
+	static let minimumAccountListHeight: CGFloat = 150
+	static let maximumAccountListHeight: CGFloat = 620
+	static let estimatedAccountRowHeight: CGFloat = 142
+	static let accountRowSpacing: CGFloat = 6
+	static let fixedChromeHeight: CGFloat = 116
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
@@ -38,6 +18,39 @@ enum AccountPanelLayout {
 		} ?? NSScreen.main
 
 		return screen?.visibleFrame.height ?? 760
+	}
+
+	static func accountListHeight(
+		accountCount: Int,
+		windowVisibleFrame: CGRect?,
+	) -> CGFloat {
+		let visibleHeight = resolvedScreenVisibleHeight(
+			windowVisibleFrame: windowVisibleFrame,
+			fallback: activeScreenVisibleHeight()
+		)
+		let screenBound = max(
+			minimumAccountListHeight,
+			visibleHeight - screenVerticalMargin - panelVerticalPadding - fixedChromeHeight
+		)
+		let rowCount = max(1, accountCount)
+		let contentEstimate = CGFloat(rowCount) * estimatedAccountRowHeight
+			+ CGFloat(max(0, rowCount - 1)) * accountRowSpacing
+
+		return min(
+			maximumAccountListHeight,
+			screenBound,
+			max(minimumAccountListHeight, contentEstimate)
+		)
+	}
+
+	static func resolvedAccountListContentHeight(
+		measured: CGFloat,
+		estimated: CGFloat
+	) -> CGFloat {
+		guard measured.isFinite, measured > 0 else {
+			return estimated
+		}
+		return ceil(measured)
 	}
 
 	static func resolvedScreenVisibleHeight(
@@ -50,24 +63,6 @@ enum AccountPanelLayout {
 		else {
 			return fallback
 		}
-
 		return windowVisibleFrame.height
 	}
-}
-
-enum AccountPrivacy {
-	static let hiddenValue = "hidden"
-	static let visibleValue = "visible"
-}
-
-struct AccountPanelAnimationKey: Equatable {
-	let accountIDs: [String]
-	let isInitialLoading: Bool
-	let hasAccounts: Bool
-	let hasTelemetry: Bool
-	let hasNotice: Bool
-	let hasUsageProbeError: Bool
-	let hasFixedSelection: Bool
-	let emailsHidden: Bool
-	let needsScrolling: Bool
 }

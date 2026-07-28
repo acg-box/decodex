@@ -197,7 +197,6 @@ args = [
 # | ----------------------------------------- | --------- | ---- |
 # | build                                     | composite |      |
 # | build-node                                | command   | site |
-# | build-vnext-account-migration-transition  | command   |      |
 
 [tasks.build]
 clear = true
@@ -214,20 +213,6 @@ command = "npm"
 args = [
 	"run",
 	"build",
-]
-
-[tasks.build-vnext-account-migration-transition]
-workspace = false
-command = "cargo"
-args = [
-	"build",
-	"--locked",
-	"--package",
-	"decodexd",
-	"--package",
-	"decodex-postgres",
-	"--features",
-	"decodexd/account-migration-transition-gate,decodex-postgres/account-migration-transition-gate",
 ]
 
 # Format
@@ -431,7 +416,6 @@ args = [
 # | test-rust-headless                 | command   |     |
 # | test-sandboxed                     | composite |     |
 # | test-vnext-architecture            | command   |     |
-# | test-vnext-account-migration-transition | command |   |
 # | test-vnext-cli-diagnostics         | command   |     |
 # | test-vnext-postgres-managed-runs   | command   |     |
 # | test-vnext-postgres-store          | command   |     |
@@ -539,14 +523,6 @@ args = [
 	"-m",
 	"unittest",
 	"tests/scripts/test_vnext_architecture.py",
-]
-
-[tasks.test-vnext-account-migration-transition]
-workspace = false
-dependencies = ["build-vnext-account-migration-transition"]
-command = "python3"
-args = [
-	"scripts/vnext/account_migration_transition_test.py",
 ]
 
 [tasks.test-vnext-cli-diagnostics]

@@ -12,6 +12,9 @@ const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 27;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
+#[cfg(test)]
+const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
+	include_str!("../migrations/V27__mac_account_lifecycle.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -50,13 +53,6 @@ pub(crate) async fn run_through_v10(client: &mut Client) -> Result<(), StoreErro
 #[cfg(feature = "test-support")]
 pub(crate) async fn run_through_v13(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().set_target(Target::Version(13)).run_async(&mut ***client).await?;
-
-	Ok(())
-}
-
-#[cfg(feature = "test-support")]
-pub(crate) async fn run_through_v26(client: &mut Client) -> Result<(), StoreError> {
-	migrations::runner().set_target(Target::Version(26)).run_async(&mut ***client).await?;
 
 	Ok(())
 }
@@ -161,7 +157,9 @@ async fn verify_exact_ledger(
 
 #[cfg(test)]
 mod tests {
-	use super::{CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, migrations};
+	use super::{
+		CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
+	};
 
 	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
 		["coalesce", "nullif", "greatest", "least", "extract", "substring", "position"];
@@ -350,5 +348,25 @@ mod tests {
 		] {
 			assert!(migration.contains(required), "{required}");
 		}
+	}
+
+	#[test]
+	fn v27_is_an_empty_registry_clean_break_without_account_migration_authority() {
+		let migration = MAC_ACCOUNT_LIFECYCLE_MIGRATION;
+
+		assert!(migration.contains("IF EXISTS (SELECT 1 FROM decodex.accounts) THEN"));
+		assert!(migration.contains("V27 requires an empty pre-V27 account registry"));
+		for retired in [
+			"account_migration_receipts",
+			"decodex_account_migration_handoff",
+			"record_account_migration_receipt_exact",
+			"replace_account_routing_control_for_migration_exact",
+			"p_require_complete",
+		] {
+			assert!(!migration.contains(retired), "{retired}");
+		}
+		assert!(
+			migration.contains("CREATE FUNCTION decodex.lock_account_routing_universe_exact()")
+		);
 	}
 }

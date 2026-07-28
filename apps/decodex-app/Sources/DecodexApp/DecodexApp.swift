@@ -71,30 +71,18 @@ enum AppAssets {
 	}()
 }
 
-@MainActor
-@Observable
-final class LoginWindowState {
-	var mode = AccountLoginSheetMode.newAccount
-	var isPresented = false
-}
-
 @main
 struct DecodexApp: App {
 	@NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
 	@State private var appAppearance = AppAppearanceStore()
-	@State private var store: AccountStore
-	@State private var resetCardStore: ResetCardStore
-	@State private var loginWindowState = LoginWindowState()
+	@State private var store: ResetCardStore
 
 	@MainActor
 	init() {
-		let accountStore = AccountStore()
-		let resetStore = ResetCardStore()
+		let store = ResetCardStore()
 
-		_store = State(initialValue: accountStore)
-		_resetCardStore = State(initialValue: resetStore)
-		accountStore.start()
-		resetStore.start()
+		_store = State(initialValue: store)
+		store.start()
 	}
 
 	var body: some Scene {
@@ -113,11 +101,7 @@ struct DecodexApp: App {
 
 	@ViewBuilder
 	private var menuBarContent: some View {
-		AccountPanelView(
-			store: store,
-			resetCardStore: resetCardStore,
-			loginWindowState: loginWindowState
-		)
+		AccountPanelView(store: store)
 			.environment(\.colorScheme, appAppearance.colorScheme)
 			.preferredColorScheme(appAppearance.colorScheme)
 			.containerBackground(.clear, for: .window)

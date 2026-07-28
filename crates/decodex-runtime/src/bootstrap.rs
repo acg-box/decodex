@@ -372,8 +372,9 @@ async fn bootstrap_macos_account_runtime(
 	let probe_account = match inventory {
 		BootstrapVaultInventory::ReadyEmpty => None,
 		BootstrapVaultInventory::Probe(account) => Some(account),
-		BootstrapVaultInventory::Unavailable =>
-			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity)),
+		BootstrapVaultInventory::Unavailable => {
+			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		},
 	};
 	if probe_account.is_some() && service.arm_callback_capability_probe(&attestation).await.is_err()
 	{

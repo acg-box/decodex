@@ -1090,8 +1090,9 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 					AccountOperationPhase::StoreApplied => AccountOperationPhaseDto::StoreApplied,
 					AccountOperationPhase::RecoveryRequired =>
 						AccountOperationPhaseDto::RecoveryRequired,
-					AccountOperationPhase::Committed | AccountOperationPhase::Cancelled =>
-						return Err(()),
+					AccountOperationPhase::Committed | AccountOperationPhase::Cancelled => {
+						return Err(());
+					},
 				},
 				recovery_code: operation
 					.recovery_code
@@ -1517,27 +1518,6 @@ fn decode_account_command_receipt(
 			Ok(Err(error)),
 		_ => Err(()),
 	}
-}
-
-#[cfg(feature = "account-migration-transition-gate")]
-pub(crate) fn encode_account_migration_recovery_for_gate(
-	operation_id: AccountOperationId,
-	result: Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
-) -> Result<serde_json::Value, StoreError> {
-	encode_account_command_receipt(&result.map_err(account_lifecycle_command_error).and_then(
-		|(outcome, account)| account_recovery_publication(operation_id, outcome, account.clone()),
-	))
-}
-
-#[cfg(feature = "account-migration-transition-gate")]
-pub(crate) fn is_account_migration_cancel_refusal_for_gate(value: &serde_json::Value) -> bool {
-	matches!(
-		decode_account_command_receipt(value.clone()),
-		Ok(Err(CommandError::AccountCommandRejected {
-			rejection: AccountCommandRejectionDto::OperationUnsettled,
-			actual_revision: None,
-		}))
-	)
 }
 
 fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaWindowDto, ()> {

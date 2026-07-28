@@ -1,36 +1,5 @@
 import SwiftUI
 
-struct SummaryTileView: View {
-	let title: String
-	let value: String
-	let symbol: String
-	let tint: Color
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 4) {
-			PanelMetricIconView(
-				symbol: symbol,
-				tint: tint.opacity(colorScheme == .dark ? 0.78 : 0.82)
-			)
-
-			Text(title)
-				.font(PanelFont.metricLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.82))
-				.lineLimit(1)
-				.fixedSize(horizontal: true, vertical: false)
-
-			Text(value)
-				.font(PanelFont.metricValue)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.middle)
-				.layoutPriority(1)
-		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-}
-
 struct PanelIconButtonView: View {
 	let symbol: String
 	let tint: Color

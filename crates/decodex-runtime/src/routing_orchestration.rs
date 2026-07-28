@@ -215,12 +215,13 @@ impl ExecutionCoordinator {
 						"snapshot_missing" => RoutingAuthorityRejection::SnapshotMissing,
 						"concurrent_authority_change" =>
 							RoutingAuthorityRejection::ConcurrentAuthorityChange,
-						_ =>
+						_ => {
 							return failed(
 								consumer,
 								None,
 								ExecutionFailureKind::PersistedAuthorityIncompatible,
-							),
+							);
+						},
 					};
 					return failed(consumer, None, ExecutionFailureKind::RoutingRejected(kind));
 				},
@@ -372,12 +373,13 @@ impl ExecutionCoordinator {
 			.await
 		{
 			Ok(ContinuationCommandOutcome::Success(effect)) => effect,
-			Ok(ContinuationCommandOutcome::Rejected(rejection)) =>
+			Ok(ContinuationCommandOutcome::Rejected(rejection)) => {
 				return failed(
 					consumer,
 					Some(decision),
 					ExecutionFailureKind::ContinuationRejected(rejection),
-				),
+				);
+			},
 			Err(error) => return failed(consumer, Some(decision), classify_store_error(&error)),
 		};
 		if plan.plan.routing_decision_id != persisted.decision_id
@@ -392,8 +394,9 @@ impl ExecutionCoordinator {
 
 		let attempt = match attempts.prepare(&plan, process, &command.provider_attempt).await {
 			Ok(attempt) => attempt,
-			Err(error) =>
-				return failed(consumer, Some(decision), classify_attempt_service_error(error)),
+			Err(error) => {
+				return failed(consumer, Some(decision), classify_attempt_service_error(error));
+			},
 		};
 		match attempt {
 			PrepareProviderAttemptOutcome::Fresh(fresh) => ExecutionOutcome::Prepared {

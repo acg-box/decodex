@@ -191,16 +191,12 @@ PostgreSQL is ready. PostgreSQL exit or any pinned process, directory, or socket
 change stops the service child before the supervisor exits. Launchd then starts one new
 coherent generation. Swift does not participate in this lifecycle.
 
-The source installer stops the service before an explicit offline migration. It
-normalizes the bounded legacy inputs into one canonical digest intent, writes account
-credentials to the protected HostCredentialStore, commits credential-negative account
-and routing authority in PostgreSQL, verifies both destinations, swaps the final
-configuration, retires exact staging and legacy inputs, and records the completed
-destination/retirement receipt. Completed reinstall verifies that receipt and the
-credential-negative config, LaunchAgent, PostgreSQL, and account authority without
-reading legacy sources. Normal startup has only the PostgreSQL-and-daemon supervisor; it
-has no watcher, mapping input, helper/`:8192` dependency, or account-credential
-environment projection. Slice 3 repeats the packaged proof.
+The source installer provisions only the latest credential-negative service. It writes
+the typed config and LaunchAgent, initializes a fresh PostgreSQL 18 database, and starts
+one `supervise-local` generation. It does not read or retire old account sources.
+Normal startup has no watcher, mapping input, helper or `:8192` dependency, credential
+environment projection, migration state, or fallback. Existing local credentials enter
+the new authority only through ordinary account import after installation.
 The adapter opens each directory component relative to a retained descriptor, pins the directory
 and socket device/inode identities, requires the final directory and socket to be owned by the
 configured UID with no group/other directory write access, and verifies the connected kernel peer
@@ -1181,13 +1177,13 @@ credential-negative account state, independent versioned enablement, routing con
 and finite operation receipts. One versioned
 HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enrollment,
 import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
-callbacks, runner projection, account observations, offline migration, and recovery.
+callbacks, runner projection, account observations, and recovery.
 
 The macOS HostCredentialStore uses non-synchronizing Keychain generic-password items. The
 Account Service is its only reader and writer. Exact create, read, compare-and-swap rotate,
 and delete operations remain inside that single-write boundary. MacDogfoodReady also
 requires the complete Account Service, exact-build refresh callback, provider adapter,
-PostgreSQL lifecycle state, startup reconciliation, and normalized one-shot migration.
+PostgreSQL lifecycle state, startup reconciliation, and clean-start package proof.
 Final AccountLifecycleReady additionally requires the Linux store, ambient Codex auth,
 full bounded account presentation, and later automatic fallback/wake acceptance.
 
@@ -1508,7 +1504,11 @@ Recent source adds a baseline guard before ordinary, Program, and retry dispatch
 
 ## Long-running control plane
 
-`decodex serve` calls `orchestrator::run_control_plane` through `apps/decodex/src/cli/control_commands/serve.rs`. The operator listener default is `127.0.0.1:8192` in README examples and OpenWiki operator notes. `--dev` is hidden and is only for isolated endpoint testing; it does not represent normal scheduling.
+The excluded frozen v0.2 `decodex serve` source calls
+`orchestrator::run_control_plane` through
+`apps/decodex/src/cli/control_commands/serve.rs`. Its historical operator listener
+default is `127.0.0.1:8192`. The active workspace, local service, and macOS App do not
+build, package, start, or connect to that listener.
 
 Each daemon tick (`apps/decodex/src/orchestrator/daemon.rs`):
 

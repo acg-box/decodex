@@ -117,7 +117,7 @@ replayed.
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
 | Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
 | Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
-| v0.2 state | final vNext normal runtime reads none; one explicit offline account migration may consume the frozen account pool once, after which it remains untouched cold evidence |
+| v0.2 state | final vNext runtime and installer read none; an operator can copy local credentials once through ordinary vNext account imports and then delete the frozen account pool |
 
 PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
@@ -127,13 +127,12 @@ never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is sin
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
 
-The account ownership, refresh, recovery, platform-store, migration, and readiness
+The account ownership, refresh, recovery, platform-store, clean-cutover, and readiness
 contract is [Account Lifecycle Authority](account-lifecycle-authority.md). An account's
 versioned `enabled` value is independent from observed health and quota. Enable, disable,
 fixed selection, balanced selection, and account-order changes are deterministic
-versioned CAS commands. The current environment-backed projection and legacy account
-watcher are pre-cutover scaffolding. They do not satisfy MacDogfoodReady and cannot be a
-normal Slice-1 or Slice-3 runtime dependency.
+versioned CAS commands. The environment-backed projection and legacy account watcher are
+retired and cannot be a normal Slice-1 or Slice-3 runtime dependency.
 
 `decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
 trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
@@ -748,18 +747,21 @@ a thin accounts/run-health menubar client over the restricted protocol. GPUI cac
 bounded, disposable, cursor-paginated, and keyed by server/schema/content hash; project
 opening never eagerly loads all history.
 
-## Migration and delivery
+## Clean cutover and delivery
 
-Cutover has no availability requirement. Stop v0.2, tag the trusted `main`, and preserve
-cold copies of old SQLite/config/automation inventory plus incident scenarios. Start
-vNext with empty PostgreSQL execution and control-plane state. The only account-state
-exception is the explicit offline, idempotent, one-shot normalized migration in the
-[account lifecycle authority](account-lifecycle-authority.md). Its manifest fingerprints
-every source for credentials, labels, enabled state, selection mode/order, and provider
-identity. It imports no quota, usage/profile projection, account history, Codex sessions,
-SQLite execution state, Linear lanes, or Codex-created tasks. It verifies each
-HostCredentialStore destination, leaves source bytes untouched, and creates no watcher
-or fallback. Recreate selected Projects explicitly from reviewed inventory.
+Cutover has no availability requirement. Stop v0.2 and start vNext with empty PostgreSQL
+execution and control-plane state. Import each local account once through the ordinary
+versioned account-import command from an owner-private temporary file. Verify the
+PostgreSQL account and routing readback, the exact HostCredentialStore binding, and the
+per-account Reset Card readback. Then delete the temporary import files and the retired
+local account source.
+
+The product has no account-migration manifest, bulk importer, migration receipt,
+migration state machine, migration finalizer, compatibility fallback, or dual account
+authority. It imports no quota, usage/profile projection, account history, Codex
+sessions, SQLite execution state, Linear lanes, or Codex-created tasks. Normal startup
+reads only vNext PostgreSQL and HostCredentialStore authority. Recreate selected Projects
+explicitly from reviewed inventory.
 
 Delivery has exactly three dependencies: Accounts/Quick Task/Accounts-Conversation-Health
 GPUI, then the bounded Project/Lead/ManagedRun flow and Project-Work-Run GPUI, then the

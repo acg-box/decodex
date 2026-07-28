@@ -487,8 +487,8 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		let script = """
 		#!/bin/sh
 		case "$*" in
-			"--output json reset-card accounts")
-				printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"accounts","outcome":"available","authority":{"profile_name":"local","server_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"},"result":{"outcome":"available","data":{"accounts":[]}}}'
+			"--output json account list")
+				printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[],"routing":{"revision":1,"mode":{"mode":"balanced"},"order":[]}}}}'
 				;;
 				"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card status --idempotency-key \(idempotencyKey)")
 					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"\(outerOutcome(for: state))","idempotency_key":"\(idempotencyKey)","state":\(state)}'
@@ -566,12 +566,15 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		let script = """
 		#!/bin/sh
 		printf '%s\\n' "$*" >> '\(logURL.path)'
-		case "$*" in
-			"--output json reset-card accounts")
-				printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"accounts","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","account_revision":7,"admission_state":"depleted"}]}}}'
-				;;
-			"--profile \(discoveredProfileName) --expected-server-id \(discoveredServerID) --output json reset-card list --account \(accountID)")
-				printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}]}}}'
+			case "$*" in
+				"--output json account list")
+					printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"depleted","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}],"routing":{"revision":1,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}}'
+					;;
+				"--output json reset-card list --account \(accountID)")
+					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}}}'
+					;;
+				"--profile \(discoveredProfileName) --expected-server-id \(discoveredServerID) --output json reset-card list --account \(accountID)")
+					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}}}'
 				;;
 			"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card status --idempotency-key \(idempotencyKey)")
 				printf '%s\\n' '\(statusDocument)'

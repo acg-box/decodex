@@ -693,7 +693,10 @@ Use the owner path to choose the first validation surface:
 - `plugins/decodex/`: installable Decodex runtime/operator plugin source, including planning, runtime ops, commit, and landing skills/hooks.
 - `automations/radar/` and `automations/decodex/`: repo-local Codex App automation sources; generated Radar and Publisher artifacts stay under `.agent/automations/**/cache`.
 - `site/`: Astro/TypeScript public static site and app download entry; validate with site type/build commands rather than runtime checks.
-- `apps/decodex-app/`: current native SwiftPM macOS account UI. Its local account pool and helper/server workflows are pre-cutover legacy surfaces. MacDogfoodReady and the final app use only the daemon protocol under [Account Lifecycle Authority](../specs/account-lifecycle-authority.md).
+- `apps/decodex-app/`: current native SwiftPM macOS account UI. It contains one
+  daemon-protocol account surface under
+  [Account Lifecycle Authority](../specs/account-lifecycle-authority.md), with no
+  local account pool, helper/server workflow, or dual authority.
 - `spikes/vnext-storage/`: isolated XY-1264 PostgreSQL, blob, and bounded-cache feasibility proof; validate it with `cargo make test-vnext-storage-proof` and use [the evidence record](../evidence/vnext-storage-feasibility.md) for accepted choices and boundaries.
 - `scripts/`: repository helpers; `scripts/assets/` owns checked-in asset generation,
   and `scripts/macos/` owns macOS app packaging checks and the source-install local
@@ -954,7 +957,8 @@ Use `site/README.md`, `site/src/`, `site/package.json`, and `openwiki/integratio
 
 ## Native macOS app checks
 
-The app is outside the Cargo workspace (`Cargo.toml`). Commands from `apps/decodex-app/README.md`:
+The app is outside the Cargo workspace (`Cargo.toml`). Commands from
+`apps/decodex-app/README.md`:
 
 ```sh
 swift build --package-path apps/decodex-app -c release
@@ -964,57 +968,18 @@ scripts/macos/test_decodex_app_stage.sh
 python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
-The XY-1422 account migration transition gate is not native-app or ordinary aggregate
-coverage. Its single canonical command is:
+The Swift suite covers one all-account list, UUID-keyed progressive Reset Card rows,
+stable CLI decoding, second-click confirmation, bounded startup recovery, and durable
+use replay. The staged package contains only the Swift app and vNext CLI. It contains
+no daemon, legacy `decodex`, app helper, loopback server, `:8192` client, account-pool
+reader, or migration tool. The separately installed and signed local service owns the
+daemon wrapper and PostgreSQL generation.
 
-```sh
-cargo make test-vnext-account-migration-transition
-```
-
-This single-use task is standalone and absent from `test`, `test-headless`, both
-sandboxed test aggregates, `check`, and other ordinary aggregates. Invocation is
-prohibited until a fresh review of the exact tree authorizes exactly one run.
-
-The Swift suite covers reset-card architecture boundaries, stable CLI decoding,
-second-click confirmation, bounded startup read recovery, bounded pending-journal
-safety, and same-key restart recovery.
-Together with the focused PostgreSQL proof, it verifies the native client relationship to
-the shared [runtime service](../architecture/runtime-architecture.md); the native app's
-full boundary is documented with the other [auxiliary tools](../integrations/plugins-automations-and-auxiliary-tools.md).
-
-The current pre-cutover staging script builds Swift and Rust release artifacts and copies four signed
-executables into the app bundle: legacy `decodex` and `decodex-app-helper` for
-unrelated existing account UI, plus active `decodexd` and `decodex-cli` for vNext.
-It verifies all four. This describes current scaffolding only. It is not final account
-lifecycle or clean-cutover acceptance.
-
-The local-service installer test verifies credential-negative config, canonical
-one-shot migration input, exact staging cleanup, completed destination/retirement
-receipt verification, and LaunchAgent output. The installer stops the service before
-it reads an optional legacy pool, records one normalized manifest digest intent before
-account destination effects, verifies HostCredentialStore and PostgreSQL destinations,
-swaps the final config, retires only exact staging and legacy inputs, and then completes
-the receipt. Completed reinstall reads no legacy source and verifies the
-credential-negative receipt, config, LaunchAgent, PostgreSQL, and account authority.
-The installed `decodexd supervise-local` process owns one foreground PostgreSQL
-generation and one daemon generation. PostgreSQL exit or endpoint replacement stops
-the old daemon before the supervisor exits. Normal startup has no account watcher,
-mapping bridge, account-credential environment projection, helper, or `:8192` service.
-The LaunchAgent uses `KeepAlive = { SuccessfulExit = false }` and `ExitTimeOut=60`.
-For an installed job with that exact contract, the installer sends SIGTERM while the
-job remains loaded, lets the supervisor use its 240-second daemon and 30-second
-PostgreSQL bounds, waits for the job to become inactive, and then removes it. A legacy
-job receives one direct removal fallback, and that removal can use the remaining
-300-second settlement bound instead of the five-second control-command bound. Both paths bind the captured process tree by
-PID and full start time and wait at most 300 seconds before replacement; a concurrent
-removal cannot bypass that wait. PostgreSQL readiness probes name the existing
-`postgres` database so they do not emit missing-default-database warnings.
-The one-shot parser requires the same UID, private source ancestry, private regular
-account and lock files, one link per file, bounded input, unique provider identities
-and email identities, and an exact source-to-manifest mapping. These checks do not
-expand the bounded source gate into a general path framework. Broader fault evidence
-and the packaged proof remain later final-readiness obligations in
-[Account Lifecycle Authority](../specs/account-lifecycle-authority.md#readiness-levels).
+The local-service installer test starts from a fresh empty product database and verifies
+credential-negative config, the signed wrapper, one `supervise-local` LaunchAgent,
+doctor readiness, and an empty account list. The installer never reads, copies, or
+deletes an old account pool. Local credentials are imported afterward with the ordinary
+public account command, followed by one restart for exact-build callback attestation.
 
 ## Radar and Publisher checks
 

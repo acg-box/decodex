@@ -66,7 +66,7 @@ Core surfaces:
 - `GET /api/lane/inspect`, `POST /api/lane/interrupt`, lane steer routes: local lane control.
 - `GET /livez`: liveness.
 
-`openwiki/workflows/runtime-operator-workflows.md` records current cadences: snapshots every 15 seconds; Linear-backed scans at most every 5 minutes per project unless explicitly requested. When the Decodex App starts a bundled server, it uses the same control plane and default listener (`apps/decodex-app/README.md`). Avoid running two owners on `127.0.0.1:8192`.
+`openwiki/workflows/runtime-operator-workflows.md` records current cadences: snapshots every 15 seconds; Linear-backed scans at most every 5 minutes per project unless explicitly requested. This frozen v0.2 operator control plane is outside the active workspace and is not bundled or started by the current Decodex App.
 
 ## Status, diagnose, and evidence
 
@@ -201,9 +201,14 @@ Defaults:
 
 Use MCP for typed resources, prompts, planning, lane control, and project control. Do not use it to bypass acceptance, lane-control run/turn preconditions, project enablement, or tracker/writeback policies. For remote-control watched claims, reverse checks, and stop conditions, see [Drift audits](../evidence/drift-audits.md).
 
-## Account pool and native App
+## Frozen v0.2 account pool
 
-Account commands (`apps/decodex/src/cli/account_commands.rs`):
+The commands and paths in this section are frozen v0.2 provenance only. They are
+excluded from the active workspace and are not bundled, installed, or invoked by the
+current App. Current account and Reset Card operations use the API-only vNext CLI
+described in [Commands and validation](../operations/commands-and-validation.md).
+
+Frozen commands (`apps/decodex/src/cli/account_commands.rs`):
 
 ```sh
 decodex account list --json
@@ -217,7 +222,7 @@ decodex account logout <SELECTOR>
 
 The pool is stored in `~/.codex/decodex/accounts.jsonl`; global selection/display offsets are in `~/.codex/decodex/config.toml`; `account use` overwrites Codex `auth.json` for the selected account (`apps/decodex-app/README.md`). Do not print token material.
 
-The native App is a UI over this Rust-owned state. It is not a separate scheduler or project registry owner.
+The current native App does not read this pool or write Codex `auth.json`.
 
 ## Validation status publishing
 

@@ -1,210 +1,11 @@
--- XY-1422 makes PostgreSQL the credential-negative account registry while the daemon coordinates
--- finite operations against a versioned macOS Keychain item. This is deliberately account-specific
--- state, not a general transaction or effect framework.
-
-CREATE TABLE decodex.account_migration_receipts (
-	singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
-	manifest_sha256 text NOT NULL UNIQUE CHECK (manifest_sha256 ~ '^[0-9a-f]{64}$'),
-	manifest jsonb NOT NULL,
-	phase text NOT NULL CHECK (phase IN ('prepared','completed')),
-	destination_receipt jsonb,
-	retirement_receipt jsonb,
-	account_count integer NOT NULL CHECK (account_count BETWEEN 0 AND 512),
-	prepared_at timestamptz NOT NULL DEFAULT pg_catalog.clock_timestamp(),
-	completed_at timestamptz,
-	CHECK ((manifest->>'schema'='decodex/account-migration-manifest/1') IS TRUE),
-	CHECK ((manifest->>'quota_policy'='reset_to_unknown') IS TRUE),
-	CHECK ((manifest->>'usage_profile_policy'='start_empty') IS TRUE),
-	CHECK ((manifest->>'history_policy'='do_not_import') IS TRUE),
-	CHECK ((pg_catalog.jsonb_typeof(manifest->'decision_fingerprints')='object'
-		AND manifest->'decision_fingerprints'=pg_catalog.jsonb_build_object(
-			'credentials_sha256',manifest #> '{decision_fingerprints,credentials_sha256}',
-			'labels_sha256',manifest #> '{decision_fingerprints,labels_sha256}',
-			'enabled_sha256',manifest #> '{decision_fingerprints,enabled_sha256}',
-			'routing_sha256',manifest #> '{decision_fingerprints,routing_sha256}',
-			'provider_sha256',manifest #> '{decision_fingerprints,provider_sha256}',
-			'quota_sha256',manifest #> '{decision_fingerprints,quota_sha256}',
-			'usage_profile_sha256',manifest #> '{decision_fingerprints,usage_profile_sha256}',
-			'history_sha256',manifest #> '{decision_fingerprints,history_sha256}'
-		)) IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,credentials_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,labels_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,enabled_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,routing_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,provider_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,quota_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,usage_profile_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK (((manifest #>> '{decision_fingerprints,history_sha256}')
-		~ '^[0-9a-f]{64}$') IS TRUE),
-	CHECK ((pg_catalog.jsonb_typeof(manifest->'sources')='array'
-		AND pg_catalog.jsonb_array_length(manifest->'sources')=4) IS TRUE),
-	CHECK ((pg_catalog.jsonb_typeof(manifest->'accounts')='array'
-		AND pg_catalog.jsonb_array_length(manifest->'accounts')=account_count) IS TRUE),
-	CHECK ((phase='prepared' AND destination_receipt IS NULL AND retirement_receipt IS NULL
-			AND completed_at IS NULL)
-		OR (phase='completed' AND destination_receipt IS NOT NULL
-			AND retirement_receipt IS NOT NULL AND completed_at IS NOT NULL)),
-	CHECK (destination_receipt IS NULL OR (
-		(destination_receipt->>'schema'='decodex/account-migration-destination/1') IS TRUE
-		AND (pg_catalog.jsonb_typeof(destination_receipt->'accounts')='array'
-			AND pg_catalog.jsonb_array_length(destination_receipt->'accounts')=account_count) IS TRUE
-		AND (pg_catalog.jsonb_typeof(destination_receipt->'routing')='object'
-			AND destination_receipt->'routing'=pg_catalog.jsonb_build_object(
-				'mode',destination_receipt #> '{routing,mode}',
-				'fixed_account_id',destination_receipt #> '{routing,fixed_account_id}',
-				'order',destination_receipt #> '{routing,order}',
-				'revision',destination_receipt #> '{routing,revision}'
-			)) IS TRUE
-		AND ((destination_receipt #>> '{routing,mode}') IN ('balanced','fixed')) IS TRUE
-		AND ((destination_receipt #> '{routing,fixed_account_id}')='null'::jsonb)
-			=(destination_receipt #>> '{routing,mode}'='balanced')
-		AND (pg_catalog.jsonb_typeof(destination_receipt #> '{routing,order}')='array') IS TRUE
-		AND ((destination_receipt #>> '{routing,revision}')::bigint > 0) IS TRUE
-		AND (destination_receipt->>'keychain_verified')::boolean IS TRUE
-		AND (destination_receipt->>'postgresql_verified')::boolean IS TRUE)),
-	CHECK (retirement_receipt IS NULL OR (
-		(retirement_receipt->>'schema'='decodex/account-runtime-retirement/1') IS TRUE
-		AND (retirement_receipt->>'supervisor_profile'='postgres_and_daemon_only_v1') IS TRUE
-		AND (retirement_receipt->>'legacy_source_untouched')::boolean IS TRUE
-		AND (retirement_receipt->>'runtime_legacy_authority_removed')::boolean IS TRUE
-		AND (retirement_receipt->>'final_config_swapped')::boolean IS TRUE
-		AND (retirement_receipt->>'staging_secrets_retired')::boolean IS TRUE
-		AND (retirement_receipt->>'active_legacy_sources_retired')::boolean IS TRUE
-		AND (retirement_receipt->>'installed_assets_verified')::boolean IS TRUE)),
-	CHECK (pg_catalog.octet_length(manifest::text) <= 1048576),
-	CHECK (destination_receipt IS NULL
-		OR pg_catalog.octet_length(destination_receipt::text) <= 262144),
-	CHECK (retirement_receipt IS NULL
-		OR pg_catalog.octet_length(retirement_receipt::text) <= 65536),
-	CHECK (NOT decodex.has_credential_material(manifest)
-		AND (destination_receipt IS NULL OR NOT decodex.has_credential_material(destination_receipt))
-		AND (retirement_receipt IS NULL OR NOT decodex.has_credential_material(retirement_receipt))),
-	CHECK (isfinite(prepared_at) AND (completed_at IS NULL OR isfinite(completed_at)))
-);
-
-CREATE FUNCTION decodex.record_account_migration_receipt_exact(
-	p_manifest_sha256 text,p_manifest jsonb,p_destination_receipt jsonb,
-	p_retirement_receipt jsonb,p_account_count integer
-) RETURNS text LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
-DECLARE existing decodex.account_migration_receipts%ROWTYPE;
-BEGIN
-	SELECT * INTO existing FROM decodex.account_migration_receipts
-	WHERE singleton FOR UPDATE;
-	IF FOUND THEN
-		IF (existing.manifest_sha256,existing.manifest,existing.account_count)
-			IS DISTINCT FROM (p_manifest_sha256,p_manifest,p_account_count) THEN
-			RETURN 'identity_conflict';
-		END IF;
-		IF p_destination_receipt IS NULL AND p_retirement_receipt IS NULL THEN
-			RETURN 'replayed';
-		END IF;
-		IF p_destination_receipt IS NULL OR p_retirement_receipt IS NULL THEN
-			RETURN 'identity_conflict';
-		END IF;
-		IF existing.phase='completed' THEN
-			RETURN CASE WHEN (existing.destination_receipt,existing.retirement_receipt)
-				IS NOT DISTINCT FROM (p_destination_receipt,p_retirement_receipt)
-				THEN 'replayed' ELSE 'identity_conflict' END;
-		END IF;
-		UPDATE decodex.account_migration_receipts SET phase='completed',
-			destination_receipt=p_destination_receipt,retirement_receipt=p_retirement_receipt,
-			completed_at=pg_catalog.clock_timestamp() WHERE singleton;
-		RETURN 'recorded';
-	END IF;
-	RETURN CASE
-		WHEN p_destination_receipt IS NULL AND p_retirement_receipt IS NULL THEN 'absent'
-		ELSE 'identity_conflict'
-	END;
-END
-$$;
-
+-- XY-1422 makes PostgreSQL the sole credential-negative account registry while the daemon
+-- coordinates finite operations against versioned macOS Keychain items. V27 is a clean break:
+-- accounts are enrolled or imported only after the schema is current.
 DO $$
-DECLARE handoff_relation regclass;
-DECLARE handoff_columns text[];
-DECLARE handoff_types text[];
-DECLARE handoff_not_null boolean[];
-DECLARE handoff_count bigint;
-DECLARE handoff_manifest_sha256 text;
-DECLARE handoff_manifest jsonb;
-DECLARE handoff_account_count integer;
-DECLARE existing_receipt decodex.account_migration_receipts%ROWTYPE;
-DECLARE receipt_result text;
-DECLARE consumed_count bigint;
 BEGIN
-	handoff_relation:=pg_catalog.to_regclass('pg_temp.decodex_account_migration_handoff');
-	IF handoff_relation IS NULL THEN
-		IF EXISTS (SELECT 1 FROM decodex.accounts) THEN
-			RAISE EXCEPTION 'populated V26 account migration requires an exact manifest handoff'
-				USING ERRCODE='55000';
-		END IF;
-		RETURN;
-	END IF;
-	IF NOT EXISTS (
-		SELECT 1 FROM pg_catalog.pg_class AS relation
-		WHERE relation.oid=handoff_relation
-			AND relation.relnamespace=pg_catalog.pg_my_temp_schema()
-			AND relation.relkind='r' AND relation.relpersistence='t'
-	) THEN
-		RAISE EXCEPTION 'account migration handoff relation is invalid' USING ERRCODE='55000';
-	END IF;
-	SELECT pg_catalog.array_agg(attribute.attname::text ORDER BY attribute.attnum),
-		pg_catalog.array_agg(
-			pg_catalog.format_type(attribute.atttypid,attribute.atttypmod)
-			ORDER BY attribute.attnum
-		),
-		pg_catalog.array_agg(attribute.attnotnull ORDER BY attribute.attnum)
-	INTO handoff_columns,handoff_types,handoff_not_null
-	FROM pg_catalog.pg_attribute AS attribute
-	WHERE attribute.attrelid=handoff_relation
-		AND attribute.attnum>0 AND NOT attribute.attisdropped;
-	IF handoff_columns IS DISTINCT FROM
-			ARRAY['manifest_sha256','manifest','account_count']::text[]
-		OR handoff_types IS DISTINCT FROM ARRAY['text','jsonb','integer']::text[]
-		OR handoff_not_null IS DISTINCT FROM ARRAY[true,true,true]::boolean[]
-	THEN
-		RAISE EXCEPTION 'account migration handoff shape is invalid' USING ERRCODE='55000';
-	END IF;
-	EXECUTE 'SELECT pg_catalog.count(*) FROM pg_temp.decodex_account_migration_handoff'
-		INTO handoff_count;
-	IF handoff_count<>1 THEN
-		RAISE EXCEPTION 'account migration handoff cardinality is invalid' USING ERRCODE='55000';
-	END IF;
-	EXECUTE 'SELECT manifest_sha256,manifest,account_count
-		FROM pg_temp.decodex_account_migration_handoff'
-	INTO handoff_manifest_sha256,handoff_manifest,handoff_account_count;
-	SELECT * INTO existing_receipt FROM decodex.account_migration_receipts
-	WHERE singleton FOR UPDATE;
-	IF FOUND THEN
-		receipt_result:=CASE
-			WHEN (existing_receipt.manifest_sha256,existing_receipt.manifest,
-				existing_receipt.account_count) IS NOT DISTINCT FROM
-				(handoff_manifest_sha256,handoff_manifest,handoff_account_count)
-			THEN 'replayed'
-			ELSE 'identity_conflict'
-		END;
-	ELSE
-		INSERT INTO decodex.account_migration_receipts(
-			manifest_sha256,manifest,phase,destination_receipt,retirement_receipt,account_count
-		) VALUES (
-			handoff_manifest_sha256,handoff_manifest,'prepared',NULL,NULL,
-			handoff_account_count
-		);
-		receipt_result:='prepared';
-	END IF;
-	IF receipt_result NOT IN ('prepared','replayed') THEN
-		RAISE EXCEPTION 'account migration handoff identity conflicts' USING ERRCODE='55000';
-	END IF;
-	EXECUTE 'DELETE FROM pg_temp.decodex_account_migration_handoff';
-	GET DIAGNOSTICS consumed_count = ROW_COUNT;
-	IF consumed_count<>1 THEN
-		RAISE EXCEPTION 'account migration handoff consumption is invalid' USING ERRCODE='55000';
+	IF EXISTS (SELECT 1 FROM decodex.accounts) THEN
+		RAISE EXCEPTION 'V27 requires an empty pre-V27 account registry'
+			USING ERRCODE='55000';
 	END IF;
 END
 $$;
@@ -231,19 +32,6 @@ ALTER TABLE decodex.command_receipts
 		AND octet_length(scope_id) BETWEEN 1 AND 256
 		AND octet_length(entity_id) BETWEEN 1 AND 256
 	);
-
-DO $$
-BEGIN
-	IF (SELECT pg_catalog.count(*) FROM decodex.accounts) > 512 THEN
-		RAISE EXCEPTION 'account registry cardinality exceeds the supported bound'
-			USING ERRCODE='54000';
-	END IF;
-END
-$$;
-
--- Administrative disablement becomes an independent column in this migration. Existing rows that
--- encoded it in observed health lose that stale observation and start as unknown.
-UPDATE decodex.accounts SET state='unknown' WHERE state='disabled';
 
 ALTER TABLE decodex.accounts
 	ADD COLUMN enabled boolean NOT NULL DEFAULT false,
@@ -677,37 +465,11 @@ BEGIN
 				END IF;
 				RAISE;
 		END;
-		IF NOT (
-			p_kind='import'
-			AND EXISTS (
-				SELECT 1 FROM decodex.account_migration_receipts AS receipt
-				CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
-					receipt.manifest->'accounts'
-				) AS migration_account
-				WHERE receipt.singleton AND receipt.phase='prepared'
-					AND migration_account->>'account_id'=p_account_id::text
-					AND migration_account->>'operation_id'=p_operation_id::text
-			)
-		) THEN
-			INSERT INTO decodex.account_routing_order(account_id,position)
-			SELECT p_account_id,COALESCE(pg_catalog.max(position)+1,0)
-			FROM decodex.account_routing_order;
-			UPDATE decodex.account_routing_control SET revision=revision+1,
-				updated_at=pg_catalog.clock_timestamp() WHERE singleton;
-		END IF;
-	ELSIF p_kind='import' AND FOUND
-		AND p_expected_account_revision=account.revision
-		AND p_display_label=account.display_label
-		AND p_enabled=account.enabled
-		AND account.tombstoned_at IS NULL
-		AND account.provider_kind IS NULL
-		AND account.provider_account_id IS NULL
-		AND account.credential_store_schema_version IS NULL
-		AND account.credential_version IS NULL
-		AND account.credential_fingerprint IS NULL
-		AND account.credential_writer_operation_id IS NULL
-	THEN
-		NULL;
+		INSERT INTO decodex.account_routing_order(account_id,position)
+		SELECT p_account_id,COALESCE(pg_catalog.max(position)+1,0)
+		FROM decodex.account_routing_order;
+		UPDATE decodex.account_routing_control SET revision=revision+1,
+			updated_at=pg_catalog.clock_timestamp() WHERE singleton;
 	ELSIF NOT FOUND THEN
 		RETURN QUERY SELECT 'account_missing',0::bigint,'prepared'::decodex.account_operation_phase;
 		RETURN;
@@ -841,26 +603,9 @@ BEGIN
 		RETURN QUERY SELECT 'stale_operation',next_revision,operation.phase;
 		RETURN;
 	END IF;
-	IF p_target_phase='cancelled'
-		AND operation.kind='import'
-		AND EXISTS (
-			SELECT 1 FROM decodex.account_migration_receipts AS receipt
-			CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
-				receipt.manifest->'accounts'
-			) AS migration_account
-			WHERE receipt.singleton AND receipt.phase='prepared'
-				AND migration_account->>'account_id'=operation.account_id::text
-				AND migration_account->>'operation_id'=operation.operation_id::text
-		)
-	THEN
-		SELECT revision INTO next_revision FROM decodex.accounts
-		WHERE account_id=operation.account_id;
-		RETURN QUERY SELECT 'operation_unsettled',next_revision,operation.phase;
-		RETURN;
-	END IF;
 	IF p_target_phase='committed' THEN
 		IF operation.kind='logout' THEN
-			PERFORM decodex.lock_account_routing_universe_exact(true);
+			PERFORM decodex.lock_account_routing_universe_exact();
 			UPDATE decodex.accounts SET enabled=false,
 				credential_store_schema_version=NULL,credential_version=NULL,
 				credential_fingerprint=NULL,credential_writer_operation_id=NULL,
@@ -887,7 +632,7 @@ BEGIN
 				fixed_account_id=CASE WHEN fixed_account_id=operation.account_id THEN NULL ELSE fixed_account_id END,
 				revision=revision+1,updated_at=pg_catalog.clock_timestamp()
 			WHERE singleton;
-			PERFORM decodex.lock_account_routing_universe_exact(true);
+			PERFORM decodex.lock_account_routing_universe_exact();
 		ELSE
 			UPDATE decodex.accounts SET
 				credential_store_schema_version=operation.target_store_schema_version,
@@ -900,26 +645,13 @@ BEGIN
 				credential_store_observed_at=pg_catalog.clock_timestamp(),
 				revision=revision+1,updated_at=pg_catalog.clock_timestamp()
 			WHERE account_id=operation.account_id RETURNING revision INTO next_revision;
-			IF NOT (
-				operation.kind='import'
-				AND EXISTS (
-					SELECT 1 FROM decodex.account_migration_receipts AS receipt
-					CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
-						receipt.manifest->'accounts'
-					) AS migration_account
-					WHERE receipt.singleton AND receipt.phase='prepared'
-						AND migration_account->>'account_id'=operation.account_id::text
-						AND migration_account->>'operation_id'=operation.operation_id::text
-				)
-			) THEN
-				INSERT INTO decodex.account_routing_order(account_id,position)
-				SELECT operation.account_id,COALESCE(pg_catalog.max(position)+1,0)
-				FROM decodex.account_routing_order
-				ON CONFLICT(account_id) DO NOTHING;
-				IF FOUND THEN
-					UPDATE decodex.account_routing_control SET revision=revision+1,
-						updated_at=pg_catalog.clock_timestamp() WHERE singleton;
-				END IF;
+			INSERT INTO decodex.account_routing_order(account_id,position)
+			SELECT operation.account_id,COALESCE(pg_catalog.max(position)+1,0)
+			FROM decodex.account_routing_order
+			ON CONFLICT(account_id) DO NOTHING;
+			IF FOUND THEN
+				UPDATE decodex.account_routing_control SET revision=revision+1,
+					updated_at=pg_catalog.clock_timestamp() WHERE singleton;
 			END IF;
 		END IF;
 	ELSE
@@ -943,18 +675,6 @@ BEGIN
 	END IF;
 	RETURN QUERY SELECT * FROM decodex.account_operations
 	WHERE phase NOT IN ('committed','cancelled')
-		AND NOT (
-			kind='import'
-			AND EXISTS (
-				SELECT 1 FROM decodex.account_migration_receipts AS receipt
-				CROSS JOIN LATERAL pg_catalog.jsonb_array_elements(
-					receipt.manifest->'accounts'
-				) AS migration_account
-				WHERE receipt.singleton AND receipt.phase='prepared'
-					AND migration_account->>'account_id'=account_operations.account_id::text
-					AND migration_account->>'operation_id'=account_operations.operation_id::text
-			)
-		)
 	ORDER BY operation_id LIMIT p_limit;
 END
 $$;
@@ -1004,19 +724,13 @@ $$;
 
 -- Every multi-owner routing operation takes the same bounded row-lock order:
 -- visible Accounts by UUID, routing rows by account/position, then the control singleton.
--- Offline migration may temporarily omit newly imported Accounts, but it may not retain a
--- surplus/tombstoned member or any malformed subset and must prove the exact universe after write.
-CREATE FUNCTION decodex.lock_account_routing_universe_exact(p_require_complete boolean)
+CREATE FUNCTION decodex.lock_account_routing_universe_exact()
 RETURNS boolean LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$
 DECLARE visible_count bigint;
 DECLARE routing_count bigint;
 DECLARE current_mode decodex.account_selection_mode;
 DECLARE current_fixed_account_id uuid;
 BEGIN
-	IF p_require_complete IS NULL THEN
-		RAISE EXCEPTION 'account routing invariant mode is invalid'
-			USING ERRCODE='22023';
-	END IF;
 	PERFORM account.account_id FROM decodex.accounts AS account
 	WHERE account.tombstoned_at IS NULL
 	ORDER BY account.account_id FOR UPDATE OF account;
@@ -1048,15 +762,13 @@ BEGIN
 			SELECT 1 FROM decodex.account_routing_order AS ordering
 			WHERE ordering.account_id=current_fixed_account_id
 		))
-		OR (p_require_complete AND (
-			visible_count<>routing_count
-			OR EXISTS (
-				SELECT 1 FROM decodex.accounts AS account
-				LEFT JOIN decodex.account_routing_order AS ordering
-					ON ordering.account_id=account.account_id
-				WHERE account.tombstoned_at IS NULL AND ordering.account_id IS NULL
-			)
-		))
+		OR visible_count<>routing_count
+		OR EXISTS (
+			SELECT 1 FROM decodex.accounts AS account
+			LEFT JOIN decodex.account_routing_order AS ordering
+				ON ordering.account_id=account.account_id
+			WHERE account.tombstoned_at IS NULL AND ordering.account_id IS NULL
+		)
 	THEN
 		RAISE EXCEPTION 'account routing universe is incompatible'
 			USING ERRCODE='55000',CONSTRAINT='account_routing_universe_complete';
@@ -1073,7 +785,7 @@ DECLARE current_routing_revision bigint;
 DECLARE current_account_revision bigint;
 DECLARE account_tombstoned_at timestamptz;
 BEGIN
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	SELECT control.revision INTO current_routing_revision
 	FROM decodex.account_routing_control AS control
 	WHERE control.singleton;
@@ -1111,7 +823,7 @@ BEGIN
 	SET mode='fixed',fixed_account_id=p_account_id,revision=control.revision+1,
 		updated_at=pg_catalog.clock_timestamp()
 	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	RETURN QUERY SELECT 'updated',current_routing_revision,current_account_revision;
 END
 $$;
@@ -1122,7 +834,7 @@ CREATE FUNCTION decodex.set_balanced_account_selection_exact(
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 DECLARE current_routing_revision bigint;
 BEGIN
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	SELECT control.revision INTO current_routing_revision
 	FROM decodex.account_routing_control AS control
 	WHERE control.singleton;
@@ -1143,7 +855,7 @@ BEGIN
 	SET mode='balanced',fixed_account_id=NULL,revision=control.revision+1,
 		updated_at=pg_catalog.clock_timestamp()
 	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	RETURN QUERY SELECT 'updated',current_routing_revision;
 END
 $$;
@@ -1155,7 +867,7 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 DECLARE current_routing_revision bigint;
 DECLARE current_order uuid[];
 BEGIN
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	SELECT control.revision INTO current_routing_revision
 	FROM decodex.account_routing_control AS control
 	WHERE control.singleton;
@@ -1190,57 +902,8 @@ BEGIN
 	UPDATE decodex.account_routing_control AS control
 	SET revision=control.revision+1,updated_at=pg_catalog.clock_timestamp()
 	WHERE control.singleton RETURNING control.revision INTO current_routing_revision;
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	RETURN QUERY SELECT 'updated',current_routing_revision;
-END
-$$;
-
-CREATE FUNCTION decodex.replace_account_routing_control_for_migration_exact(
-	p_expected_revision bigint,p_mode decodex.account_selection_mode,
-	p_fixed_account_id uuid,p_order uuid[]
-) RETURNS TABLE(result_code text,revision bigint)
-LANGUAGE plpgsql SET search_path=pg_catalog,decodex AS $$
-DECLARE current_revision bigint;
-DECLARE current_mode decodex.account_selection_mode;
-DECLARE current_fixed uuid;
-DECLARE current_order uuid[];
-BEGIN
-	PERFORM decodex.lock_account_routing_universe_exact(false);
-	SELECT control.revision,control.mode,control.fixed_account_id
-	INTO current_revision,current_mode,current_fixed
-	FROM decodex.account_routing_control AS control
-	WHERE singleton;
-	SELECT COALESCE(pg_catalog.array_agg(ordering.account_id ORDER BY ordering.position),'{}'::uuid[])
-	INTO current_order FROM decodex.account_routing_order AS ordering;
-	IF current_revision<>p_expected_revision THEN
-		RETURN QUERY SELECT 'stale_routing_control',current_revision; RETURN;
-	END IF;
-	IF (p_mode='fixed')<>(p_fixed_account_id IS NOT NULL)
-		OR p_order IS NULL OR pg_catalog.cardinality(p_order)<>(SELECT pg_catalog.count(*)
-			FROM decodex.accounts WHERE tombstoned_at IS NULL)
-		OR pg_catalog.cardinality(p_order)<>(SELECT pg_catalog.count(DISTINCT value)
-			FROM pg_catalog.unnest(p_order) AS value)
-		OR EXISTS (SELECT 1 FROM pg_catalog.unnest(p_order) AS value
-			LEFT JOIN decodex.accounts AS account ON account.account_id=value
-			WHERE account.account_id IS NULL OR account.tombstoned_at IS NOT NULL)
-		OR (p_fixed_account_id IS NOT NULL AND NOT p_fixed_account_id=ANY(p_order))
-	THEN
-		RETURN QUERY SELECT 'invalid_order',current_revision; RETURN;
-	END IF;
-	IF (current_mode,current_fixed,current_order) IS NOT DISTINCT FROM
-		(p_mode,p_fixed_account_id,p_order) THEN
-		PERFORM decodex.lock_account_routing_universe_exact(true);
-		RETURN QUERY SELECT 'updated',current_revision; RETURN;
-	END IF;
-	DELETE FROM decodex.account_routing_order;
-	INSERT INTO decodex.account_routing_order(account_id,position)
-	SELECT value,ordinality-1 FROM pg_catalog.unnest(p_order) WITH ORDINALITY AS entry(value,ordinality);
-	UPDATE decodex.account_routing_control AS control
-	SET mode=p_mode,fixed_account_id=p_fixed_account_id,
-		revision=control.revision+1,updated_at=pg_catalog.clock_timestamp()
-	WHERE control.singleton RETURNING control.revision INTO current_revision;
-	PERFORM decodex.lock_account_routing_universe_exact(true);
-	RETURN QUERY SELECT 'updated',current_revision;
 END
 $$;
 
@@ -1248,7 +911,7 @@ CREATE FUNCTION decodex.read_account_routing_control_exact()
 RETURNS TABLE(mode decodex.account_selection_mode,fixed_account_id uuid,revision bigint,account_order uuid[])
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 BEGIN
-	PERFORM decodex.lock_account_routing_universe_exact(true);
+	PERFORM decodex.lock_account_routing_universe_exact();
 	RETURN QUERY SELECT control.mode,control.fixed_account_id,control.revision,
 		COALESCE(pg_catalog.array_agg(ordering.account_id ORDER BY ordering.position)
 			FILTER (WHERE ordering.account_id IS NOT NULL),'{}'::uuid[])
@@ -1530,7 +1193,7 @@ REVOKE ALL ON TYPE decodex.account_provider_kind,decodex.account_operation_kind,
 	decodex.account_quota_observation_error FROM PUBLIC;
 REVOKE ALL ON TABLE decodex.account_operations,decodex.account_routing_control,
 	decodex.account_routing_order,decodex.account_quota_facts,
-	decodex.codex_account_capability,decodex.account_migration_receipts FROM PUBLIC;
+	decodex.codex_account_capability FROM PUBLIC;
 REVOKE ALL ON FUNCTION
 	decodex.read_account_registry_exact(uuid,bigint),
 	decodex.read_reset_card_account_admission_exact(uuid,text),
@@ -1540,17 +1203,15 @@ REVOKE ALL ON FUNCTION
 	decodex.read_unsettled_account_operations_exact(bigint),
 	decodex.read_account_operation_exact(uuid),
 	decodex.update_account_administration_exact(uuid,bigint,text,boolean),
-	decodex.lock_account_routing_universe_exact(boolean),
+	decodex.lock_account_routing_universe_exact(),
 	decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),
 	decodex.set_balanced_account_selection_exact(bigint),
 	decodex.set_account_order_exact(bigint,uuid[]),
-	decodex.replace_account_routing_control_for_migration_exact(bigint,decodex.account_selection_mode,uuid,uuid[]),
 	decodex.read_account_routing_control_exact(),
 	decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),
 	decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),
 	decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),
 	decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),
-	decodex.record_account_migration_receipt_exact(text,jsonb,jsonb,jsonb,integer),
 	decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),
 	decodex.read_process_generations_exact(uuid,boolean,uuid,bigint)
 	FROM PUBLIC;
@@ -1578,7 +1239,7 @@ BEGIN
 			'REVOKE INSERT,UPDATE,DELETE ON TABLE decodex.accounts FROM %I',runtime_role
 		);
 		EXECUTE pg_catalog.format('GRANT USAGE ON TYPE decodex.account_provider_kind,decodex.account_operation_kind,decodex.account_operation_phase,decodex.account_selection_mode,decodex.account_store_observation,decodex.account_quota_observation_error TO %I',runtime_role);
-		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.update_account_administration_exact(uuid,bigint,text,boolean),decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),decodex.set_balanced_account_selection_exact(bigint),decodex.set_account_order_exact(bigint,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.record_account_migration_receipt_exact(text,jsonb,jsonb,jsonb,integer),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
+		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.update_account_administration_exact(uuid,bigint,text,boolean),decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),decodex.set_balanced_account_selection_exact(bigint),decodex.set_account_order_exact(bigint,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
 	END IF;
 END
 $$;
