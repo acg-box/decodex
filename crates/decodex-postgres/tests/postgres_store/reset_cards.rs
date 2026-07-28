@@ -637,8 +637,8 @@ async fn accepted_reset_card_effect_survives_credential_rotation() -> Result<(),
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET credential_version=2,credential_fingerprint=$2, \
-			 credential_writer_operation_id=$3::uuid,revision=revision+1, \
-			 updated_at=clock_timestamp() WHERE account_id=$1::uuid",
+				 credential_writer_operation_id=$3::text::uuid,revision=revision+1, \
+				 updated_at=clock_timestamp() WHERE account_id=$1::text::uuid",
 			&[&account_id.as_str(), &ROTATED_CREDENTIAL_FINGERPRINT, &ROTATED_CREDENTIAL_WRITER],
 		)
 		.await?;
@@ -661,7 +661,7 @@ async fn accepted_reset_card_effect_survives_credential_rotation() -> Result<(),
 		.query_one(
 			"SELECT revision,credential_version,credential_fingerprint, \
 			 credential_writer_operation_id::text FROM decodex.accounts \
-			 WHERE account_id=$1::uuid",
+				 WHERE account_id=$1::text::uuid",
 			&[&account_id.as_str()],
 		)
 		.await?;
@@ -1438,7 +1438,7 @@ async fn reject_pending_replay_after_account_change(
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET state='unknown' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
@@ -1459,7 +1459,7 @@ async fn reject_pending_replay_after_account_change(
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET state='available' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
@@ -1528,7 +1528,7 @@ async fn reject_pending_replay_after_account_change(
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET credential_store_observation='unavailable' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
@@ -1553,7 +1553,7 @@ async fn reject_pending_replay_after_account_change(
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET credential_store_observation='exact' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
@@ -1561,7 +1561,7 @@ async fn reject_pending_replay_after_account_change(
 	owner
 		.execute(
 			"UPDATE decodex.accounts SET state='unknown' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
@@ -1657,7 +1657,7 @@ async fn reject_pending_replay_after_account_change(
 	lifecycle_transaction
 		.execute(
 			"UPDATE decodex.accounts SET state='available' \
-			 WHERE account_id=$1::uuid AND revision=$2",
+				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
 		.await?;
