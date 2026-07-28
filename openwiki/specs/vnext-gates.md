@@ -942,7 +942,10 @@ and host credential binding. A focused copy and an automatic retry are prohibite
 One invocation must exercise the real V26-to-V27 migration and the real
 `decodexd` migration, finalization, and completed-verification entrypoints. It must not
 mock the migration process. On macOS, it verifies exact Keychain metadata without
-printing credential material. The invocation must cover:
+printing credential material. The gate composes the exact feature-built candidate as
+the same fixed app-like daemon wrapper required by production. It never executes a raw
+workspace `decodexd` for a protected-store or migration effect. The invocation must
+cover:
 
 - populated V26 normal and disabled accounts, plus absent normal and disabled
   accounts;
@@ -970,6 +973,15 @@ printing credential material. The invocation must cover:
   descendants, direct ordinary invocation refusal, malformed or identity-drifted FD
   refusal before effects, and live-daemon exclusion, without child-side lock-state,
   parent-identity, or same-UID-imitation claims;
+- a non-inheritable parent duplicate transferred only by the exact
+  `Popen(pass_fds=...)` spawn, plus failure injection after lock acquisition,
+  descriptor duplication, transition-gate duplication, socket creation, spawn, and
+  child-identity capture; every case preserves its primary error, reports any cleanup
+  error separately, closes every owned resource, and proves fresh lock acquisition;
+- one fixed wrapper with bundle identifier `box.acg.decodex.daemon`, main
+  `Contents/MacOS/decodexd`, strict signature, hardened runtime, embedded profile,
+  team `T54QFA7W2S`, application identifier and sole effective Keychain access group
+  `T54QFA7W2S.box.acg.decodex.daemon`, and profile channel `development`;
 - `prepared` before Keychain creation, operation-descriptor-first replay, and
   phase-derived `AbsentInitialize` and `ExistingHydrate` recovery without generic
   cancellation or state-based reclassification;
@@ -1008,6 +1020,31 @@ or long-lived backup, or restore a user item. Conflict and drift cases use separ
 gate-owned identities or exact metadata-preserving operations. They never delete and
 recreate a positive item.
 
+Every store operation and metadata search sets the wrapper's exact application
+identifier as `kSecAttrAccessGroup`, and metadata readback verifies `agrp`. The five
+credential slots remain derived only from the run descriptor. The finite
+protected-store proof reports a closed non-secret phase and category for first add,
+first metadata readback, duplicate add, no-overwrite readback, exact delete, and final
+absence. It does not emit credential material, raw stderr, host paths, or an arbitrary
+OSStatus surface.
+
+Wrapper preflight rejects a raw binary; a wrong bundle identifier, executable, team,
+application identifier, or access group; a missing, expired, or wrong-channel profile;
+profile, entitlement, or signature disagreement; an invalid signature; candidate
+executable drift; and a LaunchAgent target outside the wrapper main. The normalized
+migration manifest and existing prepared/completed receipt bind the exact non-secret
+wrapper descriptor. The retirement receipt binds its canonical identity digest, and
+the installed-asset set contains exactly one matching wrapper executable. Both the
+installer and the corresponding Rust child inspect current identity at the initial,
+prepared, final, and completed boundaries. The installer alone performs the post-final
+check immediately before the launch decision. These checks reject executable,
+byte-count, `Info.plist`, profile, team, application-identifier, expiry, channel,
+entitlement, access-group, signature, LaunchAgent, or installed-asset drift. Completed
+verification obtains the frozen descriptor from PostgreSQL when the source manifest
+is absent. Exact replay adds no credential write, account or routing revision, or
+receipt. Profile expiry after preparation fails closed and does not authorize
+automatic profile renewal or manifest rebinding.
+
 The gate must exercise the installer-owned operator orchestration, the real migration,
 the prepared verifier, the finalizer, the completed verifier, and the final launch
 decision. It must prove live-daemon exclusion. At the required intermediate states, it
@@ -1025,6 +1062,19 @@ verdict to that exact tree. Only then can the Manager authorize exactly one repl
 `cargo make test-vnext-account-migration-transition` invocation. A focused copy and an
 automatic retry are prohibited. The gate must not create a command-patch-command
 staircase.
+
+A green replacement transition gate accepts only the migration-transition source and
+its direct wrapper composition. Before `MacDogfoodReady` or the production
+protected-store composition can be accepted, installer/package acceptance must also
+run one finite, gate-owned protected-store operation from the real `gui/<uid>`
+LaunchAgent context and perform unconditional exact cleanup. A development profile can
+support that local dogfood proof. It is not public distribution or notarization
+evidence.
+
+This repair does not authorize a file-based Keychain, weaker accessibility,
+plaintext or environment fallback, gate-only signing, a shared or general Keychain
+group, arbitrary Keychain CRUD, a generic package builder, profile or identity
+fallback, a new ledger, notarization, or public-distribution work.
 
 The rejected-candidate cause and option decision are retained in
 [the XY-1422 populated V26 migration reset](../evidence/xy-1422-populated-v26-migration-reset.md).

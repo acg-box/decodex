@@ -85,6 +85,7 @@ UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
 HEX_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
+DAEMON_WRAPPER_TOOL = Path(__file__).resolve().with_name("decodexd_wrapper.py")
 
 
 class InstallError(RuntimeError):
@@ -177,6 +178,22 @@ class InstallPaths:
     @property
     def namespace_lock(self) -> Path:
         return self.server_directory / "decodex.lock"
+
+    @property
+    def daemon_wrapper(self) -> Path:
+        try:
+            contents = self.decodexd.parent.parent
+            wrapper = contents.parent
+        except IndexError as error:
+            raise InstallError("daemon wrapper main path is invalid") from error
+        if (
+            self.decodexd.name != "decodexd"
+            or self.decodexd.parent.name != "MacOS"
+            or contents.name != "Contents"
+            or wrapper.name != "decodexd.app"
+        ):
+            raise InstallError("daemon wrapper main path is invalid")
+        return wrapper
 
 
 class InstallerNamespaceLock:
@@ -302,10 +319,17 @@ class InstallerNamespaceLock:
         except OSError as error:
             raise InstallError("local service namespace ownership is unavailable") from error
         try:
-            os.set_inheritable(descriptor, True)
-        except BaseException:
+            if os.get_inheritable(descriptor):
+                raise InstallError(
+                    "local service namespace capability is unexpectedly inheritable"
+                )
+        except BaseException as error:
             os.close(descriptor)
-            raise
+            if isinstance(error, InstallError):
+                raise
+            raise InstallError(
+                "local service namespace capability is unavailable"
+            ) from error
         return descriptor
 
     def close(self) -> None:
@@ -455,7 +479,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--decodexd",
         type=Path,
-        default=home / ".local" / "bin" / "decodexd",
+        default=(
+            home
+            / ".local"
+            / "bin"
+            / "decodexd.app"
+            / "Contents"
+            / "MacOS"
+            / "decodexd"
+        ),
     )
     parser.add_argument(
         "--decodex-cli",
@@ -1362,6 +1394,107 @@ def decision_digest(value: Any) -> str:
     return hashlib.sha256(normalized).hexdigest()
 
 
+def daemon_wrapper_digest(value: Any) -> str:
+    try:
+        normalized = json.dumps(
+            value,
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+    except (TypeError, ValueError, UnicodeEncodeError) as error:
+        raise InstallError("daemon wrapper descriptor is malformed") from error
+    return hashlib.sha256(normalized).hexdigest()
+
+
+def inspect_daemon_wrapper(paths: InstallPaths) -> dict[str, Any]:
+    try:
+        completed = run(
+            [
+                sys.executable,
+                str(DAEMON_WRAPPER_TOOL),
+                "inspect",
+                "--wrapper",
+                str(paths.daemon_wrapper),
+            ],
+            cwd=paths.repository,
+            capture=True,
+        )
+    except (OSError, subprocess.CalledProcessError) as error:
+        raise InstallError("daemon wrapper identity did not verify") from error
+    try:
+        result = json.loads(completed.stdout)
+    except (TypeError, json.JSONDecodeError) as error:
+        raise InstallError("daemon wrapper inspector returned an invalid result") from error
+    if (
+        not isinstance(result, dict)
+        or set(result) != {"schema", "descriptor", "descriptor_sha256"}
+        or result.get("schema") != "decodex/daemon-wrapper-result/1"
+        or not isinstance(result.get("descriptor"), dict)
+        or not isinstance(result.get("descriptor_sha256"), str)
+        or not HEX_DIGEST_PATTERN.fullmatch(result["descriptor_sha256"])
+        or daemon_wrapper_digest(result["descriptor"]) != result["descriptor_sha256"]
+        or result["descriptor"].get("executable_path") != str(paths.decodexd)
+    ):
+        raise InstallError("daemon wrapper identity did not verify")
+    return result["descriptor"]
+
+
+def verify_daemon_wrapper(
+    paths: InstallPaths,
+    expected: dict[str, Any],
+    *,
+    require_launch_agent: bool,
+) -> dict[str, Any]:
+    current = inspect_daemon_wrapper(paths)
+    if daemon_wrapper_digest(current) != daemon_wrapper_digest(expected):
+        raise InstallError("daemon wrapper identity differs")
+    if require_launch_agent:
+        body = read_owned_file(
+            paths.launch_agent,
+            os.geteuid(),
+            MAX_LAUNCH_AGENT_FILE_BYTES,
+            "LaunchAgent is malformed",
+        )
+        try:
+            launch_agent = plistlib.loads(body)
+        except (TypeError, ValueError, plistlib.InvalidFileException) as error:
+            raise InstallError("LaunchAgent is malformed") from error
+        arguments = (
+            launch_agent.get("ProgramArguments")
+            if isinstance(launch_agent, dict)
+            else None
+        )
+        if (
+            not isinstance(arguments, list)
+            or not arguments
+            or arguments[0] != expected.get("executable_path")
+        ):
+            raise InstallError("LaunchAgent daemon wrapper identity differs")
+    return current
+
+
+def migration_manifest_daemon_wrapper(
+    paths: InstallPaths,
+    uid: int,
+) -> dict[str, Any]:
+    body = read_owned_file(
+        paths.migration_manifest,
+        uid,
+        MAX_MIGRATION_MANIFEST_BYTES,
+        "account migration manifest is malformed",
+    )
+    try:
+        document = json.loads(body)
+    except json.JSONDecodeError as error:
+        raise InstallError("account migration manifest is malformed") from error
+    descriptor = document.get("daemon_wrapper") if isinstance(document, dict) else None
+    if not isinstance(descriptor, dict):
+        raise InstallError("account migration manifest is malformed")
+    return descriptor
+
+
 def render_migration_manifest(
     paths: InstallPaths,
     uid: int,
@@ -1370,6 +1503,7 @@ def render_migration_manifest(
     credential_digests: dict[str, str],
     fixed_account_id: str | None,
     order: list[str],
+    daemon_wrapper: dict[str, Any],
 ) -> bytes:
     routing: dict[str, Any] = {"mode": "balanced", "order": order}
     if fixed_account_id is not None:
@@ -1435,6 +1569,7 @@ def render_migration_manifest(
         "quota_policy": "reset_to_unknown",
         "usage_profile_policy": "start_empty",
         "history_policy": "do_not_import",
+        "daemon_wrapper": daemon_wrapper,
         "decision_fingerprints": decision_fingerprints,
         "accounts": accounts,
         "routing": routing,
@@ -1486,9 +1621,12 @@ def render_migration_manifest(
     return generated
 
 
-def render_launch_agent(paths: InstallPaths) -> bytes:
+def render_launch_agent(
+    paths: InstallPaths,
+    daemon_wrapper: dict[str, Any],
+) -> bytes:
     arguments = [
-        str(paths.decodexd),
+        daemon_wrapper["executable_path"],
         "supervise-local",
         "--postgres",
         str(paths.postgres),
@@ -1667,8 +1805,12 @@ def communicate_bounded(
     timeout: float,
 ) -> tuple[bytes, bytes]:
     if process.stdout is None or process.stderr is None:
-        terminate_bounded_process(process)
-        raise InstallError("installer child output pipes are unavailable")
+        primary_error = InstallError("installer child output pipes are unavailable")
+        try:
+            terminate_bounded_process(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
+        raise primary_error
     streams = {
         process.stdout.fileno(): ("stdout", process.stdout),
         process.stderr.fileno(): ("stderr", process.stderr),
@@ -1715,8 +1857,11 @@ def communicate_bounded(
                 stderr=b"".join(chunks["stderr"]),
             )
         process.wait(timeout=remaining)
-    except BaseException:
-        terminate_bounded_process(process)
+    except BaseException as primary_error:
+        try:
+            terminate_bounded_process(process)
+        except BaseException as cleanup_error:
+            raise primary_error from cleanup_error
         raise
     finally:
         selector.close()
@@ -1734,41 +1879,78 @@ def run_installer_child(
     capture: bool,
     transition_gate_fd: int | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    lock_descriptor = namespace_lock.borrow()
-    gate_descriptor = (
-        os.dup(transition_gate_fd) if transition_gate_fd is not None else None
-    )
-    inherited = [lock_descriptor]
-    child_command = [
-        *command,
-        "--installer-lock-fd",
-        str(lock_descriptor),
-    ]
-    if gate_descriptor is not None:
-        inherited.append(gate_descriptor)
-        child_command.extend(["--transition-gate-fd", str(gate_descriptor)])
+    lock_descriptor: int | None = None
+    gate_descriptor: int | None = None
+    process: subprocess.Popen[Any] | None = None
+    child_command = list(command)
     try:
+        lock_descriptor = namespace_lock.borrow()
+        if transition_gate_fd is not None:
+            gate_descriptor = os.dup(transition_gate_fd)
+            if os.get_inheritable(gate_descriptor):
+                raise InstallError(
+                    "transition gate capability is unexpectedly inheritable"
+                )
+        inherited = [lock_descriptor]
+        child_command.extend(
+            [
+                "--installer-lock-fd",
+                str(lock_descriptor),
+            ]
+        )
+        if gate_descriptor is not None:
+            inherited.append(gate_descriptor)
+            child_command.extend(["--transition-gate-fd", str(gate_descriptor)])
         process = subprocess.Popen(
             child_command,
             cwd=cwd,
             stdin=subprocess.DEVNULL,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
+            close_fds=True,
             pass_fds=tuple(inherited),
             start_new_session=True,
         )
-    finally:
+        os.close(lock_descriptor)
+        lock_descriptor = None
         if gate_descriptor is not None:
             os.close(gate_descriptor)
-        os.close(lock_descriptor)
-    try:
+            gate_descriptor = None
         stdout_bytes, stderr_bytes = communicate_bounded(
             process,
             child_command,
             INSTALLER_COMMAND_TIMEOUT_SECONDS,
         )
-    except subprocess.TimeoutExpired as error:
-        raise InstallError("installer child timed out") from error
+    except BaseException as primary_error:
+        cleanup_error: BaseException | None = None
+        for descriptor in (gate_descriptor, lock_descriptor):
+            if descriptor is None:
+                continue
+            try:
+                os.close(descriptor)
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+        if process is not None and process.poll() is None:
+            try:
+                terminate_bounded_process(process)
+            except BaseException as error:
+                cleanup_error = cleanup_error or error
+        if process is not None:
+            for stream in (process.stdout, process.stderr):
+                if stream is None or stream.closed:
+                    continue
+                try:
+                    stream.close()
+                except BaseException as error:
+                    cleanup_error = cleanup_error or error
+        if isinstance(primary_error, subprocess.TimeoutExpired):
+            timeout_error = InstallError("installer child timed out")
+            timeout_error.__cause__ = primary_error
+            primary_error = timeout_error
+        if cleanup_error is not None:
+            raise primary_error from cleanup_error
+        raise primary_error
+    assert process is not None
     stdout = stdout_bytes.decode("utf-8", errors="strict")
     stderr = stderr_bytes.decode("utf-8", errors="strict")
     completed = subprocess.CompletedProcess(
@@ -2265,6 +2447,12 @@ def run_offline_account_migration(
     *,
     transition_gate_fd: int | None = None,
 ) -> dict[str, Any]:
+    expected_wrapper = migration_manifest_daemon_wrapper(paths, os.geteuid())
+    verify_daemon_wrapper(
+        paths,
+        expected_wrapper,
+        require_launch_agent=True,
+    )
     completed = run_installer_child(
         [
             str(paths.decodexd),
@@ -2306,6 +2494,12 @@ def run_account_migration_finalizer(
     *,
     transition_gate_fd: int | None = None,
 ) -> dict[str, Any]:
+    expected_wrapper = migration_manifest_daemon_wrapper(paths, os.geteuid())
+    verify_daemon_wrapper(
+        paths,
+        expected_wrapper,
+        require_launch_agent=True,
+    )
     command = [
         str(paths.decodexd),
         "finalize-account-migration",
@@ -2367,6 +2561,12 @@ def run_prepared_account_migration_verifier(
     *,
     transition_gate_fd: int | None = None,
 ) -> dict[str, Any]:
+    expected_wrapper = migration_manifest_daemon_wrapper(paths, os.geteuid())
+    verify_daemon_wrapper(
+        paths,
+        expected_wrapper,
+        require_launch_agent=True,
+    )
     completed = run_installer_child(
         [
             str(paths.decodexd),
@@ -2456,6 +2656,12 @@ def run_completed_account_migration_verifier(
     *,
     transition_gate_fd: int | None = None,
 ) -> dict[str, Any]:
+    current_wrapper = inspect_daemon_wrapper(paths)
+    verify_daemon_wrapper(
+        paths,
+        current_wrapper,
+        require_launch_agent=True,
+    )
     command = [
         str(paths.decodexd),
         "verify-account-migration",
@@ -2998,10 +3204,17 @@ def install_under_namespace_lock(
         "existing Decodex config is malformed",
     )
     completed_result: dict[str, Any] | None = None
+    launch_wrapper: dict[str, Any] | None = None
     if (
         current_config is not None
         and b"server_host.reset_card_accounts" not in current_config
     ):
+        launch_wrapper = inspect_daemon_wrapper(paths)
+        verify_daemon_wrapper(
+            paths,
+            launch_wrapper,
+            require_launch_agent=True,
+        )
         initialize_cluster(paths, uid)
         postgres = start_temporary_postgres(paths)
         try:
@@ -3080,8 +3293,10 @@ def install_under_namespace_lock(
                 paths,
                 [enrollment.account_id for enrollment in planned],
             )
+            daemon_wrapper = inspect_daemon_wrapper(paths)
+            launch_wrapper = daemon_wrapper
             config = render_config(paths, uid).encode("utf-8")
-            launch_agent = render_launch_agent(paths)
+            launch_agent = render_launch_agent(paths, daemon_wrapper)
             credential_digests = credential_sources(paths, accounts, planned, uid)
             sources = [
                 source_record("legacy_account_pool", paths.legacy_accounts, account_pool_body),
@@ -3101,6 +3316,7 @@ def install_under_namespace_lock(
                 credential_digests,
                 fixed_account_id,
                 order,
+                daemon_wrapper,
             )
             atomic_write(paths.staging_config, config, 0o600)
             atomic_write(paths.migration_manifest, manifest, 0o600)
@@ -3182,6 +3398,13 @@ def install_under_namespace_lock(
         if cleanup_error is not None:
             raise cleanup_error
 
+    if launch_wrapper is None:
+        raise InstallError("daemon wrapper identity is unavailable")
+    verify_daemon_wrapper(
+        paths,
+        launch_wrapper,
+        require_launch_agent=True,
+    )
     launch = launch_requested
     checkpoint("launch_decided")
     return migration_result, enrollments, launch

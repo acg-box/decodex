@@ -24,7 +24,7 @@ const KEYCHAIN_ACCESSIBILITY_AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY: &str = "cku";
 
 /// Non-secret readback from the production store for one finite canonical migration-gate slot.
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
-#[derive(Debug, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 struct AccountMigrationCredentialReadback {
 	/// Stable report schema.
 	pub schema: &'static str,
@@ -48,6 +48,8 @@ struct AccountMigrationCredentialReadback {
 	pub fingerprint_sha256: Option<String>,
 	/// Exact Keychain item label when present.
 	pub label: Option<String>,
+	/// Exact verified Keychain access group when present.
+	pub access_group: Option<String>,
 	/// Exact Keychain item description when present.
 	pub description: Option<String>,
 	/// Keychain accessibility code returned with the item attributes.
@@ -441,6 +443,7 @@ mod macos {
 		sync::Mutex,
 	};
 
+	use crate::daemon_wrapper::inspect_current_daemon_wrapper;
 	#[cfg(feature = "account-migration-transition-gate")]
 	use core_foundation::{
 		base::{CFType, CFTypeRef, TCFType as _},
@@ -473,19 +476,44 @@ mod macos {
 
 	const APPLICATION_IDENTITY: &str = "box.acg.decodex";
 	const KEYCHAIN_SERVICE: &str = "box.acg.decodex.credentials.v1";
+	const KEYCHAIN_ACCESS_GROUP: &str = "T54QFA7W2S.box.acg.decodex.daemon";
 	const ITEM_NOT_FOUND: i32 = -25_300;
+
+	#[derive(Debug, Eq, PartialEq)]
+	struct KeychainQueryAuthority {
+		service: &'static str,
+		account: String,
+		access_group: String,
+	}
 
 	/// macOS generic-password adapter used only by the singleton daemon Account Service.
 	pub struct MacosKeychainCredentialStore {
 		serial: Mutex<()>,
 		lock_path: PathBuf,
+		access_group: String,
 	}
 	impl MacosKeychainCredentialStore {
-		/// Construct the daemon-owned Keychain adapter.
-		pub fn new(paths: &DecodexPaths) -> Self {
+		/// Construct the daemon-owned Keychain adapter from the verified current wrapper.
+		pub fn new(paths: &DecodexPaths) -> Result<Self, CredentialStoreError> {
+			let descriptor =
+				inspect_current_daemon_wrapper().map_err(|_| CredentialStoreError::Unavailable)?;
+			let access_group = descriptor.keychain_access_group();
+			if access_group != KEYCHAIN_ACCESS_GROUP {
+				return Err(CredentialStoreError::Unavailable);
+			}
+			Ok(Self {
+				serial: Mutex::new(()),
+				lock_path: paths.server_dir().join("account-credential-store.lock"),
+				access_group: access_group.to_owned(),
+			})
+		}
+
+		#[cfg(test)]
+		fn new_for_process_lock_test(paths: &DecodexPaths) -> Self {
 			Self {
 				serial: Mutex::new(()),
 				lock_path: paths.server_dir().join("account-credential-store.lock"),
+				access_group: KEYCHAIN_ACCESS_GROUP.to_owned(),
 			}
 		}
 
@@ -512,16 +540,29 @@ mod macos {
 			Ok(ProcessCredentialLock(file))
 		}
 
-		fn query(account_id: &AccountId) -> PasswordOptions {
+		fn query_authority(&self, account_id: &AccountId) -> KeychainQueryAuthority {
+			KeychainQueryAuthority {
+				service: KEYCHAIN_SERVICE,
+				account: account_id.as_str().to_owned(),
+				access_group: self.access_group.clone(),
+			}
+		}
+
+		fn query(&self, account_id: &AccountId) -> PasswordOptions {
+			let authority = self.query_authority(account_id);
 			let mut options =
-				PasswordOptions::new_generic_password(KEYCHAIN_SERVICE, account_id.as_str());
+				PasswordOptions::new_generic_password(authority.service, &authority.account);
+			options.set_access_group(&authority.access_group);
 			options.set_access_synchronized(Some(false));
 			options.use_protected_keychain();
 			options
 		}
 
-		fn write_options(account_id: &AccountId) -> Result<PasswordOptions, CredentialStoreError> {
-			let mut options = Self::query(account_id);
+		fn write_options(
+			&self,
+			account_id: &AccountId,
+		) -> Result<PasswordOptions, CredentialStoreError> {
+			let mut options = self.query(account_id);
 			let access = SecAccessControl::create_with_protection(
 				Some(ProtectionMode::AccessibleAfterFirstUnlockThisDeviceOnly),
 				0,
@@ -534,9 +575,10 @@ mod macos {
 		}
 
 		fn read_unlocked(
+			&self,
 			account_id: &AccountId,
 		) -> Result<(PersistedCredentialV1, CredentialBinding), CredentialStoreError> {
-			let bytes = generic_password(Self::query(account_id)).map_err(map_keychain_error)?;
+			let bytes = generic_password(self.query(account_id)).map_err(map_keychain_error)?;
 			let (persisted, fingerprint) = decode(bytes)?;
 			if persisted.account_id()? != *account_id {
 				return Err(CredentialStoreError::AccountMismatch);
@@ -546,6 +588,18 @@ mod macos {
 			Ok((persisted, binding))
 		}
 
+		#[cfg(any(test, feature = "account-migration-transition-gate"))]
+		fn enforce_metadata_access_group(
+			&self,
+			observed: Option<&str>,
+		) -> Result<(), CredentialStoreError> {
+			if observed == Some(self.access_group.as_str()) {
+				Ok(())
+			} else {
+				Err(CredentialStoreError::CorruptBundle)
+			}
+		}
+
 		#[cfg(feature = "account-migration-transition-gate")]
 		pub(super) fn gate_metadata(
 			&self,
@@ -553,7 +607,7 @@ mod macos {
 		) -> Result<AccountMigrationCredentialReadback, CredentialStoreError> {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
-			let (_persisted, binding) = match Self::read_unlocked(account_id) {
+			let (_persisted, binding) = match self.read_unlocked(account_id) {
 				Ok(value) => value,
 				Err(CredentialStoreError::NotFound) =>
 					return Ok(AccountMigrationCredentialReadback {
@@ -568,6 +622,7 @@ mod macos {
 						writer_operation_id: None,
 						fingerprint_sha256: None,
 						label: None,
+						access_group: None,
 						description: None,
 						accessibility: None,
 						synchronizing: None,
@@ -576,8 +631,9 @@ mod macos {
 					}),
 				Err(error) => return Err(error),
 			};
-			let attributes = keychain_attributes(account_id)?;
-			if attributes.service.as_deref() != Some(KEYCHAIN_SERVICE)
+			let attributes = keychain_attributes(&self.access_group, account_id)?;
+			if self.enforce_metadata_access_group(attributes.access_group.as_deref()).is_err()
+				|| attributes.service.as_deref() != Some(KEYCHAIN_SERVICE)
 				|| attributes.account.as_deref() != Some(account_id.as_str())
 				|| attributes.label.as_deref() != Some(APPLICATION_IDENTITY)
 				|| attributes.description.as_deref()
@@ -602,6 +658,7 @@ mod macos {
 				writer_operation_id: Some(binding.writer_operation_id.as_str().to_owned()),
 				fingerprint_sha256: Some(binding.fingerprint.as_str().to_owned()),
 				label: attributes.label,
+				access_group: attributes.access_group,
 				description: attributes.description,
 				accessibility: attributes.accessibility,
 				synchronizing: attributes.synchronizing,
@@ -616,6 +673,7 @@ mod macos {
 		service: Option<String>,
 		account: Option<String>,
 		label: Option<String>,
+		access_group: Option<String>,
 		description: Option<String>,
 		accessibility: Option<String>,
 		synchronizing: Option<bool>,
@@ -624,6 +682,7 @@ mod macos {
 
 	#[cfg(feature = "account-migration-transition-gate")]
 	fn keychain_attributes(
+		access_group: &str,
 		account_id: &AccountId,
 	) -> Result<KeychainAttributes, CredentialStoreError> {
 		let mut query = ItemSearchOptions::new();
@@ -631,6 +690,7 @@ mod macos {
 			.class(ItemClass::generic_password())
 			.service(KEYCHAIN_SERVICE)
 			.account(account_id.as_str())
+			.access_group(access_group)
 			.cloud_sync(Some(false))
 			.ignore_legacy_keychains()
 			.load_attributes(true)
@@ -646,6 +706,7 @@ mod macos {
 			service: attribute_string(&attributes, "svce"),
 			account: attribute_string(&attributes, "acct"),
 			label: attribute_string(&attributes, "labl"),
+			access_group: attribute_string(&attributes, "agrp"),
 			description: attribute_string(&attributes, "desc"),
 			accessibility: attribute_string(&attributes, "pdmn"),
 			synchronizing: attribute_bool(&attributes, "sync"),
@@ -698,7 +759,7 @@ mod macos {
 			if target.version.get() != 1 {
 				return Err(CredentialStoreError::VersionConflict);
 			}
-			match Self::read_unlocked(account_id) {
+			match self.read_unlocked(account_id) {
 				Ok(_) => return Err(CredentialStoreError::AlreadyExists),
 				Err(CredentialStoreError::NotFound) => {},
 				Err(error) => return Err(error),
@@ -713,7 +774,7 @@ mod macos {
 			let bytes = encode(&persisted)?;
 			let binding = persisted.binding(fingerprint(&bytes)?)?;
 			enforce_exact(&binding, target)?;
-			set_generic_password_options(&bytes, Self::write_options(account_id)?)
+			set_generic_password_options(&bytes, self.write_options(account_id)?)
 				.map_err(map_keychain_error)?;
 
 			Ok(())
@@ -726,7 +787,7 @@ mod macos {
 		) -> Result<StoredCredential, CredentialStoreError> {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
-			let (persisted, binding) = Self::read_unlocked(account_id)?;
+			let (persisted, binding) = self.read_unlocked(account_id)?;
 			enforce_exact(&binding, expected)?;
 			let bundle = persisted.into_bundle()?;
 
@@ -742,7 +803,7 @@ mod macos {
 		) -> Result<(), CredentialStoreError> {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
-			let (_, actual) = Self::read_unlocked(account_id)?;
+			let (_, actual) = self.read_unlocked(account_id)?;
 			enforce_exact(&actual, expected)?;
 			let next =
 				expected.version.successor().map_err(|_| CredentialStoreError::VersionConflict)?;
@@ -759,7 +820,7 @@ mod macos {
 			let bytes = encode(&persisted)?;
 			let binding = persisted.binding(fingerprint(&bytes)?)?;
 			enforce_exact(&binding, target)?;
-			set_generic_password_options(&bytes, Self::write_options(account_id)?)
+			set_generic_password_options(&bytes, self.write_options(account_id)?)
 				.map_err(map_keychain_error)?;
 
 			Ok(())
@@ -772,9 +833,9 @@ mod macos {
 		) -> Result<(), CredentialStoreError> {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
-			let (_, actual) = Self::read_unlocked(account_id)?;
+			let (_, actual) = self.read_unlocked(account_id)?;
 			enforce_exact(&actual, expected)?;
-			delete_generic_password_options(Self::query(account_id)).map_err(map_keychain_error)
+			delete_generic_password_options(self.query(account_id)).map_err(map_keychain_error)
 		}
 	}
 
@@ -795,8 +856,9 @@ mod macos {
 			time::{Duration, Instant},
 		};
 
-		use super::MacosKeychainCredentialStore;
-		use decodex_core::DecodexRoot;
+		use super::{KEYCHAIN_ACCESS_GROUP, KEYCHAIN_SERVICE, MacosKeychainCredentialStore};
+		use crate::CredentialStoreError;
+		use decodex_core::{AccountId, DecodexRoot};
 
 		const CHILD_ROOT_ENV: &str = "DECODEX_TEST_KEYCHAIN_LOCK_CHILD_ROOT";
 		const TEST_NAME: &str =
@@ -809,7 +871,7 @@ mod macos {
 				let paths = root.paths();
 				fs::write(root.as_path().join("child-lock-attempt"), b"ready")
 					.expect("child attempt marker is writable");
-				let store = MacosKeychainCredentialStore::new(&paths);
+				let store = MacosKeychainCredentialStore::new_for_process_lock_test(&paths);
 				let _guard =
 					store.lock_process().expect("child acquires the released process lock");
 				return;
@@ -823,7 +885,22 @@ mod macos {
 				.expect("temporary Decodex root is valid");
 			let paths = root.paths();
 			paths.ensure_local_transport_layout().expect("private server directory exists");
-			let store = MacosKeychainCredentialStore::new(&paths);
+			let store = MacosKeychainCredentialStore::new_for_process_lock_test(&paths);
+			let account_id = AccountId::new("00000000-0000-4000-8000-000000000001".to_owned())
+				.expect("test account identity is valid");
+			let authority = store.query_authority(&account_id);
+			assert_eq!(authority.service, KEYCHAIN_SERVICE);
+			assert_eq!(authority.account, account_id.as_str());
+			assert_eq!(authority.access_group, KEYCHAIN_ACCESS_GROUP);
+			assert_eq!(store.enforce_metadata_access_group(Some(KEYCHAIN_ACCESS_GROUP)), Ok(()));
+			assert_eq!(
+				store.enforce_metadata_access_group(None),
+				Err(CredentialStoreError::CorruptBundle)
+			);
+			assert_eq!(
+				store.enforce_metadata_access_group(Some("wrong.group")),
+				Err(CredentialStoreError::CorruptBundle)
+			);
 			let guard = store.lock_process().expect("parent acquires the process lock");
 			let mut child = Command::new(env::current_exe().expect("test executable is available"))
 				.args(["--exact", TEST_NAME])
@@ -879,7 +956,7 @@ pub fn run_account_migration_credential_gate(
 		("readback", Some(slot)) => {
 			let account_id = gate_slot_account_id(&run.run_id, slot)?;
 			let metadata =
-				MacosKeychainCredentialStore::new(&run.paths).gate_metadata(&account_id)?;
+				MacosKeychainCredentialStore::new(&run.paths)?.gate_metadata(&account_id)?;
 			serde_json::to_value(metadata).map_err(|_| CredentialStoreError::Unavailable)
 		},
 		("prove_create_conflict", None) => prove_gate_create_conflict(&run),
@@ -940,48 +1017,345 @@ fn gate_conflict_credential(
 }
 
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+struct CredentialGatePhase {
+	phase: &'static str,
+	category: &'static str,
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+#[derive(Debug, Serialize)]
+struct CredentialGateConflictReport {
+	schema: &'static str,
+	complete: bool,
+	phases: [CredentialGatePhase; 6],
+	readback: Option<AccountMigrationCredentialReadback>,
+	primary_failure: Option<CredentialGatePhase>,
+	cleanup_failure: Option<CredentialGatePhase>,
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+fn credential_gate_phase(phase: &'static str, category: &'static str) -> CredentialGatePhase {
+	CredentialGatePhase { phase, category }
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+fn credential_store_error_category(error: CredentialStoreError) -> &'static str {
+	match error {
+		CredentialStoreError::Unavailable => "unavailable",
+		CredentialStoreError::NotFound => "not_found",
+		CredentialStoreError::AlreadyExists => "already_exists",
+		CredentialStoreError::VersionConflict => "version_conflict",
+		CredentialStoreError::FingerprintMismatch => "fingerprint_mismatch",
+		CredentialStoreError::ProviderMismatch => "provider_mismatch",
+		CredentialStoreError::AccountMismatch => "account_mismatch",
+		CredentialStoreError::WriterMismatch => "writer_mismatch",
+		CredentialStoreError::UnsupportedSchema => "unsupported_schema",
+		CredentialStoreError::InvalidBundle => "invalid_bundle",
+		CredentialStoreError::CorruptBundle => "corrupt_bundle",
+	}
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+fn record_credential_gate_failure(
+	failure: &mut Option<CredentialGatePhase>,
+	phase: &'static str,
+	category: &'static str,
+) {
+	if failure.is_none() {
+		*failure = Some(credential_gate_phase(phase, category));
+	}
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
+fn credential_gate_report_value(
+	phases: [CredentialGatePhase; 6],
+	readback: Option<AccountMigrationCredentialReadback>,
+	primary_failure: Option<CredentialGatePhase>,
+	cleanup_failure: Option<CredentialGatePhase>,
+) -> Result<Value, CredentialStoreError> {
+	let complete = phases.iter().map(|phase| phase.category).eq([
+		"created",
+		"exact",
+		"already_exists",
+		"exact_unchanged",
+		"deleted",
+		"absent",
+	]) && primary_failure.is_none()
+		&& cleanup_failure.is_none()
+		&& readback.is_some();
+	serde_json::to_value(CredentialGateConflictReport {
+		schema: "decodex/account-migration-credential-gate-conflict/1",
+		complete,
+		phases,
+		readback,
+		primary_failure,
+		cleanup_failure,
+	})
+	.map_err(|_| CredentialStoreError::Unavailable)
+}
+
+#[cfg(all(test, target_os = "macos", feature = "account-migration-transition-gate"))]
+mod credential_gate_report_tests {
+	use super::{
+		CredentialStoreError, credential_gate_phase, credential_gate_report_value,
+		credential_store_error_category,
+	};
+
+	#[test]
+	fn store_errors_have_closed_categories() {
+		let cases = [
+			(CredentialStoreError::Unavailable, "unavailable"),
+			(CredentialStoreError::NotFound, "not_found"),
+			(CredentialStoreError::AlreadyExists, "already_exists"),
+			(CredentialStoreError::VersionConflict, "version_conflict"),
+			(CredentialStoreError::FingerprintMismatch, "fingerprint_mismatch"),
+			(CredentialStoreError::ProviderMismatch, "provider_mismatch"),
+			(CredentialStoreError::AccountMismatch, "account_mismatch"),
+			(CredentialStoreError::WriterMismatch, "writer_mismatch"),
+			(CredentialStoreError::UnsupportedSchema, "unsupported_schema"),
+			(CredentialStoreError::InvalidBundle, "invalid_bundle"),
+			(CredentialStoreError::CorruptBundle, "corrupt_bundle"),
+		];
+		for (error, expected) in cases {
+			assert_eq!(credential_store_error_category(error), expected);
+		}
+	}
+
+	#[test]
+	fn report_has_fixed_phase_order() {
+		let phases = [
+			credential_gate_phase("first_add", "created"),
+			credential_gate_phase("first_metadata_readback", "exact"),
+			credential_gate_phase("duplicate_add", "already_exists"),
+			credential_gate_phase("no_overwrite_readback", "exact_unchanged"),
+			credential_gate_phase("exact_delete", "deleted"),
+			credential_gate_phase("final_absence", "absent"),
+		];
+		let report = credential_gate_report_value(phases, None, None, None)
+			.expect("closed report serializes");
+		assert_eq!(report["complete"], false);
+		assert_eq!(
+			report["phases"]
+				.as_array()
+				.expect("phases are an array")
+				.iter()
+				.map(|phase| phase["phase"].as_str().expect("phase is text"))
+				.collect::<Vec<_>>(),
+			[
+				"first_add",
+				"first_metadata_readback",
+				"duplicate_add",
+				"no_overwrite_readback",
+				"exact_delete",
+				"final_absence",
+			]
+		);
+	}
+}
+
+#[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
 fn prove_gate_create_conflict(
 	run: &crate::account_migration::AccountMigrationGateRun,
 ) -> Result<Value, CredentialStoreError> {
 	let account_id = gate_slot_account_id(&run.run_id, "conflict")?;
-	let store = MacosKeychainCredentialStore::new(&run.paths);
-	if store.gate_metadata(&account_id)?.present {
-		return Err(CredentialStoreError::AlreadyExists);
-	}
 	let (target, bundle) = gate_conflict_credential(run, 1)?;
-	store.create(&account_id, &target, bundle)?;
-	let proof = (|| {
-		let created = store.gate_metadata(&account_id)?;
-		let (conflicting_target, conflicting_bundle) = gate_conflict_credential(run, 2)?;
-		match store.create(&account_id, &conflicting_target, conflicting_bundle) {
-			Err(CredentialStoreError::AlreadyExists) => {},
-			Ok(()) => return Err(CredentialStoreError::Unavailable),
-			Err(error) => return Err(error),
-		}
-		let after = store.gate_metadata(&account_id)?;
-		if created != after {
-			return Err(CredentialStoreError::Unavailable);
-		}
-		Ok(created)
-	})();
-	let cleanup = store.delete(&account_id, &target).and_then(|()| {
-		if store.gate_metadata(&account_id)?.present {
-			Err(CredentialStoreError::Unavailable)
-		} else {
-			Ok(())
-		}
-	});
-	if let Err(error) = cleanup {
-		return Err(error);
+	let (conflicting_target, conflicting_bundle) = gate_conflict_credential(run, 2)?;
+	let mut phases = [
+		credential_gate_phase("first_add", "blocked"),
+		credential_gate_phase("first_metadata_readback", "blocked"),
+		credential_gate_phase("duplicate_add", "blocked"),
+		credential_gate_phase("no_overwrite_readback", "blocked"),
+		credential_gate_phase("exact_delete", "not_owned"),
+		credential_gate_phase("final_absence", "blocked"),
+	];
+	let mut primary_failure = None;
+	let mut cleanup_failure = None;
+	let mut readback = None;
+	let store = match MacosKeychainCredentialStore::new(&run.paths) {
+		Ok(store) => store,
+		Err(error) => {
+			let category = credential_store_error_category(error);
+			phases[0] = credential_gate_phase("first_add", category);
+			record_credential_gate_failure(&mut primary_failure, "first_add", category);
+			return credential_gate_report_value(
+				phases,
+				readback,
+				primary_failure,
+				cleanup_failure,
+			);
+		},
+	};
+	let mut owned_target = None;
+
+	match store.gate_metadata(&account_id) {
+		Ok(metadata) if metadata.present => {
+			phases[0] = credential_gate_phase("first_add", "not_absent");
+			record_credential_gate_failure(&mut primary_failure, "first_add", "not_absent");
+		},
+		Ok(_) => match store.create(&account_id, &target, bundle) {
+			Ok(()) => {
+				phases[0] = credential_gate_phase("first_add", "created");
+				owned_target = Some(&target);
+			},
+			Err(error) => {
+				let category = credential_store_error_category(error);
+				phases[0] = credential_gate_phase("first_add", category);
+				record_credential_gate_failure(&mut primary_failure, "first_add", category);
+			},
+		},
+		Err(error) => {
+			let category = credential_store_error_category(error);
+			phases[0] = credential_gate_phase("first_add", category);
+			record_credential_gate_failure(&mut primary_failure, "first_add", category);
+		},
 	}
-	let created = proof?;
-	Ok(json!({
-		"schema": "decodex/account-migration-credential-gate-conflict/1",
-		"create_if_absent": "created",
-		"conflict": "already_exists_without_overwrite",
-		"readback": created,
-		"cleanup": "exact_created_binding_deleted"
-	}))
+
+	if phases[0].category == "created" {
+		match store.read_exact(&account_id, &target).and_then(|bundle| {
+			drop(bundle);
+			store.gate_metadata(&account_id)
+		}) {
+			Ok(metadata) if metadata.present => {
+				phases[1] = credential_gate_phase("first_metadata_readback", "exact");
+				readback = Some(metadata);
+			},
+			Ok(_) => {
+				phases[1] = credential_gate_phase("first_metadata_readback", "mismatch");
+				record_credential_gate_failure(
+					&mut primary_failure,
+					"first_metadata_readback",
+					"mismatch",
+				);
+			},
+			Err(error) => {
+				let category = credential_store_error_category(error);
+				phases[1] = credential_gate_phase("first_metadata_readback", category);
+				record_credential_gate_failure(
+					&mut primary_failure,
+					"first_metadata_readback",
+					category,
+				);
+			},
+		}
+	}
+
+	let mut duplicate_created = false;
+	if primary_failure.is_none() {
+		match store.create(&account_id, &conflicting_target, conflicting_bundle) {
+			Err(CredentialStoreError::AlreadyExists) => {
+				phases[2] = credential_gate_phase("duplicate_add", "already_exists");
+			},
+			Ok(()) => {
+				phases[2] = credential_gate_phase("duplicate_add", "unexpected_success");
+				record_credential_gate_failure(
+					&mut primary_failure,
+					"duplicate_add",
+					"unexpected_success",
+				);
+				duplicate_created = true;
+				owned_target = None;
+			},
+			Err(error) => {
+				let category = credential_store_error_category(error);
+				phases[2] = credential_gate_phase("duplicate_add", category);
+				record_credential_gate_failure(&mut primary_failure, "duplicate_add", category);
+			},
+		}
+	}
+
+	if phases[2].category == "already_exists" {
+		match store.read_exact(&account_id, &target).and_then(|bundle| {
+			drop(bundle);
+			store.gate_metadata(&account_id)
+		}) {
+			Ok(metadata)
+				if metadata.present
+					&& readback.as_ref().is_some_and(|before| before == &metadata) =>
+			{
+				phases[3] = credential_gate_phase("no_overwrite_readback", "exact_unchanged");
+			},
+			Ok(_) => {
+				phases[3] = credential_gate_phase("no_overwrite_readback", "mismatch");
+				record_credential_gate_failure(
+					&mut primary_failure,
+					"no_overwrite_readback",
+					"mismatch",
+				);
+			},
+			Err(error) => {
+				let category = credential_store_error_category(error);
+				phases[3] = credential_gate_phase("no_overwrite_readback", category);
+				record_credential_gate_failure(
+					&mut primary_failure,
+					"no_overwrite_readback",
+					category,
+				);
+			},
+		}
+	} else if duplicate_created {
+		let proved_target = match store.read_exact(&account_id, &target) {
+			Ok(bundle) => {
+				drop(bundle);
+				Some(&target)
+			},
+			Err(_) => match store.read_exact(&account_id, &conflicting_target) {
+				Ok(bundle) => {
+					drop(bundle);
+					Some(&conflicting_target)
+				},
+				Err(_) => None,
+			},
+		};
+		if let Some(proved_target) = proved_target {
+			owned_target = Some(proved_target);
+			match store.gate_metadata(&account_id) {
+				Ok(metadata)
+					if proved_target == &target
+						&& metadata.present
+						&& readback.as_ref().is_some_and(|before| before == &metadata) =>
+				{
+					phases[3] = credential_gate_phase("no_overwrite_readback", "exact_unchanged");
+				},
+				Ok(_) => {
+					phases[3] = credential_gate_phase("no_overwrite_readback", "mismatch");
+				},
+				Err(error) => {
+					phases[3] = credential_gate_phase(
+						"no_overwrite_readback",
+						credential_store_error_category(error),
+					);
+				},
+			}
+		} else {
+			phases[3] = credential_gate_phase("no_overwrite_readback", "not_owned");
+		}
+	}
+
+	if let Some(owned_target) = owned_target {
+		match store.delete(&account_id, owned_target) {
+			Ok(()) => phases[4] = credential_gate_phase("exact_delete", "deleted"),
+			Err(error) => {
+				let category = credential_store_error_category(error);
+				phases[4] = credential_gate_phase("exact_delete", category);
+				record_credential_gate_failure(&mut cleanup_failure, "exact_delete", category);
+			},
+		}
+	}
+	match store.gate_metadata(&account_id) {
+		Ok(metadata) if metadata.present => {
+			phases[5] = credential_gate_phase("final_absence", "present");
+			record_credential_gate_failure(&mut cleanup_failure, "final_absence", "present");
+		},
+		Ok(_) => phases[5] = credential_gate_phase("final_absence", "absent"),
+		Err(error) => {
+			let category = credential_store_error_category(error);
+			phases[5] = credential_gate_phase("final_absence", category);
+			record_credential_gate_failure(&mut cleanup_failure, "final_absence", category);
+		},
+	}
+
+	credential_gate_report_value(phases, readback, primary_failure, cleanup_failure)
 }
 
 #[cfg(all(target_os = "macos", feature = "account-migration-transition-gate"))]
@@ -993,14 +1367,28 @@ fn cleanup_gate_run_credentials(
 		.map(|slot| gate_slot_account_id(&run.run_id, slot))
 		.collect::<Result<Vec<_>, _>>()?;
 	let manifest_path = run.paths.root().as_path().join("account-migration-manifest.json");
-	let store = MacosKeychainCredentialStore::new(&run.paths);
+	let store = MacosKeychainCredentialStore::new(&run.paths)?;
 	let mut deleted = 0_u32;
 	let conflict_account_id = gate_slot_account_id(&run.run_id, "conflict")?;
-	let (conflict_binding, conflict_bundle) = gate_conflict_credential(run, 1)?;
-	drop(conflict_bundle);
+	let (conflict_binding_1, conflict_bundle_1) = gate_conflict_credential(run, 1)?;
+	drop(conflict_bundle_1);
+	let (conflict_binding_2, conflict_bundle_2) = gate_conflict_credential(run, 2)?;
+	drop(conflict_bundle_2);
 	if store.gate_metadata(&conflict_account_id)?.present {
-		drop(store.read_exact(&conflict_account_id, &conflict_binding)?);
-		store.delete(&conflict_account_id, &conflict_binding)?;
+		let owned_binding = match store.read_exact(&conflict_account_id, &conflict_binding_1) {
+			Ok(bundle) => {
+				drop(bundle);
+				&conflict_binding_1
+			},
+			Err(_) => match store.read_exact(&conflict_account_id, &conflict_binding_2) {
+				Ok(bundle) => {
+					drop(bundle);
+					&conflict_binding_2
+				},
+				Err(error) => return Err(error),
+			},
+		};
+		store.delete(&conflict_account_id, owned_binding)?;
 		if store.gate_metadata(&conflict_account_id)?.present {
 			return Err(CredentialStoreError::Unavailable);
 		}

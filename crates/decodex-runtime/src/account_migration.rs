@@ -59,6 +59,10 @@ use crate::{
 		AccountLifecycleError, AccountMigrationTransition, CredentialRefreshPort,
 		CredentialRefreshResult,
 	},
+	daemon_wrapper::{
+		DaemonWrapperDescriptor, daemon_wrapper_descriptor_sha256, verify_current_daemon_wrapper,
+		verify_launch_agent_daemon_wrapper,
+	},
 	host_credentials::{CredentialSecretBundle, CredentialStoreError},
 };
 #[cfg(feature = "account-migration-transition-gate")]
@@ -86,6 +90,17 @@ const ACCOUNT_MIGRATION_GATE_RUN_FILE: &str = "account-migration-gate-run.json";
 
 #[cfg(feature = "account-migration-transition-gate")]
 static ACCOUNT_MIGRATION_TRANSITION_GATE: OnceLock<Mutex<File>> = OnceLock::new();
+
+#[cfg(feature = "account-migration-transition-gate")]
+fn reject_aliased_account_migration_descriptors(
+	installer_lock_fd: RawFd,
+	transition_gate_fd: Option<RawFd>,
+) -> Result<(), OfflineAccountMigrationError> {
+	if transition_gate_fd == Some(installer_lock_fd) {
+		return Err(OfflineAccountMigrationError::InstallerLockUnavailable);
+	}
+	Ok(())
+}
 
 #[cfg(feature = "account-migration-transition-gate")]
 fn configure_account_migration_transition_gate(
@@ -375,6 +390,8 @@ struct CompletedRetirementReceipt {
 	staging_secrets_retired: bool,
 	active_legacy_sources_retired: bool,
 	installed_assets_verified: bool,
+	daemon_wrapper_verified: bool,
+	daemon_wrapper_identity_sha256: String,
 	final_config_path: String,
 	final_config_sha256: String,
 	launch_agent_path: String,
@@ -386,7 +403,7 @@ struct CompletedRetirementReceipt {
 	supervisor_profile: String,
 }
 
-#[derive(Deserialize, Eq, PartialEq)]
+#[derive(Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
 struct CompletedInstalledAsset {
 	name: String,
@@ -403,6 +420,7 @@ struct MigrationManifest {
 	quota_policy: String,
 	usage_profile_policy: String,
 	history_policy: String,
+	daemon_wrapper: DaemonWrapperDescriptor,
 	decision_fingerprints: MigrationDecisionFingerprints,
 	accounts: Vec<MigrationAccount>,
 	routing: MigrationRouting,
@@ -479,6 +497,7 @@ struct ValidatedManifest {
 	raw: Value,
 	document: MigrationManifest,
 	digest: String,
+	daemon_wrapper: DaemonWrapperDescriptor,
 	sources: Vec<MigrationSource>,
 	accounts: Vec<ParsedAccount>,
 	routing: AccountSelectionMode,
@@ -540,8 +559,10 @@ pub async fn exercise_account_migration_admission_for_gate(
 		.paths();
 	let account_id = AccountId::new(account_id.to_owned())
 		.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
-	let credentials: Arc<dyn HostCredentialStore> =
-		Arc::new(MacosKeychainCredentialStore::new(&paths));
+	let credentials: Arc<dyn HostCredentialStore> = Arc::new(
+		MacosKeychainCredentialStore::new(&paths)
+			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+	);
 	let service =
 		Arc::new(AccountService::new(store.clone(), credentials, Arc::new(OfflineRefresher)));
 	let callback_ready = service
@@ -683,8 +704,10 @@ pub async fn exercise_account_migration_recovery_for_gate(
 	)
 	.await
 	.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?;
-	let credentials: Arc<dyn HostCredentialStore> =
-		Arc::new(MacosKeychainCredentialStore::new(&run.paths));
+	let credentials: Arc<dyn HostCredentialStore> = Arc::new(
+		MacosKeychainCredentialStore::new(&run.paths)
+			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+	);
 	let service = AccountService::new(store.clone(), credentials, Arc::new(OfflineRefresher));
 	let before_operation = store
 		.read_account_operation(&operation_id)
@@ -870,6 +893,11 @@ pub async fn hold_account_migration_live_daemon_for_gate(
 pub async fn run_offline_account_migration(
 	options: OfflineAccountMigrationOptions,
 ) -> Result<OfflineAccountMigrationReport, OfflineAccountMigrationError> {
+	#[cfg(feature = "account-migration-transition-gate")]
+	reject_aliased_account_migration_descriptors(
+		options.installer_lock_fd,
+		options.transition_gate_fd,
+	)?;
 	let installer_lock =
 		validate_installer_namespace_lock(&options.config, options.installer_lock_fd)?;
 	#[cfg(feature = "account-migration-transition-gate")]
@@ -886,6 +914,7 @@ pub async fn run_offline_account_migration(
 	verify_retired_runtime_inputs(&launch_agent)?;
 	let manifest_bytes = read_private_file(&options.manifest, MAX_MANIFEST_BYTES)?;
 	let source_manifest = parse_source_manifest(&manifest_bytes)?;
+	verify_manifest_daemon_wrapper(&source_manifest, &launch_agent)?;
 	verify_sources(&source_manifest.sources)?;
 	verify_credential_directory(&options.credential_directory, &source_manifest.accounts)?;
 	let mut prepared_credentials = load_migration_credentials(&options, &source_manifest)?;
@@ -924,7 +953,10 @@ pub async fn run_offline_account_migration(
 	let paths = DecodexRoot::new(root.to_path_buf())
 		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?
 		.paths();
-	let credentials = Arc::new(MacosKeychainCredentialStore::new(&paths));
+	let credentials = Arc::new(
+		MacosKeychainCredentialStore::new(&paths)
+			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+	);
 	let credential_store: Arc<dyn HostCredentialStore> = credentials.clone();
 	let service = AccountService::new(store, credential_store, Arc::new(OfflineRefresher));
 	service
@@ -1117,9 +1149,11 @@ async fn verify_prepared_destination(
 	config_path: &Path,
 	manifest_path: &Path,
 	config: &DecodexConfig,
+	launch_agent: &[u8],
 ) -> Result<VerifiedPreparedDestination, OfflineAccountMigrationError> {
 	let manifest_bytes = read_private_file(manifest_path, MAX_MANIFEST_BYTES)?;
 	let manifest = parse_manifest(&manifest_bytes)?;
+	verify_manifest_daemon_wrapper(&manifest, launch_agent)?;
 	let root = config_path.parent().ok_or(OfflineAccountMigrationError::InvalidPath)?;
 	let paths = DecodexRoot::new(root.to_path_buf())
 		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?
@@ -1142,7 +1176,10 @@ async fn verify_prepared_destination(
 	)
 	.await
 	.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?;
-	let credentials = Arc::new(MacosKeychainCredentialStore::new(&paths));
+	let credentials = Arc::new(
+		MacosKeychainCredentialStore::new(&paths)
+			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+	);
 	let credential_store: Arc<dyn HostCredentialStore> = credentials.clone();
 	let service = AccountService::new(store, credential_store, Arc::new(OfflineRefresher));
 	let account_count = u32::try_from(manifest.accounts.len())
@@ -1177,6 +1214,11 @@ async fn verify_prepared_destination(
 pub async fn verify_prepared_offline_account_migration_destination(
 	options: OfflineAccountMigrationDestinationVerifyOptions,
 ) -> Result<OfflineAccountMigrationReport, OfflineAccountMigrationError> {
+	#[cfg(feature = "account-migration-transition-gate")]
+	reject_aliased_account_migration_descriptors(
+		options.installer_lock_fd,
+		options.transition_gate_fd,
+	)?;
 	let installer_lock =
 		validate_installer_namespace_lock(&options.config, options.installer_lock_fd)?;
 	#[cfg(feature = "account-migration-transition-gate")]
@@ -1198,7 +1240,8 @@ pub async fn verify_prepared_offline_account_migration_destination(
 	verify_retired_runtime_inputs(&config_bytes)?;
 	verify_retired_runtime_inputs(&launch_agent)?;
 	let VerifiedPreparedDestination { manifest, intent_recorded, .. } =
-		verify_prepared_destination(&options.config, &options.manifest, &config).await?;
+		verify_prepared_destination(&options.config, &options.manifest, &config, &launch_agent)
+			.await?;
 	#[cfg(feature = "account-migration-transition-gate")]
 	account_migration_transition_checkpoint("prepared_destination_verified", None)?;
 	let account_count = manifest.accounts.len();
@@ -1221,6 +1264,11 @@ pub async fn verify_prepared_offline_account_migration_destination(
 pub async fn finalize_offline_account_migration(
 	options: OfflineAccountMigrationFinalizeOptions,
 ) -> Result<OfflineAccountMigrationReport, OfflineAccountMigrationError> {
+	#[cfg(feature = "account-migration-transition-gate")]
+	reject_aliased_account_migration_descriptors(
+		options.installer_lock_fd,
+		options.transition_gate_fd,
+	)?;
 	let installer_lock =
 		validate_installer_namespace_lock(&options.config, options.installer_lock_fd)?;
 	#[cfg(feature = "account-migration-transition-gate")]
@@ -1242,7 +1290,8 @@ pub async fn finalize_offline_account_migration(
 		routing,
 		destination_accounts,
 		intent_recorded,
-	} = verify_prepared_destination(&options.config, &options.manifest, &config).await?;
+	} = verify_prepared_destination(&options.config, &options.manifest, &config, &launch_agent)
+		.await?;
 	#[cfg(feature = "account-migration-transition-gate")]
 	account_migration_transition_checkpoint("final_destination_verified", None)?;
 	let expected_retired_active_sources = manifest
@@ -1262,6 +1311,7 @@ pub async fn finalize_offline_account_migration(
 		verify_absent_exact(path)?;
 	}
 	let assets = verify_installed_assets(&options.installed_assets)?;
+	verify_daemon_wrapper_installed_asset(&manifest, &assets)?;
 
 	let account_count = u32::try_from(manifest.accounts.len())
 		.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
@@ -1306,6 +1356,11 @@ pub async fn finalize_offline_account_migration(
 		"staging_secrets_retired": true,
 		"active_legacy_sources_retired": true,
 		"installed_assets_verified": true,
+		"daemon_wrapper_verified": true,
+		"daemon_wrapper_identity_sha256": daemon_wrapper_descriptor_sha256(
+			&manifest.daemon_wrapper,
+		)
+		.map_err(|_| OfflineAccountMigrationError::RuntimeRetirementUnverified)?,
 		"final_config_path": final_config_path,
 		"final_config_sha256": sha256(&config_bytes),
 		"launch_agent_path": launch_agent_path,
@@ -1351,6 +1406,11 @@ pub async fn finalize_offline_account_migration(
 pub async fn verify_completed_offline_account_migration(
 	options: OfflineAccountMigrationVerifyOptions,
 ) -> Result<OfflineAccountMigrationReport, OfflineAccountMigrationError> {
+	#[cfg(feature = "account-migration-transition-gate")]
+	reject_aliased_account_migration_descriptors(
+		options.installer_lock_fd,
+		options.transition_gate_fd,
+	)?;
 	let installer_lock =
 		validate_installer_namespace_lock(&options.config, options.installer_lock_fd)?;
 	#[cfg(feature = "account-migration-transition-gate")]
@@ -1371,8 +1431,6 @@ pub async fn verify_completed_offline_account_migration(
 	for path in &options.retired_active_sources {
 		verify_absent_exact(path)?;
 	}
-	let installed_assets = verify_installed_assets(&options.installed_assets)?;
-
 	let migration_password = credential(config.postgres().migration())?;
 	let runtime_password = credential(config.postgres().runtime())?;
 	PostgresStore::migrate_and_provision_explicit(
@@ -1389,9 +1447,9 @@ pub async fn verify_completed_offline_account_migration(
 	.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?
 	.ok_or(OfflineAccountMigrationError::ReceiptConflict)?;
 	let verified = verify_completed_receipt(&receipt)?;
-	let current_installed_assets: Vec<CompletedInstalledAsset> =
-		serde_json::from_value(Value::Array(installed_assets))
-			.map_err(|_| OfflineAccountMigrationError::RuntimeRetirementUnverified)?;
+	verify_manifest_daemon_wrapper(&verified.manifest, &launch_agent)?;
+	let current_installed_assets = verify_installed_assets(&options.installed_assets)?;
+	verify_daemon_wrapper_installed_asset(&verified.manifest, &current_installed_assets)?;
 	let final_config_path =
 		options.config.to_str().ok_or(OfflineAccountMigrationError::InvalidPath)?;
 	let launch_agent_path =
@@ -1435,7 +1493,10 @@ pub async fn verify_completed_offline_account_migration(
 	if options.config != paths.config_file() {
 		return Err(OfflineAccountMigrationError::RuntimeRetirementUnverified);
 	}
-	let credentials = Arc::new(MacosKeychainCredentialStore::new(&paths));
+	let credentials = Arc::new(
+		MacosKeychainCredentialStore::new(&paths)
+			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
+	);
 	let credential_store: Arc<dyn HostCredentialStore> = credentials.clone();
 	let service = AccountService::new(store, credential_store, Arc::new(OfflineRefresher));
 	let (accounts, routing) = service
@@ -1566,6 +1627,14 @@ fn verify_completed_receipt(
 		retirement_paths.iter().copied().collect::<BTreeSet<_>>().len();
 	let mut asset_names = BTreeSet::new();
 	let mut asset_paths = BTreeSet::new();
+	let mut daemon_wrapper_assets = retirement
+		.installed_assets
+		.iter()
+		.filter(|asset| asset.path == manifest.daemon_wrapper.executable_path());
+	let daemon_wrapper_asset_verified = daemon_wrapper_assets.next().is_some_and(|asset| {
+		asset.sha256 == manifest.daemon_wrapper.executable_sha256()
+			&& asset.byte_count == manifest.daemon_wrapper.executable_byte_count()
+	}) && daemon_wrapper_assets.next().is_none();
 	if retirement.schema != "decodex/account-runtime-retirement/1"
 		|| !retirement.legacy_source_untouched
 		|| !retirement.runtime_legacy_authority_removed
@@ -1573,6 +1642,10 @@ fn verify_completed_receipt(
 		|| !retirement.staging_secrets_retired
 		|| !retirement.active_legacy_sources_retired
 		|| !retirement.installed_assets_verified
+		|| !retirement.daemon_wrapper_verified
+		|| !daemon_wrapper_asset_verified
+		|| daemon_wrapper_descriptor_sha256(&manifest.daemon_wrapper).ok().as_deref()
+			!= Some(retirement.daemon_wrapper_identity_sha256.as_str())
 		|| retirement.supervisor_profile != "postgres_and_daemon_only_v1"
 		|| retirement_paths.iter().any(|path| {
 			!Path::new(*path).is_absolute() || path.is_empty() || path.chars().any(char::is_control)
@@ -1629,6 +1702,8 @@ fn parse_manifest_inner(
 	if parsed.decision_fingerprints != expected_decisions {
 		return Err(OfflineAccountMigrationError::InvalidManifest);
 	}
+	daemon_wrapper_descriptor_sha256(&parsed.daemon_wrapper)
+		.map_err(|_| OfflineAccountMigrationError::InvalidManifest)?;
 	let target_count = parsed.accounts.iter().filter(|account| account.target.is_some()).count();
 	if target_count != 0 && target_count != parsed.accounts.len()
 		|| (require_targets && target_count != parsed.accounts.len())
@@ -1711,8 +1786,18 @@ fn parse_manifest_inner(
 		None => AccountSelectionMode::Balanced,
 	};
 	let digest = json_digest(&raw)?;
+	let daemon_wrapper = parsed.daemon_wrapper.clone();
 	let sources = parsed.sources.clone();
-	Ok(ValidatedManifest { raw, document: parsed, digest, sources, accounts, routing, order })
+	Ok(ValidatedManifest {
+		raw,
+		document: parsed,
+		digest,
+		daemon_wrapper,
+		sources,
+		accounts,
+		routing,
+		order,
+	})
 }
 
 fn parse_manifest_target(
@@ -2650,7 +2735,35 @@ fn verify_absent_exact(path: &Path) -> Result<(), OfflineAccountMigrationError> 
 	}
 }
 
-fn verify_installed_assets(paths: &[PathBuf]) -> Result<Vec<Value>, OfflineAccountMigrationError> {
+fn verify_manifest_daemon_wrapper(
+	manifest: &ValidatedManifest,
+	launch_agent: &[u8],
+) -> Result<(), OfflineAccountMigrationError> {
+	verify_current_daemon_wrapper(&manifest.daemon_wrapper)
+		.and_then(|_| verify_launch_agent_daemon_wrapper(launch_agent, &manifest.daemon_wrapper))
+		.map_err(|_| OfflineAccountMigrationError::RuntimeRetirementUnverified)
+}
+
+fn verify_daemon_wrapper_installed_asset(
+	manifest: &ValidatedManifest,
+	assets: &[CompletedInstalledAsset],
+) -> Result<(), OfflineAccountMigrationError> {
+	let matches = assets
+		.iter()
+		.filter(|asset| asset.path == manifest.daemon_wrapper.executable_path())
+		.collect::<Vec<_>>();
+	if matches.len() == 1
+		&& matches[0].sha256 == manifest.daemon_wrapper.executable_sha256()
+		&& matches[0].byte_count == manifest.daemon_wrapper.executable_byte_count()
+	{
+		return Ok(());
+	}
+	Err(OfflineAccountMigrationError::RuntimeRetirementUnverified)
+}
+
+fn verify_installed_assets(
+	paths: &[PathBuf],
+) -> Result<Vec<CompletedInstalledAsset>, OfflineAccountMigrationError> {
 	let effective_uid = unsafe { libc::geteuid() };
 	let mut names = BTreeSet::new();
 	let mut verified = Vec::with_capacity(paths.len());
@@ -2709,12 +2822,12 @@ fn verify_installed_assets(paths: &[PathBuf]) -> Result<Vec<Value>, OfflineAccou
 			return Err(OfflineAccountMigrationError::RuntimeRetirementUnverified);
 		}
 		let digest = digest.finalize();
-		verified.push(json!({
-			"name": name,
-			"path": path_text,
-			"sha256": digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
-			"byte_count": bytes_read,
-		}));
+		verified.push(CompletedInstalledAsset {
+			name: name.to_owned(),
+			path: path_text.to_owned(),
+			sha256: digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>(),
+			byte_count: bytes_read,
+		});
 	}
 	Ok(verified)
 }

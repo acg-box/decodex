@@ -72,12 +72,32 @@ Create-if-absent, exact-version compare-and-swap, and exact-version delete are a
 for one Account UUID. A stale version, wrong provider binding, duplicate provider
 identity, missing item, or unavailable backend is a typed result.
 
-For macOS, the adapter uses non-synchronizing Keychain generic-password items under
-application identity `box.acg.decodex` and service
+For macOS, the adapter uses non-synchronizing Keychain generic-password items with
+item label `box.acg.decodex` and service namespace
 `box.acg.decodex.credentials.v1`. The Keychain account name is the canonical Account
-UUID. Accessibility is after first unlock, this device only. The daemon identity is
-the only reader and writer. Locked, denied, malformed, or unsupported Keychain state
-fails closed.
+UUID. Accessibility is after first unlock, this device only. The daemon identity
+defined below is the only reader and writer. Locked, denied, malformed, or unsupported
+Keychain state fails closed.
+
+The daemon runs only as one no-UI app-like wrapper with bundle identifier
+`box.acg.decodex.daemon` and main executable `Contents/MacOS/decodexd`. The selected
+local dogfood identity is provisioned team `T54QFA7W2S`, application identifier
+`T54QFA7W2S.box.acg.decodex.daemon`, and profile channel `development`. That
+application identifier is the daemon's sole effective Keychain access group. Every
+Keychain read, create, compare-and-swap, delete, and metadata query sets that exact
+group. Metadata verification includes the returned `agrp` attribute. A raw workspace
+binary, a raw helper in the outer app, or `~/.local/bin/decodexd` can be a build input
+or retired artifact. It is never an Account Lifecycle execution entry.
+
+The wrapper has one fixed `Info.plist`, a valid hardened-runtime signature, an embedded
+provisioning profile, and exact signed entitlements. The profile, signature, and
+entitlements must agree on bundle identifier, application identifier, team, and the
+single effective access group. The signed entitlement and access-group sets are closed:
+missing, extra, or duplicate values refuse. This checkpoint accepts only the
+`development` profile channel. It is not public distribution or notarization evidence.
+The wrapper composer and verifier are deterministic and daemon-specific. They do not
+accept arbitrary identities, profiles, entitlements, groups, channels, or fallback
+binaries. SwiftUI and the CLI remain clients and receive no Keychain authority.
 
 The Linux backend is a later `AccountLifecycleReady` obligation. It must be selected
 explicitly and must prove persistent private storage, atomic replace, exact-version
@@ -332,6 +352,36 @@ resume or replay accepts only this target. A different provider, version, writer
 fingerprint, store binding, account tuple, or manifest digest fails closed. Migration
 never overwrites or downgrades another valid positive credential binding.
 
+The normalized manifest contains one complete non-secret daemon-wrapper descriptor.
+It contains the fixed wrapper and executable paths, executable digest and byte count,
+the raw `Info.plist` digest and fixed bundle/executable fields, the raw
+embedded-profile digest, application identifier, team, expiry, and closed channel,
+the canonical complete signed-entitlement digest, the exact normalized access-group
+set, and the canonical signature-identity digest. These facts are part of the existing
+canonical manifest digest. They are not decision fingerprints.
+
+The completed retirement receipt stores `daemon_wrapper_verified=true` and
+`daemon_wrapper_identity_sha256`. That value must equal the canonical digest of the
+exact `daemon_wrapper` descriptor in the manifest. LaunchAgent
+`ProgramArguments[0]` must equal the descriptor's wrapper main. The existing
+installed-asset set must contain exactly one matching executable path, digest, and byte
+count. `Info.plist` and the profile remain descriptor fields, not executable installed
+assets.
+
+The installer validates current wrapper identity before every migration, prepared,
+finalizer, and completed-verifier child. The corresponding Rust child runs the same
+fixed inspector at the initial, prepared, final, or completed boundary and compares its
+current identity with the manifest or completed PostgreSQL receipt. Initial migration
+checks precede the V27 handoff, PostgreSQL mutation, and Keychain effect. Prepared
+verification checks precede staging or legacy retirement. Finalization checks precede
+the completed receipt. Completed verification obtains the frozen manifest from
+PostgreSQL and does not depend on the retired source manifest. After the final or
+completed child returns, the installer alone performs one more current-identity check
+immediately before the launch decision. Any drift, including profile expiry after
+preparation, fails closed without rebinding the manifest or adding an operation,
+revision, or receipt. This extends the existing manifest and receipt; it does not add a
+ledger, receipt family, or authority owner.
+
 #### Cutover lock capability
 
 The macOS installer is the one physical cutover coordinator and the normal operator
@@ -350,12 +400,13 @@ the existing `decodex.lock`; migration must not create another lock name or a se
 migration lock. The installer releases its guard last on success or after exact
 failure cleanup.
 
-For each `decodexd` migration, finalizer, or completed-verifier spawn, the installer
-passes one `dup`-derived borrowed descriptor through an explicit installer-only
-inherited-FD capability and retains its original guard. It makes only the borrowed
-descriptor inheritable for that spawn and closes its parent-side duplicate after the
-spawn. The child validates only facts that its descriptor and filesystem view can
-establish:
+For each `decodexd` migration, prepared-verifier, finalizer, or completed-verifier
+spawn, the installer passes one `dup`-derived borrowed descriptor through an explicit
+installer-only inherited-FD capability and retains its original guard. The parent-side
+duplicate remains non-inheritable and close-on-exec. The exact
+`Popen(pass_fds=...)` call transfers it only for that spawn, and the parent closes its
+duplicate after the spawn. The child validates only facts that its descriptor and
+filesystem view can establish:
 
 - the inherited descriptor is open and refers to a regular file with the exact device,
   inode, configured owner, mode, and link count;
@@ -371,12 +422,21 @@ descriptor came from `dup` instead of an independent open. It never unlocks, unl
 or replaces the lock. It closes only its borrowed descriptor on exit and cannot close
 the installer's descriptor.
 
+Resource ownership starts immediately after the first successful lock acquisition,
+descriptor duplication, or socket creation. The production child runner and the
+canonical gate conditionally close every acquired lock duplicate, transition-gate
+duplicate, socket, pipe, and child process when a later duplication, spawn, identity
+capture, or checkpoint fails. Cleanup does not replace the primary failure. A cleanup
+failure is retained as an explicit secondary failure. Fault cases must prove that a
+new installer can acquire the exact lock after cleanup. This rule uses the existing
+guard and adds no lock or generic resource framework.
+
 A missing FD, invalid descriptor, wrong file type or metadata, pathname mismatch, or
 identity drift returns a typed operator refusal before PostgreSQL, Keychain,
 configuration, or retirement effects. Direct ordinary invocation without the explicit
-borrowed-FD shape also refuses before effects. Migration, finalization, and completed
-verification are hidden installer commands, not supported standalone authority
-surfaces.
+borrowed-FD shape also refuses before effects. Migration, prepared verification,
+finalization, and completed verification are hidden installer commands, not supported
+standalone authority surfaces.
 
 Physical continuity proof belongs to the installer coordinator's source ownership and
 the external canonical gate, not to child self-attestation. Within this cooperative
@@ -458,11 +518,19 @@ The ordered transition is:
 6. Apply manifest label and enabled state through exact administration.
 7. Replace routing only after every final account projection is verified.
 8. Verify the complete PostgreSQL and HostCredentialStore destination.
-9. The installer swaps final configuration and retires staging secrets and active
-   legacy authority while it retains the lock.
-10. The finalizer validates its borrowed capability and commits the completed
-    destination and retirement receipt.
-11. The installer decides whether to launch, then releases its lock last.
+9. On prepared resume, the prepared verifier validates its borrowed capability,
+   current wrapper identity, frozen manifest, and complete destination before
+   retirement continues.
+10. The installer swaps final configuration when required and retires staging secrets
+    and active legacy authority while it retains the lock.
+11. The finalizer validates its borrowed capability and current wrapper identity, then
+    commits the completed destination and retirement receipt.
+12. On completed replay, the completed verifier validates its borrowed capability,
+    current wrapper identity, frozen PostgreSQL manifest, receipt, and current
+    destination without reading retired sources.
+13. After the final or completed child returns, the installer verifies current wrapper
+    identity immediately before it decides whether to launch, then releases its lock
+    last.
 
 Restart recovery preserves this order across the manifest intent, operation
 `prepared` before Keychain create, Keychain create, `store_applied`, PostgreSQL
