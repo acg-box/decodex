@@ -572,8 +572,7 @@ def _extracted_leaf_certificate(wrapper: Path) -> bytes:
             [
                 str(CODESIGN),
                 "-d",
-                "--extract-certificates",
-                str(prefix),
+                f"--extract-certificates={prefix}",
                 str(wrapper),
             ]
         )
@@ -648,7 +647,7 @@ def signature_identity(
     _, details_bytes = run_tool(
         [str(CODESIGN), "-d", "--verbose=4", str(wrapper)]
     )
-    _, requirement_bytes = run_tool(
+    requirement_bytes, _ = run_tool(
         [str(CODESIGN), "-d", "-r-", str(wrapper)]
     )
     try:
