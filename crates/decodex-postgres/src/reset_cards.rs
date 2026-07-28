@@ -966,7 +966,12 @@ fn classify_pending_reset_card_recovery(
 
 fn pending_replay_receipt_error(error: StoreError) -> StoreError {
 	match error {
-		StoreError::IdempotencyConflict | StoreError::Incompatible(_) => error,
+		StoreError::IdempotencyConflict
+		| StoreError::Incompatible(_)
+		| StoreError::RevisionConflict { .. }
+		| StoreError::InvalidInput(
+			"reset-card account is not enrolled" | "account state rejects manual reset-card use",
+		) => error,
 		_ => StoreError::ResetCardCommitOutcomeUnknown,
 	}
 }
