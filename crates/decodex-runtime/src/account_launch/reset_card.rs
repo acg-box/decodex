@@ -48,8 +48,9 @@ use super::{
 	CapacityExhausted, RunnerCapacity,
 	process::{
 		AccountBinding, AccountIdentity, AccountRefreshCallback, AppServerCommand,
-		AttestedAppServerLaunch, ChatgptRefreshProjection, CredentialProjection, CredentialVault,
-		CredentialVaultError, ResetCardConsumeReadback, ResetCardProcessError,
+		AttestedAppServerLaunch, AttestedProcessChild, ChatgptRefreshProjection,
+		CredentialProjection, CredentialVault, CredentialVaultError, ResetCardConsumeReadback,
+		ResetCardProcessError,
 	},
 };
 
@@ -81,6 +82,12 @@ const _: () = assert!(
 const WORKER_IDLE_POLL: Duration = Duration::from_secs(5);
 const RETENTION: Duration = Duration::from_secs(7 * 24 * 60 * 60);
 const RECONCILIATION_DELAY: Duration = Duration::from_secs(1);
+
+#[derive(Clone, Copy)]
+enum InitialCredentialProjection {
+	Stored,
+	CallbackProbe,
+}
 
 /// Complete public inventory plus the exact account revision observed around process work.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -406,6 +413,7 @@ impl ResetCardRuntime {
 			Arc::clone(&provider_permit),
 			None,
 			None,
+			InitialCredentialProjection::CallbackProbe,
 		)
 		.await?;
 		let control = self.inner.process_generations.clone();
@@ -1069,6 +1077,7 @@ async fn run_inventory(
 		Arc::clone(&provider_permit),
 		reconciliation,
 		claim_permit.clone(),
+		InitialCredentialProjection::Stored,
 	)
 	.await?;
 	let control = inner.process_generations.clone();
@@ -1105,6 +1114,7 @@ async fn run_consume(
 		Arc::clone(&provider_permit),
 		Some(reconciliation),
 		Some(claim_permit.clone()),
+		InitialCredentialProjection::Stored,
 	)
 	.await?;
 	let control = inner.process_generations.clone();
@@ -1131,6 +1141,7 @@ async fn prepare_fenced_reset_process(
 	provider_permit: Arc<ProviderWorkPermit>,
 	reconciliation: Option<ResetCardReconciliationLaunch>,
 	claim_permit: Option<ClaimWorkPermit>,
+	initial_projection: InitialCredentialProjection,
 ) -> Result<FencedProcess, ResetCardServiceError> {
 	let generated =
 		AccountOperationId::generate().map_err(|_| ResetCardServiceError::ResourceExhausted)?;
@@ -1158,7 +1169,8 @@ async fn prepare_fenced_reset_process(
 			refresh_callback,
 		)
 		.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
-		let vault = StoredCredentialVault::new(account_id.clone(), credential.stored);
+		let vault =
+			StoredCredentialVault::new(account_id.clone(), credential.stored, initial_projection);
 		let launch_guard = credential.launch_guard;
 		let capacity_permit = capacity
 			.reserve(account_id, account_revision)
@@ -1198,7 +1210,7 @@ async fn prepare_fenced_reset_process(
 	let initialized = task::spawn_blocking(move || {
 		require_provider_work_start(&permit_for_init, claim_permit.as_ref())?;
 		control
-			.with_fenced_child(&process_for_init, |child| child.initialize_reset_card(&vault))
+			.with_fenced_child(&process_for_init, |child| vault.initialize(child))
 			.map_err(map_process_supervisor_error)?
 			.map_err(map_process_error)
 	})
@@ -1570,10 +1582,22 @@ impl Debug for AccountServiceRefreshCallback {
 struct StoredCredentialVault {
 	account_id: AccountId,
 	stored: StoredCredential,
+	initial_projection: InitialCredentialProjection,
 }
 impl StoredCredentialVault {
-	fn new(account_id: AccountId, stored: StoredCredential) -> Self {
-		Self { account_id, stored }
+	fn new(
+		account_id: AccountId,
+		stored: StoredCredential,
+		initial_projection: InitialCredentialProjection,
+	) -> Self {
+		Self { account_id, stored, initial_projection }
+	}
+
+	fn initialize(&self, child: &mut AttestedProcessChild) -> Result<(), ResetCardProcessError> {
+		match self.initial_projection {
+			InitialCredentialProjection::Stored => child.initialize_reset_card(self),
+			InitialCredentialProjection::CallbackProbe => child.initialize_callback_probe(self),
+		}
 	}
 }
 impl CredentialVault for StoredCredentialVault {
@@ -1587,11 +1611,15 @@ impl CredentialVault for StoredCredentialVault {
 		}
 		let binding = self.stored.binding();
 		let bundle = self.stored.bundle();
-		projection.authenticate_chatgpt(
-			bundle.access_token(),
-			binding.provider.account_id(),
-			bundle.plan_type(),
-		)?;
+		match self.initial_projection {
+			InitialCredentialProjection::Stored => projection.authenticate_chatgpt(
+				bundle.access_token(),
+				binding.provider.account_id(),
+				bundle.plan_type(),
+			)?,
+			InitialCredentialProjection::CallbackProbe =>
+				projection.authenticate_callback_probe(binding.provider.account_id())?,
+		}
 
 		Ok(AccountIdentity::from_observation("chatgpt", Some(bundle.provider_email()), true))
 	}

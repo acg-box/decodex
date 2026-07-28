@@ -50,7 +50,8 @@ use {
 #[cfg(test)] use crate::account_launch::RunnerCapacity;
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
-	AttestedChild, AttestedCodeIdentity, spawn_suspended,
+	AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE,
+	spawn_private_stdio_suspended, spawn_suspended,
 };
 use crate::account_launch::{
 	RunnerPermit,
@@ -72,10 +73,7 @@ use decodex_codex::{
 	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
 	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
 	ThreadSummary, UnavailableReason,
-	schema::{
-		ACCOUNT_LOGIN_METHOD, GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract,
-		SchemaMarker,
-	},
+	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
@@ -88,7 +86,9 @@ use decodex_postgres::CodexAccountCapabilityAttestation;
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
 
 const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+#[cfg(not(target_os = "macos"))]
 const PRIVATE_STDIO_STARTUP_ENV: &str = "CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
+#[cfg(not(target_os = "macos"))]
 const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
 const PRIVATE_STDIO_CAPABILITY_ID: &str =
 	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
@@ -713,7 +713,9 @@ impl AttestedAppServerLaunch {
 			.expect("attested launch always has an account binding")
 	}
 
-	/// Spawn the exact retained image. This method returns an error only before a child exists.
+	/// Spawn the canonical macOS image under snapshot-rooted dynamic attestation.
+	///
+	/// This method returns an error only before a child exists.
 	pub(crate) fn spawn(self) -> Result<AttestedProcessChild, SupervisionError> {
 		if ExactBuildLaunchCapability::attest_profile(&self.command)? != self.capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
@@ -786,6 +788,30 @@ impl AttestedProcessChild {
 		Ok(())
 	}
 
+	/// Initialize one fresh callback-capability child with the synthetic probe credential.
+	///
+	/// Cloud-config's unauthorized response during the synthetic initial login triggers the refresh
+	/// callback. The later inventory read and account readback only prove the installed real
+	/// successor.
+	pub(super) fn initialize_callback_probe(
+		&mut self,
+		vault: &dyn CredentialVault,
+	) -> Result<(), ResetCardProcessError> {
+		if self.initialized {
+			return Err(ResetCardProcessError::ProcessUnavailable);
+		}
+		let reset_profile = ResetCardCapabilityProfile::from_schema(self.generated.contract());
+		if !reset_profile.is_supported() {
+			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
+		}
+		let mut cache = CapabilityCache::default();
+		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
+		initialize_probe_projection(&mut self.process, vault, self.timeout, &mut negotiation)
+			.map_err(ResetCardProcessError::from_probe)?;
+		self.initialized = true;
+		Ok(())
+	}
+
 	/// Read one complete inventory and re-attest the immutable account before returning it.
 	pub(super) fn read_reset_card_inventory(
 		&mut self,
@@ -798,35 +824,11 @@ impl AttestedProcessChild {
 		Ok(inventory)
 	}
 
-	/// Prove the exact login, unauthorized refresh callback, and provider readback path once.
+	/// Prove the unauthorized refresh callback and exact successor readback path once.
 	pub(super) fn prove_refresh_callback(&mut self) -> Result<(), ResetCardProcessError> {
 		if !self.initialized {
 			return Err(ResetCardProcessError::ProcessUnavailable);
 		}
-		let provider_account_id = self
-			.process
-			.binding
-			.process_binding()
-			.map_err(ResetCardProcessError::from_supervision)?
-			.credential
-			.provider
-			.account_id()
-			.to_owned();
-		let probe_access_token = callback_probe_access_token(&provider_account_id)?;
-		self.process
-			.request_rpc::<_, CredentialProjectionResponse>(
-				ACCOUNT_LOGIN_METHOD,
-				&ChatgptAuthParams {
-					kind: "chatgptAuthTokens",
-					access_token: probe_access_token.as_str(),
-					chatgpt_account_id: &provider_account_id,
-					chatgpt_plan_type: Some(CALLBACK_PROBE_PLAN_TYPE),
-				},
-				self.timeout,
-			)
-			.map_err(|error| {
-				ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::RefreshProbe)
-			})?;
 		let _ = read_reset_card_inventory(&mut self.process, self.timeout)?;
 		re_attest_reset_card_account(&mut self.process, self.timeout)
 	}
@@ -946,6 +948,20 @@ impl CredentialProjection<'_> {
 			)
 			.map(|_| ())
 			.map_err(|_| CredentialVaultError::ProjectionRejected)
+	}
+
+	/// Authenticate one fresh callback-capability child with the non-secret synthetic probe JWT.
+	pub fn authenticate_callback_probe(
+		&mut self,
+		provider_account_id: &str,
+	) -> Result<(), CredentialVaultError> {
+		let access_token = callback_probe_access_token(provider_account_id)
+			.map_err(|_| CredentialVaultError::ProjectionRejected)?;
+		self.authenticate_chatgpt(
+			access_token.as_str(),
+			provider_account_id,
+			Some(CALLBACK_PROBE_PLAN_TYPE),
+		)
 	}
 }
 
@@ -1263,6 +1279,11 @@ impl SupervisedProcess {
 			let header: InboundHeader = serde_json::from_slice(&line)
 				.map_err(|_| RpcError::Supervision(SupervisionError::InvalidProtocol))?;
 
+			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
+				self.service_inbound_request(id, method, &line).map_err(rpc_supervision)?;
+				continue;
+			}
+
 			if header.id == Some(request_id) {
 				let response_digest = hex_digest(&Sha256::digest(&line));
 				let response: JsonRpcResponse<R> = serde_json::from_slice(&line)
@@ -1301,10 +1322,6 @@ impl SupervisedProcess {
 				if header.method.is_none() {
 					return Err(RpcError::Supervision(SupervisionError::InvalidProtocol));
 				}
-			}
-
-			if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
-				self.service_inbound_request(id, method, &line).map_err(rpc_supervision)?;
 			}
 		}
 	}
@@ -1701,23 +1718,58 @@ fn spawn_attested_protocol_process(
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 ) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
-	let mut process = configured_attested_app_server_process(command, binding, capability)?;
-	let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
-	let mut owner = ProcessGroupOwner::new(child, Some(guard));
-	let (stdin, stdout) = match owner.child_mut() {
-		ManagedChild::Standard(child) => {
-			let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
-			let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+	#[cfg(target_os = "macos")]
+	{
+		let identity = command
+			.attested_code_identity
+			.as_ref()
+			.ok_or(SupervisionError::LaunchCapabilityUnavailable)?;
+		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
+		let suspended = match capability {
+			ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1 =>
+				spawn_private_stdio_suspended(
+					identity,
+					&command.app_server_args,
+					&command.working_directory,
+					home,
+				),
+		}
+		.map_err(|_| SupervisionError::SpawnFailed)?;
 
-			(stdin, stdout)
-		},
-		#[cfg(target_os = "macos")]
-		ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
-	};
-	let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
-	owner.attach_pump(pump);
+		// The canonical source must still match the immutable snapshot after posix_spawn has
+		// bound the suspended child. Dynamic attestation then binds that child to the snapshot's
+		// exact code identity and canonical path before any user code can run.
+		verify_executable(command)?;
 
-	Ok((owner, Box::new(stdin)))
+		let spawned =
+			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
+		let mut owner = ProcessGroupOwner::new(ManagedChild::Attested(spawned.child), Some(guard));
+		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
+		owner.attach_pump(pump);
+
+		return Ok((owner, Box::new(spawned.stdin)));
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	{
+		let mut process = configured_attested_app_server_process(command, binding, capability)?;
+		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
+		let mut owner = ProcessGroupOwner::new(child, Some(guard));
+		let (stdin, stdout) = match owner.child_mut() {
+			ManagedChild::Standard(child) => {
+				let stdin = child.stdin.take().ok_or(SupervisionError::StdinUnavailable)?;
+				let stdout = child.stdout.take().ok_or(SupervisionError::InvalidProtocol)?;
+
+				(stdin, stdout)
+			},
+			#[cfg(target_os = "macos")]
+			ManagedChild::Attested(_) => unreachable!("configured spawn created a standard child"),
+		};
+		let pump = StdoutPump::start(stdout, sender, protocol_limit_exceeded)?;
+		owner.attach_pump(pump);
+
+		Ok((owner, Box::new(stdin)))
+	}
 }
 
 /// Typed result from `initialize` plus a bounded `thread/list`; no raw JSON escapes.
@@ -1989,7 +2041,6 @@ impl Debug for ResetCardConsumeReadback {
 pub(super) enum ResetCardProcessMethod {
 	InventoryRead,
 	Consume,
-	RefreshProbe,
 }
 
 /// Sanitized reset-card process failure.
@@ -3733,6 +3784,7 @@ fn run_after_verification_test(_command: &AppServerCommand) {
 	}
 }
 
+#[cfg(not(target_os = "macos"))]
 fn configured_app_server_process(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
@@ -3756,6 +3808,7 @@ fn configured_app_server_process(
 	Ok(process)
 }
 
+#[cfg(not(target_os = "macos"))]
 fn configured_attested_app_server_process(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
@@ -3781,7 +3834,7 @@ fn attested_launch_identity(
 	let mut digest = Sha256::new();
 
 	hash_launch_field(&mut digest, b"schema", b"decodex/attested-app-server-launch/1");
-	hash_launch_field(&mut digest, b"exec-policy", b"protected-snapshot-v1");
+	hash_launch_field(&mut digest, b"exec-policy", b"macos-canonical-suspended-v1");
 	hash_launch_field(&mut digest, b"platform", STDIO_ONLY_ATTESTED_PLATFORM.as_bytes());
 	hash_launch_field(
 		&mut digest,
@@ -3939,6 +3992,48 @@ fn initialize_probe(
 	timeout: Duration,
 	negotiation: &mut ProbeNegotiation<'_>,
 ) -> Result<AccountIdentity, ProbeError> {
+	if let Some(vault) = vault {
+		initialize_probe_projection(process, vault, timeout, negotiation)?;
+	} else {
+		initialize_probe_connection(process, timeout, negotiation)?;
+	}
+
+	let identity = match process.read_account_identity(timeout) {
+		Ok(identity) => identity,
+		Err(error) => return negotiation.fail(Capability::AccountRead, error),
+	};
+
+	negotiation.observe(Capability::AccountRead, LiveMethodOutcome::Supported);
+
+	Ok(identity)
+}
+
+fn initialize_probe_projection(
+	process: &mut SupervisedProcess,
+	vault: &dyn CredentialVault,
+	timeout: Duration,
+	negotiation: &mut ProbeNegotiation<'_>,
+) -> Result<(), ProbeError> {
+	initialize_probe_connection(process, timeout, negotiation)?;
+	let account_id = process.binding.account_id().clone();
+	let mut projection = CredentialProjection { process, timeout, used: false };
+	let expected =
+		vault.project(&account_id, &mut projection).map_err(ProbeError::CredentialVault)?;
+
+	if !projection.used {
+		return Err(ProbeError::CredentialVault(CredentialVaultError::Unavailable));
+	}
+
+	projection.process.expected_account_identity = Some(expected);
+
+	Ok(())
+}
+
+fn initialize_probe_connection(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+	negotiation: &mut ProbeNegotiation<'_>,
+) -> Result<(), ProbeError> {
 	let initialize = match process.request::<_, InitializeResponse>(
 		ReadOnlyMethod::Initialize,
 		&InitializeParams {
@@ -3960,27 +4055,8 @@ fn initialize_probe(
 	if let Err(error) = process.notify("initialized", &serde_json::json!({})) {
 		return negotiation.fail(Capability::Initialize, error);
 	}
-	if let Some(vault) = vault {
-		let account_id = process.binding.account_id().clone();
-		let mut projection = CredentialProjection { process, timeout, used: false };
-		let expected =
-			vault.project(&account_id, &mut projection).map_err(ProbeError::CredentialVault)?;
 
-		if !projection.used {
-			return Err(ProbeError::CredentialVault(CredentialVaultError::Unavailable));
-		}
-
-		projection.process.expected_account_identity = Some(expected);
-	}
-
-	let identity = match process.read_account_identity(timeout) {
-		Ok(identity) => identity,
-		Err(error) => return negotiation.fail(Capability::AccountRead, error),
-	};
-
-	negotiation.observe(Capability::AccountRead, LiveMethodOutcome::Supported);
-
-	Ok(identity)
+	Ok(())
 }
 
 pub(super) fn launch_retained_title_process(
@@ -4310,10 +4386,10 @@ fn attest_executable_for_home(
 
 fn protected_spawn_path(command: &AppServerCommand) -> PathBuf {
 	// macOS 27 terminates relocated Apple platform binaries such as /usr/bin/python3 before their
-	// test fixture can start. Production Codex images remain relocatable and always use the
-	// protected snapshot here. Unit fixtures execute their already-verified canonical interpreter
-	// while still exercising snapshot capture, digest verification, immutability, and cleanup
-	// mechanics.
+	// test fixture can start. Production version/schema preflights execute the protected snapshot;
+	// the final macOS app-server instead uses canonical suspended dynamic attestation. Unit
+	// fixtures execute their already-verified canonical interpreter while still exercising
+	// snapshot capture, digest verification, immutability, and cleanup mechanics.
 	#[cfg(all(test, target_os = "macos"))]
 	return command.test_spawn_path.clone().unwrap_or_else(|| command.program.clone());
 
@@ -4603,8 +4679,9 @@ mod tests {
 	use crate::account_launch::{
 		RunnerCapacity, RunnerPermit,
 		process::{
-			self, AccountBinding, AccountIdentity, AppServerCommand, CALLBACK_PROBE_EMAIL,
-			CALLBACK_PROBE_PLAN_TYPE, CALLBACK_PROBE_SIGNATURE, CredentialProjection,
+			self, AccountBinding, AccountIdentity, AccountRefreshCallback, AppServerCommand,
+			AttestedProcessChild, CALLBACK_PROBE_EMAIL, CALLBACK_PROBE_PLAN_TYPE,
+			CALLBACK_PROBE_SIGNATURE, ChatgptRefreshProjection, CredentialProjection,
 			CredentialProjectionResponse, CredentialVault, CredentialVaultError,
 			ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
 			PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe,
@@ -4623,7 +4700,11 @@ mod tests {
 		ExactThreadListFilter, ResetCardCapabilityState, ResetCardIdempotencyKey, SchemaMarker,
 		ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
-	use decodex_core::{AccountId, ResetCardConsumeOutcome};
+	use decodex_core::{
+		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
+		ProviderIdentity, ResetCardConsumeOutcome,
+	};
 
 	struct TestCapacity {
 		inner: RunnerCapacity,
@@ -4684,6 +4765,67 @@ mod tests {
 			}
 
 			Ok(AccountIdentity::from_observation("chatgpt", Some(self.expected_email), true))
+		}
+	}
+
+	struct CallbackProbeFixtureVault;
+	impl CredentialVault for CallbackProbeFixtureVault {
+		fn project(
+			&self,
+			account_id: &AccountId,
+			projection: &mut CredentialProjection<'_>,
+		) -> Result<AccountIdentity, CredentialVaultError> {
+			assert_eq!(account_id, binding().account_id());
+			projection.authenticate_callback_probe("callback-provider-account")?;
+			Ok(AccountIdentity::from_observation("chatgpt", Some("private@example.test"), true))
+		}
+	}
+
+	#[derive(Default)]
+	struct FixtureRefreshCallback {
+		calls: AtomicU32,
+	}
+	impl AccountRefreshCallback for FixtureRefreshCallback {
+		fn refresh(
+			&self,
+			account_id: &AccountId,
+			initial_binding: &ProcessGenerationAccountBinding,
+			reason: &str,
+			previous_provider_account_id: Option<&str>,
+		) -> Result<ChatgptRefreshProjection, CredentialVaultError> {
+			assert_eq!(account_id, binding().account_id());
+			assert_eq!(
+				initial_binding.credential.provider.account_id(),
+				"callback-provider-account"
+			);
+			assert_eq!(reason, "unauthorized");
+			assert_eq!(previous_provider_account_id, Some("callback-provider-account"));
+			self.calls.fetch_add(1, Ordering::AcqRel);
+			ChatgptRefreshProjection::new(
+				"synthetic-successor-token".to_owned(),
+				"callback-provider-account".to_owned(),
+				Some("business".to_owned()),
+			)
+		}
+	}
+
+	fn callback_binding(callback: Arc<dyn AccountRefreshCallback>) -> AccountBinding {
+		let credential = CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(1).unwrap(),
+			fingerprint: CredentialFingerprint::new("1".repeat(64)).unwrap(),
+			provider: ProviderIdentity::new(AccountProvider::Chatgpt, "callback-provider-account")
+				.unwrap(),
+			writer_operation_id: AccountOperationId::new("20000000-0000-4000-8000-000000000001")
+				.unwrap(),
+		};
+		AccountBinding {
+			account_id: binding().account_id().clone(),
+			expected_codex_home: PathBuf::from("/tmp/.codex"),
+			process_binding: Some(
+				ProcessGenerationAccountBinding::new(1, credential, "2".repeat(64)).unwrap(),
+			),
+			refresh_callback: Some(callback),
 		}
 	}
 
@@ -4771,7 +4913,7 @@ mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
-		if mode == "reset-card" {
+		if matches!(mode, "reset-card" | "callback-probe") {
 			schema_args.push("--reset-card".into());
 		}
 
@@ -4983,17 +5125,19 @@ mod tests {
 
 	#[test]
 	fn app_server_request_receives_bare_error_reply_before_probe_continues() {
-		let temp = TempDir::new().unwrap();
-		let result = ReadOnlyProbe::new_for_test(
-			fake_command("server-request", temp.path(), None),
-			binding(),
-			SchemaMarker::accepted(),
-			Duration::from_secs(2),
-		)
-		.run(&mut CapabilityCache::default())
-		.unwrap();
+		for mode in ["server-request", "server-request-id-collision"] {
+			let temp = TempDir::new().unwrap();
+			let result = ReadOnlyProbe::new_for_test(
+				fake_command(mode, temp.path(), None),
+				binding(),
+				SchemaMarker::accepted(),
+				Duration::from_secs(2),
+			)
+			.run(&mut CapabilityCache::default())
+			.unwrap();
 
-		assert_eq!(result.profile.state(Capability::Initialize), &CapabilityState::Supported);
+			assert_eq!(result.profile.state(Capability::Initialize), &CapabilityState::Supported);
+		}
 	}
 
 	#[test]
@@ -5061,6 +5205,41 @@ mod tests {
 
 		assert_eq!(readback.outcome, ResetCardConsumeOutcome::Reset);
 		assert_eq!(readback.inventory.available_count(), 0);
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn callback_probe_uses_one_initial_synthetic_login_then_re_attests_the_real_successor() {
+		let temp = TempDir::new().unwrap();
+		let timeout = Duration::from_secs(2);
+		let capacity = TestCapacity::new(1);
+		let command = fake_command("callback-probe", temp.path(), None);
+		let callback = Arc::new(FixtureRefreshCallback::default());
+		let process_binding =
+			callback_binding(Arc::clone(&callback) as Arc<dyn AccountRefreshCallback>);
+		let (build, generated, guard) = process::attest_executable(
+			&command,
+			&process_binding,
+			None,
+			timeout,
+			Some(capacity.reserve().unwrap()),
+		)
+		.unwrap();
+		let process = SupervisedProcess::spawn_bound(
+			command,
+			process_binding,
+			guard.expect("the test supplied one runner permit"),
+		)
+		.unwrap();
+		let mut child =
+			AttestedProcessChild { process, build, generated, timeout, initialized: false };
+
+		child.initialize_callback_probe(&CallbackProbeFixtureVault).unwrap();
+		child.prove_refresh_callback().unwrap();
+
+		assert_eq!(callback.calls.load(Ordering::Acquire), 1);
+		let AttestedProcessChild { process, .. } = child;
+		process.shutdown(Duration::from_secs(1)).unwrap();
 		assert_eq!(capacity.active(), 0);
 	}
 

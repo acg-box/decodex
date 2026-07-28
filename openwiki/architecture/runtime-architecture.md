@@ -550,14 +550,17 @@ V23 adds the durable ProcessGeneration owner described in
 [the XY-1400 authority specification](../specs/process-generation-authority.md). PostgreSQL
 commits one account-exclusive `starting` intent before `ProcessSupervisor` can receive a fresh
 spawn fence. Replay is readback only. One private `AttestedAppServerLaunch` retains the protected
-executable snapshot and derives the intent's account and launch-manifest hash. That hash binds the
-exact image and BuildId, command, fixed `app-server --stdio` arguments, working directory,
-clear-then-set environment, account, initial account revision, canonical credential
-version/fingerprint, provider binding, and exact-build startup/lifetime/account-callback
-capability. The same non-secret facts are part of the existing V23 intent, prepare fence,
-ready transition, and strict readback. No new ledger is added. The supervisor accepts no
-independent runner digest or raw `Command`. After spawn, it persists the exact boot, PID,
-process-start, process-group, and session identities.
+executable reference snapshot and canonical macOS execution identity, then derives the intent's
+account and launch-manifest hash. That hash binds the exact image and BuildId, canonical-suspended
+execution policy, command, fixed `app-server --stdio` arguments, working directory, clear-then-set
+environment, account, initial account revision, canonical credential version/fingerprint, provider
+binding, and exact-build startup/lifetime/account-callback capability. The same non-secret facts
+are part of the existing V23 intent, prepare fence, ready transition, and strict readback. No new
+ledger is added. The supervisor accepts no independent runner digest or raw `Command`. The
+immutable snapshot supplies preflight bytes and the static code-identity reference. The final
+macOS app-server executes the canonical image while suspended and resumes only after exact dynamic
+code, path, session, and process-group verification. After spawn, the supervisor persists the exact
+boot, PID, process-start, process-group, and session identities.
 
 The current launch profile accepts only the source-attested macOS
 `codex-cli 0.146.0-alpha.3.1` image and forces
@@ -1228,8 +1231,12 @@ projection only.
 Before any reset-card read or consume, the Codex adapter requires the generated schema to
 advertise both `account/rateLimits/read` and
 `account/rateLimitResetCredit/consume`. It attests the configured account in an isolated
-app-server process and accepts only a complete, unique inventory. A client selects a public
-descriptor. The daemon resolves its one current opaque provider credit ID.
+app-server process and accepts only a complete, unique inventory. Quota decoding selects
+the upstream `codex` limit-ID snapshot, or the required default snapshot when that map
+entry is absent. It never merges unrelated limit-ID buckets. A null quota window becomes
+an independent unsupported-duration result and does not invalidate another duration. A
+client selects a public descriptor. The daemon resolves its one current opaque provider
+credit ID.
 
 The consume path commits the logical command, account UUID and revision, public
 descriptor, provider idempotency key, and then the exact provider credit ID before it
@@ -1401,7 +1408,8 @@ inode and full SHA-256 check. It then requires the kernel dynamic-code object to
 exact CDHash, canonical path, session, and process group. Only a complete match receives `SIGCONT`.
 The parent protocol endpoints use private, validated FIFOs opened with atomic close-on-exec flags;
 the FIFO names are removed while the child is still suspended. The child restores the default
-`SIGPIPE` disposition and receives only the fixed `HOME` and system `PATH` projection.
+`SIGPIPE` disposition and receives only the fixed `HOME`, system `PATH`, and
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` projection.
 
 Original-path identity and digest checks detect pre-launch drift. On macOS, suspended dynamic-code
 attestation closes the final check-to-exec interval; on Linux, sealed memfd execution is that

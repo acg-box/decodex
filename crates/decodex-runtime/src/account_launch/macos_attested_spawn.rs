@@ -43,6 +43,9 @@ use security_framework::os::macos::code_signing::{
 use tempfile::{Builder as TempDirBuilder, TempDir};
 
 const CHILD_PATH: &str = "/usr/bin:/bin:/usr/sbin:/sbin";
+pub(super) const PRIVATE_STDIO_STARTUP_ENV: &str =
+	"CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED";
+pub(super) const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
 const MAX_CODE_IDENTITY_BYTES: usize = 64;
 const DYNAMIC_CODE_LOOKUP_ATTEMPTS: usize = 50;
 const DYNAMIC_CODE_LOOKUP_DELAY: Duration = Duration::from_millis(10);
@@ -219,6 +222,46 @@ pub(super) fn spawn_suspended(
 	working_directory: &Path,
 	home: &Path,
 ) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		working_directory,
+		home,
+		SuspendedEnvironment::HomeAndSystemPath,
+	)
+}
+
+/// Spawn the accepted private-stdio profile from the canonical executable and keep it suspended.
+///
+/// This is a closed environment profile. It cannot project caller-selected names or values.
+pub(super) fn spawn_private_stdio_suspended(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory: &Path,
+	home: &Path,
+) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		working_directory,
+		home,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral,
+	)
+}
+
+#[derive(Clone, Copy)]
+enum SuspendedEnvironment {
+	HomeAndSystemPath,
+	PrivateStdioDisabledEphemeral,
+}
+
+fn spawn_suspended_with_environment(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory: &Path,
+	home: &Path,
+	environment: SuspendedEnvironment,
+) -> io::Result<SuspendedAttestedSpawn> {
 	let spawned_execution_path = identity.execution_path.clone();
 	let executable = os_string(identity.execution_path.as_os_str())?;
 	let working_directory = os_string(working_directory.as_os_str())?;
@@ -230,16 +273,25 @@ pub(super) fn spawn_suspended(
 	let home_environment = environment_entry(b"HOME", home.as_os_str())?;
 	let path_environment = CString::new(format!("PATH={CHILD_PATH}"))
 		.map_err(|_| invalid_input("child PATH contains a NUL byte"))?;
+	let private_stdio_environment = match environment {
+		SuspendedEnvironment::HomeAndSystemPath => None,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral => Some(environment_entry(
+			PRIVATE_STDIO_STARTUP_ENV.as_bytes(),
+			OsStr::new(PRIVATE_STDIO_STARTUP_VALUE),
+		)?),
+	};
 	let mut argv_pointers = argv
 		.iter()
 		.map(|value| value.as_ptr().cast_mut())
 		.chain(std::iter::once(ptr::null_mut()))
 		.collect::<Vec<_>>();
-	let mut environment_pointers = [
-		home_environment.as_ptr().cast_mut(),
-		path_environment.as_ptr().cast_mut(),
-		ptr::null_mut(),
-	];
+	let mut environment_pointers =
+		[Some(&home_environment), Some(&path_environment), private_stdio_environment.as_ref()]
+			.into_iter()
+			.flatten()
+			.map(|value| value.as_ptr().cast_mut())
+			.chain(std::iter::once(ptr::null_mut()))
+			.collect::<Vec<_>>();
 
 	let protocol = ProtocolFifos::new()?;
 	let mut actions = SpawnFileActions::new()?;
@@ -976,6 +1028,36 @@ mod tests {
 		assert_eq!(environment.len(), 2);
 		assert_eq!(environment.get("HOME"), Some(&working.path().to_str().unwrap()));
 		assert_eq!(environment.get("PATH"), Some(&CHILD_PATH));
+	}
+
+	#[test]
+	fn private_stdio_spawn_uses_canonical_path_and_exact_closed_environment() {
+		let identity = system_identity("/usr/bin/env");
+		let canonical = fs::canonicalize("/usr/bin/env").unwrap();
+		let working = TempDir::new().unwrap();
+		let suspended =
+			spawn_private_stdio_suspended(&identity, &[], working.path(), working.path()).unwrap();
+
+		assert_eq!(suspended.execution_path, canonical);
+
+		let spawned = suspended.attest_and_resume(&identity).unwrap();
+
+		drop(spawned.stdin);
+
+		let mut output = String::new();
+		let mut stdout = spawned.stdout;
+		let mut child = spawned.child;
+
+		stdout.read_to_string(&mut output).unwrap();
+
+		let environment =
+			output.lines().map(|line| line.split_once('=').unwrap()).collect::<BTreeMap<_, _>>();
+
+		assert!(child.wait().unwrap().success());
+		assert_eq!(environment.len(), 3);
+		assert_eq!(environment.get("HOME"), Some(&working.path().to_str().unwrap()));
+		assert_eq!(environment.get("PATH"), Some(&CHILD_PATH));
+		assert_eq!(environment.get(PRIVATE_STDIO_STARTUP_ENV), Some(&PRIVATE_STDIO_STARTUP_VALUE));
 	}
 
 	#[test]
