@@ -1066,19 +1066,22 @@ BEGIN
 		RETURN;
 	END IF;
 	IF p_authorization_digest IS NULL OR p_authorization_digest !~ '^[0-9a-f]{64}$' THEN
-		RETURN QUERY SELECT 'restore_authority_unavailable',0::bigint,'starting',0::bigint,0::bigint;
+		RETURN QUERY SELECT 'restore_authority_unavailable',0::bigint,
+			'starting'::decodex.process_generation_state,0::bigint,0::bigint;
 		RETURN;
 	END IF;
 	PERFORM 1 FROM decodex.process_generation_execution_epochs AS epoch
 	WHERE epoch.execution_epoch_id=p_execution_epoch_id
 		AND epoch.authorization_digest=p_authorization_digest AND epoch.retired_at IS NULL FOR SHARE;
 	IF NOT FOUND THEN RETURN QUERY SELECT 'restore_authority_unavailable',0::bigint,
-		'starting',0::bigint,0::bigint; RETURN; END IF;
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	SELECT * INTO account FROM decodex.accounts WHERE account_id=p_account_id FOR KEY SHARE;
-	IF NOT FOUND THEN RETURN QUERY SELECT 'account_missing',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
+	IF NOT FOUND THEN RETURN QUERY SELECT 'account_missing',0::bigint,
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	IF (p_reset_card_outbox_id IS NULL,p_reset_card_worker_id IS NULL,
 		p_reset_card_claim_token IS NULL) NOT IN ((true,true,true),(false,false,false))
-	THEN RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
+	THEN RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	IF p_reset_card_outbox_id IS NOT NULL THEN
 		SELECT EXISTS (
 			SELECT 1 FROM decodex.outbox AS work
@@ -1096,7 +1099,8 @@ BEGIN
 					p_refresh_callback_profile_sha256
 		) INTO reconciliation_authorized;
 		IF NOT reconciliation_authorized THEN
-			RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,'starting',0::bigint,0::bigint;
+			RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,
+				'starting'::decodex.process_generation_state,0::bigint,0::bigint;
 			RETURN;
 		END IF;
 	END IF;
@@ -1113,7 +1117,8 @@ BEGIN
 			SELECT 1 FROM decodex.account_operations AS operation
 			WHERE operation.account_id=p_account_id
 				AND operation.phase NOT IN ('committed','cancelled'))))
-	THEN RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
+	THEN RETURN QUERY SELECT 'account_lifecycle_unready',0::bigint,
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	IF NOT reconciliation_authorized AND NOT EXISTS (
 		SELECT 1 FROM decodex.codex_account_capability AS capability
 		WHERE capability.singleton AND capability.login_chatgpt_auth_tokens
@@ -1121,10 +1126,12 @@ BEGIN
 			AND capability.build_identity='codex-cli 0.146.0-alpha.3.1'
 			AND capability.executable_sha256='6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223'
 			AND capability.callback_profile_sha256=p_refresh_callback_profile_sha256)
-	THEN RETURN QUERY SELECT 'callback_capability_unready',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
+	THEN RETURN QUERY SELECT 'callback_capability_unready',0::bigint,
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	IF EXISTS (SELECT 1 FROM decodex.process_generations AS generation
 		WHERE generation.account_id=p_account_id AND generation.state<>'dead')
-	THEN RETURN QUERY SELECT 'account_quarantined',0::bigint,'starting',0::bigint,0::bigint; RETURN; END IF;
+	THEN RETURN QUERY SELECT 'account_quarantined',0::bigint,
+		'starting'::decodex.process_generation_state,0::bigint,0::bigint; RETURN; END IF;
 	now_value:=pg_catalog.clock_timestamp();
 	INSERT INTO decodex.process_generations(
 		generation_id,account_id,execution_epoch_id,runner_identity,intended_boot_id,
@@ -1140,7 +1147,7 @@ BEGIN
 		p_provider_kind,p_provider_account_id,
 		p_refresh_callback_profile_sha256
 	);
-	RETURN QUERY SELECT 'prepared',1::bigint,'starting',
+	RETURN QUERY SELECT 'prepared',1::bigint,'starting'::decodex.process_generation_state,
 		(extract(epoch FROM now_value)*1000000)::bigint,
 		(extract(epoch FROM now_value)*1000000)::bigint;
 END
