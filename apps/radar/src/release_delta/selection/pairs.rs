@@ -102,7 +102,12 @@ fn unique_release_pairs(pairs: Vec<ReleasePair>) -> Vec<ReleasePair> {
 }
 
 fn previous_signal_pairs(path: &Path) -> Result<Vec<(String, String)>> {
-	if !path.exists() {
+	let exists = if crate::is_radar_cache_path(path) {
+		crate::private_file_exists(path)?
+	} else {
+		path.exists()
+	};
+	if !exists {
 		return Ok(Vec::new());
 	}
 

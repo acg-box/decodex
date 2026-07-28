@@ -122,3 +122,103 @@ fn rejects_duplicate_signal_slugs_across_files() {
 	assert_eq!(errors.len(), 1);
 	assert!(errors[0].contains("duplicate slug"));
 }
+
+#[test]
+fn active_radar_surfaces_have_no_retired_contracts() {
+	let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+		.parent()
+		.and_then(std::path::Path::parent)
+		.expect("workspace root should exist")
+		.to_path_buf();
+	let mut files = Vec::new();
+
+	for relative in [
+		"apps/radar",
+		"apps/decodex-publisher",
+		"automations/radar",
+		"automations/decodex",
+		"openwiki",
+	] {
+		collect_active_radar_files(&root.join(relative), &root, &mut files);
+	}
+	files.sort();
+	files.dedup();
+
+	for path in files {
+		let relative =
+			path.strip_prefix(&root).expect("active Radar file should be under the workspace root");
+		if is_frozen_or_negative_fixture(relative) {
+			continue;
+		}
+		let relative = relative.to_string_lossy();
+		let text = std::fs::read_to_string(&path)
+			.unwrap_or_else(|error| panic!("{relative} should be readable: {error}"));
+		let lower = text.to_ascii_lowercase();
+
+		for retired in [
+			"archive_manifest",
+			"archive manifest",
+			"radar-archive",
+			"ledger_export",
+			"linear_followup",
+			"github release assets",
+			"release/archive state",
+			"cold archived artifacts",
+			"radar artifact release archives",
+			"remote archive",
+		] {
+			assert!(
+				!lower.contains(retired),
+				"{relative} retains retired Radar contract {retired}"
+			);
+		}
+	}
+
+	assert!(!crate::REVIEW_STATUSES.contains(&"archived"));
+	assert!(!crate::ARTIFACT_KINDS.contains(&"ledger_export"));
+}
+
+fn collect_active_radar_files(path: &Path, root: &Path, files: &mut Vec<PathBuf>) {
+	let metadata = std::fs::symlink_metadata(path)
+		.unwrap_or_else(|error| panic!("{} should be inspectable: {error}", path.display()));
+	assert!(!metadata.file_type().is_symlink(), "{} must not be a symlink", path.display());
+
+	if metadata.is_file() {
+		let extension = path.extension().and_then(|value| value.to_str());
+		if matches!(extension, Some("json" | "md" | "py" | "rs" | "toml")) {
+			files.push(path.to_path_buf());
+		}
+
+		return;
+	}
+
+	for entry in std::fs::read_dir(path)
+		.unwrap_or_else(|error| panic!("{} should be readable: {error}", path.display()))
+	{
+		let entry = entry.unwrap_or_else(|error| {
+			panic!("{} should contain readable entries: {error}", path.display())
+		});
+		let relative = entry
+			.path()
+			.strip_prefix(root)
+			.expect("active Radar entry should be under the workspace root")
+			.to_path_buf();
+		if !is_frozen_or_negative_fixture(&relative) {
+			collect_active_radar_files(&entry.path(), root, files);
+		}
+	}
+}
+
+fn is_frozen_or_negative_fixture(relative: &Path) -> bool {
+	const EXCLUDED: &[&str] = &[
+		"openwiki/evidence",
+		"apps/radar/src/tests/artifacts/catalog_reference.rs",
+		"apps/radar/src/tests/artifacts/upstream_reviews.rs",
+		"apps/radar/src/tests/automation/ledger/ledger_bootstrap_rejects_obsolete_schema.rs",
+	];
+	let relative = relative.to_string_lossy();
+
+	EXCLUDED
+		.iter()
+		.any(|excluded| relative == *excluded || relative.starts_with(&format!("{excluded}/")))
+}

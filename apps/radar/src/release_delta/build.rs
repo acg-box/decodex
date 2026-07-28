@@ -14,7 +14,7 @@ pub(crate) fn refresh_release_delta(
 	request: &RadarRefreshReleaseDeltaRequest,
 ) -> Result<RadarRefreshReleaseDeltaReport> {
 	let root = release_delta::repo_root()?;
-	let api = GitHubApi::new(release_delta::github_token(request.token_env.as_deref()))?;
+	let api = GitHubApi::new(release_delta::github_token(request.token_env.as_deref())?)?;
 	let payload = build_release_delta(request, &root, &api)?;
 	let errors = release_delta::validate_artifact_errors(&payload);
 
@@ -23,15 +23,17 @@ pub(crate) fn refresh_release_delta(
 	}
 	if request.dry_run {
 		println!("{}", release_delta::pretty_json(&payload)?);
+		let out = release_delta::absolute_repo_path(&root, &request.out);
+		let refresh =
+			release_delta::inspect_json_refresh(&out, &payload, RefreshKind::ReleaseDelta)?;
 
-		return Ok(release_delta::release_delta_report(&payload, false, &root, &request.out));
+		return Ok(release_delta::release_delta_report(&payload, refresh));
 	}
 
 	let out = release_delta::absolute_repo_path(&root, &request.out);
-	let changed =
-		release_delta::write_json_if_material_changed(&out, &payload, RefreshKind::ReleaseDelta)?;
+	let refresh = release_delta::refresh_json(&out, &payload, RefreshKind::ReleaseDelta)?;
 
-	Ok(release_delta::release_delta_report(&payload, changed, &root, &request.out))
+	Ok(release_delta::release_delta_report(&payload, refresh))
 }
 
 pub(crate) fn build_release_delta(

@@ -1,42 +1,6 @@
 use crate::tests::{assertions, fixtures};
 
 #[test]
-fn accepts_valid_radar_archive_manifest() {
-	let manifest = fixtures::valid_radar_archive_manifest();
-
-	assertions::assert_errors(&manifest, []);
-}
-
-#[test]
-fn rejects_radar_archive_manifest_without_external_assets() {
-	let mut manifest = fixtures::valid_radar_archive_manifest();
-
-	manifest["retention_days"] = serde_json::json!(30);
-
-	manifest.as_object_mut().expect("manifest should be object").remove("archive_asset");
-
-	assertions::assert_errors(
-		&manifest,
-		["retention_days must be 21", "archive_asset must be an object"],
-	);
-}
-
-#[test]
-fn path_validation_accepts_historical_archive_retention_policy() {
-	let mut manifest = fixtures::valid_radar_archive_manifest();
-
-	manifest["created_at"] = serde_json::json!("2026-05-13T07:52:56Z");
-	manifest["retention_days"] = serde_json::json!(28);
-
-	assertions::assert_errors(&manifest, ["retention_days must be 21"]);
-	assertions::assert_path_errors(
-		".agent/automations/radar/cache/archive/index/2026-05-13-pre-2026-04-13.json",
-		&manifest,
-		[],
-	);
-}
-
-#[test]
 fn accepts_valid_release_delta_and_rejects_missing_default_pair() {
 	let mut release_delta = fixtures::valid_release_delta();
 

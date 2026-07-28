@@ -3,8 +3,8 @@
 use crate::{
 	prelude::Result,
 	release_delta::{
-		self, BTreeSet, Path, RadarRefreshReleaseDeltaReport, Value, eyre, optional_value_string,
-		required_value_string, serde_json,
+		BTreeSet, RadarRefreshReleaseDeltaReport, RefreshWriteReport, Value, eyre,
+		optional_value_string, required_value_string, serde_json,
 	},
 };
 
@@ -80,12 +80,12 @@ pub(super) fn release_tag(release: &Value) -> Option<&str> {
 
 pub(super) fn release_delta_report(
 	payload: &Value,
-	changed: bool,
-	root: &Path,
-	out: &Path,
+	refresh: RefreshWriteReport,
 ) -> RadarRefreshReleaseDeltaReport {
 	RadarRefreshReleaseDeltaReport {
-		changed,
+		material_changed: refresh.material_changed,
+		written: refresh.written,
+		refreshed_at: refresh.refreshed_at,
 		stable_tag_name: payload
 			.pointer("/stable_release/tag_name")
 			.and_then(Value::as_str)
@@ -97,6 +97,5 @@ pub(super) fn release_delta_report(
 			.unwrap_or_default()
 			.to_owned(),
 		comparisons: payload.get("comparisons").and_then(Value::as_array).map_or(0, Vec::len),
-		out: release_delta::absolute_repo_path(root, out),
 	}
 }
