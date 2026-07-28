@@ -1,7 +1,9 @@
 //! Typed fail-closed daemon bootstrap over the configuration and adapter owners.
 
 use std::{
-	env, fs,
+	env,
+	fmt::{Display, Formatter},
+	fs,
 	io::ErrorKind,
 	path::{Path, PathBuf},
 	sync::Arc,
@@ -42,6 +44,42 @@ const DATABASE_AUTHORITY_UNSAFE: &str = "configured PostgreSQL runtime authority
 const MANAGED_REPOSITORY_UNAVAILABLE: &str = "managed repository runtime is unavailable";
 const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
 const UNAVAILABLE_SHA256: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+
+/// Value-free failure from the installer-owned local product-state provisioning command.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalProvisionError {
+	/// The platform root or typed configuration is unavailable or not local.
+	Configuration,
+	/// The configured migration credential is unavailable.
+	Authentication,
+	/// The owner-only process execution authorization is unavailable.
+	ExecutionAuthorization,
+	/// PostgreSQL rejected the bounded migration and authority-provisioning pass.
+	Database(BootstrapFailure),
+}
+impl Display for LocalProvisionError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		match self {
+			Self::Configuration =>
+				formatter.write_str("local product-state configuration is unavailable"),
+			Self::Authentication =>
+				formatter.write_str("local product-state authentication is unavailable"),
+			Self::ExecutionAuthorization =>
+				formatter.write_str("local process execution authorization is unavailable"),
+			Self::Database(BootstrapFailure::Authentication) =>
+				formatter.write_str("local product-state authentication failed"),
+			Self::Database(BootstrapFailure::Unreachable) =>
+				formatter.write_str("local product-state database is unreachable"),
+			Self::Database(BootstrapFailure::Incompatible) =>
+				formatter.write_str("local product-state database is incompatible"),
+			Self::Database(BootstrapFailure::UnsafeAuthority) =>
+				formatter.write_str("local product-state database authority is unsafe"),
+			Self::Database(BootstrapFailure::UnsafeHostPath) =>
+				formatter.write_str("local product-state database path is unsafe"),
+		}
+	}
+}
+impl std::error::Error for LocalProvisionError {}
 
 /// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
@@ -656,6 +694,44 @@ fn credential(identity: &PostgresIdentityConfig) -> Result<Option<String>, ()> {
 		},
 		None => Ok(None),
 	}
+}
+
+pub(crate) async fn provision_local(root: DecodexRoot) -> Result<(), LocalProvisionError> {
+	let paths = root.paths();
+	let config = DecodexConfig::load(&paths).map_err(|_| LocalProvisionError::Configuration)?;
+	if !matches!(config.active_profile(), ServerProfile::Local(_)) {
+		return Err(LocalProvisionError::Configuration);
+	}
+	let migration_credential = credential(config.postgres().migration())
+		.map_err(|()| LocalProvisionError::Authentication)?;
+	let runtime_credential = credential(config.postgres().runtime())
+		.map_err(|()| LocalProvisionError::Authentication)?;
+
+	PostgresStore::migrate_and_provision_explicit(
+		config.postgres(),
+		migration_credential.as_deref(),
+	)
+	.await
+	.map_err(|error| LocalProvisionError::Database(error.bootstrap_failure()))?;
+	drop(
+		PostgresStore::connect_explicit(
+			config.postgres(),
+			migration_credential.as_deref(),
+			runtime_credential.as_deref(),
+		)
+		.await
+		.map_err(|error| LocalProvisionError::Database(error.bootstrap_failure()))?,
+	);
+
+	let execution_authorization = ProcessExecutionAuthorization::load_or_create(&paths)
+		.map_err(|_| LocalProvisionError::ExecutionAuthorization)?;
+	PostgresStore::provision_process_execution_authorization_explicit(
+		config.postgres(),
+		migration_credential.as_deref(),
+		&execution_authorization,
+	)
+	.await
+	.map_err(|error| LocalProvisionError::Database(error.bootstrap_failure()))
 }
 
 async fn connect_database(config: &DecodexConfig) -> (ProductStore, DoctorStatus, DoctorStatus) {

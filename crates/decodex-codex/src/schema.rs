@@ -213,9 +213,8 @@ impl GeneratedSchemaEvidence {
 		let collaboration = read_optional_json(directory.join("v2/ThreadReadResponse.json"))?;
 		let thread_start = read_optional_json(directory.join("v2/ThreadStartParams.json"))?;
 		let login_params = read_json(directory.join("v2/LoginAccountParams.json"))?;
-		let refresh_params = read_json(directory.join("v2/ChatgptAuthTokensRefreshParams.json"))?;
-		let refresh_response =
-			read_json(directory.join("v2/ChatgptAuthTokensRefreshResponse.json"))?;
+		let refresh_params = read_json(directory.join("ChatgptAuthTokensRefreshParams.json"))?;
+		let refresh_response = read_json(directory.join("ChatgptAuthTokensRefreshResponse.json"))?;
 		let request_methods = extract_methods(&request)?;
 		let server_request_methods = extract_methods(&server_request)?;
 		let notification_methods = extract_methods(&notification)?;
@@ -237,8 +236,8 @@ impl GeneratedSchemaEvidence {
 			("ServerNotification.json", &notification),
 			("codex_app_server_protocol.v2.schemas.json", &aggregate),
 			("v2/LoginAccountParams.json", &login_params),
-			("v2/ChatgptAuthTokensRefreshParams.json", &refresh_params),
-			("v2/ChatgptAuthTokensRefreshResponse.json", &refresh_response),
+			("ChatgptAuthTokensRefreshParams.json", &refresh_params),
+			("ChatgptAuthTokensRefreshResponse.json", &refresh_response),
 		]
 		.into_iter()
 		.map(|(name, value)| (name.to_owned(), canonical_digest(value)))
