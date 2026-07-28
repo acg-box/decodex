@@ -942,6 +942,8 @@ pub async fn run_offline_account_migration(
 			OfflineAccountMigrationError::ReceiptConflict,
 		_ => OfflineAccountMigrationError::PostgresUnavailable,
 	})?;
+	#[cfg(feature = "account-migration-transition-gate")]
+	account_migration_transition_checkpoint("cutover_committed", None)?;
 	let store = PostgresStore::connect_explicit(
 		config.postgres(),
 		migration_password.as_deref().map(String::as_str),
@@ -949,6 +951,8 @@ pub async fn run_offline_account_migration(
 	)
 	.await
 	.map_err(|_| OfflineAccountMigrationError::PostgresUnavailable)?;
+	#[cfg(feature = "account-migration-transition-gate")]
+	account_migration_transition_checkpoint("runtime_store_connected", None)?;
 	let root = options.config.parent().ok_or(OfflineAccountMigrationError::InvalidPath)?;
 	let paths = DecodexRoot::new(root.to_path_buf())
 		.map_err(|_| OfflineAccountMigrationError::InvalidPath)?
@@ -957,6 +961,8 @@ pub async fn run_offline_account_migration(
 		MacosKeychainCredentialStore::new(&paths)
 			.map_err(|_| OfflineAccountMigrationError::DestinationMismatch)?,
 	);
+	#[cfg(feature = "account-migration-transition-gate")]
+	account_migration_transition_checkpoint("credential_store_opened", None)?;
 	let credential_store: Arc<dyn HostCredentialStore> = credentials.clone();
 	let service = AccountService::new(store, credential_store, Arc::new(OfflineRefresher));
 	service
