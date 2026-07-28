@@ -39,6 +39,7 @@ TEAM_IDENTIFIER = "T54QFA7W2S"
 APPLICATION_IDENTIFIER = f"{TEAM_IDENTIFIER}.{BUNDLE_IDENTIFIER}"
 PROFILE_CHANNEL = "development"
 ACCESS_GROUPS = [APPLICATION_IDENTIFIER]
+PROFILE_ACCESS_GROUPS = [f"{TEAM_IDENTIFIER}.*"]
 
 CODESIGN = Path("/usr/bin/codesign")
 SECURITY = Path("/usr/bin/security")
@@ -512,8 +513,7 @@ def validate_profile(
         != APPLICATION_IDENTIFIER
         or entitlements.get("com.apple.developer.team-identifier")
         != TEAM_IDENTIFIER
-        or entitlements.get("keychain-access-groups") != ACCESS_GROUPS
-        or entitlements.get("get-task-allow") is not True
+        or entitlements.get("keychain-access-groups") != PROFILE_ACCESS_GROUPS
         or not isinstance(devices, list)
         or not devices
         or not all(isinstance(device, str) and device for device in devices)
