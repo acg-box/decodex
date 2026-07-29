@@ -155,7 +155,7 @@ while the one-link lock is held.
 It opens a Codex app-server process only for an admitted manual reset-card request;
 conversation dispatch remains disabled. It attempts only
 the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
-adapter. The protocol supports V1.3/V1.2 negotiation, typed command receipt/result and
+adapter. The protocol supports V1.5/V1.4 negotiation, typed command receipt/result and
 event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
 idempotency whose lookup and capacity namespace are bound to the negotiated protocol version,
 publication-epoch-bound cursor resume,
@@ -163,8 +163,9 @@ snapshot fallback, stable
 server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
 query, plus a read-only immutable execution-decision query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
-API-only V1.3 diagnostic clients. `decodex reset-card` is the active manual reset-card
-client. GPUI opens its real shell, but its destinations remain placeholders.
+API-only V1.5 diagnostic clients. `decodex reset-card` is the active manual reset-card
+client. `decodex account profile` is the independent bounded account-profile client.
+GPUI opens its real shell, but its destinations remain placeholders.
 
 The reset-card service uses only configured vNext account UUIDs. A durable terminal
 receipt replays before current account gates. New admission and the pre-effect fence both
@@ -245,7 +246,7 @@ not extension schema, so a runtime-controlled extension cannot own or drop a Dec
 ordered versions, names, and checksums must exactly equal the embedded migration inventory;
 missing SELECT is incompatible, while ownership, SET-reachable authority, table/column grant
 options, writes, and table DDL privileges are unsafe. All canonical database functions have an exact
-function-local `pg_catalog, decodex` search path. Exactly sixty-one narrowly scoped functions are
+function-local `pg_catalog, decodex` search path. Exactly seventy-nine narrowly scoped functions are
 security definers: three history cursor/version functions, eleven Project/Agent/Policy/Program/Objective
 commands, two command-complete exact RoleProfile entrypoints, two command-complete exact
 RuntimeSession entrypoints, four command-complete exact WorkItem entrypoints, one inert future
@@ -255,7 +256,9 @@ exact continuation command plus strict readback, and V18's four exact wake comma
 readback, plus V23's eight ProcessSupervisor fence, transition, projection, evidence, and read
 entrypoints, plus V24's seven ProviderAttemptService preparation, transition, positive-evidence,
 projection, and read entrypoints, one trigger-only Turn-reservation helper, and V26's immutable
-execution-decision and ManagedRun execution-projection read functions. The helper has a
+execution-decision and ManagedRun execution-projection read functions, plus V27's sixteen exact
+account lifecycle, routing, quota, store, and capability functions and V28's two exact profile
+observation/read functions. The helper has a
 fixed search path, runs as the migration owner, and grants no direct runtime or PUBLIC execution.
 The historical V24 boundary has an exact semantic inventory overlay for its 84-relation,
 184-function, 75-safety-function, 154-trigger, 69-runtime-function, and ten-post-V22-enum
@@ -282,7 +285,7 @@ operator UID authority, and kernel peer credentials rather than trusting an obse
 `~/.decodex` layout for `config.toml`, logs, SHA-256 blobs, disposable cache, and atomic
 server identity.
 
-Doctor/status is a V1.3 read-only query served only by `decodexd`. Queries have client observation
+Doctor/status is a V1.5 read-only query served only by `decodexd`. Queries have client observation
 identities but no mutation receipt, deduplication, replay, event, or receipt-capacity effect. Its closed report
 covers configuration, database, protocol and version, stable server identity, shared
 Codex home, each typed app-server capability, aggregate server-host repository readiness,

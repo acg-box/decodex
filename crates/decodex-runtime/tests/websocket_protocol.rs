@@ -21,10 +21,10 @@ use tokio_tungstenite::{
 
 use decodex_core::{DecodexRoot, LocalTrustPolicy};
 use decodex_protocol::{
-	CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello, ClientMessage,
-	CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor, DoctorCheck,
-	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
-	EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
+	AccountsResult, CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello,
+	ClientMessage, CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor,
+	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
+	EntityRevision, EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
 	LocalTransportStream, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
 	ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId,
@@ -66,6 +66,13 @@ impl FixtureApplication {
 
 	fn with_delay(execution_delay: Duration) -> Self {
 		Self { execution_delay, ..Self::default() }
+	}
+
+	fn with_revision(revision: u64) -> Self {
+		Self {
+			state: Arc::new(Mutex::new(FixtureState { revision, ..FixtureState::default() })),
+			..Self::default()
+		}
 	}
 
 	fn with_acceptance_unknown_once() -> Self {
@@ -192,27 +199,30 @@ impl Application for FixtureApplication {
 		&'a self,
 		query: &'a QueryEnvelope,
 	) -> impl Future<Output = QueryResultPayload> + Send + 'a {
-		let QueryPayload::GetDoctorStatus = query.payload else {
-			panic!("test application supports only doctor queries");
-		};
 		let mut state = self.state.lock().expect("test state mutex poisoned");
 
 		state.queries += 1;
-
-		let database = if state.queries == 1 {
-			DoctorStatus::Ready
-		} else {
-			DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
+		let result = match &query.payload {
+			QueryPayload::GetDoctorStatus => {
+				let database = if state.queries == 1 {
+					DoctorStatus::Ready
+				} else {
+					DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
+				};
+				QueryResultPayload::DoctorStatus(
+					DoctorReport::new(
+						ServerId::new("fixture-server").expect("bounded fixture server ID"),
+						CURRENT_VERSION,
+						vec![DoctorCheck::new(DoctorComponent::Database, database)],
+					)
+					.expect("empty fixture doctor is bounded"),
+				)
+			},
+			QueryPayload::ListAccounts => QueryResultPayload::Accounts(AccountsResult::Unavailable),
+			_ => panic!("test application does not support this query"),
 		};
 
-		future::ready(QueryResultPayload::DoctorStatus(
-			DoctorReport::new(
-				ServerId::new("fixture-server").expect("bounded fixture server ID"),
-				CURRENT_VERSION,
-				vec![DoctorCheck::new(DoctorComponent::Database, database)],
-			)
-			.expect("empty fixture doctor is bounded"),
-		))
+		future::ready(result)
 	}
 }
 
@@ -300,7 +310,7 @@ fn reset_card_command(version: ProtocolVersion, number: u64, key: &str) -> Clien
 		client_command_id: ClientCommandId::new(format!("reset-command-{number}"))
 			.expect("bounded fixture command ID"),
 		idempotency_key: IdempotencyKey::new(key).expect("bounded fixture key"),
-		expected_revision: None,
+		expected_revision: Some(EntityRevision(number)),
 		correlation_id: CorrelationId::new(format!("reset-correlation-{number}"))
 			.expect("bounded fixture correlation ID"),
 		causation_id: None,
@@ -458,7 +468,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		};
 
 		assert_eq!(welcome.version, version);
-		assert_eq!(welcome.instance_id.is_some(), version == CURRENT_VERSION);
+		assert!(welcome.instance_id.is_some());
 		assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 
 		execute_and_receive_event(&mut client, version, index as u64 + 1).await;
@@ -494,7 +504,7 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 }
 
 #[tokio::test]
-async fn previous_minor_keeps_v1_3_queries_but_refuses_account_surfaces() {
+async fn previous_minor_keeps_v1_4_account_queries_but_refuses_v1_5_profiles() {
 	let (_temp, transport) = local_transport();
 	let application = FixtureApplication::default();
 	let mut bound = server("previous-feature-gate", application.clone(), ServerConfig::default())
@@ -518,13 +528,32 @@ async fn previous_minor_keeps_v1_3_queries_but_refuses_account_surfaces() {
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
 			version: PREVIOUS_MINOR_VERSION,
-			query_id: QueryId::new("reset-query").expect("bounded query ID"),
+			query_id: QueryId::new("accounts-query").expect("bounded query ID"),
 			payload: QueryPayload::ListAccounts,
 		}),
 	)
 	.await;
+	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
+		panic!("V1.4 account list must remain supported");
+	};
+	assert!(matches!(result.payload, QueryResultPayload::Accounts(_)));
+	assert_eq!(application.queries(), 2);
+
+	send(
+		&mut client,
+		ClientMessage::Query(QueryEnvelope {
+			version: PREVIOUS_MINOR_VERSION,
+			query_id: QueryId::new("profile-query").expect("bounded query ID"),
+			payload: QueryPayload::GetAccountProfile {
+				account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("canonical account ID"),
+				include_email: false,
+			},
+		}),
+	)
+	.await;
 	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
-	assert_eq!(application.queries(), 1);
+	assert_eq!(application.queries(), 2);
 
 	execute_and_receive_event(&mut client, PREVIOUS_MINOR_VERSION, 1).await;
 	assert_eq!(application.executions(), 1);
@@ -534,9 +563,9 @@ async fn previous_minor_keeps_v1_3_queries_but_refuses_account_surfaces() {
 }
 
 #[tokio::test]
-async fn v1_3_reset_card_events_reach_the_previous_minor_subscriber() {
+async fn v1_4_reset_card_events_reach_the_previous_minor_subscriber() {
 	let (_temp, transport) = local_transport();
-	let application = FixtureApplication::default();
+	let application = FixtureApplication::with_revision(1);
 	let mut bound =
 		server("reset-event-feature-gate", application.clone(), ServerConfig::default())
 			.bind(transport.clone())
@@ -558,7 +587,7 @@ async fn v1_3_reset_card_events_reach_the_previous_minor_subscriber() {
 	assert_eq!(event.version, CURRENT_VERSION);
 	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
 	let ServerMessage::Event(previous_event) = receive(&mut previous).await else {
-		panic!("V1.3 subscriber must receive the retained reset-card event");
+		panic!("V1.4 subscriber must receive the retained reset-card event");
 	};
 	assert_eq!(previous_event.version, PREVIOUS_MINOR_VERSION);
 	assert!(matches!(previous_event.payload, EventPayload::ResetCardOperationAccepted { .. }));
@@ -797,7 +826,11 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let mut stale = reconnect(
 		&transport,
 		CURRENT_VERSION,
-		ResumeCursor { server_id: server_id.clone(), instance_id, cursor: Cursor(0) },
+		ResumeCursor {
+			server_id: server_id.clone(),
+			instance_id: instance_id.clone(),
+			cursor: Cursor(0),
+		},
 	)
 	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut stale).await else {
@@ -817,16 +850,17 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	let mut previous = reconnect(
 		&transport,
 		PREVIOUS_MINOR_VERSION,
-		ResumeCursor { server_id, instance_id: None, cursor: persisted },
+		ResumeCursor { server_id, instance_id: instance_id.clone(), cursor: persisted },
 	)
 	.await;
 	let ServerMessage::Welcome(welcome) = receive(&mut previous).await else {
-		panic!("expected previous-minor fallback welcome");
+		panic!("expected previous-minor resume welcome");
 	};
 
-	assert_eq!(welcome.instance_id, None);
-	assert_eq!(welcome.reconnect, ReconnectMode::SnapshotFallback);
-	assert!(matches!(receive(&mut previous).await, ServerMessage::Snapshot(_)));
+	assert_eq!(welcome.instance_id, instance_id);
+	assert_eq!(welcome.reconnect, ReconnectMode::Resume);
+	assert!(matches!(receive(&mut previous).await, ServerMessage::Event(_)));
+	assert!(matches!(receive(&mut previous).await, ServerMessage::Event(_)));
 
 	drop(previous);
 

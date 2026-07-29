@@ -27,21 +27,22 @@ use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
 	AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
 	AccountManualRecoveryActionDto, AccountManualRecoveryOutcomeDto, AccountObservedStateDto,
-	AccountOperationKindDto, AccountOperationPhaseDto, AccountProviderDto, AccountQuotaErrorDto,
-	AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutingControlDto, AccountSelectionModeDto,
-	AccountSelectionRecoveryDto, AccountUnsettledOperationDto, AccountsResult, Channel,
-	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
-	ConversationHistoryResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
-	ExecutionDecisionDto, ExecutionDecisionQueryError, ExecutionDecisionResult,
-	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
-	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
-	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
-	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
-	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
-	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
-	ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	AccountOperationKindDto, AccountOperationPhaseDto, AccountProfileDailyUsageDto,
+	AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
+	AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
+	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
+	AccountUnsettledOperationDto, AccountsResult, Channel, CommandEnvelope, CommandError,
+	CommandPayload, ConversationHistoryPage, ConversationHistoryResult, DoctorCheck,
+	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
+	EventPayload, ExecutionConsumerDto, ExecutionDecisionDto, ExecutionDecisionQueryError,
+	ExecutionDecisionResult, ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto,
+	ExecutionRouteBlockerDto, ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId,
+	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
+	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
+	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
+	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -49,6 +50,10 @@ use tokio::sync::watch;
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError},
+	account_profile::{
+		AccountProfileClaimsView, AccountProfileRuntime, AccountProfileRuntimeError,
+		AccountProfileRuntimeResult, AccountProfileView,
+	},
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
 		AccountService,
@@ -179,6 +184,7 @@ pub(crate) struct ServiceApplication {
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
+	account_profiles: Option<AccountProfileRuntime>,
 	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
 }
@@ -205,6 +211,7 @@ impl ServiceApplication {
 			_codex: codex,
 			blob_store,
 			accounts: None,
+			account_profiles: None,
 			reset_cards: None,
 			doctor,
 		}
@@ -212,6 +219,15 @@ impl ServiceApplication {
 
 	pub(crate) fn with_accounts(mut self, accounts: Option<Arc<AccountService>>) -> Self {
 		self.accounts = accounts;
+
+		self
+	}
+
+	pub(crate) fn with_account_profiles(
+		mut self,
+		account_profiles: Option<AccountProfileRuntime>,
+	) -> Self {
+		self.account_profiles = account_profiles;
 
 		self
 	}
@@ -280,6 +296,40 @@ impl ServiceApplication {
 				.unwrap_or(AccountInspectResult::Unavailable),
 			Err(AccountLifecycleError::AccountMissing) => AccountInspectResult::NotFound,
 			Err(_) => AccountInspectResult::Unavailable,
+		}
+	}
+
+	async fn account_profile(
+		&self,
+		account_id: &EntityId,
+		include_email: bool,
+	) -> AccountProfileResult {
+		let Ok(account_id) = AccountId::new(account_id.as_str()) else {
+			return unavailable_account_profile(AccountProfileErrorDto::InvalidRequest);
+		};
+		let Some(runtime) = &self.account_profiles else {
+			return unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable);
+		};
+		match runtime.query(&account_id, include_email).await {
+			AccountProfileRuntimeResult::Current(profile) => account_profile_dto(profile)
+				.map(Box::new)
+				.map(AccountProfileResult::Current)
+				.unwrap_or_else(|()| {
+					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
+				}),
+			AccountProfileRuntimeResult::Cached { profile, refresh_error } =>
+				match account_profile_dto(profile) {
+					Ok(profile) => AccountProfileResult::Cached {
+						profile: Box::new(profile),
+						refresh_error: account_profile_error_dto(refresh_error),
+					},
+					Err(()) =>
+						unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable),
+				},
+			AccountProfileRuntimeResult::Unavailable { claims, error } =>
+				account_profile_unavailable_dto(claims, error).unwrap_or_else(|()| {
+					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
+				}),
 		}
 	}
 
@@ -903,6 +953,10 @@ impl Application for ServiceApplication {
 			QueryPayload::ListAccounts => QueryResultPayload::Accounts(self.account_list().await),
 			QueryPayload::InspectAccount { account_id } =>
 				QueryResultPayload::Account(self.account_inspect(account_id).await),
+			QueryPayload::GetAccountProfile { account_id, include_email } =>
+				QueryResultPayload::AccountProfile(
+					self.account_profile(account_id, *include_email).await,
+				),
 			QueryPayload::GetInitialAccountSelection =>
 				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
 		}
@@ -1051,6 +1105,112 @@ fn reset_descriptor_dto(descriptor: ResetCardDescriptor) -> ResetCardDescriptorD
 		descriptor.expires_at().unix_seconds(),
 	)
 	.expect("validated core reset-card descriptor maps to the wire contract")
+}
+
+fn account_profile_dto(profile: AccountProfileView) -> Result<AccountProfileDto, ()> {
+	let snapshot = profile.snapshot;
+	let (email, plan_type) = account_profile_claims_fields(profile.email, profile.plan_type)?;
+	let daily_usage = snapshot
+		.daily_usage
+		.into_iter()
+		.map(|fact| {
+			Ok(AccountProfileDailyUsageDto {
+				start_date: profile_wire_text(fact.start_date, 10)?,
+				tokens: u64::try_from(fact.tokens).map_err(|_| ())?,
+			})
+		})
+		.collect::<Result<Vec<_>, ()>>()?;
+
+	Ok(AccountProfileDto {
+		account_id: EntityId::new(snapshot.account_id.as_str().to_owned()).map_err(|_| ())?,
+		account_revision: EntityRevision(u64::try_from(snapshot.account_revision).map_err(|_| ())?),
+		observed_at_unix_micros: snapshot.observed_at_unix_micros,
+		email,
+		plan_type,
+		display_name: snapshot
+			.display_name
+			.map(|value| profile_wire_text(value, 256))
+			.transpose()?,
+		username: snapshot.username.map(|value| profile_wire_text(value, 256)).transpose()?,
+		lifetime_tokens: snapshot.lifetime_tokens.map(u64::try_from).transpose().map_err(|_| ())?,
+		peak_daily_tokens: snapshot
+			.peak_daily_tokens
+			.map(u64::try_from)
+			.transpose()
+			.map_err(|_| ())?,
+		longest_task_seconds: snapshot
+			.longest_task_seconds
+			.map(u64::try_from)
+			.transpose()
+			.map_err(|_| ())?,
+		current_streak_days: snapshot
+			.current_streak_days
+			.map(u32::try_from)
+			.transpose()
+			.map_err(|_| ())?,
+		longest_streak_days: snapshot
+			.longest_streak_days
+			.map(u32::try_from)
+			.transpose()
+			.map_err(|_| ())?,
+		daily_usage,
+	})
+}
+
+fn account_profile_unavailable_dto(
+	claims: AccountProfileClaimsView,
+	error: AccountProfileRuntimeError,
+) -> Result<AccountProfileResult, ()> {
+	let (email, plan_type) = account_profile_claims_fields(claims.email, claims.plan_type)?;
+	Ok(AccountProfileResult::Unavailable {
+		error: account_profile_error_dto(error),
+		email,
+		plan_type,
+	})
+}
+
+fn unavailable_account_profile(error: AccountProfileErrorDto) -> AccountProfileResult {
+	AccountProfileResult::Unavailable {
+		error,
+		email: AccountProfileEmailDto::Redacted,
+		plan_type: None,
+	}
+}
+
+fn account_profile_claims_fields(
+	email: Option<String>,
+	plan_type: Option<String>,
+) -> Result<(AccountProfileEmailDto, Option<WireText>), ()> {
+	let email = match email {
+		Some(value) => AccountProfileEmailDto::Visible(profile_wire_text(value, 320)?),
+		None => AccountProfileEmailDto::Redacted,
+	};
+	let plan_type = plan_type.map(|value| profile_wire_text(value, 128)).transpose()?;
+	Ok((email, plan_type))
+}
+
+fn profile_wire_text(value: String, maximum: usize) -> Result<WireText, ()> {
+	if value.is_empty() || value.len() > maximum || value.chars().any(char::is_control) {
+		return Err(());
+	}
+	WireText::new(value).map_err(|_| ())
+}
+
+const fn account_profile_error_dto(error: AccountProfileRuntimeError) -> AccountProfileErrorDto {
+	match error {
+		AccountProfileRuntimeError::AccountUnavailable =>
+			AccountProfileErrorDto::AccountUnavailable,
+		AccountProfileRuntimeError::ProductStateUnavailable =>
+			AccountProfileErrorDto::ProductStateUnavailable,
+		AccountProfileRuntimeError::CredentialUnavailable =>
+			AccountProfileErrorDto::CredentialUnavailable,
+		AccountProfileRuntimeError::Unauthorized => AccountProfileErrorDto::Unauthorized,
+		AccountProfileRuntimeError::ProviderUnavailable =>
+			AccountProfileErrorDto::ProviderUnavailable,
+		AccountProfileRuntimeError::ProtocolUnavailable =>
+			AccountProfileErrorDto::ProtocolUnavailable,
+		AccountProfileRuntimeError::AccountChanged => AccountProfileErrorDto::AccountChanged,
+	}
 }
 
 fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
@@ -1714,19 +1874,78 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
+	use decodex_core::{AccountId, AccountProvider, ProviderIdentity};
 	use decodex_postgres::{
-		AccountLifecycleRejection, ResetCardFailureCode, ResetCardOperationStatus,
+		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
+		ResetCardFailureCode, ResetCardOperationStatus,
 	};
 	use decodex_protocol::{
-		AccountCommandRejectionDto, CommandError, ResetCardError, ResetCardOperationResult,
+		AccountCommandRejectionDto, AccountProfileEmailDto, CommandError, ResetCardError,
+		ResetCardOperationResult,
 	};
 
 	use super::{
-		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, ResetCardServiceError,
-		StoredAccountCommandOutcome, account_lifecycle_command_error,
-		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
-		operation_query_result,
+		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
+		AccountProfileRuntimeError, AccountProfileView, ResetCardServiceError,
+		StoredAccountCommandOutcome, account_lifecycle_command_error, account_profile_dto,
+		account_profile_unavailable_dto, decode_account_command_receipt,
+		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
 	};
+
+	#[test]
+	fn account_profile_projection_keeps_email_visibility_and_bounded_daily_facts_explicit() {
+		let dto = account_profile_dto(AccountProfileView {
+			snapshot: AccountProfileSnapshot {
+				account_id: AccountId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+				account_revision: 4,
+				provider: ProviderIdentity::new(AccountProvider::Chatgpt, "provider-1").unwrap(),
+				observed_at_unix_micros: 1_700_000_000_000_000,
+				display_name: Some("Iris".into()),
+				username: None,
+				lifetime_tokens: Some(12_345),
+				peak_daily_tokens: Some(900),
+				longest_task_seconds: Some(600),
+				current_streak_days: Some(3),
+				longest_streak_days: Some(8),
+				daily_usage: vec![AccountProfileDailyUsage {
+					start_date: "2026-07-28".into(),
+					tokens: 900,
+				}],
+			},
+			email: Some("iris@example.test".into()),
+			plan_type: Some("pro".into()),
+		})
+		.expect("validated profile snapshot must map");
+
+		assert!(matches!(
+			dto.email,
+			AccountProfileEmailDto::Visible(ref email)
+				if email.as_str() == "iris@example.test"
+		));
+		assert_eq!(dto.daily_usage[0].start_date.as_str(), "2026-07-28");
+		assert_eq!(dto.daily_usage[0].tokens, 900);
+	}
+
+	#[test]
+	fn unavailable_profile_keeps_current_claims_and_a_typed_error() {
+		let result = account_profile_unavailable_dto(
+			AccountProfileClaimsView {
+				email: Some("iris@example.test".into()),
+				plan_type: Some("pro".into()),
+			},
+			AccountProfileRuntimeError::ProviderUnavailable,
+		)
+		.expect("bounded credential claims must map");
+
+		assert!(matches!(
+			result,
+			decodex_protocol::AccountProfileResult::Unavailable {
+				error: decodex_protocol::AccountProfileErrorDto::ProviderUnavailable,
+				email: AccountProfileEmailDto::Visible(ref email),
+				plan_type: Some(ref plan_type),
+			} if email.as_str() == "iris@example.test" && plan_type.as_str() == "pro"
+		));
+	}
 
 	#[test]
 	fn transient_status_failure_is_not_projected_as_durable_pre_effect_failure() {

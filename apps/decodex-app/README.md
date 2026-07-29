@@ -17,14 +17,26 @@ provider-private Reset Card identifiers.
 
 The primary panel reads the complete account skeleton with `account list`, uses
 the returned routing UUID order, and immediately renders every account. It then
-runs one independent `reset-card list` request for each row. A slow or failed
-provider request affects only its account row. Each row displays the exact
-300-minute and 10,080-minute quota observations, their current, stale, unknown,
-or error state, the percentage used and reset time when known, and every public
-Reset Card descriptor. The panel uses compact divider-separated rows so the
-normal six-account pool fits in one scan. A provider-unsupported quota duration
-is a muted row-local fact; it does not present the account or Reset Card service
-as failed.
+runs independent `reset-card list` and `account profile` requests for each row.
+A slow or failed provider request affects only its account row and does not
+block the other read.
+
+Each row shows the exact 300-minute and 10,080-minute quota observations in a
+vertical stack, their current, stale, unknown, or error state, the percentage
+left and reset time when known, and every complete public Reset Card time
+window. The 300-minute row is absent only when the provider omits that window;
+unknown observations and real errors remain visible.
+
+The profile section restores the compact operator summary: lifetime tokens,
+peak daily tokens, longest task, current and longest streaks, and a 36-day
+usage chart. The panel also aggregates available profiles across all accounts.
+Email is redacted by default. The eye control requests it explicitly and hiding
+it immediately removes the value from retained presentation state. Cached or
+unavailable profile data remains row-scoped and never hides Reset Cards.
+
+The panel uses compact divider-separated rows and a bounded vertical viewport,
+so all accounts remain present and scrollable instead of allowing one row to
+expand across the window.
 
 The app never identifies an account from its label or vector position. The
 canonical account UUID is the only row identity.
@@ -42,8 +54,14 @@ replacement, file and directory synchronization, exact readback, private file
 modes, and one cross-process dispatch lock. A malformed or unsafe journal is
 preserved and blocks new use.
 
+The panel also exposes current daemon-owned account controls: enroll the
+currently signed-in shared Codex login, rename, enable or disable, refresh
+credentials, log out, and select fixed or balanced routing. The Fast button
+updates only the current Codex `[features].fast_mode` preference through the
+bundled CLI.
+
 The app is intentionally menu-bar-only and uses the accessory activation
-policy. It does not own daemon startup or account import.
+policy. It does not own daemon startup or credential persistence.
 
 ## Development
 

@@ -33,18 +33,25 @@ extension control closure, read-only migration history, and USAGE-only identity 
 login role and every SET-reachable role. The operator must also pin the expected PostgreSQL
 Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
 either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
-or incompatible configuration remains typed unavailable with no fallback. Protocol V1.3
+or incompatible configuration remains typed unavailable with no fallback. Protocol V1.5
 retains bounded read-only doctor/status, Conversation-history, and immutable execution-decision
-queries outside mutation receipts and adds the shared Reset Card service. V1.2 remains the
+queries outside mutation receipts and adds account lifecycle, the shared Reset Card service,
+and an independent bounded account-profile query. V1.4 remains the
 previous-minor window. Doctor reads live-revalidate the retained PostgreSQL endpoint and authority
 without migration or repinning.
 The active `decodex status` and `decodex doctor` commands are API-only clients of that
-V1.3 query. They select the active or `--profile NAME` typed profile without echoing its
+V1.5 query. They select the active or `--profile NAME` typed profile without echoing its
 name, pin the stable server identity before accepting a snapshot or report, and emit human text or
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a
 closed client/configuration/protocol failure, including an incomplete current component set.
-`decodex account list` reads the canonical account registry. The `decodex reset-card list`,
+`decodex account list` reads the canonical account registry. `decodex account profile`
+reads one bounded per-account profile and redacts email unless `--include-email` is set.
+`decodex fast-mode status` reads the current Codex Fast mode setting.
+`decodex fast-mode set --enabled BOOL` atomically updates only
+`[features].fast_mode` in `~/.codex/config.toml`. It creates no backup and no second
+configuration authority.
+The `decodex reset-card list`,
 `use`, and `status` commands are thin clients of the common daemon service. The public contract
 uses a vNext account UUID, exact revision,
 and grant/expiry descriptor. Accounts in `available` or `depleted` state are admitted.

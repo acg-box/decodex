@@ -106,7 +106,7 @@ retired package behavior from those current surfaces.
 ## Same-UID Unix transport validation
 
 XY-1399 A-prime was the source-only design ancestor. The current integrated implementation
-ports that transport onto protocol V1.3/V1.2 and the shared Reset Card service. Validation
+ports that transport onto protocol V1.5/V1.4 and the shared Reset Card service. Validation
 must bind all results to the exact candidate tree and cover macOS and Linux. It validates:
 
 - fixed staging-name and canonical-name stale recovery under the persistent single-link
@@ -116,7 +116,7 @@ must bind all results to the exact candidate tree and cover macOS and Linux. It 
 - directory, lock, and socket replacement at publication, server admission, client
   reconnect, and cleanup;
 - client and server kernel peer credentials and exact effective-UID equality;
-- WebSocket `/v1/ws` with V1.3 and V1.2, without TCP, Axum, self-connect, watchdog, or
+- WebSocket `/v1/ws` with V1.5 and V1.4, without TCP, Axum, self-connect, watchdog, or
   compatibility fallback;
 - concurrent legitimate daemons, active sessions, in-flight commands, child panic,
   absolute-deadline cancellation, deterministic termination receipt readback, explicit
@@ -746,6 +746,10 @@ the shared reset-card service:
 
 ```sh
 decodex account list
+decodex account profile --account-id UUID
+decodex account profile --account-id UUID --include-email
+decodex fast-mode status
+decodex fast-mode set --enabled BOOL
 decodex reset-card list --account UUID
 decodex reset-card use \
   --account UUID \
@@ -756,6 +760,20 @@ decodex reset-card use \
   --yes
 decodex reset-card status --idempotency-key KEY
 ```
+
+`account profile` uses the fixed daemon-owned ChatGPT profile endpoint. It is independent
+from Reset Card inventory. The default JSON result reports
+`email.visibility = "redacted"`. `--include-email` permits one bounded current credential
+email in that response. Current and cached results carry one profile snapshot. An
+unavailable result carries one typed error, the same explicit email visibility, and an
+optional current credential `plan_type` claim. PostgreSQL stores only the latest non-secret
+profile snapshot and at most 36 daily usage facts. It stores no email, plan claim, token,
+or provider body.
+
+`fast-mode status` reads the canonical Codex `[features].fast_mode` Boolean.
+`fast-mode set --enabled BOOL` atomically replaces `~/.codex/config.toml` after changing
+only that key. It preserves unrelated TOML, creates no backup, and introduces no second
+configuration authority.
 
 Create and persist the key before `use`; the CLI does not generate it. The account registry and
 reset-card inventory responses retain the selected profile and stable server authority. Retain
