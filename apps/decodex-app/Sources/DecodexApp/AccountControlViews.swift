@@ -10,7 +10,7 @@ struct AccountRowActionsView: View {
 	var body: some View {
 		HStack(spacing: 4) {
 			CompactAccountActionButton(
-				title: "Use in Codex",
+				title: isCodexProjection ? "Codex" : "Use in Codex",
 				symbol: isCodexProjection
 					? "checkmark.circle.fill"
 					: "arrow.right.circle",
@@ -44,21 +44,23 @@ struct AccountRowActionsView: View {
 				}
 			}
 
-			CompactAccountActionButton(
-				title: "Details",
+			Spacer(minLength: 2)
+
+			PanelIconButtonView(
 				symbol: "chart.bar.xaxis",
+				tint: PanelPalette.actionBlue(colorScheme),
 				isActive: isPresentingDetails,
 				isDisabled: false,
-				isBusy: false,
-				help: "Show saved activity, plan, and freshness details for this account."
-			) {
-				isPresentingDetails.toggle()
-			}
+				isSubtle: true,
+				size: 24,
+				action: {
+					isPresentingDetails.toggle()
+				},
+				help: "Show account details"
+			)
 			.popover(isPresented: $isPresentingDetails, arrowEdge: .trailing) {
 				AccountProfileDetailView(state: state)
 			}
-
-			Spacer(minLength: 0)
 
 			Menu {
 				Button(state.account.enabled ? "Disable Account" : "Enable Account") {
@@ -236,23 +238,24 @@ private struct CompactAccountActionButton: View {
 			.foregroundStyle(
 				isActive
 					? PanelPalette.routeAccent(colorScheme)
-					: PanelPalette.secondaryText(colorScheme)
+					: PanelPalette.primaryText(colorScheme).opacity(0.88)
 			)
-			.padding(.horizontal, 5)
-			.frame(minHeight: 24)
-			.background(
-				isActive
-					? PanelPalette.routeAccent(colorScheme).opacity(
-						colorScheme == .dark ? 0.16 : 0.1
-					)
-					: PanelPalette.progressTrack(colorScheme).opacity(0.54)
-			)
-			.clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+			.padding(.horizontal, 6)
+			.frame(minHeight: 23)
+			.modernGlassSurface(cornerRadius: 7, depth: .control)
 			.contentShape(Rectangle())
 		}
-		.buttonStyle(.plain)
+		.buttonStyle(
+			PanelInteractiveButtonStyle(
+				isDisabled: isDisabled,
+				hoverLift: 0,
+				hoverScale: 1.01,
+				pressedScale: 0.97,
+				hoverShadowRadius: 2
+			)
+		)
 		.disabled(isDisabled)
-		.opacity(isDisabled ? 0.48 : 1)
+		.opacity(isDisabled ? 0.42 : 1)
 		.help(help)
 		.accessibilityLabel(title)
 		.accessibilityHint(help)

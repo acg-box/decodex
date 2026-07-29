@@ -78,6 +78,13 @@ struct AccountProfileDetailView: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.fixedSize(horizontal: false, vertical: true)
 			}
+
+			if let quotaDiagnostic {
+				Label("Some usage data is unavailable", systemImage: "info.circle")
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.help(quotaDiagnostic)
+			}
 		}
 		.frame(width: 270)
 		.padding(12)
@@ -86,6 +93,29 @@ struct AccountProfileDetailView: View {
 
 	private var planType: String? {
 		state.profile?.planType ?? state.profileUnavailable?.claims.planType
+	}
+
+	private var quotaDiagnostic: String? {
+		let diagnostics = [
+			quotaDiagnostic(title: "5-hour", window: state.fiveHourQuota),
+			quotaDiagnostic(title: "7-day", window: state.sevenDayQuota),
+		]
+		.compactMap { $0 }
+
+		return diagnostics.isEmpty ? nil : diagnostics.joined(separator: ". ")
+	}
+
+	private func quotaDiagnostic(
+		title: String,
+		window: ResetCardQuotaWindow
+	) -> String? {
+		guard case .error(let error) = window.state,
+			error != .unsupportedWindow
+		else {
+			return nil
+		}
+
+		return "\(title) usage: \(error.presentation)"
 	}
 }
 
