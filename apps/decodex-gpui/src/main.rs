@@ -9,6 +9,14 @@
 )]
 mod client_cache;
 mod client_lifecycle;
+#[cfg_attr(
+	not(test),
+	allow(
+		dead_code,
+		reason = "XY-1429 pager controls are composed by the later Conversation destination"
+	)
+)]
+mod history_pager;
 mod shell;
 
 use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
