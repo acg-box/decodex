@@ -2028,27 +2028,49 @@ def register_authority_scenarios(add: object) -> None:
 	add(
 		"indirect-trigger-owner-effect", unsafe_store, unsafe, RUNTIME_ROLE,
 		mutation_sql=(
+			"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
+			"('91000000-0000-4000-8000-000000000001','indirect owner fixture'); "
+			"INSERT INTO decodex.account_routing_order(account_id,position) SELECT "
+			"'91000000-0000-4000-8000-000000000001',pg_catalog.count(*)::integer "
+			"FROM decodex.account_routing_order; "
 			"CREATE FUNCTION public.indirect_owner_escape() RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER "
 			"SET search_path=pg_catalog,decodex AS $$ BEGIN EXECUTE 'ALTER TABLE decodex.outbox "
 			"DISABLE TRIGGER outbox_terminal_retention'; RETURN NULL; END $$; "
 			"REVOKE ALL ON FUNCTION public.indirect_owner_escape() FROM PUBLIC,$RUNTIME_ROLE; "
-			"CREATE TRIGGER accounts_indirect_owner_escape AFTER INSERT ON decodex.accounts "
+			"CREATE TRIGGER accounts_indirect_owner_escape AFTER UPDATE ON decodex.accounts "
 			"FOR EACH STATEMENT EXECUTE FUNCTION public.indirect_owner_escape()"
 		),
 		precondition_sql=(
 			"SELECT pg_catalog.to_regprocedure('public.indirect_owner_escape()') IS NULL AND NOT EXISTS "
 			"(SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.accounts'::regclass "
-			"AND tgname='accounts_indirect_owner_escape')"
+			"AND tgname='accounts_indirect_owner_escape') AND NOT EXISTS (SELECT 1 FROM "
+			"decodex.accounts WHERE account_id="
+			"'91000000-0000-4000-8000-000000000001') AND NOT EXISTS (SELECT 1 FROM "
+			"decodex.account_routing_order WHERE account_id="
+			"'91000000-0000-4000-8000-000000000001')"
 		),
+		post_runtime_rejected_sql=(
+			"UPDATE decodex.accounts SET display_label='forbidden direct update' WHERE "
+			"account_id='91000000-0000-4000-8000-000000000001'"
+		),
+		post_runtime_rejected_sqlstate="42501",
 		runtime_effect_sql=(
-			"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
-			"('91000000-0000-4000-8000-000000000001','indirect owner escape')"
+			"SELECT * FROM decodex.update_account_administration_exact("
+			"'91000000-0000-4000-8000-000000000001'::pg_catalog.uuid,1,"
+			"'indirect owner escape updated',NULL::pg_catalog.bool)"
 		),
 		postcondition_sql=(
 			"SELECT pg_catalog.to_regprocedure('public.indirect_owner_escape()') IS NOT NULL AND "
 			"NOT has_function_privilege('$RUNTIME_ROLE','public.indirect_owner_escape()','EXECUTE') AND "
+			"has_function_privilege('$RUNTIME_ROLE',"
+			"'decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,"
+			"pg_catalog.text,pg_catalog.bool)','EXECUTE') AND "
 			"EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.accounts'::regclass "
-			"AND tgname='accounts_indirect_owner_escape') AND EXISTS (SELECT 1 FROM "
+			"AND tgname='accounts_indirect_owner_escape') AND EXISTS (SELECT 1 FROM decodex.accounts "
+			"WHERE account_id='91000000-0000-4000-8000-000000000001' "
+			"AND display_label='indirect owner escape updated' AND revision=2 AND NOT enabled "
+			"AND tombstoned_at IS NULL) AND EXISTS (SELECT 1 FROM decodex.account_routing_order "
+			"WHERE account_id='91000000-0000-4000-8000-000000000001') AND EXISTS (SELECT 1 FROM "
 			"pg_catalog.pg_trigger WHERE tgrelid='decodex.outbox'::regclass "
 			"AND tgname='outbox_terminal_retention' AND tgenabled='D')"
 		),

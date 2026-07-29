@@ -62,13 +62,13 @@ use decodex_core::{
 	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, Agent, AgentId, AgentRole, AgentStatus,
-	BootstrapFailure, BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord,
-	CreateArtifact, CreateConversation, CreateProject, CreateRuntimeSession,
-	CreateRuntimeSessionAccountSnapshot, HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS,
-	OutboxClaim, OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition,
-	ReconciliationOutcome, RecordHistoryItem, RoleProfileCommandOutcome, RoleProfileConfiguration,
-	RoleProfileRole, RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
+	AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus, BootstrapFailure,
+	BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact,
+	CreateConversation, CreateProject, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
+	HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation,
+	PersistContextPack, PostgresStore, ProposeTransition, ReconciliationOutcome, RecordHistoryItem,
+	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
+	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
 
 #[cfg(feature = "test-support")]
@@ -2260,7 +2260,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-				 (SELECT count(*)=22 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=28 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
@@ -2505,10 +2505,10 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 
 	assert_bootstrap_and_history(&client).await?;
 	assert_runtime_is_least_privilege(&runtime_client).await?;
+	seed_account_read_fixture(&store, &client).await?;
 	assert_project_agent_authority(&store, &client, &migration, &runtime).await?;
 	assert_policy_authority(&store, &client, &migration, &runtime).await?;
 	assert_program_objective_authority(&store, &client, &migration, &runtime).await?;
-	assert_account_idempotency_and_revision(&store, &client).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
 
@@ -4310,6 +4310,12 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 		"constraint_restore_canonicalization",
 		"runtime_session_event_reference_authority",
 		"retained_title_experiment_bridge",
+		"process_generation_authority",
+		"provider_attempt_authority",
+		"execution_route_enum_expansion",
+		"execution_coordinator_cutover",
+		"mac_account_lifecycle",
+		"account_profile_observations",
 	];
 	assert_eq!(history.len(), expected_history.len());
 	for (index, ((version, name, checksum), expected_name)) in
@@ -6595,174 +6601,37 @@ async fn assert_identity_ingress_explicit_normalization(runtime: &Client) {
 	);
 }
 
-async fn assert_account_idempotency_and_revision(
+async fn seed_account_read_fixture(
 	store: &PostgresStore,
 	client: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let account_id = AccountId::new(ACCOUNT_ID)?;
-	let mutation = AccountMutation {
-		account_id: account_id.clone(),
-		display_label: "Primary metadata".into(),
-		state: AccountState::Unknown,
-		metadata: serde_json::json!({"provider": "codex", "source": "synthetic"}),
-		expected_revision: None,
-	};
-	let command = CommandIdentity::new("account-create", b"account-create-v1")?;
-	let mut tasks = JoinSet::new();
+	client
+		.batch_execute(
+			"BEGIN; \
+			 SELECT decodex.lock_account_routing_universe_exact(); \
+			 INSERT INTO decodex.accounts(\
+			 account_id,display_label,state,metadata,revision,enabled\
+			 ) VALUES(\
+			 '10000000-0000-0000-0000-000000000001',\
+			 'Primary metadata','unavailable',\
+			 '{\"observation\":\"manual_fixture_not_ready\"}'::jsonb,9,false); \
+			 INSERT INTO decodex.account_routing_order(account_id,position) \
+			 SELECT '10000000-0000-0000-0000-000000000001',\
+			 pg_catalog.count(*)::integer FROM decodex.account_routing_order; \
+			 UPDATE decodex.account_routing_control SET revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp() WHERE singleton; \
+			 COMMIT",
+		)
+		.await?;
+	let account = store.account(&account_id).await?.expect("fixture account exists");
 
-	for _ in 0..16 {
-		let store = store.clone();
-		let mutation = mutation.clone();
-		let command = command.clone();
-
-		tasks.spawn(async move { store.mutate_account(&command, &mutation).await });
-	}
-
-	while let Some(result) = tasks.join_next().await {
-		let account = result??;
-
-		assert_eq!(account.revision, 1);
-		assert_eq!(account.state, AccountState::Unknown);
-	}
-
-	let counts: (i64, i64, i64) = {
-		let row = client
-			.query_one(
-				"SELECT (SELECT count(*) FROM decodex.accounts), \
-				 (SELECT count(*) FROM decodex.activity WHERE aggregate_kind = 'account'), \
-				 (SELECT count(*) FROM decodex.outbox WHERE aggregate_kind = 'account')",
-				&[],
-			)
-			.await?;
-
-		(row.get(0), row.get(1), row.get(2))
-	};
-
-	assert_eq!(counts, (1, 1, 1));
-
-	let different = CommandIdentity::new("account-create", b"different-request")?;
-
-	assert!(matches!(
-		store.mutate_account(&different, &mutation).await,
-		Err(StoreError::IdempotencyConflict)
-	));
-
-	let mut tasks = JoinSet::new();
-
-	for writer in 0..16 {
-		let store = store.clone();
-		let mutation = AccountMutation {
-			account_id: account_id.clone(),
-			display_label: format!("Writer {writer}"),
-			state: AccountState::Unknown,
-			metadata: serde_json::json!({"writer": writer}),
-			expected_revision: Some(1),
-		};
-		let command = CommandIdentity::new(
-			format!("account-update-{writer}"),
-			format!("writer-{writer}").as_bytes(),
-		)?;
-
-		tasks.spawn(async move { store.mutate_account(&command, &mutation).await });
-	}
-
-	let mut winners = 0;
-	let mut conflicts = 0;
-
-	while let Some(result) = tasks.join_next().await {
-		match result? {
-			Ok(account) => {
-				assert_eq!(account.revision, 2);
-
-				winners += 1;
-			},
-			Err(StoreError::RevisionConflict { expected: Some(1), actual: Some(2), .. }) => {
-				conflicts += 1;
-			},
-			Err(error) => return Err(error.into()),
-		}
-	}
-
-	assert_eq!((winners, conflicts), (1, 15));
-	assert_eq!(store.account(&account_id).await?.expect("account exists").revision, 2);
-
-	assert_account_launch_authority(store, &account_id, 2).await?;
-
-	assert_eq!(
-		store.account(&account_id).await?.expect("updated account remains readable").state,
-		AccountState::Unavailable
-	);
-
-	Ok(())
-}
-
-async fn assert_account_launch_authority(
-	store: &PostgresStore,
-	account_id: &AccountId,
-	starting_revision: i64,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let available = AccountMutation {
-		account_id: account_id.clone(),
-		display_label: "Primary metadata".into(),
-		state: AccountState::Available,
-		metadata: serde_json::json!({"observation": "manual_fixture_ready"}),
-		expected_revision: Some(starting_revision),
-	};
-	let command = CommandIdentity::new("account-available", b"account-available-v1")?;
-	let available = store.mutate_account(&command, &available).await?;
-
-	assert!(store.account_is_ready_at_revision(account_id, available.revision).await?);
-
-	let unavailable_mutation = AccountMutation {
-		account_id: account_id.clone(),
-		display_label: "Primary metadata".into(),
-		state: AccountState::Unavailable,
-		metadata: serde_json::json!({"observation": "manual_fixture_unavailable"}),
-		expected_revision: Some(available.revision),
-	};
-	let command = CommandIdentity::new(
-		"account-unavailable-after-readiness-observation",
-		b"account-unavailable-after-readiness-observation-v1",
-	)?;
-	let unavailable = time::timeout(
-		Duration::from_secs(1),
-		store.mutate_account(&command, &unavailable_mutation),
-	)
-	.await
-	.expect("a completed readiness observation retains no row lock")?;
-
-	assert_eq!(unavailable.state, AccountState::Unavailable);
-	assert!(!store.account_is_ready_at_revision(account_id, available.revision).await?);
-
-	let mut revision = unavailable.revision;
-
-	for (index, state) in [
-		AccountState::Unknown,
-		AccountState::Depleted,
-		AccountState::AuthFailed,
-		AccountState::PluginUnready,
-		AccountState::Unavailable,
-	]
-	.into_iter()
-	.enumerate()
-	{
-		let mutation = AccountMutation {
-			account_id: account_id.clone(),
-			display_label: "Primary metadata".into(),
-			state,
-			metadata: serde_json::json!({"observation": "manual_fixture_not_ready"}),
-			expected_revision: Some(revision),
-		};
-		let command = CommandIdentity::new(
-			format!("account-not-ready-{index}"),
-			format!("account-not-ready-{index}-v1").as_bytes(),
-		)?;
-		let stored = store.mutate_account(&command, &mutation).await?;
-
-		revision = stored.revision;
-
-		assert!(!store.account_is_ready_at_revision(account_id, revision).await?);
-	}
+	assert_eq!(account.account_id, account_id);
+	assert_eq!(account.display_label, "Primary metadata");
+	assert_eq!(account.state, AccountState::Unavailable);
+	assert_eq!(account.metadata, serde_json::json!({"observation": "manual_fixture_not_ready"}));
+	assert_eq!(account.revision, 9);
+	assert!(!store.account_is_ready_at_revision(&account.account_id, account.revision).await?);
 
 	Ok(())
 }
@@ -9661,7 +9530,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 	migration: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	seed_outbox_accounts(store).await?;
+	seed_outbox_fixtures(client).await?;
 
 	let available: i64 = client
 		.query_one("SELECT count(*) FROM decodex.outbox WHERE state = 'pending'", &[])
@@ -9700,24 +9569,20 @@ async fn assert_outbox_concurrency_retry_and_restart(
 	assert_outbox_retry_and_restart(store, client, migration, runtime).await
 }
 
-async fn seed_outbox_accounts(store: &PostgresStore) -> Result<(), Box<dyn std::error::Error>> {
-	for index in 0..96 {
-		let account_id = AccountId::new(format!("50000000-0000-0000-0000-{index:012}"))?;
-		let mutation = AccountMutation {
-			account_id,
-			display_label: format!("Synthetic {index}"),
-			state: AccountState::Unknown,
-			metadata: serde_json::json!({"fixture": index}),
-			expected_revision: None,
-		};
-		let command = CommandIdentity::new(
-			format!("bulk-account-{index}"),
-			format!("bulk-account-{index}").as_bytes(),
-		)?;
+async fn seed_outbox_fixtures(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+	let inserted = client
+		.execute(
+			"INSERT INTO decodex.outbox(\
+			 effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload\
+			 ) SELECT 'outbox-fixture-'||fixture::text,'fixture',\
+			 'outbox-fixture-'||fixture::text,1,\
+			 pg_catalog.jsonb_build_object('fixture',fixture) \
+			 FROM pg_catalog.generate_series(0,95) AS fixture",
+			&[],
+		)
+		.await?;
 
-		store.mutate_account(&command, &mutation).await?;
-	}
-
+	assert_eq!(inserted, 96);
 	Ok(())
 }
 
