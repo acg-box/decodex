@@ -381,8 +381,11 @@ async fn bootstrap_macos_account_runtime(
 	Option<ResetCardRuntime>,
 	DoctorStatus,
 ) {
-	let Ok(refresher) = OpenAiCredentialRefresher::new() else {
-		return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication));
+	let refresher = match tokio::task::spawn_blocking(OpenAiCredentialRefresher::new).await {
+		Ok(Ok(refresher)) => refresher,
+		Ok(Err(_)) =>
+			return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication)),
+		Err(_) => return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity)),
 	};
 	let Ok(credentials) = MacosKeychainCredentialStore::new(paths) else {
 		return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity));

@@ -493,7 +493,7 @@ mod postgres_composition_tests {
 
 	use tempfile::TempDir;
 	use tokio::{runtime::Handle, task, time};
-	use tokio_postgres::Config;
+	use tokio_postgres::{Client, Config, NoTls};
 
 	use crate::account_launch::{
 		ManualAccountLaunchError, ManualAccountLaunchRequest, ManualAccountLauncher,
@@ -504,7 +504,7 @@ mod postgres_composition_tests {
 	};
 	use decodex_codex::CapabilityCache;
 	use decodex_core::{AccountId, AccountState};
-	use decodex_postgres::{AccountMetadata, AccountMutation, CommandIdentity, PostgresStore};
+	use decodex_postgres::{AccountMetadata, PostgresStore};
 
 	struct MatchingVault;
 	impl CredentialVault for MatchingVault {
@@ -581,33 +581,129 @@ mod postgres_composition_tests {
 		)
 	}
 
-	async fn mutate(
+	fn fixture_state(state: AccountState) -> &'static str {
+		match state {
+			AccountState::Unknown => "unknown",
+			AccountState::Available => "available",
+			AccountState::Depleted => "depleted",
+			_ => panic!("the manual launcher fixture accepts only exercised account states"),
+		}
+	}
+
+	async fn read_fixture_account(
 		store: &PostgresStore,
 		account_id: &AccountId,
-		expected_revision: Option<i64>,
+		expected_revision: i64,
 		state: AccountState,
-		key: &str,
 	) -> AccountMetadata {
-		let command = CommandIdentity::new(key, format!("{key}-payload").as_bytes()).unwrap();
-		let mutation = AccountMutation {
-			account_id: account_id.clone(),
-			display_label: "Manual fixture".into(),
-			state,
-			metadata: serde_json::json!({"observation": "synthetic_fixture"}),
-			expected_revision,
-		};
+		let account = store.account(account_id).await.unwrap().expect("fixture account exists");
 
-		store.mutate_account(&command, &mutation).await.unwrap()
+		assert_eq!(account.account_id, *account_id);
+		assert_eq!(account.display_label, "Manual fixture");
+		assert_eq!(account.state, state);
+		assert_eq!(account.revision, expected_revision);
+		assert_eq!(account.metadata, serde_json::json!({"observation": "synthetic_fixture"}));
+
+		account
+	}
+
+	async fn create_fixture_account(
+		owner: &mut Client,
+		store: &PostgresStore,
+		account_id: &AccountId,
+	) -> AccountMetadata {
+		let transaction = owner.transaction().await.unwrap();
+		let locked: bool = transaction
+			.query_one("SELECT decodex.lock_account_routing_universe_exact()", &[])
+			.await
+			.unwrap()
+			.get(0);
+
+		assert!(locked);
+		assert_eq!(
+			transaction
+				.execute(
+					"INSERT INTO decodex.accounts(\
+					 account_id,display_label,state,metadata,enabled\
+					 ) VALUES(\
+					 $1::text::uuid,'Manual fixture','unknown',\
+					 '{\"observation\":\"synthetic_fixture\"}'::jsonb,true)",
+					&[&account_id.as_str()],
+				)
+				.await
+				.unwrap(),
+			1
+		);
+		assert_eq!(
+			transaction
+				.execute(
+					"INSERT INTO decodex.account_routing_order(account_id,position) \
+					 SELECT $1::text::uuid,pg_catalog.count(*)::integer \
+					 FROM decodex.account_routing_order",
+					&[&account_id.as_str()],
+				)
+				.await
+				.unwrap(),
+			1
+		);
+		assert_eq!(
+			transaction
+				.execute(
+					"UPDATE decodex.account_routing_control SET revision=revision+1,\
+					 updated_at=pg_catalog.clock_timestamp() WHERE singleton",
+					&[],
+				)
+				.await
+				.unwrap(),
+			1
+		);
+		transaction.commit().await.unwrap();
+
+		let account = read_fixture_account(store, account_id, 1, AccountState::Unknown).await;
+		let (accounts, routing) = store.read_account_registry_snapshot(512).await.unwrap();
+		let record = accounts
+			.iter()
+			.find(|candidate| candidate.account_id == *account_id)
+			.expect("fixture account is visible");
+
+		assert!(record.enabled);
+		assert_eq!(record.revision, account.revision);
+		assert!(routing.order.contains(account_id));
+
+		account
+	}
+
+	async fn update_fixture_account(
+		owner: &Client,
+		store: &PostgresStore,
+		account_id: &AccountId,
+		expected_revision: i64,
+		state: AccountState,
+	) -> AccountMetadata {
+		let row = owner
+			.query_one(
+				"UPDATE decodex.accounts SET state=$3::text::decodex.account_state,\
+				 revision=revision+1,observed_at=pg_catalog.clock_timestamp(),\
+				 updated_at=pg_catalog.clock_timestamp() \
+				 WHERE account_id=$1::text::uuid AND revision=$2 \
+				 RETURNING revision",
+				&[&account_id.as_str(), &expected_revision, &fixture_state(state)],
+			)
+			.await
+			.unwrap();
+		let revision: i64 = row.get(0);
+
+		assert_eq!(revision, expected_revision + 1);
+		read_fixture_account(store, account_id, revision, state).await
 	}
 
 	async fn assert_readiness_rejections_and_success(
+		owner: &mut Client,
 		store: &PostgresStore,
 		launcher: &ManualAccountLauncher,
 		account_id: &AccountId,
 	) -> AccountMetadata {
-		let unknown =
-			mutate(store, account_id, None, AccountState::Unknown, "xy1273-runtime-account-create")
-				.await;
+		let unknown = create_fixture_account(owner, store, account_id).await;
 		let rejected_temp = TempDir::new().unwrap();
 		let rejected_marker = rejected_temp.path().join("unexpected-spawn");
 		let rejected = launcher
@@ -627,12 +723,12 @@ mod postgres_composition_tests {
 		assert!(matches!(rejected, Err(ManualAccountLaunchError::ReadinessRejected)));
 		assert!(!rejected_marker.exists());
 
-		let available = mutate(
+		let available = update_fixture_account(
+			owner,
 			store,
 			account_id,
-			Some(unknown.revision),
+			unknown.revision,
 			AccountState::Available,
-			"xy1273-runtime-account-available",
 		)
 		.await;
 		let stale_temp = TempDir::new().unwrap();
@@ -672,6 +768,7 @@ mod postgres_composition_tests {
 	}
 
 	async fn assert_blocking_vault_releases_postgres(
+		owner: &Client,
 		store: &PostgresStore,
 		launcher: &ManualAccountLauncher,
 		account_id: &AccountId,
@@ -697,12 +794,12 @@ mod postgres_composition_tests {
 
 		let depleted = time::timeout(
 			Duration::from_secs(1),
-			mutate(
+			update_fixture_account(
+				owner,
 				store,
 				account_id,
-				Some(available.revision),
+				available.revision,
 				AccountState::Depleted,
-				"xy1273-runtime-account-depleted-during-vault",
 			),
 		)
 		.await
@@ -719,14 +816,8 @@ mod postgres_composition_tests {
 		));
 		assert_eq!(launcher.active_capacity(), 0);
 
-		mutate(
-			store,
-			account_id,
-			Some(depleted.revision),
-			AccountState::Available,
-			"xy1273-runtime-account-available-again",
-		)
-		.await
+		update_fixture_account(owner, store, account_id, depleted.revision, AccountState::Available)
+			.await
 	}
 
 	async fn assert_capacity_and_mismatch(
@@ -802,16 +893,28 @@ mod postgres_composition_tests {
 		.unwrap();
 		let socket = env::var("DECODEX_TEST_SOCKET_DIRECTORY").expect("fixture socket directory");
 		let expected_peer_uid = fs::metadata(socket).unwrap().uid();
+		let mut owner_config = migration.clone();
+		PostgresStore::pin_session_search_path_fixture(&mut owner_config);
 		let store =
 			PostgresStore::connect_fixture(migration, runtime, expected_peer_uid).await.unwrap();
+		let (mut owner, owner_connection) = owner_config.connect(NoTls).await.unwrap();
+		let owner_connection_task = tokio::spawn(owner_connection);
 		let launcher = ManualAccountLauncher::with_capacity(&store, 1);
 		let account_id = AccountId::new("10000000-0000-4000-8000-000000001273").unwrap();
 		let available =
-			assert_readiness_rejections_and_success(&store, &launcher, &account_id).await;
-		let available =
-			assert_blocking_vault_releases_postgres(&store, &launcher, &account_id, &available)
+			assert_readiness_rejections_and_success(&mut owner, &store, &launcher, &account_id)
 				.await;
+		let available = assert_blocking_vault_releases_postgres(
+			&owner,
+			&store,
+			&launcher,
+			&account_id,
+			&available,
+		)
+		.await;
 
 		assert_capacity_and_mismatch(&launcher, &account_id, &available).await;
+		drop(owner);
+		owner_connection_task.await.unwrap().unwrap();
 	}
 }

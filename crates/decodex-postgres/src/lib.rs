@@ -105,10 +105,10 @@ pub use self::{
 		RuntimeSessionRejection, StoredRuntimeSession,
 	},
 	types::{
-		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
-		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
-		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
-		QuotaWindowMutation, ReconciliationOutcome,
+		AccountMetadata, ActivityRecord, CommandIdentity, CreateProject, HypotheticalFallbackFact,
+		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaExclusionMutation,
+		QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow, QuotaWindowMutation,
+		ReconciliationOutcome,
 	},
 	wakes::{
 		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
