@@ -29,7 +29,6 @@ struct AccountPanelView: View {
 		GlassEffectContainer(spacing: 6) {
 			VStack(alignment: .leading, spacing: 7) {
 				header
-				accountSummary
 
 				if hasTransientStatus {
 					transientStatus
@@ -194,36 +193,6 @@ struct AccountPanelView: View {
 		return "\(count) account\(count == 1 ? "" : "s") · \(routingSubtitle)"
 	}
 
-	private var accountSummary: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 7) {
-			summaryItem(
-				symbol: "person.2",
-				title: "Accounts",
-				value: "\(readyAccountCount) ready",
-				tint: PanelPalette.usageCyan(colorScheme)
-			)
-
-			Rectangle()
-				.fill(PanelPalette.separator(colorScheme))
-				.frame(width: 0.5, height: 16)
-
-			summaryItem(
-				symbol: "arrow.triangle.branch",
-				title: "Routing",
-				value: routingSummary,
-				tint: PanelPalette.routeAccent(colorScheme)
-			)
-		}
-		.padding(.horizontal, 3)
-		.padding(.top, 1)
-		.padding(.bottom, 4)
-		.overlay(alignment: .bottom) {
-			Rectangle()
-				.fill(PanelPalette.separator(colorScheme))
-				.frame(height: 0.5)
-		}
-	}
-
 	private var hasTransientStatus: Bool {
 		fastMode.errorMessage != nil
 			|| store.message != nil
@@ -259,37 +228,6 @@ struct AccountPanelView: View {
 		.accessibilityLabel("Decodex status and pending actions")
 	}
 
-	private func summaryItem(
-		symbol: String,
-		title: String,
-		value: String,
-		tint: Color
-	) -> some View {
-		HStack(alignment: .firstTextBaseline, spacing: 4) {
-			Image(systemName: symbol)
-				.font(PanelFont.usageLabel)
-				.foregroundStyle(tint)
-				.accessibilityHidden(true)
-
-			Text(title)
-				.font(PanelFont.usageLabel)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-
-			Text(value)
-				.font(PanelFont.usageValue)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.lineLimit(1)
-				.minimumScaleFactor(0.82)
-		}
-		.frame(maxWidth: .infinity, alignment: .leading)
-	}
-
-	private var readyAccountCount: Int {
-		store.accounts.filter {
-			$0.account.enabled && $0.account.lifecycleReadiness == .ready
-		}.count
-	}
-
 	private var profileAggregate: AccountProfileAggregate? {
 		AccountProfileAggregate.make(
 			profiledAccountStates.compactMap { $0.profile?.snapshot }
@@ -309,22 +247,11 @@ struct AccountPanelView: View {
 		switch routing.mode {
 		case .balanced:
 			return "balanced"
-		case .fixed:
-			return "fixed routing"
-		}
-	}
-
-	private var routingSummary: String {
-		guard let routing = store.routing else {
-			return "Not loaded"
-		}
-		switch routing.mode {
-		case .balanced:
-			return "Balanced"
 		case .fixed(let accountID):
-			return store.accounts.first {
+			let label = store.accounts.first {
 				$0.account.accountID == accountID
-			}?.account.displayLabel ?? "Fixed"
+			}?.account.displayLabel
+			return label.map { "fixed · \($0)" } ?? "fixed"
 		}
 	}
 

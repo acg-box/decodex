@@ -44,7 +44,9 @@ const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
 	include_str!("../migrations/V27__mac_account_lifecycle.sql");
 const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
 	include_str!("../migrations/V28__account_profile_observations.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 24] = [
+const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
+	include_str!("../migrations/V29__account_profile_array_zip.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 25] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -69,6 +71,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 24] = [
 	EXECUTION_COORDINATOR_MIGRATION,
 	MAC_ACCOUNT_LIFECYCLE_MIGRATION,
 	ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
+	ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -6273,7 +6276,7 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 24);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 25);
 		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()

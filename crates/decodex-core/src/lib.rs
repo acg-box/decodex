@@ -3,6 +3,7 @@
 mod account;
 mod agent;
 mod automation;
+mod automation_delivery;
 mod blob;
 mod cache;
 mod config;
@@ -49,6 +50,10 @@ pub use self::{
 		MAX_AUTOMATION_RRULE_BYTES, MAX_AUTOMATION_SYMBOL_BYTES,
 		MAX_AUTOMATION_TIMESTAMP_MICROSECONDS, MAX_AUTOMATION_TIMEZONE_BYTES,
 		propose_automation_firing,
+	},
+	automation_delivery::{
+		AutomationDeliveryError, AutomationDeliveryIntent, AutomationDeliveryIntentId,
+		AutomationDeliveryReceipt, AutomationDeliveryReceiptId, AutomationFiringInput,
 	},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
