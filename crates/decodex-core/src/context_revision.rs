@@ -1272,6 +1272,25 @@ mod tests {
 			.map(|_| ())
 	}
 
+	fn assert_provenance_cases(
+		kind: ContextRevisionItemKind,
+		cases: &[(&ContextRevisionOwner, &ContextRevisionSource, bool)],
+	) {
+		for &(owner, source, expected) in cases {
+			let expected =
+				if expected { Ok(()) } else { Err(ContextRevisionError::InvalidProvenance) };
+
+			assert_eq!(
+				provenance_result(
+					owner,
+					kind,
+					ContextRevisionItemProvenance::Source(source.clone()),
+				),
+				expected
+			);
+		}
+	}
+
 	fn restore(
 		value: &ContextRevision,
 		expected_canonical_bytes: &[u8],
@@ -1817,7 +1836,7 @@ mod tests {
 	}
 
 	#[test]
-	fn owner_and_provenance_relationship_matrix_is_closed() {
+	fn domain_source_provenance_relationship_matrix_is_closed() {
 		let project_a = project(1);
 		let project_b = project(2);
 		let program_a = program(1, &project_a);
@@ -1829,7 +1848,6 @@ mod tests {
 		let owner_program_peer = ContextRevisionOwner::program(&program_peer);
 		let owner_program_b = ContextRevisionOwner::program(&program_b);
 		let owner_advisor = ContextRevisionOwner::advisor(&advisor(1)).unwrap();
-		let owner_advisor_peer = ContextRevisionOwner::advisor(&advisor(2)).unwrap();
 		let source_project_a = ContextRevisionSource::project(&project_a);
 		let source_project_b = ContextRevisionSource::project(&project_b);
 		let source_program_a = ContextRevisionSource::program(&program_a);
@@ -1846,55 +1864,46 @@ mod tests {
 		let source_policy_a = ContextRevisionSource::policy(program_a.policy_revision_id().clone());
 		let source_policy_b = ContextRevisionSource::policy(program_b.policy_revision_id().clone());
 
-		for (owner, source, expected) in [
-			(&owner_project_a, &source_project_a, true),
-			(&owner_program_a, &source_project_a, true),
-			(&owner_program_peer, &source_project_a, true),
-			(&owner_advisor, &source_project_a, false),
-			(&owner_project_b, &source_project_a, false),
-			(&owner_program_b, &source_project_a, false),
-			(&owner_project_b, &source_project_b, true),
-			(&owner_program_b, &source_project_b, true),
-			(&owner_project_a, &source_repository_a, true),
-			(&owner_program_a, &source_repository_a, true),
-			(&owner_program_peer, &source_repository_a, true),
-			(&owner_advisor, &source_repository_a, false),
-			(&owner_project_b, &source_repository_a, false),
-			(&owner_project_b, &source_repository_b, true),
-			(&owner_program_b, &source_repository_b, true),
-			(&owner_project_a, &source_policy_a, true),
-			(&owner_program_a, &source_policy_a, true),
-			(&owner_program_peer, &source_policy_a, true),
-			(&owner_advisor, &source_policy_a, false),
-			(&owner_project_b, &source_policy_a, false),
-			(&owner_project_b, &source_policy_b, true),
-			(&owner_program_b, &source_policy_b, true),
-			(&owner_project_a, &source_program_a, true),
-			(&owner_program_a, &source_program_a, true),
-			(&owner_program_peer, &source_program_a, false),
-			(&owner_advisor, &source_program_a, false),
-			(&owner_project_b, &source_program_a, false),
-			(&owner_program_b, &source_program_a, false),
-			(&owner_project_a, &source_program_peer, true),
-			(&owner_program_a, &source_program_peer, false),
-			(&owner_program_peer, &source_program_peer, true),
-			(&owner_project_b, &source_program_b, true),
-			(&owner_program_b, &source_program_b, true),
-			(&owner_project_a, &source_program_b, false),
-			(&owner_program_a, &source_program_b, false),
-		] {
-			let result = provenance_result(
-				owner,
-				ContextRevisionItemKind::Fact,
-				ContextRevisionItemProvenance::Source((*source).clone()),
-			);
-
-			if expected {
-				assert_eq!(result, Ok(()));
-			} else {
-				assert_eq!(result, Err(ContextRevisionError::InvalidProvenance));
-			}
-		}
+		assert_provenance_cases(
+			ContextRevisionItemKind::Fact,
+			&[
+				(&owner_project_a, &source_project_a, true),
+				(&owner_program_a, &source_project_a, true),
+				(&owner_program_peer, &source_project_a, true),
+				(&owner_advisor, &source_project_a, false),
+				(&owner_project_b, &source_project_a, false),
+				(&owner_program_b, &source_project_a, false),
+				(&owner_project_b, &source_project_b, true),
+				(&owner_program_b, &source_project_b, true),
+				(&owner_project_a, &source_repository_a, true),
+				(&owner_program_a, &source_repository_a, true),
+				(&owner_program_peer, &source_repository_a, true),
+				(&owner_advisor, &source_repository_a, false),
+				(&owner_project_b, &source_repository_a, false),
+				(&owner_project_b, &source_repository_b, true),
+				(&owner_program_b, &source_repository_b, true),
+				(&owner_project_a, &source_policy_a, true),
+				(&owner_program_a, &source_policy_a, true),
+				(&owner_program_peer, &source_policy_a, true),
+				(&owner_advisor, &source_policy_a, false),
+				(&owner_project_b, &source_policy_a, false),
+				(&owner_project_b, &source_policy_b, true),
+				(&owner_program_b, &source_policy_b, true),
+				(&owner_project_a, &source_program_a, true),
+				(&owner_program_a, &source_program_a, true),
+				(&owner_program_peer, &source_program_a, false),
+				(&owner_advisor, &source_program_a, false),
+				(&owner_project_b, &source_program_a, false),
+				(&owner_program_b, &source_program_a, false),
+				(&owner_project_a, &source_program_peer, true),
+				(&owner_program_a, &source_program_peer, false),
+				(&owner_program_peer, &source_program_peer, true),
+				(&owner_project_b, &source_program_b, true),
+				(&owner_program_b, &source_program_b, true),
+				(&owner_project_a, &source_program_b, false),
+				(&owner_program_a, &source_program_b, false),
+			],
+		);
 
 		for owner in [&owner_project_a, &owner_program_a, &owner_advisor] {
 			assert_eq!(
@@ -1906,7 +1915,22 @@ mod tests {
 				Ok(())
 			);
 		}
+	}
 
+	#[test]
+	fn context_revision_source_fact_and_handoff_matrix_is_closed() {
+		let project_a = project(1);
+		let project_b = project(2);
+		let program_a = program(1, &project_a);
+		let program_peer = program(2, &project_a);
+		let program_b = program(3, &project_b);
+		let owner_project_a = ContextRevisionOwner::project(&project_a);
+		let owner_project_b = ContextRevisionOwner::project(&project_b);
+		let owner_program_a = ContextRevisionOwner::program(&program_a);
+		let owner_program_peer = ContextRevisionOwner::program(&program_peer);
+		let owner_program_b = ContextRevisionOwner::program(&program_b);
+		let owner_advisor = ContextRevisionOwner::advisor(&advisor(1)).unwrap();
+		let owner_advisor_peer = ContextRevisionOwner::advisor(&advisor(2)).unwrap();
 		let context_project_a = context_source(50, &owner_project_a);
 		let context_project_b = context_source(51, &owner_project_b);
 		let context_program_a = context_source(52, &owner_program_a);
@@ -1915,75 +1939,57 @@ mod tests {
 		let context_advisor = context_source(55, &owner_advisor);
 		let context_advisor_peer = context_source(56, &owner_advisor_peer);
 
-		for (owner, source, expected) in [
-			(&owner_project_a, &context_project_a, true),
-			(&owner_project_b, &context_project_b, true),
-			(&owner_program_a, &context_program_a, true),
-			(&owner_program_peer, &context_program_peer, true),
-			(&owner_program_b, &context_program_b, true),
-			(&owner_advisor, &context_advisor, true),
-			(&owner_project_a, &context_project_b, false),
-			(&owner_project_a, &context_program_a, false),
-			(&owner_program_a, &context_project_a, false),
-			(&owner_program_a, &context_program_peer, false),
-			(&owner_advisor, &context_project_a, false),
-			(&owner_project_a, &context_advisor, false),
-			(&owner_advisor, &context_advisor_peer, false),
-		] {
-			let result = provenance_result(
-				owner,
-				ContextRevisionItemKind::Fact,
-				ContextRevisionItemProvenance::Source((*source).clone()),
-			);
+		assert_provenance_cases(
+			ContextRevisionItemKind::Fact,
+			&[
+				(&owner_project_a, &context_project_a, true),
+				(&owner_project_b, &context_project_b, true),
+				(&owner_program_a, &context_program_a, true),
+				(&owner_program_peer, &context_program_peer, true),
+				(&owner_program_b, &context_program_b, true),
+				(&owner_advisor, &context_advisor, true),
+				(&owner_project_a, &context_project_b, false),
+				(&owner_project_a, &context_program_a, false),
+				(&owner_program_a, &context_project_a, false),
+				(&owner_program_a, &context_program_peer, false),
+				(&owner_advisor, &context_project_a, false),
+				(&owner_project_a, &context_advisor, false),
+				(&owner_advisor, &context_advisor_peer, false),
+			],
+		);
 
-			if expected {
-				assert_eq!(result, Ok(()));
-			} else {
-				assert_eq!(result, Err(ContextRevisionError::InvalidProvenance));
-			}
-		}
-
-		for (owner, source, expected) in [
-			(&owner_project_a, &context_project_a, true),
-			(&owner_program_a, &context_program_a, true),
-			(&owner_advisor, &context_advisor, true),
-			(&owner_project_a, &context_program_a, true),
-			(&owner_project_a, &context_program_peer, true),
-			(&owner_program_a, &context_project_a, true),
-			(&owner_program_peer, &context_project_a, true),
-			(&owner_project_b, &context_program_b, true),
-			(&owner_program_b, &context_project_b, true),
-			(&owner_advisor, &context_project_a, true),
-			(&owner_advisor, &context_project_b, true),
-			(&owner_advisor, &context_program_a, true),
-			(&owner_advisor, &context_program_b, true),
-			(&owner_project_a, &context_advisor, true),
-			(&owner_program_a, &context_advisor, true),
-			(&owner_project_b, &context_advisor, true),
-			(&owner_program_b, &context_advisor, true),
-			(&owner_project_a, &context_project_b, false),
-			(&owner_project_a, &context_program_b, false),
-			(&owner_program_a, &context_project_b, false),
-			(&owner_program_a, &context_program_peer, false),
-			(&owner_program_a, &context_program_b, false),
-			(&owner_program_peer, &context_program_a, false),
-			(&owner_project_b, &context_program_a, false),
-			(&owner_program_b, &context_project_a, false),
-			(&owner_advisor, &context_advisor_peer, false),
-			(&owner_advisor_peer, &context_advisor, false),
-		] {
-			let result = provenance_result(
-				owner,
-				ContextRevisionItemKind::Handoff,
-				ContextRevisionItemProvenance::Source((*source).clone()),
-			);
-
-			if expected {
-				assert_eq!(result, Ok(()));
-			} else {
-				assert_eq!(result, Err(ContextRevisionError::InvalidProvenance));
-			}
-		}
+		assert_provenance_cases(
+			ContextRevisionItemKind::Handoff,
+			&[
+				(&owner_project_a, &context_project_a, true),
+				(&owner_program_a, &context_program_a, true),
+				(&owner_advisor, &context_advisor, true),
+				(&owner_project_a, &context_program_a, true),
+				(&owner_project_a, &context_program_peer, true),
+				(&owner_program_a, &context_project_a, true),
+				(&owner_program_peer, &context_project_a, true),
+				(&owner_project_b, &context_program_b, true),
+				(&owner_program_b, &context_project_b, true),
+				(&owner_advisor, &context_project_a, true),
+				(&owner_advisor, &context_project_b, true),
+				(&owner_advisor, &context_program_a, true),
+				(&owner_advisor, &context_program_b, true),
+				(&owner_project_a, &context_advisor, true),
+				(&owner_program_a, &context_advisor, true),
+				(&owner_project_b, &context_advisor, true),
+				(&owner_program_b, &context_advisor, true),
+				(&owner_project_a, &context_project_b, false),
+				(&owner_project_a, &context_program_b, false),
+				(&owner_program_a, &context_project_b, false),
+				(&owner_program_a, &context_program_peer, false),
+				(&owner_program_a, &context_program_b, false),
+				(&owner_program_peer, &context_program_a, false),
+				(&owner_project_b, &context_program_a, false),
+				(&owner_program_b, &context_project_a, false),
+				(&owner_advisor, &context_advisor_peer, false),
+				(&owner_advisor_peer, &context_advisor, false),
+			],
+		);
 	}
 
 	#[test]
