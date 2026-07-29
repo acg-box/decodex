@@ -9,12 +9,14 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 	func makeNSView(context: Context) -> NSView {
 		let view = PanelWindowSizingProbeView(frame: .zero)
 		view.didMoveToWindow = { [weak coordinator = context.coordinator] view in
+			PanelWindowAppearance.apply(to: view.window)
 			coordinator?.retryResizeAfterWindowAttachment(from: view)
 		}
 		return view
 	}
 
 	func updateNSView(_ nsView: NSView, context: Context) {
+		PanelWindowAppearance.apply(to: nsView.window)
 		context.coordinator.scheduleResize(
 			from: nsView,
 			contentSize: contentSize,
@@ -156,6 +158,17 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 				return frameDiffers(lhs, rhs)
 			}
 		}
+	}
+}
+
+enum PanelWindowAppearance {
+	@MainActor
+	static func apply(to window: NSWindow?) {
+		guard let window else {
+			return
+		}
+		window.isOpaque = false
+		window.backgroundColor = .clear
 	}
 }
 

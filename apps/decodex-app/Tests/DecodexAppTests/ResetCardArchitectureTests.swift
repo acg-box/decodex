@@ -22,6 +22,43 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("id: \\.element.id"))
 	}
 
+	func testPanelUsesNativeClearGlassWithoutCustomChrome() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let glassSurface = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelGlassSurface.swift"),
+			encoding: .utf8
+		)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let appScene = try String(
+			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(glassSurface.contains("Glass.clear"))
+		XCTAssertTrue(glassSurface.contains("glass.interactive()"))
+		XCTAssertFalse(glassSurface.contains("Glass.regular"))
+		XCTAssertFalse(glassSurface.contains(".tint("))
+		XCTAssertFalse(glassSurface.contains(".background"))
+		XCTAssertFalse(glassSurface.contains(".overlay"))
+		XCTAssertFalse(glassSurface.contains(".shadow"))
+		XCTAssertTrue(accountPanel.contains("GlassEffectContainer"))
+		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
+		XCTAssertFalse(
+			FileManager.default.fileExists(
+				atPath: sourceURL
+					.appendingPathComponent("PanelInteractiveButtonStyle.swift")
+					.path
+			)
+		)
+	}
+
 	func testProductionSourceUsesOnlyTheNativeResetCardAuthority() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()

@@ -3,6 +3,28 @@ import AppKit
 import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
+	@MainActor
+	func testPanelWindowHostIsTransparentBehindSystemGlass() {
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
+			styleMask: [.borderless],
+			backing: .buffered,
+			defer: false
+		)
+		window.isOpaque = true
+		window.backgroundColor = .windowBackgroundColor
+
+		PanelWindowAppearance.apply(to: window)
+
+		XCTAssertFalse(window.isOpaque)
+		XCTAssertEqual(window.backgroundColor, .clear)
+	}
+
+	@MainActor
+	func testPanelWindowAppearanceIgnoresDetachedHost() {
+		PanelWindowAppearance.apply(to: nil)
+	}
+
 	func testRoundedContentSizeCeilsFractionalDimensions() {
 		let size = PanelWindowSizingLayout.roundedContentSize(for: CGSize(width: 339.2, height: 641.1))
 
