@@ -5,21 +5,33 @@ use std::{
 	fs,
 	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
-	sync::{Arc, Mutex},
+	sync::{
+		Arc, Mutex,
+		atomic::{AtomicUsize, Ordering},
+	},
 	time::Duration,
 };
 
 use tempfile::TempDir;
 
 use decodex_protocol::{
-	CURRENT_VERSION, Channel, ClientProfile, CorrelationId, Cursor, EntityId, EntityRevision,
-	EventEnvelope, EventPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId,
-	ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
+	CURRENT_VERSION, Channel, ClientProfile, ConversationHistoryPage, ConversationHistoryResult,
+	CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision, EventEnvelope, EventPayload,
+	HistoryCursorToken, QueryEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint,
+	SnapshotEnvelope, SnapshotItem, WireText,
 };
 
-use crate::client_lifecycle::{
-	AppliedEntity, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView,
-	Delivery, LifecycleCancellation, LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult,
+use crate::{
+	client_lifecycle::{
+		AppliedEntity, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason,
+		ConnectionView, Delivery, LifecycleCancellation, LifecycleIo, QuarantineReason,
+		QuarantineRecovery, RunResult,
+	},
+	history_pager::{
+		HistoryCursorObservation, HistoryDispatch, HistoryLoadState, HistoryNavigationResult,
+		HistoryPageSource, HistoryRetryReason, HistoryStaleReason,
+	},
 };
 
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
@@ -33,12 +45,43 @@ struct FakeConfirmation {
 	previous_current: Option<Vec<u8>>,
 }
 
+struct PendingSendControl {
+	attempts: AtomicUsize,
+	entered: tokio::sync::Semaphore,
+	release: tokio::sync::Semaphore,
+}
+
+impl PendingSendControl {
+	fn new() -> Self {
+		Self {
+			attempts: AtomicUsize::new(0),
+			entered: tokio::sync::Semaphore::new(0),
+			release: tokio::sync::Semaphore::new(0),
+		}
+	}
+
+	async fn wait_until_entered(&self) {
+		self.entered.acquire().await.expect("pending-send signal remains open").forget();
+	}
+
+	fn release_first(&self) {
+		self.release.add_permits(1);
+	}
+
+	fn attempts(&self) -> usize {
+		self.attempts.load(Ordering::SeqCst)
+	}
+}
+
 enum SessionAction {
 	Snapshot(SnapshotEnvelope),
 	Event(EventEnvelope),
+	HistoryPage { next_cursor: Option<&'static str> },
 	Fail(RetainedSessionFailure),
+	FailAfterQuery(RetainedSessionFailure),
 	AwaitCancellation,
 	Cancel,
+	CancelAfterQuery,
 }
 
 struct FakeSession {
@@ -50,10 +93,46 @@ struct FakeSession {
 	cache_root: PathBuf,
 	server_id: ServerId,
 	instance_id: ServerInstanceId,
+	sent_queries: Arc<Mutex<Vec<QueryEnvelope>>>,
+	query_cursor: usize,
+	query_notify: Arc<tokio::sync::Notify>,
 }
 
 impl FakeSession {
+	async fn next_query(&mut self) -> QueryEnvelope {
+		loop {
+			let notified = self.query_notify.notified();
+			let query = self
+				.sent_queries
+				.lock()
+				.expect("query log is available")
+				.get(self.query_cursor)
+				.cloned();
+
+			if let Some(query) = query {
+				self.query_cursor += 1;
+
+				return query;
+			}
+
+			notified.await;
+		}
+	}
+
 	async fn next(&mut self) -> Result<Delivery<FakeConfirmation>, RetainedSessionFailure> {
+		let query = if matches!(
+			self.actions.front(),
+			Some(
+				SessionAction::HistoryPage { .. }
+					| SessionAction::FailAfterQuery(_)
+					| SessionAction::CancelAfterQuery
+			)
+		) {
+			Some(self.next_query().await)
+		} else {
+			None
+		};
+
 		match self.actions.pop_front().expect("fake session action is scripted") {
 			SessionAction::Snapshot(snapshot) => {
 				let confirmation = FakeConfirmation {
@@ -73,13 +152,36 @@ impl FakeSession {
 
 				Ok(Delivery::Event { event, confirmation })
 			},
+			SessionAction::HistoryPage { next_cursor } => {
+				let query = query.expect("history response waits for one outbound query");
+
+				Ok(Delivery::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: self.server_id.clone(),
+					query_id: query.query_id,
+					payload: QueryResultPayload::ConversationHistory(
+						ConversationHistoryResult::Page(history_page(next_cursor)),
+					),
+				}))
+			},
 			SessionAction::Fail(failure) => Err(failure),
+			SessionAction::FailAfterQuery(failure) => {
+				let _ = query.expect("scripted failure waits for one outbound query");
+
+				Err(failure)
+			},
 			SessionAction::AwaitCancellation => {
 				self.cancellation.cancelled().await;
 
 				Err(RetainedSessionFailure::Cancelled)
 			},
 			SessionAction::Cancel => {
+				self.cancellation.cancel();
+
+				Err(RetainedSessionFailure::Cancelled)
+			},
+			SessionAction::CancelAfterQuery => {
+				let _ = query.expect("scripted cancellation waits for one outbound query");
 				self.cancellation.cancel();
 
 				Err(RetainedSessionFailure::Cancelled)
@@ -199,6 +301,9 @@ struct FakeIo {
 	cancel_backoff: bool,
 	session: Option<FakeSession>,
 	requested_checkpoints: Vec<Option<SessionCheckpoint>>,
+	sent_queries: Arc<Mutex<Vec<QueryEnvelope>>>,
+	query_notify: Arc<tokio::sync::Notify>,
+	pending_send: Option<Arc<PendingSendControl>>,
 }
 
 impl FakeIo {
@@ -215,7 +320,14 @@ impl FakeIo {
 			cancel_backoff: false,
 			session: None,
 			requested_checkpoints: Vec::new(),
+			sent_queries: Arc::new(Mutex::new(Vec::new())),
+			query_notify: Arc::new(tokio::sync::Notify::new()),
+			pending_send: None,
 		}
+	}
+
+	fn hold_first_send(&mut self, control: Arc<PendingSendControl>) {
+		self.pending_send = Some(control);
 	}
 }
 
@@ -239,6 +351,7 @@ impl LifecycleIo for FakeIo {
 		match action {
 			ConnectAction::Session { actions, checkpoint, server_id, instance_id } => {
 				let initial_checkpoint = checkpoint.clone();
+				let query_cursor = self.sent_queries.lock().expect("query log is available").len();
 
 				self.session = Some(FakeSession {
 					actions,
@@ -250,6 +363,9 @@ impl LifecycleIo for FakeIo {
 					server_id: server(server_id),
 					instance_id: ServerInstanceId::new(instance_id)
 						.expect("instance identity is bounded"),
+					sent_queries: self.sent_queries.clone(),
+					query_cursor,
+					query_notify: self.query_notify.clone(),
 				});
 
 				Ok(initial_checkpoint)
@@ -265,6 +381,27 @@ impl LifecycleIo for FakeIo {
 
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
 		self.session.as_mut().expect("fake session is connected").next().await
+	}
+
+	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
+		assert_eq!(query.version, CURRENT_VERSION);
+		if let Some(control) = self.pending_send.as_ref() {
+			let attempt = control.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+
+			if attempt == 1 {
+				control.entered.add_permits(1);
+				control
+					.release
+					.acquire()
+					.await
+					.expect("pending-send release remains open")
+					.forget();
+			}
+		}
+		self.sent_queries.lock().expect("query log is available").push(query);
+		self.query_notify.notify_waiters();
+
+		Ok(())
 	}
 
 	fn confirm_applied(
@@ -323,6 +460,29 @@ fn entity(value: &str) -> EntityId {
 	EntityId::new(value).expect("entity identity is bounded")
 }
 
+fn history_cursor(value: &str) -> HistoryCursorToken {
+	HistoryCursorToken::new(value).expect("history cursor is bounded")
+}
+
+fn history_page(next_cursor: Option<&str>) -> ConversationHistoryPage {
+	ConversationHistoryPage { items: Vec::new(), next_cursor: next_cursor.map(history_cursor) }
+}
+
+fn history_result(
+	dispatch: &HistoryDispatch,
+	server_id: &ServerId,
+	next_cursor: Option<&str>,
+) -> QueryResultEnvelope {
+	QueryResultEnvelope {
+		version: CURRENT_VERSION,
+		server_id: server_id.clone(),
+		query_id: dispatch.envelope().query_id.clone(),
+		payload: QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(
+			history_page(next_cursor),
+		)),
+	}
+}
+
 fn snapshot(cursor: u64, entity_id: &str, revision: u64) -> SnapshotEnvelope {
 	snapshot_for(SERVER, cursor, entity_id, revision)
 }
@@ -337,6 +497,21 @@ fn snapshot_for(server_id: &str, cursor: u64, entity_id: &str, revision: u64) ->
 			revision: EntityRevision(revision),
 			status: WireText::new("ready").expect("status is bounded"),
 		}],
+	}
+}
+
+fn maximum_snapshot(cursor: u64) -> SnapshotEnvelope {
+	SnapshotEnvelope {
+		version: CURRENT_VERSION,
+		server_id: server(SERVER),
+		cursor: Cursor(cursor),
+		items: (0..1_024)
+			.map(|index| SnapshotItem::SystemState {
+				entity_id: entity(&format!("system-{index:04}")),
+				revision: EntityRevision(1),
+				status: WireText::new("ready").expect("status is bounded"),
+			})
+			.collect(),
 	}
 }
 
@@ -436,6 +611,483 @@ async fn retry_progression_is_capped_and_uses_only_fake_time() {
 		]
 	);
 	assert_eq!(lifecycle.view(), ConnectionView::Stopped);
+}
+
+#[tokio::test]
+async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+
+	pager.open(entity("conversation-run")).expect("history view opens");
+
+	let mut io = FakeIo::new(
+		root,
+		vec![
+			connected(
+				vec![
+					SessionAction::Snapshot(snapshot(1, "system", 1)),
+					SessionAction::HistoryPage { next_cursor: Some("cursor-1") },
+					SessionAction::FailAfterQuery(RetainedSessionFailure::Disconnected),
+				],
+				None,
+			),
+			connected(vec![SessionAction::CancelAfterQuery], Some(checkpoint(INSTANCE, 1))),
+		],
+	);
+	let sent_queries = io.sent_queries.clone();
+
+	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
+
+	let queries = sent_queries.lock().expect("query log is available");
+
+	assert_eq!(queries.len(), 3);
+	assert_ne!(queries[0].query_id, queries[1].query_id);
+	assert_ne!(queries[0].query_id, queries[2].query_id);
+	assert_ne!(queries[1].query_id, queries[2].query_id);
+
+	let routes = queries
+		.iter()
+		.map(|query| match &query.payload {
+			QueryPayload::GetConversationHistory { conversation_id, after, .. } =>
+				(conversation_id.clone(), after.clone()),
+			_ => panic!("history pager sends only ConversationHistory queries"),
+		})
+		.collect::<Vec<_>>();
+
+	assert_eq!(
+		routes,
+		vec![
+			(entity("conversation-run"), None),
+			(entity("conversation-run"), Some(history_cursor("cursor-1"))),
+			(entity("conversation-run"), None),
+		]
+	);
+	assert!(lifecycle.quarantine.is_none());
+}
+
+#[tokio::test]
+async fn pending_history_send_blocks_replacement_until_settlement() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+	let cancellation = lifecycle.cancellation();
+	let control = Arc::new(PendingSendControl::new());
+
+	pager.open(entity("conversation-old")).expect("initial history view opens");
+
+	let mut io = FakeIo::new(
+		root,
+		vec![connected(
+			vec![
+				SessionAction::Snapshot(snapshot(1, "system", 1)),
+				SessionAction::HistoryPage { next_cursor: Some("old-only-cursor") },
+				SessionAction::HistoryPage { next_cursor: None },
+				SessionAction::AwaitCancellation,
+			],
+			None,
+		)],
+	);
+	let sent_queries = io.sent_queries.clone();
+
+	io.hold_first_send(control.clone());
+
+	let run = lifecycle.run_with_io(&mut io);
+
+	tokio::pin!(run);
+	tokio::select! {
+		result = &mut run => panic!("lifecycle stopped before first send settled: {result:?}"),
+		_ = control.wait_until_entered() => {},
+	}
+
+	pager.open(entity("conversation-new")).expect("replacement history view opens");
+	for _ in 0..4 {
+		tokio::select! {
+			result = &mut run => panic!("lifecycle stopped with send unresolved: {result:?}"),
+			_ = tokio::task::yield_now() => {},
+		}
+	}
+
+	assert_eq!(control.attempts(), 1);
+	assert!(sent_queries.lock().expect("query log is available").is_empty());
+
+	control.release_first();
+
+	let mut upgraded = false;
+
+	for _ in 0..64 {
+		let snapshot = pager.snapshot();
+
+		if snapshot.conversation_id == Some(entity("conversation-new"))
+			&& snapshot.visible_source == Some(HistoryPageSource::FreshServer)
+		{
+			assert_eq!(
+				snapshot
+					.last_stale_cancellation
+					.expect("superseded send remains a stale request")
+					.reason,
+				HistoryStaleReason::ConversationChanged
+			);
+			assert_eq!(snapshot.visible.expect("replacement page is visible").next_cursor, None);
+			upgraded = true;
+
+			break;
+		}
+
+		tokio::select! {
+			result = &mut run => panic!("lifecycle stopped before replacement result: {result:?}"),
+			_ = tokio::task::yield_now() => {},
+		}
+	}
+
+	assert!(upgraded, "matching replacement result must become current");
+	assert_eq!(control.attempts(), 2);
+
+	let queries = sent_queries.lock().expect("query log is available").clone();
+
+	assert_eq!(queries.len(), 2);
+	assert_ne!(queries[0].query_id, queries[1].query_id);
+	assert!(matches!(
+		&queries[0].payload,
+		QueryPayload::GetConversationHistory { conversation_id, after: None, .. }
+			if conversation_id == &entity("conversation-old")
+	));
+	assert!(matches!(
+		&queries[1].payload,
+		QueryPayload::GetConversationHistory { conversation_id, after: None, .. }
+			if conversation_id == &entity("conversation-new")
+	));
+
+	cancellation.cancel();
+
+	assert_eq!(run.await, RunResult::Stopped);
+}
+
+#[tokio::test]
+async fn history_results_route_only_to_the_exact_current_view_request() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-a")).expect("first view opens");
+
+	let first = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(
+			1,
+			QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: first.envelope().query_id.clone(),
+				payload: QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(
+					ConversationHistoryPage { items: Vec::new(), next_cursor: None },
+				)),
+			},
+		)
+		.expect("exact result routes");
+
+	assert_eq!(pager.snapshot().visible_source, Some(HistoryPageSource::FreshServer));
+
+	pager.open(entity("conversation-b")).expect("second view opens");
+	let stale = pager.next_dispatch(1, &server_id).await;
+	pager.open(entity("conversation-c")).expect("replacement view opens");
+
+	lifecycle
+		.route_history_result(
+			1,
+			QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id,
+				query_id: stale.envelope().query_id.clone(),
+				payload: QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(
+					ConversationHistoryPage { items: Vec::new(), next_cursor: None },
+				)),
+			},
+		)
+		.expect("stale result is ignored without failing the session");
+
+	let snapshot = pager.snapshot();
+
+	assert_eq!(snapshot.conversation_id, Some(entity("conversation-c")));
+	assert!(snapshot.visible.is_none());
+	assert_eq!(
+		snapshot.last_stale_cancellation.expect("stale request is recorded").reason,
+		HistoryStaleReason::ConversationChanged
+	);
+}
+
+#[tokio::test]
+async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let config = retained_config(&root, SERVER);
+	let mut lifecycle = ClientLifecycle::new(
+		config,
+		&root,
+		CacheLimits::new(8 * 1_024 * 1_024, 1_024, 16).expect("limits are valid"),
+		1,
+	)
+	.expect("lifecycle constructs");
+
+	lifecycle.connection_generation = 1;
+	let inspection = lifecycle
+		.apply_snapshot(1, maximum_snapshot(9))
+		.expect("maximum authoritative snapshot publishes");
+	lifecycle
+		.bind_checkpoint(1, Cursor(9), checkpoint(INSTANCE, 9), inspection)
+		.expect("maximum snapshot checkpoint binds");
+
+	let inspection_before = lifecycle
+		.cache
+		.as_ref()
+		.expect("cache is available")
+		.inspect_current()
+		.expect("cache inspection succeeds")
+		.expect("maximum snapshot generation exists");
+	let binding_before = lifecycle.binding.clone();
+	let inventory_before = lifecycle.state.clone();
+	let cursor_before = lifecycle.last_cursor;
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-large")).expect("history view opens");
+	let head = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(1, history_result(&head, &server_id, Some("cursor-1")))
+		.expect("history head routes");
+	let continuation = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(1, history_result(&continuation, &server_id, None))
+		.expect("history continuation routes");
+
+	assert_eq!(pager.snapshot().retained_pages, 2);
+	assert_eq!(
+		lifecycle
+			.cache
+			.as_ref()
+			.expect("cache is available")
+			.inspect_current()
+			.expect("cache inspection succeeds")
+			.expect("maximum snapshot generation remains"),
+		inspection_before
+	);
+	assert_eq!(lifecycle.binding, binding_before);
+	assert_eq!(lifecycle.state, inventory_before);
+	assert_eq!(lifecycle.last_cursor, cursor_before);
+	assert!(lifecycle.quarantine.is_none());
+}
+
+#[tokio::test]
+async fn wrong_history_payload_is_request_local_and_preserves_authoritative_state() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+	let inspection = lifecycle
+		.apply_snapshot(1, snapshot(7, "system", 3))
+		.expect("authoritative snapshot publishes");
+	lifecycle
+		.bind_checkpoint(1, Cursor(7), checkpoint(INSTANCE, 7), inspection)
+		.expect("authoritative checkpoint binds");
+
+	let inspection_before = lifecycle
+		.cache
+		.as_ref()
+		.expect("cache is available")
+		.inspect_current()
+		.expect("cache inspection succeeds")
+		.expect("authoritative generation exists");
+	let binding_before = lifecycle.binding.clone();
+	let inventory_before = lifecycle.state.clone();
+	let cursor_before = lifecycle.last_cursor;
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-protocol")).expect("history view opens");
+	let dispatch = pager.next_dispatch(1, &server_id).await;
+	let wrong_payload = DoctorReport::new(server_id.clone(), CURRENT_VERSION, Vec::new())
+		.expect("bounded doctor report constructs");
+
+	lifecycle
+		.route_history_result(
+			1,
+			QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id,
+				query_id: dispatch.envelope().query_id.clone(),
+				payload: QueryResultPayload::DoctorStatus(wrong_payload),
+			},
+		)
+		.expect("wrong history payload closes only the request");
+
+	assert_eq!(
+		pager.snapshot().load,
+		HistoryLoadState::ClosedUnavailable(
+			crate::history_pager::HistoryClosedReason::ProtocolMismatch,
+		)
+	);
+	assert_eq!(
+		lifecycle
+			.cache
+			.as_ref()
+			.expect("cache is available")
+			.inspect_current()
+			.expect("cache inspection succeeds")
+			.expect("authoritative generation remains"),
+		inspection_before
+	);
+	assert_eq!(lifecycle.binding, binding_before);
+	assert_eq!(lifecycle.state, inventory_before);
+	assert_eq!(lifecycle.last_cursor, cursor_before);
+	assert!(lifecycle.quarantine.is_none());
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Online { generation: 1, applied: Some(Cursor(7)) }
+	);
+}
+
+#[tokio::test]
+async fn session_replacement_requires_a_fresh_head_before_retained_topology_returns() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-session")).expect("history view opens");
+	let head = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(1, history_result(&head, &server_id, Some("old-cursor")))
+		.expect("old session head routes");
+	let retained_prefetch = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(
+			1,
+			history_result(&retained_prefetch, &server_id, Some("old-next-cursor")),
+		)
+		.expect("old session prefetch is retained");
+
+	let retained = pager.snapshot();
+
+	assert_eq!(retained.retained_pages, 2);
+	assert_eq!(retained.visible_source, Some(HistoryPageSource::FreshServer));
+	assert_eq!(retained.cursor, HistoryCursorObservation::ContinuationAvailable);
+
+	pager.bind_session(2, server_id.clone());
+
+	let invalidated = pager.snapshot();
+
+	assert!(invalidated.visible.is_none());
+	assert_eq!(invalidated.cursor, HistoryCursorObservation::Unknown);
+	assert_eq!(invalidated.retained_pages, 0);
+	assert_eq!(pager.show_next(), HistoryNavigationResult::BoundaryUnknown);
+
+	let replacement = pager.next_dispatch(2, &server_id).await;
+
+	assert!(matches!(
+		&replacement.envelope().payload,
+		QueryPayload::GetConversationHistory {
+			conversation_id,
+			after: None,
+			..
+		} if conversation_id == &entity("conversation-session")
+	));
+	assert_eq!(pager.show_next(), HistoryNavigationResult::BoundaryUnknown);
+
+	lifecycle
+		.route_history_result(2, history_result(&replacement, &server_id, Some("new-cursor")))
+		.expect("matching new-session head restores authority");
+
+	let upgraded = pager.snapshot();
+
+	assert_eq!(upgraded.visible_source, Some(HistoryPageSource::FreshServer));
+	assert_eq!(upgraded.cursor, HistoryCursorObservation::ContinuationAvailable);
+
+	let new_prefetch = pager.next_dispatch(2, &server_id).await;
+
+	assert!(matches!(
+		&new_prefetch.envelope().payload,
+		QueryPayload::GetConversationHistory {
+			after: Some(after),
+			..
+		} if after == &history_cursor("new-cursor")
+	));
+}
+
+#[tokio::test]
+async fn prior_session_result_cannot_replace_session_invalidated_view() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_root(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-session")).expect("history view opens");
+	let head = pager.next_dispatch(1, &server_id).await;
+
+	lifecycle
+		.route_history_result(1, history_result(&head, &server_id, Some("old-cursor")))
+		.expect("old-session head routes");
+	let prior = pager.next_dispatch(1, &server_id).await;
+
+	pager.session_ended(1);
+
+	let offline = pager.snapshot();
+
+	assert!(offline.visible.is_none());
+	assert_eq!(offline.visible_source, None);
+	assert_eq!(offline.cursor, HistoryCursorObservation::Unknown);
+	assert_eq!(
+		offline.load,
+		HistoryLoadState::RetryableUnavailable(HistoryRetryReason::SessionUnavailable)
+	);
+	assert_eq!(pager.show_next(), HistoryNavigationResult::BoundaryUnknown);
+
+	pager.bind_session(2, server_id.clone());
+	let current = pager.next_dispatch(2, &server_id).await;
+
+	assert!(matches!(
+		&current.envelope().payload,
+		QueryPayload::GetConversationHistory {
+			conversation_id,
+			after: None,
+			..
+		} if conversation_id == &entity("conversation-session")
+	));
+	lifecycle
+		.route_history_result(1, history_result(&prior, &server_id, Some("prior-cursor")))
+		.expect("prior-session delivery is ignored");
+
+	let still_invalidated = pager.snapshot();
+
+	assert!(still_invalidated.visible.is_none());
+	assert_eq!(still_invalidated.visible_source, None);
+	assert_eq!(still_invalidated.cursor, HistoryCursorObservation::Unknown);
+	assert!(pager.dispatch_is_current(&current));
+
+	lifecycle
+		.route_history_result(2, history_result(&current, &server_id, None))
+		.expect("current-session result repopulates the invalidated view");
+
+	let fresh = pager.snapshot();
+
+	assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
+	assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved);
 }
 
 #[tokio::test]
