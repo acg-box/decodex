@@ -6,6 +6,30 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	let inventory: ResetCardInventory?
 	let error: ResetCardClientError?
 	let isRefreshing: Bool
+	let profile: AccountProfileObservation?
+	let profileUnavailable: AccountProfileUnavailable?
+	let profileError: ResetCardClientError?
+	let isProfileRefreshing: Bool
+
+	init(
+		account: ResetCardAccountRecord,
+		inventory: ResetCardInventory?,
+		error: ResetCardClientError?,
+		isRefreshing: Bool,
+		profile: AccountProfileObservation? = nil,
+		profileUnavailable: AccountProfileUnavailable? = nil,
+		profileError: ResetCardClientError? = nil,
+		isProfileRefreshing: Bool = false
+	) {
+		self.account = account
+		self.inventory = inventory
+		self.error = error
+		self.isRefreshing = isRefreshing
+		self.profile = profile
+		self.profileUnavailable = profileUnavailable
+		self.profileError = profileError
+		self.isProfileRefreshing = isProfileRefreshing
+	}
 
 	var id: String {
 		account.accountID
@@ -33,11 +57,58 @@ struct ResetCardAccountState: Identifiable, Equatable {
 			)
 		}
 	}
+
+	var isProfileDegraded: Bool {
+		guard profile != nil else {
+			return false
+		}
+		return profile?.isCached == true
+			|| profileUnavailable != nil
+			|| profileError != nil
+	}
+
+	var profileDegradationText: String? {
+		guard profile != nil else {
+			return nil
+		}
+		if let unavailable = profileUnavailable {
+			return unavailable.error.presentation
+		}
+		if let profileError {
+			return profileError.localizedDescription
+		}
+		if let refreshError = profile?.refreshError {
+			return refreshError.presentation
+		}
+		return nil
+	}
 }
 
-private enum ResetCardInventoryRead: Sendable {
-	case available(accountID: String, ResetCardInventory)
-	case failed(accountID: String, ResetCardClientError)
+private struct AccountProfileRequest: Equatable, Sendable {
+	let generation: UInt64
+	let includesEmail: Bool
+	let accountID: String
+	let accountRevision: UInt64
+}
+
+private enum ResetCardAccountRead: Sendable {
+	case inventoryAvailable(accountID: String, ResetCardInventory)
+	case inventoryFailed(accountID: String, ResetCardClientError)
+	case profileAvailable(
+		accountID: String,
+		request: AccountProfileRequest,
+		AccountProfileObservation
+	)
+	case profileUnavailable(
+		accountID: String,
+		request: AccountProfileRequest,
+		AccountProfileUnavailable
+	)
+	case profileFailed(
+		accountID: String,
+		request: AccountProfileRequest,
+		ResetCardClientError
+	)
 }
 
 struct ResetCardStoreMessage: Equatable {
@@ -86,17 +157,25 @@ final class ResetCardStore {
 	]
 
 	private(set) var accounts = [ResetCardAccountState]()
+	private(set) var routing: AccountRoutingControl?
 	private(set) var isRefreshing = false
 	private(set) var hasLoaded = false
 	private(set) var submittingKey: String?
+	private(set) var controllingAccountID: String?
+	private(set) var isEnrollingAccount = false
+	private(set) var isRoutingAccountControl = false
 	private(set) var pendingAttempts: [ResetCardUseAttempt]
 	private(set) var isPendingRecoveryBlocked: Bool
+	private(set) var profileEmailsVisible = false
 	var message: ResetCardStoreMessage?
 
 	@ObservationIgnored private let client: any ResetCardClient
+	@ObservationIgnored private let accountControlClient: (any AccountControlClient)?
+	@ObservationIgnored private let accountProfileClient: (any AccountProfileClient)?
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
+	@ObservationIgnored private var profileRequestGeneration: UInt64 = 0
 
 	init(
 		client: any ResetCardClient = ResetCardCLIClient(),
@@ -104,6 +183,8 @@ final class ResetCardStore {
 		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays
 	) {
 		self.client = client
+		accountControlClient = client as? any AccountControlClient
+		accountProfileClient = client as? any AccountProfileClient
 		self.pendingStore = pendingStore
 		self.startupRetryDelays = startupRetryDelays
 		let pendingLoad = pendingStore.load()
@@ -168,6 +249,32 @@ final class ResetCardStore {
 		_ = await refreshReadState()
 	}
 
+	func setProfileEmailVisibility(_ isVisible: Bool) async {
+		let didChange = profileEmailsVisible != isVisible
+		profileEmailsVisible = isVisible
+		if isVisible == false {
+			invalidateProfileRequests()
+			accounts = accounts.map { state in
+				ResetCardAccountState(
+					account: state.account,
+					inventory: state.inventory,
+					error: state.error,
+					isRefreshing: state.isRefreshing,
+					profile: state.profile?.redactingEmail(),
+					profileUnavailable: state.profileUnavailable?.redactingEmail(),
+					profileError: state.profileError,
+					isProfileRefreshing: false
+				)
+			}
+			return
+		}
+
+		guard didChange, accountProfileClient != nil else {
+			return
+		}
+		await refreshProfiles()
+	}
+
 	private func refreshReadState() async -> ResetCardRefreshResult {
 		guard isRefreshing == false else {
 			return .skipped
@@ -188,7 +295,16 @@ final class ResetCardStore {
 				throw ResetCardClientError.invalidResponse
 			}
 			let retainedAuthority = retainedAuthorities.first
-			let discovered = try await client.accounts(authority: retainedAuthority)
+			let discovered: [ResetCardAccountRecord]
+			if let accountControlClient {
+				let snapshot = try await accountControlClient.accountSnapshot(
+					authority: retainedAuthority
+				)
+				routing = snapshot.routing
+				discovered = snapshot.accounts
+			} else {
+				discovered = try await client.accounts(authority: retainedAuthority)
+			}
 			let previousByID = Dictionary(
 				uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
 			)
@@ -199,11 +315,20 @@ final class ResetCardStore {
 					?? previous?.inventory?.authority
 				let boundAccount = Self.account(account, authority: authority)
 				let retainsInventory = previous?.account.accountRevision == account.accountRevision
+				let retainedProfile = previous?.account.accountRevision == account.accountRevision
+					? previous?.profile
+					: nil
 				return ResetCardAccountState(
 					account: boundAccount,
 					inventory: retainsInventory ? previous?.inventory : nil,
 					error: nil,
-					isRefreshing: true
+					isRefreshing: true,
+					profile: profileEmailsVisible
+						? retainedProfile
+						: retainedProfile?.redactingEmail(),
+					profileUnavailable: nil,
+					profileError: nil,
+					isProfileRefreshing: accountProfileClient != nil
 				)
 			}
 			if message?.tone == .error, isPendingRecoveryBlocked == false {
@@ -211,21 +336,61 @@ final class ResetCardStore {
 			}
 
 			let client = self.client
+			let accountProfileClient = self.accountProfileClient
+			let includeEmail = profileEmailsVisible
+			let profileGeneration = accountProfileClient.map { _ in
+				beginProfileRequestGeneration()
+			}
 			var expectedAuthority = retainedAuthority
-			await withTaskGroup(of: ResetCardInventoryRead.self) { group in
+			await withTaskGroup(of: ResetCardAccountRead.self) { group in
 				for state in accounts {
 					let account = state.account
 					group.addTask {
 						do {
-							return .available(
+							return .inventoryAvailable(
 								accountID: account.accountID,
 								try await client.inventory(for: account)
 							)
 						} catch {
-							return .failed(
+							return .inventoryFailed(
 								accountID: account.accountID,
 								Self.clientError(error)
 							)
+						}
+					}
+					if let accountProfileClient, let profileGeneration {
+						let profileRequest = AccountProfileRequest(
+							generation: profileGeneration,
+							includesEmail: includeEmail,
+							accountID: account.accountID,
+							accountRevision: account.accountRevision
+						)
+						group.addTask {
+							do {
+								switch try await accountProfileClient.profile(
+									for: account,
+									includeEmail: includeEmail
+								) {
+								case .available(let profile):
+									return .profileAvailable(
+										accountID: account.accountID,
+										request: profileRequest,
+										profile
+									)
+								case .unavailable(let unavailable):
+									return .profileUnavailable(
+										accountID: account.accountID,
+										request: profileRequest,
+										unavailable
+									)
+								}
+							} catch {
+								return .profileFailed(
+									accountID: account.accountID,
+									request: profileRequest,
+									Self.clientError(error)
+								)
+							}
 						}
 					}
 				}
@@ -235,7 +400,7 @@ final class ResetCardStore {
 						return
 					}
 					switch read {
-					case .available(let accountID, let inventory):
+					case .inventoryAvailable(let accountID, let inventory):
 						guard expectedAuthority == nil || expectedAuthority == inventory.authority else {
 							applyInventoryFailure(
 								.invalidResponse,
@@ -248,11 +413,35 @@ final class ResetCardStore {
 							shouldRetry = shouldRetry || error.isRetryableReadFailure
 						}
 						applyInventory(inventory, accountID: accountID)
-					case .failed(let accountID, let error):
+					case .inventoryFailed(let accountID, let error):
 						shouldRetry = shouldRetry || error.isRetryableReadFailure
 						applyInventoryFailure(error, accountID: accountID)
+					case .profileAvailable(let accountID, let request, let profile):
+						guard isCurrentProfileRequest(request) else {
+							continue
+						}
+						applyProfile(profile, accountID: accountID, request: request)
+					case .profileUnavailable(let accountID, let request, let unavailable):
+						guard isCurrentProfileRequest(request) else {
+							continue
+						}
+						shouldRetry = shouldRetry || unavailable.error.isRetryableReadFailure
+						applyProfileUnavailable(
+							unavailable,
+							accountID: accountID,
+							request: request
+						)
+					case .profileFailed(let accountID, let request, let error):
+						guard isCurrentProfileRequest(request) else {
+							continue
+						}
+						shouldRetry = shouldRetry || error.isRetryableReadFailure
+						applyProfileFailure(error, accountID: accountID, request: request)
 					}
 				}
+			}
+			if let profileGeneration {
+				finishProfileRequestGeneration(profileGeneration)
 			}
 		} catch {
 			let clientError = Self.clientError(error)
@@ -262,7 +451,11 @@ final class ResetCardStore {
 					account: $0.account,
 					inventory: $0.inventory,
 					error: $0.error,
-					isRefreshing: false
+					isRefreshing: false,
+					profile: $0.profile,
+					profileUnavailable: $0.profileUnavailable,
+					profileError: $0.profileError,
+					isProfileRefreshing: false
 				)
 			}
 			message = ResetCardStoreMessage(
@@ -368,6 +561,190 @@ final class ResetCardStore {
 
 	func dismissMessage() {
 		message = nil
+	}
+
+	var isAccountControlInProgress: Bool {
+		controllingAccountID != nil || isEnrollingAccount || isRoutingAccountControl
+	}
+
+	func isControllingAccount(_ accountID: String) -> Bool {
+		controllingAccountID == accountID
+	}
+
+	func enrollFromSharedCodex(
+		displayLabel: String,
+		enabled: Bool = true
+	) async {
+		guard isRefreshing == false,
+			isAccountControlInProgress == false,
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+
+		isEnrollingAccount = true
+		defer {
+			isEnrollingAccount = false
+		}
+		let accountID = Self.newCanonicalUUID()
+		let operationID = Self.newCanonicalUUID()
+		let idempotencyKey = Self.newCanonicalUUID()
+		await performAccountControl(
+			isEnrollment: true,
+			successMessage: "Account login imported.",
+			operation: {
+				try await accountControlClient.enrollFromSharedCodex(
+					authority: establishedAuthority,
+					operationID: operationID,
+					accountID: accountID,
+					displayLabel: displayLabel,
+					enabled: enabled,
+					idempotencyKey: idempotencyKey
+				)
+			}
+		)
+	}
+
+	func renameAccount(
+		_ accountID: String,
+		displayLabel: String
+	) async {
+		guard let account = accountRecord(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		await performAccountControl(
+			accountID: accountID,
+			successMessage: "Account renamed.",
+			operation: {
+				try await accountControlClient.renameAccount(
+					authority: account.authority ?? establishedAuthority,
+					accountID: accountID,
+					displayLabel: displayLabel,
+					expectedRevision: account.accountRevision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
+	func setAccount(
+		_ accountID: String,
+		enabled: Bool
+	) async {
+		guard let account = accountRecord(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		await performAccountControl(
+			accountID: accountID,
+			successMessage: enabled ? "Account enabled." : "Account disabled.",
+			operation: {
+				try await accountControlClient.setAccountEnabled(
+					authority: account.authority ?? establishedAuthority,
+					accountID: accountID,
+					enabled: enabled,
+					expectedRevision: account.accountRevision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
+	func logoutAccount(_ accountID: String) async {
+		guard let account = accountRecord(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		let operationID = Self.newCanonicalUUID()
+		let idempotencyKey = Self.newCanonicalUUID()
+		await performAccountControl(
+			accountID: accountID,
+			successMessage: "Account logged out.",
+			operation: {
+				try await accountControlClient.logoutAccount(
+					authority: account.authority ?? establishedAuthority,
+					operationID: operationID,
+					accountID: accountID,
+					expectedRevision: account.accountRevision,
+					idempotencyKey: idempotencyKey
+				)
+			}
+		)
+	}
+
+	func selectFixedAccount(_ accountID: String) async {
+		guard let account = accountRecord(accountID),
+			let routing,
+			routing.order.contains(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		await performAccountControl(
+			accountID: accountID,
+			successMessage: "Fixed account selected.",
+			operation: {
+				try await accountControlClient.setFixedSelection(
+					authority: account.authority ?? establishedAuthority,
+					accountID: accountID,
+					expectedAccountRevision: account.accountRevision,
+					expectedRoutingRevision: routing.revision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
+	func selectBalancedAccounts() async {
+		guard let routing,
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		await performAccountControl(
+			successMessage: "Balanced account selection enabled.",
+			operation: {
+				try await accountControlClient.setBalancedSelection(
+					authority: establishedAuthority,
+					expectedRoutingRevision: routing.revision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
+	func refreshCredentials(for accountID: String) async {
+		guard let account = accountRecord(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		let operationID = Self.newCanonicalUUID()
+		let idempotencyKey = Self.newCanonicalUUID()
+		await performAccountControl(
+			accountID: accountID,
+			successMessage: "Account credentials refreshed.",
+			operation: {
+				try await accountControlClient.refreshAccountCredentials(
+					authority: account.authority ?? establishedAuthority,
+					operationID: operationID,
+					accountID: accountID,
+					expectedRevision: account.accountRevision,
+					idempotencyKey: idempotencyKey
+				)
+			}
+		)
 	}
 
 	func accountLabel(for accountID: String) -> String {
@@ -589,14 +966,24 @@ final class ResetCardStore {
 			enabled: existing.enabled,
 			observedState: existing.observedState,
 			lifecycleReadiness: existing.lifecycleReadiness,
+			credentialBinding: existing.credentialBinding,
+			unsettledOperation: existing.unsettledOperation,
 			fiveHourQuota: inventory.fiveHourQuota,
 			sevenDayQuota: inventory.sevenDayQuota
 		)
+		let retainsProfileState = accounts[index].account.accountRevision
+			== inventory.accountRevision
 		accounts[index] = ResetCardAccountState(
 			account: account,
 			inventory: inventory,
 			error: nil,
-			isRefreshing: false
+			isRefreshing: false,
+			profile: retainsProfileState ? accounts[index].profile : nil,
+			profileUnavailable: retainsProfileState
+				? accounts[index].profileUnavailable
+				: nil,
+			profileError: retainsProfileState ? accounts[index].profileError : nil,
+			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
 	}
 
@@ -612,8 +999,276 @@ final class ResetCardStore {
 			account: existing.account,
 			inventory: existing.inventory,
 			error: error,
-			isRefreshing: false
+			isRefreshing: false,
+			profile: existing.profile,
+			profileUnavailable: existing.profileUnavailable,
+			profileError: existing.profileError,
+			isProfileRefreshing: existing.isProfileRefreshing
 		)
+	}
+
+	private func applyProfile(
+		_ profile: AccountProfileObservation,
+		accountID: String,
+		request: AccountProfileRequest
+	) {
+		guard isCurrentProfileRequest(request),
+			request.accountID == accountID,
+			profile.accountID == accountID,
+			let index = accounts.firstIndex(where: { $0.account.accountID == accountID }),
+			profile.accountRevision == accounts[index].account.accountRevision
+		else {
+			applyProfileFailure(
+				.invalidResponse,
+				accountID: accountID,
+				request: request
+			)
+			return
+		}
+		let existing = accounts[index]
+		let candidate = profileEmailsVisible ? profile : profile.redactingEmail()
+		guard Self.canReplaceRetainedProfile(
+			existing.profile,
+			with: candidate,
+			allowsEmailEnrichment: profileEmailsVisible
+		) else {
+			accounts[index] = ResetCardAccountState(
+				account: existing.account,
+				inventory: existing.inventory,
+				error: existing.error,
+				isRefreshing: existing.isRefreshing,
+				profile: existing.profile,
+				profileUnavailable: nil,
+				profileError: .invalidResponse,
+				isProfileRefreshing: false
+			)
+			return
+		}
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: existing.error,
+			isRefreshing: existing.isRefreshing,
+			profile: candidate,
+			profileUnavailable: nil,
+			profileError: nil,
+			isProfileRefreshing: false
+		)
+	}
+
+	private func applyProfileUnavailable(
+		_ unavailable: AccountProfileUnavailable,
+		accountID: String,
+		request: AccountProfileRequest
+	) {
+		guard isCurrentProfileRequest(request),
+			request.accountID == accountID,
+			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
+		else {
+			return
+		}
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: existing.error,
+			isRefreshing: existing.isRefreshing,
+			profile: existing.profile,
+			profileUnavailable: profileEmailsVisible
+				? unavailable
+				: unavailable.redactingEmail(),
+			profileError: nil,
+			isProfileRefreshing: false
+		)
+	}
+
+	private func applyProfileFailure(
+		_ error: ResetCardClientError,
+		accountID: String,
+		request: AccountProfileRequest
+	) {
+		guard isCurrentProfileRequest(request),
+			request.accountID == accountID,
+			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
+		else {
+			return
+		}
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: existing.error,
+			isRefreshing: existing.isRefreshing,
+			profile: existing.profile,
+			profileUnavailable: nil,
+			profileError: error,
+			isProfileRefreshing: false
+		)
+	}
+
+	private static func canReplaceRetainedProfile(
+		_ existing: AccountProfileObservation?,
+		with candidate: AccountProfileObservation,
+		allowsEmailEnrichment: Bool
+	) -> Bool {
+		guard let existing,
+			existing.accountRevision == candidate.accountRevision
+		else {
+			return true
+		}
+		if candidate.observedAtUnixMicros > existing.observedAtUnixMicros {
+			return true
+		}
+		guard candidate.observedAtUnixMicros == existing.observedAtUnixMicros else {
+			return false
+		}
+		if candidate == existing {
+			return true
+		}
+		return allowsEmailEnrichment
+			&& existing.email == nil
+			&& candidate.email != nil
+			&& existing.redactingEmail() == candidate.redactingEmail()
+	}
+
+	private func refreshProfiles() async {
+		guard let accountProfileClient else {
+			return
+		}
+		accounts = accounts.map { state in
+			ResetCardAccountState(
+				account: state.account,
+				inventory: state.inventory,
+				error: state.error,
+				isRefreshing: state.isRefreshing,
+				profile: state.profile,
+				profileUnavailable: nil,
+				profileError: nil,
+				isProfileRefreshing: true
+			)
+		}
+		let includeEmail = profileEmailsVisible
+		let generation = beginProfileRequestGeneration()
+		defer {
+			finishProfileRequestGeneration(generation)
+		}
+		await withTaskGroup(of: ResetCardAccountRead.self) { group in
+			for state in accounts {
+				let account = state.account
+				let request = AccountProfileRequest(
+					generation: generation,
+					includesEmail: includeEmail,
+					accountID: account.accountID,
+					accountRevision: account.accountRevision
+				)
+				group.addTask {
+					do {
+						switch try await accountProfileClient.profile(
+							for: account,
+							includeEmail: includeEmail
+						) {
+						case .available(let profile):
+							return .profileAvailable(
+								accountID: account.accountID,
+								request: request,
+								profile
+							)
+						case .unavailable(let unavailable):
+							return .profileUnavailable(
+								accountID: account.accountID,
+								request: request,
+								unavailable
+							)
+						}
+					} catch {
+						return .profileFailed(
+							accountID: account.accountID,
+							request: request,
+							Self.clientError(error)
+						)
+					}
+				}
+			}
+
+			for await read in group {
+				guard Task.isCancelled == false else {
+					return
+				}
+				switch read {
+				case .profileAvailable(let accountID, let responseRequest, let profile):
+					guard isCurrentProfileRequest(responseRequest) else {
+						continue
+					}
+					applyProfile(
+						profile,
+						accountID: accountID,
+						request: responseRequest
+					)
+				case .profileUnavailable(let accountID, let responseRequest, let unavailable):
+					guard isCurrentProfileRequest(responseRequest) else {
+						continue
+					}
+					applyProfileUnavailable(
+						unavailable,
+						accountID: accountID,
+						request: responseRequest
+					)
+				case .profileFailed(let accountID, let responseRequest, let error):
+					guard isCurrentProfileRequest(responseRequest) else {
+						continue
+					}
+					applyProfileFailure(
+						error,
+						accountID: accountID,
+						request: responseRequest
+					)
+				case .inventoryAvailable, .inventoryFailed:
+					break
+				}
+			}
+		}
+	}
+
+	private func beginProfileRequestGeneration() -> UInt64 {
+		profileRequestGeneration &+= 1
+		return profileRequestGeneration
+	}
+
+	private func invalidateProfileRequests() {
+		profileRequestGeneration &+= 1
+	}
+
+	private func isCurrentProfileRequest(_ request: AccountProfileRequest) -> Bool {
+		guard request.generation == profileRequestGeneration,
+			request.includesEmail == profileEmailsVisible,
+			let state = accounts.first(where: {
+				$0.account.accountID == request.accountID
+			})
+		else {
+			return false
+		}
+		return state.account.accountRevision == request.accountRevision
+	}
+
+	private func finishProfileRequestGeneration(_ generation: UInt64) {
+		guard generation == profileRequestGeneration else {
+			return
+		}
+		accounts = accounts.map { state in
+			guard state.isProfileRefreshing else {
+				return state
+			}
+			return ResetCardAccountState(
+				account: state.account,
+				inventory: state.inventory,
+				error: state.error,
+				isRefreshing: state.isRefreshing,
+				profile: state.profile,
+				profileUnavailable: state.profileUnavailable,
+				profileError: state.profileError,
+				isProfileRefreshing: false
+			)
+		}
 	}
 
 	private static func account(
@@ -628,6 +1283,8 @@ final class ResetCardStore {
 			enabled: account.enabled,
 			observedState: account.observedState,
 			lifecycleReadiness: account.lifecycleReadiness,
+			credentialBinding: account.credentialBinding,
+			unsettledOperation: account.unsettledOperation,
 			fiveHourQuota: account.fiveHourQuota,
 			sevenDayQuota: account.sevenDayQuota
 		)
@@ -635,6 +1292,91 @@ final class ResetCardStore {
 
 	nonisolated private static func clientError(_ error: Error) -> ResetCardClientError {
 		error as? ResetCardClientError ?? .invalidResponse
+	}
+
+	private var establishedAuthority: ResetCardAuthority? {
+		let authorities = Set(
+			accounts.compactMap { $0.account.authority ?? $0.inventory?.authority }
+		)
+		return authorities.count == 1 ? authorities.first : nil
+	}
+
+	private func accountRecord(_ accountID: String) -> ResetCardAccountRecord? {
+		accounts.first(where: { $0.account.accountID == accountID })?.account
+	}
+
+	private func performAccountControl(
+		accountID: String? = nil,
+		isEnrollment: Bool = false,
+		successMessage: String,
+		operation: () async throws -> AccountControlResult
+	) async {
+		guard isRefreshing == false,
+			controllingAccountID == nil,
+			isRoutingAccountControl == false
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		if isEnrollment {
+			guard isEnrollingAccount else {
+				presentAccountControlUnavailable()
+				return
+			}
+		} else {
+			guard isEnrollingAccount == false else {
+				presentAccountControlUnavailable()
+				return
+			}
+		}
+
+		if let accountID {
+			controllingAccountID = accountID
+		} else if isEnrollment == false {
+			isRoutingAccountControl = true
+		}
+		defer {
+			if accountID != nil {
+				controllingAccountID = nil
+			} else if isEnrollment == false {
+				isRoutingAccountControl = false
+			}
+		}
+
+		let actionMessage: ResetCardStoreMessage
+		do {
+			_ = try await operation()
+			actionMessage = ResetCardStoreMessage(tone: .success, text: successMessage)
+		} catch let error as AccountControlError {
+			actionMessage = ResetCardStoreMessage(
+				tone: .error,
+				text: error.localizedDescription
+			)
+		} catch let error as ResetCardClientError {
+			actionMessage = ResetCardStoreMessage(
+				tone: .error,
+				text: error.localizedDescription
+			)
+		} catch {
+			actionMessage = ResetCardStoreMessage(
+				tone: .error,
+				text: AccountControlError.invalidResponse.localizedDescription
+			)
+		}
+
+		_ = await refreshReadState()
+		message = actionMessage
+	}
+
+	private func presentAccountControlUnavailable() {
+		message = ResetCardStoreMessage(
+			tone: .error,
+			text: "Account controls are unavailable while another account request is active."
+		)
+	}
+
+	nonisolated private static func newCanonicalUUID() -> String {
+		UUID().uuidString.lowercased()
 	}
 
 	private static func messageTone(for state: ResetCardOperationState) -> ResetCardStoreMessage.Tone {
@@ -686,6 +1428,19 @@ private extension ResetCardServiceError {
 			.productStateUnavailable, .effectAmbiguous:
 			return true
 		case .invalidRequest, .schemaUnsupported:
+			return false
+		}
+	}
+}
+
+private extension AccountProfileObservationError {
+	var isRetryableReadFailure: Bool {
+		switch self {
+		case .productStateUnavailable, .credentialUnavailable,
+			.providerUnavailable, .accountChanged:
+			return true
+		case .invalidRequest, .accountUnavailable, .unauthorized,
+			.protocolUnavailable:
 			return false
 		}
 	}

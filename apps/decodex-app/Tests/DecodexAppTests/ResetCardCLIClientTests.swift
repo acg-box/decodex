@@ -101,6 +101,13 @@ final class ResetCardCLIClientTests: XCTestCase {
 					enabled: true,
 					observedState: .depleted,
 					lifecycleReadiness: .ready,
+					credentialBinding: AccountCredentialBinding(
+						schemaVersion: 1,
+						version: 1,
+						fingerprintSHA256: String(repeating: "a", count: 64),
+						provider: .chatGPT,
+						providerAccountID: "provider-a"
+					),
 					fiveHourQuota: ResetCardQuotaWindow(
 						durationMinutes: 300,
 						observedAtUnixMicros: 1_000_000,

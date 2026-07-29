@@ -28,8 +28,9 @@ pub use self::{
 		AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
 		AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
 		AccountManualRecoveryActionDto, AccountManualRecoveryOutcomeDto, AccountObservedStateDto,
-		AccountOperationKindDto, AccountOperationPhaseDto, AccountProviderDto,
-		AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
+		AccountOperationKindDto, AccountOperationPhaseDto, AccountProfileDailyUsageDto,
+		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
+		AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
 		AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
 		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
 		ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
@@ -42,15 +43,16 @@ pub use self::{
 		HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 		HistoryMediaType, HistoryMetadata, HistoryMetadataValue, HistoryPayloadDto,
 		HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
-		IdempotencyKeyError, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
-		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope,
-		QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
-		ReconnectMode, Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError,
-		ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
-		ResetCardOperationResult, ResetCardOutcome, ResultPayload, ResumeCursor, ServerId,
-		ServerInstanceId, ServerMessage, ServerWelcome, Sha256Digest, SnapshotEnvelope,
-		SnapshotItem, WireScalarTooLong, WireText, decode_client_message, encode_server_message,
+		IdempotencyKeyError, MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope, QueryId, QueryPayload,
+		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
+		RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError, ResetCardError,
+		ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
+		ResetCardOutcome, ResultPayload, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
+		ServerWelcome, Sha256Digest, SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText,
+		decode_client_message, encode_server_message,
 	},
 };
 
@@ -59,9 +61,9 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// Current protocol generation and minor revision.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 5 };
 /// Oldest protocol revision accepted during a rolling client/server update.
-pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 3 };
+pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -152,7 +154,7 @@ mod tests {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 1, minor: 2 }.negotiate(),
+			ProtocolVersion { major: 1, minor: 3 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}

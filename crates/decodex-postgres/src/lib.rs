@@ -18,6 +18,7 @@
 //! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
 
 mod account_lifecycle;
+mod account_profiles;
 mod accounts;
 mod authority;
 mod continuations;
@@ -53,6 +54,10 @@ pub use self::{
 		AccountCommandReceiptLease, AccountLifecycleMutation, AccountLifecycleMutationOutcome,
 		AccountLifecycleRejection, AccountOperationPreparation, AccountStoreObservation,
 		CodexAccountCapabilityAttestation, RoutingControlOutcome,
+	},
+	account_profiles::{
+		AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
+		AccountProfileSnapshot,
 	},
 	continuations::{ContinuationPlanEffect, PlanContinuation},
 	conversations::{
@@ -100,10 +105,10 @@ pub use self::{
 		RuntimeSessionRejection, StoredRuntimeSession,
 	},
 	types::{
-		AccountMetadata, AccountMutation, ActivityRecord, CommandIdentity, CreateProject,
-		HypotheticalFallbackFact, LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState,
-		QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow,
-		QuotaWindowMutation, ReconciliationOutcome,
+		AccountMetadata, ActivityRecord, CommandIdentity, CreateProject, HypotheticalFallbackFact,
+		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaExclusionMutation,
+		QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindow, QuotaWindowMutation,
+		ReconciliationOutcome,
 	},
 	wakes::{
 		CancelWaitingUsageWake, ClaimDueWaitingUsageWake, FireWaitingUsageWake,
@@ -249,17 +254,18 @@ impl PostgresStore {
 		authority::semantic_authority_fixture(client, runtime_role).await
 	}
 
-	/// Parse and prepare every changed V22/V27 embedded SQL source without executing it.
+	/// Parse and prepare every changed V22/V27/V28 embedded SQL source without executing it.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
 	pub async fn prepare_changed_sql_fixture(client: &TokioClient) -> Result<usize, StoreError> {
 		let retained_title = experiments::prepare_retained_title_sql(client).await?;
 		let account_lifecycle = account_lifecycle::prepare_account_lifecycle_sql(client).await?;
+		let account_profiles = account_profiles::prepare_account_profile_sql(client).await?;
 		let process_generation =
 			process_generations::prepare_account_bound_process_generation_sql(client).await?;
 		let reset_card = reset_cards::prepare_account_bound_reset_card_sql(client).await?;
 
-		Ok(retained_title + account_lifecycle + process_generation + reset_card)
+		Ok(retained_title + account_lifecycle + account_profiles + process_generation + reset_card)
 	}
 
 	/// Apply the production connection-startup invariant to an isolated raw fixture.

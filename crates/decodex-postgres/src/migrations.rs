@@ -8,13 +8,16 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 27;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 28;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
 #[cfg(test)]
 const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
 	include_str!("../migrations/V27__mac_account_lifecycle.sql");
+#[cfg(test)]
+const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
+	include_str!("../migrations/V28__account_profile_observations.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -108,7 +111,7 @@ async fn verify_exact_ledger(
 		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V27 ledger".into(),
+			"embedded migration inventory does not end at the canonical V28 ledger".into(),
 		));
 	}
 	expected.retain(|migration| migration.version() <= terminal_version);
@@ -158,7 +161,8 @@ async fn verify_exact_ledger(
 #[cfg(test)]
 mod tests {
 	use super::{
-		CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
+		ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION, CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION,
+		MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
 	};
 
 	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
@@ -368,5 +372,38 @@ mod tests {
 		assert!(
 			migration.contains("CREATE FUNCTION decodex.lock_account_routing_universe_exact()")
 		);
+	}
+
+	#[test]
+	fn v28_profile_storage_is_bounded_credential_negative_and_runtime_function_only() {
+		let migration = ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION;
+
+		for required in [
+			"CREATE TABLE decodex.account_profile_snapshots",
+			"CREATE TABLE decodex.account_profile_daily_usage",
+			"CREATE FUNCTION decodex.observe_account_profile_exact",
+			"CREATE FUNCTION decodex.read_account_profile_exact",
+			"daily_count>36",
+			"WHERE account_id=p_account_id FOR UPDATE",
+			"account.revision=snapshot.account_revision",
+		] {
+			assert!(migration.contains(required), "{required}");
+		}
+		for forbidden in [
+			"access_token",
+			"refresh_token",
+			"id_token",
+			"provider_email",
+			"plan_type",
+			"GRANT SELECT",
+			"GRANT INSERT",
+			"GRANT UPDATE",
+			"GRANT DELETE",
+			"GRANT EXECUTE",
+			"prepare_provider_attempt_exact",
+			"runtime_role",
+		] {
+			assert!(!migration.contains(forbidden), "{forbidden}");
+		}
 	}
 }

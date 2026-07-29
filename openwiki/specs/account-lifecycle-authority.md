@@ -239,6 +239,40 @@ before current enabled, readiness, health, operation, store, or revision gates. 
 terminal receipt never calls Codex or the provider again. Nonterminal status and required
 reconciliation also remain readable after a gate changes. They cannot start a new effect.
 
+## Bounded account profile
+
+Protocol V1.5 adds one independent `GetAccountProfile` query per Account UUID. It does
+not run as part of account listing or Reset Card inventory. One failed profile query
+affects only that account row.
+
+The daemon reads the exact current HostCredentialStore binding and calls only
+`https://chatgpt.com/backend-api/wham/profiles/me`. The request has bounded connect and
+total timeouts, no redirects, and a bounded response body. The daemon sends the access
+token and provider account ID only to that endpoint. It does not log or return the token,
+provider body, or raw error.
+
+V28 stores one latest non-secret profile snapshot and at most 36 unique ascending daily
+usage facts. Persistence uses the exact account revision, provider binding, tombstone
+state, and a monotonic observation time. A response is `current` only after persistence.
+A previous exact snapshot can return as `cached` with one typed refresh error. Otherwise,
+the row is `unavailable` with one typed error.
+
+Email and the credential `plan_type` claim are not profile facts and are not persisted.
+Email is explicitly `redacted` unless the local caller sets `include_email`. A client
+that did not request email rejects a visible-email response. The plan claim can describe
+the credential bundle, but it is not live capacity or quota evidence. Every `current`,
+`cached`, or `unavailable` result carries the explicit email visibility and optional
+plan claim. The runtime exact-reads them from the current registry and host-store binding
+immediately before the response. It redacts and omits them if that final exact read
+cannot be proved.
+
+The profile snapshot always carries the Account UUID, a positive revision, a positive
+Unix-microsecond observation time, explicit email visibility, and the daily array.
+Credential email is at most 320 bytes, `plan_type` is at most 128 bytes, and provider
+display name and username are each at most 256 bytes. Scalar token and duration metrics
+fit non-negative PostgreSQL `bigint`; streak values fit non-negative `integer`. Optional
+fields are absent when the provider or current credential does not supply them.
+
 ## Clean latest-architecture cutover
 
 The product has no legacy-account migration mode. Normal startup and installation do
@@ -268,7 +302,7 @@ legacy-runtime path.
 | Exact-build auth | Initial projection and refresh callback proved for each accepted macOS build | Proved for every supported platform/build |
 | Account lifecycle | Enrollment/import, list/rename, enable/disable, logout, refresh/CAS, and startup reconciliation | Same contract across all supported hosts plus full fault acceptance |
 | Routing | Initial eligible quota-aware fixed/balanced selection and explicit manual recovery | Automatic same-thread fallback and all-depleted wake after their later gate |
-| Presentation | Minimal Accounts, Conversation, and Health data | Full bounded usage, profile, and history presentation |
+| Presentation | All-account Reset Card, quota, and bounded profile data | Full bounded usage and history presentation |
 | Ambient Codex auth | Deferred; no `Use in Codex` requirement | Capability-probed `Use in Codex`, fail-closed when unsupported |
 | Legacy authority | No watcher, helper, or credential environment input on normal startup | Same, across every supported installation |
 | Evidence | Two-account Mac flow with restart boundaries and package proof | Broader platform and adversarial matrix |

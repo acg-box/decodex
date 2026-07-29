@@ -1747,7 +1747,7 @@ fn spawn_attested_protocol_process(
 		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
 		owner.attach_pump(pump);
 
-		return Ok((owner, Box::new(spawned.stdin)));
+		Ok((owner, Box::new(spawned.stdin)))
 	}
 
 	#[cfg(not(target_os = "macos"))]
@@ -6287,7 +6287,7 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn preflight_cleans_descendants_before_app_server_spawn() {
+	fn preflight_waits_for_post_reap_descendant_quiescence_before_app_server_spawn() {
 		let temp = TempDir::new().unwrap();
 		let pid_path = temp.path().join("preflight-descendant.pid");
 		let result = ReadOnlyProbe::new_for_test(
@@ -6306,7 +6306,7 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn failed_preflight_keeps_descendant_authority_until_death() {
+	fn failed_preflight_waits_for_post_reap_descendant_quiescence() {
 		let temp = TempDir::new().unwrap();
 		let pid_path = temp.path().join("preflight-error-descendant.pid");
 		let error = ReadOnlyProbe::new_for_test(
@@ -6588,12 +6588,14 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn shutdown_kills_descendants_after_parent_exits_immediately() {
+	fn shutdown_retains_capacity_until_post_reap_descendant_quiescence() {
 		let temp = TempDir::new().unwrap();
 		let pid_path = temp.path().join("descendant.pid");
-		let process = SupervisedProcess::spawn(
+		let capacity = TestCapacity::new(1);
+		let process = SupervisedProcess::spawn_bound(
 			fake_command("orphan-exit", temp.path(), Some(&pid_path)),
 			binding(),
+			capacity.reserve().unwrap(),
 		)
 		.unwrap();
 		let deadline = Instant::now() + Duration::from_secs(2);
@@ -6604,15 +6606,13 @@ mod tests {
 
 		let descendant = read_pid(&pid_path);
 
+		assert!(process_exists(descendant));
+		assert_eq!(capacity.active(), 1);
+
 		process.shutdown(Duration::from_secs(1)).unwrap();
 
-		let deadline = Instant::now() + Duration::from_secs(2);
-
-		while process_exists(descendant) && Instant::now() < deadline {
-			thread::sleep(Duration::from_millis(10));
-		}
-
-		assert!(!process_exists(descendant), "descendant survived process-group shutdown");
+		assert!(!process_exists(descendant), "descendant did not reach natural quiescence");
+		assert_eq!(capacity.active(), 0);
 	}
 
 	#[cfg(unix)]
@@ -6633,42 +6633,52 @@ mod tests {
 
 	#[cfg(unix)]
 	#[test]
-	fn probe_error_keeps_process_group_authority_until_descendants_die() {
+	fn probe_error_retains_capacity_until_post_reap_descendant_quiescence() {
 		let temp = TempDir::new().unwrap();
 		let pid_path = temp.path().join("error-descendant.pid");
+		let capacity = TestCapacity::new(1);
 		let error = ReadOnlyProbe::new_for_test(
 			fake_command("orphan-error", temp.path(), Some(&pid_path)),
 			binding(),
 			SchemaMarker::accepted(),
 			Duration::from_secs(5),
 		)
-		.run(&mut CapabilityCache::default())
+		.run_inner(None, Some(capacity.reserve().unwrap()), &mut CapabilityCache::default())
 		.unwrap_err();
 		let descendant = read_pid(&pid_path);
 
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::InvalidProtocol));
+		assert!(process_exists(descendant));
+		assert_eq!(capacity.active(), 1);
+		assert_eq!(capacity.reserve().unwrap_err(), ());
 
 		wait_until_process_is_dead(descendant);
+		wait_for_capacity(&capacity, 0, Duration::from_secs(3));
 	}
 
 	#[cfg(unix)]
 	#[test]
-	fn probe_timeout_keeps_process_group_authority_until_descendants_die() {
+	fn probe_timeout_retains_capacity_until_post_reap_descendant_quiescence() {
 		let temp = TempDir::new().unwrap();
 		let pid_path = temp.path().join("timeout-descendant.pid");
+		let capacity = TestCapacity::new(1);
 		let error = ReadOnlyProbe::new_for_test(
 			fake_command("orphan-timeout", temp.path(), Some(&pid_path)),
 			binding(),
 			SchemaMarker::accepted(),
 			Duration::from_secs(5),
 		)
-		.run(&mut CapabilityCache::default())
+		.run_inner(None, Some(capacity.reserve().unwrap()), &mut CapabilityCache::default())
 		.unwrap_err();
 		let descendant = read_pid(&pid_path);
 
 		assert_eq!(error, ProbeError::Supervision(SupervisionError::ResponseTimeout));
+		assert!(process_exists(descendant));
+		assert_eq!(capacity.active(), 1);
+		assert_eq!(capacity.reserve().unwrap_err(), ());
 
 		wait_until_process_is_dead(descendant);
+		wait_for_capacity(&capacity, 0, Duration::from_secs(3));
 	}
 
 	#[cfg(unix)]
