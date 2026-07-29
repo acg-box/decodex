@@ -43,6 +43,12 @@ enum PanelPalette {
 			: Color(red: 0.1, green: 0.53, blue: 0.62)
 	}
 
+	static func fastModeAccent(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color(red: 0.98, green: 0.84, blue: 0.48)
+			: Color(red: 0.42, green: 0.31, blue: 0.09)
+	}
+
 	static func destructive(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.98, green: 0.4, blue: 0.45)

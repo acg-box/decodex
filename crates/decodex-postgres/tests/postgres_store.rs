@@ -195,6 +195,8 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
 	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
 	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
+	"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_account_profile_exact(pg_catalog.uuid)",
 	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -980,7 +982,7 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V27 preparation harness"]
+#[ignore = "requires the isolated PostgreSQL 18 V28 preparation harness"]
 #[cfg(feature = "test-support")]
 async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
@@ -989,7 +991,7 @@ async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
-	assert_eq!(source_count, 28);
+	assert_eq!(source_count, 30);
 	println!("decodex_changed_sql_prepared={source_count}");
 
 	drop(client);

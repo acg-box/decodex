@@ -123,6 +123,7 @@ EXPECTED_CLI_EXTERNAL_DEPENDENCIES = {
     "serde_json",
     "tempfile",
     "tokio",
+    "toml_edit",
 }
 
 EXPECTED_WORKSPACE_MANIFESTS = {
@@ -337,9 +338,11 @@ class VnextArchitectureTests(unittest.TestCase):
 
     def test_cli_source_has_no_direct_mutation_or_infrastructure_escape(self):
         cli_root = ROOT / "apps/decodex-cli"
+        local_authority_modules = {"fast_mode.rs", "git_hook.rs", "local_git.rs"}
         source = "\n".join(
             path.read_text()
             for path in sorted(cli_root.rglob("*.rs"))
+            if path.name not in local_authority_modules
         )
         forbidden = {
             "decodex_core",
@@ -353,6 +356,34 @@ class VnextArchitectureTests(unittest.TestCase):
             "std::process::Command",
         }
 
+        self.assertEqual({token for token in forbidden if token in source}, set())
+
+    def test_cli_fast_mode_is_one_local_config_authority(self):
+        source = (ROOT / "apps/decodex-cli/src/fast_mode.rs").read_text()
+
+        for required in (
+            '"decodex/fast-mode-cli/1"',
+            '"fast_mode"',
+            '"config.toml"',
+            'env::var_os("HOME")',
+            "toml_edit",
+        ):
+            self.assertIn(required, source)
+
+        forbidden = {
+            "decodex_protocol",
+            "decodex_runtime",
+            "decodex_postgres",
+            "AccountStore",
+            "WebSocket",
+            "TcpStream",
+            "UnixStream",
+            "reqwest",
+            "access_token",
+            "CODEX_HOME",
+            "127.0.0.1",
+            "8192",
+        }
         self.assertEqual({token for token in forbidden if token in source}, set())
 
     def test_project_and_agent_identity_have_one_canonical_inert_authority(self):

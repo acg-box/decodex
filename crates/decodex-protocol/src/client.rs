@@ -17,11 +17,12 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AccountInitialSelectionResult, AccountInspectResult, AccountSelectionModeDto, AccountsResult,
-	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
-	CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision,
-	IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload,
-	ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
+	AccountInitialSelectionResult, AccountInspectResult, AccountProfileEmailDto,
+	AccountProfileResult, AccountSelectionModeDto, AccountsResult, CURRENT_VERSION,
+	ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome,
+	CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
+	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
+	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
 	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
 	ServerId, ServerMessage, VersionRefusal,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
@@ -821,7 +822,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V1.4 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V1.5 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -870,6 +871,40 @@ impl AccountClient {
 				} else {
 					Ok(result)
 				}
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Observe one bounded provider profile independently from Reset Card inventory.
+	pub async fn profile(
+		&self,
+		account_id: EntityId,
+		include_email: bool,
+	) -> Result<AccountProfileResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let expected = account_id.clone();
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport.query_inner(
+				"decodex-account-profile",
+				QueryPayload::GetAccountProfile { account_id, include_email },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::AccountProfile(result) => {
+				let matches = match &result {
+					AccountProfileResult::Current(profile)
+					| AccountProfileResult::Cached { profile, .. } =>
+						profile.account_id == expected
+							&& (include_email
+								|| matches!(profile.email, AccountProfileEmailDto::Redacted)),
+					AccountProfileResult::Unavailable { email, .. } =>
+						include_email || matches!(email, AccountProfileEmailDto::Redacted),
+				};
+				if matches { Ok(result) } else { Err(ClientFailure::ProtocolMalformed) }
 			},
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
@@ -938,7 +973,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V1.4 lifecycle command exactly once on one connection.
+	/// Execute one V1.5 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1305,11 +1340,12 @@ mod tests {
 	use tokio_tungstenite::{self, tungstenite::Message};
 
 	use crate::{
-		AccountClient, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure, ClientMessage,
-		ClientProfile, CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope,
-		CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent, DoctorIssue,
-		DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope, EventPayload,
-		IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
+		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
+		AccountProfileResult, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure,
+		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
+		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
+		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
+		EventPayload, IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
 		ProtocolVersion, QueryId, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
 		ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
 		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
@@ -1358,6 +1394,74 @@ mod tests {
 				.collect(),
 		)
 		.expect("test operation must succeed")
+	}
+
+	fn profile_result(account_id: &str, email: AccountProfileEmailDto) -> AccountProfileResult {
+		AccountProfileResult::Current(Box::new(AccountProfileDto {
+			account_id: EntityId::new(account_id).expect("fixture account identity is bounded"),
+			account_revision: EntityRevision(3),
+			observed_at_unix_micros: 1_700_000_000_000_000,
+			email,
+			plan_type: Some(WireText::new("pro").expect("fixture plan is bounded")),
+			display_name: Some(WireText::new("Iris").expect("fixture name is bounded")),
+			username: None,
+			lifetime_tokens: Some(10_000),
+			peak_daily_tokens: None,
+			longest_task_seconds: None,
+			current_streak_days: None,
+			longest_streak_days: None,
+			daily_usage: Vec::new(),
+		}))
+	}
+
+	async fn account_profile_query(
+		result: AccountProfileResult,
+		include_email: bool,
+	) -> Result<AccountProfileResult, ClientFailure> {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("test listener must bind");
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("test connection must arrive");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test socket must upgrade");
+			let _ = socket.next().await;
+			for response in initial(SERVER_ID) {
+				socket.send(response).await.expect("initial response must send");
+			}
+			let request =
+				socket.next().await.expect("query must arrive").expect("query must decode");
+			let Message::Text(request) = request else { panic!("expected text query") };
+			let ClientMessage::Query(query) =
+				serde_json::from_str::<ClientMessage>(&request).expect("typed query must decode")
+			else {
+				panic!("expected typed query")
+			};
+			socket
+				.send(typed(ServerMessage::QueryResult(QueryResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
+					query_id: query.query_id,
+					payload: QueryResultPayload::AccountProfile(result),
+				})))
+				.await
+				.expect("profile result must send");
+			drop(socket);
+			listener.cleanup().expect("test listener must clean up");
+		});
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("fixture server ID is bounded"),
+		);
+		let response = AccountClient::new(profile)
+			.profile(
+				EntityId::new("40000000-0000-4000-8000-000000000001")
+					.expect("fixture account ID is bounded"),
+				include_email,
+			)
+			.await;
+		task.await.expect("test server must settle");
+		response
 	}
 
 	fn result(report: DoctorReport) -> Message {
@@ -1502,10 +1606,48 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_retain_the_v1_4_v1_3_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 1, minor: 4 });
-		assert_eq!(PREVIOUS_MINOR_VERSION, ProtocolVersion { major: 1, minor: 3 });
+	fn protocol_constants_retain_the_v1_5_v1_4_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 1, minor: 5 });
+		assert_eq!(PREVIOUS_MINOR_VERSION, ProtocolVersion { major: 1, minor: 4 });
 		assert!(WireText::new("bounded").is_ok());
+	}
+
+	#[tokio::test]
+	async fn account_profile_client_rejects_identity_mismatch_and_default_email_leakage() {
+		let mismatch = account_profile_query(
+			profile_result(
+				"40000000-0000-4000-8000-000000000002",
+				AccountProfileEmailDto::Redacted,
+			),
+			false,
+		)
+		.await;
+		assert_eq!(mismatch, Err(ClientFailure::ProtocolMalformed));
+
+		let leaked = account_profile_query(
+			profile_result(
+				"40000000-0000-4000-8000-000000000001",
+				AccountProfileEmailDto::Visible(
+					WireText::new("iris@example.test").expect("fixture email is bounded"),
+				),
+			),
+			false,
+		)
+		.await;
+		assert_eq!(leaked, Err(ClientFailure::ProtocolMalformed));
+
+		let unavailable_leak = account_profile_query(
+			AccountProfileResult::Unavailable {
+				error: AccountProfileErrorDto::ProviderUnavailable,
+				email: AccountProfileEmailDto::Visible(
+					WireText::new("iris@example.test").expect("fixture email is bounded"),
+				),
+				plan_type: Some(WireText::new("pro").expect("fixture plan is bounded")),
+			},
+			false,
+		)
+		.await;
+		assert_eq!(unavailable_leak, Err(ClientFailure::ProtocolMalformed));
 	}
 
 	#[tokio::test]
