@@ -82,6 +82,10 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 		return nil
 	}
+
+	var requiresLoginRefresh: Bool {
+		account.observedState == .authFailed
+	}
 }
 
 private struct AccountProfileRequest: Equatable, Sendable {
@@ -381,6 +385,7 @@ final class ResetCardStore {
 			accounts = discovered.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = retainedAuthority
+					?? account.authority
 					?? previous?.account.authority
 					?? previous?.inventory?.authority
 				let boundAccount = Self.account(account, authority: authority)
