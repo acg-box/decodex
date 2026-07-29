@@ -106,6 +106,7 @@ async fn prepare_routing_contract(
 	owner: &Client,
 ) -> Result<RoutingContractSetup, Box<dyn std::error::Error>> {
 	create_project_and_policy(owner).await?;
+	owner.batch_execute("BEGIN; SELECT decodex.lock_account_routing_universe_exact()").await?;
 	for (account_id, label) in [
 		(SELECTED_ACCOUNT_ID, "V16 account 16"),
 		(WAITING_ACCOUNT_ID, "V16 account 17"),
@@ -113,12 +114,27 @@ async fn prepare_routing_contract(
 	] {
 		owner
 			.execute(
-				"INSERT INTO decodex.accounts(account_id,display_label,state) \
-				 VALUES($1::text::uuid,$2,'available')",
+				"INSERT INTO decodex.accounts(account_id,display_label,state,enabled) \
+				 VALUES($1::text::uuid,$2,'available',true)",
 				&[&account_id, &label],
 			)
 			.await?;
+		owner
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 SELECT $1::text::uuid,pg_catalog.count(*)::integer \
+				 FROM decodex.account_routing_order",
+				&[&account_id],
+			)
+			.await?;
 	}
+	owner
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp() WHERE singleton; \
+			 SELECT decodex.lock_account_routing_universe_exact(); COMMIT",
+		)
+		.await?;
 	insert_quota_pair(owner, SELECTED_ACCOUNT_ID, Some(73), Some(41), "selected").await?;
 	insert_quota_pair(owner, WAITING_ACCOUNT_ID, Some(0), Some(0), "waiting").await?;
 	insert_quota_pair(owner, NO_ROUTE_ACCOUNT_ID, Some(0), Some(0), "no-route").await?;
