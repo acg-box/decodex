@@ -32,6 +32,8 @@ mod provider_attempt_service;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
+#[expect(dead_code, reason = "waiting for the later board composition owner")]
+mod work_item_board;
 
 #[cfg(feature = "retained-title-experiment")]
 pub use account_launch::retained_title_experiment::{
