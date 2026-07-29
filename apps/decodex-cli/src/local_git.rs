@@ -9,7 +9,6 @@ use std::{
 use clap::Args;
 use serde::{Deserialize, Serialize};
 
-const DEFAULT_BRANCH: &str = "main";
 const MERGE_VISIBILITY_ATTEMPTS: usize = 20;
 const MERGE_VISIBILITY_DELAY: Duration = Duration::from_secs(1);
 
@@ -112,11 +111,12 @@ pub(crate) fn execute_land(command: &LandCommand) -> Result<String, String> {
 		env::current_dir().map_err(|error| format!("current directory unavailable: {error}"))?;
 	let layout = repository_layout(&cwd)?;
 	require_pull_request_repository(&layout.primary, &command.pr)?;
+	let default_branch = remote_default_branch(&layout.primary)?;
 	let mut pull_request = read_pull_request(&layout.primary, &command.pr)?;
 	git_checked(&layout.primary, &["check-ref-format", "--branch", &pull_request.head_ref_name])
 		.map_err(|_| String::from("pull request head branch is not a valid local branch name"))?;
 
-	validate_pull_request_identity(&pull_request, command)?;
+	validate_pull_request_identity(&pull_request, command, &default_branch)?;
 
 	if pull_request.state == "OPEN" {
 		if layout.is_primary {
@@ -125,17 +125,19 @@ pub(crate) fn execute_land(command: &LandCommand) -> Result<String, String> {
 			));
 		}
 		validate_open_lane(&layout, &pull_request, command)?;
-		require_primary_at_base(&layout.primary, &command.expected_base_oid)?;
+		require_primary_at_base(&layout.primary, &default_branch, &command.expected_base_oid)?;
 
 		let record = commit_record(summary, true)?;
 		let merge_commit = create_and_push_exact_merge(
 			&layout,
+			&default_branch,
 			&command.expected_base_oid,
 			&command.expected_head_oid,
 			&record,
 		)?;
 
-		pull_request = wait_for_exact_merge(&layout.primary, &command.pr, &merge_commit)?;
+		pull_request =
+			wait_for_exact_merge(&layout.primary, &command.pr, &default_branch, &merge_commit)?;
 	} else if pull_request.state != "MERGED" {
 		return Err(format!(
 			"pull request `{}` is `{}` and cannot be landed",
@@ -150,22 +152,23 @@ pub(crate) fn execute_land(command: &LandCommand) -> Result<String, String> {
 		.ok_or_else(|| String::from("merged pull request has no merge commit object ID"))?;
 	let record = commit_record(summary, true)?;
 
-	fetch_default_branch(&layout.primary)?;
+	fetch_default_branch(&layout.primary, &default_branch)?;
 	verify_exact_merge(
 		&layout.primary,
+		&default_branch,
 		merge_commit,
 		&command.expected_base_oid,
 		&command.expected_head_oid,
 		&record,
 		true,
 	)?;
-	sync_primary(&layout.primary, &command.expected_base_oid, merge_commit)?;
+	sync_primary(&layout.primary, &default_branch, &command.expected_base_oid, merge_commit)?;
 	cleanup_lane(&layout, &pull_request.head_ref_name, &command.expected_head_oid)?;
-	require_primary_synced(&layout.primary, merge_commit)?;
+	require_primary_synced(&layout.primary, &default_branch, merge_commit)?;
 
 	Ok(format!(
 		"land ok: pr={} merge_commit={} default_branch={} local_default_branch_synced=true",
-		command.pr, merge_commit, DEFAULT_BRANCH
+		command.pr, merge_commit, default_branch
 	))
 }
 
@@ -338,12 +341,13 @@ fn valid_github_component(value: &str) -> bool {
 fn validate_pull_request_identity(
 	pull_request: &PullRequest,
 	command: &LandCommand,
+	default_branch: &str,
 ) -> Result<(), String> {
 	if pull_request.url != command.pr
 		|| pull_request.is_cross_repository
-		|| pull_request.base_ref_name != DEFAULT_BRANCH
+		|| pull_request.base_ref_name != default_branch
 		|| pull_request.head_ref_oid != command.expected_head_oid
-		|| pull_request.head_ref_name == DEFAULT_BRANCH
+		|| pull_request.head_ref_name == default_branch
 	{
 		return Err(String::from("pull request identity does not match the landing intent"));
 	}
@@ -381,11 +385,16 @@ fn validate_open_lane(
 	Ok(())
 }
 
-fn require_primary_at_base(primary: &Path, expected_base_oid: &str) -> Result<(), String> {
-	require_primary_branch_and_clean(primary)?;
-	fetch_default_branch(primary)?;
+fn require_primary_at_base(
+	primary: &Path,
+	default_branch: &str,
+	expected_base_oid: &str,
+) -> Result<(), String> {
+	require_primary_branch_and_clean(primary, default_branch)?;
+	fetch_default_branch(primary, default_branch)?;
 	let local = git_stdout(primary, &["rev-parse", "HEAD"])?;
-	let remote = git_stdout(primary, &["rev-parse", "refs/remotes/origin/main"])?;
+	let remote_ref = format!("refs/remotes/origin/{default_branch}");
+	let remote = git_stdout(primary, &["rev-parse", &remote_ref])?;
 
 	if local != expected_base_oid || remote != expected_base_oid {
 		return Err(String::from(
@@ -396,12 +405,12 @@ fn require_primary_at_base(primary: &Path, expected_base_oid: &str) -> Result<()
 	Ok(())
 }
 
-fn require_primary_branch_and_clean(primary: &Path) -> Result<(), String> {
+fn require_primary_branch_and_clean(primary: &Path, default_branch: &str) -> Result<(), String> {
 	let branch = git_stdout(primary, &["branch", "--show-current"])?;
 	let status = git_stdout(primary, &["status", "--porcelain=v1", "--untracked-files=all"])?;
 
-	if branch != DEFAULT_BRANCH || !status.is_empty() {
-		return Err(String::from("primary checkout must be clean and on `main`"));
+	if branch != default_branch || !status.is_empty() {
+		return Err(format!("primary checkout must be clean and on `{default_branch}`"));
 	}
 
 	Ok(())
@@ -409,6 +418,7 @@ fn require_primary_branch_and_clean(primary: &Path) -> Result<(), String> {
 
 fn create_and_push_exact_merge(
 	layout: &RepositoryLayout,
+	default_branch: &str,
 	expected_base_oid: &str,
 	expected_head_oid: &str,
 	record: &str,
@@ -432,6 +442,7 @@ fn create_and_push_exact_merge(
 
 	verify_exact_merge(
 		&layout.primary,
+		default_branch,
 		&merge_commit,
 		expected_base_oid,
 		expected_head_oid,
@@ -439,7 +450,7 @@ fn create_and_push_exact_merge(
 		false,
 	)?;
 
-	let remote_before = remote_branch_oid(&layout.primary, DEFAULT_BRANCH)?;
+	let remote_before = remote_branch_oid(&layout.primary, default_branch)?;
 
 	if remote_before.as_deref() != Some(expected_base_oid) {
 		return Err(String::from(
@@ -447,8 +458,9 @@ fn create_and_push_exact_merge(
 		));
 	}
 
-	let lease = format!("--force-with-lease=refs/heads/main:{expected_base_oid}");
-	let refspec = format!("{merge_commit}:refs/heads/main");
+	let default_ref = format!("refs/heads/{default_branch}");
+	let lease = format!("--force-with-lease={default_ref}:{expected_base_oid}");
+	let refspec = format!("{merge_commit}:{default_ref}");
 	let push = Command::new("git")
 		.arg("-C")
 		.arg(&layout.primary)
@@ -456,14 +468,14 @@ fn create_and_push_exact_merge(
 		.env("GIT_TERMINAL_PROMPT", "0")
 		.output()
 		.map_err(|error| format!("failed to start exact landing push: {error}"))?;
-	let remote_after = remote_branch_oid(&layout.primary, DEFAULT_BRANCH)?;
+	let remote_after = remote_branch_oid(&layout.primary, default_branch)?;
 
 	if remote_after.as_deref() == Some(merge_commit.as_str()) {
 		return Ok(merge_commit);
 	}
 
 	Err(format!(
-		"exact landing compare-and-swap failed and remote `main` remains at `{}`: {}",
+		"exact landing compare-and-swap failed and remote `{default_branch}` remains at `{}`: {}",
 		remote_after.as_deref().unwrap_or("absent"),
 		output_detail(&push)
 	))
@@ -472,6 +484,7 @@ fn create_and_push_exact_merge(
 fn wait_for_exact_merge(
 	cwd: &Path,
 	pr_url: &str,
+	default_branch: &str,
 	expected_merge: &str,
 ) -> Result<PullRequest, String> {
 	for attempt in 1..=MERGE_VISIBILITY_ATTEMPTS {
@@ -499,13 +512,14 @@ fn wait_for_exact_merge(
 		}
 	}
 
-	Err(String::from(
-		"exact merge is on remote `main`, but pull request merge visibility is pending",
+	Err(format!(
+		"exact merge is on remote `{default_branch}`, but pull request merge visibility is pending"
 	))
 }
 
 fn verify_exact_merge(
 	primary: &Path,
+	default_branch: &str,
 	merge_commit: &str,
 	expected_base_oid: &str,
 	expected_head_oid: &str,
@@ -532,14 +546,15 @@ fn verify_exact_merge(
 		return Err(String::from("landing merge record readback mismatch"));
 	}
 	if require_remote_ancestry {
-		let fetched_remote = git_stdout(primary, &["rev-parse", "refs/remotes/origin/main"])?;
-		let observed_remote = remote_branch_oid(primary, DEFAULT_BRANCH)?;
+		let remote_ref = format!("refs/remotes/origin/{default_branch}");
+		let fetched_remote = git_stdout(primary, &["rev-parse", &remote_ref])?;
+		let observed_remote = remote_branch_oid(primary, default_branch)?;
 
 		if observed_remote.as_deref() != Some(&fetched_remote)
 			|| !git_is_ancestor(primary, merge_commit, &fetched_remote)?
 		{
-			return Err(String::from(
-				"landing merge is not in the exact current remote `main` lineage",
+			return Err(format!(
+				"landing merge is not in the exact current remote `{default_branch}` lineage"
 			));
 		}
 	}
@@ -547,10 +562,16 @@ fn verify_exact_merge(
 	Ok(())
 }
 
-fn sync_primary(primary: &Path, expected_base_oid: &str, merge_commit: &str) -> Result<(), String> {
-	require_primary_branch_and_clean(primary)?;
+fn sync_primary(
+	primary: &Path,
+	default_branch: &str,
+	expected_base_oid: &str,
+	merge_commit: &str,
+) -> Result<(), String> {
+	require_primary_branch_and_clean(primary, default_branch)?;
 	let local = git_stdout(primary, &["rev-parse", "HEAD"])?;
-	let remote = git_stdout(primary, &["rev-parse", "refs/remotes/origin/main"])?;
+	let remote_ref = format!("refs/remotes/origin/{default_branch}");
+	let remote = git_stdout(primary, &["rev-parse", &remote_ref])?;
 	let local_contains_merge =
 		local == merge_commit || git_is_ancestor(primary, merge_commit, &local)?;
 
@@ -563,7 +584,7 @@ fn sync_primary(primary: &Path, expected_base_oid: &str, merge_commit: &str) -> 
 		));
 	}
 
-	git_checked(primary, &["merge", "--ff-only", "refs/remotes/origin/main"])
+	git_checked(primary, &["merge", "--ff-only", &remote_ref])
 }
 
 fn cleanup_lane(
@@ -683,10 +704,14 @@ fn delete_remote_branch_exact(
 	Err(format!("exact remote task branch cleanup failed: {}", output_detail(&output)))
 }
 
-fn require_primary_synced(primary: &Path, merge_commit: &str) -> Result<(), String> {
-	require_primary_branch_and_clean(primary)?;
+fn require_primary_synced(
+	primary: &Path,
+	default_branch: &str,
+	merge_commit: &str,
+) -> Result<(), String> {
+	require_primary_branch_and_clean(primary, default_branch)?;
 	let local = git_stdout(primary, &["rev-parse", "HEAD"])?;
-	let remote = remote_branch_oid(primary, DEFAULT_BRANCH)?;
+	let remote = remote_branch_oid(primary, default_branch)?;
 
 	if remote.as_deref() != Some(&local) || !git_is_ancestor(primary, merge_commit, &local)? {
 		return Err(String::from("post-land primary and remote default-branch readback mismatch"));
@@ -695,11 +720,12 @@ fn require_primary_synced(primary: &Path, merge_commit: &str) -> Result<(), Stri
 	Ok(())
 }
 
-fn fetch_default_branch(primary: &Path) -> Result<(), String> {
-	git_checked(
-		primary,
-		&["fetch", "--quiet", "origin", "refs/heads/main:refs/remotes/origin/main"],
-	)
+fn fetch_default_branch(primary: &Path, default_branch: &str) -> Result<(), String> {
+	let remote_ref = format!("refs/heads/{default_branch}");
+	let tracking_ref = format!("refs/remotes/origin/{default_branch}");
+	let refspec = format!("{remote_ref}:{tracking_ref}");
+
+	git_checked(primary, &["fetch", "--quiet", "origin", &refspec])
 }
 
 fn git_is_ancestor(primary: &Path, ancestor: &str, descendant: &str) -> Result<bool, String> {
@@ -719,6 +745,49 @@ fn git_is_ancestor(primary: &Path, ancestor: &str, descendant: &str) -> Result<b
 	}
 
 	Err(format!("Git ancestry readback failed: {}", output_detail(&output)))
+}
+
+fn remote_default_branch(primary: &Path) -> Result<String, String> {
+	let output = command_output("git", primary, &["ls-remote", "--symref", "origin", "HEAD"])?;
+	let stdout = String::from_utf8(output.stdout)
+		.map_err(|error| format!("remote default-branch readback is not UTF-8: {error}"))?;
+	let mut target: Option<&str> = None;
+	let mut head_oid: Option<&str> = None;
+
+	for line in stdout.lines() {
+		let fields = line.split_ascii_whitespace().collect::<Vec<_>>();
+
+		if fields.len() == 3 && fields[0] == "ref:" && fields[2] == "HEAD" {
+			if target.replace(fields[1]).is_some() {
+				return Err(String::from("remote default-branch readback is ambiguous"));
+			}
+		} else if fields.len() == 2 && fields[1] == "HEAD" {
+			if head_oid.replace(fields[0]).is_some() {
+				return Err(String::from("remote default-branch readback is ambiguous"));
+			}
+		} else {
+			return Err(String::from("remote default-branch readback is malformed"));
+		}
+	}
+
+	let target =
+		target.ok_or_else(|| String::from("remote default-branch symbolic ref is absent"))?;
+	let branch = target
+		.strip_prefix("refs/heads/")
+		.ok_or_else(|| String::from("remote default branch is not under `refs/heads`"))?;
+	let head_oid =
+		head_oid.ok_or_else(|| String::from("remote default-branch object ID is absent"))?;
+
+	validate_oid(head_oid)?;
+	git_checked(primary, &["check-ref-format", "--branch", branch])
+		.map_err(|_| String::from("remote default branch is not a valid branch name"))?;
+	if remote_branch_oid(primary, branch)?.as_deref() != Some(head_oid) {
+		return Err(String::from(
+			"remote default-branch symbolic ref and branch object ID do not match",
+		));
+	}
+
+	Ok(branch.to_owned())
 }
 
 fn remote_branch_oid(primary: &Path, branch: &str) -> Result<Option<String>, String> {
@@ -830,7 +899,7 @@ mod tests {
 	use super::{
 		RepositoryLayout, create_and_push_exact_merge, git_checked, git_stdout,
 		github_repository_from_pull_request_url, github_repository_from_remote, remote_branch_oid,
-		verify_exact_merge,
+		remote_default_branch, verify_exact_merge,
 	};
 
 	const RECORD: &str = r#"{"schema":"decodex/commit/2","change":"Land exact candidate","authority":"manual","impact":"compatible"}"#;
@@ -876,18 +945,60 @@ mod tests {
 	#[test]
 	fn exact_signed_merge_compare_and_swap_updates_only_the_expected_base() {
 		let fixture = Fixture::new();
-		let merge_commit =
-			create_and_push_exact_merge(&fixture.layout, &fixture.base, &fixture.head, RECORD)
-				.expect("exact merge should land");
+		let merge_commit = create_and_push_exact_merge(
+			&fixture.layout,
+			&fixture.default_branch,
+			&fixture.base,
+			&fixture.head,
+			RECORD,
+		)
+		.expect("exact merge should land");
 
 		assert_eq!(
-			remote_branch_oid(&fixture.layout.primary, "main")
+			remote_branch_oid(&fixture.layout.primary, &fixture.default_branch)
 				.expect("remote main should read")
 				.as_deref(),
 			Some(merge_commit.as_str())
 		);
 		verify_exact_merge(
 			&fixture.layout.primary,
+			&fixture.default_branch,
+			&merge_commit,
+			&fixture.base,
+			&fixture.head,
+			RECORD,
+			true,
+		)
+		.expect("exact merge evidence should verify");
+	}
+
+	#[test]
+	fn exact_signed_merge_supports_a_non_main_remote_default_branch() {
+		let fixture = Fixture::new_on("kubernetes-manifests");
+
+		assert_eq!(
+			remote_default_branch(&fixture.layout.primary)
+				.expect("remote default branch should resolve"),
+			fixture.default_branch
+		);
+		let merge_commit = create_and_push_exact_merge(
+			&fixture.layout,
+			&fixture.default_branch,
+			&fixture.base,
+			&fixture.head,
+			RECORD,
+		)
+		.expect("exact merge should land");
+
+		assert_eq!(
+			remote_branch_oid(&fixture.layout.primary, &fixture.default_branch)
+				.expect("remote default branch should read")
+				.as_deref(),
+			Some(merge_commit.as_str())
+		);
+		verify_exact_merge(
+			&fixture.layout.primary,
+			&fixture.default_branch,
 			&merge_commit,
 			&fixture.base,
 			&fixture.head,
@@ -907,8 +1018,9 @@ mod tests {
 		fs::write(
 			&hook,
 			format!(
-				"#!/bin/sh\ngit --git-dir='{}' update-ref refs/heads/main '{}'\n",
+				"#!/bin/sh\ngit --git-dir='{}' update-ref refs/heads/{} '{}'\n",
 				fixture.origin.display(),
+				fixture.default_branch,
 				fixture.head
 			),
 		)
@@ -923,13 +1035,18 @@ mod tests {
 		)
 		.expect("hook path should configure");
 
-		let error =
-			create_and_push_exact_merge(&fixture.layout, &fixture.base, &fixture.head, RECORD)
-				.expect_err("a raced base must reject");
+		let error = create_and_push_exact_merge(
+			&fixture.layout,
+			&fixture.default_branch,
+			&fixture.base,
+			&fixture.head,
+			RECORD,
+		)
+		.expect_err("a raced base must reject");
 
 		assert!(error.contains("compare-and-swap failed"));
 		assert_eq!(
-			remote_branch_oid(&fixture.layout.primary, "main")
+			remote_branch_oid(&fixture.layout.primary, &fixture.default_branch)
 				.expect("remote main should read")
 				.as_deref(),
 			Some(fixture.head.as_str())
@@ -941,11 +1058,16 @@ mod tests {
 		temp: TempDir,
 		origin: std::path::PathBuf,
 		layout: RepositoryLayout,
+		default_branch: String,
 		base: String,
 		head: String,
 	}
 	impl Fixture {
 		fn new() -> Self {
+			Self::new_on("main")
+		}
+
+		fn new_on(default_branch: &str) -> Self {
 			let temp = TempDir::new().expect("temp directory should create");
 			let origin = temp.path().join("origin.git");
 			let primary = temp.path().join("repo");
@@ -956,7 +1078,7 @@ mod tests {
 			run(Command::new("git").args([
 				"init",
 				"--bare",
-				"--initial-branch=main",
+				&format!("--initial-branch={default_branch}"),
 				origin.to_str().expect("origin path is UTF-8"),
 			]));
 			run(Command::new("git").args([
@@ -984,7 +1106,8 @@ mod tests {
 				],
 			)
 			.expect("base should commit");
-			git_checked(&primary, &["push", "-u", "origin", "main"]).expect("base should push");
+			git_checked(&primary, &["push", "-u", "origin", default_branch])
+				.expect("base should push");
 			let base = git_stdout(&primary, &["rev-parse", "HEAD"]).expect("base should read");
 
 			git_checked(
@@ -1019,6 +1142,7 @@ mod tests {
 				temp,
 				origin,
 				layout: RepositoryLayout { checkout, primary, is_primary: false },
+				default_branch: default_branch.to_owned(),
 				base,
 				head,
 			}
