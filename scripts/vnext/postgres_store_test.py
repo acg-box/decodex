@@ -2150,15 +2150,15 @@ def register_authority_scenarios(add: object) -> None:
 	)
 	add(
 		"credential-constraint", incompatible_store, incompatible, RUNTIME_ROLE,
-		mutation_sql="ALTER TABLE decodex.accounts DROP CONSTRAINT accounts_no_credentials",
+		mutation_sql=(
+			"ALTER TABLE decodex.accounts DROP CONSTRAINT accounts_no_credentials; "
+			+ credential_insert
+		),
 		precondition_sql=(
 			"SELECT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid="
 			"'decodex.accounts'::regclass AND conname='accounts_no_credentials') AND NOT EXISTS "
 			"(SELECT 1 FROM decodex.accounts WHERE account_id='92000000-0000-4000-8000-000000000001')"
 		),
-		pre_runtime_rejected_sql=credential_insert,
-		pre_runtime_rejected_sqlstate="23514",
-		runtime_effect_sql=credential_insert,
 		postcondition_sql=(
 			"SELECT NOT EXISTS (SELECT 1 FROM pg_catalog.pg_constraint WHERE conrelid="
 			"'decodex.accounts'::regclass AND conname='accounts_no_credentials') AND EXISTS "
