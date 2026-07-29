@@ -1747,7 +1747,7 @@ fn spawn_attested_protocol_process(
 		let pump = StdoutPump::start(spawned.stdout, sender, protocol_limit_exceeded)?;
 		owner.attach_pump(pump);
 
-		return Ok((owner, Box::new(spawned.stdin)));
+		Ok((owner, Box::new(spawned.stdin)))
 	}
 
 	#[cfg(not(target_os = "macos"))]
