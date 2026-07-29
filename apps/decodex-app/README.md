@@ -36,6 +36,10 @@ unavailable profile data remains row-scoped and never hides Reset Cards.
 The panel uses compact divider-separated rows and shows every account when they
 fit on the active display. On shorter displays, the account list remains
 scrollable without a persistent scroll indicator.
+The window and its interactive controls use only the system clear Liquid Glass
+material. Account rows have no custom opaque background, tint, stroke, blur, or
+shadow, so the system owns translucency, refraction, pointer response, and
+appearance adaptation.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative alias. The canonical account UUID

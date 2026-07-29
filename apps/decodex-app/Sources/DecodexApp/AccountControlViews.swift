@@ -245,15 +245,7 @@ private struct CompactAccountActionButton: View {
 			.modernGlassSurface(cornerRadius: 7, depth: .control)
 			.contentShape(Rectangle())
 		}
-		.buttonStyle(
-			PanelInteractiveButtonStyle(
-				isDisabled: isDisabled,
-				hoverLift: 0,
-				hoverScale: 1.01,
-				pressedScale: 0.97,
-				hoverShadowRadius: 2
-			)
-		)
+		.buttonStyle(.plain)
 		.disabled(isDisabled)
 		.opacity(isDisabled ? 0.42 : 1)
 		.help(help)

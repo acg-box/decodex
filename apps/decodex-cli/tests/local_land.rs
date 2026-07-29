@@ -27,13 +27,7 @@ fn local_land_binary_merges_syncs_and_cleans_the_exact_lane() {
 
 	assert_eq!(merge.len(), 40);
 	assert_eq!(git(&fixture.primary, &["rev-parse", "HEAD"]), merge);
-	assert_eq!(
-		bare_git(
-			&fixture.origin,
-			&["rev-parse", &format!("refs/heads/{}", fixture.default_branch)]
-		),
-		merge
-	);
+	assert_eq!(bare_git(&fixture.origin, &["rev-parse", "refs/heads/main"]), merge);
 	assert_eq!(
 		git(&fixture.primary, &["show", "-s", "--format=%P", &merge]),
 		format!("{} {}", fixture.base, fixture.head)
@@ -54,26 +48,7 @@ fn local_land_binary_merges_syncs_and_cleans_the_exact_lane() {
 }
 
 #[test]
-fn local_land_binary_supports_a_non_main_default_branch() {
-	let fixture = Fixture::new_on("kubernetes-manifests");
-	let merge = fixture.run_land();
-
-	assert_eq!(git(&fixture.primary, &["branch", "--show-current"]), fixture.default_branch);
-	assert_eq!(git(&fixture.primary, &["rev-parse", "HEAD"]), merge);
-	assert_eq!(
-		bare_git(
-			&fixture.origin,
-			&["rev-parse", &format!("refs/heads/{}", fixture.default_branch)]
-		),
-		merge
-	);
-	assert!(!fixture.checkout.exists());
-	assert_bare_ref_absent(&fixture.origin, &format!("refs/heads/{PR_BRANCH}"));
-	assert_repository_ref_absent(&fixture.primary, &format!("refs/heads/{PR_BRANCH}"));
-}
-
-#[test]
-fn local_land_recovers_when_remote_default_branch_advanced_after_the_exact_merge() {
+fn local_land_recovers_when_remote_main_advanced_after_the_exact_merge() {
 	let fixture = Fixture::new();
 	let tree = git(&fixture.checkout, &["rev-parse", &format!("{}^{{tree}}", fixture.head)]);
 	let record = r#"{"schema":"decodex/commit/2","change":"Land Exact integration candidate","authority":"manual","impact":"compatible"}"#;
@@ -85,9 +60,9 @@ fn local_land_recovers_when_remote_default_branch_advanced_after_the_exact_merge
 		&fixture.checkout,
 		&[
 			"push",
-			&format!("--force-with-lease=refs/heads/{}:{}", fixture.default_branch, fixture.base),
+			&format!("--force-with-lease=refs/heads/main:{}", fixture.base),
 			"origin",
-			&format!("{merge}:refs/heads/{}", fixture.default_branch),
+			&format!("{merge}:refs/heads/main"),
 		],
 	);
 	let descendant = git(
@@ -101,22 +76,13 @@ fn local_land_recovers_when_remote_default_branch_advanced_after_the_exact_merge
 			r#"{"schema":"decodex/commit/2","change":"authorized descendant","authority":"manual","impact":"compatible"}"#,
 		],
 	);
-	git_checked(
-		&fixture.checkout,
-		&["push", "origin", &format!("{descendant}:refs/heads/{}", fixture.default_branch)],
-	);
+	git_checked(&fixture.checkout, &["push", "origin", &format!("{descendant}:refs/heads/main")]);
 	fixture.report_merge(&merge);
 	fixture.reset_hook_marker();
 
 	assert_eq!(fixture.run_land(), merge);
 	assert_eq!(git(&fixture.primary, &["rev-parse", "HEAD"]), descendant);
-	assert_eq!(
-		bare_git(
-			&fixture.origin,
-			&["rev-parse", &format!("refs/heads/{}", fixture.default_branch)]
-		),
-		descendant
-	);
+	assert_eq!(bare_git(&fixture.origin, &["rev-parse", "refs/heads/main"]), descendant);
 	run_checked(Command::new("git").arg("-C").arg(&fixture.primary).args([
 		"merge-base",
 		"--is-ancestor",
@@ -137,16 +103,11 @@ struct Fixture {
 	fake_bin: PathBuf,
 	reported_merge: PathBuf,
 	hook_marker: PathBuf,
-	default_branch: String,
 	base: String,
 	head: String,
 }
 impl Fixture {
 	fn new() -> Self {
-		Self::new_on("main")
-	}
-
-	fn new_on(default_branch: &str) -> Self {
 		let temp = TempDir::new().expect("temporary directory should create");
 		let origin = temp.path().join("origin.git");
 		let primary = temp.path().join("repo");
@@ -160,7 +121,7 @@ impl Fixture {
 		run_checked(Command::new("git").args([
 			"init",
 			"--bare",
-			&format!("--initial-branch={default_branch}"),
+			"--initial-branch=main",
 			origin.to_str().expect("origin path should be UTF-8"),
 		]));
 		run_checked(Command::new("git").args([
@@ -179,7 +140,7 @@ impl Fixture {
 			.expect("worktree ignore should write");
 		git_checked(&primary, &["add", "README.md", ".gitignore"]);
 		git_checked(&primary, &["commit", "-m", "base"]);
-		git_checked(&primary, &["push", "-u", "origin", default_branch]);
+		git_checked(&primary, &["push", "-u", "origin", "main"]);
 		let base = git(&primary, &["rev-parse", "HEAD"]);
 
 		configure_signing(temp.path(), &primary);
@@ -212,7 +173,7 @@ impl Fixture {
 		let head = git(&checkout, &["rev-parse", "HEAD"]);
 
 		write_pre_push_hook(&hooks, &hook_marker);
-		write_fake_gh(&fake_bin, &origin, &reported_merge, default_branch, &base, &head);
+		write_fake_gh(&fake_bin, &origin, &reported_merge, &base, &head);
 
 		Self {
 			_temp: temp,
@@ -222,7 +183,6 @@ impl Fixture {
 			fake_bin,
 			reported_merge,
 			hook_marker,
-			default_branch: default_branch.to_owned(),
 			base,
 			head,
 		}
@@ -257,12 +217,11 @@ impl Fixture {
 		assert_success(&output);
 		let stdout = String::from_utf8(output.stdout).expect("Decodex output should be UTF-8");
 		let prefix = format!("land ok: pr={PR_URL} merge_commit=");
-		let suffix =
-			format!(" default_branch={} local_default_branch_synced=true\n", self.default_branch);
+		let suffix = " default_branch=main local_default_branch_synced=true\n";
 
 		stdout
 			.strip_prefix(&prefix)
-			.and_then(|value| value.strip_suffix(&suffix))
+			.and_then(|value| value.strip_suffix(suffix))
 			.expect("Decodex should emit the stable landing receipt")
 			.to_owned()
 	}
@@ -317,14 +276,7 @@ fn configure_signing(root: &Path, repository: &Path) {
 	);
 }
 
-fn write_fake_gh(
-	fake_bin: &Path,
-	origin: &Path,
-	reported_merge: &Path,
-	default_branch: &str,
-	base: &str,
-	head: &str,
-) {
+fn write_fake_gh(fake_bin: &Path, origin: &Path, reported_merge: &Path, base: &str, head: &str) {
 	fs::create_dir_all(fake_bin).expect("fake binary directory should create");
 	let script = fake_bin.join("gh");
 	let origin = shell_quote(origin.to_str().expect("origin path should be UTF-8"));
@@ -342,20 +294,20 @@ fn write_fake_gh(
 			.expect("Git executable path should be UTF-8"),
 	);
 	let body = format!(
-		"#!/bin/sh\nset -eu\nremote=$({git} --git-dir={origin} rev-parse refs/heads/{default_branch})\n\
+		"#!/bin/sh\nset -eu\nremote=$({git} --git-dir={origin} rev-parse refs/heads/main)\n\
 		 if [ -f {reported_merge} ]; then\n\
 		 merge=$(cat {reported_merge})\n\
 		 printf '{{\"url\":\"{PR_URL}\",\"state\":\"MERGED\",\"isDraft\":false,\
-		 \"isCrossRepository\":false,\"baseRefName\":\"{default_branch}\",\"baseRefOid\":\"{base}\",\
+		 \"isCrossRepository\":false,\"baseRefName\":\"main\",\"baseRefOid\":\"{base}\",\
 		 \"headRefName\":\"{PR_BRANCH}\",\"headRefOid\":\"{head}\",\
 		 \"mergeCommit\":{{\"oid\":\"%s\"}}}}\\n' \"$merge\"\n\
 		 elif [ \"$remote\" = \"{base}\" ]; then\n\
 		 printf '%s\\n' '{{\"url\":\"{PR_URL}\",\"state\":\"OPEN\",\"isDraft\":false,\
-		 \"isCrossRepository\":false,\"baseRefName\":\"{default_branch}\",\"baseRefOid\":\"{base}\",\
+		 \"isCrossRepository\":false,\"baseRefName\":\"main\",\"baseRefOid\":\"{base}\",\
 		 \"headRefName\":\"{PR_BRANCH}\",\"headRefOid\":\"{head}\",\"mergeCommit\":null}}'\n\
 		 else\n\
 		 printf '{{\"url\":\"{PR_URL}\",\"state\":\"MERGED\",\"isDraft\":false,\
-		 \"isCrossRepository\":false,\"baseRefName\":\"{default_branch}\",\"baseRefOid\":\"{base}\",\
+		 \"isCrossRepository\":false,\"baseRefName\":\"main\",\"baseRefOid\":\"{base}\",\
 		 \"headRefName\":\"{PR_BRANCH}\",\"headRefOid\":\"{head}\",\
 		 \"mergeCommit\":{{\"oid\":\"%s\"}}}}\\n' \"$remote\"\n\
 		 fi\n"
