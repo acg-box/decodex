@@ -539,12 +539,12 @@ struct ResetCardPendingAttemptStore {
 		let target = attempt.target
 		let descriptor = target.descriptor
 
-		return ResetCardCLIClient.isValidAuthority(target.authority)
-			&& ResetCardCLIClient.isCanonicalAccountID(target.accountID)
+		return DecodexNativeClient.isValidAuthority(target.authority)
+			&& DecodexNativeClient.isCanonicalAccountID(target.accountID)
 			&& target.expectedRevision > 0
 			&& descriptor.grantedAtUnixSeconds >= 0
 			&& descriptor.expiresAtUnixSeconds > descriptor.grantedAtUnixSeconds
-			&& ResetCardCLIClient.isCanonicalUUID(attempt.idempotencyKey)
+			&& DecodexNativeClient.isCanonicalUUID(attempt.idempotencyKey)
 	}
 
 	private static func isPrivateRegularFile(

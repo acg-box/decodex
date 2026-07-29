@@ -107,36 +107,32 @@ protocol AccountProfileClient: Sendable {
 	) async throws -> AccountProfileRead
 }
 
-extension ResetCardCLIClient: AccountProfileClient {
+extension DecodexNativeClient: AccountProfileClient {
 	func profile(
 		for account: ResetCardAccountRecord,
 		includeEmail: Bool
 	) async throws -> AccountProfileRead {
 		guard Self.isCanonicalAccountID(account.accountID),
 			account.accountRevision > 0,
-			account.authority.map(Self.isValidAuthority) ?? true
+			let authority = account.authority,
+			Self.isValidAuthority(authority)
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
 
-		let processResult = try await run(
-			arguments: Self.profileArguments(
+		let response: (
+			authority: ResetCardAuthority,
+			data: AccountProfileWireResult
+		) = try await perform(
+			DecodexNativeRequest(
+				operation: "get_account_profile",
 				accountID: account.accountID,
-				includeEmail: includeEmail,
-				authority: account.authority
-			)
+				includeEmail: includeEmail
+			),
+			authority: authority
 		)
-		let document = try decode(
-			AccountProfileDocument.self,
-			from: processResult,
-			schema: accountCLISchema,
-			command: "profile"
-		)
-		guard document.outcome == "success", processResult.exitCode == 0 else {
-			throw ResetCardClientError.invalidResponse
-		}
 
-		switch document.result {
+		switch response.data {
 		case .current(let profile):
 			return .available(
 				try profile.observation(
@@ -158,52 +154,6 @@ extension ResetCardCLIClient: AccountProfileClient {
 				try unavailable.value(includeEmail: includeEmail)
 			)
 		}
-	}
-
-	static func profileArguments(
-		accountID: String,
-		includeEmail: Bool,
-		authority: ResetCardAuthority?
-	) -> [String] {
-		let authority = authority.map(authorityArguments) ?? []
-		var arguments = authority + [
-			"--output",
-			"json",
-			"account",
-			"profile",
-			"--account-id",
-			accountID,
-		]
-		if includeEmail {
-			arguments.append("--include-email")
-		}
-		return arguments
-	}
-}
-
-private struct AccountProfileDocument: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let result: AccountProfileWireResult
-
-	init(from decoder: Decoder) throws {
-		try requireExactFields(
-			in: decoder,
-			expected: ["schema", "command", "outcome", "result"]
-		)
-		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		result = try container.decode(AccountProfileWireResult.self, forKey: .result)
-	}
-
-	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
-		case outcome
-		case result
 	}
 }
 

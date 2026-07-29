@@ -3,66 +3,65 @@ import SwiftUI
 struct AccountRowActionsView: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
+	@Binding var isPresentingDetails: Bool
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var isLogoutArmed = false
-	@State private var isRenaming = false
-	@State private var renameLabel = ""
 
 	var body: some View {
-		Group {
-			if isLogoutArmed {
-				logoutConfirmation
-			} else {
-				defaultActions
+		HStack(spacing: 4) {
+			CompactAccountActionButton(
+				title: "Use in Codex",
+				symbol: isCodexProjection
+					? "checkmark.circle.fill"
+					: "arrow.right.circle",
+				isActive: isCodexProjection,
+				isDisabled: codexActionIsDisabled,
+				isBusy: store.isControllingAccount(
+					state.account.accountID,
+					activity: .codexProjection
+				),
+				help: isCodexProjection
+					? "This account is projected to the shared Codex login."
+					: "Use this account for new Codex processes. This does not change Decodex routing."
+			) {
+				Task {
+					await store.useAccountInCodex(state.account.accountID)
+				}
 			}
-		}
-		.animation(PanelMotion.state, value: isLogoutArmed)
-		.onChange(of: state.account.accountRevision) {
-			isLogoutArmed = false
-		}
-	}
 
-	private var defaultActions: some View {
-		HStack(spacing: 2) {
-			if showsLoginRecovery {
-				PanelIconButtonView(
-					symbol: "person.crop.circle.badge.plus",
-					tint: PanelPalette.warning(colorScheme),
-					isActive: false,
-					isDisabled: controlsAreDisabled,
-					isPrimary: true,
-					size: 20,
-					action: {
-						Task {
-							await store.refreshCredentials(for: state.account.accountID)
-						}
-					},
-					help: "Sign in again for this account"
-				)
+			CompactAccountActionButton(
+				title: isFixed ? "Routed" : "Route",
+				symbol: isFixed ? "point.3.connected.trianglepath.dotted" : "arrow.triangle.branch",
+				isActive: isFixed,
+				isDisabled: routingActionIsDisabled,
+				isBusy: store.isRoutingAccountControl,
+				help: isFixed
+					? "Decodex is routed only to this account."
+					: "Route Decodex only to this account. This does not change the shared Codex login."
+			) {
+				Task {
+					await store.selectFixedAccount(state.account.accountID)
+				}
 			}
+
+			CompactAccountActionButton(
+				title: "Details",
+				symbol: "chart.bar.xaxis",
+				isActive: isPresentingDetails,
+				isDisabled: false,
+				isBusy: false,
+				help: "Show saved activity, plan, and freshness details for this account."
+			) {
+				isPresentingDetails.toggle()
+			}
+			.popover(isPresented: $isPresentingDetails, arrowEdge: .trailing) {
+				AccountProfileDetailView(state: state)
+			}
+
+			Spacer(minLength: 0)
 
 			Menu {
-				Button(
-					isFixed ? "Use Balanced Routing" : "Route Only to This Account"
-				) {
-					Task {
-						if isFixed {
-							await store.selectBalancedAccounts()
-						} else {
-							await store.selectFixedAccount(state.account.accountID)
-						}
-					}
-				}
-				.disabled(controlsAreDisabled || canSelect == false)
-
-				Divider()
-
-				Button("Rename…") {
-					renameLabel = state.account.displayLabel
-					isRenaming = true
-				}
-
-				Button(state.account.enabled ? "Disable" : "Enable") {
+				Button(state.account.enabled ? "Disable Account" : "Enable Account") {
 					Task {
 						await store.setAccount(
 							state.account.accountID,
@@ -70,107 +69,95 @@ struct AccountRowActionsView: View {
 						)
 					}
 				}
-				.disabled(controlsAreDisabled)
-
-				Button("Refresh Login") {
-					Task {
-						await store.refreshCredentials(for: state.account.accountID)
-					}
-				}
-				.disabled(
-					controlsAreDisabled || state.account.credentialBinding == nil
-				)
+				.disabled(lifecycleActionIsDisabled)
 
 				Divider()
 
-				Button("Log Out", role: .destructive) {
+				Button("Log Out…", role: .destructive) {
 					isLogoutArmed = true
 				}
+				.disabled(lifecycleActionIsDisabled)
 			} label: {
 				Image(systemName: "ellipsis")
 					.font(PanelFont.iconButton)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.frame(width: 20, height: 20)
+					.frame(width: 24, height: 24)
 					.contentShape(Rectangle())
 			}
 			.menuStyle(.borderlessButton)
 			.menuIndicator(.hidden)
 			.fixedSize()
-			.disabled(controlsAreDisabled)
-			.help("Account actions")
-			.popover(isPresented: $isRenaming, arrowEdge: .top) {
-				renamePopover
+			.help("More account actions")
+			.accessibilityLabel("More account actions")
+			.popover(isPresented: $isLogoutArmed, arrowEdge: .trailing) {
+				logoutConfirmation
 			}
+		}
+		.onChange(of: state.account.accountRevision) {
+			isLogoutArmed = false
 		}
 	}
 
 	private var logoutConfirmation: some View {
-		HStack(spacing: 4) {
-			Button {
-				isLogoutArmed = false
-			} label: {
-				Image(systemName: "xmark")
-					.frame(width: 16, height: 18)
-			}
-			.buttonStyle(.plain)
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.disabled(controlsAreDisabled)
-			.help("Keep this account")
-
-			Button("Log Out", role: .destructive) {
-				Task {
-					await store.logoutAccount(state.account.accountID)
-					isLogoutArmed = false
-				}
-			}
-			.buttonStyle(.borderless)
-			.controlSize(.mini)
-			.foregroundStyle(PanelPalette.destructive(colorScheme))
-			.disabled(controlsAreDisabled)
-		}
-		.fixedSize()
-	}
-
-	private var renamePopover: some View {
 		VStack(alignment: .leading, spacing: 9) {
-			Text("Rename account")
+			Text("Log out this account?")
 				.font(.headline)
 
-			TextField("Display name", text: $renameLabel)
-				.textFieldStyle(.roundedBorder)
-				.frame(width: 220)
+			Text("The account and its saved credential binding will be removed from Decodex.")
+				.font(.callout)
+				.foregroundStyle(.secondary)
+				.fixedSize(horizontal: false, vertical: true)
 
 			HStack {
 				Button("Cancel") {
-					isRenaming = false
+					isLogoutArmed = false
 				}
 				.keyboardShortcut(.cancelAction)
 
 				Spacer()
 
-				Button("Save") {
-					let label = renameLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+				Button("Log Out", role: .destructive) {
 					Task {
-						await store.renameAccount(
-							state.account.accountID,
-							displayLabel: label
-						)
-						isRenaming = false
+						await store.logoutAccount(state.account.accountID)
+						isLogoutArmed = false
 					}
 				}
 				.keyboardShortcut(.defaultAction)
-				.disabled(
-					renameLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-						|| controlsAreDisabled
-				)
+				.disabled(lifecycleActionIsDisabled)
 			}
 		}
+		.frame(width: 240)
 		.padding(12)
 	}
 
-	private var controlsAreDisabled: Bool {
-		store.isRefreshing
+	private var isCodexProjection: Bool {
+		store.isCodexProjection(state.account.accountID)
+	}
+
+	private var codexActionIsDisabled: Bool {
+		isCodexProjection
+			|| canSelect == false
+			|| store.canPerformDirectAccountControl == false
+			|| store.isControllingAccount(state.account.accountID)
+			|| store.isEnrollingAccount
+			|| store.isRoutingAccountControl
+			|| store.submittingKey != nil
+	}
+
+	private var routingActionIsDisabled: Bool {
+		isFixed
+			|| canSelect == false
+			|| store.canPerformDirectAccountControl == false
+			|| store.isRoutingAccountControl
 			|| store.isAccountControlInProgress
+			|| store.submittingKey != nil
+	}
+
+	private var lifecycleActionIsDisabled: Bool {
+		store.isRefreshing
+			|| store.isRefreshingAccountSkeleton
+			|| store.isAccountControlInProgress
+			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
 			|| store.submittingKey != nil
 	}
 
@@ -178,6 +165,7 @@ struct AccountRowActionsView: View {
 		state.account.enabled
 			&& state.account.lifecycleReadiness == .ready
 			&& state.account.unsettledOperation == nil
+			&& store.isAwaitingFreshAccountSkeleton(state.account.accountID) == false
 	}
 
 	private var isFixed: Bool {
@@ -186,34 +174,110 @@ struct AccountRowActionsView: View {
 		}
 		return accountID == state.account.accountID
 	}
+}
 
-	private var showsLoginRecovery: Bool {
-		state.account.credentialBinding != nil
-			&& (
-				state.account.observedState == .authFailed
-					|| state.profileUnavailable?.error == .unauthorized
+struct AccountRefreshLoginButton: View {
+	let state: ResetCardAccountState
+	let store: ResetCardStore
+
+	var body: some View {
+		CompactAccountActionButton(
+			title: "Refresh Login",
+			symbol: "person.crop.circle.badge.plus",
+			isActive: false,
+			isDisabled: isDisabled,
+			isBusy: store.isControllingAccount(
+				state.account.accountID,
+				activity: .loginRefresh
+			),
+			help: "Refresh the saved login for this account from the matching shared Codex login."
+		) {
+			Task {
+				await store.refreshCredentials(for: state.account.accountID)
+			}
+		}
+	}
+
+	private var isDisabled: Bool {
+		state.account.credentialBinding == nil
+			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
+			|| store.canPerformDirectAccountControl == false
+			|| store.isControllingAccount(state.account.accountID)
+			|| store.isEnrollingAccount
+			|| store.isRoutingAccountControl
+			|| store.submittingKey != nil
+	}
+}
+
+private struct CompactAccountActionButton: View {
+	let title: String
+	let symbol: String
+	let isActive: Bool
+	let isDisabled: Bool
+	let isBusy: Bool
+	let help: String
+	let action: () -> Void
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		Button(action: action) {
+			ZStack {
+				Label(title, systemImage: symbol)
+					.opacity(isBusy ? 0 : 1)
+
+				if isBusy {
+					ProgressView()
+						.controlSize(.mini)
+						.accessibilityHidden(true)
+				}
+			}
+			.font(PanelFont.compactAction)
+			.lineLimit(1)
+			.foregroundStyle(
+				isActive
+					? PanelPalette.routeAccent(colorScheme)
+					: PanelPalette.secondaryText(colorScheme)
 			)
+			.padding(.horizontal, 5)
+			.frame(minHeight: 24)
+			.background(
+				isActive
+					? PanelPalette.routeAccent(colorScheme).opacity(
+						colorScheme == .dark ? 0.16 : 0.1
+					)
+					: PanelPalette.progressTrack(colorScheme).opacity(0.54)
+			)
+			.clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+			.contentShape(Rectangle())
+		}
+		.buttonStyle(.plain)
+		.disabled(isDisabled)
+		.opacity(isDisabled ? 0.48 : 1)
+		.help(help)
+		.accessibilityLabel(title)
+		.accessibilityHint(help)
+		.accessibilityValue(
+			isBusy ? "In progress" : (isActive ? "Current" : "")
+		)
 	}
 }
 
 struct AccountEnrollmentView: View {
 	let store: ResetCardStore
 	let dismiss: () -> Void
-	@State private var displayLabel = ""
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 10) {
 			Text("Add Codex login")
 				.font(.headline)
 
-			Text("Import the account currently signed in to Codex.")
-				.font(.callout)
-				.foregroundStyle(.secondary)
-				.fixedSize(horizontal: false, vertical: true)
-
-			TextField("Display name", text: $displayLabel)
-				.textFieldStyle(.roundedBorder)
-				.frame(width: 250)
+			Text(
+				"Import the account currently signed in to Codex. "
+					+ "Decodex assigns a stable account alias."
+			)
+			.font(.callout)
+			.foregroundStyle(.secondary)
+			.fixedSize(horizontal: false, vertical: true)
 
 			HStack {
 				Button("Cancel", action: dismiss)
@@ -222,21 +286,18 @@ struct AccountEnrollmentView: View {
 				Spacer()
 
 				Button("Add") {
-					let label = displayLabel.trimmingCharacters(in: .whitespacesAndNewlines)
 					Task {
-						await store.enrollFromSharedCodex(displayLabel: label)
+						await store.enrollFromSharedCodex()
 						if store.message?.tone != .error {
 							dismiss()
 						}
 					}
 				}
 				.keyboardShortcut(.defaultAction)
-				.disabled(
-					displayLabel.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-						|| store.isEnrollingAccount
-				)
+				.disabled(store.isEnrollingAccount)
 			}
 		}
+		.frame(width: 260)
 		.padding(14)
 	}
 }

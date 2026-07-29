@@ -186,7 +186,7 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
-	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
 	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
 	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",

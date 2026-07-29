@@ -13,8 +13,8 @@ use std::{
 
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
-	AccountOperationKind, AccountOperationPhase, AccountRecord, AccountSelectionMode,
-	AccountSelectionRecovery, CredentialBinding, CredentialVersion,
+	AccountOperationKind, AccountOperationPhase, AccountProvider, AccountRecord,
+	AccountSelectionMode, AccountSelectionRecovery, CredentialBinding, CredentialVersion,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
 use decodex_postgres::{
@@ -24,13 +24,18 @@ use decodex_postgres::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use tokio::sync::{Mutex as AsyncMutex, OwnedMutexGuard};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 
 use crate::{
 	account_import::{
-		CredentialImportError, decode_chatgpt_identity, read_explicit_credential_file,
-		read_shared_codex_credential,
+		CredentialImportError, ImportedCredential, decode_chatgpt_identity,
+		read_explicit_credential_file, read_shared_codex_credential,
+	},
+	auth_projection::{
+		CodexAuthProjectionError, SharedCodexAuthIdentity, project_shared_codex_auth,
+		read_shared_codex_auth_identity, shared_codex_auth_matches,
 	},
 	host_credentials::{
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
@@ -41,10 +46,60 @@ const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
+const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v1\0";
+const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
+const CROCKFORD_BASE32: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// Derive the stable public account alias from the canonical credential-negative provider binding.
+pub(crate) fn stable_account_alias(provider: &ProviderIdentity) -> String {
+	let provider_kind = match provider.provider() {
+		AccountProvider::Chatgpt => b"chatgpt".as_slice(),
+	};
+	let digest = Sha256::new()
+		.chain_update(ACCOUNT_ALIAS_DOMAIN)
+		.chain_update(provider_kind)
+		.chain_update(b"\0")
+		.chain_update(provider.account_id().as_bytes())
+		.finalize();
+	let mut encoded = [b'0'; 10];
+	for (index, output) in encoded.iter_mut().enumerate() {
+		let bit = index * 5;
+		let byte = bit / 8;
+		let shift = 11_usize.saturating_sub(bit % 8);
+		let pair = u16::from_be_bytes([digest[byte], digest[byte + 1]]);
+		*output = CROCKFORD_BASE32[((pair >> shift) & 0x1f) as usize];
+	}
+	let encoded = std::str::from_utf8(&encoded).expect("Crockford alphabet is ASCII");
+	format!("Account {}-{}", &encoded[..5], &encoded[5..])
+}
+
+fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBinding) -> String {
+	let digest = Sha256::new()
+		.chain_update(CODEX_AUTH_PROJECTION_DOMAIN)
+		.chain_update(account.account_id.as_str().as_bytes())
+		.chain_update(b"\0")
+		.chain_update((account.revision as u64).to_be_bytes())
+		.chain_update(binding.version.get().to_be_bytes())
+		.chain_update(binding.fingerprint.as_str().as_bytes())
+		.finalize();
+	let mut encoded = String::with_capacity(64);
+	for byte in digest {
+		use std::fmt::Write as _;
+		write!(&mut encoded, "{byte:02x}").expect("writing to a String cannot fail");
+	}
+	encoded
+}
 
 pub(crate) struct CredentialRefreshResult {
 	returned_provider: ProviderIdentity,
 	bundle: CredentialSecretBundle,
+}
+
+/// Credential-negative readback of the normal shared Codex auth projection.
+pub(crate) enum CodexAuthProjectionInspection {
+	Current { account_id: AccountId, account_revision: i64, projection_digest: String },
+	Unmanaged,
+	Unavailable,
 }
 
 /// Provider refresh boundary. Implementations receive secrets only in short-lived memory.
@@ -421,6 +476,143 @@ impl AccountService {
 		Ok(self.store.read_account_routing_control().await?)
 	}
 
+	/// Match the safe shared Codex auth identity against current credential-negative bindings.
+	pub(crate) async fn codex_auth_projection(&self) -> CodexAuthProjectionInspection {
+		let provider_account_id = match read_shared_codex_auth_identity() {
+			Ok(SharedCodexAuthIdentity::Chatgpt { provider_account_id }) => provider_account_id,
+			Ok(SharedCodexAuthIdentity::Unmanaged) => {
+				return CodexAuthProjectionInspection::Unmanaged;
+			},
+			Err(_) => return CodexAuthProjectionInspection::Unavailable,
+		};
+		let Ok(accounts) = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await else {
+			return CodexAuthProjectionInspection::Unavailable;
+		};
+		let mut matching = accounts.into_iter().filter(|account| {
+			!account.tombstoned
+				&& account.credential.as_ref().is_some_and(|binding| {
+					binding.provider.provider() == AccountProvider::Chatgpt
+						&& binding.provider.account_id() == provider_account_id
+				})
+		});
+		let Some(candidate) = matching.next() else {
+			return CodexAuthProjectionInspection::Unmanaged;
+		};
+		if matching.next().is_some() {
+			return CodexAuthProjectionInspection::Unavailable;
+		}
+		let account_id = candidate.account_id;
+		let Ok(lock) = self.lock_for(&account_id) else {
+			return CodexAuthProjectionInspection::Unavailable;
+		};
+		let _guard = lock.lock().await;
+		let Ok(account) = self.load_account(&account_id).await else {
+			return CodexAuthProjectionInspection::Unavailable;
+		};
+		if account.tombstoned || account.revision <= 0 {
+			return CodexAuthProjectionInspection::Unavailable;
+		}
+		let Some(binding) = account.credential.as_ref() else {
+			return CodexAuthProjectionInspection::Unmanaged;
+		};
+		if binding.provider.provider() != AccountProvider::Chatgpt
+			|| binding.provider.account_id() != provider_account_id
+		{
+			return CodexAuthProjectionInspection::Unmanaged;
+		}
+		let Ok(stored) = self.credentials.read_exact(&account.account_id, binding) else {
+			return CodexAuthProjectionInspection::Unavailable;
+		};
+		let Some(id_token) = stored.bundle().id_token() else {
+			return CodexAuthProjectionInspection::Unmanaged;
+		};
+		let Ok(identity) = decode_chatgpt_identity(id_token) else {
+			return CodexAuthProjectionInspection::Unmanaged;
+		};
+		if identity.provider != binding.provider {
+			return CodexAuthProjectionInspection::Unmanaged;
+		}
+		match shared_codex_auth_matches(stored.bundle(), binding.provider.account_id()) {
+			Ok(true) => {},
+			Ok(false) => return CodexAuthProjectionInspection::Unmanaged,
+			Err(_) => return CodexAuthProjectionInspection::Unavailable,
+		};
+		CodexAuthProjectionInspection::Current {
+			account_id: account.account_id.clone(),
+			account_revision: account.revision,
+			projection_digest: codex_auth_projection_digest(&account, binding),
+		}
+	}
+
+	/// Project and durably complete one exact logical command while the account writer is held.
+	pub(crate) async fn use_account_in_codex_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		account_id: &AccountId,
+		expected_revision: i64,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<(i64, String), AccountLifecycleError>) -> Result<Value, StoreError> + Send,
+	{
+		let lock = self.lock_for(account_id)?;
+		let _guard = lock.lock().await;
+		let result = use_in_codex_receipt_result(
+			self.use_account_in_codex_locked(account_id, expected_revision).await,
+		)?;
+		let response = build_response(result)?;
+		self.store.complete_account_command(lease, &response).await?;
+		Ok(response)
+	}
+
+	async fn use_account_in_codex_locked(
+		&self,
+		account_id: &AccountId,
+		expected_revision: i64,
+	) -> Result<(i64, String), UseInCodexProjectionError> {
+		let account =
+			self.load_account(account_id).await.map_err(UseInCodexProjectionError::Rejected)?;
+		let binding = projection_binding(&account, expected_revision)
+			.map_err(UseInCodexProjectionError::Rejected)?
+			.clone();
+		let stored = self
+			.credentials
+			.read_exact(account_id, &binding)
+			.map_err(AccountLifecycleError::from)
+			.map_err(UseInCodexProjectionError::Rejected)?;
+		let id_token = stored
+			.bundle()
+			.id_token()
+			.ok_or(AccountLifecycleError::CredentialAbsent)
+			.map_err(UseInCodexProjectionError::Rejected)?;
+		let identity = decode_chatgpt_identity(id_token)
+			.map_err(AccountLifecycleError::from)
+			.map_err(UseInCodexProjectionError::Rejected)?;
+		if identity.provider != binding.provider {
+			return Err(UseInCodexProjectionError::Rejected(
+				AccountLifecycleError::ProviderMismatch,
+			));
+		}
+		let latest =
+			self.load_account(account_id).await.map_err(UseInCodexProjectionError::Rejected)?;
+		if latest.revision != account.revision
+			|| latest.enabled != account.enabled
+			|| latest.lifecycle_readiness != account.lifecycle_readiness
+			|| latest.tombstoned != account.tombstoned
+			|| latest.credential.as_ref() != Some(&binding)
+		{
+			return Err(UseInCodexProjectionError::Rejected(AccountLifecycleError::StaleAccount));
+		}
+		match project_shared_codex_auth(stored.bundle(), binding.provider.account_id()) {
+			Ok(()) => {},
+			Err(CodexAuthProjectionError::OutcomeUnknown) => {
+				return Err(UseInCodexProjectionError::OutcomeUnknown);
+			},
+			Err(error) => return Err(UseInCodexProjectionError::Rejected(projection_error(error))),
+		}
+		Ok((account.revision, codex_auth_projection_digest(&account, &binding)))
+	}
+
 	/// Enroll through the logical-command journal and commit the terminal registry projection with
 	/// its exact public result in one PostgreSQL transaction.
 	pub(crate) async fn enroll_from_shared_codex_command<F>(
@@ -428,7 +620,6 @@ impl AccountService {
 		lease: AccountCommandReceiptLease,
 		operation_id: AccountOperationId,
 		account_id: AccountId,
-		label: String,
 		enabled: bool,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
@@ -444,12 +635,13 @@ impl AccountService {
 					.await;
 			},
 		};
+		let alias = stable_account_alias(&imported.provider);
 		self.install_credentials_command(
 			lease,
 			operation_id,
 			account_id,
 			AccountOperationKind::Enroll,
-			label,
+			alias,
 			enabled,
 			imported.provider,
 			imported.bundle,
@@ -465,7 +657,6 @@ impl AccountService {
 		lease: AccountCommandReceiptLease,
 		operation_id: AccountOperationId,
 		account_id: AccountId,
-		label: String,
 		enabled: bool,
 		source_descriptor: &str,
 		build_response: F,
@@ -482,12 +673,13 @@ impl AccountService {
 					.await;
 			},
 		};
+		let alias = stable_account_alias(&imported.provider);
 		self.install_credentials_command(
 			lease,
 			operation_id,
 			account_id,
 			AccountOperationKind::Import,
-			label,
+			alias,
 			enabled,
 			imported.provider,
 			imported.bundle,
@@ -503,7 +695,7 @@ impl AccountService {
 		operation_id: AccountOperationId,
 		account_id: AccountId,
 		kind: AccountOperationKind,
-		label: String,
+		alias: String,
 		enabled: bool,
 		provider: ProviderIdentity,
 		bundle: CredentialSecretBundle,
@@ -525,7 +717,7 @@ impl AccountService {
 			operation_id: operation_id.clone(),
 			account_id,
 			kind,
-			display_label: Some(label),
+			display_label: Some(alias),
 			enabled: Some(enabled),
 			expected_account_revision: None,
 			expected: None,
@@ -968,6 +1160,18 @@ impl AccountService {
 					.await;
 			},
 		};
+		let now_unix_micros = SystemTime::now()
+			.duration_since(UNIX_EPOCH)
+			.ok()
+			.and_then(|duration| i64::try_from(duration.as_micros()).ok());
+		let shared_refresh = now_unix_micros.and_then(|now_unix_micros| {
+			matching_shared_refresh(
+				&current,
+				stored.bundle(),
+				now_unix_micros,
+				read_shared_codex_credential(),
+			)
+		});
 		let preparation = AccountOperationPreparation {
 			operation_id: operation_id.clone(),
 			account_id: account_id.clone(),
@@ -1012,24 +1216,29 @@ impl AccountService {
 				)
 				.await?,
 		)?;
-		let refresher = Arc::clone(&self.refresher);
-		let refreshed =
-			match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await {
-				Ok(refreshed) => refreshed,
-				Err(_) => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							AccountOperationPhase::ProviderEffectPending,
-							AccountOperationPhase::RecoveryRequired,
-							Some("provider_refresh_ambiguous"),
-							AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous),
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-			};
+		let refreshed = match shared_refresh {
+			Some(refreshed) => Ok(refreshed),
+			None => {
+				let refresher = Arc::clone(&self.refresher);
+				match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await
+				{
+					Ok(refreshed) => refreshed,
+					Err(_) => {
+						return self
+							.complete_account_operation_error(
+								lease,
+								&operation_id,
+								AccountOperationPhase::ProviderEffectPending,
+								AccountOperationPhase::RecoveryRequired,
+								Some("provider_refresh_ambiguous"),
+								AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous),
+								build_response.take().expect("builder is retained"),
+							)
+							.await;
+					},
+				}
+			},
+		};
 		let refreshed = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(error @ CredentialRefreshError::Rejected) => {
@@ -1433,28 +1642,13 @@ impl AccountService {
 		.await
 	}
 
-	/// Rename, enable, or disable without changing observed health.
-	pub async fn update_administration(
-		&self,
-		account_id: &AccountId,
-		expected_revision: i64,
-		label: Option<&str>,
-		enabled: Option<bool>,
-	) -> Result<AccountAdministrationOutcome, AccountLifecycleError> {
-		Ok(self
-			.store
-			.update_account_administration(account_id, expected_revision, label, enabled)
-			.await?)
-	}
-
-	/// Apply one administrative command and its durable public result in one PG transaction.
-	pub async fn update_administration_command<F>(
+	/// Apply one enablement command and its durable public result in one PG transaction.
+	pub async fn set_account_enabled_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
 		account_id: &AccountId,
 		expected_revision: i64,
-		label: Option<&str>,
-		enabled: Option<bool>,
+		enabled: bool,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
@@ -1464,13 +1658,14 @@ impl AccountService {
 			) -> Result<Value, StoreError>
 			+ Send,
 	{
+		let lock = self.lock_for(account_id)?;
+		let _guard = lock.lock().await;
 		Ok(self
 			.store
-			.update_account_administration_command(
+			.set_account_enabled_command(
 				lease,
 				account_id,
 				expected_revision,
-				label,
 				enabled,
 				build_response,
 			)
@@ -2719,11 +2914,7 @@ impl AccountService {
 		&self,
 		account_id: &AccountId,
 	) -> Result<Arc<AsyncMutex<()>>, AccountLifecycleError> {
-		let mut locks =
-			self.account_locks.lock().map_err(|_| AccountLifecycleError::CoordinatorUnavailable)?;
-		Ok(Arc::clone(
-			locks.entry(account_id.clone()).or_insert_with(|| Arc::new(AsyncMutex::new(()))),
-		))
+		account_lock_for(&self.account_locks, account_id)
 	}
 
 	fn callback_profile(&self) -> Result<String, AccountSelectionRecovery> {
@@ -2740,6 +2931,14 @@ impl AccountService {
 	pub(crate) fn reset_card_callback_profile(&self) -> Option<String> {
 		self.callback_profile().ok()
 	}
+}
+
+fn account_lock_for(
+	locks: &Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
+	account_id: &AccountId,
+) -> Result<Arc<AsyncMutex<()>>, AccountLifecycleError> {
+	let mut locks = locks.lock().map_err(|_| AccountLifecycleError::CoordinatorUnavailable)?;
+	Ok(Arc::clone(locks.entry(account_id.clone()).or_insert_with(|| Arc::new(AsyncMutex::new(())))))
 }
 
 fn projection(
@@ -2769,6 +2968,84 @@ fn refreshed_credential_target(
 		.bundle
 		.binding_for(account_id, operation_id, version, &refreshed.returned_provider)
 		.map_err(Into::into)
+}
+
+fn matching_shared_refresh(
+	current: &CredentialBinding,
+	current_bundle: &CredentialSecretBundle,
+	now_unix_micros: i64,
+	shared: Result<ImportedCredential, CredentialImportError>,
+) -> Option<CredentialRefreshResult> {
+	match shared {
+		Ok(imported)
+			if imported.provider == current.provider
+				&& imported.bundle.access_token_expires_at_unix_micros() > now_unix_micros
+				&& !same_refresh_bundle(current_bundle, &imported.bundle) =>
+			Some(CredentialRefreshResult {
+				returned_provider: imported.provider,
+				bundle: imported.bundle,
+			}),
+		Ok(_) | Err(_) => None,
+	}
+}
+
+fn same_refresh_bundle(first: &CredentialSecretBundle, second: &CredentialSecretBundle) -> bool {
+	first.access_token() == second.access_token()
+		&& first.refresh_token() == second.refresh_token()
+		&& first.id_token() == second.id_token()
+		&& first.plan_type() == second.plan_type()
+		&& first.provider_email() == second.provider_email()
+		&& first.token_type() == second.token_type()
+		&& first.access_token_expires_at_unix_micros()
+			== second.access_token_expires_at_unix_micros()
+}
+
+fn projection_binding(
+	account: &AccountRecord,
+	expected_revision: i64,
+) -> Result<&CredentialBinding, AccountLifecycleError> {
+	if expected_revision <= 0 || account.revision != expected_revision {
+		return Err(AccountLifecycleError::StaleAccount);
+	}
+	if account.tombstoned {
+		return Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned));
+	}
+	if !account.enabled {
+		return Err(AccountLifecycleError::AccountDisabled);
+	}
+	if account.unsettled_operation.is_some() {
+		return Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled));
+	}
+	if account.lifecycle_readiness != AccountLifecycleReadiness::Ready {
+		return Err(AccountLifecycleError::NotReady(account.lifecycle_readiness));
+	}
+	account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)
+}
+
+enum UseInCodexProjectionError {
+	Rejected(AccountLifecycleError),
+	OutcomeUnknown,
+}
+
+fn use_in_codex_receipt_result<T>(
+	result: Result<T, UseInCodexProjectionError>,
+) -> Result<Result<T, AccountLifecycleError>, AccountLifecycleError> {
+	match result {
+		Ok(value) => Ok(Ok(value)),
+		Err(UseInCodexProjectionError::Rejected(error)) => Ok(Err(error)),
+		Err(UseInCodexProjectionError::OutcomeUnknown) =>
+			Err(AccountLifecycleError::CoordinatorUnavailable),
+	}
+}
+
+const fn projection_error(error: CodexAuthProjectionError) -> AccountLifecycleError {
+	match error {
+		CodexAuthProjectionError::UnsafePath | CodexAuthProjectionError::InvalidCredential =>
+			AccountLifecycleError::CredentialImport,
+		CodexAuthProjectionError::MissingIdentityToken => AccountLifecycleError::CredentialAbsent,
+		CodexAuthProjectionError::Unavailable | CodexAuthProjectionError::OutcomeUnknown =>
+			AccountLifecycleError::CoordinatorUnavailable,
+	}
 }
 
 fn accepted_phase(
@@ -2876,18 +3153,83 @@ impl From<CredentialImportError> for AccountLifecycleError {
 mod tests {
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use decodex_core::{
-		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
-		CredentialStoreSchemaVersion, CredentialVersion, ProviderIdentity,
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider,
+		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
+		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
+		ProviderIdentity,
 	};
 	use serde_json::json;
 
 	use super::{
-		AccountLifecycleError, CredentialRefreshError, CredentialSecretBundle,
-		PROVIDER_REFRESH_OUTCOME_UNKNOWN, RefreshResponse, credential_refresh_result,
-		refreshed_credential_target,
+		AccountLifecycleError, CredentialImportError, CredentialRefreshError,
+		CredentialSecretBundle, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
+		RefreshResponse, UseInCodexProjectionError, account_lock_for, codex_auth_projection_digest,
+		credential_refresh_result, matching_shared_refresh, projection_binding,
+		refreshed_credential_target, stable_account_alias, use_in_codex_receipt_result,
 	};
+	use std::{
+		collections::HashMap,
+		sync::{Arc, Mutex},
+		time::Duration,
+	};
+	use tokio::time;
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
+
+	#[test]
+	fn stable_alias_uses_the_canonical_provider_binding_vector() {
+		let provider =
+			ProviderIdentity::new(AccountProvider::Chatgpt, "433463f7-74ae-4a7e-ab10-9667f9e4919e")
+				.unwrap();
+
+		assert_eq!(stable_account_alias(&provider), "Account DQ6WF-G8BTT");
+	}
+
+	#[tokio::test]
+	async fn one_account_lock_serializes_projection_and_revision_writers() {
+		let locks = Mutex::new(HashMap::new());
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000098").unwrap();
+		let first = account_lock_for(&locks, &account_id).unwrap();
+		let second = account_lock_for(&locks, &account_id).unwrap();
+		assert!(Arc::ptr_eq(&first, &second));
+		let held = first.lock().await;
+
+		assert!(time::timeout(Duration::from_millis(10), second.lock()).await.is_err());
+		drop(held);
+		assert!(time::timeout(Duration::from_secs(1), second.lock()).await.is_ok());
+	}
+
+	#[test]
+	fn post_rename_unknown_escapes_before_receipt_completion() {
+		assert!(matches!(
+			use_in_codex_receipt_result::<()>(Err(UseInCodexProjectionError::OutcomeUnknown,)),
+			Err(AccountLifecycleError::CoordinatorUnavailable),
+		));
+		assert!(matches!(
+			use_in_codex_receipt_result::<()>(Err(UseInCodexProjectionError::Rejected(
+				AccountLifecycleError::CredentialAbsent,
+			))),
+			Ok(Err(AccountLifecycleError::CredentialAbsent)),
+		));
+	}
+
+	#[test]
+	fn codex_projection_digest_changes_with_only_credential_negative_binding_state() {
+		let first = projection_account(Some(binding("projection-provider", 3)));
+		let first_binding = first.credential.as_ref().unwrap();
+		let first_digest = codex_auth_projection_digest(&first, first_binding);
+		let mut revised = first.clone();
+		revised.revision += 1;
+		let revised_digest =
+			codex_auth_projection_digest(&revised, revised.credential.as_ref().unwrap());
+		let versioned = projection_account(Some(binding("projection-provider", 4)));
+		let versioned_digest =
+			codex_auth_projection_digest(&versioned, versioned.credential.as_ref().unwrap());
+
+		assert_eq!(first_digest.len(), 64);
+		assert_ne!(first_digest, revised_digest);
+		assert_ne!(first_digest, versioned_digest);
+	}
 
 	fn identity_token(account_id: &str, email: &str, plan_type: &str) -> String {
 		let claims = json!({
@@ -2933,6 +3275,164 @@ mod tests {
 			writer_operation_id: AccountOperationId::new("10000000-0000-4000-8000-000000000001")
 				.unwrap(),
 		}
+	}
+
+	fn shared_bundle(
+		provider_account_id: &str,
+		access_token: &str,
+		expires_at_unix_micros: i64,
+	) -> CredentialSecretBundle {
+		CredentialSecretBundle::chatgpt(
+			access_token.to_owned(),
+			"shared-refresh".to_owned(),
+			Some(identity_token(provider_account_id, "shared@example.test", "pro")),
+			Some("pro".to_owned()),
+			"shared@example.test".to_owned(),
+			"bearer".to_owned(),
+			expires_at_unix_micros,
+		)
+		.unwrap()
+	}
+
+	fn imported(
+		provider_account_id: &str,
+		access_token: &str,
+		expires_at_unix_micros: i64,
+	) -> ImportedCredential {
+		ImportedCredential {
+			provider: ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id).unwrap(),
+			bundle: shared_bundle(provider_account_id, access_token, expires_at_unix_micros),
+		}
+	}
+
+	fn projection_account(credential: Option<CredentialBinding>) -> AccountRecord {
+		AccountRecord {
+			account_id: AccountId::new("20000000-0000-4000-8000-000000000099").unwrap(),
+			label: "Projection".to_owned(),
+			enabled: true,
+			revision: 9,
+			observed_state: AccountState::Available,
+			lifecycle_readiness: AccountLifecycleReadiness::Ready,
+			credential,
+			unsettled_operation: None,
+			five_hour_quota: AccountQuotaWindowObservation::unknown(
+				AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			)
+			.unwrap(),
+			seven_day_quota: AccountQuotaWindowObservation::unknown(
+				AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+			)
+			.unwrap(),
+			tombstoned: false,
+		}
+	}
+
+	#[test]
+	fn codex_projection_requires_exact_ready_revision_and_credential() {
+		let exact = projection_account(Some(binding("projection-provider", 3)));
+
+		assert_eq!(
+			projection_binding(&exact, 9).unwrap().provider.account_id(),
+			"projection-provider",
+		);
+		assert!(matches!(projection_binding(&exact, 8), Err(AccountLifecycleError::StaleAccount)));
+		assert!(matches!(
+			projection_binding(&projection_account(None), 9),
+			Err(AccountLifecycleError::CredentialAbsent)
+		));
+
+		let mut disabled = exact.clone();
+		disabled.enabled = false;
+		assert!(matches!(
+			projection_binding(&disabled, 9),
+			Err(AccountLifecycleError::AccountDisabled)
+		));
+
+		let mut tombstoned = exact;
+		tombstoned.tombstoned = true;
+		tombstoned.lifecycle_readiness = AccountLifecycleReadiness::Tombstoned;
+		assert!(matches!(
+			projection_binding(&tombstoned, 9),
+			Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned))
+		));
+	}
+
+	#[test]
+	fn same_provider_shared_credential_is_selected_with_exact_successor_binding() {
+		let current = binding("shared-provider-account", 7);
+		let selected = matching_shared_refresh(
+			&current,
+			&current_bundle(),
+			OBSERVED_AT_MICROS,
+			Ok(imported("shared-provider-account", "shared-access", 3_000_000)),
+		)
+		.expect("same-provider shared credential must be selected");
+
+		assert_eq!(selected.returned_provider, current.provider);
+		assert_eq!(selected.bundle.access_token(), "shared-access");
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000010").unwrap();
+		let operation_id = AccountOperationId::new("30000000-0000-4000-8000-000000000010").unwrap();
+		let target =
+			refreshed_credential_target(&current, &account_id, &operation_id, &selected).unwrap();
+		assert_eq!(target.provider, current.provider);
+		assert_eq!(target.version.get(), 8);
+		assert_eq!(target.writer_operation_id, operation_id);
+	}
+
+	#[test]
+	fn mismatched_shared_provider_preserves_provider_refresh_fallback() {
+		let current = binding("expected-provider-account", 7);
+
+		assert!(
+			matching_shared_refresh(
+				&current,
+				&current_bundle(),
+				OBSERVED_AT_MICROS,
+				Ok(imported("different-provider-account", "different-access", 3_000_000)),
+			)
+			.is_none()
+		);
+	}
+
+	#[test]
+	fn unavailable_shared_credential_preserves_provider_refresh_fallback() {
+		let current = binding("expected-provider-account", 7);
+
+		assert!(
+			matching_shared_refresh(
+				&current,
+				&current_bundle(),
+				OBSERVED_AT_MICROS,
+				Err(CredentialImportError::Unavailable),
+			)
+			.is_none()
+		);
+	}
+
+	#[test]
+	fn unchanged_or_expired_shared_credential_preserves_provider_refresh_fallback() {
+		let provider_account_id = "expected-provider-account";
+		let current = binding(provider_account_id, 7);
+		let current_bundle = shared_bundle(provider_account_id, "same-access", 3_000_000);
+
+		assert!(
+			matching_shared_refresh(
+				&current,
+				&current_bundle,
+				OBSERVED_AT_MICROS,
+				Ok(imported(provider_account_id, "same-access", 3_000_000)),
+			)
+			.is_none()
+		);
+		assert!(
+			matching_shared_refresh(
+				&current,
+				&current_bundle,
+				OBSERVED_AT_MICROS,
+				Ok(imported(provider_account_id, "different-access", OBSERVED_AT_MICROS)),
+			)
+			.is_none()
+		);
 	}
 
 	#[test]
