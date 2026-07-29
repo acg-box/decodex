@@ -15,13 +15,17 @@ use tokio::sync::Notify;
 
 use decodex_protocol::{
 	ApplicationConfirmation, CURRENT_VERSION, ClientFailure, Cursor, EntityId, EntityRevision,
-	EventEnvelope, RetainedSession, RetainedSessionConfig, RetainedSessionFailure, ServerId,
-	SessionCancellation, SessionCheckpoint, SessionDelivery, SnapshotEnvelope, SnapshotItem,
+	EventEnvelope, QueryEnvelope, QueryResultEnvelope, RetainedSession, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, SessionCancellation, SessionCheckpoint, SessionDelivery,
+	SnapshotEnvelope, SnapshotItem,
 };
 
-use crate::client_cache::{
-	CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection, ObjectCertainty,
-	ObjectInput,
+use crate::{
+	client_cache::{
+		CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection,
+		ObjectCertainty, ObjectInput,
+	},
+	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
 };
 
 const RETRY_DELAYS: [Duration; 4] = [
@@ -186,7 +190,13 @@ struct CachedFact {
 enum Delivery<C> {
 	Snapshot { snapshot: SnapshotEnvelope, confirmation: C },
 	Event { event: EventEnvelope, confirmation: C },
+	QueryResult(QueryResultEnvelope),
 	Other,
+}
+
+enum SessionStep<C> {
+	Delivery(Result<Delivery<C>, RetainedSessionFailure>),
+	History(HistoryDispatch),
 }
 
 /// The single private seam around retained-session operations and retry time.
@@ -200,6 +210,7 @@ trait LifecycleIo {
 		cancellation: &LifecycleCancellation,
 	) -> Result<Option<SessionCheckpoint>, RetainedSessionFailure>;
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure>;
+	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure>;
 	fn confirm_applied(
 		&mut self,
 		confirmation: Self::Confirmation,
@@ -241,10 +252,14 @@ impl LifecycleIo for TokioIo {
 				Ok(Delivery::Snapshot { snapshot, confirmation }),
 			SessionDelivery::Event { event, confirmation } =>
 				Ok(Delivery::Event { event, confirmation }),
-			SessionDelivery::CommandReceipt(_)
-			| SessionDelivery::CommandResult(_)
-			| SessionDelivery::QueryResult(_) => Ok(Delivery::Other),
+			SessionDelivery::QueryResult(result) => Ok(Delivery::QueryResult(result)),
+			SessionDelivery::CommandReceipt(_) | SessionDelivery::CommandResult(_) =>
+				Ok(Delivery::Other),
 		}
+	}
+
+	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
+		self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.send_query(query).await
 	}
 
 	fn confirm_applied(
@@ -286,6 +301,7 @@ pub(crate) struct ClientLifecycle {
 	cache_limits: CacheLimits,
 	cache_authority: CacheAuthority,
 	cache: Option<ClientCache>,
+	history_pager: HistoryPager,
 	state: HashMap<String, AppliedEntity>,
 	last_cursor: Option<Cursor>,
 	binding: Option<CacheBinding>,
@@ -335,6 +351,7 @@ impl ClientLifecycle {
 			cache_limits,
 			cache_authority,
 			cache,
+			history_pager: HistoryPager::production(),
 			state: HashMap::new(),
 			last_cursor: None,
 			binding: None,
@@ -363,6 +380,18 @@ impl ClientLifecycle {
 	/// Cooperative handle that can terminate the caller-owned run future.
 	pub(crate) fn cancellation(&self) -> LifecycleCancellation {
 		self.cancellation.clone()
+	}
+
+	/// Clone the presentation-neutral history controller before moving the lifecycle task.
+	#[cfg_attr(
+		not(test),
+		allow(
+			dead_code,
+			reason = "XY-1429 exposes this handle for the later Conversation destination"
+		)
+	)]
+	pub(crate) fn history_pager(&self) -> HistoryPager {
+		self.history_pager.clone()
 	}
 
 	/// Run the bounded lifecycle without spawning or detaching any work.
@@ -415,62 +444,92 @@ impl ClientLifecycle {
 				requested_checkpoint.is_some(),
 				connected_checkpoint.as_ref(),
 			);
+			self.history_pager.bind_session(generation, self.server_id.clone());
 			let mut requires_snapshot = connected_checkpoint.is_none();
 
 			let failure = loop {
-				let delivery = io.next().await;
+				let history_pager = self.history_pager.clone();
+				let server_id = self.server_id.clone();
+				let step = tokio::select! {
+					delivery = io.next() => SessionStep::Delivery(delivery),
+					dispatch = history_pager.next_dispatch(generation, &server_id),
+						if !requires_snapshot => SessionStep::History(dispatch),
+				};
 
 				if self.ensure_generation(generation).is_err() {
 					break RetainedSessionFailure::PublicationOrder;
 				}
 
-				match delivery {
-					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
-						let cursor = snapshot.cursor;
-						let inspection = match self.apply_snapshot(generation, snapshot) {
-							Ok(inspection) => inspection,
-							Err(failure) => break failure,
+				match step {
+					SessionStep::History(dispatch) => {
+						let Some(send_token) = self.history_pager.begin_send(&dispatch) else {
+							continue;
 						};
-						let checkpoint = match io.confirm_applied(confirmation) {
-							Ok(checkpoint) => checkpoint,
-							Err(_) => break self.confirmation_failure(),
-						};
+						let send_result = io.send_query(dispatch.envelope().clone()).await;
 
-						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
-						{
-							break RetainedSessionFailure::ApplicationConfirmationMismatch;
-						}
-						requires_snapshot = false;
-					},
-					Ok(Delivery::Event { event, confirmation }) => {
-						if requires_snapshot {
-							self.enter_quarantine(
-								QuarantineReason::ApplicationOrder,
-								QuarantineRecovery::VerifiedSnapshotReplacement,
-							);
-
-							break RetainedSessionFailure::PublicationOrder;
-						}
-						let cursor = event.cursor;
-						let inspection = match self.apply_event(generation, event) {
-							Ok(inspection) => inspection,
-							Err(failure) => break failure,
-						};
-						let checkpoint = match io.confirm_applied(confirmation) {
-							Ok(checkpoint) => checkpoint,
-							Err(_) => break self.confirmation_failure(),
-						};
-
-						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
-						{
-							break RetainedSessionFailure::ApplicationConfirmationMismatch;
+						self.history_pager.finish_send(&send_token);
+						if let Err(failure) = send_result {
+							break failure;
 						}
 					},
-					Ok(Delivery::Other) => {},
-					Err(failure) => break failure,
+					SessionStep::Delivery(delivery) => match delivery {
+						Ok(Delivery::Snapshot { snapshot, confirmation }) => {
+							let cursor = snapshot.cursor;
+							let inspection = match self.apply_snapshot(generation, snapshot) {
+								Ok(inspection) => inspection,
+								Err(failure) => break failure,
+							};
+							let checkpoint = match io.confirm_applied(confirmation) {
+								Ok(checkpoint) => checkpoint,
+								Err(_) => break self.confirmation_failure(),
+							};
+
+							if self
+								.bind_checkpoint(generation, cursor, checkpoint, inspection)
+								.is_err()
+							{
+								break RetainedSessionFailure::ApplicationConfirmationMismatch;
+							}
+							requires_snapshot = false;
+						},
+						Ok(Delivery::Event { event, confirmation }) => {
+							if requires_snapshot {
+								self.enter_quarantine(
+									QuarantineReason::ApplicationOrder,
+									QuarantineRecovery::VerifiedSnapshotReplacement,
+								);
+
+								break RetainedSessionFailure::PublicationOrder;
+							}
+							let cursor = event.cursor;
+							let inspection = match self.apply_event(generation, event) {
+								Ok(inspection) => inspection,
+								Err(failure) => break failure,
+							};
+							let checkpoint = match io.confirm_applied(confirmation) {
+								Ok(checkpoint) => checkpoint,
+								Err(_) => break self.confirmation_failure(),
+							};
+
+							if self
+								.bind_checkpoint(generation, cursor, checkpoint, inspection)
+								.is_err()
+							{
+								break RetainedSessionFailure::ApplicationConfirmationMismatch;
+							}
+						},
+						Ok(Delivery::QueryResult(result)) => {
+							if let Err(failure) = self.route_history_result(generation, result) {
+								break failure;
+							}
+						},
+						Ok(Delivery::Other) => {},
+						Err(failure) => break failure,
+					},
 				}
 			};
 
+			self.history_pager.session_ended(generation);
 			if self.quarantine.is_none() {
 				self.set_view(ConnectionView::ShuttingDown);
 			}
@@ -548,6 +607,21 @@ impl ClientLifecycle {
 
 				None
 			},
+		}
+	}
+
+	fn route_history_result(
+		&mut self,
+		generation: u64,
+		result: QueryResultEnvelope,
+	) -> Result<(), RetainedSessionFailure> {
+		match self.history_pager.route_result(generation, &self.server_id, result) {
+			HistoryRouteOutcome::Fresh
+			| HistoryRouteOutcome::Unavailable
+			| HistoryRouteOutcome::Closed
+			| HistoryRouteOutcome::Stale
+			| HistoryRouteOutcome::Unmatched
+			| HistoryRouteOutcome::ProtocolMismatch => Ok(()),
 		}
 	}
 
