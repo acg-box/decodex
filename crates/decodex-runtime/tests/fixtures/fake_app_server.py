@@ -6,6 +6,30 @@ import subprocess
 import sys
 import time
 
+
+def spawn_ready_descendant(pid_path, sleep_seconds):
+    child = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import os,signal,sys,time; from pathlib import Path; "
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN); "
+                "Path(sys.argv[1]).write_text(str(os.getpid())); "
+                "time.sleep(float(sys.argv[2]))"
+            ),
+            str(pid_path),
+            str(sleep_seconds),
+        ]
+    )
+    deadline = time.monotonic() + 2
+    while not pid_path.exists():
+        if child.poll() is not None or time.monotonic() >= deadline:
+            raise RuntimeError("descendant did not become ready")
+        time.sleep(0.01)
+    return child
+
+
 if sys.argv[1] == "--version-hang":
     time.sleep(60)
     raise SystemExit(0)
@@ -26,8 +50,7 @@ if sys.argv[1] == "generate-json-schema":
     output.mkdir(parents=True, exist_ok=True)
     if "--orphan-pid" in sys.argv:
         index = sys.argv.index("--orphan-pid")
-        child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
-        Path(sys.argv[index + 1]).write_text(str(child.pid))
+        child = spawn_ready_descendant(Path(sys.argv[index + 1]), "0.25")
     requests = ["initialize", "account/read", "account/login/start", "thread/start", "thread/list", "thread/search", "thread/read", "thread/resume", "thread/name/set", "turn/start", "account/rateLimits/read", "collaborationMode/list", "thread/archive"]
     if "--reset-card" in sys.argv:
         requests.append("account/rateLimitResetCredit/consume")
@@ -173,8 +196,16 @@ mode = sys.argv[2]
 if mode in ("mark-spawn", "schema-missing", "nested-refresh-schema"):
     Path(sys.argv[3]).write_text("spawned")
 if mode in ("orphan-exit", "orphan-stubborn", "orphan-error", "orphan-timeout"):
-    child = subprocess.Popen([sys.executable, "-c", "import signal,time; signal.signal(signal.SIGTERM, signal.SIG_IGN); time.sleep(60)"])
-    Path(sys.argv[3]).write_text(str(child.pid))
+    if mode == "orphan-stubborn":
+        import signal
+
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    descendant_sleep = {
+        "orphan-exit": "0.25",
+        "orphan-error": "1",
+        "orphan-timeout": "7",
+    }.get(mode, "60")
+    child = spawn_ready_descendant(Path(sys.argv[3]), descendant_sleep)
     if mode == "orphan-exit":
         raise SystemExit(0)
     if mode == "orphan-error":
@@ -185,8 +216,6 @@ if mode in ("orphan-exit", "orphan-stubborn", "orphan-error", "orphan-timeout"):
         for _ in sys.stdin:
             time.sleep(60)
         raise SystemExit(0)
-    import signal
-    signal.signal(signal.SIGTERM, signal.SIG_IGN)
     time.sleep(60)
     raise SystemExit(0)
 if mode == "crash":
