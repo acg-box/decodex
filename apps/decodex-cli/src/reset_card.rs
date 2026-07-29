@@ -1009,9 +1009,16 @@ cache = {{}}
 		assert!(debug.contains("server_identity_selected: true"));
 	}
 
+	#[cfg(unix)]
 	#[tokio::test]
 	async fn valid_use_key_is_retained_for_every_pre_send_failure() {
-		let root = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = tempfile::TempDir::new().expect("test operation must succeed");
+		let temp = temp.path().canonicalize().expect("test operation must succeed");
+		let target = temp.join("root");
+		let root = temp.join("root-link");
+
+		standard::fs::create_dir(&target).expect("test operation must succeed");
+		standard::os::unix::fs::symlink(&target, &root).expect("test operation must succeed");
 		let cases = [
 			(
 				super::ResetCardCommand::Use {
@@ -1060,8 +1067,7 @@ cache = {{}}
 		];
 
 		for (command, expected_failure) in cases {
-			let output =
-				super::execute(command, OutputFormat::Json, Some(root.path()), None, None).await;
+			let output = super::execute(command, OutputFormat::Json, Some(&root), None, None).await;
 			let value: serde_json::Value =
 				serde_json::from_str(output.text()).expect("test operation must succeed");
 
