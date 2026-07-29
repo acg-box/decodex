@@ -8,7 +8,6 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 	@ViewBuilder
 	func body(content: Content) -> some View {
 		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
-		let appearanceID = colorScheme == .dark ? "dark" : "light"
 
 		content
 			.background {
@@ -29,9 +28,6 @@ struct ModernGlassSurfaceModifier: ViewModifier {
 				x: 0,
 				y: shadowY
 			)
-			// Menu-bar glass layers can keep a stale material across system appearance flips.
-			// Re-key only the surface wrapper so light/dark changes redraw immediately.
-			.id(appearanceID)
 	}
 
 	var configuredGlass: Glass {
