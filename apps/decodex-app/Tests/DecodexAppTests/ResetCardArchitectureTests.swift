@@ -2,6 +2,26 @@ import Foundation
 import XCTest
 
 final class ResetCardArchitectureTests: XCTestCase {
+	func testRepeatedAccountRowsDoNotShareAnAppearanceIdentity() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let glassSurface = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelGlassSurface.swift"),
+			encoding: .utf8
+		)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertFalse(glassSurface.contains(".id(appearanceID)"))
+		XCTAssertFalse(accountPanel.contains("LazyVStack"))
+		XCTAssertTrue(accountPanel.contains("id: \\.element.id"))
+	}
+
 	func testProductionSourceHasOneCLIResetCardAuthorityAndNoRetiredUISurfaces() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
