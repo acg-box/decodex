@@ -199,7 +199,7 @@ struct ResetCardAccountRow: View {
 
 			Spacer(minLength: 2)
 
-			if state.account.observedState == .authFailed,
+			if state.requiresLoginRefresh,
 				state.account.credentialBinding != nil
 			{
 				AccountRefreshLoginButton(state: state, store: store)
@@ -223,6 +223,9 @@ struct ResetCardAccountRow: View {
 	private var exceptionalStatusText: String? {
 		if state.account.enabled == false {
 			return "Disabled"
+		}
+		if state.requiresLoginRefresh {
+			return "Login refresh required"
 		}
 		switch state.account.lifecycleReadiness {
 		case .credentialAbsent:
@@ -303,13 +306,13 @@ struct ResetCardAccountRow: View {
 		if let error = state.inventory?.observationError {
 			Text("Reset Cards unavailable")
 				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.warning(colorScheme))
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(error.presentation)
 		} else if let error = state.error {
 			Text("Reset Cards unavailable")
 				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.warning(colorScheme))
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(error.localizedDescription)
 		} else if state.isRefreshing, state.inventory == nil {
@@ -365,12 +368,7 @@ struct ResetCardAccountRow: View {
 		.fixedSize(horizontal: true, vertical: false)
 		.padding(.horizontal, 5)
 		.padding(.vertical, 1.5)
-		.background(
-			confirmation.isArmed(target)
-				? PanelPalette.warning(colorScheme).opacity(colorScheme == .dark ? 0.2 : 0.14)
-				: PanelPalette.routeAccent(colorScheme).opacity(colorScheme == .dark ? 0.16 : 0.11)
-		)
-		.clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+		.modernGlassSurface(cornerRadius: 6, depth: .control)
 		.contentShape(Rectangle())
 	}
 
@@ -555,7 +553,7 @@ struct ResetCardQuotaPresentation: Equatable {
 			let remainingPercent = 100 - min(100, usedPercent)
 			valueText = "\(remainingPercent)% left"
 			detailText = "stale"
-			tone = .warning
+			tone = .current
 			self.usedPercent = usedPercent
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
@@ -567,19 +565,13 @@ struct ResetCardQuotaPresentation: Equatable {
 			usedPercent = nil
 			remainingPercent = nil
 			resetDate = nil
-		case .error(.unsupportedWindow):
+		case .error(let error):
 			isVisible = false
 			valueText = "—"
-			detailText = "Not reported"
+			detailText = error == .unsupportedWindow
+				? "Not reported"
+				: error.presentation
 			tone = .muted
-			usedPercent = nil
-			remainingPercent = nil
-			resetDate = nil
-		case .error(let error):
-			isVisible = true
-			valueText = "Error"
-			detailText = error.presentation
-			tone = .error
 			usedPercent = nil
 			remainingPercent = nil
 			resetDate = nil
