@@ -21,7 +21,10 @@ runs one independent `reset-card list` request for each row. A slow or failed
 provider request affects only its account row. Each row displays the exact
 300-minute and 10,080-minute quota observations, their current, stale, unknown,
 or error state, the percentage used and reset time when known, and every public
-Reset Card descriptor.
+Reset Card descriptor. The panel uses compact divider-separated rows so the
+normal six-account pool fits in one scan. A provider-unsupported quota duration
+is a muted row-local fact; it does not present the account or Reset Card service
+as failed.
 
 The app never identifies an account from its label or vector position. The
 canonical account UUID is the only row identity.
