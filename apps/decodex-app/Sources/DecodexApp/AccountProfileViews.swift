@@ -30,6 +30,65 @@ struct AccountProfileSummaryView: View {
 	}
 }
 
+struct AccountProfileDetailView: View {
+	let state: ResetCardAccountState
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		VStack(alignment: .leading, spacing: 9) {
+			HStack(alignment: .firstTextBaseline) {
+				Text("Account details")
+					.font(.headline)
+
+				Spacer()
+
+				if let planType {
+					Text(planType)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				}
+			}
+
+			if let profile = state.profile {
+				AccountProfileSummaryView(profile: profile.snapshot)
+
+				if profile.isCached {
+					Label("Saved activity", systemImage: "clock.arrow.circlepath")
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.warning(colorScheme))
+				}
+
+				if let degradationText = state.profileDegradationText {
+					Text(degradationText)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.warning(colorScheme))
+						.fixedSize(horizontal: false, vertical: true)
+				}
+			} else if state.isProfileRefreshing {
+				HStack(spacing: 6) {
+					ProgressView()
+						.controlSize(.mini)
+					Text("Loading saved activity")
+						.font(PanelFont.accountDetail)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				}
+			} else {
+				Text("No saved activity is available for this account.")
+					.font(PanelFont.accountDetail)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.fixedSize(horizontal: false, vertical: true)
+			}
+		}
+		.frame(width: 270)
+		.padding(12)
+		.accessibilityElement(children: .contain)
+	}
+
+	private var planType: String? {
+		state.profile?.planType ?? state.profileUnavailable?.claims.planType
+	}
+}
+
 struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
 	let totalAccountCount: Int
@@ -50,8 +109,8 @@ struct AccountProfileOverviewView: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
-			HStack(alignment: .firstTextBaseline, spacing: 5) {
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(alignment: .firstTextBaseline, spacing: 3) {
 				Image(systemName: "chart.bar.xaxis")
 					.font(PanelFont.tertiary)
 					.foregroundStyle(PanelPalette.usageCyan(colorScheme))
@@ -68,32 +127,32 @@ struct AccountProfileOverviewView: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			}
 
-			AccountProfileMetricsView(
-				metrics: completeAggregateMetrics
-			)
+			if completeAggregateMetrics.isEmpty == false {
+				AccountProfileMetricsView(
+					metrics: completeAggregateMetrics
+				)
+			}
 
 			if aggregate.dailyUsage.isEmpty == false {
 				AccountDailyUsageChart(
 					records: aggregate.dailyUsage,
 					showsAxis: true,
 					axisLabel: aggregate.dailyUsageCoverage == totalAccountCount
-						? "daily tokens"
-						: "\(aggregate.dailyUsageCoverage)/\(totalAccountCount) daily"
+						? nil
+						: "\(aggregate.dailyUsageCoverage) of \(totalAccountCount) daily"
 				)
 			}
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 7)
+		.padding(.horizontal, 7)
+		.padding(.vertical, 6)
 		.modernGlassSurface(cornerRadius: 9, depth: .row)
 		.accessibilityElement(children: .combine)
 	}
 
 	private var profileCountLabel: String {
-		AccountProfileOverviewStatus(
-			totalAccountCount: totalAccountCount,
-			profileCount: aggregate.accountCount,
-			currentProfileCount: currentProfileCount,
-			degradedProfileCount: degradedProfileCount
+		AccountProfileCoveragePresentation(
+			currentCount: currentProfileCount,
+			totalCount: totalAccountCount
 		).label
 	}
 
@@ -170,7 +229,7 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			HStack(alignment: .firstTextBaseline, spacing: 5) {
+			HStack(alignment: .firstTextBaseline, spacing: 3) {
 				ForEach(metrics) { metric in
 					HStack(alignment: .firstTextBaseline, spacing: 2) {
 						Text(metric.label)
@@ -184,7 +243,7 @@ private struct AccountProfileMetricsView: View {
 					}
 
 					if metric.id != metrics.last?.id {
-						Spacer(minLength: 2)
+						Spacer(minLength: 1)
 					}
 				}
 			}
@@ -196,13 +255,13 @@ private struct AccountProfileMetricsView: View {
 struct AccountDailyUsageChart: View {
 	let records: [AccountProfileDailyUsage]
 	let showsAxis: Bool
-	let axisLabel: String
+	let axisLabel: String?
 	@Environment(\.colorScheme) private var colorScheme
 
 	init(
 		records: [AccountProfileDailyUsage],
 		showsAxis: Bool,
-		axisLabel: String = "daily tokens"
+		axisLabel: String? = nil
 	) {
 		self.records = records
 		self.showsAxis = showsAxis
@@ -240,14 +299,16 @@ struct AccountDailyUsageChart: View {
 					.frame(maxHeight: .infinity, alignment: .bottom)
 				}
 			}
-			.frame(height: showsAxis ? 28 : 16)
+			.frame(height: showsAxis ? 20 : 16)
 
 			if showsAxis {
 				HStack {
 					Text(values.first.map { compactUsageDate($0.date) } ?? "")
 						.frame(maxWidth: .infinity, alignment: .leading)
-					Text(axisLabel)
-						.frame(maxWidth: .infinity, alignment: .center)
+					if let axisLabel {
+						Text(axisLabel)
+							.frame(maxWidth: .infinity, alignment: .center)
+					}
 					Text(values.last.map { compactUsageDate($0.date) } ?? "")
 						.frame(maxWidth: .infinity, alignment: .trailing)
 				}

@@ -10,40 +10,40 @@ import, or runtime scheduling.
 
 ## Scope
 
-The app has one account authority: the Decodex daemon. It invokes the bundled
-`decodex-cli`, which connects to the daemon through the owner-only Unix
-transport. Swift does not read account credentials, PostgreSQL, Keychain, or
-provider-private Reset Card identifiers.
+The app has one account authority: the Decodex daemon. Its in-process Rust
+client connects to the daemon through the owner-only Unix transport. The app
+does not start a CLI process. Swift does not read account credentials,
+PostgreSQL, Keychain, or provider-private Reset Card identifiers.
 
-The primary panel reads the complete account skeleton with `account list`, uses
-the returned routing UUID order, and immediately renders every account. It then
-runs independent `reset-card list` and `account profile` requests for each row.
-A slow or failed provider request affects only its account row and does not
-block the other read.
+The primary panel reads the complete account skeleton, uses the returned
+routing UUID order, and immediately renders every account. It then runs
+independent Reset Card and account-profile requests for each row. A slow or
+failed provider request affects only its account row and does not block another
+row or account action.
 
 Each row shows the exact 300-minute and 10,080-minute quota observations in a
-vertical stack, their current, stale, unknown, or error state, the percentage
-left and reset time when known, and every complete public Reset Card time
-window. The 300-minute row is absent only when the provider omits that window;
-unknown observations and real errors remain visible.
+vertical stack, their current or stale state, the percentage left and reset
+time when known, and every complete public Reset Card expiry. The 300-minute
+row is absent when the provider does not return a supported observation.
 
-The profile section restores the compact operator summary: lifetime tokens,
-peak daily tokens, longest task, current and longest streaks, and a 36-day
-usage chart. The panel also aggregates available profiles across all accounts.
+Each account detail popover contains lifetime tokens, peak daily tokens,
+longest task, current and longest streaks, and a 36-day usage chart. The compact
+panel keeps one aggregate chart across all accounts.
 Email is redacted by default. The eye control requests it explicitly and hiding
 it immediately removes the value from retained presentation state. Cached or
 unavailable profile data remains row-scoped and never hides Reset Cards.
 
-The panel uses compact divider-separated rows and a bounded vertical viewport,
-so all accounts remain present and scrollable instead of allowing one row to
-expand across the window.
+The panel uses compact divider-separated rows and shows every account when they
+fit on the active display. On shorter displays, the account list remains
+scrollable without a persistent scroll indicator.
 
-The app never identifies an account from its label or vector position. The
-canonical account UUID is the only row identity.
+The app never identifies an account from its alias or vector position. The
+daemon derives a stable credential-negative alias. The canonical account UUID
+is the only row identity. There is no account rename surface.
 
 Reset Card use requires two clicks on the same descriptor. The first click arms
 a five-second confirmation. The second click writes one credential-negative
-pending handle, then invokes `reset-card use` once with the same account
+pending handle, then sends one native daemon request with the same account
 revision, descriptor, and operation key. Restart recovery reads durable status
 and retains that key. It never selects another card or generates a replacement
 key for an unresolved request.
@@ -55,10 +55,12 @@ modes, and one cross-process dispatch lock. A malformed or unsafe journal is
 preserved and blocks new use.
 
 The panel also exposes current daemon-owned account controls: enroll the
-currently signed-in shared Codex login, rename, enable or disable, refresh
-credentials, log out, and select fixed or balanced routing. The Fast button
+currently signed-in shared Codex login, enable or disable, refresh credentials,
+log out, and select fixed or balanced routing. `Use in Codex` explicitly and
+atomically projects one exact daemon-owned login to shared `~/.codex/auth.json`
+for future Codex launches. It does not change Decodex routing. The Fast control
 updates only the current Codex `[features].fast_mode` preference through the
-bundled CLI.
+in-process native client.
 
 The app is intentionally menu-bar-only and uses the accessory activation
 policy. It does not own daemon startup or credential persistence.
@@ -77,14 +79,6 @@ Build the SwiftPM app in release mode:
 
 ```sh
 swift build --package-path apps/decodex-app -c release
-```
-
-For a development launch against a workspace CLI:
-
-```sh
-cargo build --release -p decodex-cli --bin decodex
-DECODEX_APP_CLI="$(pwd)/target/release/decodex" \
-  swift run --package-path apps/decodex-app -c release DecodexApp
 ```
 
 Start the installed Decodex service before testing live reads or Reset Card use.
@@ -107,13 +101,14 @@ apps/decodex-app/script/build_and_run.sh
 The bundle contains only:
 
 - `Contents/MacOS/DecodexApp`
-- `Contents/Helpers/decodex-cli`
+- `Contents/Frameworks/libdecodex_app_client_ffi.dylib`
 - app and status-item icon resources
 
-The script builds both executable artifacts in release mode, signs the CLI and
-the app with the selected Apple Development identity, enables hardened runtime,
-and verifies the staged bundle. Set `DECODEX_APP_SIGN_IDENTITY` to select a
-signing identity and `DECODEX_APP_STAGE_DIR` to select the staging directory.
+The script builds the Rust native client and Swift app in release mode, signs
+the native library and app with the selected Apple Development identity,
+enables hardened runtime, and verifies the staged bundle. Set
+`DECODEX_APP_SIGN_IDENTITY` to select a signing identity and
+`DECODEX_APP_STAGE_DIR` to select a staging directory.
 If the active developer directory lacks the required SwiftUI macros, the script
 uses `/Applications/Xcode-beta.app/Contents/Developer`.
 

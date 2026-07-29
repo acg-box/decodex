@@ -4,7 +4,7 @@ set -euo pipefail
 MODE="${1:-run}"
 PRODUCT_NAME="Decodex"
 EXECUTABLE_NAME="DecodexApp"
-CLI_NAME="decodex-cli"
+NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib"
 BUNDLE_ID="space.decodex.app"
 MIN_SYSTEM_VERSION="27.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
@@ -17,10 +17,10 @@ STAGE_DIR="${DECODEX_APP_STAGE_DIR:-$COMMON_ROOT/target/decodex-app}"
 APP_BUNDLE="$STAGE_DIR/$PRODUCT_NAME.app"
 APP_CONTENTS="$APP_BUNDLE/Contents"
 APP_MACOS="$APP_CONTENTS/MacOS"
-APP_HELPERS="$APP_CONTENTS/Helpers"
+APP_FRAMEWORKS="$APP_CONTENTS/Frameworks"
 APP_RESOURCES="$APP_CONTENTS/Resources"
 APP_BINARY="$APP_MACOS/$EXECUTABLE_NAME"
-APP_CLI_BINARY="$APP_HELPERS/$CLI_NAME"
+APP_NATIVE_CLIENT="$APP_FRAMEWORKS/$NATIVE_CLIENT_NAME"
 INFO_PLIST="$APP_CONTENTS/Info.plist"
 APP_ICON_SOURCE="$WORKTREE_ROOT/assets/app-icon/generated/app-icon.icns"
 APP_ICON_NAME="AppIcon.icns"
@@ -31,7 +31,7 @@ RUST_BUILD_FLAGS=(--release)
 RUST_TARGET_DIR=""
 BUILD_ROOT=""
 BUILD_BINARY=""
-CLI_BINARY=""
+NATIVE_CLIENT_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
 RUST_PROFILE="release"
 
@@ -158,7 +158,7 @@ sign_staged_app_bundle() {
 		--force \
 		--options runtime \
 		--sign "$RESOLVED_SIGN_IDENTITY" \
-		"$APP_CLI_BINARY"
+		"$APP_NATIVE_CLIENT"
 
 	entitlements_file="$BUILD_ROOT/$EXECUTABLE_NAME-entitlement.plist"
 	if [[ -f "$entitlements_file" ]]; then
@@ -183,22 +183,22 @@ stage_app_bundle() {
 	ensure_macos_swiftui_macro_toolchain
 	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
-	RUST_TARGET_DIR="$WORKTREE_ROOT/target/decodex-app-cli"
+	RUST_TARGET_DIR="$WORKTREE_ROOT/target/decodex-app-native-client"
 
 	swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --product "$EXECUTABLE_NAME"
 	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build \
-		-p decodex-cli \
-		--bin decodex \
+		-p decodex-app-client-ffi \
+		--lib \
 		"${RUST_BUILD_FLAGS[@]}"
 
-	CLI_BINARY="$RUST_TARGET_DIR/$RUST_PROFILE/decodex"
+	NATIVE_CLIENT_BINARY="$RUST_TARGET_DIR/$RUST_PROFILE/$NATIVE_CLIENT_NAME"
 
 	rm -rf "$APP_BUNDLE"
-	mkdir -p "$APP_MACOS" "$APP_HELPERS" "$APP_RESOURCES"
+	mkdir -p "$APP_MACOS" "$APP_FRAMEWORKS" "$APP_RESOURCES"
 	cp "$BUILD_BINARY" "$APP_BINARY"
-	cp "$CLI_BINARY" "$APP_CLI_BINARY"
+	cp "$NATIVE_CLIENT_BINARY" "$APP_NATIVE_CLIENT"
 	chmod +x "$APP_BINARY"
-	chmod +x "$APP_CLI_BINARY"
+	chmod +x "$APP_NATIVE_CLIENT"
 	if [[ -f "$APP_ICON_SOURCE" ]]; then
 		cp "$APP_ICON_SOURCE" "$APP_RESOURCES/$APP_ICON_NAME"
 	fi

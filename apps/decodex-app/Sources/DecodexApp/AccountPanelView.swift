@@ -8,8 +8,8 @@ struct AccountPanelView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
 	@State private var measuredAccountListContentHeight: CGFloat = 0
-	@State private var accountScrollOffset: CGFloat = 0
 	@State private var isPresentingEnrollment = false
+	@State private var detailedAccountID: String?
 	@State private var fastMode: FastModeStore
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
 
@@ -83,149 +83,195 @@ struct AccountPanelView: View {
 			}
 			await store.setProfileEmailVisibility(accountPrivacy == AccountPrivacy.visible)
 		}
+		.task(id: store.message?.text) {
+			guard store.message?.tone == .success else {
+				return
+			}
+			let displayedText = store.message?.text
+			try? await Task.sleep(for: .seconds(2))
+			guard Task.isCancelled == false,
+				store.message?.tone == .success,
+				store.message?.text == displayedText
+			else {
+				return
+			}
+			store.dismissMessage()
+		}
 	}
 
 	private var header: some View {
-		HStack(alignment: .center, spacing: 5) {
-			Image(nsImage: AppAssets.statusBarIcon)
-				.resizable()
-				.renderingMode(.template)
-				.scaledToFit()
-				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-				.frame(width: 20, height: 20)
-				.frame(width: 28, height: 28)
-				.accessibilityHidden(true)
+		VStack(alignment: .leading, spacing: 4) {
+			HStack(alignment: .center, spacing: 6) {
+				Image(nsImage: AppAssets.statusBarIcon)
+					.resizable()
+					.renderingMode(.template)
+					.scaledToFit()
+					.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+					.frame(width: 19, height: 19)
+					.frame(width: 26, height: 26)
+					.accessibilityHidden(true)
 
-			VStack(alignment: .leading, spacing: 2) {
 				Text("Decodex")
 					.font(PanelFont.headerTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				Text(headerSubtitle)
-					.font(PanelFont.headerSubtitle)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.minimumScaleFactor(0.82)
-			}
-			.layoutPriority(1)
 
-			Spacer(minLength: 4)
+				Spacer(minLength: 4)
 
-			PanelIconButtonView(
-				symbol: accountPrivacy == AccountPrivacy.hidden ? "eye.slash" : "eye",
-				tint: PanelPalette.secondaryText(colorScheme),
-				isActive: accountPrivacy == AccountPrivacy.visible,
-				isSubtle: true,
-				size: 25,
-				action: {
-					withAnimation(PanelMotion.state) {
-						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
-							? AccountPrivacy.visible
-							: AccountPrivacy.hidden
-					}
-				},
-				help: accountPrivacy == AccountPrivacy.hidden
-					? "Show account emails"
-					: "Hide account emails"
-			)
-
-			PanelIconButtonView(
-				symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
-				tint: PanelPalette.fastModeAccent(colorScheme),
-				isActive: fastMode.isEnabled,
-				isDisabled: fastMode.isLoading,
-				isSubtle: fastMode.isEnabled == false,
-				size: 25,
-				action: {
-					Task {
-						await fastMode.toggle()
-					}
-				},
-				help: fastMode.errorMessage
-					?? (fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on")
-			)
-
-			PanelIconButtonView(
-				symbol: "plus",
-				tint: PanelPalette.actionBlue(colorScheme),
-				isActive: false,
-				isDisabled: store.isAccountControlInProgress || store.isRefreshing,
-				isPrimary: true,
-				size: 25,
-				action: {
+				Button {
 					isPresentingEnrollment = true
-				},
-				help: "Add Codex login"
-			)
+				} label: {
+					Label("Add", systemImage: "plus")
+						.font(PanelFont.compactAction)
+						.padding(.horizontal, 6)
+						.padding(.vertical, 4)
+						.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+						.modernGlassSurface(cornerRadius: 7, depth: .control)
+				}
+				.buttonStyle(.plain)
+				.disabled(
+					store.isAccountControlInProgress
+						|| store.isRefreshing
+						|| store.isRefreshingAccountSkeleton
+				)
+				.help("Add Codex login")
+				.accessibilityLabel("Add Codex login")
 
-			Menu {
-				Button("Refresh All") {
-					Task {
-						await store.refresh()
+				Menu {
+					Button(
+						accountPrivacy == AccountPrivacy.hidden
+							? "Show Email Addresses"
+							: "Hide Email Addresses"
+					) {
+						withAnimation(PanelMotion.state) {
+							accountPrivacy = accountPrivacy == AccountPrivacy.hidden
+								? AccountPrivacy.visible
+								: AccountPrivacy.hidden
+						}
 					}
-				}
-				.disabled(store.isRefreshing || store.submittingKey != nil)
 
-				Divider()
+					Button(fastMode.isEnabled ? "Turn Fast Mode Off" : "Turn Fast Mode On") {
+						Task {
+							await fastMode.toggle()
+						}
+					}
+					.disabled(fastMode.isLoading)
 
-				Button("Quit Decodex") {
-					NSApplication.shared.terminate(nil)
+					Button("Refresh All") {
+						Task {
+							await store.refresh()
+						}
+					}
+					.disabled(
+						store.isRefreshing
+							|| store.isRefreshingAccountSkeleton
+							|| store.isAccountControlInProgress
+							|| store.submittingKey != nil
+					)
+
+					if case .fixed = store.routing?.mode {
+						Button("Use Balanced Routing") {
+							Task {
+								await store.selectBalancedAccounts()
+							}
+						}
+						.disabled(
+							store.canPerformDirectAccountControl == false
+								|| store.isRoutingAccountControl
+								|| store.submittingKey != nil
+						)
+					}
+
+					Divider()
+
+					Button("Quit Decodex") {
+						NSApplication.shared.terminate(nil)
+					}
+				} label: {
+					Image(systemName: "ellipsis")
+						.font(PanelFont.iconButton)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.frame(width: 26, height: 26)
+						.contentShape(Rectangle())
 				}
-			} label: {
-				Image(systemName: "ellipsis")
-					.font(PanelFont.iconButton)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.frame(width: 21, height: 25)
-					.contentShape(Rectangle())
+				.menuStyle(.borderlessButton)
+				.menuIndicator(.hidden)
+				.fixedSize()
+				.help("Decodex menu")
+				.accessibilityLabel("Decodex menu")
 			}
-			.menuStyle(.borderlessButton)
-			.menuIndicator(.hidden)
-			.fixedSize()
-			.help("More actions")
+
+			VStack(alignment: .leading, spacing: 1) {
+				headerState(label: "Routing", value: routingSubtitle)
+				.accessibilityLabel("Decodex routing, \(routingSubtitle)")
+				headerState(label: "Codex", value: codexProjectionSubtitle)
+				.accessibilityLabel("Shared Codex login, \(codexProjectionSubtitle)")
+			}
+			.padding(.leading, 32)
 		}
 		.padding(.horizontal, 2)
 	}
 
-	private var headerSubtitle: String {
-		if store.isInitialLoading, store.accounts.isEmpty {
-			return "Loading accounts"
-		}
-		let count = store.accounts.count
-		return "\(count) account\(count == 1 ? "" : "s") · \(routingSubtitle)"
+	private var hasTransientStatus: Bool {
+		hasBoundedTransientStatus
+			|| displayedIntrinsicMessage != nil
 	}
 
-	private var hasTransientStatus: Bool {
+	private var hasBoundedTransientStatus: Bool {
 		fastMode.errorMessage != nil
-			|| store.message != nil
+			|| store.message?.tone == .error
 			|| store.pendingAttempts.isEmpty == false
 	}
 
 	private var transientStatus: some View {
-		ScrollView(.vertical) {
-			VStack(alignment: .leading, spacing: 7) {
-				if let errorMessage = fastMode.errorMessage {
-					ResetCardMessageView(
-						message: ResetCardStoreMessage(
-							tone: .error,
-							text: errorMessage
-						)
-					) {
-						fastMode.dismissError()
+		VStack(alignment: .leading, spacing: 5) {
+			if hasBoundedTransientStatus {
+				ScrollView(.vertical, showsIndicators: false) {
+					VStack(alignment: .leading, spacing: 5) {
+						if let errorMessage = fastMode.errorMessage {
+							ResetCardMessageView(
+								message: ResetCardStoreMessage(
+									tone: .error,
+									text: errorMessage
+								)
+							) {
+								fastMode.dismissError()
+							}
+						}
+
+						if let message = store.message, message.tone == .error {
+							ResetCardMessageView(message: message) {
+								store.dismissMessage()
+							}
+						}
+
+						if store.pendingAttempts.isEmpty == false {
+							ResetCardPendingAttemptsView(store: store)
+						}
 					}
 				}
+				.frame(maxHeight: AccountPanelLayout.statusMaximumHeight)
+			}
 
-				if let message = store.message {
-					ResetCardMessageView(message: message) {
-						store.dismissMessage()
-					}
-				}
-
-				if store.pendingAttempts.isEmpty == false {
-					ResetCardPendingAttemptsView(store: store)
+			if let message = displayedIntrinsicMessage {
+				ResetCardMessageView(message: message) {
+					store.dismissMessage()
 				}
 			}
 		}
-		.frame(height: AccountPanelLayout.statusViewportHeight)
 		.accessibilityLabel("Decodex status and pending actions")
+	}
+
+	private var displayedIntrinsicMessage: ResetCardStoreMessage? {
+		guard let message = store.message, message.tone != .error else {
+			return nil
+		}
+		if message.tone == .success,
+			message.text == "Fixed account selected."
+				|| message.text == "Balanced account selection enabled."
+		{
+			return nil
+		}
+		return message
 	}
 
 	private var profileAggregate: AccountProfileAggregate? {
@@ -242,16 +288,50 @@ struct AccountPanelView: View {
 
 	private var routingSubtitle: String {
 		guard let routing = store.routing else {
-			return "routing unavailable"
+			return store.isInitialLoading ? "Loading" : "Unavailable"
 		}
 		switch routing.mode {
 		case .balanced:
-			return "balanced"
+			return "Balanced"
 		case .fixed(let accountID):
-			let label = store.accounts.first {
+			let state = store.accounts.first {
 				$0.account.accountID == accountID
-			}?.account.displayLabel
-			return label.map { "fixed · \($0)" } ?? "fixed"
+			}
+			return state.map(accountIdentity(for:)) ?? "Fixed account"
+		}
+	}
+
+	private var codexProjectionSubtitle: String {
+		let state = store.accounts.first(where: {
+			store.isCodexProjection($0.account.accountID)
+		})
+		return CodexProjectionPresentation(
+			projection: store.codexAuthProjection,
+			currentIdentity: state.map(accountIdentity(for:)),
+			isInitialLoading: store.isInitialLoading
+		).text
+	}
+
+	private func accountIdentity(for state: ResetCardAccountState) -> String {
+		AccountIdentityPresentation(
+			alias: state.account.alias,
+			email: state.profile?.email ?? state.profileUnavailable?.claims.email,
+			revealsEmail: accountPrivacy == AccountPrivacy.visible
+		).text
+	}
+
+	private func headerState(label: String, value: String) -> some View {
+		HStack(alignment: .firstTextBaseline, spacing: 4) {
+			Text("\(label):")
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.frame(width: 43, alignment: .leading)
+
+			Text(value)
+				.font(PanelFont.headerSubtitle)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
+				.lineLimit(1)
+				.truncationMode(.middle)
 		}
 	}
 
@@ -266,7 +346,8 @@ struct AccountPanelView: View {
 						ResetCardAccountRow(
 							state: state,
 							store: store,
-							showsEmail: accountPrivacy == AccountPrivacy.visible
+							showsEmail: accountPrivacy == AccountPrivacy.visible,
+							detailedAccountID: $detailedAccountID
 						)
 
 						if index < store.accounts.count - 1 {
@@ -278,34 +359,15 @@ struct AccountPanelView: View {
 						}
 					}
 				}
-				.background(accountScrollProbe)
 				.background(accountRowsHeightProbe)
 			}
-			.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
 			.frame(
 				height: accountListViewportHeight
 			)
-			.overlay(alignment: .trailing) {
-				AccountListScrollIndicatorView(
-					contentHeight: accountListContentHeight,
-					viewportHeight: accountListViewportHeight,
-					scrollOffset: accountScrollOffset
-				)
-				.padding(.trailing, 1)
-			}
-			.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
-				let maximumOffset = max(0, accountListContentHeight - accountListViewportHeight)
-				accountScrollOffset = min(max(0, -minY), maximumOffset)
-			}
 			.onPreferenceChange(AccountRowsHeightPreferenceKey.self) { height in
 				let measuredHeight = ceil(height)
 				if abs(measuredAccountListContentHeight - measuredHeight) > 0.5 {
 					measuredAccountListContentHeight = measuredHeight
-				}
-			}
-			.onChange(of: accountListNeedsScrolling) { _, needsScrolling in
-				if needsScrolling == false {
-					accountScrollOffset = 0
 				}
 			}
 			.accessibilityLabel("Decodex accounts")
@@ -325,23 +387,10 @@ struct AccountPanelView: View {
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
 			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame,
-			additionalChromeHeight: hasTransientStatus
-				? AccountPanelLayout.statusViewportHeight
-				: 0
+				additionalChromeHeight: hasTransientStatus
+					? AccountPanelLayout.statusMaximumHeight
+					: 0
 		)
-	}
-
-	private var accountListNeedsScrolling: Bool {
-		accountListContentHeight > accountListViewportHeight + 1
-	}
-
-	private var accountScrollProbe: some View {
-		GeometryReader { proxy in
-			Color.clear.preference(
-				key: AccountScrollOffsetPreferenceKey.self,
-				value: proxy.frame(in: .named(AccountPanelLayout.accountListScrollSpace)).minY
-			)
-		}
 	}
 
 	private var accountRowsHeightProbe: some View {
@@ -368,10 +417,10 @@ struct AccountPanelView: View {
 				Text(store.isInitialLoading ? "Loading accounts" : "No accounts")
 					.font(PanelFont.emptyTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				Text(
-					store.hasLoaded
-						? "Import an account with the Decodex CLI, then refresh."
-						: "The account service has not returned a complete list."
+					Text(
+						store.hasLoaded
+							? "Add a Codex login, then refresh."
+							: "The account service has not returned a complete list."
 				)
 				.font(PanelFont.emptyBody)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))

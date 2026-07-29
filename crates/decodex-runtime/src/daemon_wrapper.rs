@@ -1124,9 +1124,10 @@ mod tests {
 	#[test]
 	fn descriptor_paths_are_absolute_bound_and_drift_sensitive() {
 		let temporary = tempfile::tempdir().unwrap();
-		let original_parent = temporary.path().join("original");
-		let moved_parent = temporary.path().join("moved");
-		let other_parent = temporary.path().join("other");
+		let temporary_root = fs::canonicalize(temporary.path()).unwrap();
+		let original_parent = temporary_root.join("original");
+		let moved_parent = temporary_root.join("moved");
+		let other_parent = temporary_root.join("other");
 		fs::create_dir_all(&original_parent).unwrap();
 		fs::create_dir_all(&moved_parent).unwrap();
 		fs::create_dir_all(&other_parent).unwrap();

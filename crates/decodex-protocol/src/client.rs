@@ -19,12 +19,12 @@ use tokio_tungstenite::{
 use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountProfileEmailDto,
 	AccountProfileResult, AccountSelectionModeDto, AccountsResult, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome,
-	CommandPayload, CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey,
-	ProtocolVersion, QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition,
-	Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult,
-	ResetCardOperationResult, ResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerMessage, VersionRefusal,
+	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
+	CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId,
+	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
+	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -220,9 +220,7 @@ impl DoctorClient {
 		};
 
 		if welcome.version != CURRENT_VERSION
-			|| welcome.supported.major != CURRENT_VERSION.major
-			|| !(welcome.supported.minimum_minor..=welcome.supported.maximum_minor)
-				.contains(&CURRENT_VERSION.minor)
+			|| welcome.supported != crate::SupportedVersions::current()
 		{
 			return Err(version_failure(welcome.version));
 		}
@@ -709,12 +707,7 @@ impl ResetCardClient {
 		if welcome.version != CURRENT_VERSION {
 			return Err(version_failure(welcome.version));
 		}
-		if welcome.supported.major != CURRENT_VERSION.major {
-			return Err(ClientFailure::ProtocolMajorMismatch);
-		}
-		if !(welcome.supported.minimum_minor..=welcome.supported.maximum_minor)
-			.contains(&CURRENT_VERSION.minor)
-		{
+		if welcome.supported != crate::SupportedVersions::current() {
 			return Err(ClientFailure::ProtocolMinorMismatch);
 		}
 
@@ -822,7 +815,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V1.5 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.0 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -928,6 +921,22 @@ impl AccountClient {
 		}
 	}
 
+	/// Read the normal shared Codex auth projection without exposing credentials.
+	pub async fn codex_auth_projection(&self) -> Result<CodexAuthProjectionResult, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport
+				.query_inner("decodex-codex-auth-projection", QueryPayload::GetCodexAuthProjection),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::CodexAuthProjection(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
 	/// Select one fixed account under routing-control and target-account revision guards.
 	pub async fn set_fixed_account_selection(
 		&self,
@@ -973,7 +982,22 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V1.5 lifecycle command exactly once on one connection.
+	/// Project one exact account into Codex shared auth without changing Decodex routing.
+	pub async fn use_account_in_codex(
+		&self,
+		account_id: EntityId,
+		expected_account_revision: EntityRevision,
+		idempotency_key: IdempotencyKey,
+	) -> Result<AccountCommandResponse, ClientFailure> {
+		self.execute(
+			CommandPayload::UseAccountInCodex { account_id },
+			Some(expected_account_revision),
+			idempotency_key,
+		)
+		.await
+	}
+
+	/// Execute one V2.0 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -985,13 +1009,13 @@ impl AccountClient {
 			&payload,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
 				| CommandPayload::ImportAccountCredentialFile { .. }
-				| CommandPayload::RenameAccount { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
 				| CommandPayload::SetFixedAccountSelection { .. }
 				| CommandPayload::SetBalancedAccountSelection
 				| CommandPayload::SetAccountOrder { .. }
 				| CommandPayload::RefreshAccount { .. }
+				| CommandPayload::UseAccountInCodex { .. }
 				| CommandPayload::RecoverAccountOperation { .. }
 		) {
 			return Err(ClientFailure::ProtocolMalformed);
@@ -1120,10 +1144,6 @@ fn account_result_matches(
 			ResultPayload::AccountChanged { account },
 		)
 		| (
-			CommandPayload::RenameAccount { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		)
-		| (
 			CommandPayload::SetAccountEnabled { account_id, .. },
 			ResultPayload::AccountChanged { account },
 		)
@@ -1154,6 +1174,15 @@ fn account_result_matches(
 			CommandPayload::RecoverAccountOperation { operation_id, .. },
 			ResultPayload::AccountOperationRecovered { operation_id: result_id, .. },
 		) => operation_id == result_id,
+		(
+			CommandPayload::UseAccountInCodex { account_id },
+			ResultPayload::CodexAuthProjected {
+				account_id: result_id,
+				account_revision,
+				projection_digest: _,
+			},
+		) =>
+			account_id == result_id && entity_revision == *account_revision && entity_revision.0 > 0,
 		_ => false,
 	}
 }
@@ -1606,9 +1635,13 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_retain_the_v1_5_v1_4_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 1, minor: 5 });
-		assert_eq!(PREVIOUS_MINOR_VERSION, ProtocolVersion { major: 1, minor: 4 });
+	fn protocol_constants_expose_only_the_exact_v2_0_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 0 });
+		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
+		assert_eq!(
+			SupportedVersions::current(),
+			SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 0 },
+		);
 		assert!(WireText::new("bounded").is_ok());
 	}
 
@@ -1819,14 +1852,14 @@ max_entry_bytes = 0
 		let cases = [
 			(
 				Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch {
-					requested: ProtocolVersion { major: 2, minor: 0 },
+					requested: ProtocolVersion { major: 1, minor: 5 },
 					supported: SupportedVersions::current(),
 				}),
 				ClientFailure::ProtocolMajorMismatch,
 			),
 			(
 				Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
-					requested: ProtocolVersion { major: 1, minor: 0 },
+					requested: ProtocolVersion { major: 2, minor: 1 },
 					supported: SupportedVersions::current(),
 				}),
 				ClientFailure::ProtocolMinorMismatch,
@@ -1858,7 +1891,7 @@ max_entry_bytes = 0
 		let wrong_version = refusal(
 			"wrong-server",
 			Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
-				requested: ProtocolVersion { major: 1, minor: 0 },
+				requested: ProtocolVersion { major: 2, minor: 1 },
 				supported: SupportedVersions::current(),
 			}),
 		);
@@ -1917,7 +1950,7 @@ max_entry_bytes = 0
 		task.await.expect("test operation must succeed");
 
 		let wrong_welcome_version = typed(ServerMessage::Welcome(ServerWelcome {
-			version: PREVIOUS_MINOR_VERSION,
+			version: ProtocolVersion { major: 2, minor: 1 },
 			supported: SupportedVersions::current(),
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			instance_id: None,
@@ -1925,6 +1958,23 @@ max_entry_bytes = 0
 			reconnect: ReconnectMode::Snapshot,
 		}));
 		let (profile, task, _temp) = fixture(vec![wrong_welcome_version], Vec::new()).await;
+
+		assert_eq!(
+			DoctorClient::new(profile).query().await.unwrap_err(),
+			ClientFailure::ProtocolMinorMismatch,
+		);
+
+		task.await.expect("test operation must succeed");
+
+		let widened_welcome = typed(ServerMessage::Welcome(ServerWelcome {
+			version: CURRENT_VERSION,
+			supported: SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 1 },
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			instance_id: None,
+			cursor: Cursor(0),
+			reconnect: ReconnectMode::Snapshot,
+		}));
+		let (profile, task, _temp) = fixture(vec![widened_welcome], Vec::new()).await;
 
 		assert_eq!(
 			DoctorClient::new(profile).query().await.unwrap_err(),
@@ -1986,7 +2036,7 @@ max_entry_bytes = 0
 		let encoded = serde_json::to_value(&wrong_report).expect("test operation must succeed");
 		let mut encoded = encoded.as_object().expect("test operation must succeed").clone();
 
-		encoded.insert("version".into(), serde_json::json!({"major": 1, "minor": 1}));
+		encoded.insert("version".into(), serde_json::json!({"major": 2, "minor": 1}));
 
 		wrong_report = serde_json::from_value(encoded.into()).expect("test operation must succeed");
 
@@ -2005,7 +2055,7 @@ max_entry_bytes = 0
 		let mut wrong_snapshot_version = initial(SERVER_ID);
 
 		wrong_snapshot_version[1] = typed(ServerMessage::Snapshot(SnapshotEnvelope {
-			version: PREVIOUS_MINOR_VERSION,
+			version: ProtocolVersion { major: 2, minor: 1 },
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			cursor: Cursor(0),
 			items: Vec::new(),
@@ -2021,7 +2071,7 @@ max_entry_bytes = 0
 		task.await.expect("test operation must succeed");
 
 		let wrong_result_version = typed(ServerMessage::QueryResult(QueryResultEnvelope {
-			version: PREVIOUS_MINOR_VERSION,
+			version: ProtocolVersion { major: 2, minor: 1 },
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
@@ -2067,7 +2117,10 @@ max_entry_bytes = 0
 	#[tokio::test]
 	async fn interleaved_events_verify_version_and_identity_and_preserve_valid_order() {
 		for (event, expected) in [
-			(event(PREVIOUS_MINOR_VERSION, SERVER_ID), ClientFailure::ProtocolMinorMismatch),
+			(
+				event(ProtocolVersion { major: 2, minor: 1 }, SERVER_ID),
+				ClientFailure::ProtocolMinorMismatch,
+			),
 			(event(CURRENT_VERSION, "wrong-server"), ClientFailure::ServerIdentityMismatch),
 		] {
 			let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![event]).await;
@@ -2545,6 +2598,26 @@ max_entry_bytes = 0
 			.unwrap_err();
 
 		assert_eq!(failure, ClientFailure::ProtocolDisconnected);
+	}
+
+	#[test]
+	fn use_account_in_codex_result_requires_exact_account_and_revision() {
+		let account_id =
+			EntityId::new("41234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let command = crate::CommandPayload::UseAccountInCodex { account_id: account_id.clone() };
+		let exact = ResultPayload::CodexAuthProjected {
+			account_id: account_id.clone(),
+			account_revision: EntityRevision(11),
+			projection_digest: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+		};
+		let stale = ResultPayload::CodexAuthProjected {
+			account_id,
+			account_revision: EntityRevision(10),
+			projection_digest: crate::Sha256Digest::new("a".repeat(64)).unwrap(),
+		};
+
+		assert!(super::account_result_matches(&command, EntityRevision(11), &exact));
+		assert!(!super::account_result_matches(&command, EntityRevision(11), &stale));
 	}
 
 	#[tokio::test]

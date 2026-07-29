@@ -628,9 +628,7 @@ fn verify_welcome(
 	welcome: &ServerWelcome,
 ) -> Result<(), RetainedSessionFailure> {
 	if welcome.version != CURRENT_VERSION
-		|| welcome.supported.major != CURRENT_VERSION.major
-		|| !(welcome.supported.minimum_minor..=welcome.supported.maximum_minor)
-			.contains(&CURRENT_VERSION.minor)
+		|| welcome.supported != crate::SupportedVersions::current()
 	{
 		return Err(version_failure(welcome.version));
 	}
@@ -875,7 +873,7 @@ mod tests {
 		CURRENT_VERSION, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope,
 		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope, CorrelationId,
 		Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload, IdempotencyKey,
-		LocalTransportAuthority, LocalTransportStream, PREVIOUS_MINOR_VERSION, ReceiptDisposition,
+		LocalTransportAuthority, LocalTransportStream, ProtocolVersion, ReceiptDisposition,
 		ReconnectMode, Refusal, RefusalEnvelope, ServerId, ServerInstanceId, ServerMessage,
 		ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
 		retained_session::{
@@ -1445,7 +1443,7 @@ mod tests {
 				unreachable!()
 			};
 
-			wrong_version.version = PREVIOUS_MINOR_VERSION;
+			wrong_version.version = ProtocolVersion { major: 2, minor: 1 };
 
 			send(&mut socket, ServerMessage::Welcome(wrong_version)).await;
 		})

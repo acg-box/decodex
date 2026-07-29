@@ -25,10 +25,10 @@ use decodex_protocol::{
 	ClientMessage, CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor,
 	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
 	EntityRevision, EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
-	ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId,
-	ServerInstanceId, ServerMessage, SnapshotItem, VersionRefusal, WireText,
+	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal, ResetCardDescriptorDto,
+	ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
+	ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
 use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
 
@@ -453,30 +453,15 @@ async fn execute_key_and_receive_event(
 }
 
 #[tokio::test]
-async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
+async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 	let (_temp, transport) = local_transport();
-	let mut bound =
-		server("version-server", FixtureApplication::default(), ServerConfig::default())
-			.bind(transport.clone())
-			.await
-			.expect("test operation must succeed");
+	let application = FixtureApplication::default();
+	let mut bound = server("version-server", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.expect("test operation must succeed");
 
-	for (index, version) in [PREVIOUS_MINOR_VERSION, CURRENT_VERSION].into_iter().enumerate() {
-		let mut client = connect(&transport, version).await;
-		let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
-			panic!("expected welcome");
-		};
-
-		assert_eq!(welcome.version, version);
-		assert!(welcome.instance_id.is_some());
-		assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
-
-		execute_and_receive_event(&mut client, version, index as u64 + 1).await;
-
-		client.close(None).await.expect("test operation must succeed");
-	}
-
-	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 0 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 1, minor: 5 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected version refusal");
 	};
@@ -485,10 +470,11 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		refusal.refusal,
 		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. })
 	));
+	assert_eq!((application.queries(), application.executions()), (0, 0));
 
 	drop(client);
 
-	let mut client = connect(&transport, ProtocolVersion { major: 1, minor: 9 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 1 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected minor-version refusal");
 	};
@@ -497,73 +483,68 @@ async fn current_previous_minor_and_exact_major_refusal_use_real_websockets() {
 		refusal.refusal,
 		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. })
 	));
+	assert_eq!((application.queries(), application.executions()), (0, 0));
 
 	drop(client);
+
+	let mut client = connect(&transport, CURRENT_VERSION).await;
+	let ServerMessage::Welcome(welcome) = receive(&mut client).await else {
+		panic!("expected welcome");
+	};
+	assert_eq!(welcome.version, CURRENT_VERSION);
+	assert_eq!(welcome.supported.minimum_minor, 0);
+	assert_eq!(welcome.supported.maximum_minor, 0);
+	assert!(welcome.instance_id.is_some());
+	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
+	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
+	client.close(None).await.expect("test operation must succeed");
 
 	bound.shutdown().await.expect("test operation must succeed");
 }
 
 #[tokio::test]
-async fn previous_minor_keeps_v1_4_account_queries_but_refuses_v1_5_profiles() {
+async fn post_negotiation_payload_envelopes_require_exact_current_version() {
 	let (_temp, transport) = local_transport();
 	let application = FixtureApplication::default();
-	let mut bound = server("previous-feature-gate", application.clone(), ServerConfig::default())
+	let mut bound = server("exact-feature-gate", application.clone(), ServerConfig::default())
 		.bind(transport.clone())
 		.await
-		.expect("bind previous-minor feature-gate server");
-	let mut client = connect(&transport, PREVIOUS_MINOR_VERSION).await;
+		.expect("bind exact-current feature-gate server");
+	let mut client = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut client).await;
-	send(&mut client, doctor_query_for(PREVIOUS_MINOR_VERSION, 1)).await;
-
-	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
-		panic!("previous-minor doctor query must remain supported");
-	};
-
-	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
-	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
-	assert_eq!(application.queries(), 1);
-
 	send(
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
-			version: PREVIOUS_MINOR_VERSION,
-			query_id: QueryId::new("accounts-query").expect("bounded query ID"),
-			payload: QueryPayload::ListAccounts,
-		}),
-	)
-	.await;
-	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
-		panic!("V1.4 account list must remain supported");
-	};
-	assert!(matches!(result.payload, QueryResultPayload::Accounts(_)));
-	assert_eq!(application.queries(), 2);
-
-	send(
-		&mut client,
-		ClientMessage::Query(QueryEnvelope {
-			version: PREVIOUS_MINOR_VERSION,
-			query_id: QueryId::new("profile-query").expect("bounded query ID"),
-			payload: QueryPayload::GetAccountProfile {
-				account_id: EntityId::new("40000000-0000-4000-8000-000000000001")
-					.expect("canonical account ID"),
-				include_email: false,
-			},
+			version: ProtocolVersion { major: 2, minor: 1 },
+			query_id: QueryId::new("future-query").expect("bounded query ID"),
+			payload: QueryPayload::GetDoctorStatus,
 		}),
 	)
 	.await;
 	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
-	assert_eq!(application.queries(), 2);
+	assert_eq!(application.queries(), 0);
 
-	execute_and_receive_event(&mut client, PREVIOUS_MINOR_VERSION, 1).await;
+	send(&mut client, command(ProtocolVersion { major: 1, minor: 5 }, 1, "legacy-command")).await;
+	assert!(matches!(receive(&mut client).await, ServerMessage::Refusal(_)));
+	assert_eq!(application.executions(), 0);
+
+	send(&mut client, doctor_query_for(CURRENT_VERSION, 1)).await;
+	let ServerMessage::QueryResult(result) = receive(&mut client).await else {
+		panic!("exact-current doctor query must be supported");
+	};
+	assert_eq!(result.version, CURRENT_VERSION);
+	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
+	assert_eq!(application.queries(), 1);
+	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
 	assert_eq!(application.executions(), 1);
 
 	drop(client);
-	bound.shutdown().await.expect("shutdown previous-minor feature-gate server");
+	bound.shutdown().await.expect("shutdown exact-current feature-gate server");
 }
 
 #[tokio::test]
-async fn v1_4_reset_card_events_reach_the_previous_minor_subscriber() {
+async fn v2_reset_card_events_reach_each_exact_current_subscriber() {
 	let (_temp, transport) = local_transport();
 	let application = FixtureApplication::with_revision(1);
 	let mut bound =
@@ -571,10 +552,10 @@ async fn v1_4_reset_card_events_reach_the_previous_minor_subscriber() {
 			.bind(transport.clone())
 			.await
 			.expect("bind reset-card event feature-gate server");
-	let mut previous = connect(&transport, PREVIOUS_MINOR_VERSION).await;
+	let mut observer = connect(&transport, CURRENT_VERSION).await;
 	let mut current = connect(&transport, CURRENT_VERSION).await;
 
-	receive_initial(&mut previous).await;
+	receive_initial(&mut observer).await;
 	receive_initial(&mut current).await;
 	send(&mut current, reset_card_command(CURRENT_VERSION, 1, "current-reset-key")).await;
 
@@ -586,16 +567,16 @@ async fn v1_4_reset_card_events_reach_the_previous_minor_subscriber() {
 
 	assert_eq!(event.version, CURRENT_VERSION);
 	assert!(matches!(event.payload, EventPayload::ResetCardOperationAccepted { .. }));
-	let ServerMessage::Event(previous_event) = receive(&mut previous).await else {
-		panic!("V1.4 subscriber must receive the retained reset-card event");
+	let ServerMessage::Event(observer_event) = receive(&mut observer).await else {
+		panic!("the second current subscriber must receive the reset-card event");
 	};
-	assert_eq!(previous_event.version, PREVIOUS_MINOR_VERSION);
-	assert!(matches!(previous_event.payload, EventPayload::ResetCardOperationAccepted { .. }));
-	send(&mut previous, doctor_query_for(PREVIOUS_MINOR_VERSION, 2)).await;
-	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
-		panic!("previous-minor subscriber must remain usable after a filtered reset-card event");
+	assert_eq!(observer_event.version, CURRENT_VERSION);
+	assert!(matches!(observer_event.payload, EventPayload::ResetCardOperationAccepted { .. }));
+	send(&mut observer, doctor_query_for(CURRENT_VERSION, 2)).await;
+	let ServerMessage::QueryResult(result) = receive(&mut observer).await else {
+		panic!("the second current subscriber must remain usable after the event");
 	};
-	assert_eq!(result.version, PREVIOUS_MINOR_VERSION);
+	assert_eq!(result.version, CURRENT_VERSION);
 	assert!(matches!(result.payload, QueryResultPayload::DoctorStatus(_)));
 	assert_eq!(application.executions(), 1);
 
@@ -846,23 +827,6 @@ async fn reconnect_resumes_ordered_deltas_and_falls_back_to_a_snapshot() {
 	assert_eq!(snapshot.cursor, Cursor(3));
 
 	drop(stale);
-
-	let mut previous = reconnect(
-		&transport,
-		PREVIOUS_MINOR_VERSION,
-		ResumeCursor { server_id, instance_id: instance_id.clone(), cursor: persisted },
-	)
-	.await;
-	let ServerMessage::Welcome(welcome) = receive(&mut previous).await else {
-		panic!("expected previous-minor resume welcome");
-	};
-
-	assert_eq!(welcome.instance_id, instance_id);
-	assert_eq!(welcome.reconnect, ReconnectMode::Resume);
-	assert!(matches!(receive(&mut previous).await, ServerMessage::Event(_)));
-	assert!(matches!(receive(&mut previous).await, ServerMessage::Event(_)));
-
-	drop(previous);
 
 	bound.shutdown().await.expect("test operation must succeed");
 }
@@ -1131,32 +1095,19 @@ async fn independent_connections_can_observe_live_doctor_concurrently() {
 }
 
 #[tokio::test]
-async fn receipt_capacity_is_independent_in_both_protocol_version_orderings() {
-	for (case, first_version, second_version) in [
-		("previous-then-current", PREVIOUS_MINOR_VERSION, CURRENT_VERSION),
-		("current-then-previous", CURRENT_VERSION, PREVIOUS_MINOR_VERSION),
-	] {
-		assert_cross_version_receipt_capacity(case, first_version, second_version).await;
-	}
-}
-
-async fn assert_cross_version_receipt_capacity(
-	case: &str,
-	first_version: ProtocolVersion,
-	second_version: ProtocolVersion,
-) {
+async fn receipt_capacity_has_one_exact_current_namespace() {
 	let (_temp, transport) = local_transport();
 	let config = ServerConfig { receipt_capacity: 1, ..ServerConfig::default() };
 	let application = FixtureApplication::default();
-	let mut bound = server(case, application.clone(), config)
+	let mut bound = server("exact-current-receipt-capacity", application.clone(), config)
 		.bind(transport.clone())
 		.await
-		.expect("bind cross-version receipt-capacity server");
-	let mut first = connect(&transport, first_version).await;
+		.expect("bind exact-current receipt-capacity server");
+	let mut first = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut first).await;
-	execute_and_receive_event(&mut first, first_version, 1).await;
-	send(&mut first, command(first_version, 2, "key-1")).await;
+	execute_and_receive_event(&mut first, CURRENT_VERSION, 1).await;
+	send(&mut first, command(CURRENT_VERSION, 2, "key-1")).await;
 
 	let ServerMessage::CommandReceipt(duplicate) = receive(&mut first).await else {
 		panic!("expected same-version duplicate at capacity");
@@ -1165,7 +1116,7 @@ async fn assert_cross_version_receipt_capacity(
 	assert_eq!(duplicate.disposition, ReceiptDisposition::Duplicate);
 	assert!(matches!(receive(&mut first).await, ServerMessage::CommandResult(_)));
 
-	let mut conflict_message = command(first_version, 3, "key-1");
+	let mut conflict_message = command(CURRENT_VERSION, 3, "key-1");
 	let ClientMessage::Command(ref mut conflict) = conflict_message else { unreachable!() };
 
 	conflict.expected_revision = Some(EntityRevision(999));
@@ -1185,11 +1136,16 @@ async fn assert_cross_version_receipt_capacity(
 
 	drop(first);
 
-	let mut second = connect(&transport, second_version).await;
+	let mut second = connect(&transport, CURRENT_VERSION).await;
 
 	receive_initial(&mut second).await;
-	execute_key_and_receive_event(&mut second, second_version, 2, "key-1").await;
-	send(&mut second, command(second_version, 4, "second-version-capacity")).await;
+	send(&mut second, command(CURRENT_VERSION, 4, "key-1")).await;
+	let ServerMessage::CommandReceipt(replayed) = receive(&mut second).await else {
+		panic!("expected exact-current replay");
+	};
+	assert_eq!(replayed.disposition, ReceiptDisposition::Duplicate);
+	assert!(matches!(receive(&mut second).await, ServerMessage::CommandResult(_)));
+	send(&mut second, command(CURRENT_VERSION, 5, "new-key-at-capacity")).await;
 
 	let ServerMessage::CommandReceipt(refused) = receive(&mut second).await else {
 		panic!("expected second-version capacity refusal");
@@ -1203,11 +1159,11 @@ async fn assert_cross_version_receipt_capacity(
 		result.error,
 		Some(CommandError::IdempotencyCapacityExceeded { capacity: 1 })
 	));
-	assert_eq!(application.executions(), 2);
+	assert_eq!(application.executions(), 1);
 
 	drop(second);
 
-	bound.shutdown().await.expect("shutdown cross-version receipt-capacity server");
+	bound.shutdown().await.expect("shutdown exact-current receipt-capacity server");
 }
 
 #[tokio::test]
@@ -1259,7 +1215,7 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 	let raw = serde_json::json!({
 		"type": "command",
 		"body": {
-			"version": { "major": 1, "minor": 1 },
+			"version": CURRENT_VERSION,
 			"client_command_id": "x".repeat(decodex_protocol::MAX_WIRE_TEXT_BYTES + 1),
 			"idempotency_key": "bounded-key",
 			"expected_revision": null,

@@ -1,9 +1,7 @@
 # Account Lifecycle Authority
 
-Status: normative vNext account authority for XY-1423. XY-1422 owns
-implementation. This document defines the first usable macOS dogfood boundary and
-the later complete account lifecycle. It does not claim that either boundary is
-implemented.
+Status: normative vNext account authority. This document defines the usable macOS
+boundary and the later complete account lifecycle.
 
 The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
 requirements. A component-first global gate is not the delivery order.
@@ -34,7 +32,7 @@ binding. It cannot select another account.
 
 The Account Registry owns:
 
-- stable Account UUID, label, revision, tombstone, and provider identity;
+- stable Account UUID, derived alias, revision, tombstone, and provider identity;
 - an administrative `enabled` boolean that is independent from observed state;
 - observed account, authentication, capability, and health state;
 - one versioned routing control with mode, fixed target, and complete account order;
@@ -50,6 +48,25 @@ evidence for every applicable check.
 
 PostgreSQL stores no credential, encrypted credential blob, retrieval locator, or
 ambient Codex auth export. A fingerprint is equality evidence only.
+
+The public alias is not mutable product state. Derive it from the canonical provider
+binding:
+
+```text
+digest = SHA-256(
+  "decodex/account-alias/v1\0"
+  || canonical_provider_kind
+  || "\0"
+  || canonical_provider_account_id
+)
+alias = "Account " || CrockfordBase32(first 50 big-endian digest bits)
+```
+
+Render the ten uppercase Crockford digits as `Account ABCDE-FGHIJ`. Do not accept a
+user label, rename command, random suffix, dictionary, or collision table. The ChatGPT
+provider identity `433463f7-74ae-4a7e-ab10-9667f9e4919e` has digest
+`6dcdc7c10bd6adc626af7ec7c20817934ca8e42a80d58d44f7d5636b71099e98` and alias
+`Account DQ6WF-G8BTT`.
 
 ## HostCredentialStore
 
@@ -140,6 +157,26 @@ Automatic cross-account same-thread fallback and all-depleted scheduler wake are
 Slice 1 requirements. An all-depleted result exposes the exact reset evidence and waits
 for an explicit retry. V14 and V16 remain the policy/snapshot and decision authorities;
 their broader automatic-routing behavior is accepted later.
+
+## Explicit Use in Codex
+
+`UseAccountInCodex` projects one exact ready account to the normal shared
+`~/.codex/auth.json`. It is independent from routing: projection does not change routing,
+and routing does not project auth. The command checks the current Account revision and
+the exact HostCredentialStore version, fingerprint, and provider binding. Tokens remain
+inside the daemon.
+
+The host write rejects an ambiguous `CODEX_HOME`, symbolic links, path drift, wrong
+ownership, wrong link count, and group- or other-writable ancestors. It creates one
+same-directory mode-`0600` temporary file, synchronizes it, atomically renames it over
+the exact target, reads back the exact account binding, and synchronizes the parent.
+Same-binding replay is successful without rewriting the file. The read-only result is
+`current`, `unmanaged`, or `unavailable` and exposes only Account UUID, Account revision,
+and a credential-negative projection digest.
+
+The projection affects future Codex launches and new app-server processes. It does not
+claim to hot-switch an already running Codex process. There is no watcher, backup,
+per-account Codex home, token environment projection, legacy helper, or fallback.
 
 ## Account operations
 
@@ -241,7 +278,7 @@ reconciliation also remain readable after a gate changes. They cannot start a ne
 
 ## Bounded account profile
 
-Protocol V1.5 adds one independent `GetAccountProfile` query per Account UUID. It does
+Protocol V2.0 provides one independent `GetAccountProfile` query per Account UUID. It does
 not run as part of account listing or Reset Card inventory. One failed profile query
 affects only that account row.
 
@@ -279,9 +316,9 @@ fields are absent when the provider or current credential does not supply them.
 
 The product has no legacy-account migration mode. Normal startup and installation do
 not read an old account pool, mapping, helper, environment projection, migration
-manifest, or migration receipt. V27 is an unlanded clean-break schema and accepts only
-an empty Account Registry. A populated older registry requires a fresh local product
-database.
+manifest, or migration receipt. V27 is the landed clean-break account schema in the
+current V1–V30 migration ledger and accepts only an empty Account Registry. A populated
+older registry requires a fresh local product database.
 
 An operator can move credentials once by creating owner-private
 `decodex/account-credential-import/1` files and calling the ordinary versioned account
@@ -302,10 +339,10 @@ legacy-runtime path.
 | --- | --- | --- |
 | Host secret backend | macOS Keychain adapter accepted | macOS plus an explicitly selected persistent Linux backend |
 | Exact-build auth | Initial projection and refresh callback proved for each accepted macOS build | Proved for every supported platform/build |
-| Account lifecycle | Enrollment/import, list/rename, enable/disable, logout, refresh/CAS, and startup reconciliation | Same contract across all supported hosts plus full fault acceptance |
+| Account lifecycle | Enrollment/import, stable derived alias, list, enable/disable, logout, refresh/CAS, and startup reconciliation | Same contract across all supported hosts plus full fault acceptance |
 | Routing | Initial eligible quota-aware fixed/balanced selection and explicit manual recovery | Automatic same-thread fallback and all-depleted wake after their later gate |
 | Presentation | All-account Reset Card, quota, and bounded profile data | Full bounded usage and history presentation |
-| Ambient Codex auth | Deferred; no `Use in Codex` requirement | Capability-probed `Use in Codex`, fail-closed when unsupported |
+| Explicit Codex auth | `Use in Codex` projects one exact account to shared auth without changing routing | Same fail-closed explicit contract on every supported host |
 | Legacy authority | No watcher, helper, or credential environment input on normal startup | Same, across every supported installation |
 | Evidence | Two-account Mac flow with restart boundaries and package proof | Broader platform and adversarial matrix |
 
@@ -317,7 +354,7 @@ reconciliation, and active host store. An environment-only projection is
 ## Later obligations
 
 The later readiness table in the [vNext gate manifest](vnext-gates.md) retains Linux,
-ambient `Use in Codex`, full account presentation, automatic fallback and wake,
+full account presentation, automatic fallback and wake,
 retained-title Desktop discovery, broad matrices, graph, automation, remote access, and
 product polish. These obligations do not block the three Mac delivery slices unless a
 slice explicitly names them.
