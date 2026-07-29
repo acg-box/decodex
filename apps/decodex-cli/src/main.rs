@@ -10,6 +10,7 @@ use decodex_protocol as _;
 use serde as _;
 use serde_json as _;
 #[cfg(test)] use tempfile as _;
+use toml_edit as _;
 
 use decodex_cli::{self, Cli};
 
