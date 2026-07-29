@@ -1,6 +1,6 @@
 # Codex 0.146 account-callback receipt
 
-Date: 2026-07-28
+Date: 2026-07-29
 
 This receipt binds the current macOS account-launch profile to one exact Codex image and its
 generated app-server schema. It does not authorize another Codex build.
@@ -9,7 +9,7 @@ generated app-server schema. It does not authorize another Codex build.
 | --- | --- |
 | Platform | macOS arm64 |
 | Codex version | `codex-cli 0.146.0-alpha.3.1` |
-| Executable SHA-256 | `6d8be49e49751554df16572369e636cbe02c84b208cad3dc35528c846eeca223` |
+| Executable SHA-256 | `fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e` |
 | Code-signing team | `2DC432GLL2` |
 | `ClientRequest.json` | `ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735` |
 | `ServerNotification.json` | `189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166` |
@@ -25,11 +25,10 @@ The operator generated the schema with:
 codex app-server generate-json-schema --experimental --out ABSOLUTE_PRIVATE_DIRECTORY
 ```
 
-The generated directory contained 347 regular schema files. Canonical JSON hashing reproduced
-all three checked-in digests. `cargo test -p decodex-codex --all-targets --all-features` passed
-47 tests, and the macOS attested-spawn test group passed 8 tests. The final local-service
-installation must still pass the daemon callback preflight and report the credential vault ready
-before account import.
+The generated directory contained 347 regular schema files. `GeneratedSchemaEvidence::load`
+reproduced the checked-in schema digests and callback profile for this exact replacement image.
+The final local-service installation must pass the daemon callback preflight and report the
+credential vault ready.
 
 The upstream source for this profile is the OpenAI Codex tag
 [`rust-v0.146.0-alpha.3.1`](https://github.com/openai/codex/tree/rust-v0.146.0-alpha.3.1).
