@@ -22,7 +22,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("id: \\.element.id"))
 	}
 
-	func testProductionSourceHasOneCLIResetCardAuthorityAndNoRetiredUISurfaces() throws {
+	func testProductionSourceUsesOnlyTheNativeResetCardAuthority() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 		let appURL = testsURL
@@ -60,6 +60,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"URLSessionWebSocketTask",
 			"127.0.0.1:8192",
 			"localhost:8192",
+			"ResetCardCLIClient",
+			"FastModeCLIClient",
+			"Process(",
+			"Contents/Helpers",
+			"decodex-cli",
 			"legacy",
 			"vNext",
 			"VNext",
@@ -91,7 +96,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		}
 	}
 
-	func testBundleStagesOnlyTheAppAndDecodexCLIExecutables() throws {
+	func testBundleStagesTheAppAndNativeClientWithoutCLI() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 		let appURL = testsURL
@@ -102,10 +107,19 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(script.contains(#"CLI_NAME="decodex-cli""#))
-		XCTAssertTrue(script.contains("-p decodex-cli"))
-		XCTAssertTrue(script.contains(#"cp "$CLI_BINARY" "$APP_CLI_BINARY""#))
+		XCTAssertTrue(
+			script.contains(#"NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib""#)
+		)
+		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
+		XCTAssertTrue(
+			script.contains(#"cp "$NATIVE_CLIENT_BINARY" "$APP_NATIVE_CLIENT""#)
+		)
+		XCTAssertTrue(script.contains(#""$APP_NATIVE_CLIENT""#))
 		for retiredPackageTerm in [
+			"CLI_NAME",
+			"APP_CLI_BINARY",
+			"-p decodex-cli",
+			"Contents/Helpers",
 			"decodex-app-helper",
 			"-p decodexd",
 			"decodex-server",

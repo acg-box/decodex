@@ -14,18 +14,24 @@ app_path="$stage_dir/Decodex.app"
 
 test -d "$app_path"
 test -x "$app_path/Contents/MacOS/DecodexApp"
-test -x "$app_path/Contents/Helpers/decodex-cli"
-test ! -e "$app_path/Contents/Helpers/decodex"
-test ! -e "$app_path/Contents/Helpers/decodex-app-helper"
-test ! -e "$app_path/Contents/Helpers/decodexd"
+native_client="$app_path/Contents/Frameworks/libdecodex_app_client_ffi.dylib"
+test -f "$native_client"
+test ! -e "$app_path/Contents/Helpers"
 test -f "$app_path/Contents/Info.plist"
 test -f "$app_path/Contents/Resources/AppIcon.icns"
 test -f "$app_path/Contents/Resources/StatusBarIcon.png"
 
 codesign --verify --deep --strict "$app_path"
-codesign --verify --strict "$app_path/Contents/Helpers/decodex-cli"
-"$app_path/Contents/Helpers/decodex-cli" reset-card --help |
-  grep -Fq 'Consume one explicitly selected public reset-card descriptor'
+codesign --verify --strict "$native_client"
+for symbol in \
+  _decodex_app_native_client_abi_version \
+  _decodex_app_native_client_create \
+  _decodex_app_native_client_request \
+  _decodex_app_native_client_free \
+  _decodex_app_native_client_destroy
+do
+  nm -gU "$native_client" | awk '{print $NF}' | grep -qx "$symbol"
+done
 codesign_details="$(codesign -dv --verbose=4 "$app_path" 2>&1)"
 grep -q '^TeamIdentifier=' <<<"$codesign_details"
 grep -q 'flags=.*runtime' <<<"$codesign_details"

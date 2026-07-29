@@ -39,7 +39,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		)
 	}
 
-	func testStartupRetriesTransientInventoryReadUntilItLoads() async throws {
+	func testStartupDoesNotLoopOnRowScopedInventoryFailure() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
 		let expectedInventory = try Self.inventory
@@ -60,15 +60,19 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 
 		store.start()
 		try await waitUntil {
-			store.accounts.first?.inventory == expectedInventory
-				&& store.isRefreshing == false
+			store.hasLoaded && store.isRefreshing == false
 		}
+		try await Task.sleep(for: .milliseconds(20))
 
 		let counts = await client.callCounts()
-		XCTAssertNil(store.message)
+		XCTAssertNil(store.accounts.first?.inventory)
+		XCTAssertEqual(
+			store.accounts.first?.error,
+			.service(.productStateUnavailable)
+		)
 		XCTAssertEqual(
 			counts,
-			ClientCallCounts(accounts: 2, inventory: 2, status: 0, use: 0)
+			ClientCallCounts(accounts: 1, inventory: 1, status: 0, use: 0)
 		)
 	}
 
@@ -228,17 +232,17 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		}
 
 		let counts = await client.callCounts()
-		XCTAssertEqual(
-			counts,
-			ClientCallCounts(accounts: 4, inventory: 0, status: 4, use: 0)
-		)
+			XCTAssertEqual(
+				counts,
+				ClientCallCounts(accounts: 1, inventory: 0, status: 4, use: 0)
+			)
 		XCTAssertEqual(
 			store.message,
 			ResetCardStoreMessage(tone: .success, text: "Usage restored.")
 		)
 	}
 
-	func testStartupStopsAtMissingPendingStatusWithoutDispatchingUse() async throws {
+	func testStartupRetriesMissingPendingStatusWithoutDispatchingUse() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
 		let attempt = try Self.attempt
@@ -248,7 +252,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			accountFallback: .value([]),
 			inventoryFallback: .value(try Self.inventory),
 			statusSteps: [.value(.notFound)],
-			statusFallback: .value(.completed(.reset))
+			statusFallback: .value(.notFound)
 		)
 		let store = ResetCardStore(
 			client: client,
@@ -259,14 +263,14 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		store.start()
 		try await waitUntil {
 			let counts = await client.callCounts()
-			return counts.status == 1 && store.isRefreshing == false
+			return counts.status == 3 && store.isRefreshing == false
 		}
 		try await Task.sleep(for: .milliseconds(20))
 
 		let counts = await client.callCounts()
 		XCTAssertEqual(
 			counts,
-			ClientCallCounts(accounts: 1, inventory: 0, status: 1, use: 0)
+			ClientCallCounts(accounts: 1, inventory: 0, status: 3, use: 0)
 		)
 		XCTAssertEqual(store.pendingAttempts, [attempt])
 	}
@@ -278,7 +282,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		let secondAccount = ResetCardAccountRecord(
 			authority: nil,
 			accountID: "33333333-3333-4333-8333-333333333333",
-			displayLabel: "Account B",
+			alias: "Account 00000-00002",
 			accountRevision: 11,
 			enabled: true,
 			observedState: .available,
@@ -428,7 +432,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		ResetCardAccountRecord(
 			authority: authority,
 			accountID: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160",
-			displayLabel: "Account A",
+			alias: "Account 00000-00001",
 			accountRevision: 7,
 			enabled: true,
 			observedState: .depleted,

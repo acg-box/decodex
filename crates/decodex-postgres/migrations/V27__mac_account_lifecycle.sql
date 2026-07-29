@@ -685,17 +685,13 @@ LANGUAGE sql STABLE SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 	SELECT * FROM decodex.account_operations WHERE operation_id=p_operation_id
 $$;
 
-CREATE FUNCTION decodex.update_account_administration_exact(
-	p_account_id uuid,p_expected_revision bigint,p_display_label text,p_enabled boolean
+CREATE FUNCTION decodex.set_account_enabled_exact(
+	p_account_id uuid,p_expected_revision bigint,p_enabled boolean
 ) RETURNS TABLE(result_code text,revision bigint)
 LANGUAGE plpgsql SECURITY DEFINER SET search_path=pg_catalog,decodex AS $$
 DECLARE current_revision bigint;
 BEGIN
-	IF p_display_label IS NOT NULL AND (
-		pg_catalog.octet_length(p_display_label)<1 OR pg_catalog.octet_length(p_display_label)>128
-		OR p_display_label ~ '[[:cntrl:]]'
-		OR decodex.has_credential_material(p_display_label)
-	) THEN
+	IF p_enabled IS NULL THEN
 		RETURN QUERY SELECT 'invalid_request',0::bigint;
 		RETURN;
 	END IF;
@@ -708,14 +704,11 @@ BEGIN
 		RETURN QUERY SELECT 'stale_account',current_revision; RETURN;
 	END IF;
 	IF EXISTS (SELECT 1 FROM decodex.accounts AS account WHERE account.account_id=p_account_id
-		AND account.display_label IS NOT DISTINCT FROM
-			COALESCE(p_display_label,account.display_label)
-		AND account.enabled IS NOT DISTINCT FROM COALESCE(p_enabled,account.enabled)) THEN
+		AND account.enabled IS NOT DISTINCT FROM p_enabled) THEN
 		RETURN QUERY SELECT 'updated',current_revision; RETURN;
 	END IF;
 	UPDATE decodex.accounts AS account SET
-		display_label=COALESCE(p_display_label,account.display_label),
-		enabled=COALESCE(p_enabled,account.enabled),revision=account.revision+1,
+		enabled=p_enabled,revision=account.revision+1,
 		updated_at=pg_catalog.clock_timestamp()
 	WHERE account.account_id=p_account_id RETURNING account.revision INTO current_revision;
 	RETURN QUERY SELECT 'updated',current_revision;
@@ -1209,7 +1202,7 @@ REVOKE ALL ON FUNCTION
 	decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),
 	decodex.read_unsettled_account_operations_exact(bigint),
 	decodex.read_account_operation_exact(uuid),
-	decodex.update_account_administration_exact(uuid,bigint,text,boolean),
+	decodex.set_account_enabled_exact(uuid,bigint,boolean),
 	decodex.lock_account_routing_universe_exact(),
 	decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),
 	decodex.set_balanced_account_selection_exact(bigint),
@@ -1246,7 +1239,7 @@ BEGIN
 			'REVOKE INSERT,UPDATE,DELETE ON TABLE decodex.accounts FROM %I',runtime_role
 		);
 		EXECUTE pg_catalog.format('GRANT USAGE ON TYPE decodex.account_provider_kind,decodex.account_operation_kind,decodex.account_operation_phase,decodex.account_selection_mode,decodex.account_store_observation,decodex.account_quota_observation_error TO %I',runtime_role);
-		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.update_account_administration_exact(uuid,bigint,text,boolean),decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),decodex.set_balanced_account_selection_exact(bigint),decodex.set_account_order_exact(bigint,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
+		EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_registry_exact(uuid,bigint),decodex.read_reset_card_account_admission_exact(uuid,text),decodex.prepare_account_operation_exact(uuid,uuid,decodex.account_operation_kind,text,boolean,bigint,integer,bigint,text,uuid,integer,bigint,text,uuid,decodex.account_provider_kind,text),decodex.set_account_operation_target_exact(uuid,integer,bigint,text,uuid),decodex.advance_account_operation_exact(uuid,decodex.account_operation_phase,decodex.account_operation_phase,text),decodex.read_unsettled_account_operations_exact(bigint),decodex.read_account_operation_exact(uuid),decodex.set_account_enabled_exact(uuid,bigint,boolean),decodex.set_fixed_account_selection_exact(bigint,uuid,bigint),decodex.set_balanced_account_selection_exact(bigint),decodex.set_account_order_exact(bigint,uuid[]),decodex.read_account_routing_control_exact(),decodex.observe_account_quota_exact(uuid,integer,integer,bigint,bigint),decodex.observe_account_quota_error_exact(uuid,integer,decodex.account_quota_observation_error,bigint),decodex.observe_account_store_exact(uuid,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,decodex.account_store_observation),decodex.attest_codex_account_capability_exact(text,text,text,text,boolean,boolean),decodex.prepare_process_generation_exact(uuid,uuid,uuid,text,text,text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,bigint,integer,bigint,text,uuid,decodex.account_provider_kind,text,text,bigint,uuid,uuid),decodex.read_process_generations_exact(uuid,boolean,uuid,bigint) TO %I',runtime_role);
 	END IF;
 END
 $$;

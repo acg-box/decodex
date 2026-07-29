@@ -97,7 +97,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 	}
 
-	func testPotentiallyDispatchedRetainsAndResumesTheSamePersistentAttempt() async throws {
+	func testPotentiallyDispatchedResumeChecksStatusWithoutRedispatch() async throws {
 		let fixture = try makeSubmissionFixture(
 			useDocument: """
 			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
@@ -119,14 +119,14 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(
 			store.message,
 			ResetCardStoreMessage(
-				tone: .error,
-				text: "The reset-card request may have been dispatched. Resume the pending request to check authoritative state with the same operation key."
+				tone: .information,
+				text: "No durable reset-card operation was found."
 			)
 		)
 		let invocations = try fixture.invocations()
 		XCTAssertEqual(
 			invocations.filter { $0.contains("reset-card use") }.count,
-			2
+			1
 		)
 		XCTAssertEqual(
 			invocations.filter { $0.contains("reset-card status") }.count,
@@ -360,7 +360,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		let statusInvocations = invocations.filter { $0.contains("reset-card status") }
 		let useInvocations = invocations.filter { $0.contains("reset-card use") }
 		XCTAssertEqual(statusInvocations.count, 2)
-		XCTAssertEqual(useInvocations.count, 1)
+		XCTAssertEqual(useInvocations.count, 0)
 		XCTAssertTrue(
 			(statusInvocations + useInvocations).allSatisfy {
 				$0.contains("--profile local")
@@ -409,14 +409,14 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 	}
 
-	func testConcurrentRejectionRemovesTheKeyBeforeAnotherStoreCanResume() async throws {
-		let fixture = try makeConcurrentRejectionFixture()
+	func testConcurrentStatusCompletionRemovesTheKeyWithoutRedispatch() async throws {
+		let fixture = try makeConcurrentCompletionFixture()
 		defer {
-			try? Data().write(to: fixture.useReleaseURL)
+			try? Data().write(to: fixture.statusReleaseURL)
 			fixture.remove()
 		}
 		XCTAssertEqual(fixture.pendingStore.insert(fixture.attempt), [fixture.attempt])
-		let rejectingStore = ResetCardStore(
+		let completingStore = ResetCardStore(
 			client: fixture.client,
 			pendingStore: fixture.pendingStore
 		)
@@ -427,10 +427,10 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			)
 		)
 
-		let rejection = Task {
-			await rejectingStore.resume(fixture.attempt)
+		let completion = Task {
+			await completingStore.resume(fixture.attempt)
 		}
-		try await waitForFile(fixture.useEnteredURL)
+		try await waitForFile(fixture.statusEnteredURL)
 
 		let concurrentResume = Task {
 			await resumingStore.resume(fixture.attempt)
@@ -444,16 +444,16 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			)
 		)
 
-		try Data().write(to: fixture.useReleaseURL)
-		await rejection.value
+		try Data().write(to: fixture.statusReleaseURL)
+		await completion.value
 
-		XCTAssertEqual(rejectingStore.pendingAttempts, [])
+		XCTAssertEqual(completingStore.pendingAttempts, [])
 		XCTAssertEqual(fixture.pendingStore.load(), .available([]))
 		XCTAssertEqual(
-			rejectingStore.message,
+			completingStore.message,
 			ResetCardStoreMessage(
-				tone: .error,
-				text: "The reset-card request was rejected. Refresh and try again."
+				tone: .success,
+				text: "Usage restored."
 			)
 		)
 
@@ -467,11 +467,141 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 		XCTAssertEqual(
 			invocations.filter { $0.contains("reset-card use") }.count,
-			1
+			0
 		)
 	}
 
 	private func makeFixture(state: String) throws -> StoreRecoveryFixture {
+		let directory = try makePrivateRecoveryDirectory()
+		let journalURL = directory.appendingPathComponent("pending.json")
+		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let attempt = try recoveryAttempt()
+		let recorder = RecoveryInvocationRecorder()
+		let status = operationState(from: state)
+		let client = RecoveryClient(
+			accounts: [],
+			inventory: nil,
+			recorder: recorder,
+			status: { _ in status },
+			use: { _ in .prepared }
+		)
+		return StoreRecoveryFixture(
+			directory: directory,
+			journalURL: journalURL,
+			pendingStore: pendingStore,
+			attempt: attempt,
+			recorder: recorder,
+			client: client
+		)
+	}
+
+	private func makeSubmissionFixture(
+		useDocument: String,
+		exitCode: Int32,
+		statusDocument: String? = nil,
+		discoveredProfileName: String = "local",
+		discoveredServerID: String = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	) throws -> StoreRecoveryFixture {
+		_ = exitCode
+		let directory = try makePrivateRecoveryDirectory()
+		let journalURL = directory.appendingPathComponent("pending.json")
+		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let attempt = try recoveryAttempt()
+		let recorder = RecoveryInvocationRecorder()
+		let discoveredAuthority = ResetCardAuthority(
+			profileName: discoveredProfileName,
+			serverID: discoveredServerID
+		)
+		let account = recoveryAccount(
+			accountID: attempt.target.accountID,
+			authority: nil
+		)
+		let inventory = ResetCardInventory(
+			authority: discoveredAuthority,
+			accountID: attempt.target.accountID,
+			accountRevision: 7,
+			cards: [attempt.target.descriptor],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+		let status = statusDocument.map(operationState(from:)) ?? .notFound
+		let useError: ResetCardClientError?
+		let useState: ResetCardOperationState
+		if useDocument.contains("definitely_not_dispatched") {
+			useError = .useDefinitelyNotDispatched
+			useState = .notFound
+		} else if useDocument.contains("potentially_dispatched") {
+			useError = .usePotentiallyDispatched
+			useState = .notFound
+		} else if useDocument.contains("rejected_before_acceptance")
+			|| useDocument.contains(#""outcome":"rejected""#)
+		{
+			useError = .commandRejected
+			useState = .notFound
+		} else if useDocument.contains(#""state":"effect_ambiguous""#) {
+			useError = nil
+			useState = .effectAmbiguous
+		} else {
+			useError = nil
+			useState = .prepared
+		}
+		let client = RecoveryClient(
+			accounts: [account],
+			inventory: inventory,
+			recorder: recorder,
+			status: { _ in status },
+			use: { _ in
+				if let useError {
+					throw useError
+				}
+				return useState
+			}
+		)
+		return StoreRecoveryFixture(
+			directory: directory,
+			journalURL: journalURL,
+			pendingStore: pendingStore,
+			attempt: attempt,
+			recorder: recorder,
+			client: client
+		)
+	}
+
+	private func makeConcurrentCompletionFixture() throws -> ConcurrentCompletionFixture {
+		let directory = try makePrivateRecoveryDirectory()
+		let journalURL = directory.appendingPathComponent("pending.json")
+		let statusEnteredURL = directory.appendingPathComponent("status-entered")
+		let statusReleaseURL = directory.appendingPathComponent("status-release")
+		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
+		let attempt = try recoveryAttempt()
+		let recorder = RecoveryInvocationRecorder()
+		let client = RecoveryClient(
+			accounts: [],
+			inventory: nil,
+			recorder: recorder,
+			status: { _ in
+				try Data().write(to: statusEnteredURL)
+				while FileManager.default.fileExists(atPath: statusReleaseURL.path) == false {
+					try await Task.sleep(nanoseconds: 10_000_000)
+				}
+				return .completed(.reset)
+			},
+			use: { _ in .prepared }
+		)
+		return ConcurrentCompletionFixture(
+			directory: directory,
+			journalURL: journalURL,
+			pendingStore: pendingStore,
+			attempt: attempt,
+			recorder: recorder,
+			statusEnteredURL: statusEnteredURL,
+			statusReleaseURL: statusReleaseURL,
+			client: client
+		)
+	}
+
+	private func makePrivateRecoveryDirectory() throws -> URL {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		try FileManager.default.createDirectory(
@@ -482,34 +612,11 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			[.posixPermissions: 0o700],
 			ofItemAtPath: directory.path
 		)
-		let executable = directory.appendingPathComponent("decodex-cli")
-		let idempotencyKey = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405161"
-		let script = """
-		#!/bin/sh
-		case "$*" in
-			"--output json account list")
-				printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[],"routing":{"revision":1,"mode":{"mode":"balanced"},"order":[]}}}}'
-				;;
-				"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card status --idempotency-key \(idempotencyKey)")
-					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"\(outerOutcome(for: state))","idempotency_key":"\(idempotencyKey)","state":\(state)}'
-					exit \(expectedExitCode(for: state))
-				;;
-			*)
-				exit 91
-				;;
-		esac
-		"""
-		try script.write(to: executable, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executable.path
-		)
+		return directory
+	}
 
-		let journalURL = directory.appendingPathComponent("pending.json")
-		let pendingStore = ResetCardPendingAttemptStore(
-			journalURL: journalURL
-		)
-		let attempt = ResetCardUseAttempt(
+	private func recoveryAttempt() throws -> ResetCardUseAttempt {
+		ResetCardUseAttempt(
 			target: ResetCardUseTarget(
 				authority: ResetCardAuthority(
 					profileName: "local",
@@ -522,189 +629,48 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 					expiresAtUnixSeconds: 200
 				)
 			),
-			idempotencyKey: idempotencyKey
-		)
-
-		return StoreRecoveryFixture(
-			directory: directory,
-			journalURL: journalURL,
-			pendingStore: pendingStore,
-			attempt: attempt,
-			logURL: nil,
-			client: ResetCardCLIClient(
-				executableURL: executable,
-				environment: ["HOME": directory.path],
-				timeout: 2
-			)
+			idempotencyKey: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405161"
 		)
 	}
 
-	private func makeSubmissionFixture(
-		useDocument: String,
-		exitCode: Int32,
-		statusDocument: String? = nil,
-		discoveredProfileName: String = "local",
-		discoveredServerID: String = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-	) throws -> StoreRecoveryFixture {
-		let directory = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		try FileManager.default.createDirectory(
-			at: directory,
-			withIntermediateDirectories: true
-		)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: directory.path
-		)
-		let executable = directory.appendingPathComponent("decodex-cli")
-		let logURL = directory.appendingPathComponent("invocations.log")
-		let accountID = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160"
-		let idempotencyKey = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405161"
-		let statusDocument = statusDocument ?? """
-		{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"not_found","idempotency_key":"\(idempotencyKey)","state":{"state":"not_found"}}
-		"""
-		let script = """
-		#!/bin/sh
-		printf '%s\\n' "$*" >> '\(logURL.path)'
-			case "$*" in
-				"--output json account list")
-					printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"depleted","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}],"routing":{"revision":1,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}}'
-					;;
-				"--output json reset-card list --account \(accountID)")
-					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}}}'
-					;;
-				"--profile \(discoveredProfileName) --expected-server-id \(discoveredServerID) --output json reset-card list --account \(accountID)")
-					printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"available","authority":{"profile_name":"\(discoveredProfileName)","server_id":"\(discoveredServerID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}}}'
-				;;
-			"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card status --idempotency-key \(idempotencyKey)")
-				printf '%s\\n' '\(statusDocument)'
-				exit 1
-				;;
-			"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card use --account \(accountID) --granted-at 100 --expires-at 200 --expected-revision 7 --idempotency-key \(idempotencyKey) --yes")
-				printf '%s\\n' '\(useDocument)'
-				exit \(exitCode)
-				;;
-			*)
-				exit 91
-				;;
-		esac
-		"""
-		try script.write(to: executable, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executable.path
-		)
-
-		let journalURL = directory.appendingPathComponent("pending.json")
-		let pendingStore = ResetCardPendingAttemptStore(
-			journalURL: journalURL
-		)
-		let attempt = ResetCardUseAttempt(
-			target: ResetCardUseTarget(
-				authority: ResetCardAuthority(
-					profileName: "local",
-					serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-				),
-				accountID: accountID,
-				expectedRevision: 7,
-				descriptor: try ResetCardDescriptor(
-					grantedAtUnixSeconds: 100,
-					expiresAtUnixSeconds: 200
-				)
+	private func recoveryAccount(
+		accountID: String,
+		authority: ResetCardAuthority?
+	) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: accountID,
+			alias: "Account 00000-00001",
+			accountRevision: 7,
+			enabled: true,
+			observedState: .depleted,
+			lifecycleReadiness: .ready,
+			credentialBinding: AccountCredentialBinding(
+				schemaVersion: 1,
+				version: 1,
+				fingerprintSHA256: String(repeating: "a", count: 64),
+				provider: .chatGPT,
+				providerAccountID: "provider-a"
 			),
-			idempotencyKey: idempotencyKey
-		)
-
-		return StoreRecoveryFixture(
-			directory: directory,
-			journalURL: journalURL,
-			pendingStore: pendingStore,
-			attempt: attempt,
-			logURL: logURL,
-			client: ResetCardCLIClient(
-				executableURL: executable,
-				environment: ["HOME": directory.path],
-				timeout: 2
-			)
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
 		)
 	}
 
-	private func makeConcurrentRejectionFixture() throws -> ConcurrentRejectionFixture {
-		let directory = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		try FileManager.default.createDirectory(
-			at: directory,
-			withIntermediateDirectories: true
-		)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: directory.path
-		)
-		let executable = directory.appendingPathComponent("decodex-cli")
-		let logURL = directory.appendingPathComponent("invocations.log")
-		let useEnteredURL = directory.appendingPathComponent("use-entered")
-		let useReleaseURL = directory.appendingPathComponent("use-release")
-		let accountID = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405160"
-		let idempotencyKey = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405161"
-		let script = """
-		#!/bin/sh
-		printf '%s\\n' "$*" >> '\(logURL.path)'
-		case "$*" in
-			"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card status --idempotency-key \(idempotencyKey)")
-				printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"not_found","idempotency_key":"\(idempotencyKey)","state":{"state":"not_found"}}'
-				exit 1
-				;;
-			"--profile local --expected-server-id aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa --output json reset-card use --account \(accountID) --granted-at 100 --expires-at 200 --expected-revision 7 --idempotency-key \(idempotencyKey) --yes")
-				: > '\(useEnteredURL.path)'
-				while [ ! -e '\(useReleaseURL.path)' ]; do
-					sleep 0.01
-				done
-				printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"\(idempotencyKey)","dispatch_state":"rejected_before_acceptance","error":{"reason":"idempotency_conflict"}}'
-				exit 1
-				;;
-			*)
-				exit 91
-				;;
-		esac
-		"""
-		try script.write(to: executable, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executable.path
-		)
-
-		let journalURL = directory.appendingPathComponent("pending.json")
-		let pendingStore = ResetCardPendingAttemptStore(journalURL: journalURL)
-		let attempt = ResetCardUseAttempt(
-			target: ResetCardUseTarget(
-				authority: ResetCardAuthority(
-					profileName: "local",
-					serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
-				),
-				accountID: accountID,
-				expectedRevision: 7,
-				descriptor: try ResetCardDescriptor(
-					grantedAtUnixSeconds: 100,
-					expiresAtUnixSeconds: 200
-				)
-			),
-			idempotencyKey: idempotencyKey
-		)
-
-		return ConcurrentRejectionFixture(
-			directory: directory,
-			journalURL: journalURL,
-			pendingStore: pendingStore,
-			attempt: attempt,
-			logURL: logURL,
-			useEnteredURL: useEnteredURL,
-			useReleaseURL: useReleaseURL,
-			client: ResetCardCLIClient(
-				executableURL: executable,
-				environment: ["HOME": directory.path],
-				timeout: 2
-			)
-		)
+	private func operationState(from document: String) -> ResetCardOperationState {
+		if document.contains(#""state":"completed""#) {
+			return .completed(.reset)
+		}
+		if document.contains(#""state":"effect_ambiguous""#) {
+			return .effectAmbiguous
+		}
+		if document.contains(#""state":"unavailable""#) {
+			return .unavailable(.productStateUnavailable)
+		}
+		if document.contains(#""state":"prepared""#) {
+			return .prepared
+		}
+		return .notFound
 	}
 
 	private func waitForFile(_ url: URL) async throws {
@@ -714,42 +680,98 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			}
 			try await Task.sleep(nanoseconds: 10_000_000)
 		}
-
 		XCTFail("Timed out waiting for \(url.lastPathComponent)")
 	}
+}
 
-	private func outerOutcome(for state: String) -> String {
-		if state.contains(#""state":"completed""#) {
-			return "completed"
-		}
-		if state.contains(#""state":"unavailable""#) {
-			return "unavailable"
-		}
+private final class RecoveryInvocationRecorder: @unchecked Sendable {
+	private let lock = NSLock()
+	private var storage: [String] = []
 
-		return "effect_ambiguous"
+	func append(_ value: String) {
+		lock.withLock {
+			storage.append(value)
+		}
 	}
 
-	private func expectedExitCode(for state: String) -> Int32 {
-		state.contains(#""state":"completed""#) ? 0
-			: state.contains(#""state":"unavailable""#) ? 2 : 1
+	var values: [String] {
+		lock.withLock { storage }
+	}
+}
+
+private final class RecoveryClient: ResetCardClient, @unchecked Sendable {
+	typealias StatusHandler = @Sendable (ResetCardUseAttempt) async throws
+		-> ResetCardOperationState
+	typealias UseHandler = @Sendable (ResetCardUseAttempt) async throws
+		-> ResetCardOperationState
+
+	private let accountValues: [ResetCardAccountRecord]
+	private let inventoryValue: ResetCardInventory?
+	private let recorder: RecoveryInvocationRecorder
+	private let statusHandler: StatusHandler
+	private let useHandler: UseHandler
+
+	init(
+		accounts: [ResetCardAccountRecord],
+		inventory: ResetCardInventory?,
+		recorder: RecoveryInvocationRecorder,
+		status: @escaping StatusHandler,
+		use: @escaping UseHandler
+	) {
+		accountValues = accounts
+		inventoryValue = inventory
+		self.recorder = recorder
+		statusHandler = status
+		useHandler = use
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		recorder.append("account list")
+		return accountValues
+	}
+
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		recorder.append("reset-card list \(account.accountID)")
+		guard let inventoryValue else {
+			throw ResetCardClientError.service(.accountNotFound)
+		}
+		return inventoryValue
+	}
+
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		recorder.append(
+			"--profile \(attempt.target.authority.profileName) "
+				+ "--expected-server-id \(attempt.target.authority.serverID) "
+				+ "reset-card use \(attempt.idempotencyKey)"
+		)
+		return try await useHandler(attempt)
+	}
+
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		recorder.append(
+			"--profile \(attempt.target.authority.profileName) "
+				+ "--expected-server-id \(attempt.target.authority.serverID) "
+				+ "reset-card status \(attempt.idempotencyKey)"
+		)
+		return try await statusHandler(attempt)
 	}
 }
 
 @MainActor
-private struct ConcurrentRejectionFixture {
+private struct ConcurrentCompletionFixture {
 	let directory: URL
 	let journalURL: URL
 	let pendingStore: ResetCardPendingAttemptStore
 	let attempt: ResetCardUseAttempt
-	let logURL: URL
-	let useEnteredURL: URL
-	let useReleaseURL: URL
-	let client: ResetCardCLIClient
+	let recorder: RecoveryInvocationRecorder
+	let statusEnteredURL: URL
+	let statusReleaseURL: URL
+	let client: RecoveryClient
 
 	func invocations() throws -> [String] {
-		try String(contentsOf: logURL, encoding: .utf8)
-			.split(separator: "\n")
-			.map(String.init)
+		recorder.values
 	}
 
 	func remove() {
@@ -763,17 +785,11 @@ private struct StoreRecoveryFixture {
 	let journalURL: URL
 	let pendingStore: ResetCardPendingAttemptStore
 	let attempt: ResetCardUseAttempt
-	let logURL: URL?
-	let client: ResetCardCLIClient
+	let recorder: RecoveryInvocationRecorder
+	let client: RecoveryClient
 
 	func invocations() throws -> [String] {
-		guard let logURL else {
-			return []
-		}
-
-		return try String(contentsOf: logURL, encoding: .utf8)
-			.split(separator: "\n")
-			.map(String.init)
+		recorder.values
 	}
 
 	func remove() {

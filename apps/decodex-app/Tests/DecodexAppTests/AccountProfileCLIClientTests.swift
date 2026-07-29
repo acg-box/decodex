@@ -2,33 +2,36 @@
 import Foundation
 import XCTest
 
-final class AccountProfileCLIClientTests: XCTestCase {
+final class AccountProfileNativeClientTests: XCTestCase {
 	private let accountID = "11111111-1111-4111-8111-111111111111"
 	private let serverID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
-	func testProfileArgumentsPinAuthorityAndIncludeEmailOnlyWhenRequested() {
+	func testProfileRequestPinsAuthorityAndIncludesExactEmailBoolean() async throws {
 		let authority = ResetCardAuthority(profileName: "local", serverID: serverID)
+		let accountID = accountID
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "get_account_profile",
+				authority: authority,
+				data: """
+				{"outcome":"unavailable","data":{"error":"credential_unavailable","email":{"visibility":"redacted"},"plan_type":null}}
+				"""
+			)
+		}
+
+		_ = try await client.profile(for: accountRecord(), includeEmail: false)
+		let request = try nativeJSONObject(XCTUnwrap(recorder.requests.first).data)
+		XCTAssertEqual(request["operation"] as? String, "get_account_profile")
+		XCTAssertEqual(request["account_id"] as? String, accountID)
+		XCTAssertEqual(request["include_email"] as? Bool, false)
+		XCTAssertEqual(Set(request.keys), [
+			"schema", "operation", "account_id", "include_email",
+		])
 		XCTAssertEqual(
-			ResetCardCLIClient.profileArguments(
-				accountID: accountID,
-				includeEmail: false,
-				authority: authority
-			),
-			[
-				"--profile", "local",
-				"--expected-server-id", serverID,
-				"--output", "json",
-				"account", "profile",
-				"--account-id", accountID,
-			]
-		)
-		XCTAssertEqual(
-			ResetCardCLIClient.profileArguments(
-				accountID: accountID,
-				includeEmail: true,
-				authority: authority
-			).last,
-			"--include-email"
+			try XCTUnwrap(recorder.requests.first).authority,
+			authority
 		)
 	}
 
@@ -209,28 +212,14 @@ final class AccountProfileCLIClientTests: XCTestCase {
 		json: String,
 		includeEmail: Bool
 	) async throws -> AccountProfileRead {
-		let directory = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		let executable = directory.appendingPathComponent("fake-decodex")
-		try FileManager.default.createDirectory(
-			at: directory,
-			withIntermediateDirectories: true
-		)
-		defer { try? FileManager.default.removeItem(at: directory) }
-		let script = """
-		#!/bin/sh
-		printf '%s\\n' '\(json)'
-		"""
-		try script.write(to: executable, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executable.path
-		)
-		let client = ResetCardCLIClient(
-			executableURL: executable,
-			environment: ["HOME": directory.path],
-			timeout: 2
-		)
+		let authority = ResetCardAuthority(profileName: "local", serverID: serverID)
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "get_account_profile",
+				authority: authority,
+				data: json
+			)
+		}
 		return try await client.profile(
 			for: accountRecord(),
 			includeEmail: includeEmail
@@ -241,7 +230,7 @@ final class AccountProfileCLIClientTests: XCTestCase {
 		ResetCardAccountRecord(
 			authority: ResetCardAuthority(profileName: "local", serverID: serverID),
 			accountID: accountID,
-			displayLabel: "Iris",
+			alias: "Account 00000-00001",
 			accountRevision: 7,
 			enabled: true,
 			observedState: .available,
@@ -252,9 +241,7 @@ final class AccountProfileCLIClientTests: XCTestCase {
 	}
 
 	private func document(result: String) -> String {
-		"""
-		{"schema":"decodex/cli-account/1","command":"profile","outcome":"success","result":\(result)}
-		"""
+		result
 	}
 
 	private func profileJSON(email: String) -> String {

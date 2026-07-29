@@ -2,8 +2,9 @@
 import Foundation
 import XCTest
 
-final class ResetCardCLIClientTests: XCTestCase {
+final class ResetCardNativeClientTests: XCTestCase {
 	private let accountID = "11111111-1111-4111-8111-111111111111"
+	private let secondAccountID = "33333333-3333-4333-8333-333333333333"
 	private let idempotencyKey = "22222222-2222-4222-8222-222222222222"
 	private let serverID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
@@ -11,750 +12,471 @@ final class ResetCardCLIClientTests: XCTestCase {
 		ResetCardAuthority(profileName: "local", serverID: serverID)
 	}
 
-	func testResolverPrefersExplicitCLIThenUsesBundledCLI() {
-		let bundleURL = URL(fileURLWithPath: "/Applications/Decodex.app")
-		let overrideURL = URL(fileURLWithPath: "/opt/decodex/bin/decodex")
-		let bundledURL = bundleURL
-			.appendingPathComponent("Contents/Helpers/decodex-cli")
-
-		XCTAssertEqual(
-			ResetCardCLIClient.resolveExecutableURL(
-				environment: [ResetCardCLIClient.executableOverrideKey: overrideURL.path],
-				bundleURL: bundleURL,
-				isExecutableFile: { $0 == overrideURL.path || $0 == bundledURL.path }
-			),
-			overrideURL
-		)
-		XCTAssertEqual(
-			ResetCardCLIClient.resolveExecutableURL(
-				environment: [:],
-				bundleURL: bundleURL,
-				isExecutableFile: { $0 == bundledURL.path }
-			),
-			bundledURL
-		)
-	}
-
-	func testInvalidExplicitCLIIsFailClosed() {
-		XCTAssertNil(
-			ResetCardCLIClient.resolveExecutableURL(
-				environment: [ResetCardCLIClient.executableOverrideKey: "/missing/decodex"],
-				bundleURL: URL(fileURLWithPath: "/Applications/Decodex.app"),
-				isExecutableFile: { $0.hasSuffix("Contents/Helpers/decodex-cli") }
+	func testNativeListBindsReturnedAuthorityAndUsesRoutingOrder() async throws {
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let authority = authority
+		let recorder = NativeRequestRecorder()
+		let accountsData = """
+		{
+		  "outcome":"available",
+		  "data":{
+		    "accounts":[
+		      \(nativeAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7)),
+		      \(nativeAccountJSON(accountID: secondAccountID, alias: "Account 00000-00002", revision: 8))
+		    ],
+		    "routing":{
+		      "revision":3,
+		      "mode":{"mode":"fixed","account_id":"\(secondAccountID)"},
+		      "order":["\(secondAccountID)","\(accountID)"]
+		    }
+		  }
+		}
+		"""
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "list_accounts",
+				authority: authority,
+				data: accountsData
 			)
-		)
-	}
+		}
 
-	func testSanitizedEnvironmentKeepsOnlyProcessBasics() {
-		let environment = ResetCardCLIClient.sanitizedChildEnvironment(from: [
-			"HOME": "/tmp/home",
-			"LANG": "en_US.UTF-8",
-			"RESET_CARD_TEST_SECRET": "must-not-pass",
-			"OPENAI_API_KEY": "must-not-pass",
-			ResetCardCLIClient.executableOverrideKey: "/tmp/decodex",
-		])
+		let snapshot = try await client.accountSnapshot(authority: nil)
 
-		XCTAssertEqual(environment["HOME"], "/tmp/home")
-		XCTAssertEqual(environment["LANG"], "en_US.UTF-8")
-		XCTAssertNil(environment["RESET_CARD_TEST_SECRET"])
-		XCTAssertNil(environment["OPENAI_API_KEY"])
-		XCTAssertNil(environment[ResetCardCLIClient.executableOverrideKey])
-	}
-
-	func testAccountListArgumentsCanPinTheEstablishedAuthority() {
+		XCTAssertEqual(snapshot.authority, authority)
+		XCTAssertEqual(snapshot.accounts.map(\.accountID), [secondAccountID, accountID])
+		XCTAssertEqual(snapshot.accounts.map(\.authority), [authority, authority])
 		XCTAssertEqual(
-			ResetCardCLIClient.accountsArguments(authority: authority),
+			snapshot.routing.mode,
+			.fixed(accountID: secondAccountID)
+		)
+		let request = try XCTUnwrap(recorder.requests.first)
+		XCTAssertNil(request.authority)
+		XCTAssertEqual(
+			try nativeJSONObject(request.data),
 			[
-				"--profile",
-				"local",
-				"--expected-server-id",
-				serverID,
-				"--output",
-				"json",
-				"account",
-				"list",
+				"schema": decodexNativeClientSchema,
+				"operation": "list_accounts",
 			]
 		)
 	}
 
-	func testFakeCLIReceivesExactPublicArgumentsAndDecodesStableDocuments() async throws {
-		let fixture = try makeFixture()
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: [
-				"HOME": fixture.directoryURL.path,
-				"RESET_CARD_TEST_SECRET": "must-not-pass",
-			],
-			timeout: 2
+	func testNativeInventoryAndStatusUsePinnedAuthority() async throws {
+		let accountID = accountID
+		let idempotencyKey = idempotencyKey
+		let authority = authority
+		let descriptor = try ResetCardDescriptor(
+			grantedAtUnixSeconds: 100,
+			expiresAtUnixSeconds: 200
 		)
-
-		let accounts = try await client.accounts()
-		XCTAssertEqual(
-			accounts,
-			[
-				ResetCardAccountRecord(
-					authority: nil,
-					accountID: accountID,
-					displayLabel: "Account A",
-					accountRevision: 7,
-					enabled: true,
-					observedState: .depleted,
-					lifecycleReadiness: .ready,
-					credentialBinding: AccountCredentialBinding(
-						schemaVersion: 1,
-						version: 1,
-						fingerprintSHA256: String(repeating: "a", count: 64),
-						provider: .chatGPT,
-						providerAccountID: "provider-a"
-					),
-					fiveHourQuota: ResetCardQuotaWindow(
-						durationMinutes: 300,
-						observedAtUnixMicros: 1_000_000,
-						state: .current(
-							usedPercent: 100,
-							resetsAtUnixMicros: 2_000_000
-						)
-					),
-					sevenDayQuota: ResetCardQuotaWindow(
-						durationMinutes: 10_080,
-						observedAtUnixMicros: 1_000_000,
-						state: .stale(
-							usedPercent: 80,
-							resetsAtUnixMicros: 3_000_000
-						)
-					)
-				),
-			]
-		)
-
-		let inventory = try await client.inventory(for: accounts[0])
-		XCTAssertEqual(inventory.authority, authority)
-		XCTAssertEqual(inventory.accountID, accountID)
-		XCTAssertEqual(inventory.accountRevision, 7)
-		XCTAssertEqual(inventory.fiveHourQuota.stateLabel, "Current")
-		XCTAssertEqual(inventory.fiveHourQuota.usedPercent, 55)
-		XCTAssertEqual(inventory.sevenDayQuota.stateLabel, "Stale")
-		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 90)
-		XCTAssertNil(inventory.observationError)
-		XCTAssertEqual(
-			inventory.cards,
-			[
-				try ResetCardDescriptor(
-					grantedAtUnixSeconds: 100,
-					expiresAtUnixSeconds: 200
-				),
-			]
-		)
-
-		let target = ResetCardUseTarget(
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			let object = try nativeJSONObject(request)
+			switch object["operation"] as? String {
+			case "get_reset_cards":
+				return nativeSuccess(
+					operation: "get_reset_cards",
+					authority: authority,
+					data: """
+					{"outcome":"available","data":{
+					  "account_id":"\(accountID)",
+					  "account_revision":7,
+					  "available_count":1,
+					  "cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],
+					  "five_hour_quota":\(nativeQuotaJSON(duration: 300, used: 55, reset: 2_000_000)),
+					  "seven_day_quota":\(nativeQuotaJSON(duration: 10080, used: 90, reset: 3_000_000))
+					}}
+					"""
+				)
+			case "reset_card_status":
+				return nativeSuccess(
+					operation: "reset_card_status",
+					authority: authority,
+					data: #"{"state":"completed","data":{"outcome":"reset"}}"#
+				)
+			default:
+				throw ResetCardClientError.invalidResponse
+			}
+		}
+		let account = nativeAccount(
 			authority: authority,
 			accountID: accountID,
-			expectedRevision: 7,
-			descriptor: inventory.cards[0]
+			revision: 7
 		)
-		let state = try await client.use(
-			ResetCardUseAttempt(
-				target: target,
-				idempotencyKey: idempotencyKey
-			)
+
+		let inventory = try await client.inventory(for: account)
+		XCTAssertEqual(inventory.cards, [descriptor])
+		XCTAssertEqual(inventory.fiveHourQuota.usedPercent, 55)
+		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 90)
+
+		let attempt = ResetCardUseAttempt(
+			target: ResetCardUseTarget(
+				authority: authority,
+				accountID: accountID,
+				expectedRevision: 7,
+				descriptor: descriptor
+			),
+			idempotencyKey: idempotencyKey
 		)
+		let state = try await client.status(for: attempt)
 		XCTAssertEqual(state, .completed(.reset))
-		let observed = try await client.status(
-			for: ResetCardUseAttempt(
-				target: target,
-				idempotencyKey: idempotencyKey
-			)
-		)
-		XCTAssertEqual(observed, .completed(.reset))
-
-		let invocations = try fixture.invocations()
+		XCTAssertEqual(recorder.requests.count, 2)
+		XCTAssertEqual(recorder.requests.map(\.authority), [authority, authority])
 		XCTAssertEqual(
-			invocations,
-			[
-				["--output", "json", "account", "list"],
-				[
-					"--output", "json", "reset-card", "list", "--account", accountID,
-				],
-				[
-					"--profile", "local",
-					"--expected-server-id", serverID,
-					"--output", "json", "reset-card", "use",
-					"--account", accountID,
-					"--granted-at", "100",
-					"--expires-at", "200",
-					"--expected-revision", "7",
-					"--idempotency-key", idempotencyKey,
-					"--yes",
-				],
-				[
-					"--profile", "local",
-					"--expected-server-id", serverID,
-					"--output", "json", "reset-card", "status",
-					"--idempotency-key", idempotencyKey,
-				],
-			]
+			try nativeJSONObject(recorder.requests[0].data)["account_id"] as? String,
+			accountID
 		)
-
-		let allArguments = invocations.flatMap { $0 }.joined(separator: " ")
-		for forbidden in [
-			"app-server",
-			"CODEX_HOME",
-			"access-token",
-			"refresh-token",
-			"auth.json",
-			"credit-id",
-		] {
-			XCTAssertFalse(allArguments.contains(forbidden))
-		}
+		XCTAssertEqual(
+			try nativeJSONObject(recorder.requests[1].data)["idempotency_key"] as? String,
+			idempotencyKey
+		)
 	}
 
-	func testWrongSchemaFailsWithoutReflectingResponseContent() async throws {
-		let fixture = try makeFixture(accountSchema: "wrong/schema")
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		do {
-			_ = try await client.accounts()
-			XCTFail("Wrong schema must fail.")
-		} catch let error as ResetCardClientError {
-			XCTAssertEqual(error, .invalidResponse)
-			XCTAssertEqual(
-				String(reflecting: error),
-				"ResetCardClientError.invalidResponse"
+	func testObservationFailureRetainsTypedQuotaStates() async throws {
+		let accountID = accountID
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "get_reset_cards",
+				authority: authority,
+				data: """
+				{"outcome":"observation_failed","data":{
+				  "account_id":"\(accountID)",
+				  "account_revision":7,
+				  "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				  "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":1000000,"result":{"state":"error","data":{"error":"provider_unavailable"}}},
+				  "error":"inventory_incomplete"
+				}}
+				"""
 			)
 		}
+
+		let value = try await client.inventory(
+			for: nativeAccount(authority: authority, accountID: accountID, revision: 7)
+		)
+		XCTAssertEqual(value.cards, [])
+		XCTAssertEqual(value.observationError, .inventoryIncomplete)
+		XCTAssertEqual(value.fiveHourQuota.state, .unknown)
+		XCTAssertEqual(value.sevenDayQuota.state, .error(.providerUnavailable))
 	}
 
-	func testAccountListUsesRoutingOrderInsteadOfVectorOrder() async throws {
-		let secondAccountID = "33333333-3333-4333-8333-333333333333"
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"available","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}},{"account_id":"\(secondAccountID)","display_label":"Account B","enabled":true,"account_revision":8,"observed_state":"depleted","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","provider":"chatgpt","provider_account_id":"provider-b"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}],"routing":{"revision":3,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}}}}'
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
+	func testUseAcceptedValidatesExactTargetAndReturnsState() async throws {
+		let accountID = accountID
+		let authority = authority
+		let idempotencyKey = idempotencyKey
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "use_reset_card",
+				authority: authority,
+				data: """
+				{"outcome":"accepted","data":{
+				  "account_id":"\(accountID)",
+				  "descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},
+				  "state":{"state":"completed","data":{"outcome":"reset"}},
+				  "entity_revision":7
+				}}
+				"""
+			)
+		}
+		let attempt = try nativeAttempt(
+			authority: authority,
+			accountID: accountID,
+			revision: 7,
+			idempotencyKey: idempotencyKey
 		)
 
-		let accounts = try await client.accounts()
-
-		XCTAssertEqual(accounts.map(\.accountID), [secondAccountID, accountID])
-		XCTAssertEqual(accounts.map(\.displayLabel), ["Account B", "Account A"])
+		let state = try await client.use(attempt)
+		XCTAssertEqual(state, .completed(.reset))
+		let request = try nativeJSONObject(XCTUnwrap(recorder.requests.first).data)
+		XCTAssertEqual(request["operation"] as? String, "use_reset_card")
+		XCTAssertEqual(request["account_id"] as? String, accountID)
+		XCTAssertEqual(request["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(request["idempotency_key"] as? String, idempotencyKey)
+		XCTAssertEqual(Set(request.keys), [
+			"schema", "operation", "account_id", "granted_at_unix_seconds",
+			"expires_at_unix_seconds", "expected_revision", "idempotency_key",
+		])
 	}
 
-	func testAccountListRejectsUnknownFieldsAndAnUnroutableFixedTarget() async throws {
-		let documents = [
+	func testUseRejectsRevisionDriftAndTypedNonacceptance() async throws {
+		let accountID = accountID
+		let authority = authority
+		let attempt = try nativeAttempt(
+			authority: authority,
+			accountID: accountID,
+			revision: 7,
+			idempotencyKey: idempotencyKey
+		)
+		let responses = [
 			"""
-			{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"available","lifecycle_readiness":"ready","unexpected":true,"credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}],"routing":{"revision":3,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}}
+			{"outcome":"accepted","data":{
+			  "account_id":"\(accountID)",
+			  "descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},
+			  "state":{"state":"prepared"},
+			  "entity_revision":8
+			}}
 			""",
-			"""
-			{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"available","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}],"routing":{"revision":3,"mode":{"mode":"fixed","account_id":"33333333-3333-4333-8333-333333333333"},"order":["\(accountID)"]}}}}
-			""",
+			#"{"outcome":"rejected","data":{"error":{"reason":"idempotency_conflict"}}}"#,
+			#"{"outcome":"potentially_dispatched","data":{"failure":"protocol_timeout"}}"#,
 		]
-
-		for document in documents {
-			let fixture = try makeRawFixture(
-				body: "printf '%s\\n' '\(document)'"
-			)
-			defer { fixture.remove() }
-			let client = ResetCardCLIClient(
-				executableURL: fixture.executableURL,
-				environment: ["HOME": fixture.directoryURL.path],
-				timeout: 2
-			)
-
+		let expected: [ResetCardClientError] = [
+			.invalidResponse,
+			.commandRejected,
+			.usePotentiallyDispatched,
+		]
+		for (data, expectedError) in zip(responses, expected) {
+			let client = DecodexNativeClient { _, _ in
+				nativeSuccess(
+					operation: "use_reset_card",
+					authority: authority,
+					data: data
+				)
+			}
 			do {
-				_ = try await client.accounts()
-				XCTFail("Incomplete routing or unknown account fields must fail closed.")
+				_ = try await client.use(attempt)
+				XCTFail("Expected typed failure")
 			} catch let error as ResetCardClientError {
-				XCTAssertEqual(error, .invalidResponse)
+				XCTAssertEqual(error, expectedError)
 			}
 		}
 	}
 
-	func testObservationFailureRetainsTypedQuotaStatesPerAccount() async throws {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"observation_failed","authority":{"profile_name":"local","server_id":"\(serverID)"},"result":{"outcome":"observation_failed","data":{"account_id":"\(accountID)","account_revision":7,"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":4000000,"result":{"state":"error","data":{"error":"provider_unavailable"}}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"error":"provider_unavailable"}}}'
-			exit 1
+	func testEnvelopeRejectsWrongSchemaOperationUnknownFieldsAndAuthorityDrift() async throws {
+		let authority = authority
+		let alternate = ResetCardAuthority(
+			profileName: "other",
+			serverID: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		)
+		let payload = #"{"outcome":"unavailable"}"#
+		let malformed = [
 			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		let inventory = try await client.inventory(for: accountRecord())
-
-		XCTAssertEqual(inventory.observationError, .providerUnavailable)
-		XCTAssertEqual(inventory.fiveHourQuota.state, .error(.providerUnavailable))
-		XCTAssertEqual(inventory.sevenDayQuota.state, .unknown)
-		XCTAssertTrue(inventory.cards.isEmpty)
-	}
-
-	func testCLIExecutionHasABoundedTimeout() async throws {
-		let fixture = try makeRawFixture(body: "exec /bin/sleep 2")
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 0.05
-		)
-
-		do {
-			_ = try await client.accounts()
-			XCTFail("A stalled CLI must time out.")
-		} catch let error as ResetCardClientError {
-			XCTAssertEqual(error, .timedOut)
+			{"schema":"wrong","outcome":"success","operation":"list_accounts",
+			 "authority":{"profile_name":"local","server_id":"\(serverID)"},"data":\(payload)}
+			""",
+			"""
+			{"schema":"\(decodexNativeClientSchema)","outcome":"success","operation":"get_reset_cards",
+			 "authority":{"profile_name":"local","server_id":"\(serverID)"},"data":\(payload)}
+			""",
+			"""
+			{"schema":"\(decodexNativeClientSchema)","outcome":"success","operation":"list_accounts",
+			 "authority":{"profile_name":"local","server_id":"\(serverID)","extra":true},"data":\(payload)}
+			""",
+			"""
+			{"schema":"\(decodexNativeClientSchema)","outcome":"success","operation":"list_accounts",
+			 "authority":{"profile_name":"\(alternate.profileName)","server_id":"\(alternate.serverID)"},"data":\(payload)}
+			""",
+		]
+		for document in malformed {
+			let client = DecodexNativeClient { _, _ in Data(document.utf8) }
+			do {
+				_ = try await client.accounts(authority: authority)
+				XCTFail("Malformed native envelope must fail")
+			} catch let error as ResetCardClientError {
+				XCTAssertEqual(error, .invalidResponse)
+				XCTAssertEqual(String(reflecting: error), "ResetCardClientError.invalidResponse")
+			}
 		}
 	}
 
-	func testCLIExecutionRejectsOversizedOutput() async throws {
-		let fixture = try makeRawFixture(
-			body: "/usr/bin/yes x | /usr/bin/head -c 400000"
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
+	func testClosedOuterFailuresRemainTyped() async throws {
+		let authority = authority
+		let cases: [(String, ResetCardClientError)] = [
+			("protocol_timeout", .timedOut),
+			("protocol_disconnected", .commandFailed),
+			("runtime_unavailable", .nativeClientUnavailable),
+			("protocol_malformed", .invalidResponse),
+		]
+		for (failure, expected) in cases {
+			let client = DecodexNativeClient { _, _ in
+				nativeFailure(operation: "list_accounts", failure: failure)
+			}
+			do {
+				_ = try await client.accounts(authority: authority)
+				XCTFail("Native failure must remain typed")
+			} catch let error as ResetCardClientError {
+				XCTAssertEqual(error, expected)
+			}
+		}
+	}
 
+	func testResponseSizeIsBoundedBeforeDecoding() async throws {
+		let client = DecodexNativeClient { _, _ in
+			Data(repeating: 0x20, count: 8 * 1024 * 1024 + 1)
+		}
 		do {
 			_ = try await client.accounts()
-			XCTFail("Oversized CLI output must fail.")
+			XCTFail("Oversized native response must fail")
 		} catch let error as ResetCardClientError {
 			XCTAssertEqual(error, .outputTooLarge)
 		}
 	}
 
-	func testNonzeroUncertainOutcomeStillDecodesAsTypedState() async throws {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"effect_ambiguous","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"effect_ambiguous"}}'
-			exit 1
+	func testAccountListRejectsUnknownFieldsAndUnroutableFixedTarget() async throws {
+		let accountID = accountID
+		let authority = authority
+		let documents = [
 			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-		let state = try await client.use(makeAttempt())
-		XCTAssertEqual(state, .effectAmbiguous)
-	}
-
-	func testUnavailableStatusIsNotDecodedAsDurableFailure() async throws {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"unavailable","idempotency_key":"\(idempotencyKey)","state":{"state":"unavailable","data":{"error":"product_state_unavailable"}}}'
-			exit 2
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		let state = try await client.status(for: makeAttempt())
-
-		XCTAssertEqual(state, .unavailable(.productStateUnavailable))
-		XCTAssertNotEqual(state, .failedBeforeEffect(.productStateUnavailable))
-	}
-
-	func testUseRejectsAnUnexpectedAccountRevision() async throws {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":8,"state":{"state":"completed","data":{"outcome":"reset"}}}'
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-		do {
-			_ = try await client.use(makeAttempt())
-			XCTFail("A different account revision must fail closed.")
-		} catch let error as ResetCardClientError {
-			XCTAssertEqual(error, .invalidResponse)
-		}
-	}
-
-	func testUseDecodesDefinitelyNotDispatchedAndRetainsTheEchoedKey() async throws {
-		let error = try await useError(
-			json: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(idempotencyKey)","dispatch_state":"definitely_not_dispatched","failure":"configuration_missing"}
+			{"outcome":"available","data":{"accounts":[
+			  {"account_id":"\(accountID)","alias":"Account 00000-00001","enabled":true,
+			   "account_revision":7,"observed_state":"available","lifecycle_readiness":"ready",
+			   "unexpected":true,
+			   "credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"\(String(repeating: "a", count: 64))","provider":"chatgpt","provider_account_id":"provider-a"},
+			   "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+			   "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
+			],"routing":{"revision":3,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}
 			""",
-			exitCode: 2
-		)
-
-		XCTAssertEqual(error, .useDefinitelyNotDispatched)
-	}
-
-	func testUseDecodesPotentiallyDispatchedAndRetainsTheEchoedKey() async throws {
-		let error = try await useError(
-			json: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(idempotencyKey)","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
+			"""
+			{"outcome":"available","data":{"accounts":[
+			  \(nativeAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7))
+			],"routing":{"revision":3,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(accountID)"]}}}
 			""",
-			exitCode: 2
-		)
-
-		XCTAssertEqual(error, .usePotentiallyDispatched)
-	}
-
-	func testUseDecodesRejectedBeforeAcceptanceAsTerminal() async throws {
-		let error = try await useError(
-			json: """
-			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"\(idempotencyKey)","dispatch_state":"rejected_before_acceptance","error":{"reason":"idempotency_conflict"}}
-			""",
-			exitCode: 1
-		)
-
-		XCTAssertEqual(error, .commandRejected)
-	}
-
-	func testUseAcceptsEveryCurrentLocalTransportFailureAndAccountRejection() async throws {
-		for failure in [
-			"local_transport_disabled",
-			"remote_transport_disabled",
-			"local_transport_unsupported",
-			"unsafe_local_endpoint",
-			"local_peer_identity_unavailable",
-			"local_peer_uid_mismatch",
-		] {
-			let error = try await useError(
-				json: """
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(idempotencyKey)","dispatch_state":"definitely_not_dispatched","failure":"\(failure)"}
-				""",
-				exitCode: 2
-			)
-			XCTAssertEqual(error, .useDefinitelyNotDispatched)
-		}
-
-		for errorDocument in [
-			#"{"reason":"acceptance_unknown"}"#,
-			#"{"reason":"account_command_rejected","rejection":"stale_account","actual_revision":7}"#,
-		] {
-			let error = try await useError(
-				json: """
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"\(idempotencyKey)","dispatch_state":"rejected_before_acceptance","error":\(errorDocument)}
-				""",
-				exitCode: 1
-			)
-			XCTAssertEqual(error, .commandRejected)
-		}
-	}
-
-	func testUseAndStatusRejectUnknownFieldsAtEveryOperationBoundary() async throws {
-		let invalidUseDocuments: [(json: String, exitCode: Int32)] = [
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"completed","data":{"outcome":"reset"}},"unexpected":true}
-				""",
-				0
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"completed","data":{"outcome":"reset","unexpected":true}}}
-				""",
-				0
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"completed","data":{"outcome":"reset"}},"error":null}
-				""",
-				0
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"prepared","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"prepared","data":null}}
-				""",
-				1
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(idempotencyKey)","dispatch_state":"definitely_not_dispatched","failure":"protocol_timeout","state":null}
-				""",
-				2
-			),
 		]
-		for invalidUseDocument in invalidUseDocuments {
-			let error = try await useError(
-				json: invalidUseDocument.json,
-				exitCode: invalidUseDocument.exitCode
-			)
-			XCTAssertEqual(error, .invalidResponse)
-		}
-
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"status","outcome":"completed","idempotency_key":"\(idempotencyKey)","state":{"state":"completed","data":{"outcome":"reset"}},"unexpected":true}'
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		do {
-			_ = try await client.status(for: makeAttempt())
-			XCTFail("Unknown status fields must fail closed.")
-		} catch let error as ResetCardClientError {
-			XCTAssertEqual(error, .invalidResponse)
-		}
-	}
-
-	func testUseRejectsMissingOrContradictoryDispatchState() async throws {
-		let cases: [(String, Int32)] = [
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"completed","data":{"outcome":"reset"}}}
-				""",
-				0
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","failure":"protocol_timeout"}
-				""",
-				2
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"\(idempotencyKey)","dispatch_state":"potentially_dispatched","error":{"reason":"idempotency_conflict"}}
-				""",
-				1
-			),
-		]
-		for (json, exitCode) in cases {
-			let error = try await useError(json: json, exitCode: exitCode)
-			XCTAssertEqual(error, .invalidResponse)
-		}
-	}
-
-	func testUseRejectsAWrongEchoedKeyForEveryNonSuccessDispatchState() async throws {
-		let wrongKey = "33333333-3333-4333-8333-333333333333"
-		let cases: [(String, Int32)] = [
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(wrongKey)","dispatch_state":"definitely_not_dispatched","failure":"configuration_missing"}
-				""",
-				2
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"\(wrongKey)","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
-				""",
-				2
-			),
-			(
-				"""
-				{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"rejected","idempotency_key":"\(wrongKey)","dispatch_state":"rejected_before_acceptance","error":{"reason":"idempotency_conflict"}}
-				""",
-				1
-			),
-		]
-		for (json, exitCode) in cases {
-			let error = try await useError(json: json, exitCode: exitCode)
-			XCTAssertEqual(error, .invalidResponse)
-		}
-	}
-
-	func testServiceUnavailableResponseDecodesAsTypedError() async throws {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/reset-card-cli/1","command":"list","outcome":"unavailable","authority":{"profile_name":"local","server_id":"\(serverID)"},"result":{"outcome":"unavailable","data":{"error":"vault_unavailable"}}}'
-			exit 1
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		do {
-			_ = try await client.inventory(for: accountRecord())
-			XCTFail("Typed service unavailability must fail.")
-		} catch let error as ResetCardClientError {
-			XCTAssertEqual(error, .service(.vaultUnavailable))
-		}
-	}
-
-	private func makeFixture(
-		accountSchema: String = "decodex/cli-account/1",
-		resetSchema: String = "decodex/reset-card-cli/1"
-	) throws -> ResetCardCLIFixture {
-		let directoryURL = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		let executableURL = directoryURL.appendingPathComponent("fake-decodex-cli")
-		let logURL = directoryURL.appendingPathComponent("arguments.log")
-		try FileManager.default.createDirectory(
-			at: directoryURL,
-			withIntermediateDirectories: true
-		)
-
-		let script = """
-		#!/bin/sh
-		[ -z "${RESET_CARD_TEST_SECRET+x}" ] || exit 90
-		for argument in "$@"; do
-			printf '%s\\n' "$argument" >> '\(logURL.path)'
-		done
-		printf '%s\\n' -- >> '\(logURL.path)'
-		case "$*" in
-			"--output json account list")
-				printf '%s\\n' '{"schema":"\(accountSchema)","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"depleted","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":1000000,"result":{"state":"current","data":{"used_percent":100,"resets_at_unix_micros":2000000}}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":1000000,"result":{"state":"stale","data":{"used_percent":80,"resets_at_unix_micros":3000000}}}}],"routing":{"revision":3,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}}'
-				;;
-			"--output json reset-card list --account \(accountID)")
-				printf '%s\\n' '{"schema":"\(resetSchema)","command":"list","outcome":"available","authority":{"profile_name":"local","server_id":"\(serverID)"},"result":{"outcome":"available","data":{"account_id":"\(accountID)","account_revision":7,"available_count":1,"cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":4000000,"result":{"state":"current","data":{"used_percent":55,"resets_at_unix_micros":5000000}}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":4000000,"result":{"state":"stale","data":{"used_percent":90,"resets_at_unix_micros":6000000}}}}}}'
-				;;
-			"--profile local --expected-server-id \(serverID) --output json reset-card use --account \(accountID) --granted-at 100 --expires-at 200 --expected-revision 7 --idempotency-key \(idempotencyKey) --yes")
-				printf '%s\\n' '{"schema":"\(resetSchema)","command":"use","outcome":"completed","idempotency_key":"\(idempotencyKey)","dispatch_state":"durably_accepted","account_id":"\(accountID)","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"completed","data":{"outcome":"reset"}}}'
-				;;
-			"--profile local --expected-server-id \(serverID) --output json reset-card status --idempotency-key \(idempotencyKey)")
-				printf '%s\\n' '{"schema":"\(resetSchema)","command":"status","outcome":"completed","idempotency_key":"\(idempotencyKey)","state":{"state":"completed","data":{"outcome":"reset"}}}'
-				;;
-			*)
-				exit 91
-				;;
-		esac
-		"""
-		try script.write(to: executableURL, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executableURL.path
-		)
-
-		return ResetCardCLIFixture(
-			directoryURL: directoryURL,
-			executableURL: executableURL,
-			logURL: logURL
-		)
-	}
-
-	private func makeRawFixture(body: String) throws -> ResetCardCLIFixture {
-		let directoryURL = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		let executableURL = directoryURL.appendingPathComponent("fake-decodex-cli")
-		let logURL = directoryURL.appendingPathComponent("arguments.log")
-		try FileManager.default.createDirectory(
-			at: directoryURL,
-			withIntermediateDirectories: true
-		)
-		let script = """
-		#!/bin/sh
-		\(body)
-		"""
-		try script.write(to: executableURL, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executableURL.path
-		)
-
-		return ResetCardCLIFixture(
-			directoryURL: directoryURL,
-			executableURL: executableURL,
-			logURL: logURL
-		)
-	}
-
-	private func makeAttempt() throws -> ResetCardUseAttempt {
-		ResetCardUseAttempt(
-			target: ResetCardUseTarget(
-				authority: authority,
-				accountID: accountID,
-				expectedRevision: 7,
-				descriptor: try ResetCardDescriptor(
-					grantedAtUnixSeconds: 100,
-					expiresAtUnixSeconds: 200
-				)
-			),
-			idempotencyKey: idempotencyKey
-		)
-	}
-
-	private func accountRecord() -> ResetCardAccountRecord {
-		ResetCardAccountRecord(
-			authority: nil,
-			accountID: accountID,
-			displayLabel: "Account A",
-			accountRevision: 7,
-			enabled: true,
-			observedState: .unknown,
-			lifecycleReadiness: .ready,
-			fiveHourQuota: .unknown(durationMinutes: 300),
-			sevenDayQuota: .unknown(durationMinutes: 10_080)
-		)
-	}
-
-	private func useError(
-		json: String,
-		exitCode: Int32
-	) async throws -> ResetCardClientError {
-		let fixture = try makeRawFixture(
-			body: """
-			printf '%s\\n' '\(json)'
-			exit \(exitCode)
-			"""
-		)
-		defer { fixture.remove() }
-		let client = ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-
-		do {
-			_ = try await client.use(makeAttempt())
-			XCTFail("The use document must not produce an operation state.")
-			return .invalidResponse
-		} catch let error as ResetCardClientError {
-			return error
+		for data in documents {
+			let client = DecodexNativeClient { _, _ in
+				nativeSuccess(operation: "list_accounts", authority: authority, data: data)
+			}
+			await XCTAssertThrowsInvalidResponse {
+				_ = try await client.accounts()
+			}
 		}
 	}
 }
 
-private struct ResetCardCLIFixture {
-	let directoryURL: URL
-	let executableURL: URL
-	let logURL: URL
+struct RecordedNativeRequest: @unchecked Sendable {
+	let data: Data
+	let authority: ResetCardAuthority?
+}
 
-	func invocations() throws -> [[String]] {
-		let lines = try String(contentsOf: logURL, encoding: .utf8)
-			.split(separator: "\n", omittingEmptySubsequences: false)
-			.map(String.init)
-		var invocations = [[String]]()
-		var current = [String]()
-		for line in lines {
-			if line == "--" {
-				invocations.append(current)
-				current = []
-			} else if line.isEmpty == false {
-				current.append(line)
-			}
+final class NativeRequestRecorder: @unchecked Sendable {
+	private let lock = NSLock()
+	private var storage: [RecordedNativeRequest] = []
+
+	func append(_ data: Data, authority: ResetCardAuthority?) {
+		lock.withLock {
+			storage.append(RecordedNativeRequest(data: data, authority: authority))
 		}
-
-		return invocations
 	}
 
-	func remove() {
-		try? FileManager.default.removeItem(at: directoryURL)
+	var requests: [RecordedNativeRequest] {
+		lock.withLock { storage }
+	}
+}
+
+func nativeSuccess(
+	operation: String,
+	authority: ResetCardAuthority,
+	data: String
+) -> Data {
+	Data(
+		"""
+		{"schema":"\(decodexNativeClientSchema)","outcome":"success",
+		 "operation":"\(operation)",
+		 "authority":{"profile_name":"\(authority.profileName)","server_id":"\(authority.serverID)"},
+		 "data":\(data)}
+		""".utf8
+	)
+}
+
+func nativeFailure(operation: String, failure: String) -> Data {
+	Data(
+		"""
+		{"schema":"\(decodexNativeClientSchema)","outcome":"failure",
+		 "operation":"\(operation)","failure":"\(failure)"}
+		""".utf8
+	)
+}
+
+func nativeJSONObject(_ data: Data) throws -> [String: AnyHashable] {
+	let value = try JSONSerialization.jsonObject(with: data)
+	guard let object = value as? [String: AnyHashable] else {
+		throw ResetCardClientError.invalidResponse
+	}
+	return object
+}
+
+func nativeAccountJSON(
+	accountID: String,
+	alias: String,
+	revision: UInt64
+) -> String {
+	"""
+	{"account_id":"\(accountID)","alias":"\(alias)","enabled":true,
+	 "account_revision":\(revision),"observed_state":"available","lifecycle_readiness":"ready",
+	 "credential_binding":{"schema_version":1,"version":1,
+	   "fingerprint_sha256":"\(String(repeating: "a", count: 64))",
+	   "provider":"chatgpt","provider_account_id":"provider-\(revision)"},
+	 "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+	 "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
+	"""
+}
+
+func nativeQuotaJSON(duration: UInt32, used: UInt8, reset: Int64) -> String {
+	"""
+	{"duration_minutes":\(duration),"observed_at_unix_micros":1000000,
+	 "result":{"state":"current","data":{"used_percent":\(used),"resets_at_unix_micros":\(reset)}}}
+	"""
+}
+
+func nativeAccount(
+	authority: ResetCardAuthority,
+	accountID: String,
+	revision: UInt64
+) -> ResetCardAccountRecord {
+	ResetCardAccountRecord(
+		authority: authority,
+		accountID: accountID,
+		alias: "Account 00000-00001",
+		accountRevision: revision,
+		enabled: true,
+		observedState: .available,
+		lifecycleReadiness: .ready,
+		credentialBinding: AccountCredentialBinding(
+			schemaVersion: 1,
+			version: 1,
+			fingerprintSHA256: String(repeating: "a", count: 64),
+			provider: .chatGPT,
+			providerAccountID: "provider"
+		),
+		fiveHourQuota: .unknown(durationMinutes: 300),
+		sevenDayQuota: .unknown(durationMinutes: 10_080)
+	)
+}
+
+func nativeAttempt(
+	authority: ResetCardAuthority,
+	accountID: String,
+	revision: UInt64,
+	idempotencyKey: String
+) throws -> ResetCardUseAttempt {
+	ResetCardUseAttempt(
+		target: ResetCardUseTarget(
+			authority: authority,
+			accountID: accountID,
+			expectedRevision: revision,
+			descriptor: try ResetCardDescriptor(
+				grantedAtUnixSeconds: 100,
+				expiresAtUnixSeconds: 200
+			)
+		),
+		idempotencyKey: idempotencyKey
+	)
+}
+
+func XCTAssertThrowsInvalidResponse(
+	_ operation: () async throws -> Void,
+	file: StaticString = #filePath,
+	line: UInt = #line
+) async {
+	do {
+		try await operation()
+		XCTFail("Expected invalid native response", file: file, line: line)
+	} catch let error as ResetCardClientError {
+		XCTAssertEqual(error, .invalidResponse, file: file, line: line)
+	} catch {
+		XCTFail("Unexpected error: \(error)", file: file, line: line)
 	}
 }

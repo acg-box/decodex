@@ -50,10 +50,17 @@ struct AccountControlSnapshot: Equatable, Sendable {
 	let routing: AccountRoutingControl
 }
 
+enum CodexAuthProjection: Equatable, Sendable {
+	case current(accountID: String, accountRevision: UInt64, projectionDigest: String)
+	case unmanaged
+	case unavailable
+}
+
 enum AccountControlResult: Equatable, Sendable {
 	case accountChanged(ResetCardAccountRecord)
 	case accountLoggedOut(accountID: String, tombstoneRevision: UInt64)
 	case routingChanged(AccountRoutingControl)
+	case codexAuthProjected(accountID: String, accountRevision: UInt64, projectionDigest: String)
 }
 
 enum AccountControlRejection: String, Decodable, Equatable, Sendable {
@@ -120,17 +127,15 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 		case .invalidInput:
 			return "The account action contains invalid input."
 		case .invalidResponse:
-			return "The Decodex CLI returned an invalid account response."
+			return "The Decodex service returned an invalid account response."
 		case .client(let error):
 			switch error {
-			case .executableMissing:
-				return "The bundled Decodex CLI is unavailable."
-			case .launchFailed:
-				return "The Decodex CLI could not start."
+			case .nativeClientUnavailable:
+				return "The native Decodex client is unavailable."
 			case .timedOut:
 				return "The account request timed out."
 			case .outputTooLarge:
-				return "The Decodex CLI returned too much account data."
+				return "The Decodex service returned too much account data."
 			case .commandRejected, .useDefinitelyNotDispatched,
 				.usePotentiallyDispatched, .commandFailed, .invalidResponse,
 				.service:
@@ -161,15 +166,17 @@ protocol AccountControlClient: ResetCardClient {
 		authority: ResetCardAuthority?,
 		operationID: String,
 		accountID: String,
-		displayLabel: String,
 		enabled: Bool,
 		idempotencyKey: String
 	) async throws -> AccountControlResult
 
-	func renameAccount(
+	func codexAuthProjection(
+		authority: ResetCardAuthority?
+	) async throws -> CodexAuthProjection
+
+	func useAccountInCodex(
 		authority: ResetCardAuthority?,
 		accountID: String,
-		displayLabel: String,
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult
@@ -213,55 +220,87 @@ protocol AccountControlClient: ResetCardClient {
 	) async throws -> AccountControlResult
 }
 
-extension ResetCardCLIClient: AccountControlClient {
+extension DecodexNativeClient: AccountControlClient {
 	func enrollFromSharedCodex(
 		authority: ResetCardAuthority?,
 		operationID: String,
 		accountID: String,
-		displayLabel: String,
 		enabled: Bool,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.enrollFromSharedCodexArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
-			operationID: operationID,
 			accountID: accountID,
-			displayLabel: displayLabel,
-			enabled: enabled,
+			operationID: operationID,
+			expectedRevision: nil,
 			idempotencyKey: idempotencyKey
 		)
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: "enroll_account",
+				accountID: accountID,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID,
+				enabled: enabled
+			),
 			authority: authority,
 			expected: .accountChanged(
 				accountID: accountID,
-				displayLabel: displayLabel,
 				enabled: enabled
 			)
 		)
 	}
 
-	func renameAccount(
+	func codexAuthProjection(
+		authority: ResetCardAuthority?
+	) async throws -> CodexAuthProjection {
+		guard authority.map(Self.isValidAuthority) ?? true else {
+			throw AccountControlError.invalidInput
+		}
+		let response: (
+			authority: ResetCardAuthority,
+			data: CodexAuthProjectionWire
+		)
+		do {
+			response = try await perform(
+				DecodexNativeRequest(operation: "get_codex_auth_projection"),
+				authority: authority
+			)
+		} catch let error as ResetCardClientError {
+			if error == .invalidResponse {
+				throw AccountControlError.invalidResponse
+			}
+			throw AccountControlError.client(error)
+		} catch {
+			throw AccountControlError.invalidResponse
+		}
+		return response.data.projection
+	}
+
+	func useAccountInCodex(
 		authority: ResetCardAuthority?,
 		accountID: String,
-		displayLabel: String,
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.renameAccountArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
 			accountID: accountID,
-			displayLabel: displayLabel,
+			operationID: nil,
 			expectedRevision: expectedRevision,
 			idempotencyKey: idempotencyKey
 		)
 		return try await executeAccountControl(
-			arguments: arguments,
-			authority: authority,
-			expected: .accountChanged(
+			request: DecodexNativeRequest(
+				operation: "use_account_in_codex",
 				accountID: accountID,
-				displayLabel: displayLabel,
-				enabled: nil
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey
+			),
+			authority: authority,
+			expected: .codexAuthProjected(
+				accountID: accountID,
+				accountRevision: expectedRevision
 			)
 		)
 	}
@@ -273,19 +312,23 @@ extension ResetCardCLIClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.setAccountEnabledArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
 			accountID: accountID,
-			enabled: enabled,
+			operationID: nil,
 			expectedRevision: expectedRevision,
 			idempotencyKey: idempotencyKey
 		)
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: enabled ? "enable_account" : "disable_account",
+				accountID: accountID,
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey
+			),
 			authority: authority,
 			expected: .accountChanged(
 				accountID: accountID,
-				displayLabel: nil,
 				enabled: enabled
 			)
 		)
@@ -298,15 +341,21 @@ extension ResetCardCLIClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.logoutAccountArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
-			operationID: operationID,
 			accountID: accountID,
+			operationID: operationID,
 			expectedRevision: expectedRevision,
 			idempotencyKey: idempotencyKey
 		)
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: "logout_account",
+				accountID: accountID,
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID
+			),
 			authority: authority,
 			expected: .accountLoggedOut(accountID: accountID)
 		)
@@ -319,15 +368,24 @@ extension ResetCardCLIClient: AccountControlClient {
 		expectedRoutingRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.setFixedSelectionArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
 			accountID: accountID,
-			expectedAccountRevision: expectedAccountRevision,
-			expectedRoutingRevision: expectedRoutingRevision,
+			operationID: nil,
+			expectedRevision: expectedAccountRevision,
 			idempotencyKey: idempotencyKey
 		)
+		guard expectedRoutingRevision > 0 else {
+			throw AccountControlError.invalidInput
+		}
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: "set_fixed_selection",
+				accountID: accountID,
+				expectedAccountRevision: expectedAccountRevision,
+				expectedRoutingRevision: expectedRoutingRevision,
+				idempotencyKey: idempotencyKey
+			),
 			authority: authority,
 			expected: .routing(mode: .fixed(accountID: accountID))
 		)
@@ -338,13 +396,18 @@ extension ResetCardCLIClient: AccountControlClient {
 		expectedRoutingRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.setBalancedSelectionArguments(
-			authority: authority,
-			expectedRoutingRevision: expectedRoutingRevision,
-			idempotencyKey: idempotencyKey
-		)
+		guard authority.map(Self.isValidAuthority) ?? true,
+			expectedRoutingRevision > 0,
+			Self.isCanonicalUUID(idempotencyKey)
+		else {
+			throw AccountControlError.invalidInput
+		}
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: "set_balanced_selection",
+				expectedRoutingRevision: expectedRoutingRevision,
+				idempotencyKey: idempotencyKey
+			),
 			authority: authority,
 			expected: .routing(mode: .balanced)
 		)
@@ -357,212 +420,39 @@ extension ResetCardCLIClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		let arguments = try Self.refreshAccountCredentialsArguments(
+		try Self.validateAccountControlInput(
 			authority: authority,
-			operationID: operationID,
 			accountID: accountID,
+			operationID: operationID,
 			expectedRevision: expectedRevision,
 			idempotencyKey: idempotencyKey
 		)
 		return try await executeAccountControl(
-			arguments: arguments,
+			request: DecodexNativeRequest(
+				operation: "refresh_account",
+				accountID: accountID,
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID
+			),
 			authority: authority,
 			expected: .accountChanged(
 				accountID: accountID,
-				displayLabel: nil,
 				enabled: nil
 			)
 		)
-	}
-}
-
-extension ResetCardCLIClient {
-	static func enrollFromSharedCodexArguments(
-		authority: ResetCardAuthority?,
-		operationID: String,
-		accountID: String,
-		displayLabel: String,
-		enabled: Bool,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: operationID,
-			displayLabel: displayLabel,
-			expectedRevision: nil,
-			idempotencyKey: idempotencyKey
-		)
-		return accountControlPrefix(authority: authority) + [
-			"enroll",
-			"--operation-id", operationID,
-			"--account-id", accountID,
-			"--label", displayLabel,
-			"--enabled", enabled ? "true" : "false",
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func renameAccountArguments(
-		authority: ResetCardAuthority?,
-		accountID: String,
-		displayLabel: String,
-		expectedRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: nil,
-			displayLabel: displayLabel,
-			expectedRevision: expectedRevision,
-			idempotencyKey: idempotencyKey
-		)
-		return accountControlPrefix(authority: authority) + [
-			"rename",
-			"--account-id", accountID,
-			"--label", displayLabel,
-			"--expected-revision", String(expectedRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func setAccountEnabledArguments(
-		authority: ResetCardAuthority?,
-		accountID: String,
-		enabled: Bool,
-		expectedRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: nil,
-			displayLabel: nil,
-			expectedRevision: expectedRevision,
-			idempotencyKey: idempotencyKey
-		)
-		return accountControlPrefix(authority: authority) + [
-			enabled ? "enable" : "disable",
-			"--account-id", accountID,
-			"--expected-revision", String(expectedRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func logoutAccountArguments(
-		authority: ResetCardAuthority?,
-		operationID: String,
-		accountID: String,
-		expectedRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: operationID,
-			displayLabel: nil,
-			expectedRevision: expectedRevision,
-			idempotencyKey: idempotencyKey
-		)
-		return accountControlPrefix(authority: authority) + [
-			"logout",
-			"--operation-id", operationID,
-			"--account-id", accountID,
-			"--expected-revision", String(expectedRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func setFixedSelectionArguments(
-		authority: ResetCardAuthority?,
-		accountID: String,
-		expectedAccountRevision: UInt64,
-		expectedRoutingRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: nil,
-			displayLabel: nil,
-			expectedRevision: expectedAccountRevision,
-			idempotencyKey: idempotencyKey
-		)
-		guard expectedRoutingRevision > 0 else {
-			throw AccountControlError.invalidInput
-		}
-		return accountControlPrefix(authority: authority) + [
-			"set-fixed-selection",
-			"--account-id", accountID,
-			"--expected-account-revision", String(expectedAccountRevision),
-			"--expected-revision", String(expectedRoutingRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func setBalancedSelectionArguments(
-		authority: ResetCardAuthority?,
-		expectedRoutingRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		guard authority.map(isValidAuthority) ?? true,
-			expectedRoutingRevision > 0,
-			isCanonicalUUID(idempotencyKey)
-		else {
-			throw AccountControlError.invalidInput
-		}
-		return accountControlPrefix(authority: authority) + [
-			"set-balanced-selection",
-			"--expected-revision", String(expectedRoutingRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	static func refreshAccountCredentialsArguments(
-		authority: ResetCardAuthority?,
-		operationID: String,
-		accountID: String,
-		expectedRevision: UInt64,
-		idempotencyKey: String
-	) throws -> [String] {
-		try validateAccountControlInput(
-			authority: authority,
-			accountID: accountID,
-			operationID: operationID,
-			displayLabel: nil,
-			expectedRevision: expectedRevision,
-			idempotencyKey: idempotencyKey
-		)
-		return accountControlPrefix(authority: authority) + [
-			"refresh",
-			"--operation-id", operationID,
-			"--account-id", accountID,
-			"--expected-revision", String(expectedRevision),
-			"--idempotency-key", idempotencyKey,
-		]
-	}
-
-	private static func accountControlPrefix(
-		authority: ResetCardAuthority?
-	) -> [String] {
-		(authority.map(authorityArguments) ?? []) + ["--output", "json", "account"]
 	}
 
 	private static func validateAccountControlInput(
 		authority: ResetCardAuthority?,
 		accountID: String,
 		operationID: String?,
-		displayLabel: String?,
 		expectedRevision: UInt64?,
 		idempotencyKey: String
 	) throws {
 		guard authority.map(isValidAuthority) ?? true,
 			isCanonicalAccountID(accountID),
 			operationID.map(isCanonicalUUID) ?? true,
-			displayLabel.map({
-				isBoundedWireText($0, maximumBytes: 128)
-			}) ?? true,
 			expectedRevision.map({ $0 > 0 }) ?? true,
 			isCanonicalUUID(idempotencyKey)
 		else {
@@ -571,13 +461,16 @@ extension ResetCardCLIClient {
 	}
 
 	private func executeAccountControl(
-		arguments: [String],
+		request: DecodexNativeRequest,
 		authority: ResetCardAuthority?,
 		expected: AccountControlExpectedResult
 	) async throws -> AccountControlResult {
-		let processResult: ResetCardProcessResult
+		let response: (
+			authority: ResetCardAuthority,
+			data: AccountControlWireResponse
+		)
 		do {
-			processResult = try await run(arguments: arguments)
+			response = try await perform(request, authority: authority)
 		} catch let error as ResetCardClientError {
 			if error == .invalidResponse {
 				throw AccountControlError.invalidResponse
@@ -587,78 +480,108 @@ extension ResetCardCLIClient {
 			throw AccountControlError.invalidResponse
 		}
 
-		let document: AccountControlDocument
-		do {
-			document = try decode(
-				AccountControlDocument.self,
-				from: processResult,
-				schema: accountCLISchema,
-				command: "command"
-			)
-		} catch let error as ResetCardClientError {
-			if error == .invalidResponse {
-				throw AccountControlError.invalidResponse
-			}
-			throw AccountControlError.client(error)
-		} catch {
-			throw AccountControlError.invalidResponse
-		}
-
-		switch document.result {
+		switch response.data {
 		case .applied(let entityRevision, let payload):
-			guard document.outcome == "applied", processResult.exitCode == 0 else {
-				throw AccountControlError.invalidResponse
-			}
 			return try payload.result(
 				entityRevision: entityRevision,
-				authority: authority,
+				authority: response.authority,
 				expected: expected
 			)
 		case .rejected(let error):
-			guard document.outcome == "rejected", processResult.exitCode == 1 else {
-				throw AccountControlError.invalidResponse
-			}
 			throw error.error
 		case .potentiallyDispatched:
-			guard document.outcome == "potentially_dispatched",
-				processResult.exitCode == 2
-			else {
-				throw AccountControlError.invalidResponse
-			}
 			throw AccountControlError.potentiallyDispatched
 		}
 	}
 }
-
 private enum AccountControlExpectedResult {
-	case accountChanged(accountID: String, displayLabel: String?, enabled: Bool?)
+	case accountChanged(accountID: String, enabled: Bool?)
 	case accountLoggedOut(accountID: String)
 	case routing(mode: AccountRoutingMode)
+	case codexAuthProjected(accountID: String, accountRevision: UInt64)
 }
 
-private struct AccountControlDocument: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let result: AccountControlWireResponse
+private enum CodexAuthProjectionWire: Decodable {
+	case current(accountID: String, accountRevision: UInt64, projectionDigest: String)
+	case unmanaged
+	case unavailable
 
 	init(from decoder: Decoder) throws {
-		try requireExactFields(
-			in: decoder,
-			expected: ["schema", "command", "outcome", "result"]
-		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		result = try container.decode(AccountControlWireResponse.self, forKey: .result)
+		switch try container.decode(String.self, forKey: .outcome) {
+		case "current":
+			try requireExactFields(in: decoder, expected: ["outcome", "data"])
+			let data = try container.decode(CurrentData.self, forKey: .data)
+			guard DecodexNativeClient.isCanonicalAccountID(data.accountID),
+				data.accountRevision > 0,
+				Self.isSHA256(data.projectionDigest)
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .current(
+				accountID: data.accountID,
+				accountRevision: data.accountRevision,
+				projectionDigest: data.projectionDigest
+			)
+		case "unmanaged":
+			try requireExactFields(in: decoder, expected: ["outcome"])
+			self = .unmanaged
+		case "unavailable":
+			try requireExactFields(in: decoder, expected: ["outcome"])
+			self = .unavailable
+		default:
+			throw AccountControlError.invalidResponse
+		}
+	}
+
+	var projection: CodexAuthProjection {
+		switch self {
+		case .current(let accountID, let accountRevision, let projectionDigest):
+			return .current(
+				accountID: accountID,
+				accountRevision: accountRevision,
+				projectionDigest: projectionDigest
+			)
+		case .unmanaged:
+			return .unmanaged
+		case .unavailable:
+			return .unavailable
+		}
+	}
+
+	static func isSHA256(_ value: String) -> Bool {
+		value.utf8.count == 64
+			&& value.utf8.allSatisfy {
+				(48...57).contains($0) || (97...102).contains($0)
+			}
+	}
+
+	private struct CurrentData: Decodable {
+		let accountID: String
+		let accountRevision: UInt64
+		let projectionDigest: String
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(
+				in: decoder,
+				expected: ["account_id", "account_revision", "projection_digest"]
+			)
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			accountID = try container.decode(String.self, forKey: .accountID)
+			accountRevision = try container.decode(UInt64.self, forKey: .accountRevision)
+			projectionDigest = try container.decode(String.self, forKey: .projectionDigest)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case accountID = "account_id"
+			case accountRevision = "account_revision"
+			case projectionDigest = "projection_digest"
+		}
 	}
 
 	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
 		case outcome
-		case result
+		case data
 	}
 }
 
@@ -755,6 +678,7 @@ private enum AccountControlResultPayloadWire: Decodable {
 	case accountChanged(ResetCardAccountWire)
 	case accountLoggedOut(accountID: String, tombstoneRevision: UInt64)
 	case routingChanged(AccountRoutingWire)
+	case codexAuthProjected(accountID: String, accountRevision: UInt64, projectionDigest: String)
 
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -766,7 +690,7 @@ private enum AccountControlResultPayloadWire: Decodable {
 		case "account_logged_out":
 			try requireExactFields(in: decoder, expected: ["name", "data"])
 			let data = try container.decode(AccountLoggedOutData.self, forKey: .data)
-			guard ResetCardCLIClient.isCanonicalAccountID(data.accountID),
+			guard DecodexNativeClient.isCanonicalAccountID(data.accountID),
 				data.tombstoneRevision > 0
 			else {
 				throw AccountControlError.invalidResponse
@@ -779,6 +703,20 @@ private enum AccountControlResultPayloadWire: Decodable {
 			try requireExactFields(in: decoder, expected: ["name", "data"])
 			let data = try container.decode(AccountRoutingChangedData.self, forKey: .data)
 			self = .routingChanged(data.routing)
+		case "codex_auth_projected":
+			try requireExactFields(in: decoder, expected: ["name", "data"])
+			let data = try container.decode(CodexAuthProjectedData.self, forKey: .data)
+			guard DecodexNativeClient.isCanonicalAccountID(data.accountID),
+				data.accountRevision > 0,
+				CodexAuthProjectionWire.isSHA256(data.projectionDigest)
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .codexAuthProjected(
+				accountID: data.accountID,
+				accountRevision: data.accountRevision,
+				projectionDigest: data.projectionDigest
+			)
 		default:
 			throw AccountControlError.invalidResponse
 		}
@@ -792,12 +730,11 @@ private enum AccountControlResultPayloadWire: Decodable {
 		switch (self, expected) {
 		case (
 			.accountChanged(let wire),
-			.accountChanged(let expectedID, let expectedLabel, let expectedEnabled)
+			.accountChanged(let expectedID, let expectedEnabled)
 		):
 			let decoded = try wire.record()
 			guard decoded.accountID == expectedID,
 				decoded.accountRevision == entityRevision,
-				expectedLabel.map({ $0 == decoded.displayLabel }) ?? true,
 				expectedEnabled.map({ $0 == decoded.enabled }) ?? true
 			else {
 				throw AccountControlError.invalidResponse
@@ -806,7 +743,7 @@ private enum AccountControlResultPayloadWire: Decodable {
 				ResetCardAccountRecord(
 					authority: authority,
 					accountID: decoded.accountID,
-					displayLabel: decoded.displayLabel,
+					alias: decoded.alias,
 					accountRevision: decoded.accountRevision,
 					enabled: decoded.enabled,
 					observedState: decoded.observedState,
@@ -834,6 +771,21 @@ private enum AccountControlResultPayloadWire: Decodable {
 				throw AccountControlError.invalidResponse
 			}
 			return .routingChanged(routing)
+		case (
+			.codexAuthProjected(let accountID, let accountRevision, let projectionDigest),
+			.codexAuthProjected(let expectedID, let expectedRevision)
+		):
+			guard accountID == expectedID,
+				accountRevision == expectedRevision,
+				entityRevision == expectedRevision
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			return .codexAuthProjected(
+				accountID: accountID,
+				accountRevision: accountRevision,
+				projectionDigest: projectionDigest
+			)
 		default:
 			throw AccountControlError.invalidResponse
 		}
@@ -887,6 +839,29 @@ private enum AccountControlResultPayloadWire: Decodable {
 
 		private enum CodingKeys: String, CodingKey {
 			case routing
+		}
+	}
+
+	private struct CodexAuthProjectedData: Decodable {
+		let accountID: String
+		let accountRevision: UInt64
+		let projectionDigest: String
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(
+				in: decoder,
+				expected: ["account_id", "account_revision", "projection_digest"]
+			)
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			accountID = try container.decode(String.self, forKey: .accountID)
+			accountRevision = try container.decode(UInt64.self, forKey: .accountRevision)
+			projectionDigest = try container.decode(String.self, forKey: .projectionDigest)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case accountID = "account_id"
+			case accountRevision = "account_revision"
+			case projectionDigest = "projection_digest"
 		}
 	}
 

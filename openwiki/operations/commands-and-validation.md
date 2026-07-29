@@ -106,7 +106,7 @@ retired package behavior from those current surfaces.
 ## Same-UID Unix transport validation
 
 XY-1399 A-prime was the source-only design ancestor. The current integrated implementation
-ports that transport onto protocol V1.5/V1.4 and the shared Reset Card service. Validation
+ports that transport onto exact-current protocol V2.0 and the shared Reset Card service. Validation
 must bind all results to the exact candidate tree and cover macOS and Linux. It validates:
 
 - fixed staging-name and canonical-name stale recovery under the persistent single-link
@@ -116,7 +116,7 @@ must bind all results to the exact candidate tree and cover macOS and Linux. It 
 - directory, lock, and socket replacement at publication, server admission, client
   reconnect, and cleanup;
 - client and server kernel peer credentials and exact effective-UID equality;
-- WebSocket `/v1/ws` with V1.5 and V1.4, without TCP, Axum, self-connect, watchdog, or
+- WebSocket `/v1/ws` with exact-current V2.0, without TCP, Axum, self-connect, watchdog, or
   compatibility fallback;
 - concurrent legitimate daemons, active sessions, in-flight commands, child panic,
   absolute-deadline cancellation, deterministic termination receipt readback, explicit
@@ -988,11 +988,11 @@ python3 -m unittest tests.scripts.test_install_decodex_local_service
 ```
 
 The Swift suite covers one all-account list, UUID-keyed progressive Reset Card rows,
-stable CLI decoding, second-click confirmation, bounded startup recovery, and durable
-use replay. The staged package contains only the Swift app and vNext CLI. It contains
-no daemon, legacy `decodex`, app helper, loopback server, `:8192` client, account-pool
-reader, or migration tool. The separately installed and signed local service owns the
-daemon wrapper and PostgreSQL generation.
+strict native-client decoding, second-click confirmation, bounded startup recovery,
+and durable use replay. The staged package contains only the Swift app, in-process Rust
+client library, and resources. It contains no CLI, daemon, legacy `decodex`, app helper,
+loopback server, `:8192` client, account-pool reader, or migration tool. The separately
+installed and signed local service owns the daemon wrapper and PostgreSQL generation.
 
 The local-service installer test starts from a fresh empty product database and verifies
 credential-negative config, the signed wrapper, one `supervise-local` LaunchAgent,

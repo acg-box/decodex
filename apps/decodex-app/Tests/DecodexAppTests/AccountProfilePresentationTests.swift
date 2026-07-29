@@ -129,24 +129,20 @@ final class AccountProfilePresentationTests: XCTestCase {
 		XCTAssertEqual(formatActivityDuration(7_500), "2h 5m")
 	}
 
-	func testOverviewStatusSeparatesCurrentStoredAndMissingProfiles() {
+	func testOverviewUsesDirectCurrentProfileLanguage() {
 		XCTAssertEqual(
-			AccountProfileOverviewStatus(
-				totalAccountCount: 6,
-				profileCount: 5,
-				currentProfileCount: 4,
-				degradedProfileCount: 1
+			AccountProfileCoveragePresentation(
+				currentCount: 4,
+				totalCount: 6
 			).label,
-			"4 current · 1 stored · 5/6"
+			"4 of 6 profiles current"
 		)
 		XCTAssertEqual(
-			AccountProfileOverviewStatus(
-				totalAccountCount: 6,
-				profileCount: 6,
-				currentProfileCount: 6,
-				degradedProfileCount: 0
+			AccountProfileCoveragePresentation(
+				currentCount: 6,
+				totalCount: 6
 			).label,
-			"6 current"
+			"6 of 6 profiles current"
 		)
 	}
 

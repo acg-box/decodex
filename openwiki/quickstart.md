@@ -132,6 +132,9 @@ evidence only after that point. It is not a runtime or future-work input.
   [Account Lifecycle Authority](specs/account-lifecycle-authority.md) and does not
   contain a local account pool, helper/server path, credential authority, or service
   lifecycle owner (`apps/decodex-app/README.md`).
+- `crates/decodex-app-client-ffi/` owns the app's credential-negative in-process
+  protocol client and private `decodex/app-native-client/1` ABI. It does not own
+  credentials, account state, daemon lifecycle, or a CLI process.
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
@@ -145,7 +148,7 @@ evidence only after that point. It is not a runtime or future-work input.
 ## Runtime in one minute
 
 `apps/decodexd` composes the PostgreSQL and Codex adapter boundaries through
-`decodex-runtime` and serves the typed V1 protocol at the fixed
+`decodex-runtime` and serves the exact-current typed V2.0 protocol at the fixed
 `~/.decodex/server/decodex.sock` endpoint. The active local profile must set
 `policy = "same_uid"` and the exact service-owner effective UID. The server directory
 has mode 0700. The persistent `decodex.lock`, fixed `decodex.sock.stage`, and published
@@ -155,15 +158,15 @@ while the one-link lock is held.
 It opens a Codex app-server process only for an admitted manual reset-card request;
 conversation dispatch remains disabled. It attempts only
 the explicitly configured PostgreSQL Unix socket and otherwise retains a typed unavailable
-adapter. The protocol supports V1.5/V1.4 negotiation, typed command receipt/result and
-event envelopes, bounded snapshots/queues/wire text, fixed per-version-capacity in-lifetime
-idempotency whose lookup and capacity namespace are bound to the negotiated protocol version,
+adapter. The protocol accepts only V2.0 and provides typed command receipt/result and
+event envelopes, bounded snapshots/queues/wire text, fixed-capacity in-lifetime
+idempotency in its one exact-current namespace,
 publication-epoch-bound cursor resume,
 snapshot fallback, stable
 server-identity pinning, bounded doctor/status results, and a bounded typed Conversation-history
 query, plus a read-only immutable execution-decision query. The `decodex` and GPUI roots
 compile against `decodex-protocol` only. `decodex status` and `decodex doctor` are active
-API-only V1.5 diagnostic clients. `decodex reset-card` is the active manual reset-card
+API-only V2.0 diagnostic clients. `decodex reset-card` is the active manual reset-card
 client. `decodex account profile` is the independent bounded account-profile client.
 GPUI opens its real shell, but its destinations remain placeholders.
 
@@ -286,7 +289,7 @@ operator UID authority, and kernel peer credentials rather than trusting an obse
 `~/.decodex` layout for `config.toml`, logs, SHA-256 blobs, disposable cache, and atomic
 server identity.
 
-Doctor/status is a V1.5 read-only query served only by `decodexd`. Queries have client observation
+Doctor/status is a V2.0 read-only query served only by `decodexd`. Queries have client observation
 identities but no mutation receipt, deduplication, replay, event, or receipt-capacity effect. Its closed report
 covers configuration, database, protocol and version, stable server identity, shared
 Codex home, each typed app-server capability, aggregate server-host repository readiness,
@@ -345,7 +348,7 @@ Accounts/Quick Task/minimal Accounts-Conversation-Health GPUI; then the bounded 
 flow and Project-Work-Run GPUI; then the two-account restart E2E and Mac package. A general
 PostgreSQL administration plane, authenticated HTTP artifact path, and remote or cross-UID
 binding remain later work.
-Kernel same-UID credentials are the complete local V1 principal. Application PKI and remote
+Kernel same-UID credentials are the complete local V2.0 principal. Application PKI and remote
 TLS remain outside this boundary and belong to the later remote-security gate.
 
 The macOS source-install path is narrower than a general administration plane.
@@ -358,9 +361,10 @@ credential-file replacement restarts only the daemon when its injected credentia
 projection changes. The LaunchAgent restarts only unsuccessful exits and retains a
 60-second final stop timeout. When the installed job has that exact contract, the
 installer first signals the loaded supervisor, waits for its bounded daemon and
-PostgreSQL drain to leave the job inactive, and only then removes the job. The one-time
-legacy path removes the old job directly. Both paths bind observed processes by PID and
-full start time and wait at most 300 seconds before provisioning a replacement. Reset Card
+PostgreSQL drain to leave the job inactive, and only then removes the job. If the loaded
+job does not match the exact installed service contract, the installer removes that exact
+job directly before replacement. Both paths bind observed processes by PID and full start
+time and wait at most 300 seconds before provisioning a replacement. Reset Card
 discovery, account binding, provider access, and typed results remain Rust runtime work.
 On macOS, the runtime starts the final canonical Codex image suspended and verifies it
 against its immutable snapshot before resume so process-aware network extensions can apply

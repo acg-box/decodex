@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the V1 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.0 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -15,7 +15,7 @@ use serde_json::Error;
 
 use crate::{DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal};
 
-/// Maximum UTF-8 size of any human-readable text carried by V1.
+/// Maximum UTF-8 size of any human-readable text carried by V2.0.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -130,7 +130,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded the V1 byte limit.
+/// A string-backed wire scalar exceeded the V2.0 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -389,7 +389,8 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// V1.1 clients omit this field and therefore receive a snapshot fallback.
+	/// A V2.0 resume requires this field. Older hello envelopes can omit it
+	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Last snapshot or event cursor fully applied by the client.
@@ -441,7 +442,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present for V1.2 and omitted for the compatible V1.1 shape.
+	/// This is present in the exact-current V2.0 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1155,8 +1156,8 @@ pub enum ClientMessage {
 	Query(QueryEnvelope),
 }
 
-const fn version_supports(version: ProtocolVersion, minimum: ProtocolVersion) -> bool {
-	version.major == minimum.major && version.minor >= minimum.minor
+const fn version_supports_current(version: ProtocolVersion) -> bool {
+	version.major == crate::CURRENT_VERSION.major && version.minor == crate::CURRENT_VERSION.minor
 }
 
 /// Supported credential-negative account provider projection.
@@ -1563,7 +1564,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V1 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.0 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -1624,8 +1625,8 @@ impl<'de> Deserialize<'de> for AccountQuotaWindowDto {
 pub struct AccountDto {
 	/// Canonical Decodex account identity.
 	pub account_id: EntityId,
-	/// Non-secret operator label.
-	pub display_label: WireText,
+	/// Stable daemon-derived credential-negative account alias.
+	pub alias: WireText,
 	/// Independent administrative admission switch.
 	pub enabled: bool,
 	/// Optimistic account revision.
@@ -1648,7 +1649,7 @@ pub struct AccountDto {
 #[serde(deny_unknown_fields)]
 struct RawAccountDto {
 	account_id: EntityId,
-	display_label: WireText,
+	alias: WireText,
 	enabled: bool,
 	account_revision: EntityRevision,
 	observed_state: AccountObservedStateDto,
@@ -1664,7 +1665,7 @@ impl From<&AccountDto> for RawAccountDto {
 	fn from(account: &AccountDto) -> Self {
 		Self {
 			account_id: account.account_id.clone(),
-			display_label: account.display_label.clone(),
+			alias: account.alias.clone(),
 			enabled: account.enabled,
 			account_revision: account.account_revision,
 			observed_state: account.observed_state,
@@ -1680,7 +1681,7 @@ impl From<RawAccountDto> for AccountDto {
 	fn from(account: RawAccountDto) -> Self {
 		Self {
 			account_id: account.account_id,
-			display_label: account.display_label,
+			alias: account.alias,
 			enabled: account.enabled,
 			account_revision: account.account_revision,
 			observed_state: account.observed_state,
@@ -1902,6 +1903,83 @@ pub enum AccountInspectResult {
 	Unavailable,
 }
 
+/// Read-only state of the normal shared Codex authentication projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum CodexAuthProjectionResult {
+	/// One daemon-owned account exactly matches the current shared Codex projection.
+	Current {
+		/// Canonical projected account identity.
+		account_id: EntityId,
+		/// Exact account revision represented by the projection.
+		account_revision: EntityRevision,
+		/// Credential-negative digest of the matched account binding.
+		projection_digest: Sha256Digest,
+	},
+	/// The safe shared auth file is not managed by any current daemon account.
+	Unmanaged,
+	/// The shared auth state could not be read or matched safely.
+	Unavailable,
+}
+
+impl Serialize for CodexAuthProjectionResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Current {
+				account_id: &'a EntityId,
+				account_revision: EntityRevision,
+				projection_digest: &'a Sha256Digest,
+			},
+			Unmanaged,
+			Unavailable,
+		}
+		let raw = match self {
+			Self::Current { account_id, account_revision, projection_digest } => {
+				if !is_canonical_uuid(account_id.as_str()) || account_revision.0 == 0 {
+					return Err(S::Error::custom("Codex auth projection is invalid"));
+				}
+				Raw::Current { account_id, account_revision: *account_revision, projection_digest }
+			},
+			Self::Unmanaged => Raw::Unmanaged,
+			Self::Unavailable => Raw::Unavailable,
+		};
+		raw.serialize(serializer)
+	}
+}
+
+impl<'de> Deserialize<'de> for CodexAuthProjectionResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Current {
+				account_id: EntityId,
+				account_revision: EntityRevision,
+				projection_digest: Sha256Digest,
+			},
+			Unmanaged,
+			Unavailable,
+		}
+		match Raw::deserialize(deserializer)? {
+			Raw::Current { account_id, account_revision, projection_digest } => {
+				if !is_canonical_uuid(account_id.as_str()) || account_revision.0 == 0 {
+					return Err(D::Error::custom("Codex auth projection is invalid"));
+				}
+				Ok(Self::Current { account_id, account_revision, projection_digest })
+			},
+			Raw::Unmanaged => Ok(Self::Unmanaged),
+			Raw::Unavailable => Ok(Self::Unavailable),
+		}
+	}
+}
+
 impl Serialize for AccountsResult {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
@@ -2002,7 +2080,7 @@ pub enum AccountManualRecoveryOutcomeDto {
 	StillRequiresRecovery,
 }
 
-/// Live queries available through the current V1 compatibility window.
+/// Live queries available through the exact-current V2.0 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2049,26 +2127,18 @@ pub enum QueryPayload {
 	},
 	/// Evaluate initial account selection without creating fallback or wake work.
 	GetInitialAccountSelection,
+	/// Read the current shared Codex authentication projection without exposing credentials.
+	GetCodexAuthProjection,
 }
 impl QueryPayload {
-	/// Whether this query existed in the negotiated minor protocol revision.
+	/// Whether this query is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
-		match self {
-			Self::GetDoctorStatus
-			| Self::GetExecutionDecision { .. }
-			| Self::GetConversationHistory { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 2 }),
-			Self::GetResetCards { .. } | Self::GetResetCardOperation { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
-			Self::ListAccounts | Self::InspectAccount { .. } | Self::GetInitialAccountSelection =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
-			Self::GetAccountProfile { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 5 }),
-		}
+		let _ = self;
+		version_supports_current(version)
 	}
 }
 
-/// Commands available through the current V1 compatibility window.
+/// Commands available through the exact-current V2.0 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2090,8 +2160,6 @@ pub enum CommandPayload {
 		operation_id: EntityId,
 		/// Canonical new account identity.
 		account_id: EntityId,
-		/// Non-secret operator label.
-		display_label: WireText,
 		/// Initial administrative admission switch.
 		enabled: bool,
 	},
@@ -2101,19 +2169,10 @@ pub enum CommandPayload {
 		operation_id: EntityId,
 		/// Canonical account identity.
 		account_id: EntityId,
-		/// Non-secret operator label.
-		display_label: WireText,
 		/// Initial administrative admission switch.
 		enabled: bool,
 		/// Owner-private path descriptor opened by the daemon.
 		source_descriptor: WireText,
-	},
-	/// Rename one account under optimistic account revision.
-	RenameAccount {
-		/// Canonical account identity.
-		account_id: EntityId,
-		/// Replacement non-secret operator label.
-		display_label: WireText,
 	},
 	/// Change administrative enablement under optimistic account revision.
 	SetAccountEnabled {
@@ -2150,6 +2209,11 @@ pub enum CommandPayload {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
+	/// Project one exact daemon-owned account into the normal Codex shared auth file.
+	UseAccountInCodex {
+		/// Canonical account identity.
+		account_id: EntityId,
+	},
 	/// Apply one narrow explicit recovery action to a nonterminal credential operation.
 	RecoverAccountOperation {
 		/// Stable lifecycle operation identity.
@@ -2159,25 +2223,10 @@ pub enum CommandPayload {
 	},
 }
 impl CommandPayload {
-	/// Whether this command existed in the negotiated minor protocol revision.
+	/// Whether this command is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
-		match self {
-			Self::RefreshSystemObservation { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
-			Self::ConsumeResetCard { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
-			Self::EnrollAccountFromSharedCodex { .. }
-			| Self::ImportAccountCredentialFile { .. }
-			| Self::RenameAccount { .. }
-			| Self::SetAccountEnabled { .. }
-			| Self::LogoutAccount { .. }
-			| Self::SetFixedAccountSelection { .. }
-			| Self::SetBalancedAccountSelection
-			| Self::SetAccountOrder { .. }
-			| Self::RefreshAccount { .. }
-			| Self::RecoverAccountOperation { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
-		}
+		let _ = self;
+		version_supports_current(version)
 	}
 }
 
@@ -2301,21 +2350,21 @@ pub enum EventPayload {
 		/// Finite recovery disposition.
 		outcome: AccountManualRecoveryOutcomeDto,
 	},
+	/// One exact account credential was projected into Codex shared auth.
+	CodexAuthProjected {
+		/// Canonical projected account identity.
+		account_id: EntityId,
+		/// Exact unchanged account revision used for the projection.
+		account_revision: EntityRevision,
+		/// Credential-negative digest of the projected account binding.
+		projection_digest: Sha256Digest,
+	},
 }
 impl EventPayload {
-	/// Whether this event can be decoded by the negotiated minor protocol revision.
+	/// Whether this event is available in the exact-current protocol revision.
 	pub const fn is_supported_in(&self, version: ProtocolVersion) -> bool {
-		match self {
-			Self::SystemObservationRefreshed { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 1 }),
-			Self::ResetCardOperationAccepted { .. } | Self::ResetCardConsumed { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
-			Self::AccountChanged { .. }
-			| Self::AccountLoggedOut { .. }
-			| Self::AccountRoutingChanged { .. }
-			| Self::AccountOperationRecovered { .. } =>
-				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
-		}
+		let _ = self;
+		version_supports_current(version)
 	}
 }
 
@@ -2394,9 +2443,18 @@ pub enum ResultPayload {
 		/// Finite recovery disposition.
 		outcome: AccountManualRecoveryOutcomeDto,
 	},
+	/// One exact account credential was projected into Codex shared auth.
+	CodexAuthProjected {
+		/// Canonical projected account identity.
+		account_id: EntityId,
+		/// Exact unchanged account revision used for the projection.
+		account_revision: EntityRevision,
+		/// Credential-negative digest of the projected account binding.
+		projection_digest: Sha256Digest,
+	},
 }
 
-/// Typed live-query results available through the current V1 compatibility window.
+/// Typed live-query results available through the exact-current V2.0 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -2418,6 +2476,8 @@ pub enum QueryResultPayload {
 	AccountProfile(AccountProfileResult),
 	/// Deterministic initial account choice or typed recovery.
 	InitialAccountSelection(AccountInitialSelectionResult),
+	/// Current shared Codex authentication projection.
+	CodexAuthProjection(CodexAuthProjectionResult),
 }
 
 /// Result of an immutable V16 route-decision observation.
@@ -2845,12 +2905,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V1 wire encoding.
+/// Serialize a message using the only V2.0 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V1 wire encoding.
+/// Parse a client message using the only V2.0 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -2861,6 +2921,10 @@ pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 
 fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> {
 	match message {
+		ClientMessage::Hello(hello)
+			if hello.version == crate::CURRENT_VERSION
+				&& hello.resume.as_ref().is_some_and(|resume| resume.instance_id.is_none()) =>
+			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
 			QueryPayload::GetResetCards { account_id }
@@ -2885,28 +2949,21 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("reset-card account identity or revision is invalid")
 			}
 		},
-		CommandPayload::EnrollAccountFromSharedCodex {
-			operation_id,
-			account_id,
-			display_label,
-			..
-		} => validate_account_install_command(
-			operation_id,
-			account_id,
-			display_label,
-			command.expected_revision.is_none(),
-		),
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } =>
+			validate_account_install_command(
+				operation_id,
+				account_id,
+				command.expected_revision.is_none(),
+			),
 		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
-			display_label,
 			source_descriptor,
 			..
 		} => {
 			validate_account_install_command(
 				operation_id,
 				account_id,
-				display_label,
 				command.expected_revision.is_none(),
 			)?;
 			let source = source_descriptor.as_str();
@@ -2916,11 +2973,6 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Ok(())
 			}
 		},
-		CommandPayload::RenameAccount { account_id, display_label } => {
-			validate_canonical_account(account_id)?;
-			validate_account_label(display_label)?;
-			positive_expected.then_some(()).ok_or("account revision is required")
-		},
 		CommandPayload::SetAccountEnabled { account_id, .. } => {
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -2928,6 +2980,10 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 		CommandPayload::LogoutAccount { operation_id, account_id }
 		| CommandPayload::RefreshAccount { operation_id, account_id } => {
 			validate_canonical_operation(operation_id)?;
+			validate_canonical_account(account_id)?;
+			positive_expected.then_some(()).ok_or("account revision is required")
+		},
+		CommandPayload::UseAccountInCodex { account_id } => {
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
@@ -2963,12 +3019,10 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 fn validate_account_install_command(
 	operation_id: &EntityId,
 	account_id: &EntityId,
-	display_label: &WireText,
 	expected_revision_absent: bool,
 ) -> Result<(), &'static str> {
 	validate_canonical_operation(operation_id)?;
 	validate_canonical_account(account_id)?;
-	validate_account_label(display_label)?;
 	expected_revision_absent.then_some(()).ok_or("new account command cannot carry a revision")
 }
 
@@ -2980,15 +3034,6 @@ fn validate_canonical_operation(operation_id: &EntityId) -> Result<(), &'static 
 	is_canonical_uuid(operation_id.as_str())
 		.then_some(())
 		.ok_or("account operation identity is not canonical")
-}
-
-fn validate_account_label(label: &WireText) -> Result<(), &'static str> {
-	let label = label.as_str();
-	if label.is_empty() || label.len() > 128 || label.chars().any(char::is_control) {
-		Err("account display label is invalid")
-	} else {
-		Ok(())
-	}
 }
 
 fn is_canonical_uuid(value: &str) -> bool {
@@ -3075,9 +3120,16 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	if !is_canonical_uuid(account.account_id.as_str()) || account.account_revision.0 == 0 {
 		return Err("account identity or revision is invalid");
 	}
-	let label = account.display_label.as_str();
-	if label.is_empty() || label.len() > 128 || label.chars().any(char::is_control) {
-		return Err("account display label is invalid");
+	let alias = account.alias.as_str().as_bytes();
+	if alias.len() != 19
+		|| &alias[..8] != b"Account "
+		|| alias[13] != b'-'
+		|| alias[8..13]
+			.iter()
+			.chain(&alias[14..])
+			.any(|byte| !b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(byte))
+	{
+		return Err("account alias is invalid");
 	}
 	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Tombstoned) {
 		return Err("tombstoned account is not public");
@@ -3307,13 +3359,12 @@ mod tests {
 	use crate::{
 		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountProfileDailyUsageDto,
 		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
-		CURRENT_VERSION, CausationId, ClientCommandId, CommandError, CorrelationId, EntityId,
-		EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError,
+		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
+		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, PREVIOUS_MINOR_VERSION, QueryId,
-		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		WireText,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryId, ResetCardDescriptorDto,
+		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
@@ -3427,6 +3478,90 @@ mod tests {
 		assert_ne!(
 			serde_json::to_value(stale_account).unwrap(),
 			serde_json::to_value(stale_routing).unwrap(),
+		);
+	}
+
+	#[test]
+	fn use_account_in_codex_is_a_separate_credential_negative_command() {
+		let account_id =
+			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let command = CommandPayload::UseAccountInCodex { account_id: account_id.clone() };
+		let result = ResultPayload::CodexAuthProjected {
+			account_id: account_id.clone(),
+			account_revision: EntityRevision(9),
+			projection_digest: Sha256Digest::new("a".repeat(64)).unwrap(),
+		};
+
+		assert_eq!(
+			serde_json::to_value(&command).unwrap(),
+			serde_json::json!({
+				"name": "use_account_in_codex",
+				"arguments": {"account_id": account_id.as_str()},
+			}),
+		);
+		assert_eq!(
+			serde_json::to_value(&result).unwrap(),
+			serde_json::json!({
+				"name": "codex_auth_projected",
+				"data": {
+					"account_id": account_id.as_str(),
+					"account_revision": 9,
+					"projection_digest": "a".repeat(64),
+				},
+			}),
+		);
+		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 1, minor: 5 }));
+		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 1 }));
+		assert!(command.is_supported_in(CURRENT_VERSION));
+		assert!(
+			serde_json::from_value::<CommandPayload>(serde_json::json!({
+				"name": "use_account_in_codex",
+				"arguments": {
+					"account_id": account_id.as_str(),
+					"route": true,
+				},
+			}))
+			.is_err(),
+		);
+	}
+
+	#[test]
+	fn codex_auth_projection_query_is_credential_negative_and_strict() {
+		let account_id =
+			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let query = QueryPayload::GetCodexAuthProjection;
+		let result = CodexAuthProjectionResult::Current {
+			account_id: account_id.clone(),
+			account_revision: EntityRevision(9),
+			projection_digest: Sha256Digest::new("b".repeat(64)).unwrap(),
+		};
+
+		assert_eq!(
+			serde_json::to_value(query).unwrap(),
+			serde_json::json!({"name": "get_codex_auth_projection"}),
+		);
+		assert_eq!(
+			serde_json::to_value(&result).unwrap(),
+			serde_json::json!({
+				"outcome": "current",
+				"data": {
+					"account_id": account_id.as_str(),
+					"account_revision": 9,
+					"projection_digest": "b".repeat(64),
+				},
+			}),
+		);
+		assert!(
+			serde_json::from_value::<CodexAuthProjectionResult>(serde_json::json!({
+				"outcome": "current",
+				"data": {
+					"account_id": account_id.as_str(),
+					"account_revision": 9,
+					"projection_digest": "b".repeat(64),
+					"access_token": "must-not-be-accepted",
+				},
+			}))
+			.is_err()
 		);
 	}
 
@@ -3632,24 +3767,30 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":1,"minor":5},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":0},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
 	}
 
 	#[test]
-	fn previous_minor_hello_without_publication_epoch_decodes_compatibly() {
-		let encoded = concat!(
-			r#"{"type":"hello","body":{"version":{"major":1,"minor":4},"#,
+	fn exact_current_resume_requires_a_publication_instance() {
+		let current_without_instance = concat!(
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":0},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
-		let ClientMessage::Hello(hello) = serde_json::from_str(encoded).unwrap() else {
+		let old_hello = concat!(
+			r#"{"type":"hello","body":{"version":{"major":1,"minor":5},"#,
+			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
+		);
+
+		assert!(decode_client_message(current_without_instance).is_err());
+
+		let ClientMessage::Hello(hello) = decode_client_message(old_hello).unwrap() else {
 			panic!("expected hello");
 		};
-		let resume = hello.resume.expect("expected previous-minor resume cursor");
 
-		assert_eq!(resume.instance_id, None);
+		assert_eq!(hello.version, crate::ProtocolVersion { major: 1, minor: 5 });
 	}
 
 	#[test]
@@ -3677,7 +3818,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":1,"minor":5},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":0},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -3872,78 +4013,32 @@ mod tests {
 	}
 
 	#[test]
-	fn v1_4_messages_keep_decoding_during_the_rolling_window() {
-		let encoded = concat!(
-			r#"{"type":"query","body":{"version":{"major":1,"minor":4},"query_id":"previous","#,
-			r#""payload":{"name":"get_doctor_status"}}}"#,
-		);
-
-		assert_eq!(
-			serde_json::from_str::<ClientMessage>(encoded).unwrap(),
-			ClientMessage::Query(QueryEnvelope {
-				version: crate::PREVIOUS_MINOR_VERSION,
-				query_id: QueryId::new("previous").unwrap(),
-				payload: QueryPayload::GetDoctorStatus,
-			})
-		);
-	}
-
-	#[test]
-	fn minor_feature_gates_keep_v1_4_free_of_account_profile_shapes() {
+	fn query_command_and_event_support_gates_are_exact_current() {
 		let account_id =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
+		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
+		let future = crate::ProtocolVersion { major: 2, minor: 1 };
+		let query = QueryPayload::GetAccountProfile {
+			account_id: account_id.clone(),
+			include_email: false,
+		};
+		let command =
+			CommandPayload::ConsumeResetCard { account_id: account_id.clone(), descriptor };
+		let event = EventPayload::ResetCardConsumed {
+			account_id,
+			descriptor,
+			outcome: ResetCardOutcome::Reset,
+		};
 
-		assert!(QueryPayload::GetDoctorStatus.is_supported_in(PREVIOUS_MINOR_VERSION));
-		assert!(
-			QueryPayload::GetExecutionDecision {
-				decision_id: EntityId::new("execution-decision").expect("bounded decision ID"),
-			}
-			.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			QueryPayload::GetConversationHistory {
-				conversation_id: EntityId::new("conversation").unwrap(),
-				after: None,
-				page_size: 1,
-			}
-			.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			CommandPayload::ConsumeResetCard { account_id: account_id.clone(), descriptor }
-				.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			CommandPayload::RefreshSystemObservation { entity_id: account_id.clone() }
-				.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			EventPayload::ResetCardConsumed {
-				account_id,
-				descriptor,
-				outcome: ResetCardOutcome::Reset,
-			}
-			.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(QueryPayload::ListAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
-		assert!(
-			CommandPayload::SetAccountEnabled {
-				account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
-				enabled: false,
-			}
-			.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			!QueryPayload::GetAccountProfile {
-				account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
-				include_email: false,
-			}
-			.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
-		assert!(
-			EventPayload::SystemObservationRefreshed { status: WireText::new("ready").unwrap() }
-				.is_supported_in(PREVIOUS_MINOR_VERSION)
-		);
+		for version in [legacy, future] {
+			assert!(!query.is_supported_in(version));
+			assert!(!command.is_supported_in(version));
+			assert!(!event.is_supported_in(version));
+		}
+		assert!(query.is_supported_in(CURRENT_VERSION));
+		assert!(command.is_supported_in(CURRENT_VERSION));
+		assert!(event.is_supported_in(CURRENT_VERSION));
 	}
 
 	#[test]

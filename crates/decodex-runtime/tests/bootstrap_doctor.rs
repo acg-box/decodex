@@ -27,8 +27,8 @@ use decodex_protocol::{
 	ConversationHistoryResult, DoctorComponent, DoctorIssue, DoctorStatus, EntityId,
 	HistoryCursorToken, HistoryItemKindDto, HistoryMetadataValue, HistoryPayloadDto,
 	HistoryQueryError, LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream,
-	MAX_HISTORY_PAGE_SIZE, PREVIOUS_MINOR_VERSION, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, Refusal, ServerId, ServerMessage,
+	MAX_HISTORY_PAGE_SIZE, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
+	QueryResultPayload, Refusal, ServerId, ServerMessage, VersionRefusal,
 };
 use decodex_runtime::{ServerConfig, ServiceBootstrap, ServiceComposition};
 
@@ -672,58 +672,53 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		QueryResultPayload::ConversationHistory(ConversationHistoryResult::Unavailable { error: HistoryQueryError::ProductStateUnavailable })))
 	);
 
-	assert_cross_version_doctor_queries(&transport, &server_id).await;
+	assert_exact_current_doctor_queries(&transport, &server_id).await;
 	drop((wrong, client));
 
 	bound.shutdown().await.expect("shutdown daemon fixture");
 }
 
-async fn assert_cross_version_doctor_queries(
+async fn assert_exact_current_doctor_queries(
 	transport: &LocalTransportAuthority,
 	server_id: &ServerId,
 ) {
-	let mut previous = connect_local(transport).await;
+	let mut legacy = connect_local(transport).await;
 
 	send(
-		&mut previous,
+		&mut legacy,
 		ClientMessage::Hello(ClientHello {
-			version: PREVIOUS_MINOR_VERSION,
+			version: ProtocolVersion { major: 1, minor: 5 },
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
 	)
 	.await;
 
-	assert!(matches!(receive(&mut previous).await, ServerMessage::Welcome(_)));
-	assert!(matches!(receive(&mut previous).await, ServerMessage::Snapshot(_)));
+	let ServerMessage::Refusal(refusal) = receive(&mut legacy).await else {
+		panic!("expected V1.5 major-version refusal");
+	};
+	assert!(matches!(
+		refusal.refusal,
+		Refusal::UnsupportedVersion(VersionRefusal::MajorMismatch { .. })
+	));
 
+	let mut future = connect_local(transport).await;
 	send(
-		&mut previous,
-		ClientMessage::Query(doctor_query(PREVIOUS_MINOR_VERSION, "previous-doctor-query")),
+		&mut future,
+		ClientMessage::Hello(ClientHello {
+			version: ProtocolVersion { major: 2, minor: 1 },
+			expected_server_id: Some(server_id.clone()),
+			resume: None,
+		}),
 	)
 	.await;
-
-	let ServerMessage::QueryResult(result) = receive(&mut previous).await else {
-		panic!("expected previous-minor doctor result");
+	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
+		panic!("expected V2.1 minor-version refusal");
 	};
-	let QueryResultPayload::DoctorStatus(report) = result.payload else {
-		panic!("expected previous-minor doctor result");
-	};
-
-	assert_eq!(report.server_id(), server_id);
-	assert_eq!(report.version(), CURRENT_VERSION);
-
-	send(
-		&mut previous,
-		ClientMessage::Query(doctor_query(CURRENT_VERSION, "current-query-on-previous-session")),
-	)
-	.await;
-
-	let ServerMessage::Refusal(result) = receive(&mut previous).await else {
-		panic!("expected mismatched current-version doctor rejection");
-	};
-
-	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));
+	assert!(matches!(
+		refusal.refusal,
+		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. })
+	));
 
 	let mut current = connect_local(transport).await;
 
@@ -744,7 +739,7 @@ async fn assert_cross_version_doctor_queries(
 		.await;
 
 	let ServerMessage::QueryResult(result) = receive(&mut current).await else {
-		panic!("expected inverse current-version doctor result");
+		panic!("expected current-version doctor result");
 	};
 	let QueryResultPayload::DoctorStatus(report) = result.payload else {
 		panic!("expected doctor result");
@@ -756,14 +751,14 @@ async fn assert_cross_version_doctor_queries(
 	send(
 		&mut current,
 		ClientMessage::Query(doctor_query(
-			PREVIOUS_MINOR_VERSION,
-			"previous-query-on-current-session",
+			ProtocolVersion { major: 2, minor: 1 },
+			"future-query-on-current-session",
 		)),
 	)
 	.await;
 
 	let ServerMessage::Refusal(result) = receive(&mut current).await else {
-		panic!("expected mismatched previous-minor doctor rejection");
+		panic!("expected mismatched future-minor doctor rejection");
 	};
 
 	assert!(matches!(result.refusal, Refusal::ProtocolViolation { .. }));

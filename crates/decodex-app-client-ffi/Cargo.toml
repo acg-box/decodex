@@ -1,0 +1,25 @@
+[package]
+authors.workspace    = true
+description          = "In-process native client bridge for the Decodex macOS app."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-app-client-ffi"
+repository.workspace = true
+version.workspace    = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+decodex-protocol = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+tokio            = { workspace = true }
+toml_edit        = { version = "=0.22.27" }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

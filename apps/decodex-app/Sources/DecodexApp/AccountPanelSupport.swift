@@ -2,16 +2,14 @@ import AppKit
 import SwiftUI
 
 enum AccountPanelLayout {
-	static let accountListScrollSpace = "account-list-scroll"
 	static let screenVerticalMargin: CGFloat = 44
 	static let panelVerticalPadding: CGFloat = 18
-	static let panelWidth: CGFloat = 322
+	static let panelWidth: CGFloat = 288
 	static let minimumAccountListHeight: CGFloat = 110
-	static let maximumAccountListHeight: CGFloat = 520
-	static let estimatedAccountRowHeight: CGFloat = 146
-	static let statusViewportHeight: CGFloat = 112
-	// Header, aggregate activity card, and panel spacing.
-	static let fixedChromeHeight: CGFloat = 214
+	static let estimatedAccountRowHeight: CGFloat = 104
+	static let statusMaximumHeight: CGFloat = 92
+	// Header, routing/projection status, aggregate activity card, and panel spacing.
+	static let fixedChromeHeight: CGFloat = 142
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
@@ -51,7 +49,6 @@ enum AccountPanelLayout {
 		)
 
 		return min(
-			maximumAccountListHeight,
 			screenBound,
 			max(minimumAccountListHeight, contentHeight)
 		)
@@ -86,11 +83,50 @@ enum AccountPrivacy {
 	static let visible = "visible"
 }
 
-struct AccountScrollOffsetPreferenceKey: PreferenceKey {
-	static let defaultValue: CGFloat = 0
+struct AccountIdentityPresentation: Equatable, Sendable {
+	let text: String
+	let showsEmail: Bool
 
-	static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-		value = nextValue()
+	init(alias: String, email: String?, revealsEmail: Bool) {
+		let normalizedEmail = email?
+			.trimmingCharacters(in: .whitespacesAndNewlines)
+		if revealsEmail, let normalizedEmail, normalizedEmail.isEmpty == false {
+			text = normalizedEmail
+			showsEmail = true
+		} else {
+			text = alias
+			showsEmail = false
+		}
+	}
+}
+
+struct CodexProjectionPresentation: Equatable, Sendable {
+	let text: String
+
+	init(
+		projection: CodexAuthProjection?,
+		currentIdentity: String?,
+		isInitialLoading: Bool
+	) {
+		switch projection {
+		case .current:
+			text = currentIdentity ?? "Checking account"
+		case .unmanaged:
+			text = "Not managed by Decodex"
+		case .unavailable:
+			text = "Unavailable"
+		case nil:
+			text = isInitialLoading ? "Loading" : "Checking"
+		}
+	}
+}
+
+struct AccountProfileCoveragePresentation: Equatable, Sendable {
+	let currentCount: Int
+	let totalCount: Int
+
+	var label: String {
+		"\(currentCount) of \(totalCount) profiles current"
 	}
 }
 
@@ -102,44 +138,5 @@ struct AccountRowsHeightPreferenceKey: PreferenceKey {
 		if next > 0 {
 			value = next
 		}
-	}
-}
-
-struct AccountListScrollIndicatorView: View {
-	let contentHeight: CGFloat
-	let viewportHeight: CGFloat
-	let scrollOffset: CGFloat
-	@Environment(\.colorScheme) private var colorScheme
-
-	var body: some View {
-		if contentHeight > viewportHeight + 1 {
-			ZStack(alignment: .top) {
-				Capsule(style: .continuous)
-					.fill(PanelPalette.secondaryText(colorScheme).opacity(0.12))
-					.frame(width: 3, height: viewportHeight)
-
-				Capsule(style: .continuous)
-					.fill(
-						PanelPalette.secondaryText(colorScheme)
-							.opacity(colorScheme == .dark ? 0.42 : 0.34)
-					)
-					.frame(width: 3.5, height: thumbHeight)
-					.offset(y: thumbOffset)
-			}
-			.frame(width: 8, height: viewportHeight)
-			.allowsHitTesting(false)
-		}
-	}
-
-	private var thumbHeight: CGFloat {
-		max(30, viewportHeight * min(1, viewportHeight / max(contentHeight, 1)))
-	}
-
-	private var thumbOffset: CGFloat {
-		let maxScrollOffset = max(1, contentHeight - viewportHeight)
-		let maxThumbOffset = max(0, viewportHeight - thumbHeight)
-		let progress = min(1, max(0, scrollOffset / maxScrollOffset))
-
-		return maxThumbOffset * progress
 	}
 }

@@ -1,10 +1,7 @@
-import Darwin
 import Foundation
 
-private let resetCardCLISchema = "decodex/reset-card-cli/1"
-let accountCLISchema = "decodex/cli-account/1"
-private let resetCardCLIItemLimit = 64
-private let accountCLIItemLimit = 512
+private let resetCardNativeItemLimit = 64
+private let accountNativeItemLimit = 512
 
 enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 	case invalidRequest = "invalid_request"
@@ -212,17 +209,10 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 	}
 }
 
-enum ResetCardUseDispatchState: String, Decodable, Equatable, Sendable {
-	case definitelyNotDispatched = "definitely_not_dispatched"
-	case potentiallyDispatched = "potentially_dispatched"
-	case durablyAccepted = "durably_accepted"
-	case rejectedBeforeAcceptance = "rejected_before_acceptance"
-}
-
 struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 	let authority: ResetCardAuthority?
 	let accountID: String
-	let displayLabel: String
+	let alias: String
 	let accountRevision: UInt64
 	let enabled: Bool
 	let observedState: ResetCardObservedState
@@ -235,7 +225,7 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 	init(
 		authority: ResetCardAuthority?,
 		accountID: String,
-		displayLabel: String,
+		alias: String,
 		accountRevision: UInt64,
 		enabled: Bool,
 		observedState: ResetCardObservedState,
@@ -247,7 +237,7 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 	) {
 		self.authority = authority
 		self.accountID = accountID
-		self.displayLabel = displayLabel
+		self.alias = alias
 		self.accountRevision = accountRevision
 		self.enabled = enabled
 		self.observedState = observedState
@@ -312,8 +302,7 @@ struct ResetCardInventory: Equatable, Sendable {
 }
 
 enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDebugStringConvertible {
-	case executableMissing
-	case launchFailed
+	case nativeClientUnavailable
 	case timedOut
 	case outputTooLarge
 	case commandRejected
@@ -325,14 +314,12 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 
 	var errorDescription: String? {
 		switch self {
-		case .executableMissing:
-			return "The bundled Decodex CLI is unavailable."
-		case .launchFailed:
-			return "The Decodex CLI could not start."
+		case .nativeClientUnavailable:
+			return "The native Decodex client is unavailable."
 		case .timedOut:
-			return "The Decodex CLI request timed out."
+			return "The Decodex request timed out."
 		case .outputTooLarge:
-			return "The Decodex CLI returned too much data."
+			return "The Decodex service returned too much data."
 		case .commandRejected:
 			return "The reset-card request was rejected. Refresh and try again."
 		case .useDefinitelyNotDispatched:
@@ -340,9 +327,9 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 		case .usePotentiallyDispatched:
 			return "The reset-card request may have been dispatched. Resume the pending request to check authoritative state with the same operation key."
 		case .commandFailed:
-			return "The reset-card service is unavailable or rejected the CLI connection. Start and configure decodexd, then resume the pending request."
+			return "The reset-card service is unavailable. Start decodexd, then resume the pending request."
 		case .invalidResponse:
-			return "The Decodex CLI returned an invalid reset-card response."
+			return "The Decodex service returned an invalid reset-card response."
 		case .service(let error):
 			return error.presentation
 		}
@@ -350,10 +337,8 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 
 	var debugDescription: String {
 		switch self {
-		case .executableMissing:
-			return "ResetCardClientError.executableMissing"
-		case .launchFailed:
-			return "ResetCardClientError.launchFailed"
+		case .nativeClientUnavailable:
+			return "ResetCardClientError.nativeClientUnavailable"
 		case .timedOut:
 			return "ResetCardClientError.timedOut"
 		case .outputTooLarge:
@@ -389,38 +374,7 @@ extension ResetCardClient {
 	}
 }
 
-struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertible {
-	static let executableOverrideKey = "DECODEX_APP_CLI"
-
-	private let executableURL: URL?
-	private let childEnvironment: [String: String]
-	private let timeout: TimeInterval
-
-	init(timeout: TimeInterval = 75) {
-		let environment = ProcessInfo.processInfo.environment
-		executableURL = Self.resolveExecutableURL(
-			environment: environment,
-			bundleURL: Bundle.main.bundleURL,
-			isExecutableFile: FileManager.default.isExecutableFile(atPath:)
-		)
-		childEnvironment = Self.sanitizedChildEnvironment(from: environment)
-		self.timeout = timeout
-	}
-
-	init(
-		executableURL: URL,
-		environment: [String: String],
-		timeout: TimeInterval = 15
-	) {
-		self.executableURL = executableURL.standardizedFileURL
-		childEnvironment = Self.sanitizedChildEnvironment(from: environment)
-		self.timeout = timeout
-	}
-
-	var debugDescription: String {
-		"ResetCardCLIClient(executableConfigured: \(executableURL != nil))"
-	}
-
+extension DecodexNativeClient: ResetCardClient {
 	func accounts(
 		authority: ResetCardAuthority?
 	) async throws -> [ResetCardAccountRecord] {
@@ -430,88 +384,52 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 	func accountSnapshot(
 		authority: ResetCardAuthority?
 	) async throws -> AccountControlSnapshot {
-		guard authority.map(Self.isValidAuthority) ?? true else {
-			throw ResetCardClientError.invalidResponse
-		}
-		let processResult = try await run(
-			arguments: Self.accountsArguments(authority: authority)
+		let response: (
+			authority: ResetCardAuthority,
+			data: AccountListWireResult
+		) = try await perform(
+			DecodexNativeRequest(operation: "list_accounts"),
+			authority: authority
 		)
-		let document = try decode(
-			AccountListDocument.self,
-			from: processResult,
-			schema: accountCLISchema,
-			command: "list"
-		)
-
-		switch document.result {
+		switch response.data {
 		case .available(let data):
-			guard document.outcome == "success", processResult.exitCode == 0 else {
-				throw ResetCardClientError.invalidResponse
-			}
-			return try data.snapshot(authority: authority)
+			return try data.snapshot(authority: response.authority)
 		case .unavailable:
-			guard document.outcome == "success", processResult.exitCode == 0 else {
-				throw ResetCardClientError.invalidResponse
-			}
 			throw ResetCardClientError.service(.productStateUnavailable)
 		}
 	}
 
 	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
 		guard Self.isCanonicalAccountID(account.accountID),
-			account.authority.map(Self.isValidAuthority) ?? true
+			let authority = account.authority,
+			Self.isValidAuthority(authority)
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
-
-		let processResult = try await run(
-			arguments: Self.listArguments(
-				accountID: account.accountID,
-				authority: account.authority
-			)
-		)
-		let document = try decode(
-			ResetCardResultDocument<ResetCardInventoryWireResult>.self,
-			from: processResult,
-			command: "list"
+		let response: (
+			authority: ResetCardAuthority,
+			data: ResetCardInventoryWireResult
+		) = try await perform(
+			DecodexNativeRequest(
+				operation: "get_reset_cards",
+				accountID: account.accountID
+			),
+			authority: authority
 		)
 
-		switch document.result {
-		case .available(let inventory):
-			guard document.outcome == "available", processResult.exitCode == 0 else {
-				throw ResetCardClientError.invalidResponse
-			}
-			let authority = try document.authority.authority
-			let value = try inventory.inventory(authority: authority)
-			guard account.authority.map({ $0 == authority }) ?? true,
-				value.accountID == account.accountID
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-
-			return value
-		case .observationFailed(let inventory):
-			guard document.outcome == "observation_failed", processResult.exitCode == 1 else {
-				throw ResetCardClientError.invalidResponse
-			}
-			let authority = try document.authority.authority
-			let value = try inventory.inventory(authority: authority)
-			guard account.authority.map({ $0 == authority }) ?? true,
-				value.accountID == account.accountID
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-
-			return value
+		let inventory: ResetCardInventory
+		switch response.data {
+		case .available(let value):
+			inventory = try value.inventory(authority: response.authority)
+		case .observationFailed(let value):
+			inventory = try value.inventory(authority: response.authority)
 		case .unavailable(let error):
-			guard document.outcome == "unavailable",
-				processResult.exitCode == 1,
-				(try? document.authority.authority) != nil
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
 			throw ResetCardClientError.service(error)
 		}
+		guard inventory.accountID == account.accountID else {
+			throw ResetCardClientError.invalidResponse
+		}
+		return inventory
 	}
 
 	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
@@ -522,72 +440,39 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
-
-		let processResult = try await run(
-			arguments: Self.useArguments(attempt: attempt)
+		let response: (
+			authority: ResetCardAuthority,
+			data: DecodexNativeResetCardConsumeResult
+		) = try await perform(
+			DecodexNativeRequest(
+				operation: "use_reset_card",
+				accountID: attempt.target.accountID,
+				grantedAtUnixSeconds: attempt.target.descriptor.grantedAtUnixSeconds,
+				expiresAtUnixSeconds: attempt.target.descriptor.expiresAtUnixSeconds,
+				expectedRevision: attempt.target.expectedRevision,
+				idempotencyKey: attempt.idempotencyKey
+			),
+			authority: attempt.target.authority
 		)
-		let document = try decode(
-			ResetCardUseDocument.self,
-			from: processResult,
-			command: "use"
-		)
 
-		guard document.idempotencyKey == attempt.idempotencyKey,
-			let dispatchState = document.dispatchState
-		else {
-			throw ResetCardClientError.invalidResponse
-		}
-
-		switch dispatchState {
-		case .durablyAccepted:
-			guard let state = document.state,
-				processResult.exitCode == state.expectedExitCode,
-				document.outcome == state.outerOutcome,
-				document.accountID == attempt.target.accountID,
-				document.accountRevision == attempt.target.expectedRevision,
-				try document.descriptor?.descriptor == attempt.target.descriptor,
-				document.error == nil,
-				document.failure == nil
+		switch response.data {
+		case .accepted(
+			let accountID,
+			let descriptor,
+			let state,
+			let entityRevision
+		):
+			guard accountID == attempt.target.accountID,
+				try descriptor.descriptor == attempt.target.descriptor,
+				entityRevision == attempt.target.expectedRevision
 			else {
 				throw ResetCardClientError.invalidResponse
 			}
-
 			return state.state
-		case .rejectedBeforeAcceptance:
-			guard processResult.exitCode == 1,
-				document.outcome == "rejected",
-				document.error != nil,
-				document.accountID == nil,
-				document.descriptor == nil,
-				document.accountRevision == nil,
-				document.state == nil,
-				document.failure == nil
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-
+		case .rejected:
 			throw ResetCardClientError.commandRejected
-		case .definitelyNotDispatched, .potentiallyDispatched:
-			guard processResult.exitCode == 2,
-				document.outcome == "failure",
-				document.failure != nil,
-				document.accountID == nil,
-				document.descriptor == nil,
-				document.accountRevision == nil,
-				document.state == nil,
-				document.error == nil
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-
-			switch dispatchState {
-			case .definitelyNotDispatched:
-				throw ResetCardClientError.useDefinitelyNotDispatched
-			case .potentiallyDispatched:
-				throw ResetCardClientError.usePotentiallyDispatched
-			case .durablyAccepted, .rejectedBeforeAcceptance:
-				throw ResetCardClientError.invalidResponse
-			}
+		case .potentiallyDispatched:
+			throw ResetCardClientError.usePotentiallyDispatched
 		}
 	}
 
@@ -597,352 +482,19 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
-
-		let processResult = try await run(
-			arguments: Self.statusArguments(attempt: attempt)
+		let response: (
+			authority: ResetCardAuthority,
+			data: ResetCardOperationWireResult
+		) = try await perform(
+			DecodexNativeRequest(
+				operation: "reset_card_status",
+				idempotencyKey: attempt.idempotencyKey
+			),
+			authority: attempt.target.authority
 		)
-		let document = try decode(
-			ResetCardStatusDocument.self,
-			from: processResult,
-			command: "status"
-		)
-		guard processResult.exitCode == document.state.expectedExitCode,
-			document.outcome == document.state.outerOutcome,
-			document.idempotencyKey == attempt.idempotencyKey
-		else {
-			throw ResetCardClientError.commandFailed
-		}
-
-		return document.state.state
-	}
-
-	static func accountsArguments(
-		authority: ResetCardAuthority? = nil
-	) -> [String] {
-		let authority = authority.map(authorityArguments) ?? []
-		return authority + ["--output", "json", "account", "list"]
-	}
-
-	static func listArguments(
-		accountID: String,
-		authority: ResetCardAuthority?
-	) -> [String] {
-		let authority = authority.map(authorityArguments) ?? []
-		return authority + [
-			"--output", "json", "reset-card", "list", "--account", accountID,
-		]
-	}
-
-	static func useArguments(attempt: ResetCardUseAttempt) -> [String] {
-		authorityArguments(attempt.target.authority) + [
-			"--output",
-			"json",
-			"reset-card",
-			"use",
-			"--account",
-			attempt.target.accountID,
-			"--granted-at",
-			String(attempt.target.descriptor.grantedAtUnixSeconds),
-			"--expires-at",
-			String(attempt.target.descriptor.expiresAtUnixSeconds),
-			"--expected-revision",
-			String(attempt.target.expectedRevision),
-			"--idempotency-key",
-			attempt.idempotencyKey,
-			"--yes",
-		]
-	}
-
-	static func statusArguments(attempt: ResetCardUseAttempt) -> [String] {
-		authorityArguments(attempt.target.authority) + [
-			"--output",
-			"json",
-			"reset-card",
-			"status",
-			"--idempotency-key",
-			attempt.idempotencyKey,
-		]
-	}
-
-	static func authorityArguments(_ authority: ResetCardAuthority) -> [String] {
-		[
-			"--profile",
-			authority.profileName,
-			"--expected-server-id",
-			authority.serverID,
-		]
-	}
-
-	static func resolveExecutableURL(
-		environment: [String: String],
-		bundleURL: URL,
-		isExecutableFile: (String) -> Bool
-	) -> URL? {
-		if let override = environment[executableOverrideKey]?
-			.trimmingCharacters(in: .whitespacesAndNewlines),
-			override.isEmpty == false
-		{
-			let candidate = URL(fileURLWithPath: override).standardizedFileURL
-			if candidate.path == override || override.hasPrefix("/"),
-				isExecutableFile(candidate.path)
-			{
-				return candidate
-			}
-
-			return nil
-		}
-
-		let bundled = bundleURL
-			.appendingPathComponent("Contents", isDirectory: true)
-			.appendingPathComponent("Helpers", isDirectory: true)
-			.appendingPathComponent("decodex-cli")
-			.standardizedFileURL
-
-		return isExecutableFile(bundled.path) ? bundled : nil
-	}
-
-	static func sanitizedChildEnvironment(from environment: [String: String]) -> [String: String] {
-		let allowedKeys = [
-			"HOME",
-			"USER",
-			"LOGNAME",
-			"TMPDIR",
-			"LANG",
-			"LC_ALL",
-			"LC_CTYPE",
-		]
-		var sanitized = environment.filter { allowedKeys.contains($0.key) }
-		if sanitized["LANG"] == nil, sanitized["LC_ALL"] == nil {
-			sanitized["LC_ALL"] = "C"
-		}
-
-		return sanitized
-	}
-
-	func run(
-		arguments: [String]
-	) async throws -> ResetCardProcessResult {
-		guard let executableURL else {
-			throw ResetCardClientError.executableMissing
-		}
-
-		return try await Task.detached(priority: .userInitiated) {
-			try Self.runSynchronously(
-				executableURL: executableURL,
-				arguments: arguments,
-				environment: childEnvironment,
-				timeout: timeout
-			)
-		}
-		.value
-	}
-
-	func decode<Document: Decodable & ResetCardStableDocument>(
-		_ type: Document.Type,
-		from processResult: ResetCardProcessResult,
-		command: String
-	) throws -> Document {
-		try decode(
-			type,
-			from: processResult,
-			schema: resetCardCLISchema,
-			command: command
-		)
-	}
-
-	func decode<Document: Decodable & ResetCardStableDocument>(
-		_ type: Document.Type,
-		from processResult: ResetCardProcessResult,
-		schema: String,
-		command: String
-	) throws -> Document {
-		do {
-			let document = try JSONDecoder().decode(Document.self, from: processResult.standardOutput)
-			guard document.schema == schema,
-				document.command == command
-			else {
-				throw ResetCardClientError.invalidResponse
-			}
-
-			return document
-		} catch let error as ResetCardClientError {
-			throw error
-		} catch {
-			if processResult.exitCode != 0 {
-				throw ResetCardClientError.commandFailed
-			}
-
-			throw ResetCardClientError.invalidResponse
-		}
-	}
-
-	private static func runSynchronously(
-		executableURL: URL,
-		arguments: [String],
-		environment: [String: String],
-		timeout: TimeInterval
-	) throws -> ResetCardProcessResult {
-		let process = Process()
-		let outputPipe = Pipe()
-		let errorPipe = Pipe()
-		let outputCapture = ResetCardBoundedCapture(limit: 320 * 1_024)
-		let errorCapture = ResetCardBoundedCapture(limit: 8 * 1_024)
-
-		process.executableURL = executableURL
-		process.arguments = arguments
-		process.environment = environment
-		process.standardInput = FileHandle.nullDevice
-		process.standardOutput = outputPipe
-		process.standardError = errorPipe
-
-		do {
-			try process.run()
-		} catch {
-			throw ResetCardClientError.launchFailed
-		}
-
-		try? outputPipe.fileHandleForWriting.close()
-		try? errorPipe.fileHandleForWriting.close()
-
-		let readers = DispatchGroup()
-		readers.enter()
-		DispatchQueue.global(qos: .userInitiated).async {
-			readPipe(outputPipe.fileHandleForReading, into: outputCapture)
-			readers.leave()
-		}
-		readers.enter()
-		DispatchQueue.global(qos: .utility).async {
-			readPipe(errorPipe.fileHandleForReading, into: errorCapture)
-			readers.leave()
-		}
-
-		let deadline = Date().addingTimeInterval(max(0.05, timeout))
-		var timedOut = false
-		while process.isRunning {
-			if outputCapture.exceeded || errorCapture.exceeded {
-				break
-			}
-			if Date() >= deadline {
-				timedOut = true
-				break
-			}
-
-			Thread.sleep(forTimeInterval: 0.01)
-		}
-
-		if process.isRunning {
-			process.terminate()
-			let terminationDeadline = Date().addingTimeInterval(0.25)
-			while process.isRunning, Date() < terminationDeadline {
-				Thread.sleep(forTimeInterval: 0.01)
-			}
-			if process.isRunning {
-				_ = Darwin.kill(process.processIdentifier, SIGKILL)
-			}
-		}
-
-		process.waitUntilExit()
-		_ = readers.wait(timeout: .now() + 1)
-
-		if timedOut {
-			throw ResetCardClientError.timedOut
-		}
-		if outputCapture.exceeded || errorCapture.exceeded {
-			throw ResetCardClientError.outputTooLarge
-		}
-
-		return ResetCardProcessResult(
-			exitCode: process.terminationStatus,
-			standardOutput: outputCapture.data
-		)
-	}
-
-	private static func readPipe(
-		_ handle: FileHandle,
-		into capture: ResetCardBoundedCapture
-	) {
-		while true {
-			let chunk = handle.availableData
-			if chunk.isEmpty {
-				break
-			}
-
-			capture.append(chunk)
-		}
-		try? handle.close()
-	}
-
-	static func isCanonicalAccountID(_ value: String) -> Bool {
-		isCanonicalUUID(value)
-	}
-
-	static func isCanonicalUUID(_ value: String) -> Bool {
-		guard let uuid = UUID(uuidString: value) else {
-			return false
-		}
-
-		return uuid.uuidString.lowercased() == value
-	}
-
-	static func isValidAuthority(_ authority: ResetCardAuthority) -> Bool {
-		let profile = authority.profileName
-
-		return profile.isEmpty == false
-			&& profile.utf8.count <= 64
-			&& profile.utf8.allSatisfy {
-				($0 >= 0x61 && $0 <= 0x7a)
-					|| ($0 >= 0x41 && $0 <= 0x5a)
-					|| ($0 >= 0x30 && $0 <= 0x39)
-					|| $0 == 0x2d
-					|| $0 == 0x5f
-			}
-			&& isCanonicalUUID(authority.serverID)
+		return response.data.state
 	}
 }
-
-struct ResetCardProcessResult: Sendable {
-	let exitCode: Int32
-	let standardOutput: Data
-}
-
-private final class ResetCardBoundedCapture: @unchecked Sendable {
-	private let limit: Int
-	private let lock = NSLock()
-	private var storage = Data()
-	private var didExceed = false
-
-	init(limit: Int) {
-		self.limit = limit
-	}
-
-	func append(_ chunk: Data) {
-		lock.withLock {
-			guard didExceed == false else {
-				return
-			}
-			guard storage.count + chunk.count <= limit else {
-				didExceed = true
-				return
-			}
-
-			storage.append(chunk)
-		}
-	}
-
-	var exceeded: Bool {
-		lock.withLock { didExceed }
-	}
-
-	var data: Data {
-		lock.withLock { storage }
-	}
-}
-
-protocol ResetCardStableDocument {
-	var schema: String { get }
-	var command: String { get }
-}
-
 struct ResetCardAnyCodingKey: CodingKey {
 	let stringValue: String
 	let intValue: Int? = nil
@@ -987,92 +539,6 @@ func isBoundedWireText(
 		} == false
 }
 
-private struct ResetCardResultDocument<Result: Decodable>: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let authority: ResetCardAuthorityWire
-	let result: Result
-
-	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(
-			in: decoder,
-			allowed: ["schema", "command", "outcome", "authority", "result"]
-		)
-		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		authority = try container.decode(ResetCardAuthorityWire.self, forKey: .authority)
-		result = try container.decode(Result.self, forKey: .result)
-	}
-
-	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
-		case outcome
-		case authority
-		case result
-	}
-}
-
-private struct ResetCardAuthorityWire: Decodable {
-	let profileName: String
-	let serverID: String
-
-	enum CodingKeys: String, CodingKey {
-		case profileName = "profile_name"
-		case serverID = "server_id"
-	}
-
-	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(in: decoder, allowed: ["profile_name", "server_id"])
-		let container = try decoder.container(keyedBy: CodingKeys.self)
-		profileName = try container.decode(String.self, forKey: .profileName)
-		serverID = try container.decode(String.self, forKey: .serverID)
-	}
-
-	var authority: ResetCardAuthority {
-		get throws {
-			let value = ResetCardAuthority(
-				profileName: profileName,
-				serverID: serverID
-			)
-			guard ResetCardCLIClient.isValidAuthority(value) else {
-				throw ResetCardClientError.invalidResponse
-			}
-
-			return value
-		}
-	}
-}
-
-private struct AccountListDocument: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let result: AccountListWireResult
-
-	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(
-			in: decoder,
-			allowed: ["schema", "command", "outcome", "result"]
-		)
-		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		result = try container.decode(AccountListWireResult.self, forKey: .result)
-	}
-
-	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
-		case outcome
-		case result
-	}
-}
-
 private enum AccountListWireResult: Decodable {
 	case available(AccountListWireData)
 	case unavailable
@@ -1114,7 +580,7 @@ struct AccountListWireData: Decodable {
 	func snapshot(
 		authority: ResetCardAuthority?
 	) throws -> AccountControlSnapshot {
-		guard accounts.count <= accountCLIItemLimit else {
+		guard accounts.count <= accountNativeItemLimit else {
 			throw ResetCardClientError.invalidResponse
 		}
 		let records = try accounts.map {
@@ -1122,7 +588,7 @@ struct AccountListWireData: Decodable {
 			return ResetCardAccountRecord(
 				authority: authority,
 				accountID: record.accountID,
-				displayLabel: record.displayLabel,
+				alias: record.alias,
 				accountRevision: record.accountRevision,
 				enabled: record.enabled,
 				observedState: record.observedState,
@@ -1180,9 +646,9 @@ struct AccountRoutingWire: Decodable {
 		mode = try container.decode(AccountRoutingModeWire.self, forKey: .mode)
 		order = try container.decode([String].self, forKey: .order)
 		guard revision > 0,
-			order.count <= accountCLIItemLimit,
+			order.count <= accountNativeItemLimit,
 			Set(order).count == order.count,
-			order.allSatisfy(ResetCardCLIClient.isCanonicalAccountID)
+			order.allSatisfy(DecodexNativeClient.isCanonicalAccountID)
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
@@ -1221,7 +687,7 @@ enum AccountRoutingModeWire: Decodable {
 		case "fixed":
 			try rejectUnknownFields(in: decoder, allowed: ["mode", "account_id"])
 			let accountID = try container.decode(String.self, forKey: .accountID)
-			guard ResetCardCLIClient.isCanonicalAccountID(accountID) else {
+			guard DecodexNativeClient.isCanonicalAccountID(accountID) else {
 				throw ResetCardClientError.invalidResponse
 			}
 			self = .fixed(accountID)
@@ -1247,7 +713,7 @@ enum AccountRoutingModeWire: Decodable {
 
 struct ResetCardAccountWire: Decodable, Sendable {
 	let accountID: String
-	let displayLabel: String
+	let alias: String
 	let enabled: Bool
 	let accountRevision: UInt64
 	let observedState: ResetCardObservedState
@@ -1259,7 +725,7 @@ struct ResetCardAccountWire: Decodable, Sendable {
 
 	enum CodingKeys: String, CodingKey {
 		case accountID = "account_id"
-		case displayLabel = "display_label"
+		case alias
 		case enabled
 		case accountRevision = "account_revision"
 		case observedState = "observed_state"
@@ -1275,7 +741,7 @@ struct ResetCardAccountWire: Decodable, Sendable {
 			in: decoder,
 			allowed: [
 				"account_id",
-				"display_label",
+				"alias",
 				"enabled",
 				"account_revision",
 				"observed_state",
@@ -1288,7 +754,7 @@ struct ResetCardAccountWire: Decodable, Sendable {
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		accountID = try container.decode(String.self, forKey: .accountID)
-		displayLabel = try container.decode(String.self, forKey: .displayLabel)
+		alias = try container.decode(String.self, forKey: .alias)
 		enabled = try container.decode(Bool.self, forKey: .enabled)
 		accountRevision = try container.decode(UInt64.self, forKey: .accountRevision)
 		observedState = try container.decode(ResetCardObservedState.self, forKey: .observedState)
@@ -1317,8 +783,8 @@ struct ResetCardAccountWire: Decodable, Sendable {
 	func record() throws -> ResetCardAccountRecord {
 		let fiveHourQuota = try fiveHourQuota.window(expectedDuration: 300)
 		let sevenDayQuota = try sevenDayQuota.window(expectedDuration: 10_080)
-		guard ResetCardCLIClient.isCanonicalAccountID(accountID),
-			isBoundedWireText(displayLabel, maximumBytes: 128),
+		guard DecodexNativeClient.isCanonicalAccountID(accountID),
+			Self.isCanonicalAlias(alias),
 			accountRevision > 0,
 			lifecycleReadiness != .tombstoned,
 			lifecycleReadiness != .ready
@@ -1332,7 +798,7 @@ struct ResetCardAccountWire: Decodable, Sendable {
 		return ResetCardAccountRecord(
 			authority: nil,
 			accountID: accountID,
-			displayLabel: displayLabel,
+			alias: alias,
 			accountRevision: accountRevision,
 			enabled: enabled,
 			observedState: observedState,
@@ -1342,6 +808,19 @@ struct ResetCardAccountWire: Decodable, Sendable {
 			fiveHourQuota: fiveHourQuota,
 			sevenDayQuota: sevenDayQuota
 		)
+	}
+
+	private static func isCanonicalAlias(_ value: String) -> Bool {
+		let bytes = Array(value.utf8)
+		guard bytes.count == 19,
+			Array(bytes[0..<8]) == Array("Account ".utf8),
+			bytes[13] == 45
+		else {
+			return false
+		}
+		let alphabet = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ".utf8)
+		return bytes[8..<13].allSatisfy(alphabet.contains)
+			&& bytes[14..<19].allSatisfy(alphabet.contains)
 	}
 }
 
@@ -1417,7 +896,7 @@ struct AccountUnsettledOperationWire: Decodable, Sendable {
 		kind = try container.decode(AccountOperationKindWire.self, forKey: .kind)
 		phase = try container.decode(AccountOperationPhaseWire.self, forKey: .phase)
 		recoveryCode = try container.decodeIfPresent(String.self, forKey: .recoveryCode)
-		guard ResetCardCLIClient.isCanonicalUUID(operationID),
+		guard DecodexNativeClient.isCanonicalUUID(operationID),
 			(recoveryCode.map {
 				isBoundedWireText($0, maximumBytes: 128)
 			} ?? true),
@@ -1742,11 +1221,11 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 	}
 
 	func inventory(authority: ResetCardAuthority) throws -> ResetCardInventory {
-		guard ResetCardCLIClient.isValidAuthority(authority),
-			ResetCardCLIClient.isCanonicalAccountID(accountID),
+		guard DecodexNativeClient.isValidAuthority(authority),
+			DecodexNativeClient.isCanonicalAccountID(accountID),
 			accountRevision > 0,
 			cards.count == Int(availableCount),
-			cards.count <= resetCardCLIItemLimit
+			cards.count <= resetCardNativeItemLimit
 		else {
 			throw ResetCardClientError.invalidResponse
 		}
@@ -1803,8 +1282,8 @@ private struct ResetCardFailedInventoryWireData: Decodable, Sendable {
 	}
 
 	func inventory(authority: ResetCardAuthority) throws -> ResetCardInventory {
-		guard ResetCardCLIClient.isValidAuthority(authority),
-			ResetCardCLIClient.isCanonicalAccountID(accountID),
+		guard DecodexNativeClient.isValidAuthority(authority),
+			DecodexNativeClient.isCanonicalAccountID(accountID),
 			accountRevision > 0
 		else {
 			throw ResetCardClientError.invalidResponse
@@ -1982,121 +1461,105 @@ private enum ResetCardOperationWireResult: Decodable, Sendable {
 	}
 }
 
-private struct ResetCardUseDocument: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let idempotencyKey: String?
-	let dispatchState: ResetCardUseDispatchState?
-	let accountID: String?
-	let descriptor: ResetCardDescriptorWire?
-	let accountRevision: UInt64?
-	let state: ResetCardOperationWireResult?
-	let error: ResetCardCommandErrorWire?
-	let failure: ResetCardClientFailureWire?
+private enum DecodexNativeResetCardConsumeResult: Decodable, Sendable {
+	case accepted(
+		accountID: String,
+		descriptor: ResetCardDescriptorWire,
+		state: ResetCardOperationWireResult,
+		entityRevision: UInt64
+	)
+	case rejected(ResetCardCommandErrorWire)
+	case potentiallyDispatched(DecodexNativeFailure)
 
 	init(from decoder: Decoder) throws {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		idempotencyKey = try container.decode(String.self, forKey: .idempotencyKey)
-		let decodedDispatchState = try container.decode(
-			ResetCardUseDispatchState.self,
-			forKey: .dispatchState
-		)
-		dispatchState = decodedDispatchState
+		switch try container.decode(String.self, forKey: .outcome) {
+		case "accepted":
+			try requireExactFields(in: decoder, expected: ["outcome", "data"])
+			let data = try container.decode(AcceptedData.self, forKey: .data)
+			self = .accepted(
+				accountID: data.accountID,
+				descriptor: data.descriptor,
+				state: data.state,
+				entityRevision: data.entityRevision
+			)
+		case "rejected":
+			try requireExactFields(in: decoder, expected: ["outcome", "data"])
+			let data = try container.decode(RejectedData.self, forKey: .data)
+			self = .rejected(data.error)
+		case "potentially_dispatched":
+			try requireExactFields(in: decoder, expected: ["outcome", "data"])
+			let data = try container.decode(PotentiallyDispatchedData.self, forKey: .data)
+			self = .potentiallyDispatched(data.failure)
+		default:
+			throw ResetCardClientError.invalidResponse
+		}
+	}
 
-		let baseFields: Set<String> = [
-			"schema",
-			"command",
-			"outcome",
-			"idempotency_key",
-			"dispatch_state",
-		]
-		switch decodedDispatchState {
-		case .durablyAccepted:
+	private enum CodingKeys: String, CodingKey {
+		case outcome
+		case data
+	}
+
+	private struct AcceptedData: Decodable, Sendable {
+		let accountID: String
+		let descriptor: ResetCardDescriptorWire
+		let state: ResetCardOperationWireResult
+		let entityRevision: UInt64
+
+		init(from decoder: Decoder) throws {
 			try requireExactFields(
 				in: decoder,
-				expected: baseFields.union([
-					"account_id",
-					"descriptor",
-					"account_revision",
-					"state",
-				])
+				expected: ["account_id", "descriptor", "state", "entity_revision"]
 			)
+			let container = try decoder.container(keyedBy: CodingKeys.self)
 			accountID = try container.decode(String.self, forKey: .accountID)
 			descriptor = try container.decode(
 				ResetCardDescriptorWire.self,
 				forKey: .descriptor
 			)
-			accountRevision = try container.decode(UInt64.self, forKey: .accountRevision)
-			state = try container.decode(ResetCardOperationWireResult.self, forKey: .state)
-			error = nil
-			failure = nil
-		case .rejectedBeforeAcceptance:
-			try requireExactFields(
-				in: decoder,
-				expected: baseFields.union(["error"])
+			state = try container.decode(
+				ResetCardOperationWireResult.self,
+				forKey: .state
 			)
-			accountID = nil
-			descriptor = nil
-			accountRevision = nil
-			state = nil
-			error = try container.decode(ResetCardCommandErrorWire.self, forKey: .error)
-			failure = nil
-		case .definitelyNotDispatched, .potentiallyDispatched:
-			try requireExactFields(
-				in: decoder,
-				expected: baseFields.union(["failure"])
-			)
-			accountID = nil
-			descriptor = nil
-			accountRevision = nil
-			state = nil
-			error = nil
-			failure = try container.decode(ResetCardClientFailureWire.self, forKey: .failure)
+			entityRevision = try container.decode(UInt64.self, forKey: .entityRevision)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case accountID = "account_id"
+			case descriptor
+			case state
+			case entityRevision = "entity_revision"
 		}
 	}
 
-	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
-		case outcome
-		case idempotencyKey = "idempotency_key"
-		case dispatchState = "dispatch_state"
-		case accountID = "account_id"
-		case descriptor
-		case accountRevision = "account_revision"
-		case state
-		case error
-		case failure
-	}
-}
+	private struct RejectedData: Decodable, Sendable {
+		let error: ResetCardCommandErrorWire
 
-private enum ResetCardClientFailureWire: String, Decodable {
-	case configurationMissing = "configuration_missing"
-	case configurationMalformed = "configuration_malformed"
-	case configurationVersion = "configuration_version"
-	case profileMissing = "profile_missing"
-	case unsafeHostPath = "unsafe_host_path"
-	case serverIdentityUnavailable = "server_identity_unavailable"
-	case localTransportDisabled = "local_transport_disabled"
-	case remoteTransportDisabled = "remote_transport_disabled"
-	case localTransportUnsupported = "local_transport_unsupported"
-	case unsafeLocalEndpoint = "unsafe_local_endpoint"
-	case localPeerIdentityUnavailable = "local_peer_identity_unavailable"
-	case localPeerUIDMismatch = "local_peer_uid_mismatch"
-	case remoteMutationUnsupported = "remote_mutation_unsupported"
-	case protocolDisconnected = "protocol_disconnected"
-	case protocolTimeout = "protocol_timeout"
-	case protocolMajorMismatch = "protocol_major_mismatch"
-	case protocolMinorMismatch = "protocol_minor_mismatch"
-	case serverIdentityMismatch = "server_identity_mismatch"
-	case protocolMalformed = "protocol_malformed"
-	case protocolViolation = "protocol_violation"
-	case protocolBackpressure = "protocol_backpressure"
-	case applicationAcceptanceUnknown = "application_acceptance_unknown"
+		init(from decoder: Decoder) throws {
+			try requireExactFields(in: decoder, expected: ["error"])
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			error = try container.decode(ResetCardCommandErrorWire.self, forKey: .error)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case error
+		}
+	}
+
+	private struct PotentiallyDispatchedData: Decodable, Sendable {
+		let failure: DecodexNativeFailure
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(in: decoder, expected: ["failure"])
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			failure = try container.decode(DecodexNativeFailure.self, forKey: .failure)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case failure
+		}
+	}
 }
 
 private enum ResetCardCommandErrorWire: Decodable {
@@ -2186,33 +1649,4 @@ private enum ResetCardAccountCommandRejectionWire: String, Decodable {
 	case lifecycleUnready = "lifecycle_unready"
 	case routingOrderInvalid = "routing_order_invalid"
 	case manualRecoveryRequired = "manual_recovery_required"
-}
-
-private struct ResetCardStatusDocument: Decodable, ResetCardStableDocument {
-	let schema: String
-	let command: String
-	let outcome: String
-	let idempotencyKey: String
-	let state: ResetCardOperationWireResult
-
-	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(
-			in: decoder,
-			allowed: ["schema", "command", "outcome", "idempotency_key", "state"]
-		)
-		let container = try decoder.container(keyedBy: CodingKeys.self)
-		schema = try container.decode(String.self, forKey: .schema)
-		command = try container.decode(String.self, forKey: .command)
-		outcome = try container.decode(String.self, forKey: .outcome)
-		idempotencyKey = try container.decode(String.self, forKey: .idempotencyKey)
-		state = try container.decode(ResetCardOperationWireResult.self, forKey: .state)
-	}
-
-	private enum CodingKeys: String, CodingKey {
-		case schema
-		case command
-		case outcome
-		case idempotencyKey = "idempotency_key"
-		case state
-	}
 }
