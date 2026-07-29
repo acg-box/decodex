@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 
 private let resetCardCLISchema = "decodex/reset-card-cli/1"
-private let accountCLISchema = "decodex/cli-account/1"
+let accountCLISchema = "decodex/cli-account/1"
 private let resetCardCLIItemLimit = 64
 private let accountCLIItemLimit = 512
 
@@ -227,8 +227,36 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 	let enabled: Bool
 	let observedState: ResetCardObservedState
 	let lifecycleReadiness: ResetCardLifecycleReadiness
+	let credentialBinding: AccountCredentialBinding?
+	let unsettledOperation: AccountUnsettledOperation?
 	let fiveHourQuota: ResetCardQuotaWindow
 	let sevenDayQuota: ResetCardQuotaWindow
+
+	init(
+		authority: ResetCardAuthority?,
+		accountID: String,
+		displayLabel: String,
+		accountRevision: UInt64,
+		enabled: Bool,
+		observedState: ResetCardObservedState,
+		lifecycleReadiness: ResetCardLifecycleReadiness,
+		credentialBinding: AccountCredentialBinding? = nil,
+		unsettledOperation: AccountUnsettledOperation? = nil,
+		fiveHourQuota: ResetCardQuotaWindow,
+		sevenDayQuota: ResetCardQuotaWindow
+	) {
+		self.authority = authority
+		self.accountID = accountID
+		self.displayLabel = displayLabel
+		self.accountRevision = accountRevision
+		self.enabled = enabled
+		self.observedState = observedState
+		self.lifecycleReadiness = lifecycleReadiness
+		self.credentialBinding = credentialBinding
+		self.unsettledOperation = unsettledOperation
+		self.fiveHourQuota = fiveHourQuota
+		self.sevenDayQuota = sevenDayQuota
+	}
 
 	var id: String {
 		accountID
@@ -368,7 +396,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 	private let childEnvironment: [String: String]
 	private let timeout: TimeInterval
 
-	init() {
+	init(timeout: TimeInterval = 75) {
 		let environment = ProcessInfo.processInfo.environment
 		executableURL = Self.resolveExecutableURL(
 			environment: environment,
@@ -376,7 +404,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 			isExecutableFile: FileManager.default.isExecutableFile(atPath:)
 		)
 		childEnvironment = Self.sanitizedChildEnvironment(from: environment)
-		timeout = 75
+		self.timeout = timeout
 	}
 
 	init(
@@ -396,6 +424,12 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 	func accounts(
 		authority: ResetCardAuthority?
 	) async throws -> [ResetCardAccountRecord] {
+		try await accountSnapshot(authority: authority).accounts
+	}
+
+	func accountSnapshot(
+		authority: ResetCardAuthority?
+	) async throws -> AccountControlSnapshot {
 		guard authority.map(Self.isValidAuthority) ?? true else {
 			throw ResetCardClientError.invalidResponse
 		}
@@ -414,7 +448,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 			guard document.outcome == "success", processResult.exitCode == 0 else {
 				throw ResetCardClientError.invalidResponse
 			}
-			return try data.orderedAccounts()
+			return try data.snapshot(authority: authority)
 		case .unavailable:
 			guard document.outcome == "success", processResult.exitCode == 0 else {
 				throw ResetCardClientError.invalidResponse
@@ -630,7 +664,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		]
 	}
 
-	private static func authorityArguments(_ authority: ResetCardAuthority) -> [String] {
+	static func authorityArguments(_ authority: ResetCardAuthority) -> [String] {
 		[
 			"--profile",
 			authority.profileName,
@@ -685,7 +719,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		return sanitized
 	}
 
-	private func run(
+	func run(
 		arguments: [String]
 	) async throws -> ResetCardProcessResult {
 		guard let executableURL else {
@@ -703,7 +737,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		.value
 	}
 
-	private func decode<Document: Decodable & ResetCardStableDocument>(
+	func decode<Document: Decodable & ResetCardStableDocument>(
 		_ type: Document.Type,
 		from processResult: ResetCardProcessResult,
 		command: String
@@ -716,7 +750,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 		)
 	}
 
-	private func decode<Document: Decodable & ResetCardStableDocument>(
+	func decode<Document: Decodable & ResetCardStableDocument>(
 		_ type: Document.Type,
 		from processResult: ResetCardProcessResult,
 		schema: String,
@@ -866,7 +900,7 @@ struct ResetCardCLIClient: ResetCardClient, Sendable, CustomDebugStringConvertib
 	}
 }
 
-private struct ResetCardProcessResult: Sendable {
+struct ResetCardProcessResult: Sendable {
 	let exitCode: Int32
 	let standardOutput: Data
 }
@@ -904,12 +938,12 @@ private final class ResetCardBoundedCapture: @unchecked Sendable {
 	}
 }
 
-private protocol ResetCardStableDocument {
+protocol ResetCardStableDocument {
 	var schema: String { get }
 	var command: String { get }
 }
 
-private struct ResetCardAnyCodingKey: CodingKey {
+struct ResetCardAnyCodingKey: CodingKey {
 	let stringValue: String
 	let intValue: Int? = nil
 
@@ -922,7 +956,7 @@ private struct ResetCardAnyCodingKey: CodingKey {
 	}
 }
 
-private func rejectUnknownFields(
+func rejectUnknownFields(
 	in decoder: Decoder,
 	allowed: Set<String>
 ) throws {
@@ -932,7 +966,7 @@ private func rejectUnknownFields(
 	}
 }
 
-private func requireExactFields(
+func requireExactFields(
 	in decoder: Decoder,
 	expected: Set<String>
 ) throws {
@@ -942,7 +976,7 @@ private func requireExactFields(
 	}
 }
 
-private func isBoundedWireText(
+func isBoundedWireText(
 	_ value: String,
 	maximumBytes: Int
 ) -> Bool {
@@ -1066,7 +1100,7 @@ private enum AccountListWireResult: Decodable {
 	}
 }
 
-private struct AccountListWireData: Decodable {
+struct AccountListWireData: Decodable {
 	let accounts: [ResetCardAccountWire]
 	let routing: AccountRoutingWire
 
@@ -1077,11 +1111,28 @@ private struct AccountListWireData: Decodable {
 		routing = try container.decode(AccountRoutingWire.self, forKey: .routing)
 	}
 
-	func orderedAccounts() throws -> [ResetCardAccountRecord] {
+	func snapshot(
+		authority: ResetCardAuthority?
+	) throws -> AccountControlSnapshot {
 		guard accounts.count <= accountCLIItemLimit else {
 			throw ResetCardClientError.invalidResponse
 		}
-		let records = try accounts.map { try $0.record() }
+		let records = try accounts.map {
+			let record = try $0.record()
+			return ResetCardAccountRecord(
+				authority: authority,
+				accountID: record.accountID,
+				displayLabel: record.displayLabel,
+				accountRevision: record.accountRevision,
+				enabled: record.enabled,
+				observedState: record.observedState,
+				lifecycleReadiness: record.lifecycleReadiness,
+				credentialBinding: record.credentialBinding,
+				unsettledOperation: record.unsettledOperation,
+				fiveHourQuota: record.fiveHourQuota,
+				sevenDayQuota: record.sevenDayQuota
+			)
+		}
 		var byID = [String: ResetCardAccountRecord]()
 		for record in records {
 			guard byID.updateValue(record, forKey: record.accountID) == nil else {
@@ -1094,12 +1145,21 @@ private struct AccountListWireData: Decodable {
 			throw ResetCardClientError.invalidResponse
 		}
 
-		return try routing.order.map {
+		let ordered = try routing.order.map {
 			guard let account = byID[$0] else {
 				throw ResetCardClientError.invalidResponse
 			}
 			return account
 		}
+		return AccountControlSnapshot(
+			authority: authority,
+			accounts: ordered,
+			routing: routing.routing
+		)
+	}
+
+	func orderedAccounts() throws -> [ResetCardAccountRecord] {
+		try snapshot(authority: nil).accounts
 	}
 
 	private enum CodingKeys: String, CodingKey {
@@ -1108,14 +1168,16 @@ private struct AccountListWireData: Decodable {
 	}
 }
 
-private struct AccountRoutingWire: Decodable {
+struct AccountRoutingWire: Decodable {
+	let revision: UInt64
+	let mode: AccountRoutingModeWire
 	let order: [String]
 
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(in: decoder, allowed: ["revision", "mode", "order"])
 		let container = try decoder.container(keyedBy: CodingKeys.self)
-		let revision = try container.decode(UInt64.self, forKey: .revision)
-		let mode = try container.decode(AccountRoutingModeWire.self, forKey: .mode)
+		revision = try container.decode(UInt64.self, forKey: .revision)
+		mode = try container.decode(AccountRoutingModeWire.self, forKey: .mode)
 		order = try container.decode([String].self, forKey: .order)
 		guard revision > 0,
 			order.count <= accountCLIItemLimit,
@@ -1131,6 +1193,14 @@ private struct AccountRoutingWire: Decodable {
 		}
 	}
 
+	var routing: AccountRoutingControl {
+		AccountRoutingControl(
+			revision: revision,
+			mode: mode.mode,
+			order: order
+		)
+	}
+
 	private enum CodingKeys: String, CodingKey {
 		case revision
 		case mode
@@ -1138,7 +1208,7 @@ private struct AccountRoutingWire: Decodable {
 	}
 }
 
-private enum AccountRoutingModeWire: Decodable {
+enum AccountRoutingModeWire: Decodable {
 	case balanced
 	case fixed(String)
 
@@ -1160,13 +1230,22 @@ private enum AccountRoutingModeWire: Decodable {
 		}
 	}
 
+	var mode: AccountRoutingMode {
+		switch self {
+		case .balanced:
+			return .balanced
+		case .fixed(let accountID):
+			return .fixed(accountID: accountID)
+		}
+	}
+
 	private enum CodingKeys: String, CodingKey {
 		case mode
 		case accountID = "account_id"
 	}
 }
 
-private struct ResetCardAccountWire: Decodable, Sendable {
+struct ResetCardAccountWire: Decodable, Sendable {
 	let accountID: String
 	let displayLabel: String
 	let enabled: Bool
@@ -1175,8 +1254,8 @@ private struct ResetCardAccountWire: Decodable, Sendable {
 	let lifecycleReadiness: ResetCardLifecycleReadiness
 	let credentialBinding: AccountCredentialBindingWire?
 	let unsettledOperation: AccountUnsettledOperationWire?
-	let fiveHourQuota: ResetCardQuotaWindowWire
-	let sevenDayQuota: ResetCardQuotaWindowWire
+	private let fiveHourQuota: ResetCardQuotaWindowWire
+	private let sevenDayQuota: ResetCardQuotaWindowWire
 
 	enum CodingKeys: String, CodingKey {
 		case accountID = "account_id"
@@ -1258,13 +1337,15 @@ private struct ResetCardAccountWire: Decodable, Sendable {
 			enabled: enabled,
 			observedState: observedState,
 			lifecycleReadiness: lifecycleReadiness,
+			credentialBinding: credentialBinding?.binding,
+			unsettledOperation: unsettledOperation?.operation,
 			fiveHourQuota: fiveHourQuota,
 			sevenDayQuota: sevenDayQuota
 		)
 	}
 }
 
-private struct AccountCredentialBindingWire: Decodable, Sendable {
+struct AccountCredentialBindingWire: Decodable, Sendable {
 	let schemaVersion: UInt16
 	let version: UInt64
 	let fingerprintSHA256: String
@@ -1301,6 +1382,16 @@ private struct AccountCredentialBindingWire: Decodable, Sendable {
 		}
 	}
 
+	var binding: AccountCredentialBinding {
+		AccountCredentialBinding(
+			schemaVersion: schemaVersion,
+			version: version,
+			fingerprintSHA256: fingerprintSHA256,
+			provider: .chatGPT,
+			providerAccountID: providerAccountID
+		)
+	}
+
 	private enum CodingKeys: String, CodingKey {
 		case schemaVersion = "schema_version"
 		case version
@@ -1310,7 +1401,7 @@ private struct AccountCredentialBindingWire: Decodable, Sendable {
 	}
 }
 
-private struct AccountUnsettledOperationWire: Decodable, Sendable {
+struct AccountUnsettledOperationWire: Decodable, Sendable {
 	let operationID: String
 	let kind: AccountOperationKindWire
 	let phase: AccountOperationPhaseWire
@@ -1336,6 +1427,15 @@ private struct AccountUnsettledOperationWire: Decodable, Sendable {
 		}
 	}
 
+	var operation: AccountUnsettledOperation {
+		AccountUnsettledOperation(
+			operationID: operationID,
+			kind: kind.kind,
+			phase: phase.phase,
+			recoveryCode: recoveryCode
+		)
+	}
+
 	private enum CodingKeys: String, CodingKey {
 		case operationID = "operation_id"
 		case kind
@@ -1344,18 +1444,44 @@ private struct AccountUnsettledOperationWire: Decodable, Sendable {
 	}
 }
 
-private enum AccountOperationKindWire: String, Decodable, Sendable {
+enum AccountOperationKindWire: String, Decodable, Sendable {
 	case enroll
 	case `import`
 	case refresh
 	case logout
+
+	var kind: AccountOperationKind {
+		switch self {
+		case .enroll:
+			return .enroll
+		case .import:
+			return .import
+		case .refresh:
+			return .refresh
+		case .logout:
+			return .logout
+		}
+	}
 }
 
-private enum AccountOperationPhaseWire: String, Decodable, Sendable {
+enum AccountOperationPhaseWire: String, Decodable, Sendable {
 	case prepared
 	case providerEffectPending = "provider_effect_pending"
 	case storeApplied = "store_applied"
 	case recoveryRequired = "recovery_required"
+
+	var phase: AccountOperationPhase {
+		switch self {
+		case .prepared:
+			return .prepared
+		case .providerEffectPending:
+			return .providerEffectPending
+		case .storeApplied:
+			return .storeApplied
+		case .recoveryRequired:
+			return .recoveryRequired
+		}
+	}
 }
 
 private struct ResetCardQuotaWindowWire: Decodable, Sendable {

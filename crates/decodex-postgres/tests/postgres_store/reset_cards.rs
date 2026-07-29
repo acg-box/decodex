@@ -1279,6 +1279,7 @@ async fn start_reusable_operation_and_assert_replays(
 	Ok(())
 }
 
+#[allow(clippy::too_many_lines)] // One complete durable rejection and replay matrix.
 async fn reject_pending_replay_after_account_change(
 	store: &PostgresStore,
 	owner: &tokio_postgres::Client,

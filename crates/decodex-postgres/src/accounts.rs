@@ -6,8 +6,8 @@ use tokio::time::{self, Instant};
 use tokio_postgres::Row;
 
 use crate::{
-	AccountId, AccountMetadata, AccountMutation, AccountState, ActivityRecord, CommandIdentity,
-	PostgresStore, StoreError,
+	AccountId, AccountMetadata, AccountState, ActivityRecord, CommandIdentity, PostgresStore,
+	StoreError,
 };
 
 /// Immutable identity bound to one durable command receipt before side effects begin.
@@ -106,18 +106,6 @@ impl PostgresStore {
 		drop(client);
 
 		Ok(ready)
-	}
-
-	/// Apply one inert account metadata mutation. The account revision, append-only activity,
-	/// outbox event, and command response commit in one PostgreSQL transaction.
-	pub async fn mutate_account(
-		&self,
-		_command: &CommandIdentity,
-		_mutation: &AccountMutation,
-	) -> Result<AccountMetadata, StoreError> {
-		Err(StoreError::Incompatible(
-			"account mutations require the daemon-owned Account Service".into(),
-		))
 	}
 
 	/// Read account metadata without providing an eligibility or selection query.

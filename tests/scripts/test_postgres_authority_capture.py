@@ -133,6 +133,8 @@ def runtime_authority(database):
         "anchor_execute": True,
         "direct_non_grantable_execute_count": 15,
         "direct_non_grantable_type_usage_count": 5,
+        "function_only_relation_count": 2,
+        "function_only_relation_direct_acl_rows": 0,
     }
 
 

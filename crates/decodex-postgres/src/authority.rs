@@ -42,7 +42,9 @@ const EXECUTION_COORDINATOR_MIGRATION: &str =
 	include_str!("../migrations/V26__execution_coordinator_cutover.sql");
 const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
 	include_str!("../migrations/V27__mac_account_lifecycle.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 23] = [
+const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
+	include_str!("../migrations/V28__account_profile_observations.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 24] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -66,6 +68,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 23] = [
 	PROVIDER_ATTEMPT_MIGRATION,
 	EXECUTION_COORDINATOR_MIGRATION,
 	MAC_ACCOUNT_LIFECYCLE_MIGRATION,
+	ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -370,7 +373,7 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 199] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -1946,8 +1949,29 @@ static FUNCTION_CONTRACTS: [FunctionContract; 199] = [
 		"TABLE(attempt_id uuid, consumer_kind decodex.provider_attempt_consumer_kind, conversation_id uuid, turn_id uuid, managed_run_id uuid, managed_run_revision bigint, managed_execution_id uuid, continuation_plan_id uuid, routing_decision_id uuid, accepted_runtime_session_id uuid, accepted_runtime_session_revision bigint, selected_account_id uuid, process_generation_id uuid, process_generation_revision bigint, process_execution_epoch_id uuid, request_id uuid, request_digest text, provider_idempotency_key text, provider_correlation_key text, predecessor_attempt_id uuid, duplicate_risk_ack_digest text, state decodex.provider_attempt_state, unknown_reason decodex.provider_attempt_unknown_reason, terminal_evidence_id uuid, revision bigint, created_at_micros bigint, updated_at_micros bigint)",
 		"s",
 	),
+	exact_function_contract(
+		"observe_account_profile_exact",
+		"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
+		"observe_account_profile_exact(\n\tp_account_id uuid,p_expected_revision bigint,\n\tp_expected_provider decodex.account_provider_kind,p_expected_provider_account_id text,\n\tp_observed_at_micros bigint,p_display_name text,p_username text,\n\tp_lifetime_tokens bigint,p_peak_daily_tokens bigint,p_longest_task_seconds bigint,\n\tp_current_streak_days integer,p_longest_streak_days integer,\n\tp_daily_start_dates text[],p_daily_tokens bigint[]\n)",
+		"p_account_id uuid, p_expected_revision bigint, p_expected_provider decodex.account_provider_kind, p_expected_provider_account_id text, p_observed_at_micros bigint, p_display_name text, p_username text, p_lifetime_tokens bigint, p_peak_daily_tokens bigint, p_longest_task_seconds bigint, p_current_streak_days integer, p_longest_streak_days integer, p_daily_start_dates text[], p_daily_tokens bigint[]",
+		"text",
+		"plpgsql",
+		"v",
+	),
+	FunctionContract {
+		name: "read_account_profile_exact",
+		lookup_signature: "decodex.read_account_profile_exact(pg_catalog.uuid)",
+		migration_signature: "read_account_profile_exact(\n\tp_account_id uuid\n)",
+		arguments: "p_account_id uuid",
+		result: "TABLE(account_id uuid, account_revision bigint, provider_kind decodex.account_provider_kind, provider_account_id text, observed_at_micros bigint, display_name text, username text, lifetime_tokens bigint, peak_daily_tokens bigint, longest_task_seconds bigint, current_streak_days integer, longest_streak_days integer, daily_start_dates text[], daily_tokens bigint[])",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 86] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -2034,6 +2058,8 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 86] = [
 	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.project_provider_attempts_after_supervisor_loss_exact()",
 	"decodex.read_provider_attempts_exact(pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_state,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
+	"decodex.read_account_profile_exact(pg_catalog.uuid)",
 ];
 const RUNTIME_TYPE_NAMES: &[&str] = &[
 	"decodex.account_state",
@@ -2507,6 +2533,8 @@ WITH set_roles AS (
 	,('account_routing_order', false, false, false, false)
 	,('account_quota_facts', false, false, false, false)
 	,('codex_account_capability', false, false, false, false)
+	,('account_profile_snapshots', false, false, false, false)
+	,('account_profile_daily_usage', false, false, false, false)
 ), allowed_relations(
   schema_name, table_name, can_select, can_insert, can_update, can_delete
 ) AS (
@@ -4392,8 +4420,8 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x0a, 0x91, 0x7e, 0x04, 0x4c, 0x9e, 0x7a, 0x3f, 0x93, 0x7e, 0xd0, 0x00, 0x88, 0x0a, 0x48, 0x88,
-	0x8f, 0xa2, 0x11, 0x00, 0xb1, 0x63, 0x6f, 0xdf, 0x67, 0x9c, 0xfd, 0xa2, 0xcf, 0xeb, 0x74, 0x1e,
+	0x92, 0x60, 0x93, 0xdf, 0x1b, 0xae, 0xa9, 0x7e, 0xbf, 0x9e, 0xaa, 0x70, 0x8d, 0x7e, 0x69, 0xe9,
+	0x91, 0x56, 0x20, 0x63, 0x3c, 0xad, 0x9e, 0x17, 0xff, 0xbc, 0xb5, 0xcb, 0xe5, 0x4c, 0x09, 0x1f,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -4892,8 +4920,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x17, 0x49, 0xde, 0xed, 0xdd, 0x27, 0x5a, 0x55, 0x0a, 0x43, 0xa6, 0xe8, 0xb3, 0xc6, 0xf8, 0xe9,
-	0xde, 0xe0, 0x20, 0x67, 0xeb, 0x08, 0xa8, 0x47, 0x17, 0x3a, 0x9b, 0x1f, 0xd7, 0x30, 0xf6, 0x8e,
+	0x5e, 0x33, 0xac, 0x4d, 0x83, 0x5b, 0xa8, 0x88, 0x7e, 0x97, 0x83, 0x19, 0xc6, 0xa0, 0x1c, 0x2f,
+	0xa7, 0x8e, 0xac, 0x3b, 0x5e, 0x47, 0x65, 0x54, 0x7a, 0xef, 0x44, 0xab, 0xf0, 0xd8, 0xd4, 0x65,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -5539,6 +5567,8 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "observe_account_quota_error_exact"
 			| "observe_account_store_exact"
 			| "attest_codex_account_capability_exact"
+			| "observe_account_profile_exact"
+			| "read_account_profile_exact"
 			| "prepare_process_generation_exact"
 			| "bind_process_generation_identity_exact"
 			| "mark_process_generation_ready_exact"
@@ -6243,8 +6273,8 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 23);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 199);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 24);
+		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()
 			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())

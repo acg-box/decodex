@@ -6,10 +6,12 @@ enum AccountPanelLayout {
 	static let screenVerticalMargin: CGFloat = 44
 	static let panelVerticalPadding: CGFloat = 18
 	static let panelWidth: CGFloat = 322
-	static let minimumAccountListHeight: CGFloat = 68
+	static let minimumAccountListHeight: CGFloat = 110
 	static let maximumAccountListHeight: CGFloat = 520
-	static let estimatedAccountRowHeight: CGFloat = 72
-	static let fixedChromeHeight: CGFloat = 96
+	static let estimatedAccountRowHeight: CGFloat = 146
+	static let statusViewportHeight: CGFloat = 112
+	// Header, account/routing summary, aggregate activity card, and panel spacing.
+	static let fixedChromeHeight: CGFloat = 248
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
@@ -24,14 +26,22 @@ enum AccountPanelLayout {
 		accountCount: Int,
 		measuredContentHeight: CGFloat,
 		windowVisibleFrame: CGRect?,
+		additionalChromeHeight: CGFloat = 0
 	) -> CGFloat {
 		let visibleHeight = resolvedScreenVisibleHeight(
 			windowVisibleFrame: windowVisibleFrame,
 			fallback: activeScreenVisibleHeight()
 		)
+		let boundedAdditionalChromeHeight = additionalChromeHeight.isFinite
+			? max(0, additionalChromeHeight)
+			: 0
 		let screenBound = max(
 			minimumAccountListHeight,
-			visibleHeight - screenVerticalMargin - panelVerticalPadding - fixedChromeHeight
+			visibleHeight
+				- screenVerticalMargin
+				- panelVerticalPadding
+				- fixedChromeHeight
+				- boundedAdditionalChromeHeight
 		)
 		let rowCount = max(1, accountCount)
 		let contentEstimate = CGFloat(rowCount) * estimatedAccountRowHeight
@@ -69,6 +79,11 @@ enum AccountPanelLayout {
 		}
 		return windowVisibleFrame.height
 	}
+}
+
+enum AccountPrivacy {
+	static let hidden = "hidden"
+	static let visible = "visible"
 }
 
 struct AccountScrollOffsetPreferenceKey: PreferenceKey {

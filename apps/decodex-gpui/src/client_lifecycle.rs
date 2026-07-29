@@ -445,89 +445,8 @@ impl ClientLifecycle {
 				connected_checkpoint.as_ref(),
 			);
 			self.history_pager.bind_session(generation, self.server_id.clone());
-			let mut requires_snapshot = connected_checkpoint.is_none();
-
-			let failure = loop {
-				let history_pager = self.history_pager.clone();
-				let server_id = self.server_id.clone();
-				let step = tokio::select! {
-					delivery = io.next() => SessionStep::Delivery(delivery),
-					dispatch = history_pager.next_dispatch(generation, &server_id),
-						if !requires_snapshot => SessionStep::History(dispatch),
-				};
-
-				if self.ensure_generation(generation).is_err() {
-					break RetainedSessionFailure::PublicationOrder;
-				}
-
-				match step {
-					SessionStep::History(dispatch) => {
-						let Some(send_token) = self.history_pager.begin_send(&dispatch) else {
-							continue;
-						};
-						let send_result = io.send_query(dispatch.envelope().clone()).await;
-
-						self.history_pager.finish_send(&send_token);
-						if let Err(failure) = send_result {
-							break failure;
-						}
-					},
-					SessionStep::Delivery(delivery) => match delivery {
-						Ok(Delivery::Snapshot { snapshot, confirmation }) => {
-							let cursor = snapshot.cursor;
-							let inspection = match self.apply_snapshot(generation, snapshot) {
-								Ok(inspection) => inspection,
-								Err(failure) => break failure,
-							};
-							let checkpoint = match io.confirm_applied(confirmation) {
-								Ok(checkpoint) => checkpoint,
-								Err(_) => break self.confirmation_failure(),
-							};
-
-							if self
-								.bind_checkpoint(generation, cursor, checkpoint, inspection)
-								.is_err()
-							{
-								break RetainedSessionFailure::ApplicationConfirmationMismatch;
-							}
-							requires_snapshot = false;
-						},
-						Ok(Delivery::Event { event, confirmation }) => {
-							if requires_snapshot {
-								self.enter_quarantine(
-									QuarantineReason::ApplicationOrder,
-									QuarantineRecovery::VerifiedSnapshotReplacement,
-								);
-
-								break RetainedSessionFailure::PublicationOrder;
-							}
-							let cursor = event.cursor;
-							let inspection = match self.apply_event(generation, event) {
-								Ok(inspection) => inspection,
-								Err(failure) => break failure,
-							};
-							let checkpoint = match io.confirm_applied(confirmation) {
-								Ok(checkpoint) => checkpoint,
-								Err(_) => break self.confirmation_failure(),
-							};
-
-							if self
-								.bind_checkpoint(generation, cursor, checkpoint, inspection)
-								.is_err()
-							{
-								break RetainedSessionFailure::ApplicationConfirmationMismatch;
-							}
-						},
-						Ok(Delivery::QueryResult(result)) => {
-							if let Err(failure) = self.route_history_result(generation, result) {
-								break failure;
-							}
-						},
-						Ok(Delivery::Other) => {},
-						Err(failure) => break failure,
-					},
-				}
-			};
+			let failure =
+				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
 			self.history_pager.session_ended(generation);
 			if self.quarantine.is_none() {
@@ -552,6 +471,94 @@ impl ClientLifecycle {
 			self.set_view(ConnectionView::Stopped);
 
 			RunResult::RetryExhausted
+		}
+	}
+
+	async fn run_connected_session<I>(
+		&mut self,
+		io: &mut I,
+		generation: u64,
+		mut requires_snapshot: bool,
+	) -> RetainedSessionFailure
+	where
+		I: LifecycleIo,
+	{
+		loop {
+			let history_pager = self.history_pager.clone();
+			let server_id = self.server_id.clone();
+			let step = tokio::select! {
+				delivery = io.next() => SessionStep::Delivery(delivery),
+				dispatch = history_pager.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::History(dispatch),
+			};
+
+			if self.ensure_generation(generation).is_err() {
+				return RetainedSessionFailure::PublicationOrder;
+			}
+
+			match step {
+				SessionStep::History(dispatch) => {
+					let Some(send_token) = self.history_pager.begin_send(&dispatch) else {
+						continue;
+					};
+					let send_result = io.send_query(dispatch.envelope().clone()).await;
+
+					self.history_pager.finish_send(&send_token);
+					if let Err(failure) = send_result {
+						return failure;
+					}
+				},
+				SessionStep::Delivery(delivery) => match delivery {
+					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
+						let cursor = snapshot.cursor;
+						let inspection = match self.apply_snapshot(generation, snapshot) {
+							Ok(inspection) => inspection,
+							Err(failure) => return failure,
+						};
+						let checkpoint = match io.confirm_applied(confirmation) {
+							Ok(checkpoint) => checkpoint,
+							Err(_) => return self.confirmation_failure(),
+						};
+
+						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
+						{
+							return RetainedSessionFailure::ApplicationConfirmationMismatch;
+						}
+						requires_snapshot = false;
+					},
+					Ok(Delivery::Event { event, confirmation }) => {
+						if requires_snapshot {
+							self.enter_quarantine(
+								QuarantineReason::ApplicationOrder,
+								QuarantineRecovery::VerifiedSnapshotReplacement,
+							);
+
+							return RetainedSessionFailure::PublicationOrder;
+						}
+						let cursor = event.cursor;
+						let inspection = match self.apply_event(generation, event) {
+							Ok(inspection) => inspection,
+							Err(failure) => return failure,
+						};
+						let checkpoint = match io.confirm_applied(confirmation) {
+							Ok(checkpoint) => checkpoint,
+							Err(_) => return self.confirmation_failure(),
+						};
+
+						if self.bind_checkpoint(generation, cursor, checkpoint, inspection).is_err()
+						{
+							return RetainedSessionFailure::ApplicationConfirmationMismatch;
+						}
+					},
+					Ok(Delivery::QueryResult(result)) => {
+						if let Err(failure) = self.route_history_result(generation, result) {
+							return failure;
+						}
+					},
+					Ok(Delivery::Other) => {},
+					Err(failure) => return failure,
+				},
+			}
 		}
 	}
 

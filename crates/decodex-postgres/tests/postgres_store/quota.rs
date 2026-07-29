@@ -7,9 +7,8 @@ use tokio_postgres::Client;
 use crate::{ACCOUNT_ID, CREDENTIAL_VALUE_VECTORS, HOLDER_A, WORKER_A};
 use decodex_core::{ObservationConfidence, QuotaWindowClass, RemainingPercent};
 use decodex_postgres::{
-	AccountId, AccountMutation, AccountState, CommandIdentity, PostgresStore,
-	QuotaExclusionMutation, QuotaExclusionReceipt, QuotaTimestampMicros, QuotaWindowMutation,
-	StoreError,
+	AccountId, CommandIdentity, PostgresStore, QuotaExclusionMutation, QuotaExclusionReceipt,
+	QuotaTimestampMicros, QuotaWindowMutation, StoreError,
 };
 
 pub(super) async fn assert_inert_window_and_credential_boundary(
@@ -64,41 +63,25 @@ pub(super) async fn assert_inert_window_and_credential_boundary(
 		("value", "gitlab-value-credential"),
 		("value", "npm-value-credential"),
 	] {
-		if key != "password" {
-			let mut forbidden = mutation.clone();
+		let mut forbidden = mutation.clone();
 
-			forbidden.window = QuotaWindowClass::SevenDay;
-			forbidden.metadata = match command_key {
-				"secret-value-credential" => serde_json::json!({key: "sk-proj-0123456789abcdef"}),
-				"bearer-value-credential" => serde_json::json!({key: "Bearer abcdefghijklmnop"}),
-				"basic-value-credential" => serde_json::json!({key: "Basic dXNlcjpwYXNz"}),
-				"slack-value-credential" => serde_json::json!({key: "xoxb-1234567890-abcdef"}),
-				"gitlab-value-credential" => serde_json::json!({key: "glpat-1234567890abcdef"}),
-				"npm-value-credential" => serde_json::json!({key: "npm_1234567890abcdef"}),
-				_ => serde_json::json!({key: "forbidden"}),
-			};
+		forbidden.window = QuotaWindowClass::SevenDay;
+		forbidden.metadata = match command_key {
+			"secret-value-credential" => serde_json::json!({key: "sk-proj-0123456789abcdef"}),
+			"bearer-value-credential" => serde_json::json!({key: "Bearer abcdefghijklmnop"}),
+			"basic-value-credential" => serde_json::json!({key: "Basic dXNlcjpwYXNz"}),
+			"slack-value-credential" => serde_json::json!({key: "xoxb-1234567890-abcdef"}),
+			"gitlab-value-credential" => serde_json::json!({key: "glpat-1234567890abcdef"}),
+			"npm-value-credential" => serde_json::json!({key: "npm_1234567890abcdef"}),
+			_ => serde_json::json!({key: "forbidden"}),
+		};
 
-			let command = CommandIdentity::new(command_key, command_key.as_bytes())?;
+		let command = CommandIdentity::new(command_key, command_key.as_bytes())?;
 
-			assert!(matches!(
-				store.mutate_quota_window(&command, &forbidden).await,
-				Err(StoreError::CredentialRejected)
-			));
-		} else {
-			let forbidden = AccountMutation {
-				account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
-				display_label: "Forbidden metadata".into(),
-				state: AccountState::Unknown,
-				metadata: serde_json::json!({key: "forbidden"}),
-				expected_revision: None,
-			};
-			let command = CommandIdentity::new(command_key, command_key.as_bytes())?;
-
-			assert!(matches!(
-				store.mutate_account(&command, &forbidden).await,
-				Err(StoreError::CredentialRejected)
-			));
-		}
+		assert!(matches!(
+			store.mutate_quota_window(&command, &forbidden).await,
+			Err(StoreError::CredentialRejected)
+		));
 	}
 
 	crate::assert_direct_credential_and_scope_boundary(store, client).await
@@ -119,19 +102,7 @@ async fn assert_api_credential_boundary(
 		));
 	}
 
-	let forbidden_label = AccountMutation {
-		account_id: AccountId::new("10000000-0000-0000-0000-000000000002")?,
-		display_label: "Basic dXNlcjpwYXNz".into(),
-		state: AccountState::Unknown,
-		metadata: serde_json::json!({}),
-		expected_revision: None,
-	};
 	let safe_command = CommandIdentity::new("forbidden-label", b"forbidden-label")?;
-
-	assert!(matches!(
-		store.mutate_account(&safe_command, &forbidden_label).await,
-		Err(StoreError::CredentialRejected)
-	));
 
 	let mut forbidden_metadata = mutation.clone();
 

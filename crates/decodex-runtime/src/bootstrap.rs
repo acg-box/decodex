@@ -14,6 +14,7 @@ use std::{
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_launch::{ResetCardRuntime, ResetCardVaultStatus, attest_account_callback_capability},
+	account_profile::AccountProfileRuntime,
 	account_service::{AccountInspection, AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ServiceApplication},
 	managed_repository_runtime::{
@@ -94,6 +95,7 @@ pub struct ServiceBootstrap {
 	provider_attempt_readiness: ProviderAttemptReadiness,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
+	account_profiles: Option<AccountProfileRuntime>,
 	reset_cards: Option<ResetCardRuntime>,
 	doctor: DoctorReport,
 	// Keep the one acquired daemon capability last so an unbound bootstrap
@@ -155,6 +157,7 @@ impl ServiceBootstrap {
 			provider_attempt_readiness: _,
 			blob_store,
 			accounts,
+			account_profiles,
 			reset_cards,
 			doctor,
 			daemon_authority,
@@ -174,6 +177,7 @@ impl ServiceBootstrap {
 				doctor,
 			)
 			.with_accounts(accounts)
+			.with_account_profiles(account_profiles)
 			.with_reset_cards(reset_cards),
 			config,
 		);
@@ -314,9 +318,9 @@ async fn bootstrap_with_authority(
 			None => (None, ManagedRepositoryReadiness::ProductStateUnavailable, None),
 		};
 	#[cfg(target_os = "macos")]
-	let (accounts, reset_cards) = match postgres.clone() {
+	let (accounts, account_profiles, reset_cards) = match postgres.clone() {
 		Some(postgres) => {
-			let (service, runtime, status) = bootstrap_macos_account_runtime(
+			let (service, profiles, runtime, status) = bootstrap_macos_account_runtime(
 				postgres,
 				&paths,
 				process_generations.clone(),
@@ -324,14 +328,14 @@ async fn bootstrap_with_authority(
 			)
 			.await;
 			vault = status;
-			(service, runtime)
+			(service, profiles, runtime)
 		},
-		None => (None, None),
+		None => (None, None, None),
 	};
 	#[cfg(not(target_os = "macos"))]
-	let (accounts, reset_cards) = {
+	let (accounts, account_profiles, reset_cards) = {
 		vault = DoctorStatus::Unavailable(DoctorIssue::Authentication);
-		(None, None)
+		(None, None, None)
 	};
 	let doctor = doctor_report(
 		server_id.clone(),
@@ -358,6 +362,7 @@ async fn bootstrap_with_authority(
 		provider_attempt_readiness,
 		blob_store: blob_store.ok(),
 		accounts,
+		account_profiles,
 		reset_cards,
 		doctor,
 		daemon_authority: Ok(listener),
@@ -370,15 +375,25 @@ async fn bootstrap_macos_account_runtime(
 	paths: &DecodexPaths,
 	process_generations: Option<ProcessGenerationControl>,
 	execution_authorization: Option<ProcessExecutionAuthorization>,
-) -> (Option<Arc<AccountService>>, Option<ResetCardRuntime>, DoctorStatus) {
-	let Ok(refresher) = OpenAiCredentialRefresher::new() else {
-		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication));
+) -> (
+	Option<Arc<AccountService>>,
+	Option<AccountProfileRuntime>,
+	Option<ResetCardRuntime>,
+	DoctorStatus,
+) {
+	let refresher = match tokio::task::spawn_blocking(OpenAiCredentialRefresher::new).await {
+		Ok(Ok(refresher)) => refresher,
+		Ok(Err(_)) =>
+			return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Authentication)),
+		Err(_) => return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity)),
 	};
 	let Ok(credentials) = MacosKeychainCredentialStore::new(paths) else {
-		return (None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		return (None, None, None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
 	};
-	let service =
-		Arc::new(AccountService::new(postgres.clone(), Arc::new(credentials), Arc::new(refresher)));
+	let credentials: Arc<dyn crate::HostCredentialStore> = Arc::new(credentials);
+	let account_profiles =
+		Some(AccountProfileRuntime::new(postgres.clone(), Arc::clone(&credentials)));
+	let service = Arc::new(AccountService::new(postgres.clone(), credentials, Arc::new(refresher)));
 	let attestation = match attest_account_callback_capability(
 		paths.root().as_path().to_owned(),
 		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
@@ -387,7 +402,12 @@ async fn bootstrap_macos_account_runtime(
 		Err(_) => {
 			let _ = service.attest_callback_capability(unavailable_callback_attestation()).await;
 			let _ = service.reconcile_startup().await;
-			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+			return (
+				Some(service),
+				account_profiles,
+				None,
+				DoctorStatus::Unavailable(DoctorIssue::Integrity),
+			);
 		},
 	};
 	let mut closed_attestation = attestation.clone();
@@ -396,12 +416,22 @@ async fn bootstrap_macos_account_runtime(
 	if service.attest_callback_capability(closed_attestation.clone()).await.is_err()
 		|| service.reconcile_startup().await.is_err()
 	{
-		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		return (
+			Some(service),
+			account_profiles,
+			None,
+			DoctorStatus::Unavailable(DoctorIssue::Integrity),
+		);
 	}
 	let (Some(process_generations), Some(execution_authorization)) =
 		(process_generations, execution_authorization)
 	else {
-		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		return (
+			Some(service),
+			account_profiles,
+			None,
+			DoctorStatus::Unavailable(DoctorIssue::Integrity),
+		);
 	};
 	let inventory = match service.list_snapshot().await {
 		Ok((accounts, routing)) => bootstrap_vault_inventory(&accounts, &routing),
@@ -409,15 +439,25 @@ async fn bootstrap_macos_account_runtime(
 	};
 	let probe_account = match inventory {
 		BootstrapVaultInventory::ReadyEmpty => None,
-		BootstrapVaultInventory::Probe(account) => Some(account),
+		BootstrapVaultInventory::Probe(account) => Some(*account),
 		BootstrapVaultInventory::Unavailable => {
-			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+			return (
+				Some(service),
+				account_profiles,
+				None,
+				DoctorStatus::Unavailable(DoctorIssue::Integrity),
+			);
 		},
 	};
 	if probe_account.is_some() && service.arm_callback_capability_probe(&attestation).await.is_err()
 	{
 		let _ = service.attest_callback_capability(closed_attestation).await;
-		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		return (
+			Some(service),
+			account_profiles,
+			None,
+			DoctorStatus::Unavailable(DoctorIssue::Integrity),
+		);
 	}
 	let runtime = match ResetCardRuntime::start(
 		postgres,
@@ -429,28 +469,38 @@ async fn bootstrap_macos_account_runtime(
 		Ok(runtime) => runtime,
 		Err(_) => {
 			let _ = service.attest_callback_capability(closed_attestation).await;
-			return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+			return (
+				Some(service),
+				account_profiles,
+				None,
+				DoctorStatus::Unavailable(DoctorIssue::Integrity),
+			);
 		},
 	};
 	let Some(probe_account) = probe_account else {
-		return (Some(service), Some(runtime), DoctorStatus::Ready);
+		return (Some(service), account_profiles, Some(runtime), DoctorStatus::Ready);
 	};
 	let proved = runtime.prove_callback_capability(&probe_account).await.is_ok();
 	if !proved || !service.attest_callback_capability(attestation).await.unwrap_or(false) {
 		let _ = service.attest_callback_capability(closed_attestation).await;
-		return (Some(service), None, DoctorStatus::Unavailable(DoctorIssue::Integrity));
+		return (
+			Some(service),
+			account_profiles,
+			None,
+			DoctorStatus::Unavailable(DoctorIssue::Integrity),
+		);
 	}
 	let status = match runtime.vault_status() {
 		ResetCardVaultStatus::NotConfigured => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 		ResetCardVaultStatus::Ready => DoctorStatus::Ready,
 		ResetCardVaultStatus::Unavailable => DoctorStatus::Unavailable(DoctorIssue::Authentication),
 	};
-	(Some(service), Some(runtime), status)
+	(Some(service), account_profiles, Some(runtime), status)
 }
 
 enum BootstrapVaultInventory {
 	ReadyEmpty,
-	Probe(AccountRecord),
+	Probe(Box<AccountRecord>),
 	Unavailable,
 }
 
@@ -479,7 +529,7 @@ fn bootstrap_vault_inventory(
 			enabled
 				.iter()
 				.find(|candidate| candidate.account.account_id == *account_id)
-				.map(|candidate| candidate.account.clone())
+				.map(|candidate| Box::new(candidate.account.clone()))
 		})
 		.map_or(BootstrapVaultInventory::Unavailable, BootstrapVaultInventory::Probe)
 }
@@ -526,6 +576,7 @@ fn bootstrap_without_authority(
 		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
 		accounts: None,
+		account_profiles: None,
 		reset_cards: None,
 		doctor,
 		daemon_authority: Err(refusal),
@@ -559,6 +610,7 @@ fn bootstrap_without_root(issue: DoctorIssue) -> ServiceBootstrap {
 		provider_attempt_readiness: ProviderAttemptReadiness::ProductStateUnavailable,
 		blob_store: None,
 		accounts: None,
+		account_profiles: None,
 		reset_cards: None,
 		doctor,
 		daemon_authority: Err(LocalTransportRefusal::ConfigurationUnavailable),

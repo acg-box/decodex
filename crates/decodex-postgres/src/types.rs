@@ -18,31 +18,6 @@ pub struct CreateProject {
 	pub lead: Agent,
 }
 
-/// Idempotent optimistic account metadata mutation.
-#[derive(Clone)]
-pub struct AccountMutation {
-	/// Stable account identity.
-	pub account_id: AccountId,
-	/// Human-readable non-secret label.
-	pub display_label: String,
-	/// Inert observed health state.
-	pub state: AccountState,
-	/// Ordinary metadata. Credential-shaped keys are rejected recursively.
-	pub metadata: Value,
-	/// `None` creates revision 1; `Some` updates only that exact revision.
-	pub expected_revision: Option<i64>,
-}
-impl Debug for AccountMutation {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("AccountMutation")
-			.field("account_id", &self.account_id)
-			.field("state", &self.state)
-			.field("expected_revision", &self.expected_revision)
-			.finish_non_exhaustive()
-	}
-}
-
 /// Stored account metadata readback.
 #[derive(Clone, PartialEq)]
 pub struct AccountMetadata {
@@ -294,20 +269,13 @@ pub struct ActivityRecord {
 
 #[cfg(test)]
 mod tests {
-	use crate::types::{AccountMetadata, AccountMutation};
+	use crate::types::AccountMetadata;
 	use decodex_core::{AccountId, AccountState};
 
 	#[test]
 	fn account_debug_output_omits_all_caller_controlled_metadata() {
 		let account_id = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
 		let marker = "caller-controlled-private-marker";
-		let mutation = AccountMutation {
-			account_id: account_id.clone(),
-			display_label: marker.into(),
-			state: AccountState::Unknown,
-			metadata: serde_json::json!({"nested": [marker]}),
-			expected_revision: None,
-		};
 		let stored = AccountMetadata {
 			account_id,
 			display_label: marker.into(),
@@ -316,7 +284,6 @@ mod tests {
 			revision: 1,
 		};
 
-		assert!(!format!("{mutation:?}").contains(marker));
 		assert!(!format!("{stored:?}").contains(marker));
 	}
 }
