@@ -1,8 +1,11 @@
+import AppKit
 @testable import DecodexApp
+import SwiftUI
 import XCTest
 
+@MainActor
 final class AccountPanelPresentationTests: XCTestCase {
-	func testUnsupportedQuotaWindowIsMutedInsteadOfDestructive() {
+	func testUnsupportedQuotaWindowIsHidden() {
 		let presentation = ResetCardQuotaPresentation(
 			window: ResetCardQuotaWindow(
 				durationMinutes: 300,
@@ -11,10 +14,12 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
+		XCTAssertFalse(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "—")
 		XCTAssertEqual(presentation.detailText, "Not reported")
 		XCTAssertEqual(presentation.tone, .muted)
 		XCTAssertNil(presentation.usedPercent)
+		XCTAssertNil(presentation.remainingPercent)
 		XCTAssertNil(presentation.resetDate)
 	}
 
@@ -27,6 +32,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
+		XCTAssertTrue(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "Error")
 		XCTAssertEqual(presentation.detailText, "Invalid provider response")
 		XCTAssertEqual(presentation.tone, .error)
@@ -44,9 +50,11 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
-		XCTAssertEqual(presentation.valueText, "79% used")
+		XCTAssertTrue(presentation.isVisible)
+		XCTAssertEqual(presentation.valueText, "21% left")
 		XCTAssertEqual(presentation.tone, .current)
 		XCTAssertEqual(presentation.usedPercent, 79)
+		XCTAssertEqual(presentation.remainingPercent, 21)
 		XCTAssertNotNil(presentation.resetDate)
 	}
 
@@ -62,10 +70,463 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
-		XCTAssertEqual(presentation.valueText, "42% stale")
-		XCTAssertNil(presentation.detailText)
+		XCTAssertTrue(presentation.isVisible)
+		XCTAssertEqual(presentation.valueText, "58% left")
+		XCTAssertEqual(presentation.detailText, "stale")
 		XCTAssertEqual(presentation.tone, .warning)
 		XCTAssertEqual(presentation.usedPercent, 42)
+		XCTAssertEqual(presentation.remainingPercent, 58)
 		XCTAssertNotNil(presentation.resetDate)
+	}
+
+	func testUnknownQuotaRemainsVisibleAsAnObservationState() {
+		let presentation = ResetCardQuotaPresentation(
+			window: .unknown(durationMinutes: 300)
+		)
+
+		XCTAssertTrue(presentation.isVisible)
+		XCTAssertEqual(presentation.valueText, "—")
+		XCTAssertEqual(presentation.detailText, "No data")
+		XCTAssertEqual(presentation.tone, .muted)
+	}
+
+	func testSixAccountRowsKeepIntrinsicHeightInsideAWindowSizedViewport() throws {
+		let directory = FileManager.default.temporaryDirectory
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		let store = ResetCardStore(
+			client: AccountPanelLayoutClient(),
+			pendingStore: ResetCardPendingAttemptStore(
+				journalURL: directory.appendingPathComponent("pending.json")
+			),
+			startupRetryDelays: []
+		)
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let states = try (1 ... 6).map { index in
+			let accountID = String(
+				format: "018f0f9e-7b6e-4a31-8f4c-%012d",
+				index
+			)
+			let account = ResetCardAccountRecord(
+				authority: authority,
+				accountID: accountID,
+				displayLabel: "Account \(index)",
+				accountRevision: UInt64(index),
+				enabled: true,
+				observedState: .available,
+				lifecycleReadiness: .ready,
+				fiveHourQuota: .unknown(durationMinutes: 300),
+				sevenDayQuota: .unknown(durationMinutes: 10_080)
+			)
+			let inventory = ResetCardInventory(
+				authority: authority,
+				accountID: accountID,
+				accountRevision: UInt64(index),
+				cards: [
+					try ResetCardDescriptor(
+						grantedAtUnixSeconds: 1_700_000_000,
+						expiresAtUnixSeconds: 1_800_000_000
+					),
+				],
+				fiveHourQuota: ResetCardQuotaWindow(
+					durationMinutes: 300,
+					observedAtUnixMicros: 1_000_000,
+					state: .current(
+						usedPercent: 25,
+						resetsAtUnixMicros: 2_000_000
+					)
+				),
+				sevenDayQuota: ResetCardQuotaWindow(
+					durationMinutes: 10_080,
+					observedAtUnixMicros: 1_000_000,
+					state: .current(
+						usedPercent: 50,
+						resetsAtUnixMicros: 3_000_000
+					)
+				),
+				observationError: nil
+			)
+			return ResetCardAccountState(
+				account: account,
+				inventory: inventory,
+				error: nil,
+				isRefreshing: false,
+				profile: AccountProfileObservation(
+					accountID: accountID,
+					accountRevision: UInt64(index),
+					observedAtUnixMicros: 1_785_276_000_000_000,
+					email: "account\(index)@example.com",
+					planType: "pro",
+					displayName: "Account \(index)",
+					username: "account\(index)",
+					snapshot: AccountProfileSnapshot(
+						lifetimeTokens: UInt64(index) * 100_000,
+						peakDailyTokens: UInt64(index) * 10_000,
+						longestTaskSeconds: UInt64(index) * 60,
+						currentStreakDays: UInt32(index),
+						longestStreakDays: UInt32(index * 2),
+						dailyUsage: [
+							AccountProfileDailyUsage(
+								date: "2026-07-28",
+								tokens: UInt64(index) * 1_000
+							),
+						]
+					),
+					freshness: .current
+				)
+			)
+		}
+
+		let rows = VStack(spacing: 0) {
+			ForEach(states) { state in
+				ResetCardAccountRow(state: state, store: store)
+			}
+		}
+		.frame(width: AccountPanelLayout.panelWidth)
+		let hostingView = NSHostingView(rootView: rows)
+		hostingView.layoutSubtreeIfNeeded()
+
+		XCTAssertGreaterThan(hostingView.fittingSize.height, 300)
+		XCTAssertLessThan(hostingView.fittingSize.height, 1_100)
+
+		let singleRow = NSHostingView(
+			rootView: ResetCardAccountRow(
+				state: try XCTUnwrap(states.first),
+				store: store,
+				showsEmail: true
+			)
+			.frame(width: AccountPanelLayout.panelWidth)
+		)
+		singleRow.layoutSubtreeIfNeeded()
+		XCTAssertLessThan(singleRow.fittingSize.height, 220)
+	}
+
+	func testFullAccountPanelKeepsSixRichRowsInsideScrollableViewport() async throws {
+		let directory = FileManager.default.temporaryDirectory
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = ResetCardStore(
+			client: FullAccountPanelClient(),
+			pendingStore: ResetCardPendingAttemptStore(
+				journalURL: directory.appendingPathComponent("pending.json")
+			),
+			startupRetryDelays: []
+		)
+		await store.refresh()
+		XCTAssertEqual(store.accounts.count, 6)
+
+		let hostingView = NSHostingView(
+			rootView: AccountPanelView(
+				store: store,
+				fastModeStore: FastModeStore(client: StaticFastModeClient()),
+				layoutVisibleFrameOverride: NSRect(
+					x: 0,
+					y: 0,
+					width: 800,
+					height: 675
+				),
+				loadsExternalState: false
+			)
+		)
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: 340, height: 675),
+			styleMask: [.borderless],
+			backing: .buffered,
+			defer: false
+		)
+		window.contentView = hostingView
+		hostingView.frame = window.contentView?.bounds
+			?? NSRect(x: 0, y: 0, width: 340, height: 675)
+
+		for _ in 0 ..< 2 {
+			hostingView.layoutSubtreeIfNeeded()
+			try await Task.sleep(for: .milliseconds(20))
+		}
+
+		let scrollViews = descendants(
+			of: NSScrollView.self,
+			in: hostingView
+		)
+		let accountScroll = try XCTUnwrap(
+			scrollViews.first { scrollView in
+				guard let documentView = scrollView.documentView else {
+					return false
+				}
+				return scrollView.contentView.bounds.height > 100
+					&& documentView.bounds.height > scrollView.contentView.bounds.height + 1
+			}
+		)
+		let documentView = try XCTUnwrap(accountScroll.documentView)
+		XCTAssertGreaterThan(
+			documentView.bounds.height,
+			accountScroll.contentView.bounds.height
+		)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
+
+		let bottom = max(
+			0,
+			documentView.bounds.height - accountScroll.contentView.bounds.height
+		)
+		accountScroll.contentView.scroll(
+			to: NSPoint(x: 0, y: bottom)
+		)
+		accountScroll.reflectScrolledClipView(accountScroll.contentView)
+		XCTAssertGreaterThan(accountScroll.contentView.bounds.minY, 0)
+	}
+
+	func testPendingActionsUseTheirOwnBoundedScrollWithoutHidingAccounts() async throws {
+		let directory = FileManager.default.temporaryDirectory
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		try FileManager.default.createDirectory(
+			at: directory,
+			withIntermediateDirectories: true
+		)
+		try FileManager.default.setAttributes(
+			[.posixPermissions: 0o700],
+			ofItemAtPath: directory.path
+		)
+		let pendingStore = ResetCardPendingAttemptStore(
+			journalURL: directory.appendingPathComponent("pending.json")
+		)
+		for index in 1 ... 64 {
+			XCTAssertNotNil(pendingStore.insert(try pendingAttempt(index)))
+		}
+		let store = ResetCardStore(
+			client: FullAccountPanelClient(),
+			pendingStore: pendingStore,
+			startupRetryDelays: []
+		)
+		await store.refresh()
+		XCTAssertEqual(store.accounts.count, 6)
+		XCTAssertEqual(store.pendingAttempts.count, 64)
+
+		let hostingView = NSHostingView(
+			rootView: AccountPanelView(
+				store: store,
+				fastModeStore: FastModeStore(client: StaticFastModeClient()),
+				layoutVisibleFrameOverride: NSRect(
+					x: 0,
+					y: 0,
+					width: 800,
+					height: 675
+				),
+				loadsExternalState: false
+			)
+		)
+		let window = NSWindow(
+			contentRect: NSRect(x: 0, y: 0, width: 340, height: 675),
+			styleMask: [.borderless],
+			backing: .buffered,
+			defer: false
+		)
+		window.contentView = hostingView
+		hostingView.frame = window.contentView?.bounds
+			?? NSRect(x: 0, y: 0, width: 340, height: 675)
+
+		for _ in 0 ..< 2 {
+			hostingView.layoutSubtreeIfNeeded()
+			try await Task.sleep(for: .milliseconds(20))
+		}
+
+		let overflowingScrollViews = descendants(
+			of: NSScrollView.self,
+			in: hostingView
+		).filter { scrollView in
+			guard let documentView = scrollView.documentView else {
+				return false
+			}
+			return documentView.bounds.height > scrollView.contentView.bounds.height + 1
+		}
+		XCTAssertGreaterThanOrEqual(overflowingScrollViews.count, 2)
+		XCTAssertTrue(
+			overflowingScrollViews.contains { scrollView in
+				abs(
+					scrollView.contentView.bounds.height
+						- AccountPanelLayout.statusViewportHeight
+				) < 4
+			}
+		)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
+	}
+}
+
+@MainActor
+private func descendants<T: NSView>(
+	of _: T.Type,
+	in root: NSView
+) -> [T] {
+	var matches = [T]()
+	if let match = root as? T {
+		matches.append(match)
+	}
+	for child in root.subviews {
+		matches.append(contentsOf: descendants(of: T.self, in: child))
+	}
+	return matches
+}
+
+private struct StaticFastModeClient: FastModeClient {
+	func status() async throws -> Bool {
+		false
+	}
+
+	func setEnabled(_ enabled: Bool) async throws -> Bool {
+		enabled
+	}
+}
+
+private func pendingAttempt(_ index: Int) throws -> ResetCardUseAttempt {
+	ResetCardUseAttempt(
+		target: ResetCardUseTarget(
+			authority: ResetCardAuthority(
+				profileName: "local",
+				serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+			),
+			accountID: "018f0f9e-7b6e-4a31-8f4c-000000000001",
+			expectedRevision: 1,
+			descriptor: try ResetCardDescriptor(
+				grantedAtUnixSeconds: Int64(1_700_000_000 + index * 2),
+				expiresAtUnixSeconds: Int64(1_700_000_001 + index * 2)
+			)
+		),
+		idempotencyKey: String(
+			format: "018f0f9e-7b6e-4a31-8f4c-%012llx",
+			UInt64(index)
+		)
+	)
+}
+
+private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
+	private static let authority = ResetCardAuthority(
+		profileName: "local",
+		serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	)
+
+	func accounts(
+		authority _: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		(1 ... 6).map(Self.account)
+	}
+
+	func inventory(
+		for account: ResetCardAccountRecord
+	) async throws -> ResetCardInventory {
+		ResetCardInventory(
+			authority: Self.authority,
+			accountID: account.accountID,
+			accountRevision: account.accountRevision,
+			cards: [
+				try ResetCardDescriptor(
+					grantedAtUnixSeconds: 1_700_000_000,
+					expiresAtUnixSeconds: 1_800_000_000
+				),
+			],
+			fiveHourQuota: ResetCardQuotaWindow(
+				durationMinutes: 300,
+				observedAtUnixMicros: 1_000_000,
+				state: .current(
+					usedPercent: 25,
+					resetsAtUnixMicros: 2_000_000
+				)
+			),
+			sevenDayQuota: ResetCardQuotaWindow(
+				durationMinutes: 10_080,
+				observedAtUnixMicros: 1_000_000,
+				state: .current(
+					usedPercent: 50,
+					resetsAtUnixMicros: 3_000_000
+				)
+			),
+			observationError: nil
+		)
+	}
+
+	func profile(
+		for account: ResetCardAccountRecord,
+		includeEmail: Bool
+	) async throws -> AccountProfileRead {
+		.available(
+			AccountProfileObservation(
+				accountID: account.accountID,
+				accountRevision: account.accountRevision,
+				observedAtUnixMicros: 1_785_276_000_000_000,
+				email: includeEmail ? "\(account.displayLabel.lowercased())@example.com" : nil,
+				planType: "pro",
+				displayName: account.displayLabel,
+				username: account.displayLabel.lowercased(),
+				snapshot: AccountProfileSnapshot(
+					lifetimeTokens: account.accountRevision * 100_000,
+					peakDailyTokens: account.accountRevision * 10_000,
+					longestTaskSeconds: account.accountRevision * 60,
+					currentStreakDays: UInt32(account.accountRevision),
+					longestStreakDays: UInt32(account.accountRevision * 2),
+					dailyUsage: [
+						AccountProfileDailyUsage(
+							date: "2026-07-28",
+							tokens: account.accountRevision * 1_000
+						),
+					]
+				),
+				freshness: .current
+			)
+		)
+	}
+
+	func use(
+		_: ResetCardUseAttempt
+	) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func status(
+		for _: ResetCardUseAttempt
+	) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	private static func account(_ index: Int) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: String(
+				format: "018f0f9e-7b6e-4a31-8f4c-%012d",
+				index
+			),
+			displayLabel: "Account \(index)",
+			accountRevision: UInt64(index),
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+	}
+}
+
+private actor AccountPanelLayoutClient: ResetCardClient {
+	func accounts(
+		authority _: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		[]
+	}
+
+	func inventory(
+		for _: ResetCardAccountRecord
+	) async throws -> ResetCardInventory {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func use(
+		_: ResetCardUseAttempt
+	) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func status(
+		for _: ResetCardUseAttempt
+	) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
 	}
 }

@@ -15,6 +15,7 @@ use serde as _;
 use serde_json as _;
 use tempfile::TempDir;
 use tokio as _;
+use toml_edit as _;
 
 #[test]
 fn local_commit_binary_signs_an_exact_record_through_the_commit_message_hook() {

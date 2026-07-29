@@ -52,7 +52,7 @@ closed `same_uid` or `disabled` policy and an optional service-owner UID whose p
 fixed by that policy. A remote profile requires its explicit pin and carries only inert
 host and port data. Each local connect captures the current fixed Unix endpoint, validates
 its directory and socket identities, connects that path, verifies the kernel server-peer
-UID, and validates the path again. The client then sends a pinned V1.3 hello,
+UID, and validates the path again. The client then sends a pinned V1.5 hello,
 verifies welcome and snapshot version/identity, issues `get_doctor_status`, and re-verifies
 the result, embedded report, and exact complete current component set before returning status.
 Report ordering is not authority. Reads, writes, frames, messages,
@@ -61,7 +61,7 @@ text collapse into closed redacted failure classes.
 
 `apps/decodex-cli` exposes the canonical `status` and `doctor` commands with active or
 `--profile NAME` selection and human or `--output json` rendering. Both commands cross the
-same V1.3 query; `status` is compact and `doctor` is line-oriented, while each retains every
+same V1.5 query; `status` is compact and `doctor` is line-oriented, while each retains every
 typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every check is ready,
 1 means a complete report contains unavailable or unknown checks, and 2 means a closed
 client/configuration/protocol failure. The `reset-card` command family is a thin protocol
@@ -160,7 +160,7 @@ cleanup refusal.
 Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
 expected revision. A same-version duplicate returns the original command identity and stored
-result without a second application execution. Reusing a mutation key across V1.2/V1.3 executes
+result without a second application execution. Reusing a mutation key across V1.4/V1.5 executes
 once in each version namespace and retains each version's native command outcome; neither outcome
 replays, conflicts with, or poisons the other namespace. Other same-version conflicting reuse is
 rejected.
@@ -450,7 +450,7 @@ Protocol V1.2 added `get_doctor_status` as a read-only query/result with a clien
 no mutation receipt, deduplication, replay, receipt-capacity use, event publication, or entity
 revision. Reusing a query identity performs a new ordered observation. At that V1.2
 boundary, V1.1 was the rolling previous minor and safely fell back to a snapshot because
-it could not present an epoch ID. The current V1.3 window retains V1.2 as its previous
+it could not present an epoch ID. The current V1.5 window retains V1.4 as its previous
 minor. `ClientHello` may pin the stable
 server identity before snapshot, query, or command access. The doctor report is mechanically
 capped at 32 unique typed checks and has no free-form external text. Server repository
@@ -458,10 +458,11 @@ paths are an aggregate typed check only, so
 remote clients receive neither host paths nor repository names and cannot reinterpret
 them locally. App-server capabilities are closed enum values; current unprobed capability,
 plugin, vault, and blob-content observations remain honestly `unknown` rather than ready.
-Each V1.2 doctor read revalidates the retained socket binding, obtains a runtime connection through
-the verified connector, performs a live query, reruns the complete runtime-authority and immutable
-migration checks—including the exact embedded ledger and required `pgcrypto` extension—and reports
-any failure as typed unavailable. It never reconnects migration
+Each accepted V1.4 or V1.5 doctor read revalidates the retained socket binding, obtains a
+runtime connection through the verified connector, performs a live query, reruns the
+complete runtime-authority and immutable migration checks—including the exact embedded
+ledger and required `pgcrypto` extension—and reports any failure as typed unavailable.
+It never reconnects migration
 credentials, runs migration, or repins an endpoint. A stale but securely bound listener refusal is
 database-unreachable; directory/socket replacement or peer-identity drift is unsafe-host-path.
 PostgreSQL socket recreation after restart therefore requires a daemon restart under the explicit
@@ -1293,15 +1294,15 @@ dispatch lock make journal classification and terminal removal one cross-process
 critical section. Corrupt journal data is preserved and blocks new use instead of being
 discarded.
 
-V1.2 remains available only for the previous-minor foundation and doctor/history
-surface. The server rejects V1.2 reset-card queries and commands and does not publish
-reset-card events to V1.2 subscribers.
+V1.4 remains available as the rolling previous minor and retains its doctor, history,
+Reset Card, and account-lifecycle surfaces. The server rejects the V1.5 account-profile
+query for V1.4 clients.
 
 ```mermaid
 sequenceDiagram
     participant Swift as Optional macOS UI
     participant CLI as Rust CLI client
-    participant Protocol as V1.3 same-UID Unix WebSocket
+    participant Protocol as V1.5 same-UID Unix WebSocket
     participant App as Runtime application
     participant Store as PostgreSQL reset-card ledger
     participant Worker as Reset-card worker

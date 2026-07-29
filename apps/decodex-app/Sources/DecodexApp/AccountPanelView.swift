@@ -3,26 +3,49 @@ import SwiftUI
 
 struct AccountPanelView: View {
 	let store: ResetCardStore
+	private let layoutVisibleFrameOverride: CGRect?
+	private let loadsExternalState: Bool
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
 	@State private var measuredAccountListContentHeight: CGFloat = 0
 	@State private var accountScrollOffset: CGFloat = 0
+	@State private var isPresentingEnrollment = false
+	@State private var fastMode: FastModeStore
+	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
+
+	init(
+		store: ResetCardStore,
+		fastModeStore: FastModeStore = FastModeStore(),
+		layoutVisibleFrameOverride: CGRect? = nil,
+		loadsExternalState: Bool = true
+	) {
+		self.store = store
+		self.layoutVisibleFrameOverride = layoutVisibleFrameOverride
+		self.loadsExternalState = loadsExternalState
+		_fastMode = State(initialValue: fastModeStore)
+	}
 
 	var body: some View {
 		GlassEffectContainer(spacing: 6) {
 			VStack(alignment: .leading, spacing: 7) {
 				header
+				accountSummary
 
-				if let message = store.message {
-					ResetCardMessageView(message: message) {
-						store.dismissMessage()
-					}
-					.transition(.panelSection)
+				if hasTransientStatus {
+					transientStatus
+						.transition(.panelSection)
 				}
 
-				if store.pendingAttempts.isEmpty == false {
-					ResetCardPendingAttemptsView(store: store)
-						.transition(.panelSection)
+				if let profileAggregate {
+					AccountProfileOverviewView(
+						aggregate: profileAggregate,
+						totalAccountCount: store.accounts.count,
+						currentProfileCount: profiledAccountStates.filter {
+							$0.isProfileDegraded == false
+						}.count,
+						degradedProfileCount: profiledAccountStates.filter(\.isProfileDegraded).count
+					)
+					.transition(.panelSection)
 				}
 
 				accountContent
@@ -42,10 +65,29 @@ struct AccountPanelView: View {
 		// Re-key the singleton panel, rather than every repeated glass row, when
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
+		.sheet(isPresented: $isPresentingEnrollment) {
+			AccountEnrollmentView(store: store) {
+				isPresentingEnrollment = false
+			}
+		}
+		.task {
+			guard loadsExternalState else {
+				return
+			}
+			if fastMode.hasLoaded == false {
+				await fastMode.load()
+			}
+		}
+		.task(id: accountPrivacy) {
+			guard loadsExternalState else {
+				return
+			}
+			await store.setProfileEmailVisibility(accountPrivacy == AccountPrivacy.visible)
+		}
 	}
 
 	private var header: some View {
-		HStack(alignment: .center, spacing: 8) {
+		HStack(alignment: .center, spacing: 5) {
 			Image(nsImage: AppAssets.statusBarIcon)
 				.resizable()
 				.renderingMode(.template)
@@ -63,37 +105,83 @@ struct AccountPanelView: View {
 					.font(PanelFont.headerSubtitle)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.lineLimit(1)
+					.minimumScaleFactor(0.82)
 			}
 			.layoutPriority(1)
 
 			Spacer(minLength: 4)
 
 			PanelIconButtonView(
-				symbol: "arrow.clockwise",
+				symbol: accountPrivacy == AccountPrivacy.hidden ? "eye.slash" : "eye",
 				tint: PanelPalette.secondaryText(colorScheme),
-				isActive: false,
-				isDisabled: store.isRefreshing || store.submittingKey != nil,
+				isActive: accountPrivacy == AccountPrivacy.visible,
 				isSubtle: true,
-				size: 22,
+				size: 25,
 				action: {
-					Task {
-						await store.refresh()
+					withAnimation(PanelMotion.state) {
+						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
+							? AccountPrivacy.visible
+							: AccountPrivacy.hidden
 					}
 				},
-				help: "Refresh accounts and Reset Cards"
+				help: accountPrivacy == AccountPrivacy.hidden
+					? "Show account emails"
+					: "Hide account emails"
 			)
 
 			PanelIconButtonView(
-				symbol: "power",
-				tint: PanelPalette.secondaryText(colorScheme),
-				isActive: false,
-				isSubtle: true,
-				size: 22,
+				symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
+				tint: PanelPalette.fastModeAccent(colorScheme),
+				isActive: fastMode.isEnabled,
+				isDisabled: fastMode.isLoading,
+				isSubtle: fastMode.isEnabled == false,
+				size: 25,
 				action: {
-					NSApplication.shared.terminate(nil)
+					Task {
+						await fastMode.toggle()
+					}
 				},
-				help: "Quit Decodex"
+				help: fastMode.errorMessage
+					?? (fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on")
 			)
+
+			PanelIconButtonView(
+				symbol: "plus",
+				tint: PanelPalette.actionBlue(colorScheme),
+				isActive: false,
+				isDisabled: store.isAccountControlInProgress || store.isRefreshing,
+				isPrimary: true,
+				size: 25,
+				action: {
+					isPresentingEnrollment = true
+				},
+				help: "Add Codex login"
+			)
+
+			Menu {
+				Button("Refresh All") {
+					Task {
+						await store.refresh()
+					}
+				}
+				.disabled(store.isRefreshing || store.submittingKey != nil)
+
+				Divider()
+
+				Button("Quit Decodex") {
+					NSApplication.shared.terminate(nil)
+				}
+			} label: {
+				Image(systemName: "ellipsis")
+					.font(PanelFont.iconButton)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.frame(width: 21, height: 25)
+					.contentShape(Rectangle())
+			}
+			.menuStyle(.borderlessButton)
+			.menuIndicator(.hidden)
+			.fixedSize()
+			.help("More actions")
 		}
 		.padding(.horizontal, 2)
 	}
@@ -103,7 +191,141 @@ struct AccountPanelView: View {
 			return "Loading accounts"
 		}
 		let count = store.accounts.count
-		return "\(count) account\(count == 1 ? "" : "s") · usage and Reset Cards"
+		return "\(count) account\(count == 1 ? "" : "s") · \(routingSubtitle)"
+	}
+
+	private var accountSummary: some View {
+		HStack(alignment: .firstTextBaseline, spacing: 7) {
+			summaryItem(
+				symbol: "person.2",
+				title: "Accounts",
+				value: "\(readyAccountCount) ready",
+				tint: PanelPalette.usageCyan(colorScheme)
+			)
+
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme))
+				.frame(width: 0.5, height: 16)
+
+			summaryItem(
+				symbol: "arrow.triangle.branch",
+				title: "Routing",
+				value: routingSummary,
+				tint: PanelPalette.routeAccent(colorScheme)
+			)
+		}
+		.padding(.horizontal, 3)
+		.padding(.top, 1)
+		.padding(.bottom, 4)
+		.overlay(alignment: .bottom) {
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme))
+				.frame(height: 0.5)
+		}
+	}
+
+	private var hasTransientStatus: Bool {
+		fastMode.errorMessage != nil
+			|| store.message != nil
+			|| store.pendingAttempts.isEmpty == false
+	}
+
+	private var transientStatus: some View {
+		ScrollView(.vertical) {
+			VStack(alignment: .leading, spacing: 7) {
+				if let errorMessage = fastMode.errorMessage {
+					ResetCardMessageView(
+						message: ResetCardStoreMessage(
+							tone: .error,
+							text: errorMessage
+						)
+					) {
+						fastMode.dismissError()
+					}
+				}
+
+				if let message = store.message {
+					ResetCardMessageView(message: message) {
+						store.dismissMessage()
+					}
+				}
+
+				if store.pendingAttempts.isEmpty == false {
+					ResetCardPendingAttemptsView(store: store)
+				}
+			}
+		}
+		.frame(height: AccountPanelLayout.statusViewportHeight)
+		.accessibilityLabel("Decodex status and pending actions")
+	}
+
+	private func summaryItem(
+		symbol: String,
+		title: String,
+		value: String,
+		tint: Color
+	) -> some View {
+		HStack(alignment: .firstTextBaseline, spacing: 4) {
+			Image(systemName: symbol)
+				.font(PanelFont.usageLabel)
+				.foregroundStyle(tint)
+				.accessibilityHidden(true)
+
+			Text(title)
+				.font(PanelFont.usageLabel)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+
+			Text(value)
+				.font(PanelFont.usageValue)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.lineLimit(1)
+				.minimumScaleFactor(0.82)
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+	}
+
+	private var readyAccountCount: Int {
+		store.accounts.filter {
+			$0.account.enabled && $0.account.lifecycleReadiness == .ready
+		}.count
+	}
+
+	private var profileAggregate: AccountProfileAggregate? {
+		AccountProfileAggregate.make(
+			profiledAccountStates.compactMap { $0.profile?.snapshot }
+		)
+	}
+
+	private var profiledAccountStates: [ResetCardAccountState] {
+		store.accounts.filter {
+			$0.profile?.snapshot.hasContent == true
+		}
+	}
+
+	private var routingSubtitle: String {
+		guard let routing = store.routing else {
+			return "routing unavailable"
+		}
+		switch routing.mode {
+		case .balanced:
+			return "balanced"
+		case .fixed:
+			return "fixed routing"
+		}
+	}
+
+	private var routingSummary: String {
+		guard let routing = store.routing else {
+			return "Not loaded"
+		}
+		switch routing.mode {
+		case .balanced:
+			return "Balanced"
+		case .fixed(let accountID):
+			return store.accounts.first {
+				$0.account.accountID == accountID
+			}?.account.displayLabel ?? "Fixed"
+		}
 	}
 
 	@ViewBuilder
@@ -116,7 +338,8 @@ struct AccountPanelView: View {
 					ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, state in
 						ResetCardAccountRow(
 							state: state,
-							store: store
+							store: store,
+							showsEmail: accountPrivacy == AccountPrivacy.visible
 						)
 
 						if index < store.accounts.count - 1 {
@@ -174,7 +397,10 @@ struct AccountPanelView: View {
 		AccountPanelLayout.accountListHeight(
 			accountCount: store.accounts.count,
 			measuredContentHeight: measuredAccountListContentHeight,
-			windowVisibleFrame: panelScreenVisibleFrame
+			windowVisibleFrame: layoutVisibleFrameOverride ?? panelScreenVisibleFrame,
+			additionalChromeHeight: hasTransientStatus
+				? AccountPanelLayout.statusViewportHeight
+				: 0
 		)
 	}
 

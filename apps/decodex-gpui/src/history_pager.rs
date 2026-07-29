@@ -1020,6 +1020,71 @@ mod tests {
 	}
 
 	#[test]
+	fn retry_reissues_only_the_exact_retryable_request() {
+		let (pager, server_id) = open_pager();
+		let first = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("initial request is ready");
+
+		assert!(matches!(
+			pager.route_result(
+				SESSION_GENERATION,
+				&server_id,
+				result(
+					&first,
+					&server_id,
+					ConversationHistoryResult::Unavailable {
+						error: HistoryQueryError::ResourceExhausted,
+					},
+				),
+			),
+			HistoryRouteOutcome::Unavailable
+		));
+		assert_eq!(
+			pager.snapshot().load,
+			HistoryLoadState::RetryableUnavailable(HistoryRetryReason::ResourceExhausted)
+		);
+		assert!(pager.retry());
+		assert!(!pager.retry());
+
+		let retried = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("the exact retryable request is ready");
+
+		assert_eq!(retried.request, first.request);
+		assert_ne!(retried.envelope.query_id, first.envelope.query_id);
+	}
+
+	#[test]
+	fn cancel_makes_the_in_flight_request_stale_and_closes_the_view() {
+		let (pager, server_id) = open_pager();
+		let dispatch = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("initial request is ready");
+
+		pager.cancel();
+
+		let snapshot = pager.snapshot();
+
+		assert_eq!(snapshot.load, HistoryLoadState::Inactive);
+		assert_eq!(
+			snapshot.last_stale_cancellation,
+			Some(HistoryStaleCancellation {
+				request_sequence: dispatch.request_sequence,
+				reason: HistoryStaleReason::ViewCancelled,
+			})
+		);
+		assert!(matches!(
+			pager.route_result(
+				SESSION_GENERATION,
+				&server_id,
+				result(&dispatch, &server_id, ConversationHistoryResult::Page(page(None))),
+			),
+			HistoryRouteOutcome::Stale
+		));
+	}
+
+	#[test]
 	fn empty_page_is_visible_without_proving_history_completion() {
 		let (pager, server_id) = open_pager();
 		let dispatch = pager
