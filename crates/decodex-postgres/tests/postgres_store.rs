@@ -501,6 +501,7 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
 #[cfg(feature = "test-support")]
+#[allow(clippy::too_many_lines)] // One complete routing CAS and invariant contract.
 async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
 	PostgresStore::pin_session_search_path_fixture(&mut migration);
@@ -777,6 +778,7 @@ async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::E
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 V27 routing harness"]
 #[cfg(feature = "test-support")]
+#[allow(clippy::too_many_lines)] // One complete routing/logout concurrency proof.
 async fn postgres_account_routing_and_logout_share_one_lock_order()
 -> Result<(), Box<dyn std::error::Error>> {
 	let (mut migration, _) = separated_configs("DECODEX_TEST")?;

@@ -151,6 +151,7 @@ impl AccountProfileRuntime {
 		}
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one bounded credential, provider, persistence, and readback sequence auditable.
 	pub(crate) async fn query(
 		&self,
 		account_id: &AccountId,

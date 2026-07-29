@@ -298,7 +298,7 @@ fn property_list_value(
 		let key = unsafe { CFPropertyList::wrap_under_get_rule(key) }
 			.downcast_into::<CFString>()
 			.ok_or(DaemonWrapperError)?;
-		if key.to_string() == name {
+		if key == name {
 			// SAFETY: the dictionary retains the matching non-null property-list value.
 			return Ok(Some(unsafe { CFPropertyList::wrap_under_get_rule(value) }));
 		}
@@ -911,7 +911,7 @@ fn push_canonical_json(output: &mut Vec<u8>, value: &Value) -> Result<(), Daemon
 		Value::Object(values) => {
 			output.push(b'{');
 			let mut entries = values.iter().collect::<Vec<_>>();
-			entries.sort_unstable_by(|(left, _), (right, _)| left.cmp(right));
+			entries.sort_unstable_by_key(|(key, _)| *key);
 			for (index, (key, value)) in entries.into_iter().enumerate() {
 				if index != 0 {
 					output.push(b',');

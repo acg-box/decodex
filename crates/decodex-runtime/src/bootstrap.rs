@@ -436,7 +436,7 @@ async fn bootstrap_macos_account_runtime(
 	};
 	let probe_account = match inventory {
 		BootstrapVaultInventory::ReadyEmpty => None,
-		BootstrapVaultInventory::Probe(account) => Some(account),
+		BootstrapVaultInventory::Probe(account) => Some(*account),
 		BootstrapVaultInventory::Unavailable => {
 			return (
 				Some(service),
@@ -497,7 +497,7 @@ async fn bootstrap_macos_account_runtime(
 
 enum BootstrapVaultInventory {
 	ReadyEmpty,
-	Probe(AccountRecord),
+	Probe(Box<AccountRecord>),
 	Unavailable,
 }
 
@@ -526,7 +526,7 @@ fn bootstrap_vault_inventory(
 			enabled
 				.iter()
 				.find(|candidate| candidate.account.account_id == *account_id)
-				.map(|candidate| candidate.account.clone())
+				.map(|candidate| Box::new(candidate.account.clone()))
 		})
 		.map_or(BootstrapVaultInventory::Unavailable, BootstrapVaultInventory::Probe)
 }

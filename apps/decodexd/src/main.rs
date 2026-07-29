@@ -131,8 +131,6 @@ impl ShutdownSignals {
 
 #[cfg(test)]
 mod tests {
-	use std::path::PathBuf;
-
 	use clap::{CommandFactory as _, Parser as _};
 
 	use super::{Cli, Command};
@@ -155,7 +153,7 @@ mod tests {
 		assert!(matches!(
 			provision.command,
 			Some(Command::ProvisionLocal { root })
-				if root == PathBuf::from("/private/tmp/decodex-root")
+				if root.as_path() == std::path::Path::new("/private/tmp/decodex-root")
 		));
 
 		Cli::command().debug_assert();

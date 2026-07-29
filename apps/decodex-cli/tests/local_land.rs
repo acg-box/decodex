@@ -15,6 +15,7 @@ use serde as _;
 use serde_json as _;
 use tempfile::TempDir;
 use tokio as _;
+use toml_edit as _;
 
 const PR_URL: &str = "https://github.com/hack-ink/decodex/pull/123";
 const PR_BRANCH: &str = "xv/exact-land";
