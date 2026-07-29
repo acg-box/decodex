@@ -179,17 +179,17 @@ socket_dir = args[args.index("-k") + 1]
 port = args[args.index("-p") + 1]
 socket_path = os.path.join(socket_dir, ".s.PGSQL." + port)
 pid_path = os.path.join(data, "postmaster.pid")
-with open(pid_path, "w", encoding="ascii") as handle:
-    handle.write(str(os.getpid()) + "\n")
-os.chmod(pid_path, 0o600)
-server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-server.bind(socket_path)
 running = True
 def stop(_signal, _frame):
     global running
     running = False
 signal.signal(signal.SIGTERM, stop)
 signal.signal(signal.SIGINT, stop)
+with open(pid_path, "w", encoding="ascii") as handle:
+    handle.write(str(os.getpid()) + "\n")
+os.chmod(pid_path, 0o600)
+server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+server.bind(socket_path)
 while running:
     time.sleep(0.02)
 server.close()
