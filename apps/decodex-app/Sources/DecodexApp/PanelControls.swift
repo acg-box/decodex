@@ -41,15 +41,7 @@ struct PanelIconButtonView: View {
 		Button(action: action) {
 			buttonLabel
 		}
-		.buttonStyle(
-			PanelInteractiveButtonStyle(
-				isDisabled: isDisabled,
-				hoverLift: 0,
-				hoverScale: isSubtle ? 1.004 : 1.006,
-				pressedScale: 0.952,
-				hoverShadowRadius: isSubtle ? 2.4 : 3
-			)
-		)
+		.buttonStyle(.plain)
 		.disabled(isDisabled)
 		.opacity(isDisabled && isActive == false ? 0.56 : 1)
 		.help(help)
@@ -99,13 +91,7 @@ struct PanelIconButtonView: View {
 	}
 
 	private var usesSurface: Bool {
-		if isSubtle {
-			return false
-		}
-		if isActive || isPrimary {
-			return true
-		}
-		return true
+		isSubtle == false
 	}
 
 	private var iconCornerRadius: CGFloat {

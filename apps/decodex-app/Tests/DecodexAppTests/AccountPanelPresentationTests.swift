@@ -358,6 +358,8 @@ final class AccountPanelPresentationTests: XCTestCase {
 			try await Task.sleep(for: .milliseconds(20))
 		}
 
+		XCTAssertFalse(window.isOpaque)
+		XCTAssertEqual(window.backgroundColor, .clear)
 		let scrollViews = descendants(
 			of: NSScrollView.self,
 			in: hostingView
