@@ -69,7 +69,9 @@ canonical gate contract tests, the vNext architecture test, and the XY-1308 CLI
 process matrix (`Makefile.toml`). The active `apps/decodex-cli` uses the server only
 for `status`, `doctor`, and `reset-card`. Its manual-authority `commit` and exact-base/head `land`
 commands are local Git authority and do not use Decodex server, planner, runtime,
-MCP, Linear, or tracker state. Rust compilation remains pinned by
+MCP, Linear, or tracker state. Local landing resolves the repository default branch
+from the exact `origin` symbolic `HEAD`. The pull request base, primary checkout,
+fetch, compare-and-swap, readback, and primary sync must all use that branch. Rust compilation remains pinned by
 `rust-toolchain.toml` to `1.97.0`. The formatting tasks separately invoke
 `rustup run nightly-2026-07-16 cargo fmt`, which preserves the nightly-only options in
 `.rustfmt.toml` without depending on the mutable `nightly` alias. Supported hosts install
