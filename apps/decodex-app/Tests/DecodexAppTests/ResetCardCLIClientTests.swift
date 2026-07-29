@@ -134,6 +134,29 @@ final class ResetCardNativeClientTests: XCTestCase {
 		)
 	}
 
+	func testNativeInventoryAcceptsUnsupportedFiveHourWindowFromLiveDaemon() async throws {
+		let accountID = "b7639aa9-ccc1-4957-8bd8-9a54ee909c43"
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "0939ea28-c79b-40d5-b78f-b0c4c6790c17"
+		)
+		let client = DecodexNativeClient { _, _ in
+			Data(
+				"""
+				{"schema":"decodex/app-native-client/1","outcome":"success","operation":"get_reset_cards","authority":{"profile_name":"local","server_id":"0939ea28-c79b-40d5-b78f-b0c4c6790c17"},"data":{"data":{"account_id":"b7639aa9-ccc1-4957-8bd8-9a54ee909c43","account_revision":8,"available_count":2,"cards":[{"descriptor":{"expires_at_unix_seconds":1785528152,"granted_at_unix_seconds":1782936152}},{"descriptor":{"expires_at_unix_seconds":1786556624,"granted_at_unix_seconds":1783964624}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":1785335237831965,"result":{"data":{"error":"unsupported_window"},"state":"error"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":1785335237831965,"result":{"data":{"resets_at_unix_micros":1785940048000000,"used_percent":0},"state":"current"}}},"outcome":"available"}}
+				""".utf8
+			)
+		}
+
+		let inventory = try await client.inventory(
+			for: nativeAccount(authority: authority, accountID: accountID, revision: 8)
+		)
+
+		XCTAssertEqual(inventory.cards.count, 2)
+		XCTAssertEqual(inventory.fiveHourQuota.state, .error(.unsupportedWindow))
+		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 0)
+	}
+
 	func testObservationFailureRetainsTypedQuotaStates() async throws {
 		let accountID = accountID
 		let authority = authority

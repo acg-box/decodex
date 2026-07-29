@@ -117,24 +117,51 @@ struct AccountPanelView: View {
 
 				Spacer(minLength: 4)
 
-				Button {
-					isPresentingEnrollment = true
-				} label: {
-					Label("Add", systemImage: "plus")
-						.font(PanelFont.compactAction)
-						.padding(.horizontal, 6)
-						.padding(.vertical, 4)
-						.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-						.modernGlassSurface(cornerRadius: 7, depth: .control)
-				}
-				.buttonStyle(.plain)
-				.disabled(
-					store.isAccountControlInProgress
-						|| store.isRefreshing
-						|| store.isRefreshingAccountSkeleton
+				PanelIconButtonView(
+					symbol: accountPrivacy == AccountPrivacy.visible ? "eye" : "eye.slash",
+					tint: PanelPalette.actionBlue(colorScheme),
+					isActive: accountPrivacy == AccountPrivacy.visible,
+					size: 24,
+					action: {
+						withAnimation(PanelMotion.state) {
+							accountPrivacy = accountPrivacy == AccountPrivacy.hidden
+								? AccountPrivacy.visible
+								: AccountPrivacy.hidden
+						}
+					},
+					help: accountPrivacy == AccountPrivacy.hidden
+						? "Show email addresses"
+						: "Hide email addresses"
 				)
-				.help("Add Codex login")
-				.accessibilityLabel("Add Codex login")
+
+				PanelIconButtonView(
+					symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
+					tint: PanelPalette.fastModeAccent(colorScheme),
+					isActive: fastMode.isEnabled,
+					isDisabled: fastMode.isLoading,
+					size: 24,
+					action: {
+						Task {
+							await fastMode.toggle()
+						}
+					},
+					help: fastMode.isEnabled ? "Turn Fast Mode off" : "Turn Fast Mode on"
+				)
+
+				PanelIconButtonView(
+					symbol: "plus",
+					tint: PanelPalette.actionBlue(colorScheme),
+					isActive: false,
+					isDisabled: store.isAccountControlInProgress
+						|| store.isRefreshing
+						|| store.isRefreshingAccountSkeleton,
+					isPrimary: true,
+					size: 24,
+					action: {
+						isPresentingEnrollment = true
+					},
+					help: "Add Codex login"
+				)
 
 				Menu {
 					Button(

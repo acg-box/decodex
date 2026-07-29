@@ -359,6 +359,28 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(store.accounts.map(\.account.authority), [Self.authority])
 	}
 
+	func testFirstRefreshPreservesDiscoveredAuthorityForInventoryRead() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ScriptedResetCardClient(
+			accountSteps: [],
+			accountFallback: .value([Self.account]),
+			inventoryFallback: .value(try Self.inventory),
+			requiredInventoryAuthority: Self.authority
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+
+		XCTAssertEqual(store.accounts.first?.account.authority, Self.authority)
+		XCTAssertEqual(store.accounts.first?.inventory, try Self.inventory)
+		XCTAssertNil(store.accounts.first?.error)
+	}
+
 	func testExplicitUseDispatchesOnlyOnce() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -512,6 +534,7 @@ private actor ScriptedResetCardClient: ResetCardClient {
 	private let inventoryFallback: ClientStep<ResetCardInventory>
 	private var statusSteps: [ClientStep<ResetCardOperationState>]
 	private let statusFallback: ClientStep<ResetCardOperationState>
+	private let requiredInventoryAuthority: ResetCardAuthority?
 	private var counts = ClientCallCounts(accounts: 0, inventory: 0, status: 0, use: 0)
 	private var requestedAccountAuthorities = [ResetCardAuthority?]()
 
@@ -521,7 +544,8 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		inventorySteps: [ClientStep<ResetCardInventory>] = [],
 		inventoryFallback: ClientStep<ResetCardInventory>,
 		statusSteps: [ClientStep<ResetCardOperationState>] = [],
-		statusFallback: ClientStep<ResetCardOperationState> = .value(.notFound)
+		statusFallback: ClientStep<ResetCardOperationState> = .value(.notFound),
+		requiredInventoryAuthority: ResetCardAuthority? = nil
 	) {
 		self.accountSteps = accountSteps
 		self.accountFallback = accountFallback
@@ -529,6 +553,7 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		self.inventoryFallback = inventoryFallback
 		self.statusSteps = statusSteps
 		self.statusFallback = statusFallback
+		self.requiredInventoryAuthority = requiredInventoryAuthority
 	}
 
 	func accounts(
@@ -553,6 +578,11 @@ private actor ScriptedResetCardClient: ResetCardClient {
 			status: counts.status,
 			use: counts.use
 		)
+		if let requiredInventoryAuthority,
+			account.authority != requiredInventoryAuthority
+		{
+			throw ResetCardClientError.invalidResponse
+		}
 		return try Self.resolve(
 			inventorySteps.isEmpty ? inventoryFallback : inventorySteps.removeFirst()
 		)
