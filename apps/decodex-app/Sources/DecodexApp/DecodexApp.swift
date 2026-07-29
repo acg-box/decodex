@@ -60,9 +60,9 @@ final class AppAppearanceStore {
 
 enum AppAssets {
 	static let statusBarIcon: NSImage = {
-		let image = NSImage(named: "StatusBarIcon")
-			?? Bundle.main.url(forResource: "StatusBarIcon", withExtension: "png")
-				.flatMap(NSImage.init(contentsOf:))
+		let image = Bundle.main.url(forResource: "StatusBarIcon", withExtension: "png")
+			.flatMap(NSImage.init(contentsOf:))
+			?? NSImage(named: "StatusBarIcon")
 			?? NSImage(systemSymbolName: "person.2.circle", accessibilityDescription: "Decodex")
 			?? NSImage()
 		image.isTemplate = true

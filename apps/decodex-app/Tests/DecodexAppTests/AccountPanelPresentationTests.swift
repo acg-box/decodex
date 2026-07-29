@@ -79,12 +79,12 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertNotNil(presentation.resetDate)
 	}
 
-	func testUnknownQuotaRemainsVisibleAsAnObservationState() {
+	func testUnknownOptionalQuotaWindowIsHidden() {
 		let presentation = ResetCardQuotaPresentation(
 			window: .unknown(durationMinutes: 300)
 		)
 
-		XCTAssertTrue(presentation.isVisible)
+		XCTAssertFalse(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "—")
 		XCTAssertEqual(presentation.detailText, "No data")
 		XCTAssertEqual(presentation.tone, .muted)
