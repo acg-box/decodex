@@ -13,6 +13,12 @@ enum PanelPalette {
 			: Color(red: 0.34, green: 0.38, blue: 0.45).opacity(0.8)
 	}
 
+	static func separator(_ colorScheme: ColorScheme) -> Color {
+		colorScheme == .dark
+			? Color.white.opacity(0.065)
+			: Color(red: 0.32, green: 0.38, blue: 0.46).opacity(0.14)
+	}
+
 	static func actionBlue(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark
 			? Color(red: 0.86, green: 0.89, blue: 0.94)

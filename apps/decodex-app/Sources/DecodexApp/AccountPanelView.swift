@@ -5,6 +5,8 @@ struct AccountPanelView: View {
 	let store: ResetCardStore
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
+	@State private var measuredAccountListContentHeight: CGFloat = 0
+	@State private var accountScrollOffset: CGFloat = 0
 
 	var body: some View {
 		GlassEffectContainer(spacing: 6) {
@@ -37,6 +39,9 @@ struct AccountPanelView: View {
 				}
 			}
 		}
+		// Re-key the singleton panel, rather than every repeated glass row, when
+		// system appearance changes.
+		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
 	}
 
 	private var header: some View {
@@ -106,24 +111,92 @@ struct AccountPanelView: View {
 		if store.accounts.isEmpty {
 			emptyOrLoadingState
 		} else {
-			ScrollView(.vertical, showsIndicators: true) {
-				LazyVStack(alignment: .leading, spacing: AccountPanelLayout.accountRowSpacing) {
-					ForEach(store.accounts) { state in
+			ScrollView(.vertical, showsIndicators: false) {
+				VStack(alignment: .leading, spacing: 0) {
+					ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, state in
 						ResetCardAccountRow(
 							state: state,
 							store: store
 						)
+
+						if index < store.accounts.count - 1 {
+							Rectangle()
+								.fill(PanelPalette.separator(colorScheme))
+								.frame(height: 0.5)
+								.padding(.horizontal, 7)
+								.allowsHitTesting(false)
+						}
 					}
 				}
-				.padding(.trailing, 2)
+				.background(accountScrollProbe)
+				.background(accountRowsHeightProbe)
 			}
+			.coordinateSpace(name: AccountPanelLayout.accountListScrollSpace)
 			.frame(
-				height: AccountPanelLayout.accountListHeight(
-					accountCount: store.accounts.count,
-					windowVisibleFrame: panelScreenVisibleFrame
-				)
+				height: accountListViewportHeight
 			)
+			.overlay(alignment: .trailing) {
+				AccountListScrollIndicatorView(
+					contentHeight: accountListContentHeight,
+					viewportHeight: accountListViewportHeight,
+					scrollOffset: accountScrollOffset
+				)
+				.padding(.trailing, 1)
+			}
+			.onPreferenceChange(AccountScrollOffsetPreferenceKey.self) { minY in
+				let maximumOffset = max(0, accountListContentHeight - accountListViewportHeight)
+				accountScrollOffset = min(max(0, -minY), maximumOffset)
+			}
+			.onPreferenceChange(AccountRowsHeightPreferenceKey.self) { height in
+				let measuredHeight = ceil(height)
+				if abs(measuredAccountListContentHeight - measuredHeight) > 0.5 {
+					measuredAccountListContentHeight = measuredHeight
+				}
+			}
+			.onChange(of: accountListNeedsScrolling) { _, needsScrolling in
+				if needsScrolling == false {
+					accountScrollOffset = 0
+				}
+			}
 			.accessibilityLabel("Decodex accounts")
+		}
+	}
+
+	private var accountListContentHeight: CGFloat {
+		AccountPanelLayout.resolvedAccountListContentHeight(
+			measured: measuredAccountListContentHeight,
+			estimated: CGFloat(max(1, store.accounts.count))
+				* AccountPanelLayout.estimatedAccountRowHeight
+		)
+	}
+
+	private var accountListViewportHeight: CGFloat {
+		AccountPanelLayout.accountListHeight(
+			accountCount: store.accounts.count,
+			measuredContentHeight: measuredAccountListContentHeight,
+			windowVisibleFrame: panelScreenVisibleFrame
+		)
+	}
+
+	private var accountListNeedsScrolling: Bool {
+		accountListContentHeight > accountListViewportHeight + 1
+	}
+
+	private var accountScrollProbe: some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: AccountScrollOffsetPreferenceKey.self,
+				value: proxy.frame(in: .named(AccountPanelLayout.accountListScrollSpace)).minY
+			)
+		}
+	}
+
+	private var accountRowsHeightProbe: some View {
+		GeometryReader { proxy in
+			Color.clear.preference(
+				key: AccountRowsHeightPreferenceKey.self,
+				value: proxy.size.height
+			)
 		}
 	}
 
