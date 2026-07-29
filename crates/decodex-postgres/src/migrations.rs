@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 28;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 29;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
@@ -18,6 +18,9 @@ const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
 #[cfg(test)]
 const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
 	include_str!("../migrations/V28__account_profile_observations.sql");
+#[cfg(test)]
+const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
+	include_str!("../migrations/V29__account_profile_array_zip.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -111,7 +114,7 @@ async fn verify_exact_ledger(
 		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V28 ledger".into(),
+			"embedded migration inventory does not end at the canonical V29 ledger".into(),
 		));
 	}
 	expected.retain(|migration| migration.version() <= terminal_version);
@@ -161,8 +164,8 @@ async fn verify_exact_ledger(
 #[cfg(test)]
 mod tests {
 	use super::{
-		ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION, CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION,
-		MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
+		ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION, ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
+		CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
 	};
 
 	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
@@ -403,6 +406,22 @@ mod tests {
 			"prepare_provider_attempt_exact",
 			"runtime_role",
 		] {
+			assert!(!migration.contains(forbidden), "{forbidden}");
+		}
+	}
+
+	#[test]
+	fn v29_repairs_only_the_profile_array_zip() {
+		let migration = ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION;
+
+		assert!(
+			migration.contains("CREATE OR REPLACE FUNCTION decodex.observe_account_profile_exact")
+		);
+		assert_eq!(migration.matches("FROM ROWS FROM (").count(), 2);
+		assert!(!migration.contains("pg_catalog.unnest(p_daily_start_dates,p_daily_tokens)"));
+		for forbidden in
+			["CREATE TABLE", "CREATE TYPE", "GRANT ", "REVOKE ", "account_migration", "legacy"]
+		{
 			assert!(!migration.contains(forbidden), "{forbidden}");
 		}
 	}

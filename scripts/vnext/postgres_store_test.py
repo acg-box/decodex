@@ -3890,7 +3890,7 @@ def prepare_postgres_authority_inventory(
 		work, POSTGRES_PREPARATION_DATABASE, env, working_binding
 	)
 	if fresh_inventory["actual_digests"] != fresh_inventory["expected_digests"]:
-		raise TestFailure("V28 fresh closed-authority digests do not match authority.rs")
+		raise TestFailure("V29 fresh closed-authority digests do not match authority.rs")
 	fresh_runtime_authority = capture_runtime_authority(
 		POSTGRES_PREPARATION_DATABASE, env
 	)
@@ -3900,7 +3900,7 @@ def prepare_postgres_authority_inventory(
 		or fresh_runtime_authority["direct_non_grantable_type_usage_count"]
 		!= len(RUNTIME_TYPE_NAMES)
 	):
-		raise TestFailure("V28 fresh runtime authority counts are not exact")
+		raise TestFailure("V29 fresh runtime authority counts are not exact")
 
 	create_database(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	set_contract_urls(
@@ -3925,31 +3925,31 @@ def prepare_postgres_authority_inventory(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v28_ledger = capture_migration_ledger(
+	upgrade_v29_ledger = capture_migration_ledger(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	if (
 		len(upgrade_v24_ledger) != 24
 		or upgrade_v24_ledger[-1].get("version") != 24
-		or len(upgrade_v28_ledger) != 28
-		or upgrade_v28_ledger[-1].get("version") != 28
-		or upgrade_v28_ledger[-1].get("name") != "account_profile_observations"
+		or len(upgrade_v29_ledger) != 29
+		or upgrade_v29_ledger[-1].get("version") != 29
+		or upgrade_v29_ledger[-1].get("name") != "account_profile_array_zip"
 	):
-		raise TestFailure("V28 upgrade migration ledger is not exact")
+		raise TestFailure("V29 upgrade migration ledger is not exact")
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 
 	return json.dumps({
 		"schema": "decodex/postgres-preparation-stage/1",
-		"stage": "v28_closed_authority",
+		"stage": "v29_closed_authority",
 		"fresh_inventory": fresh_inventory,
 		"fresh_runtime_authority": fresh_runtime_authority,
 		"upgrade": {
 			"v24_ledger": upgrade_v24_ledger,
 			"pre_v27_anchor_binding": upgrade_anchor_binding,
 			"pre_v27_type_bindings": upgrade_type_bindings,
-			"v28_ledger": upgrade_v28_ledger,
+			"v29_ledger": upgrade_v29_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 	}, sort_keys=True)
@@ -6099,12 +6099,12 @@ def prepare_changed_postgres_migrations(
 	run_migration(env)
 	ledger = capture_migration_ledger(POSTGRES_PREPARATION_DATABASE, env)
 	if (
-		len(ledger) != 28
-		or ledger[-1].get("version") != 28
-		or ledger[-1].get("name") != "account_profile_observations"
+		len(ledger) != 29
+		or ledger[-1].get("version") != 29
+		or ledger[-1].get("name") != "account_profile_array_zip"
 		or not isinstance(ledger[-1].get("checksum"), str)
 	):
-		raise TestFailure("PostgreSQL preparation did not reach the exact V1-V28 ledger")
+		raise TestFailure("PostgreSQL preparation did not reach the exact V1-V29 ledger")
 	return json.dumps({
 		"schema": "decodex/postgres-preparation-stage/1",
 		"stage": "migration_syntax",
@@ -6470,7 +6470,7 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 			for row in function_grants
 		)
 	):
-		raise TestFailure("V28 upgrade runtime function authority is not exact")
+		raise TestFailure("V29 upgrade runtime function authority is not exact")
 	if (
 		not isinstance(type_grants, list)
 		or [row.get("identity") for row in type_grants if isinstance(row, dict)]
@@ -6483,7 +6483,7 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 			for row in type_grants
 		)
 	):
-		raise TestFailure("V28 upgrade runtime type authority is not exact")
+		raise TestFailure("V29 upgrade runtime type authority is not exact")
 	if (
 		not isinstance(internal_sealing, list)
 		or [row.get("identity") for row in internal_sealing if isinstance(row, dict)]
@@ -6500,7 +6500,7 @@ def capture_upgrade_runtime_authority(database: str, env: dict[str, str]) -> dic
 	if not isinstance(unrelated_authority, dict) or any(
 		value != 0 for value in unrelated_authority.values()
 	):
-		raise TestFailure("V28 upgrade added unrelated runtime authority")
+		raise TestFailure("V29 upgrade added unrelated runtime authority")
 
 	return {
 		"database": database,
@@ -6822,26 +6822,26 @@ def validate_phase_a_receipt_document(document: object) -> dict[str, object]:
 		receipt["migration_ledger"], checkpoints, "Phase A ledger checkpoints are malformed"
 	)
 	for ledger in ledgers.values():
-		require_receipt_ledger(ledger, through_version=28)
+		require_receipt_ledger(ledger, through_version=29)
 	if ledgers["source"] != ledgers["restored_once"] or ledgers["source"] != ledgers["restored_twice"]:
-		raise TestFailure("Phase A V28 ledgers differ across restore checkpoints")
-	if ledgers["source"][-1]["name"] != "account_profile_observations":
-		raise TestFailure("Phase A ledger does not end at V28")
+		raise TestFailure("Phase A V29 ledgers differ across restore checkpoints")
+	if ledgers["source"][-1]["name"] != "account_profile_array_zip":
+		raise TestFailure("Phase A ledger does not end at V29")
 	upgrade = require_exact_keys(
 		receipt["one_grantee_upgrade"],
 		{
 			"database", "pre_v27_anchor_binding", "pre_v27_type_bindings",
-			"runtime_authority", "v24_ledger", "v28_ledger",
+			"runtime_authority", "v24_ledger", "v29_ledger",
 		},
 		"Phase A one-grantee upgrade evidence is malformed",
 	)
 	require_receipt_ledger(upgrade["v24_ledger"], through_version=24)
-	upgrade_v28 = require_receipt_ledger(upgrade["v28_ledger"], through_version=28)
+	upgrade_v29 = require_receipt_ledger(upgrade["v29_ledger"], through_version=29)
 	if (
 		upgrade["database"] != AUTHORITY_CAPTURE_UPGRADE_DATABASE
-		or upgrade_v28 != ledgers["source"]
+		or upgrade_v29 != ledgers["source"]
 	):
-		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V28 ledger")
+		raise TestFailure("Phase A one-grantee upgrade does not reach the exact V29 ledger")
 	upgrade_authority = require_exact_keys(
 		upgrade["runtime_authority"],
 		{
@@ -8247,7 +8247,7 @@ def run_authority_candidate_capture(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
 	run_migration(env)
-	upgrade_v28_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
+	upgrade_v29_ledger = capture_migration_ledger(AUTHORITY_CAPTURE_UPGRADE_DATABASE, env)
 	upgrade_runtime_authority = capture_upgrade_runtime_authority(
 		AUTHORITY_CAPTURE_UPGRADE_DATABASE, env
 	)
@@ -8554,7 +8554,7 @@ def run_authority_candidate_capture(
 			"v24_ledger": upgrade_v24_ledger,
 			"pre_v27_anchor_binding": upgrade_anchor_binding,
 			"pre_v27_type_bindings": upgrade_type_bindings,
-			"v28_ledger": upgrade_v28_ledger,
+			"v29_ledger": upgrade_v29_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		}
 		if phase_b_upgrade != phase_a.document["one_grantee_upgrade"]:
@@ -8594,7 +8594,7 @@ def run_authority_candidate_capture(
 			"v24_ledger": upgrade_v24_ledger,
 			"pre_v27_anchor_binding": upgrade_anchor_binding,
 			"pre_v27_type_bindings": upgrade_type_bindings,
-			"v28_ledger": upgrade_v28_ledger,
+			"v29_ledger": upgrade_v29_ledger,
 			"runtime_authority": upgrade_runtime_authority,
 		},
 		"runtime_authority": {
@@ -10425,7 +10425,7 @@ def main(
 					"checkpoint_state": restore_report,
 				}
 				raise TestFailure(
-					"aggregate V14-V28 PostgreSQL acceptance failure:\n"
+					"aggregate V14-V29 PostgreSQL acceptance failure:\n"
 					+ json.dumps(diagnostics, sort_keys=True)
 				)
 			return json.dumps(artifact_evidence, sort_keys=True)

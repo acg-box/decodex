@@ -257,8 +257,9 @@ readback, plus V23's eight ProcessSupervisor fence, transition, projection, evid
 entrypoints, plus V24's seven ProviderAttemptService preparation, transition, positive-evidence,
 projection, and read entrypoints, one trigger-only Turn-reservation helper, and V26's immutable
 execution-decision and ManagedRun execution-projection read functions, plus V27's sixteen exact
-account lifecycle, routing, quota, store, and capability functions and V28's two exact profile
-observation/read functions. The helper has a
+account lifecycle, routing, quota, store, and capability functions, V28's two exact profile
+observation/read functions, and V29's PostgreSQL 18 array-zip repair for profile observation.
+The helper has a
 fixed search path, runs as the migration owner, and grants no direct runtime or PUBLIC execution.
 The historical V24 boundary has an exact semantic inventory overlay for its 84-relation,
 184-function, 75-safety-function, 154-trigger, 69-runtime-function, and ten-post-V22-enum
