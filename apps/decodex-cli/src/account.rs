@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V1.4 daemon protocol.
+//! Operator account client over the same-UID V1.5 daemon protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -19,6 +19,8 @@ pub enum AccountCommand {
 	List,
 	/// Inspect one daemon-owned account row.
 	Inspect(AccountIdentityArgs),
+	/// Refresh and read one bounded account profile.
+	Profile(AccountProfileArgs),
 	/// Enroll credentials from the normal shared Codex auth file.
 	Enroll(EnrollArgs),
 	/// Import one owner-private versioned credential file.
@@ -47,6 +49,15 @@ pub enum AccountCommand {
 pub struct AccountIdentityArgs {
 	#[arg(long)]
 	account_id: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Args)]
+pub struct AccountProfileArgs {
+	#[arg(long)]
+	account_id: String,
+	/// Include the bounded current credential email. Email is redacted by default.
+	#[arg(long)]
+	include_email: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Args)]
@@ -190,6 +201,13 @@ pub async fn execute(
 			};
 			return render("inspect", format, client.inspect(account_id).await);
 		},
+		AccountCommand::Profile(args) => {
+			let account_id = match entity(&args.account_id) {
+				Ok(value) => value,
+				Err(output) => return output,
+			};
+			return render("profile", format, client.profile(account_id, args.include_email).await);
+		},
 		AccountCommand::SetFixedSelection(args) => {
 			let input = (
 				entity(&args.account_id),
@@ -327,6 +345,7 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 		),
 		AccountCommand::List
 		| AccountCommand::Inspect(_)
+		| AccountCommand::Profile(_)
 		| AccountCommand::SetFixedSelection(_)
 		| AccountCommand::SetBalancedSelection(_)
 		| AccountCommand::SetAccountOrder(_) => Err(invalid_input()),
@@ -441,10 +460,14 @@ fn invalid_input() -> CommandOutput {
 #[cfg(test)]
 mod tests {
 	use clap::Parser as _;
+	use decodex_protocol::{
+		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
+		AccountProfileErrorDto, AccountProfileResult, EntityId, EntityRevision, WireText,
+	};
 
 	use crate::{Cli, Command};
 
-	use super::AccountCommand;
+	use super::{ACCOUNT_OUTPUT_SCHEMA, AccountCommand, OutputDocument};
 
 	const OPERATION_ID: &str = "40000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "40000000-0000-4000-8000-000000000002";
@@ -549,5 +572,151 @@ mod tests {
 				if args.order == vec![ACCOUNT_ID.to_owned()]
 		));
 		assert!(Cli::try_parse_from(["decodex", "account", "route"]).is_err());
+	}
+
+	#[test]
+	fn profile_redacts_email_by_default_and_requires_explicit_inclusion() {
+		let redacted =
+			Cli::try_parse_from(["decodex", "account", "profile", "--account-id", ACCOUNT_ID])
+				.expect("bounded profile query must parse");
+		let visible = Cli::try_parse_from([
+			"decodex",
+			"account",
+			"profile",
+			"--account-id",
+			ACCOUNT_ID,
+			"--include-email",
+		])
+		.expect("explicit email inclusion must parse");
+
+		assert!(matches!(
+			redacted.command,
+			Command::Account(AccountCommand::Profile(args)) if !args.include_email
+		));
+		assert!(matches!(
+			visible.command,
+			Command::Account(AccountCommand::Profile(args)) if args.include_email
+		));
+	}
+
+	#[test]
+	fn profile_json_has_stable_current_cached_and_unavailable_document_shapes() {
+		let profile = AccountProfileDto {
+			account_id: EntityId::new(ACCOUNT_ID).unwrap(),
+			account_revision: EntityRevision(7),
+			observed_at_unix_micros: 1_700_000_000_000_000,
+			email: AccountProfileEmailDto::Redacted,
+			plan_type: Some(WireText::new("pro").unwrap()),
+			display_name: Some(WireText::new("Iris").unwrap()),
+			username: Some(WireText::new("iris").unwrap()),
+			lifetime_tokens: Some(12_345),
+			peak_daily_tokens: Some(900),
+			longest_task_seconds: Some(600),
+			current_streak_days: Some(3),
+			longest_streak_days: Some(8),
+			daily_usage: vec![AccountProfileDailyUsageDto {
+				start_date: WireText::new("2026-07-28").unwrap(),
+				tokens: 900,
+			}],
+		};
+		let document = OutputDocument {
+			schema: ACCOUNT_OUTPUT_SCHEMA,
+			command: "profile",
+			outcome: "success",
+			result: AccountProfileResult::Current(Box::new(profile.clone())),
+		};
+
+		assert_eq!(
+			serde_json::to_value(document).unwrap(),
+			serde_json::json!({
+				"schema": "decodex/cli-account/1",
+				"command": "profile",
+				"outcome": "success",
+				"result": {
+					"outcome": "current",
+					"data": {
+						"account_id": ACCOUNT_ID,
+						"account_revision": 7,
+						"observed_at_unix_micros": 1_700_000_000_000_000_i64,
+						"email": {"visibility": "redacted"},
+						"plan_type": "pro",
+						"display_name": "Iris",
+						"username": "iris",
+						"lifetime_tokens": 12_345,
+						"peak_daily_tokens": 900,
+						"longest_task_seconds": 600,
+						"current_streak_days": 3,
+						"longest_streak_days": 8,
+						"daily_usage": [{"start_date": "2026-07-28", "tokens": 900}],
+					},
+				},
+			}),
+		);
+
+		let cached = OutputDocument {
+			schema: ACCOUNT_OUTPUT_SCHEMA,
+			command: "profile",
+			outcome: "success",
+			result: AccountProfileResult::Cached {
+				profile: Box::new(profile),
+				refresh_error: AccountProfileErrorDto::ProviderUnavailable,
+			},
+		};
+		assert_eq!(
+			serde_json::to_value(cached).unwrap(),
+			serde_json::json!({
+				"schema": "decodex/cli-account/1",
+				"command": "profile",
+				"outcome": "success",
+				"result": {
+					"outcome": "cached",
+					"data": {
+						"profile": {
+							"account_id": ACCOUNT_ID,
+							"account_revision": 7,
+							"observed_at_unix_micros": 1_700_000_000_000_000_i64,
+							"email": {"visibility": "redacted"},
+							"plan_type": "pro",
+							"display_name": "Iris",
+							"username": "iris",
+							"lifetime_tokens": 12_345,
+							"peak_daily_tokens": 900,
+							"longest_task_seconds": 600,
+							"current_streak_days": 3,
+							"longest_streak_days": 8,
+							"daily_usage": [{"start_date": "2026-07-28", "tokens": 900}],
+						},
+						"refresh_error": "provider_unavailable",
+					},
+				},
+			}),
+		);
+
+		let unavailable = OutputDocument {
+			schema: ACCOUNT_OUTPUT_SCHEMA,
+			command: "profile",
+			outcome: "success",
+			result: AccountProfileResult::Unavailable {
+				error: AccountProfileErrorDto::ProviderUnavailable,
+				email: AccountProfileEmailDto::Redacted,
+				plan_type: Some(WireText::new("pro").unwrap()),
+			},
+		};
+		assert_eq!(
+			serde_json::to_value(unavailable).unwrap(),
+			serde_json::json!({
+				"schema": "decodex/cli-account/1",
+				"command": "profile",
+				"outcome": "success",
+				"result": {
+					"outcome": "unavailable",
+					"data": {
+						"error": "provider_unavailable",
+						"email": {"visibility": "redacted"},
+						"plan_type": "pro",
+					},
+				},
+			}),
+		);
 	}
 }

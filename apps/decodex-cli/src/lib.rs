@@ -15,6 +15,7 @@ use decodex_protocol::{
 };
 
 mod account;
+mod fast_mode;
 mod git_hook;
 mod local_git;
 mod reset_card;
@@ -114,9 +115,12 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V1.4 protocol.
+	/// Manage daemon-owned accounts through the same-UID V1.5 protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
+	/// Read or update the current user's local Codex Fast mode setting.
+	#[command(subcommand)]
+	FastMode(fast_mode::FastModeCommand),
 	/// Enforce the local Git commit and push policy without contacting the Decodex server.
 	GitHook(git_hook::GitHookCommand),
 	/// Create one signed local commit without contacting the Decodex server.
@@ -173,6 +177,9 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 				expected_server_id.as_deref(),
 			)
 			.await;
+		},
+		Command::FastMode(command) => {
+			return fast_mode::execute(command, output);
 		},
 		Command::GitHook(command) => {
 			return render_git_hook_result(output, git_hook::execute(&command));

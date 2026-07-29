@@ -24,6 +24,8 @@ pub const MAX_HISTORY_INLINE_BYTES: usize = 16 * 1_024;
 /// Maximum history items returned in one WebSocket query result. This keeps the worst-case
 /// encoded result below the default 256-KiB transport frame bound.
 pub const MAX_HISTORY_PAGE_SIZE: u16 = 8;
+/// Maximum daily usage facts retained and returned for one account profile.
+pub const MAX_ACCOUNT_PROFILE_DAILY_USAGE: usize = 36;
 /// Maximum verified payload length representable in a history blob reference.
 pub const MAX_HISTORY_BLOB_BYTES: u64 = 64 * 1_024 * 1_024;
 
@@ -1305,10 +1307,263 @@ pub enum AccountQuotaStateDto {
 	},
 }
 
+/// Email visibility selected explicitly by one account-profile query.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "visibility", content = "value", rename_all = "snake_case", deny_unknown_fields)]
+pub enum AccountProfileEmailDto {
+	/// The provider email was intentionally omitted from this response.
+	Redacted,
+	/// The bounded provider email was explicitly requested.
+	Visible(WireText),
+}
+
+/// One bounded provider daily-usage fact.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountProfileDailyUsageDto {
+	/// Canonical provider calendar date in `YYYY-MM-DD` form.
+	pub start_date: WireText,
+	/// Non-negative tokens attributed to the date.
+	pub tokens: u64,
+}
+
+/// One persisted account-profile snapshot plus current non-secret credential claims.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AccountProfileDto {
+	/// Canonical vNext account UUID.
+	pub account_id: EntityId,
+	/// Account revision fenced when this profile observation was persisted.
+	pub account_revision: EntityRevision,
+	/// Provider observation time in Unix microseconds.
+	pub observed_at_unix_micros: i64,
+	/// Explicitly redacted or visible current credential email.
+	pub email: AccountProfileEmailDto,
+	/// Current credential plan claim. This is not live capacity evidence.
+	pub plan_type: Option<WireText>,
+	/// Provider profile display name.
+	pub display_name: Option<WireText>,
+	/// Provider profile user name.
+	pub username: Option<WireText>,
+	/// Provider-reported lifetime token count.
+	pub lifetime_tokens: Option<u64>,
+	/// Provider-reported or daily-derived peak token count.
+	pub peak_daily_tokens: Option<u64>,
+	/// Provider-reported longest running task duration.
+	pub longest_task_seconds: Option<u64>,
+	/// Provider-reported current streak.
+	pub current_streak_days: Option<u32>,
+	/// Provider-reported longest streak.
+	pub longest_streak_days: Option<u32>,
+	/// At most 36 unique ascending daily usage facts.
+	pub daily_usage: Vec<AccountProfileDailyUsageDto>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+struct RawAccountProfileDto {
+	account_id: EntityId,
+	account_revision: EntityRevision,
+	observed_at_unix_micros: i64,
+	email: AccountProfileEmailDto,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	plan_type: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	display_name: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	username: Option<WireText>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	lifetime_tokens: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	peak_daily_tokens: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	longest_task_seconds: Option<u64>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	current_streak_days: Option<u32>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	longest_streak_days: Option<u32>,
+	daily_usage: Vec<AccountProfileDailyUsageDto>,
+}
+impl From<&AccountProfileDto> for RawAccountProfileDto {
+	fn from(profile: &AccountProfileDto) -> Self {
+		Self {
+			account_id: profile.account_id.clone(),
+			account_revision: profile.account_revision,
+			observed_at_unix_micros: profile.observed_at_unix_micros,
+			email: profile.email.clone(),
+			plan_type: profile.plan_type.clone(),
+			display_name: profile.display_name.clone(),
+			username: profile.username.clone(),
+			lifetime_tokens: profile.lifetime_tokens,
+			peak_daily_tokens: profile.peak_daily_tokens,
+			longest_task_seconds: profile.longest_task_seconds,
+			current_streak_days: profile.current_streak_days,
+			longest_streak_days: profile.longest_streak_days,
+			daily_usage: profile.daily_usage.clone(),
+		}
+	}
+}
+impl From<RawAccountProfileDto> for AccountProfileDto {
+	fn from(profile: RawAccountProfileDto) -> Self {
+		Self {
+			account_id: profile.account_id,
+			account_revision: profile.account_revision,
+			observed_at_unix_micros: profile.observed_at_unix_micros,
+			email: profile.email,
+			plan_type: profile.plan_type,
+			display_name: profile.display_name,
+			username: profile.username,
+			lifetime_tokens: profile.lifetime_tokens,
+			peak_daily_tokens: profile.peak_daily_tokens,
+			longest_task_seconds: profile.longest_task_seconds,
+			current_streak_days: profile.current_streak_days,
+			longest_streak_days: profile.longest_streak_days,
+			daily_usage: profile.daily_usage,
+		}
+	}
+}
+impl Serialize for AccountProfileDto {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		validate_account_profile(self).map_err(S::Error::custom)?;
+		RawAccountProfileDto::from(self).serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountProfileDto {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		let profile = Self::from(RawAccountProfileDto::deserialize(deserializer)?);
+		validate_account_profile(&profile).map_err(D::Error::custom)?;
+		Ok(profile)
+	}
+}
+
+/// Closed account-profile observation failure safe for a local client.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AccountProfileErrorDto {
+	/// The request did not identify one canonical account.
+	InvalidRequest,
+	/// The account does not exist or is tombstoned.
+	AccountUnavailable,
+	/// Authoritative PostgreSQL state was unavailable.
+	ProductStateUnavailable,
+	/// The exact host credential item was absent, stale, or unavailable.
+	CredentialUnavailable,
+	/// The provider rejected the exact credential with HTTP 401.
+	Unauthorized,
+	/// The fixed provider endpoint could not complete successfully.
+	ProviderUnavailable,
+	/// The bounded provider payload did not satisfy the profile contract.
+	ProtocolUnavailable,
+	/// The account revision or provider binding changed before persistence.
+	AccountChanged,
+}
+
+/// Independent per-account profile observation with bounded cached fallback.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountProfileResult {
+	/// A fresh provider observation was persisted before this response.
+	Current(Box<AccountProfileDto>),
+	/// A prior persisted snapshot is available after a typed refresh failure.
+	Cached {
+		/// The latest persisted profile snapshot.
+		profile: Box<AccountProfileDto>,
+		/// Stable reason the fresh observation did not complete.
+		refresh_error: AccountProfileErrorDto,
+	},
+	/// No safe profile snapshot is available.
+	Unavailable {
+		/// Stable row-scoped failure.
+		error: AccountProfileErrorDto,
+		/// Explicitly redacted or visible current credential email.
+		email: AccountProfileEmailDto,
+		/// Current credential plan claim. This is not live capacity evidence.
+		plan_type: Option<WireText>,
+	},
+}
+impl Serialize for AccountProfileResult {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		#[derive(Serialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+		enum Raw<'a> {
+			Current(&'a AccountProfileDto),
+			Cached {
+				profile: &'a AccountProfileDto,
+				refresh_error: AccountProfileErrorDto,
+			},
+			Unavailable {
+				error: AccountProfileErrorDto,
+				email: &'a AccountProfileEmailDto,
+				#[serde(skip_serializing_if = "Option::is_none")]
+				plan_type: Option<&'a WireText>,
+			},
+		}
+		let raw = match self {
+			Self::Current(profile) => {
+				validate_account_profile(profile).map_err(S::Error::custom)?;
+				Raw::Current(profile)
+			},
+			Self::Cached { profile, refresh_error } => {
+				validate_account_profile(profile).map_err(S::Error::custom)?;
+				Raw::Cached { profile, refresh_error: *refresh_error }
+			},
+			Self::Unavailable { error, email, plan_type } => {
+				validate_account_profile_claims(email, plan_type.as_ref())
+					.map_err(S::Error::custom)?;
+				Raw::Unavailable { error: *error, email, plan_type: plan_type.as_ref() }
+			},
+		};
+		raw.serialize(serializer)
+	}
+}
+impl<'de> Deserialize<'de> for AccountProfileResult {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+		enum Raw {
+			Current(Box<AccountProfileDto>),
+			Cached {
+				profile: Box<AccountProfileDto>,
+				refresh_error: AccountProfileErrorDto,
+			},
+			Unavailable {
+				error: AccountProfileErrorDto,
+				email: AccountProfileEmailDto,
+				plan_type: Option<WireText>,
+			},
+		}
+		match Raw::deserialize(deserializer)? {
+			Raw::Current(profile) => {
+				validate_account_profile(&profile).map_err(D::Error::custom)?;
+				Ok(Self::Current(profile))
+			},
+			Raw::Cached { profile, refresh_error } => {
+				validate_account_profile(&profile).map_err(D::Error::custom)?;
+				Ok(Self::Cached { profile, refresh_error })
+			},
+			Raw::Unavailable { error, email, plan_type } => {
+				validate_account_profile_claims(&email, plan_type.as_ref())
+					.map_err(D::Error::custom)?;
+				Ok(Self::Unavailable { error, email, plan_type })
+			},
+		}
+	}
+}
+
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. V1.4 accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V1 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -1785,6 +2040,13 @@ pub enum QueryPayload {
 		/// Canonical account identity to inspect.
 		account_id: EntityId,
 	},
+	/// Observe one account's bounded provider profile independently from Reset Card inventory.
+	GetAccountProfile {
+		/// Canonical account identity to observe.
+		account_id: EntityId,
+		/// Whether the response may include the bounded current credential email.
+		include_email: bool,
+	},
 	/// Evaluate initial account selection without creating fallback or wake work.
 	GetInitialAccountSelection,
 }
@@ -1800,6 +2062,8 @@ impl QueryPayload {
 				version_supports(version, ProtocolVersion { major: 1, minor: 3 }),
 			Self::ListAccounts | Self::InspectAccount { .. } | Self::GetInitialAccountSelection =>
 				version_supports(version, ProtocolVersion { major: 1, minor: 4 }),
+			Self::GetAccountProfile { .. } =>
+				version_supports(version, ProtocolVersion { major: 1, minor: 5 }),
 		}
 	}
 }
@@ -2150,6 +2414,8 @@ pub enum QueryResultPayload {
 	Accounts(AccountsResult),
 	/// One account and exact lifecycle readiness.
 	Account(AccountInspectResult),
+	/// One independent bounded account-profile observation.
+	AccountProfile(AccountProfileResult),
 	/// Deterministic initial account choice or typed recovery.
 	InitialAccountSelection(AccountInitialSelectionResult),
 }
@@ -2599,6 +2865,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		ClientMessage::Query(query) => match &query.payload {
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
+			| QueryPayload::GetAccountProfile { account_id, .. }
 				if !is_canonical_uuid(account_id.as_str()) =>
 				Err("account query identity is not canonical"),
 			_ => Ok(()),
@@ -2859,6 +3126,105 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	Ok(())
 }
 
+fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static str> {
+	if !is_canonical_uuid(profile.account_id.as_str())
+		|| profile.account_revision.0 == 0
+		|| profile.account_revision.0 > i64::MAX as u64
+		|| profile.observed_at_unix_micros <= 0
+		|| profile.observed_at_unix_micros > 253_402_300_799_999_999
+	{
+		return Err("account profile identity, revision, or observation time is invalid");
+	}
+	validate_account_profile_claims(&profile.email, profile.plan_type.as_ref())?;
+	if profile.display_name.as_ref().is_some_and(|value| !bounded_profile_text(value, 256))
+		|| profile.username.as_ref().is_some_and(|value| !bounded_profile_text(value, 256))
+	{
+		return Err("account profile text is invalid");
+	}
+	if profile.lifetime_tokens.is_some_and(|value| value > i64::MAX as u64)
+		|| profile.peak_daily_tokens.is_some_and(|value| value > i64::MAX as u64)
+		|| profile.longest_task_seconds.is_some_and(|value| value > i64::MAX as u64)
+		|| profile.current_streak_days.is_some_and(|value| value > i32::MAX as u32)
+		|| profile.longest_streak_days.is_some_and(|value| value > i32::MAX as u32)
+	{
+		return Err("account profile metric exceeds the PostgreSQL contract");
+	}
+	if profile.daily_usage.len() > MAX_ACCOUNT_PROFILE_DAILY_USAGE {
+		return Err("account profile daily usage exceeds the cardinality bound");
+	}
+	let mut previous = None;
+	for daily in &profile.daily_usage {
+		if daily.tokens > i64::MAX as u64 || !canonical_calendar_date(daily.start_date.as_str()) {
+			return Err("account profile daily usage is invalid");
+		}
+		if previous.is_some_and(|value| value >= daily.start_date.as_str()) {
+			return Err("account profile daily usage is not unique and ascending");
+		}
+		previous = Some(daily.start_date.as_str());
+	}
+	if profile.display_name.is_none()
+		&& profile.username.is_none()
+		&& profile.lifetime_tokens.is_none()
+		&& profile.peak_daily_tokens.is_none()
+		&& profile.longest_task_seconds.is_none()
+		&& profile.current_streak_days.is_none()
+		&& profile.longest_streak_days.is_none()
+		&& profile.daily_usage.is_empty()
+	{
+		return Err("account profile snapshot is empty");
+	}
+	Ok(())
+}
+
+fn validate_account_profile_claims(
+	email: &AccountProfileEmailDto,
+	plan_type: Option<&WireText>,
+) -> Result<(), &'static str> {
+	if let AccountProfileEmailDto::Visible(email) = email
+		&& !bounded_profile_text(email, 320)
+	{
+		return Err("account profile email is invalid");
+	}
+	if plan_type.is_some_and(|value| !bounded_profile_text(value, 128)) {
+		return Err("account profile plan type is invalid");
+	}
+	Ok(())
+}
+
+fn bounded_profile_text(value: &WireText, maximum: usize) -> bool {
+	let value = value.as_str();
+	!value.is_empty() && value.len() <= maximum && !value.chars().any(char::is_control)
+}
+
+fn canonical_calendar_date(value: &str) -> bool {
+	let bytes = value.as_bytes();
+	if bytes.len() != 10
+		|| bytes[4] != b'-'
+		|| bytes[7] != b'-'
+		|| bytes
+			.iter()
+			.enumerate()
+			.any(|(index, byte)| !matches!(index, 4 | 7) && !byte.is_ascii_digit())
+	{
+		return false;
+	}
+	let number = |start: usize, end: usize| {
+		value[start..end].parse::<u32>().expect("validated date bytes are decimal")
+	};
+	let year = number(0, 4);
+	let month = number(5, 7);
+	let day = number(8, 10);
+	let leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+	let maximum_day = match month {
+		1 | 3 | 5 | 7 | 8 | 10 | 12 => 31,
+		4 | 6 | 9 | 11 => 30,
+		2 if leap => 29,
+		2 => 28,
+		_ => return false,
+	};
+	year > 0 && (1..=maximum_day).contains(&day)
+}
+
 fn validate_reset_card_inventory(
 	account_id: &EntityId,
 	account_revision: EntityRevision,
@@ -2939,13 +3305,15 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountCommandRejectionDto, AccountInitialSelectionResult, CURRENT_VERSION, CausationId,
-		ClientCommandId, CommandError, CorrelationId, EntityId, EventPayload, HistoryCursorToken,
-		HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
-		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
-		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		PREVIOUS_MINOR_VERSION, QueryId, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload,
-		ServerId, ServerInstanceId, WireText,
+		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountProfileDailyUsageDto,
+		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
+		CURRENT_VERSION, CausationId, ClientCommandId, CommandError, CorrelationId, EntityId,
+		EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, PREVIOUS_MINOR_VERSION, QueryId,
+		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
+		WireText,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
@@ -3264,7 +3632,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":1,"minor":4},"#,
+				r#"{"type":"hello","body":{"version":{"major":1,"minor":5},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -3273,7 +3641,7 @@ mod tests {
 	#[test]
 	fn previous_minor_hello_without_publication_epoch_decodes_compatibly() {
 		let encoded = concat!(
-			r#"{"type":"hello","body":{"version":{"major":1,"minor":3},"#,
+			r#"{"type":"hello","body":{"version":{"major":1,"minor":4},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let ClientMessage::Hello(hello) = serde_json::from_str(encoded).unwrap() else {
@@ -3309,7 +3677,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":1,"minor":4},"#,
+				r#"{"type":"command","body":{"version":{"major":1,"minor":5},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -3504,9 +3872,9 @@ mod tests {
 	}
 
 	#[test]
-	fn v1_3_messages_keep_decoding_during_the_rolling_window() {
+	fn v1_4_messages_keep_decoding_during_the_rolling_window() {
 		let encoded = concat!(
-			r#"{"type":"query","body":{"version":{"major":1,"minor":3},"query_id":"legacy","#,
+			r#"{"type":"query","body":{"version":{"major":1,"minor":4},"query_id":"previous","#,
 			r#""payload":{"name":"get_doctor_status"}}}"#,
 		);
 
@@ -3514,14 +3882,14 @@ mod tests {
 			serde_json::from_str::<ClientMessage>(encoded).unwrap(),
 			ClientMessage::Query(QueryEnvelope {
 				version: crate::PREVIOUS_MINOR_VERSION,
-				query_id: QueryId::new("legacy").unwrap(),
+				query_id: QueryId::new("previous").unwrap(),
 				payload: QueryPayload::GetDoctorStatus,
 			})
 		);
 	}
 
 	#[test]
-	fn minor_feature_gates_keep_v1_3_free_of_account_lifecycle_shapes() {
+	fn minor_feature_gates_keep_v1_4_free_of_account_profile_shapes() {
 		let account_id =
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
@@ -3557,11 +3925,18 @@ mod tests {
 			}
 			.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
-		assert!(!QueryPayload::ListAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
+		assert!(QueryPayload::ListAccounts.is_supported_in(PREVIOUS_MINOR_VERSION));
 		assert!(
-			!CommandPayload::SetAccountEnabled {
+			CommandPayload::SetAccountEnabled {
 				account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
 				enabled: false,
+			}
+			.is_supported_in(PREVIOUS_MINOR_VERSION)
+		);
+		assert!(
+			!QueryPayload::GetAccountProfile {
+				account_id: EntityId::new("01234567-89ab-4def-8123-456789abcdef").unwrap(),
+				include_email: false,
 			}
 			.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
@@ -3569,6 +3944,74 @@ mod tests {
 			EventPayload::SystemObservationRefreshed { status: WireText::new("ready").unwrap() }
 				.is_supported_in(PREVIOUS_MINOR_VERSION)
 		);
+	}
+
+	#[test]
+	fn account_profile_is_bounded_strict_and_email_redacted_explicitly() {
+		let profile = AccountProfileDto {
+			account_id: EntityId::new("40000000-0000-4000-8000-000000000001").unwrap(),
+			account_revision: EntityRevision(7),
+			observed_at_unix_micros: 1_700_000_000_000_000,
+			email: AccountProfileEmailDto::Redacted,
+			plan_type: Some(WireText::new("pro").unwrap()),
+			display_name: Some(WireText::new("Iris").unwrap()),
+			username: None,
+			lifetime_tokens: Some(12_345),
+			peak_daily_tokens: Some(900),
+			longest_task_seconds: Some(600),
+			current_streak_days: Some(3),
+			longest_streak_days: Some(8),
+			daily_usage: vec![AccountProfileDailyUsageDto {
+				start_date: WireText::new("2026-07-28").unwrap(),
+				tokens: 900,
+			}],
+		};
+		let encoded =
+			serde_json::to_value(AccountProfileResult::Current(Box::new(profile))).unwrap();
+
+		assert_eq!(encoded["outcome"], "current");
+		assert_eq!(encoded["data"]["email"]["visibility"], "redacted");
+		assert!(encoded["data"]["email"].get("value").is_none());
+
+		let unavailable = serde_json::to_value(AccountProfileResult::Unavailable {
+			error: AccountProfileErrorDto::ProviderUnavailable,
+			email: AccountProfileEmailDto::Redacted,
+			plan_type: Some(WireText::new("pro").unwrap()),
+		})
+		.unwrap();
+		assert_eq!(unavailable["outcome"], "unavailable");
+		assert_eq!(unavailable["data"]["error"], "provider_unavailable");
+		assert_eq!(unavailable["data"]["email"]["visibility"], "redacted");
+		assert_eq!(unavailable["data"]["plan_type"], "pro");
+		let mut missing_email = unavailable.clone();
+		missing_email["data"].as_object_mut().unwrap().remove("email");
+		assert!(serde_json::from_value::<AccountProfileResult>(missing_email).is_err());
+
+		let mut unknown = encoded.clone();
+		unknown["data"]["unexpected"] = serde_json::json!(true);
+		assert!(serde_json::from_value::<AccountProfileResult>(unknown).is_err());
+
+		let mut overflow = encoded.clone();
+		overflow["data"]["account_revision"] = serde_json::json!(i64::MAX as u64 + 1);
+		assert!(serde_json::from_value::<AccountProfileResult>(overflow).is_err());
+
+		let mut too_many = encoded.clone();
+		too_many["data"]["daily_usage"] = serde_json::Value::Array(
+			(1..=37)
+				.map(|day| {
+					let (month, day) = if day <= 31 { (7, day) } else { (8, day - 31) };
+					serde_json::json!({
+						"start_date": format!("2026-{month:02}-{day:02}"),
+						"tokens": day,
+					})
+				})
+				.collect(),
+		);
+		assert!(serde_json::from_value::<AccountProfileResult>(too_many).is_err());
+
+		let mut malformed_date = encoded;
+		malformed_date["data"]["daily_usage"][0]["start_date"] = serde_json::json!("2026-02-30");
+		assert!(serde_json::from_value::<AccountProfileResult>(malformed_date).is_err());
 	}
 
 	#[test]

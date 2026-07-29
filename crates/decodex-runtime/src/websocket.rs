@@ -43,16 +43,22 @@ use tokio_tungstenite::{
 use crate::{Application, ApplicationPublication};
 use decodex_core::ServerIdentity;
 use decodex_protocol::{
-	self, CURRENT_VERSION, CausationId, ClientCommandId, ClientHello, ClientMessage,
-	CommandEnvelope, CommandError, CommandOutcome, CommandReceipt, CommandResultEnvelope,
-	CorrelationId, Cursor, EventEnvelope, IdempotencyKey, LocalTransportAuthority,
-	LocalTransportListener, LocalTransportRefusal, LocalTransportStream, ProtocolVersion,
-	QueryEnvelope, QueryResultEnvelope, ReceiptDisposition, ReconnectMode, Refusal,
-	RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage, ServerWelcome,
-	SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
+	self, CausationId, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
+	CommandOutcome, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, EventEnvelope,
+	IdempotencyKey, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
+	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReceiptDisposition,
+	ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId,
+	ServerMessage, ServerWelcome, SnapshotEnvelope, SnapshotItem, SupportedVersions, WireText,
 };
 
 const WS_PATH: &str = "/v1/ws";
+const PUBLICATION_INSTANCE_MINIMUM_VERSION: ProtocolVersion =
+	ProtocolVersion { major: 1, minor: 4 };
+
+const fn supports_publication_instance(version: ProtocolVersion) -> bool {
+	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
+		&& version.minor >= PUBLICATION_INSTANCE_MINIMUM_VERSION.minor
+}
 
 type WebSocket = WebSocketStream<LocalTransportStream>;
 type OwnedFuture = Pin<Box<dyn Future<Output = ()> + Send + 'static>>;
@@ -713,7 +719,7 @@ where
 				version: negotiated,
 				supported: SupportedVersions::current(),
 				server_id: self.inner.server_id.clone(),
-				instance_id: (negotiated == CURRENT_VERSION)
+				instance_id: supports_publication_instance(negotiated)
 					.then(|| self.inner.instance_id.clone())
 					.flatten(),
 				cursor: state.cursor,
@@ -733,7 +739,7 @@ where
 		snapshot_items: Vec<SnapshotItem>,
 	) -> (ReconnectMode, Vec<ServerMessage>) {
 		let can_resume = resume.is_some_and(|resume| {
-			version == CURRENT_VERSION
+			supports_publication_instance(version)
 				&& self.inner.instance_id.as_ref() == resume.instance_id.as_ref()
 				&& self.inner.instance_id.is_some()
 				&& resume.server_id == self.inner.server_id
