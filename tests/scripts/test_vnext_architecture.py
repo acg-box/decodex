@@ -548,7 +548,9 @@ class VnextArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(live_token, migration)
 
-    def test_v16_decision_and_v17_handoff_have_one_disabled_runtime_path(self):
+    def test_v16_decision_and_v17_handoff_have_one_stateless_dispatch_disabled_path(
+        self,
+    ):
         core_routing = _strip_rust_prose(
             (ROOT / "crates/decodex-core/src/routing.rs").read_text()
         )
@@ -570,24 +572,36 @@ class VnextArchitectureTests(unittest.TestCase):
             runtime_invokers,
             {"crates/decodex-runtime/src/routing_orchestration.rs"},
         )
-        self.assertIn("struct DisabledRoutingOrchestration", orchestration)
+        self.assertIn("pub struct ExecutionCoordinator", orchestration)
+        self.assertIn("pub(crate) async fn coordinate", orchestration)
+        self.assertNotIn("DisabledRoutingOrchestration", orchestration)
 
-        selected = _rust_braced_body_after(
-            orchestration, "RoutingDecisionKind::Selected =>"
+        selected_start = orchestration.index("RoutingDecisionKind::Selected =>")
+        selected_end = orchestration.index(
+            "RoutingDecisionKind::WaitingUsage =>", selected_start
         )
+        selected = orchestration[selected_start:selected_end]
         waiting = _rust_braced_body_after(
             orchestration, "RoutingDecisionKind::WaitingUsage =>"
+        )
+        reconciliation = _rust_braced_body_after(
+            orchestration, "RoutingDecisionKind::WaitingReconciliation =>"
         )
         no_route = _rust_braced_body_after(
             orchestration, "RoutingDecisionKind::NoRoute =>"
         )
-        self.assertIn("plan_selected", selected)
-        self.assertNotIn("plan_selected", waiting)
-        self.assertNotIn("plan_selected", no_route)
+        self.assertIn("plan_and_prepare", selected)
+        self.assertNotIn("plan_and_prepare", waiting)
+        self.assertNotIn("plan_and_prepare", reconciliation)
+        self.assertNotIn("plan_and_prepare", no_route)
         self.assertIn("WaitingUsageHandoff", waiting)
+        self.assertNotIn("WaitingUsageHandoff", reconciliation)
+        self.assertIn("WaitingReconciliationHandoff", reconciliation)
         self.assertNotIn("WaitingUsageWake", waiting)
 
-    def test_routing_freeze_introduces_no_live_consumer_or_v18_composition(self):
+    def test_stateless_routing_coordinator_has_no_live_consumer_or_v18_composition(
+        self,
+    ):
         isolated_roots = (
             ROOT / "crates/decodex-protocol/src",
             ROOT / "crates/decodex-codex/src",
@@ -601,7 +615,9 @@ class VnextArchitectureTests(unittest.TestCase):
             for path in sorted(root.rglob("*.rs"))
         )
         for identifier in (
-            "DisabledRoutingOrchestration",
+            "ExecutionCoordinator",
+            "ExecutionCommand",
+            "ExecutionOutcome",
             "RouteAccount",
             "RoutingDecisionSnapshot",
             "PlanContinuation",
@@ -748,8 +764,11 @@ class VnextArchitectureTests(unittest.TestCase):
         self.assertIn("const READ_REQUEST_ID: i64 = 5", runner)
         self.assertRegex(
             runner,
-            r"Err\(RpcError::MethodRejected\(_\)\)\s*=>\s*"
-            r"return Err\(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous\)",
+            r"Err\(RpcError::MethodRejected\(_\)\)\s*=>\s*(?:"
+            r"return Err\(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous\)\s*,?"
+            r"|\{\s*return Err\("
+            r"ManualRetainedTitleExperimentError::RetainedTitleAmbiguous"
+            r"\);\s*\})",
         )
         self.assertNotIn("Err(RpcError::MethodRejected(_)) => false", runner)
         self.assertIn("Err(RpcError::Supervision(_)) => false", runner)
