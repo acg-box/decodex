@@ -174,8 +174,13 @@ struct AccountProfileOverviewView: View {
 			}
 		}
 		.padding(.horizontal, 7)
-		.padding(.vertical, 6)
-		.modernGlassSurface(cornerRadius: 9, depth: .row)
+		.padding(.vertical, 4)
+		.overlay(alignment: .bottom) {
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme))
+				.frame(height: 0.5)
+				.allowsHitTesting(false)
+		}
 		.accessibilityElement(children: .combine)
 	}
 
