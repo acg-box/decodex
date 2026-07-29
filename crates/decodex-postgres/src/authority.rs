@@ -44,7 +44,9 @@ const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
 	include_str!("../migrations/V27__mac_account_lifecycle.sql");
 const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
 	include_str!("../migrations/V28__account_profile_observations.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 24] = [
+const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
+	include_str!("../migrations/V29__account_profile_array_zip.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 25] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -69,6 +71,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 24] = [
 	EXECUTION_COORDINATOR_MIGRATION,
 	MAC_ACCOUNT_LIFECYCLE_MIGRATION,
 	ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
+	ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -4420,8 +4423,8 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x92, 0x60, 0x93, 0xdf, 0x1b, 0xae, 0xa9, 0x7e, 0xbf, 0x9e, 0xaa, 0x70, 0x8d, 0x7e, 0x69, 0xe9,
-	0x91, 0x56, 0x20, 0x63, 0x3c, 0xad, 0x9e, 0x17, 0xff, 0xbc, 0xb5, 0xcb, 0xe5, 0x4c, 0x09, 0x1f,
+	0xf0, 0x4f, 0x11, 0x36, 0x45, 0x10, 0x89, 0xd4, 0x69, 0xfe, 0x86, 0x6c, 0xe6, 0xa3, 0x2c, 0x39,
+	0xf3, 0x60, 0x8b, 0x5c, 0xdf, 0xbc, 0x62, 0x8e, 0xbc, 0x7a, 0x6a, 0xbf, 0x67, 0xf5, 0x2b, 0xb6,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -6273,7 +6276,7 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 24);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 25);
 		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()

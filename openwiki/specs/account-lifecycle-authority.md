@@ -254,6 +254,8 @@ provider body, or raw error.
 V28 stores one latest non-secret profile snapshot and at most 36 unique ascending daily
 usage facts. Persistence uses the exact account revision, provider binding, tombstone
 state, and a monotonic observation time. A response is `current` only after persistence.
+V29 replaces only the profile observation function so PostgreSQL 18 zips the two bounded
+daily arrays through `ROWS FROM`; it adds no relation, authority, or compatibility path.
 A previous exact snapshot can return as `cached` with one typed refresh error. Otherwise,
 the row is `unavailable` with one typed error.
 

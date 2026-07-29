@@ -24,27 +24,6 @@ struct AccountRowActionsView: View {
 
 	private var defaultActions: some View {
 		HStack(spacing: 2) {
-			PanelIconButtonView(
-				symbol: "arrow.triangle.branch",
-				tint: isFixed
-					? PanelPalette.routeAccent(colorScheme)
-					: PanelPalette.secondaryText(colorScheme),
-				isActive: isFixed,
-				isDisabled: controlsAreDisabled || canSelect == false,
-				isSubtle: true,
-				size: 20,
-				action: {
-					Task {
-						if isFixed {
-							await store.selectBalancedAccounts()
-						} else {
-							await store.selectFixedAccount(state.account.accountID)
-						}
-					}
-				},
-				help: isFixed ? "Use balanced account selection" : "Use only this account"
-			)
-
 			if showsLoginRecovery {
 				PanelIconButtonView(
 					symbol: "person.crop.circle.badge.plus",
@@ -63,6 +42,21 @@ struct AccountRowActionsView: View {
 			}
 
 			Menu {
+				Button(
+					isFixed ? "Use Balanced Routing" : "Route Only to This Account"
+				) {
+					Task {
+						if isFixed {
+							await store.selectBalancedAccounts()
+						} else {
+							await store.selectFixedAccount(state.account.accountID)
+						}
+					}
+				}
+				.disabled(controlsAreDisabled || canSelect == false)
+
+				Divider()
+
 				Button("Rename…") {
 					renameLabel = state.account.displayLabel
 					isRenaming = true
@@ -195,7 +189,10 @@ struct AccountRowActionsView: View {
 
 	private var showsLoginRecovery: Bool {
 		state.account.credentialBinding != nil
-			&& state.account.observedState == .authFailed
+			&& (
+				state.account.observedState == .authFailed
+					|| state.profileUnavailable?.error == .unauthorized
+			)
 	}
 }
 

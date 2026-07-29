@@ -121,15 +121,15 @@ struct ResetCardAccountRow: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
+		VStack(alignment: .leading, spacing: 6) {
 			accountHeader
 			profileIdentity
 			profileActivity
-			cardInventory
 			quotaWindows
+			cardInventory
 		}
-		.padding(.horizontal, 7)
-		.padding(.vertical, 5)
+		.padding(.horizontal, 8)
+		.padding(.vertical, 7)
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -239,18 +239,10 @@ struct ResetCardAccountRow: View {
 			Text("Loading account activity")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-		} else if state.profile == nil, let unavailable = state.profileUnavailable {
-			Text(unavailable.error.presentation)
+		} else if state.profileUnavailable?.error == .unauthorized {
+			Text("Login refresh required")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.warning(colorScheme))
-				.lineLimit(1)
-				.help(unavailable.error.presentation)
-		} else if state.profile == nil, let error = state.profileError {
-			Text(error.localizedDescription)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.warning(colorScheme))
-				.lineLimit(1)
-				.help(error.localizedDescription)
 		}
 	}
 
@@ -343,7 +335,7 @@ struct ResetCardAccountRow: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			}
 		} else if state.targets.isEmpty {
-			Text("No available Reset Cards")
+			Text("No Reset Cards")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 		} else {
@@ -403,16 +395,16 @@ struct ResetCardAccountRow: View {
 
 	private func cardChipTitle(_ target: ResetCardUseTarget, ordinal: Int) -> String {
 		if confirmation.isSubmitting(target) {
-			return "Using · \(ordinal) · \(cardWindow(target.descriptor))"
+			return "Using \(ordinal)…"
 		}
 		if confirmation.isArmed(target) {
 			let seconds = confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: Self.confirmationWindowSeconds
-			return "Confirm \(seconds)s · \(ordinal) · \(cardWindow(target.descriptor))"
+			return "Confirm \(ordinal) · \(seconds)s"
 		}
 
-		return "\(ordinal) · \(cardWindow(target.descriptor))"
+		return "\(ordinal) · \(Self.cardDateRange(target.descriptor))"
 	}
 
 	private func cardWindow(_ descriptor: ResetCardDescriptor) -> String {
@@ -531,6 +523,18 @@ struct ResetCardAccountRow: View {
 		)
 		return "\(day) \(time)"
 	}
+
+	private static func cardDateRange(_ descriptor: ResetCardDescriptor) -> String {
+		let granted = Date(
+			timeIntervalSince1970: TimeInterval(descriptor.grantedAtUnixSeconds)
+		)
+		let expires = Date(
+			timeIntervalSince1970: TimeInterval(descriptor.expiresAtUnixSeconds)
+		)
+		let grantedDay = granted.formatted(.dateTime.month(.abbreviated).day())
+		let expiryDay = expires.formatted(.dateTime.month(.abbreviated).day())
+		return "\(grantedDay)→\(expiryDay)"
+	}
 }
 
 enum ResetCardQuotaPresentationTone: Equatable {
@@ -570,7 +574,7 @@ struct ResetCardQuotaPresentation: Equatable {
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
 		case .unknown:
-			isVisible = true
+			isVisible = false
 			valueText = "—"
 			detailText = "No data"
 			tone = .muted
@@ -630,12 +634,6 @@ private struct ResetCardQuotaWindowView: View {
 				Spacer(minLength: 2)
 
 				if let resetDate = presentation.resetDate {
-					Text(resetDate, style: .relative)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.monospacedDigit()
-						.lineLimit(1)
-
 					Text(Self.compactDateTime(resetDate))
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
