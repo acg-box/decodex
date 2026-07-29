@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V1.5 daemon protocol.
+//! Operator account client over the same-UID V2.0 daemon protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -21,12 +21,14 @@ pub enum AccountCommand {
 	Inspect(AccountIdentityArgs),
 	/// Refresh and read one bounded account profile.
 	Profile(AccountProfileArgs),
+	/// Read the current normal shared Codex authentication projection.
+	CodexProjection,
 	/// Enroll credentials from the normal shared Codex auth file.
 	Enroll(EnrollArgs),
 	/// Import one owner-private versioned credential file.
 	Import(ImportArgs),
-	/// Rename one account.
-	Rename(RenameArgs),
+	/// Project one exact daemon account into normal shared Codex auth.
+	UseInCodex(AdministrationArgs),
 	/// Enable new work admission for one account.
 	Enable(AdministrationArgs),
 	/// Disable new work admission for one account.
@@ -66,8 +68,6 @@ pub struct EnrollArgs {
 	operation_id: String,
 	#[arg(long)]
 	account_id: String,
-	#[arg(long)]
-	label: String,
 	#[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
 	enabled: bool,
 	#[arg(long)]
@@ -80,24 +80,10 @@ pub struct ImportArgs {
 	operation_id: String,
 	#[arg(long)]
 	account_id: String,
-	#[arg(long)]
-	label: String,
 	#[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
 	enabled: bool,
 	#[arg(long, value_name = "PATH")]
 	source: PathBuf,
-	#[arg(long)]
-	idempotency_key: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Args)]
-pub struct RenameArgs {
-	#[arg(long)]
-	account_id: String,
-	#[arg(long)]
-	label: String,
-	#[arg(long)]
-	expected_revision: u64,
 	#[arg(long)]
 	idempotency_key: String,
 }
@@ -208,6 +194,22 @@ pub async fn execute(
 			};
 			return render("profile", format, client.profile(account_id, args.include_email).await);
 		},
+		AccountCommand::CodexProjection =>
+			return render("codex_projection", format, client.codex_auth_projection().await),
+		AccountCommand::UseInCodex(args) => {
+			let input = (
+				entity(&args.account_id),
+				revision(args.expected_revision),
+				idempotency_key(args.idempotency_key),
+			);
+			let (Ok(account_id), Ok(account_revision), Ok(key)) = input else {
+				return invalid_input();
+			};
+			return render_command(
+				format,
+				client.use_account_in_codex(account_id, account_revision, key).await,
+			);
+		},
 		AccountCommand::SetFixedSelection(args) => {
 			let input = (
 				entity(&args.account_id),
@@ -273,7 +275,6 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			CommandPayload::EnrollAccountFromSharedCodex {
 				operation_id: entity(&args.operation_id)?,
 				account_id: entity(&args.account_id)?,
-				display_label: text(args.label)?,
 				enabled: args.enabled,
 			},
 			None,
@@ -283,19 +284,10 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 			CommandPayload::ImportAccountCredentialFile {
 				operation_id: entity(&args.operation_id)?,
 				account_id: entity(&args.account_id)?,
-				display_label: text(args.label)?,
 				enabled: args.enabled,
 				source_descriptor: text(args.source.to_string_lossy().into_owned())?,
 			},
 			None,
-			args.idempotency_key,
-		),
-		AccountCommand::Rename(args) => command_input(
-			CommandPayload::RenameAccount {
-				account_id: entity(&args.account_id)?,
-				display_label: text(args.label)?,
-			},
-			Some(EntityRevision(args.expected_revision)),
 			args.idempotency_key,
 		),
 		AccountCommand::Enable(args) => command_input(
@@ -346,6 +338,8 @@ fn prepare_command(command: AccountCommand) -> Result<PreparedCommand, CommandOu
 		AccountCommand::List
 		| AccountCommand::Inspect(_)
 		| AccountCommand::Profile(_)
+		| AccountCommand::CodexProjection
+		| AccountCommand::UseInCodex(_)
 		| AccountCommand::SetFixedSelection(_)
 		| AccountCommand::SetBalancedSelection(_)
 		| AccountCommand::SetAccountOrder(_) => Err(invalid_input()),
@@ -482,8 +476,6 @@ mod tests {
 			OPERATION_ID,
 			"--account-id",
 			ACCOUNT_ID,
-			"--label",
-			"disabled enrollment",
 			"--enabled",
 			"false",
 			"--idempotency-key",
@@ -498,8 +490,6 @@ mod tests {
 			OPERATION_ID,
 			"--account-id",
 			ACCOUNT_ID,
-			"--label",
-			"default enrollment",
 			"--source",
 			"/private/input.json",
 			"--idempotency-key",
@@ -515,6 +505,35 @@ mod tests {
 			import.command,
 			Command::Account(AccountCommand::Import(args)) if args.enabled
 		));
+	}
+
+	#[test]
+	fn projection_status_and_use_in_codex_are_distinct_from_routing() {
+		let status = Cli::try_parse_from(["decodex", "account", "codex-projection"])
+			.expect("projection status must parse");
+		let use_in_codex = Cli::try_parse_from([
+			"decodex",
+			"account",
+			"use-in-codex",
+			"--account-id",
+			ACCOUNT_ID,
+			"--expected-revision",
+			"7",
+			"--idempotency-key",
+			"use-in-codex",
+		])
+		.expect("explicit Codex projection must parse");
+
+		assert!(matches!(status.command, Command::Account(AccountCommand::CodexProjection)));
+		assert!(matches!(
+			use_in_codex.command,
+			Command::Account(AccountCommand::UseInCodex(args))
+				if args.expected_revision == 7
+		));
+		assert!(
+			Cli::try_parse_from(["decodex", "account", "rename", "--account-id", ACCOUNT_ID,])
+				.is_err()
+		);
 	}
 
 	#[test]

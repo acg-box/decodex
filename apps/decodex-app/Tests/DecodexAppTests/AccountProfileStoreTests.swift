@@ -167,7 +167,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertEqual(emailVisibility, [false, true, true])
 	}
 
-	func testOldUnavailableResultCannotAttachAfterInventoryAdvancesRevision() async throws {
+	func testAdvancedInventoryDoesNotSynthesizeRevisionBeforeProfileReturns() async throws {
 		let fixture = try PendingFixture()
 		defer { fixture.remove() }
 		let client = SuspendedProfileStoreClient(inventoryRevision: 8)
@@ -180,12 +180,15 @@ final class AccountProfileStoreTests: XCTestCase {
 		let refresh = Task { await store.refresh() }
 		try await waitForProfileRequests(1, client: client)
 		for _ in 0 ..< 2_000 {
-			if store.accounts.first?.account.accountRevision == 8 {
+			if let accountID = store.accounts.first?.account.accountID,
+				store.isAwaitingFreshAccountSkeleton(accountID)
+			{
 				break
 			}
 			await Task.yield()
 		}
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
+		XCTAssertNil(store.accounts.first?.inventory)
 		await client.resolve(
 			request: 0,
 			with: .unavailable(
@@ -197,13 +200,16 @@ final class AccountProfileStoreTests: XCTestCase {
 		)
 		await refresh.value
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
-		XCTAssertNil(store.accounts.first?.profileUnavailable)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
+		XCTAssertEqual(
+			store.accounts.first?.profileUnavailable?.claims.planType,
+			"pro"
+		)
 		XCTAssertNil(store.accounts.first?.profileError)
 		XCTAssertEqual(store.accounts.first?.isProfileRefreshing, false)
 	}
 
-	func testInventoryRevisionAdvanceClearsUnavailableResultThatArrivedFirst() async throws {
+	func testAdvancedInventoryRetainsSkeletonBoundUnavailableProfile() async throws {
 		let fixture = try PendingFixture()
 		defer { fixture.remove() }
 		let client = RevisionAdvanceAfterUnavailableClient()
@@ -232,11 +238,63 @@ final class AccountProfileStoreTests: XCTestCase {
 		await client.resolveInventory()
 		await refresh.value
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
+		XCTAssertNil(store.accounts.first?.inventory)
 		XCTAssertNil(store.accounts.first?.profile)
-		XCTAssertNil(store.accounts.first?.profileUnavailable)
+		XCTAssertEqual(
+			store.accounts.first?.profileUnavailable?.claims.planType,
+			"old-plan"
+		)
 		XCTAssertNil(store.accounts.first?.profileError)
 		XCTAssertEqual(store.accounts.first?.isProfileRefreshing, false)
+	}
+
+	func testSingleAccountFollowUpDoesNotInvalidateAnotherAccountProfile() async throws {
+		let fixture = try PendingFixture()
+		defer { fixture.remove() }
+		let client = PerAccountGenerationClient()
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let fullRefresh = Task { await store.refresh() }
+		for _ in 0 ..< 2_000 {
+			if await client.secondProfileIsPending() {
+				break
+			}
+			await Task.yield()
+		}
+		let secondProfileIsPending = await client.secondProfileIsPending()
+		XCTAssertTrue(secondProfileIsPending)
+
+		await store.refreshCredentials(for: PerAccountGenerationClient.firstAccountID)
+		for _ in 0 ..< 2_000 {
+			let first = store.accounts.first {
+				$0.account.accountID == PerAccountGenerationClient.firstAccountID
+			}
+			if first?.account.accountRevision == 8,
+				first?.profile?.snapshot.lifetimeTokens == 8_000
+			{
+				break
+			}
+			await Task.yield()
+		}
+
+		await client.releaseSecondProfile()
+		await fullRefresh.value
+
+		let first = try XCTUnwrap(store.accounts.first {
+			$0.account.accountID == PerAccountGenerationClient.firstAccountID
+		})
+		let second = try XCTUnwrap(store.accounts.first {
+			$0.account.accountID == PerAccountGenerationClient.secondAccountID
+		})
+		XCTAssertEqual(first.account.accountRevision, 8)
+		XCTAssertEqual(first.profile?.snapshot.lifetimeTokens, 8_000)
+		XCTAssertEqual(second.profile?.snapshot.lifetimeTokens, 2_000)
+		XCTAssertFalse(second.isProfileRefreshing)
 	}
 
 	private func waitForProfileRequests(
@@ -333,7 +391,7 @@ private actor ProfileStoreClient: ResetCardClient, AccountProfileClient {
 	private static let account = ResetCardAccountRecord(
 		authority: authority,
 		accountID: "11111111-1111-4111-8111-111111111111",
-		displayLabel: "Iris",
+		alias: "Account 00000-00001",
 		accountRevision: 7,
 		enabled: true,
 		observedState: .available,
@@ -508,6 +566,224 @@ private actor RevisionAdvanceAfterUnavailableClient: ResetCardClient, AccountPro
 	}
 }
 
+private actor PerAccountGenerationClient: AccountControlClient, AccountProfileClient {
+	static let firstAccountID = "11111111-1111-4111-8111-111111111111"
+	static let secondAccountID = "22222222-2222-4222-8222-222222222222"
+
+	private static let authority = ResetCardAuthority(
+		profileName: "local",
+		serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+	)
+
+	private var firstAccount: ResetCardAccountRecord
+	private let secondAccount: ResetCardAccountRecord
+	private var secondContinuation: CheckedContinuation<Void, Never>?
+
+	init() {
+		firstAccount = Self.makeAccount(
+			accountID: Self.firstAccountID,
+			alias: "Account 00000-00001",
+			revision: 7
+		)
+		secondAccount = Self.makeAccount(
+			accountID: Self.secondAccountID,
+			alias: "Account 00000-00002",
+			revision: 7
+		)
+	}
+
+	func accountSnapshot(
+		authority _: ResetCardAuthority?
+	) async throws -> AccountControlSnapshot {
+		AccountControlSnapshot(
+			authority: Self.authority,
+			accounts: [firstAccount, secondAccount],
+			routing: AccountRoutingControl(
+				revision: 1,
+				mode: .balanced,
+				order: [firstAccount.accountID, secondAccount.accountID]
+			)
+		)
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		try await accountSnapshot(authority: authority).accounts
+	}
+
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		ResetCardInventory(
+			authority: Self.authority,
+			accountID: account.accountID,
+			accountRevision: account.accountRevision,
+			cards: [],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+	}
+
+	func profile(
+		for account: ResetCardAccountRecord,
+		includeEmail _: Bool
+	) async throws -> AccountProfileRead {
+		if account.accountID == Self.secondAccountID {
+			await withCheckedContinuation { continuation in
+				secondContinuation = continuation
+			}
+		}
+		let tokens: UInt64 = account.accountID == Self.firstAccountID
+			? account.accountRevision * 1_000
+			: 2_000
+		return .available(
+			AccountProfileObservation(
+				accountID: account.accountID,
+				accountRevision: account.accountRevision,
+				observedAtUnixMicros: Int64(account.accountRevision) * 1_000,
+				email: nil,
+				planType: "pro",
+				displayName: nil,
+				username: nil,
+				snapshot: AccountProfileSnapshot(
+					lifetimeTokens: tokens,
+					peakDailyTokens: tokens,
+					longestTaskSeconds: 60,
+					currentStreakDays: 1,
+					longestStreakDays: 1,
+					dailyUsage: []
+				),
+				freshness: .current
+			)
+		)
+	}
+
+	func secondProfileIsPending() -> Bool {
+		secondContinuation != nil
+	}
+
+	func releaseSecondProfile() {
+		secondContinuation?.resume()
+		secondContinuation = nil
+	}
+
+	func codexAuthProjection(
+		authority _: ResetCardAuthority?
+	) async throws -> CodexAuthProjection {
+		.unmanaged
+	}
+
+	func refreshAccountCredentials(
+		authority _: ResetCardAuthority?,
+		operationID _: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		guard accountID == firstAccount.accountID,
+			expectedRevision == firstAccount.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		firstAccount = Self.makeAccount(
+			accountID: firstAccount.accountID,
+			alias: firstAccount.alias,
+			revision: firstAccount.accountRevision + 1
+		)
+		return .accountChanged(firstAccount)
+	}
+
+	func use(_: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func status(for _: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func enrollFromSharedCodex(
+		authority _: ResetCardAuthority?,
+		operationID _: String,
+		accountID _: String,
+		enabled _: Bool,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func setAccountEnabled(
+		authority _: ResetCardAuthority?,
+		accountID _: String,
+		enabled _: Bool,
+		expectedRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func logoutAccount(
+		authority _: ResetCardAuthority?,
+		operationID _: String,
+		accountID _: String,
+		expectedRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func setFixedSelection(
+		authority _: ResetCardAuthority?,
+		accountID _: String,
+		expectedAccountRevision _: UInt64,
+		expectedRoutingRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func setBalancedSelection(
+		authority _: ResetCardAuthority?,
+		expectedRoutingRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func useAccountInCodex(
+		authority _: ResetCardAuthority?,
+		accountID _: String,
+		expectedRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	private static func makeAccount(
+		accountID: String,
+		alias: String,
+		revision: UInt64
+	) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: accountID,
+			alias: alias,
+			accountRevision: revision,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			credentialBinding: AccountCredentialBinding(
+				schemaVersion: 1,
+				version: revision,
+				fingerprintSHA256: String(repeating: "a", count: 64),
+				provider: .chatGPT,
+				providerAccountID: accountID
+			),
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+	}
+}
+
 private let profileTestAuthority = ResetCardAuthority(
 	profileName: "local",
 	serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -517,7 +793,7 @@ private func profileTestAccount(revision: UInt64 = 7) -> ResetCardAccountRecord 
 	ResetCardAccountRecord(
 		authority: profileTestAuthority,
 		accountID: "11111111-1111-4111-8111-111111111111",
-		displayLabel: "Iris",
+		alias: "Account 00000-00001",
 		accountRevision: revision,
 		enabled: true,
 		observedState: .available,

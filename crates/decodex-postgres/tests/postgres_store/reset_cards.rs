@@ -177,16 +177,16 @@ async fn account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly()
 					"outcome": "succeeded",
 					"data": {
 						"account_id": account.account_id.as_str(),
-						"display_label": account.label.as_str(),
+						"alias": account.label.as_str(),
 						"revision": account.revision,
 					},
 				}))
 			},
 		)
 		.await?;
-	assert_eq!(response["data"]["display_label"], "Atomic account");
+	assert_eq!(response["data"]["alias"], "Atomic account");
 	assert_eq!(
-		store.update_account_administration(&account_id, 2, Some("Renamed later"), None).await?,
+		store.set_account_enabled(&account_id, 2, false).await?,
 		AccountAdministrationOutcome::Updated { revision: 3 },
 	);
 	let replay = match store
@@ -197,8 +197,54 @@ async fn account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly()
 		AccountCommandReceiptClaim::Owned(_) => panic!("completed command was not replayed"),
 	};
 	assert_eq!(replay, response);
-	assert_eq!(replay["data"]["display_label"], "Atomic account");
-	assert_eq!(store.read_account_registry(Some(&account_id), 1).await?[0].label, "Renamed later");
+	assert_eq!(replay["data"]["alias"], "Atomic account");
+	let current = &store.read_account_registry(Some(&account_id), 1).await?[0];
+	assert_eq!(current.label, "Atomic account");
+	assert!(!current.enabled);
+	let projection_command =
+		CommandIdentity::new("use-in-codex-durable-replay", b"use-in-codex-target-a")?;
+	let projection_lease = match store
+		.reserve_account_command(
+			&projection_command,
+			AccountCommandKind::UseInCodex,
+			account_id.as_str(),
+			Some(3),
+		)
+		.await?
+	{
+		AccountCommandReceiptClaim::Owned(lease) => lease,
+		AccountCommandReceiptClaim::Replayed(_) => panic!("fresh projection command replayed"),
+	};
+	let projection_response = json!({
+		"schema": "decodex/account-command-result/1",
+		"outcome": "succeeded",
+		"data": {"account_id": account_id.as_str(), "revision": 3},
+	});
+	store.complete_account_command(projection_lease, &projection_response).await?;
+	assert!(matches!(
+		store
+			.reserve_account_command(
+				&projection_command,
+				AccountCommandKind::UseInCodex,
+				account_id.as_str(),
+				Some(3),
+			)
+			.await?,
+		AccountCommandReceiptClaim::Replayed(value) if value == projection_response
+	));
+	let conflicting_target =
+		CommandIdentity::new("use-in-codex-durable-replay", b"use-in-codex-target-b")?;
+	assert!(matches!(
+		store
+			.reserve_account_command(
+				&conflicting_target,
+				AccountCommandKind::UseInCodex,
+				DUPLICATE_LOSER_ACCOUNT_ID,
+				Some(3),
+			)
+			.await,
+		Err(StoreError::IdempotencyConflict)
+	));
 
 	store.close();
 	Ok(())
@@ -578,9 +624,7 @@ async fn accepted_reset_card_effect_survives_administrative_disable() -> Result<
 		.expect("the accepted reset-card operation must be claimable");
 	store.bind_reset_card_credit(&claim, RESET_WORKER_A, "disable-provider-credit").await?;
 	assert_eq!(
-		store
-			.update_account_administration(&account_id, INITIAL_ACCOUNT_REVISION, None, Some(false),)
-			.await?,
+		store.set_account_enabled(&account_id, INITIAL_ACCOUNT_REVISION, false).await?,
 		AccountAdministrationOutcome::Updated { revision: CHANGED_ACCOUNT_REVISION },
 	);
 	store.begin_reset_card_effect(&claim, RESET_WORKER_A).await?;
@@ -960,14 +1004,7 @@ async fn change_account_health_and_assert_stale_replay(
 	initial: &InitialResetCardOperation,
 ) -> Result<(), Box<dyn Error>> {
 	assert_eq!(
-		store
-			.update_account_administration(
-				account_id,
-				INITIAL_ACCOUNT_REVISION,
-				Some("Reset-card integration changed"),
-				None,
-			)
-			.await?,
+		store.set_account_enabled(account_id, INITIAL_ACCOUNT_REVISION, false).await?,
 		AccountAdministrationOutcome::Updated { revision: CHANGED_ACCOUNT_REVISION },
 	);
 	assert_eq!(
@@ -1144,14 +1181,7 @@ async fn complete_nothing_to_reset(
 	reusable_descriptor: ResetCardDescriptor,
 ) -> Result<ResetCardPreparation, Box<dyn Error>> {
 	assert_eq!(
-		store
-			.update_account_administration(
-				account_id,
-				CHANGED_ACCOUNT_REVISION,
-				Some("Reset-card integration"),
-				None,
-			)
-			.await?,
+		store.set_account_enabled(account_id, CHANGED_ACCOUNT_REVISION, true).await?,
 		AccountAdministrationOutcome::Updated { revision: REENABLED_ACCOUNT_REVISION },
 	);
 
@@ -1288,14 +1318,7 @@ async fn reject_pending_replay_after_account_change(
 	reusable_descriptor: ResetCardDescriptor,
 ) -> Result<(), Box<dyn Error>> {
 	assert_eq!(
-		store
-			.update_account_administration(
-				account_id,
-				REENABLED_ACCOUNT_REVISION,
-				Some("Reset-card integration final"),
-				None,
-			)
-			.await?,
+		store.set_account_enabled(account_id, REENABLED_ACCOUNT_REVISION, false).await?,
 		AccountAdministrationOutcome::Updated { revision: FINAL_ACCOUNT_REVISION },
 	);
 

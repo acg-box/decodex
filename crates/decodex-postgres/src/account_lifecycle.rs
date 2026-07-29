@@ -79,8 +79,8 @@ const READ_ACCOUNT_OPERATION_SQL: &str = "SELECT operation_id::text,account_id::
 	 target_store_schema_version,target_credential_version,target_credential_fingerprint,\
 	 target_credential_writer_operation_id::text,provider_kind::text,provider_account_id \
 	 FROM decodex.read_account_operation_exact($1::text::uuid)";
-const UPDATE_ACCOUNT_ADMINISTRATION_SQL: &str = "SELECT result_code,revision \
-	 FROM decodex.update_account_administration_exact($1::text::uuid,$2,$3,$4)";
+const SET_ACCOUNT_ENABLED_SQL: &str = "SELECT result_code,revision \
+	 FROM decodex.set_account_enabled_exact($1::text::uuid,$2,$3)";
 const SET_FIXED_ACCOUNT_SELECTION_SQL: &str = "SELECT result_code,routing_revision,account_revision \
 	 FROM decodex.set_fixed_account_selection_exact($1,$2::text::uuid,$3)";
 const SET_BALANCED_ACCOUNT_SELECTION_SQL: &str = "SELECT result_code,routing_revision \
@@ -252,10 +252,10 @@ pub enum AccountCommandKind {
 	Enroll,
 	/// Import an explicit credential file.
 	Import,
-	/// Replace one account label.
-	Rename,
 	/// Replace one account enablement switch.
 	SetEnabled,
+	/// Project one exact account into the shared Codex auth file.
+	UseInCodex,
 	/// Delete credentials and tombstone an account.
 	Logout,
 	/// Select one fixed account.
@@ -274,8 +274,8 @@ impl AccountCommandKind {
 		match self {
 			Self::Enroll => "enroll_account",
 			Self::Import => "import_account_credential_file",
-			Self::Rename => "rename_account",
 			Self::SetEnabled => "set_account_enabled",
+			Self::UseInCodex => "use_account_in_codex",
 			Self::Logout => "logout_account",
 			Self::SetFixedSelection => "set_fixed_account_selection",
 			Self::SetBalancedSelection => "set_balanced_account_selection",
@@ -607,13 +607,12 @@ impl PostgresStore {
 		row.map(parse_operation).transpose()
 	}
 
-	/// Rename, enable, or disable one account at an exact registry revision.
-	pub async fn update_account_administration(
+	/// Enable or disable one account at an exact registry revision.
+	pub async fn set_account_enabled(
 		&self,
 		account_id: &AccountId,
 		expected_revision: i64,
-		display_label: Option<&str>,
-		enabled: Option<bool>,
+		enabled: bool,
 	) -> Result<AccountAdministrationOutcome, StoreError> {
 		if expected_revision < 1 {
 			return Err(StoreError::InvalidInput("expected account revision must be positive"));
@@ -623,8 +622,8 @@ impl PostgresStore {
 			.get()
 			.await?
 			.query_one(
-				UPDATE_ACCOUNT_ADMINISTRATION_SQL,
-				&[&account_id.as_str(), &expected_revision, &display_label, &enabled],
+				SET_ACCOUNT_ENABLED_SQL,
+				&[&account_id.as_str(), &expected_revision, &enabled],
 			)
 			.await?;
 		let code: &str = row.get(0);
@@ -638,14 +637,13 @@ impl PostgresStore {
 		}
 	}
 
-	/// Apply one administrative mutation and complete its logical command receipt atomically.
-	pub async fn update_account_administration_command<F>(
+	/// Apply one enablement mutation and complete its logical command receipt atomically.
+	pub async fn set_account_enabled_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
 		account_id: &AccountId,
 		expected_revision: i64,
-		display_label: Option<&str>,
-		enabled: Option<bool>,
+		enabled: bool,
 		build_response: F,
 	) -> Result<Value, StoreError>
 	where
@@ -662,8 +660,8 @@ impl PostgresStore {
 		let transaction = client.transaction().await?;
 		let row = transaction
 			.query_one(
-				UPDATE_ACCOUNT_ADMINISTRATION_SQL,
-				&[&account_id.as_str(), &expected_revision, &display_label, &enabled],
+				SET_ACCOUNT_ENABLED_SQL,
+				&[&account_id.as_str(), &expected_revision, &enabled],
 			)
 			.await?;
 		let revision = row.get(1);
@@ -980,7 +978,7 @@ pub(crate) async fn prepare_account_lifecycle_sql(
 		SET_ACCOUNT_OPERATION_TARGET_SQL,
 		READ_UNSETTLED_ACCOUNT_OPERATIONS_SQL,
 		READ_ACCOUNT_OPERATION_SQL,
-		UPDATE_ACCOUNT_ADMINISTRATION_SQL,
+		SET_ACCOUNT_ENABLED_SQL,
 		SET_FIXED_ACCOUNT_SELECTION_SQL,
 		SET_BALANCED_ACCOUNT_SELECTION_SQL,
 		SET_ACCOUNT_ORDER_SQL,

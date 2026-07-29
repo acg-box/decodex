@@ -33,26 +33,26 @@ pub use self::{
 		AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
 		AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
 		AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, ClientCommandId,
-		ClientHello, ClientMessage, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
-		CommandReceipt, CommandResultEnvelope, ConversationHistoryPage, ConversationHistoryResult,
-		CorrelationId, Cursor, EntityId, EntityRevision, EventEnvelope, EventPayload,
-		ExecutionConsumerDto, ExecutionDecisionDto, ExecutionDecisionQueryError,
-		ExecutionDecisionResult, ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto,
-		ExecutionRouteBlockerDto, ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId,
-		HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-		HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-		HistoryMediaType, HistoryMetadata, HistoryMetadataValue, HistoryPayloadDto,
-		HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole, IdempotencyKey,
-		IdempotencyKeyError, MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope, QueryId, QueryPayload,
-		QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ReconnectMode, Refusal,
-		RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError, ResetCardError,
-		ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-		ResetCardOutcome, ResultPayload, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
-		ServerWelcome, Sha256Digest, SnapshotEnvelope, SnapshotItem, WireScalarTooLong, WireText,
-		decode_client_message, encode_server_message,
+		ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope, CommandError,
+		CommandOutcome, CommandPayload, CommandReceipt, CommandResultEnvelope,
+		ConversationHistoryPage, ConversationHistoryResult, CorrelationId, Cursor, EntityId,
+		EntityRevision, EventEnvelope, EventPayload, ExecutionConsumerDto, ExecutionDecisionDto,
+		ExecutionDecisionQueryError, ExecutionDecisionResult, ExecutionQuotaExclusionDto,
+		ExecutionQuotaWindowDto, ExecutionRouteBlockerDto, ExecutionRouteCauseDto,
+		ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference, HistoryArtifactRevision,
+		HistoryBlobLength, HistoryBlobReference, HistoryCursorToken, HistoryItemDto,
+		HistoryItemKindDto, HistoryItemStatusDto, HistoryMediaType, HistoryMetadata,
+		HistoryMetadataValue, HistoryPayloadDto, HistoryQueryError, HistorySideEffectState,
+		HistoryText, HistoryTurnRole, IdempotencyKey, IdempotencyKeyError,
+		MAX_ACCOUNT_PROFILE_DAILY_USAGE, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryEnvelope,
+		QueryId, QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition,
+		ReconnectMode, Refusal, RefusalEnvelope, ResetCardDescriptorDto, ResetCardDescriptorError,
+		ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
+		ResetCardOperationResult, ResetCardOutcome, ResultPayload, ResumeCursor, ServerId,
+		ServerInstanceId, ServerMessage, ServerWelcome, Sha256Digest, SnapshotEnvelope,
+		SnapshotItem, WireScalarTooLong, WireText, decode_client_message, encode_server_message,
 	},
 };
 
@@ -60,10 +60,13 @@ use serde::{Deserialize, Serialize};
 
 use decodex_core::FoundationStatus;
 
-/// Current protocol generation and minor revision.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 5 };
-/// Oldest protocol revision accepted during a rolling client/server update.
-pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = ProtocolVersion { major: 1, minor: 4 };
+/// The only protocol generation and revision accepted by this build.
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 0 };
+/// The lower bound of the exact-current protocol window.
+///
+/// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated
+/// public-symbol rename during the clean break.
+pub const PREVIOUS_MINOR_VERSION: ProtocolVersion = CURRENT_VERSION;
 
 /// A version of the Decodex application protocol.
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Deserialize, Serialize)]
@@ -74,7 +77,7 @@ pub struct ProtocolVersion {
 	pub minor: u16,
 }
 impl ProtocolVersion {
-	/// Negotiate this client version against the server's exact supported window.
+	/// Negotiate this client version against the server's exact-current window.
 	pub fn negotiate(self) -> Result<Self, VersionRefusal> {
 		if self.major != CURRENT_VERSION.major {
 			return Err(VersionRefusal::MajorMismatch {
@@ -82,7 +85,7 @@ impl ProtocolVersion {
 				supported: SupportedVersions::current(),
 			});
 		}
-		if !(PREVIOUS_MINOR_VERSION.minor..=CURRENT_VERSION.minor).contains(&self.minor) {
+		if self != CURRENT_VERSION {
 			return Err(VersionRefusal::UnsupportedMinor {
 				requested: self,
 				supported: SupportedVersions::current(),
@@ -93,7 +96,7 @@ impl ProtocolVersion {
 	}
 }
 
-/// The server's contiguous compatibility window.
+/// The server's exact-current compatibility window.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct SupportedVersions {
 	/// Required protocol generation.
@@ -134,7 +137,7 @@ pub enum VersionRefusal {
 		/// Versions supported by the server.
 		supported: SupportedVersions,
 	},
-	/// The generation matches but the minor is outside the rolling window.
+	/// The generation matches but the minor is not the exact current revision.
 	UnsupportedMinor {
 		/// Version requested by the client.
 		requested: ProtocolVersion,
@@ -150,18 +153,18 @@ mod tests {
 	};
 
 	#[test]
-	fn current_and_previous_minor_versions_are_accepted_exactly() {
+	fn only_the_exact_current_version_is_accepted() {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 1, minor: 3 }.negotiate(),
+			ProtocolVersion { major: 2, minor: 1 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}
 
 	#[test]
 	fn a_major_mismatch_is_distinct_from_minor_incompatibility() {
-		let requested = ProtocolVersion { major: 2, minor: 0 };
+		let requested = ProtocolVersion { major: 1, minor: 5 };
 
 		assert_eq!(
 			requested.negotiate(),

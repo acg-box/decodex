@@ -1705,10 +1705,10 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		rows: 1_000.0,
 	},
 	table_function_contract(
-		"update_account_administration_exact",
-		"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-		"update_account_administration_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_display_label text,p_enabled boolean\n)",
-		"p_account_id uuid, p_expected_revision bigint, p_display_label text, p_enabled boolean",
+		"set_account_enabled_exact",
+		"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
+		"set_account_enabled_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_enabled boolean\n)",
+		"p_account_id uuid, p_expected_revision bigint, p_enabled boolean",
 		"TABLE(result_code text, revision bigint)",
 		"v",
 	),
@@ -2040,7 +2040,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
-	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
 	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
 	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
@@ -5564,7 +5564,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "advance_account_operation_exact"
 			| "read_unsettled_account_operations_exact"
 			| "read_account_operation_exact"
-			| "update_account_administration_exact"
+			| "set_account_enabled_exact"
 			| "set_fixed_account_selection_exact"
 			| "set_balanced_account_selection_exact"
 			| "set_account_order_exact"

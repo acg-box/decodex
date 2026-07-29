@@ -51,7 +51,7 @@ obligations without blocking the Mac dogfood.
 | Later-readiness obligation | MacDogfoodReady | Final authority |
 | --- | --- | --- |
 | Linux secret backend | Deferred | Required for supported Linux |
-| Ambient **Use in Codex** | Deferred | Required |
+| Explicit **Use in Codex** | One exact local account projection, separate from routing | Same fail-closed contract on every supported host |
 | Full usage, profile, and history presentation | Minimal health and quota only | Required |
 | Automatic same-thread fallback and all-depleted wake | Deferred to XY-1304 acceptance | Required before those paths are enabled |
 | Retained-title Desktop discovery | Deferred | Required only for the retained-title feature |
@@ -868,7 +868,7 @@ added. No retained-title evidence gate enables production routing.
 
 ### Account lifecycle and Mac dogfood gate
 
-The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V27
+The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V30
 PostgreSQL database with an empty Account Registry, verifies the signed daemon wrapper
 and same-UID Unix transport, imports test accounts through the ordinary public account
 command, restarts once for exact-build callback attestation, and verifies list, routing,
@@ -918,20 +918,20 @@ XY-1399 A-prime implements the architecture reset authorized by
 implementation ancestry or compatibility authority.
 
 The A-prime commit is historical source-only ancestry. The current implementation is the
-integrated gate: it is ported onto current protocol V1.5/V1.4 and the shared Reset Card
+integrated gate: it is ported onto exact-current protocol V2.0 and the shared Reset Card
 service. Results must bind to one exact tree and cover required macOS and Linux hosts.
 The transport does not add remote or cross-UID admission, use PostgreSQL credentials as
 end-user authentication, create local PKI, or add a production compatibility facade.
 
 | Boundary | Integrated acceptance cases |
 | --- | --- |
-| Policy and platform | `disabled` with no UID is a typed refusal. `same_uid` without an owner UID, `disabled` with a UID, a malformed policy, an owner UID different from the process effective UID, and an unsupported platform fail before endpoint use. `same_uid` plus the exact effective UID is the only enabled V1 state. |
+| Policy and platform | `disabled` with no UID is a typed refusal. `same_uid` without an owner UID, `disabled` with a UID, a malformed policy, an owner UID different from the process effective UID, and an unsupported platform fail before endpoint use. `same_uid` plus the exact effective UID is the only enabled V2.0 state. |
 | Persistent namespace lock | The final server directory has the configured owner and exact mode 0700. Persistent regular `decodex.lock` has that owner, exact mode 0600, and one link. Symlink, wrong type, wrong owner, wrong mode, extra link, replaced directory, replaced lock path, lock conflict, overlong path, and ambiguous inspection fail closed. The exclusive nonblocking `flock` starts before stale inspection and remains held through cleanup, listener close, and release-last teardown. The lock file is not unlinked. |
 | Fixed staging recovery | Exercise absent, live, timed-out, exact refused, replaced, linked, wrongly typed, wrongly owned, and wrongly scoped `decodex.sock.stage` and `decodex.sock`. Only exact connection refusal from an unchanged secure socket under the verified lock permits descriptor-relative `unlinkat`. Success, timeout, another error, or any identity change preserves the entry and refuses startup. |
 | Atomic publication | Bind only fixed `decodex.sock.stage`, set exact mode 0600, capture its device/inode/owner/mode/link-count identity, require exactly one link, and validate the retained directory, lock, staging socket, and absent canonical name. Publish with same-directory descriptor-relative `renameat` to `decodex.sock` under the lock. Require the staging name to be absent and canonical name to have the captured identity before product admission. Inject ancestor, directory, lock, staging, and canonical replacement before and after each point. There is no self-connect challenge. |
 | Point-in-time identity | Publication, every server admission, every client connection or reconnect, and cleanup each re-open and validate the current no-follow directory path and exact socket identity against retained descriptors. Connect and accept races with parent rename, ancestor or final-component symlink, socket rename, inode replacement, and canonical replacement fail closed. There is no continuous 250-millisecond watchdog. Hostile same-UID mutation is an integrity-detection fixture, not a confinement claim. |
 | Kernel peer identity | Same-effective-UID client and daemon peers succeed on macOS and Linux. Wrong UID and unavailable or ambiguous kernel credentials return distinct closed refusals on both client connect and server admission. A wrong client peer is connection-local; namespace or listener drift invalidates the listener. Directory permissions and stable server identity do not substitute for kernel credentials. |
-| WebSocket continuity | V1.5 and the accepted V1.4 window continue at exact route `/v1/ws` over an already admitted Unix stream. The exact `ws://localhost/v1/ws` constants are handshake metadata passed to `client_async_with_config`; they cannot resolve or dial. Doctor/status, Reset Card, hello, snapshot, event, command, query, refusal, frame, timeout, backpressure, and close behavior gain no TCP or Axum fallback. |
+| WebSocket continuity | Exact-current V2.0 continues at route `/v1/ws` over an already admitted Unix stream. V1.5 hello is refused as `major_mismatch`, and V2.1 is refused as `unsupported_minor`, before application payload handling. The exact `ws://localhost/v1/ws` constants are handshake metadata passed to `client_async_with_config`; they cannot resolve or dial. Doctor/status, Reset Card, hello, snapshot, event, command, query, refusal, frame, timeout, backpressure, and close behavior gain no TCP or Axum fallback. |
 | Single task owner | One top-level lifecycle owns the listener and lock. One `JoinSet` owns every session and command task. The same owner polls every daemon service future. Each session or command spawn receives a monotonic stable ID and closed kind before execution. Reset Card worker and heartbeat work are not detached. |
 | Shutdown and provider settlement | Requested shutdown, listener-invalidating refusal, child panic, or unexpected child failure creates one absolute non-extendable session/command deadline. Shutdown synchronously closes Reset Card provider-work admission and signals daemon services before session/command harvest. The closed command receiver drains through `None`, including buffered submissions and outstanding pre-close permits. On deadline, the owner aborts and harvests the task set through `None`. Already registered blocking provider work retains its separate bounded process deadline; the owner waits for exact settlement while it continues to hold the listener and namespace lock. |
 | Deterministic receipt | Terminate with no clients, incomplete handshake, active WebSocket, in-flight command, normal session completion, simultaneous completions, child panic, unexpected cancellation, and a non-quiescent task. Check exact session/command spawn counts, harvested and expected counts, panic/failure/forced/owner-integrity counts, and lowest stable abnormal identities. Primary rank is cleanup refusal, endpoint refusal, owner integrity, child panic, unexpected child failure, forced deadline, then requested shutdown. Task ties select the lowest spawn ID. |

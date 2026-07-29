@@ -53,11 +53,11 @@ use decodex_protocol::{
 
 const WS_PATH: &str = "/v1/ws";
 const PUBLICATION_INSTANCE_MINIMUM_VERSION: ProtocolVersion =
-	ProtocolVersion { major: 1, minor: 4 };
+	ProtocolVersion { major: 2, minor: 0 };
 
 const fn supports_publication_instance(version: ProtocolVersion) -> bool {
 	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
-		&& version.minor >= PUBLICATION_INSTANCE_MINIMUM_VERSION.minor
+		&& version.minor == PUBLICATION_INSTANCE_MINIMUM_VERSION.minor
 }
 
 type WebSocket = WebSocketStream<LocalTransportStream>;

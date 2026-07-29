@@ -90,7 +90,94 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertEqual(presentation.tone, .muted)
 	}
 
-	func testSixAccountRowsKeepIntrinsicHeightInsideAWindowSizedViewport() throws {
+	func testIdentityUsesExactlyOneEmailOrAliasSlot() {
+		let visible = AccountIdentityPresentation(
+			alias: "Account 7M4K-P2Q8",
+			email: "iris@example.com",
+			revealsEmail: true
+		)
+		XCTAssertEqual(visible.text, "iris@example.com")
+		XCTAssertTrue(visible.showsEmail)
+
+		let hidden = AccountIdentityPresentation(
+			alias: "Account 7M4K-P2Q8",
+			email: "iris@example.com",
+			revealsEmail: false
+		)
+		XCTAssertEqual(hidden.text, "Account 7M4K-P2Q8")
+		XCTAssertFalse(hidden.showsEmail)
+
+		XCTAssertEqual(
+			AccountIdentityPresentation(
+				alias: "Account 7M4K-P2Q8",
+				email: "  ",
+				revealsEmail: true
+			).text,
+			"Account 7M4K-P2Q8"
+		)
+	}
+
+	func testCodexProjectionDistinguishesUnmanagedUnavailableAndCurrent() {
+		XCTAssertEqual(
+			CodexProjectionPresentation(
+				projection: .unmanaged,
+				currentIdentity: nil,
+				isInitialLoading: false
+			).text,
+			"Not managed by Decodex"
+		)
+		XCTAssertEqual(
+			CodexProjectionPresentation(
+				projection: .unavailable,
+				currentIdentity: nil,
+				isInitialLoading: false
+			).text,
+			"Unavailable"
+		)
+		XCTAssertEqual(
+			CodexProjectionPresentation(
+				projection: .current(
+					accountID: "11111111-1111-4111-8111-111111111111",
+					accountRevision: 7,
+					projectionDigest: String(repeating: "a", count: 64)
+				),
+				currentIdentity: "iris@example.com",
+				isInitialLoading: false
+			).text,
+			"iris@example.com"
+		)
+		XCTAssertEqual(
+			CodexProjectionPresentation(
+				projection: .current(
+					accountID: "11111111-1111-4111-8111-111111111111",
+					accountRevision: 8,
+					projectionDigest: String(repeating: "b", count: 64)
+				),
+				currentIdentity: nil,
+				isInitialLoading: false
+			).text,
+			"Checking account"
+		)
+	}
+
+	func testResetCardChipAndAccessibilityExposeExpiryOnly() {
+		let utc = try! XCTUnwrap(TimeZone(secondsFromGMT: 0))
+
+		XCTAssertEqual(
+			ResetCardAccountRow.cardExpiryText(0, timeZone: utc),
+			"Jan 1 00:00"
+		)
+		XCTAssertEqual(
+			ResetCardAccountRow.cardAccessibilityLabel(
+				ordinal: 2,
+				expiresAtUnixSeconds: 0,
+				timeZone: utc
+			),
+			"Reset Card 2, expires Jan 1 at 00:00 GMT"
+		)
+	}
+
+	func testSixCompactAccountRowsStayWithinTheCurrentDisplayBudget() throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		let store = ResetCardStore(
@@ -112,7 +199,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			let account = ResetCardAccountRecord(
 				authority: authority,
 				accountID: accountID,
-				displayLabel: "Account \(index)",
+				alias: "Account \(index)",
 				accountRevision: UInt64(index),
 				enabled: true,
 				observedState: .available,
@@ -189,7 +276,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		hostingView.layoutSubtreeIfNeeded()
 
 		XCTAssertGreaterThan(hostingView.fittingSize.height, 300)
-		XCTAssertLessThan(hostingView.fittingSize.height, 1_100)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 708)
 
 		let singleRow = NSHostingView(
 			rootView: ResetCardAccountRow(
@@ -200,10 +287,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 			.frame(width: AccountPanelLayout.panelWidth)
 		)
 		singleRow.layoutSubtreeIfNeeded()
-		XCTAssertLessThan(singleRow.fittingSize.height, 220)
+		XCTAssertLessThanOrEqual(singleRow.fittingSize.height, 118)
 	}
 
-	func testFullAccountPanelKeepsSixRichRowsInsideScrollableViewport() async throws {
+	func testFullAccountPanelShowsSixCompactRowsWithoutOverflowOnCurrentDisplay() async throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		defer { try? FileManager.default.removeItem(at: directory) }
@@ -224,21 +311,21 @@ final class AccountPanelPresentationTests: XCTestCase {
 				layoutVisibleFrameOverride: NSRect(
 					x: 0,
 					y: 0,
-					width: 800,
-					height: 675
+					width: 1_600,
+					height: 1_350
 				),
 				loadsExternalState: false
 			)
 		)
 		let window = NSWindow(
-			contentRect: NSRect(x: 0, y: 0, width: 340, height: 675),
+			contentRect: NSRect(x: 0, y: 0, width: 306, height: 1_350),
 			styleMask: [.borderless],
 			backing: .buffered,
 			defer: false
 		)
 		window.contentView = hostingView
 		hostingView.frame = window.contentView?.bounds
-			?? NSRect(x: 0, y: 0, width: 340, height: 675)
+			?? NSRect(x: 0, y: 0, width: 306, height: 1_350)
 
 		for _ in 0 ..< 2 {
 			hostingView.layoutSubtreeIfNeeded()
@@ -255,25 +342,16 @@ final class AccountPanelPresentationTests: XCTestCase {
 					return false
 				}
 				return scrollView.contentView.bounds.height > 100
-					&& documentView.bounds.height > scrollView.contentView.bounds.height + 1
+					&& documentView.bounds.height > 100
 			}
 		)
 		let documentView = try XCTUnwrap(accountScroll.documentView)
-		XCTAssertGreaterThan(
+		XCTAssertLessThanOrEqual(
 			documentView.bounds.height,
-			accountScroll.contentView.bounds.height
+			accountScroll.contentView.bounds.height + 1
 		)
-		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
-
-		let bottom = max(
-			0,
-			documentView.bounds.height - accountScroll.contentView.bounds.height
-		)
-		accountScroll.contentView.scroll(
-			to: NSPoint(x: 0, y: bottom)
-		)
-		accountScroll.reflectScrolledClipView(accountScroll.contentView)
-		XCTAssertGreaterThan(accountScroll.contentView.bounds.minY, 0)
+		XCTAssertFalse(accountScroll.hasVerticalScroller)
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 1_350)
 	}
 
 	func testPendingActionsUseTheirOwnBoundedScrollWithoutHidingAccounts() async throws {
@@ -343,10 +421,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(overflowingScrollViews.count, 2)
 		XCTAssertTrue(
 			overflowingScrollViews.contains { scrollView in
-				abs(
-					scrollView.contentView.bounds.height
-						- AccountPanelLayout.statusViewportHeight
-				) < 4
+					abs(
+						scrollView.contentView.bounds.height
+							- AccountPanelLayout.statusMaximumHeight
+					) < 4
 			}
 		)
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
@@ -453,10 +531,10 @@ private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
 				accountID: account.accountID,
 				accountRevision: account.accountRevision,
 				observedAtUnixMicros: 1_785_276_000_000_000,
-				email: includeEmail ? "\(account.displayLabel.lowercased())@example.com" : nil,
+				email: includeEmail ? "\(account.alias.lowercased())@example.com" : nil,
 				planType: "pro",
-				displayName: account.displayLabel,
-				username: account.displayLabel.lowercased(),
+				displayName: account.alias,
+				username: account.alias.lowercased(),
 				snapshot: AccountProfileSnapshot(
 					lifetimeTokens: account.accountRevision * 100_000,
 					peakDailyTokens: account.accountRevision * 10_000,
@@ -494,7 +572,7 @@ private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
 				format: "018f0f9e-7b6e-4a31-8f4c-%012d",
 				index
 			),
-			displayLabel: "Account \(index)",
+			alias: "Account \(index)",
 			accountRevision: UInt64(index),
 			enabled: true,
 			observedState: .available,
