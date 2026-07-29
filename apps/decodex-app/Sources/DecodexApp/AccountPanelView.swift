@@ -51,7 +51,7 @@ struct AccountPanelView: View {
 			}
 			.frame(width: AccountPanelLayout.panelWidth)
 			.padding(9)
-			.modernGlassSurface(cornerRadius: 18, depth: .panel)
+			.modernGlassSurface(cornerRadius: 20, depth: .panel)
 			.controlSize(.small)
 			.symbolRenderingMode(.hierarchical)
 			.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
