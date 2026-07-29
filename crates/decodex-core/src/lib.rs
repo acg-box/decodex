@@ -2,6 +2,7 @@
 
 mod account;
 mod agent;
+mod automation;
 mod blob;
 mod cache;
 mod config;
@@ -39,6 +40,15 @@ pub use self::{
 	agent::{
 		Agent, AgentError, AgentId, AgentRepository, AgentRole, AgentStatus,
 		lead_status_for_project,
+	},
+	automation::{
+		AutomationDedupeKey, AutomationDefinition, AutomationError, AutomationFiring,
+		AutomationFiringId, AutomationFiringSource, AutomationId, AutomationOccurrenceId,
+		AutomationRepositorySource, AutomationRevision, AutomationSchedule, AutomationState,
+		AutomationSymbol, AutomationTarget, AutomationTimestamp, AutomationTrigger,
+		MAX_AUTOMATION_RRULE_BYTES, MAX_AUTOMATION_SYMBOL_BYTES,
+		MAX_AUTOMATION_TIMESTAMP_MICROSECONDS, MAX_AUTOMATION_TIMEZONE_BYTES,
+		propose_automation_firing,
 	},
 	blob::{
 		BlobHash, BlobInventoryCursor, BlobInventoryEntry, BlobInventoryPage, BlobStore,
