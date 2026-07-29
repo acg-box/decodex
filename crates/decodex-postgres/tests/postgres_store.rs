@@ -984,7 +984,7 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V29 preparation harness"]
+#[ignore = "requires the isolated PostgreSQL 18 V30 preparation harness"]
 #[cfg(feature = "test-support")]
 async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
@@ -4317,6 +4317,7 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 		"mac_account_lifecycle",
 		"account_profile_observations",
 		"account_profile_array_zip",
+		"current_codex_account_capability",
 	];
 	assert_eq!(history.len(), expected_history.len());
 	for (index, ((version, name, checksum), expected_name)) in
