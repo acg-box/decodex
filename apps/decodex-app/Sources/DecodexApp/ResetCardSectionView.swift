@@ -172,14 +172,6 @@ struct ResetCardAccountRow: View {
 				.layoutPriority(1)
 
 			Spacer(minLength: 2)
-
-			if state.isRefreshing || state.isProfileRefreshing {
-				Image(systemName: "arrow.triangle.2.circlepath")
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.accessibilityLabel("Refreshing account data")
-					.help("Refreshing account data")
-			}
 		}
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(
