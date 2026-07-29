@@ -177,9 +177,12 @@ decodex-publisher validate-social
 (`apps/decodex-app/README.md`). It:
 
 - Reads the complete account skeleton from the common daemon service and renders one
-  UUID-keyed row for every account in canonical routing order.
+  compact UUID-keyed row for every account in canonical routing order. Rows use
+  divider-separated quota meters and single-line Reset Card controls instead of
+  nested account cards.
 - Loads quota windows and Reset Cards independently for each row. One slow or failed
-  provider request does not hide the other accounts.
+  provider request does not hide the other accounts. A provider-unsupported quota
+  duration stays a muted row-local fact and does not mark the account as failed.
 - Uses Reset Cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click first persists a pending attempt,
   then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
