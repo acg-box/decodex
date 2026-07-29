@@ -5,6 +5,7 @@ mod agent;
 mod blob;
 mod cache;
 mod config;
+mod context_revision;
 mod continuation;
 mod conversation;
 mod execution;
@@ -52,6 +53,15 @@ pub use self::{
 		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
 		ProfileName, RemoteProfile, RepositoryName, ServerHostConfig, ServerProfile,
 		ServerRepositoryPath,
+	},
+	context_revision::{
+		ContextRevision, ContextRevisionDecision, ContextRevisionError, ContextRevisionId,
+		ContextRevisionItem, ContextRevisionItemId, ContextRevisionItemKind,
+		ContextRevisionItemProvenance, ContextRevisionNumber, ContextRevisionOperation,
+		ContextRevisionOwner, ContextRevisionReference, ContextRevisionSource,
+		MAX_CONTEXT_REVISION_BYTES, MAX_CONTEXT_REVISION_ITEM_BYTES, MAX_CONTEXT_REVISION_ITEMS,
+		decide_create_context_revision, decide_pin_context_item, decide_supersede_context_revision,
+		decide_unpin_context_item,
 	},
 	continuation::{
 		ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
