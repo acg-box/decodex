@@ -18,7 +18,7 @@ serves the versioned structured-JSON WebSocket protocol at
 `~/.decodex/server/decodex.sock`. The local profile permits only the exact configured
 effective UID. Both client and server verify kernel peer credentials for every connection.
 The WebSocket route remains `/v1/ws`, and the handshake URI does not dial TCP. The server
-negotiates protocol V1 current/previous minor,
+accepts only exact-current protocol V2.0,
 publishes bounded snapshots and resumable ordered events, deduplicates commands for one
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
 outbound queue fills. It loads the typed `~/.decodex/config.toml`, retains the stable
@@ -33,14 +33,14 @@ extension control closure, read-only migration history, and USAGE-only identity 
 login role and every SET-reachable role. The operator must also pin the expected PostgreSQL
 Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
 either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
-or incompatible configuration remains typed unavailable with no fallback. Protocol V1.5
+or incompatible configuration remains typed unavailable with no fallback. Protocol V2.0
 retains bounded read-only doctor/status, Conversation-history, and immutable execution-decision
 queries outside mutation receipts and adds account lifecycle, the shared Reset Card service,
-and an independent bounded account-profile query. V1.4 remains the
-previous-minor window. Doctor reads live-revalidate the retained PostgreSQL endpoint and authority
-without migration or repinning.
+and an independent bounded account-profile query. V1.x and other V2 minor revisions are
+refused before application payload handling. Doctor reads live-revalidate the retained
+PostgreSQL endpoint and authority without migration or repinning.
 The active `decodex status` and `decodex doctor` commands are API-only clients of that
-V1.5 query. They select the active or `--profile NAME` typed profile without echoing its
+V2.0 query. They select the active or `--profile NAME` typed profile without echoing its
 name, pin the stable server identity before accepting a snapshot or report, and emit human text or
 `--output json` under `decodex/cli-diagnostics/1`. Exit status is 0 only when all checks
 are ready, 1 for a complete report containing unavailable or unknown checks, and 2 for a

@@ -732,8 +732,9 @@ One authenticated, versioned WebSocket multiplexes `control/ack/result`,
 `automation/firing`, `accounts/health`, and `system/health`. Commands carry client command
 ID, idempotency key, and optional expected revision. Events carry protocol major/minor,
 server ID, resumable monotonic sequence, entity ID/revision, correlation/causation, and
-payload type. Reconnect is snapshot plus cursor-resumed deltas with backpressure. Major
-versions match exactly; server supports current and previous minor for UI/server rollout.
+payload type. Reconnect is snapshot plus cursor-resumed deltas with backpressure. The
+current local product accepts exact protocol V2.0 only; other major or minor revisions
+receive a typed refusal before application payload handling.
 Large artifacts use authenticated HTTP, never WebSocket snapshots. Non-loopback binding
 remains disabled until authentication, TLS, authorization, and redaction gates pass.
 

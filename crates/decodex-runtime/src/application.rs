@@ -31,18 +31,19 @@ use decodex_protocol::{
 	AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
 	AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
 	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
-	AccountUnsettledOperationDto, AccountsResult, Channel, CommandEnvelope, CommandError,
-	CommandPayload, ConversationHistoryPage, ConversationHistoryResult, DoctorCheck,
-	DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision,
-	EventPayload, ExecutionConsumerDto, ExecutionDecisionDto, ExecutionDecisionQueryError,
-	ExecutionDecisionResult, ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto,
-	ExecutionRouteBlockerDto, ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId,
-	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
-	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, ResetCardDescriptorDto,
-	ResetCardError, ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult,
-	ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	AccountUnsettledOperationDto, AccountsResult, Channel, CodexAuthProjectionResult,
+	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
+	ConversationHistoryResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
+	DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
+	ExecutionDecisionDto, ExecutionDecisionQueryError, ExecutionDecisionResult,
+	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
+	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
+	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
+	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
+	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
+	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
+	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
+	ResultPayload, Sha256Digest, SnapshotItem, WireText,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -56,7 +57,7 @@ use crate::{
 	},
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
-		AccountService,
+		AccountService, CodexAuthProjectionInspection, stable_account_alias,
 	},
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
@@ -299,6 +300,37 @@ impl ServiceApplication {
 		}
 	}
 
+	async fn codex_auth_projection(&self) -> CodexAuthProjectionResult {
+		let Some(service) = &self.accounts else {
+			return CodexAuthProjectionResult::Unavailable;
+		};
+		match service.codex_auth_projection().await {
+			CodexAuthProjectionInspection::Current {
+				account_id,
+				account_revision,
+				projection_digest,
+			} => {
+				let result = (
+					EntityId::new(account_id.as_str().to_owned()),
+					u64::try_from(account_revision).map(EntityRevision),
+					Sha256Digest::new(projection_digest),
+				);
+				match result {
+					(Ok(account_id), Ok(account_revision), Ok(projection_digest))
+						if account_revision.0 > 0 =>
+						CodexAuthProjectionResult::Current {
+							account_id,
+							account_revision,
+							projection_digest,
+						},
+					_ => CodexAuthProjectionResult::Unavailable,
+				}
+			},
+			CodexAuthProjectionInspection::Unmanaged => CodexAuthProjectionResult::Unmanaged,
+			CodexAuthProjectionInspection::Unavailable => CodexAuthProjectionResult::Unavailable,
+		}
+	}
+
 	async fn account_profile(
 		&self,
 		account_id: &EntityId,
@@ -409,12 +441,7 @@ impl ServiceApplication {
 			return Err(CommandError::AcceptanceUnknown);
 		};
 		let value = match &command.payload {
-			CommandPayload::EnrollAccountFromSharedCodex {
-				operation_id,
-				account_id,
-				display_label,
-				enabled,
-			} => {
+			CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, enabled } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
 				service
@@ -422,7 +449,6 @@ impl ServiceApplication {
 						lease,
 						operation_id,
 						account_id,
-						display_label.as_str().to_owned(),
 						*enabled,
 						|result| {
 							encode_account_command_receipt(
@@ -437,7 +463,6 @@ impl ServiceApplication {
 			CommandPayload::ImportAccountCredentialFile {
 				operation_id,
 				account_id,
-				display_label,
 				enabled,
 				source_descriptor,
 			} => {
@@ -448,7 +473,6 @@ impl ServiceApplication {
 						lease,
 						operation_id,
 						account_id,
-						display_label.as_str().to_owned(),
 						*enabled,
 						source_descriptor.as_str(),
 						|result| {
@@ -521,16 +545,15 @@ impl ServiceApplication {
 					)
 					.await
 			},
-			CommandPayload::RenameAccount { account_id, display_label } => {
+			CommandPayload::SetAccountEnabled { account_id, enabled } => {
 				let account_id = account_id_from_wire(account_id)?;
 				let expected = required_expected_revision(command)?;
 				service
-					.update_administration_command(
+					.set_account_enabled_command(
 						lease,
 						&account_id,
 						expected,
-						Some(display_label.as_str()),
-						None,
+						*enabled,
 						|outcome, account| {
 							let result = match outcome {
 								AccountAdministrationOutcome::Updated { .. } => account
@@ -549,32 +572,24 @@ impl ServiceApplication {
 					)
 					.await
 			},
-			CommandPayload::SetAccountEnabled { account_id, enabled } => {
+			CommandPayload::UseAccountInCodex { account_id } => {
 				let account_id = account_id_from_wire(account_id)?;
+				let publication_account_id = account_id.clone();
 				let expected = required_expected_revision(command)?;
 				service
-					.update_administration_command(
-						lease,
-						&account_id,
-						expected,
-						None,
-						Some(*enabled),
-						|outcome, account| {
-							let result = match outcome {
-								AccountAdministrationOutcome::Updated { .. } => account
-									.cloned()
-									.ok_or_else(|| {
-										application_unavailable(
-											"account command result is unavailable",
-										)
-									})
-									.and_then(account_changed_publication),
-								AccountAdministrationOutcome::Rejected { rejection, revision } =>
-									Err(lifecycle_rejection(*rejection, *revision)),
-							};
-							encode_account_command_receipt(&result)
-						},
-					)
+					.use_account_in_codex_command(lease, &account_id, expected, move |result| {
+						encode_account_command_receipt(
+							&result.map_err(account_lifecycle_command_error).and_then(
+								|(revision, digest)| {
+									codex_auth_projection_publication(
+										publication_account_id,
+										revision,
+										digest,
+									)
+								},
+							),
+						)
+					})
 					.await
 			},
 			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
@@ -866,14 +881,14 @@ impl Application for ServiceApplication {
 		match &command.payload {
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
-			| CommandPayload::RenameAccount { .. }
 			| CommandPayload::SetAccountEnabled { .. }
 			| CommandPayload::LogoutAccount { .. }
 			| CommandPayload::SetFixedAccountSelection { .. }
 			| CommandPayload::SetBalancedAccountSelection
 			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
-			| CommandPayload::RecoverAccountOperation { .. } => self.execute_account_command(command).await,
+			| CommandPayload::RecoverAccountOperation { .. }
+			| CommandPayload::UseAccountInCodex { .. } => self.execute_account_command(command).await,
 			CommandPayload::RefreshSystemObservation { .. } =>
 				Err(CommandError::ApplicationUnavailable {
 					message: WireText::new(
@@ -959,6 +974,8 @@ impl Application for ServiceApplication {
 				),
 			QueryPayload::GetInitialAccountSelection =>
 				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
+			QueryPayload::GetCodexAuthProjection =>
+				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
 		}
 	}
 }
@@ -1217,6 +1234,11 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 	if account.tombstoned {
 		return Err(());
 	}
+	let alias = account
+		.credential
+		.as_ref()
+		.map(|binding| stable_account_alias(&binding.provider))
+		.unwrap_or_else(|| account.label.clone());
 	let credential = account
 		.credential
 		.map(|binding| {
@@ -1265,7 +1287,7 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 
 	Ok(AccountDto {
 		account_id: EntityId::new(account.account_id.as_str().to_owned()).map_err(|_| ())?,
-		display_label: WireText::new(account.label).map_err(|_| ())?,
+		alias: WireText::new(alias).map_err(|_| ())?,
 		enabled: account.enabled,
 		account_revision: EntityRevision(u64::try_from(account.revision).map_err(|_| ())?),
 		observed_state: match account.observed_state {
@@ -1361,10 +1383,10 @@ fn account_command_descriptor(
 			(AccountCommandKind::Enroll, account_id.as_str()),
 		CommandPayload::ImportAccountCredentialFile { account_id, .. } =>
 			(AccountCommandKind::Import, account_id.as_str()),
-		CommandPayload::RenameAccount { account_id, .. } =>
-			(AccountCommandKind::Rename, account_id.as_str()),
 		CommandPayload::SetAccountEnabled { account_id, .. } =>
 			(AccountCommandKind::SetEnabled, account_id.as_str()),
+		CommandPayload::UseAccountInCodex { account_id } =>
+			(AccountCommandKind::UseInCodex, account_id.as_str()),
 		CommandPayload::LogoutAccount { account_id, .. } =>
 			(AccountCommandKind::Logout, account_id.as_str()),
 		CommandPayload::SetFixedAccountSelection { .. } =>
@@ -1389,8 +1411,8 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 		},
-		CommandPayload::RenameAccount { account_id, .. }
-		| CommandPayload::SetAccountEnabled { account_id, .. } => {
+		CommandPayload::SetAccountEnabled { account_id, .. }
+		| CommandPayload::UseAccountInCodex { account_id } => {
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
@@ -1454,6 +1476,34 @@ fn account_changed_publication(
 		entity_revision: account.account_revision,
 		result: ResultPayload::AccountChanged { account: Box::new(account.clone()) },
 		event: EventPayload::AccountChanged { account: Box::new(account) },
+	})
+}
+
+fn codex_auth_projection_publication(
+	account_id: AccountId,
+	account_revision: i64,
+	projection_digest: String,
+) -> Result<ApplicationPublication, CommandError> {
+	let account_revision = u64::try_from(account_revision)
+		.ok()
+		.filter(|revision| *revision > 0)
+		.map(EntityRevision)
+		.ok_or_else(|| application_unavailable("account result is incompatible"))?;
+	let account_id = EntityId::new(account_id.as_str().to_owned())
+		.map_err(|_| application_unavailable("account result is incompatible"))?;
+	let projection_digest = Sha256Digest::new(projection_digest)
+		.map_err(|_| application_unavailable("account result is incompatible"))?;
+
+	Ok(ApplicationPublication {
+		channel: Channel::AccountsHealth,
+		entity_id: account_id.clone(),
+		entity_revision: account_revision,
+		result: ResultPayload::CodexAuthProjected {
+			account_id: account_id.clone(),
+			account_revision,
+			projection_digest: projection_digest.clone(),
+		},
+		event: EventPayload::CodexAuthProjected { account_id, account_revision, projection_digest },
 	})
 }
 
@@ -1874,7 +1924,11 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
-	use decodex_core::{AccountId, AccountProvider, ProviderIdentity};
+	use decodex_core::{
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
+		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaWindow,
+		AccountQuotaWindowObservation, AccountRecord, AccountState, ProviderIdentity,
+	};
 	use decodex_postgres::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
 		ResetCardFailureCode, ResetCardOperationStatus,
@@ -1887,8 +1941,8 @@ mod tests {
 	use super::{
 		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
 		AccountProfileRuntimeError, AccountProfileView, ResetCardServiceError,
-		StoredAccountCommandOutcome, account_lifecycle_command_error, account_profile_dto,
-		account_profile_unavailable_dto, decode_account_command_receipt,
+		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
+		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
 	};
 
@@ -1924,6 +1978,40 @@ mod tests {
 		));
 		assert_eq!(dto.daily_usage[0].start_date.as_str(), "2026-07-28");
 		assert_eq!(dto.daily_usage[0].tokens, 900);
+	}
+
+	#[test]
+	fn prepared_account_uses_its_immutable_derived_alias_without_a_current_binding() {
+		let account = AccountRecord {
+			account_id: AccountId::new("40000000-0000-4000-8000-000000000002").unwrap(),
+			label: "Account DQ6WF-G8BTT".to_owned(),
+			enabled: true,
+			revision: 1,
+			observed_state: AccountState::Unknown,
+			lifecycle_readiness: AccountLifecycleReadiness::OperationUnsettled,
+			credential: None,
+			unsettled_operation: Some(AccountOperationStatus {
+				operation_id: AccountOperationId::new("40000000-0000-4000-8000-000000000003")
+					.unwrap(),
+				kind: AccountOperationKind::Enroll,
+				phase: AccountOperationPhase::Prepared,
+				recovery_code: None,
+			}),
+			five_hour_quota: AccountQuotaWindowObservation::unknown(
+				AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			)
+			.unwrap(),
+			seven_day_quota: AccountQuotaWindowObservation::unknown(
+				AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+			)
+			.unwrap(),
+			tombstoned: false,
+		};
+
+		assert_eq!(
+			account_dto(account).expect("prepared account must remain listable").alias.as_str(),
+			"Account DQ6WF-G8BTT",
+		);
 	}
 
 	#[test]

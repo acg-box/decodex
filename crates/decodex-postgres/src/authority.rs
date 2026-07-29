@@ -1705,10 +1705,10 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		rows: 1_000.0,
 	},
 	table_function_contract(
-		"update_account_administration_exact",
-		"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
-		"update_account_administration_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_display_label text,p_enabled boolean\n)",
-		"p_account_id uuid, p_expected_revision bigint, p_display_label text, p_enabled boolean",
+		"set_account_enabled_exact",
+		"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
+		"set_account_enabled_exact(\n\tp_account_id uuid,p_expected_revision bigint,p_enabled boolean\n)",
+		"p_account_id uuid, p_expected_revision bigint, p_enabled boolean",
 		"TABLE(result_code text, revision bigint)",
 		"v",
 	),
@@ -2040,7 +2040,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
-	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
 	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
 	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
@@ -4426,8 +4426,8 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0xed, 0x68, 0x4b, 0x6a, 0x79, 0x77, 0x25, 0x81, 0xd5, 0x45, 0x4f, 0x98, 0x19, 0xe6, 0xd5, 0x88,
-	0x23, 0x3d, 0x90, 0x77, 0x8a, 0x86, 0x8a, 0x44, 0xa1, 0x3c, 0xeb, 0x59, 0x8d, 0x49, 0xb1, 0xb4,
+	0x57, 0x3d, 0x3a, 0x75, 0xa8, 0x15, 0xe9, 0xa8, 0xf4, 0xfa, 0x93, 0x1b, 0xc5, 0xe0, 0x2a, 0x0e,
+	0x1e, 0x31, 0x46, 0x41, 0x45, 0xdc, 0x6e, 0x34, 0xf5, 0x77, 0xb0, 0x6e, 0xa2, 0xed, 0x6c, 0x2b,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -4926,8 +4926,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x5e, 0x33, 0xac, 0x4d, 0x83, 0x5b, 0xa8, 0x88, 0x7e, 0x97, 0x83, 0x19, 0xc6, 0xa0, 0x1c, 0x2f,
-	0xa7, 0x8e, 0xac, 0x3b, 0x5e, 0x47, 0x65, 0x54, 0x7a, 0xef, 0x44, 0xab, 0xf0, 0xd8, 0xd4, 0x65,
+	0x50, 0x94, 0x98, 0xb6, 0x85, 0x5e, 0x8d, 0x33, 0xc5, 0xc5, 0x5e, 0xcf, 0x2b, 0x78, 0x3a, 0x33,
+	0x50, 0x63, 0xa5, 0x2f, 0x64, 0x51, 0x47, 0x18, 0x80, 0x35, 0xc1, 0x8a, 0xac, 0xa3, 0xca, 0xf8,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -5564,7 +5564,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "advance_account_operation_exact"
 			| "read_unsettled_account_operations_exact"
 			| "read_account_operation_exact"
-			| "update_account_administration_exact"
+			| "set_account_enabled_exact"
 			| "set_fixed_account_selection_exact"
 			| "set_balanced_account_selection_exact"
 			| "set_account_order_exact"

@@ -86,6 +86,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 
 private struct AccountProfileRequest: Equatable, Sendable {
 	let generation: UInt64
+	let privacyEpoch: UInt64
 	let includesEmail: Bool
 	let accountID: String
 	let accountRevision: UInt64
@@ -122,6 +123,12 @@ struct ResetCardStoreMessage: Equatable {
 	let text: String
 }
 
+enum AccountControlActivity: Equatable {
+	case lifecycle
+	case loginRefresh
+	case codexProjection
+}
+
 private enum ResetCardDispatchOutcome {
 	case state(ResetCardOperationState)
 	case error(ResetCardClientError)
@@ -147,6 +154,8 @@ private enum ResetCardRefreshResult: Equatable {
 @MainActor
 @Observable
 final class ResetCardStore {
+	private static let maximumConcurrentAccountReads = 12
+
 	private static let defaultStartupRetryDelays: [Duration] = [
 		.seconds(1),
 		.seconds(2),
@@ -158,12 +167,16 @@ final class ResetCardStore {
 
 	private(set) var accounts = [ResetCardAccountState]()
 	private(set) var routing: AccountRoutingControl?
+	private(set) var codexAuthProjection: CodexAuthProjection?
 	private(set) var isRefreshing = false
+	private(set) var refreshSkeletonIsPublished = false
+	private(set) var isRefreshingAccountSkeleton = false
 	private(set) var hasLoaded = false
 	private(set) var submittingKey: String?
-	private(set) var controllingAccountID: String?
+	private(set) var accountControlActivities = [String: AccountControlActivity]()
 	private(set) var isEnrollingAccount = false
 	private(set) var isRoutingAccountControl = false
+	private(set) var accountSkeletonRevisionTargets = [String: UInt64]()
 	private(set) var pendingAttempts: [ResetCardUseAttempt]
 	private(set) var isPendingRecoveryBlocked: Bool
 	private(set) var profileEmailsVisible = false
@@ -175,10 +188,13 @@ final class ResetCardStore {
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
-	@ObservationIgnored private var profileRequestGeneration: UInt64 = 0
+	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
+	@ObservationIgnored private var profileRequestGenerations = [String: UInt64]()
+	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
+	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
 
 	init(
-		client: any ResetCardClient = ResetCardCLIClient(),
+		client: any ResetCardClient = DecodexNativeClient(),
 		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
 		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays
 	) {
@@ -197,15 +213,22 @@ final class ResetCardStore {
 
 	deinit {
 		startupTask?.cancel()
+		pendingRecoveryTask?.cancel()
 	}
 
 	var isInitialLoading: Bool {
 		isRefreshing && hasLoaded == false
 	}
 
+	var canPerformDirectAccountControl: Bool {
+		isRefreshingAccountSkeleton == false
+			&& (isRefreshing == false || refreshSkeletonIsPublished)
+	}
+
 	func blocksNewAttempt(for target: ResetCardUseTarget) -> Bool {
 		isPendingRecoveryBlocked
 			|| submittingKey != nil
+			|| isAwaitingFreshAccountSkeleton(target.accountID)
 			|| pendingAttempts.count >= ResetCardPendingAttemptStore.maximumAttempts
 			|| pendingAttempts.contains(where: {
 				$0.target.accountID == target.accountID
@@ -214,14 +237,12 @@ final class ResetCardStore {
 	}
 
 	func start() {
-		guard startupTask == nil else {
+		guard startupTask == nil, pendingRecoveryTask == nil else {
 			return
 		}
 
 		let retryDelays = startupRetryDelays
 		startupTask = Task { [weak self] in
-			// Keep automatic retries on account, inventory, and pending-status reads.
-			// Only an explicit user action can reach the reset-card use command.
 			guard var result = await self?.refreshReadState() else {
 				return
 			}
@@ -243,17 +264,53 @@ final class ResetCardStore {
 				result = refreshed
 			}
 		}
+		pendingRecoveryTask = Task { [weak self] in
+			guard var shouldRetry = await self?.recoverPendingAttempts() else {
+				return
+			}
+
+			for delay in retryDelays {
+				guard shouldRetry, Task.isCancelled == false else {
+					return
+				}
+
+				do {
+					try await Task.sleep(for: delay)
+				} catch {
+					return
+				}
+
+				guard let retry = await self?.recoverPendingAttempts() else {
+					return
+				}
+				shouldRetry = retry
+			}
+		}
 	}
 
 	func refresh() async {
+		guard isRefreshing == false,
+			isRefreshingAccountSkeleton == false,
+			isAccountControlInProgress == false
+		else {
+			return
+		}
+		startupTask?.cancel()
+		startupTask = nil
+		pendingRecoveryTask?.cancel()
+		pendingRecoveryTask = nil
+		clearStaleControlError()
 		_ = await refreshReadState()
+		_ = await recoverPendingAttempts()
 	}
 
 	func setProfileEmailVisibility(_ isVisible: Bool) async {
 		let didChange = profileEmailsVisible != isVisible
 		profileEmailsVisible = isVisible
+		if didChange {
+			profilePrivacyEpoch &+= 1
+		}
 		if isVisible == false {
-			invalidateProfileRequests()
 			accounts = accounts.map { state in
 				ResetCardAccountState(
 					account: state.account,
@@ -281,8 +338,10 @@ final class ResetCardStore {
 		}
 
 		isRefreshing = true
+		refreshSkeletonIsPublished = false
 		defer {
 			isRefreshing = false
+			refreshSkeletonIsPublished = false
 			hasLoaded = true
 		}
 
@@ -296,10 +355,21 @@ final class ResetCardStore {
 			}
 			let retainedAuthority = retainedAuthorities.first
 			let discovered: [ResetCardAccountRecord]
+			var projectionReadback: (
+				generation: UInt64,
+				projection: CodexAuthProjection
+			)?
 			if let accountControlClient {
-				let snapshot = try await accountControlClient.accountSnapshot(
+				let projectionGeneration = beginCodexProjectionRequest()
+				async let snapshotRead = accountControlClient.accountSnapshot(
 					authority: retainedAuthority
 				)
+				async let projectionRead = try? accountControlClient.codexAuthProjection(
+					authority: retainedAuthority
+				)
+				let snapshot = try await snapshotRead
+				let projection = await projectionRead ?? .unavailable
+				projectionReadback = (projectionGeneration, projection)
 				routing = snapshot.routing
 				discovered = snapshot.accounts
 			} else {
@@ -314,134 +384,178 @@ final class ResetCardStore {
 					?? previous?.account.authority
 					?? previous?.inventory?.authority
 				let boundAccount = Self.account(account, authority: authority)
-				let retainsInventory = previous?.account.accountRevision == account.accountRevision
-				let retainedProfile = previous?.account.accountRevision == account.accountRevision
+				let sameRevision = previous?.account.accountRevision == account.accountRevision
+				let retriesInventory = sameRevision
+					&& (
+						previous?.error?.isRetryableReadFailure == true
+							|| previous?.inventory?.observationError?.isRetryableReadFailure == true
+					)
+				let retainedInventory = sameRevision && retriesInventory == false
+					? previous?.inventory
+					: nil
+				let retainedError = sameRevision && retriesInventory == false
+					? previous?.error
+					: nil
+				let retainedProfile = sameRevision
 					? previous?.profile
 					: nil
+				let retriesProfile = sameRevision
+					&& (
+						previous?.profileError?.isRetryableReadFailure == true
+							|| previous?.profileUnavailable?.error.isRetryableReadFailure == true
+					)
+				let retainedProfileUnavailable = sameRevision && retriesProfile == false
+					? previous?.profileUnavailable
+					: nil
+				let retainedProfileError = sameRevision && retriesProfile == false
+					? previous?.profileError
+					: nil
+				let awaitsNewerSkeleton = accountSkeletonRevisionTargets[
+					account.accountID
+				].map { account.accountRevision < $0 } ?? false
 				return ResetCardAccountState(
 					account: boundAccount,
-					inventory: retainsInventory ? previous?.inventory : nil,
-					error: nil,
-					isRefreshing: true,
+					inventory: retainedInventory,
+					error: retainedError,
+					isRefreshing: awaitsNewerSkeleton
+						|| (retainedInventory == nil && retainedError == nil),
 					profile: profileEmailsVisible
 						? retainedProfile
 						: retainedProfile?.redactingEmail(),
-					profileUnavailable: nil,
-					profileError: nil,
+					profileUnavailable: profileEmailsVisible
+						? retainedProfileUnavailable
+						: retainedProfileUnavailable?.redactingEmail(),
+					profileError: retainedProfileError,
 					isProfileRefreshing: accountProfileClient != nil
+						&& retainedProfile == nil
+						&& retainedProfileUnavailable == nil
+					&& retainedProfileError == nil
 				)
+			}
+			reconcileAccountSkeletonRevisionTargets()
+			if let projectionReadback,
+				applyCodexAuthProjection(
+					projectionReadback.projection,
+					generation: projectionReadback.generation
+				) {
+				scheduleCodexProjectionRefresh()
 			}
 			if message?.tone == .error, isPendingRecoveryBlocked == false {
 				message = nil
 			}
+			refreshSkeletonIsPublished = true
 
 			let client = self.client
 			let accountProfileClient = self.accountProfileClient
 			let includeEmail = profileEmailsVisible
-			let profileGeneration = accountProfileClient.map { _ in
-				beginProfileRequestGeneration()
-			}
+			var profileRequests = [AccountProfileRequest]()
 			var expectedAuthority = retainedAuthority
-			await withTaskGroup(of: ResetCardAccountRead.self) { group in
-				for state in accounts {
-					let account = state.account
-					group.addTask {
+			var reads = [@Sendable () async -> ResetCardAccountRead]()
+			for state in accounts {
+				let account = state.account
+				reads.append {
+					do {
+						return .inventoryAvailable(
+							accountID: account.accountID,
+							try await client.inventory(for: account)
+						)
+					} catch {
+						return .inventoryFailed(
+							accountID: account.accountID,
+							Self.clientError(error)
+						)
+					}
+				}
+				if let accountProfileClient {
+					let profileRequest = AccountProfileRequest(
+						generation: beginProfileRequestGeneration(
+							accountID: account.accountID
+						),
+						privacyEpoch: profilePrivacyEpoch,
+						includesEmail: includeEmail,
+						accountID: account.accountID,
+						accountRevision: account.accountRevision
+					)
+					profileRequests.append(profileRequest)
+					reads.append {
 						do {
-							return .inventoryAvailable(
-								accountID: account.accountID,
-								try await client.inventory(for: account)
-							)
+							switch try await accountProfileClient.profile(
+								for: account,
+								includeEmail: includeEmail
+							) {
+							case .available(let profile):
+								return .profileAvailable(
+									accountID: account.accountID,
+									request: profileRequest,
+									profile
+								)
+							case .unavailable(let unavailable):
+								return .profileUnavailable(
+									accountID: account.accountID,
+									request: profileRequest,
+									unavailable
+								)
+							}
 						} catch {
-							return .inventoryFailed(
+							return .profileFailed(
 								accountID: account.accountID,
+								request: profileRequest,
 								Self.clientError(error)
 							)
 						}
 					}
-					if let accountProfileClient, let profileGeneration {
-						let profileRequest = AccountProfileRequest(
-							generation: profileGeneration,
-							includesEmail: includeEmail,
-							accountID: account.accountID,
-							accountRevision: account.accountRevision
-						)
-						group.addTask {
-							do {
-								switch try await accountProfileClient.profile(
-									for: account,
-									includeEmail: includeEmail
-								) {
-								case .available(let profile):
-									return .profileAvailable(
-										accountID: account.accountID,
-										request: profileRequest,
-										profile
-									)
-								case .unavailable(let unavailable):
-									return .profileUnavailable(
-										accountID: account.accountID,
-										request: profileRequest,
-										unavailable
-									)
-								}
-							} catch {
-								return .profileFailed(
-									accountID: account.accountID,
-									request: profileRequest,
-									Self.clientError(error)
-								)
-							}
-						}
-					}
+				}
+			}
+			await withTaskGroup(of: ResetCardAccountRead.self) { group in
+				var nextRead = 0
+				let initialCount = min(Self.maximumConcurrentAccountReads, reads.count)
+				while nextRead < initialCount {
+					group.addTask(operation: reads[nextRead])
+					nextRead += 1
 				}
 
-				for await read in group {
+				while let read = await group.next() {
 					guard Task.isCancelled == false else {
 						return
 					}
 					switch read {
 					case .inventoryAvailable(let accountID, let inventory):
-						guard expectedAuthority == nil || expectedAuthority == inventory.authority else {
+						if expectedAuthority == nil || expectedAuthority == inventory.authority {
+							expectedAuthority = inventory.authority
+							applyInventory(inventory, accountID: accountID)
+						} else {
 							applyInventoryFailure(
 								.invalidResponse,
 								accountID: accountID
 							)
-							continue
 						}
-						expectedAuthority = inventory.authority
-						if let error = inventory.observationError {
-							shouldRetry = shouldRetry || error.isRetryableReadFailure
-						}
-						applyInventory(inventory, accountID: accountID)
 					case .inventoryFailed(let accountID, let error):
-						shouldRetry = shouldRetry || error.isRetryableReadFailure
 						applyInventoryFailure(error, accountID: accountID)
 					case .profileAvailable(let accountID, let request, let profile):
-						guard isCurrentProfileRequest(request) else {
-							continue
+						if isCurrentProfileRequest(request) {
+							applyProfile(profile, accountID: accountID, request: request)
 						}
-						applyProfile(profile, accountID: accountID, request: request)
 					case .profileUnavailable(let accountID, let request, let unavailable):
-						guard isCurrentProfileRequest(request) else {
-							continue
+						if isCurrentProfileRequest(request) {
+							applyProfileUnavailable(
+								unavailable,
+								accountID: accountID,
+								request: request
+							)
 						}
-						shouldRetry = shouldRetry || unavailable.error.isRetryableReadFailure
-						applyProfileUnavailable(
-							unavailable,
-							accountID: accountID,
-							request: request
-						)
 					case .profileFailed(let accountID, let request, let error):
-						guard isCurrentProfileRequest(request) else {
-							continue
+						if isCurrentProfileRequest(request) {
+							applyProfileFailure(error, accountID: accountID, request: request)
 						}
-						shouldRetry = shouldRetry || error.isRetryableReadFailure
-						applyProfileFailure(error, accountID: accountID, request: request)
+					}
+					if nextRead < reads.count {
+						group.addTask(operation: reads[nextRead])
+						nextRead += 1
 					}
 				}
 			}
-			if let profileGeneration {
-				finishProfileRequestGeneration(profileGeneration)
+			for request in profileRequests {
+				finishProfileRequest(request)
 			}
 		} catch {
 			let clientError = Self.clientError(error)
@@ -464,7 +578,6 @@ final class ResetCardStore {
 			)
 		}
 
-		shouldRetry = await recoverPendingAttempts() || shouldRetry
 		if isPendingRecoveryBlocked {
 			message = Self.pendingRecoveryBlockedMessage
 		}
@@ -475,6 +588,13 @@ final class ResetCardStore {
 	func use(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
 		guard isPendingRecoveryBlocked == false else {
 			message = Self.pendingRecoveryBlockedMessage
+			return ResetCardUseCompletion(resolved: true)
+		}
+		guard isAwaitingFreshAccountSkeleton(attempt.target.accountID) == false else {
+			message = ResetCardStoreMessage(
+				tone: .information,
+				text: "The account state changed. Wait for the account list to refresh."
+			)
 			return ResetCardUseCompletion(resolved: true)
 		}
 		guard submittingKey == nil,
@@ -498,6 +618,7 @@ final class ResetCardStore {
 			)
 			return ResetCardUseCompletion(resolved: true)
 		}
+		clearStaleControlError()
 		guard remember(attempt) else {
 			message = ResetCardStoreMessage(
 				tone: .error,
@@ -516,6 +637,7 @@ final class ResetCardStore {
 			return
 		}
 
+		clearStaleControlError()
 		submittingKey = attempt.idempotencyKey
 		defer {
 			submittingKey = nil
@@ -539,11 +661,9 @@ final class ResetCardStore {
 			for: attempt,
 			operation: {
 				do {
-					let observed = try await client.status(for: attempt)
-					let state = observed == .notFound
-						? try await client.use(attempt)
-						: observed
-					return ResetCardDispatchOutcome.state(state)
+					return ResetCardDispatchOutcome.state(
+						try await client.status(for: attempt)
+					)
 				} catch {
 					return ResetCardDispatchOutcome.error(Self.clientError(error))
 				}
@@ -564,18 +684,29 @@ final class ResetCardStore {
 	}
 
 	var isAccountControlInProgress: Bool {
-		controllingAccountID != nil || isEnrollingAccount || isRoutingAccountControl
+		accountControlActivities.isEmpty == false
+			|| isEnrollingAccount
+			|| isRoutingAccountControl
 	}
 
 	func isControllingAccount(_ accountID: String) -> Bool {
-		controllingAccountID == accountID
+		accountControlActivities[accountID] != nil
 	}
 
-	func enrollFromSharedCodex(
-		displayLabel: String,
-		enabled: Bool = true
-	) async {
+	func isControllingAccount(
+		_ accountID: String,
+		activity: AccountControlActivity
+	) -> Bool {
+		accountControlActivities[accountID] == activity
+	}
+
+	func isAwaitingFreshAccountSkeleton(_ accountID: String) -> Bool {
+		accountSkeletonRevisionTargets[accountID] != nil
+	}
+
+	func enrollFromSharedCodex(enabled: Bool = true) async {
 		guard isRefreshing == false,
+			isRefreshingAccountSkeleton == false,
 			isAccountControlInProgress == false,
 			let accountControlClient
 		else {
@@ -598,34 +729,8 @@ final class ResetCardStore {
 					authority: establishedAuthority,
 					operationID: operationID,
 					accountID: accountID,
-					displayLabel: displayLabel,
 					enabled: enabled,
 					idempotencyKey: idempotencyKey
-				)
-			}
-		)
-	}
-
-	func renameAccount(
-		_ accountID: String,
-		displayLabel: String
-	) async {
-		guard let account = accountRecord(accountID),
-			let accountControlClient
-		else {
-			presentAccountControlUnavailable()
-			return
-		}
-		await performAccountControl(
-			accountID: accountID,
-			successMessage: "Account renamed.",
-			operation: {
-				try await accountControlClient.renameAccount(
-					authority: account.authority ?? establishedAuthority,
-					accountID: accountID,
-					displayLabel: displayLabel,
-					expectedRevision: account.accountRevision,
-					idempotencyKey: Self.newCanonicalUUID()
 				)
 			}
 		)
@@ -643,6 +748,7 @@ final class ResetCardStore {
 		}
 		await performAccountControl(
 			accountID: accountID,
+			activity: .lifecycle,
 			successMessage: enabled ? "Account enabled." : "Account disabled.",
 			operation: {
 				try await accountControlClient.setAccountEnabled(
@@ -667,6 +773,7 @@ final class ResetCardStore {
 		let idempotencyKey = Self.newCanonicalUUID()
 		await performAccountControl(
 			accountID: accountID,
+			activity: .lifecycle,
 			successMessage: "Account logged out.",
 			operation: {
 				try await accountControlClient.logoutAccount(
@@ -682,6 +789,7 @@ final class ResetCardStore {
 
 	func selectFixedAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
+			isAwaitingFreshAccountSkeleton(accountID) == false,
 			let routing,
 			routing.order.contains(accountID),
 			let accountControlClient
@@ -690,8 +798,9 @@ final class ResetCardStore {
 			return
 		}
 		await performAccountControl(
-			accountID: accountID,
-			successMessage: "Fixed account selected.",
+			isRoutingControl: true,
+			allowsDuringRefresh: true,
+			successMessage: nil,
 			operation: {
 				try await accountControlClient.setFixedSelection(
 					authority: account.authority ?? establishedAuthority,
@@ -712,7 +821,9 @@ final class ResetCardStore {
 			return
 		}
 		await performAccountControl(
-			successMessage: "Balanced account selection enabled.",
+			isRoutingControl: true,
+			allowsDuringRefresh: true,
+			successMessage: nil,
 			operation: {
 				try await accountControlClient.setBalancedSelection(
 					authority: establishedAuthority,
@@ -734,6 +845,8 @@ final class ResetCardStore {
 		let idempotencyKey = Self.newCanonicalUUID()
 		await performAccountControl(
 			accountID: accountID,
+			activity: .loginRefresh,
+			allowsDuringRefresh: true,
 			successMessage: "Account credentials refreshed.",
 			operation: {
 				try await accountControlClient.refreshAccountCredentials(
@@ -747,9 +860,43 @@ final class ResetCardStore {
 		)
 	}
 
+	func useAccountInCodex(_ accountID: String) async {
+		guard let account = accountRecord(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		await performAccountControl(
+			accountID: accountID,
+			activity: .codexProjection,
+			allowsDuringRefresh: true,
+			successMessage: nil,
+			operation: {
+				try await accountControlClient.useAccountInCodex(
+					authority: account.authority ?? establishedAuthority,
+					accountID: accountID,
+					expectedRevision: account.accountRevision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
+	func isCodexProjection(_ accountID: String) -> Bool {
+		guard let account = accountRecord(accountID),
+			account.accountRevision > 0,
+			case .current(let projectedID, let projectedRevision, _) = codexAuthProjection
+		else {
+			return false
+		}
+		return projectedID == accountID
+			&& projectedRevision == account.accountRevision
+	}
+
 	func accountLabel(for accountID: String) -> String {
 		accounts.first(where: { $0.account.accountID == accountID })?
-			.account.displayLabel
+			.account.alias
 			?? "Account …\(accountID.suffix(8))"
 	}
 
@@ -825,7 +972,7 @@ final class ResetCardStore {
 			}
 			await refreshAccount(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
-		case .executableMissing, .launchFailed, .timedOut, .outputTooLarge,
+		case .nativeClientUnavailable, .timedOut, .outputTooLarge,
 			.useDefinitelyNotDispatched, .usePotentiallyDispatched,
 			.commandFailed, .invalidResponse, .service:
 			reloadPendingJournal()
@@ -885,6 +1032,7 @@ final class ResetCardStore {
 						text: state.presentation
 					)
 				case .notFound:
+					shouldRetry = true
 					message = ResetCardStoreMessage(
 						tone: .information,
 						text: "A pending reset-card request can be resumed with the same operation key."
@@ -947,6 +1095,169 @@ final class ResetCardStore {
 		}
 	}
 
+	private func refreshAccountDetails(_ accountID: String) async {
+		guard let index = accounts.firstIndex(where: {
+			$0.account.accountID == accountID
+		}) else {
+			return
+		}
+		let account = accounts[index].account
+		let client = self.client
+		let includeEmail = profileEmailsVisible
+		let profileRequest = accountProfileClient.map { _ in
+			AccountProfileRequest(
+				generation: beginProfileRequestGeneration(accountID: accountID),
+				privacyEpoch: profilePrivacyEpoch,
+				includesEmail: includeEmail,
+				accountID: accountID,
+				accountRevision: account.accountRevision
+			)
+		}
+		defer {
+			if let profileRequest {
+				finishProfileRequest(profileRequest)
+			}
+		}
+
+		await withTaskGroup(of: ResetCardAccountRead.self) { group in
+			group.addTask {
+				do {
+					return .inventoryAvailable(
+						accountID: accountID,
+						try await client.inventory(for: account)
+					)
+				} catch {
+					return .inventoryFailed(
+						accountID: accountID,
+						Self.clientError(error)
+					)
+				}
+			}
+			if let accountProfileClient, let profileRequest {
+				group.addTask {
+					do {
+						switch try await accountProfileClient.profile(
+							for: account,
+							includeEmail: includeEmail
+						) {
+						case .available(let profile):
+							return .profileAvailable(
+								accountID: accountID,
+								request: profileRequest,
+								profile
+							)
+						case .unavailable(let unavailable):
+							return .profileUnavailable(
+								accountID: accountID,
+								request: profileRequest,
+								unavailable
+							)
+						}
+					} catch {
+						return .profileFailed(
+							accountID: accountID,
+							request: profileRequest,
+							Self.clientError(error)
+						)
+					}
+				}
+			}
+
+			for await read in group {
+				switch read {
+				case .inventoryAvailable(let id, let inventory):
+					applyInventory(inventory, accountID: id)
+				case .inventoryFailed(let id, let error):
+					applyInventoryFailure(error, accountID: id)
+				case .profileAvailable(let id, let request, let profile):
+					applyProfile(profile, accountID: id, request: request)
+				case .profileUnavailable(let id, let request, let unavailable):
+					applyProfileUnavailable(
+						unavailable,
+						accountID: id,
+						request: request
+					)
+				case .profileFailed(let id, let request, let error):
+					applyProfileFailure(error, accountID: id, request: request)
+				}
+			}
+		}
+	}
+
+	private func refreshAccountSkeleton() async {
+		guard let accountControlClient,
+			isRefreshingAccountSkeleton == false,
+			isAccountControlInProgress == false
+		else {
+			return
+		}
+		isRefreshingAccountSkeleton = true
+		defer {
+			isRefreshingAccountSkeleton = false
+		}
+		do {
+			let projectionGeneration = beginCodexProjectionRequest()
+			async let snapshotRead = accountControlClient.accountSnapshot(
+				authority: establishedAuthority
+			)
+			async let projectionRead = try? accountControlClient.codexAuthProjection(
+				authority: establishedAuthority
+			)
+			let snapshot = try await snapshotRead
+			let previousByID = Dictionary(
+				uniqueKeysWithValues: accounts.map {
+					($0.account.accountID, $0)
+				}
+			)
+			routing = snapshot.routing
+			var accountsNeedingDetails = [String]()
+			accounts = snapshot.accounts.map { account in
+				let previous = previousByID[account.accountID]
+				let authority = snapshot.authority
+					?? account.authority
+					?? previous?.account.authority
+					?? previous?.inventory?.authority
+				let bound = Self.account(account, authority: authority)
+				let sameRevision = previous?.account.accountRevision
+					== bound.accountRevision
+				let awaitsNewerSkeleton = accountSkeletonRevisionTargets[
+					bound.accountID
+				].map { bound.accountRevision < $0 } ?? false
+				if sameRevision == false {
+					accountsNeedingDetails.append(bound.accountID)
+				}
+				return ResetCardAccountState(
+					account: bound,
+					inventory: sameRevision ? previous?.inventory : nil,
+					error: sameRevision ? previous?.error : nil,
+					isRefreshing: sameRevision == false || awaitsNewerSkeleton,
+					profile: sameRevision ? previous?.profile : nil,
+					profileUnavailable: sameRevision
+						? previous?.profileUnavailable
+						: nil,
+					profileError: sameRevision ? previous?.profileError : nil,
+					isProfileRefreshing: sameRevision == false
+					&& accountProfileClient != nil
+				)
+			}
+			reconcileAccountSkeletonRevisionTargets()
+			for accountID in accountsNeedingDetails {
+				scheduleAccountControlFollowUp(.account(accountID))
+			}
+			if applyCodexAuthProjection(
+				await projectionRead ?? .unavailable,
+				generation: projectionGeneration
+			) {
+				scheduleCodexProjectionRefresh()
+			}
+		} catch {
+			message = ResetCardStoreMessage(
+				tone: .error,
+				text: Self.clientError(error).localizedDescription
+			)
+		}
+	}
+
 	private func applyInventory(
 		_ inventory: ResetCardInventory,
 		accountID: String
@@ -958,10 +1269,21 @@ final class ResetCardStore {
 			return
 		}
 		let existing = accounts[index].account
+		guard inventory.accountRevision >= existing.accountRevision else {
+			return
+		}
+		guard inventory.accountRevision == existing.accountRevision else {
+			rejectAdvancedInventory(
+				accountID: accountID,
+				inventoryRevision: inventory.accountRevision,
+				index: index
+			)
+			return
+		}
 		let account = ResetCardAccountRecord(
 			authority: inventory.authority,
 			accountID: existing.accountID,
-			displayLabel: existing.displayLabel,
+			alias: existing.alias,
 			accountRevision: inventory.accountRevision,
 			enabled: existing.enabled,
 			observedState: existing.observedState,
@@ -973,6 +1295,7 @@ final class ResetCardStore {
 		)
 		let retainsProfileState = accounts[index].account.accountRevision
 			== inventory.accountRevision
+		let revisionChanged = retainsProfileState == false
 		accounts[index] = ResetCardAccountState(
 			account: account,
 			inventory: inventory,
@@ -985,6 +1308,64 @@ final class ResetCardStore {
 			profileError: retainsProfileState ? accounts[index].profileError : nil,
 			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
+		if revisionChanged {
+			invalidateCodexProjectionAfterRevisionChange(
+				accountID: accountID,
+				accountRevision: inventory.accountRevision
+			)
+		}
+	}
+
+	private func rejectAdvancedInventory(
+		accountID: String,
+		inventoryRevision: UInt64,
+		index: Int
+	) {
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: existing.error,
+			isRefreshing: true,
+			profile: existing.profile,
+			profileUnavailable: existing.profileUnavailable,
+			profileError: existing.profileError,
+			isProfileRefreshing: existing.isProfileRefreshing
+		)
+
+		if let target = accountSkeletonRevisionTargets[accountID] {
+			accountSkeletonRevisionTargets[accountID] = max(target, inventoryRevision)
+			return
+		}
+		accountSkeletonRevisionTargets[accountID] = inventoryRevision
+		scheduleFreshAccountSkeletonRead()
+	}
+
+	private func scheduleFreshAccountSkeletonRead() {
+		guard accountSkeletonRevisionTargets.isEmpty == false,
+			isAccountControlInProgress == false
+		else {
+			return
+		}
+		Task { [weak self] in
+			await self?.refreshAccountSkeleton()
+		}
+	}
+
+	private func reconcileAccountSkeletonRevisionTargets() {
+		let revisionsByID = Dictionary(
+			uniqueKeysWithValues: accounts.map {
+				($0.account.accountID, $0.account.accountRevision)
+			}
+		)
+		accountSkeletonRevisionTargets = accountSkeletonRevisionTargets.filter {
+			accountID,
+			targetRevision in
+			guard let revision = revisionsByID[accountID] else {
+				return false
+			}
+			return revision < targetRevision
+		}
 	}
 
 	private func applyInventoryFailure(
@@ -1148,19 +1529,25 @@ final class ResetCardStore {
 			)
 		}
 		let includeEmail = profileEmailsVisible
-		let generation = beginProfileRequestGeneration()
+		var requests = [AccountProfileRequest]()
 		defer {
-			finishProfileRequestGeneration(generation)
+			for request in requests {
+				finishProfileRequest(request)
+			}
 		}
 		await withTaskGroup(of: ResetCardAccountRead.self) { group in
 			for state in accounts {
 				let account = state.account
 				let request = AccountProfileRequest(
-					generation: generation,
+					generation: beginProfileRequestGeneration(
+						accountID: account.accountID
+					),
+					privacyEpoch: profilePrivacyEpoch,
 					includesEmail: includeEmail,
 					accountID: account.accountID,
 					accountRevision: account.accountRevision
 				)
+				requests.append(request)
 				group.addTask {
 					do {
 						switch try await accountProfileClient.profile(
@@ -1229,17 +1616,15 @@ final class ResetCardStore {
 		}
 	}
 
-	private func beginProfileRequestGeneration() -> UInt64 {
-		profileRequestGeneration &+= 1
-		return profileRequestGeneration
-	}
-
-	private func invalidateProfileRequests() {
-		profileRequestGeneration &+= 1
+	private func beginProfileRequestGeneration(accountID: String) -> UInt64 {
+		let generation = (profileRequestGenerations[accountID] ?? 0) &+ 1
+		profileRequestGenerations[accountID] = generation
+		return generation
 	}
 
 	private func isCurrentProfileRequest(_ request: AccountProfileRequest) -> Bool {
-		guard request.generation == profileRequestGeneration,
+		guard request.generation == profileRequestGenerations[request.accountID],
+			request.privacyEpoch == profilePrivacyEpoch,
 			request.includesEmail == profileEmailsVisible,
 			let state = accounts.first(where: {
 				$0.account.accountID == request.accountID
@@ -1250,25 +1635,27 @@ final class ResetCardStore {
 		return state.account.accountRevision == request.accountRevision
 	}
 
-	private func finishProfileRequestGeneration(_ generation: UInt64) {
-		guard generation == profileRequestGeneration else {
+	private func finishProfileRequest(_ request: AccountProfileRequest) {
+		guard request.generation == profileRequestGenerations[request.accountID],
+			request.privacyEpoch == profilePrivacyEpoch,
+			let index = accounts.firstIndex(where: {
+				$0.account.accountID == request.accountID
+			}),
+			accounts[index].isProfileRefreshing
+		else {
 			return
 		}
-		accounts = accounts.map { state in
-			guard state.isProfileRefreshing else {
-				return state
-			}
-			return ResetCardAccountState(
-				account: state.account,
-				inventory: state.inventory,
-				error: state.error,
-				isRefreshing: state.isRefreshing,
-				profile: state.profile,
-				profileUnavailable: state.profileUnavailable,
-				profileError: state.profileError,
-				isProfileRefreshing: false
-			)
-		}
+		let state = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: state.account,
+			inventory: state.inventory,
+			error: state.error,
+			isRefreshing: state.isRefreshing,
+			profile: state.profile,
+			profileUnavailable: state.profileUnavailable,
+			profileError: state.profileError,
+			isProfileRefreshing: false
+		)
 	}
 
 	private static func account(
@@ -1278,7 +1665,7 @@ final class ResetCardStore {
 		ResetCardAccountRecord(
 			authority: authority,
 			accountID: account.accountID,
-			displayLabel: account.displayLabel,
+			alias: account.alias,
 			accountRevision: account.accountRevision,
 			enabled: account.enabled,
 			observedState: account.observedState,
@@ -1307,65 +1694,165 @@ final class ResetCardStore {
 
 	private func performAccountControl(
 		accountID: String? = nil,
+		activity: AccountControlActivity? = nil,
 		isEnrollment: Bool = false,
-		successMessage: String,
+		isRoutingControl: Bool = false,
+		allowsDuringRefresh: Bool = false,
+		successMessage: String?,
 		operation: () async throws -> AccountControlResult
 	) async {
-		guard isRefreshing == false,
-			controllingAccountID == nil,
-			isRoutingAccountControl == false
+		guard isRefreshingAccountSkeleton == false,
+			isRefreshing == false
+				|| (allowsDuringRefresh && refreshSkeletonIsPublished)
 		else {
-			presentAccountControlUnavailable()
+			return
+		}
+		if let accountID {
+			guard activity != nil,
+				accountSkeletonRevisionTargets[accountID] == nil,
+				accountControlActivities[accountID] == nil,
+				isEnrollingAccount == false,
+				isRoutingAccountControl == false
+			else {
+				return
+			}
+		} else if isRoutingControl {
+			guard isRoutingAccountControl == false,
+				accountControlActivities.isEmpty
+			else {
+				return
+			}
+		} else if isEnrollment == false {
 			return
 		}
 		if isEnrollment {
-			guard isEnrollingAccount else {
-				presentAccountControlUnavailable()
-				return
-			}
-		} else {
-			guard isEnrollingAccount == false else {
-				presentAccountControlUnavailable()
+			guard isEnrollingAccount,
+				accountControlActivities.isEmpty,
+				isRoutingAccountControl == false
+			else {
 				return
 			}
 		}
 
-		if let accountID {
-			controllingAccountID = accountID
-		} else if isEnrollment == false {
+		if let accountID, let activity {
+			accountControlActivities[accountID] = activity
+		} else if isRoutingControl {
 			isRoutingAccountControl = true
 		}
+		clearStaleControlError()
 		defer {
-			if accountID != nil {
-				controllingAccountID = nil
-			} else if isEnrollment == false {
+			if let accountID {
+				accountControlActivities.removeValue(forKey: accountID)
+			} else if isRoutingControl {
 				isRoutingAccountControl = false
 			}
+			scheduleFreshAccountSkeletonRead()
 		}
 
-		let actionMessage: ResetCardStoreMessage
 		do {
-			_ = try await operation()
-			actionMessage = ResetCardStoreMessage(tone: .success, text: successMessage)
+			let result = try await operation()
+			let followUp = applyAccountControlResult(result)
+			if let successMessage {
+				message = ResetCardStoreMessage(tone: .success, text: successMessage)
+			}
+			scheduleAccountControlFollowUp(followUp)
 		} catch let error as AccountControlError {
-			actionMessage = ResetCardStoreMessage(
+			message = ResetCardStoreMessage(
 				tone: .error,
 				text: error.localizedDescription
 			)
 		} catch let error as ResetCardClientError {
-			actionMessage = ResetCardStoreMessage(
+			message = ResetCardStoreMessage(
 				tone: .error,
 				text: error.localizedDescription
 			)
 		} catch {
-			actionMessage = ResetCardStoreMessage(
+			message = ResetCardStoreMessage(
 				tone: .error,
 				text: AccountControlError.invalidResponse.localizedDescription
 			)
 		}
+	}
 
-		_ = await refreshReadState()
-		message = actionMessage
+	private enum AccountControlFollowUp {
+		case none
+		case account(String)
+		case skeleton
+	}
+
+	private func applyAccountControlResult(
+		_ result: AccountControlResult
+	) -> AccountControlFollowUp {
+		switch result {
+		case .codexAuthProjected(let accountID, let accountRevision, let projectionDigest):
+			codexProjectionRequestGeneration &+= 1
+			codexAuthProjection = .current(
+				accountID: accountID,
+				accountRevision: accountRevision,
+				projectionDigest: projectionDigest
+			)
+			return .none
+		case .routingChanged(let routing):
+			self.routing = routing
+			return .none
+		case .accountLoggedOut(let accountID, _):
+			if case .current(let projectedID, _, _) = codexAuthProjection,
+				projectedID == accountID
+			{
+				codexProjectionRequestGeneration &+= 1
+				codexAuthProjection = nil
+			}
+			accounts.removeAll { $0.account.accountID == accountID }
+			accountSkeletonRevisionTargets.removeValue(forKey: accountID)
+			return .skeleton
+		case .accountChanged(let account):
+			guard let index = accounts.firstIndex(where: {
+				$0.account.accountID == account.accountID
+			}) else {
+				return .skeleton
+			}
+			let existing = accounts[index]
+			let authority = account.authority
+				?? existing.account.authority
+				?? existing.inventory?.authority
+			let bound = Self.account(account, authority: authority)
+			let sameRevision = existing.account.accountRevision == bound.accountRevision
+			accounts[index] = ResetCardAccountState(
+				account: bound,
+				inventory: sameRevision ? existing.inventory : nil,
+				error: nil,
+				isRefreshing: sameRevision == false,
+				profile: sameRevision ? existing.profile : nil,
+				profileUnavailable: sameRevision ? existing.profileUnavailable : nil,
+				profileError: nil,
+				isProfileRefreshing: sameRevision == false && accountProfileClient != nil
+			)
+			reconcileAccountSkeletonRevisionTargets()
+			if sameRevision == false {
+				invalidateCodexProjectionAfterRevisionChange(
+					accountID: account.accountID,
+					accountRevision: bound.accountRevision
+				)
+			}
+			return sameRevision ? .none : .account(account.accountID)
+		}
+	}
+
+	private func scheduleAccountControlFollowUp(
+		_ followUp: AccountControlFollowUp
+	) {
+		switch followUp {
+		case .none:
+			return
+		case .account(let accountID):
+			Task { [weak self] in
+				await self?.refreshAccountDetails(accountID)
+			}
+		case .skeleton:
+			Task { [weak self] in
+				await self?.refreshAccountSkeleton()
+			}
+		}
 	}
 
 	private func presentAccountControlUnavailable() {
@@ -1373,6 +1860,70 @@ final class ResetCardStore {
 			tone: .error,
 			text: "Account controls are unavailable while another account request is active."
 		)
+	}
+
+	private func clearStaleControlError() {
+		guard isPendingRecoveryBlocked == false, message?.tone == .error else {
+			return
+		}
+		message = nil
+	}
+
+	private func beginCodexProjectionRequest() -> UInt64 {
+		codexProjectionRequestGeneration &+= 1
+		return codexProjectionRequestGeneration
+	}
+
+	@discardableResult
+	private func applyCodexAuthProjection(
+		_ projection: CodexAuthProjection,
+		generation: UInt64
+	) -> Bool {
+		guard generation == codexProjectionRequestGeneration else {
+			return false
+		}
+		if case .current(let accountID, let accountRevision, _) = projection {
+			guard accountRevision > 0,
+				let account = accountRecord(accountID),
+				account.accountRevision == accountRevision
+			else {
+				codexAuthProjection = nil
+				return true
+			}
+		}
+		codexAuthProjection = projection
+		return false
+	}
+
+	private func invalidateCodexProjectionAfterRevisionChange(
+		accountID: String,
+		accountRevision: UInt64
+	) {
+		codexProjectionRequestGeneration &+= 1
+		if case .current(let projectedID, let projectedRevision, _) = codexAuthProjection,
+			projectedID == accountID,
+			projectedRevision != accountRevision
+		{
+			codexAuthProjection = nil
+		}
+		scheduleCodexProjectionRefresh()
+	}
+
+	private func scheduleCodexProjectionRefresh() {
+		Task { [weak self] in
+			await self?.refreshCodexAuthProjection()
+		}
+	}
+
+	private func refreshCodexAuthProjection() async {
+		guard let accountControlClient else {
+			return
+		}
+		let generation = beginCodexProjectionRequest()
+		let projection = (try? await accountControlClient.codexAuthProjection(
+			authority: establishedAuthority
+		)) ?? .unavailable
+		_ = applyCodexAuthProjection(projection, generation: generation)
 	}
 
 	nonisolated private static func newCanonicalUUID() -> String {
@@ -1409,11 +1960,11 @@ final class ResetCardStore {
 private extension ResetCardClientError {
 	var isRetryableReadFailure: Bool {
 		switch self {
-		case .timedOut, .commandFailed:
+		case .nativeClientUnavailable, .timedOut, .commandFailed:
 			return true
 		case .service(let error):
 			return error.isRetryableReadFailure
-		case .executableMissing, .launchFailed, .outputTooLarge, .commandRejected,
+		case .outputTooLarge, .commandRejected,
 			.useDefinitelyNotDispatched, .usePotentiallyDispatched, .invalidResponse:
 			return false
 		}

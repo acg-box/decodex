@@ -1,8 +1,6 @@
 import Foundation
 import Observation
 
-private let fastModeSchema = "decodex/fast-mode-cli/1"
-
 enum FastModeClientError: Error, LocalizedError {
 	case unavailable
 	case timedOut
@@ -12,7 +10,7 @@ enum FastModeClientError: Error, LocalizedError {
 	var errorDescription: String? {
 		switch self {
 		case .unavailable:
-			return "The bundled Decodex CLI is unavailable."
+			return "The native Decodex client is unavailable."
 		case .timedOut:
 			return "Fast mode did not respond."
 		case .invalidResponse:
@@ -28,59 +26,42 @@ protocol FastModeClient: Sendable {
 	func setEnabled(_ enabled: Bool) async throws -> Bool
 }
 
-struct FastModeCLIClient: FastModeClient, Sendable {
-	private let runner: ResetCardCLIClient
-
-	init() {
-		runner = ResetCardCLIClient(timeout: 10)
-	}
-
+extension DecodexNativeClient: FastModeClient {
 	func status() async throws -> Bool {
-		try await request(arguments: ["--output", "json", "fast-mode", "status"])
+		try await fastModeRequest(
+			DecodexNativeRequest(operation: "fast_mode_status")
+		)
 	}
 
 	func setEnabled(_ enabled: Bool) async throws -> Bool {
-		try await request(arguments: [
-			"--output",
-			"json",
-			"fast-mode",
-			"set",
-			"--enabled",
-			enabled ? "true" : "false",
-		])
+		try await fastModeRequest(
+			DecodexNativeRequest(
+				operation: "set_fast_mode",
+				enabled: enabled
+			)
+		)
 	}
 
-	private func request(arguments: [String]) async throws -> Bool {
+	private func fastModeRequest(
+		_ request: DecodexNativeRequest
+	) async throws -> Bool {
 		do {
-			let result = try await runner.run(arguments: arguments)
-			guard result.exitCode == 0 else {
-				throw FastModeClientError.rejected
-			}
-			let document: FastModeDocument
-			do {
-				document = try JSONDecoder().decode(
-					FastModeDocument.self,
-					from: result.standardOutput
-				)
-			} catch {
-				throw FastModeClientError.invalidResponse
-			}
-			guard document.schema == fastModeSchema,
-				document.outcome == "success",
-				document.command == (arguments.contains("set") ? "set" : "status")
-			else {
-				throw FastModeClientError.invalidResponse
-			}
-			return document.enabled
+			let response: (
+				authority: ResetCardAuthority,
+				data: DecodexNativeFastModeWire
+			) = try await perform(request, authority: nil)
+			return response.data.enabled
 		} catch let error as FastModeClientError {
 			throw error
 		} catch let error as ResetCardClientError {
 			switch error {
-			case .executableMissing, .launchFailed:
+			case .nativeClientUnavailable:
 				throw FastModeClientError.unavailable
 			case .timedOut:
 				throw FastModeClientError.timedOut
-			case .outputTooLarge, .commandRejected,
+			case .commandRejected:
+				throw FastModeClientError.rejected
+			case .outputTooLarge,
 				.useDefinitelyNotDispatched, .usePotentiallyDispatched,
 				.commandFailed, .invalidResponse, .service:
 				throw FastModeClientError.invalidResponse
@@ -88,6 +69,20 @@ struct FastModeCLIClient: FastModeClient, Sendable {
 		} catch {
 			throw FastModeClientError.invalidResponse
 		}
+	}
+}
+
+private struct DecodexNativeFastModeWire: Decodable {
+	let enabled: Bool
+
+	init(from decoder: Decoder) throws {
+		try requireExactFields(in: decoder, expected: ["enabled"])
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		enabled = try container.decode(Bool.self, forKey: .enabled)
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case enabled
 	}
 }
 
@@ -100,7 +95,7 @@ final class FastModeStore {
 	private(set) var errorMessage: String?
 	@ObservationIgnored private let client: any FastModeClient
 
-	init(client: any FastModeClient = FastModeCLIClient()) {
+	init(client: any FastModeClient = DecodexNativeClient()) {
 		self.client = client
 	}
 
@@ -143,30 +138,4 @@ final class FastModeStore {
 	func dismissError() {
 		errorMessage = nil
 	}
-}
-
-struct FastModeDocument: Decodable {
-	let schema: String
-	let command: String
-	let outcome: String
-	let enabled: Bool
-
-	init(from decoder: Decoder) throws {
-		try rejectUnknownFields(
-			in: decoder,
-			allowed: ["schema", "command", "outcome", "enabled"]
-		)
-		let raw = try decoder.container(keyedBy: FastModeCodingKey.self)
-		schema = try raw.decode(String.self, forKey: .schema)
-		command = try raw.decode(String.self, forKey: .command)
-		outcome = try raw.decode(String.self, forKey: .outcome)
-		enabled = try raw.decode(Bool.self, forKey: .enabled)
-	}
-}
-
-private enum FastModeCodingKey: String, CodingKey {
-	case schema
-	case command
-	case outcome
-	case enabled
 }

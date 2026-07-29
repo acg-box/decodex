@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the same-UID V1 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.0 local connection owner.
 //!
 //! Default account-process composition remains crate-private and cannot be called by a product
 //! root. The V22 manual runner requires an explicit non-production feature and binary:
@@ -17,6 +17,7 @@ mod account_launch;
 mod account_profile;
 mod account_service;
 mod application;
+mod auth_projection;
 mod bootstrap;
 #[cfg(target_os = "macos")] mod daemon_wrapper;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
@@ -32,8 +33,7 @@ mod provider_attempt_service;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
-#[expect(dead_code, reason = "waiting for the later board composition owner")]
-mod work_item_board;
+#[expect(dead_code, reason = "waiting for the later board composition owner")] mod work_item_board;
 
 #[cfg(feature = "retained-title-experiment")]
 pub use account_launch::retained_title_experiment::{

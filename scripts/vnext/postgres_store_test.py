@@ -437,7 +437,7 @@ RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
-	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
 	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
 	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
@@ -625,7 +625,7 @@ UPGRADE_RUNTIME_EXECUTE_SIGNATURES = (
 	"decodex.advance_account_operation_exact(pg_catalog.uuid,decodex.account_operation_phase,decodex.account_operation_phase,pg_catalog.text)",
 	"decodex.read_unsettled_account_operations_exact(pg_catalog.int8)",
 	"decodex.read_account_operation_exact(pg_catalog.uuid)",
-	"decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.bool)",
+	"decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.bool)",
 	"decodex.set_fixed_account_selection_exact(pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.set_balanced_account_selection_exact(pg_catalog.int8)",
 	"decodex.set_account_order_exact(pg_catalog.int8,pg_catalog._uuid)",
@@ -2055,20 +2055,19 @@ def register_authority_scenarios(add: object) -> None:
 		),
 		post_runtime_rejected_sqlstate="42501",
 		runtime_effect_sql=(
-			"SELECT * FROM decodex.update_account_administration_exact("
-			"'91000000-0000-4000-8000-000000000001'::pg_catalog.uuid,1,"
-			"'indirect owner escape updated',NULL::pg_catalog.bool)"
+			"SELECT * FROM decodex.set_account_enabled_exact("
+			"'91000000-0000-4000-8000-000000000001'::pg_catalog.uuid,1,false)"
 		),
 		postcondition_sql=(
 			"SELECT pg_catalog.to_regprocedure('public.indirect_owner_escape()') IS NOT NULL AND "
 			"NOT has_function_privilege('$RUNTIME_ROLE','public.indirect_owner_escape()','EXECUTE') AND "
 			"has_function_privilege('$RUNTIME_ROLE',"
-			"'decodex.update_account_administration_exact(pg_catalog.uuid,pg_catalog.int8,"
-			"pg_catalog.text,pg_catalog.bool)','EXECUTE') AND "
+			"'decodex.set_account_enabled_exact(pg_catalog.uuid,pg_catalog.int8,"
+			"pg_catalog.bool)','EXECUTE') AND "
 			"EXISTS (SELECT 1 FROM pg_catalog.pg_trigger WHERE tgrelid='decodex.accounts'::regclass "
 			"AND tgname='accounts_indirect_owner_escape') AND EXISTS (SELECT 1 FROM decodex.accounts "
 			"WHERE account_id='91000000-0000-4000-8000-000000000001' "
-			"AND display_label='indirect owner escape updated' AND revision=2 AND NOT enabled "
+			"AND display_label='indirect owner fixture' AND revision=2 AND NOT enabled "
 			"AND tombstoned_at IS NULL) AND EXISTS (SELECT 1 FROM decodex.account_routing_order "
 			"WHERE account_id='91000000-0000-4000-8000-000000000001') AND EXISTS (SELECT 1 FROM "
 			"pg_catalog.pg_trigger WHERE tgrelid='decodex.outbox'::regclass "
