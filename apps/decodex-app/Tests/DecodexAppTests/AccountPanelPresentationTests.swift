@@ -23,7 +23,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertNil(presentation.resetDate)
 	}
 
-	func testProtocolFailureRemainsDestructive() {
+	func testProtocolFailureIsKeptOutOfTheCompactQuotaRows() {
 		let presentation = ResetCardQuotaPresentation(
 			window: ResetCardQuotaWindow(
 				durationMinutes: 10_080,
@@ -32,10 +32,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
-		XCTAssertTrue(presentation.isVisible)
-		XCTAssertEqual(presentation.valueText, "Error")
+		XCTAssertFalse(presentation.isVisible)
+		XCTAssertEqual(presentation.valueText, "—")
 		XCTAssertEqual(presentation.detailText, "Invalid provider response")
-		XCTAssertEqual(presentation.tone, .error)
+		XCTAssertEqual(presentation.tone, .muted)
 	}
 
 	func testCurrentQuotaRetainsValueAndResetDate() {
@@ -73,7 +73,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "58% left")
 		XCTAssertEqual(presentation.detailText, "stale")
-		XCTAssertEqual(presentation.tone, .warning)
+		XCTAssertEqual(presentation.tone, .current)
 		XCTAssertEqual(presentation.usedPercent, 42)
 		XCTAssertEqual(presentation.remainingPercent, 58)
 		XCTAssertNotNil(presentation.resetDate)
@@ -115,6 +115,32 @@ final class AccountPanelPresentationTests: XCTestCase {
 			).text,
 			"Account 7M4K-P2Q8"
 		)
+	}
+
+	func testProfileUnauthorizedDoesNotOverrideCanonicalAccountAvailability() {
+		let account = ResetCardAccountRecord(
+			authority: nil,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Account TEST0-00000",
+			accountRevision: 1,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let state = ResetCardAccountState(
+			account: account,
+			inventory: nil,
+			error: nil,
+			isRefreshing: false,
+			profileUnavailable: AccountProfileUnavailable(
+				error: .unauthorized,
+				claims: AccountProfileClaims(email: nil, planType: "pro")
+			)
+		)
+
+		XCTAssertFalse(state.requiresLoginRefresh)
 	}
 
 	func testCodexProjectionDistinguishesUnmanagedUnavailableAndCurrent() {

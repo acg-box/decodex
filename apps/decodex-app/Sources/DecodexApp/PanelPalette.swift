@@ -61,15 +61,4 @@ enum PanelPalette {
 			: Color(red: 0.15, green: 0.23, blue: 0.3).opacity(0.1)
 	}
 
-	static func glassStroke(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.14)
-			: Color(red: 0.34, green: 0.42, blue: 0.52).opacity(0.24)
-	}
-
-	static func glassInnerShadow(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark
-			? Color.black.opacity(0.18)
-			: Color.black.opacity(0.055)
-	}
 }
