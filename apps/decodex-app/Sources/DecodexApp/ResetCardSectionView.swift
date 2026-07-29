@@ -110,14 +110,13 @@ struct ResetCardAccountRow: View {
 	@State private var confirmationSecondsRemaining = 0
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 7) {
+		VStack(alignment: .leading, spacing: 4) {
 			accountHeader
 			quotaWindows
 			cardInventory
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 7)
-		.modernGlassSurface(cornerRadius: 10, depth: .row)
+		.padding(.horizontal, 7)
+		.padding(.vertical, 5)
 		.onAppear {
 			confirmation.retainOnly(Set(state.targets))
 		}
@@ -134,17 +133,21 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var accountHeader: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 6) {
+		HStack(alignment: .center, spacing: 5) {
 			Text(state.account.displayLabel)
 				.font(PanelFont.accountName)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
 				.lineLimit(1)
 				.truncationMode(.middle)
+				.layoutPriority(1)
+				.help("Account \(state.account.accountID)")
 
-			Text("…\(state.account.accountID.suffix(8))")
+			Text("…\(state.account.accountID.suffix(6))")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.monospaced()
+				.fixedSize(horizontal: true, vertical: false)
+				.accessibilityHidden(true)
 
 			Spacer(minLength: 3)
 
@@ -154,11 +157,23 @@ struct ResetCardAccountRow: View {
 					.help("Refreshing this account")
 			}
 
+			Circle()
+				.fill(accountStatusColor)
+				.frame(width: 4, height: 4)
+				.accessibilityHidden(true)
+
 			Text(state.account.statusLabel)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(accountStatusColor)
 				.lineLimit(1)
 		}
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(accountAccessibilityLabel)
+	}
+
+	private var accountAccessibilityLabel: String {
+		let refreshState = state.isRefreshing ? ", refreshing" : ""
+		return "Account \(state.account.displayLabel), \(state.account.accountID), \(state.account.statusLabel)\(refreshState)"
 	}
 
 	private var accountStatusColor: Color {
@@ -179,13 +194,19 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var quotaWindows: some View {
-		HStack(spacing: 6) {
+		HStack(spacing: 7) {
 			ResetCardQuotaWindowView(
-				title: "5 hour",
+				title: "5h",
 				window: state.fiveHourQuota
 			)
+
+			Rectangle()
+				.fill(PanelPalette.separator(colorScheme))
+				.frame(width: 0.5, height: 19)
+				.allowsHitTesting(false)
+
 			ResetCardQuotaWindowView(
-				title: "7 day",
+				title: "7d",
 				window: state.sevenDayQuota
 			)
 		}
@@ -197,34 +218,47 @@ struct ResetCardAccountRow: View {
 			Text(error.presentation)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.destructive(colorScheme))
-				.fixedSize(horizontal: false, vertical: true)
+				.lineLimit(1)
+				.help(error.presentation)
 		} else if let error = state.error {
 			Text(error.localizedDescription)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.destructive(colorScheme))
-				.fixedSize(horizontal: false, vertical: true)
+				.lineLimit(1)
+				.help(error.localizedDescription)
 		} else if state.isRefreshing, state.inventory == nil {
-			Text("Loading Reset Cards")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			HStack(spacing: 5) {
+				ProgressView()
+					.controlSize(.mini)
+				Text("Loading Reset Cards")
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			}
 		} else if state.targets.isEmpty {
 			Text("No available Reset Cards")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 		} else {
-			ScrollView(.horizontal, showsIndicators: false) {
-				HStack(spacing: 5) {
-					ForEach(state.targets, id: \.self) { target in
-						Button {
-							tap(target)
-						} label: {
-							cardChip(target)
+			HStack(spacing: 5) {
+				Text("Cards")
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.fixedSize(horizontal: true, vertical: false)
+
+				ScrollView(.horizontal, showsIndicators: false) {
+					HStack(spacing: 4) {
+						ForEach(Array(state.targets.enumerated()), id: \.element) { index, target in
+							Button {
+								tap(target)
+							} label: {
+								cardChip(target, ordinal: index + 1)
+							}
+							.buttonStyle(.plain)
+							.disabled(store.blocksNewAttempt(for: target))
+							.accessibilityLabel(accessibilityLabel(target, ordinal: index + 1))
+							.accessibilityHint(accessibilityHint(target))
+							.help(help(target))
 						}
-						.buttonStyle(.plain)
-						.disabled(store.blocksNewAttempt(for: target))
-						.accessibilityLabel(accessibilityLabel(target))
-						.accessibilityHint(accessibilityHint(target))
-						.help(help(target))
 					}
 				}
 			}
@@ -235,31 +269,19 @@ struct ResetCardAccountRow: View {
 		confirmation.isSubmitting ? nil : confirmation.armedAttempt
 	}
 
-	private func cardChip(_ target: ResetCardUseTarget) -> some View {
-		VStack(alignment: .leading, spacing: 1) {
-			Text(cardChipTitle(target))
-				.font(PanelFont.usageValue)
-				.foregroundStyle(
-					confirmation.isArmed(target)
-						? PanelPalette.warning(colorScheme)
-						: PanelPalette.primaryText(colorScheme).opacity(0.9)
-				)
-				.monospacedDigit()
-				.lineLimit(1)
-
-			if confirmation.isArmed(target) == false,
-				confirmation.isSubmitting(target) == false
-			{
-				Text(cardWindow(target.descriptor))
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.monospacedDigit()
-					.lineLimit(1)
-			}
-		}
-		.fixedSize(horizontal: true, vertical: false)
-		.padding(.horizontal, 6)
-		.padding(.vertical, 3)
+	private func cardChip(_ target: ResetCardUseTarget, ordinal: Int) -> some View {
+		Text(cardChipTitle(target, ordinal: ordinal))
+			.font(PanelFont.usageValue)
+			.foregroundStyle(
+				confirmation.isArmed(target)
+					? PanelPalette.warning(colorScheme)
+					: PanelPalette.primaryText(colorScheme).opacity(0.9)
+			)
+			.monospacedDigit()
+			.lineLimit(1)
+			.fixedSize(horizontal: true, vertical: false)
+		.padding(.horizontal, 5)
+		.padding(.vertical, 2)
 		.background(
 			confirmation.isArmed(target)
 				? PanelPalette.warning(colorScheme).opacity(colorScheme == .dark ? 0.2 : 0.14)
@@ -269,34 +291,34 @@ struct ResetCardAccountRow: View {
 		.contentShape(Rectangle())
 	}
 
-	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
+	private func cardChipTitle(_ target: ResetCardUseTarget, ordinal: Int) -> String {
 		if confirmation.isSubmitting(target) {
-			return "Using"
+			return "Using \(ordinal)…"
 		}
 		if confirmation.isArmed(target) {
 			let seconds = confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: Self.confirmationWindowSeconds
-			return "Confirm Use · \(seconds)s"
+			return "Confirm \(ordinal) · \(seconds)s"
 		}
 
-		return "Reset Card"
+		return "\(ordinal) · \(Self.cardDateRange(target.descriptor))"
 	}
 
 	private func cardWindow(_ descriptor: ResetCardDescriptor) -> String {
-		"\(Self.cardDate(descriptor.grantedAtUnixSeconds)) → \(Self.cardDate(descriptor.expiresAtUnixSeconds))"
+		"\(Self.cardDateTime(descriptor.grantedAtUnixSeconds)) → \(Self.cardDateTime(descriptor.expiresAtUnixSeconds))"
 	}
 
-	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
+	private func accessibilityLabel(_ target: ResetCardUseTarget, ordinal: Int) -> String {
 		let window = cardWindow(target.descriptor)
 		if confirmation.isSubmitting(target) {
-			return "Using Reset Card, \(window)"
+			return "Using Reset Card \(ordinal), \(window)"
 		}
 		if confirmation.isArmed(target) {
-			return "Confirm use of Reset Card, \(window)"
+			return "Confirm use of Reset Card \(ordinal), \(window)"
 		}
 
-		return "Reset Card, \(window)"
+		return "Reset Card \(ordinal), \(window)"
 	}
 
 	private func accessibilityHint(_ target: ResetCardUseTarget) -> String {
@@ -387,15 +409,73 @@ struct ResetCardAccountRow: View {
 		return Int(components.seconds) + (components.attoseconds > 0 ? 1 : 0)
 	}
 
-	private static func cardDate(_ unixSeconds: Int64) -> String {
+	private static func cardDateRange(_ descriptor: ResetCardDescriptor) -> String {
+		let granted = Date(timeIntervalSince1970: TimeInterval(descriptor.grantedAtUnixSeconds))
+		let expires = Date(timeIntervalSince1970: TimeInterval(descriptor.expiresAtUnixSeconds))
+		let grantedDay = granted.formatted(.dateTime.month(.abbreviated).day())
+		let expiryDay = expires.formatted(.dateTime.month(.abbreviated).day())
+		return "\(grantedDay)→\(expiryDay)"
+	}
+
+	private static func cardDateTime(_ unixSeconds: Int64) -> String {
 		let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
-		return date.formatted(
-			Date.FormatStyle()
-				.month(.abbreviated)
-				.day()
+		let day = date.formatted(.dateTime.month(.abbreviated).day())
+		let time = date.formatted(
+			.dateTime
 				.hour(.twoDigits(amPM: .omitted))
 				.minute(.twoDigits)
 		)
+		return "\(day) \(time)"
+	}
+}
+
+enum ResetCardQuotaPresentationTone: Equatable {
+	case current
+	case warning
+	case muted
+	case error
+}
+
+struct ResetCardQuotaPresentation: Equatable {
+	let valueText: String
+	let detailText: String?
+	let tone: ResetCardQuotaPresentationTone
+	let usedPercent: UInt8?
+	let resetDate: Date?
+
+	init(window: ResetCardQuotaWindow) {
+		switch window.state {
+		case .current(let usedPercent, _):
+			valueText = "\(usedPercent)% used"
+			detailText = nil
+			tone = .current
+			self.usedPercent = usedPercent
+			resetDate = window.resetDate
+		case .stale(let usedPercent, _):
+			valueText = "\(usedPercent)% stale"
+			detailText = nil
+			tone = .warning
+			self.usedPercent = usedPercent
+			resetDate = window.resetDate
+		case .unknown:
+			valueText = "—"
+			detailText = "No data"
+			tone = .muted
+			usedPercent = nil
+			resetDate = nil
+		case .error(.unsupportedWindow):
+			valueText = "—"
+			detailText = "Not reported"
+			tone = .muted
+			usedPercent = nil
+			resetDate = nil
+		case .error(let error):
+			valueText = "Error"
+			detailText = error.presentation
+			tone = .error
+			usedPercent = nil
+			resetDate = nil
+		}
 	}
 }
 
@@ -405,24 +485,46 @@ private struct ResetCardQuotaWindowView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
+		let presentation = ResetCardQuotaPresentation(window: window)
+
 		VStack(alignment: .leading, spacing: 3) {
 			HStack(alignment: .firstTextBaseline, spacing: 4) {
 				Text(title)
 					.font(PanelFont.usageLabel)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.frame(width: 15, alignment: .leading)
+
+				Text(presentation.valueText)
+					.font(PanelFont.usageValue)
+					.foregroundStyle(stateColor(for: presentation.tone))
+					.monospacedDigit()
+					.lineLimit(1)
+
 				Spacer(minLength: 2)
-				Text(window.stateLabel)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(stateColor)
+
+				if let resetDate = presentation.resetDate {
+					Text(Self.compactDateTime(resetDate))
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.monospacedDigit()
+						.lineLimit(1)
+				} else if let detailText = presentation.detailText {
+					Text(detailText)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(stateColor(for: presentation.tone))
+						.lineLimit(1)
+						.truncationMode(.tail)
+				}
 			}
 
-			if let usedPercent = window.usedPercent {
-				GeometryReader { proxy in
-					ZStack(alignment: .leading) {
+			GeometryReader { proxy in
+				ZStack(alignment: .leading) {
+					Capsule(style: .continuous)
+						.fill(PanelPalette.progressTrack(colorScheme))
+
+					if let usedPercent = presentation.usedPercent {
 						Capsule(style: .continuous)
-							.fill(PanelPalette.progressTrack(colorScheme))
-						Capsule(style: .continuous)
-							.fill(stateColor.opacity(0.84))
+							.fill(stateColor(for: presentation.tone).opacity(0.84))
 							.frame(
 								width: proxy.size.width
 									* CGFloat(usedPercent)
@@ -430,46 +532,37 @@ private struct ResetCardQuotaWindowView: View {
 							)
 					}
 				}
-				.frame(height: 4)
-
-				HStack(spacing: 3) {
-					Text("\(usedPercent)% used")
-					Spacer(minLength: 2)
-					if let resetDate = window.resetDate {
-						Text(resetDate, format: .dateTime.month(.abbreviated).day().hour().minute())
-							.lineLimit(1)
-					}
-				}
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.monospacedDigit()
-			} else {
-				Text(window.detailLabel)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
 			}
+			.frame(height: 3.2)
 		}
-		.padding(.horizontal, 6)
-		.padding(.vertical, 5)
-		.frame(maxWidth: .infinity, minHeight: 49, alignment: .topLeading)
-		.background(
-			PanelPalette.progressTrack(colorScheme).opacity(0.55),
-			in: RoundedRectangle(cornerRadius: 6, style: .continuous)
-		)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.frame(height: 22, alignment: .topLeading)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel("\(title) quota")
 		.accessibilityValue(window.accessibilityValue)
+		.help(window.accessibilityValue)
 	}
 
-	private var stateColor: Color {
-		switch window.state {
+	private func stateColor(for tone: ResetCardQuotaPresentationTone) -> Color {
+		switch tone {
 		case .current:
 			return PanelPalette.usageCyan(colorScheme)
-		case .stale, .unknown:
+		case .warning:
 			return PanelPalette.warning(colorScheme)
+		case .muted:
+			return PanelPalette.secondaryText(colorScheme)
 		case .error:
 			return PanelPalette.destructive(colorScheme)
 		}
+	}
+
+	private static func compactDateTime(_ date: Date) -> String {
+		let day = date.formatted(.dateTime.month(.abbreviated).day())
+		let time = date.formatted(
+			.dateTime
+				.hour(.twoDigits(amPM: .omitted))
+				.minute(.twoDigits)
+		)
+		return "\(day) \(time)"
 	}
 }

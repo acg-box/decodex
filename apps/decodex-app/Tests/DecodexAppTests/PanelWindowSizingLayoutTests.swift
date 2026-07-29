@@ -54,6 +54,32 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
+	func testSixCompactAccountRowsFitWithoutAFullHeightPanel() {
+		let height = AccountPanelLayout.accountListHeight(
+			accountCount: 6,
+			measuredContentHeight: 432,
+			windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 675)
+		)
+
+		XCTAssertEqual(height, 432)
+	}
+
+	func testMeasuredOverflowCapsAtTheAvailableScreenHeight() {
+		let height = AccountPanelLayout.accountListHeight(
+			accountCount: 12,
+			measuredContentHeight: 900,
+			windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 560)
+		)
+
+		XCTAssertEqual(
+			height,
+			560
+				- AccountPanelLayout.screenVerticalMargin
+				- AccountPanelLayout.panelVerticalPadding
+				- AccountPanelLayout.fixedChromeHeight
+		)
+	}
+
 	func testFrameKeepsTopEdgeAndCenterWhenContentShrinks() {
 		let currentFrame = NSRect(x: 120, y: 200, width: 360, height: 700)
 		let frame = PanelWindowSizingLayout.frame(
