@@ -17,7 +17,7 @@ vNext runtime boundary:
   foundation. Its external dependency set is architecture-tested and limited to
   bounded TOML/Serde parsing, SHA-256, OS randomness/no-follow filesystem support, and
   test-only temporary storage.
-- `decodex-protocol`: V1 typed wire contracts, current/previous-minor negotiation, and
+- `decodex-protocol`: exact-current V2.0 typed wire contracts and
   the owner-only same-UID Unix transport authority. It depends only on core, structured
   serialization, Tokio/Tungstenite, and the libc calls required for descriptor-relative
   namespace ownership and kernel peer facts.
@@ -52,7 +52,7 @@ closed `same_uid` or `disabled` policy and an optional service-owner UID whose p
 fixed by that policy. A remote profile requires its explicit pin and carries only inert
 host and port data. Each local connect captures the current fixed Unix endpoint, validates
 its directory and socket identities, connects that path, verifies the kernel server-peer
-UID, and validates the path again. The client then sends a pinned V1.5 hello,
+UID, and validates the path again. The client then sends a pinned V2.0 hello,
 verifies welcome and snapshot version/identity, issues `get_doctor_status`, and re-verifies
 the result, embedded report, and exact complete current component set before returning status.
 Report ordering is not authority. Reads, writes, frames, messages,
@@ -61,14 +61,14 @@ text collapse into closed redacted failure classes.
 
 `apps/decodex-cli` exposes the canonical `status` and `doctor` commands with active or
 `--profile NAME` selection and human or `--output json` rendering. Both commands cross the
-same V1.5 query; `status` is compact and `doctor` is line-oriented, while each retains every
+same V2.0 query; `status` is compact and `doctor` is line-oriented, while each retains every
 typed check. JSON uses `decodex/cli-diagnostics/1`. Exit code 0 means every check is ready,
 1 means a complete report contains unavailable or unknown checks, and 2 means a closed
 client/configuration/protocol failure. The `reset-card` command family is a thin protocol
 client for the shared daemon service and uses `decodex/reset-card-cli/1` JSON. The CLI has
 no credential, Codex-process, provider-ID, PostgreSQL, or effect authority.
 
-`decodexd` is the only V1 server composition root. It reads the bounded active-profile
+`decodexd` is the only V2.0 server composition root. It reads the bounded active-profile
 configuration, acquires and publishes the non-cloneable local listener, and retains its
 one namespace lock before it creates the stable server identity, opens product storage,
 connects to PostgreSQL, projects supervisor loss, or starts any daemon-local mutation
@@ -100,7 +100,8 @@ The local stream uses WebSocket route `/v1/ws`. The literal `ws://localhost/v1/w
 each client is handshake metadata passed with an already admitted Unix stream. It cannot
 resolve or dial TCP. The WebSocket uses structured JSON and typed
 hello, command, receipt, result, snapshot, event, and refusal envelopes. Major versions
-must match exactly; this build accepts minors 3 and 2. Events carry server ID, monotonic
+must match exactly; this build accepts only V2.0. V1.x and V2.1 receive typed refusals
+before application payload handling. Events carry server ID, monotonic
 cursor, entity revision, correlation, and causation. The stable server-host ID supports
 operator pinning, while each daemon process creates a distinct bounded publication-epoch
 ID. A reconnect resumes retained ordered deltas only when both IDs match; an absent or
@@ -157,17 +158,12 @@ canonical socket identity, closes the listener, and releases the namespace lock 
 final authority operation. A mismatch preserves the observed entry and returns a
 cleanup refusal.
 
-Runtime receipt lookup is keyed by the negotiated protocol version and command idempotency key;
+Runtime receipt lookup is keyed by exact-current V2.0 and the command idempotency key;
 the stored request fingerprint additionally covers that version, typed payload, and optional
-expected revision. A same-version duplicate returns the original command identity and stored
-result without a second application execution. Reusing a mutation key across V1.4/V1.5 executes
-once in each version namespace and retains each version's native command outcome; neither outcome
-replays, conflicts with, or poisons the other namespace. Other same-version conflicting reuse is
-rejected.
-Each negotiated protocol-version namespace has its own fixed lifetime receipt capacity, so one
-minor version cannot consume another version's slots. Total memory remains bounded by the finite
-supported-version window times that per-version capacity. Accepted keys are never evicted,
-duplicates remain readable at capacity, and new same-version keys are refused before
+expected revision. A duplicate returns the original command identity and stored result without
+a second application execution. Conflicting reuse is rejected. The one exact-current namespace
+has a fixed lifetime receipt capacity. Accepted keys are never evicted, duplicates remain
+readable at capacity, and new keys are refused before
 application execution once full. Replay buffers, snapshot item counts, human-readable
 wire scalars, inbound and outbound message sizes, writes, and per-client outbound queues
 are bounded. Queue overflow disconnects that client with WebSocket close code 1013;
@@ -446,19 +442,18 @@ PostgreSQL socket validation rejects a symbolic link or non-directory at every d
 component, a non-socket endpoint, untrusted directory permissions/ownership, an endpoint owner or
 kernel peer that differs from the operator UID pin, and any directory/socket identity replacement.
 
-Protocol V1.2 added `get_doctor_status` as a read-only query/result with a client query identity and
-no mutation receipt, deduplication, replay, receipt-capacity use, event publication, or entity
-revision. Reusing a query identity performs a new ordered observation. At that V1.2
-boundary, V1.1 was the rolling previous minor and safely fell back to a snapshot because
-it could not present an epoch ID. The current V1.5 window retains V1.4 as its previous
-minor. `ClientHello` may pin the stable
+Protocol V2.0 defines `get_doctor_status` as a read-only query/result with a client query
+identity and no mutation receipt, deduplication, replay, receipt-capacity use, event
+publication, or entity revision. Reusing a query identity performs a new ordered
+observation. V2.0 is exact-current: V1.x receives `major_mismatch`, and another V2 minor
+receives `unsupported_minor`, before application payload handling. `ClientHello` may pin the stable
 server identity before snapshot, query, or command access. The doctor report is mechanically
 capped at 32 unique typed checks and has no free-form external text. Server repository
 paths are an aggregate typed check only, so
 remote clients receive neither host paths nor repository names and cannot reinterpret
 them locally. App-server capabilities are closed enum values; current unprobed capability,
 plugin, vault, and blob-content observations remain honestly `unknown` rather than ready.
-Each accepted V1.4 or V1.5 doctor read revalidates the retained socket binding, obtains a
+Each accepted V2.0 doctor read revalidates the retained socket binding, obtains a
 runtime connection through the verified connector, performs a live query, reruns the
 complete runtime-authority and immutable migration checks—including the exact embedded
 ledger and required `pgcrypto` extension—and reports any failure as typed unavailable.
@@ -675,7 +670,7 @@ The coordinator consumes one persisted V16 decision, one V17 plan, one ProcessSu
 live `FencedProcess`, and ProviderAttemptService preparation. It consumes the fresh prepared
 capability and returns only an inert attempt projection. It retains no service, lifecycle, retry,
 receipt, process, attempt, or ambiguity state. Its method and the process fence are crate-private.
-The read-only V1 execution-decision query exposes no mutation capability. No production
+The read-only V2.0 execution-decision query exposes no mutation capability. No production
 composition root can start coordination or authorize provider dispatch.
 
 The accepted XY-1355 target adds no live execution path here. V14 makes PostgreSQL the sole owner
@@ -691,7 +686,7 @@ complete evidence linkage. Codex remains a positive-evidence adapter. An unknown
 capability blocks, while an empty required-capability set makes unknown plugin inventory non-
 applicable rather than positive readiness evidence.
 
-V1.2 also carries `get_conversation_history`. Its request contains a logical Conversation UUID,
+V2.0 also carries `get_conversation_history`. Its request contains a logical Conversation UUID,
 an optional opaque PostgreSQL-issued Conversation-bound snapshot cursor, and a page size capped at
 eight on the wire (the repository's internal cap is 100). PostgreSQL assigns append-only
 per-Conversation positions and derives the next position and snapshot high-water from indexed
@@ -1049,7 +1044,7 @@ no turn, list, search, archive, retry, adoption, routing, or dispatch API. XY-14
 disabled stateful routing wrapper with a zero-sized coordinator over V16, V17, a live
 ProcessGeneration fence, and ProviderAttempt preparation. The coordinator does not import V18 or
 provide scheduler registration, claiming, firing, cancellation, supersession, credentials, Codex
-mutation, dispatch, replay, or production enablement. The V1 protocol adds only a read-only
+mutation, dispatch, replay, or production enablement. The V2.0 protocol adds only a read-only
 immutable decision projection. It exposes none of the authority commands. Production dispatch
 remains disabled until the separate aggregate gate and enablement amendment.
 The production runtime composes the already accepted repository owners exactly once during daemon bootstrap.
@@ -1181,7 +1176,7 @@ The Mac dogfood and final runtime follow the
 credential-negative account state, independent versioned enablement, routing controls,
 and finite operation receipts. One versioned
 HostCredentialStore owns secret bundles. The `decodexd` Account Service owns enrollment,
-import, list, rename, enable/disable, logout, refresh/rotation, app-server refresh
+import, stable alias derivation, list, enable/disable, logout, refresh/rotation, app-server refresh
 callbacks, runner projection, account observations, and recovery.
 
 The macOS HostCredentialStore uses non-synchronizing Keychain generic-password items. The
@@ -1189,7 +1184,7 @@ Account Service is its only reader and writer. Exact create, read, compare-and-s
 and delete operations remain inside that single-write boundary. MacDogfoodReady also
 requires the complete Account Service, exact-build refresh callback, provider adapter,
 PostgreSQL lifecycle state, startup reconciliation, and clean-start package proof.
-Final AccountLifecycleReady additionally requires the Linux store, ambient Codex auth,
+Final AccountLifecycleReady additionally requires the Linux store, explicit Codex auth,
 full bounded account presentation, and later automatic fallback/wake acceptance.
 
 Runner processes use the shared normal `~/.codex`. Initial credentials enter only the
@@ -1205,7 +1200,7 @@ all-depleted wake remain later XY-1304 obligations.
 
 ## Manual reset-card service
 
-Protocol V1.3 exposes bounded account discovery, complete reset-card inventory, manual
+Protocol V2.0 exposes bounded account discovery, complete reset-card inventory, manual
 consume, and durable operation-status reads. The public identity is one canonical vNext
 account UUID, its optimistic revision, and a card descriptor made only from grant and
 expiry timestamps. No protocol or client type carries the provider credit ID.
@@ -1276,8 +1271,9 @@ receipt with a closed rejection and replays that result for the same key. A mech
 preparation failure leaves the receipt pending; it remains `AcceptanceUnknown` until the
 same exact request can reclaim it after expiry.
 
-The macOS UI starts the bundled `decodex-cli` with fixed arguments and decodes the stable
-JSON projection. Its five-second second-click confirmation is presentation state only.
+The macOS UI calls an in-process Rust protocol client and decodes the stable JSON
+projection returned across that private ABI. It never starts a CLI process. Its
+five-second second-click confirmation is presentation state only.
 Swift does not stage credentials, create a temporary Codex home, launch app-server, resolve
 an opaque credit ID, or call the provider method. It persists only a credential-negative
 pending operation handle so it can read durable daemon status after an app restart.
@@ -1294,31 +1290,27 @@ dispatch lock make journal classification and terminal removal one cross-process
 critical section. Corrupt journal data is preserved and blocks new use instead of being
 discarded.
 
-V1.4 remains available as the rolling previous minor and retains its doctor, history,
-Reset Card, and account-lifecycle surfaces. The server rejects the V1.5 account-profile
-query for V1.4 clients.
-
 ```mermaid
 sequenceDiagram
     participant Swift as Optional macOS UI
-    participant CLI as Rust CLI client
-    participant Protocol as V1.5 same-UID Unix WebSocket
+    participant Native as In-process Rust client
+    participant Protocol as V2.0 same-UID Unix WebSocket
     participant App as Runtime application
     participant Store as PostgreSQL reset-card ledger
     participant Worker as Reset-card worker
     participant Codex as Account-bound Codex process
 
     opt macOS UI path
-        Swift->>CLI: Start fixed-argument subprocess
+        Swift->>Native: Submit credential-negative typed request
     end
-    CLI->>Protocol: Consume public descriptor with exact revision and key
+    Native->>Protocol: Consume public descriptor with exact revision and key
     Protocol->>App: Prepare command
     App->>Store: Persist receipt and reset-card operation
     Store-->>App: Prepared
     App-->>Protocol: Durable prepared state
-    Protocol-->>CLI: Receipt and prepared result
+    Protocol-->>Native: Receipt and prepared result
     opt macOS UI path
-        CLI-->>Swift: Decode stable JSON result
+        Native-->>Swift: Decode stable JSON result
     end
     Worker->>Store: Claim operation
     Worker->>Codex: Read complete inventory
@@ -1332,16 +1324,16 @@ sequenceDiagram
     Worker->>Store: Persist receipt
     Worker->>Store: Reconcile readback and terminal state
     opt macOS UI status path
-        Swift->>CLI: Start fixed-argument status subprocess
+        Swift->>Native: Submit same-key status request
     end
-    CLI->>Protocol: Poll status with the same key
+    Native->>Protocol: Poll status with the same key
     Protocol->>App: Query durable operation
     App->>Store: Read durable operation state
     Store-->>App: Current durable status
     App-->>Protocol: Prepared ambiguous completed or failed before effect
-    Protocol-->>CLI: Verified status result
+    Protocol-->>Native: Verified status result
     opt macOS UI status path
-        CLI-->>Swift: Decode stable JSON status
+        Native-->>Swift: Decode stable JSON status
     end
 ```
 

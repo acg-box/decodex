@@ -1,0 +1,1041 @@
+//! In-process C ABI for the native Decodex app.
+//!
+//! The bridge is a credential-negative client of the one local `decodexd`
+//! service. It reuses the typed Rust protocol clients directly and never starts
+//! a command-line process.
+
+mod fast_mode;
+
+use std::{
+	collections::HashMap,
+	ffi::c_void,
+	panic::{AssertUnwindSafe, catch_unwind},
+	ptr, slice,
+	sync::{
+		Arc, Mutex, OnceLock,
+		atomic::{AtomicUsize, Ordering},
+	},
+};
+
+use decodex_protocol::{
+	AccountClient, AccountCommandResponse, ClientFailure, ClientProfile, CommandPayload, EntityId,
+	EntityRevision, IdempotencyKey, ResetCardClient, ResetCardConsumeResponse,
+	ResetCardDescriptorDto, ResetCardOperationResult, ServerId,
+};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use tokio::runtime::{Builder, Runtime};
+
+const ABI_VERSION: u32 = 1;
+const CONFIG_SCHEMA: &str = "decodex/app-native-client-config/1";
+const RESPONSE_SCHEMA: &str = "decodex/app-native-client/1";
+
+static RUNTIME: OnceLock<Result<Runtime, ()>> = OnceLock::new();
+static CLIENTS: OnceLock<Mutex<HashMap<usize, Arc<NativeClient>>>> = OnceLock::new();
+static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
+
+#[derive(Clone)]
+struct NativeClient {
+	profile: ClientProfile,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ClientConfig {
+	schema: String,
+	#[serde(default)]
+	profile_name: Option<String>,
+	#[serde(default)]
+	expected_server_id: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(tag = "operation", rename_all = "snake_case", deny_unknown_fields)]
+enum Request {
+	ListAccounts {
+		schema: String,
+	},
+	GetResetCards {
+		schema: String,
+		account_id: String,
+	},
+	GetAccountProfile {
+		schema: String,
+		account_id: String,
+		include_email: bool,
+	},
+	GetCodexAuthProjection {
+		schema: String,
+	},
+	ResetCardStatus {
+		schema: String,
+		idempotency_key: String,
+	},
+	UseResetCard {
+		schema: String,
+		account_id: String,
+		granted_at_unix_seconds: i64,
+		expires_at_unix_seconds: i64,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	EnrollAccount {
+		schema: String,
+		operation_id: String,
+		account_id: String,
+		enabled: bool,
+		idempotency_key: String,
+	},
+	EnableAccount {
+		schema: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	DisableAccount {
+		schema: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	LogoutAccount {
+		schema: String,
+		operation_id: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	SetFixedSelection {
+		schema: String,
+		account_id: String,
+		expected_account_revision: u64,
+		expected_routing_revision: u64,
+		idempotency_key: String,
+	},
+	SetBalancedSelection {
+		schema: String,
+		expected_routing_revision: u64,
+		idempotency_key: String,
+	},
+	RefreshAccount {
+		schema: String,
+		operation_id: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	UseAccountInCodex {
+		schema: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
+	FastModeStatus {
+		schema: String,
+	},
+	SetFastMode {
+		schema: String,
+		enabled: bool,
+	},
+}
+
+impl Request {
+	fn operation(&self) -> &'static str {
+		match self {
+			Self::ListAccounts { .. } => "list_accounts",
+			Self::GetResetCards { .. } => "get_reset_cards",
+			Self::GetAccountProfile { .. } => "get_account_profile",
+			Self::GetCodexAuthProjection { .. } => "get_codex_auth_projection",
+			Self::ResetCardStatus { .. } => "reset_card_status",
+			Self::UseResetCard { .. } => "use_reset_card",
+			Self::EnrollAccount { .. } => "enroll_account",
+			Self::EnableAccount { .. } => "enable_account",
+			Self::DisableAccount { .. } => "disable_account",
+			Self::LogoutAccount { .. } => "logout_account",
+			Self::SetFixedSelection { .. } => "set_fixed_selection",
+			Self::SetBalancedSelection { .. } => "set_balanced_selection",
+			Self::RefreshAccount { .. } => "refresh_account",
+			Self::UseAccountInCodex { .. } => "use_account_in_codex",
+			Self::FastModeStatus { .. } => "fast_mode_status",
+			Self::SetFastMode { .. } => "set_fast_mode",
+		}
+	}
+
+	fn schema(&self) -> &str {
+		match self {
+			Self::ListAccounts { schema }
+			| Self::GetResetCards { schema, .. }
+			| Self::GetAccountProfile { schema, .. }
+			| Self::GetCodexAuthProjection { schema }
+			| Self::ResetCardStatus { schema, .. }
+			| Self::UseResetCard { schema, .. }
+			| Self::EnrollAccount { schema, .. }
+			| Self::EnableAccount { schema, .. }
+			| Self::DisableAccount { schema, .. }
+			| Self::LogoutAccount { schema, .. }
+			| Self::SetFixedSelection { schema, .. }
+			| Self::SetBalancedSelection { schema, .. }
+			| Self::RefreshAccount { schema, .. }
+			| Self::UseAccountInCodex { schema, .. }
+			| Self::FastModeStatus { schema }
+			| Self::SetFastMode { schema, .. } => schema,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum BridgeFailure {
+	InvalidConfiguration,
+	InvalidRequest,
+	InvalidInput,
+	InvalidHandle,
+	RuntimeUnavailable,
+	InternalFailure,
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum ResponseFailure {
+	Client(ClientFailure),
+	Bridge(BridgeFailure),
+	FastMode(fast_mode::FastModeFailure),
+}
+
+#[derive(Serialize)]
+struct AuthorityResponse {
+	profile_name: String,
+	server_id: String,
+}
+
+#[derive(Serialize)]
+struct SuccessResponse {
+	schema: &'static str,
+	outcome: &'static str,
+	operation: &'static str,
+	authority: AuthorityResponse,
+	data: Value,
+}
+
+#[derive(Serialize)]
+struct FailureResponse {
+	schema: &'static str,
+	outcome: &'static str,
+	operation: &'static str,
+	failure: ResponseFailure,
+}
+
+#[derive(Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
+enum ResetCardConsumeDto {
+	Accepted {
+		account_id: EntityId,
+		descriptor: ResetCardDescriptorDto,
+		state: ResetCardOperationResult,
+		entity_revision: EntityRevision,
+	},
+	Rejected {
+		error: decodex_protocol::CommandError,
+	},
+	PotentiallyDispatched {
+		failure: ClientFailure,
+	},
+}
+
+impl From<ResetCardConsumeResponse> for ResetCardConsumeDto {
+	fn from(response: ResetCardConsumeResponse) -> Self {
+		match response {
+			ResetCardConsumeResponse::Accepted {
+				account_id,
+				descriptor,
+				state,
+				entity_revision,
+			} => Self::Accepted { account_id, descriptor, state, entity_revision },
+			ResetCardConsumeResponse::Rejected { error } => Self::Rejected { error },
+			ResetCardConsumeResponse::PotentiallyDispatched { failure } =>
+				Self::PotentiallyDispatched { failure },
+		}
+	}
+}
+
+enum RequestFailure {
+	Client(ClientFailure),
+	Bridge(BridgeFailure),
+	FastMode(fast_mode::FastModeFailure),
+}
+
+impl From<ClientFailure> for RequestFailure {
+	fn from(failure: ClientFailure) -> Self {
+		Self::Client(failure)
+	}
+}
+
+/// Return the C ABI generation implemented by this library.
+#[unsafe(no_mangle)]
+pub extern "C" fn decodex_app_native_client_abi_version() -> u32 {
+	ABI_VERSION
+}
+
+/// Create one thread-safe native client handle.
+///
+/// On success, this returns a non-null opaque handle and leaves the error output
+/// empty. On failure, this returns null and writes one owned JSON failure
+/// envelope. The caller must release that envelope with
+/// [`decodex_app_native_client_free`].
+///
+/// # Safety
+///
+/// `config_json` must identify `config_len` readable bytes. `out_error_json`
+/// and `out_error_len` must be valid writable pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn decodex_app_native_client_create(
+	config_json: *const u8,
+	config_len: usize,
+	out_error_json: *mut *mut u8,
+	out_error_len: *mut usize,
+) -> *mut c_void {
+	if out_error_json.is_null() || out_error_len.is_null() {
+		return ptr::null_mut();
+	}
+	// SAFETY: Both output pointers were checked above and the caller contract
+	// requires them to be writable.
+	unsafe {
+		*out_error_json = ptr::null_mut();
+		*out_error_len = 0;
+	}
+
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		create_client(config_json, config_len, out_error_json, out_error_len)
+	}));
+	match result {
+		Ok(handle) => handle,
+		Err(_) => {
+			let _ = write_failure(
+				out_error_json,
+				out_error_len,
+				"create",
+				ResponseFailure::Bridge(BridgeFailure::InternalFailure),
+			);
+			ptr::null_mut()
+		},
+	}
+}
+
+/// Release one opaque native client handle.
+///
+/// In-flight requests retain their own reference and finish safely. A stale
+/// handle cannot start another request after this function returns.
+#[unsafe(no_mangle)]
+pub extern "C" fn decodex_app_native_client_destroy(client: *mut c_void) {
+	if client.is_null() {
+		return;
+	}
+	let client_id = client as usize;
+	let clients = clients();
+	match clients.lock() {
+		Ok(mut clients) => {
+			clients.remove(&client_id);
+		},
+		Err(poisoned) => {
+			poisoned.into_inner().remove(&client_id);
+		},
+	}
+}
+
+/// Execute one strict JSON request synchronously on the shared Rust runtime.
+///
+/// The function returns zero whenever it wrote a JSON response. It returns one
+/// only when output pointers are invalid and no response can be returned.
+///
+/// # Safety
+///
+/// `request_json` must identify `request_len` readable bytes.
+/// `out_response_json` and `out_response_len` must be valid writable pointers.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn decodex_app_native_client_request(
+	client: *mut c_void,
+	request_json: *const u8,
+	request_len: usize,
+	out_response_json: *mut *mut u8,
+	out_response_len: *mut usize,
+) -> i32 {
+	if out_response_json.is_null() || out_response_len.is_null() {
+		return 1;
+	}
+	// SAFETY: Both output pointers were checked above and the caller contract
+	// requires them to be writable.
+	unsafe {
+		*out_response_json = ptr::null_mut();
+		*out_response_len = 0;
+	}
+
+	let result = catch_unwind(AssertUnwindSafe(|| {
+		request(client, request_json, request_len, out_response_json, out_response_len)
+	}));
+	match result {
+		Ok(status) => status,
+		Err(_) => write_failure(
+			out_response_json,
+			out_response_len,
+			"request",
+			ResponseFailure::Bridge(BridgeFailure::InternalFailure),
+		),
+	}
+}
+
+/// Release one exact response buffer allocated by this library.
+///
+/// # Safety
+///
+/// `buffer` and `len` must be the unchanged pair returned by this library and
+/// must be freed exactly once.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn decodex_app_native_client_free(buffer: *mut u8, len: usize) {
+	if buffer.is_null() || len == 0 {
+		return;
+	}
+	// SAFETY: The caller contract requires the exact pointer/length pair from
+	// `write_bytes`, which leaked one boxed slice with this layout.
+	unsafe {
+		drop(Box::from_raw(ptr::slice_from_raw_parts_mut(buffer, len)));
+	}
+}
+
+fn create_client(
+	config_json: *const u8,
+	config_len: usize,
+	out_error_json: *mut *mut u8,
+	out_error_len: *mut usize,
+) -> *mut c_void {
+	let Some(config_bytes) = input_bytes(config_json, config_len) else {
+		let _ = write_failure(
+			out_error_json,
+			out_error_len,
+			"create",
+			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
+		);
+		return ptr::null_mut();
+	};
+	let Ok(config) = serde_json::from_slice::<ClientConfig>(config_bytes) else {
+		let _ = write_failure(
+			out_error_json,
+			out_error_len,
+			"create",
+			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
+		);
+		return ptr::null_mut();
+	};
+	if config.schema != CONFIG_SCHEMA
+		|| config.profile_name.as_ref().is_some_and(|value| value.is_empty())
+	{
+		let _ = write_failure(
+			out_error_json,
+			out_error_len,
+			"create",
+			ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
+		);
+		return ptr::null_mut();
+	}
+	if runtime().is_err() {
+		let _ = write_failure(
+			out_error_json,
+			out_error_len,
+			"create",
+			ResponseFailure::Bridge(BridgeFailure::RuntimeUnavailable),
+		);
+		return ptr::null_mut();
+	}
+
+	let profile = match ClientProfile::load_default(config.profile_name.as_deref()) {
+		Ok(profile) => profile,
+		Err(failure) => {
+			let _ = write_failure(
+				out_error_json,
+				out_error_len,
+				"create",
+				ResponseFailure::Client(failure),
+			);
+			return ptr::null_mut();
+		},
+	};
+	let profile = match config.expected_server_id {
+		Some(expected_server_id) => {
+			if !is_canonical_uuid(&expected_server_id) {
+				let _ = write_failure(
+					out_error_json,
+					out_error_len,
+					"create",
+					ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
+				);
+				return ptr::null_mut();
+			}
+			let Ok(server_id) = ServerId::new(expected_server_id) else {
+				let _ = write_failure(
+					out_error_json,
+					out_error_len,
+					"create",
+					ResponseFailure::Bridge(BridgeFailure::InvalidConfiguration),
+				);
+				return ptr::null_mut();
+			};
+			profile.with_expected_server_id(server_id)
+		},
+		None => profile,
+	};
+
+	let client_id = next_client_id();
+	let client = Arc::new(NativeClient { profile });
+	match clients().lock() {
+		Ok(mut clients) => {
+			clients.insert(client_id, client);
+		},
+		Err(_) => {
+			let _ = write_failure(
+				out_error_json,
+				out_error_len,
+				"create",
+				ResponseFailure::Bridge(BridgeFailure::InternalFailure),
+			);
+			return ptr::null_mut();
+		},
+	}
+
+	client_id as *mut c_void
+}
+
+fn request(
+	client: *mut c_void,
+	request_json: *const u8,
+	request_len: usize,
+	out_response_json: *mut *mut u8,
+	out_response_len: *mut usize,
+) -> i32 {
+	let Some(request_bytes) = input_bytes(request_json, request_len) else {
+		return write_failure(
+			out_response_json,
+			out_response_len,
+			"request",
+			ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
+		);
+	};
+	let request = match serde_json::from_slice::<Request>(request_bytes) {
+		Ok(request) => request,
+		Err(_) => {
+			return write_failure(
+				out_response_json,
+				out_response_len,
+				"request",
+				ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
+			);
+		},
+	};
+	let operation = request.operation();
+	if request.schema() != RESPONSE_SCHEMA {
+		return write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
+		);
+	}
+	let client_id = client as usize;
+	let native_client = match clients().lock() {
+		Ok(clients) => clients.get(&client_id).cloned(),
+		Err(_) => None,
+	};
+	let Some(native_client) = native_client else {
+		return write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::Bridge(BridgeFailure::InvalidHandle),
+		);
+	};
+	let Ok(runtime) = runtime() else {
+		return write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::Bridge(BridgeFailure::RuntimeUnavailable),
+		);
+	};
+	let authority = AuthorityResponse {
+		profile_name: native_client.profile.name().to_owned(),
+		server_id: native_client.profile.expected_server_id().as_str().to_owned(),
+	};
+
+	match runtime.block_on(execute_request(native_client.profile.clone(), request)) {
+		Ok(data) => write_serialized(
+			out_response_json,
+			out_response_len,
+			&SuccessResponse {
+				schema: RESPONSE_SCHEMA,
+				outcome: "success",
+				operation,
+				authority,
+				data,
+			},
+		),
+		Err(RequestFailure::Client(failure)) => write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::Client(failure),
+		),
+		Err(RequestFailure::Bridge(failure)) => write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::Bridge(failure),
+		),
+		Err(RequestFailure::FastMode(failure)) => write_failure(
+			out_response_json,
+			out_response_len,
+			operation,
+			ResponseFailure::FastMode(failure),
+		),
+	}
+}
+
+async fn execute_request(
+	profile: ClientProfile,
+	request: Request,
+) -> Result<Value, RequestFailure> {
+	match request {
+		Request::ListAccounts { .. } =>
+			to_value(AccountClient::new(profile).list().await.map_err(RequestFailure::Client)?),
+		Request::GetResetCards { account_id, .. } => {
+			let account_id = entity_id(&account_id)?;
+			to_value(
+				ResetCardClient::new(profile)
+					.list(account_id)
+					.await
+					.map_err(RequestFailure::Client)?,
+			)
+		},
+		Request::GetAccountProfile { account_id, include_email, .. } => {
+			let account_id = entity_id(&account_id)?;
+			to_value(
+				AccountClient::new(profile)
+					.profile(account_id, include_email)
+					.await
+					.map_err(RequestFailure::Client)?,
+			)
+		},
+		Request::GetCodexAuthProjection { .. } => to_value(
+			AccountClient::new(profile)
+				.codex_auth_projection()
+				.await
+				.map_err(RequestFailure::Client)?,
+		),
+		Request::ResetCardStatus { idempotency_key, .. } => {
+			let idempotency_key = parse_idempotency_key(idempotency_key)?;
+			to_value(
+				ResetCardClient::new(profile)
+					.status(idempotency_key)
+					.await
+					.map_err(RequestFailure::Client)?,
+			)
+		},
+		Request::UseResetCard {
+			account_id,
+			granted_at_unix_seconds,
+			expires_at_unix_seconds,
+			expected_revision,
+			idempotency_key,
+			..
+		} => {
+			let account_id = entity_id(&account_id)?;
+			let descriptor =
+				ResetCardDescriptorDto::new(granted_at_unix_seconds, expires_at_unix_seconds)
+					.map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))?;
+			let expected_revision = revision(expected_revision)?;
+			let idempotency_key = parse_idempotency_key(idempotency_key)?;
+			let response = ResetCardClient::new(profile)
+				.consume(account_id, descriptor, expected_revision, idempotency_key)
+				.await
+				.map_err(RequestFailure::Client)?;
+			to_value(ResetCardConsumeDto::from(response))
+		},
+		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } => {
+			let payload = CommandPayload::EnrollAccountFromSharedCodex {
+				operation_id: entity_id(&operation_id)?,
+				account_id: entity_id(&account_id)?,
+				enabled,
+			};
+			execute_account_command(profile, payload, None, idempotency_key).await
+		},
+		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } =>
+			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await,
+		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } =>
+			set_account_enabled(profile, account_id, false, expected_revision, idempotency_key)
+				.await,
+		Request::LogoutAccount {
+			operation_id,
+			account_id,
+			expected_revision,
+			idempotency_key,
+			..
+		} => {
+			let payload = CommandPayload::LogoutAccount {
+				operation_id: entity_id(&operation_id)?,
+				account_id: entity_id(&account_id)?,
+			};
+			execute_account_command(
+				profile,
+				payload,
+				Some(revision(expected_revision)?),
+				idempotency_key,
+			)
+			.await
+		},
+		Request::SetFixedSelection {
+			account_id,
+			expected_account_revision,
+			expected_routing_revision,
+			idempotency_key,
+			..
+		} => {
+			let response = AccountClient::new(profile)
+				.set_fixed_account_selection(
+					entity_id(&account_id)?,
+					revision(expected_account_revision)?,
+					revision(expected_routing_revision)?,
+					parse_idempotency_key(idempotency_key)?,
+				)
+				.await
+				.map_err(RequestFailure::Client)?;
+			to_value(response)
+		},
+		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } => {
+			let response = AccountClient::new(profile)
+				.set_balanced_account_selection(
+					revision(expected_routing_revision)?,
+					parse_idempotency_key(idempotency_key)?,
+				)
+				.await
+				.map_err(RequestFailure::Client)?;
+			to_value(response)
+		},
+		Request::RefreshAccount {
+			operation_id,
+			account_id,
+			expected_revision,
+			idempotency_key,
+			..
+		} => {
+			let payload = CommandPayload::RefreshAccount {
+				operation_id: entity_id(&operation_id)?,
+				account_id: entity_id(&account_id)?,
+			};
+			execute_account_command(
+				profile,
+				payload,
+				Some(revision(expected_revision)?),
+				idempotency_key,
+			)
+			.await
+		},
+		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } => {
+			let response = AccountClient::new(profile)
+				.use_account_in_codex(
+					entity_id(&account_id)?,
+					revision(expected_revision)?,
+					parse_idempotency_key(idempotency_key)?,
+				)
+				.await
+				.map_err(RequestFailure::Client)?;
+			to_value(response)
+		},
+		Request::FastModeStatus { .. } => {
+			let enabled = fast_mode::status().map_err(RequestFailure::FastMode)?;
+			to_value(FastModeData { enabled })
+		},
+		Request::SetFastMode { enabled, .. } => {
+			let enabled = fast_mode::set_enabled(enabled).map_err(RequestFailure::FastMode)?;
+			to_value(FastModeData { enabled })
+		},
+	}
+}
+
+#[derive(Serialize)]
+struct FastModeData {
+	enabled: bool,
+}
+
+async fn set_account_enabled(
+	profile: ClientProfile,
+	account_id: String,
+	enabled: bool,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let payload =
+		CommandPayload::SetAccountEnabled { account_id: entity_id(&account_id)?, enabled };
+	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
+		.await
+}
+
+async fn execute_account_command(
+	profile: ClientProfile,
+	payload: CommandPayload,
+	expected_revision: Option<EntityRevision>,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let response: AccountCommandResponse = AccountClient::new(profile)
+		.execute(payload, expected_revision, parse_idempotency_key(idempotency_key)?)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(response)
+}
+
+fn entity_id(value: &str) -> Result<EntityId, RequestFailure> {
+	if !is_canonical_uuid(value) {
+		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+	}
+	EntityId::new(value.to_owned()).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
+}
+
+fn revision(value: u64) -> Result<EntityRevision, RequestFailure> {
+	if value == 0 {
+		Err(RequestFailure::Bridge(BridgeFailure::InvalidInput))
+	} else {
+		Ok(EntityRevision(value))
+	}
+}
+
+fn parse_idempotency_key(value: String) -> Result<IdempotencyKey, RequestFailure> {
+	IdempotencyKey::new(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))
+}
+
+fn to_value<T: Serialize>(value: T) -> Result<Value, RequestFailure> {
+	serde_json::to_value(value).map_err(|_| RequestFailure::Bridge(BridgeFailure::InternalFailure))
+}
+
+fn runtime() -> Result<&'static Runtime, ()> {
+	RUNTIME
+		.get_or_init(|| {
+			Builder::new_multi_thread()
+				.enable_all()
+				.thread_name("decodex-app-client")
+				.build()
+				.map_err(|_| ())
+		})
+		.as_ref()
+		.map_err(|_| ())
+}
+
+fn clients() -> &'static Mutex<HashMap<usize, Arc<NativeClient>>> {
+	CLIENTS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn next_client_id() -> usize {
+	loop {
+		let id = NEXT_CLIENT_ID.fetch_add(1, Ordering::Relaxed);
+		if id != 0 {
+			return id;
+		}
+	}
+}
+
+fn input_bytes<'a>(input: *const u8, len: usize) -> Option<&'a [u8]> {
+	if input.is_null() || len == 0 {
+		return None;
+	}
+	// SAFETY: Callers of the public ABI functions promise that `input` points
+	// to `len` readable bytes for the duration of the call.
+	Some(unsafe { slice::from_raw_parts(input, len) })
+}
+
+fn write_failure(
+	out_json: *mut *mut u8,
+	out_len: *mut usize,
+	operation: &'static str,
+	failure: ResponseFailure,
+) -> i32 {
+	write_serialized(
+		out_json,
+		out_len,
+		&FailureResponse { schema: RESPONSE_SCHEMA, outcome: "failure", operation, failure },
+	)
+}
+
+fn write_serialized<T: Serialize>(out_json: *mut *mut u8, out_len: *mut usize, value: &T) -> i32 {
+	let bytes = match serde_json::to_vec(value) {
+		Ok(bytes) => bytes,
+		Err(_) => return 2,
+	};
+	write_bytes(out_json, out_len, bytes)
+}
+
+fn write_bytes(out_json: *mut *mut u8, out_len: *mut usize, bytes: Vec<u8>) -> i32 {
+	let mut bytes = bytes.into_boxed_slice();
+	let len = bytes.len();
+	let buffer = bytes.as_mut_ptr();
+	std::mem::forget(bytes);
+	// SAFETY: Public entry points checked the output pointers before calling
+	// this helper. `buffer` remains owned by the caller until `free`.
+	unsafe {
+		*out_json = buffer;
+		*out_len = len;
+	}
+	0
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
+		})
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+
+	#[test]
+	fn strict_request_accepts_the_versioned_operations() {
+		let request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"get_reset_cards","account_id":"{ACCOUNT_ID}"}}"#
+		))
+		.expect("request must decode");
+
+		assert_eq!(request.operation(), "get_reset_cards");
+		assert_eq!(request.schema(), RESPONSE_SCHEMA);
+	}
+
+	#[test]
+	fn use_in_codex_request_is_account_revision_fenced() {
+		let request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"use-account-test"}}"#
+		))
+		.expect("use-in-Codex request must decode");
+
+		assert_eq!(request.operation(), "use_account_in_codex");
+		assert!(serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","idempotency_key":"use-account-test"}}"#
+		))
+		.is_err());
+	}
+
+	#[test]
+	fn projection_query_and_label_free_enrollment_are_exact() {
+		let projection = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"get_codex_auth_projection"}}"#
+		))
+		.expect("projection request must decode");
+		let enrollment = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"enroll_account","operation_id":"{ACCOUNT_ID}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"enroll-test"}}"#
+		))
+		.expect("label-free enrollment must decode");
+
+		assert_eq!(projection.operation(), "get_codex_auth_projection");
+		assert_eq!(enrollment.operation(), "enroll_account");
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"enroll_account","operation_id":"{ACCOUNT_ID}","account_id":"{ACCOUNT_ID}","display_label":"legacy","enabled":true,"idempotency_key":"enroll-test"}}"#
+			))
+			.is_err()
+		);
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"rename_account","account_id":"{ACCOUNT_ID}","display_label":"legacy","expected_revision":7,"idempotency_key":"rename-test"}}"#
+			))
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn strict_request_rejects_unknown_fields() {
+		let request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"list_accounts","extra":true}}"#
+		));
+
+		assert!(request.is_err());
+	}
+
+	#[test]
+	fn fast_mode_requests_and_success_authority_are_exact() {
+		let request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"set_fast_mode","enabled":true}}"#
+		))
+		.expect("Fast mode request must decode");
+
+		assert_eq!(request.operation(), "set_fast_mode");
+		let response = SuccessResponse {
+			schema: RESPONSE_SCHEMA,
+			outcome: "success",
+			operation: "set_fast_mode",
+			authority: AuthorityResponse {
+				profile_name: "local".into(),
+				server_id: ACCOUNT_ID.into(),
+			},
+			data: serde_json::to_value(FastModeData { enabled: true })
+				.expect("Fast mode data must serialize"),
+		};
+		let value = serde_json::to_value(response).expect("success response must serialize");
+
+		assert_eq!(value["authority"]["profile_name"], "local");
+		assert_eq!(value["authority"]["server_id"], ACCOUNT_ID);
+		assert_eq!(value["data"]["enabled"], true);
+		assert_eq!(value.as_object().expect("response must be an object").len(), 5);
+	}
+
+	#[test]
+	fn response_failure_is_one_closed_string() {
+		let response = FailureResponse {
+			schema: RESPONSE_SCHEMA,
+			outcome: "failure",
+			operation: "list_accounts",
+			failure: ResponseFailure::Client(ClientFailure::ProtocolTimeout),
+		};
+		let value = serde_json::to_value(response).expect("response must serialize");
+
+		assert_eq!(value["failure"], "protocol_timeout");
+		assert_eq!(value["outcome"], "failure");
+	}
+
+	#[test]
+	fn fast_mode_failure_is_one_closed_string() {
+		let response = FailureResponse {
+			schema: RESPONSE_SCHEMA,
+			outcome: "failure",
+			operation: "fast_mode_status",
+			failure: ResponseFailure::FastMode(fast_mode::FastModeFailure::ConfigInvalid),
+		};
+		let value = serde_json::to_value(response).expect("response must serialize");
+
+		assert_eq!(value["failure"], "config_invalid");
+		assert_eq!(value.as_object().expect("response must be an object").len(), 4);
+	}
+
+	#[test]
+	fn output_buffer_round_trips_through_the_public_free_function() {
+		let mut pointer = ptr::null_mut();
+		let mut len = 0;
+		let status = write_failure(
+			&mut pointer,
+			&mut len,
+			"request",
+			ResponseFailure::Bridge(BridgeFailure::InvalidRequest),
+		);
+
+		assert_eq!(status, 0);
+		assert!(!pointer.is_null());
+		assert!(len > 0);
+		// SAFETY: This test passes the exact pair returned by `write_failure`.
+		unsafe {
+			decodex_app_native_client_free(pointer, len);
+		}
+	}
+
+	#[test]
+	fn account_ids_are_canonical_lowercase_uuids() {
+		assert!(is_canonical_uuid(ACCOUNT_ID));
+		assert!(!is_canonical_uuid("018F0F9E-7B6E-4A31-8F4C-1D2E3F405162"));
+		assert!(!is_canonical_uuid("not-an-account"));
+	}
+}

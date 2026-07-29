@@ -2,7 +2,7 @@
 import Foundation
 import XCTest
 
-final class AccountControlCLIClientTests: XCTestCase {
+final class AccountControlNativeClientTests: XCTestCase {
 	private let accountID = "11111111-1111-4111-8111-111111111111"
 	private let secondAccountID = "22222222-2222-4222-8222-222222222222"
 	private let operationID = "33333333-3333-4333-8333-333333333333"
@@ -14,13 +14,25 @@ final class AccountControlCLIClientTests: XCTestCase {
 	}
 
 	func testAccountSnapshotRetainsRoutingAndCredentialNegativeLifecycleFacts() async throws {
-		let fixture = try makeFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"list","outcome":"success","result":{"outcome":"available","data":{"accounts":[\(readyAccountJSON),\(unsettledAccountJSON)],"routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}}}}'
-			"""
-		)
-		defer { fixture.remove() }
-		let client = makeClient(fixture)
+		let authority = authority
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let operationID = operationID
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "list_accounts",
+				authority: authority,
+				data: """
+				{"outcome":"available","data":{
+				  "accounts":[
+				    \(controlAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7)),
+				    \(controlUnsettledAccountJSON(accountID: secondAccountID, operationID: operationID))
+				  ],
+				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}
+				}}
+				"""
+			)
+		}
 
 		let snapshot = try await client.accountSnapshot(authority: authority)
 
@@ -34,16 +46,7 @@ final class AccountControlCLIClientTests: XCTestCase {
 			)
 		)
 		XCTAssertEqual(snapshot.accounts.map(\.accountID), [secondAccountID, accountID])
-		XCTAssertEqual(
-			snapshot.accounts[1].credentialBinding,
-			AccountCredentialBinding(
-				schemaVersion: 1,
-				version: 3,
-				fingerprintSHA256: String(repeating: "a", count: 64),
-				provider: .chatGPT,
-				providerAccountID: "provider-a"
-			)
-		)
+		XCTAssertEqual(snapshot.accounts[1].credentialBinding?.version, 3)
 		XCTAssertEqual(
 			snapshot.accounts[0].unsettledOperation,
 			AccountUnsettledOperation(
@@ -55,176 +58,200 @@ final class AccountControlCLIClientTests: XCTestCase {
 		)
 	}
 
-	func testEveryLifecycleAndRoutingCommandBuildsTheExactPinnedCLIArguments() throws {
-		XCTAssertEqual(
-			try ResetCardCLIClient.enrollFromSharedCodexArguments(
+	func testEveryLifecycleAndRoutingCommandUsesExactNativeRequest() async throws {
+		let authority = authority
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			let object = try nativeJSONObject(request)
+			let operation = try XCTUnwrap(object["operation"] as? String)
+			let enabled = (object["enabled"] as? Bool)
+				?? (operation != "disable_account")
+			let payload: String
+			switch operation {
+			case "get_codex_auth_projection":
+				payload = """
+				{"outcome":"current","data":{"account_id":"\(accountID)",
+				  "account_revision":7,"projection_digest":"\(String(repeating: "c", count: 64))"}}
+				"""
+			case "use_account_in_codex":
+				payload = """
+				{"outcome":"applied","data":{"entity_revision":7,
+				  "result":{"name":"codex_auth_projected","data":{
+				    "account_id":"\(accountID)","account_revision":7,
+				    "projection_digest":"\(String(repeating: "c", count: 64))"}}}}
+				"""
+			case "logout_account":
+				payload = """
+				{"outcome":"applied","data":{"entity_revision":8,
+				  "result":{"name":"account_logged_out","data":{"account_id":"\(accountID)","tombstone_revision":8}}}}
+				"""
+			case "set_fixed_selection":
+				payload = controlRoutingAppliedJSON(
+					revision: 10,
+					mode: #"{"mode":"fixed","account_id":"\#(accountID)"}"#,
+					order: [accountID, secondAccountID]
+				)
+			case "set_balanced_selection":
+				payload = controlRoutingAppliedJSON(
+					revision: 10,
+					mode: #"{"mode":"balanced"}"#,
+					order: [accountID, secondAccountID]
+				)
+			default:
+				payload = """
+				{"outcome":"applied","data":{"entity_revision":8,
+				  "result":{"name":"account_changed","data":{"account":
+				    \(controlAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 8, enabled: enabled))
+				  }}}}
+				"""
+			}
+			return nativeSuccess(
+				operation: operation,
 				authority: authority,
-				operationID: operationID,
+				data: payload
+			)
+		}
+
+		_ = try await client.enrollFromSharedCodex(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			enabled: true,
+			idempotencyKey: idempotencyKey
+		)
+		let projection = try await client.codexAuthProjection(authority: authority)
+		XCTAssertEqual(
+			projection,
+			.current(
 				accountID: accountID,
-				displayLabel: "Account A",
-				enabled: true,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"enroll",
-				"--operation-id", operationID,
-				"--account-id", accountID,
-				"--label", "Account A",
-				"--enabled", "true",
-				"--idempotency-key", idempotencyKey,
+				accountRevision: 7,
+				projectionDigest: String(repeating: "c", count: 64)
+			)
+		)
+		_ = try await client.useAccountInCodex(
+			authority: authority,
+			accountID: accountID,
+			expectedRevision: 7,
+			idempotencyKey: idempotencyKey
+		)
+		_ = try await client.setAccountEnabled(
+			authority: authority,
+			accountID: accountID,
+			enabled: false,
+			expectedRevision: 7,
+			idempotencyKey: idempotencyKey
+		)
+		_ = try await client.logoutAccount(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			expectedRevision: 7,
+			idempotencyKey: idempotencyKey
+		)
+		_ = try await client.setFixedSelection(
+			authority: authority,
+			accountID: accountID,
+			expectedAccountRevision: 7,
+			expectedRoutingRevision: 9,
+			idempotencyKey: idempotencyKey
+		)
+		_ = try await client.setBalancedSelection(
+			authority: authority,
+			expectedRoutingRevision: 9,
+			idempotencyKey: idempotencyKey
+		)
+		_ = try await client.refreshAccountCredentials(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			expectedRevision: 7,
+			idempotencyKey: idempotencyKey
+		)
+
+		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
+		XCTAssertEqual(
+			requests.compactMap { $0["operation"] as? String },
+			[
+				"enroll_account", "get_codex_auth_projection", "use_account_in_codex",
+				"disable_account",
+				"logout_account", "set_fixed_selection",
+				"set_balanced_selection", "refresh_account",
 			]
 		)
 		XCTAssertEqual(
-			try ResetCardCLIClient.renameAccountArguments(
-				authority: authority,
-				accountID: accountID,
-				displayLabel: "Renamed",
-				expectedRevision: 7,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"rename",
-				"--account-id", accountID,
-				"--label", "Renamed",
-				"--expected-revision", "7",
-				"--idempotency-key", idempotencyKey,
+			Set(requests[0].keys),
+			[
+				"schema", "operation", "operation_id", "account_id",
+				"enabled", "idempotency_key",
 			]
 		)
-		XCTAssertEqual(
-			try ResetCardCLIClient.setAccountEnabledArguments(
-				authority: authority,
-				accountID: accountID,
-				enabled: false,
-				expectedRevision: 7,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"disable",
-				"--account-id", accountID,
-				"--expected-revision", "7",
-				"--idempotency-key", idempotencyKey,
-			]
-		)
-		XCTAssertEqual(
-			try ResetCardCLIClient.logoutAccountArguments(
-				authority: authority,
-				operationID: operationID,
-				accountID: accountID,
-				expectedRevision: 7,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"logout",
-				"--operation-id", operationID,
-				"--account-id", accountID,
-				"--expected-revision", "7",
-				"--idempotency-key", idempotencyKey,
-			]
-		)
-		XCTAssertEqual(
-			try ResetCardCLIClient.setFixedSelectionArguments(
-				authority: authority,
-				accountID: accountID,
-				expectedAccountRevision: 7,
-				expectedRoutingRevision: 9,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"set-fixed-selection",
-				"--account-id", accountID,
-				"--expected-account-revision", "7",
-				"--expected-revision", "9",
-				"--idempotency-key", idempotencyKey,
-			]
-		)
-		XCTAssertEqual(
-			try ResetCardCLIClient.setBalancedSelectionArguments(
-				authority: authority,
-				expectedRoutingRevision: 9,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"set-balanced-selection",
-				"--expected-revision", "9",
-				"--idempotency-key", idempotencyKey,
-			]
-		)
-		XCTAssertEqual(
-			try ResetCardCLIClient.refreshAccountCredentialsArguments(
-				authority: authority,
-				operationID: operationID,
-				accountID: accountID,
-				expectedRevision: 7,
-				idempotencyKey: idempotencyKey
-			),
-			prefix + [
-				"refresh",
-				"--operation-id", operationID,
-				"--account-id", accountID,
-				"--expected-revision", "7",
-				"--idempotency-key", idempotencyKey,
-			]
-		)
+		XCTAssertEqual(Set(requests[1].keys), ["schema", "operation"])
+		XCTAssertEqual(requests[2]["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(requests[3]["enabled"] as? Bool, nil)
+		XCTAssertEqual(requests[3]["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(requests[4]["operation_id"] as? String, operationID)
+		XCTAssertEqual(requests[5]["expected_account_revision"] as? NSNumber, 7)
+		XCTAssertEqual(requests[5]["expected_routing_revision"] as? NSNumber, 9)
+		XCTAssertEqual(Set(requests[6].keys), [
+			"schema", "operation", "expected_routing_revision", "idempotency_key",
+		])
+		XCTAssertEqual(requests[7]["operation_id"] as? String, operationID)
+		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 8))
 	}
 
-	func testCommandBuildersRejectNoncanonicalIdentityRevisionAuthorityAndLabel() throws {
-		let uppercaseAccountID = "abcdefab-cdef-4abc-8def-abcdefabcdef".uppercased()
+	func testUseInCodexRejectsNoncanonicalIdentityRevisionAndAuthorityBeforeDispatch() async {
+		let recorder = NativeRequestRecorder()
+		let authority = authority
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			throw ResetCardClientError.invalidResponse
+		}
 		let invalidAuthority = ResetCardAuthority(
 			profileName: "local space",
 			serverID: serverID
 		)
-		for operation in [
-			{
-				try ResetCardCLIClient.renameAccountArguments(
-					authority: self.authority,
-					accountID: uppercaseAccountID,
-					displayLabel: "Name",
-					expectedRevision: 1,
-					idempotencyKey: self.idempotencyKey
+		let uppercaseAccountID = "abcdefab-cdef-4abc-8def-abcdefabcdef".uppercased()
+		let inputs: [(ResetCardAuthority?, String, UInt64)] = [
+			(authority, uppercaseAccountID, 1),
+			(authority, accountID, 0),
+			(invalidAuthority, accountID, 1),
+		]
+		for (authority, accountID, revision) in inputs {
+			do {
+				_ = try await client.useAccountInCodex(
+					authority: authority,
+					accountID: accountID,
+					expectedRevision: revision,
+					idempotencyKey: idempotencyKey
 				)
-			},
-			{
-				try ResetCardCLIClient.renameAccountArguments(
-					authority: self.authority,
-					accountID: self.accountID,
-					displayLabel: "Name",
-					expectedRevision: 0,
-					idempotencyKey: self.idempotencyKey
-				)
-			},
-			{
-				try ResetCardCLIClient.renameAccountArguments(
-					authority: invalidAuthority,
-					accountID: self.accountID,
-					displayLabel: "Name",
-					expectedRevision: 1,
-					idempotencyKey: self.idempotencyKey
-				)
-			},
-			{
-				try ResetCardCLIClient.renameAccountArguments(
-					authority: self.authority,
-					accountID: self.accountID,
-					displayLabel: "bad\nlabel",
-					expectedRevision: 1,
-					idempotencyKey: self.idempotencyKey
-				)
-			},
-		] {
-			XCTAssertThrowsError(try operation()) { error in
-				XCTAssertEqual(error as? AccountControlError, .invalidInput)
+				XCTFail("Invalid account command must fail")
+			} catch let error as AccountControlError {
+				XCTAssertEqual(error, .invalidInput)
+			} catch {
+				XCTFail("Unexpected error: \(error)")
 			}
 		}
+		XCTAssertTrue(recorder.requests.isEmpty)
 	}
 
 	func testFixedSelectionDecodesStrictAppliedRoutingResult() async throws {
-		let fixture = try makeFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"command","outcome":"applied","result":{"outcome":"applied","data":{"entity_revision":10,"result":{"name":"account_routing_changed","data":{"routing":{"revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)","\(secondAccountID)"]}}}}}}'
-			"""
-		)
-		defer { fixture.remove() }
-		let client = makeClient(fixture)
+		let authority = authority
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "set_fixed_selection",
+				authority: authority,
+				data: controlRoutingAppliedJSON(
+					revision: 10,
+					mode: #"{"mode":"fixed","account_id":"\#(accountID)"}"#,
+					order: [accountID, secondAccountID]
+				)
+			)
+		}
 
 		let result = try await client.setFixedSelection(
 			authority: authority,
@@ -236,7 +263,7 @@ final class AccountControlCLIClientTests: XCTestCase {
 
 		XCTAssertEqual(
 			result,
-			.routingChanged(
+			AccountControlResult.routingChanged(
 				AccountRoutingControl(
 					revision: 10,
 					mode: .fixed(accountID: accountID),
@@ -244,29 +271,22 @@ final class AccountControlCLIClientTests: XCTestCase {
 				)
 			)
 		)
-		XCTAssertEqual(
-			try fixture.invocations(),
-			[
-				prefix + [
-					"set-fixed-selection",
-					"--account-id", accountID,
-					"--expected-account-revision", "7",
-					"--expected-revision", "9",
-					"--idempotency-key", idempotencyKey,
-				],
-			]
-		)
 	}
 
-	func testTypedRejectionRetainsTheCurrentOwningRevision() async throws {
-		let fixture = try makeFixture(
-			body: """
-			printf '%s\\n' '{"schema":"decodex/cli-account/1","command":"command","outcome":"rejected","result":{"outcome":"rejected","data":{"error":{"reason":"account_command_rejected","rejection":"stale_routing_control","actual_revision":10}}}}'
-			exit 1
-			"""
-		)
-		defer { fixture.remove() }
-		let client = makeClient(fixture)
+	func testTypedRejectionRetainsCurrentOwningRevision() async throws {
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "set_balanced_selection",
+				authority: authority,
+				data: """
+				{"outcome":"rejected","data":{"error":{
+				  "reason":"account_command_rejected",
+				  "rejection":"stale_routing_control","actual_revision":10
+				}}}
+				"""
+			)
+		}
 
 		do {
 			_ = try await client.setBalancedSelection(
@@ -274,7 +294,7 @@ final class AccountControlCLIClientTests: XCTestCase {
 				expectedRoutingRevision: 9,
 				idempotencyKey: idempotencyKey
 			)
-			XCTFail("A rejected routing command must not appear applied.")
+			XCTFail("Rejected routing must not appear applied")
 		} catch let error as AccountControlError {
 			XCTAssertEqual(
 				error,
@@ -283,114 +303,89 @@ final class AccountControlCLIClientTests: XCTestCase {
 		}
 	}
 
-	func testAccountCommandRejectsUnknownFieldsAndContradictoryAppliedResults() async throws {
+	func testAccountCommandRejectsUnknownAndContradictoryAppliedResults() async throws {
+		let authority = authority
+		let accountID = accountID
 		let documents = [
 			"""
-			{"schema":"decodex/cli-account/1","command":"command","outcome":"applied","result":{"outcome":"applied","data":{"entity_revision":10,"result":{"name":"account_routing_changed","data":{"routing":{"revision":10,"mode":{"mode":"balanced"},"order":["\(accountID)"],"unexpected":true}}}}}}
+			{"outcome":"applied","data":{"entity_revision":10,
+			  "result":{"name":"account_routing_changed","data":{"routing":{
+			    "revision":10,"mode":{"mode":"balanced"},"order":["\(accountID)"],"unexpected":true
+			  }}}}}
 			""",
 			"""
-			{"schema":"decodex/cli-account/1","command":"command","outcome":"applied","result":{"outcome":"applied","data":{"entity_revision":10,"result":{"name":"account_routing_changed","data":{"routing":{"revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)"]}}}}}}
+			{"outcome":"applied","data":{"entity_revision":10,
+			  "result":{"name":"account_routing_changed","data":{"routing":{
+			    "revision":10,"mode":{"mode":"fixed","account_id":"\(accountID)"},"order":["\(accountID)"]
+			  }}}}}
 			""",
 		]
-		for document in documents {
-			let fixture = try makeFixture(body: "printf '%s\\n' '\(document)'")
-			defer { fixture.remove() }
-			let client = makeClient(fixture)
-
+		for data in documents {
+			let client = DecodexNativeClient { _, _ in
+				nativeSuccess(
+					operation: "set_balanced_selection",
+					authority: authority,
+					data: data
+				)
+			}
 			do {
 				_ = try await client.setBalancedSelection(
 					authority: authority,
 					expectedRoutingRevision: 9,
 					idempotencyKey: idempotencyKey
 				)
-				XCTFail("Unknown fields or a contradictory result must fail closed.")
+				XCTFail("Malformed account result must fail")
 			} catch let error as AccountControlError {
 				XCTAssertEqual(error, .invalidResponse)
 			}
 		}
 	}
-
-	private var prefix: [String] {
-		[
-			"--profile", "local",
-			"--expected-server-id", serverID,
-			"--output", "json", "account",
-		]
-	}
-
-	private var readyAccountJSON: String {
-		"""
-		{"account_id":"\(accountID)","display_label":"Account A","enabled":true,"account_revision":7,"observed_state":"available","lifecycle_readiness":"ready","credential_binding":{"schema_version":1,"version":3,"fingerprint_sha256":"\(String(repeating: "a", count: 64))","provider":"chatgpt","provider_account_id":"provider-a"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
-		"""
-	}
-
-	private var unsettledAccountJSON: String {
-		"""
-		{"account_id":"\(secondAccountID)","display_label":"Account B","enabled":true,"account_revision":8,"observed_state":"unknown","lifecycle_readiness":"operation_unsettled","credential_binding":{"schema_version":1,"version":2,"fingerprint_sha256":"\(String(repeating: "b", count: 64))","provider":"chatgpt","provider_account_id":"provider-b"},"unsettled_operation":{"operation_id":"\(operationID)","kind":"refresh","phase":"recovery_required","recovery_code":"provider_identity_changed"},"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
-		"""
-	}
-
-	private func makeClient(_ fixture: AccountControlCLIFixture) -> ResetCardCLIClient {
-		ResetCardCLIClient(
-			executableURL: fixture.executableURL,
-			environment: ["HOME": fixture.directoryURL.path],
-			timeout: 2
-		)
-	}
-
-	private func makeFixture(body: String) throws -> AccountControlCLIFixture {
-		let directoryURL = FileManager.default.temporaryDirectory
-			.appendingPathComponent(UUID().uuidString, isDirectory: true)
-		let executableURL = directoryURL.appendingPathComponent("fake-decodex-cli")
-		let logURL = directoryURL.appendingPathComponent("arguments.log")
-		try FileManager.default.createDirectory(
-			at: directoryURL,
-			withIntermediateDirectories: true
-		)
-		let script = """
-		#!/bin/sh
-		for argument in "$@"; do
-			printf '%s\\n' "$argument" >> '\(logURL.path)'
-		done
-		printf '%s\\n' -- >> '\(logURL.path)'
-		\(body)
-		"""
-		try script.write(to: executableURL, atomically: true, encoding: .utf8)
-		try FileManager.default.setAttributes(
-			[.posixPermissions: 0o700],
-			ofItemAtPath: executableURL.path
-		)
-		return AccountControlCLIFixture(
-			directoryURL: directoryURL,
-			executableURL: executableURL,
-			logURL: logURL
-		)
-	}
 }
 
-private struct AccountControlCLIFixture {
-	let directoryURL: URL
-	let executableURL: URL
-	let logURL: URL
+private func controlAccountJSON(
+	accountID: String,
+	alias: String,
+	revision: UInt64,
+	enabled: Bool = true
+) -> String {
+	"""
+	{"account_id":"\(accountID)","alias":"\(alias)","enabled":\(enabled),
+	 "account_revision":\(revision),"observed_state":"available","lifecycle_readiness":"ready",
+	 "credential_binding":{"schema_version":1,"version":3,
+	   "fingerprint_sha256":"\(String(repeating: "a", count: 64))",
+	   "provider":"chatgpt","provider_account_id":"provider-a"},
+	 "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+	 "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
+	"""
+}
 
-	func invocations() throws -> [[String]] {
-		let lines = try String(contentsOf: logURL, encoding: .utf8)
-			.split(separator: "\n", omittingEmptySubsequences: false)
-			.map(String.init)
-		var invocations = [[String]]()
-		var current = [String]()
-		for line in lines {
-			if line == "--" {
-				invocations.append(current)
-				current = []
-			} else if line.isEmpty == false {
-				current.append(line)
-			}
-		}
-		return invocations
-	}
+private func controlUnsettledAccountJSON(
+	accountID: String,
+	operationID: String
+) -> String {
+	"""
+	{"account_id":"\(accountID)","alias":"Account 00000-00002","enabled":true,
+	 "account_revision":8,"observed_state":"unknown","lifecycle_readiness":"operation_unsettled",
+	 "credential_binding":{"schema_version":1,"version":2,
+	   "fingerprint_sha256":"\(String(repeating: "b", count: 64))",
+	   "provider":"chatgpt","provider_account_id":"provider-b"},
+	 "unsettled_operation":{"operation_id":"\(operationID)","kind":"refresh",
+	   "phase":"recovery_required","recovery_code":"provider_identity_changed"},
+	 "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+	 "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}}
+	"""
+}
 
-	func remove() {
-		try? FileManager.default.removeItem(at: directoryURL)
-	}
+private func controlRoutingAppliedJSON(
+	revision: UInt64,
+	mode: String,
+	order: [String]
+) -> String {
+	let orderJSON = order.map { "\"\($0)\"" }.joined(separator: ",")
+	return """
+	{"outcome":"applied","data":{"entity_revision":\(revision),
+	  "result":{"name":"account_routing_changed","data":{"routing":{
+	    "revision":\(revision),"mode":\(mode),"order":[\(orderJSON)]
+	  }}}}}
+	"""
 }

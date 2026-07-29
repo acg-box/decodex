@@ -185,18 +185,20 @@ decodex-publisher validate-social
   duration stays a muted row-local fact and does not mark the account as failed.
 - Uses Reset Cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click first persists a pending attempt,
-  then invokes the bundled `decodex-cli` with a vNext account UUID, exact revision,
+  then submits one in-process Rust request with a vNext account UUID, exact revision,
   public grant/expiry descriptor, and one idempotency key. `decodexd` owns credentials,
   app-server, the opaque credit ID, the provider effect, and durable recovery.
-- Invokes the bundled `decodex-cli` for active vNext reset-card requests. The bundle
-  contains no server or credential helper, and Swift does not start a service or
-  inject credentials. Operators run the independently configured daemon service.
+- Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,
+  routing, Codex projection, and Fast requests. The app does not start the CLI, a
+  service, or a credential helper, and Swift does not inject credentials. Operators
+  run the independently configured daemon service.
   The macOS source-install path provisions that service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
   PostgreSQL and daemon process generations.
-- Retries bounded startup-only Reset Card reads while the independently supervised
-  service becomes ready. It does not retry consume, replace an idempotency key, or
-  take service lifecycle ownership.
+- Retries only the bounded startup account-skeleton transport while the independently
+  supervised service becomes ready. Row-scoped profile or Reset Card failures remain
+  local until explicit refresh. It does not retry consume, replace an idempotency key,
+  or take service lifecycle ownership.
 - Shows a `Resume` action for retained attempts. Resume checks durable status first and,
   only when the daemon reports `not_found`, may invoke `use` again with the same profile,
   server UUID, selection, and idempotency key. It never substitutes a new key for that
@@ -206,8 +208,9 @@ The reset-card path is not the scheduler, project registry owner, credential own
 app-server process owner, or runtime authority. Its bounded private journal retains at
 most 64 credential-negative attempts and fails closed on malformed or unsafe storage:
 recoverable entries remain available for status-only inspection, while new use is blocked.
-There is one Swift account surface and one bundled vNext CLI. The package has no legacy
-account store, helper, HTTP control plane, or dual UI. Slice-1 backend startup uses the clean
+There is one Swift account surface and one native Rust client library. The package has
+no bundled CLI, legacy account store, helper, HTTP control plane, or dual UI. Slice-1
+backend startup uses the clean
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md) with no watcher,
 credential environment projection, helper, mapping, or `:8192` service.
 See [Runtime architecture](../architecture/runtime-architecture.md) for the shared

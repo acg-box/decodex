@@ -54,20 +54,24 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testSixRichAccountRowsUseTheAvailableScreenHeight() {
+	func testSixCompactAccountRowsUseTheirIntrinsicHeightOnASmallScreenWhenTheyFit() {
 		let height = AccountPanelLayout.accountListHeight(
 			accountCount: 6,
 			measuredContentHeight: 432,
 			windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 675)
 		)
 
-		XCTAssertEqual(
-			height,
-			675
-				- AccountPanelLayout.screenVerticalMargin
-				- AccountPanelLayout.panelVerticalPadding
-				- AccountPanelLayout.fixedChromeHeight
+		XCTAssertEqual(height, 432)
+	}
+
+	func testSixCompactAccountRowsUseTheirFullHeightOnTheCurrentDisplay() {
+		let height = AccountPanelLayout.accountListHeight(
+			accountCount: 6,
+			measuredContentHeight: 624,
+			windowVisibleFrame: NSRect(x: 0, y: 0, width: 1_600, height: 1_350)
 		)
+
+		XCTAssertEqual(height, 624)
 	}
 
 	func testMeasuredOverflowCapsAtTheAvailableScreenHeight() {
@@ -91,7 +95,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 			accountCount: 6,
 			measuredContentHeight: 900,
 			windowVisibleFrame: NSRect(x: 0, y: 0, width: 800, height: 675),
-			additionalChromeHeight: AccountPanelLayout.statusViewportHeight
+			additionalChromeHeight: AccountPanelLayout.statusMaximumHeight
 		)
 
 		XCTAssertEqual(
@@ -100,14 +104,14 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 				- AccountPanelLayout.screenVerticalMargin
 				- AccountPanelLayout.panelVerticalPadding
 				- AccountPanelLayout.fixedChromeHeight
-				- AccountPanelLayout.statusViewportHeight
+				- AccountPanelLayout.statusMaximumHeight
 		)
 	}
 
 	func testFrameKeepsTopEdgeAndCenterWhenContentShrinks() {
 		let currentFrame = NSRect(x: 120, y: 200, width: 360, height: 700)
 		let frame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: 322, height: 520),
+			forContentSize: NSSize(width: AccountPanelLayout.panelWidth, height: 520),
 			currentFrame: currentFrame
 		) { contentSize in
 			NSSize(width: contentSize.width + 18, height: contentSize.height + 18)
@@ -115,7 +119,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 			NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
 		}
 
-		XCTAssertEqual(frame.width, 340)
+		XCTAssertEqual(frame.width, 306)
 		XCTAssertEqual(frame.height, 538)
 		XCTAssertEqual(frame.midX, currentFrame.midX)
 		XCTAssertEqual(frame.maxY, currentFrame.maxY)

@@ -1498,6 +1498,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "decodex-app-client-ffi"
+version = "0.2.0"
+dependencies = [
+ "decodex-protocol",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.22.27",
+]
+
+[[package]]
 name = "decodex-cli"
 version = "0.2.0"
 dependencies = [

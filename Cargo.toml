@@ -10,6 +10,7 @@ members = [
 	"apps/decodex-publisher",
 	"apps/decodexd",
 	"apps/radar",
+	"crates/decodex-app-client-ffi",
 	"crates/decodex-codex",
 	"crates/decodex-core",
 	"crates/decodex-postgres",
