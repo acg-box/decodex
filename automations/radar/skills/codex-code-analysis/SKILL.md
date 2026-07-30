@@ -28,9 +28,14 @@ of redoing the source pass.
 - Optional release or changelog context
 - Optional existing Decodex signal, upstream-impact, or release-delta artifacts
 
-This skill may produce an `upstream_review/v1` when Codex automation is processing the
-continuous review queue. Keep ad hoc manual notes in-session unless they are promoted
-into `upstream_review/v1`, `analysis_draft`, `upstream_impact/v1`, or
+This skill may produce an `upstream_review/v1` and matching `upstream_impact/v1` when
+Codex automation is processing the continuous review queue. Put the pair in one
+`radar_content_review_pair_staging/v1` document. Use `radar content-pair-commit` to
+create the authoritative pair. Do not write authoritative review and impact files
+separately. In staging, set `impact.review_lineage.artifact_sha256` to exactly 64
+zeroes. This is a non-authoritative sentinel. Do not serialize or hash the review;
+Radar inserts the final byte digest. Keep ad hoc manual notes in-session unless they
+are promoted into a committed pair, `analysis_draft`, or
 `control_plane_upgrade_candidate/v1`.
 
 ## Analysis Loop

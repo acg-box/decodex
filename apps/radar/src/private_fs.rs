@@ -68,6 +68,10 @@ pub(crate) struct PrivateCache {
 	root_identity: DirectoryIdentity,
 }
 impl PrivateCache {
+	pub(crate) fn root_path(&self) -> &Path {
+		&self.root_path
+	}
+
 	pub(crate) fn open_or_create(path: &Path) -> Result<Self> {
 		open_cache_root(path, true)
 	}
@@ -161,6 +165,14 @@ impl PrivateCache {
 		self.verify_binding()?;
 
 		Ok(entries)
+	}
+
+	pub(crate) fn entries_if_present(&self, relative: &Path) -> Result<Vec<PrivateEntry>> {
+		match self.entries(relative) {
+			Ok(entries) => Ok(entries),
+			Err(error) if is_not_found(&error) => Ok(Vec::new()),
+			Err(error) => Err(error),
+		}
 	}
 
 	pub(crate) fn metadata(&self, relative: &Path) -> Result<Option<PrivateFileIdentity>> {
@@ -400,6 +412,110 @@ impl RadarCacheLock {
 		self.verify_lock()
 	}
 
+	pub(crate) fn create_directory_atomic(
+		&self,
+		relative: &Path,
+		files: &[(&str, &[u8])],
+	) -> Result<bool> {
+		let components = relative_components(relative)?;
+		let (name, directories) = components
+			.split_last()
+			.ok_or_else(|| eyre::eyre!("Radar cache directory path must include a name"))?;
+		let parent = self.cache.open_directory_components(directories, true)?;
+		let name = c_string(name)?;
+
+		self.verify_lock()?;
+		if let Some(snapshot) = file_snapshot_at(parent.as_raw_fd(), &name)? {
+			if snapshot.file_type != u32::from(libc::S_IFDIR) {
+				eyre::bail!("Radar committed pair destination is not a directory");
+			}
+			let directory = open_directory_at(parent.as_raw_fd(), &name)?;
+
+			validate_private_directory(&directory, "committed pair directory")?;
+
+			return Ok(false);
+		}
+
+		let temp_name = temporary_name()?;
+		if unsafe {
+			libc::mkdirat(parent.as_raw_fd(), temp_name.as_ptr(), PRIVATE_DIR_MODE as libc::mode_t)
+		} == -1
+		{
+			return Err(std::io::Error::last_os_error().into());
+		}
+		let result = (|| -> Result<()> {
+			let directory = open_directory_at(parent.as_raw_fd(), &temp_name)?;
+
+			validate_private_directory(&directory, "temporary committed pair directory")?;
+			for (file_name, payload) in files {
+				validate_leaf_name(file_name)?;
+				let file_name = CString::new(*file_name)
+					.map_err(|_| eyre::eyre!("Radar pair file name contains NUL"))?;
+				let mut file = create_regular_file(directory.as_raw_fd(), &file_name)?;
+
+				file.write_all(payload)?;
+				file.sync_all()?;
+				validate_open_file(&file, "committed pair file")?;
+			}
+			directory.sync_all()?;
+			if file_snapshot_at(parent.as_raw_fd(), &name)?.is_some() {
+				eyre::bail!("Radar committed pair destination appeared before commit");
+			}
+			if unsafe {
+				libc::renameat(
+					parent.as_raw_fd(),
+					temp_name.as_ptr(),
+					parent.as_raw_fd(),
+					name.as_ptr(),
+				)
+			} == -1
+			{
+				return Err(std::io::Error::last_os_error().into());
+			}
+			parent.sync_all()?;
+			self.cache.verify_binding()
+		})();
+
+		if result.is_err() {
+			let _ = remove_directory_tree_at(parent.as_raw_fd(), &temp_name);
+		}
+		result?;
+		self.verify_lock()?;
+
+		Ok(true)
+	}
+
+	pub(crate) fn remove_directory_atomic(&self, relative: &Path) -> Result<()> {
+		let components = relative_components(relative)?;
+		let (name, directories) = components
+			.split_last()
+			.ok_or_else(|| eyre::eyre!("Radar cache directory path must include a name"))?;
+		let parent = self.cache.open_directory_components(directories, false)?;
+		let name = c_string(name)?;
+		let directory = open_directory_at(parent.as_raw_fd(), &name)?;
+
+		validate_private_directory(&directory, "directory removal target")?;
+		drop(directory);
+		let temp_name = temporary_name()?;
+
+		self.verify_lock()?;
+		if unsafe {
+			libc::renameat(
+				parent.as_raw_fd(),
+				name.as_ptr(),
+				parent.as_raw_fd(),
+				temp_name.as_ptr(),
+			)
+		} == -1
+		{
+			return Err(std::io::Error::last_os_error().into());
+		}
+		parent.sync_all()?;
+		remove_directory_tree_at(parent.as_raw_fd(), &temp_name)?;
+		parent.sync_all()?;
+		self.verify_lock()
+	}
+
 	pub(crate) fn bootstrap_cache_is_empty(&self) -> Result<bool> {
 		self.verify_lock()?;
 		let entries = self.cache.entries(Path::new(""))?;
@@ -551,6 +667,19 @@ fn validate_write_destination(path: &Path) -> Result<()> {
 		|| name.as_bytes().starts_with(TEMP_FILE_PREFIX.as_bytes())
 	{
 		eyre::bail!("Radar cache output path uses a reserved internal file name");
+	}
+
+	Ok(())
+}
+
+fn validate_leaf_name(name: &str) -> Result<()> {
+	if name.is_empty()
+		|| name == "."
+		|| name == ".."
+		|| name.contains('/')
+		|| name.as_bytes().starts_with(TEMP_FILE_PREFIX.as_bytes())
+	{
+		eyre::bail!("Radar pair file name is unsafe");
 	}
 
 	Ok(())
@@ -929,6 +1058,26 @@ fn unlink_at(parent: RawFd, name: &CStr) -> Result<()> {
 	} else {
 		Ok(())
 	}
+}
+
+fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
+	let directory = open_directory_at(parent, name)?;
+
+	for entry in directory_entries(directory.as_raw_fd())? {
+		let child_name = c_string(&entry.name)?;
+
+		match entry.kind {
+			PrivateEntryKind::Directory =>
+				remove_directory_tree_at(directory.as_raw_fd(), &child_name)?,
+			PrivateEntryKind::File => unlink_at(directory.as_raw_fd(), &child_name)?,
+		}
+	}
+	drop(directory);
+	if unsafe { libc::unlinkat(parent, name.as_ptr(), libc::AT_REMOVEDIR) } == -1 {
+		return Err(std::io::Error::last_os_error().into());
+	}
+
+	Ok(())
 }
 
 fn c_string(value: &OsStr) -> Result<CString> {
