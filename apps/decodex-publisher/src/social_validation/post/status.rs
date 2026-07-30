@@ -1,11 +1,5 @@
 use crate::social_validation::{self, Map, SOCIAL_BLOCK_REASONS, Value};
 
-#[derive(Clone, Copy)]
-pub(in crate::social_validation) enum BrowserSessionRequirement {
-	Complete,
-	Terminal,
-}
-
 pub(super) fn validate_social_post_status_payload(
 	entry: &Map<String, Value>,
 	errors: &mut Vec<String>,
@@ -57,11 +51,20 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 		"publication",
 		&[
 			"account_verified",
-			"image_template",
+			"create_response_sha256",
+			"identity_response_sha256",
 			"made_with_ai",
+			"post_id",
 			"posted_at",
+			"publication_lineage_sha256",
 			"published_urls",
 			"publisher",
+			"read_response_sha256",
+			"recorded_cost_ceiling_microusd",
+			"verified_account",
+			"verified_user_id",
+			"xurl_app",
+			"xurl_version",
 		],
 		errors,
 	);
@@ -69,8 +72,8 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 	if !social_validation::is_non_empty_string(publication.get("posted_at")) {
 		errors.push("publication.posted_at must be a non-empty string".into());
 	}
-	if social_validation::string_field(publication, "publisher") != Some("chrome") {
-		errors.push("publication.publisher must be chrome".into());
+	if social_validation::string_field(publication, "publisher") != Some("xurl") {
+		errors.push("publication.publisher must be xurl".into());
 	}
 
 	social_validation::validate_rfc3339_field(publication, "posted_at", errors);
@@ -81,19 +84,69 @@ fn validate_social_post_publication(publication: Option<&Value>, errors: &mut Ve
 	if !publication.get("made_with_ai").is_some_and(Value::is_boolean) {
 		errors.push("publication.made_with_ai must be a boolean".into());
 	}
+	if !publication
+		.get("post_id")
+		.and_then(Value::as_str)
+		.is_some_and(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+	{
+		errors.push("publication.post_id must contain only digits".into());
+	}
+	if social_validation::string_field(publication, "xurl_app") != Some("default") {
+		errors.push("publication.xurl_app must be default".into());
+	}
+	if social_validation::string_field(publication, "verified_account") != Some("decodexspace") {
+		errors.push("publication.verified_account must be decodexspace".into());
+	}
+	if !publication
+		.get("verified_user_id")
+		.and_then(Value::as_str)
+		.is_some_and(|value| !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+	{
+		errors.push("publication.verified_user_id must contain only digits".into());
+	}
+	if social_validation::string_field(publication, "xurl_version") != Some("1.3.1") {
+		errors.push("publication.xurl_version must be exactly 1.3.1".into());
+	}
+	if !publication
+		.get("recorded_cost_ceiling_microusd")
+		.and_then(Value::as_u64)
+		.is_some_and(|value| matches!(value, 30_000 | 35_000 | 40_000))
+	{
+		errors.push(
+			"publication.recorded_cost_ceiling_microusd must be 30000, 35000, or 40000".into(),
+		);
+	}
+	for field in [
+		"identity_response_sha256",
+		"create_response_sha256",
+		"publication_lineage_sha256",
+		"read_response_sha256",
+	] {
+		if !publication.get(field).and_then(Value::as_str).is_some_and(valid_sha256) {
+			errors.push(format!("publication.{field} must be a lowercase SHA-256 digest"));
+		}
+	}
 	if !publication.get("published_urls").is_some_and(|urls| {
 		social_validation::is_https_string_array(urls)
 			&& !social_validation::is_empty_or_missing_array(Some(urls))
 			&& urls.as_array().is_some_and(|urls| {
-				urls.iter().all(|url| {
-					url.as_str()
-						.is_some_and(|url| url.starts_with("https://x.com/decodexspace/status/"))
-				})
+				urls.len() == 1
+					&& urls.iter().all(|url| {
+						url.as_str().is_some_and(|url| {
+							url.starts_with("https://x.com/decodexspace/status/")
+						})
+					})
 			})
 	}) {
-		errors
-			.push("publication.published_urls must contain only decodexspace X status URLs".into());
+		errors.push(
+			"publication.published_urls must contain exactly one decodexspace X status URL".into(),
+		);
 	}
+}
+
+fn valid_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
 fn validate_social_post_block(entry: &Map<String, Value>, errors: &mut Vec<String>) {
@@ -132,128 +185,5 @@ fn validate_reason_object(
 		if !social_validation::is_non_empty_string(object.get(*field)) {
 			errors.push(format!("{label}.{field} must be a non-empty string"));
 		}
-	}
-}
-
-pub(in crate::social_validation) fn validate_browser_session(
-	session: Option<&Value>,
-	requirement: BrowserSessionRequirement,
-	errors: &mut Vec<String>,
-) {
-	let Some(session) = session.and_then(Value::as_object) else {
-		errors.push("browser_session must be an object".into());
-
-		return;
-	};
-	social_validation::validate_exact_keys(
-		session,
-		"browser_session",
-		&[
-			"initial_account",
-			"restore_status",
-			"switch_status",
-			"target_account",
-			"target_account_verified",
-		],
-		errors,
-	);
-
-	let initial_account = social_validation::string_field(session, "initial_account");
-	if !matches!(initial_account, Some("unknown" | "hackink" | "decodexspace")) {
-		errors.push(
-			"browser_session.initial_account must be unknown, hackink, or decodexspace".into(),
-		);
-	}
-	if social_validation::string_field(session, "target_account") != Some("decodexspace") {
-		errors.push("browser_session.target_account must be decodexspace".into());
-	}
-	let target_verified = session.get("target_account_verified").and_then(Value::as_bool);
-	if target_verified.is_none() {
-		errors.push("browser_session.target_account_verified must be a boolean".into());
-	}
-
-	let switch_status = social_validation::string_field(session, "switch_status");
-	let restore_status = social_validation::string_field(session, "restore_status");
-
-	if matches!(requirement, BrowserSessionRequirement::Complete) && target_verified != Some(true) {
-		errors.push("browser_session.target_account_verified must be true".into());
-	}
-
-	match (initial_account, target_verified) {
-		(Some("hackink"), Some(true)) =>
-			validate_switched_and_restored(switch_status, restore_status, errors),
-		(Some("decodexspace"), Some(true)) =>
-			validate_no_switch_required(switch_status, restore_status, errors),
-		(Some("unknown"), Some(true)) => errors.push(
-			"browser_session.initial_account cannot be unknown after target verification".into(),
-		),
-		(Some("hackink"), Some(false)) => {
-			if !matches!(switch_status, Some("failed" | "not_attempted")) {
-				errors.push(
-					"browser_session.switch_status must be failed or not_attempted when target verification failed"
-						.into(),
-				);
-			}
-			match switch_status {
-				Some("failed") if !matches!(restore_status, Some("restored" | "failed")) =>
-					errors.push(
-						"browser_session.restore_status must be restored or failed after an uncertain switch"
-							.into(),
-					),
-				Some("not_attempted") if restore_status != Some("not_attempted") =>
-					errors.push(
-						"browser_session.restore_status must be not_attempted when switch was not attempted"
-							.into(),
-					),
-				_ => {},
-			}
-		},
-		(Some("decodexspace"), Some(false)) =>
-			validate_no_switch_required(switch_status, restore_status, errors),
-		(Some("unknown"), Some(false))
-			if switch_status != Some("not_attempted")
-				|| restore_status != Some("not_attempted") =>
-			errors.push(
-				"browser_session switch and restore must be not_attempted when initial account is unknown"
-					.into(),
-			),
-		_ => {},
-	}
-}
-
-fn validate_switched_and_restored(
-	switch_status: Option<&str>,
-	restore_status: Option<&str>,
-	errors: &mut Vec<String>,
-) {
-	if switch_status != Some("switched") {
-		errors.push(
-			"browser_session.switch_status must be switched when initial account is hackink".into(),
-		);
-	}
-	if !matches!(restore_status, Some("restored" | "failed")) {
-		errors.push(
-			"browser_session.restore_status must be restored or failed when initial account is hackink"
-				.into(),
-		);
-	}
-}
-
-fn validate_no_switch_required(
-	switch_status: Option<&str>,
-	restore_status: Option<&str>,
-	errors: &mut Vec<String>,
-) {
-	if switch_status != Some("not_required") {
-		errors.push(
-			"browser_session.switch_status must be not_required when initial account is decodexspace"
-				.into(),
-		);
-	}
-	if restore_status != Some("not_required") {
-		errors.push(
-			"browser_session.restore_status must be not_required when initial account is decodexspace"
-				.into(),
-		);
 	}
 }

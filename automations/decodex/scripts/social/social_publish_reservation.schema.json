@@ -8,16 +8,17 @@
     "slug",
     "channel",
     "target_account",
-    "controller_account",
     "mode",
     "status",
     "idempotency_key",
+    "publication_lineage_sha256",
     "reserved_at",
     "expires_at",
     "day",
     "timezone",
     "candidate_refs",
-    "duplicate_keys"
+    "duplicate_keys",
+    "owner"
   ],
   "properties": {
     "schema": {
@@ -33,9 +34,6 @@
     "target_account": {
       "const": "decodexspace"
     },
-    "controller_account": {
-      "const": "hackink"
-    },
     "mode": {
       "type": "string",
       "enum": [
@@ -43,7 +41,6 @@
         "release_rollup",
         "practical_explainer",
         "operator_impact",
-        "thread",
         "watch_note"
       ]
     },
@@ -53,7 +50,11 @@
     },
     "idempotency_key": {
       "type": "string",
-      "minLength": 1
+      "pattern": "^radar-publication:[0-9a-f]{64}$"
+    },
+    "publication_lineage_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
     },
     "reserved_at": {
       "type": "string",
@@ -74,36 +75,24 @@
     "candidate_refs": {
       "type": "object",
       "additionalProperties": false,
-      "anyOf": [
-        {
-          "required": ["social_candidates"]
-        },
-        {
-          "required": ["urls"]
-        }
-      ],
+      "required": ["social_candidates"],
       "properties": {
         "social_candidates": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 1,
           "items": {
             "type": "string",
             "minLength": 1
-          }
-        },
-        "urls": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "pattern": "^https://"
           }
         }
       }
     },
     "duplicate_keys": {
       "type": "array",
-      "minItems": 1,
+      "minItems": 2,
+      "maxItems": 2,
+      "uniqueItems": true,
       "items": {
         "type": "string",
         "minLength": 1
@@ -112,22 +101,14 @@
     "owner": {
       "type": "object",
       "additionalProperties": false,
+      "required": ["automation_id", "run_id"],
       "properties": {
         "automation_id": {
-          "type": "string",
-          "minLength": 1
+          "const": "decodex-xurl-publisher"
         },
         "run_id": {
           "type": "string",
-          "minLength": 1
-        },
-        "branch": {
-          "type": "string",
-          "minLength": 1
-        },
-        "pr_url": {
-          "type": "string",
-          "pattern": "^https://"
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
         }
       }
     },

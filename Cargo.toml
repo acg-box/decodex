@@ -49,10 +49,10 @@ libc               = { version = "0.2" }
 regex              = { version = "1.12" }
 reqwest            = { version = "0.13", default-features = false, features = ["blocking", "json", "rustls"] }
 rusqlite           = { version = "0.40", features = ["bundled"] }
+rustix             = { version = "=1.1.4", features = ["fs"] }
 security-framework = { version = "=3.7.0", default-features = false, features = ["OSX_10_15"] }
 serde              = { version = "1.0", features = ["derive"] }
 serde_json         = { version = "1.0" }
-serde_yaml         = { version = "0.9" }
 sha1               = { version = "0.11" }
 sha2               = { version = "0.11" }
 tempfile           = { version = "3.27" }
@@ -66,6 +66,7 @@ tracing            = { version = "0.1" }
 tracing-appender   = { version = "0.2" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 vergen-gitcl       = { version = "10.0", features = ["cargo"] }
+wait-timeout       = { version = "0.2.1" }
 zeroize            = { version = "1.9" }
 
 [profile.final-release]

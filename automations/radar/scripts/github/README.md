@@ -22,6 +22,10 @@ Shared support:
 - `analysis_draft.schema.json` is the Codex output schema for that helper.
 - `content_eligibility_report.schema.json` is the machine-readable output contract
   for the one-subject eligibility lineage receipt.
+- `content_review_pair_staging.schema.json` is the create-only input contract for an
+  atomic content-review pair commit.
+- `content_review_pair_commit_report.schema.json` is the atomic commit receipt
+  contract.
 - The remaining schema JSON files are checked contract references. They do not define
   the operator command path.
 
@@ -35,6 +39,9 @@ Rust CLI entrypoints:
   `.agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json`.
 - `radar content-eligibility` validates one current queue/review/impact handoff before
   downstream content consideration.
+- `radar review-next` skips exact subject lineages with one valid committed pair.
+- `radar content-pair-commit` validates and atomically commits one staged review and
+  impact pair.
 - `radar bundle build` builds deterministic bundles for PR-first and
   commit-only inputs.
 - `radar bundle validate` validates deterministic bundles.
@@ -149,16 +156,42 @@ records.
 An `upstream_review/v1` must include the exact normalized queue `commit_shas` and
 `upstream_head`. An `upstream_impact/v1` must include an RFC3339 `reviewed_at`
 timestamp and `review_lineage` with the exact review artifact SHA-256, slug, subject
-kind and id, upstream head, and commit set. Before content consideration, run the
-bounded gate with exactly one review and impact:
+kind and id, upstream head, and commit set. Put both artifacts in one create-only
+mode-`0600` staging file and commit them:
+
+```bash
+radar content-pair-commit \
+  --cache-root .agent/automations/radar/cache \
+  --staging .agent/automations/radar/cache/github/content-review-staging/<RUN_ID>.json \
+  --max-age-hours 12
+```
+
+In the staging document, set
+`impact.review_lineage.artifact_sha256` to exactly 64 zeroes. It is a required
+non-authoritative sentinel. Do not serialize the review and do not compute its digest.
+`content-pair-commit` serializes the final review deterministically, replaces the
+sentinel with the final review byte SHA-256, and validates the resulting committed
+impact against the normal `upstream_impact/v1` contract.
+
+Use the returned paths for the bounded eligibility gate:
 
 ```bash
 radar content-eligibility \
   --queue .agent/automations/radar/cache/github/review-queue/openai-codex-latest.json \
-  --review .agent/automations/radar/cache/github/reviews/openai-codex-pr-22414.json \
-  --impact .agent/automations/radar/cache/github/impact/openai-codex-pr-22414.json \
+  --review .agent/automations/radar/cache/github/content-review-pairs/<PAIR>/review.json \
+  --impact .agent/automations/radar/cache/github/content-review-pairs/<PAIR>/impact.json \
   --max-age-hours 12
 ```
+
+The commit command uses one cache lock, validates the staging and current queue, and
+atomically renames one run-owned directory into the committed pair root. It removes
+staging only after readback confirms the installed bytes. Exact retry recovers.
+Changed retry, duplicate subject, malformed pair state, symlinks, hard links, wrong
+modes, and path traversal fail closed.
+
+Handled identity is repository, subject kind and id, and normalized commit set. A
+queue upstream-head change alone keeps that identity handled. A changed commit set is
+eligible for a new source review.
 
 The review subject must exist in the queue and use the queue's exact normalized commit
 set and upstream head. The review must request an `upstream_impact` action. The impact
@@ -182,7 +215,7 @@ Repo-local skills under `automations/radar/skills/` are reasoning instructions f
 analysis step and for manual Radar work. Pre-publication and terminal social artifacts
 are Decodex Publisher contracts, not Radar contracts.
 
-Raw bundles, reviews, impacts, analysis drafts, and the ledger stay only in the
+Raw bundles, committed review pairs, staging files, analysis drafts, and the ledger stay only in the
 owner-only bounded local cache. Run `radar cache-gc` in every manager cycle. Do not
 commit or upload them to GitHub.
 

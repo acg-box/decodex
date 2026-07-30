@@ -139,7 +139,7 @@ evidence only after that point. It is not a runtime or future-work input.
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
   adaptation loop. `automations/decodex/` contains the current Content Manager and
-  browser Publisher tasks plus shared config and Publisher assets.
+  xurl Publisher tasks plus shared config and Publisher assets.
   `automations/radar/` owns reusable Radar assets and has no separate schedule. The
   old multi-task content schedules remain deleted (`automations/upstream/README.md`).
 - `scripts/` contains repo maintenance helpers including plugin sync and macOS app staging.

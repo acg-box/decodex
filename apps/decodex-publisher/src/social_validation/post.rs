@@ -7,10 +7,9 @@ mod source_refs;
 mod status;
 mod text;
 
+pub(crate) use text::contains_link_like_text;
+
 use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_STATUSES, Value};
-pub(in crate::social_validation) use status::{
-	BrowserSessionRequirement, validate_browser_session,
-};
 
 pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	social_validation::validate_exact_keys(
@@ -19,17 +18,15 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 		&[
 			"audience",
 			"block",
-			"browser_session",
-			"browser_touched",
 			"caveats",
 			"channel",
 			"claims",
-			"controller_account",
 			"decision",
+			"evidence_digests",
 			"evidence_notes",
 			"failure",
-			"media_refs",
 			"mode",
+			"owner",
 			"post_lifecycle",
 			"publication",
 			"schema",
@@ -50,52 +47,64 @@ pub(super) fn validate_social_post(entry: &Map<String, Value>, errors: &mut Vec<
 	}
 
 	validate_social_post_constants(entry, errors);
+	validate_social_post_owner(entry.get("owner"), errors);
 	validate_social_post_text(entry.get("text"), errors);
 	validate_social_post_source_refs(entry.get("source_refs"), errors);
+	if social_validation::string_field(entry, "status") == Some("published") {
+		if entry.get("text").and_then(Value::as_array).map(Vec::len) != Some(1) {
+			errors.push("published text must contain exactly one item".into());
+		}
+		let refs = entry.get("source_refs").and_then(Value::as_object);
+		for field in ["reservations", "social_candidates"] {
+			if refs.and_then(|refs| refs.get(field)).and_then(Value::as_array).map(Vec::len)
+				!= Some(1)
+			{
+				errors.push(format!("published source_refs.{field} must contain exactly one item"));
+			}
+		}
+		if entry
+			.get("text")
+			.and_then(Value::as_array)
+			.and_then(|items| items.first())
+			.and_then(Value::as_str)
+			.is_none_or(|text| text.chars().count() < 80)
+		{
+			errors.push("published text item must contain at least 80 Unicode characters".into());
+		}
+	}
 
 	social_validation::validate_non_empty_string_list(
 		entry.get("evidence_notes"),
 		"evidence_notes",
 		errors,
 	);
-	validate_social_post_claims(entry.get("claims"), errors);
+	validate_social_post_claims(
+		entry.get("claims"),
+		entry.get("source_refs"),
+		entry.get("evidence_digests"),
+		true,
+		errors,
+	);
 	validate_social_post_decision(entry, errors);
 	validate_social_post_status_payload(entry, errors);
-	validate_social_post_browser_evidence(entry, errors);
 	validate_social_post_lifecycle(entry, errors);
 
-	for field in ["caveats", "media_refs"] {
-		social_validation::validate_optional_string_list(entry.get(field), field, errors);
-	}
+	social_validation::validate_optional_string_list(entry.get("caveats"), "caveats", errors);
 }
 
-fn validate_social_post_browser_evidence(entry: &Map<String, Value>, errors: &mut Vec<String>) {
-	let browser_touched = entry.get("browser_touched").and_then(Value::as_bool);
-
-	if browser_touched.is_none() {
-		errors.push("browser_touched must be a boolean".into());
-
+fn validate_social_post_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(owner) = owner.and_then(Value::as_object) else {
+		errors.push("owner must be an object".into());
 		return;
+	};
+	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
+	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
+		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}
-	if social_validation::string_field(entry, "status") == Some("published")
-		&& browser_touched != Some(true)
+	if social_validation::string_field(owner, "run_id")
+		.is_none_or(|value| !crate::social_publish::valid_run_id(value))
 	{
-		errors.push("browser_touched must be true when status is published".into());
-	}
-
-	match browser_touched {
-		Some(true) => status::validate_browser_session(
-			entry.get("browser_session"),
-			if social_validation::string_field(entry, "status") == Some("published") {
-				BrowserSessionRequirement::Complete
-			} else {
-				BrowserSessionRequirement::Terminal
-			},
-			errors,
-		),
-		Some(false) if entry.get("browser_session").is_some() =>
-			errors.push("browser_session must be absent when browser_touched is false".into()),
-		_ => {},
+		errors.push("owner.run_id must be a lowercase UUID".into());
 	}
 }
 
@@ -103,8 +112,20 @@ pub(super) fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<S
 	text::validate_social_post_text(text, errors);
 }
 
-pub(super) fn validate_social_post_claims(claims: Option<&Value>, errors: &mut Vec<String>) {
-	claims::validate_social_post_claims(claims, errors);
+pub(super) fn validate_social_post_claims(
+	claims: Option<&Value>,
+	source_refs: Option<&Value>,
+	evidence_digests: Option<&Value>,
+	allow_candidate_lineage: bool,
+	errors: &mut Vec<String>,
+) {
+	claims::validate_social_post_claims(
+		claims,
+		source_refs,
+		evidence_digests,
+		allow_candidate_lineage,
+		errors,
+	);
 }
 
 fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
@@ -129,9 +150,6 @@ fn validate_social_post_constants(entry: &Map<String, Value>, errors: &mut Vec<S
 	}
 	if social_validation::string_field(entry, "target_account") != Some("decodexspace") {
 		errors.push("target_account must be decodexspace".into());
-	}
-	if social_validation::string_field(entry, "controller_account") != Some("hackink") {
-		errors.push("controller_account must be hackink".into());
 	}
 	if !social_validation::matches_one_of(entry.get("mode"), SOCIAL_POST_MODES) {
 		errors
