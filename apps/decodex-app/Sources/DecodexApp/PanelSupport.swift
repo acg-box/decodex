@@ -6,9 +6,9 @@ enum PanelMotion {
 }
 
 extension View {
-	func modernGlassSurface(cornerRadius: CGFloat) -> some View {
+	func panelCardSurface(cornerRadius: CGFloat) -> some View {
 		modifier(
-			ModernGlassSurfaceModifier(
+			PanelCardSurfaceModifier(
 				cornerRadius: cornerRadius
 			)
 		)
