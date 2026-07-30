@@ -4,21 +4,23 @@ import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
 	@MainActor
-	func testPanelWindowHostUsesStableDarkAppearanceBehindSeparatedCards() {
+	func testPanelWindowHostStaysTransparentWithoutOverridingSystemAppearance() {
 		let window = NSWindow(
 			contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
 			styleMask: [.borderless],
 			backing: .buffered,
 			defer: false
 		)
+		window.hasShadow = true
 		window.isOpaque = true
 		window.backgroundColor = .windowBackgroundColor
 
 		PanelWindowAppearance.apply(to: window)
 
+		XCTAssertFalse(window.hasShadow)
 		XCTAssertFalse(window.isOpaque)
 		XCTAssertEqual(window.backgroundColor, .clear)
-		XCTAssertEqual(window.appearance?.name, .darkAqua)
+		XCTAssertNil(window.appearance)
 	}
 
 	@MainActor
