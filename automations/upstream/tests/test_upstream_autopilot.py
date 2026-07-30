@@ -9208,9 +9208,22 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 b"Unit Cost",
                 1,
             ),
-            "extended unit statement": current.replace(
+            "legacy unit statement": current.replace(
+                (
+                    b"(writes/actions). [Purchase credits]"
+                    b"(https://console.x.com) in the Developer Console."
+                ),
                 b"(writes/actions).",
-                b"(writes/actions). Additional text.",
+                1,
+            ),
+            "changed purchase destination": current.replace(
+                b"https://console.x.com",
+                b"https://example.com",
+                1,
+            ),
+            "extended unit statement": current.replace(
+                b"Developer Console.",
+                b"Developer Console. Additional text.",
                 1,
             ),
             "per thousand": current.replace(
