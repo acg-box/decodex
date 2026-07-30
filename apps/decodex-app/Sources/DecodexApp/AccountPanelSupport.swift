@@ -121,15 +121,6 @@ struct CodexProjectionPresentation: Equatable, Sendable {
 	}
 }
 
-struct AccountProfileCoveragePresentation: Equatable, Sendable {
-	let currentCount: Int
-	let totalCount: Int
-
-	var label: String {
-		"\(currentCount) of \(totalCount) profiles current"
-	}
-}
-
 struct AccountRowsHeightPreferenceKey: PreferenceKey {
 	static let defaultValue: CGFloat = 0
 

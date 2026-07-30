@@ -28,32 +28,38 @@ row is absent when the provider does not return a supported observation.
 
 Each account detail popover contains lifetime tokens, peak daily tokens,
 longest task, current and longest streaks, and a 36-day usage chart. The compact
-panel keeps one aggregate chart across all accounts.
-Email is redacted by default. The eye control requests it explicitly and hiding
-it immediately removes the value from retained presentation state. Cached or
-unavailable profile data remains row-scoped and never hides Reset Cards.
+panel keeps aggregate total, peak, streak, and longest-task metrics with one
+daily chart across all accounts. It does not expose profile coverage counters
+as account status.
+Email is redacted by default. The eye control changes only the published
+identity slot. Hiding email removes it from SwiftUI presentation state. A
+revision-bound, process-only cache keeps later visibility changes immediate and
+is never written to disk. Any missing email reads settle as one complete batch,
+so identities do not change one row at a time. Cached or unavailable profile
+data remains row-scoped and never hides Reset Cards.
 
 The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
-The header, overview, and each account row use separate dark system material
-surfaces with a restrained fill, border, and shadow. The host window keeps the
-system appearance and does not draw its own full-window shadow or dark backdrop.
-Transparent gaps remain visible; there is no background surface around the
-complete panel and no Liquid Glass effect.
+The header, overview, and each account row use separate appearance-adaptive
+system material surfaces with a restrained fill, border, and shadow. The host
+window follows the system Light or Dark appearance and does not draw its own
+full-window shadow or backdrop. Transparent gaps remain visible; there is no
+background surface around the complete panel and no Liquid Glass effect.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative one-word alias. The row displays
-either that alias or the account email in the same identity slot, and keeps the
-same account icon in both privacy states. The canonical account UUID is the only
-row identity. There is no account rename surface.
+either that alias or the account email in the same identity slot without an
+identity icon. The canonical account UUID is the only row identity. There is no
+account rename surface.
 
 Reset Card use requires two clicks on the same descriptor. The first click arms
 a five-second confirmation. The second click writes one credential-negative
 pending handle, then sends one native daemon request with the same account
 revision, descriptor, and operation key. Restart recovery reads durable status
 and retains that key. It never selects another card or generates a replacement
-key for an unresolved request.
+key for an unresolved request. Expiry times use compact bordered controls so
+their click action remains visible without adding a second card container.
 
 The bounded recovery journal is
 `Application Support/Decodex/reset-card-pending-v1.json`. It uses an atomic

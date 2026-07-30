@@ -6,9 +6,7 @@ mod protocol;
 mod reset_card;
 #[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
 
-pub(crate) use process::{
-	AttestedAppServerLaunch, AttestedProcessChild, attest_account_callback_capability,
-};
+pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
 pub(crate) use reset_card::{
 	ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus,
 };

@@ -7,7 +7,6 @@
 use std::{
 	fmt::{Debug, Formatter},
 	future::Future,
-	path::PathBuf,
 	sync::{
 		Arc,
 		atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -47,20 +46,23 @@ use crate::{
 use super::{
 	CapacityExhausted, RunnerCapacity,
 	process::{
-		AccountBinding, AccountIdentity, AccountRefreshCallback, AppServerCommand,
-		AttestedAppServerLaunch, AttestedProcessChild, ChatgptRefreshProjection,
+		AccountBinding, AccountIdentity, AccountRefreshCallback, AttestedAppServerLaunch,
+		AttestedAppServerProfile, AttestedProcessChild, ChatgptRefreshProjection,
 		CredentialProjection, CredentialVault, CredentialVaultError, ResetCardConsumeReadback,
 		ResetCardProcessError,
 	},
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
-// The longest consume path has seven sequential process deadlines: combined executable/schema
-// preflight; initialize, credential projection, and initial account read; then consume, inventory
-// readback, and account re-attestation. Process-group and stdout-pump shutdown add at most 1.25
+// The longest consume path reserves seven sequential process deadlines, including conservative
+// startup headroom plus initialize, credential projection, initial account read, consume,
+// inventory readback, and account re-attestation. Process-group and stdout-pump shutdown add 1.25
 // seconds, rounded up to two seconds for this lease proof.
 const MAX_BLOCKING_PROCESS_DEADLINE: Duration =
 	Duration::from_secs(PROCESS_TIMEOUT.as_secs() * 7 + 2);
+// A query receives a typed row-scoped refusal before the protocol client's whole-request
+// deadline. The daemon-owned operation continues its already-bounded cleanup.
+const INVENTORY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(25);
 const CLAIM_LEASE: Duration = Duration::from_secs(360);
 const CLAIM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 // A detached blocking task must begin early enough that all bounded provider work finishes before
@@ -139,6 +141,7 @@ pub(crate) enum ResetCardServiceError {
 	ProviderUnavailable,
 	InventoryIncomplete,
 	InventoryChanged,
+	RequestTimedOut,
 	ResourceExhausted,
 	ProductStateUnavailable,
 	IdempotencyConflict,
@@ -166,7 +169,7 @@ struct ResetCardRuntimeInner {
 	capacity: Arc<RunnerCapacity>,
 	process_generations: ProcessGenerationControl,
 	execution_authorization: ProcessExecutionAuthorization,
-	working_directory: PathBuf,
+	launch_profile: AttestedAppServerProfile,
 	worker_id: String,
 	worker_lock: Mutex<()>,
 	worker_wakeup: Arc<Notify>,
@@ -197,6 +200,8 @@ struct ResetCardReconciliationLaunch {
 	worker_id: String,
 	claim_token: String,
 }
+
+type InventoryResult = Result<ResetCardInventoryObservation, ResetCardServiceError>;
 impl ResetCardReconciliationLaunch {
 	fn from_claim(inner: &ResetCardRuntimeInner, claim: &ResetCardClaim) -> Self {
 		Self {
@@ -325,7 +330,7 @@ impl ResetCardRuntime {
 		accounts: Arc<AccountService>,
 		process_generations: ProcessGenerationControl,
 		execution_authorization: ProcessExecutionAuthorization,
-		working_directory: PathBuf,
+		launch_profile: AttestedAppServerProfile,
 	) -> Result<Self, ResetCardStartupError> {
 		let capacity =
 			RunnerCapacity::daemon().map_err(|_| ResetCardStartupError::CapacityUnavailable)?;
@@ -340,7 +345,7 @@ impl ResetCardRuntime {
 				capacity,
 				process_generations,
 				execution_authorization,
-				working_directory,
+				launch_profile,
 				worker_id,
 				worker_lock: Mutex::new(()),
 				worker_wakeup: Arc::new(Notify::new()),
@@ -443,33 +448,57 @@ impl ResetCardRuntime {
 		&self,
 		account_id: &AccountId,
 	) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
-		let credential = self
-			.inner
+		let provider_permit = Arc::new(
+			self.inner
+				.provider_work
+				.register()
+				.ok_or(ResetCardServiceError::ProductStateUnavailable)?,
+		);
+		let inner = Arc::clone(&self.inner);
+		let account_id = account_id.clone();
+		let mut owner =
+			task::spawn(
+				async move { Self::inventory_once(inner, account_id, provider_permit).await },
+			);
+		await_inventory_owner(&mut owner, INVENTORY_RESPONSE_TIMEOUT).await
+	}
+
+	async fn inventory_once(
+		inner: Arc<ResetCardRuntimeInner>,
+		account_id: AccountId,
+		provider_permit: Arc<ProviderWorkPermit>,
+	) -> InventoryResult {
+		let credential = inner
 			.accounts
-			.process_credential_for_observation(account_id, MAX_BLOCKING_PROCESS_DEADLINE)
+			.process_credential_for_observation(&account_id, MAX_BLOCKING_PROCESS_DEADLINE)
 			.await
 			.map_err(map_account_service_error)?;
 		let account_revision = credential.binding.account_revision;
 		let process_binding = credential.binding.clone();
 		let observed_at_unix_micros =
 			current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
-		let inventory =
-			run_inventory(Arc::clone(&self.inner), account_id.clone(), credential, None, None)
-				.await;
+		let inventory = run_inventory(
+			Arc::clone(&inner),
+			account_id.clone(),
+			credential,
+			None,
+			None,
+			Some(provider_permit),
+		)
+		.await;
 
 		match inventory {
 			Ok(inventory) => {
 				let [five_hour_quota, seven_day_quota] = persist_quota_observations(
-					self.inner.accounts.as_ref(),
-					account_id,
+					inner.accounts.as_ref(),
+					&account_id,
 					*inventory.quota_windows(),
 					observed_at_unix_micros,
 				)
 				.await?;
-				let current = self
-					.inner
+				let current = inner
 					.accounts
-					.process_credential_for_existing_work(account_id, &process_binding)
+					.process_credential_for_existing_work(&account_id, &process_binding)
 					.await
 					.map_err(map_account_service_error)?;
 				if current.binding.credential != process_binding.credential
@@ -496,8 +525,8 @@ impl ResetCardRuntime {
 			Err(error) => {
 				let quota_error = quota_error_for_service(error);
 				let [five_hour_quota, seven_day_quota] = persist_quota_errors(
-					self.inner.accounts.as_ref(),
-					account_id,
+					inner.accounts.as_ref(),
+					&account_id,
 					quota_error,
 					observed_at_unix_micros,
 				)
@@ -668,6 +697,17 @@ impl ResetCardRuntime {
 	}
 }
 
+async fn await_inventory_owner(
+	owner: &mut task::JoinHandle<InventoryResult>,
+	response_timeout: Duration,
+) -> InventoryResult {
+	match time::timeout(response_timeout, owner).await {
+		Ok(Ok(result)) => result,
+		Ok(Err(_)) => Err(ResetCardServiceError::ResourceExhausted),
+		Err(_) => Err(ResetCardServiceError::RequestTimedOut),
+	}
+}
+
 async fn run_worker(inner: Arc<ResetCardRuntimeInner>, mut stop: watch::Receiver<bool>) {
 	loop {
 		if *stop.borrow() {
@@ -768,6 +808,7 @@ async fn resolve_claim_credit_id(
 					credential,
 					None,
 					Some(permit),
+					None,
 				)
 			})
 			.await
@@ -888,6 +929,7 @@ async fn reconcile_recorded_claim(
 			credential,
 			Some(ResetCardReconciliationLaunch::from_claim(inner, claim)),
 			Some(permit),
+			None,
 		)
 	})
 	.await
@@ -1059,10 +1101,14 @@ async fn run_inventory(
 	credential: AccountProcessCredential,
 	reconciliation: Option<ResetCardReconciliationLaunch>,
 	claim_permit: Option<ClaimWorkPermit>,
+	provider_permit: Option<Arc<ProviderWorkPermit>>,
 ) -> Result<ResetCardInventory, ResetCardServiceError> {
-	let provider_permit = Arc::new(
-		inner.provider_work.register().ok_or(ResetCardServiceError::ProductStateUnavailable)?,
-	);
+	let provider_permit = match provider_permit {
+		Some(permit) => permit,
+		None => Arc::new(
+			inner.provider_work.register().ok_or(ResetCardServiceError::ProductStateUnavailable)?,
+		),
+	};
 	let mut process = prepare_fenced_reset_process(
 		Arc::clone(&inner),
 		account_id,
@@ -1146,15 +1192,13 @@ async fn prepare_fenced_reset_process(
 			tokio::runtime::Handle::current(),
 			generation_id.clone(),
 		));
-	let working_directory = inner.working_directory.clone();
+	let launch_profile = inner.launch_profile.clone();
 	let capacity = Arc::clone(&inner.capacity);
 	let permit_for_attestation = Arc::clone(&provider_permit);
 	let claim_for_attestation = claim_permit.clone();
 	let generation_for_launch = generation_id;
 	let (generation_id, launch, vault, launch_guard) = task::spawn_blocking(move || {
 		require_provider_work_start(&permit_for_attestation, claim_for_attestation.as_ref())?;
-		let command = AppServerCommand::new(working_directory)
-			.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
 		let account_revision = credential.binding.account_revision;
 		let binding = AccountBinding::shared_home_bound(
 			account_id.clone(),
@@ -1168,9 +1212,13 @@ async fn prepare_fenced_reset_process(
 		let capacity_permit = capacity
 			.reserve(account_id, account_revision)
 			.map_err(|_: CapacityExhausted| ResetCardServiceError::ResourceExhausted)?;
-		let launch =
-			AttestedAppServerLaunch::attest(command, binding, PROCESS_TIMEOUT, capacity_permit)
-				.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
+		let launch = AttestedAppServerLaunch::bind(
+			launch_profile,
+			binding,
+			PROCESS_TIMEOUT,
+			capacity_permit,
+		)
+		.map_err(|_| ResetCardServiceError::ProviderUnavailable)?;
 		Ok::<_, ResetCardServiceError>((generation_for_launch, launch, vault, launch_guard))
 	})
 	.await
@@ -1631,7 +1679,11 @@ impl Debug for StoredCredentialVault {
 mod tests {
 	use std::{
 		future::{pending, ready},
-		sync::{Arc, mpsc},
+		sync::{
+			Arc,
+			atomic::{AtomicBool, Ordering},
+			mpsc,
+		},
 		time::Duration,
 	};
 
@@ -1645,9 +1697,9 @@ mod tests {
 	use super::{
 		CLAIM_HEARTBEAT_INTERVAL, CLAIM_LEASE, ClaimWorkGate, MAX_BLOCKING_PROCESS_DEADLINE,
 		MAX_CLAIM_WORK_START_DELAY, ProviderWorkLifecycle, ResetCardConsumeOutcome,
-		ResetCardFailureCode, ResetCardServiceError, finish_guarded_work, maintain_claim_heartbeat,
-		map_prepare_store_error, provider_idempotency_key, readback_confirms_outcome,
-		require_claim_work_start,
+		ResetCardFailureCode, ResetCardServiceError, await_inventory_owner, finish_guarded_work,
+		maintain_claim_heartbeat, map_prepare_store_error, provider_idempotency_key,
+		readback_confirms_outcome, require_claim_work_start,
 	};
 
 	#[test]
@@ -1841,6 +1893,31 @@ mod tests {
 		time::timeout(Duration::from_secs(1), lifecycle.wait_for_settlement())
 			.await
 			.expect("provider lifecycle must settle after its last registered work exits");
+	}
+
+	#[tokio::test]
+	async fn inventory_deadline_returns_typed_error_without_aborting_owned_cleanup() {
+		let cleanup_finished = Arc::new(AtomicBool::new(false));
+		let observed_cleanup = Arc::clone(&cleanup_finished);
+		let mut owner = task::spawn(async move {
+			time::sleep(Duration::from_millis(20)).await;
+			observed_cleanup.store(true, Ordering::Release);
+
+			Err(ResetCardServiceError::ProviderUnavailable)
+		});
+
+		assert_eq!(
+			await_inventory_owner(&mut owner, Duration::from_millis(1)).await,
+			Err(ResetCardServiceError::RequestTimedOut),
+		);
+		drop(owner);
+		time::timeout(Duration::from_secs(1), async {
+			while !cleanup_finished.load(Ordering::Acquire) {
+				task::yield_now().await;
+			}
+		})
+		.await
+		.expect("daemon-owned cleanup must finish after the response deadline");
 	}
 
 	#[test]

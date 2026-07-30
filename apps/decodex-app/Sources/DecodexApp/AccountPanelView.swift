@@ -39,12 +39,7 @@ struct AccountPanelView: View {
 
 			if let profileAggregate {
 				AccountProfileOverviewView(
-					aggregate: profileAggregate,
-					totalAccountCount: store.accounts.count,
-					currentProfileCount: profiledAccountStates.filter {
-						$0.isProfileDegraded == false
-					}.count,
-					degradedProfileCount: profiledAccountStates.filter(\.isProfileDegraded).count
+					aggregate: profileAggregate
 				)
 				.panelCardSurface(cornerRadius: 16)
 				.transition(.panelSection)
@@ -125,11 +120,9 @@ struct AccountPanelView: View {
 					isSubtle: true,
 					size: 24,
 					action: {
-						withAnimation(PanelMotion.state) {
-							accountPrivacy = accountPrivacy == AccountPrivacy.hidden
-								? AccountPrivacy.visible
-								: AccountPrivacy.hidden
-						}
+						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
+							? AccountPrivacy.visible
+							: AccountPrivacy.hidden
 					},
 					help: accountPrivacy == AccountPrivacy.hidden
 						? "Show email addresses"
@@ -173,11 +166,9 @@ struct AccountPanelView: View {
 							? "Show Email Addresses"
 							: "Hide Email Addresses"
 					) {
-						withAnimation(PanelMotion.state) {
-							accountPrivacy = accountPrivacy == AccountPrivacy.hidden
-								? AccountPrivacy.visible
-								: AccountPrivacy.hidden
-						}
+						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
+							? AccountPrivacy.visible
+							: AccountPrivacy.hidden
 					}
 
 					Button(fastMode.isEnabled ? "Turn Fast Mode Off" : "Turn Fast Mode On") {
