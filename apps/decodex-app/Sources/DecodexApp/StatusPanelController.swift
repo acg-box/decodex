@@ -8,7 +8,7 @@ final class StatusPanelController: NSObject {
 
 	private let statusItem: NSStatusItem
 	private let panel: TransparentStatusPanel
-	private let hostingView: NSHostingView<StatusPanelRootView>
+	private let hostingView: TransparentHostingView<StatusPanelRootView>
 
 	init(store: ResetCardStore) {
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
@@ -18,7 +18,7 @@ final class StatusPanelController: NSObject {
 			backing: .buffered,
 			defer: true
 		)
-		hostingView = NSHostingView(rootView: StatusPanelRootView(store: store))
+		hostingView = TransparentHostingView(rootView: StatusPanelRootView(store: store))
 
 		super.init()
 
@@ -57,6 +57,8 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func configurePanel() {
+		hostingView.wantsLayer = true
+		hostingView.layer?.backgroundColor = NSColor.clear.cgColor
 		panel.isReleasedWhenClosed = false
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
@@ -70,6 +72,7 @@ final class StatusPanelController: NSObject {
 			.fullScreenAuxiliary,
 		]
 		panel.contentView = hostingView
+		PanelWindowAppearance.apply(to: panel)
 	}
 
 	private func positionPanel() {
@@ -100,6 +103,13 @@ final class StatusPanelController: NSObject {
 				menuBarGap: Self.menuBarGap
 			)
 		)
+	}
+}
+
+@MainActor
+final class TransparentHostingView<Content: View>: NSHostingView<Content> {
+	override var isOpaque: Bool {
+		false
 	}
 }
 

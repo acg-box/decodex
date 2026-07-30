@@ -2,14 +2,22 @@ import AppKit
 import SwiftUI
 
 struct AccountReauthenticationView: View {
+	private enum FocusedAction: Hashable {
+		case cancel
+		case openBrowser
+	}
+
 	let store: ResetCardStore
 	@Environment(\.colorScheme) private var colorScheme
+	@FocusState private var focusedAction: FocusedAction?
 	@State private var copyFeedback = false
 	@State private var openFeedback = false
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 8) {
+		VStack(alignment: .leading, spacing: 9) {
 			if let presentation = store.accountReauthentication {
+				let desiredFocus = desiredFocus(for: presentation)
+
 				header(presentation)
 
 				if let prompt = presentation.prompt {
@@ -23,17 +31,7 @@ struct AccountReauthenticationView: View {
 						.fixedSize(horizontal: false, vertical: true)
 				}
 
-				HStack {
-					if let prompt = presentation.prompt {
-						Button(openFeedback ? "Opened" : "Open browser") {
-							open(prompt.verificationURL)
-						}
-						.buttonStyle(.borderedProminent)
-						.accessibilityHint("Opens the official Codex device sign-in page.")
-					}
-
-					Spacer()
-
+				HStack(spacing: 8) {
 					Button(
 						presentation.canCloseWithoutCancellation
 							? "Close"
@@ -52,59 +50,94 @@ struct AccountReauthenticationView: View {
 							&& presentation.canRequestCancellation == false
 					)
 					.keyboardShortcut(.cancelAction)
+					.focused($focusedAction, equals: .cancel)
+
+					Spacer(minLength: 8)
+
+					if let prompt = presentation.prompt {
+						Button(openFeedback ? "Opened" : "Open browser") {
+							open(prompt.verificationURL)
+						}
+						.buttonStyle(.borderedProminent)
+						.focused($focusedAction, equals: .openBrowser)
+						.accessibilityHint("Opens the official Codex device sign-in page.")
+					}
+				}
+				.task(id: desiredFocus) {
+					await Task.yield()
+					guard Task.isCancelled == false else {
+						return
+					}
+					focusedAction = desiredFocus
 				}
 			}
 		}
-		.frame(width: 256)
-		.padding(12)
+		.frame(width: 220)
+		.padding(14)
 		.controlSize(.small)
-		.interactiveDismissDisabled(true)
+		.accessibilityElement(children: .contain)
+		.accessibilityLabel("Refresh login")
+	}
+
+	private func desiredFocus(
+		for presentation: AccountReauthenticationPresentation
+	) -> FocusedAction? {
+		if presentation.prompt != nil {
+			return .openBrowser
+		}
+		if presentation.canRequestCancellation
+			|| presentation.canCloseWithoutCancellation
+		{
+			return .cancel
+		}
+		return nil
 	}
 
 	private func header(
 		_ presentation: AccountReauthenticationPresentation
 	) -> some View {
-		VStack(alignment: .leading, spacing: 3) {
-			Text("Refresh login")
-				.font(PanelFont.transientTitle)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+		VStack(alignment: .leading, spacing: 2) {
+			HStack(alignment: .firstTextBaseline, spacing: 5) {
+				Text("Refresh login")
+					.font(PanelFont.transientTitle)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
-			HStack(alignment: .firstTextBaseline, spacing: 4) {
-				if presentation.prompt == nil,
-					presentation.failureText == nil
-				{
-					ProgressView()
-						.controlSize(.mini)
-						.accessibilityHidden(true)
+				Spacer(minLength: 6)
+
+				HStack(alignment: .firstTextBaseline, spacing: 3) {
+					if presentation.prompt == nil,
+						presentation.failureText == nil
+					{
+						ProgressView()
+							.controlSize(.mini)
+							.accessibilityHidden(true)
+					}
+
+					Text(presentation.accountLabel)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.lineLimit(1)
+						.truncationMode(.middle)
 				}
-
-				Text(presentation.accountLabel)
-					.font(PanelFont.transientBody)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.86))
-					.lineLimit(1)
-					.truncationMode(.middle)
-
-				Text("· \(presentation.statusText)")
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.tail)
 			}
 			.accessibilityElement(children: .combine)
 			.accessibilityLabel(
-				"\(presentation.accountLabel), \(presentation.statusText)"
+				"Refresh login for \(presentation.accountLabel)"
 			)
+
+			Text(presentation.statusText)
+				.font(PanelFont.transientBody)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.tail)
+				.accessibilityLabel(presentation.statusText)
 		}
 	}
 
 	private func promptContent(
 		_ prompt: AccountReauthenticationPrompt
 	) -> some View {
-		VStack(alignment: .leading, spacing: 6) {
-			Text("One-time code")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-
+		VStack(alignment: .leading, spacing: 0) {
 			HStack(spacing: 8) {
 				Text(prompt.userCode)
 					.font(PanelFont.loginCode)
@@ -122,20 +155,10 @@ struct AccountReauthenticationView: View {
 				.accessibilityHint("Copies the one-time Codex login code.")
 			}
 			.padding(.horizontal, 9)
-			.padding(.vertical, 7)
-			.background(
-				RoundedRectangle(cornerRadius: 8, style: .continuous)
-					.fill(
-						PanelPalette.secondaryText(colorScheme)
-							.opacity(colorScheme == .dark ? 0.12 : 0.08)
-					)
-			)
-			.overlay {
-				RoundedRectangle(cornerRadius: 8, style: .continuous)
-					.stroke(
-						PanelPalette.separator(colorScheme),
-						lineWidth: 1
-					)
+			.padding(.vertical, 8)
+			.background {
+				RoundedRectangle(cornerRadius: 9, style: .continuous)
+					.fill(.ultraThinMaterial)
 			}
 			.accessibilityElement(children: .contain)
 			.accessibilityLabel("One-time login code \(prompt.userCode)")
