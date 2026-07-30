@@ -2,7 +2,7 @@
 
 ## Credit consumption details
 
-All prices are per resource fetched (reads) or per request (writes/actions).
+All prices are per resource fetched (reads) or per request (writes/actions). [Purchase credits](https://console.x.com) in the Developer Console.
 
 ### Read operations
 
