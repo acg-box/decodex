@@ -1406,19 +1406,22 @@ the native ELF image and is closed atomically on successful exec.
 macOS version and schema preflights execute the immutable snapshot. The final macOS app-server must
 use the canonical executable path because process-aware network extensions assign traffic policy to
 the loaded canonical image. The runtime uses `posix_spawn` to create that image in a new session and
-keeps it suspended before user code starts. While it is suspended, the runtime repeats the canonical
-inode and full SHA-256 check. It then requires the kernel dynamic-code object to match the snapshot's
-exact CDHash, canonical path, session, and process group. Only a complete match receives `SIGCONT`.
+keeps it suspended before user code starts. Daemon bootstrap has already hashed and statically
+validated the canonical image and immutable snapshot. Each account launch rechecks the canonical
+path, device, and inode, then requires the suspended kernel dynamic-code object to match the
+snapshot's exact CDHash, canonical path, session, and process group. Only a complete match receives
+`SIGCONT`.
 The parent protocol endpoints use private, validated FIFOs opened with atomic close-on-exec flags;
 the FIFO names are removed while the child is still suspended. The child restores the default
 `SIGPIPE` disposition and receives only the fixed `HOME`, system `PATH`, and
 `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` projection.
 
-Original-path identity and digest checks detect pre-launch drift. On macOS, suspended dynamic-code
-attestation closes the final check-to-exec interval; on Linux, sealed memfd execution is that
-primitive. A source replacement cannot run or receive credentials after the final check. Failure to
-create, seal, resolve, attest, or execute the selected object fails closed. This protection assumes
-the daemon process and its uid are not already compromised. Only tests can inject a fake executable.
+Startup original-path identity and digest checks establish the exact build. Per-launch metadata
+checks detect path-object drift. On macOS, suspended dynamic-code attestation closes the final
+check-to-exec interval; on Linux, sealed memfd execution is that primitive. A source replacement
+cannot run or receive credentials after the final check. Failure to create, seal, resolve, attest,
+or execute the selected object fails closed. This protection assumes the daemon process and its uid
+are not already compromised. Only tests can inject a fake executable.
 Preflight output/files, generated-schema file count/per-file/aggregate
 bytes/depth, inbound and outbound app-server frames, the stdout queue, collaboration
 receiver count, and thread-list/search results are mechanically bounded; schema traversal
