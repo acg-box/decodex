@@ -350,6 +350,190 @@ final class AccountControlStoreTests: XCTestCase {
 		await refreshTask.value
 	}
 
+	func testRouteAccountProjectsThenSelectsFixedRouting() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.routeAccount(accountID)
+
+		let controlSequence = await client.controlSequence()
+		let controlCounts = await client.controlCounts()
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+		XCTAssertEqual(
+			controlSequence,
+			[.codexProjection, .fixedRouting]
+		)
+		XCTAssertEqual(controlCounts, .init(fixed: 1, projection: 1))
+		XCTAssertNil(store.message)
+	}
+
+	func testRouteAccountDoesNotChangeRoutingWhenProjectionFails() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			useAccountError: .applicationUnavailable
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.routeAccount(accountID)
+
+		let controlSequence = await client.controlSequence()
+		let controlCounts = await client.controlCounts()
+		XCTAssertFalse(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .balanced)
+		XCTAssertEqual(controlSequence, [.codexProjection])
+		XCTAssertEqual(controlCounts, .init(fixed: 0, projection: 1))
+		XCTAssertNotNil(store.message)
+	}
+
+	func testRouteAccountRetriesOnlyRoutingAfterPartialSuccess() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			fixedSelectionError: .expectedRevisionMismatch(expected: 9, actual: 10)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.routeAccount(accountID)
+
+		let firstControlSequence = await client.controlSequence()
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .balanced)
+		XCTAssertEqual(
+			firstControlSequence,
+			[.codexProjection, .fixedRouting]
+		)
+		XCTAssertNotNil(store.message)
+
+		await client.setFixedSelectionError(nil)
+		await store.routeAccount(accountID)
+
+		let finalControlSequence = await client.controlSequence()
+		let finalControlCounts = await client.controlCounts()
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+		XCTAssertEqual(
+			finalControlSequence,
+			[.codexProjection, .fixedRouting, .fixedRouting]
+		)
+		XCTAssertEqual(finalControlCounts, .init(fixed: 2, projection: 1))
+		XCTAssertNil(store.message)
+	}
+
+	func testRouteAccountIsNoOpWhenBothStatesAreCurrent() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			routing: AccountRoutingControl(
+				revision: 9,
+				mode: .fixed(accountID: accountID),
+				order: [accountID]
+			),
+			projection: .current(
+				accountID: accountID,
+				accountRevision: 7,
+				projectionDigest: String(repeating: "a", count: 64)
+			)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.routeAccount(accountID)
+
+		let controlSequence = await client.controlSequence()
+		let controlCounts = await client.controlCounts()
+		XCTAssertEqual(controlSequence, [])
+		XCTAssertEqual(controlCounts, .init(fixed: 0, projection: 0))
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+	}
+
+	func testRouteAccountSerializesSharedProjectionAcrossAccounts() async throws {
+		let secondAccountID = "22222222-2222-4222-8222-222222222222"
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			secondaryAccount: accountRecord(
+				accountID: secondAccountID,
+				alias: "Account 00000-00002"
+			),
+			authority: authority,
+			suspendsFixedSelection: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+		await store.refresh()
+
+		let firstRoute = Task {
+			await store.routeAccount(accountID)
+		}
+		for _ in 0 ..< 200 {
+			if await client.fixedSelectionIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		let firstRouteIsPending = await client.fixedSelectionIsPending()
+		XCTAssertTrue(firstRouteIsPending)
+
+		await store.routeAccount(secondAccountID)
+
+		let operationsWhileFirstRouteIsPending = await client.controlSequence()
+		let useRequest = await client.useRequest()
+		XCTAssertEqual(
+			operationsWhileFirstRouteIsPending,
+			[.codexProjection, .fixedRouting]
+		)
+		XCTAssertEqual(useRequest?.accountID, accountID)
+
+		await client.releaseFixedSelection()
+		await firstRoute.value
+
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertFalse(store.isCodexProjection(secondAccountID))
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+	}
+
 	func testRefreshLoginCompletesWhileDetailReadIsPending() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -433,13 +617,15 @@ final class AccountControlStoreTests: XCTestCase {
 	}
 
 	private func accountRecord(
+		accountID: String? = nil,
 		alias: String = "Account 00000-00001",
 		revision: UInt64 = 7,
 		enabled: Bool = true,
 		observedState: ResetCardObservedState = .available,
 		lifecycleReadiness: ResetCardLifecycleReadiness = .ready
 	) -> ResetCardAccountRecord {
-		ResetCardAccountRecord(
+		let accountID = accountID ?? self.accountID
+		return ResetCardAccountRecord(
 			authority: nil,
 			accountID: accountID,
 			alias: alias,
@@ -452,7 +638,7 @@ final class AccountControlStoreTests: XCTestCase {
 				version: 3,
 				fingerprintSHA256: String(repeating: "a", count: 64),
 				provider: .chatGPT,
-				providerAccountID: "provider-a"
+				providerAccountID: accountID == self.accountID ? "provider-a" : "provider-b"
 			),
 			fiveHourQuota: .unknown(durationMinutes: 300),
 			sevenDayQuota: .unknown(durationMinutes: 10_080)
@@ -490,17 +676,33 @@ private struct AccountControlStoreRefreshRequest: Equatable, Sendable {
 	let expectedRevision: UInt64
 }
 
+private enum AccountControlStoreOperation: Equatable, Sendable {
+	case codexProjection
+	case fixedRouting
+}
+
+private struct AccountControlStoreCounts: Equatable, Sendable {
+	let fixed: Int
+	let projection: Int
+}
+
 private actor AccountControlStoreClient: AccountControlClient {
 	private var account: ResetCardAccountRecord
+	private let secondaryAccount: ResetCardAccountRecord?
 	private let authority: ResetCardAuthority
 	private let inventoryGate: AccountControlReadGate?
 	private let snapshotGate: AccountControlReadGate?
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
 	private var routing: AccountRoutingControl
+	private var fixedSelectionError: AccountControlError?
+	private let useAccountError: AccountControlError?
 	private var lastFixedRequest: AccountControlStoreFixedRequest?
 	private var lastUseRequest: AccountControlStoreUseRequest?
 	private var lastRefreshRequest: AccountControlStoreRefreshRequest?
+	private var controlOperations = [AccountControlStoreOperation]()
+	private var fixedRequestCount = 0
+	private var projectionRequestCount = 0
 	private var projection: CodexAuthProjection
 	private var projectionReads = 0
 	private var snapshotReadCount = 0
@@ -508,25 +710,33 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	init(
 		account: ResetCardAccountRecord,
+		secondaryAccount: ResetCardAccountRecord? = nil,
 		authority: ResetCardAuthority,
 		suspendsInventory: Bool = false,
 		suspendsSnapshotAfterFirstRead: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
+		routing: AccountRoutingControl? = nil,
+		fixedSelectionError: AccountControlError? = nil,
+		useAccountError: AccountControlError? = nil,
 		projection: CodexAuthProjection = .unmanaged
 	) {
 		self.account = account
+		self.secondaryAccount = secondaryAccount
 		self.authority = authority
 		self.projection = projection
 		inventoryGate = suspendsInventory ? AccountControlReadGate() : nil
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
-		routing = AccountRoutingControl(
-			revision: 9,
-			mode: .balanced,
-			order: [account.accountID]
-		)
+		self.routing = routing
+			?? AccountRoutingControl(
+				revision: 9,
+				mode: .balanced,
+				order: [account.accountID] + (secondaryAccount.map { [$0.accountID] } ?? [])
+			)
+		self.fixedSelectionError = fixedSelectionError
+		self.useAccountError = useAccountError
 	}
 
 	func accountSnapshot(
@@ -541,7 +751,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		}
 		return AccountControlSnapshot(
 			authority: authority,
-			accounts: [account],
+			accounts: [account] + (secondaryAccount.map { [$0] } ?? []),
 			routing: routing
 		)
 	}
@@ -592,6 +802,11 @@ private actor AccountControlStoreClient: AccountControlClient {
 			expectedAccountRevision: expectedAccountRevision,
 			expectedRoutingRevision: expectedRoutingRevision
 		)
+		fixedRequestCount += 1
+		controlOperations.append(.fixedRouting)
+		if let fixedSelectionError {
+			throw fixedSelectionError
+		}
 		await fixedSelectionGate?.wait()
 		routing = AccountRoutingControl(
 			revision: 10,
@@ -603,6 +818,21 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	func fixedRequest() -> AccountControlStoreFixedRequest? {
 		lastFixedRequest
+	}
+
+	func setFixedSelectionError(_ error: AccountControlError?) {
+		fixedSelectionError = error
+	}
+
+	func controlSequence() -> [AccountControlStoreOperation] {
+		controlOperations
+	}
+
+	func controlCounts() -> AccountControlStoreCounts {
+		AccountControlStoreCounts(
+			fixed: fixedRequestCount,
+			projection: projectionRequestCount
+		)
 	}
 
 	func readCounts() -> (snapshot: Int, inventory: Int) {
@@ -681,6 +911,11 @@ private actor AccountControlStoreClient: AccountControlClient {
 			accountID: accountID,
 			expectedRevision: expectedRevision
 		)
+		projectionRequestCount += 1
+		controlOperations.append(.codexProjection)
+		if let useAccountError {
+			throw useAccountError
+		}
 		let digest = String(repeating: "c", count: 64)
 		projection = .current(
 			accountID: accountID,
