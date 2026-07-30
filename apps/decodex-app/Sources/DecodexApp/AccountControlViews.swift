@@ -180,11 +180,9 @@ struct AccountRefreshLoginButton: View {
 				state.account.accountID,
 				activity: .loginRefresh
 			),
-			help: "Refresh the saved login for this account from the matching shared Codex login."
+			help: "Sign in to this account with the official Codex device login."
 		) {
-			Task {
-				await store.refreshCredentials(for: state.account.accountID)
-			}
+			store.beginAccountReauthentication(for: state.account.accountID)
 		}
 	}
 
@@ -195,6 +193,7 @@ struct AccountRefreshLoginButton: View {
 			|| store.isControllingAccount(state.account.accountID)
 			|| store.isEnrollingAccount
 			|| store.isRoutingAccountControl
+			|| store.accountReauthentication != nil
 			|| store.submittingKey != nil
 	}
 }

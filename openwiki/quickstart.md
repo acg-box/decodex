@@ -133,8 +133,11 @@ evidence only after that point. It is not a runtime or future-work input.
   contain a local account pool, helper/server path, credential authority, or service
   lifecycle owner (`apps/decodex-app/README.md`).
 - `crates/decodex-app-client-ffi/` owns the app's credential-negative in-process
-  protocol client and private `decodex/app-native-client/1` ABI. It does not own
-  credentials, account state, daemon lifecycle, or a CLI process.
+  protocol client and private `decodex/app-native-client/1` ABI. Its only child
+  process is one user-requested, finite official Codex device-login session in an
+  owner-private temporary home. It exposes no credential bytes or file path to
+  Swift and does not start the Decodex CLI, helper, app-server, or legacy account
+  process. It does not own credentials, account state, or daemon lifecycle.
 - `site/` is the static Astro product site; it must not depend on live daemon state (`site/package.json`, `openwiki/integrations/plugins-automations-and-auxiliary-tools.md`).
 - `plugins/decodex/` contains the installable Decodex plugin, narrow routing skills, and lifecycle guardrail hooks (`plugins/decodex/.codex-plugin/plugin.json`).
 - `automations/upstream/` contains the current standalone Codex App upstream
