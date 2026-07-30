@@ -795,7 +795,10 @@ impl ProcessGenerationControl {
 				Some(ProcessAuthorityLossReason::SupervisorRestarted);
 		}
 
-		if generation.intended_boot_id != self.inner.boot_id {
+		if process_platform::boot_identity_mismatch_proves_prior_boot(
+			&generation.intended_boot_id,
+			&self.inner.boot_id,
+		) {
 			self.record_positive_death(&generation, ProcessDeathEvidenceKind::PriorBootEnded, None)
 				.await?;
 			return Ok(ProcessGenerationReconciliation::PositiveDeathRecorded);
@@ -1018,7 +1021,10 @@ impl ProcessGenerationControl {
 		if generation.state == ProcessGenerationState::Dead {
 			return ProcessGenerationObservation::Dead;
 		}
-		if generation.intended_boot_id != self.inner.boot_id {
+		if process_platform::boot_identity_mismatch_proves_prior_boot(
+			&generation.intended_boot_id,
+			&self.inner.boot_id,
+		) {
 			return ProcessGenerationObservation::PriorBootEnded;
 		}
 		if self.owns(&generation.generation_id).unwrap_or(false) {

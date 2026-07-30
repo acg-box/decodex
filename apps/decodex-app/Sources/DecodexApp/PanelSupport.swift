@@ -5,22 +5,11 @@ enum PanelMotion {
 	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
 }
 
-enum GlassSurfaceDepth {
-	case panel
-	case section
-	case row
-	case control
-}
-
 extension View {
-	func modernGlassSurface(
-		cornerRadius: CGFloat,
-		depth: GlassSurfaceDepth = .section
-	) -> some View {
+	func modernGlassSurface(cornerRadius: CGFloat) -> some View {
 		modifier(
 			ModernGlassSurfaceModifier(
-				cornerRadius: cornerRadius,
-				depth: depth
+				cornerRadius: cornerRadius
 			)
 		)
 	}

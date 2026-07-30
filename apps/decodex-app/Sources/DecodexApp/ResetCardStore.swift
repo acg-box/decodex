@@ -158,7 +158,10 @@ private enum ResetCardRefreshResult: Equatable {
 @MainActor
 @Observable
 final class ResetCardStore {
-	private static let maximumConcurrentAccountReads = 12
+	// Profile reads are cheap cached projections, while Reset Card reads start an
+	// account-bound provider process. Keep the progressive fan-out below the host
+	// process burst that can make otherwise healthy accounts fail transiently.
+	private static let maximumConcurrentAccountReads = 3
 
 	private static let defaultStartupRetryDelays: [Duration] = [
 		.seconds(1),
