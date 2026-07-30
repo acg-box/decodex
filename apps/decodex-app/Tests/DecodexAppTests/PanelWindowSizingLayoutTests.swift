@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 @testable import DecodexApp
 import XCTest
 
@@ -20,7 +21,15 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		XCTAssertFalse(window.hasShadow)
 		XCTAssertFalse(window.isOpaque)
 		XCTAssertEqual(window.backgroundColor, .clear)
+		XCTAssertEqual(window.contentView?.layer?.backgroundColor?.alpha, 0)
 		XCTAssertNil(window.appearance)
+	}
+
+	@MainActor
+	func testStatusPanelHostingViewDoesNotPaintAWindowSizedBackdrop() {
+		let hostingView = TransparentHostingView(rootView: Text("Decodex"))
+
+		XCTAssertFalse(hostingView.isOpaque)
 	}
 
 	@MainActor

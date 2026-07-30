@@ -48,10 +48,12 @@ The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
 The header, overview, and each account row use separate appearance-adaptive
-system material surfaces with a restrained fill, border, and shadow. The host
-window follows the system Light or Dark appearance and does not draw its own
-full-window shadow or backdrop. Transparent gaps remain visible; there is no
-background surface around the complete panel and no Liquid Glass effect.
+system frosted-material surfaces with no opaque custom fill or drawn border.
+The host window follows the system Light or Dark appearance and does not draw
+its own full-window shadow or backdrop. Login recovery uses a stronger floating
+material inside that same transparent window, without a window-wide modal dimmer.
+Transparent gaps remain visible; there is no background surface around the
+complete panel and no Liquid Glass effect.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative one-word alias. The row displays
