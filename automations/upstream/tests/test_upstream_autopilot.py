@@ -1465,6 +1465,95 @@ class UpstreamAutopilotTests(unittest.TestCase):
             ):
                 self.autopilot.parse_args()
 
+    def test_task_retention_cli_keeps_command_and_receipt_status_separate(
+        self,
+    ):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        receipt = {
+            "schema": self.autopilot.TASK_RETENTION_RECEIPT_SCHEMA,
+            "automation_id": "codex-upstream-reviewer",
+            "thread_id": thread_id,
+            "terminal_result_code": "no_candidate",
+            "evidence_kind": None,
+            "evidence_sha256": None,
+            "timestamp": 100,
+            "status": self.autopilot.PENDING_STATUS,
+        }
+        settlement = {
+            "thread_id": thread_id,
+            "status": self.autopilot.ARCHIVED_STATUS,
+            "settled": True,
+            "pruned_settled_count": 0,
+        }
+        with (
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "resolve_primary_checkout",
+                return_value=ROOT,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "load_policy",
+                return_value=self.policy,
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "assert_primary_clean_main",
+                return_value={"head": "9" * 40},
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "assert_primary_snapshot",
+            ),
+        ):
+            with mock.patch.object(
+                self.autopilot.cli_module,
+                "seal_task_retention",
+                return_value=receipt,
+            ):
+                sealed = self.autopilot.cli_module.execute(
+                    mock.Mock(
+                        command="task-retention-seal",
+                        automation_id="codex-upstream-reviewer",
+                        terminal_result_code="no_candidate",
+                        evidence_path=None,
+                        keep_visible_reason=None,
+                    )
+                )
+
+            with mock.patch.object(
+                self.autopilot.cli_module,
+                "settle_task_retention",
+                return_value=settlement,
+            ):
+                settled = self.autopilot.cli_module.execute(
+                    mock.Mock(
+                        command="task-retention-settle",
+                        thread_id=thread_id,
+                        result="archived",
+                        reason=None,
+                    )
+                )
+
+        self.assertEqual(sealed["schema"], self.autopilot.RESULT_SCHEMA)
+        self.assertEqual(sealed["status"], "task_retention_sealed")
+        self.assertEqual(
+            sealed["receipt_schema"],
+            self.autopilot.TASK_RETENTION_RECEIPT_SCHEMA,
+        )
+        self.assertEqual(
+            sealed["retention_status"],
+            self.autopilot.PENDING_STATUS,
+        )
+
+        self.assertEqual(settled["schema"], self.autopilot.RESULT_SCHEMA)
+        self.assertEqual(settled["status"], "task_retention_settled")
+        self.assertEqual(
+            settled["retention_status"],
+            self.autopilot.ARCHIVED_STATUS,
+        )
+        self.assertNotIn("receipt_schema", settled)
+
     def test_task_retention_owner_receipt_is_bounded_private_and_path_free(self):
         thread_id = "01234567-89ab-cdef-0123-456789abcdef"
         with tempfile.TemporaryDirectory() as directory:
