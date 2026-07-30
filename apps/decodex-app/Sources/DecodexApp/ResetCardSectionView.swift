@@ -420,7 +420,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func normalCardChipTitle(_ target: ResetCardUseTarget) -> String {
-		"Use · \(Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds))"
+		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
 	}
 
 	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
