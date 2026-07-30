@@ -48,6 +48,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
 		)
+		let panelWindow = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelWindowSizing.swift"),
+			encoding: .utf8
+		)
 
 		XCTAssertTrue(cardSurface.contains("shape.fill(.thinMaterial)"))
 		XCTAssertTrue(cardSurface.contains(".background"))
@@ -65,6 +69,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains("ordinal"))
 		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
 		XCTAssertTrue(appScene.contains(".preferredColorScheme(.dark)"))
+		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
+		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
 				atPath: sourceURL
