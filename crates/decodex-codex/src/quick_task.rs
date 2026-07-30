@@ -1802,8 +1802,7 @@ mod tests {
 	fn pinned_method_results_mint_only_typed_quick_task_success() {
 		let start_request = start_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
-		let thread_bytes = serde_json::to_vec(&canonical)
-			.expect("fixture response must serialize");
+		let thread_bytes = serde_json::to_vec(&canonical).expect("fixture response must serialize");
 		let start = decode_quick_task_thread_start_response(&start_request, &thread_bytes)
 			.expect("pinned thread/start response must decode");
 
