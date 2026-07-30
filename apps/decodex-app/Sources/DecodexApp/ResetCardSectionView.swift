@@ -172,19 +172,12 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var identityHeader: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 5) {
-			Image(systemName: "person.crop.circle")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.accessibilityHidden(true)
-
-			Text(identity.text)
-				.font(PanelFont.accountName)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.middle)
-				.layoutPriority(1)
-		}
+		Text(identity.text)
+			.font(PanelFont.accountName)
+			.foregroundStyle(PanelPalette.primaryText(colorScheme))
+			.lineLimit(1)
+			.truncationMode(.middle)
+			.layoutPriority(1)
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(
@@ -308,7 +301,15 @@ struct ResetCardAccountRow: View {
 
 	@ViewBuilder
 	private var cardInventory: some View {
-		if let error = state.inventory?.observationError {
+		if state.requiresLoginRefresh {
+			Text("Reset Cards need this login")
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.help(
+					"Sign in to this account in Codex, then choose Refresh Login."
+				)
+		} else if let error = state.inventory?.observationError {
 			Text("Reset Cards unavailable")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
@@ -355,16 +356,23 @@ struct ResetCardAccountRow: View {
 						} label: {
 							cardChip(target)
 						}
-						.buttonStyle(.plain)
+						.buttonStyle(.bordered)
+						.buttonBorderShape(.roundedRectangle(radius: 6))
+						.controlSize(.small)
+						.tint(
+							confirmation.isArmed(target)
+								? PanelPalette.warning(colorScheme)
+								: PanelPalette.actionBlue(colorScheme)
+						)
 						.disabled(store.blocksNewAttempt(for: target))
-						.frame(minHeight: 20)
+						.frame(minHeight: 24)
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target))
 					}
 				}
 			}
-			.frame(height: 20)
+			.frame(height: 26)
 			.fixedSize(horizontal: false, vertical: true)
 		}
 	}
@@ -378,6 +386,9 @@ struct ResetCardAccountRow: View {
 			Text(normalCardChipTitle(target))
 				.hidden()
 
+			Text("Confirm · \(Self.confirmationWindowSeconds)s")
+				.hidden()
+
 			Text(cardChipTitle(target))
 				.foregroundStyle(
 					confirmation.isArmed(target)
@@ -385,11 +396,11 @@ struct ResetCardAccountRow: View {
 						: PanelPalette.primaryText(colorScheme).opacity(0.9)
 				)
 		}
-		.font(PanelFont.usageValue)
+		.font(PanelFont.resetCardAction)
 		.monospacedDigit()
 		.lineLimit(1)
 		.fixedSize(horizontal: true, vertical: false)
-		.padding(.horizontal, 2)
+		.padding(.horizontal, 1)
 		.contentShape(Rectangle())
 	}
 
@@ -408,7 +419,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func normalCardChipTitle(_ target: ResetCardUseTarget) -> String {
-		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
+		"Use · \(Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds))"
 	}
 
 	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
@@ -599,6 +610,10 @@ struct ResetCardQuotaPresentation: Equatable {
 }
 
 private struct ResetCardQuotaWindowView: View {
+	private static let titleColumnWidth: CGFloat = 16
+	private static let valueColumnWidth: CGFloat = 86
+	private static let resetDateColumnWidth: CGFloat = 80
+
 	let title: String
 	let window: ResetCardQuotaWindow
 	@Environment(\.colorScheme) private var colorScheme
@@ -608,24 +623,25 @@ private struct ResetCardQuotaWindowView: View {
 
 		HStack(alignment: .center, spacing: 4) {
 			Text(title)
-				.font(PanelFont.usageLabel)
+				.font(PanelFont.quotaText)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.frame(width: 15, alignment: .leading)
+				.frame(width: Self.titleColumnWidth, alignment: .leading)
 
-			Text(presentation.valueText)
-				.font(PanelFont.usageValue)
-				.foregroundStyle(stateColor(for: presentation.tone))
-				.monospacedDigit()
-				.lineLimit(1)
+			HStack(alignment: .firstTextBaseline, spacing: 3) {
+				Text(presentation.valueText)
+					.font(PanelFont.usageValue)
 
-			if let detailText = presentation.detailText,
-				presentation.resetDate != nil
-			{
-				Text(detailText)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(stateColor(for: presentation.tone))
-					.lineLimit(1)
+				if let detailText = presentation.detailText,
+					presentation.resetDate != nil
+				{
+					Text(detailText)
+						.font(PanelFont.quotaText)
+				}
 			}
+			.foregroundStyle(stateColor(for: presentation.tone))
+			.monospacedDigit()
+			.lineLimit(1)
+			.frame(width: Self.valueColumnWidth, alignment: .leading)
 
 			if let remainingPercent = presentation.remainingPercent {
 				GeometryReader { proxy in
@@ -642,27 +658,35 @@ private struct ResetCardQuotaWindowView: View {
 							)
 					}
 				}
-				.frame(width: 42, height: 3)
+				.frame(minWidth: 72, maxWidth: .infinity)
+				.frame(height: 4)
 			}
-
-			Spacer(minLength: 2)
 
 			if let resetDate = presentation.resetDate {
 				Text(Self.compactDateTime(resetDate))
-					.font(PanelFont.tertiary)
+					.font(PanelFont.quotaText)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.monospacedDigit()
 					.lineLimit(1)
+					.layoutPriority(1)
+					.frame(
+						width: Self.resetDateColumnWidth,
+						alignment: .trailing
+					)
 			} else if let detailText = presentation.detailText {
 				Text(detailText)
-					.font(PanelFont.tertiary)
+					.font(PanelFont.quotaText)
 					.foregroundStyle(stateColor(for: presentation.tone))
 					.lineLimit(1)
 					.truncationMode(.tail)
+					.frame(
+						width: Self.resetDateColumnWidth,
+						alignment: .trailing
+					)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.frame(height: 14, alignment: .leading)
+		.frame(height: 15, alignment: .center)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel("\(title) quota")
 		.accessibilityValue(window.accessibilityValue)
