@@ -65,6 +65,16 @@ struct AccountPanelView: View {
 				isPresentingEnrollment = false
 			}
 		}
+		.sheet(
+			isPresented: Binding(
+				get: {
+					store.accountReauthentication != nil
+				},
+				set: { _ in }
+			)
+		) {
+			AccountReauthenticationView(store: store)
+		}
 		.task {
 			guard loadsExternalState else {
 				return

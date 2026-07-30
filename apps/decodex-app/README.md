@@ -11,9 +11,15 @@ import, or runtime scheduling.
 ## Scope
 
 The app has one account authority: the Decodex daemon. Its in-process Rust
-client connects to the daemon through the owner-only Unix transport. The app
-does not start a CLI process. Swift does not read account credentials,
-PostgreSQL, Keychain, or provider-private Reset Card identifiers.
+client connects to the daemon through the owner-only Unix transport. When the
+user explicitly refreshes an expired login, the Rust bridge starts one finite
+official Codex device-login child in an owner-private temporary home. It shows
+Swift only the official URL, one-time code, and closed session state. The daemon
+verifies and installs the exact account credential, and the bridge removes the
+temporary home on success, failure, cancellation, or App exit. The app never
+starts the Decodex CLI, helper, app-server, or legacy account process. Swift
+does not read account credentials, auth-file paths, PostgreSQL, Keychain, or
+provider-private Reset Card identifiers.
 
 The primary panel reads the complete account skeleton, uses the returned
 routing UUID order, and immediately renders every account. It then runs
@@ -68,8 +74,11 @@ modes, and one cross-process dispatch lock. A malformed or unsafe journal is
 preserved and blocks new use.
 
 The panel also exposes current daemon-owned account controls: enroll the
-currently signed-in shared Codex login, enable or disable, refresh credentials,
-log out, and select fixed or balanced routing. Each account row has one `Route`
+currently signed-in shared Codex login, enable or disable, log out, and select
+fixed or balanced routing. An account with a provider-confirmed unauthorized
+profile shows `Refresh Login`; that action presents the official device code,
+Copy, Open Browser, and Cancel controls, then refreshes only that account after
+the daemon completes the exact credential replacement. Each account row has one `Route`
 control. It first projects that exact daemon-owned login to shared
 `~/.codex/auth.json` for future Codex launches, then selects the same account as
 the fixed Decodex route. The underlying typed commands remain independently
