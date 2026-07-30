@@ -15,7 +15,10 @@ use std::{
 };
 
 #[cfg(target_os = "linux")] use std::fs;
-#[cfg(target_os = "macos")] use std::mem::{self, MaybeUninit};
+#[cfg(target_os = "macos")] use std::{
+	ffi::CStr,
+	mem::{self, MaybeUninit},
+};
 
 use decodex_core::{
 	ProcessBootIdentity, ProcessDeathEvidenceKind, ProcessIdentity, ProcessStartIdentity,
@@ -167,31 +170,96 @@ pub(crate) fn current_boot_identity() -> Result<ProcessBootIdentity, ProcessPlat
 
 	#[cfg(target_os = "macos")]
 	{
-		let mut name = [libc::CTL_KERN, libc::KERN_BOOTTIME];
-		let mut boot = MaybeUninit::<libc::timeval>::uninit();
-		let mut length = mem::size_of::<libc::timeval>();
-		// SAFETY: the MIB requests one fixed `timeval` and `length` describes its storage.
-		let result = unsafe {
-			libc::sysctl(
-				name.as_mut_ptr(),
-				name.len() as libc::c_uint,
-				boot.as_mut_ptr().cast(),
-				&mut length,
-				std::ptr::null_mut(),
-				0,
-			)
-		};
-		if result == -1 || length != mem::size_of::<libc::timeval>() {
-			return Err(ProcessPlatformError::BootIdentity(io::Error::last_os_error()));
-		}
-		// SAFETY: successful fixed-size `sysctl` initialized the value.
-		let boot = unsafe { boot.assume_init() };
-		ProcessBootIdentity::new(format!("macos:{}:{}", boot.tv_sec, boot.tv_usec))
+		let boot_session_uuid =
+			read_macos_boot_session_uuid().map_err(ProcessPlatformError::BootIdentity)?;
+		ProcessBootIdentity::new(format!("{MACOS_BOOT_SESSION_IDENTITY_PREFIX}{boot_session_uuid}"))
 			.map_err(|_| ProcessPlatformError::BootIdentity(invalid_identity()))
 	}
 
 	#[cfg(not(any(target_os = "linux", target_os = "macos")))]
 	Err(ProcessPlatformError::Unsupported)
+}
+
+const MACOS_BOOT_SESSION_IDENTITY_PREFIX: &str = "macos:bootsessionuuid:v1:";
+
+/// Return true only when two exact identities use the same supported durable scheme and differ.
+///
+/// A scheme change is not positive boot-death evidence. It must remain quarantined until another
+/// positive witness exists.
+pub(crate) fn boot_identity_mismatch_proves_prior_boot(
+	expected: &ProcessBootIdentity,
+	current: &ProcessBootIdentity,
+) -> bool {
+	if expected == current {
+		return false;
+	}
+
+	let expected = expected.as_str();
+	let current = current.as_str();
+	let same_linux_scheme = expected.strip_prefix("linux:").is_some_and(|value| !value.is_empty())
+		&& current.strip_prefix("linux:").is_some_and(|value| !value.is_empty());
+	let same_macos_scheme = macos_boot_session_uuid_from_identity(expected).is_some()
+		&& macos_boot_session_uuid_from_identity(current).is_some();
+
+	same_linux_scheme || same_macos_scheme
+}
+
+#[cfg(target_os = "macos")]
+const MACOS_BOOT_SESSION_UUID_C_STRING_BYTES: usize = 37;
+
+#[cfg(target_os = "macos")]
+fn read_macos_boot_session_uuid() -> io::Result<String> {
+	let mut bytes = [0_u8; MACOS_BOOT_SESSION_UUID_C_STRING_BYTES];
+	let mut length = bytes.len();
+	// SAFETY: the name is a static C string, the output is bounded by `bytes`, and this is a
+	// read-only sysctl request.
+	let result = unsafe {
+		libc::sysctlbyname(
+			c"kern.bootsessionuuid".as_ptr(),
+			bytes.as_mut_ptr().cast(),
+			&mut length,
+			std::ptr::null_mut(),
+			0,
+		)
+	};
+	if result == -1 {
+		return Err(io::Error::last_os_error());
+	}
+	if length > bytes.len() {
+		return Err(invalid_boot_session_uuid());
+	}
+	parse_macos_boot_session_uuid(&bytes[..length])
+}
+
+#[cfg(target_os = "macos")]
+fn parse_macos_boot_session_uuid(bytes: &[u8]) -> io::Result<String> {
+	if bytes.len() != MACOS_BOOT_SESSION_UUID_C_STRING_BYTES {
+		return Err(invalid_boot_session_uuid());
+	}
+	let value = CStr::from_bytes_with_nul(bytes).map_err(|_| invalid_boot_session_uuid())?;
+	let value = value.to_str().map_err(|_| invalid_boot_session_uuid())?;
+	if !is_macos_boot_session_uuid(value) {
+		return Err(invalid_boot_session_uuid());
+	}
+	Ok(value.to_ascii_lowercase())
+}
+
+fn macos_boot_session_uuid_from_identity(identity: &str) -> Option<&str> {
+	let value = identity.strip_prefix(MACOS_BOOT_SESSION_IDENTITY_PREFIX)?;
+	is_macos_boot_session_uuid(value).then_some(value)
+}
+
+fn is_macos_boot_session_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_hexdigit(),
+		})
+}
+
+#[cfg(target_os = "macos")]
+fn invalid_boot_session_uuid() -> io::Error {
+	io::Error::new(io::ErrorKind::InvalidData, "macOS boot session UUID is invalid")
 }
 
 /// Read one complete exact process identity. Missing processes return `None` without proof.
@@ -505,7 +573,12 @@ fn invalid_identity() -> io::Error {
 mod tests {
 	use std::os::fd::AsRawFd as _;
 
-	use super::mark_descriptor_close_on_exec;
+	#[cfg(target_os = "macos")]
+	use super::{
+		MACOS_BOOT_SESSION_IDENTITY_PREFIX, current_boot_identity, parse_macos_boot_session_uuid,
+	};
+	use super::{boot_identity_mismatch_proves_prior_boot, mark_descriptor_close_on_exec};
+	use decodex_core::ProcessBootIdentity;
 
 	#[test]
 	fn owned_descriptor_without_close_on_exec_gains_close_on_exec() {
@@ -522,6 +595,57 @@ mod tests {
 			let flags = libc::fcntl(descriptor, libc::F_GETFD);
 			assert_ne!(flags, -1);
 			assert_ne!(flags & libc::FD_CLOEXEC, 0);
+		}
+	}
+
+	#[test]
+	fn prior_boot_requires_two_different_identities_from_one_durable_scheme() {
+		let macos_current = ProcessBootIdentity::new(
+			"macos:bootsessionuuid:v1:01234567-89ab-cdef-0123-456789abcdef",
+		)
+		.unwrap();
+		let macos_prior = ProcessBootIdentity::new(
+			"macos:bootsessionuuid:v1:11234567-89ab-cdef-0123-456789abcdef",
+		)
+		.unwrap();
+		let macos_retired = ProcessBootIdentity::new("macos:1785205899:422324").unwrap();
+		let linux_current =
+			ProcessBootIdentity::new("linux:01234567-89ab-cdef-0123-456789abcdef").unwrap();
+		let linux_prior =
+			ProcessBootIdentity::new("linux:11234567-89ab-cdef-0123-456789abcdef").unwrap();
+
+		assert!(!boot_identity_mismatch_proves_prior_boot(&macos_current, &macos_current));
+		assert!(boot_identity_mismatch_proves_prior_boot(&macos_prior, &macos_current));
+		assert!(!boot_identity_mismatch_proves_prior_boot(&macos_retired, &macos_current));
+		assert!(!boot_identity_mismatch_proves_prior_boot(&linux_current, &macos_current));
+		assert!(boot_identity_mismatch_proves_prior_boot(&linux_prior, &linux_current));
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn macos_boot_identity_is_stable_across_repeated_reads() {
+		let first = current_boot_identity().unwrap();
+		let second = current_boot_identity().unwrap();
+
+		assert_eq!(first, second);
+		assert!(first.as_str().starts_with(MACOS_BOOT_SESSION_IDENTITY_PREFIX));
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn macos_boot_session_uuid_requires_one_exact_c_string() {
+		assert_eq!(
+			parse_macos_boot_session_uuid(b"01234567-89AB-CDEF-0123-456789ABCDEF\0").unwrap(),
+			"01234567-89ab-cdef-0123-456789abcdef"
+		);
+
+		for invalid in [
+			b"01234567-89ab-cdef-0123-456789abcdef".as_slice(),
+			b"01234567-89ab-cdef-0123-456789abcde\0".as_slice(),
+			b"01234567-89ab-cdef-0123-456789abcdeZ\0".as_slice(),
+			b"01234567\089ab-cdef-0123-456789abcdef\0".as_slice(),
+		] {
+			assert!(parse_macos_boot_session_uuid(invalid).is_err());
 		}
 	}
 }
