@@ -21,6 +21,9 @@ from typing import Any, Mapping, Sequence
 STATE_SCHEMA = "decodex/codex-upstream-state/3"
 RESULT_SCHEMA = "decodex/codex-upstream-command-result/1"
 POLICY_SCHEMA = "decodex/codex-upstream-policy/2"
+AGENT_HANDOFF_PROJECTION_SCHEMA = (
+    "decodex/codex-upstream-agent-handoff-projection/1"
+)
 POLICY_KEYS = {
     "schema",
     "upstream_repository",
@@ -49,7 +52,6 @@ REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_POLICY_PATH = REPO_ROOT / "automations/upstream/policy.json"
 TERMINAL_STATUSES = {"landed", "no_change", "rejected"}
 CONTENT_DEGRADATION_CODES = (
-    "account_restore_failed",
     "candidate_unresolved",
     "daily_strategy_overdue",
     "outcome_24h_overdue",
@@ -59,6 +61,29 @@ CONTENT_DEGRADATION_CODES = (
     "weekly_benchmark_missing",
     "weekly_strategy_overdue",
 )
+PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset(
+    {
+        "assessment_only_churn",
+        "content_loop_degraded",
+        "lead_time_sla_missed",
+        "live_configuration_drift",
+        "repeated_blocked_attempts",
+        "repeated_review_repairs",
+        "task_retention_contract_drift",
+        "x_pricing_contract_drift",
+    }
+)
+X_PRICING_AUDIT_EVIDENCE_SCHEMA = "decodex/x-pricing-drift-evidence/1"
+X_PRICING_PARSER_VERSION = "x-pricing-markdown-table/1"
+X_PRICING_SOURCE_URL = (
+    "https://docs.x.com/x-api/getting-started/pricing.md"
+)
+X_PRICING_RATE_KEYS = {
+    "post_create",
+    "post_create_with_url",
+    "post_read",
+    "user_read",
+}
 SHA_PATTERN = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 REASON_PATTERN = re.compile(r"^[a-z0-9][a-z0-9_]{0,63}$")
 PR_PATTERN = re.compile(r"^https://github\.com/hack-ink/decodex/pull/[1-9][0-9]*$")
@@ -307,22 +332,32 @@ class Observation:
         ]
 
     def contract_missing_for(self, kind: str) -> list[str]:
-        local = [
-            *(f"stable_request:{value}" for value in self.stable_missing_request_methods),
-            *(
-                f"stable_notification:{value}"
-                for value in self.stable_missing_notification_methods
-            ),
-            *(
-                f"experimental_request:{value}"
-                for value in self.experimental_missing_request_methods
-            ),
-            *(
-                f"experimental_notification:{value}"
-                for value in self.experimental_missing_notification_methods
-            ),
-            *(f"repository_digest:{value}" for value in self.repository_contract_drift),
-        ]
+        local = (
+            [
+                *(
+                    f"stable_request:{value}"
+                    for value in self.stable_missing_request_methods
+                ),
+                *(
+                    f"stable_notification:{value}"
+                    for value in self.stable_missing_notification_methods
+                ),
+                *(
+                    f"experimental_request:{value}"
+                    for value in self.experimental_missing_request_methods
+                ),
+                *(
+                    f"experimental_notification:{value}"
+                    for value in self.experimental_missing_notification_methods
+                ),
+                *(
+                    f"repository_digest:{value}"
+                    for value in self.repository_contract_drift
+                ),
+            ]
+            if kind in {"bootstrap", "local_build"}
+            else []
+        )
         upstream = {
             "bootstrap": self.upstream_main_contract_missing,
             "upstream_range": self.upstream_main_contract_missing,
@@ -346,6 +381,37 @@ def canonical_json(value: Any) -> bytes:
 
 def sha256_value(value: Any) -> str:
     return hashlib.sha256(canonical_json(value)).hexdigest()
+
+
+def agent_handoff_projection(
+    handoff: Mapping[str, Any],
+    *,
+    worktree: Path | None,
+) -> dict[str, Any]:
+    """Project a consumed handoff without retaining its local worktree path."""
+
+    worktree_sha256 = (
+        None
+        if worktree is None
+        else hashlib.sha256(
+            os.fsencode(os.path.abspath(os.fspath(worktree)))
+        ).hexdigest()
+    )
+    return {
+        "schema": AGENT_HANDOFF_PROJECTION_SCHEMA,
+        "candidate_id": handoff["candidate_id"],
+        "role": handoff["role"],
+        "action": handoff["action"],
+        "claim_generation": handoff["claim_generation"],
+        "worktree_sha256": worktree_sha256,
+        "base_head": handoff["base_head"],
+        "repository_head": handoff["repository_head"],
+        "repository_tree": handoff["repository_tree"],
+        "staged_paths_sha256": handoff["staged_paths_sha256"],
+        "disposition": handoff["disposition"],
+        "finding_codes": handoff["finding_codes"],
+        "receipt_sha256": handoff["receipt_sha256"],
+    }
 
 
 def real_home_directory() -> Path:
@@ -783,11 +849,17 @@ def validate_path_summary(candidate: dict[str, Any]) -> None:
         expected_keys = {"repair_of", "reason_code", "evidence_sha256"}
         if reason_code == "content_loop_degraded":
             expected_keys.add("degradation_codes")
+        if reason_code == "x_pricing_contract_drift":
+            expected_keys.add("pricing_audit")
         if (
             not has_exact_keys(summary, expected_keys)
             or summary["repair_of"] != candidate.get("repair_of")
             or REASON_PATTERN.fullmatch(str(summary["reason_code"])) is None
             or not is_sha256(summary["evidence_sha256"])
+            or (
+                candidate.get("repair_of") is None
+                and reason_code not in PROACTIVE_IMPROVEMENT_REASON_CODES
+            )
         ):
             raise AutopilotError("candidate_path_summary_invalid")
         if reason_code == "content_loop_degraded" and (
@@ -803,9 +875,66 @@ def validate_path_summary(candidate: dict[str, Any]) -> None:
             )
         ):
             raise AutopilotError("candidate_path_summary_invalid")
+        if reason_code == "x_pricing_contract_drift":
+            validate_x_pricing_audit_evidence(summary["pricing_audit"])
         return
     if summary is not None:
         raise AutopilotError("candidate_path_summary_invalid")
+
+
+def validate_x_pricing_audit_evidence(value: Any) -> None:
+    if not has_exact_keys(
+        value,
+        {
+            "schema",
+            "status",
+            "source_url",
+            "parser_version",
+            "fetched_at",
+            "raw_sha256",
+            "receipt_sha256",
+            "rates_microusd",
+            "error_code",
+        },
+    ):
+        raise AutopilotError("x_pricing_audit_evidence_invalid")
+    status = value["status"]
+    rates = value["rates_microusd"]
+    error_code = value["error_code"]
+    if (
+        value["schema"] != X_PRICING_AUDIT_EVIDENCE_SCHEMA
+        or value["source_url"] != X_PRICING_SOURCE_URL
+        or value["parser_version"] != X_PRICING_PARSER_VERSION
+        or re.fullmatch(
+            r"[0-9]{4}-[0-9]{2}-[0-9]{2}T"
+            r"[0-9]{2}:[0-9]{2}:[0-9]{2}Z",
+            str(value["fetched_at"]),
+        )
+        is None
+        or not is_sha256(value["raw_sha256"])
+        or not is_sha256(value["receipt_sha256"])
+        or status not in {"contract_drift", "parse_failed"}
+    ):
+        raise AutopilotError("x_pricing_audit_evidence_invalid")
+    if status == "contract_drift":
+        if (
+            not has_exact_keys(rates, X_PRICING_RATE_KEYS)
+            or any(
+                type(rates[key]) is not int
+                or not 0 < rates[key] <= 10_000_000
+                for key in X_PRICING_RATE_KEYS
+            )
+            or error_code is not None
+        ):
+            raise AutopilotError("x_pricing_audit_evidence_invalid")
+        return
+    if (
+        rates is not None
+        or not isinstance(error_code, str)
+        or REASON_PATTERN.fullmatch(error_code) is None
+        or not error_code.startswith("x_pricing_")
+    ):
+        raise AutopilotError("x_pricing_audit_evidence_invalid")
 
 
 def validate_candidate_result(candidate: dict[str, Any]) -> None:

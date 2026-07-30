@@ -795,7 +795,7 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
 	assert_eq!(
 		status(&bootstrap, DoctorComponent::CredentialVault),
-		DoctorStatus::Unknown(DoctorIssue::NotProbed)
+		DoctorStatus::Unavailable(DoctorIssue::Integrity)
 	);
 	assert_eq!(bootstrap.product_state_availability(), Availability::Available);
 

@@ -4,38 +4,20 @@ use tokio_postgres::{Client, Config, NoTls, error::SqlState};
 
 use super::{continuation, expected_peer_uid, routing_decision, separated_configs};
 use decodex_core::{
-	ConversationId, ExecutionAssignmentRole, ManagedExecutionId, ManagedRunId, ManagedRunPhase,
-	ManagedRunState, ManagedRunWaitReason, ProcessBootIdentity, ProcessControlKind,
-	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationId,
-	ProcessGenerationIntent, ProcessIdentity, ProcessIsolationKind, ProcessRunnerIdentity,
-	ProcessStartIdentity, ProjectId, ProviderAttemptConsumer, ProviderAttemptId,
-	ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk, ProviderEvidenceId,
-	ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey,
-	ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState,
+	ConversationId, ExecutionAssignmentRole, ManagedRunId, ManagedRunPhase, ManagedRunState,
+	ManagedRunWaitReason, ProjectId, RuntimeSessionId, RuntimeSessionState,
 };
 use decodex_postgres::{
-	AccountId, AccountState, AuthorizeProviderDispatchOutcome, BootstrapRoleProfiles,
-	CommandIdentity, CreateConversation, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
-	OutboxReconciliation, PostgresStore, PrepareProcessGenerationOutcome,
-	PrepareProviderAttemptOutcome, ProcessGenerationMutationOutcome,
-	ProviderAttemptMutationOutcome, ReconciliationOutcome, RoleProfileCommandOutcome,
-	RoleProfileConfiguration, RoleProfileRole, RuntimeSessionCommandOutcome, StoreError,
+	AccountId, AccountState, BootstrapRoleProfiles, CommandIdentity, CreateConversation,
+	CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, OutboxReconciliation, PostgresStore,
+	ReconciliationOutcome, RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
+	RuntimeSessionCommandOutcome, StoreError,
 };
 
 const PROJECT_ID: &str = "a1000000-0000-4000-8000-000000000016";
 const SELECTED_MANAGED_RUN_ID: &str = "c6000000-0000-4000-8000-000000000016";
 const SELECTED_RUNTIME_SESSION_ID: &str = "c2000000-0000-4000-8000-000000000016";
-const SELECTED_EXECUTION_ID: &str = "c8000000-0000-4000-8000-000000000016";
-const EXECUTION_EPOCH_ID: &str = "d1000000-0000-4000-8000-000000001416";
-const PROCESS_GENERATION_ID: &str = "d2000000-0000-4000-8000-000000001416";
-const PROVIDER_ATTEMPT_ID: &str = "d3000000-0000-4000-8000-000000001416";
-const PROVIDER_REQUEST_ID: &str = "d4000000-0000-4000-8000-000000001416";
-const PROVIDER_EVIDENCE_ID: &str = "d5000000-0000-4000-8000-000000001416";
 const OUTBOX_WORKER_ID: &str = "d6000000-0000-4000-8000-000000001416";
-const AUTHORIZATION_DIGEST: &str =
-	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
-const REQUEST_DIGEST: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const WITNESS_DIGEST: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 
 fn profile(role: &str) -> RoleProfileConfiguration {
 	RoleProfileConfiguration {
@@ -333,135 +315,9 @@ async fn assert_event_namespace_contract(
 	Ok(())
 }
 
-async fn create_provider_projection(
-	store: &PostgresStore,
-	owner: &Client,
-	managed_run_id: &ManagedRunId,
-	account_id: &AccountId,
-) -> Result<ManagedExecutionId, Box<dyn std::error::Error>> {
-	let plan = owner
-		.query_one(
-			"SELECT plan_id::text,managed_execution_id::text \
-			 FROM decodex.continuation_plans WHERE consumer_kind='managed_run_execution' \
-			 AND managed_run_id=$1::text::uuid AND kind='same_thread' ORDER BY plan_id LIMIT 1",
-			&[&managed_run_id.as_str()],
-		)
-		.await?;
-	let plan_id: String = plan.get(0);
-	let execution_id = ManagedExecutionId::new(plan.get::<_, String>(1))?;
-
-	owner
-		.execute(
-			"INSERT INTO decodex.process_generation_execution_epochs(\
-			 execution_epoch_id,authorization_digest,authorized_at)\
-			 VALUES($1::text::uuid,$2,pg_catalog.clock_timestamp())",
-			&[&EXECUTION_EPOCH_ID, &AUTHORIZATION_DIGEST],
-		)
-		.await?;
-	let generation_id = ProcessGenerationId::new(PROCESS_GENERATION_ID)?;
-	let boot_id = ProcessBootIdentity::new("xy-1416-boot")?;
-	let generation = ProcessGenerationIntent {
-		generation_id: generation_id.clone(),
-		account_id: account_id.clone(),
-		runner_identity: ProcessRunnerIdentity::new(format!("sha256:{AUTHORIZATION_DIGEST}"))?,
-		intended_boot_id: boot_id.clone(),
-		control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
-		isolation_kind: ProcessIsolationKind::Session,
-		execution_authorization: ProcessExecutionAuthorization::new(
-			ProcessExecutionEpochId::new(EXECUTION_EPOCH_ID)?,
-			AUTHORIZATION_DIGEST,
-		)?,
-	};
-	let generation_fence = match store.prepare_process_generation(&generation).await? {
-		PrepareProcessGenerationOutcome::Fresh(fence) => fence,
-		other => return Err(format!("generation preparation was not fresh: {other:?}").into()),
-	};
-	assert_eq!(generation_fence.revision(), 1);
-	let identity = ProcessIdentity::new(
-		boot_id,
-		1416,
-		ProcessStartIdentity::new("xy-1416-process-start")?,
-		1416,
-		1416,
-	)?;
-	let bound_revision =
-		match store.bind_process_generation_identity(&generation_id, 1, &identity).await? {
-			ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
-			other => return Err(format!("generation identity was not applied: {other:?}").into()),
-		};
-	assert_eq!(bound_revision, 2);
-	let ready_revision = match store.mark_process_generation_ready(&generation_id, 2).await? {
-		ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
-		other => return Err(format!("generation readiness was not applied: {other:?}").into()),
-	};
-	assert_eq!(ready_revision, 3);
-
-	let attempt_id = ProviderAttemptId::new(PROVIDER_ATTEMPT_ID)?;
-	let request_id = ProviderRequestId::new(PROVIDER_REQUEST_ID)?;
-	let provider_key = ProviderRequestKey::new("xy-1416-provider-idempotency")?;
-	let preparation = ProviderAttemptPreparation::new(
-		attempt_id.clone(),
-		ProviderAttemptConsumer::ManagedRunExecution {
-			managed_run_id: managed_run_id.clone(),
-			managed_run_revision: 1,
-			execution_id: execution_id.clone(),
-		},
-		plan_id,
-		request_id.clone(),
-		REQUEST_DIGEST,
-		ProviderRequestKeys::new(Some(provider_key.clone()), None)?,
-		ProviderDuplicateRisk::OriginalIntent,
-	)?;
-	let prepared =
-		match store.prepare_provider_attempt(&preparation, &generation_id, ready_revision).await? {
-			PrepareProviderAttemptOutcome::Fresh(prepared) => prepared,
-			other =>
-				return Err(format!("ProviderAttempt preparation was not fresh: {other:?}").into()),
-		};
-	assert!(matches!(
-		store
-			.prepare_provider_attempt(&preparation, &generation_id, ready_revision)
-			.await?,
-		PrepareProviderAttemptOutcome::Replayed(ref mutation)
-			if mutation.revision == 1 && mutation.state == ProviderAttemptState::Prepared
-	));
-	let dispatch = match store
-		.authorize_provider_attempt_dispatch(prepared, &generation_id, ready_revision)
-		.await?
-	{
-		AuthorizeProviderDispatchOutcome::Fresh(dispatch) => dispatch,
-		other => return Err(format!("ProviderAttempt dispatch was not fresh: {other:?}").into()),
-	};
-	assert_eq!(dispatch.attempt_revision(), 2);
-	let evidence = ProviderPositiveEvidence::new(
-		ProviderEvidenceId::new(PROVIDER_EVIDENCE_ID)?,
-		attempt_id,
-		request_id,
-		ProviderEvidenceSource::ProviderReceipt,
-		ProviderTerminalOutcome::Succeeded,
-		provider_key,
-		Some("xy-1416-positive-provider-receipt".into()),
-		None,
-		None,
-		WITNESS_DIGEST,
-	)?;
-	assert!(matches!(
-		store.record_provider_attempt_positive_evidence(2, &evidence).await?,
-		ProviderAttemptMutationOutcome::Applied(ref mutation)
-			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
-	));
-	assert!(matches!(
-		store.record_provider_attempt_positive_evidence(2, &evidence).await?,
-		ProviderAttemptMutationOutcome::Replayed(ref mutation)
-			if mutation.revision == 3 && mutation.state == ProviderAttemptState::Succeeded
-	));
-	Ok(execution_id)
-}
-
 async fn assert_readback(
 	store: &PostgresStore,
 	managed_run_id: &ManagedRunId,
-	execution_id: &ManagedExecutionId,
 	expected_runtime_session_id: &RuntimeSessionId,
 ) -> Result<decodex_postgres::StoredManagedRun, Box<dyn std::error::Error>> {
 	let readback =
@@ -481,18 +337,7 @@ async fn assert_readback(
 	assert_eq!(readback.assignments.len(), 1);
 	assert_eq!(readback.assignments[0].role, ExecutionAssignmentRole::Task);
 	assert_eq!(&readback.assignments[0].runtime_session_id, expected_runtime_session_id,);
-	assert_eq!(readback.provider_attempts.len(), 1);
-	let attempt = &readback.provider_attempts[0];
-	assert_eq!(&attempt.execution_id, execution_id);
-	assert_eq!(attempt.attempt_id.as_str(), PROVIDER_ATTEMPT_ID);
-	assert_eq!(attempt.process_generation_id.as_str(), PROCESS_GENERATION_ID);
-	assert_eq!(attempt.state, ProviderAttemptState::Succeeded);
-	assert_eq!(attempt.revision, 3);
-	assert_eq!(
-		attempt.terminal_evidence_id.as_ref().map(ProviderEvidenceId::as_str),
-		Some(PROVIDER_EVIDENCE_ID),
-	);
-	assert_eq!(attempt.unknown_reason, None);
+	assert!(readback.provider_attempts.is_empty());
 	assert!(!readback.created_at.is_empty());
 	assert!(!readback.updated_at.is_empty());
 	Ok(readback)
@@ -515,42 +360,22 @@ async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::E
 			.await?;
 	continuation::assert_continuation_contract(&store, &owner, &migration, &runtime, &routing)
 		.await?;
-	assert_eq!(routing.selected_managed_run_id.as_str(), SELECTED_MANAGED_RUN_ID);
+	let selected_managed_run_id = ManagedRunId::new(SELECTED_MANAGED_RUN_ID)?;
 	let lead_session = create_lead_session(&store, &routing.selected_account_id).await?;
-	assert_assignment_scope(&owner, &routing.selected_managed_run_id, &lead_session).await?;
-	assert_event_namespace_contract(&store, &owner, &runtime, &routing.selected_managed_run_id)
-		.await?;
-	let execution_id = create_provider_projection(
-		&store,
-		&owner,
-		&routing.selected_managed_run_id,
-		&routing.selected_account_id,
-	)
-	.await?;
-	let readback = assert_readback(
-		&store,
-		&routing.selected_managed_run_id,
-		&execution_id,
-		&routing.selected_runtime_session_id,
-	)
-	.await?;
+	assert_assignment_scope(&owner, &selected_managed_run_id, &lead_session).await?;
+	assert_event_namespace_contract(&store, &owner, &runtime, &selected_managed_run_id).await?;
+	let readback =
+		assert_readback(&store, &selected_managed_run_id, &routing.selected_runtime_session_id)
+			.await?;
 	assert!(matches!(
 		store
-			.read_managed_run_exact(
-				&ProjectId::new(PROJECT_ID)?,
-				&routing.selected_managed_run_id,
-				2,
-			)
+			.read_managed_run_exact(&ProjectId::new(PROJECT_ID)?, &selected_managed_run_id, 2,)
 			.await,
 		Err(StoreError::InvalidInput("exact ManagedRun revision readback did not match"))
 	));
 	assert!(matches!(
 		store
-			.read_managed_run_exact(
-				&ProjectId::new(PROJECT_ID)?,
-				&routing.selected_managed_run_id,
-				0,
-			)
+			.read_managed_run_exact(&ProjectId::new(PROJECT_ID)?, &selected_managed_run_id, 0,)
 			.await,
 		Err(StoreError::InvalidInput("ManagedRun revision must be positive"))
 	));
@@ -559,8 +384,7 @@ async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::E
 	assert_eq!(
 		assert_readback(
 			&restarted,
-			&routing.selected_managed_run_id,
-			&execution_id,
+			&selected_managed_run_id,
 			&routing.selected_runtime_session_id,
 		)
 		.await?,
@@ -598,15 +422,6 @@ async fn postgres_managed_run_v26_restore() -> Result<(), Box<dyn std::error::Er
 	assert_eq!(readback.assignments.len(), 1);
 	assert_eq!(readback.assignments[0].role, ExecutionAssignmentRole::Task);
 	assert_eq!(readback.assignments[0].runtime_session_id.as_str(), SELECTED_RUNTIME_SESSION_ID,);
-	assert_eq!(readback.provider_attempts.len(), 1);
-	assert_eq!(readback.provider_attempts[0].execution_id.as_str(), SELECTED_EXECUTION_ID,);
-	assert_eq!(readback.provider_attempts[0].attempt_id.as_str(), PROVIDER_ATTEMPT_ID);
-	assert_eq!(readback.provider_attempts[0].process_generation_id.as_str(), PROCESS_GENERATION_ID,);
-	assert_eq!(readback.provider_attempts[0].state, ProviderAttemptState::Succeeded);
-	assert_eq!(readback.provider_attempts[0].revision, 3);
-	assert_eq!(
-		readback.provider_attempts[0].terminal_evidence_id.as_ref().map(ProviderEvidenceId::as_str),
-		Some(PROVIDER_EVIDENCE_ID),
-	);
+	assert!(readback.provider_attempts.is_empty());
 	Ok(())
 }

@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radar content-review pair staging",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "run_id",
+    "queue_sha256",
+    "review",
+    "impact"
+  ],
+  "properties": {
+    "schema": {
+      "const": "radar_content_review_pair_staging/v1"
+    },
+    "run_id": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9-]{1,64}$"
+    },
+    "queue_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "review": {
+      "$ref": "upstream_review.schema.json"
+    },
+    "impact": {
+      "allOf": [
+        {
+          "$ref": "upstream_impact.schema.json"
+        },
+        {
+          "properties": {
+            "review_lineage": {
+              "properties": {
+                "artifact_sha256": {
+                  "const": "0000000000000000000000000000000000000000000000000000000000000000",
+                  "description": "Non-authoritative staging sentinel. radar content-pair-commit replaces it with the SHA-256 of the final review bytes."
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  }
+}

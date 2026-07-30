@@ -8,10 +8,9 @@
     "slug",
     "channel",
     "target_account",
-    "controller_account",
+    "owner",
     "mode",
     "status",
-    "browser_touched",
     "audience",
     "text",
     "source_refs",
@@ -33,8 +32,19 @@
     "target_account": {
       "const": "decodexspace"
     },
-    "controller_account": {
-      "const": "hackink"
+    "owner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["automation_id", "run_id"],
+      "properties": {
+        "automation_id": {
+          "const": "decodex-xurl-publisher"
+        },
+        "run_id": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+        }
+      }
     },
     "mode": {
       "type": "string",
@@ -43,19 +53,12 @@
         "release_rollup",
         "practical_explainer",
         "operator_impact",
-        "thread",
         "watch_note"
       ]
     },
     "status": {
       "type": "string",
       "enum": ["published", "blocked", "failed", "skipped"]
-    },
-    "browser_touched": {
-      "type": "boolean"
-    },
-    "browser_session": {
-      "$ref": "#/$defs/browserSession"
     },
     "audience": {
       "type": "string",
@@ -66,8 +69,9 @@
       "minItems": 1,
       "items": {
         "type": "string",
+        "description": "Runtime validation also requires at most 260 conservative twitter-text v3 weighted characters.",
         "minLength": 1,
-        "maxLength": 280,
+        "maxLength": 260,
         "allOf": [
           {
             "not": {
@@ -80,14 +84,9 @@
             }
           },
           {
-            "anyOf": [
-              {
-                "maxLength": 260
-              },
-              {
-                "pattern": "https://"
+            "not": {
+              "pattern": "(https?://|www\\.)"
               }
-            ]
           }
         ]
       }
@@ -98,6 +97,9 @@
       "anyOf": [
         {
           "required": ["reservations"]
+        },
+        {
+          "required": ["release_deltas"]
         },
         {
           "required": ["social_candidates"]
@@ -117,6 +119,14 @@
       ],
       "properties": {
         "reservations": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "release_deltas": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -145,7 +155,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/impact\\.json$"
           }
         },
         "upstream_reviews": {
@@ -153,7 +163,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/review\\.json$"
           }
         },
         "urls": {
@@ -164,6 +174,17 @@
             "pattern": "^https://"
           }
         }
+      }
+    },
+    "evidence_digests": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[^/](?:.*\\.json)$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
       }
     },
     "evidence_notes": {
@@ -188,7 +209,8 @@
           },
           "evidence": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Exact value of one entry declared in source_refs or its one social_candidate source."
           },
           "confidence": {
             "type": "string",
@@ -229,7 +251,7 @@
           "minLength": 1
         },
         "daily_limit": {
-          "const": 8
+          "const": 1
         },
         "daily_count_before": {
           "type": "integer",
@@ -255,9 +277,19 @@
       "required": [
         "posted_at",
         "published_urls",
+        "post_id",
         "publisher",
+        "xurl_version",
+        "xurl_app",
+        "verified_account",
+        "verified_user_id",
         "account_verified",
-        "made_with_ai"
+        "made_with_ai",
+        "identity_response_sha256",
+        "create_response_sha256",
+        "read_response_sha256",
+        "publication_lineage_sha256",
+        "recorded_cost_ceiling_microusd"
       ],
       "properties": {
         "posted_at": {
@@ -267,13 +299,31 @@
         "published_urls": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 1,
           "items": {
             "type": "string",
             "pattern": "^https://x\\.com/decodexspace/status/"
           }
         },
         "publisher": {
-          "const": "chrome"
+          "const": "xurl"
+        },
+        "post_id": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
+        },
+        "xurl_version": {
+          "const": "1.3.1"
+        },
+        "xurl_app": {
+          "const": "default"
+        },
+        "verified_account": {
+          "const": "decodexspace"
+        },
+        "verified_user_id": {
+          "type": "string",
+          "pattern": "^[0-9]+$"
         },
         "account_verified": {
           "const": true
@@ -281,8 +331,25 @@
         "made_with_ai": {
           "type": "boolean"
         },
-        "image_template": {
-          "const": "decodex_signal_card"
+        "identity_response_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "create_response_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "read_response_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "publication_lineage_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "recorded_cost_ceiling_microusd": {
+          "type": "integer",
+          "enum": [30000, 35000, 40000]
         }
       }
     },
@@ -328,14 +395,6 @@
       }
     },
     "caveats": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
-      }
-    },
-    "media_refs": {
-      "description": "X media readback URLs, external media pointers, content hashes, or explicitly operator-approved checked-in sample paths. Generated media files are not committed by default.",
       "type": "array",
       "items": {
         "type": "string",
@@ -417,10 +476,27 @@
         }
       },
       "then": {
-        "required": ["publication", "browser_session"],
+        "required": ["publication"],
         "properties": {
-          "browser_touched": {
-            "const": true
+          "text": {
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 80,
+              "maxLength": 260
+            }
+          },
+          "source_refs": {
+            "type": "object",
+            "required": ["reservations", "social_candidates"],
+            "properties": {
+              "reservations": {
+                "maxItems": 1
+              },
+              "social_candidates": {
+                "maxItems": 1
+              }
+            }
           }
         },
         "not": {
@@ -435,19 +511,19 @@
     {
       "if": {
         "properties": {
-          "browser_touched": {
-            "const": true
+          "source_refs": {
+            "anyOf": [
+              {"required": ["upstream_reviews"]},
+              {"required": ["upstream_impacts"]},
+              {"required": ["signals"]},
+              {"required": ["release_deltas"]}
+            ]
           }
         },
-        "required": ["browser_touched"]
+        "required": ["source_refs"]
       },
       "then": {
-        "required": ["browser_session"]
-      },
-      "else": {
-        "not": {
-          "required": ["browser_session"]
-        }
+        "required": ["evidence_digests"]
       }
     },
     {
@@ -529,38 +605,5 @@
         }
       }
     }
-  ],
-  "$defs": {
-    "browserSession": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": [
-        "initial_account",
-        "target_account",
-        "target_account_verified",
-        "switch_status",
-        "restore_status"
-      ],
-      "properties": {
-        "initial_account": {
-          "type": "string",
-          "enum": ["unknown", "hackink", "decodexspace"]
-        },
-        "target_account": {
-          "const": "decodexspace"
-        },
-        "target_account_verified": {
-          "type": "boolean"
-        },
-        "switch_status": {
-          "type": "string",
-          "enum": ["not_attempted", "failed", "not_required", "switched"]
-        },
-        "restore_status": {
-          "type": "string",
-          "enum": ["not_attempted", "failed", "not_required", "restored"]
-        }
-      }
-    }
-  }
+  ]
 }
