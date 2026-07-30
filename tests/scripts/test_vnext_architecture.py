@@ -13,6 +13,7 @@ VNEXT_CONTRACT_ROOTS = (
     ROOT / "crates/decodex-postgres/migrations",
     ROOT / "crates/decodex-protocol/src",
     ROOT / "crates/decodex-runtime/src",
+    ROOT / "crates/decodex-app-client-ffi/src",
     ROOT / "apps/decodexd/src",
     ROOT / "apps/decodex-cli/src",
     ROOT / "apps/decodex-gpui/src",
@@ -83,6 +84,7 @@ EXPECTED_OWNER_DEPENDENCIES = {
     "decodexd": {"decodex-runtime"},
     "decodex-cli": {"decodex-protocol"},
     "decodex-gpui": {"decodex-protocol"},
+    "decodex-app-client-ffi": {"decodex-protocol"},
 }
 
 EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
@@ -126,6 +128,17 @@ EXPECTED_CLI_EXTERNAL_DEPENDENCIES = {
     "toml_edit",
 }
 
+EXPECTED_APP_CLIENT_FFI_EXTERNAL_DEPENDENCIES = {
+    "libc",
+    "serde",
+    "serde_json",
+    "tempfile",
+    "tokio",
+    "toml_edit",
+}
+
+PRODUCTION_TARGET_KINDS = {"bin", "lib", "rlib", "dylib", "cdylib", "staticlib"}
+
 EXPECTED_WORKSPACE_MANIFESTS = {
     "apps/decodex-cli/Cargo.toml",
     "apps/decodex-gpui/Cargo.toml",
@@ -133,6 +146,7 @@ EXPECTED_WORKSPACE_MANIFESTS = {
     "apps/decodexd/Cargo.toml",
     "apps/radar/Cargo.toml",
     "crates/decodex-codex/Cargo.toml",
+    "crates/decodex-app-client-ffi/Cargo.toml",
     "crates/decodex-core/Cargo.toml",
     "crates/decodex-postgres/Cargo.toml",
     "crates/decodex-protocol/Cargo.toml",
@@ -226,6 +240,25 @@ class VnextArchitectureTests(unittest.TestCase):
             {"tempfile"},
         )
 
+    def test_app_client_ffi_external_dependencies_are_exact(self):
+        owned_packages = set(EXPECTED_OWNER_DEPENDENCIES)
+        dependencies = self.packages["decodex-app-client-ffi"]["dependencies"]
+        actual = {
+            dependency["name"]
+            for dependency in dependencies
+            if dependency["name"] not in owned_packages
+        }
+
+        self.assertEqual(actual, EXPECTED_APP_CLIENT_FFI_EXTERNAL_DEPENDENCIES)
+        self.assertEqual(
+            {
+                dependency["name"]
+                for dependency in dependencies
+                if dependency["kind"] == "dev"
+            },
+            {"tempfile"},
+        )
+
     def test_workspace_owner_set_is_exact(self):
         actual = {
             str(
@@ -253,7 +286,11 @@ class VnextArchitectureTests(unittest.TestCase):
     def test_clients_cannot_reach_runtime_or_infrastructure_owners(self):
         forbidden = {"decodex-runtime", "decodex-postgres", "decodex-codex"}
 
-        for package_name in ("decodex-cli", "decodex-gpui"):
+        for package_name in (
+            "decodex-cli",
+            "decodex-gpui",
+            "decodex-app-client-ffi",
+        ):
             dependencies = {
                 dependency["name"]
                 for dependency in self.packages[package_name]["dependencies"]
@@ -289,7 +326,7 @@ class VnextArchitectureTests(unittest.TestCase):
             production_targets = {
                 target["name"]
                 for target in package["targets"]
-                if {"lib", "bin"}.intersection(target["kind"])
+                if PRODUCTION_TARGET_KINDS.intersection(target["kind"])
             }
             self.assertTrue(production_targets, package["name"])
             covered_targets.update(
@@ -303,7 +340,7 @@ class VnextArchitectureTests(unittest.TestCase):
             (package["name"], target["name"])
             for package in self.metadata["packages"]
             for target in package["targets"]
-            if {"lib", "bin"}.intersection(target["kind"])
+            if PRODUCTION_TARGET_KINDS.intersection(target["kind"])
         }
 
         self.assertEqual(covered_targets, expected_targets)
