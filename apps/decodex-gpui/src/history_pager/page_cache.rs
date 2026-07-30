@@ -615,10 +615,6 @@ impl HistoryPageCache {
 
 		Ok(())
 	}
-
-	fn lock_is_held(&self) -> bool {
-		self.lock.as_raw_fd() >= 0
-	}
 }
 
 impl Drop for HistoryPageCache {
