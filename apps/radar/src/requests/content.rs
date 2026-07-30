@@ -2,6 +2,30 @@ use std::path::PathBuf;
 
 use serde::Serialize;
 
+/// Request to atomically commit one staged source-backed review pair.
+#[derive(Debug)]
+pub(crate) struct RadarContentPairCommitRequest {
+	/// Owner-only Radar cache root.
+	pub(crate) cache_root: PathBuf,
+	/// Create-only staging JSON under the fixed Radar staging directory.
+	pub(crate) staging: PathBuf,
+	/// Maximum age for the queue, review, and impact artifacts.
+	pub(crate) max_age_hours: u64,
+}
+
+/// Receipt for one atomic or idempotently recovered pair commit.
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct RadarContentPairCommitReport {
+	pub(crate) schema: String,
+	pub(crate) status: String,
+	pub(crate) pair_dir: String,
+	pub(crate) review_path: String,
+	pub(crate) impact_path: String,
+	pub(crate) staging_sha256: String,
+	pub(crate) review_sha256: String,
+	pub(crate) impact_sha256: String,
+}
+
 /// Request to prove one queue subject is eligible for content consideration.
 #[derive(Debug)]
 pub(crate) struct RadarContentEligibilityRequest {
@@ -77,6 +101,8 @@ pub(crate) struct RadarReviewNextReport {
 	pub(crate) status: String,
 	pub(crate) selected: Option<RadarSelectedSubject>,
 	pub(crate) queue_generation: RadarQueueGeneration,
+	pub(crate) handled_count: usize,
+	pub(crate) handled_state_sha256: String,
 	pub(crate) source_refs: Vec<RadarSourceRef>,
 	pub(crate) selection_sha256: Option<String>,
 }

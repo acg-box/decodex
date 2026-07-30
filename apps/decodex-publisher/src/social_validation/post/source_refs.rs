@@ -10,6 +10,7 @@ pub(super) fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mu
 		refs,
 		"source_refs",
 		&[
+			"release_deltas",
 			"reservations",
 			"signals",
 			"social_candidates",
@@ -21,6 +22,7 @@ pub(super) fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mu
 	);
 	let has_refs = [
 		"reservations",
+		"release_deltas",
 		"signals",
 		"social_candidates",
 		"upstream_impacts",
@@ -43,9 +45,14 @@ pub(super) fn validate_social_post_source_refs(refs: Option<&Value>, errors: &mu
 		errors.push("source_refs.urls must be a list of https URLs".into());
 	}
 
-	for field in
-		["reservations", "signals", "social_candidates", "upstream_impacts", "upstream_reviews"]
-	{
+	for field in [
+		"release_deltas",
+		"reservations",
+		"signals",
+		"social_candidates",
+		"upstream_impacts",
+		"upstream_reviews",
+	] {
 		social_validation::validate_optional_string_list(
 			refs.get(field),
 			&format!("source_refs.{field}"),

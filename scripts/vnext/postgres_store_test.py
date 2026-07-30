@@ -2028,8 +2028,8 @@ def register_authority_scenarios(add: object) -> None:
 	add(
 		"indirect-trigger-owner-effect", unsafe_store, unsafe, RUNTIME_ROLE,
 		mutation_sql=(
-			"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
-			"('91000000-0000-4000-8000-000000000001','indirect owner fixture'); "
+			"INSERT INTO decodex.accounts(account_id,display_label,enabled) VALUES "
+			"('91000000-0000-4000-8000-000000000001','indirect owner fixture',true); "
 			"INSERT INTO decodex.account_routing_order(account_id,position) SELECT "
 			"'91000000-0000-4000-8000-000000000001',pg_catalog.count(*)::integer "
 			"FROM decodex.account_routing_order; "
@@ -3187,6 +3187,12 @@ def create_database(database: str, env: dict[str, str], *, locale: str | None = 
 	)
 
 
+def create_restore_database(database: str, env: dict[str, str]) -> None:
+	"""Create a fresh restore target with the canonical external prerequisite."""
+	create_database(database, env)
+	psql_as(MIGRATION_ROLE, database, RESTORE_PREREQUISITE_SQL, env)
+
+
 def pgcrypto_archive_declaration_is_exact(payload: bytes) -> bool:
 	"""Accept only the closed PostgreSQL 18 list grammar needed by this guard."""
 	if (
@@ -3632,7 +3638,7 @@ def run_role_profile_final_gate_contracts(
 			],
 			env,
 		)
-		create_database(ROLE_PROFILE_RESTORE_DATABASE, env)
+		create_restore_database(ROLE_PROFILE_RESTORE_DATABASE, env)
 		run(
 			[
 				"pg_restore", "--exit-on-error", "-d", ROLE_PROFILE_RESTORE_DATABASE,
@@ -5576,7 +5582,7 @@ def run_work_item_focused_contracts(
 		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
 	if dump_succeeded:
 		try:
-			create_database(WORK_ITEM_RESTORE_DATABASE, env)
+			create_restore_database(WORK_ITEM_RESTORE_DATABASE, env)
 			restore_database_created = True
 		except Exception as error:
 			stage_failures.append(f"restore database creation failed:\n{error}")
@@ -5679,7 +5685,7 @@ def run_managed_run_v26_suite(
 		stage_failures.append(f"post-attempt pg_dump failed:\n{error}")
 	if dump_succeeded:
 		try:
-			create_database(MANAGED_RUN_RESTORE_DATABASE, stage_env)
+			create_restore_database(MANAGED_RUN_RESTORE_DATABASE, stage_env)
 			restore_database_created = True
 		except Exception as error:
 			stage_failures.append(f"restore database creation failed:\n{error}")
@@ -5851,7 +5857,7 @@ def run_runtime_session_final_gate_contracts(
 			],
 			env,
 		)
-		create_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
+		create_restore_database(RUNTIME_SESSION_RESTORE_DATABASE, env)
 		run(
 			[
 				"pg_restore", "--exit-on-error", "-d", RUNTIME_SESSION_RESTORE_DATABASE,
@@ -9779,7 +9785,7 @@ def main(
 			primary_restore_ready = True
 			try:
 				run(["pg_dump", "-Fc", "-f", str(dump_path), DATABASE], env)
-				create_database(RESTORE_DATABASE, env)
+				create_restore_database(RESTORE_DATABASE, env)
 				run(
 					["pg_restore", "--exit-on-error", "-d", RESTORE_DATABASE, str(dump_path)],
 					env,
@@ -9978,7 +9984,7 @@ def main(
 			dump_path = aggregate_context["dump_path"]
 			if not isinstance(dump_path, Path):
 				raise HarnessCorruption("primary restore dump path is invalid")
-			create_database(DEFAULT_ACL_TAMPER_DATABASE, env)
+			create_restore_database(DEFAULT_ACL_TAMPER_DATABASE, env)
 			run(
 				[
 					"pg_restore", "--exit-on-error", "-d",
@@ -10028,7 +10034,7 @@ def main(
 				],
 				env,
 			)
-			create_database(DEFAULT_ACL_RESTORE_DATABASE, env)
+			create_restore_database(DEFAULT_ACL_RESTORE_DATABASE, env)
 			run(
 				[
 					"pg_restore", "--exit-on-error", "-d",

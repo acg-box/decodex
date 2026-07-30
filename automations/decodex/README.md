@@ -1,92 +1,138 @@
-# Decodex Automation Support
+# Decodex Content Automations
 
-This directory owns the minimal Decodex content loop, Publisher contracts, skills,
-and shared Codex App automation configuration tools.
+This directory is the canonical source for two content tasks:
 
-- `automations.toml`: current Content Manager and browser Publisher tasks.
-- `prompts/`: current task contracts.
-- `scripts/social/`: social candidate, reservation, post, outcome, and strategy
-  schemas.
-- `skills/`: Publisher skills and shared publishing gates.
-- `scripts/config/`: shared automation config evaluation and live-install utilities.
-- `research/`: retained automation research data.
+- `decodex-content-manager`: source research, Radar refresh, daily and weekly
+  strategy, candidate creation, and quality review.
+- `decodex-xurl-publisher`: skip terminalization, bounded X publication, exact
+  readback, and 24-hour or seven-day outcome collection.
 
-The obsolete v0.2 task graph, prompts, and effectiveness scorecard were removed. The
-current two-task manifest is a new contract and does not consume legacy task state.
+Both run from the primary clean `main` checkout with local execution,
+`gpt-5.6-sol`, and `high` reasoning. Scheduled definitions never use a worktree
+cwd.
 
-Generated content state belongs under `.agent/automations/decodex/cache`. Social,
-strategy, browser-session, and browser-lease records are local-only. Never commit,
-upload, or archive them to Git.
+Content Manager runs once at 09:50. Publisher runs at 10:20, 16:20, and 22:20.
+Each Publisher task handles at most one publication, one due 24-hour outcome, or
+one due seven-day outcome. These three windows do not change the one-post-per-day
+limit.
 
-Content Manager owns `social_candidate/v1` and `social_strategy/v1`. It builds the
-checked-in Radar binary, refreshes official upstream queue and release-delta evidence,
-validates the local Radar cache, and performs one bounded weekly read-only X editorial
-benchmark under the shared browser lease. The weekly strategy stores public URL
-evidence or one bounded deferred reason. Publisher owns
-`social_publish_reservation/v1`, `social_post/v1`, `social_outcome/v1`, browser lease
-serialization, and publication validation. It terminalizes a quality skip without
-opening X through the atomic, idempotency-derived `social terminalize-skip` command.
-Publisher consumes Radar handoff evidence from
-`.agent/automations/radar/cache`, but it must not refresh upstream state or perform
-fresh upstream source analysis.
+## Ownership
 
-The standalone upstream adaptation loop lives under `automations/upstream/`. Radar
-remains an auxiliary evidence tool and is not a separate scheduled task. Content
-Manager invokes the exact repository-built Radar binary on every run.
+Content Manager never calls X. It uses official sources, landed Decodex evidence,
+Radar, CodexRadar, and ordinary web research. It creates one private staging
+strategy or candidate, or produces a strict no-op. Publisher `social
+record-manager` is the only writer for the run-owned authoritative candidate and
+strategy stores.
 
-## Portable Codex App Install
+Publisher never invents claims. It consumes one checked candidate and invokes only
+the checked-in `decodex-publisher` auxiliary. That binary is the sole xurl and X
+endpoint client.
 
-The repo keeps portable sources in `automations/upstream/automations.toml`,
-`automations/decodex/automations.toml`, and their prompt files instead of checking in
-live `$CODEX_HOME/automations/*/automation.toml` files. Live Codex App configs contain
-machine-local fields such as absolute checkout paths and timestamps.
-The live evaluator requires positive `created_at` and `updated_at` values and rejects
-an update timestamp earlier than creation. This prevents managed tasks from disappearing
-from the Codex App list while remaining addressable by ID.
+## Publication Contract
 
-Render the current default automation configs from a clone with:
+- Fixed target: `@decodexspace`.
+- xurl app: `default`.
+- Authentication: OAuth2 target account must be exactly `decodexspace`.
+- Supported xurl version: exactly `1.3.1` with the approved binary SHA-256.
+- Public cadence: at most one post per day.
+- Public text: one item with at least 80 Unicode characters and at most 260
+  X-weighted characters, no URL. Weighting uses the conservative official
+  twitter-text v3 ranges.
+- Monthly hard cap: 1,250,000 micro-USD ($1.25).
+- Maximum modeled X API use: $1.20 per 30 days and $1.24 per 31 days.
+- Normal publication: a 30,000 micro-USD ($0.030) recorded ceiling for paid
+  identity read, create, and initial readback.
+- Outcome observation: 5,000 micro-USD for each due read.
+- Competitor research: no paid X reads.
 
-```sh
-python3 automations/decodex/scripts/config/sync_automations.py --apply
+A publication succeeds only after exact post ID, text, and author readback. The
+candidate, reservation, attempt, publication, canonical URL, and recorded cost
+ceiling must agree. An uncertain create with no trusted post ID is not retried
+automatically.
+
+## Quality Contract
+
+Publish only when the text states one concrete change and why it matters, stands
+alone without a link, embeds one verified Radar queue-review-impact receipt, and
+binds every factual claim to the exact private Radar review or impact. Public text
+must equal its ordered claim composition. Only fixed non-factual connective
+segments can appear outside claims. Reject generic availability notices, vague
+monitoring language, copied source text, hype, unsupported claims, and
+cadence-filling content.
+
+`radar review-next` only selects one current subject for investigation. Content
+Manager then builds one source bundle and follows the implementation path. It may
+stage one source-backed review and matching impact only after finding a concrete
+code, test, documentation, or schema anchor and a user or operator path. Radar
+materializes the review digest and atomically commits both artifacts in one
+run-owned pair directory. `review-next` skips an already handled subject with the
+same normalized commit set. Queue titles, paths, hints, and flags cannot become
+publishable evidence.
+
+Content Manager records a bounded operations review in memory each day. It writes
+a strategy artifact only for the weekly checkpoint or an evidence-backed change,
+so daily review cannot consume the candidate slot. Numeric threshold changes
+require at least three valid 24-hour outcomes. CodexRadar and public release
+content are discovery and editorial inputs, not technical evidence.
+
+## Private State
+
+Generated staging, candidate, strategy, reservation, xurl attempt, publication,
+outcome, and usage records are create-only mode `0600` files under
+`.agent/automations/decodex/cache`. They are not committed, uploaded, or archived to
+GitHub. A successful manager record removes its staging file. Automation memory
+stores only bounded result codes, artifact IDs, cost
+ceilings, and next checks. It never stores post text, raw responses, credentials,
+personal data, or absolute paths.
+
+Health validates the complete social state, runs `decodex-publisher social gc`,
+and validates the complete state again. GC keeps 14 recent daily strategies, 8
+recent weekly strategies, and a minimum 10-day lineage window. It deletes only a
+complete verified publication lineage or a complete checked quality-skip lineage.
+It preserves active, failed, uncertain, inflight, incomplete, current billing
+month, and retained-strategy evidence. Task receipts keep only evidence digests
+and do not control social GC. The scan is fail-closed and
+bounded to 8,192 entries, 4,096 files, and 64 MiB. It uses schema timestamps, not
+filesystem modification time. It does not delete Radar or upstream evidence, and
+it does not archive local cache to GitHub.
+
+## Validation
+
+Build and validate with:
+
+```text
+cargo build --locked -p radar -p decodex-publisher
+target/debug/decodex-publisher validate-social
+target/debug/decodex-publisher social gc
+target/debug/decodex-publisher validate-social
+python3 automations/decodex/scripts/config/render_automation_plan.py --json
 ```
 
-Dry-run without writing:
+Publisher tests cover manager overwrite and backpressure, record crash recovery,
+two-writer locking, Radar lineage tampering, unclaimed factual text, wrong-account
+rejection before a write, URL rejection, monthly budget exhaustion, one-per-day
+reservation, exact create/readback, idempotent retry with a known ID,
+uncertain-write handling, outcome windows, shared budget accounting, skip
+terminalization, obsolete evidence rejection, complete lineage retention,
+fail-closed replacement races, and bounded social GC.
 
-```sh
-python3 automations/decodex/scripts/config/sync_automations.py
-```
+The plan command is read-only. Apply each definition only through the Codex native
+automation lifecycle tool. View an existing ID before an update and read back every
+create or update. Repository tooling cannot write scheduler TOML or manage Codex App
+timestamps. The plan also emits the exact retirement
+`decodex-x-browser-publisher`; Health deletes that definition through the native
+tool and verifies an exact not-found readback.
 
-Validate the installed live configs against current repo authority:
+## Task Retention
 
-```sh
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
-```
+Every terminal run calls `task-retention-seal` and ends with
+`Task retention: manager_archive` only after validation. Failed, blocked,
+needs-attention, ambiguous, and human-decision tasks use `keep_visible`.
 
-The installer resolves `cwd = "{repo_root}"` to the primary checkout owning `main`,
-even when the command is invoked from a development worktree. It rejects explicit
-linked-worktree runtime roots. The evaluator also fails any managed live config whose
-cwd contains `.worktrees`. Prompts containing configured private fragments such as
-absolute user-home paths, auth files, account files, or runtime databases are refused.
-
-Read the bounded upstream state and health result with:
-
-```sh
-python3 automations/upstream/scripts/upstream_autopilot.py snapshot --json
-python3 automations/upstream/scripts/upstream_autopilot.py health --json
-```
-
-The native Codex Desktop automation lifecycle tool is the normal live mutation path.
-The renderer remains a portable recovery path and preserves Codex App timestamps.
-
-## Scheduled Run Tasks
-
-Each scheduled execution creates a Codex task. All five managed tasks apply
-`skills/references/scheduled-run-thread-retention.md` after their final durable
-readback. A terminal role calls native `set_thread_archived` with
-`archived = true` and omits `threadId`, so it can archive only its current task. A
-task stays visible only for an uncontained or ambiguous operation, a human-only
-action, or a failed native archive action.
-
-This action does not pause or delete the recurring automation, and it does not remove
-local evidence. Never use task archival to hide an unowned operation.
+The active task does not archive itself. Health scans only bounded owner receipts,
+plans at most 50 task records bound to the owner, allowlisted result, evidence
+kind, and evidence-byte digest, calls native `read_thread`, archives only a
+confirmed terminal success with `set_thread_archived`, and verifies the exact
+readback. Python does not inspect Codex databases or invoke native task tools.
+Archiving cleans the Codex task list only. It does not disable recurrence or delete
+evidence.

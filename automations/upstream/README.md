@@ -15,11 +15,16 @@ The active roles are:
 - `codex-upstream-health`: checks cursor continuity, stale work, leases, and current
   Codex build evidence. It also reconciles the five exact live task definitions in
   the upstream and content manifests through the native Codex App lifecycle tool and
-  verifies each readback.
+  verifies each readback. Its live content audit also verifies the installed xurl
+  version, target OAuth2 authorization, social lineage, and X cost ledger without
+  calling a paid endpoint.
 
 All scheduled tasks run from the primary clean `main` checkout with local execution
 and high reasoning. They are never configured with a worktree cwd. Maintainer and
 Reviewer runs can create temporary task or review worktrees below `.worktrees`.
+The five source definitions permit 12 high-reasoning task wakes per day: four
+Maintainer, two Reviewer, two Health, one Content Manager, and three Publisher.
+That is 360 wakes in 30 days or 372 wakes in 31 days.
 
 Generated state belongs under `.agent/automations/upstream/cache`. It is bounded and
 stores SHA values, versions, schema fingerprints, pull-request URLs, trusted affected
@@ -41,6 +46,11 @@ The source state separates the latest observed upstream head, the latest head co
 by queued contiguous ranges, and the latest terminal cursor. At most 128 source ranges
 can be active at once. Later observations continue queueing from the covered head, so
 a long downtime cannot be truncated or overflow the state.
+Repository digest drift from the installed Codex executable belongs only to
+`bootstrap` and `local_build` candidates. Upstream range and release candidates keep
+their own missing-method facts, but an expected digest difference from the installed
+build does not force a code change. The loop does not add one rejection fixture for
+each new upstream release.
 Each batch records schema facts from its own terminal SHA. Release candidates bind
 the tag name and resolved tag commit. A monotonic discovery sequence prevents a
 schema A-to-B-to-A transition or a tag retarget from reusing an old terminal result.
@@ -87,6 +97,20 @@ state-bound handoffs. They are not cryptographic identity signatures. A prepared
 commit or started land effect keeps its original handoff receipt and intent
 generation across lease recovery; a new owner generation can resume only that exact
 intent and cannot replace its receipt.
+
+The parent emits one exact
+`decodex/codex-upstream-agent-context/1` record in one native subagent spawn. It
+binds the candidate, role, claim generation, absolute temporary worktree, and base
+HEAD. The subagent writes the mode-`0600` receipt and returns one exact
+`decodex/codex-upstream-agent-handoff-projection/1` record. That projection binds
+the candidate and generation to the hashed worktree identity, base, repository
+HEAD/tree, staged-path digest when applicable, disposition, finding codes, and
+canonical receipt digest. The parent performs exactly one spawn and one wait. It
+cannot use `send_input`, `write_stdin`, `apply_patch`, a generic execution tool,
+shell redirection, or another write-capable command after the claim. Only the
+state-tool transactions and exact managed-worktree lifecycle are parent mutations.
+An incomplete subagent result blocks that generation; a later run creates a new
+generation instead of repairing code in the parent.
 
 The wrapper requires exact Decodex command output, the merged pull-request head and
 merge SHA, remote-main containment, and an exact JSON landed-change record that
@@ -174,19 +198,50 @@ bind their evidence to the exact commit and tree.
 Validate live configuration:
 
 ```sh
+cargo build --locked -p decodex-publisher
 python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/upstream/automations.toml
 python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/decodex/automations.toml
+python3 automations/decodex/scripts/config/render_automation_plan.py --json
 ```
 
-The default sync command renders this manifest and the current two-task content
-manifest. Live task creation and changes in Codex Desktop use the native automation
-lifecycle tool. Health can create or repair only the five fixed IDs in those
-manifests. It must read back each mutation. It never lists, edits, or deletes unrelated
-tasks and never writes scheduler files directly. The renderer remains a portable
-recovery and audit path and preserves `created_at`
-metadata. The live evaluator rejects missing or invalid Codex App list timestamps.
+The plan command renders native lifecycle inputs for this manifest and the current
+two-task content manifest. It is read-only. Live task creation and changes in Codex
+Desktop use the native automation lifecycle tool. Health can create or repair only
+the five fixed IDs in those manifests. It must view an existing ID before an update
+and read back each mutation. The plan names
+`decodex-x-browser-publisher` as the only retired definition; Health views,
+deletes, and verifies absence for that exact ID. It never lists, edits, or deletes
+other unrelated tasks and never writes scheduler files directly. Codex App alone
+owns `created_at` and `updated_at`. The live evaluator rejects missing or invalid
+list timestamps.
+Live xurl readiness never executes xurl from Python. Health builds the current
+Publisher. Before its probe, Health runs
+`run_upstream_autopilot x-pricing-audit --json`. The audit makes one ordinary HTTPS
+GET only to the pinned official Markdown URL. It parses one unique row for Post
+Read, User Read, URL-free Post Create, and Post Create with URL. It stores no page.
+It atomically renews a mode-`0600` receipt with the URL, parser version, fetch time,
+raw digest, and integer micro-USD rates. The receipt is valid for at most 36 hours.
+The Publisher requires exact rates of 5,000, 10,000, 15,000, and 200,000
+micro-USD, respectively, and the 1,250,000 micro-USD monthly cap.
+
+An exact rate change or a parser failure after a valid receipt queues one critical
+`x_pricing_contract_drift` candidate with a bounded receipt projection. A queued
+candidate takes newer audited evidence before work starts. An in-progress candidate
+gets a successor for newer evidence. Maintainer updates constants and fixtures only
+from that projection. Reviewer checks the same receipt binding before landing.
+Network failure preserves the prior receipt only until its 36-hour limit. Missing,
+stale, future, malformed, tampered, or mismatched receipts stop publication.
+
+Both Health and the live evaluator invoke only
+`decodex-publisher social probe-xurl`. They consume its bounded JSON readiness
+report. The Rust entrypoint owns exact version and binary binding, OAuth-status
+calls, the non-secret least-privilege authorization contract, and pricing-policy
+freshness.
+Repo-only evaluation remains static and starts no process.
+Health also runs `decodex-publisher social cost-report`; Publisher is the sole v4
+ledger parser and returns only bounded monthly ceilings and call counts.
 Health also queues a bounded `content_loop_degraded` repair when validated content
 evidence misses its freshness, publication, outcome, or account-restoration service
 level. The candidate stores only bounded degradation codes, so Maintainer can
@@ -196,10 +251,33 @@ reproduce and repair the fault without reading social content.
 
 Maintainer, Reviewer, Health, Content Manager, and Publisher apply the shared
 `scheduled-run-thread-retention.md` policy. After all durable and external-effect
-readbacks, a terminal role calls native `set_thread_archived` with
-`archived = true` and omits `threadId`. This can archive only the current scheduled
-task. A task stays visible only when an operation is ambiguous, no durable automatic
-owner exists, a human-only action is required, or the native archive action fails.
+readbacks, a terminal role creates one mode-`0600` owner receipt with
+`task-retention-seal`. The receipt is keyed by the app-provided `CODEX_THREAD_ID`
+and contains only the automation ID, task ID, allowlisted terminal result code,
+nullable evidence kind, digest of validated evidence bytes, timestamp, and status.
+It contains no evidence path, task text, personal data, raw response, local path,
+rollout, or Codex database data.
+An evidence-bearing seal also runs the current owned Publisher binary's canonical
+full-store `validate-social` command. It rereads the evidence afterward and
+requires exact byte equality before writing the receipt.
+
+`task-retention-plan` scans only this bounded receipt directory, excludes the active
+Health task, and returns at most 50 pending task records bound to owner, result,
+evidence kind, and evidence digest. Health calls native `read_thread` and
+`set_thread_archived` directly for each exact ID. Python never calls native task
+tools and does not use `list_threads`. Health records
+`archived_readback_confirmed` only after an exact post-archive native read. Failed,
+blocked, cancelled, needs-attention, user-continued, ambiguous, human-only, or
+incompletely read-back tasks settle as `keep_visible:<reason>`. The manager retains
+at most 128 settled receipts for at most 30 days. Pending receipts are not removed
+by age.
 
 Task archiving does not pause or delete the recurring automation and does not
 delete local evidence.
+
+Before its first social validation, Health runs Publisher social GC. GC recovers any
+durable deletion journal under the shared mutation lock before it scans or plans new
+deletion. A recovery conflict fails closed. Automation memory uses only the fixed
+`decodex/automation-memory/1` title and typed field allowlist. It contains bounded
+reason codes, counts, opaque IDs, SHA values, and micro-USD ceilings only; it never
+contains prompts, task or post text, raw responses, personal data, or local paths.
