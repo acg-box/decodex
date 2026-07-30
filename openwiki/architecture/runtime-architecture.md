@@ -1284,7 +1284,7 @@ same exact request can reclaim it after expiry.
 The macOS UI calls an in-process Rust protocol client and decodes the stable JSON
 projection returned across that private ABI. The Rust bridge may start one finite official
 Codex device-login child in an owner-private temporary home when the user explicitly chooses
-`Refresh Login`; it never starts the Decodex CLI, a helper, or app-server. The bridge exposes
+`Refresh login`; it never starts the Decodex CLI, a helper, or app-server. The bridge exposes
 only the official URL, one-time code, and closed session state to Swift. It gives the resulting
 private auth-file descriptor to the daemon, which verifies the exact provider, account revision,
 and credential binding before a host-store CAS, then removes the temporary home after success,

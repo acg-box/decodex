@@ -8,14 +8,15 @@ enum AccountPanelLayout {
 	static let minimumAccountListHeight: CGFloat = 110
 	static let estimatedAccountRowHeight: CGFloat = 74
 	static let statusMaximumHeight: CGFloat = 92
-	// Header, routing/projection status, aggregate activity card, and panel spacing.
-	static let fixedChromeHeight: CGFloat = 142
+	// Compact header, aggregate activity card, and panel spacing.
+	static let fixedChromeHeight: CGFloat = 114
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
-		let screen = NSScreen.screens.first { screen in
-			screen.frame.contains(mouseLocation)
-		} ?? NSScreen.main
+		let screen =
+			NSScreen.screens.first { screen in
+				screen.frame.contains(mouseLocation)
+			} ?? NSScreen.main
 
 		return screen?.visibleFrame.height ?? 760
 	}
@@ -30,7 +31,8 @@ enum AccountPanelLayout {
 			windowVisibleFrame: windowVisibleFrame,
 			fallback: activeScreenVisibleHeight()
 		)
-		let boundedAdditionalChromeHeight = additionalChromeHeight.isFinite
+		let boundedAdditionalChromeHeight =
+			additionalChromeHeight.isFinite
 			? max(0, additionalChromeHeight)
 			: 0
 		let screenBound = max(
@@ -96,27 +98,6 @@ struct AccountIdentityPresentation: Equatable, Sendable {
 		} else {
 			text = alias
 			showsEmail = false
-		}
-	}
-}
-
-struct CodexProjectionPresentation: Equatable, Sendable {
-	let text: String
-
-	init(
-		projection: CodexAuthProjection?,
-		currentIdentity: String?,
-		isInitialLoading: Bool
-	) {
-		switch projection {
-		case .current:
-			text = currentIdentity ?? "Checking account"
-		case .unmanaged:
-			text = "Not managed by Decodex"
-		case .unavailable:
-			text = "Unavailable"
-		case nil:
-			text = isInitialLoading ? "Loading" : "Checking"
 		}
 	}
 }
