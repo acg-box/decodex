@@ -513,6 +513,31 @@ impl ServiceApplication {
 					})
 					.await
 			},
+			CommandPayload::ReauthenticateAccountFromCredentialFile {
+				operation_id,
+				account_id,
+				source_descriptor,
+			} => {
+				let operation_id = operation_id_from_wire(operation_id)?;
+				let account_id = account_id_from_wire(account_id)?;
+				let expected = required_expected_revision(command)?;
+				service
+					.reauthenticate_from_credential_file_command(
+						lease,
+						operation_id,
+						&account_id,
+						expected,
+						source_descriptor.as_str(),
+						|result| {
+							encode_account_command_receipt(
+								&result.map_err(account_lifecycle_command_error).and_then(
+									|account| account_changed_publication(account.clone()),
+								),
+							)
+						},
+					)
+					.await
+			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
@@ -879,6 +904,7 @@ impl Application for ServiceApplication {
 			| CommandPayload::SetBalancedAccountSelection
 			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
+			| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 			| CommandPayload::RecoverAccountOperation { .. }
 			| CommandPayload::UseAccountInCodex { .. } => self.execute_account_command(command).await,
 			CommandPayload::RefreshSystemObservation { .. } =>
@@ -1389,6 +1415,8 @@ fn account_command_descriptor(
 			(AccountCommandKind::SetAccountOrder, "account-routing"),
 		CommandPayload::RefreshAccount { account_id, .. } =>
 			(AccountCommandKind::Refresh, account_id.as_str()),
+		CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. } =>
+			(AccountCommandKind::Refresh, account_id.as_str()),
 		CommandPayload::RecoverAccountOperation { operation_id, .. } =>
 			(AccountCommandKind::Recover, operation_id.as_str()),
 		_ => return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
@@ -1413,6 +1441,19 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
+		},
+		CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+		} => {
+			let _ = operation_id_from_wire(operation_id)?;
+			let _ = account_id_from_wire(account_id)?;
+			let _ = required_expected_revision(command)?;
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
+			}
 		},
 		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
 			let _ = account_id_from_wire(account_id)?;

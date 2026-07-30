@@ -235,4 +235,48 @@ final class ResetCardArchitectureTests: XCTestCase {
 			)
 		}
 	}
+
+	func testLoginRecoveryUsesExplicitNativePromptControlsAndNoPanelDisappearCancel() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let view = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountReauthenticationView.swift"
+			),
+			encoding: .utf8
+		)
+		let controls = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountControlViews.swift"
+			),
+			encoding: .utf8
+		)
+		let app = try String(
+			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
+			encoding: .utf8
+		)
+		let native = try String(
+			contentsOf: sourceURL.appendingPathComponent("DecodexNativeClient.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(view.contains("\"Copy Code\""))
+		XCTAssertTrue(view.contains("\"Open Browser\""))
+		XCTAssertTrue(view.contains("\"Cancel\""))
+		XCTAssertTrue(view.contains(".interactiveDismissDisabled(true)"))
+		XCTAssertFalse(view.contains(".onDisappear"))
+		XCTAssertFalse(view.contains(".onChange(of:"))
+		XCTAssertTrue(
+			controls.contains("store.beginAccountReauthentication(for:")
+		)
+		XCTAssertFalse(
+			controls.contains("await store.refreshCredentials(for:")
+		)
+		XCTAssertTrue(app.contains("await DecodexNativeClient.shutdownSharedSession()"))
+		XCTAssertTrue(native.contains("sharedSession.shutdown()"))
+		XCTAssertTrue(native.contains("library.destroy(handle)"))
+	}
 }
