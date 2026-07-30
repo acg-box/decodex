@@ -36,10 +36,11 @@ unavailable profile data remains row-scoped and never hides Reset Cards.
 The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
-The window has a stable dark appearance. The header, overview, and each account
-row use separate system material surfaces with a restrained fill, border, and
-shadow. Transparent gaps remain visible; there is no background surface around
-the complete panel and no Liquid Glass effect.
+The header, overview, and each account row use separate dark system material
+surfaces with a restrained fill, border, and shadow. The host window keeps the
+system appearance and does not draw its own full-window shadow or dark backdrop.
+Transparent gaps remain visible; there is no background surface around the
+complete panel and no Liquid Glass effect.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative alias. The canonical account UUID
