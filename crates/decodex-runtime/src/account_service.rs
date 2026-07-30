@@ -46,9 +46,15 @@ const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
-const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v1\0";
+const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v2\0";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
-const CROCKFORD_BASE32: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
+	"Alex", "Avery", "Bailey", "Blake", "Casey", "Charlie", "Clara", "Dana", "Drew", "Eden",
+	"Elliot", "Emery", "Evan", "Finley", "Harper", "Hayden", "Iris", "Jamie", "Jordan", "Kai",
+	"Kendall", "Lane", "Liam", "Logan", "Mason", "Maya", "Mia", "Morgan", "Noah", "Nora", "Owen",
+	"Paige", "Parker", "Quinn", "Reese", "Remy", "Riley", "Rowan", "Sage", "Sasha", "Sidney",
+	"Taylor", "Theo", "Val",
+];
 
 /// Derive the stable public account alias from the canonical credential-negative provider binding.
 pub(crate) fn stable_account_alias(provider: &ProviderIdentity) -> String {
@@ -61,16 +67,14 @@ pub(crate) fn stable_account_alias(provider: &ProviderIdentity) -> String {
 		.chain_update(b"\0")
 		.chain_update(provider.account_id().as_bytes())
 		.finalize();
-	let mut encoded = [b'0'; 10];
-	for (index, output) in encoded.iter_mut().enumerate() {
-		let bit = index * 5;
-		let byte = bit / 8;
-		let shift = 11_usize.saturating_sub(bit % 8);
-		let pair = u16::from_be_bytes([digest[byte], digest[byte + 1]]);
-		*output = CROCKFORD_BASE32[((pair >> shift) & 0x1f) as usize];
-	}
-	let encoded = std::str::from_utf8(&encoded).expect("Crockford alphabet is ASCII");
-	format!("Account {}-{}", &encoded[..5], &encoded[5..])
+	let selector = u64::from_be_bytes([
+		digest[0], digest[1], digest[2], digest[3], digest[4], digest[5], digest[6], digest[7],
+	]);
+	let word_count =
+		u64::try_from(ACCOUNT_ALIAS_WORDS.len()).expect("account alias word count fits u64");
+	let index =
+		usize::try_from(selector % word_count).expect("account alias word index fits usize");
+	ACCOUNT_ALIAS_WORDS[index].to_owned()
 }
 
 fn codex_auth_projection_digest(account: &AccountRecord, binding: &CredentialBinding) -> String {
@@ -3161,14 +3165,14 @@ mod tests {
 	use serde_json::json;
 
 	use super::{
-		AccountLifecycleError, CredentialImportError, CredentialRefreshError,
+		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, CredentialImportError, CredentialRefreshError,
 		CredentialSecretBundle, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
 		RefreshResponse, UseInCodexProjectionError, account_lock_for, codex_auth_projection_digest,
 		credential_refresh_result, matching_shared_refresh, projection_binding,
 		refreshed_credential_target, stable_account_alias, use_in_codex_receipt_result,
 	};
 	use std::{
-		collections::HashMap,
+		collections::{HashMap, HashSet},
 		sync::{Arc, Mutex},
 		time::Duration,
 	};
@@ -3182,7 +3186,19 @@ mod tests {
 			ProviderIdentity::new(AccountProvider::Chatgpt, "433463f7-74ae-4a7e-ab10-9667f9e4919e")
 				.unwrap();
 
-		assert_eq!(stable_account_alias(&provider), "Account DQ6WF-G8BTT");
+		assert_eq!(stable_account_alias(&provider), "Val");
+	}
+
+	#[test]
+	fn stable_alias_word_table_is_closed_unique_and_canonical() {
+		assert_eq!(ACCOUNT_ALIAS_WORDS.len(), 44);
+		assert_eq!(ACCOUNT_ALIAS_WORDS.iter().copied().collect::<HashSet<_>>().len(), 44);
+		assert!(ACCOUNT_ALIAS_WORDS.iter().all(|word| {
+			let bytes = word.as_bytes();
+			(2..=16).contains(&bytes.len())
+				&& bytes[0].is_ascii_uppercase()
+				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
+		}));
 	}
 
 	#[tokio::test]
