@@ -44,7 +44,9 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	}
 
 	var targets: [ResetCardUseTarget] {
-		guard let inventory else {
+		guard let inventory,
+			inventory.detailsComplete
+		else {
 			return []
 		}
 

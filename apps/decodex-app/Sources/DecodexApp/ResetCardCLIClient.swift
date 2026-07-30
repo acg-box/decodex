@@ -295,10 +295,35 @@ struct ResetCardInventory: Equatable, Sendable {
 	let authority: ResetCardAuthority
 	let accountID: String
 	let accountRevision: UInt64
+	let reportedAvailableCount: UInt64?
+	let detailsComplete: Bool
 	let cards: [ResetCardDescriptor]
 	let fiveHourQuota: ResetCardQuotaWindow
 	let sevenDayQuota: ResetCardQuotaWindow
 	let observationError: ResetCardServiceError?
+
+	init(
+		authority: ResetCardAuthority,
+		accountID: String,
+		accountRevision: UInt64,
+		reportedAvailableCount: UInt64? = nil,
+		detailsComplete: Bool = true,
+		cards: [ResetCardDescriptor],
+		fiveHourQuota: ResetCardQuotaWindow,
+		sevenDayQuota: ResetCardQuotaWindow,
+		observationError: ResetCardServiceError?
+	) {
+		self.authority = authority
+		self.accountID = accountID
+		self.accountRevision = accountRevision
+		self.reportedAvailableCount = reportedAvailableCount
+			?? (detailsComplete ? UInt64(cards.count) : nil)
+		self.detailsComplete = detailsComplete
+		self.cards = cards
+		self.fiveHourQuota = fiveHourQuota
+		self.sevenDayQuota = sevenDayQuota
+		self.observationError = observationError
+	}
 }
 
 enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDebugStringConvertible {
@@ -1177,7 +1202,8 @@ private struct ResetCardObservationWire: Decodable, Sendable {
 private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 	let accountID: String
 	let accountRevision: UInt64
-	let availableCount: UInt16
+	let reportedAvailableCount: UInt64?
+	let detailsComplete: Bool
 	let cards: [ResetCardObservationWire]
 	let fiveHourQuota: ResetCardQuotaWindowWire
 	let sevenDayQuota: ResetCardQuotaWindowWire
@@ -1185,7 +1211,8 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 	enum CodingKeys: String, CodingKey {
 		case accountID = "account_id"
 		case accountRevision = "account_revision"
-		case availableCount = "available_count"
+		case reportedAvailableCount = "reported_available_count"
+		case detailsComplete = "details_complete"
 		case cards
 		case fiveHourQuota = "five_hour_quota"
 		case sevenDayQuota = "seven_day_quota"
@@ -1197,7 +1224,8 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 			allowed: [
 				"account_id",
 				"account_revision",
-				"available_count",
+				"reported_available_count",
+				"details_complete",
 				"cards",
 				"five_hour_quota",
 				"seven_day_quota",
@@ -1206,7 +1234,11 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		accountID = try container.decode(String.self, forKey: .accountID)
 		accountRevision = try container.decode(UInt64.self, forKey: .accountRevision)
-		availableCount = try container.decode(UInt16.self, forKey: .availableCount)
+		reportedAvailableCount = try container.decodeIfPresent(
+			UInt64.self,
+			forKey: .reportedAvailableCount
+		)
+		detailsComplete = try container.decode(Bool.self, forKey: .detailsComplete)
 		cards = try container.decode([ResetCardObservationWire].self, forKey: .cards)
 		fiveHourQuota = try container.decode(
 			ResetCardQuotaWindowWire.self,
@@ -1222,10 +1254,18 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 		guard DecodexNativeClient.isValidAuthority(authority),
 			DecodexNativeClient.isCanonicalAccountID(accountID),
 			accountRevision > 0,
-			cards.count == Int(availableCount),
 			cards.count <= resetCardNativeItemLimit
 		else {
 			throw ResetCardClientError.invalidResponse
+		}
+		if detailsComplete {
+			guard reportedAvailableCount == UInt64(cards.count) else {
+				throw ResetCardClientError.invalidResponse
+			}
+		} else {
+			guard cards.isEmpty, reportedAvailableCount != 0 else {
+				throw ResetCardClientError.invalidResponse
+			}
 		}
 
 		let descriptors = try cards.map { try $0.descriptor.descriptor }
@@ -1239,6 +1279,8 @@ private struct ResetCardAvailableInventoryWireData: Decodable, Sendable {
 			authority: authority,
 			accountID: accountID,
 			accountRevision: accountRevision,
+			reportedAvailableCount: reportedAvailableCount,
+			detailsComplete: detailsComplete,
 			cards: descriptors,
 			fiveHourQuota: fiveHourQuota,
 			sevenDayQuota: sevenDayQuota,
@@ -1290,6 +1332,8 @@ private struct ResetCardFailedInventoryWireData: Decodable, Sendable {
 			authority: authority,
 			accountID: accountID,
 			accountRevision: accountRevision,
+			reportedAvailableCount: nil,
+			detailsComplete: false,
 			cards: [],
 			fiveHourQuota: try fiveHourQuota.window(expectedDuration: 300),
 			sevenDayQuota: try sevenDayQuota.window(expectedDuration: 10_080),
