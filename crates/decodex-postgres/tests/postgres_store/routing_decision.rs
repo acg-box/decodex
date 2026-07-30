@@ -3,15 +3,20 @@ use tokio_postgres::{Client, Config};
 
 use super::expected_peer_uid;
 use decodex_core::{
-	CodexCapability, ConversationId, ExecutionConsumer, ManagedExecutionId, ManagedRunId,
-	RoutingCapabilityState, RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition,
-	RuntimeSessionId,
+	AccountOperationId, AccountProvider, CodexCapability, ConversationId, CredentialBinding,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ExecutionConsumer,
+	ManagedExecutionId, ManagedRunId, ProcessBootIdentity, ProcessControlKind,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
+	ProcessGenerationId, ProcessGenerationIntent, ProcessIdentity, ProcessIsolationKind,
+	ProcessRunnerIdentity, ProcessStartIdentity, ProviderIdentity, RoutingCapabilityState,
+	RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId, TurnId,
 };
 use decodex_postgres::{
 	AccountId, AccountState, CommandIdentity, CreateConversation, CreateRuntimeSession,
 	CreateRuntimeSessionAccountSnapshot, PersistedRoutingDecision, PostgresStore,
-	PublishRoutingEvidence, ReplaceRoutingPolicy, RoleProfileRole, RouteAccount,
-	RoutingPolicyMemberInput, RuntimeSessionCommandOutcome, StoreError,
+	PrepareProcessGenerationOutcome, ProcessGenerationMutationOutcome, PublishRoutingEvidence,
+	ReplaceRoutingPolicy, RoleProfileRole, RouteAccount, RoutingPolicyMemberInput,
+	RuntimeSessionCommandOutcome, StoreError,
 };
 
 const PROJECT_ID: &str = "a1000000-0000-4000-8000-000000000016";
@@ -22,7 +27,6 @@ const WAITING_POLICY_ID: &str = "a4000000-0000-4000-8000-000000000017";
 const NO_ROUTE_POLICY_ID: &str = "a4000000-0000-4000-8000-000000000018";
 const CANCEL_POLICY_ID: &str = "a4000000-0000-4000-8000-000000000019";
 const STALE_POLICY_ID: &str = "a4000000-0000-4000-8000-000000000020";
-const STALE_EVIDENCE_POLICY_ID: &str = "a4000000-0000-4000-8000-000000000021";
 const SELECTED_ACCOUNT_ID: &str = "a5000000-0000-4000-8000-000000000016";
 const WAITING_ACCOUNT_ID: &str = "a5000000-0000-4000-8000-000000000017";
 const NO_ROUTE_ACCOUNT_ID: &str = "a5000000-0000-4000-8000-000000000018";
@@ -30,6 +34,15 @@ const BUILD_ID: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 const NO_ROUTE_BUILD_ID: &str =
 	"sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
 const SCHEMA_FINGERPRINT: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+const PROCESS_EXECUTION_EPOCH_ID: &str = "d1000000-0000-4000-8000-000000001416";
+const PROCESS_AUTHORIZATION_DIGEST: &str =
+	"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const PROCESS_CREDENTIAL_FINGERPRINT: &str =
+	"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+const PROCESS_CALLBACK_PROFILE: &str =
+	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const CURRENT_CODEX_EXECUTABLE_SHA256: &str =
+	"fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e";
 
 #[derive(Clone)]
 pub(super) struct RoutingFixture {
@@ -40,16 +53,15 @@ pub(super) struct RoutingFixture {
 	pub selected_request: RouteAccount,
 	pub selected_account_id: AccountId,
 	pub selected_runtime_session_id: RuntimeSessionId,
-	pub selected_thread_id: String,
-	pub selected_managed_run_id: ManagedRunId,
 	pub stale_policy_id: String,
 }
 
 struct RunFixture {
+	conversation_id: ConversationId,
 	managed_run_id: ManagedRunId,
 	execution_id: ManagedExecutionId,
 	runtime_session_id: RuntimeSessionId,
-	thread_id: String,
+	turn_id: TurnId,
 }
 
 struct RoutingContractSetup {
@@ -68,7 +80,7 @@ pub(super) async fn assert_routing_decision_contract(
 	runtime: &Config,
 ) -> Result<RoutingFixture, Box<dyn std::error::Error>> {
 	let setup = prepare_routing_contract(store, owner).await?;
-	assert_rolled_back_routing_decision(owner, &setup.selected_run).await?;
+	assert_rolled_back_routing_decision(owner, &setup.selected_request).await?;
 	let selected = assert_selected_routing_decision(store, owner, &setup.selected_request).await?;
 	let (waiting, cancel_waiting, stale_waiting) = assert_alternate_routing_decisions(
 		store,
@@ -95,8 +107,6 @@ pub(super) async fn assert_routing_decision_contract(
 		selected_request: setup.selected_request,
 		selected_account_id: AccountId::new(SELECTED_ACCOUNT_ID)?,
 		selected_runtime_session_id: setup.selected_run.runtime_session_id,
-		selected_thread_id: setup.selected_run.thread_id,
-		selected_managed_run_id: setup.selected_run.managed_run_id,
 		stale_policy_id: STALE_POLICY_ID.to_owned(),
 	})
 }
@@ -112,11 +122,25 @@ async fn prepare_routing_contract(
 		(WAITING_ACCOUNT_ID, "V16 account 17"),
 		(NO_ROUTE_ACCOUNT_ID, "V16 account 18"),
 	] {
+		let marker = account_marker(account_id)?;
+		let provider_account_id = provider_account_id(marker);
+		let writer_operation_id = uuid(0xa6, marker);
 		owner
 			.execute(
-				"INSERT INTO decodex.accounts(account_id,display_label,state,enabled) \
-				 VALUES($1::text::uuid,$2,'available',true)",
-				&[&account_id, &label],
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at) \
+				 VALUES($1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,\
+				 $5::text::uuid,'exact',pg_catalog.clock_timestamp())",
+				&[
+					&account_id,
+					&label,
+					&provider_account_id,
+					&PROCESS_CREDENTIAL_FINGERPRINT,
+					&writer_operation_id,
+				],
 			)
 			.await?;
 		owner
@@ -135,16 +159,22 @@ async fn prepare_routing_contract(
 			 SELECT decodex.lock_account_routing_universe_exact(); COMMIT",
 		)
 		.await?;
+	prepare_routing_process_generations(store, owner).await?;
 	insert_quota_pair(owner, SELECTED_ACCOUNT_ID, Some(73), Some(41), "selected").await?;
 	insert_quota_pair(owner, WAITING_ACCOUNT_ID, Some(0), Some(0), "waiting").await?;
 	insert_quota_pair(owner, NO_ROUTE_ACCOUNT_ID, Some(0), Some(0), "no-route").await?;
 	align_tied_waiting_ready_time(owner).await?;
 
-	let selected_run = create_run(store, owner, SELECTED_ACCOUNT_ID, "V16 account 16", 16).await?;
-	let waiting_run = create_run(store, owner, WAITING_ACCOUNT_ID, "V16 account 17", 17).await?;
-	let no_route_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 18).await?;
-	let cancel_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 19).await?;
-	let stale_run = create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 20).await?;
+	let selected_run =
+		create_run(store, owner, SELECTED_ACCOUNT_ID, "V16 account 16", 16, "usage").await?;
+	let waiting_run =
+		create_run(store, owner, WAITING_ACCOUNT_ID, "V16 account 17", 17, "usage").await?;
+	let no_route_run =
+		create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 18, "usage").await?;
+	let cancel_run =
+		create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 19, "usage").await?;
+	let stale_run =
+		create_run(store, owner, NO_ROUTE_ACCOUNT_ID, "V16 account 18", 20, "usage").await?;
 
 	for (marker, account_id) in
 		[(16_u8, SELECTED_ACCOUNT_ID), (17_u8, WAITING_ACCOUNT_ID), (18_u8, NO_ROUTE_ACCOUNT_ID)]
@@ -152,12 +182,19 @@ async fn prepare_routing_contract(
 		publish_evidence(store, marker, account_id).await?;
 	}
 
+	let selected_consumer = ExecutionConsumer::ConversationTurn {
+		conversation_id: selected_run.conversation_id.clone(),
+		conversation_revision: 1,
+		source_runtime_session_id: selected_run.runtime_session_id.clone(),
+		source_runtime_session_revision: 1,
+		turn_id: selected_run.turn_id.clone(),
+	};
 	let selected_request = create_policy_snapshot_and_request(
 		store,
 		owner,
 		SELECTED_POLICY_ID,
 		SELECTED_ACCOUNT_ID,
-		&selected_run,
+		selected_consumer,
 		16,
 		BUILD_ID,
 	)
@@ -167,7 +204,7 @@ async fn prepare_routing_contract(
 		owner,
 		WAITING_POLICY_ID,
 		WAITING_ACCOUNT_ID,
-		&waiting_run,
+		managed_consumer(&waiting_run),
 		17,
 		BUILD_ID,
 	)
@@ -177,7 +214,7 @@ async fn prepare_routing_contract(
 		owner,
 		NO_ROUTE_POLICY_ID,
 		NO_ROUTE_ACCOUNT_ID,
-		&no_route_run,
+		managed_consumer(&no_route_run),
 		18,
 		NO_ROUTE_BUILD_ID,
 	)
@@ -187,7 +224,7 @@ async fn prepare_routing_contract(
 		owner,
 		CANCEL_POLICY_ID,
 		NO_ROUTE_ACCOUNT_ID,
-		&cancel_run,
+		managed_consumer(&cancel_run),
 		19,
 		BUILD_ID,
 	)
@@ -197,7 +234,7 @@ async fn prepare_routing_contract(
 		owner,
 		STALE_POLICY_ID,
 		NO_ROUTE_ACCOUNT_ID,
-		&stale_run,
+		managed_consumer(&stale_run),
 		20,
 		BUILD_ID,
 	)
@@ -215,19 +252,32 @@ async fn prepare_routing_contract(
 
 async fn assert_rolled_back_routing_decision(
 	owner: &Client,
-	selected_run: &RunFixture,
+	selected_request: &RouteAccount,
 ) -> Result<(), Box<dyn std::error::Error>> {
+	let ExecutionConsumer::ConversationTurn {
+		conversation_id,
+		conversation_revision,
+		source_runtime_session_id,
+		source_runtime_session_revision,
+		turn_id,
+	} = &selected_request.consumer
+	else {
+		return Err("selected V16 fixture is not an ordinary Conversation Turn".into());
+	};
 	owner.batch_execute("BEGIN").await?;
 	let rolled_back: Vec<u8> = owner
 		.query_one(
 			"SELECT decodex.route_account_exact('decodex/exact-command/1',\
-			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,'managed_run_execution',\
-			 NULL,NULL,NULL,NULL,NULL,$3::text::uuid,1,$4::text::uuid)",
+			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,'conversation_turn',\
+			 $3::text::uuid,$4,$5::text::uuid,$6,$7::text::uuid,NULL,NULL,NULL)",
 			&[
 				&uuid(0xb6, 1),
 				&SELECTED_POLICY_ID,
-				&selected_run.managed_run_id.as_str(),
-				&selected_run.execution_id.as_str(),
+				&conversation_id.as_str(),
+				conversation_revision,
+				&source_runtime_session_id.as_str(),
+				source_runtime_session_revision,
+				&turn_id.as_str(),
 			],
 		)
 		.await?
@@ -244,7 +294,11 @@ async fn assert_selected_routing_decision(
 	selected_request: &RouteAccount,
 ) -> Result<PersistedRoutingDecision, Box<dyn std::error::Error>> {
 	let selected = success(store.route_account("v16-selected", selected_request).await?)?;
-	assert_eq!(selected.decision.kind, RoutingDecisionKind::Selected);
+	assert_eq!(
+		selected.decision.kind,
+		RoutingDecisionKind::Selected,
+		"unexpected selected decision: {selected:#?}",
+	);
 	assert_eq!(
 		selected.decision.selected_account_id.as_ref(),
 		Some(&AccountId::new(SELECTED_ACCOUNT_ID)?),
@@ -252,22 +306,27 @@ async fn assert_selected_routing_decision(
 	let closed_selected = owner
 		.query_one(
 			concat!(
-				"SELECT pg_catalog.string_agg(member.position::text||':'||snapshot.disposition::text,','",
-				"ORDER BY member.position)='1:excluded,2:included,3:excluded,4:excluded',",
+				"SELECT pg_catalog.count(*)=(SELECT pg_catalog.count(*) ",
+				"FROM decodex.routing_snapshot_members AS expected ",
+				"WHERE expected.snapshot_id=member.snapshot_id),",
+				"pg_catalog.count(*) FILTER (WHERE snapshot.disposition='included')=1 ",
+				"AND pg_catalog.count(*) FILTER (WHERE snapshot.disposition='included' ",
+				"AND member.account_id=$2::text::uuid)=1,",
 				"(SELECT count(*) FROM decodex.routing_decision_quota_refs AS quota ",
-				"WHERE quota.decision_id=member.decision_id)=8,",
+				"WHERE quota.decision_id=member.decision_id)=pg_catalog.count(*)*2,",
 				"(SELECT count(*) FROM decodex.routing_decision_capability_refs AS capability ",
-				"WHERE capability.decision_id=member.decision_id)=32 ",
+				"WHERE capability.decision_id=member.decision_id)=pg_catalog.count(*)*8 ",
 				"FROM decodex.routing_decision_member_refs AS member ",
 				"JOIN decodex.routing_snapshot_members AS snapshot ",
 				"ON snapshot.snapshot_id=member.snapshot_id ",
 				"AND snapshot.account_id=member.account_id AND snapshot.position=member.position ",
-				"WHERE member.decision_id=$1::text::uuid GROUP BY member.decision_id",
+				"WHERE member.decision_id=$1::text::uuid ",
+				"GROUP BY member.decision_id,member.snapshot_id",
 			),
-			&[&selected.decision_id],
+			&[&selected.decision_id, &SELECTED_ACCOUNT_ID],
 		)
 		.await?;
-	for index in 0..3 {
+	for index in 0..4 {
 		assert!(closed_selected.get::<_, bool>(index), "closed V16 selected evidence {index}");
 	}
 	let selected_bytes = receipt_bytes(owner, "v16-selected").await?;
@@ -334,14 +393,16 @@ async fn assert_alternate_routing_decisions(
 	assert_eq!(no_route.decision.kind, RoutingDecisionKind::NoRoute);
 	assert!(no_route.decision.exclusions.is_empty());
 	let stale_consumer = match &no_route_request.consumer {
-		ExecutionConsumer::ManagedRunExecution { managed_run_id, execution_id, .. } =>
+		ExecutionConsumer::ManagedRunExecution { managed_run_id, execution_id, .. } => {
 			ExecutionConsumer::ManagedRunExecution {
 				managed_run_id: managed_run_id.clone(),
 				managed_run_revision: 2,
 				execution_id: execution_id.clone(),
-			},
-		ExecutionConsumer::ConversationTurn { .. } =>
-			return Err("V16 ManagedRun fixture has an ordinary consumer".into()),
+			}
+		},
+		ExecutionConsumer::ConversationTurn { .. } => {
+			return Err("V16 ManagedRun fixture has an ordinary consumer".into());
+		},
 	};
 	let stale = store
 		.route_account(
@@ -471,6 +532,7 @@ async fn create_run(
 	account_id: &str,
 	account_display_label: &str,
 	marker: u8,
+	wait_reason: &str,
 ) -> Result<RunFixture, Box<dyn std::error::Error>> {
 	let conversation_id = ConversationId::new(uuid(0xc1, marker))?;
 	store
@@ -489,7 +551,7 @@ async fn create_run(
 			&format!("v16-runtime-session-{marker}"),
 			&CreateRuntimeSession {
 				runtime_session_id: runtime_session_id.clone(),
-				conversation_id,
+				conversation_id: conversation_id.clone(),
 				role: RoleProfileRole::Task,
 				account_snapshot: CreateRuntimeSessionAccountSnapshot {
 					account_snapshot_id: uuid(0xc4, marker),
@@ -540,9 +602,16 @@ async fn create_run(
 			 INSERT INTO decodex.managed_runs(managed_run_id,project_id,work_item_id,\
 			 runtime_session_id,runtime_session_revision,phase,lifecycle,wait_reason,blocked,\
 			 revision,created_at,updated_at) SELECT $1::text::uuid,$2::text::uuid,$3::text::uuid,\
-			 $4::text::uuid,1,'execute','waiting','usage',true,1,operation_time,operation_time \
+			 $4::text::uuid,1,'execute','waiting',$5::text::decodex.managed_run_wait_reason,true,\
+			 1,operation_time,operation_time \
 			 FROM operation RETURNING lifecycle::text,blocked,revision,created_at=updated_at",
-			&[&managed_run_id.as_str(), &PROJECT_ID, &work_item_id, &runtime_session_id.as_str()],
+			&[
+				&managed_run_id.as_str(),
+				&PROJECT_ID,
+				&work_item_id,
+				&runtime_session_id.as_str(),
+				&wait_reason,
+			],
 		)
 		.await?;
 	assert_eq!(
@@ -562,7 +631,127 @@ async fn create_run(
 			&[&managed_run_id.as_str(), &PROJECT_ID, &runtime_session_id.as_str()],
 		)
 		.await?;
-	Ok(RunFixture { managed_run_id, execution_id, runtime_session_id, thread_id })
+	let turn_id = TurnId::new(uuid(0xc9, marker))?;
+	owner
+		.execute(
+			"INSERT INTO decodex.turns(\
+			 turn_id,conversation_id,runtime_session_id,sequence,role)\
+			 VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,1,'user')",
+			&[&turn_id.as_str(), &conversation_id.as_str(), &runtime_session_id.as_str()],
+		)
+		.await?;
+	Ok(RunFixture {
+		conversation_id,
+		managed_run_id,
+		execution_id,
+		runtime_session_id,
+		turn_id,
+	})
+}
+
+fn managed_consumer(run: &RunFixture) -> ExecutionConsumer {
+	ExecutionConsumer::ManagedRunExecution {
+		managed_run_id: run.managed_run_id.clone(),
+		managed_run_revision: 1,
+		execution_id: run.execution_id.clone(),
+	}
+}
+
+async fn prepare_routing_process_generations(
+	store: &PostgresStore,
+	owner: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	assert!(
+		store
+			.attest_codex_account_capability(&decodex_postgres::CodexAccountCapabilityAttestation {
+				build_identity: "codex-cli 0.146.0-alpha.3.1".to_owned(),
+				executable_sha256: CURRENT_CODEX_EXECUTABLE_SHA256.to_owned(),
+				schema_sha256: SCHEMA_FINGERPRINT.to_owned(),
+				callback_profile_sha256: PROCESS_CALLBACK_PROFILE.to_owned(),
+				login_chatgpt_auth_tokens: true,
+				refresh_callback: true,
+			},)
+			.await?
+	);
+	owner
+		.execute(
+			"INSERT INTO decodex.process_generation_execution_epochs(\
+			 execution_epoch_id,authorization_digest,authorized_at)\
+			 VALUES($1::text::uuid,$2,pg_catalog.clock_timestamp())",
+			&[&PROCESS_EXECUTION_EPOCH_ID, &PROCESS_AUTHORIZATION_DIGEST],
+		)
+		.await?;
+
+	for (account_id, marker) in
+		[(SELECTED_ACCOUNT_ID, 16_u8), (WAITING_ACCOUNT_ID, 17_u8), (NO_ROUTE_ACCOUNT_ID, 18_u8)]
+	{
+		let generation_id = ProcessGenerationId::new(process_generation_id(marker))?;
+		let boot_id = ProcessBootIdentity::new(format!("xy-1416-boot-{marker}"))?;
+		let authorization = ProcessExecutionAuthorization::new(
+			ProcessExecutionEpochId::new(PROCESS_EXECUTION_EPOCH_ID)?,
+			PROCESS_AUTHORIZATION_DIGEST,
+		)?;
+		let intent = ProcessGenerationIntent {
+			generation_id: generation_id.clone(),
+			account_id: AccountId::new(account_id)?,
+			runner_identity: ProcessRunnerIdentity::new(format!(
+				"sha256:{PROCESS_AUTHORIZATION_DIGEST}"
+			))?,
+			intended_boot_id: boot_id.clone(),
+			control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
+			isolation_kind: ProcessIsolationKind::Session,
+			execution_authorization: authorization,
+		};
+		let binding = ProcessGenerationAccountBinding::new(
+			1,
+			CredentialBinding {
+				schema_version: CredentialStoreSchemaVersion::V1,
+				version: CredentialVersion::new(1)?,
+				fingerprint: CredentialFingerprint::new(PROCESS_CREDENTIAL_FINGERPRINT)?,
+				provider: ProviderIdentity::new(
+					AccountProvider::Chatgpt,
+					provider_account_id(marker),
+				)?,
+				writer_operation_id: AccountOperationId::new(uuid(0xa6, marker))?,
+			},
+			PROCESS_CALLBACK_PROFILE,
+		)?;
+		let fence = match store.prepare_bound_process_generation(&intent, &binding).await? {
+			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
+			other => {
+				return Err(
+					format!("routing ProcessGeneration preparation failed: {other:?}").into()
+				);
+			},
+		};
+		assert_eq!(fence.revision(), 1);
+		let process_id = 1_400_u32 + u32::from(marker);
+		let identity = ProcessIdentity::new(
+			boot_id,
+			process_id,
+			ProcessStartIdentity::new(format!("xy-1416-process-start-{marker}"))?,
+			process_id,
+			process_id,
+		)?;
+		let bound_revision = match store
+			.bind_process_generation_identity(&generation_id, 1, &identity)
+			.await?
+		{
+			ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
+			other => {
+				return Err(format!("routing process identity was not applied: {other:?}").into());
+			},
+		};
+		assert_eq!(bound_revision, 2);
+		let ready_revision = match store.mark_process_generation_ready(&generation_id, 2).await? {
+			ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
+			other => {
+				return Err(format!("routing process readiness was not applied: {other:?}").into());
+			},
+		};
+		assert_eq!(ready_revision, 3);
+	}
+	Ok(())
 }
 
 async fn publish_evidence(
@@ -600,7 +789,7 @@ async fn create_policy_snapshot_and_request(
 	owner: &Client,
 	routing_policy_id: &str,
 	included_account_id: &str,
-	run: &RunFixture,
+	consumer: ExecutionConsumer,
 	marker: u8,
 	required_build_id: &str,
 ) -> Result<RouteAccount, Box<dyn std::error::Error>> {
@@ -644,11 +833,6 @@ async fn create_policy_snapshot_and_request(
 		)
 		.await?;
 	assert!(matches!(policy, RoutingCommandOutcome::Success(_)));
-	let consumer = ExecutionConsumer::ManagedRunExecution {
-		managed_run_id: run.managed_run_id.clone(),
-		managed_run_revision: 1,
-		execution_id: run.execution_id.clone(),
-	};
 	let snapshot = store
 		.resolve_routing_snapshot(
 			&format!("v16-snapshot-{marker}"),
@@ -717,70 +901,12 @@ pub(super) async fn advance_stale_policy(
 	Ok(())
 }
 
-pub(super) async fn create_stale_evidence_snapshot(
-	store: &PostgresStore,
-	owner: &Client,
-	routing: &RoutingFixture,
-) -> Result<String, Box<dyn std::error::Error>> {
-	let rows = owner
-		.query("SELECT account_id::text,revision FROM decodex.accounts ORDER BY account_id", &[])
-		.await?;
-	let mut members = Vec::with_capacity(rows.len());
-	for row in rows {
-		let account_id = AccountId::new(row.get::<_, String>(0))?;
-		let disposition = if account_id.as_str() == routing.selected_account_id.as_str() {
-			RoutingMemberDisposition::Included
-		} else {
-			RoutingMemberDisposition::Excluded
-		};
-		members.push(RoutingPolicyMemberInput {
-			account_id,
-			account_revision: row.get(1),
-			disposition,
-		});
-	}
-	success(
-		store
-			.replace_routing_policy(
-				"v17-stale-evidence-policy",
-				&ReplaceRoutingPolicy {
-					routing_policy_id: STALE_EVIDENCE_POLICY_ID.to_owned(),
-					project_id: PROJECT_ID.to_owned(),
-					expected_revision: None,
-					accepted_policy_id: ACCEPTED_POLICY_ID.to_owned(),
-					accepted_policy_revision: 1,
-					required_role: RoleProfileRole::Task,
-					required_role_profile_revision: 1,
-					required_build_id: BUILD_ID.to_owned(),
-					members,
-					required_capabilities: vec![
-						CodexCapability::Initialize,
-						CodexCapability::AccountRead,
-						CodexCapability::ThreadRead,
-						CodexCapability::PaginatedHistory,
-					],
-				},
-			)
-			.await?,
-	)?;
-	let snapshot = success(
-		store
-			.resolve_routing_snapshot(
-				"v17-stale-evidence-snapshot",
-				STALE_EVIDENCE_POLICY_ID,
-				1,
-				&routing.selected_request.consumer,
-			)
-			.await?,
-	)?;
-	Ok(snapshot.snapshot_id)
-}
-
 fn success<T>(outcome: RoutingCommandOutcome<T>) -> Result<T, Box<dyn std::error::Error>> {
 	match outcome {
 		RoutingCommandOutcome::Success(value) => Ok(value),
-		RoutingCommandOutcome::Rejected(rejection) =>
-			Err(format!("routing command rejected: {}", rejection.code).into()),
+		RoutingCommandOutcome::Rejected(rejection) => {
+			Err(format!("routing command rejected: {}", rejection.code).into())
+		},
 	}
 }
 
@@ -808,13 +934,30 @@ fn uuid(prefix: u8, marker: u8) -> String {
 	format!("{prefix:02x}000000-0000-4000-8000-{marker:012}")
 }
 
+fn account_marker(account_id: &str) -> Result<u8, Box<dyn std::error::Error>> {
+	match account_id {
+		SELECTED_ACCOUNT_ID => Ok(16),
+		WAITING_ACCOUNT_ID => Ok(17),
+		NO_ROUTE_ACCOUNT_ID => Ok(18),
+		_ => Err("routing fixture account is unknown".into()),
+	}
+}
+
+fn provider_account_id(marker: u8) -> String {
+	format!("v16-provider-{marker}")
+}
+
+fn process_generation_id(marker: u8) -> String {
+	format!("d2000000-0000-4000-8000-{:012}", 1_400_u16 + u16::from(marker))
+}
+
 pub(super) async fn assert_restored_routing_contract(
 	client: &Client,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let row = client
 		.query_one(
 			concat!(
-				"SELECT (SELECT count(*) FROM decodex.routing_decisions WHERE kind='selected')=7,",
+				"SELECT (SELECT count(*) FROM decodex.routing_decisions WHERE kind='selected')=6,",
 				"(SELECT count(*) FROM decodex.routing_decisions WHERE kind='waiting_usage')=3,",
 				"(SELECT count(*) FROM decodex.routing_decisions WHERE kind='no_route')=1,",
 				"(SELECT count(DISTINCT duration_minutes) FROM decodex.routing_decision_exclusions ",
