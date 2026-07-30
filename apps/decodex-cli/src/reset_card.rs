@@ -755,6 +755,7 @@ const fn reset_error_name(error: ResetCardError) -> &'static str {
 		ResetCardError::ProviderUnavailable => "provider_unavailable",
 		ResetCardError::InventoryIncomplete => "inventory_incomplete",
 		ResetCardError::InventoryChanged => "inventory_changed",
+		ResetCardError::RequestTimedOut => "request_timed_out",
 		ResetCardError::ResourceExhausted => "resource_exhausted",
 		ResetCardError::ProductStateUnavailable => "product_state_unavailable",
 		ResetCardError::EffectAmbiguous => "effect_ambiguous",
