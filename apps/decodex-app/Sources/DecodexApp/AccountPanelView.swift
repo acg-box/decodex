@@ -26,45 +26,43 @@ struct AccountPanelView: View {
 	}
 
 	var body: some View {
-		GlassEffectContainer(spacing: 0) {
-			VStack(alignment: .leading, spacing: 7) {
-				header
-					.padding(.horizontal, 10)
-					.padding(.vertical, 8)
-					.modernGlassSurface(cornerRadius: 18)
+		VStack(alignment: .leading, spacing: 7) {
+			header
+				.padding(.horizontal, 10)
+				.padding(.vertical, 8)
+				.panelCardSurface(cornerRadius: 18)
 
-				if hasTransientStatus {
-					transientStatus
-						.transition(.panelSection)
-				}
-
-				if let profileAggregate {
-					AccountProfileOverviewView(
-						aggregate: profileAggregate,
-						totalAccountCount: store.accounts.count,
-						currentProfileCount: profiledAccountStates.filter {
-							$0.isProfileDegraded == false
-						}.count,
-						degradedProfileCount: profiledAccountStates.filter(\.isProfileDegraded).count
-					)
-					.modernGlassSurface(cornerRadius: 16)
+			if hasTransientStatus {
+				transientStatus
 					.transition(.panelSection)
-				}
-
-				accountContent
 			}
-			.frame(width: AccountPanelLayout.panelWidth)
-			.padding(6)
-			.controlSize(.small)
-			.symbolRenderingMode(.hierarchical)
-			.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
-			.sizesPanelWindowToContent { visibleFrame in
-				if panelScreenVisibleFrame != visibleFrame {
-					panelScreenVisibleFrame = visibleFrame
-				}
+
+			if let profileAggregate {
+				AccountProfileOverviewView(
+					aggregate: profileAggregate,
+					totalAccountCount: store.accounts.count,
+					currentProfileCount: profiledAccountStates.filter {
+						$0.isProfileDegraded == false
+					}.count,
+					degradedProfileCount: profiledAccountStates.filter(\.isProfileDegraded).count
+				)
+				.panelCardSurface(cornerRadius: 16)
+				.transition(.panelSection)
+			}
+
+			accountContent
+		}
+		.frame(width: AccountPanelLayout.panelWidth)
+		.padding(6)
+		.controlSize(.small)
+		.symbolRenderingMode(.hierarchical)
+		.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
+		.sizesPanelWindowToContent { visibleFrame in
+			if panelScreenVisibleFrame != visibleFrame {
+				panelScreenVisibleFrame = visibleFrame
 			}
 		}
-		// Re-key the singleton panel, rather than every repeated glass row, when
+		// Re-key the singleton panel, rather than every repeated card, when
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
 		.sheet(isPresented: $isPresentingEnrollment) {
@@ -382,7 +380,7 @@ struct AccountPanelView: View {
 							showsEmail: accountPrivacy == AccountPrivacy.visible,
 							detailedAccountID: $detailedAccountID
 						)
-						.modernGlassSurface(cornerRadius: 16)
+						.panelCardSurface(cornerRadius: 16)
 					}
 				}
 				.padding(1)
@@ -456,6 +454,6 @@ struct AccountPanelView: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(9)
-		.modernGlassSurface(cornerRadius: 16)
+		.panelCardSurface(cornerRadius: 16)
 	}
 }

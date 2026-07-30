@@ -29,7 +29,7 @@ struct ResetCardMessageView: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 6)
-		.modernGlassSurface(cornerRadius: 14)
+		.panelCardSurface(cornerRadius: 14)
 	}
 
 	private var symbol: String {
@@ -97,7 +97,7 @@ struct ResetCardPendingAttemptsView: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 6)
-		.modernGlassSurface(cornerRadius: 14)
+		.panelCardSurface(cornerRadius: 14)
 	}
 }
 
@@ -331,18 +331,18 @@ struct ResetCardAccountRow: View {
 		} else {
 			ScrollView(.horizontal, showsIndicators: false) {
 				HStack(spacing: 4) {
-					ForEach(Array(state.targets.enumerated()), id: \.element) { index, target in
+					ForEach(state.targets, id: \.self) { target in
 						Button {
 							tap(target)
 						} label: {
-							cardChip(target, ordinal: index + 1)
+							cardChip(target)
 						}
 						.buttonStyle(.plain)
 						.disabled(store.blocksNewAttempt(for: target))
 						.frame(minHeight: 20)
-						.accessibilityLabel(accessibilityLabel(target, ordinal: index + 1))
+						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
-						.help(help(target, ordinal: index + 1))
+						.help(help(target))
 					}
 				}
 			}
@@ -355,12 +355,12 @@ struct ResetCardAccountRow: View {
 		confirmation.isSubmitting ? nil : confirmation.armedAttempt
 	}
 
-	private func cardChip(_ target: ResetCardUseTarget, ordinal: Int) -> some View {
+	private func cardChip(_ target: ResetCardUseTarget) -> some View {
 		ZStack {
-			Text(normalCardChipTitle(target, ordinal: ordinal))
+			Text(normalCardChipTitle(target))
 				.hidden()
 
-			Text(cardChipTitle(target, ordinal: ordinal))
+			Text(cardChipTitle(target))
 				.foregroundStyle(
 					confirmation.isArmed(target)
 						? PanelPalette.warning(colorScheme)
@@ -375,27 +375,26 @@ struct ResetCardAccountRow: View {
 		.contentShape(Rectangle())
 	}
 
-	private func cardChipTitle(_ target: ResetCardUseTarget, ordinal: Int) -> String {
+	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
 		if confirmation.isSubmitting(target) {
-			return "Using \(ordinal)…"
+			return "Using…"
 		}
 		if confirmation.isArmed(target) {
 			let seconds = confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: Self.confirmationWindowSeconds
-			return "Confirm \(ordinal) · \(seconds)s"
+			return "Confirm · \(seconds)s"
 		}
 
-		return normalCardChipTitle(target, ordinal: ordinal)
+		return normalCardChipTitle(target)
 	}
 
-	private func normalCardChipTitle(_ target: ResetCardUseTarget, ordinal: Int) -> String {
-		"\(ordinal) · \(Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds))"
+	private func normalCardChipTitle(_ target: ResetCardUseTarget) -> String {
+		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
 	}
 
-	private func accessibilityLabel(_ target: ResetCardUseTarget, ordinal: Int) -> String {
+	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
 		Self.cardAccessibilityLabel(
-			ordinal: ordinal,
 			expiresAtUnixSeconds: target.descriptor.expiresAtUnixSeconds
 		)
 	}
@@ -412,8 +411,8 @@ struct ResetCardAccountRow: View {
 			: "Activate once to confirm use. Confirmation cancels after five seconds."
 	}
 
-	private func help(_ target: ResetCardUseTarget, ordinal: Int) -> String {
-		let label = accessibilityLabel(target, ordinal: ordinal)
+	private func help(_ target: ResetCardUseTarget) -> String {
+		let label = accessibilityLabel(target)
 		if confirmation.isSubmitting {
 			return confirmation.isSubmitting(target)
 				? "\(label). The request is in progress."
@@ -502,7 +501,6 @@ struct ResetCardAccountRow: View {
 	}
 
 	static func cardAccessibilityLabel(
-		ordinal: Int,
 		expiresAtUnixSeconds: Int64,
 		timeZone: TimeZone = .current
 	) -> String {
@@ -520,7 +518,7 @@ struct ResetCardAccountRow: View {
 		let date = Date(timeIntervalSince1970: TimeInterval(expiresAtUnixSeconds))
 		let zone = timeZone.abbreviation(for: date)
 			?? timeZone.identifier
-		return "Reset Card \(ordinal), expires \(spokenExpiry) \(zone)"
+		return "Reset Card, expires \(spokenExpiry) \(zone)"
 	}
 }
 
