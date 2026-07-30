@@ -87,7 +87,7 @@ struct AccountUtilityActionsView: View {
 			}
 
 			Menu {
-				Button(state.account.enabled ? "Disable Account" : "Enable Account") {
+				Button(state.account.enabled ? "Disable account" : "Enable account") {
 					Task {
 						await store.setAccount(
 							state.account.accountID,
@@ -99,7 +99,7 @@ struct AccountUtilityActionsView: View {
 
 				Divider()
 
-				Button("Log Out…", role: .destructive) {
+				Button("Log out…", role: .destructive) {
 					isLogoutArmed = true
 				}
 				.disabled(lifecycleActionIsDisabled)
@@ -143,7 +143,7 @@ struct AccountUtilityActionsView: View {
 
 				Spacer()
 
-				Button("Log Out", role: .destructive) {
+				Button("Log out", role: .destructive) {
 					Task {
 						await store.logoutAccount(state.account.accountID)
 						isLogoutArmed = false
@@ -172,7 +172,7 @@ struct AccountRefreshLoginButton: View {
 
 	var body: some View {
 		CompactAccountActionButton(
-			title: "Refresh Login",
+			title: "Refresh login",
 			symbol: "person.crop.circle.badge.plus",
 			isActive: false,
 			isDisabled: isDisabled,
