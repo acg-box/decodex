@@ -205,7 +205,7 @@ fn selection_and_report_creation_hold_one_cache_lock() {
 	assert_no_authoritative_artifacts(&cache_root);
 }
 
-fn fresh_cache() -> (tempfile::TempDir, std::path::PathBuf) {
+fn fresh_cache() -> (crate::private_fs::PrivateTestDirectory, std::path::PathBuf) {
 	let temp_dir = crate::test_support::private_tempdir();
 	let cache_root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
 

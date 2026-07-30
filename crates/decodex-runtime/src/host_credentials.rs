@@ -675,9 +675,11 @@ mod macos {
 				return;
 			}
 
+			let temporary_root =
+				fs::canonicalize(env::temp_dir()).expect("temporary root is canonical");
 			let temporary = tempfile::Builder::new()
 				.prefix("decodex-keychain-lock-")
-				.tempdir_in("/private/tmp")
+				.tempdir_in(temporary_root)
 				.expect("temporary root exists");
 			let root = DecodexRoot::new(temporary.path().join("decodex-root"))
 				.expect("temporary Decodex root is valid");

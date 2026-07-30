@@ -1,7 +1,14 @@
 use std::{
+	collections::VecDeque,
 	io::{Read as _, Write as _},
-	net::TcpListener,
+	os::unix::net::UnixListener,
+	path::PathBuf,
+	sync::{
+		Arc, Mutex,
+		atomic::{AtomicBool, Ordering},
+	},
 	thread,
+	time::Duration,
 };
 
 use crate::GitHubApi;
@@ -9,36 +16,36 @@ use crate::GitHubApi;
 #[test]
 fn retries_truncated_success_body_for_idempotent_get() {
 	let valid_body = r#"{"ok":true}"#;
-	let (url, server) = spawn_server(vec![
+	let server = spawn_server(vec![
 		format!(
 			"HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: 32\r\nConnection: close\r\n\r\n{{}}"
 		),
 		response("200 OK", &[], valid_body),
 	]);
-	let api = GitHubApi::new_for_test(None, &url).expect("GitHub API client should build");
-	let response = api.get(&url).expect("truncated body should be retried");
+	let api = server.api(None);
+	let response = api.get(server.url()).expect("truncated body should be retried");
 
 	assert_eq!(response.payload["ok"], true);
-	server.join().expect("test server should finish");
+	server.finish();
 }
 
 #[test]
 fn retries_invalid_json_for_idempotent_get() {
-	let (url, server) = spawn_server(vec![
+	let server = spawn_server(vec![
 		response("200 OK", &[], r#"{"incomplete":"#),
 		response("200 OK", &[], r#"{"ok":true}"#),
 	]);
-	let api = GitHubApi::new_for_test(None, &url).expect("GitHub API client should build");
-	let response = api.get(&url).expect("invalid JSON should be retried");
+	let api = server.api(None);
+	let response = api.get(server.url()).expect("invalid JSON should be retried");
 
 	assert_eq!(response.payload["ok"], true);
-	server.join().expect("test server should finish");
+	server.finish();
 }
 
 #[test]
 fn reports_structured_rate_limit_without_retrying() {
 	let body = r#"{"message":"API rate limit exceeded for test address."}"#;
-	let (url, server) = spawn_server(vec![response(
+	let server = spawn_server(vec![response(
 		"403 Forbidden",
 		&[
 			("X-RateLimit-Remaining", "0"),
@@ -47,8 +54,8 @@ fn reports_structured_rate_limit_without_retrying() {
 		],
 		body,
 	)]);
-	let api = GitHubApi::new_for_test(None, &url).expect("GitHub API client should build");
-	let error = api.get(&url).expect_err("rate limit must fail without retry");
+	let api = server.api(None);
+	let error = api.get(server.url()).expect_err("rate limit must fail without retry");
 	let message = error.to_string();
 
 	assert!(message.contains("GitHub API rate limit exceeded"));
@@ -57,7 +64,7 @@ fn reports_structured_rate_limit_without_retrying() {
 	assert!(message.contains("remaining=0"));
 	assert!(message.contains("reset_epoch=1785132000"));
 	assert!(message.contains("retry_after=120"));
-	server.join().expect("single-response server proves there was no retry");
+	server.finish();
 }
 
 #[test]
@@ -72,43 +79,44 @@ fn production_client_requires_the_exact_https_github_api_origin() {
 
 #[test]
 fn pagination_rejects_cross_origin_links_before_forwarding_credentials() {
-	let adversary = TcpListener::bind("127.0.0.1:0").expect("adversary listener should bind");
-	let adversary_url =
-		format!("http://{}/capture", adversary.local_addr().expect("address should exist"));
-	let (url, server) = spawn_server(vec![response(
+	let adversary_url = "http://adversary.test/capture";
+	let server = spawn_server(vec![response(
 		"200 OK",
 		&[("Link", &format!("<{adversary_url}>; rel=\"next\""))],
 		"[]",
 	)]);
-	let api = GitHubApi::new_for_test(Some("test-secret".into()), &url)
-		.expect("GitHub API client should build");
-	let error =
-		api.get_paginated_for_test(&url, 10, 100).expect_err("cross-origin pagination must fail");
+	let api = server.api(Some("test-secret".into()));
+	let error = api
+		.get_paginated_for_test(server.url(), 10, 100)
+		.expect_err("cross-origin pagination must fail");
 
 	assert!(error.to_string().contains("pinned origin"));
-	server.join().expect("trusted server should finish");
-	adversary.set_nonblocking(true).expect("adversary listener should become nonblocking");
-	assert!(
-		adversary.accept().is_err_and(|error| error.kind() == std::io::ErrorKind::WouldBlock),
-		"cross-origin target must receive no request"
-	);
+	let requests = server.finish_with_requests();
+
+	assert_eq!(requests.len(), 1, "cross-origin pagination must not send a second request");
+	let request = requests[0].to_ascii_lowercase();
+
+	assert!(request.contains("host: github.test"));
+	assert!(request.contains("authorization: bearer test-secret"));
+	assert!(!request.contains("adversary.test"));
 }
 
 #[test]
 fn pagination_detects_cycles_without_repeating_a_request() {
-	let (url, server) = spawn_server_with(1, |url, _| {
+	let server = spawn_server_with(1, |url, _| {
 		response("200 OK", &[("Link", &format!("<{url}>; rel=\"next\""))], "[]")
 	});
-	let api = GitHubApi::new_for_test(None, &url).expect("GitHub API client should build");
-	let error = api.get_paginated_for_test(&url, 10, 100).expect_err("cyclic pagination must fail");
+	let api = server.api(None);
+	let error =
+		api.get_paginated_for_test(server.url(), 10, 100).expect_err("cyclic pagination must fail");
 
 	assert!(error.to_string().contains("cycle detected"));
-	server.join().expect("one request proves the cycle was not followed");
+	server.finish();
 }
 
 #[test]
 fn pagination_enforces_page_and_item_limits() {
-	let (page_url, page_server) = spawn_server_with(2, |url, index| {
+	let page_server = spawn_server_with(2, |url, index| {
 		let next = if index == 0 {
 			url.replace("/test", "/page-2")
 		} else {
@@ -117,63 +125,112 @@ fn pagination_enforces_page_and_item_limits() {
 
 		response("200 OK", &[("Link", &format!("<{next}>; rel=\"next\""))], "[]")
 	});
-	let page_api =
-		GitHubApi::new_for_test(None, &page_url).expect("GitHub API client should build");
+	let page_api = page_server.api(None);
 	let page_error = page_api
-		.get_paginated_for_test(&page_url, 2, 100)
+		.get_paginated_for_test(page_server.url(), 2, 100)
 		.expect_err("third page must exceed the bound");
 
 	assert!(page_error.to_string().contains("2-page limit"));
-	page_server.join().expect("bounded page server should finish");
+	page_server.finish();
 
-	let (item_url, item_server) = spawn_server(vec![response("200 OK", &[], "[1,2,3]")]);
-	let item_api =
-		GitHubApi::new_for_test(None, &item_url).expect("GitHub API client should build");
+	let item_server = spawn_server(vec![response("200 OK", &[], "[1,2,3]")]);
+	let item_api = item_server.api(None);
 	let item_error = item_api
-		.get_paginated_for_test(&item_url, 2, 2)
+		.get_paginated_for_test(item_server.url(), 2, 2)
 		.expect_err("oversized item page must exceed the bound");
 
 	assert!(item_error.to_string().contains("2-item limit"));
-	item_server.join().expect("bounded item server should finish");
+	item_server.finish();
 }
 
-fn spawn_server(responses: Vec<String>) -> (String, thread::JoinHandle<()>) {
-	let listener = TcpListener::bind("127.0.0.1:0").expect("test listener should bind");
-	let address = listener.local_addr().expect("test listener should have an address");
-	let server = thread::spawn(move || {
-		for response in responses {
-			let (mut stream, _) = listener.accept().expect("test request should connect");
-			let mut request = [0_u8; 4096];
-			let _ = stream.read(&mut request);
+struct TestServer {
+	_directory: crate::private_fs::PrivateTestDirectory,
+	socket: PathBuf,
+	thread: thread::JoinHandle<()>,
+	requests: Arc<Mutex<Vec<String>>>,
+	stop: Arc<AtomicBool>,
+	url: String,
+}
+impl TestServer {
+	fn api(&self, token: Option<String>) -> GitHubApi {
+		GitHubApi::new_for_test(token, &self.url, &self.socket)
+			.expect("GitHub API client should build")
+	}
 
-			stream.write_all(response.as_bytes()).expect("test response should write");
-			stream.flush().expect("test response should flush");
-		}
-	});
+	fn finish(self) {
+		drop(self.finish_with_requests());
+	}
 
-	(format!("http://{address}/test"), server)
+	fn finish_with_requests(self) -> Vec<String> {
+		self.stop.store(true, Ordering::Release);
+		self.thread.join().expect("test server should finish");
+		self.requests.lock().expect("request log should not be poisoned").clone()
+	}
+
+	fn url(&self) -> &str {
+		&self.url
+	}
 }
 
-fn spawn_server_with(
-	response_count: usize,
-	builder: impl Fn(&str, usize) -> String,
-) -> (String, thread::JoinHandle<()>) {
-	let listener = TcpListener::bind("127.0.0.1:0").expect("test listener should bind");
-	let address = listener.local_addr().expect("test listener should have an address");
-	let url = format!("http://{address}/test");
-	let responses = (0..response_count).map(|index| builder(&url, index)).collect::<Vec<_>>();
-	let server = thread::spawn(move || {
-		for response in responses {
-			let (mut stream, _) = listener.accept().expect("test request should connect");
-			let mut request = [0_u8; 4096];
-			let _ = stream.read(&mut request);
+fn spawn_server(responses: Vec<String>) -> TestServer {
+	spawn_server_responses(responses)
+}
 
-			stream.write_all(response.as_bytes()).expect("test response should write");
-			stream.flush().expect("test response should flush");
+fn spawn_server_responses(responses: Vec<String>) -> TestServer {
+	let directory = crate::test_support::private_tempdir();
+	let socket = directory.path().join("g.sock");
+	let listener = UnixListener::bind(&socket).expect("test listener should bind");
+	listener.set_nonblocking(true).expect("test listener should become nonblocking");
+	let url = "http://github.test/test".to_owned();
+	let requests = Arc::new(Mutex::new(Vec::new()));
+	let server_requests = Arc::clone(&requests);
+	let stop = Arc::new(AtomicBool::new(false));
+	let server_stop = Arc::clone(&stop);
+	let server = thread::spawn(move || {
+		let mut responses = VecDeque::from(responses);
+
+		loop {
+			match listener.accept() {
+				Ok((mut stream, _)) => {
+					stream
+						.set_nonblocking(false)
+						.expect("accepted test stream should become blocking");
+					let mut request = [0_u8; 4096];
+					let read = stream.read(&mut request).expect("test request should be readable");
+
+					server_requests
+						.lock()
+						.expect("request log should not be poisoned")
+						.push(String::from_utf8_lossy(&request[..read]).into_owned());
+
+					let response = responses.pop_front().unwrap_or_else(|| {
+						response("500 Internal Server Error", &[], r#"{"unexpected":true}"#)
+					});
+
+					stream.write_all(response.as_bytes()).expect("test response should write");
+					stream.flush().expect("test response should flush");
+				},
+				Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {
+					if server_stop.load(Ordering::Acquire) {
+						break;
+					}
+					thread::sleep(Duration::from_millis(1));
+				},
+				Err(error) => panic!("test request should connect: {error}"),
+			}
 		}
+
+		assert!(responses.is_empty(), "test server did not receive all expected requests");
 	});
 
-	(url, server)
+	TestServer { _directory: directory, socket, thread: server, requests, stop, url }
+}
+
+fn spawn_server_with(response_count: usize, builder: impl Fn(&str, usize) -> String) -> TestServer {
+	let url = "http://github.test/test";
+	let responses = (0..response_count).map(|index| builder(url, index)).collect::<Vec<_>>();
+
+	spawn_server_responses(responses)
 }
 
 fn response(status: &str, headers: &[(&str, &str)], body: &str) -> String {

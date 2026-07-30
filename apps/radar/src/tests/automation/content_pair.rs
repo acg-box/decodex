@@ -318,7 +318,7 @@ fn cache_gc_recovers_an_interrupted_temporary_pair_directory() {
 	assert!(!temporary.exists());
 }
 
-fn fresh_cache() -> (tempfile::TempDir, std::path::PathBuf) {
+fn fresh_cache() -> (crate::private_fs::PrivateTestDirectory, std::path::PathBuf) {
 	let temp = crate::test_support::private_tempdir();
 	let cache_root = temp.path().join(crate::DEFAULT_CACHE_ROOT);
 
