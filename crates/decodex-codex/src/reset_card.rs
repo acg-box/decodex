@@ -7,7 +7,7 @@ use std::{
 pub use decodex_core::MAX_RESET_CARD_ITEMS as MAX_RESET_CARDS_PER_INVENTORY;
 use decodex_core::{
 	AccountQuotaObservationError, AccountQuotaWindow, ResetCardConsumeOutcome, ResetCardDescriptor,
-	ResetCardError, ResetCardTimestamp,
+	ResetCardTimestamp,
 };
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Error as _};
 use serde_json::Value;
@@ -111,79 +111,127 @@ impl AvailableResetCardObservation {
 	}
 }
 
-/// Complete validated provider inventory.
+/// Validated provider observation with explicit reset-card detail completeness.
 ///
-/// Public iteration exposes only grant and expiry. Exact credit identifiers remain redacted and
-/// can be resolved only by an exact public descriptor inside the adapter/runtime boundary.
+/// Public iteration exposes only fully decoded grant and expiry pairs. Exact credit identifiers
+/// remain redacted and can be resolved only when the observation is complete and one exact public
+/// descriptor matches inside the adapter/runtime boundary.
 #[derive(Clone, Eq, PartialEq)]
 pub struct ResetCardInventory {
 	available_cards: Vec<AvailableResetCardObservation>,
 	exact_ids: Vec<ExactResetCreditId>,
+	reported_available_count: Option<u64>,
+	details_complete: bool,
 	quota_windows: [AccountRateLimitObservation; 2],
 }
 impl ResetCardInventory {
 	fn from_wire(wire: ResetCardInventoryWire) -> Result<Self, ResetCardProtocolError> {
 		let quota_windows =
 			decode_quota_windows(wire.rate_limits_by_limit_id.as_ref(), wire.rate_limits.as_ref());
-		let summary =
-			wire.rate_limit_reset_credits.ok_or(ResetCardProtocolError::DetailsUnavailable)?;
-		let credits = summary.credits.ok_or(ResetCardProtocolError::DetailsUnavailable)?;
-		let available_count = usize::try_from(summary.available_count)
+		let Some(summary) = wire.rate_limit_reset_credits else {
+			return Ok(Self {
+				available_cards: Vec::new(),
+				exact_ids: Vec::new(),
+				reported_available_count: None,
+				details_complete: false,
+				quota_windows,
+			});
+		};
+		let reported_available_count = u64::try_from(summary.available_count)
 			.map_err(|_| ResetCardProtocolError::InvalidAvailableCount)?;
-
-		if available_count > MAX_RESET_CARDS_PER_INVENTORY
-			|| credits.len() > MAX_RESET_CARDS_PER_INVENTORY
-		{
-			return Err(ResetCardProtocolError::InventoryLimitExceeded);
-		}
-
-		let mut available_cards = Vec::with_capacity(credits.len());
-		let mut exact_ids = Vec::<ExactResetCreditId>::with_capacity(credits.len());
+		let Some(credits) = summary.credits else {
+			return Ok(Self {
+				available_cards: Vec::new(),
+				exact_ids: Vec::new(),
+				reported_available_count: Some(reported_available_count),
+				details_complete: reported_available_count == 0,
+				quota_windows,
+			});
+		};
+		let details_within_bound = credits.len() <= MAX_RESET_CARDS_PER_INVENTORY;
+		let retained_capacity = credits.len().min(MAX_RESET_CARDS_PER_INVENTORY);
+		let mut available_cards = Vec::with_capacity(retained_capacity);
+		let mut exact_ids = Vec::<ExactResetCreditId>::with_capacity(retained_capacity);
 		let mut descriptors = BTreeSet::new();
+		let mut details_complete = details_within_bound;
 
-		for credit in credits {
+		for credit in credits.into_iter().take(MAX_RESET_CARDS_PER_INVENTORY) {
 			match credit.status.as_str() {
 				"available" => {},
 				"redeeming" | "redeemed" => continue,
-				_ => return Err(ResetCardProtocolError::UnknownCreditStatus),
+				_ => {
+					details_complete = false;
+					continue;
+				},
 			}
 			if credit.reset_type != "codexRateLimits" {
-				return Err(ResetCardProtocolError::UnsupportedResetType);
+				details_complete = false;
+				continue;
 			}
 
-			let expires_at =
-				credit.expires_at.ok_or(ResetCardProtocolError::IncompleteCreditDetails)?;
-			let granted_at = ResetCardTimestamp::from_unix_seconds(credit.granted_at)
-				.map_err(map_timestamp_error)?;
-			let expires_at =
-				ResetCardTimestamp::from_unix_seconds(expires_at).map_err(map_timestamp_error)?;
-			let descriptor =
-				ResetCardDescriptor::new(granted_at, expires_at).map_err(map_descriptor_error)?;
-			let exact_id = ExactResetCreditId::from_zeroizing(credit.id.0)?;
+			let Some(expires_at) = credit.expires_at else {
+				details_complete = false;
+				continue;
+			};
+			let (Ok(granted_at), Ok(expires_at)) = (
+				ResetCardTimestamp::from_unix_seconds(credit.granted_at),
+				ResetCardTimestamp::from_unix_seconds(expires_at),
+			) else {
+				details_complete = false;
+				continue;
+			};
+			let Ok(descriptor) = ResetCardDescriptor::new(granted_at, expires_at) else {
+				details_complete = false;
+				continue;
+			};
+			let Ok(exact_id) = ExactResetCreditId::from_zeroizing(credit.id.0) else {
+				details_complete = false;
+				continue;
+			};
 
 			if exact_ids.iter().any(|existing| existing == &exact_id) {
-				return Err(ResetCardProtocolError::DuplicateCreditId);
+				details_complete = false;
+				continue;
 			}
 			if !descriptors.insert(descriptor) {
-				return Err(ResetCardProtocolError::DuplicatePublicDescriptor);
+				details_complete = false;
+				continue;
 			}
 
 			available_cards.push(AvailableResetCardObservation { descriptor });
 			exact_ids.push(exact_id);
 		}
-		if available_count != available_cards.len() {
-			return Err(ResetCardProtocolError::InventoryCountMismatch);
-		}
+		details_complete &=
+			reported_available_count == u64::try_from(available_cards.len()).unwrap_or(u64::MAX);
 
-		Ok(Self { available_cards, exact_ids, quota_windows })
+		Ok(Self {
+			available_cards,
+			exact_ids,
+			reported_available_count: Some(reported_available_count),
+			details_complete,
+			quota_windows,
+		})
 	}
 
-	/// Number of complete available cards in this exact observation.
+	/// Number of fully decoded available cards retained in this observation.
 	pub fn available_count(&self) -> usize {
 		self.available_cards.len()
 	}
 
-	/// Public complete cards in provider order.
+	/// Provider-reported available count, when the provider supplied reset-card summary data.
+	pub const fn reported_available_count(&self) -> Option<u64> {
+		self.reported_available_count
+	}
+
+	/// Whether every reported available card has one bounded, unique, selectable descriptor.
+	pub const fn details_complete(&self) -> bool {
+		self.details_complete
+	}
+
+	/// Public fully decoded cards in provider order.
+	///
+	/// Callers must also require [`Self::details_complete`] before they expose these descriptors
+	/// for selection.
 	pub fn available_cards(&self) -> &[AvailableResetCardObservation] {
 		&self.available_cards
 	}
@@ -206,6 +254,9 @@ impl ResetCardInventory {
 		&self,
 		descriptor: ResetCardDescriptor,
 	) -> Result<ExactResetCreditId, ResetCardResolutionError> {
+		if !self.details_complete {
+			return Err(ResetCardResolutionError::Incomplete);
+		}
 		let mut matches = self
 			.available_cards
 			.iter()
@@ -228,6 +279,8 @@ impl Debug for ResetCardInventory {
 		formatter
 			.debug_struct("ResetCardInventory")
 			.field("available_cards", &self.available_cards)
+			.field("reported_available_count", &self.reported_available_count)
+			.field("details_complete", &self.details_complete)
 			.field("quota_windows", &self.quota_windows)
 			.finish()
 	}
@@ -410,30 +463,10 @@ pub enum ResetCardProtocolError {
 	FrameLimitExceeded,
 	/// JSON, field types, or the strict provider result shape were invalid.
 	MalformedResponse,
-	/// The inventory summary or its full details were absent.
-	DetailsUnavailable,
 	/// `availableCount` was negative or not representable.
 	InvalidAvailableCount,
-	/// The provider count differed from the complete detail count.
-	InventoryCountMismatch,
-	/// The provider inventory exceeded the accepted collection bound.
-	InventoryLimitExceeded,
-	/// One provider credit omitted a required public timestamp.
-	IncompleteCreditDetails,
-	/// One provider credit timestamp was before the Unix epoch.
-	InvalidCreditTimestamp,
-	/// One provider credit expired no later than it was granted.
-	InvalidCreditChronology,
 	/// One exact provider credit identifier was empty, oversized, or not a safe scalar.
 	InvalidCreditId,
-	/// The provider repeated an exact credit identifier.
-	DuplicateCreditId,
-	/// The provider repeated a public grant/expiry descriptor.
-	DuplicatePublicDescriptor,
-	/// A credit used a reset type other than `codexRateLimits`.
-	UnsupportedResetType,
-	/// A credit used an unknown status.
-	UnknownCreditStatus,
 	/// An idempotency key was empty, oversized, or not a safe scalar.
 	InvalidIdempotencyKey,
 	/// The consume result used an unknown outcome.
@@ -446,19 +479,8 @@ impl Display for ResetCardProtocolError {
 		formatter.write_str(match self {
 			Self::FrameLimitExceeded => "reset-card app-server result exceeds the frame limit",
 			Self::MalformedResponse => "reset-card app-server result is malformed",
-			Self::DetailsUnavailable => "complete reset-card details are unavailable",
 			Self::InvalidAvailableCount => "reset-card available count is invalid",
-			Self::InventoryCountMismatch =>
-				"reset-card available count does not match complete details",
-			Self::InventoryLimitExceeded => "reset-card inventory exceeds its collection limit",
-			Self::IncompleteCreditDetails => "reset-card public details are incomplete",
-			Self::InvalidCreditTimestamp => "reset-card provider timestamp is invalid",
-			Self::InvalidCreditChronology => "reset-card provider chronology is invalid",
 			Self::InvalidCreditId => "reset-card provider credit identity is invalid",
-			Self::DuplicateCreditId => "reset-card provider credit identity is duplicated",
-			Self::DuplicatePublicDescriptor => "reset-card public descriptor is duplicated",
-			Self::UnsupportedResetType => "reset-card provider type is unsupported",
-			Self::UnknownCreditStatus => "reset-card provider status is unknown",
 			Self::InvalidIdempotencyKey => "reset-card idempotency key is invalid",
 			Self::UnknownConsumeOutcome => "reset-card consume outcome is unknown",
 		})
@@ -468,6 +490,8 @@ impl Display for ResetCardProtocolError {
 /// Exact-descriptor resolution failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ResetCardResolutionError {
+	/// The provider did not return every exact selectable detail for the reported inventory.
+	Incomplete,
 	/// The current complete inventory did not contain the descriptor.
 	NotFound,
 	/// More than one current credit had the descriptor.
@@ -478,6 +502,7 @@ impl Error for ResetCardResolutionError {}
 impl Display for ResetCardResolutionError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.write_str(match self {
+			Self::Incomplete => "reset-card inventory details are incomplete",
 			Self::NotFound => "reset-card descriptor was not found",
 			Self::Ambiguous => "reset-card descriptor is ambiguous",
 		})
@@ -496,7 +521,7 @@ struct ResetCardInventoryWire {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct ResetCardSummaryWire {
 	available_count: i64,
 	#[serde(default)]
@@ -504,7 +529,7 @@ struct ResetCardSummaryWire {
 }
 
 #[derive(Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
+#[serde(rename_all = "camelCase")]
 struct ResetCardCreditWire {
 	id: ZeroizingWireText,
 	granted_at: i64,
@@ -595,10 +620,10 @@ fn parse_quota_window(
 		.and_then(Value::as_u64)
 		.and_then(|value| u8::try_from(value).ok())
 		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
-	let resets_at_seconds = window
-		.get("resetsAt")
-		.and_then(Value::as_i64)
-		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
+	let resets_at_seconds = match window.get("resetsAt") {
+		Some(Value::Null) | None => return Err(AccountQuotaObservationError::UnsupportedWindow),
+		Some(value) => value.as_i64().ok_or(AccountQuotaObservationError::ProtocolUnavailable)?,
+	};
 	let resets_at_micros = resets_at_seconds
 		.checked_mul(1_000_000)
 		.ok_or(AccountQuotaObservationError::ProtocolUnavailable)?;
@@ -639,20 +664,6 @@ fn is_bounded_scalar(value: &str, max_bytes: usize) -> bool {
 		&& value.len() <= max_bytes
 		&& value.trim() == value
 		&& !value.chars().any(char::is_control)
-}
-
-fn map_timestamp_error(error: ResetCardError) -> ResetCardProtocolError {
-	match error {
-		ResetCardError::NegativeTimestamp => ResetCardProtocolError::InvalidCreditTimestamp,
-		ResetCardError::ExpirationNotAfterGrant => ResetCardProtocolError::InvalidCreditChronology,
-	}
-}
-
-fn map_descriptor_error(error: ResetCardError) -> ResetCardProtocolError {
-	match error {
-		ResetCardError::NegativeTimestamp => ResetCardProtocolError::InvalidCreditTimestamp,
-		ResetCardError::ExpirationNotAfterGrant => ResetCardProtocolError::InvalidCreditChronology,
-	}
 }
 
 #[cfg(test)]
@@ -730,6 +741,8 @@ mod tests {
 		let inventory = decode_reset_card_inventory(&bytes).unwrap();
 
 		assert_eq!(inventory.available_count(), 2);
+		assert_eq!(inventory.reported_available_count(), Some(2));
+		assert!(inventory.details_complete());
 		assert_eq!(
 			inventory.available_cards().iter().map(|card| card.descriptor()).collect::<Vec<_>>(),
 			vec![descriptor(100, 200), descriptor(300, 400)]
@@ -880,6 +893,31 @@ mod tests {
 			inventory.quota_windows()[1].result(),
 			Err(AccountQuotaObservationError::UnsupportedWindow)
 		);
+
+		let null_reset = inventory_with_limits(
+			json!({
+				"primary": {
+					"usedPercent": 9,
+					"windowDurationMins": 300,
+					"resetsAt": null
+				},
+				"secondary": {
+					"usedPercent": 19,
+					"windowDurationMins": 10_080,
+					"resetsAt": "invalid"
+				}
+			}),
+			json!(null),
+		);
+		let inventory = decode_reset_card_inventory(&null_reset).unwrap();
+		assert_eq!(
+			inventory.quota_windows()[0].result(),
+			Err(AccountQuotaObservationError::UnsupportedWindow)
+		);
+		assert_eq!(
+			inventory.quota_windows()[1].result(),
+			Err(AccountQuotaObservationError::ProtocolUnavailable)
+		);
 	}
 
 	#[test]
@@ -945,24 +983,43 @@ mod tests {
 	}
 
 	#[test]
-	fn inventory_rejects_missing_or_capped_details() {
+	fn inventory_accepts_missing_null_capped_and_bounded_partial_details() {
+		let missing = decode_reset_card_inventory(br#"{"rateLimits":{}}"#).unwrap();
+		assert_eq!(missing.reported_available_count(), None);
+		assert!(!missing.details_complete());
+		assert!(missing.available_cards().is_empty());
+
+		let null_details = decode_reset_card_inventory(
+			br#"{"rateLimitResetCredits":{"availableCount":1,"credits":null}}"#,
+		)
+		.unwrap();
+		assert_eq!(null_details.reported_available_count(), Some(1));
+		assert!(!null_details.details_complete());
 		assert_eq!(
-			decode_reset_card_inventory(br#"{"rateLimits":{}}"#),
-			Err(ResetCardProtocolError::DetailsUnavailable)
+			null_details.resolve_exact_credit_id(descriptor(100, 200)),
+			Err(ResetCardResolutionError::Incomplete)
 		);
+		let definitive_empty = decode_reset_card_inventory(
+			br#"{"rateLimitResetCredits":{"availableCount":0,"credits":null}}"#,
+		)
+		.unwrap();
+		assert_eq!(definitive_empty.reported_available_count(), Some(0));
+		assert!(definitive_empty.details_complete());
+		assert!(definitive_empty.available_cards().is_empty());
+
+		let capped = decode_reset_card_inventory(&inventory_json(
+			json!([credit("credit-a", 100, json!(200))]),
+			2,
+		))
+		.unwrap();
+		assert_eq!(capped.reported_available_count(), Some(2));
+		assert_eq!(capped.available_count(), 1);
+		assert!(!capped.details_complete());
 		assert_eq!(
-			decode_reset_card_inventory(
-				br#"{"rateLimitResetCredits":{"availableCount":1,"credits":null}}"#
-			),
-			Err(ResetCardProtocolError::DetailsUnavailable)
+			capped.resolve_exact_credit_id(descriptor(100, 200)),
+			Err(ResetCardResolutionError::Incomplete)
 		);
-		assert_eq!(
-			decode_reset_card_inventory(&inventory_json(
-				json!([credit("credit-a", 100, json!(200))]),
-				2
-			)),
-			Err(ResetCardProtocolError::InventoryCountMismatch)
-		);
+
 		assert_eq!(
 			decode_reset_card_inventory(
 				br#"{"rateLimitResetCredits":{"availableCount":-1,"credits":[]}}"#
@@ -981,36 +1038,45 @@ mod tests {
 
 		assert_eq!(super::MAX_RESET_CARDS_PER_INVENTORY, 64);
 		assert_eq!(inventory.available_count(), 64);
+		assert_eq!(inventory.reported_available_count(), Some(64));
+		assert!(inventory.details_complete());
 
 		let oversized = (0..=super::MAX_RESET_CARDS_PER_INVENTORY)
 			.map(|index| credit(&format!("credit-{index}"), index as i64, json!(index + 1)))
 			.collect::<Vec<_>>();
-
+		let oversized = decode_reset_card_inventory(&inventory_json(
+			json!(oversized),
+			(super::MAX_RESET_CARDS_PER_INVENTORY + 1) as i64,
+		))
+		.unwrap();
+		assert_eq!(oversized.available_count(), super::MAX_RESET_CARDS_PER_INVENTORY);
 		assert_eq!(
-			decode_reset_card_inventory(&inventory_json(
-				json!(oversized),
-				(super::MAX_RESET_CARDS_PER_INVENTORY + 1) as i64
-			)),
-			Err(ResetCardProtocolError::InventoryLimitExceeded)
+			oversized.reported_available_count(),
+			Some((super::MAX_RESET_CARDS_PER_INVENTORY + 1) as u64)
 		);
+		assert!(!oversized.details_complete());
 	}
 
 	#[test]
-	fn inventory_rejects_duplicate_public_or_private_identity() {
-		assert_eq!(
+	fn duplicate_public_or_private_identity_makes_details_non_selectable() {
+		for inventory in [
 			decode_reset_card_inventory(&inventory_json(
 				json!([credit("credit-a", 100, json!(200)), credit("credit-b", 100, json!(200))]),
-				2
-			)),
-			Err(ResetCardProtocolError::DuplicatePublicDescriptor)
-		);
-		assert_eq!(
+				2,
+			))
+			.unwrap(),
 			decode_reset_card_inventory(&inventory_json(
 				json!([credit("credit-a", 100, json!(200)), credit("credit-a", 300, json!(400))]),
-				2
-			)),
-			Err(ResetCardProtocolError::DuplicateCreditId)
-		);
+				2,
+			))
+			.unwrap(),
+		] {
+			assert!(!inventory.details_complete());
+			assert_eq!(
+				inventory.resolve_exact_credit_id(descriptor(100, 200)),
+				Err(ResetCardResolutionError::Incomplete)
+			);
+		}
 	}
 
 	#[test]
@@ -1035,50 +1101,87 @@ mod tests {
 			!inventory
 				.contains_exact_credit_id(&ExactResetCreditId::new("credit-redeemed").unwrap())
 		);
-		assert_eq!(
-			decode_reset_card_inventory(&inventory_json(credits, 2)),
-			Err(ResetCardProtocolError::InventoryCountMismatch)
-		);
+		let count_mismatch = decode_reset_card_inventory(&inventory_json(credits, 2)).unwrap();
+		assert_eq!(count_mismatch.reported_available_count(), Some(2));
+		assert!(!count_mismatch.details_complete());
 	}
 
 	#[test]
-	fn inventory_rejects_incomplete_invalid_or_unknown_card_fields() {
+	fn incomplete_invalid_unknown_or_extended_card_fields_are_non_selectable_partial_details() {
 		let cases = [
-			(credit("credit-a", 100, Value::Null), ResetCardProtocolError::IncompleteCreditDetails),
-			(credit("credit-a", -1, json!(200)), ResetCardProtocolError::InvalidCreditTimestamp),
-			(credit("credit-a", 200, json!(200)), ResetCardProtocolError::InvalidCreditChronology),
-			(
-				{
-					let mut value = credit("credit-a", 100, json!(200));
-					value["resetType"] = json!("unknown");
-					value
-				},
-				ResetCardProtocolError::UnsupportedResetType,
-			),
-			(
-				{
-					let mut value = credit("credit-a", 100, json!(200));
-					value["status"] = json!("unknown");
-					value
-				},
-				ResetCardProtocolError::UnknownCreditStatus,
-			),
+			credit("credit-a", 100, Value::Null),
+			credit("credit-a", -1, json!(200)),
+			credit("credit-a", 200, json!(200)),
+			{
+				let mut value = credit("credit-a", 100, json!(200));
+				value["resetType"] = json!("unknown");
+				value
+			},
+			{
+				let mut value = credit("credit-a", 100, json!(200));
+				value["status"] = json!("unknown");
+				value
+			},
 		];
 
-		for (credit, expected) in cases {
-			assert_eq!(
-				decode_reset_card_inventory(&inventory_json(json!([credit]), 1)),
-				Err(expected)
-			);
+		for credit in cases {
+			let inventory =
+				decode_reset_card_inventory(&inventory_json(json!([credit]), 1)).unwrap();
+			assert_eq!(inventory.reported_available_count(), Some(1));
+			assert!(inventory.available_cards().is_empty());
+			assert!(!inventory.details_complete());
 		}
 
 		let mut unknown_field = credit("credit-a", 100, json!(200));
 		unknown_field["providerExtension"] = json!(true);
+		let mut extended =
+			serde_json::from_slice::<Value>(&inventory_json(json!([unknown_field]), 1)).unwrap();
+		extended["rateLimitResetCredits"]["providerExtension"] = json!("ignored");
+		let inventory =
+			decode_reset_card_inventory(&serde_json::to_vec(&extended).unwrap()).unwrap();
+		assert!(inventory.details_complete());
+		assert_eq!(inventory.available_count(), 1);
+	}
 
-		assert_eq!(
-			decode_reset_card_inventory(&inventory_json(json!([unknown_field]), 1)),
-			Err(ResetCardProtocolError::MalformedResponse)
-		);
+	#[test]
+	fn partial_reset_card_details_do_not_discard_valid_quota_windows() {
+		let quota = json!({
+			"primary": {
+				"usedPercent": 12,
+				"windowDurationMins": 300,
+				"resetsAt": 2_000
+			},
+			"secondary": {
+				"usedPercent": 34,
+				"windowDurationMins": 10_080,
+				"resetsAt": 3_000
+			}
+		});
+		for reset_credits in [
+			Value::Null,
+			json!({"availableCount": 2, "credits": null}),
+			json!({
+				"availableCount": 2,
+				"credits": [credit("credit-a", 100, json!(200))]
+			}),
+		] {
+			let bytes = serde_json::to_vec(&json!({
+				"rateLimits": quota,
+				"rateLimitResetCredits": reset_credits
+			}))
+			.unwrap();
+			let inventory = decode_reset_card_inventory(&bytes).unwrap();
+
+			assert!(!inventory.details_complete());
+			assert_eq!(
+				inventory.quota_windows()[0].result(),
+				Ok(AccountQuotaWindow::new(300, 12, 2_000_000_000).unwrap())
+			);
+			assert_eq!(
+				inventory.quota_windows()[1].result(),
+				Ok(AccountQuotaWindow::new(10_080, 34, 3_000_000_000).unwrap())
+			);
+		}
 	}
 
 	#[test]

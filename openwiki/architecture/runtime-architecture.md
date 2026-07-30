@@ -1202,10 +1202,12 @@ all-depleted wake remain later XY-1304 obligations.
 
 ## Manual reset-card service
 
-Protocol V2.0 exposes bounded account discovery, complete reset-card inventory, manual
-consume, and durable operation-status reads. The public identity is one canonical vNext
-account UUID, its optimistic revision, and a card descriptor made only from grant and
-expiry timestamps. No protocol or client type carries the provider credit ID.
+Protocol V2.0 exposes bounded account discovery, reset-card observations, manual consume,
+and durable operation-status reads. An observation carries the provider-reported available
+count when present, an explicit detail-completeness flag, and public descriptors only for a
+complete unique inventory. The public identity is one canonical vNext account UUID, its
+optimistic revision, and a card descriptor made only from grant and expiry timestamps. No
+protocol or client type carries the provider credit ID.
 
 The shared Rust service and CLI contain no macOS-only reset-card implementation. They
 run on the supported macOS and Linux runtime hosts. Only the native SwiftUI client is
@@ -1229,12 +1231,18 @@ projection only.
 Before any reset-card read or consume, the Codex adapter requires the generated schema to
 advertise both `account/rateLimits/read` and
 `account/rateLimitResetCredit/consume`. It attests the configured account in an isolated
-app-server process and accepts only a complete, unique inventory. Quota decoding selects
-the upstream `codex` limit-ID snapshot, or the required default snapshot when that map
-entry is absent. It never merges unrelated limit-ID buckets. A null quota window becomes
-an independent unsupported-duration result and does not invalidate another duration. A
-client selects a public descriptor. The daemon resolves its one current opaque provider
-credit ID.
+app-server process. A read accepts the upstream count-only, capped, unknown-extension, or
+otherwise partial detail forms without discarding valid quota facts. A zero reported count
+is a definitive empty inventory even when the optional detail array is null. Only a complete,
+bounded, unique descriptor set can enter exact-credit resolution or effect reconciliation.
+Quota decoding selects the upstream `codex` limit-ID snapshot, or the required default
+snapshot when that map entry is absent. It never merges unrelated limit-ID buckets. A null
+quota window or reset timestamp becomes an independent unsupported-duration result and does
+not invalidate another duration. Before the read, the Account Service refreshes only an
+expired access token or one that cannot cover the bounded process deadline. It serializes
+that refresh under the existing per-account lock and reuses the existing journal and
+credential compare-and-swap. A client selects a public descriptor. The daemon resolves its
+one current opaque provider credit ID.
 
 The consume path commits the logical command, account UUID and revision, public
 descriptor, provider idempotency key, and then the exact provider credit ID before it

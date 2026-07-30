@@ -48,6 +48,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
 		)
+		let statusPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("StatusPanelController.swift"),
+			encoding: .utf8
+		)
 		let panelWindow = try String(
 			contentsOf: sourceURL.appendingPathComponent("PanelWindowSizing.swift"),
 			encoding: .utf8
@@ -72,8 +76,15 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains("ordinal"))
 		XCTAssertTrue(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
 		XCTAssertFalse(resetCards.contains("identity.showsEmail ? \"envelope\""))
-		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
-		XCTAssertTrue(appScene.contains(".preferredColorScheme(.dark)"))
+		XCTAssertFalse(appScene.contains("MenuBarExtra"))
+		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
+		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
+		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel"))
+		XCTAssertTrue(statusPanel.contains("styleMask: [.borderless]"))
+		XCTAssertTrue(statusPanel.contains("NSHostingView(rootView: StatusPanelRootView"))
+		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
+		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
+		XCTAssertTrue(statusPanel.contains(".preferredColorScheme(.dark)"))
 		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
