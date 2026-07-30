@@ -61,11 +61,13 @@ preserved and blocks new use.
 
 The panel also exposes current daemon-owned account controls: enroll the
 currently signed-in shared Codex login, enable or disable, refresh credentials,
-log out, and select fixed or balanced routing. `Use in Codex` explicitly and
-atomically projects one exact daemon-owned login to shared `~/.codex/auth.json`
-for future Codex launches. It does not change Decodex routing. The Fast control
-updates only the current Codex `[features].fast_mode` preference through the
-in-process native client.
+log out, and select fixed or balanced routing. Each account row has one `Route`
+control. It first projects that exact daemon-owned login to shared
+`~/.codex/auth.json` for future Codex launches, then selects the same account as
+the fixed Decodex route. The underlying typed commands remain independently
+fenced, and retrying the control completes whichever step is not current. The
+Fast control updates only the current Codex `[features].fast_mode` preference
+through the in-process native client.
 
 The app is intentionally menu-bar-only and uses the accessory activation
 policy. It does not own daemon startup or credential persistence.
