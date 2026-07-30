@@ -1,11 +1,8 @@
 import SwiftUI
 
-struct AccountRowActionsView: View {
+struct AccountPrimaryActionsView: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
-	@Binding var isPresentingDetails: Bool
-	@Environment(\.colorScheme) private var colorScheme
-	@State private var isLogoutArmed = false
 
 	var body: some View {
 		HStack(spacing: 4) {
@@ -43,9 +40,58 @@ struct AccountRowActionsView: View {
 					await store.selectFixedAccount(state.account.accountID)
 				}
 			}
+		}
+		.fixedSize(horizontal: true, vertical: false)
+		.layoutPriority(1)
+	}
 
-			Spacer(minLength: 2)
+	private var isCodexProjection: Bool {
+		store.isCodexProjection(state.account.accountID)
+	}
 
+	private var codexActionIsDisabled: Bool {
+		isCodexProjection
+			|| canSelect == false
+			|| store.canPerformDirectAccountControl == false
+			|| store.isControllingAccount(state.account.accountID)
+			|| store.isEnrollingAccount
+			|| store.isRoutingAccountControl
+			|| store.submittingKey != nil
+	}
+
+	private var routingActionIsDisabled: Bool {
+		isFixed
+			|| canSelect == false
+			|| store.canPerformDirectAccountControl == false
+			|| store.isRoutingAccountControl
+			|| store.isAccountControlInProgress
+			|| store.submittingKey != nil
+	}
+
+	private var canSelect: Bool {
+		state.account.enabled
+			&& state.account.lifecycleReadiness == .ready
+			&& state.account.unsettledOperation == nil
+			&& store.isAwaitingFreshAccountSkeleton(state.account.accountID) == false
+	}
+
+	private var isFixed: Bool {
+		guard case .fixed(let accountID) = store.routing?.mode else {
+			return false
+		}
+		return accountID == state.account.accountID
+	}
+}
+
+struct AccountUtilityActionsView: View {
+	let state: ResetCardAccountState
+	let store: ResetCardStore
+	@Binding var isPresentingDetails: Bool
+	@Environment(\.colorScheme) private var colorScheme
+	@State private var isLogoutArmed = false
+
+	var body: some View {
+		HStack(spacing: 2) {
 			PanelIconButtonView(
 				symbol: "chart.bar.xaxis",
 				tint: PanelPalette.actionBlue(colorScheme),
@@ -95,6 +141,7 @@ struct AccountRowActionsView: View {
 				logoutConfirmation
 			}
 		}
+		.fixedSize(horizontal: true, vertical: false)
 		.onChange(of: state.account.accountRevision) {
 			isLogoutArmed = false
 		}
@@ -132,49 +179,12 @@ struct AccountRowActionsView: View {
 		.padding(12)
 	}
 
-	private var isCodexProjection: Bool {
-		store.isCodexProjection(state.account.accountID)
-	}
-
-	private var codexActionIsDisabled: Bool {
-		isCodexProjection
-			|| canSelect == false
-			|| store.canPerformDirectAccountControl == false
-			|| store.isControllingAccount(state.account.accountID)
-			|| store.isEnrollingAccount
-			|| store.isRoutingAccountControl
-			|| store.submittingKey != nil
-	}
-
-	private var routingActionIsDisabled: Bool {
-		isFixed
-			|| canSelect == false
-			|| store.canPerformDirectAccountControl == false
-			|| store.isRoutingAccountControl
-			|| store.isAccountControlInProgress
-			|| store.submittingKey != nil
-	}
-
 	private var lifecycleActionIsDisabled: Bool {
 		store.isRefreshing
 			|| store.isRefreshingAccountSkeleton
 			|| store.isAccountControlInProgress
 			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
 			|| store.submittingKey != nil
-	}
-
-	private var canSelect: Bool {
-		state.account.enabled
-			&& state.account.lifecycleReadiness == .ready
-			&& state.account.unsettledOperation == nil
-			&& store.isAwaitingFreshAccountSkeleton(state.account.accountID) == false
-	}
-
-	private var isFixed: Bool {
-		guard case .fixed(let accountID) = store.routing?.mode else {
-			return false
-		}
-		return accountID == state.account.accountID
 	}
 }
 
@@ -240,14 +250,13 @@ private struct CompactAccountActionButton: View {
 					? PanelPalette.routeAccent(colorScheme)
 					: PanelPalette.primaryText(colorScheme).opacity(0.88)
 			)
-			.padding(.horizontal, 6)
-			.frame(minHeight: 23)
-			.modernGlassSurface(cornerRadius: 7, depth: .control)
+			.padding(.horizontal, 2)
+			.frame(minHeight: 20)
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
 		.disabled(isDisabled)
-		.opacity(isDisabled ? 0.42 : 1)
+		.opacity(isDisabled && isActive == false ? 0.44 : 1)
 		.help(help)
 		.accessibilityLabel(title)
 		.accessibilityHint(help)

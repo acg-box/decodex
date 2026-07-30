@@ -33,9 +33,9 @@ Email is redacted by default. The eye control requests it explicitly and hiding
 it immediately removes the value from retained presentation state. Cached or
 unavailable profile data remains row-scoped and never hides Reset Cards.
 
-The panel uses compact divider-separated rows and shows every account when they
-fit on the active display. On shorter displays, the account list remains
-scrollable without a persistent scroll indicator.
+The panel uses compact individually glass-backed rows with transparent gaps and
+shows every account when they fit on the active display. On shorter displays,
+the account list remains scrollable without a persistent scroll indicator.
 The window and its interactive controls use only the system clear Liquid Glass
 material. Account rows have no custom opaque background, tint, stroke, blur, or
 shadow, so the system owns translucency, refraction, pointer response, and

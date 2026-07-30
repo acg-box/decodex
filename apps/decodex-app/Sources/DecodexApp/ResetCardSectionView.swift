@@ -29,7 +29,7 @@ struct ResetCardMessageView: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 6)
-		.modernGlassSurface(cornerRadius: 8, depth: .row)
+		.modernGlassSurface(cornerRadius: 14)
 	}
 
 	private var symbol: String {
@@ -97,7 +97,7 @@ struct ResetCardPendingAttemptsView: View {
 		}
 		.padding(.horizontal, 8)
 		.padding(.vertical, 6)
-		.modernGlassSurface(cornerRadius: 8, depth: .row)
+		.modernGlassSurface(cornerRadius: 14)
 	}
 }
 
@@ -125,21 +125,35 @@ struct ResetCardAccountRow: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 3) {
-			identityHeader
+		VStack(alignment: .leading, spacing: 2) {
+			HStack(alignment: .center, spacing: 4) {
+				identityHeader
+				AccountPrimaryActionsView(
+					state: state,
+					store: store
+				)
+			}
+
 			if exceptionalStatusText != nil {
 				exceptionalStatus
 			}
-			AccountRowActionsView(
-				state: state,
-				store: store,
-				isPresentingDetails: detailsBinding
-			)
+
 			quotaWindows
-			cardInventory
+
+			HStack(alignment: .center, spacing: 4) {
+				cardInventory
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.layoutPriority(1)
+
+				AccountUtilityActionsView(
+					state: state,
+					store: store,
+					isPresentingDetails: detailsBinding
+				)
+			}
 		}
-		.padding(.horizontal, 7)
-		.padding(.vertical, 5)
+		.padding(.horizontal, 9)
+		.padding(.vertical, 6)
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -170,9 +184,8 @@ struct ResetCardAccountRow: View {
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.layoutPriority(1)
-
-			Spacer(minLength: 2)
 		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(
 			identity.showsEmail
@@ -326,14 +339,14 @@ struct ResetCardAccountRow: View {
 						}
 						.buttonStyle(.plain)
 						.disabled(store.blocksNewAttempt(for: target))
-						.frame(minHeight: 24)
+						.frame(minHeight: 20)
 						.accessibilityLabel(accessibilityLabel(target, ordinal: index + 1))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target, ordinal: index + 1))
 					}
 				}
 			}
-			.frame(height: 24)
+			.frame(height: 20)
 			.fixedSize(horizontal: false, vertical: true)
 		}
 	}
@@ -358,9 +371,7 @@ struct ResetCardAccountRow: View {
 		.monospacedDigit()
 		.lineLimit(1)
 		.fixedSize(horizontal: true, vertical: false)
-		.padding(.horizontal, 5)
-		.padding(.vertical, 1.5)
-		.modernGlassSurface(cornerRadius: 6, depth: .control)
+		.padding(.horizontal, 2)
 		.contentShape(Rectangle())
 	}
 
