@@ -1096,6 +1096,8 @@ pub enum ResetCardError {
 	InventoryIncomplete,
 	/// The selected public descriptor no longer identifies the same available card.
 	InventoryChanged,
+	/// The daemon's bounded provider observation deadline elapsed.
+	RequestTimedOut,
 	/// A bounded local resource limit was reached.
 	ResourceExhausted,
 	/// Authoritative product state was unavailable.
@@ -4009,6 +4011,15 @@ mod tests {
 			}
 		});
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(contradictory_empty).is_err());
+		let timed_out =
+			ResetCardInventoryResult::Unavailable { error: super::ResetCardError::RequestTimedOut };
+		let encoded_timeout = serde_json::to_value(&timed_out).unwrap();
+		assert_eq!(encoded_timeout["outcome"], "unavailable");
+		assert_eq!(encoded_timeout["data"]["error"], "request_timed_out");
+		assert_eq!(
+			serde_json::from_value::<ResetCardInventoryResult>(encoded_timeout).unwrap(),
+			timed_out,
+		);
 		assert_reset_card_outbound_bounds(account_id);
 	}
 

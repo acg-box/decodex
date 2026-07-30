@@ -2176,7 +2176,7 @@ private extension ResetCardServiceError {
 	var isRetryableReadFailure: Bool {
 		switch self {
 		case .accountNotFound, .accountStateRejected, .vaultUnavailable, .providerUnavailable,
-			.inventoryIncomplete, .inventoryChanged, .resourceExhausted,
+			.inventoryIncomplete, .inventoryChanged, .requestTimedOut, .resourceExhausted,
 			.productStateUnavailable, .effectAmbiguous:
 			return true
 		case .invalidRequest, .schemaUnsupported:
