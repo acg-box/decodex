@@ -99,7 +99,7 @@ fn ledger_writer_prunes_oldest_rows_before_commit() {
 	connection.close().expect("bounded ledger should close");
 }
 
-fn private_temp_dir() -> tempfile::TempDir {
+fn private_temp_dir() -> crate::private_fs::PrivateTestDirectory {
 	let temp_dir = crate::test_support::private_tempdir();
 
 	std::fs::set_permissions(temp_dir.path(), std::fs::Permissions::from_mode(0o700))
