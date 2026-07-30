@@ -88,6 +88,16 @@ pub(crate) enum HistoryCacheDiagnostic {
 	Unavailable,
 }
 
+#[cfg(test)]
+const MAX_CACHE_PROBE_EVENTS: usize = 2;
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HistoryCacheProbeEvent {
+	LookupStarted,
+	PublicationStarted,
+}
+
 /// Latest page-level continuation observation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HistoryCursorObservation {
@@ -150,6 +160,8 @@ struct HistoryPagerInner {
 	// Publication lock order is page_cache -> commit gate -> state.
 	cache_publication_commit_gate: Mutex<()>,
 	cache_schema_generation: Option<u32>,
+	#[cfg(test)]
+	cache_probe_events: Mutex<Vec<HistoryCacheProbeEvent>>,
 	notify: Notify,
 }
 
@@ -370,6 +382,8 @@ impl HistoryPager {
 					page_cache: Mutex::new(page_cache),
 					cache_publication_commit_gate: Mutex::new(()),
 					cache_schema_generation,
+					#[cfg(test)]
+					cache_probe_events: Mutex::new(Vec::new()),
 					notify: Notify::new(),
 			}),
 		}
@@ -575,6 +589,8 @@ impl HistoryPager {
 		let Some(mut page_cache) = self.try_lock_page_cache() else {
 			return;
 		};
+		#[cfg(test)]
+		self.record_cache_probe_event(HistoryCacheProbeEvent::LookupStarted);
 		let lookup = page_cache.read_lookup(&identity);
 		let mut state = self.lock();
 
@@ -841,6 +857,8 @@ impl HistoryPager {
 
 			return;
 		};
+		#[cfg(test)]
+		self.record_cache_probe_event(HistoryCacheProbeEvent::PublicationStarted);
 		let prepared = match page_cache.prepare_publication(&publication) {
 			Ok(prepared) => prepared,
 			Err(()) => {
@@ -933,6 +951,28 @@ impl HistoryPager {
 			.cache_publication_commit_gate
 			.lock()
 			.unwrap_or_else(std::sync::PoisonError::into_inner)
+	}
+
+	#[cfg(test)]
+	pub(crate) fn cache_probe_events(&self) -> Vec<HistoryCacheProbeEvent> {
+		self.inner
+			.cache_probe_events
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner)
+			.clone()
+	}
+
+	#[cfg(test)]
+	fn record_cache_probe_event(&self, event: HistoryCacheProbeEvent) {
+		let mut events = self
+			.inner
+			.cache_probe_events
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner);
+
+		if events.len() < MAX_CACHE_PROBE_EVENTS {
+			events.push(event);
+		}
 	}
 }
 

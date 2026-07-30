@@ -3,7 +3,7 @@
 use std::{
 	collections::VecDeque,
 	fs,
-	os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink},
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 	path::{Path, PathBuf},
 	sync::{
 		Arc, Mutex,
@@ -29,8 +29,8 @@ use crate::{
 		QuarantineRecovery, RunResult,
 	},
 	history_pager::{
-		HistoryCursorObservation, HistoryDispatch, HistoryLoadState, HistoryNavigationResult,
-		HistoryPageSource, HistoryRetryReason, HistoryStaleReason,
+		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
+		HistoryNavigationResult, HistoryPageSource, HistoryRetryReason, HistoryStaleReason,
 	},
 };
 
@@ -47,6 +47,7 @@ struct FakeConfirmation {
 
 struct PendingSendControl {
 	attempts: AtomicUsize,
+	completed: AtomicUsize,
 	entered: tokio::sync::Semaphore,
 	release: tokio::sync::Semaphore,
 }
@@ -55,6 +56,7 @@ impl PendingSendControl {
 	fn new() -> Self {
 		Self {
 			attempts: AtomicUsize::new(0),
+			completed: AtomicUsize::new(0),
 			entered: tokio::sync::Semaphore::new(0),
 			release: tokio::sync::Semaphore::new(0),
 		}
@@ -70,6 +72,10 @@ impl PendingSendControl {
 
 	fn attempts(&self) -> usize {
 		self.attempts.load(Ordering::SeqCst)
+	}
+
+	fn completed(&self) -> usize {
+		self.completed.load(Ordering::SeqCst)
 	}
 }
 
@@ -304,6 +310,7 @@ struct FakeIo {
 	sent_queries: Arc<Mutex<Vec<QueryEnvelope>>>,
 	query_notify: Arc<tokio::sync::Notify>,
 	pending_send: Option<Arc<PendingSendControl>>,
+	send_failures: VecDeque<RetainedSessionFailure>,
 }
 
 impl FakeIo {
@@ -323,11 +330,16 @@ impl FakeIo {
 			sent_queries: Arc::new(Mutex::new(Vec::new())),
 			query_notify: Arc::new(tokio::sync::Notify::new()),
 			pending_send: None,
+			send_failures: VecDeque::new(),
 		}
 	}
 
 	fn hold_first_send(&mut self, control: Arc<PendingSendControl>) {
 		self.pending_send = Some(control);
+	}
+
+	fn fail_next_send(&mut self, failure: RetainedSessionFailure) {
+		self.send_failures.push_back(failure);
 	}
 }
 
@@ -398,8 +410,14 @@ impl LifecycleIo for FakeIo {
 					.forget();
 			}
 		}
+		if let Some(failure) = self.send_failures.pop_front() {
+			return Err(failure);
+		}
 		self.sent_queries.lock().expect("query log is available").push(query);
 		self.query_notify.notify_waiters();
+		if let Some(control) = self.pending_send.as_ref() {
+			control.completed.fetch_add(1, Ordering::SeqCst);
+		}
 
 		Ok(())
 	}
@@ -677,6 +695,129 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 }
 
 #[tokio::test]
+async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
+	let failed_temporary = TempDir::new().expect("temporary directory is available");
+	let failed_root = cache_parent(&failed_temporary);
+	let mut failed_lifecycle = lifecycle(&failed_root);
+	let failed_pager = failed_lifecycle.history_pager();
+
+	failed_pager
+		.open(entity("conversation-failed-send"))
+		.expect("failed-send history view opens");
+	let mut failed_io = FakeIo::new(
+		failed_root.clone(),
+		vec![connected(
+			vec![
+				SessionAction::Snapshot(snapshot(1, "failed-system", 1)),
+				SessionAction::AwaitCancellation,
+			],
+			None,
+		)],
+	);
+
+	failed_io.fail_next_send(RetainedSessionFailure::Backpressure);
+	failed_io.cancel_backoff = true;
+
+	assert_eq!(failed_lifecycle.run_with_io(&mut failed_io).await, RunResult::Stopped);
+	assert!(failed_pager.cache_probe_events().is_empty());
+	assert!(!failed_root.join("history-page-cache-v1").exists());
+
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+	let pager = lifecycle.history_pager();
+	let cancellation = lifecycle.cancellation();
+	let control = Arc::new(PendingSendControl::new());
+
+	pager.open(entity("conversation-cache-order")).expect("history view opens");
+	let mut io = FakeIo::new(
+		root.clone(),
+		vec![connected(
+			vec![
+				SessionAction::Snapshot(snapshot(1, "system", 1)),
+				SessionAction::AwaitCancellation,
+			],
+			None,
+		)],
+	);
+	let sent_queries = io.sent_queries.clone();
+
+	io.hold_first_send(control.clone());
+	assert!(pager.cache_probe_events().is_empty());
+	assert!(!root.join("history-page-cache-v1").exists());
+
+	let run = lifecycle.run_with_io(&mut io);
+
+	tokio::pin!(run);
+	tokio::select! {
+		result = &mut run => panic!("lifecycle stopped before held send: {result:?}"),
+		_ = control.wait_until_entered() => {},
+	}
+
+	assert_eq!(control.completed(), 0);
+	assert!(pager.cache_probe_events().is_empty());
+	assert!(!root.join("history-page-cache-v1").exists());
+
+	control.release_first();
+
+	let mut lookup_started = false;
+	for _ in 0..64 {
+		if pager.cache_probe_events() == [HistoryCacheProbeEvent::LookupStarted] {
+			lookup_started = true;
+
+			break;
+		}
+
+		tokio::select! {
+			result = &mut run => panic!("lifecycle stopped before cache lookup: {result:?}"),
+			_ = tokio::task::yield_now() => {},
+		}
+	}
+
+	assert!(lookup_started, "successful send must start the matching cache lookup");
+	assert_eq!(control.completed(), 1);
+
+	let query = sent_queries
+		.lock()
+		.expect("query log is available")
+		.first()
+		.cloned()
+		.expect("successful history send is recorded");
+	let server_id = server(SERVER);
+
+	assert!(matches!(
+		pager.route_result(
+			1,
+			&server_id,
+			QueryResultEnvelope {
+				version: CURRENT_VERSION,
+				server_id: server_id.clone(),
+				query_id: query.query_id,
+				payload: QueryResultPayload::ConversationHistory(
+					ConversationHistoryResult::Page(history_page(None)),
+				),
+			},
+		),
+		crate::history_pager::HistoryRouteOutcome::Fresh
+	));
+	assert_eq!(
+		pager.cache_probe_events(),
+		[
+			HistoryCacheProbeEvent::LookupStarted,
+			HistoryCacheProbeEvent::PublicationStarted,
+		]
+	);
+	let fresh = pager.snapshot();
+
+	assert_eq!(fresh.visible, Some(history_page(None)));
+	assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
+
+	cancellation.cancel();
+
+	assert_eq!(run.await, RunResult::Stopped);
+}
+
+#[tokio::test]
 async fn pending_history_send_blocks_replacement_until_settlement() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let root = cache_parent(&temporary);
@@ -895,21 +1036,20 @@ async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged(
 	assert!(lifecycle.quarantine.is_none());
 }
 
+#[derive(Clone, Copy, Debug)]
+enum HistoryCacheFailurePhase {
+	ParentResolution,
+	InitialValidation,
+	PostOpenOperation,
+}
+
 #[tokio::test]
-async fn unsafe_history_cache_path_preserves_fresh_results_and_client_cache_authority() {
-	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_parent(&temporary);
-	let mut lifecycle = lifecycle(&root);
-
-	lifecycle.connection_generation = 1;
-	let inspection = lifecycle
-		.apply_snapshot(1, snapshot(11, "system", 4))
-		.expect("authoritative snapshot publishes");
-	lifecycle
-		.bind_checkpoint(1, Cursor(11), checkpoint(INSTANCE, 11), inspection)
-		.expect("authoritative checkpoint binds");
-
-	let client_root = client_cache_root(&root);
+async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_authority() {
+	let cases = [
+		("parent resolution", HistoryCacheFailurePhase::ParentResolution),
+		("initial validation", HistoryCacheFailurePhase::InitialValidation),
+		("post-open operation", HistoryCacheFailurePhase::PostOpenOperation),
+	];
 	let generation_inventory = |path: &Path| {
 		let mut names = fs::read_dir(path.join("generations"))
 			.expect("generation inventory is readable")
@@ -919,90 +1059,129 @@ async fn unsafe_history_cache_path_preserves_fresh_results_and_client_cache_auth
 		names.sort();
 		names
 	};
-	let inspection_before = lifecycle
-		.cache
-		.as_ref()
-		.expect("client cache is available")
-		.inspect_current()
-		.expect("client cache inspection succeeds")
-		.expect("current client generation exists");
-	let pointer_before =
-		fs::read(client_root.join("current")).expect("current pointer is readable");
-	let generations_before = generation_inventory(&client_root);
-	let binding_before = lifecycle.binding.clone();
-	let inventory_before = lifecycle.state.clone();
-	let cursor_before = lifecycle.last_cursor;
-	let quarantine_before = lifecycle.quarantine;
-	let lexical_parent_before = lifecycle.cache_parent.clone();
-	let linked_target = temporary.path().join("foreign-history-cache");
-	let linked_root = root.join("history-page-cache-v1");
 
-	fs::create_dir(&linked_target).expect("foreign history target is created");
-	fs::set_permissions(&linked_target, fs::Permissions::from_mode(0o700))
-		.expect("foreign history target is owner-private");
-	symlink(&linked_target, &linked_root).expect("history cache root is a symbolic link");
+	for (name, phase) in cases {
+		let temporary = TempDir::new().expect("temporary directory is available");
+		let root = cache_parent(&temporary);
+		let mut lifecycle = lifecycle(&root);
 
-	let pager = lifecycle.history_pager();
-	let server_id = server(SERVER);
-
-	pager.bind_session(1, server_id.clone());
-	pager.open(entity("conversation-isolated")).expect("history view opens");
-	let dispatch = pager.next_dispatch(1, &server_id).await;
-	let send = pager.begin_send(&dispatch).expect("history request enters the send phase");
-
-	assert!(pager.finish_send(&send));
-	pager.lookup_sent_request(&send);
-	assert_eq!(
-		pager.snapshot().cache_diagnostic,
-		Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable)
-	);
-
-	lifecycle
-		.route_history_result(1, history_result(&dispatch, &server_id, None))
-		.expect("fresh history result remains request-local and usable");
-
-	let fresh = pager.snapshot();
-
-	assert_eq!(fresh.visible, Some(history_page(None)));
-	assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
-	assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved);
-	assert_eq!(fresh.load, HistoryLoadState::Visible);
-	assert_eq!(
-		fresh.cache_diagnostic,
-		Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable)
-	);
-	assert_eq!(
+		lifecycle.connection_generation = 1;
+		let inspection = lifecycle
+			.apply_snapshot(1, snapshot(11, "system", 4))
+			.expect("authoritative snapshot publishes");
 		lifecycle
+			.bind_checkpoint(1, Cursor(11), checkpoint(INSTANCE, 11), inspection)
+			.expect("authoritative checkpoint binds");
+
+		let client_root = client_cache_root(&root);
+		let history_root = root.join("history-page-cache-v1");
+		let inspection_before = lifecycle
 			.cache
 			.as_ref()
-			.expect("client cache remains available")
+			.expect("client cache is available")
 			.inspect_current()
-			.expect("client cache inspection still succeeds")
-			.expect("current client generation remains"),
-		inspection_before
-	);
-	assert_eq!(
-		fs::read(client_root.join("current")).expect("current pointer remains readable"),
-		pointer_before
-	);
-	assert_eq!(generation_inventory(&client_root), generations_before);
-	assert_eq!(lifecycle.binding, binding_before);
-	assert_eq!(lifecycle.state, inventory_before);
-	assert_eq!(lifecycle.last_cursor, cursor_before);
-	assert_eq!(lifecycle.quarantine, quarantine_before);
-	assert_eq!(lifecycle.cache_parent, lexical_parent_before);
-	assert_eq!(lifecycle.cache_parent, root);
-	assert_eq!(
-		lifecycle.view(),
-		ConnectionView::Online { generation: 1, applied: Some(Cursor(11)) }
-	);
-	assert!(
-		fs::read_dir(&linked_target)
-			.expect("foreign history target remains readable")
-			.next()
-			.is_none(),
-		"the unsafe history-cache link target must not be followed",
-	);
+			.expect("client cache inspection succeeds")
+			.expect("current client generation exists");
+		let pointer_before =
+			fs::read(client_root.join("current")).expect("current pointer is readable");
+		let generations_before = generation_inventory(&client_root);
+		let binding_before = lifecycle.binding.clone();
+		let inventory_before = lifecycle.state.clone();
+		let cursor_before = lifecycle.last_cursor;
+		let quarantine_before = lifecycle.quarantine;
+		let lexical_parent_before = lifecycle.cache_parent.clone();
+		let pager = lifecycle.history_pager();
+		let server_id = server(SERVER);
+
+		pager.bind_session(1, server_id.clone());
+		pager.open(entity("conversation-isolated")).expect("history view opens");
+		let dispatch = pager.next_dispatch(1, &server_id).await;
+		let send = pager.begin_send(&dispatch).expect("history request enters the send phase");
+
+		assert!(pager.finish_send(&send));
+		match phase {
+			HistoryCacheFailurePhase::ParentResolution => {
+				fs::set_permissions(
+					root.parent().expect("cache parent has an external base"),
+					fs::Permissions::from_mode(0o770),
+				)
+				.expect("external base is made unsafe");
+				pager.lookup_sent_request(&send);
+			},
+			HistoryCacheFailurePhase::InitialValidation => {
+				fs::create_dir(&history_root).expect("history cache root is created");
+				fs::set_permissions(&history_root, fs::Permissions::from_mode(0o755))
+					.expect("history cache root is made unsafe");
+				pager.lookup_sent_request(&send);
+			},
+			HistoryCacheFailurePhase::PostOpenOperation => {
+				pager.lookup_sent_request(&send);
+				assert_eq!(pager.snapshot().cache_diagnostic, None, "{name}");
+				fs::write(history_root.join("foreign"), b"foreign")
+					.expect("foreign post-open artifact is created");
+			},
+		}
+
+		lifecycle
+			.route_history_result(1, history_result(&dispatch, &server_id, None))
+			.expect("fresh history result remains request-local and usable");
+
+		let fresh = pager.snapshot();
+
+		assert_eq!(fresh.visible, Some(history_page(None)), "{name}");
+		assert_eq!(
+			fresh.visible_source,
+			Some(HistoryPageSource::FreshServer),
+			"{name}",
+		);
+		assert_eq!(
+			fresh.cursor,
+			HistoryCursorObservation::NoContinuationObserved,
+			"{name}",
+		);
+		assert_eq!(fresh.load, HistoryLoadState::Visible, "{name}");
+		assert_eq!(
+			fresh.cache_diagnostic,
+			Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable),
+			"{name}",
+		);
+		assert_eq!(
+			lifecycle
+				.cache
+				.as_ref()
+				.expect("client cache remains available")
+				.inspect_current()
+				.expect("client cache inspection still succeeds")
+				.expect("current client generation remains"),
+			inspection_before,
+			"{name}",
+		);
+		assert_eq!(
+			fs::read(client_root.join("current")).expect("current pointer remains readable"),
+			pointer_before,
+			"{name}",
+		);
+		assert_eq!(generation_inventory(&client_root), generations_before, "{name}");
+		assert_eq!(lifecycle.binding, binding_before, "{name}");
+		assert_eq!(lifecycle.state, inventory_before, "{name}");
+		assert_eq!(lifecycle.last_cursor, cursor_before, "{name}");
+		assert_eq!(lifecycle.quarantine, quarantine_before, "{name}");
+		assert_eq!(lifecycle.cache_parent, lexical_parent_before, "{name}");
+		assert_eq!(lifecycle.cache_parent, root, "{name}");
+		assert_eq!(
+			lifecycle.view(),
+			ConnectionView::Online { generation: 1, applied: Some(Cursor(11)) },
+			"{name}",
+		);
+
+		if matches!(phase, HistoryCacheFailurePhase::ParentResolution) {
+			fs::set_permissions(
+				root.parent().expect("cache parent has an external base"),
+				fs::Permissions::from_mode(0o700),
+			)
+			.expect("external base permissions are restored");
+		}
+	}
 }
 
 #[tokio::test]
