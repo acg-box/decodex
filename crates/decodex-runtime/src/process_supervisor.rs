@@ -5,10 +5,13 @@
 //! adopted, reacquired, proxied, or signaled.
 
 use std::{
-	collections::{BTreeMap, BTreeSet},
+	collections::{BTreeMap, BTreeSet, btree_map::Entry},
 	fmt::{Display, Formatter},
 	future::Future,
-	sync::{Arc, Mutex},
+	sync::{
+		Arc, Mutex,
+		atomic::{AtomicBool, Ordering},
+	},
 	time::{Duration, Instant},
 };
 
@@ -44,10 +47,92 @@ pub struct ProcessGenerationControl {
 struct ProcessSupervisor {
 	store: PostgresStore,
 	boot_id: ProcessBootIdentity,
-	owned: Mutex<BTreeMap<String, OwnedGeneration>>,
+	owned: OwnedGenerationRegistry<OwnedGeneration>,
 	observers: Mutex<BTreeMap<String, KernelExitWitness>>,
 	pending_non_creation: Mutex<BTreeSet<ProcessGenerationId>>,
 	supervised: Mutex<BTreeSet<String>>,
+}
+
+struct OwnedGenerationSlot<T> {
+	admitted: AtomicBool,
+	value: Mutex<Option<T>>,
+}
+
+/// Two-level ownership table: membership is global, but child access is generation-local.
+///
+/// Removing a slot closes admission before waiting for an operation already in flight.
+struct OwnedGenerationRegistry<T> {
+	entries: Mutex<BTreeMap<String, Arc<OwnedGenerationSlot<T>>>>,
+}
+impl<T> OwnedGenerationRegistry<T> {
+	fn new() -> Self {
+		Self { entries: Mutex::new(BTreeMap::new()) }
+	}
+
+	fn contains(&self, key: &str) -> Result<bool, ProcessSupervisorError> {
+		Ok(self
+			.entries
+			.lock()
+			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
+			.contains_key(key))
+	}
+
+	fn insert(&self, key: String, value: T) -> Result<bool, ProcessSupervisorError> {
+		let mut entries =
+			self.entries.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		match entries.entry(key) {
+			Entry::Occupied(_) => Ok(false),
+			Entry::Vacant(entry) => {
+				entry.insert(Arc::new(OwnedGenerationSlot {
+					admitted: AtomicBool::new(true),
+					value: Mutex::new(Some(value)),
+				}));
+				Ok(true)
+			},
+		}
+	}
+
+	fn take(&self, key: &str) -> Result<Option<T>, ProcessSupervisorError> {
+		let slot = {
+			let mut entries =
+				self.entries.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+			let slot = entries.remove(key);
+			if let Some(slot) = slot.as_ref() {
+				slot.admitted.store(false, Ordering::Release);
+			}
+			slot
+		};
+		let Some(slot) = slot else {
+			return Ok(None);
+		};
+		let mut value = slot.value.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		Ok(value.take())
+	}
+
+	fn with_current<R>(
+		&self,
+		key: &str,
+		operation: impl FnOnce(&mut T) -> R,
+	) -> Result<Option<R>, ProcessSupervisorError> {
+		let slot = self
+			.entries
+			.lock()
+			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
+			.get(key)
+			.cloned();
+		let Some(slot) = slot else {
+			return Ok(None);
+		};
+
+		let mut value = slot.value.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
+		if !slot.admitted.load(Ordering::Acquire) {
+			return Ok(None);
+		}
+		let Some(value) = value.as_mut() else {
+			return Ok(None);
+		};
+		Ok(Some(operation(value)))
+	}
 }
 
 struct OwnedGeneration {
@@ -258,7 +343,7 @@ impl ProcessGenerationControl {
 			inner: Arc::new(ProcessSupervisor {
 				store,
 				boot_id,
-				owned: Mutex::new(BTreeMap::new()),
+				owned: OwnedGenerationRegistry::new(),
 				observers: Mutex::new(BTreeMap::new()),
 				pending_non_creation: Mutex::new(BTreeSet::new()),
 				supervised: Mutex::new(BTreeSet::new()),
@@ -384,13 +469,7 @@ impl ProcessGenerationControl {
 		}
 
 		let key = generation_id.as_str().to_owned();
-		let mut owned = self
-			.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
-			.remove(&key);
-		let Some(mut owned_process) = owned.take() else {
+		let Some(mut owned_process) = self.inner.owned.take(&key)? else {
 			return Ok(ProcessGenerationTermination::NotOwned);
 		};
 		let mut supervision = match self.supervision_activity(generation_id) {
@@ -687,16 +766,16 @@ impl ProcessGenerationControl {
 			.map_err(|_| ProcessSupervisorError::ProductState)
 			.and_then(accepted_mutation)?;
 		process.revision = mutation.revision;
-		let mut owned =
-			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
-		let current = owned
-			.get_mut(process.generation_id.as_str())
-			.ok_or(ProcessSupervisorError::AuthorityConflict)?;
-		if current.identity.as_ref() != Some(&process.identity) {
-			return Err(ProcessSupervisorError::AuthorityConflict);
-		}
-		current.revision = mutation.revision;
-		Ok(())
+		self.inner
+			.owned
+			.with_current(process.generation_id.as_str(), |current| {
+				if current.identity.as_ref() != Some(&process.identity) {
+					return Err(ProcessSupervisorError::AuthorityConflict);
+				}
+				current.revision = mutation.revision;
+				Ok(())
+			})?
+			.ok_or(ProcessSupervisorError::AuthorityConflict)?
 	}
 
 	/// Execute one typed adapter operation against the exact still-owned child.
@@ -708,18 +787,18 @@ impl ProcessGenerationControl {
 		process: &FencedProcess,
 		operation: impl FnOnce(&mut AttestedProcessChild) -> Result<T, E>,
 	) -> Result<Result<T, E>, ProcessSupervisorError> {
-		let mut owned =
-			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
-		let current = owned
-			.get_mut(process.generation_id.as_str())
-			.ok_or(ProcessSupervisorError::AuthorityConflict)?;
-		if current.revision != process.revision
-			|| current.identity.as_ref() != Some(&process.identity)
-			|| current.leader_exited
-		{
-			return Err(ProcessSupervisorError::AuthorityConflict);
-		}
-		Ok(operation(&mut current.child))
+		self.inner
+			.owned
+			.with_current(process.generation_id.as_str(), |current| {
+				if current.revision != process.revision
+					|| current.identity.as_ref() != Some(&process.identity)
+					|| current.leader_exited
+				{
+					return Err(ProcessSupervisorError::AuthorityConflict);
+				}
+				Ok(operation(&mut current.child))
+			})?
+			.ok_or(ProcessSupervisorError::AuthorityConflict)?
 	}
 
 	async fn reconcile_all(&self) -> Result<(), ProcessSupervisorError> {
@@ -907,28 +986,29 @@ impl ProcessGenerationControl {
 		generation: &ProcessGeneration,
 	) -> Result<Option<Option<ProcessIdentity>>, ProcessSupervisorError> {
 		let key = generation.generation_id.as_str();
-		let mut owned =
-			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
-		let Some(process) = owned.get_mut(key) else {
-			return Ok(None);
-		};
-		if let Some(durable_identity) = generation.process_identity.as_ref()
-			&& process.identity.as_ref() != Some(durable_identity)
-		{
-			return Err(ProcessSupervisorError::AuthorityConflict);
-		}
-		process.revision = generation.revision;
-		refresh_owned_exit(process)?;
-		if !process.leader_exited
-			|| !process_platform::process_group_id_is_quiescent(process.process_group_id)
-				.map_err(|_| ProcessSupervisorError::Platform)?
-		{
-			return Ok(None);
-		}
-		// A lost bind response can leave the original `Child` owned while the durable
-		// generation remains unbound. The owned wait still proves that generation's child
-		// exited, but the evidence must not claim identity facts that did not commit.
-		Ok(Some(generation.process_identity.clone()))
+		self.inner
+			.owned
+			.with_current(key, |process| {
+				if let Some(durable_identity) = generation.process_identity.as_ref()
+					&& process.identity.as_ref() != Some(durable_identity)
+				{
+					return Err(ProcessSupervisorError::AuthorityConflict);
+				}
+				process.revision = generation.revision;
+				refresh_owned_exit(process)?;
+				if !process.leader_exited
+					|| !process_platform::process_group_id_is_quiescent(process.process_group_id)
+						.map_err(|_| ProcessSupervisorError::Platform)?
+				{
+					return Ok(None);
+				}
+				// A lost bind response can leave the original `Child` owned while the durable
+				// generation remains unbound. The owned wait still proves that generation's child
+				// exited, but the evidence must not claim identity facts that did not commit.
+				Ok(Some(generation.process_identity.clone()))
+			})?
+			.transpose()
+			.map(Option::flatten)
 	}
 
 	async fn record_positive_death(
@@ -1075,12 +1155,7 @@ impl ProcessGenerationControl {
 	}
 
 	fn owns(&self, generation_id: &ProcessGenerationId) -> Result<bool, ProcessSupervisorError> {
-		Ok(self
-			.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
-			.contains_key(generation_id.as_str()))
+		self.inner.owned.contains(generation_id.as_str())
 	}
 
 	fn supervises(
@@ -1231,12 +1306,10 @@ impl ProcessGenerationControl {
 		{
 			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
-		let mut owned =
-			self.inner.owned.lock().map_err(|_| ProcessSupervisorError::AuthorityConflict)?;
-		if owned.contains_key(&key) {
+		let inserted = self.inner.owned.insert(key, process)?;
+		if !inserted {
 			return Err(ProcessSupervisorError::AuthorityConflict);
 		}
-		owned.insert(key, process);
 		Ok(())
 	}
 
@@ -1256,11 +1329,7 @@ impl ProcessGenerationControl {
 		&self,
 		generation_id: &ProcessGenerationId,
 	) -> Result<(), ProcessSupervisorError> {
-		self.inner
-			.owned
-			.lock()
-			.map_err(|_| ProcessSupervisorError::AuthorityConflict)?
-			.remove(generation_id.as_str());
+		let _ = self.inner.owned.take(generation_id.as_str())?;
 		self.remove_supervision(generation_id)?;
 		Ok(())
 	}
@@ -1509,5 +1578,164 @@ fn hex(bytes: &[u8]) -> String {
 impl From<ProcessPlatformError> for ProcessSupervisorError {
 	fn from(_: ProcessPlatformError) -> Self {
 		Self::Platform
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use std::{
+		collections::BTreeSet,
+		sync::{Arc, Condvar, Mutex, TryLockError, mpsc},
+		thread,
+		time::{Duration, Instant},
+	};
+
+	use super::OwnedGenerationRegistry;
+
+	const CONCURRENCY_TIMEOUT: Duration = Duration::from_secs(2);
+	const EXCLUSION_WINDOW: Duration = Duration::from_millis(200);
+
+	#[test]
+	fn distinct_generation_operations_do_not_head_of_line_block() {
+		let registry = Arc::new(OwnedGenerationRegistry::new());
+		assert!(registry.insert("first".to_owned(), 0_u8).unwrap());
+		assert!(registry.insert("second".to_owned(), 0_u8).unwrap());
+
+		let release = Arc::new((Mutex::new(false), Condvar::new()));
+		let (entered_sender, entered_receiver) = mpsc::channel();
+		let mut workers = Vec::new();
+		for key in ["first", "second"] {
+			let registry = Arc::clone(&registry);
+			let release = Arc::clone(&release);
+			let entered_sender = entered_sender.clone();
+			workers.push(thread::spawn(move || {
+				let result = registry
+					.with_current(key, |value| {
+						*value += 1;
+						entered_sender.send(key).unwrap();
+						let (released, condition) = &*release;
+						let mut released = released.lock().unwrap();
+						while !*released {
+							released = condition.wait(released).unwrap();
+						}
+					})
+					.unwrap();
+				assert!(result.is_some());
+			}));
+		}
+		drop(entered_sender);
+
+		let first = entered_receiver.recv_timeout(CONCURRENCY_TIMEOUT);
+		let second = entered_receiver.recv_timeout(CONCURRENCY_TIMEOUT);
+		{
+			let (released, condition) = &*release;
+			*released.lock().unwrap() = true;
+			condition.notify_all();
+		}
+		for worker in workers {
+			worker.join().unwrap();
+		}
+
+		let entered = [first.unwrap(), second.unwrap()].into_iter().collect::<BTreeSet<_>>();
+		assert_eq!(entered, BTreeSet::from(["first", "second"]));
+	}
+
+	#[test]
+	fn same_generation_operations_remain_serialized() {
+		let registry = Arc::new(OwnedGenerationRegistry::new());
+		assert!(registry.insert("generation".to_owned(), 0_u8).unwrap());
+
+		let release = Arc::new((Mutex::new(false), Condvar::new()));
+		let (first_entered_sender, first_entered_receiver) = mpsc::sync_channel(1);
+		let first_registry = Arc::clone(&registry);
+		let first_release = Arc::clone(&release);
+		let first = thread::spawn(move || {
+			let result = first_registry
+				.with_current("generation", |value| {
+					*value += 1;
+					first_entered_sender.send(()).unwrap();
+					let (released, condition) = &*first_release;
+					let mut released = released.lock().unwrap();
+					while !*released {
+						released = condition.wait(released).unwrap();
+					}
+				})
+				.unwrap();
+			assert!(result.is_some());
+		});
+		first_entered_receiver.recv_timeout(CONCURRENCY_TIMEOUT).unwrap();
+
+		let slot = registry.entries.lock().unwrap().get("generation").cloned().unwrap();
+		assert!(matches!(slot.value.try_lock(), Err(TryLockError::WouldBlock)));
+
+		{
+			let (released, condition) = &*release;
+			*released.lock().unwrap() = true;
+			condition.notify_all();
+		}
+		first.join().unwrap();
+
+		let second = registry
+			.with_current("generation", |value| {
+				*value += 1;
+				*value
+			})
+			.unwrap();
+		assert_eq!(second, Some(2));
+	}
+
+	#[test]
+	fn removal_excludes_new_operations_and_waits_for_the_active_generation() {
+		let registry = Arc::new(OwnedGenerationRegistry::new());
+		assert!(registry.insert("generation".to_owned(), 0_u8).unwrap());
+
+		let release = Arc::new((Mutex::new(false), Condvar::new()));
+		let (active_sender, active_receiver) = mpsc::sync_channel(1);
+		let active_registry = Arc::clone(&registry);
+		let active_release = Arc::clone(&release);
+		let active = thread::spawn(move || {
+			let result = active_registry
+				.with_current("generation", |value| {
+					*value += 1;
+					active_sender.send(()).unwrap();
+					let (released, condition) = &*active_release;
+					let mut released = released.lock().unwrap();
+					while !*released {
+						released = condition.wait(released).unwrap();
+					}
+				})
+				.unwrap();
+			assert!(result.is_some());
+		});
+		active_receiver.recv_timeout(CONCURRENCY_TIMEOUT).unwrap();
+
+		let (take_started_sender, take_started_receiver) = mpsc::sync_channel(1);
+		let (take_finished_sender, take_finished_receiver) = mpsc::sync_channel(1);
+		let take_registry = Arc::clone(&registry);
+		let taker = thread::spawn(move || {
+			take_started_sender.send(()).unwrap();
+			let value = take_registry.take("generation").unwrap();
+			take_finished_sender.send(value).unwrap();
+		});
+		take_started_receiver.recv_timeout(CONCURRENCY_TIMEOUT).unwrap();
+		let deadline = Instant::now() + CONCURRENCY_TIMEOUT;
+		while registry.contains("generation").unwrap() {
+			assert!(Instant::now() < deadline, "generation removal did not become visible");
+			thread::yield_now();
+		}
+
+		let new_operation = registry.with_current("generation", |_| ());
+		let finished_while_active = take_finished_receiver.recv_timeout(EXCLUSION_WINDOW);
+		assert!(new_operation.unwrap().is_none());
+		assert!(matches!(finished_while_active, Err(mpsc::RecvTimeoutError::Timeout)));
+
+		{
+			let (released, condition) = &*release;
+			*released.lock().unwrap() = true;
+			condition.notify_all();
+		}
+		assert_eq!(take_finished_receiver.recv_timeout(CONCURRENCY_TIMEOUT).unwrap(), Some(1));
+		active.join().unwrap();
+		taker.join().unwrap();
 	}
 }
