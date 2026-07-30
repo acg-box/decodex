@@ -54,19 +54,36 @@ binding:
 
 ```text
 digest = SHA-256(
-  "decodex/account-alias/v1\0"
+  "decodex/account-alias/v2\0"
   || canonical_provider_kind
   || "\0"
   || canonical_provider_account_id
 )
-alias = "Account " || CrockfordBase32(first 50 big-endian digest bits)
+selector = first 64 big-endian digest bits
+alias = ACCOUNT_ALIAS_WORDS[selector mod 44]
 ```
 
-Render the ten uppercase Crockford digits as `Account ABCDE-FGHIJ`. Do not accept a
-user label, rename command, random suffix, dictionary, or collision table. The ChatGPT
-provider identity `433463f7-74ae-4a7e-ab10-9667f9e4919e` has digest
-`6dcdc7c10bd6adc626af7ec7c20817934ca8e42a80d58d44f7d5636b71099e98` and alias
-`Account DQ6WF-G8BTT`.
+`ACCOUNT_ALIAS_WORDS` is this fixed ordered list:
+
+```text
+Alex, Avery, Bailey, Blake, Casey, Charlie, Clara, Dana, Drew, Eden, Elliot,
+Emery, Evan, Finley, Harper, Hayden, Iris, Jamie, Jordan, Kai, Kendall, Lane,
+Liam, Logan, Mason, Maya, Mia, Morgan, Noah, Nora, Owen, Paige, Parker, Quinn,
+Reese, Remy, Riley, Rowan, Sage, Sasha, Sidney, Taylor, Theo, Val
+```
+
+The alias is one name with no prefix or suffix. It is a privacy-preserving
+presentation substitute for the email address, not an identifier, and two
+accounts can have the same alias. Account UUID remains the only row identity. Do
+not accept a user label or rename command, and do not add a random suffix,
+collision table, or mutable reroll. The ChatGPT provider identity
+`433463f7-74ae-4a7e-ab10-9667f9e4919e` has digest
+`d6ac83189beb33b78f71052e9f0a2134605e8c67cebbadbbfabcf926a2222165` and alias
+`Val`.
+
+Wire and native-client boundaries accept only one 2–16-byte ASCII word with one
+initial uppercase letter and lowercase remaining letters. They reject the v1
+`Account ABCDE-FGHIJ` form rather than retaining a compatibility branch.
 
 ## HostCredentialStore
 
