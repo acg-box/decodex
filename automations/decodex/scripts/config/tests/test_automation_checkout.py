@@ -93,6 +93,7 @@ branch refs/heads/xy/task
 			"model": "gpt-5.6-sol",
 			"reasoning_effort": "high",
 			"execution_environment": "local",
+			"target": {"type": "project", "project_id": "local-test"},
 			"cwds": ["/repo"],
 			"prompt": "prompt",
 		}

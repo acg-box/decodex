@@ -38,11 +38,11 @@ fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
 	let stale = now - Duration::from_secs(20 * 24 * 60 * 60);
 
 	private_file(&root.join("github/bundles/stale.json"), b"1", stale);
-	private_file(&root.join("github/reviews/new.json"), b"12", recent);
-	private_file(&root.join("github/reviews/older.json"), b"34", older);
-	private_file(&root.join("github/reviews/oldest.json"), b"56", oldest);
-	private_file(&root.join("github/impact/new.json"), b"123456", recent);
-	private_file(&root.join("github/impact/older.json"), b"123456", older);
+	private_file(&root.join("github/content-review-staging/new.json"), b"12", recent);
+	private_file(&root.join("github/content-review-staging/older.json"), b"34", older);
+	private_file(&root.join("github/content-review-staging/oldest.json"), b"56", oldest);
+	private_file(&root.join("github/control-plane-upgrades/new.json"), b"123456", recent);
+	private_file(&root.join("github/control-plane-upgrades/older.json"), b"123456", older);
 	private_file(&root.join("generated/analysis/keep.analysis.json"), b"1234", recent);
 
 	let report =
@@ -51,11 +51,11 @@ fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
 
 	assert_eq!(report.files_removed, 3);
 	assert!(!root.join("github/bundles/stale.json").exists());
-	assert!(root.join("github/reviews/new.json").exists());
-	assert!(root.join("github/reviews/older.json").exists());
-	assert!(!root.join("github/reviews/oldest.json").exists());
-	assert!(root.join("github/impact/new.json").exists());
-	assert!(!root.join("github/impact/older.json").exists());
+	assert!(root.join("github/content-review-staging/new.json").exists());
+	assert!(root.join("github/content-review-staging/older.json").exists());
+	assert!(!root.join("github/content-review-staging/oldest.json").exists());
+	assert!(root.join("github/control-plane-upgrades/new.json").exists());
+	assert!(!root.join("github/control-plane-upgrades/older.json").exists());
 	assert!(root.join("generated/analysis/keep.analysis.json").exists());
 }
 
@@ -69,8 +69,7 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 	let collections = [
 		"github/bundles",
 		"github/review-queue",
-		"github/reviews",
-		"github/impact",
+		"github/content-review-staging",
 		"github/control-plane-upgrades",
 		"site-content/signals",
 		"site-content/release-deltas",
@@ -223,7 +222,7 @@ fn cache_gc_fails_closed_without_resetting_an_oversized_ledger() {
 fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let root = temp_dir.path().join(".agent/automations/radar/cache");
-	let path = root.join("github/reviews/review.json");
+	let path = root.join("github/test-files/review.json");
 
 	crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect("private JSON should be written");
@@ -245,7 +244,7 @@ fn cache_io_is_owner_only_and_rejects_symlinks_and_wrong_modes() {
 
 	assert!(owner_error.to_string().contains("wrong owner"));
 
-	let symlink_parent = root.join("github/impact");
+	let symlink_parent = root.join("github/other-test-files");
 
 	crate::ensure_private_directory(root.join("github").as_path())
 		.expect("GitHub cache root should exist");
@@ -283,7 +282,7 @@ fn cache_io_rejects_a_symlink_before_the_fixed_cache_root() {
 	crate::ensure_private_directory(&actual_agent).expect("private target should be created");
 	std::os::unix::fs::symlink(&actual_agent, &linked_agent)
 		.expect("cache ancestor symlink should be created");
-	let path = linked_agent.join("automations/radar/cache/github/reviews/review.json");
+	let path = linked_agent.join("automations/radar/cache/github/test-files/review.json");
 	let error = crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect_err("cache ancestor symlink must fail closed");
 
@@ -295,7 +294,7 @@ fn cache_io_rejects_a_symlink_before_the_fixed_cache_root() {
 fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
-	let path = root.join("github/reviews/review.json");
+	let path = root.join("github/test-files/review.json");
 
 	crate::write_json(&path, &serde_json::json!({"schema": "test"}))
 		.expect("private JSON should be written");
@@ -305,7 +304,7 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 
 	assert!(traversal_error.to_string().contains("must not contain '..'"));
 
-	let hard_link = root.join("github/reviews/review-copy.json");
+	let hard_link = root.join("github/test-files/review-copy.json");
 
 	fs::hard_link(&path, &hard_link).expect("hard-link fixture should be created");
 	let link_error = crate::load_json(&path).expect_err("multiply-linked cache file must fail");
@@ -320,7 +319,7 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 	fs::rename(&root, &displaced).expect("cache root should be displaced");
 	crate::ensure_private_directory(&root).expect("replacement root should be created");
 	let replacement_error = cache
-		.read(std::path::Path::new("github/reviews/review.json"))
+		.read(std::path::Path::new("github/test-files/review.json"))
 		.expect_err("open descriptor must reject root path replacement");
 
 	assert!(replacement_error.to_string().contains("root identity changed"));
@@ -330,7 +329,7 @@ fn cache_io_rejects_parent_traversal_hard_links_and_root_replacement() {
 fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
-	let ordinary = root.join("github/reviews/review.json");
+	let ordinary = root.join("github/test-files/review.json");
 
 	crate::write_json(&ordinary, &serde_json::json!({"schema": "test"}))
 		.expect("ordinary output should initialize the cache");
@@ -339,7 +338,7 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 	let lock_error = crate::write_json(&lock_path, &serde_json::json!({"replace": true}))
 		.expect_err("the cache lock name must be reserved");
 	let temp_error = crate::write_json(
-		&root.join("github/reviews/.radar-tmp-forged"),
+		&root.join("github/test-files/.radar-tmp-forged"),
 		&serde_json::json!({"replace": true}),
 	)
 	.expect_err("the temporary-file prefix must be reserved");
@@ -352,13 +351,14 @@ fn cache_io_rejects_reserved_lock_and_temporary_destinations_before_replacement(
 		crate::private_fs::PrivateCache::open_existing(&root).expect("cache root should reopen");
 
 	drop(cache.try_lock().expect("the original lock must remain authoritative"));
-	assert!(!root.join("github/reviews/.radar-tmp-forged").exists());
+	assert!(!root.join("github/test-files/.radar-tmp-forged").exists());
 }
 
 #[test]
 fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let path = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/reviews/review.json");
+	let path =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
 	let now = SystemTime::now();
 
 	private_file(&path, b"1234", now);
@@ -381,7 +381,7 @@ fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 fn cache_lock_serializes_writers_and_gc_deletion_revalidates_identity() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
-	let relative = std::path::Path::new("github/reviews/review.json");
+	let relative = std::path::Path::new("github/test-files/review.json");
 	let path = root.join(relative);
 	let now = SystemTime::now();
 
@@ -405,7 +405,7 @@ fn cache_lock_serializes_writers_and_gc_deletion_revalidates_identity() {
 			.is_some_and(|error| error.kind() == std::io::ErrorKind::WouldBlock)
 	);
 
-	let displaced = root.join("github/reviews/original.json");
+	let displaced = root.join("github/test-files/original.json");
 
 	fs::rename(&path, &displaced).expect("scanned file should be displaced");
 	private_file(&path, b"new", now);
