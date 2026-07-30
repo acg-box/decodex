@@ -5,6 +5,7 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var store: ResetCardStore?
 	private var statusPanelController: StatusPanelController?
+	private var terminationIsPending = false
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
 		NSApp.setActivationPolicy(.accessory)
@@ -12,6 +13,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 		self.store = store
 		statusPanelController = StatusPanelController(store: store)
 		store.start()
+	}
+
+	func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+		guard terminationIsPending == false else {
+			return .terminateLater
+		}
+		terminationIsPending = true
+		store?.prepareForApplicationTermination()
+		Task {
+			await DecodexNativeClient.shutdownSharedSession()
+			sender.reply(toApplicationShouldTerminate: true)
+		}
+		return .terminateLater
 	}
 }
 

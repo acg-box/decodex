@@ -1015,6 +1015,7 @@ impl AccountClient {
 				| CommandPayload::SetBalancedAccountSelection
 				| CommandPayload::SetAccountOrder { .. }
 				| CommandPayload::RefreshAccount { .. }
+				| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 				| CommandPayload::UseAccountInCodex { .. }
 				| CommandPayload::RecoverAccountOperation { .. }
 		) {
@@ -1117,8 +1118,9 @@ impl AccountClient {
 				},
 				ServerMessage::Event(event) =>
 					self.transport.verify_version_and_server(event.version, &event.server_id)?,
-				ServerMessage::Refusal(refusal) =>
-					return Err(self.transport.refusal_failure(refusal)),
+				ServerMessage::Refusal(refusal) => {
+					return Err(self.transport.refusal_failure(refusal));
+				},
 				_ => return Err(ClientFailure::ProtocolMalformed),
 			}
 		}
@@ -1149,6 +1151,10 @@ fn account_result_matches(
 		)
 		| (
 			CommandPayload::RefreshAccount { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
+			CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. },
 			ResultPayload::AccountChanged { account },
 		) => account_id == &account.account_id && entity_revision == account.account_revision,
 		(
@@ -2618,6 +2624,48 @@ max_entry_bytes = 0
 
 		assert!(super::account_result_matches(&command, EntityRevision(11), &exact));
 		assert!(!super::account_result_matches(&command, EntityRevision(11), &stale));
+	}
+
+	#[test]
+	fn reauthentication_result_requires_exact_account_and_revision() {
+		let account_id =
+			EntityId::new("42234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let command = crate::CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id: EntityId::new("43234567-89ab-4def-8123-456789abcdef")
+				.expect("canonical operation ID"),
+			account_id: account_id.clone(),
+			source_descriptor: crate::WireText::new("/private/tmp/login/auth.json")
+				.expect("bounded source descriptor"),
+		};
+		let account = serde_json::from_value::<crate::AccountDto>(serde_json::json!({
+			"account_id": account_id.as_str(),
+			"alias": "Val",
+			"enabled": true,
+			"account_revision": 12,
+			"observed_state": "unknown",
+			"lifecycle_readiness": "credential_absent",
+			"five_hour_quota": {
+				"duration_minutes": 300,
+				"observed_at_unix_micros": null,
+				"result": {"state": "unknown"}
+			},
+			"seven_day_quota": {
+				"duration_minutes": 10080,
+				"observed_at_unix_micros": null,
+				"result": {"state": "unknown"}
+			}
+		}))
+		.expect("account fixture is valid");
+		let exact = ResultPayload::AccountChanged { account: Box::new(account.clone()) };
+		let stale = ResultPayload::AccountChanged {
+			account: Box::new(crate::AccountDto {
+				account_revision: EntityRevision(11),
+				..account
+			}),
+		};
+
+		assert!(super::account_result_matches(&command, EntityRevision(12), &exact));
+		assert!(!super::account_result_matches(&command, EntityRevision(12), &stale));
 	}
 
 	#[tokio::test]

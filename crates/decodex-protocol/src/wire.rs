@@ -2221,6 +2221,15 @@ pub enum CommandPayload {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
+	/// Replace one exact account credential from an owner-private Codex auth file.
+	ReauthenticateAccountFromCredentialFile {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical existing account identity.
+		account_id: EntityId,
+		/// Owner-private Codex auth path descriptor opened by the daemon.
+		source_descriptor: WireText,
+	},
 	/// Project one exact daemon-owned account into the normal Codex shared auth file.
 	UseAccountInCodex {
 		/// Canonical account identity.
@@ -2995,6 +3004,23 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
+		CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+		} => {
+			validate_canonical_operation(operation_id)?;
+			validate_canonical_account(account_id)?;
+			if !positive_expected {
+				return Err("account revision is required");
+			}
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				Err("account credential source descriptor is invalid")
+			} else {
+				Ok(())
+			}
+		},
 		CommandPayload::UseAccountInCodex { account_id } => {
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -3562,6 +3588,54 @@ mod tests {
 				},
 			}))
 			.is_err(),
+		);
+	}
+
+	#[test]
+	fn account_reauthentication_is_revision_fenced_and_path_only() {
+		let account_id =
+			EntityId::new("31234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let operation_id =
+			EntityId::new("32234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
+		let payload = CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id: operation_id.clone(),
+			account_id: account_id.clone(),
+			source_descriptor: WireText::new("/private/tmp/decodex-login/auth.json")
+				.expect("bounded source descriptor"),
+		};
+		let message = |payload, expected_revision| {
+			ClientMessage::Command(CommandEnvelope {
+				version: CURRENT_VERSION,
+				client_command_id: ClientCommandId::new("reauth-command").unwrap(),
+				idempotency_key: IdempotencyKey::new("reauth-key").unwrap(),
+				expected_revision,
+				correlation_id: CorrelationId::new("reauth-command").unwrap(),
+				causation_id: None,
+				payload,
+			})
+		};
+		let encoded =
+			serde_json::to_string(&message(payload.clone(), Some(EntityRevision(7)))).unwrap();
+
+		assert!(decode_client_message(&encoded).is_ok());
+		assert!(encoded.contains("\"name\":\"reauthenticate_account_from_credential_file\""));
+		assert!(!encoded.contains("access_token"));
+		assert!(
+			decode_client_message(&serde_json::to_string(&message(payload.clone(), None)).unwrap())
+				.is_err()
+		);
+		let invalid = CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor: WireText::new("relative/auth.json").unwrap(),
+		};
+		// Absolute-path enforcement belongs to the daemon's no-follow source reader.
+		// The public wire still rejects empty and control-bearing descriptors.
+		assert!(
+			decode_client_message(
+				&serde_json::to_string(&message(invalid, Some(EntityRevision(7)))).unwrap()
+			)
+			.is_ok()
 		);
 	}
 
