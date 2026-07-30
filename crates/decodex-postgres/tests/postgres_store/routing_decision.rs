@@ -393,13 +393,12 @@ async fn assert_alternate_routing_decisions(
 	assert_eq!(no_route.decision.kind, RoutingDecisionKind::NoRoute);
 	assert!(no_route.decision.exclusions.is_empty());
 	let stale_consumer = match &no_route_request.consumer {
-		ExecutionConsumer::ManagedRunExecution { managed_run_id, execution_id, .. } => {
+		ExecutionConsumer::ManagedRunExecution { managed_run_id, execution_id, .. } =>
 			ExecutionConsumer::ManagedRunExecution {
 				managed_run_id: managed_run_id.clone(),
 				managed_run_revision: 2,
 				execution_id: execution_id.clone(),
-			}
-		},
+			},
 		ExecutionConsumer::ConversationTurn { .. } => {
 			return Err("V16 ManagedRun fixture has an ordinary consumer".into());
 		},
@@ -640,13 +639,7 @@ async fn create_run(
 			&[&turn_id.as_str(), &conversation_id.as_str(), &runtime_session_id.as_str()],
 		)
 		.await?;
-	Ok(RunFixture {
-		conversation_id,
-		managed_run_id,
-		execution_id,
-		runtime_session_id,
-		turn_id,
-	})
+	Ok(RunFixture { conversation_id, managed_run_id, execution_id, runtime_session_id, turn_id })
 }
 
 fn managed_consumer(run: &RunFixture) -> ExecutionConsumer {
@@ -904,9 +897,8 @@ pub(super) async fn advance_stale_policy(
 fn success<T>(outcome: RoutingCommandOutcome<T>) -> Result<T, Box<dyn std::error::Error>> {
 	match outcome {
 		RoutingCommandOutcome::Success(value) => Ok(value),
-		RoutingCommandOutcome::Rejected(rejection) => {
-			Err(format!("routing command rejected: {}", rejection.code).into())
-		},
+		RoutingCommandOutcome::Rejected(rejection) =>
+			Err(format!("routing command rejected: {}", rejection.code).into()),
 	}
 }
 
