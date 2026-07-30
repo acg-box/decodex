@@ -1,17 +1,12 @@
 use serde_json::Value;
 use tokio_postgres::{Client, Config};
 
-use super::{
-	expected_peer_uid, isolated_blob_store,
-	routing_decision::RoutingFixture,
-};
+use super::{expected_peer_uid, isolated_blob_store, routing_decision::RoutingFixture};
 use decodex_core::{
 	BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
 	ContinuationPlanKind, ContinuationRejection, PinnedContextSource, PossibleSideEffects,
 };
-use decodex_postgres::{
-	ContinuationPlanEffect, PlanContinuation, PostgresStore, RouteAccount,
-};
+use decodex_postgres::{ContinuationPlanEffect, PlanContinuation, PostgresStore, RouteAccount};
 
 pub(super) async fn assert_continuation_contract(
 	store: &PostgresStore,
@@ -24,7 +19,8 @@ pub(super) async fn assert_continuation_contract(
 	let fallback_pack = fallback_pack(owner, routing).await?;
 	prepare_continuation_fixture(owner, routing).await?;
 	let (fallback, fallback_request) =
-		assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+		assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack)
+			.await?;
 	assert_alternate_fallback_contracts(store, routing, &blob_store, &fallback_pack).await?;
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_lineage_and_restart_contract(
@@ -287,12 +283,7 @@ async fn assert_lineage_and_restart_contract(
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted
-			.plan_continuation(
-				blob_store,
-				"v17-missing-fallback",
-				fallback_request,
-				fallback_pack,
-			)
+			.plan_continuation(blob_store, "v17-missing-fallback", fallback_request, fallback_pack,)
 			.await?,
 		ContinuationCommandOutcome::Success(fallback),
 	);
