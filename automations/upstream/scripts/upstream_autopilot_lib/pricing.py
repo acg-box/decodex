@@ -74,7 +74,8 @@ _TABLE_SEPARATOR_PATTERN = re.compile(r"^:?-{3,}:?$")
 _TARGET_SECTION_HEADING = "## Credit consumption details"
 _TARGET_SECTION_UNIT_STATEMENT = (
     "All prices are per resource fetched (reads) or per request "
-    "(writes/actions)."
+    "(writes/actions). [Purchase credits](https://console.x.com) in the "
+    "Developer Console."
 )
 _READ_HEADING = "### Read operations"
 _WRITE_HEADING = "### Write operations"
