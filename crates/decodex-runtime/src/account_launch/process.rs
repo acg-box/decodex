@@ -1152,9 +1152,9 @@ impl SupervisedProcess {
 		guard: RunnerPermit,
 		capability: ExactBuildLaunchCapability,
 	) -> Result<Self, SupervisionError> {
-		verify_canonical_executable(&command)?;
+		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
-		verify_canonical_executable(&command)?;
+		verify_canonical_executable_identity(&command)?;
 		run_after_verification_test(&command);
 		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
 		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
@@ -1709,10 +1709,9 @@ fn spawn_protocol_process(
 			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
 				.map_err(|_| SupervisionError::SpawnFailed)?;
 
-		// The canonical filesystem object must still match the immutable full-digest snapshot after
-		// posix_spawn has bound the stopped child to its executable image. The dynamic code check
-		// below then binds that image to the snapshot's exact code identity before SIGCONT.
-		verify_canonical_executable(command)?;
+		// This non-profile path retains full filesystem and snapshot digest verification. The
+		// dynamic code check then binds the stopped image to that snapshot before SIGCONT.
+		verify_executable(command)?;
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
@@ -1782,10 +1781,10 @@ fn spawn_attested_protocol_process(
 		}
 		.map_err(|_| SupervisionError::SpawnFailed)?;
 
-		// The canonical source must still match the immutable snapshot after posix_spawn has
-		// bound the suspended child. Dynamic attestation then binds that child to the snapshot's
-		// exact code identity and canonical path before any user code can run.
-		verify_executable(command)?;
+		// Startup already hashed and statically validated the immutable snapshot and canonical
+		// image. Keep the canonical object identity stable here; exact dynamic CDHash and path
+		// attestation below bind the suspended child to that startup profile before user code runs.
+		verify_canonical_executable_identity(command)?;
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
@@ -3789,7 +3788,9 @@ fn executable_digest_file(file: &File) -> Result<[u8; 32], SupervisionError> {
 	Ok(hasher.finalize().into())
 }
 
-fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
+fn verify_canonical_executable_identity(
+	command: &AppServerCommand,
+) -> Result<(), SupervisionError> {
 	let canonical =
 		command.program.canonicalize().map_err(|_| SupervisionError::ExecutableChanged)?;
 	let source = canonical.metadata().map_err(|_| SupervisionError::ExecutableChanged)?;
@@ -3797,8 +3798,17 @@ fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), Supervi
 	if canonical != command.program
 		|| source.dev() != command.executable.source_device
 		|| source.ino() != command.executable.source_inode
-		|| executable_digest(&canonical).map_err(|_| SupervisionError::ExecutableChanged)?
-			!= command.executable_digest
+	{
+		return Err(SupervisionError::ExecutableChanged);
+	}
+
+	Ok(())
+}
+
+fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
+	verify_canonical_executable_identity(command)?;
+	if executable_digest(&command.program).map_err(|_| SupervisionError::ExecutableChanged)?
+		!= command.executable_digest
 	{
 		return Err(SupervisionError::ExecutableChanged);
 	}
@@ -4711,7 +4721,7 @@ mod tests {
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
-		os::unix::fs::PermissionsExt as _,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 		path::{Path, PathBuf},
 		process::{Command, Stdio},
 		sync::{
@@ -6351,6 +6361,9 @@ mod tests {
 
 		fs::copy("/bin/cat", &source).unwrap();
 		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+		let source_metadata = fs::metadata(&source).unwrap();
+		let source_device = source_metadata.dev();
+		let source_inode = source_metadata.ino();
 
 		let command = AppServerCommand::new_for_test(
 			&source,
@@ -6371,9 +6384,108 @@ mod tests {
 			Arc::new(move || {
 				fs::copy("/bin/sh", &source_for_action).unwrap();
 				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+				let replacement_metadata = fs::metadata(&source_for_action).unwrap();
+
+				assert_eq!(replacement_metadata.dev(), source_device);
+				assert_eq!(replacement_metadata.ino(), source_inode);
 			}),
 		);
 		let error = SupervisedProcess::spawn(command, binding()).unwrap_err();
+
+		assert_eq!(error, SupervisionError::ExecutableChanged);
+		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
+		assert!(!marker.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn profile_launch_uses_suspended_dynamic_identity_after_metadata_checks() {
+		let temp = TempDir::new().unwrap();
+		let source = temp.path().join("verified-profile-image");
+		let marker = temp.path().join("replacement-ran");
+		let source_for_action = source.clone();
+		let spawn_count = Arc::new(AtomicU32::new(0));
+
+		fs::copy("/bin/cat", &source).unwrap();
+		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
+		let command = AppServerCommand::new_for_test(
+			&source,
+			[
+				OsString::from("-c"),
+				OsString::from("printf ran > \"$1\""),
+				OsString::from("decodex-attested-profile-spawn"),
+				marker.as_os_str().to_owned(),
+			],
+			std::iter::empty::<OsString>(),
+			std::iter::empty::<OsString>(),
+			temp.path(),
+		)
+		.with_attested_spawn_for_test()
+		.with_after_verification_for_test(
+			1,
+			Arc::clone(&spawn_count),
+			Arc::new(move || {
+				fs::copy("/bin/sh", &source_for_action).unwrap();
+				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+			}),
+		);
+		let error = SupervisedProcess::spawn_attested(
+			command,
+			binding(),
+			TestCapacity::new(1).reserve().unwrap(),
+			process::ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1,
+		)
+		.unwrap_err();
+
+		assert_eq!(error, SupervisionError::SpawnFailed);
+		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
+		assert!(!marker.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn profile_launch_rejects_path_replacement_at_the_second_metadata_check() {
+		let temp = TempDir::new().unwrap();
+		let source = temp.path().join("verified-profile-image");
+		let displaced = temp.path().join("verified-profile-image.displaced");
+		let marker = temp.path().join("replacement-ran");
+		let source_for_action = source.clone();
+		let displaced_for_action = displaced.clone();
+		let spawn_count = Arc::new(AtomicU32::new(0));
+
+		fs::copy("/bin/cat", &source).unwrap();
+		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
+		let command = AppServerCommand::new_for_test(
+			&source,
+			[
+				OsString::from("-c"),
+				OsString::from("printf ran > \"$1\""),
+				OsString::from("decodex-attested-profile-spawn"),
+				marker.as_os_str().to_owned(),
+			],
+			std::iter::empty::<OsString>(),
+			std::iter::empty::<OsString>(),
+			temp.path(),
+		)
+		.with_attested_spawn_for_test()
+		.with_before_spawn_for_test(
+			1,
+			Arc::clone(&spawn_count),
+			Arc::new(move || {
+				fs::rename(&source_for_action, &displaced_for_action).unwrap();
+				fs::copy("/bin/sh", &source_for_action).unwrap();
+				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+			}),
+		);
+		let error = SupervisedProcess::spawn_attested(
+			command,
+			binding(),
+			TestCapacity::new(1).reserve().unwrap(),
+			process::ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1,
+		)
+		.unwrap_err();
 
 		assert_eq!(error, SupervisionError::ExecutableChanged);
 		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
