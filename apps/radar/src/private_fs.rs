@@ -936,6 +936,17 @@ fn open_directory_path_direct(path: &Path) -> Result<File> {
 
 #[cfg(test)]
 fn open_test_parent_path(path: &Path) -> Result<File> {
+	if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(OsStr::new("1")) {
+		let sandbox_root = std::env::var_os("TMPDIR")
+			.ok_or_else(|| eyre::eyre!("sandboxed Radar tests require TMPDIR"))?;
+		let sandbox_root = absolute_path_without_traversal(Path::new(&sandbox_root))?;
+		let relative = path
+			.strip_prefix(&sandbox_root)
+			.map_err(|_| eyre::eyre!("sandboxed Radar test parent must stay under TMPDIR"))?;
+
+		return Ok(open_sandbox_private_cache_root(path, &sandbox_root, relative, false)?.root);
+	}
+
 	let (_, components) = absolute_components(path)?;
 	let mut directory = File::open("/")?;
 
