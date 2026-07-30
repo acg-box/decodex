@@ -13,13 +13,16 @@ version.workspace    = true
 
 [dependencies]
 # crates.io
-clap       = { workspace = true }
-color-eyre = { workspace = true }
-getrandom  = { workspace = true }
-serde      = { workspace = true }
-serde_json = { workspace = true }
-sha2       = { workspace = true }
-time       = { workspace = true, features = ["parsing"] }
+clap         = { workspace = true }
+color-eyre   = { workspace = true }
+getrandom    = { workspace = true }
+libc         = { workspace = true }
+rustix       = { workspace = true }
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+sha2         = { workspace = true }
+time         = { workspace = true, features = ["parsing"] }
+wait-timeout = { workspace = true }
 
 [dev-dependencies]
 # crates.io
