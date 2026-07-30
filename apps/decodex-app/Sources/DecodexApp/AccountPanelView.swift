@@ -65,6 +65,16 @@ struct AccountPanelView: View {
 				isPresentingEnrollment = false
 			}
 		}
+		.sheet(
+			isPresented: Binding(
+				get: {
+					store.accountReauthentication != nil
+				},
+				set: { _ in }
+			)
+		) {
+			AccountReauthenticationView(store: store)
+		}
 		.task {
 			guard loadsExternalState else {
 				return
@@ -96,139 +106,131 @@ struct AccountPanelView: View {
 	}
 
 	private var header: some View {
-		VStack(alignment: .leading, spacing: 4) {
-			HStack(alignment: .center, spacing: 6) {
-				Image(nsImage: AppAssets.statusBarIcon)
-					.resizable()
-					.renderingMode(.template)
-					.scaledToFit()
-					.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-					.frame(width: 19, height: 19)
-					.frame(width: 26, height: 26)
-					.accessibilityHidden(true)
+		HStack(alignment: .center, spacing: 6) {
+			Image(nsImage: AppAssets.statusBarIcon)
+				.resizable()
+				.renderingMode(.template)
+				.scaledToFit()
+				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
+				.frame(width: 19, height: 19)
+				.frame(width: 26, height: 26)
+				.accessibilityHidden(true)
 
-				Text("Decodex")
-					.font(PanelFont.headerTitle)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+			Text("Decodex")
+				.font(PanelFont.headerTitle)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
-				Spacer(minLength: 4)
+			Spacer(minLength: 4)
 
-				PanelIconButtonView(
-					symbol: accountPrivacy == AccountPrivacy.visible ? "eye" : "eye.slash",
-					tint: PanelPalette.actionBlue(colorScheme),
-					isActive: accountPrivacy == AccountPrivacy.visible,
-					isSubtle: true,
-					size: 24,
-					action: {
-						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
-							? AccountPrivacy.visible
-							: AccountPrivacy.hidden
-					},
-					help: accountPrivacy == AccountPrivacy.hidden
+			PanelIconButtonView(
+				symbol: accountPrivacy == AccountPrivacy.visible ? "eye" : "eye.slash",
+				tint: PanelPalette.actionBlue(colorScheme),
+				isActive: accountPrivacy == AccountPrivacy.visible,
+				isSubtle: true,
+				size: 24,
+				action: {
+					accountPrivacy =
+						accountPrivacy == AccountPrivacy.hidden
+						? AccountPrivacy.visible
+						: AccountPrivacy.hidden
+				},
+				help: accountPrivacy == AccountPrivacy.hidden
+					? "Show email addresses"
+					: "Hide email addresses"
+			)
+
+			PanelIconButtonView(
+				symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
+				tint: PanelPalette.fastModeAccent(colorScheme),
+				isActive: fastMode.isEnabled,
+				isDisabled: fastMode.isLoading,
+				isSubtle: true,
+				size: 24,
+				action: {
+					Task {
+						await fastMode.toggle()
+					}
+				},
+				help: fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on"
+			)
+
+			PanelIconButtonView(
+				symbol: "plus",
+				tint: PanelPalette.actionBlue(colorScheme),
+				isActive: false,
+				isDisabled: store.isAccountControlInProgress
+					|| store.isRefreshing
+					|| store.isRefreshingAccountSkeleton,
+				isSubtle: true,
+				isPrimary: true,
+				size: 24,
+				action: {
+					isPresentingEnrollment = true
+				},
+				help: "Add Codex login"
+			)
+
+			Menu {
+				Button(
+					accountPrivacy == AccountPrivacy.hidden
 						? "Show email addresses"
 						: "Hide email addresses"
-				)
-
-				PanelIconButtonView(
-					symbol: fastMode.isEnabled ? "bolt.fill" : "bolt",
-					tint: PanelPalette.fastModeAccent(colorScheme),
-					isActive: fastMode.isEnabled,
-					isDisabled: fastMode.isLoading,
-					isSubtle: true,
-					size: 24,
-					action: {
-						Task {
-							await fastMode.toggle()
-						}
-					},
-					help: fastMode.isEnabled ? "Turn Fast Mode off" : "Turn Fast Mode on"
-				)
-
-				PanelIconButtonView(
-					symbol: "plus",
-					tint: PanelPalette.actionBlue(colorScheme),
-					isActive: false,
-					isDisabled: store.isAccountControlInProgress
-						|| store.isRefreshing
-						|| store.isRefreshingAccountSkeleton,
-					isSubtle: true,
-					isPrimary: true,
-					size: 24,
-					action: {
-						isPresentingEnrollment = true
-					},
-					help: "Add Codex login"
-				)
-
-				Menu {
-					Button(
+				) {
+					accountPrivacy =
 						accountPrivacy == AccountPrivacy.hidden
-							? "Show Email Addresses"
-							: "Hide Email Addresses"
-					) {
-						accountPrivacy = accountPrivacy == AccountPrivacy.hidden
-							? AccountPrivacy.visible
-							: AccountPrivacy.hidden
-					}
+						? AccountPrivacy.visible
+						: AccountPrivacy.hidden
+				}
 
-					Button(fastMode.isEnabled ? "Turn Fast Mode Off" : "Turn Fast Mode On") {
-						Task {
-							await fastMode.toggle()
-						}
+				Button(fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on") {
+					Task {
+						await fastMode.toggle()
 					}
-					.disabled(fastMode.isLoading)
+				}
+				.disabled(fastMode.isLoading)
 
-					Button("Refresh All") {
+				Button("Refresh all") {
+					Task {
+						await store.refresh()
+					}
+				}
+				.disabled(
+					store.isRefreshing
+						|| store.isRefreshingAccountSkeleton
+						|| store.isAccountControlInProgress
+						|| store.submittingKey != nil
+				)
+
+				if case .fixed = store.routing?.mode {
+					Button("Use balanced routing") {
 						Task {
-							await store.refresh()
+							await store.selectBalancedAccounts()
 						}
 					}
 					.disabled(
-						store.isRefreshing
-							|| store.isRefreshingAccountSkeleton
-							|| store.isAccountControlInProgress
+						store.canPerformDirectAccountControl == false
+							|| store.isRoutingAccountControl
 							|| store.submittingKey != nil
 					)
-
-					if case .fixed = store.routing?.mode {
-						Button("Use Balanced Routing") {
-							Task {
-								await store.selectBalancedAccounts()
-							}
-						}
-						.disabled(
-							store.canPerformDirectAccountControl == false
-								|| store.isRoutingAccountControl
-								|| store.submittingKey != nil
-						)
-					}
-
-					Divider()
-
-					Button("Quit Decodex") {
-						NSApplication.shared.terminate(nil)
-					}
-				} label: {
-					Image(systemName: "ellipsis")
-						.font(PanelFont.iconButton)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-						.frame(width: 26, height: 26)
-						.contentShape(Rectangle())
 				}
-				.menuStyle(.borderlessButton)
-				.menuIndicator(.hidden)
-				.fixedSize()
-				.help("Decodex menu")
-				.accessibilityLabel("Decodex menu")
-			}
 
-			VStack(alignment: .leading, spacing: 1) {
-				headerState(label: "Routing", value: routingSubtitle)
-				.accessibilityLabel("Decodex routing, \(routingSubtitle)")
-				headerState(label: "Codex", value: codexProjectionSubtitle)
-				.accessibilityLabel("Shared Codex login, \(codexProjectionSubtitle)")
+				Divider()
+
+				Button("Quit Decodex") {
+					NSApplication.shared.terminate(nil)
+				}
+			} label: {
+				Image(systemName: "ellipsis")
+					.font(PanelFont.iconButton)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.frame(width: 26, height: 26)
+					.contentShape(Rectangle())
 			}
-			.padding(.leading, 32)
+			.menuStyle(.borderlessButton)
+			.menuIndicator(.hidden)
+			.fixedSize()
+			.help("Decodex menu")
+			.accessibilityLabel("Decodex menu")
 		}
 		.padding(.horizontal, 2)
 	}
@@ -305,55 +307,6 @@ struct AccountPanelView: View {
 	private var profiledAccountStates: [ResetCardAccountState] {
 		store.accounts.filter {
 			$0.profile?.snapshot.hasContent == true
-		}
-	}
-
-	private var routingSubtitle: String {
-		guard let routing = store.routing else {
-			return store.isInitialLoading ? "Loading" : "Unavailable"
-		}
-		switch routing.mode {
-		case .balanced:
-			return "Balanced"
-		case .fixed(let accountID):
-			let state = store.accounts.first {
-				$0.account.accountID == accountID
-			}
-			return state.map(accountIdentity(for:)) ?? "Fixed account"
-		}
-	}
-
-	private var codexProjectionSubtitle: String {
-		let state = store.accounts.first(where: {
-			store.isCodexProjection($0.account.accountID)
-		})
-		return CodexProjectionPresentation(
-			projection: store.codexAuthProjection,
-			currentIdentity: state.map(accountIdentity(for:)),
-			isInitialLoading: store.isInitialLoading
-		).text
-	}
-
-	private func accountIdentity(for state: ResetCardAccountState) -> String {
-		AccountIdentityPresentation(
-			alias: state.account.alias,
-			email: state.profile?.email ?? state.profileUnavailable?.claims.email,
-			revealsEmail: accountPrivacy == AccountPrivacy.visible
-		).text
-	}
-
-	private func headerState(label: String, value: String) -> some View {
-		HStack(alignment: .firstTextBaseline, spacing: 4) {
-			Text("\(label):")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.frame(width: 43, alignment: .leading)
-
-			Text(value)
-				.font(PanelFont.headerSubtitle)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.9))
-				.lineLimit(1)
-				.truncationMode(.middle)
 		}
 	}
 

@@ -178,13 +178,13 @@ struct ResetCardAccountRow: View {
 			.lineLimit(1)
 			.truncationMode(.middle)
 			.layoutPriority(1)
-		.frame(maxWidth: .infinity, alignment: .leading)
-		.accessibilityElement(children: .ignore)
-		.accessibilityLabel(
-			identity.showsEmail
-				? "Account email \(identity.text)"
-				: "Account \(identity.text)"
-		)
+			.frame(maxWidth: .infinity, alignment: .leading)
+			.accessibilityElement(children: .ignore)
+			.accessibilityLabel(
+				identity.showsEmail
+					? "Account email \(identity.text)"
+					: "Account \(identity.text)"
+			)
 	}
 
 	private var exceptionalStatus: some View {
@@ -307,7 +307,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(
-					"Sign in to this account in Codex, then choose Refresh Login."
+					"Choose Refresh login in the menu bar app to sign in with the official Codex device login."
 				)
 		} else if let error = state.inventory?.observationError {
 			Text("Reset Cards unavailable")
@@ -409,7 +409,8 @@ struct ResetCardAccountRow: View {
 			return "Using…"
 		}
 		if confirmation.isArmed(target) {
-			let seconds = confirmationSecondsRemaining > 0
+			let seconds =
+				confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: Self.confirmationWindowSeconds
 			return "Confirm · \(seconds)s"
@@ -545,7 +546,8 @@ struct ResetCardAccountRow: View {
 			spokenExpiry = expiry
 		}
 		let date = Date(timeIntervalSince1970: TimeInterval(expiresAtUnixSeconds))
-		let zone = timeZone.abbreviation(for: date)
+		let zone =
+			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
 		return "Reset Card, expires \(spokenExpiry) \(zone)"
 	}
@@ -572,7 +574,7 @@ struct ResetCardQuotaPresentation: Equatable {
 		case .current(let usedPercent, _):
 			isVisible = true
 			let remainingPercent = 100 - min(100, usedPercent)
-			valueText = "\(remainingPercent)% left"
+			valueText = "\(remainingPercent)%"
 			detailText = nil
 			tone = .current
 			self.usedPercent = usedPercent
@@ -581,7 +583,7 @@ struct ResetCardQuotaPresentation: Equatable {
 		case .stale(let usedPercent, _):
 			isVisible = true
 			let remainingPercent = 100 - min(100, usedPercent)
-			valueText = "\(remainingPercent)% left"
+			valueText = "\(remainingPercent)%"
 			detailText = "stale"
 			tone = .current
 			self.usedPercent = usedPercent
@@ -598,7 +600,8 @@ struct ResetCardQuotaPresentation: Equatable {
 		case .error(let error):
 			isVisible = false
 			valueText = "—"
-			detailText = error == .unsupportedWindow
+			detailText =
+				error == .unsupportedWindow
 				? "Not reported"
 				: error.presentation
 			tone = .muted
@@ -610,9 +613,7 @@ struct ResetCardQuotaPresentation: Equatable {
 }
 
 private struct ResetCardQuotaWindowView: View {
-	private static let titleColumnWidth: CGFloat = 16
-	private static let valueColumnWidth: CGFloat = 86
-	private static let resetDateColumnWidth: CGFloat = 80
+	private static let titleColumnWidth: CGFloat = 17
 
 	let title: String
 	let window: ResetCardQuotaWindow
@@ -626,22 +627,6 @@ private struct ResetCardQuotaWindowView: View {
 				.font(PanelFont.quotaText)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.frame(width: Self.titleColumnWidth, alignment: .leading)
-
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Text(presentation.valueText)
-					.font(PanelFont.usageValue)
-
-				if let detailText = presentation.detailText,
-					presentation.resetDate != nil
-				{
-					Text(detailText)
-						.font(PanelFont.quotaText)
-				}
-			}
-			.foregroundStyle(stateColor(for: presentation.tone))
-			.monospacedDigit()
-			.lineLimit(1)
-			.frame(width: Self.valueColumnWidth, alignment: .leading)
 
 			if let remainingPercent = presentation.remainingPercent {
 				GeometryReader { proxy in
@@ -658,9 +643,26 @@ private struct ResetCardQuotaWindowView: View {
 							)
 					}
 				}
-				.frame(minWidth: 72, maxWidth: .infinity)
-				.frame(height: 4)
+				.frame(minWidth: 88, maxWidth: .infinity)
+				.frame(height: 5)
+				.layoutPriority(1)
 			}
+
+			HStack(alignment: .firstTextBaseline, spacing: 3) {
+				Text(presentation.valueText)
+					.font(PanelFont.usageValue)
+
+				if let detailText = presentation.detailText,
+					presentation.resetDate != nil
+				{
+					Text(detailText)
+						.font(PanelFont.quotaText)
+				}
+			}
+			.foregroundStyle(stateColor(for: presentation.tone))
+			.monospacedDigit()
+			.lineLimit(1)
+			.fixedSize(horizontal: true, vertical: false)
 
 			if let resetDate = presentation.resetDate {
 				Text(Self.compactDateTime(resetDate))
@@ -668,21 +670,14 @@ private struct ResetCardQuotaWindowView: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.monospacedDigit()
 					.lineLimit(1)
-					.layoutPriority(1)
-					.frame(
-						width: Self.resetDateColumnWidth,
-						alignment: .trailing
-					)
+					.fixedSize(horizontal: true, vertical: false)
 			} else if let detailText = presentation.detailText {
 				Text(detailText)
 					.font(PanelFont.quotaText)
 					.foregroundStyle(stateColor(for: presentation.tone))
 					.lineLimit(1)
 					.truncationMode(.tail)
-					.frame(
-						width: Self.resetDateColumnWidth,
-						alignment: .trailing
-					)
+					.frame(maxWidth: .infinity, alignment: .trailing)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
