@@ -141,7 +141,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 			NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
 		}
 
-		XCTAssertEqual(frame.width, 306)
+		XCTAssertEqual(frame.width, 294)
 		XCTAssertEqual(frame.height, 538)
 		XCTAssertEqual(frame.midX, currentFrame.midX)
 		XCTAssertEqual(frame.maxY, currentFrame.maxY)

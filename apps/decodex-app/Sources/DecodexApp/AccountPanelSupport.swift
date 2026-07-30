@@ -3,10 +3,10 @@ import SwiftUI
 
 enum AccountPanelLayout {
 	static let screenVerticalMargin: CGFloat = 44
-	static let panelVerticalPadding: CGFloat = 18
-	static let panelWidth: CGFloat = 288
+	static let panelVerticalPadding: CGFloat = 12
+	static let panelWidth: CGFloat = 276
 	static let minimumAccountListHeight: CGFloat = 110
-	static let estimatedAccountRowHeight: CGFloat = 104
+	static let estimatedAccountRowHeight: CGFloat = 74
 	static let statusMaximumHeight: CGFloat = 92
 	// Header, routing/projection status, aggregate activity card, and panel spacing.
 	static let fixedChromeHeight: CGFloat = 142

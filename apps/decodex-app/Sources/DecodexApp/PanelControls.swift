@@ -48,18 +48,9 @@ struct PanelIconButtonView: View {
 		.accessibilityLabel(help)
 	}
 
-	@ViewBuilder
 	private var buttonLabel: some View {
-		if usesSurface {
-			iconContent
-				.modernGlassSurface(
-					cornerRadius: iconCornerRadius,
-					depth: .control
-				)
-		} else {
-			iconContent
-				.opacity(isDisabled ? 0.34 : 0.82)
-		}
+		iconContent
+			.opacity(isDisabled && isActive == false ? 0.34 : 0.9)
 	}
 
 	private var iconContent: some View {
@@ -88,10 +79,6 @@ struct PanelIconButtonView: View {
 			return tint.opacity(colorScheme == .dark ? 0.86 : 0.82)
 		}
 		return PanelPalette.actionBlue(colorScheme).opacity(colorScheme == .dark ? 0.88 : 0.86)
-	}
-
-	private var usesSurface: Bool {
-		isSubtle == false
 	}
 
 	private var iconCornerRadius: CGFloat {

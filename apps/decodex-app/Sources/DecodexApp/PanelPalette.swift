@@ -25,8 +25,8 @@ enum PanelPalette {
 		.orange
 	}
 
-	static func usageCyan(_ colorScheme: ColorScheme) -> Color {
-		colorScheme == .dark ? .cyan : .teal
+	static func usageCyan(_: ColorScheme) -> Color {
+		.accentColor
 	}
 
 	static func fastModeAccent(_ colorScheme: ColorScheme) -> Color {

@@ -26,9 +26,12 @@ struct AccountPanelView: View {
 	}
 
 	var body: some View {
-		GlassEffectContainer(spacing: 6) {
+		GlassEffectContainer(spacing: 0) {
 			VStack(alignment: .leading, spacing: 7) {
 				header
+					.padding(.horizontal, 10)
+					.padding(.vertical, 8)
+					.modernGlassSurface(cornerRadius: 18)
 
 				if hasTransientStatus {
 					transientStatus
@@ -44,14 +47,14 @@ struct AccountPanelView: View {
 						}.count,
 						degradedProfileCount: profiledAccountStates.filter(\.isProfileDegraded).count
 					)
+					.modernGlassSurface(cornerRadius: 16)
 					.transition(.panelSection)
 				}
 
 				accountContent
 			}
 			.frame(width: AccountPanelLayout.panelWidth)
-			.padding(9)
-			.modernGlassSurface(cornerRadius: 20, depth: .panel)
+			.padding(6)
 			.controlSize(.small)
 			.symbolRenderingMode(.hierarchical)
 			.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
@@ -121,6 +124,7 @@ struct AccountPanelView: View {
 					symbol: accountPrivacy == AccountPrivacy.visible ? "eye" : "eye.slash",
 					tint: PanelPalette.actionBlue(colorScheme),
 					isActive: accountPrivacy == AccountPrivacy.visible,
+					isSubtle: true,
 					size: 24,
 					action: {
 						withAnimation(PanelMotion.state) {
@@ -139,6 +143,7 @@ struct AccountPanelView: View {
 					tint: PanelPalette.fastModeAccent(colorScheme),
 					isActive: fastMode.isEnabled,
 					isDisabled: fastMode.isLoading,
+					isSubtle: true,
 					size: 24,
 					action: {
 						Task {
@@ -155,6 +160,7 @@ struct AccountPanelView: View {
 					isDisabled: store.isAccountControlInProgress
 						|| store.isRefreshing
 						|| store.isRefreshingAccountSkeleton,
+					isSubtle: true,
 					isPrimary: true,
 					size: 24,
 					action: {
@@ -368,24 +374,18 @@ struct AccountPanelView: View {
 			emptyOrLoadingState
 		} else {
 			ScrollView(.vertical, showsIndicators: false) {
-				VStack(alignment: .leading, spacing: 0) {
-					ForEach(Array(store.accounts.enumerated()), id: \.element.id) { index, state in
+				VStack(alignment: .leading, spacing: 7) {
+					ForEach(store.accounts) { state in
 						ResetCardAccountRow(
 							state: state,
 							store: store,
 							showsEmail: accountPrivacy == AccountPrivacy.visible,
 							detailedAccountID: $detailedAccountID
 						)
-
-						if index < store.accounts.count - 1 {
-							Rectangle()
-								.fill(PanelPalette.separator(colorScheme))
-								.frame(height: 0.5)
-								.padding(.horizontal, 7)
-								.allowsHitTesting(false)
-						}
+						.modernGlassSurface(cornerRadius: 16)
 					}
 				}
+				.padding(1)
 				.background(accountRowsHeightProbe)
 			}
 			.frame(
@@ -456,6 +456,6 @@ struct AccountPanelView: View {
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(9)
-		.modernGlassSurface(cornerRadius: 9, depth: .row)
+		.modernGlassSurface(cornerRadius: 16)
 	}
 }
