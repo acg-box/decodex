@@ -170,6 +170,8 @@ enum PanelWindowAppearance {
 		window.hasShadow = false
 		window.isOpaque = false
 		window.backgroundColor = .clear
+		window.contentView?.wantsLayer = true
+		window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor
 	}
 }
 

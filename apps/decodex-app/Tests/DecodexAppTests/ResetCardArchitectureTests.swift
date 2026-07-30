@@ -143,9 +143,16 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 
 		XCTAssertTrue(cardSurface.contains("shape.fill(.thinMaterial)"))
+		XCTAssertTrue(cardSurface.contains("shape.fill(.regularMaterial)"))
 		XCTAssertTrue(cardSurface.contains(".background"))
-		XCTAssertTrue(cardSurface.contains(".overlay"))
 		XCTAssertTrue(cardSurface.contains(".shadow"))
+		XCTAssertTrue(cardSurface.contains("radius: 3"))
+		XCTAssertTrue(cardSurface.contains("radius: 10"))
+		XCTAssertTrue(cardSurface.contains("y: 1"))
+		XCTAssertTrue(cardSurface.contains("y: 4"))
+		XCTAssertFalse(cardSurface.contains("cardFill"))
+		XCTAssertFalse(cardSurface.contains("cardStroke"))
+		XCTAssertFalse(cardSurface.contains("strokeBorder"))
 		XCTAssertFalse(cardSurface.contains("Glass"))
 		XCTAssertFalse(cardSurface.contains("glassEffect"))
 		XCTAssertFalse(accountPanel.contains("GlassEffectContainer"))
@@ -167,7 +174,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
 		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel"))
 		XCTAssertTrue(statusPanel.contains("styleMask: [.borderless]"))
-		XCTAssertTrue(statusPanel.contains("NSHostingView(rootView: StatusPanelRootView"))
+		XCTAssertTrue(statusPanel.contains("TransparentHostingView(rootView: StatusPanelRootView"))
+		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
 		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
 		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
 		XCTAssertFalse(statusPanel.contains(".preferredColorScheme"))
@@ -181,6 +189,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(accountPanel.contains("routingSubtitle"))
 		XCTAssertFalse(accountPanel.contains("codexProjectionSubtitle"))
 		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
+		XCTAssertTrue(
+			panelWindow.contains(
+				"window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor"
+			)
+		)
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
@@ -325,6 +338,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			),
 			encoding: .utf8
 		)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
 		let app = try String(
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
@@ -337,12 +354,25 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(view.contains("\"Copy\""))
 		XCTAssertTrue(view.contains("\"Open browser\""))
 		XCTAssertTrue(view.contains("\"Cancel\""))
-		XCTAssertTrue(view.contains(".frame(width: 256)"))
+		XCTAssertTrue(view.contains(".frame(width: 220)"))
+		XCTAssertTrue(view.contains(".padding(14)"))
 		XCTAssertFalse(view.contains("Enter this one-time code"))
 		XCTAssertFalse(view.contains("Divider()"))
-		XCTAssertTrue(view.contains(".interactiveDismissDisabled(true)"))
+		XCTAssertFalse(view.contains(".interactiveDismissDisabled"))
 		XCTAssertFalse(view.contains(".onDisappear"))
 		XCTAssertFalse(view.contains(".onChange(of:"))
+		XCTAssertTrue(panel.contains("reauthenticationOverlay"))
+		XCTAssertTrue(panel.contains(".disabled(store.accountReauthentication != nil)"))
+		XCTAssertTrue(panel.contains(".allowsHitTesting(store.accountReauthentication == nil)"))
+		XCTAssertTrue(panel.contains(".accessibilityHidden(store.accountReauthentication != nil)"))
+		XCTAssertTrue(panel.contains(".panelModalSurface(cornerRadius: 16)"))
+		XCTAssertTrue(panel.contains(".accessibilityAddTraits(.isModal)"))
+		XCTAssertFalse(panel.contains(".padding(.horizontal, 20)"))
+		XCTAssertFalse(panel.contains("isPresented: Binding("))
+		XCTAssertTrue(view.contains("@FocusState private var focusedAction"))
+		XCTAssertTrue(view.contains(".focused($focusedAction, equals: .openBrowser)"))
+		XCTAssertTrue(view.contains(".task(id: desiredFocus)"))
+		XCTAssertTrue(view.contains("presentation.canCloseWithoutCancellation"))
 		XCTAssertTrue(
 			controls.contains("store.beginAccountReauthentication(for:")
 		)
