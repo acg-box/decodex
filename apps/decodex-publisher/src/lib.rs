@@ -15,6 +15,7 @@ mod prelude {
 	pub use color_eyre::{Result, eyre};
 }
 
+#[cfg(test)] pub(crate) use self::filesystem::repo_local_test_directory;
 pub(crate) use self::{
 	filesystem::{
 		collect_json_files, ensure_private_directory, load_json, load_json_bytes_with_sha256,
