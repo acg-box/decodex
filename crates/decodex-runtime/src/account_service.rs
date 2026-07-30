@@ -31,7 +31,8 @@ use zeroize::{Zeroize, ZeroizeOnDrop};
 use crate::{
 	account_import::{
 		CredentialImportError, ImportedCredential, decode_chatgpt_identity,
-		read_explicit_credential_file, read_shared_codex_credential,
+		read_explicit_credential_file, read_explicit_shared_codex_credential_file,
+		read_shared_codex_credential,
 	},
 	auth_projection::{
 		CodexAuthProjectionError, SharedCodexAuthIdentity, project_shared_codex_auth,
@@ -1012,6 +1013,245 @@ impl AccountService {
 				.await?;
 		}
 		Ok(projection(&target, &projection_bundle))
+	}
+
+	/// Replace one exact account credential from a private Codex auth file.
+	#[allow(clippy::too_many_arguments)] // The receipt, operation, account fence, private source, and response owner are independent inputs.
+	pub(crate) async fn reauthenticate_from_credential_file_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: AccountOperationId,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+		source_descriptor: &str,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send,
+	{
+		let lock = self.lock_for(account_id)?;
+		let _guard = lock.lock().await;
+		let mut build_response = Some(build_response);
+		let account = match self.load_account(account_id).await {
+			Ok(account) => account,
+			Err(error) => {
+				return self
+					.complete_account_command_error(
+						lease,
+						error,
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			},
+		};
+		if let Some(operation) = self.store.read_account_operation(&operation_id).await? {
+			if let Err(error) = self.require_operation_identity(
+				&operation,
+				account_id,
+				AccountOperationKind::Refresh,
+			) {
+				return self
+					.complete_account_command_error(
+						lease,
+						error,
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			}
+			if operation.expected_account_revision != Some(expected_account_revision) {
+				return self
+					.complete_account_command_error(
+						lease,
+						AccountLifecycleError::StaleAccount,
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			}
+			match classify_reauthentication_replay(
+				operation.phase,
+				operation.expected.as_ref(),
+				operation.target.as_ref(),
+				|binding| self.credentials.read_exact(account_id, binding).map(|_| ()),
+			) {
+				ReauthenticationReplayDisposition::Complete => {
+					if !matches!(
+						operation.phase,
+						AccountOperationPhase::StoreApplied | AccountOperationPhase::Committed
+					) {
+						accepted_phase(
+							self.store
+								.advance_account_operation(
+									&operation_id,
+									operation.phase,
+									AccountOperationPhase::StoreApplied,
+									None,
+								)
+								.await?,
+						)?;
+					}
+					return self
+						.complete_account_operation_success(
+							lease,
+							&operation_id,
+							AccountOperationPhase::StoreApplied,
+							AccountOperationPhase::Committed,
+							build_response.take().expect("builder is retained"),
+						)
+						.await;
+				},
+				ReauthenticationReplayDisposition::Cancel => {
+					return self
+						.complete_account_operation_error(
+							lease,
+							&operation_id,
+							operation.phase,
+							AccountOperationPhase::Cancelled,
+							None,
+							AccountLifecycleError::InvalidOperation,
+							build_response.take().expect("builder is retained"),
+						)
+						.await;
+				},
+				ReauthenticationReplayDisposition::Recover => {
+					return self
+						.complete_account_operation_error(
+							lease,
+							&operation_id,
+							operation.phase,
+							AccountOperationPhase::RecoveryRequired,
+							Some("credential_reauthentication_reconciliation"),
+							AccountLifecycleError::NotReady(
+								AccountLifecycleReadiness::OperationUnsettled,
+							),
+							build_response.take().expect("builder is retained"),
+						)
+						.await;
+				},
+			}
+		}
+		let current = match reauthentication_current(&account, expected_account_revision) {
+			Ok(current) => current,
+			Err(error) => {
+				return self
+					.complete_account_command_error(
+						lease,
+						error,
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			},
+		};
+		let imported = match read_explicit_shared_codex_credential_file(source_descriptor) {
+			Ok(imported) => imported,
+			Err(error) => {
+				return self
+					.complete_account_command_error(
+						lease,
+						error.into(),
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			},
+		};
+		let target = match reauthentication_target(&current, account_id, &operation_id, &imported) {
+			Ok(target) => target,
+			Err(error) => {
+				return self
+					.complete_account_command_error(
+						lease,
+						error,
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			},
+		};
+		if let Err(error) = self.credentials.read_exact(account_id, &current) {
+			return self
+				.complete_account_command_error(
+					lease,
+					error.into(),
+					build_response.take().expect("builder is retained"),
+				)
+				.await;
+		}
+		let preparation = AccountOperationPreparation {
+			operation_id: operation_id.clone(),
+			account_id: account_id.clone(),
+			kind: AccountOperationKind::Refresh,
+			display_label: None,
+			enabled: None,
+			expected_account_revision: Some(expected_account_revision),
+			expected: Some(current.clone()),
+			target: Some(target.clone()),
+			provider: imported.provider,
+		};
+		let phase = match self.store.prepare_account_operation(&preparation).await? {
+			AccountLifecycleMutationOutcome::Applied(mutation)
+			| AccountLifecycleMutationOutcome::Replayed(mutation) => mutation.phase,
+			AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
+				return self
+					.complete_account_command_error(
+						lease,
+						AccountLifecycleError::OperationRejected(rejection),
+						build_response.take().expect("builder is retained"),
+					)
+					.await;
+			},
+		};
+		if phase != AccountOperationPhase::Prepared {
+			return self
+				.complete_account_command_error(
+					lease,
+					AccountLifecycleError::InvalidOperation,
+					build_response.take().expect("builder is retained"),
+				)
+				.await;
+		}
+		let rotation = self.credentials.compare_and_swap_rotate(
+			account_id,
+			&current,
+			&target,
+			imported.bundle,
+		);
+		let target_is_exact =
+			rotation.is_err() && self.credentials.read_exact(account_id, &target).is_ok();
+		if let Err(error) = resolve_reauthentication_store_effect(rotation, target_is_exact) {
+			let ambiguous = store_effect_may_be_ambiguous(error);
+			return self
+				.complete_account_operation_error(
+					lease,
+					&operation_id,
+					AccountOperationPhase::Prepared,
+					if ambiguous {
+						AccountOperationPhase::RecoveryRequired
+					} else {
+						AccountOperationPhase::Cancelled
+					},
+					ambiguous.then_some("credential_reauthentication_reconciliation"),
+					error.into(),
+					build_response.take().expect("builder is retained"),
+				)
+				.await;
+		}
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					&operation_id,
+					AccountOperationPhase::Prepared,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await?,
+		)?;
+		self.complete_account_operation_success(
+			lease,
+			&operation_id,
+			AccountOperationPhase::StoreApplied,
+			AccountOperationPhase::Committed,
+			build_response.take().expect("builder is retained"),
+		)
+		.await
 	}
 
 	/// Refresh one account and atomically commit the exact final registry result with its logical
@@ -2831,17 +3071,47 @@ impl AccountService {
 			},
 			AccountOperationKind::Refresh => {
 				if operation.phase == AccountOperationPhase::Prepared {
-					accepted_phase(
-						self.store
-							.advance_account_operation(
-								&operation.operation_id,
-								operation.phase,
-								AccountOperationPhase::Cancelled,
-								None,
+					return match classify_prepared_refresh_reconciliation(
+						operation.expected.as_ref(),
+						operation.target.as_ref(),
+						|binding| {
+							self.credentials.read_exact(&operation.account_id, binding).map(|_| ())
+						},
+					) {
+						PreparedRefreshReconciliation::StoreApplied => {
+							accepted_phase(
+								self.store
+									.advance_account_operation(
+										&operation.operation_id,
+										operation.phase,
+										AccountOperationPhase::StoreApplied,
+										None,
+									)
+									.await?,
+							)?;
+							self.commit_store_applied(&operation.operation_id).await?;
+							Ok(ReconciliationDisposition::Committed)
+						},
+						PreparedRefreshReconciliation::NotApplied => {
+							accepted_phase(
+								self.store
+									.advance_account_operation(
+										&operation.operation_id,
+										operation.phase,
+										AccountOperationPhase::Cancelled,
+										None,
+									)
+									.await?,
+							)?;
+							Ok(ReconciliationDisposition::Cancelled)
+						},
+						PreparedRefreshReconciliation::RecoveryRequired =>
+							self.mark_manual(
+								operation,
+								"credential_reauthentication_reconciliation",
 							)
-							.await?,
-					)?;
-					return Ok(ReconciliationDisposition::Cancelled);
+							.await,
+					};
 				}
 				let Some(target) = operation.target.as_ref() else {
 					return self.mark_manual(operation, PROVIDER_REFRESH_OUTCOME_UNKNOWN).await;
@@ -3062,6 +3332,47 @@ fn refreshed_credential_target(
 		.map_err(Into::into)
 }
 
+fn reauthentication_current(
+	account: &AccountRecord,
+	expected_account_revision: i64,
+) -> Result<CredentialBinding, AccountLifecycleError> {
+	if account.revision != expected_account_revision {
+		return Err(AccountLifecycleError::StaleAccount);
+	}
+	account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)
+}
+
+fn reauthentication_target(
+	current: &CredentialBinding,
+	account_id: &AccountId,
+	operation_id: &AccountOperationId,
+	imported: &ImportedCredential,
+) -> Result<CredentialBinding, AccountLifecycleError> {
+	if imported.provider != current.provider {
+		return Err(AccountLifecycleError::ProviderMismatch);
+	}
+	imported
+		.bundle
+		.binding_for(
+			account_id,
+			operation_id,
+			current.version.successor().map_err(|_| AccountLifecycleError::InvalidOperation)?,
+			&imported.provider,
+		)
+		.map_err(Into::into)
+}
+
+const fn resolve_reauthentication_store_effect(
+	rotation: Result<(), CredentialStoreError>,
+	target_is_exact: bool,
+) -> Result<(), CredentialStoreError> {
+	match rotation {
+		Ok(()) => Ok(()),
+		Err(_) if target_is_exact => Ok(()),
+		Err(error) => Err(error),
+	}
+}
+
 fn matching_shared_refresh(
 	current: &CredentialBinding,
 	current_bundle: &CredentialSecretBundle,
@@ -3090,6 +3401,75 @@ fn same_refresh_bundle(first: &CredentialSecretBundle, second: &CredentialSecret
 		&& first.token_type() == second.token_type()
 		&& first.access_token_expires_at_unix_micros()
 			== second.access_token_expires_at_unix_micros()
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ReauthenticationReplayDisposition {
+	Complete,
+	Cancel,
+	Recover,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PreparedRefreshReconciliation {
+	StoreApplied,
+	NotApplied,
+	RecoveryRequired,
+}
+
+fn classify_prepared_refresh_reconciliation<F>(
+	expected: Option<&CredentialBinding>,
+	target: Option<&CredentialBinding>,
+	mut read_exact: F,
+) -> PreparedRefreshReconciliation
+where
+	F: FnMut(&CredentialBinding) -> Result<(), CredentialStoreError>,
+{
+	// Ordinary refresh reaches ProviderEffectPending before it records a target. A target-backed
+	// Prepared refresh is reauthentication and can have completed its store CAS before a crash.
+	let Some(target) = target else {
+		return PreparedRefreshReconciliation::NotApplied;
+	};
+	match read_exact(target) {
+		Ok(()) => PreparedRefreshReconciliation::StoreApplied,
+		Err(CredentialStoreError::Unavailable) => PreparedRefreshReconciliation::RecoveryRequired,
+		Err(_) => match expected {
+			Some(expected) if read_exact(expected).is_ok() =>
+				PreparedRefreshReconciliation::NotApplied,
+			Some(_) | None => PreparedRefreshReconciliation::RecoveryRequired,
+		},
+	}
+}
+
+fn classify_reauthentication_replay<F>(
+	phase: AccountOperationPhase,
+	expected: Option<&CredentialBinding>,
+	target: Option<&CredentialBinding>,
+	mut read_exact: F,
+) -> ReauthenticationReplayDisposition
+where
+	F: FnMut(&CredentialBinding) -> Result<(), CredentialStoreError>,
+{
+	match phase {
+		AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied =>
+			ReauthenticationReplayDisposition::Complete,
+		AccountOperationPhase::Cancelled => ReauthenticationReplayDisposition::Cancel,
+		AccountOperationPhase::Prepared =>
+			match classify_prepared_refresh_reconciliation(expected, target, read_exact) {
+				PreparedRefreshReconciliation::StoreApplied =>
+					ReauthenticationReplayDisposition::Complete,
+				PreparedRefreshReconciliation::NotApplied =>
+					ReauthenticationReplayDisposition::Cancel,
+				PreparedRefreshReconciliation::RecoveryRequired =>
+					ReauthenticationReplayDisposition::Recover,
+			},
+		AccountOperationPhase::ProviderEffectPending | AccountOperationPhase::RecoveryRequired =>
+			if target.is_some_and(|target| read_exact(target).is_ok()) {
+				ReauthenticationReplayDisposition::Complete
+			} else {
+				ReauthenticationReplayDisposition::Recover
+			},
+	}
 }
 
 fn projection_binding(
@@ -3245,21 +3625,23 @@ impl From<CredentialImportError> for AccountLifecycleError {
 mod tests {
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use decodex_core::{
-		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountProvider,
-		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
-		ProviderIdentity,
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationPhase,
+		AccountProvider, AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord,
+		AccountState, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
+		CredentialVersion, ProviderIdentity,
 	};
 	use serde_json::json;
 
 	use super::{
 		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, CredentialImportError, CredentialRefreshError,
 		CredentialSecretBundle, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
-		RefreshResponse, UseInCodexProjectionError, access_token_needs_refresh, account_lock_for,
+		PreparedRefreshReconciliation, ReauthenticationReplayDisposition, RefreshResponse,
+		UseInCodexProjectionError, access_token_needs_refresh, account_lock_for,
+		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
 		codex_auth_projection_digest, credential_refresh_result, matching_shared_refresh,
-		projection_binding, refreshed_credential_target,
-		require_refreshed_access_token_for_observation, stable_account_alias,
-		use_in_codex_receipt_result,
+		projection_binding, reauthentication_current, reauthentication_target,
+		refreshed_credential_target, require_refreshed_access_token_for_observation,
+		resolve_reauthentication_store_effect, stable_account_alias, use_in_codex_receipt_result,
 	};
 	use std::{
 		collections::{HashMap, HashSet},
@@ -3311,6 +3693,193 @@ mod tests {
 				&& bytes[0].is_ascii_uppercase()
 				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
 		}));
+	}
+
+	#[test]
+	fn exact_reauthentication_builds_only_the_immediate_same_provider_successor() {
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000097").unwrap();
+		let operation_id = AccountOperationId::new("10000000-0000-4000-8000-000000000097").unwrap();
+		let current = binding("reauth-provider", 7);
+		let imported = imported("reauth-provider", "new-access", 3_000_000);
+
+		let target =
+			reauthentication_target(&current, &account_id, &operation_id, &imported).unwrap();
+
+		assert_eq!(target.version.get(), 8);
+		assert_eq!(target.provider, current.provider);
+		assert_eq!(target.writer_operation_id, operation_id);
+		assert_ne!(target.fingerprint, current.fingerprint);
+		assert_eq!(resolve_reauthentication_store_effect(Ok(()), false), Ok(()));
+		assert_eq!(
+			resolve_reauthentication_store_effect(
+				Err(super::CredentialStoreError::VersionConflict),
+				true
+			),
+			Ok(())
+		);
+	}
+
+	#[test]
+	fn provider_mismatch_and_stale_revision_stop_before_a_reauthentication_target_exists() {
+		let account_id = AccountId::new("20000000-0000-4000-8000-000000000096").unwrap();
+		let operation_id = AccountOperationId::new("10000000-0000-4000-8000-000000000096").unwrap();
+		let current = binding("expected-provider", 3);
+		let mismatched = imported("other-provider", "new-access", 3_000_000);
+		assert!(matches!(
+			reauthentication_target(&current, &account_id, &operation_id, &mismatched),
+			Err(AccountLifecycleError::ProviderMismatch)
+		));
+
+		let account = projection_account(Some(current.clone()));
+		assert!(matches!(
+			reauthentication_current(&account, account.revision + 1),
+			Err(AccountLifecycleError::StaleAccount)
+		));
+		assert_eq!(account.credential.as_ref(), Some(&current));
+	}
+
+	#[test]
+	fn same_operation_replay_after_source_cleanup_uses_only_persisted_target_evidence() {
+		let expected = binding("reauth-provider", 7);
+		let target = binding("reauth-provider", 8);
+		for phase in [
+			AccountOperationPhase::Prepared,
+			AccountOperationPhase::ProviderEffectPending,
+			AccountOperationPhase::RecoveryRequired,
+			AccountOperationPhase::StoreApplied,
+			AccountOperationPhase::Committed,
+		] {
+			assert_eq!(
+				classify_reauthentication_replay(
+					phase,
+					Some(&expected),
+					Some(&target),
+					|binding| {
+						assert_eq!(binding, &target);
+						Ok(())
+					},
+				),
+				ReauthenticationReplayDisposition::Complete
+			);
+		}
+		assert_eq!(
+			classify_reauthentication_replay(
+				AccountOperationPhase::Prepared,
+				Some(&expected),
+				Some(&target),
+				|binding| {
+					if binding == &expected {
+						Ok(())
+					} else {
+						Err(super::CredentialStoreError::NotFound)
+					}
+				},
+			),
+			ReauthenticationReplayDisposition::Cancel
+		);
+		assert_eq!(
+			classify_reauthentication_replay(
+				AccountOperationPhase::Cancelled,
+				Some(&expected),
+				Some(&target),
+				|_| panic!("cancelled replay does not read credentials"),
+			),
+			ReauthenticationReplayDisposition::Cancel
+		);
+		assert_eq!(
+			classify_reauthentication_replay(
+				AccountOperationPhase::RecoveryRequired,
+				Some(&expected),
+				Some(&target),
+				|_| Err(super::CredentialStoreError::Unavailable),
+			),
+			ReauthenticationReplayDisposition::Recover
+		);
+		assert_eq!(
+			classify_reauthentication_replay(
+				AccountOperationPhase::Prepared,
+				Some(&expected),
+				Some(&target),
+				|_| Err(super::CredentialStoreError::Unavailable),
+			),
+			ReauthenticationReplayDisposition::Recover
+		);
+	}
+
+	#[test]
+	fn prepared_target_backed_refresh_startup_commits_an_exact_applied_target() {
+		let expected = binding("reauth-provider", 7);
+		let target = binding("reauth-provider", 8);
+		let mut reads = 0_u8;
+
+		let disposition =
+			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+				reads += 1;
+				assert_eq!(binding, &target);
+				Ok(())
+			});
+
+		assert_eq!(disposition, PreparedRefreshReconciliation::StoreApplied);
+		assert_eq!(reads, 1);
+	}
+
+	#[test]
+	fn prepared_target_backed_refresh_startup_cancels_when_the_target_was_not_applied() {
+		let expected = binding("reauth-provider", 7);
+		let target = binding("reauth-provider", 8);
+		let mut reads = Vec::new();
+
+		let exact_expected =
+			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+				reads.push(binding.version.get());
+				if binding == &target {
+					Err(super::CredentialStoreError::VersionConflict)
+				} else {
+					Ok(())
+				}
+			});
+		assert_eq!(exact_expected, PreparedRefreshReconciliation::NotApplied);
+		assert_eq!(reads, vec![8, 7]);
+
+		let absent =
+			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |_| {
+				Err(super::CredentialStoreError::NotFound)
+			});
+		assert_eq!(absent, PreparedRefreshReconciliation::RecoveryRequired);
+	}
+
+	#[test]
+	fn prepared_target_backed_refresh_startup_requires_recovery_for_ambiguous_or_unavailable_store()
+	{
+		let expected = binding("reauth-provider", 7);
+		let target = binding("reauth-provider", 8);
+
+		let ambiguous =
+			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |binding| {
+				if binding == &target {
+					Err(super::CredentialStoreError::VersionConflict)
+				} else {
+					Err(super::CredentialStoreError::FingerprintMismatch)
+				}
+			});
+		assert_eq!(ambiguous, PreparedRefreshReconciliation::RecoveryRequired);
+
+		let unavailable =
+			classify_prepared_refresh_reconciliation(Some(&expected), Some(&target), |_| {
+				Err(super::CredentialStoreError::Unavailable)
+			});
+		assert_eq!(unavailable, PreparedRefreshReconciliation::RecoveryRequired);
+	}
+
+	#[test]
+	fn ordinary_prepared_refresh_startup_still_cancels_without_reading_the_store() {
+		let expected = binding("refresh-provider", 7);
+
+		let disposition = classify_prepared_refresh_reconciliation(Some(&expected), None, |_| {
+			panic!("ordinary refresh Prepared has no store effect to inspect")
+		});
+
+		assert_eq!(disposition, PreparedRefreshReconciliation::NotApplied);
 	}
 
 	#[tokio::test]
