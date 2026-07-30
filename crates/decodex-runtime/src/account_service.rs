@@ -366,6 +366,14 @@ pub enum AccountManualRecoveryOutcome {
 	StillRequiresRecovery,
 }
 
+struct ReauthenticationCommandInput<'a> {
+	operation_id: AccountOperationId,
+	account_id: &'a AccountId,
+	expected_account_revision: i64,
+	source_descriptor: &'a str,
+	account: &'a AccountRecord,
+}
+
 /// Sole account lifecycle coordinator in `decodexd`.
 pub struct AccountService {
 	store: PostgresStore,
@@ -1032,149 +1040,155 @@ impl AccountService {
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
-		let mut build_response = Some(build_response);
 		let account = match self.load_account(account_id).await {
 			Ok(account) => account,
 			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
+				return self.complete_account_command_error(lease, error, build_response).await;
 			},
 		};
 		if let Some(operation) = self.store.read_account_operation(&operation_id).await? {
-			if let Err(error) = self.require_operation_identity(
-				&operation,
-				account_id,
-				AccountOperationKind::Refresh,
-			) {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
-			}
-			if operation.expected_account_revision != Some(expected_account_revision) {
-				return self
-					.complete_account_command_error(
-						lease,
-						AccountLifecycleError::StaleAccount,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
-			}
-			match classify_reauthentication_replay(
-				operation.phase,
-				operation.expected.as_ref(),
-				operation.target.as_ref(),
-				|binding| self.credentials.read_exact(account_id, binding).map(|_| ()),
-			) {
-				ReauthenticationReplayDisposition::Complete => {
-					if !matches!(
-						operation.phase,
-						AccountOperationPhase::StoreApplied | AccountOperationPhase::Committed
-					) {
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation_id,
-									operation.phase,
-									AccountOperationPhase::StoreApplied,
-									None,
-								)
-								.await?,
-						)?;
-					}
-					return self
-						.complete_account_operation_success(
-							lease,
-							&operation_id,
-							AccountOperationPhase::StoreApplied,
-							AccountOperationPhase::Committed,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				ReauthenticationReplayDisposition::Cancel => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							operation.phase,
-							AccountOperationPhase::Cancelled,
-							None,
-							AccountLifecycleError::InvalidOperation,
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-				ReauthenticationReplayDisposition::Recover => {
-					return self
-						.complete_account_operation_error(
-							lease,
-							&operation_id,
-							operation.phase,
-							AccountOperationPhase::RecoveryRequired,
-							Some("credential_reauthentication_reconciliation"),
-							AccountLifecycleError::NotReady(
-								AccountLifecycleReadiness::OperationUnsettled,
-							),
-							build_response.take().expect("builder is retained"),
-						)
-						.await;
-				},
-			}
-		}
-		let current = match reauthentication_current(&account, expected_account_revision) {
-			Ok(current) => current,
-			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
-			},
-		};
-		let imported = match read_explicit_shared_codex_credential_file(source_descriptor) {
-			Ok(imported) => imported,
-			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error.into(),
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
-			},
-		};
-		let target = match reauthentication_target(&current, account_id, &operation_id, &imported) {
-			Ok(target) => target,
-			Err(error) => {
-				return self
-					.complete_account_command_error(
-						lease,
-						error,
-						build_response.take().expect("builder is retained"),
-					)
-					.await;
-			},
-		};
-		if let Err(error) = self.credentials.read_exact(account_id, &current) {
 			return self
-				.complete_account_command_error(
+				.complete_reauthentication_replay(
 					lease,
-					error.into(),
-					build_response.take().expect("builder is retained"),
+					&operation_id,
+					account_id,
+					expected_account_revision,
+					&operation,
+					build_response,
 				)
 				.await;
 		}
+		let input = ReauthenticationCommandInput {
+			operation_id,
+			account_id,
+			expected_account_revision,
+			source_descriptor,
+			account: &account,
+		};
+		self.continue_reauthentication_command(lease, input, build_response).await
+	}
+
+	async fn complete_reauthentication_replay<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+		operation: &AccountOperation,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send,
+	{
+		let disposition = match self.reauthentication_replay_disposition(
+			operation,
+			account_id,
+			expected_account_revision,
+		) {
+			Ok(disposition) => disposition,
+			Err(error) => {
+				return self.complete_account_command_error(lease, error, build_response).await;
+			},
+		};
+		match disposition {
+			ReauthenticationReplayDisposition::Complete => {
+				if !matches!(
+					operation.phase,
+					AccountOperationPhase::StoreApplied | AccountOperationPhase::Committed
+				) {
+					accepted_phase(
+						self.store
+							.advance_account_operation(
+								operation_id,
+								operation.phase,
+								AccountOperationPhase::StoreApplied,
+								None,
+							)
+							.await?,
+					)?;
+				}
+				self.complete_account_operation_success(
+					lease,
+					operation_id,
+					AccountOperationPhase::StoreApplied,
+					AccountOperationPhase::Committed,
+					build_response,
+				)
+				.await
+			},
+			ReauthenticationReplayDisposition::Cancel =>
+				self.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::Cancelled,
+					None,
+					AccountLifecycleError::InvalidOperation,
+					build_response,
+				)
+				.await,
+			ReauthenticationReplayDisposition::Recover =>
+				self.complete_account_operation_error(
+					lease,
+					operation_id,
+					operation.phase,
+					AccountOperationPhase::RecoveryRequired,
+					Some("credential_reauthentication_reconciliation"),
+					AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled),
+					build_response,
+				)
+				.await,
+		}
+	}
+
+	fn reauthentication_replay_disposition(
+		&self,
+		operation: &AccountOperation,
+		account_id: &AccountId,
+		expected_account_revision: i64,
+	) -> Result<ReauthenticationReplayDisposition, AccountLifecycleError> {
+		self.require_operation_identity(operation, account_id, AccountOperationKind::Refresh)?;
+		if operation.expected_account_revision != Some(expected_account_revision) {
+			return Err(AccountLifecycleError::StaleAccount);
+		}
+		Ok(classify_reauthentication_replay(
+			operation.phase,
+			operation.expected.as_ref(),
+			operation.target.as_ref(),
+			|binding| self.credentials.read_exact(account_id, binding).map(|_| ()),
+		))
+	}
+
+	async fn continue_reauthentication_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		input: ReauthenticationCommandInput<'_>,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send,
+	{
+		let ReauthenticationCommandInput {
+			operation_id,
+			account_id,
+			expected_account_revision,
+			source_descriptor,
+			account,
+		} = input;
+		let (current, imported, target) = match self.reauthentication_material(
+			account,
+			expected_account_revision,
+			account_id,
+			&operation_id,
+			source_descriptor,
+		) {
+			Ok(material) => material,
+			Err(error) => {
+				return self.complete_account_command_error(lease, error, build_response).await;
+			},
+		};
 		let preparation = AccountOperationPreparation {
 			operation_id: operation_id.clone(),
 			account_id: account_id.clone(),
@@ -1184,7 +1198,7 @@ impl AccountService {
 			expected_account_revision: Some(expected_account_revision),
 			expected: Some(current.clone()),
 			target: Some(target.clone()),
-			provider: imported.provider,
+			provider: imported.provider.clone(),
 		};
 		let phase = match self.store.prepare_account_operation(&preparation).await? {
 			AccountLifecycleMutationOutcome::Applied(mutation)
@@ -1194,7 +1208,7 @@ impl AccountService {
 					.complete_account_command_error(
 						lease,
 						AccountLifecycleError::OperationRejected(rejection),
-						build_response.take().expect("builder is retained"),
+						build_response,
 					)
 					.await;
 			},
@@ -1204,7 +1218,7 @@ impl AccountService {
 				.complete_account_command_error(
 					lease,
 					AccountLifecycleError::InvalidOperation,
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -1230,7 +1244,7 @@ impl AccountService {
 					},
 					ambiguous.then_some("credential_reauthentication_reconciliation"),
 					error.into(),
-					build_response.take().expect("builder is retained"),
+					build_response,
 				)
 				.await;
 		}
@@ -1249,9 +1263,25 @@ impl AccountService {
 			&operation_id,
 			AccountOperationPhase::StoreApplied,
 			AccountOperationPhase::Committed,
-			build_response.take().expect("builder is retained"),
+			build_response,
 		)
 		.await
+	}
+
+	fn reauthentication_material(
+		&self,
+		account: &AccountRecord,
+		expected_account_revision: i64,
+		account_id: &AccountId,
+		operation_id: &AccountOperationId,
+		source_descriptor: &str,
+	) -> Result<(CredentialBinding, ImportedCredential, CredentialBinding), AccountLifecycleError>
+	{
+		let current = reauthentication_current(account, expected_account_revision)?;
+		let imported = read_explicit_shared_codex_credential_file(source_descriptor)?;
+		let target = reauthentication_target(&current, account_id, operation_id, &imported)?;
+		self.credentials.read_exact(account_id, &current)?;
+		Ok((current, imported, target))
 	}
 
 	/// Refresh one account and atomically commit the exact final registry result with its logical
@@ -3019,144 +3049,121 @@ impl AccountService {
 		&self,
 		operation: &AccountOperation,
 	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
-		if operation.phase == AccountOperationPhase::Committed {
-			return Ok(ReconciliationDisposition::Committed);
-		}
-		if operation.phase == AccountOperationPhase::Cancelled {
-			return Ok(ReconciliationDisposition::Cancelled);
-		}
-		if operation.phase == AccountOperationPhase::RecoveryRequired {
-			return Ok(ReconciliationDisposition::Manual);
-		}
-		if operation.phase == AccountOperationPhase::StoreApplied {
-			self.commit_store_applied(&operation.operation_id).await?;
-			return Ok(ReconciliationDisposition::Committed);
+		if let Some(disposition) = self.reconcile_terminal_phase(operation).await? {
+			return Ok(disposition);
 		}
 		match operation.kind {
-			AccountOperationKind::Enroll | AccountOperationKind::Import => {
-				let target =
-					operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
-				match self.credentials.read_exact(&operation.account_id, target) {
-					Ok(_) => {
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation.operation_id,
-									operation.phase,
-									AccountOperationPhase::StoreApplied,
-									None,
-								)
-								.await?,
-						)?;
-						self.commit_store_applied(&operation.operation_id).await?;
-						Ok(ReconciliationDisposition::Committed)
-					},
-					Err(CredentialStoreError::NotFound)
-						if operation.phase == AccountOperationPhase::Prepared =>
-					{
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation.operation_id,
-									operation.phase,
-									AccountOperationPhase::Cancelled,
-									None,
-								)
-								.await?,
-						)?;
-						Ok(ReconciliationDisposition::Cancelled)
-					},
-					Err(_) => self.mark_manual(operation, "credential_import_reconciliation").await,
-				}
-			},
-			AccountOperationKind::Refresh => {
-				if operation.phase == AccountOperationPhase::Prepared {
-					return match classify_prepared_refresh_reconciliation(
-						operation.expected.as_ref(),
-						operation.target.as_ref(),
-						|binding| {
-							self.credentials.read_exact(&operation.account_id, binding).map(|_| ())
-						},
-					) {
-						PreparedRefreshReconciliation::StoreApplied => {
-							accepted_phase(
-								self.store
-									.advance_account_operation(
-										&operation.operation_id,
-										operation.phase,
-										AccountOperationPhase::StoreApplied,
-										None,
-									)
-									.await?,
-							)?;
-							self.commit_store_applied(&operation.operation_id).await?;
-							Ok(ReconciliationDisposition::Committed)
-						},
-						PreparedRefreshReconciliation::NotApplied => {
-							accepted_phase(
-								self.store
-									.advance_account_operation(
-										&operation.operation_id,
-										operation.phase,
-										AccountOperationPhase::Cancelled,
-										None,
-									)
-									.await?,
-							)?;
-							Ok(ReconciliationDisposition::Cancelled)
-						},
-						PreparedRefreshReconciliation::RecoveryRequired =>
-							self.mark_manual(
-								operation,
-								"credential_reauthentication_reconciliation",
-							)
-							.await,
-					};
-				}
-				let Some(target) = operation.target.as_ref() else {
-					return self.mark_manual(operation, PROVIDER_REFRESH_OUTCOME_UNKNOWN).await;
-				};
-				match self.credentials.read_exact(&operation.account_id, target) {
-					Ok(_) => {
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation.operation_id,
-									operation.phase,
-									AccountOperationPhase::StoreApplied,
-									None,
-								)
-								.await?,
-						)?;
-						self.commit_store_applied(&operation.operation_id).await?;
-						Ok(ReconciliationDisposition::Committed)
-					},
-					Err(_) =>
-						self.mark_manual(operation, "credential_refresh_reconciliation").await,
-				}
-			},
-			AccountOperationKind::Logout => {
-				let expected =
-					operation.expected.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
-				match self.credentials.delete(&operation.account_id, expected) {
-					Ok(()) | Err(CredentialStoreError::NotFound) => {
-						accepted_phase(
-							self.store
-								.advance_account_operation(
-									&operation.operation_id,
-									operation.phase,
-									AccountOperationPhase::StoreApplied,
-									None,
-								)
-								.await?,
-						)?;
-						self.commit_store_applied(&operation.operation_id).await?;
-						Ok(ReconciliationDisposition::Committed)
-					},
-					Err(_) => self.mark_manual(operation, "credential_logout_reconciliation").await,
-				}
-			},
+			AccountOperationKind::Enroll | AccountOperationKind::Import =>
+				self.reconcile_import_operation(operation).await,
+			AccountOperationKind::Refresh => self.reconcile_refresh_operation(operation).await,
+			AccountOperationKind::Logout => self.reconcile_logout_operation(operation).await,
 		}
+	}
+
+	async fn reconcile_terminal_phase(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<Option<ReconciliationDisposition>, AccountLifecycleError> {
+		match operation.phase {
+			AccountOperationPhase::Committed => Ok(Some(ReconciliationDisposition::Committed)),
+			AccountOperationPhase::Cancelled => Ok(Some(ReconciliationDisposition::Cancelled)),
+			AccountOperationPhase::RecoveryRequired => Ok(Some(ReconciliationDisposition::Manual)),
+			AccountOperationPhase::StoreApplied => {
+				self.commit_store_applied(&operation.operation_id).await?;
+				Ok(Some(ReconciliationDisposition::Committed))
+			},
+			AccountOperationPhase::Prepared | AccountOperationPhase::ProviderEffectPending =>
+				Ok(None),
+		}
+	}
+
+	async fn reconcile_import_operation(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
+		let target = operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
+		match self.credentials.read_exact(&operation.account_id, target) {
+			Ok(_) => self.commit_reconciled_operation(operation).await,
+			Err(CredentialStoreError::NotFound)
+				if operation.phase == AccountOperationPhase::Prepared =>
+				self.cancel_reconciled_operation(operation).await,
+			Err(_) => self.mark_manual(operation, "credential_import_reconciliation").await,
+		}
+	}
+
+	async fn reconcile_refresh_operation(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
+		if operation.phase == AccountOperationPhase::Prepared {
+			return match classify_prepared_refresh_reconciliation(
+				operation.expected.as_ref(),
+				operation.target.as_ref(),
+				|binding| self.credentials.read_exact(&operation.account_id, binding).map(|_| ()),
+			) {
+				PreparedRefreshReconciliation::StoreApplied =>
+					self.commit_reconciled_operation(operation).await,
+				PreparedRefreshReconciliation::NotApplied =>
+					self.cancel_reconciled_operation(operation).await,
+				PreparedRefreshReconciliation::RecoveryRequired =>
+					self.mark_manual(operation, "credential_reauthentication_reconciliation").await,
+			};
+		}
+		let Some(target) = operation.target.as_ref() else {
+			return self.mark_manual(operation, PROVIDER_REFRESH_OUTCOME_UNKNOWN).await;
+		};
+		match self.credentials.read_exact(&operation.account_id, target) {
+			Ok(_) => self.commit_reconciled_operation(operation).await,
+			Err(_) => self.mark_manual(operation, "credential_refresh_reconciliation").await,
+		}
+	}
+
+	async fn reconcile_logout_operation(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
+		let expected =
+			operation.expected.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
+		match self.credentials.delete(&operation.account_id, expected) {
+			Ok(()) | Err(CredentialStoreError::NotFound) =>
+				self.commit_reconciled_operation(operation).await,
+			Err(_) => self.mark_manual(operation, "credential_logout_reconciliation").await,
+		}
+	}
+
+	async fn commit_reconciled_operation(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					&operation.operation_id,
+					operation.phase,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await?,
+		)?;
+		self.commit_store_applied(&operation.operation_id).await?;
+		Ok(ReconciliationDisposition::Committed)
+	}
+
+	async fn cancel_reconciled_operation(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<ReconciliationDisposition, AccountLifecycleError> {
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					&operation.operation_id,
+					operation.phase,
+					AccountOperationPhase::Cancelled,
+					None,
+				)
+				.await?,
+		)?;
+		Ok(ReconciliationDisposition::Cancelled)
 	}
 
 	async fn mark_manual(
