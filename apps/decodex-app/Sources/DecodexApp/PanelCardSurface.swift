@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 
 struct PanelCardSurfaceModifier: ViewModifier {
@@ -12,30 +11,33 @@ struct PanelCardSurfaceModifier: ViewModifier {
 		content
 			.background {
 				shape.fill(.thinMaterial)
-				shape.fill(cardFill)
-			}
-			.overlay {
-				shape
-					.strokeBorder(cardStroke, lineWidth: 0.7)
-					.allowsHitTesting(false)
 			}
 			.shadow(
-				color: Color.black.opacity(colorScheme == .dark ? 0.24 : 0.12),
-				radius: 8,
+				color: Color.black.opacity(colorScheme == .dark ? 0.14 : 0.07),
+				radius: 3,
 				x: 0,
-				y: 3
+				y: 1
 			)
 	}
+}
 
-	private var cardFill: Color {
-		colorScheme == .dark
-			? Color(red: 0.2, green: 0.2, blue: 0.21).opacity(0.82)
-			: Color(nsColor: .controlBackgroundColor).opacity(0.84)
-	}
+struct PanelModalSurfaceModifier: ViewModifier {
+	@Environment(\.colorScheme) private var colorScheme
+	let cornerRadius: CGFloat
 
-	private var cardStroke: Color {
-		colorScheme == .dark
-			? Color.white.opacity(0.07)
-			: Color.black.opacity(0.1)
+	@ViewBuilder
+	func body(content: Content) -> some View {
+		let shape = RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+
+		content
+			.background {
+				shape.fill(.regularMaterial)
+			}
+			.shadow(
+				color: Color.black.opacity(colorScheme == .dark ? 0.3 : 0.18),
+				radius: 10,
+				x: 0,
+				y: 4
+			)
 	}
 }

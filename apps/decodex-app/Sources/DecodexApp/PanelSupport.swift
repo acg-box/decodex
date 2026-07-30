@@ -12,6 +12,14 @@ extension View {
 			)
 		)
 	}
+
+	func panelModalSurface(cornerRadius: CGFloat) -> some View {
+		modifier(
+			PanelModalSurfaceModifier(
+				cornerRadius: cornerRadius
+			)
+		)
+	}
 }
 
 extension AnyTransition {
