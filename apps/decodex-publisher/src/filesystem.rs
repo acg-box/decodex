@@ -81,15 +81,40 @@ pub(crate) fn repo_local_test_directory(prefix: &str) -> tempfile::TempDir {
 		.map(PathBuf::from)
 		.unwrap_or_else(|| target.clone());
 	let configured = clean_absolute_path(&configured).expect("repo-local test output path");
-	assert!(
-		configured == target || configured.parent() == Some(target.as_path()),
-		"repo-local test output must be target or one direct child"
-	);
-	ensure_private_directory(&configured).expect("repo-local test output directory");
+	if env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(OsStr::new("1")) {
+		validate_sandbox_test_output(&target, &configured)
+			.expect("sandboxed repo-local test output directory");
+	} else {
+		assert!(
+			configured == target || configured.parent() == Some(target.as_path()),
+			"repo-local test output must be target or one direct child"
+		);
+		ensure_private_directory(&configured).expect("repo-local test output directory");
+	}
 	tempfile::Builder::new()
 		.prefix(prefix)
 		.tempdir_in(configured)
 		.expect("repo-local temporary directory")
+}
+
+#[cfg(test)]
+fn validate_sandbox_test_output(target: &Path, configured: &Path) -> Result<()> {
+	if configured == target || configured.parent() != Some(target) {
+		return Err(eyre::eyre!(
+			"sandboxed repo-local test output must be one direct child of target"
+		));
+	}
+	let metadata = fs::symlink_metadata(configured)?;
+	if !metadata.is_dir()
+		|| metadata.uid() != current_uid()
+		|| metadata.permissions().mode() & 0o7777 != u32::from(PRIVATE_DIRECTORY_MODE)
+	{
+		return Err(eyre::eyre!(
+			"sandboxed repo-local test output must be an owned mode-0700 directory"
+		));
+	}
+
+	Ok(())
 }
 
 pub(crate) fn resolve_against(root: &Path, path: &Path) -> PathBuf {
@@ -870,11 +895,44 @@ fn current_uid() -> u32 {
 
 #[cfg(test)]
 mod tests {
-	use std::{fs, os::unix::fs::symlink};
+	use std::{
+		fs,
+		os::unix::fs::{PermissionsExt as _, symlink},
+	};
 
 	use serde_json::json;
 
-	use super::{open_private_directory, write_new_json_in_parent};
+	use super::{open_private_directory, validate_sandbox_test_output, write_new_json_in_parent};
+
+	#[test]
+	fn sandbox_test_output_requires_an_exact_private_direct_child() {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let target = temp.path().join("target");
+		let output = target.join("decodex-validation-test");
+		fs::create_dir(&target).expect("target directory");
+		fs::create_dir(&output).expect("output directory");
+		fs::set_permissions(&output, fs::Permissions::from_mode(0o700))
+			.expect("private output mode");
+
+		validate_sandbox_test_output(&target, &output).expect("valid direct child");
+		assert!(validate_sandbox_test_output(&target, &target).is_err());
+
+		let outside = temp.path().join("outside");
+		fs::create_dir(&outside).expect("outside directory");
+		assert!(validate_sandbox_test_output(&target, &outside).is_err());
+
+		fs::set_permissions(&output, fs::Permissions::from_mode(0o755))
+			.expect("unsafe output mode");
+		assert!(validate_sandbox_test_output(&target, &output).is_err());
+
+		fs::set_permissions(&output, fs::Permissions::from_mode(0o1700))
+			.expect("sticky output mode");
+		assert!(validate_sandbox_test_output(&target, &output).is_err());
+
+		fs::remove_dir(&output).expect("remove output");
+		symlink(&outside, &output).expect("symlink output");
+		assert!(validate_sandbox_test_output(&target, &output).is_err());
+	}
 
 	#[test]
 	fn descriptor_relative_publish_stays_in_the_opened_directory_after_path_replacement() {
