@@ -324,6 +324,24 @@ struct ResetCardAccountRow: View {
 			Text("Checking Reset Cards…")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+		} else if let inventory = state.inventory,
+			inventory.detailsComplete == false
+		{
+			if let count = inventory.reportedAvailableCount {
+				Text(
+					count == 0
+						? "No Reset Cards"
+						: "\(count) Reset \(count == 1 ? "Card" : "Cards")"
+				)
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+				.help(
+					count == 0
+						? "The provider reported no available Reset Cards."
+						: "The provider reported the count without expiration details."
+				)
+			}
 		} else if state.targets.isEmpty {
 			Text("No Reset Cards")
 				.font(PanelFont.tertiary)

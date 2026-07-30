@@ -83,7 +83,8 @@ final class ResetCardNativeClientTests: XCTestCase {
 					{"outcome":"available","data":{
 					  "account_id":"\(accountID)",
 					  "account_revision":7,
-					  "available_count":1,
+					  "reported_available_count":1,
+					  "details_complete":true,
 					  "cards":[{"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}],
 					  "five_hour_quota":\(nativeQuotaJSON(duration: 300, used: 55, reset: 2_000_000)),
 					  "seven_day_quota":\(nativeQuotaJSON(duration: 10080, used: 90, reset: 3_000_000))
@@ -143,7 +144,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 		let client = DecodexNativeClient { _, _ in
 			Data(
 				"""
-				{"schema":"decodex/app-native-client/1","outcome":"success","operation":"get_reset_cards","authority":{"profile_name":"local","server_id":"0939ea28-c79b-40d5-b78f-b0c4c6790c17"},"data":{"data":{"account_id":"b7639aa9-ccc1-4957-8bd8-9a54ee909c43","account_revision":8,"available_count":2,"cards":[{"descriptor":{"expires_at_unix_seconds":1785528152,"granted_at_unix_seconds":1782936152}},{"descriptor":{"expires_at_unix_seconds":1786556624,"granted_at_unix_seconds":1783964624}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":1785335237831965,"result":{"data":{"error":"unsupported_window"},"state":"error"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":1785335237831965,"result":{"data":{"resets_at_unix_micros":1785940048000000,"used_percent":0},"state":"current"}}},"outcome":"available"}}
+				{"schema":"decodex/app-native-client/1","outcome":"success","operation":"get_reset_cards","authority":{"profile_name":"local","server_id":"0939ea28-c79b-40d5-b78f-b0c4c6790c17"},"data":{"data":{"account_id":"b7639aa9-ccc1-4957-8bd8-9a54ee909c43","account_revision":8,"reported_available_count":2,"details_complete":true,"cards":[{"descriptor":{"expires_at_unix_seconds":1785528152,"granted_at_unix_seconds":1782936152}},{"descriptor":{"expires_at_unix_seconds":1786556624,"granted_at_unix_seconds":1783964624}}],"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":1785335237831965,"result":{"data":{"error":"unsupported_window"},"state":"error"}},"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":1785335237831965,"result":{"data":{"resets_at_unix_micros":1785940048000000,"used_percent":0},"state":"current"}}},"outcome":"available"}}
 				""".utf8
 			)
 		}
@@ -155,6 +156,76 @@ final class ResetCardNativeClientTests: XCTestCase {
 		XCTAssertEqual(inventory.cards.count, 2)
 		XCTAssertEqual(inventory.fiveHourQuota.state, .error(.unsupportedWindow))
 		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 0)
+	}
+
+	func testNativeInventoryAcceptsCountOnlyPartialDetailsWithoutSelectableCards() async throws {
+		let accountID = accountID
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "get_reset_cards",
+				authority: authority,
+				data: """
+				{"outcome":"available","data":{
+				  "account_id":"\(accountID)",
+				  "account_revision":7,
+				  "reported_available_count":2,
+				  "details_complete":false,
+				  "cards":[],
+				  "five_hour_quota":\(nativeQuotaJSON(duration: 300, used: 55, reset: 2_000_000)),
+				  "seven_day_quota":\(nativeQuotaJSON(duration: 10080, used: 90, reset: 3_000_000))
+				}}
+				"""
+			)
+		}
+
+		let inventory = try await client.inventory(
+			for: nativeAccount(authority: authority, accountID: accountID, revision: 7)
+		)
+		let state = ResetCardAccountState(
+			account: nativeAccount(authority: authority, accountID: accountID, revision: 7),
+			inventory: inventory,
+			error: nil,
+			isRefreshing: false
+		)
+
+		XCTAssertEqual(inventory.reportedAvailableCount, 2)
+		XCTAssertFalse(inventory.detailsComplete)
+		XCTAssertTrue(inventory.cards.isEmpty)
+		XCTAssertTrue(state.targets.isEmpty)
+		XCTAssertEqual(inventory.fiveHourQuota.usedPercent, 55)
+		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 90)
+	}
+
+	func testNativeInventoryRejectsAZeroCountMarkedAsPartial() async {
+		let accountID = accountID
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "get_reset_cards",
+				authority: authority,
+				data: """
+				{"outcome":"available","data":{
+				  "account_id":"\(accountID)",
+				  "account_revision":7,
+				  "reported_available_count":0,
+				  "details_complete":false,
+				  "cards":[],
+				  "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				  "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				}}
+				"""
+			)
+		}
+
+		do {
+			_ = try await client.inventory(
+				for: nativeAccount(authority: authority, accountID: accountID, revision: 7)
+			)
+			XCTFail("zero reported count must be a complete empty inventory")
+		} catch {
+			XCTAssertEqual(error as? ResetCardClientError, .invalidResponse)
+		}
 	}
 
 	func testObservationFailureRetainsTypedQuotaStates() async throws {

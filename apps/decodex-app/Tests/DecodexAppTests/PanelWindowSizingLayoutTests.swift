@@ -28,6 +28,57 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		PanelWindowAppearance.apply(to: nil)
 	}
 
+	@MainActor
+	func testCustomStatusPanelIsBorderlessTransparentAndKeyCapable() {
+		let panel = TransparentStatusPanel(
+			contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
+			styleMask: [.borderless],
+			backing: .buffered,
+			defer: false
+		)
+
+		PanelWindowAppearance.apply(to: panel)
+
+		XCTAssertEqual(panel.styleMask, [.borderless])
+		XCTAssertFalse(panel.isOpaque)
+		XCTAssertEqual(panel.backgroundColor, .clear)
+		XCTAssertFalse(panel.hasShadow)
+		XCTAssertTrue(panel.canBecomeKey)
+		XCTAssertFalse(panel.canBecomeMain)
+	}
+
+	func testStatusPanelOriginUsesTheStatusItemsDisplayAndKeepsThePanelVisible() {
+		let origin = StatusPanelLayout.origin(
+			anchorRect: NSRect(x: 2_470, y: 1_320, width: 30, height: 24),
+			panelSize: NSSize(width: 340, height: 620),
+			visibleFrame: NSRect(x: 1_920, y: 0, width: 1_080, height: 1_320)
+		)
+
+		XCTAssertEqual(origin, NSPoint(x: 2_315, y: 692))
+	}
+
+	func testStatusPanelOriginClampsAtBothHorizontalDisplayEdges() {
+		let visibleFrame = NSRect(x: 1_000, y: 100, width: 800, height: 600)
+		let panelSize = NSSize(width: 340, height: 400)
+
+		XCTAssertEqual(
+			StatusPanelLayout.origin(
+				anchorRect: NSRect(x: 1_000, y: 680, width: 24, height: 20),
+				panelSize: panelSize,
+				visibleFrame: visibleFrame
+			).x,
+			1_008
+		)
+		XCTAssertEqual(
+			StatusPanelLayout.origin(
+				anchorRect: NSRect(x: 1_776, y: 680, width: 24, height: 20),
+				panelSize: panelSize,
+				visibleFrame: visibleFrame
+			).x,
+			1_452
+		)
+	}
+
 	func testRoundedContentSizeCeilsFractionalDimensions() {
 		let size = PanelWindowSizingLayout.roundedContentSize(for: CGSize(width: 339.2, height: 641.1))
 
