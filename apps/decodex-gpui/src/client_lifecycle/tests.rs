@@ -561,11 +561,7 @@ fn lifecycle(cache_parent: &Path) -> ClientLifecycle {
 	lifecycle_for(cache_parent, SERVER, 1)
 }
 
-fn lifecycle_for(
-	cache_parent: &Path,
-	server_id: &str,
-	schema_generation: u64,
-) -> ClientLifecycle {
+fn lifecycle_for(cache_parent: &Path, server_id: &str, schema_generation: u64) -> ClientLifecycle {
 	let config = retained_config(cache_parent, server_id);
 
 	ClientLifecycle::new(
@@ -701,9 +697,7 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 	let mut failed_lifecycle = lifecycle(&failed_root);
 	let failed_pager = failed_lifecycle.history_pager();
 
-	failed_pager
-		.open(entity("conversation-failed-send"))
-		.expect("failed-send history view opens");
+	failed_pager.open(entity("conversation-failed-send")).expect("failed-send history view opens");
 	let mut failed_io = FakeIo::new(
 		failed_root.clone(),
 		vec![connected(
@@ -793,19 +787,16 @@ async fn history_cache_io_begins_only_after_send_and_fresh_admission() {
 				version: CURRENT_VERSION,
 				server_id: server_id.clone(),
 				query_id: query.query_id,
-				payload: QueryResultPayload::ConversationHistory(
-					ConversationHistoryResult::Page(history_page(None)),
-				),
+				payload: QueryResultPayload::ConversationHistory(ConversationHistoryResult::Page(
+					history_page(None)
+				),),
 			},
 		),
 		crate::history_pager::HistoryRouteOutcome::Fresh
 	));
 	assert_eq!(
 		pager.cache_probe_events(),
-		[
-			HistoryCacheProbeEvent::LookupStarted,
-			HistoryCacheProbeEvent::PublicationStarted,
-		]
+		[HistoryCacheProbeEvent::LookupStarted, HistoryCacheProbeEvent::PublicationStarted,]
 	);
 	let fresh = pager.snapshot();
 
@@ -1129,16 +1120,8 @@ async fn history_cache_failure_phases_preserve_fresh_page_and_client_cache_autho
 		let fresh = pager.snapshot();
 
 		assert_eq!(fresh.visible, Some(history_page(None)), "{name}");
-		assert_eq!(
-			fresh.visible_source,
-			Some(HistoryPageSource::FreshServer),
-			"{name}",
-		);
-		assert_eq!(
-			fresh.cursor,
-			HistoryCursorObservation::NoContinuationObserved,
-			"{name}",
-		);
+		assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer), "{name}",);
+		assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved, "{name}",);
 		assert_eq!(fresh.load, HistoryLoadState::Visible, "{name}");
 		assert_eq!(
 			fresh.cache_diagnostic,
