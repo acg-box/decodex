@@ -401,18 +401,25 @@ fn render_inventory(
 			ResetCardInventoryResult::Available {
 				account_id,
 				account_revision,
-				available_count,
+				reported_available_count,
+				details_complete,
 				cards,
 				five_hour_quota: _,
 				seven_day_quota: _,
 			} => {
+				let count = reported_available_count
+					.map(|value| value.to_string())
+					.unwrap_or_else(|| "not reported".into());
+				let detail_state =
+					if *details_complete { "complete" } else { "details unavailable" };
 				let mut output = format!(
 					concat!(
-						"reset cards for {}: {} available (revision {})\n",
+						"reset cards for {}: {} available, {} (revision {})\n",
 						"profile: {}\nserver: {}"
 					),
 					account_id.as_str(),
-					available_count,
+					count,
+					detail_state,
 					account_revision.0,
 					profile.name(),
 					profile.expected_server_id().as_str(),

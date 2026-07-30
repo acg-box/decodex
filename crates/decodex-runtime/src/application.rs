@@ -679,7 +679,6 @@ impl ServiceApplication {
 					EntityId::new(inventory.account_id.as_str().to_owned()).map_err(|_| ());
 				let account_revision =
 					u64::try_from(inventory.account_revision).map(EntityRevision).map_err(|_| ());
-				let available_count = u16::try_from(inventory.cards.len()).map_err(|_| ());
 				let cards = inventory
 					.cards
 					.into_iter()
@@ -696,25 +695,18 @@ impl ServiceApplication {
 				let five_hour_quota = quota_dto(inventory.five_hour_quota);
 				let seven_day_quota = quota_dto(inventory.seven_day_quota);
 
-				match (
-					account_id,
-					account_revision,
-					available_count,
-					cards,
-					five_hour_quota,
-					seven_day_quota,
-				) {
+				match (account_id, account_revision, cards, five_hour_quota, seven_day_quota) {
 					(
 						Ok(account_id),
 						Ok(account_revision),
-						Ok(available_count),
 						Ok(cards),
 						Ok(five_hour_quota),
 						Ok(seven_day_quota),
 					) => ResetCardInventoryResult::Available {
 						account_id,
 						account_revision,
-						available_count,
+						reported_available_count: inventory.reported_available_count,
+						details_complete: inventory.details_complete,
 						cards,
 						five_hour_quota,
 						seven_day_quota,

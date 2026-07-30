@@ -89,11 +89,13 @@ enum InitialCredentialProjection {
 	CallbackProbe,
 }
 
-/// Complete public inventory plus the exact account revision observed around process work.
+/// Public reset-card observation plus the exact account revision observed around process work.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct ResetCardInventoryView {
 	pub account_id: AccountId,
 	pub account_revision: i64,
+	pub reported_available_count: Option<u64>,
+	pub details_complete: bool,
 	pub cards: Vec<ResetCardDescriptor>,
 	pub five_hour_quota: AccountQuotaWindowObservation,
 	pub seven_day_quota: AccountQuotaWindowObservation,
@@ -441,13 +443,13 @@ impl ResetCardRuntime {
 		&self,
 		account_id: &AccountId,
 	) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
-		let account = self.observable_account(account_id).await?;
 		let credential = self
 			.inner
 			.accounts
-			.process_credential_for_observation(account_id, account.revision)
+			.process_credential_for_observation(account_id, MAX_BLOCKING_PROCESS_DEADLINE)
 			.await
 			.map_err(map_account_service_error)?;
+		let account_revision = credential.binding.account_revision;
 		let process_binding = credential.binding.clone();
 		let observed_at_unix_micros =
 			current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
@@ -480,11 +482,13 @@ impl ResetCardRuntime {
 				Ok(ResetCardInventoryObservation::Available(ResetCardInventoryView {
 					account_id: account_id.clone(),
 					account_revision: current.binding.account_revision,
-					cards: inventory
-						.available_cards()
-						.iter()
-						.map(|card| card.descriptor())
-						.collect(),
+					reported_available_count: inventory.reported_available_count(),
+					details_complete: inventory.details_complete(),
+					cards: if inventory.details_complete() {
+						inventory.available_cards().iter().map(|card| card.descriptor()).collect()
+					} else {
+						Vec::new()
+					},
 					five_hour_quota,
 					seven_day_quota,
 				}))
@@ -501,7 +505,7 @@ impl ResetCardRuntime {
 
 				Ok(ResetCardInventoryObservation::ObservationFailed(ResetCardObservationFailure {
 					account_id: account_id.clone(),
-					account_revision: account.revision,
+					account_revision,
 					five_hour_quota,
 					seven_day_quota,
 					error,
@@ -662,24 +666,6 @@ impl ResetCardRuntime {
 
 		Ok(account)
 	}
-
-	async fn observable_account(
-		&self,
-		account_id: &AccountId,
-	) -> Result<AccountRecord, ResetCardServiceError> {
-		let account = self
-			.inner
-			.accounts
-			.inspect(account_id)
-			.await
-			.map_err(map_account_service_error)?
-			.account;
-		if account.lifecycle_readiness != AccountLifecycleReadiness::Ready {
-			return Err(ResetCardServiceError::AccountStateRejected);
-		}
-
-		Ok(account)
-	}
 }
 
 async fn run_worker(inner: Arc<ResetCardRuntimeInner>, mut stop: watch::Receiver<bool>) {
@@ -795,7 +781,11 @@ async fn resolve_claim_credit_id(
 			};
 			let exact = match inventory.resolve_exact_credit_id(claim.descriptor) {
 				Ok(exact) => exact,
-				Err(ResetCardResolutionError::NotFound | ResetCardResolutionError::Ambiguous) => {
+				Err(
+					ResetCardResolutionError::Incomplete
+					| ResetCardResolutionError::NotFound
+					| ResetCardResolutionError::Ambiguous,
+				) => {
 					fail_before_effect(inner, claim, ResetCardFailureCode::InventoryChanged).await;
 
 					return None;
@@ -1007,6 +997,9 @@ async fn complete_reconciliation(
 	outcome: ResetCardConsumeOutcome,
 	inventory: &ResetCardInventory,
 ) {
+	if !inventory.details_complete() {
+		return;
+	}
 	let selected_exact_credit_available = inventory.contains_exact_credit_id(exact_credit_id);
 	let selected_descriptor_expired = current_unix_seconds()
 		.is_some_and(|now| now >= claim.descriptor.expires_at().unix_seconds());
