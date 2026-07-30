@@ -236,8 +236,7 @@ impl PageCacheOwner {
 			PageCacheLookupRead::Hit(hit) => {
 				let recency_result = match self {
 					Self::Enabled(cache) => cache.record_hit_recency(&hit),
-					Self::Dormant { .. } | Self::Disabled =>
-						return PageCacheLookupResult::Failure,
+					Self::Dormant { .. } | Self::Disabled => return PageCacheLookupResult::Failure,
 				};
 				if let Err(failure) = recency_result {
 					self.disable(failure);
