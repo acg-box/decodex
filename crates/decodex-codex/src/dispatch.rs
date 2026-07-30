@@ -1,7 +1,26 @@
-/// Repository authority gate that owns all live routing enablement.
-pub const LIVE_ROUTING_GATE: &str = "XY-1304";
+/// Production composition gate that remains closed for every app-server mutation.
+pub const LIVE_ROUTING_GATE: &str = "production-app-server-io-unavailable";
+/// Later acceptance gate for automatic cross-account fallback and all-depleted wake.
+pub const AUTOMATIC_FALLBACK_WAKE_GATE: &str = "XY-1304";
 
-/// Every app-server operation that can mutate or advance live execution.
+/// Closed dispatch-path classification. This is descriptive and grants no I/O authority.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum DispatchPath {
+	/// Initial account selection or a new task after explicit manual recovery.
+	OrdinaryQuickTask,
+	/// Automatic continuation of one conversation on another account.
+	AutomaticCrossAccountFallback,
+	/// Automatic retry after every eligible account was depleted.
+	AllDepletedWake,
+}
+impl DispatchPath {
+	/// Report whether this path remains gated by XY-1304.
+	pub const fn requires_xy_1304(self) -> bool {
+		matches!(self, Self::AutomaticCrossAccountFallback | Self::AllDepletedWake)
+	}
+}
+
+/// App-server mutations known to the adapter. None are wired to production I/O here.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DispatchOperation {
 	/// Create a Codex thread.
@@ -14,6 +33,8 @@ pub enum DispatchOperation {
 	TurnSteer,
 	/// Interrupt an active turn.
 	TurnInterrupt,
+	/// Explicitly archive an exact thread.
+	ThreadArchive,
 	/// Reply to an app-server approval request.
 	ApprovalResponse,
 }
@@ -21,22 +42,22 @@ pub enum DispatchOperation {
 /// Typed fail-closed dispatch denial.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct DispatchDenied {
-	/// Operation denied before protocol construction.
+	/// Operation denied before any production app-server I/O.
 	pub operation: DispatchOperation,
-	/// Repository gate that remains failed.
+	/// Production composition gate that remains failed.
 	pub failed_gate: &'static str,
 }
 
-/// Zero-config guard. No enabled constructor exists in this gate.
+/// Zero-config production I/O guard. No enabled constructor exists in this crate.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct DispatchGate;
 impl DispatchGate {
-	/// Construct the only XY-1270 dispatch state.
-	pub const fn failed_xy_1304() -> Self {
+	/// Construct the current uncomposed production I/O state.
+	pub const fn production_io_unavailable() -> Self {
 		Self
 	}
 
-	/// Deny every live operation before a protocol request can be constructed.
+	/// Deny production I/O without treating XY-1304 as an ordinary Quick Task prerequisite.
 	pub const fn authorize(self, operation: DispatchOperation) -> Result<(), DispatchDenied> {
 		Err(DispatchDenied { operation, failed_gate: LIVE_ROUTING_GATE })
 	}
@@ -44,22 +65,35 @@ impl DispatchGate {
 
 #[cfg(test)]
 mod tests {
-	use crate::{DispatchDenied, DispatchGate, LIVE_ROUTING_GATE, dispatch::DispatchOperation};
+	use crate::{
+		AUTOMATIC_FALLBACK_WAKE_GATE, DispatchDenied, DispatchGate, DispatchPath,
+		LIVE_ROUTING_GATE, dispatch::DispatchOperation,
+	};
 
 	#[test]
-	fn default_guard_denies_every_live_dispatch_operation() {
+	fn dispatch_stays_closed_and_xy_1304_applies_only_to_fallback_and_wake() {
 		for operation in [
 			DispatchOperation::ThreadStart,
 			DispatchOperation::ThreadResume,
 			DispatchOperation::TurnStart,
 			DispatchOperation::TurnSteer,
 			DispatchOperation::TurnInterrupt,
+			DispatchOperation::ThreadArchive,
 			DispatchOperation::ApprovalResponse,
 		] {
 			assert_eq!(
 				DispatchGate.authorize(operation),
 				Err(DispatchDenied { operation, failed_gate: LIVE_ROUTING_GATE })
 			);
+		}
+
+		assert_eq!(AUTOMATIC_FALLBACK_WAKE_GATE, "XY-1304");
+		for (path, expected) in [
+			(DispatchPath::OrdinaryQuickTask, false),
+			(DispatchPath::AutomaticCrossAccountFallback, true),
+			(DispatchPath::AllDepletedWake, true),
+		] {
+			assert_eq!(path.requires_xy_1304(), expected);
 		}
 	}
 }
