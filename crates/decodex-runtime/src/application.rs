@@ -44,10 +44,10 @@ use decodex_protocol::{
 	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
 	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
 	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
-	ResultPayload, Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard,
-	WorkItemBoardLeadId, WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize,
-	WorkItemBoardProgramId, WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult,
-	WorkItemBoardTitle, WorkItemBoardWorkItemId,
+	ResultPayload, Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard, WorkItemBoardLeadId,
+	WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProgramId,
+	WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardTitle,
+	WorkItemBoardWorkItemId,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -2076,8 +2076,8 @@ mod tests {
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaWindow,
 		AccountQuotaWindowObservation, AccountRecord, AccountState, AgentId, ProjectId,
-		ProviderIdentity, WorkItem,
-		WorkItemCorrelationId, WorkItemId, WorkItemPriority, WorkItemProvenance, WorkItemTimestamp,
+		ProviderIdentity, WorkItem, WorkItemCorrelationId, WorkItemId, WorkItemPriority,
+		WorkItemProvenance, WorkItemTimestamp,
 	};
 	use decodex_postgres::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,

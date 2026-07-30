@@ -826,11 +826,8 @@ fn destination_content(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let content = if selected.is_live() {
-		health_content(health)
-	} else {
-		placeholder_content(selected)
-	};
+	let content =
+		if selected.is_live() { health_content(health) } else { placeholder_content(selected) };
 
 	div()
 		.id("destination-content")
