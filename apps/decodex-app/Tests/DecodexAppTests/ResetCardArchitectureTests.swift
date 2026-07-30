@@ -2,14 +2,14 @@ import Foundation
 import XCTest
 
 final class ResetCardArchitectureTests: XCTestCase {
-	func testRepeatedAccountRowsDoNotShareAnAppearanceIdentity() throws {
+	func testRepeatedAccountRowsUseIndependentCardSurfaces() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
-		let glassSurface = try String(
-			contentsOf: sourceURL.appendingPathComponent("PanelGlassSurface.swift"),
+		let cardSurface = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelCardSurface.swift"),
 			encoding: .utf8
 		)
 		let accountPanel = try String(
@@ -17,19 +17,19 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertFalse(glassSurface.contains(".id(appearanceID)"))
+		XCTAssertFalse(cardSurface.contains(".id(appearanceID)"))
 		XCTAssertFalse(accountPanel.contains("LazyVStack"))
 		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
-	func testPanelUsesNativeClearGlassWithoutCustomChrome() throws {
+	func testPanelUsesSeparatedMaterialCardsWithoutLiquidGlass() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
-		let glassSurface = try String(
-			contentsOf: sourceURL.appendingPathComponent("PanelGlassSurface.swift"),
+		let cardSurface = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelCardSurface.swift"),
 			encoding: .utf8
 		)
 		let accountPanel = try String(
@@ -49,20 +49,22 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(glassSurface.contains("Glass.clear"))
-		XCTAssertFalse(glassSurface.contains("glass.interactive()"))
-		XCTAssertFalse(glassSurface.contains("Glass.regular"))
-		XCTAssertFalse(glassSurface.contains(".tint("))
-		XCTAssertFalse(glassSurface.contains(".background"))
-		XCTAssertFalse(glassSurface.contains(".overlay"))
-		XCTAssertFalse(glassSurface.contains(".shadow"))
-		XCTAssertTrue(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
-		XCTAssertTrue(accountPanel.contains(".modernGlassSurface(cornerRadius: 18)"))
-		XCTAssertTrue(accountPanel.contains(".modernGlassSurface(cornerRadius: 16)"))
-		XCTAssertFalse(accountPanel.contains(".modernGlassSurface(cornerRadius: 20"))
-		XCTAssertFalse(accountControls.contains(".modernGlassSurface"))
-		XCTAssertFalse(resetCards.contains(".modernGlassSurface(cornerRadius: 6"))
+		XCTAssertTrue(cardSurface.contains("shape.fill(.thinMaterial)"))
+		XCTAssertTrue(cardSurface.contains(".background"))
+		XCTAssertTrue(cardSurface.contains(".overlay"))
+		XCTAssertTrue(cardSurface.contains(".shadow"))
+		XCTAssertFalse(cardSurface.contains("Glass"))
+		XCTAssertFalse(cardSurface.contains("glassEffect"))
+		XCTAssertFalse(accountPanel.contains("GlassEffectContainer"))
+		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
+		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 16)"))
+		XCTAssertFalse(accountPanel.contains(".panelCardSurface(cornerRadius: 20"))
+		XCTAssertFalse(accountControls.contains(".panelCardSurface"))
+		XCTAssertFalse(resetCards.contains(".panelCardSurface(cornerRadius: 6"))
+		XCTAssertFalse(resetCards.contains(".enumerated()"))
+		XCTAssertFalse(resetCards.contains("ordinal"))
 		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
+		XCTAssertTrue(appScene.contains(".preferredColorScheme(.dark)"))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
 				atPath: sourceURL

@@ -117,6 +117,24 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
+	func testMissingAccountLabelDoesNotExposeAccountID() {
+		let directory = FileManager.default.temporaryDirectory
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		let store = ResetCardStore(
+			client: AccountPanelLayoutClient(),
+			pendingStore: ResetCardPendingAttemptStore(
+				journalURL: directory.appendingPathComponent("pending.json")
+			),
+			startupRetryDelays: []
+		)
+
+		XCTAssertEqual(
+			store.accountLabel(for: "11111111-1111-4111-8111-111111111111"),
+			"Unknown account"
+		)
+	}
+
 	func testProfileUnauthorizedDoesNotOverrideCanonicalAccountAvailability() {
 		let account = ResetCardAccountRecord(
 			authority: nil,
@@ -195,11 +213,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 		XCTAssertEqual(
 			ResetCardAccountRow.cardAccessibilityLabel(
-				ordinal: 2,
 				expiresAtUnixSeconds: 0,
 				timeZone: utc
 			),
-			"Reset Card 2, expires Jan 1 at 00:00 GMT"
+			"Reset Card, expires Jan 1 at 00:00 GMT"
 		)
 	}
 
