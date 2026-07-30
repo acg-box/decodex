@@ -1,7 +1,8 @@
 import AppKit
-@testable import DecodexApp
 import SwiftUI
 import XCTest
+
+@testable import DecodexApp
 
 @MainActor
 final class AccountPanelPresentationTests: XCTestCase {
@@ -51,7 +52,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 
 		XCTAssertTrue(presentation.isVisible)
-		XCTAssertEqual(presentation.valueText, "21% left")
+		XCTAssertEqual(presentation.valueText, "21%")
 		XCTAssertEqual(presentation.tone, .current)
 		XCTAssertEqual(presentation.usedPercent, 79)
 		XCTAssertEqual(presentation.remainingPercent, 21)
@@ -71,7 +72,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 
 		XCTAssertTrue(presentation.isVisible)
-		XCTAssertEqual(presentation.valueText, "58% left")
+		XCTAssertEqual(presentation.valueText, "58%")
 		XCTAssertEqual(presentation.detailText, "stale")
 		XCTAssertEqual(presentation.tone, .current)
 		XCTAssertEqual(presentation.usedPercent, 42)
@@ -177,7 +178,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 					try ResetCardDescriptor(
 						grantedAtUnixSeconds: 1_700_000_000,
 						expiresAtUnixSeconds: 1_800_000_000
-					),
+					)
 				],
 				fiveHourQuota: .unknown(durationMinutes: 300),
 				sevenDayQuota: .unknown(durationMinutes: 10_080),
@@ -202,7 +203,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
-	func testQuotaRowsUseSharedFixedColumnsAroundAFlexibleLongBar() throws {
+	func testQuotaRowsPutTheFlexibleBarBeforeTheCompactPercentage() throws {
 		let source = try resetCardSectionSource()
 
 		XCTAssertTrue(
@@ -210,60 +211,18 @@ final class AccountPanelPresentationTests: XCTestCase {
 				".frame(width: Self.titleColumnWidth, alignment: .leading)"
 			)
 		)
-		XCTAssertTrue(
-			source.contains(
-				".frame(width: Self.valueColumnWidth, alignment: .leading)"
-			)
+		let progressRange = try XCTUnwrap(
+			source.range(of: ".frame(minWidth: 88, maxWidth: .infinity)")
 		)
-		XCTAssertTrue(
-			source.contains("width: Self.resetDateColumnWidth")
+		let valueRange = try XCTUnwrap(
+			source.range(of: "Text(presentation.valueText)")
 		)
-		XCTAssertTrue(
-			source.contains(".frame(minWidth: 72, maxWidth: .infinity)")
+		XCTAssertLessThan(
+			source.distance(from: source.startIndex, to: progressRange.lowerBound),
+			source.distance(from: source.startIndex, to: valueRange.lowerBound)
 		)
-	}
-
-	func testCodexProjectionDistinguishesUnmanagedUnavailableAndCurrent() {
-		XCTAssertEqual(
-			CodexProjectionPresentation(
-				projection: .unmanaged,
-				currentIdentity: nil,
-				isInitialLoading: false
-			).text,
-			"Not managed by Decodex"
-		)
-		XCTAssertEqual(
-			CodexProjectionPresentation(
-				projection: .unavailable,
-				currentIdentity: nil,
-				isInitialLoading: false
-			).text,
-			"Unavailable"
-		)
-		XCTAssertEqual(
-			CodexProjectionPresentation(
-				projection: .current(
-					accountID: "11111111-1111-4111-8111-111111111111",
-					accountRevision: 7,
-					projectionDigest: String(repeating: "a", count: 64)
-				),
-				currentIdentity: "iris@example.com",
-				isInitialLoading: false
-			).text,
-			"iris@example.com"
-		)
-		XCTAssertEqual(
-			CodexProjectionPresentation(
-				projection: .current(
-					accountID: "11111111-1111-4111-8111-111111111111",
-					accountRevision: 8,
-					projectionDigest: String(repeating: "b", count: 64)
-				),
-				currentIdentity: nil,
-				isInitialLoading: false
-			).text,
-			"Checking account"
-		)
+		XCTAssertFalse(source.contains("valueColumnWidth"))
+		XCTAssertFalse(source.contains("resetDateColumnWidth"))
 	}
 
 	func testResetCardChipAndAccessibilityExposeExpiryOnly() {
@@ -296,7 +255,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			profileName: "local",
 			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 		)
-		let states = try (1 ... 6).map { index in
+		let states = try (1...6).map { index in
 			let accountID = String(
 				format: "018f0f9e-7b6e-4a31-8f4c-%012d",
 				index
@@ -320,7 +279,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 					try ResetCardDescriptor(
 						grantedAtUnixSeconds: 1_700_000_000,
 						expiresAtUnixSeconds: 1_800_000_000
-					),
+					)
 				],
 				fiveHourQuota: ResetCardQuotaWindow(
 					durationMinutes: 300,
@@ -363,7 +322,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 							AccountProfileDailyUsage(
 								date: "2026-07-28",
 								tokens: UInt64(index) * 1_000
-							),
+							)
 						]
 					),
 					freshness: .current
@@ -429,10 +388,11 @@ final class AccountPanelPresentationTests: XCTestCase {
 			defer: false
 		)
 		window.contentView = hostingView
-		hostingView.frame = window.contentView?.bounds
+		hostingView.frame =
+			window.contentView?.bounds
 			?? NSRect(x: 0, y: 0, width: 306, height: 1_350)
 
-		for _ in 0 ..< 2 {
+		for _ in 0..<2 {
 			hostingView.layoutSubtreeIfNeeded()
 			try await Task.sleep(for: .milliseconds(20))
 		}
@@ -476,7 +436,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		let pendingStore = ResetCardPendingAttemptStore(
 			journalURL: directory.appendingPathComponent("pending.json")
 		)
-		for index in 1 ... 64 {
+		for index in 1...64 {
 			XCTAssertNotNil(pendingStore.insert(try pendingAttempt(index)))
 		}
 		let store = ResetCardStore(
@@ -508,10 +468,11 @@ final class AccountPanelPresentationTests: XCTestCase {
 			defer: false
 		)
 		window.contentView = hostingView
-		hostingView.frame = window.contentView?.bounds
+		hostingView.frame =
+			window.contentView?.bounds
 			?? NSRect(x: 0, y: 0, width: 340, height: 675)
 
-		for _ in 0 ..< 2 {
+		for _ in 0..<2 {
 			hostingView.layoutSubtreeIfNeeded()
 			try await Task.sleep(for: .milliseconds(20))
 		}
@@ -528,10 +489,10 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(overflowingScrollViews.count, 2)
 		XCTAssertTrue(
 			overflowingScrollViews.contains { scrollView in
-					abs(
-						scrollView.contentView.bounds.height
-							- AccountPanelLayout.statusMaximumHeight
-					) < 4
+				abs(
+					scrollView.contentView.bounds.height
+						- AccountPanelLayout.statusMaximumHeight
+				) < 4
 			}
 		)
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 675)
@@ -556,7 +517,8 @@ private func descendants<T: NSView>(
 private func resetCardSectionSource() throws -> String {
 	let testsURL = URL(fileURLWithPath: #filePath)
 		.deletingLastPathComponent()
-	let sourceURL = testsURL
+	let sourceURL =
+		testsURL
 		.deletingLastPathComponent()
 		.deletingLastPathComponent()
 		.appendingPathComponent("Sources/DecodexApp/ResetCardSectionView.swift")
@@ -603,7 +565,7 @@ private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
 	func accounts(
 		authority _: ResetCardAuthority?
 	) async throws -> [ResetCardAccountRecord] {
-		(1 ... 6).map(Self.account)
+		(1...6).map(Self.account)
 	}
 
 	func inventory(
@@ -617,7 +579,7 @@ private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
 				try ResetCardDescriptor(
 					grantedAtUnixSeconds: 1_700_000_000,
 					expiresAtUnixSeconds: 1_800_000_000
-				),
+				)
 			],
 			fiveHourQuota: ResetCardQuotaWindow(
 				durationMinutes: 300,
@@ -662,7 +624,7 @@ private actor FullAccountPanelClient: ResetCardClient, AccountProfileClient {
 						AccountProfileDailyUsage(
 							date: "2026-07-28",
 							tokens: account.accountRevision * 1_000
-						),
+						)
 					]
 				),
 				freshness: .current

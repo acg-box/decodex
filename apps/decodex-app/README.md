@@ -76,8 +76,8 @@ preserved and blocks new use.
 The panel also exposes current daemon-owned account controls: enroll the
 currently signed-in shared Codex login, enable or disable, log out, and select
 fixed or balanced routing. An account with a provider-confirmed unauthorized
-profile shows `Refresh Login`; that action presents the official device code,
-Copy, Open Browser, and Cancel controls, then refreshes only that account after
+profile shows `Refresh login`; that action presents the official device code,
+Copy, Open browser, and Cancel controls, then refreshes only that account after
 the daemon completes the exact credential replacement. Each account row has one `Route`
 control. It first projects that exact daemon-owned login to shared
 `~/.codex/auth.json` for future Codex launches, then selects the same account as

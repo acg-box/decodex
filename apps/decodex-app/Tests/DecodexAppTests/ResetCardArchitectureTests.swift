@@ -34,6 +34,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 
 		XCTAssertTrue(profileViews.contains("Text(\"All accounts\")"))
+		XCTAssertFalse(profileViews.contains("Text(\"All Accounts\")"))
 		XCTAssertTrue(profileViews.contains("lifetimeTokens: aggregate.lifetimeTokens"))
 		XCTAssertTrue(profileViews.contains("peakDailyTokens: aggregate.peakDailyTokens"))
 		XCTAssertTrue(profileViews.contains("longestTaskSeconds: aggregate.longestTaskSeconds"))
@@ -41,6 +42,69 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(profileViews.contains("AccountProfileMetric.makeOverview("))
 		XCTAssertFalse(profileViews.contains("profiles current"))
 		XCTAssertFalse(profileViews.contains(" of \\(totalAccountCount) daily"))
+		XCTAssertFalse(profileViews.contains("showsAxis"))
+	}
+
+	func testAccountPanelControlsUseSentenceCase() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let controls = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
+			encoding: .utf8
+		)
+		let login = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountReauthenticationView.swift"
+			),
+			encoding: .utf8
+		)
+		let source = panel + controls + login
+
+		for canonicalLabel in [
+			"Show email addresses",
+			"Hide email addresses",
+			"Turn Fast mode off",
+			"Turn Fast mode on",
+			"Refresh all",
+			"Use balanced routing",
+			"Disable account",
+			"Enable account",
+			"Log out",
+			"Refresh login",
+			"Open browser",
+		] {
+			XCTAssertTrue(
+				source.contains("\"\(canonicalLabel)"),
+				"Missing sentence-case label: \(canonicalLabel)"
+			)
+		}
+
+		for retiredLabel in [
+			"All Accounts",
+			"Show Email Addresses",
+			"Hide Email Addresses",
+			"Turn Fast Mode",
+			"Refresh All",
+			"Use Balanced Routing",
+			"Disable Account",
+			"Enable Account",
+			"Log Out",
+			"Refresh Login",
+			"Open Browser",
+			"Copy Code",
+		] {
+			XCTAssertFalse(
+				source.contains(retiredLabel),
+				"Found retired title-case label: \(retiredLabel)"
+			)
+		}
 	}
 
 	func testPanelUsesSeparatedMaterialCardsWithoutLiquidGlass() throws {
@@ -112,12 +176,16 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(resetCards.contains(".controlSize(.small)"))
 		XCTAssertTrue(resetCards.contains("\"Use · \\(Self.cardExpiryText"))
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"creditcard\")"))
-		XCTAssertTrue(resetCards.contains(".frame(minWidth: 72, maxWidth: .infinity)"))
+		XCTAssertTrue(resetCards.contains(".frame(minWidth: 88, maxWidth: .infinity)"))
+		XCTAssertFalse(accountPanel.contains("headerState("))
+		XCTAssertFalse(accountPanel.contains("routingSubtitle"))
+		XCTAssertFalse(accountPanel.contains("codexProjectionSubtitle"))
 		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
-				atPath: sourceURL
+				atPath:
+					sourceURL
 					.appendingPathComponent("PanelInteractiveButtonStyle.swift")
 					.path
 			)
@@ -127,10 +195,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 	func testProductionSourceUsesOnlyTheNativeResetCardAuthority() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
-		let appURL = testsURL
+		let appURL =
+			testsURL
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
-		let sourceURL = appURL
+		let sourceURL =
+			appURL
 			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
 		let fileManager = FileManager.default
 		let swiftFiles = try XCTUnwrap(
@@ -139,10 +209,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 				includingPropertiesForKeys: [.isRegularFileKey]
 			)
 		)
-			.compactMap { $0 as? URL }
-			.filter { url in
-				url.pathExtension == "swift"
-			}
+		.compactMap { $0 as? URL }
+		.filter { url in
+			url.pathExtension == "swift"
+		}
 
 		XCTAssertFalse(swiftFiles.isEmpty)
 		let banned = [
@@ -201,7 +271,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 	func testBundleStagesTheAppAndNativeClientWithoutCLI() throws {
 		let testsURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
-		let appURL = testsURL
+		let appURL =
+			testsURL
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 		let script = try String(
@@ -263,9 +334,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(view.contains("\"Copy Code\""))
-		XCTAssertTrue(view.contains("\"Open Browser\""))
+		XCTAssertTrue(view.contains("\"Copy\""))
+		XCTAssertTrue(view.contains("\"Open browser\""))
 		XCTAssertTrue(view.contains("\"Cancel\""))
+		XCTAssertTrue(view.contains(".frame(width: 256)"))
+		XCTAssertFalse(view.contains("Enter this one-time code"))
+		XCTAssertFalse(view.contains("Divider()"))
 		XCTAssertTrue(view.contains(".interactiveDismissDisabled(true)"))
 		XCTAssertFalse(view.contains(".onDisappear"))
 		XCTAssertFalse(view.contains(".onChange(of:"))
