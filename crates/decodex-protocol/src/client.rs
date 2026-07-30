@@ -32,7 +32,7 @@ use decodex_core::{
 };
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
-const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(30);
+const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(35);
 const MAX_CLIENT_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_INTERLEAVED_MESSAGES: usize = 64;
 // This URI is WebSocket handshake metadata only. The client passes an already
@@ -382,7 +382,7 @@ pub struct ResetCardClient {
 	timeout: Duration,
 }
 impl ResetCardClient {
-	/// Build a reset-card client with the fixed 30-second request deadline.
+	/// Build a reset-card client with a deadline longer than the daemon's typed query deadline.
 	pub const fn new(profile: ClientProfile) -> Self {
 		Self { profile, timeout: RESET_CARD_CLIENT_TIMEOUT }
 	}

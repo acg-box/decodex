@@ -22,6 +22,27 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
+	func testAllAccountsOverviewShowsAggregateMetricsWithoutCoverageCounters() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let profileViews = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(profileViews.contains("Text(\"All accounts\")"))
+		XCTAssertTrue(profileViews.contains("lifetimeTokens: aggregate.lifetimeTokens"))
+		XCTAssertTrue(profileViews.contains("peakDailyTokens: aggregate.peakDailyTokens"))
+		XCTAssertTrue(profileViews.contains("longestTaskSeconds: aggregate.longestTaskSeconds"))
+		XCTAssertTrue(profileViews.contains("currentStreakDays: aggregate.currentStreakDays"))
+		XCTAssertTrue(profileViews.contains("AccountProfileMetric.makeOverview("))
+		XCTAssertFalse(profileViews.contains("profiles current"))
+		XCTAssertFalse(profileViews.contains(" of \\(totalAccountCount) daily"))
+	}
+
 	func testPanelUsesSeparatedMaterialCardsWithoutLiquidGlass() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
@@ -74,8 +95,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains(".panelCardSurface(cornerRadius: 6"))
 		XCTAssertFalse(resetCards.contains(".enumerated()"))
 		XCTAssertFalse(resetCards.contains("ordinal"))
-		XCTAssertTrue(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
+		XCTAssertFalse(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
 		XCTAssertFalse(resetCards.contains("identity.showsEmail ? \"envelope\""))
+		XCTAssertTrue(resetCards.contains(".font(PanelFont.quotaText)"))
 		XCTAssertFalse(appScene.contains("MenuBarExtra"))
 		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
@@ -84,7 +106,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("NSHostingView(rootView: StatusPanelRootView"))
 		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
 		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
-		XCTAssertTrue(statusPanel.contains(".preferredColorScheme(.dark)"))
+		XCTAssertFalse(statusPanel.contains(".preferredColorScheme"))
+		XCTAssertFalse(statusPanel.contains(".environment(\\.colorScheme"))
+		XCTAssertTrue(resetCards.contains(".buttonStyle(.bordered)"))
+		XCTAssertTrue(resetCards.contains(".controlSize(.small)"))
+		XCTAssertTrue(resetCards.contains("\"Use · \\(Self.cardExpiryText"))
+		XCTAssertFalse(resetCards.contains("Image(systemName: \"creditcard\")"))
+		XCTAssertTrue(resetCards.contains(".frame(minWidth: 72, maxWidth: .infinity)"))
 		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(

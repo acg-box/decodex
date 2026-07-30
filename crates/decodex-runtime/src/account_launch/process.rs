@@ -499,47 +499,122 @@ impl AppServerCommand {
 	}
 }
 
-/// Prove the exact supported Codex image and generated account callback contract at startup.
-pub(crate) fn attest_account_callback_capability(
-	working_directory: impl Into<PathBuf>,
-	timeout: Duration,
-) -> Result<CodexAccountCapabilityAttestation, ProbeError> {
-	let command = AppServerCommand::new(working_directory)?;
-	let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
-	let marker = SchemaMarker::accepted();
-	SchemaContract::validate(marker.clone())
-		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
-	let home = env::var_os("HOME")
-		.filter(|home| !home.is_empty())
-		.ok_or(SupervisionError::InvalidBinding)?;
-	let expected_codex_home = PathBuf::from(home).join(".codex");
-	let (build, generated, guard) = attest_executable_for_home(
-		&command,
-		&expected_codex_home,
-		Some(marker.canonical_digests()),
-		timeout,
-		None,
-	)?;
-	if guard.is_some() {
-		return Err(SupervisionError::CleanupUnavailable.into());
-	}
-	capability.attest_build(&command, &build)?;
-	let schema_sha256 = generated.fingerprint.clone();
-	let callback_profile_sha256 = generated.account_callback_profile_sha256().to_owned();
-
-	Ok(CodexAccountCapabilityAttestation {
-		build_identity: STDIO_ONLY_ATTESTED_VERSION.to_owned(),
-		executable_sha256: hex_digest(&command.executable_digest),
-		schema_sha256,
-		callback_profile_sha256,
-		login_chatgpt_auth_tokens: true,
-		refresh_callback: true,
-	})
-}
-
 impl Debug for AppServerCommand {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("AppServerCommand").finish_non_exhaustive()
+	}
+}
+
+/// Daemon-lifetime exact-build evidence shared by account-scoped launches.
+///
+/// Startup constructs this profile once from one immutable executable snapshot and one generated
+/// schema preflight. Each account launch still verifies the canonical executable, binds the exact
+/// account credential revision, and uses suspended dynamic code-identity attestation before user
+/// code can run.
+#[derive(Clone)]
+pub(crate) struct AttestedAppServerProfile {
+	command: AppServerCommand,
+	build: BuildId,
+	generated: GeneratedSchemaEvidence,
+	capability: ExactBuildLaunchCapability,
+}
+impl AttestedAppServerProfile {
+	/// Prove the exact supported Codex image and generated account callback contract at startup.
+	pub(crate) fn attest(
+		working_directory: impl Into<PathBuf>,
+		timeout: Duration,
+	) -> Result<Self, ProbeError> {
+		let command = AppServerCommand::new(working_directory)?;
+		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
+		let marker = SchemaMarker::accepted();
+		SchemaContract::validate(marker.clone())
+			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
+		let home = env::var_os("HOME")
+			.filter(|home| !home.is_empty())
+			.ok_or(SupervisionError::InvalidBinding)?;
+		let expected_codex_home = PathBuf::from(home).join(".codex");
+		let (build, generated, guard) = attest_executable_for_home(
+			&command,
+			&expected_codex_home,
+			Some(marker.canonical_digests()),
+			timeout,
+			None,
+		)?;
+		if guard.is_some() {
+			return Err(SupervisionError::CleanupUnavailable.into());
+		}
+		capability.attest_build(&command, &build)?;
+
+		Ok(Self { command, build, generated, capability })
+	}
+
+	/// Return the credential-negative callback evidence persisted by Account Service.
+	pub(crate) fn account_callback_attestation(&self) -> CodexAccountCapabilityAttestation {
+		CodexAccountCapabilityAttestation {
+			build_identity: STDIO_ONLY_ATTESTED_VERSION.to_owned(),
+			executable_sha256: hex_digest(&self.command.executable_digest),
+			schema_sha256: self.generated.fingerprint.clone(),
+			callback_profile_sha256: self.generated.account_callback_profile_sha256().to_owned(),
+			login_chatgpt_auth_tokens: true,
+			refresh_callback: true,
+		}
+	}
+
+	#[cfg(test)]
+	fn attest_for_test(
+		command: AppServerCommand,
+		expected_codex_home: &Path,
+		timeout: Duration,
+	) -> Result<Self, ProbeError> {
+		let (build, generated, guard) =
+			attest_executable_for_home(&command, expected_codex_home, None, timeout, None)?;
+		if guard.is_some() {
+			return Err(SupervisionError::CleanupUnavailable.into());
+		}
+
+		Ok(Self {
+			command,
+			build,
+			generated,
+			capability: ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1,
+		})
+	}
+
+	/// Bind one account and capacity permit without repeating immutable build preflights.
+	fn bind(
+		self,
+		binding: AccountBinding,
+		timeout: Duration,
+		guard: RunnerPermit,
+	) -> Result<AttestedAppServerLaunch, ProbeError> {
+		if guard.account_id.as_str() != binding.account_id.as_str() || guard.account_revision < 1 {
+			return Err(SupervisionError::InvalidBinding.into());
+		}
+		let process_binding = binding.process_binding()?;
+		if self.generated.account_callback_profile_sha256()
+			!= process_binding.refresh_callback_profile_sha256
+		{
+			return Err(SupervisionError::LaunchCapabilityUnavailable.into());
+		}
+		let runner_identity =
+			attested_launch_identity(&self.command, &binding, &self.build, self.capability)?;
+
+		Ok(AttestedAppServerLaunch {
+			command: self.command,
+			binding,
+			build: self.build,
+			generated: self.generated,
+			runner_identity,
+			capability: self.capability,
+			timeout,
+			guard,
+		})
+	}
+}
+
+impl Debug for AttestedAppServerProfile {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.debug_struct("AttestedAppServerProfile").finish_non_exhaustive()
 	}
 }
 
@@ -648,43 +723,14 @@ pub(crate) struct AttestedAppServerLaunch {
 	guard: RunnerPermit,
 }
 impl AttestedAppServerLaunch {
-	/// Construct the launch only inside the existing account-launch owner.
-	///
-	/// The current accepted exact profile is the source-attested 0.146.0-alpha.3.1 macOS image.
-	/// Every other version or image, including an unrecorded Linux image, remains disabled until
-	/// an accepted exact profile is added.
-	pub(super) fn attest(
-		command: AppServerCommand,
+	/// Bind one account launch to the daemon's already-attested immutable build profile.
+	pub(super) fn bind(
+		profile: AttestedAppServerProfile,
 		binding: AccountBinding,
 		timeout: Duration,
 		guard: RunnerPermit,
 	) -> Result<Self, ProbeError> {
-		if guard.account_id.as_str() != binding.account_id.as_str() || guard.account_revision < 1 {
-			return Err(SupervisionError::InvalidBinding.into());
-		}
-
-		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
-		let marker = SchemaMarker::accepted();
-		SchemaContract::validate(marker.clone())
-			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
-		let process_binding = binding.process_binding()?;
-		let (build, generated, guard) = attest_executable(
-			&command,
-			&binding,
-			Some(marker.canonical_digests()),
-			timeout,
-			Some(guard),
-		)?;
-		if generated.account_callback_profile_sha256()
-			!= process_binding.refresh_callback_profile_sha256
-		{
-			return Err(SupervisionError::LaunchCapabilityUnavailable.into());
-		}
-		capability.attest_build(&command, &build)?;
-		let runner_identity = attested_launch_identity(&command, &binding, &build, capability)?;
-		let guard = guard.ok_or(SupervisionError::CleanupUnavailable)?;
-
-		Ok(Self { command, binding, build, generated, runner_identity, capability, timeout, guard })
+		profile.bind(binding, timeout, guard)
 	}
 
 	/// Derive all durable pre-spawn facts that belong to the opaque launch authority.
@@ -1106,9 +1152,9 @@ impl SupervisedProcess {
 		guard: RunnerPermit,
 		capability: ExactBuildLaunchCapability,
 	) -> Result<Self, SupervisionError> {
-		verify_executable(&command)?;
+		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
-		verify_executable(&command)?;
+		verify_canonical_executable_identity(&command)?;
 		run_after_verification_test(&command);
 		let (sender, receiver) = mpsc::sync_channel(PROTOCOL_QUEUE_CAPACITY);
 		let protocol_limit_exceeded = Arc::new(AtomicBool::new(false));
@@ -1663,9 +1709,8 @@ fn spawn_protocol_process(
 			spawn_suspended(identity, &command.app_server_args, &command.working_directory, home)
 				.map_err(|_| SupervisionError::SpawnFailed)?;
 
-		// The canonical filesystem object must still match the immutable full-digest snapshot after
-		// posix_spawn has bound the stopped child to its executable image. The dynamic code check
-		// below then binds that image to the snapshot's exact code identity before SIGCONT.
+		// This non-profile path retains full filesystem and snapshot digest verification. The
+		// dynamic code check then binds the stopped image to that snapshot before SIGCONT.
 		verify_executable(command)?;
 
 		let spawned =
@@ -1736,10 +1781,10 @@ fn spawn_attested_protocol_process(
 		}
 		.map_err(|_| SupervisionError::SpawnFailed)?;
 
-		// The canonical source must still match the immutable snapshot after posix_spawn has
-		// bound the suspended child. Dynamic attestation then binds that child to the snapshot's
-		// exact code identity and canonical path before any user code can run.
-		verify_executable(command)?;
+		// Startup already hashed and statically validated the immutable snapshot and canonical
+		// image. Keep the canonical object identity stable here; exact dynamic CDHash and path
+		// attestation below bind the suspended child to that startup profile before user code runs.
+		verify_canonical_executable_identity(command)?;
 
 		let spawned =
 			suspended.attest_and_resume(identity).map_err(|_| SupervisionError::SpawnFailed)?;
@@ -3743,7 +3788,9 @@ fn executable_digest_file(file: &File) -> Result<[u8; 32], SupervisionError> {
 	Ok(hasher.finalize().into())
 }
 
-fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
+fn verify_canonical_executable_identity(
+	command: &AppServerCommand,
+) -> Result<(), SupervisionError> {
 	let canonical =
 		command.program.canonicalize().map_err(|_| SupervisionError::ExecutableChanged)?;
 	let source = canonical.metadata().map_err(|_| SupervisionError::ExecutableChanged)?;
@@ -3751,10 +3798,28 @@ fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError>
 	if canonical != command.program
 		|| source.dev() != command.executable.source_device
 		|| source.ino() != command.executable.source_inode
-		|| executable_digest(&canonical).map_err(|_| SupervisionError::ExecutableChanged)?
-			!= command.executable_digest
-		|| command.executable.digest().map_err(|_| SupervisionError::ExecutableChanged)?
-			!= command.executable_digest
+	{
+		return Err(SupervisionError::ExecutableChanged);
+	}
+
+	Ok(())
+}
+
+fn verify_canonical_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
+	verify_canonical_executable_identity(command)?;
+	if executable_digest(&command.program).map_err(|_| SupervisionError::ExecutableChanged)?
+		!= command.executable_digest
+	{
+		return Err(SupervisionError::ExecutableChanged);
+	}
+
+	Ok(())
+}
+
+fn verify_executable(command: &AppServerCommand) -> Result<(), SupervisionError> {
+	verify_canonical_executable(command)?;
+	if command.executable.digest().map_err(|_| SupervisionError::ExecutableChanged)?
+		!= command.executable_digest
 	{
 		return Err(SupervisionError::ExecutableChanged);
 	}
@@ -4656,7 +4721,7 @@ mod tests {
 		fs,
 		io::{self, Cursor, ErrorKind, Write},
 		mem,
-		os::unix::fs::PermissionsExt as _,
+		os::unix::fs::{MetadataExt as _, PermissionsExt as _},
 		path::{Path, PathBuf},
 		process::{Command, Stdio},
 		sync::{
@@ -4680,13 +4745,14 @@ mod tests {
 		RunnerCapacity, RunnerPermit,
 		process::{
 			self, AccountBinding, AccountIdentity, AccountRefreshCallback, AppServerCommand,
-			AttestedProcessChild, CALLBACK_PROBE_EMAIL, CALLBACK_PROBE_PLAN_TYPE,
-			CALLBACK_PROBE_SIGNATURE, ChatgptRefreshProjection, CredentialProjection,
-			CredentialProjectionResponse, CredentialVault, CredentialVaultError,
-			ExactThreadReconciler, ExactThreadReconciliation, ExactThreadReconciliationResult,
-			PROTOCOL_QUEUE_CAPACITY, ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe,
-			ResetCardProcessError, ResetCardProcessMethod, ResetCardProcessRunner, RpcError,
-			ShutdownOutcome, SupervisedProcess, SupervisionError, UnavailableCredentialVault,
+			AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
+			CALLBACK_PROBE_EMAIL, CALLBACK_PROBE_PLAN_TYPE, CALLBACK_PROBE_SIGNATURE,
+			ChatgptRefreshProjection, CredentialProjection, CredentialProjectionResponse,
+			CredentialVault, CredentialVaultError, ExactThreadReconciler,
+			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
+			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ResetCardProcessError,
+			ResetCardProcessMethod, ResetCardProcessRunner, RpcError, ShutdownOutcome,
+			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
 			callback_probe_access_token,
 		},
 		protocol::{
@@ -4809,6 +4875,38 @@ mod tests {
 		}
 	}
 
+	fn profile_binding(
+		account_id: AccountId,
+		account_revision: i64,
+		callback_profile_sha256: String,
+	) -> AccountBinding {
+		let credential = CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(1).unwrap(),
+			fingerprint: CredentialFingerprint::new("1".repeat(64)).unwrap(),
+			provider: ProviderIdentity::new(
+				AccountProvider::Chatgpt,
+				format!("provider-{account_revision}"),
+			)
+			.unwrap(),
+			writer_operation_id: AccountOperationId::new("20000000-0000-4000-8000-000000000001")
+				.unwrap(),
+		};
+		AccountBinding {
+			account_id,
+			expected_codex_home: PathBuf::from("/tmp/.codex"),
+			process_binding: Some(
+				ProcessGenerationAccountBinding::new(
+					account_revision,
+					credential,
+					callback_profile_sha256,
+				)
+				.unwrap(),
+			),
+			refresh_callback: Some(Arc::new(FixtureRefreshCallback::default())),
+		}
+	}
+
 	fn callback_binding(callback: Arc<dyn AccountRefreshCallback>) -> AccountBinding {
 		let credential = CredentialBinding {
 			schema_version: CredentialStoreSchemaVersion::V1,
@@ -4827,6 +4925,49 @@ mod tests {
 			),
 			refresh_callback: Some(callback),
 		}
+	}
+
+	#[test]
+	fn daemon_profile_reuses_one_snapshot_and_preflight_across_account_bindings() {
+		let temp = TempDir::new().unwrap();
+		let preflight_count = Arc::new(AtomicU32::new(0));
+		let command = fake_command("reset-card", temp.path(), None).with_before_spawn_for_test(
+			u32::MAX,
+			Arc::clone(&preflight_count),
+			Arc::new(|| {}),
+		);
+		let profile = AttestedAppServerProfile::attest_for_test(
+			command,
+			Path::new("/tmp/.codex"),
+			Duration::from_secs(5),
+		)
+		.unwrap();
+		let snapshot = Arc::clone(&profile.command.executable);
+		let callback_profile = profile.generated.account_callback_profile_sha256().to_owned();
+		let capacity = RunnerCapacity::try_with_limit(2).unwrap();
+		let first_account = AccountId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let second_account = AccountId::new("10000000-0000-4000-8000-000000000002").unwrap();
+		let first = AttestedAppServerLaunch::bind(
+			profile.clone(),
+			profile_binding(first_account.clone(), 1, callback_profile.clone()),
+			Duration::from_secs(5),
+			capacity.reserve(first_account, 1).unwrap(),
+		)
+		.unwrap();
+		let second = AttestedAppServerLaunch::bind(
+			profile.clone(),
+			profile_binding(second_account.clone(), 2, callback_profile),
+			Duration::from_secs(5),
+			capacity.reserve(second_account, 2).unwrap(),
+		)
+		.unwrap();
+
+		assert_eq!(preflight_count.load(Ordering::Acquire), 2);
+		assert!(Arc::ptr_eq(&snapshot, &first.command.executable));
+		assert!(Arc::ptr_eq(&snapshot, &second.command.executable));
+		assert_ne!(first.runner_identity, second.runner_identity);
+		assert_eq!(first.account_binding().account_revision, 1);
+		assert_eq!(second.account_binding().account_revision, 2);
 	}
 
 	struct LateSerializationFailure<'a>(&'a str);
@@ -6220,6 +6361,9 @@ mod tests {
 
 		fs::copy("/bin/cat", &source).unwrap();
 		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+		let source_metadata = fs::metadata(&source).unwrap();
+		let source_device = source_metadata.dev();
+		let source_inode = source_metadata.ino();
 
 		let command = AppServerCommand::new_for_test(
 			&source,
@@ -6240,9 +6384,108 @@ mod tests {
 			Arc::new(move || {
 				fs::copy("/bin/sh", &source_for_action).unwrap();
 				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+				let replacement_metadata = fs::metadata(&source_for_action).unwrap();
+
+				assert_eq!(replacement_metadata.dev(), source_device);
+				assert_eq!(replacement_metadata.ino(), source_inode);
 			}),
 		);
 		let error = SupervisedProcess::spawn(command, binding()).unwrap_err();
+
+		assert_eq!(error, SupervisionError::ExecutableChanged);
+		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
+		assert!(!marker.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn profile_launch_uses_suspended_dynamic_identity_after_metadata_checks() {
+		let temp = TempDir::new().unwrap();
+		let source = temp.path().join("verified-profile-image");
+		let marker = temp.path().join("replacement-ran");
+		let source_for_action = source.clone();
+		let spawn_count = Arc::new(AtomicU32::new(0));
+
+		fs::copy("/bin/cat", &source).unwrap();
+		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
+		let command = AppServerCommand::new_for_test(
+			&source,
+			[
+				OsString::from("-c"),
+				OsString::from("printf ran > \"$1\""),
+				OsString::from("decodex-attested-profile-spawn"),
+				marker.as_os_str().to_owned(),
+			],
+			std::iter::empty::<OsString>(),
+			std::iter::empty::<OsString>(),
+			temp.path(),
+		)
+		.with_attested_spawn_for_test()
+		.with_after_verification_for_test(
+			1,
+			Arc::clone(&spawn_count),
+			Arc::new(move || {
+				fs::copy("/bin/sh", &source_for_action).unwrap();
+				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+			}),
+		);
+		let error = SupervisedProcess::spawn_attested(
+			command,
+			binding(),
+			TestCapacity::new(1).reserve().unwrap(),
+			process::ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1,
+		)
+		.unwrap_err();
+
+		assert_eq!(error, SupervisionError::SpawnFailed);
+		assert_eq!(spawn_count.load(Ordering::Acquire), 1);
+		assert!(!marker.exists());
+	}
+
+	#[cfg(target_os = "macos")]
+	#[test]
+	fn profile_launch_rejects_path_replacement_at_the_second_metadata_check() {
+		let temp = TempDir::new().unwrap();
+		let source = temp.path().join("verified-profile-image");
+		let displaced = temp.path().join("verified-profile-image.displaced");
+		let marker = temp.path().join("replacement-ran");
+		let source_for_action = source.clone();
+		let displaced_for_action = displaced.clone();
+		let spawn_count = Arc::new(AtomicU32::new(0));
+
+		fs::copy("/bin/cat", &source).unwrap();
+		fs::set_permissions(&source, fs::Permissions::from_mode(0o755)).unwrap();
+
+		let command = AppServerCommand::new_for_test(
+			&source,
+			[
+				OsString::from("-c"),
+				OsString::from("printf ran > \"$1\""),
+				OsString::from("decodex-attested-profile-spawn"),
+				marker.as_os_str().to_owned(),
+			],
+			std::iter::empty::<OsString>(),
+			std::iter::empty::<OsString>(),
+			temp.path(),
+		)
+		.with_attested_spawn_for_test()
+		.with_before_spawn_for_test(
+			1,
+			Arc::clone(&spawn_count),
+			Arc::new(move || {
+				fs::rename(&source_for_action, &displaced_for_action).unwrap();
+				fs::copy("/bin/sh", &source_for_action).unwrap();
+				fs::set_permissions(&source_for_action, fs::Permissions::from_mode(0o755)).unwrap();
+			}),
+		);
+		let error = SupervisedProcess::spawn_attested(
+			command,
+			binding(),
+			TestCapacity::new(1).reserve().unwrap(),
+			process::ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1,
+		)
+		.unwrap_err();
 
 		assert_eq!(error, SupervisionError::ExecutableChanged);
 		assert_eq!(spawn_count.load(Ordering::Acquire), 1);

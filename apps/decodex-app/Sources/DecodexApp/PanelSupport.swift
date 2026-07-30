@@ -1,7 +1,6 @@
 import SwiftUI
 
 enum PanelMotion {
-	static let state = Animation.interactiveSpring(response: 0.24, dampingFraction: 0.88, blendDuration: 0.05)
 	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
 }
 
