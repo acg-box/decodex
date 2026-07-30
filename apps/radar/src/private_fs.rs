@@ -66,6 +66,8 @@ pub(crate) struct PrivateCache {
 	root_path: PathBuf,
 	root: File,
 	root_identity: DirectoryIdentity,
+	#[cfg(test)]
+	direct_root: bool,
 }
 impl PrivateCache {
 	pub(crate) fn root_path(&self) -> &Path {
@@ -273,6 +275,13 @@ impl PrivateCache {
 	}
 
 	fn verify_binding(&self) -> Result<()> {
+		#[cfg(test)]
+		let reopened = if self.direct_root {
+			open_directory_path_direct(&self.root_path)?
+		} else {
+			open_cache_root_file(&self.root_path, false)?
+		};
+		#[cfg(not(test))]
 		let reopened = open_cache_root_file(&self.root_path, false)?;
 		let identity = validate_private_directory(&reopened, "root")?;
 
@@ -558,7 +567,64 @@ struct DirectoryIdentity {
 	ino: u64,
 }
 
-#[derive(Clone, Debug)]
+#[cfg(test)]
+#[derive(Debug)]
+pub(crate) struct PrivateTestDirectory {
+	parent_path: PathBuf,
+	parent: File,
+	parent_identity: DirectoryIdentity,
+	name: CString,
+	path: PathBuf,
+	directory: File,
+	identity: DirectoryIdentity,
+}
+#[cfg(test)]
+impl PrivateTestDirectory {
+	pub(crate) fn path(&self) -> &Path {
+		&self.path
+	}
+
+	fn remove(&self) -> Result<()> {
+		self.remove_with_before_unlink(|| {})
+	}
+
+	pub(crate) fn remove_with_before_unlink(&self, before_unlink: impl FnOnce()) -> Result<()> {
+		verify_test_parent_binding(&self.parent_path, &self.parent, &self.parent_identity)?;
+		let identity = directory_identity(&self.directory, "test directory")?;
+
+		if identity != self.identity {
+			eyre::bail!("Radar test directory identity changed before cleanup");
+		}
+		remove_test_directory_contents(&self.directory)?;
+		before_unlink();
+		verify_directory_binding_at(
+			self.parent.as_raw_fd(),
+			&self.name,
+			&self.identity,
+			"test directory",
+		)?;
+		if unsafe {
+			libc::unlinkat(self.parent.as_raw_fd(), self.name.as_ptr(), libc::AT_REMOVEDIR)
+		} == -1
+		{
+			return Err(std::io::Error::last_os_error().into());
+		}
+		self.parent.sync_all()?;
+		verify_test_parent_binding(&self.parent_path, &self.parent, &self.parent_identity)
+	}
+}
+#[cfg(test)]
+impl Drop for PrivateTestDirectory {
+	fn drop(&mut self) {
+		if let Err(error) = self.remove()
+			&& !std::thread::panicking()
+		{
+			panic!("private Radar test directory cleanup failed: {error}");
+		}
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct FileSnapshot {
 	identity: PrivateFileIdentity,
 	mode: u32,
@@ -569,10 +635,139 @@ struct FileSnapshot {
 
 fn open_cache_root(path: &Path, create: bool) -> Result<PrivateCache> {
 	let root_path = absolute_path_without_traversal(path)?;
+
+	#[cfg(test)]
+	if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").is_some_and(|value| value == OsStr::new("1"))
+		&& let Some(cache) = open_sandbox_cache_root(&root_path, create)?
+	{
+		return Ok(cache);
+	}
+
 	let root = open_cache_root_file(&root_path, create)?;
 	let root_identity = validate_private_directory(&root, "root")?;
 
-	Ok(PrivateCache { root_path, root, root_identity })
+	Ok(PrivateCache {
+		root_path,
+		root,
+		root_identity,
+		#[cfg(test)]
+		direct_root: false,
+	})
+}
+
+#[cfg(test)]
+fn open_sandbox_cache_root(path: &Path, create: bool) -> Result<Option<PrivateCache>> {
+	let sandbox_root = std::env::var_os("TMPDIR")
+		.ok_or_else(|| eyre::eyre!("sandboxed Radar tests require TMPDIR"))?;
+	let sandbox_root = absolute_path_without_traversal(Path::new(&sandbox_root))?;
+
+	if let Ok(relative) = path.strip_prefix(&sandbox_root) {
+		return open_sandbox_private_cache_root(path, &sandbox_root, relative, create).map(Some);
+	}
+
+	let manifest = Path::new(env!("CARGO_MANIFEST_DIR"));
+	let candidate = manifest
+		.parent()
+		.and_then(Path::parent)
+		.ok_or_else(|| eyre::eyre!("Radar manifest must be inside the candidate repository"))?;
+
+	if let Ok(relative) = path.strip_prefix(candidate) {
+		if create {
+			eyre::bail!(
+				"sandboxed Radar tests cannot create state inside the candidate repository"
+			);
+		}
+
+		return open_sandbox_candidate_cache_root(path, candidate, relative).map(Some);
+	}
+
+	Ok(None)
+}
+
+#[cfg(test)]
+fn open_sandbox_private_cache_root(
+	path: &Path,
+	sandbox_root: &Path,
+	relative: &Path,
+	create: bool,
+) -> Result<PrivateCache> {
+	let metadata = std::fs::symlink_metadata(sandbox_root)?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_dir() {
+		eyre::bail!("sandboxed Radar test root must be a non-symlink directory");
+	}
+	validate_owner_mode_link(
+		metadata.uid(),
+		metadata.mode() & 0o777,
+		metadata.nlink(),
+		PRIVATE_DIR_MODE,
+		"sandboxed test root",
+		false,
+	)?;
+
+	let mut directory = open_directory_path_direct(sandbox_root)?;
+	let sandbox_identity = validate_private_directory(&directory, "sandboxed test root")?;
+
+	if sandbox_identity != (DirectoryIdentity { dev: metadata.dev(), ino: metadata.ino() }) {
+		eyre::bail!("sandboxed Radar test root identity changed during open");
+	}
+	for component in relative_components(relative)? {
+		let name = c_string(&component)?;
+
+		directory = open_or_create_directory(directory.as_raw_fd(), &name, create)?;
+		validate_private_directory(&directory, "sandboxed test directory")?;
+	}
+
+	let root_identity = validate_private_directory(&directory, "root")?;
+
+	Ok(PrivateCache {
+		root_path: path.to_path_buf(),
+		root: directory,
+		root_identity,
+		direct_root: true,
+	})
+}
+
+#[cfg(test)]
+fn open_sandbox_candidate_cache_root(
+	path: &Path,
+	candidate: &Path,
+	relative: &Path,
+) -> Result<PrivateCache> {
+	let metadata = std::fs::symlink_metadata(candidate)?;
+
+	if metadata.file_type().is_symlink() || !metadata.is_dir() {
+		eyre::bail!("sandboxed Radar candidate root must be a non-symlink directory");
+	}
+
+	let mut directory = open_directory_path_direct(candidate)?;
+	let opened = directory.metadata()?;
+
+	if opened.dev() != metadata.dev() || opened.ino() != metadata.ino() {
+		eyre::bail!("sandboxed Radar candidate root identity changed during open");
+	}
+
+	let (_, candidate_components) = absolute_components(candidate)?;
+	let (_, path_components) = absolute_components(path)?;
+	let private_start = cache_private_start(&path_components);
+
+	for (offset, component) in relative_components(relative)?.into_iter().enumerate() {
+		let name = c_string(&component)?;
+
+		directory = open_or_create_directory(directory.as_raw_fd(), &name, false)?;
+		if candidate_components.len() + offset >= private_start {
+			validate_private_directory(&directory, "sandboxed candidate cache directory")?;
+		}
+	}
+
+	let root_identity = validate_private_directory(&directory, "root")?;
+
+	Ok(PrivateCache {
+		root_path: path.to_path_buf(),
+		root: directory,
+		root_identity,
+		direct_root: true,
+	})
 }
 
 fn open_cache_root_file(path: &Path, create: bool) -> Result<File> {
@@ -719,6 +914,87 @@ fn open_directory_at(parent: RawFd, name: &CStr) -> std::io::Result<File> {
 	} else {
 		Ok(unsafe { File::from_raw_fd(fd) })
 	}
+}
+
+#[cfg(test)]
+fn open_directory_path_direct(path: &Path) -> Result<File> {
+	let path = CString::new(path.as_os_str().as_bytes())
+		.map_err(|_| eyre::eyre!("Radar test root path contains NUL"))?;
+	let fd = unsafe {
+		libc::open(
+			path.as_ptr(),
+			libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+		)
+	};
+
+	if fd == -1 {
+		Err(std::io::Error::last_os_error().into())
+	} else {
+		Ok(unsafe { File::from_raw_fd(fd) })
+	}
+}
+
+#[cfg(test)]
+fn open_test_parent_path(path: &Path) -> Result<File> {
+	if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(OsStr::new("1")) {
+		let sandbox_root = std::env::var_os("TMPDIR")
+			.ok_or_else(|| eyre::eyre!("sandboxed Radar tests require TMPDIR"))?;
+		let sandbox_root = absolute_path_without_traversal(Path::new(&sandbox_root))?;
+		let relative = path
+			.strip_prefix(&sandbox_root)
+			.map_err(|_| eyre::eyre!("sandboxed Radar test parent must stay under TMPDIR"))?;
+
+		return Ok(open_sandbox_private_cache_root(path, &sandbox_root, relative, false)?.root);
+	}
+
+	let (_, components) = absolute_components(path)?;
+	let mut directory = File::open("/")?;
+
+	for component in components {
+		directory = open_directory_at(directory.as_raw_fd(), &c_string(&component)?)?;
+	}
+
+	Ok(directory)
+}
+
+#[cfg(test)]
+fn validate_test_parent_directory(directory: &File) -> Result<DirectoryIdentity> {
+	let metadata = directory.metadata()?;
+
+	if !metadata.is_dir() {
+		eyre::bail!("Radar test parent must be a directory");
+	}
+
+	let permissions = metadata.mode() & 0o777;
+	let private_parent =
+		metadata.uid() == unsafe { libc::geteuid() } && permissions == PRIVATE_DIR_MODE;
+	let system_temporary_parent =
+		metadata.uid() == 0 && permissions == 0o777 && metadata.mode() & 0o1000 == 0o1000;
+
+	if !private_parent && !system_temporary_parent {
+		eyre::bail!(
+			"Radar test parent must be owner-private or a root-owned sticky temporary directory"
+		);
+	}
+
+	Ok(DirectoryIdentity { dev: metadata.dev(), ino: metadata.ino() })
+}
+
+#[cfg(test)]
+fn verify_test_parent_binding(
+	path: &Path,
+	held: &File,
+	expected: &DirectoryIdentity,
+) -> Result<()> {
+	let held_identity = validate_test_parent_directory(held)?;
+	let reopened = open_test_parent_path(path)?;
+	let reopened_identity = validate_test_parent_directory(&reopened)?;
+
+	if &held_identity != expected || &reopened_identity != expected {
+		eyre::bail!("Radar test parent identity changed");
+	}
+
+	Ok(())
 }
 
 fn open_regular_file(parent: RawFd, name: &CStr) -> Result<File> {
@@ -1052,6 +1328,25 @@ fn temporary_name() -> Result<CString> {
 		.map_err(|_| eyre::eyre!("generated Radar temporary name unexpectedly contains NUL"))
 }
 
+#[cfg(test)]
+fn test_temporary_name() -> Result<CString> {
+	let mut nonce = [0_u8; 8];
+
+	getrandom::fill(&mut nonce)
+		.map_err(|error| eyre::eyre!("failed to create a Radar test-directory nonce: {error}"))?;
+	let mut name = String::with_capacity(3 + nonce.len() * 2);
+
+	name.push_str("rt-");
+	for byte in nonce {
+		use std::fmt::Write as _;
+
+		write!(&mut name, "{byte:02x}").expect("writing into a String must not fail");
+	}
+
+	CString::new(name)
+		.map_err(|_| eyre::eyre!("generated Radar test name unexpectedly contains NUL"))
+}
+
 fn unlink_at(parent: RawFd, name: &CStr) -> Result<()> {
 	if unsafe { libc::unlinkat(parent, name.as_ptr(), 0) } == -1 {
 		Err(std::io::Error::last_os_error().into())
@@ -1078,6 +1373,117 @@ fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+#[cfg(test)]
+fn remove_test_directory_contents(directory: &File) -> Result<()> {
+	let duplicate = duplicate_fd(directory.as_raw_fd())?;
+	let stream = unsafe { libc::fdopendir(duplicate) };
+
+	if stream.is_null() {
+		let error = std::io::Error::last_os_error();
+
+		unsafe {
+			libc::close(duplicate);
+		}
+
+		return Err(error.into());
+	}
+
+	let stream = DirectoryStream(stream);
+	let mut entries = Vec::new();
+	loop {
+		let entry = unsafe { libc::readdir(stream.0) };
+
+		if entry.is_null() {
+			break;
+		}
+
+		let child_name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
+		if child_name.to_bytes() == b"." || child_name.to_bytes() == b".." {
+			continue;
+		}
+		let snapshot = file_snapshot_at(directory.as_raw_fd(), child_name)?
+			.ok_or_else(|| eyre::eyre!("Radar test entry changed during cleanup"))?;
+
+		entries.push((child_name.to_owned(), snapshot));
+	}
+	drop(stream);
+
+	for (child_name, expected) in entries {
+		let current = file_snapshot_at(directory.as_raw_fd(), &child_name)?
+			.ok_or_else(|| eyre::eyre!("Radar test entry disappeared during cleanup"))?;
+
+		if current != expected {
+			eyre::bail!("Radar test entry identity changed during cleanup");
+		}
+
+		if expected.file_type == u32::from(libc::S_IFDIR) {
+			let child = open_directory_at(directory.as_raw_fd(), &child_name)?;
+			let identity = directory_identity(&child, "test child directory")?;
+			let expected_identity =
+				DirectoryIdentity { dev: expected.identity.dev, ino: expected.identity.ino };
+
+			if identity != expected_identity {
+				eyre::bail!("Radar test child directory identity changed during cleanup");
+			}
+			remove_test_directory_contents(&child)?;
+			verify_directory_binding_at(
+				directory.as_raw_fd(),
+				&child_name,
+				&expected_identity,
+				"test child directory",
+			)?;
+			if unsafe {
+				libc::unlinkat(directory.as_raw_fd(), child_name.as_ptr(), libc::AT_REMOVEDIR)
+			} == -1
+			{
+				return Err(std::io::Error::last_os_error().into());
+			}
+		} else {
+			let rebound = file_snapshot_at(directory.as_raw_fd(), &child_name)?
+				.ok_or_else(|| eyre::eyre!("Radar test entry disappeared before cleanup"))?;
+
+			if rebound != expected {
+				eyre::bail!("Radar test entry identity changed before cleanup");
+			}
+			unlink_at(directory.as_raw_fd(), &child_name)?;
+		}
+	}
+
+	Ok(())
+}
+
+#[cfg(test)]
+fn verify_directory_binding_at(
+	parent: RawFd,
+	name: &CStr,
+	expected: &DirectoryIdentity,
+	label: &str,
+) -> Result<()> {
+	let snapshot = file_snapshot_at(parent, name)?
+		.ok_or_else(|| eyre::eyre!("Radar {label} disappeared during cleanup"))?;
+	let current = DirectoryIdentity { dev: snapshot.identity.dev, ino: snapshot.identity.ino };
+
+	if snapshot.file_type != u32::from(libc::S_IFDIR) || &current != expected {
+		eyre::bail!("Radar {label} identity changed during cleanup");
+	}
+
+	Ok(())
+}
+
+#[cfg(test)]
+fn directory_identity(directory: &File, label: &str) -> Result<DirectoryIdentity> {
+	let metadata = directory.metadata()?;
+
+	if !metadata.is_dir() {
+		eyre::bail!("Radar {label} must remain a directory");
+	}
+	if metadata.uid() != unsafe { libc::geteuid() } {
+		eyre::bail!("Radar {label} must remain owned by the current user");
+	}
+
+	Ok(DirectoryIdentity { dev: metadata.dev(), ino: metadata.ino() })
 }
 
 fn c_string(value: &OsStr) -> Result<CString> {
@@ -1313,6 +1719,77 @@ pub(crate) fn ensure_private_directory(path: &Path) -> Result<()> {
 	drop(PrivateCache::open_or_create(path)?);
 
 	Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn create_private_test_directory(parent_path: &Path) -> Result<PrivateTestDirectory> {
+	create_private_test_directory_with(parent_path, || {})
+}
+
+#[cfg(test)]
+pub(crate) fn create_private_test_directory_with(
+	parent_path: &Path,
+	after_parent_open: impl FnOnce(),
+) -> Result<PrivateTestDirectory> {
+	let resolved_parent = parent_path.canonicalize()?;
+	let parent = open_test_parent_path(&resolved_parent)?;
+	let parent_identity = validate_test_parent_directory(&parent)?;
+
+	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+	after_parent_open();
+	verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+
+	let name = test_temporary_name()?;
+	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), PRIVATE_DIR_MODE as libc::mode_t) }
+		== -1
+	{
+		return Err(std::io::Error::last_os_error().into());
+	}
+
+	let result = (|| -> Result<(PathBuf, File, DirectoryIdentity)> {
+		let directory = open_directory_at(parent.as_raw_fd(), &name)?;
+		let identity = validate_private_directory(&directory, "test directory")?;
+
+		parent.sync_all()?;
+		verify_test_parent_binding(&resolved_parent, &parent, &parent_identity)?;
+
+		let name = OsStr::from_bytes(name.to_bytes());
+
+		Ok((resolved_parent.join(name), directory, identity))
+	})();
+
+	match result {
+		Ok((path, directory, identity)) => Ok(PrivateTestDirectory {
+			parent_path: resolved_parent,
+			parent,
+			parent_identity,
+			name,
+			path,
+			directory,
+			identity,
+		}),
+		Err(error) => {
+			if let Ok(directory) = open_directory_at(parent.as_raw_fd(), &name)
+				&& let Ok(identity) = directory_identity(&directory, "partial test directory")
+			{
+				let _ = remove_test_directory_contents(&directory);
+				if verify_directory_binding_at(
+					parent.as_raw_fd(),
+					&name,
+					&identity,
+					"partial test directory",
+				)
+				.is_ok()
+				{
+					unsafe {
+						libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR);
+					}
+				}
+			}
+
+			Err(error)
+		},
+	}
 }
 
 #[cfg(test)]
