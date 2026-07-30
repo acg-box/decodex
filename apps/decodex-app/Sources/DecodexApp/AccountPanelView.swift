@@ -26,26 +26,21 @@ struct AccountPanelView: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 7) {
-			header
-				.padding(.horizontal, 10)
-				.padding(.vertical, 8)
-				.panelCardSurface(cornerRadius: 18)
+		ZStack {
+			panelContent
+				.disabled(store.accountReauthentication != nil)
+				.allowsHitTesting(store.accountReauthentication == nil)
+				.accessibilityHidden(store.accountReauthentication != nil)
 
-			if hasTransientStatus {
-				transientStatus
-					.transition(.panelSection)
+			if store.accountReauthentication != nil {
+				reauthenticationOverlay
+					.transition(
+						.opacity.combined(
+							with: .scale(scale: 0.98, anchor: .center)
+						)
+					)
+					.zIndex(1)
 			}
-
-			if let profileAggregate {
-				AccountProfileOverviewView(
-					aggregate: profileAggregate
-				)
-				.panelCardSurface(cornerRadius: 16)
-				.transition(.panelSection)
-			}
-
-			accountContent
 		}
 		.frame(width: AccountPanelLayout.panelWidth)
 		.padding(6)
@@ -65,16 +60,7 @@ struct AccountPanelView: View {
 				isPresentingEnrollment = false
 			}
 		}
-		.sheet(
-			isPresented: Binding(
-				get: {
-					store.accountReauthentication != nil
-				},
-				set: { _ in }
-			)
-		) {
-			AccountReauthenticationView(store: store)
-		}
+		.animation(PanelMotion.panelLayout, value: store.accountReauthentication != nil)
 		.task {
 			guard loadsExternalState else {
 				return
@@ -102,6 +88,42 @@ struct AccountPanelView: View {
 				return
 			}
 			store.dismissMessage()
+		}
+	}
+
+	private var panelContent: some View {
+		VStack(alignment: .leading, spacing: 7) {
+			header
+				.padding(.horizontal, 10)
+				.padding(.vertical, 8)
+				.panelCardSurface(cornerRadius: 18)
+
+			if hasTransientStatus {
+				transientStatus
+					.transition(.panelSection)
+			}
+
+			if let profileAggregate {
+				AccountProfileOverviewView(
+					aggregate: profileAggregate
+				)
+					.panelCardSurface(cornerRadius: 16)
+					.transition(.panelSection)
+			}
+
+			accountContent
+		}
+	}
+
+	private var reauthenticationOverlay: some View {
+		ZStack {
+			Color.clear
+				.contentShape(Rectangle())
+				.accessibilityHidden(true)
+
+			AccountReauthenticationView(store: store)
+				.panelModalSurface(cornerRadius: 16)
+				.accessibilityAddTraits(.isModal)
 		}
 	}
 
