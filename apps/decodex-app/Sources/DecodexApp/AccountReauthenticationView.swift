@@ -8,20 +8,12 @@ struct AccountReauthenticationView: View {
 	@State private var openFeedback = false
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		VStack(alignment: .leading, spacing: 8) {
 			if let presentation = store.accountReauthentication {
 				header(presentation)
 
 				if let prompt = presentation.prompt {
 					promptContent(prompt)
-				} else if presentation.failureText == nil {
-					HStack(spacing: 7) {
-						ProgressView()
-							.controlSize(.small)
-						Text(presentation.statusText)
-							.font(PanelFont.transientBody)
-							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					}
 				}
 
 				if let failure = presentation.failureText {
@@ -31,10 +23,17 @@ struct AccountReauthenticationView: View {
 						.fixedSize(horizontal: false, vertical: true)
 				}
 
-				Divider()
-
 				HStack {
+					if let prompt = presentation.prompt {
+						Button(openFeedback ? "Opened" : "Open browser") {
+							open(prompt.verificationURL)
+						}
+						.buttonStyle(.borderedProminent)
+						.accessibilityHint("Opens the official Codex device sign-in page.")
+					}
+
 					Spacer()
+
 					Button(
 						presentation.canCloseWithoutCancellation
 							? "Close"
@@ -56,8 +55,8 @@ struct AccountReauthenticationView: View {
 				}
 			}
 		}
-		.frame(width: 300)
-		.padding(14)
+		.frame(width: 256)
+		.padding(12)
 		.controlSize(.small)
 		.interactiveDismissDisabled(true)
 	}
@@ -66,70 +65,80 @@ struct AccountReauthenticationView: View {
 		_ presentation: AccountReauthenticationPresentation
 	) -> some View {
 		VStack(alignment: .leading, spacing: 3) {
-			Text("Refresh Login")
+			Text("Refresh login")
 				.font(PanelFont.transientTitle)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
-			Text(presentation.accountLabel)
-				.font(PanelFont.transientBody)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.truncationMode(.middle)
+			HStack(alignment: .firstTextBaseline, spacing: 4) {
+				if presentation.prompt == nil,
+					presentation.failureText == nil
+				{
+					ProgressView()
+						.controlSize(.mini)
+						.accessibilityHidden(true)
+				}
 
-			if presentation.prompt != nil {
-				Text(presentation.statusText)
+				Text(presentation.accountLabel)
+					.font(PanelFont.transientBody)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.86))
+					.lineLimit(1)
+					.truncationMode(.middle)
+
+				Text("· \(presentation.statusText)")
 					.font(PanelFont.tertiary)
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+					.truncationMode(.tail)
 			}
+			.accessibilityElement(children: .combine)
+			.accessibilityLabel(
+				"\(presentation.accountLabel), \(presentation.statusText)"
+			)
 		}
 	}
 
 	private func promptContent(
 		_ prompt: AccountReauthenticationPrompt
 	) -> some View {
-		VStack(alignment: .leading, spacing: 8) {
-			Text("Enter this one-time code in the Codex sign-in page.")
-				.font(PanelFont.transientBody)
+		VStack(alignment: .leading, spacing: 6) {
+			Text("One-time code")
+				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.fixedSize(horizontal: false, vertical: true)
 
-			Text(prompt.userCode)
-				.font(.system(size: 24, weight: .semibold, design: .monospaced))
-				.monospacedDigit()
-				.tracking(1.4)
-				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.textSelection(.enabled)
-				.frame(maxWidth: .infinity)
-				.padding(.vertical, 10)
-				.background(
-					RoundedRectangle(cornerRadius: 9, style: .continuous)
-						.fill(
-							PanelPalette.secondaryText(colorScheme)
-								.opacity(colorScheme == .dark ? 0.12 : 0.08)
-						)
-				)
-				.overlay {
-					RoundedRectangle(cornerRadius: 9, style: .continuous)
-						.stroke(
-							PanelPalette.separator(colorScheme),
-							lineWidth: 1
-						)
-				}
-				.accessibilityLabel("One-time login code \(prompt.userCode)")
+			HStack(spacing: 8) {
+				Text(prompt.userCode)
+					.font(PanelFont.loginCode)
+					.monospacedDigit()
+					.tracking(1)
+					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+					.textSelection(.enabled)
 
-			HStack(spacing: 7) {
-				Button(copyFeedback ? "Copied" : "Copy Code") {
+				Spacer(minLength: 4)
+
+				Button(copyFeedback ? "Copied" : "Copy") {
 					copy(prompt.userCode)
 				}
 				.buttonStyle(.bordered)
 				.accessibilityHint("Copies the one-time Codex login code.")
-
-				Button(openFeedback ? "Opened" : "Open Browser") {
-					open(prompt.verificationURL)
-				}
-				.buttonStyle(.borderedProminent)
-				.accessibilityHint("Opens the official Codex device sign-in page.")
 			}
+			.padding(.horizontal, 9)
+			.padding(.vertical, 7)
+			.background(
+				RoundedRectangle(cornerRadius: 8, style: .continuous)
+					.fill(
+						PanelPalette.secondaryText(colorScheme)
+							.opacity(colorScheme == .dark ? 0.12 : 0.08)
+					)
+			)
+			.overlay {
+				RoundedRectangle(cornerRadius: 8, style: .continuous)
+					.stroke(
+						PanelPalette.separator(colorScheme),
+						lineWidth: 1
+					)
+			}
+			.accessibilityElement(children: .contain)
+			.accessibilityLabel("One-time login code \(prompt.userCode)")
 		}
 	}
 
