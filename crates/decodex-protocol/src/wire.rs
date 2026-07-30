@@ -3120,15 +3120,7 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	if !is_canonical_uuid(account.account_id.as_str()) || account.account_revision.0 == 0 {
 		return Err("account identity or revision is invalid");
 	}
-	let alias = account.alias.as_str().as_bytes();
-	if alias.len() != 19
-		|| &alias[..8] != b"Account "
-		|| alias[13] != b'-'
-		|| alias[8..13]
-			.iter()
-			.chain(&alias[14..])
-			.any(|byte| !b"0123456789ABCDEFGHJKMNPQRSTVWXYZ".contains(byte))
-	{
+	if !is_canonical_account_alias(account.alias.as_str()) {
 		return Err("account alias is invalid");
 	}
 	if matches!(account.lifecycle_readiness, AccountLifecycleReadinessDto::Tombstoned) {
@@ -3176,6 +3168,13 @@ fn validate_account_dto(account: &AccountDto) -> Result<(), &'static str> {
 	validate_quota_window(account.five_hour_quota, 300)?;
 	validate_quota_window(account.seven_day_quota, 10_080)?;
 	Ok(())
+}
+
+fn is_canonical_account_alias(value: &str) -> bool {
+	let bytes = value.as_bytes();
+	(2..=16).contains(&bytes.len())
+		&& bytes[0].is_ascii_uppercase()
+		&& bytes[1..].iter().all(u8::is_ascii_lowercase)
 }
 
 fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static str> {
@@ -3371,6 +3370,25 @@ mod tests {
 			ResumeCursor, decode_client_message,
 		},
 	};
+
+	#[test]
+	fn account_alias_accepts_only_one_canonical_word() {
+		assert!(super::is_canonical_account_alias("Iris"));
+		assert!(super::is_canonical_account_alias("Val"));
+		for invalid in [
+			"",
+			"A",
+			"iris",
+			"IRIS",
+			"Iris1",
+			"Iris Smith",
+			"Account DQ6WF-G8BTT",
+			"Éden",
+			"Abcdefghijklmnopq",
+		] {
+			assert!(!super::is_canonical_account_alias(invalid), "{invalid}");
+		}
+	}
 
 	#[test]
 	fn command_wire_shape_is_structured_and_round_trips() {
