@@ -13,7 +13,7 @@ use std::{
 #[cfg(target_os = "macos")] use crate::host_credentials::MacosKeychainCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
-	account_launch::{ResetCardRuntime, ResetCardVaultStatus, attest_account_callback_capability},
+	account_launch::{AttestedAppServerProfile, ResetCardRuntime, ResetCardVaultStatus},
 	account_profile::AccountProfileRuntime,
 	account_service::{AccountInspection, AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ServiceApplication},
@@ -394,11 +394,11 @@ async fn bootstrap_macos_account_runtime(
 	let account_profiles =
 		Some(AccountProfileRuntime::new(postgres.clone(), Arc::clone(&credentials)));
 	let service = Arc::new(AccountService::new(postgres.clone(), credentials, Arc::new(refresher)));
-	let attestation = match attest_account_callback_capability(
+	let launch_profile = match AttestedAppServerProfile::attest(
 		paths.root().as_path().to_owned(),
 		ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT,
 	) {
-		Ok(attestation) => attestation,
+		Ok(profile) => profile,
 		Err(_) => {
 			let _ = service.attest_callback_capability(unavailable_callback_attestation()).await;
 			let _ = service.reconcile_startup().await;
@@ -410,6 +410,7 @@ async fn bootstrap_macos_account_runtime(
 			);
 		},
 	};
+	let attestation = launch_profile.account_callback_attestation();
 	let mut closed_attestation = attestation.clone();
 	closed_attestation.login_chatgpt_auth_tokens = false;
 	closed_attestation.refresh_callback = false;
@@ -464,7 +465,7 @@ async fn bootstrap_macos_account_runtime(
 		Arc::clone(&service),
 		process_generations,
 		execution_authorization,
-		paths.root().as_path().to_owned(),
+		launch_profile,
 	) {
 		Ok(runtime) => runtime,
 		Err(_) => {
