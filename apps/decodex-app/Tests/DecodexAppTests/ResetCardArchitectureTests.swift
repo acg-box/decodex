@@ -182,7 +182,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(statusPanel.contains(".environment(\\.colorScheme"))
 		XCTAssertTrue(resetCards.contains(".buttonStyle(.bordered)"))
 		XCTAssertTrue(resetCards.contains(".controlSize(.small)"))
-		XCTAssertTrue(resetCards.contains("\"Use · \\(Self.cardExpiryText"))
+		XCTAssertTrue(
+			resetCards.contains(
+				"Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)"
+			)
+		)
+		XCTAssertFalse(resetCards.contains("\"Use · "))
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"creditcard\")"))
 		XCTAssertTrue(resetCards.contains(".frame(minWidth: 88, maxWidth: .infinity)"))
 		XCTAssertFalse(accountPanel.contains("headerState("))
