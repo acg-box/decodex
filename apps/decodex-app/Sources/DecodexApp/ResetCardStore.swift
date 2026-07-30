@@ -905,7 +905,7 @@ final class ResetCardStore {
 	func accountLabel(for accountID: String) -> String {
 		accounts.first(where: { $0.account.accountID == accountID })?
 			.account.alias
-			?? "Account …\(accountID.suffix(8))"
+			?? "Unknown account"
 	}
 
 	private func submit(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
