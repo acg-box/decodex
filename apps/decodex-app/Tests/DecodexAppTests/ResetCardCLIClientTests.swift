@@ -22,8 +22,8 @@ final class ResetCardNativeClientTests: XCTestCase {
 		  "outcome":"available",
 		  "data":{
 		    "accounts":[
-		      \(nativeAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7)),
-		      \(nativeAccountJSON(accountID: secondAccountID, alias: "Account 00000-00002", revision: 8))
+		      \(nativeAccountJSON(accountID: accountID, alias: "Iris", revision: 7)),
+		      \(nativeAccountJSON(accountID: secondAccountID, alias: "Jamie", revision: 8))
 		    ],
 		    "routing":{
 		      "revision":3,
@@ -344,7 +344,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 		let documents = [
 			"""
 			{"outcome":"available","data":{"accounts":[
-			  {"account_id":"\(accountID)","alias":"Account 00000-00001","enabled":true,
+			  {"account_id":"\(accountID)","alias":"Iris","enabled":true,
 			   "account_revision":7,"observed_state":"available","lifecycle_readiness":"ready",
 			   "unexpected":true,
 			   "credential_binding":{"schema_version":1,"version":1,"fingerprint_sha256":"\(String(repeating: "a", count: 64))","provider":"chatgpt","provider_account_id":"provider-a"},
@@ -354,8 +354,13 @@ final class ResetCardNativeClientTests: XCTestCase {
 			""",
 			"""
 			{"outcome":"available","data":{"accounts":[
-			  \(nativeAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7))
+			  \(nativeAccountJSON(accountID: accountID, alias: "Iris", revision: 7))
 			],"routing":{"revision":3,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(accountID)"]}}}
+			""",
+			"""
+			{"outcome":"available","data":{"accounts":[
+			  \(nativeAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7))
+			],"routing":{"revision":3,"mode":{"mode":"balanced"},"order":["\(accountID)"]}}}
 			""",
 		]
 		for data in documents {
