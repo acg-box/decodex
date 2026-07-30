@@ -129,6 +129,26 @@ def result_payload(status: str, **fields: Any) -> dict[str, Any]:
     return {"schema": RESULT_SCHEMA, "status": status, **fields}
 
 
+def task_retention_result_payload(
+    status: str,
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    fields = dict(record)
+    retention_status = fields.pop("status", None)
+    if not isinstance(retention_status, str):
+        raise AutopilotError("task_retention_result_invalid")
+    receipt_schema = fields.pop("schema", None)
+    if receipt_schema is not None:
+        if not isinstance(receipt_schema, str):
+            raise AutopilotError("task_retention_result_invalid")
+        fields["receipt_schema"] = receipt_schema
+    return result_payload(
+        status,
+        retention_status=retention_status,
+        **fields,
+    )
+
+
 def validated_automation_audit(
     output: str,
     *,
@@ -1946,9 +1966,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             keep_visible_reason=args.keep_visible_reason,
         )
         assert_primary_snapshot(repo_root, policy, preflight["head"])
-        return result_payload(
+        return task_retention_result_payload(
             "task_retention_sealed",
-            **receipt,
+            receipt,
         )
 
     if args.command == "task-retention-plan":
@@ -1971,9 +1991,9 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             reason=args.reason,
         )
         assert_primary_snapshot(repo_root, policy, preflight["head"])
-        return result_payload(
+        return task_retention_result_payload(
             "task_retention_settled",
-            **settlement,
+            settlement,
         )
 
     if args.command == "snapshot":
