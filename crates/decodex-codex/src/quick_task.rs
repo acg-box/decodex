@@ -1801,7 +1801,8 @@ mod tests {
 	#[test]
 	fn pinned_method_results_mint_only_typed_quick_task_success() {
 		let start_request = start_request();
-		let thread_bytes = serde_json::to_vec(&thread_response("thread-1", "gpt-5", "/workspace"))
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let thread_bytes = serde_json::to_vec(&canonical)
 			.expect("fixture response must serialize");
 		let start = decode_quick_task_thread_start_response(&start_request, &thread_bytes)
 			.expect("pinned thread/start response must decode");
@@ -1810,6 +1811,16 @@ mod tests {
 		assert_eq!(start.cwd().as_str(), "/workspace");
 		assert_eq!(start.model().as_str(), "gpt-5");
 		assert_eq!(start.reasoning_effort().map(|effort| effort.as_str()), Some("high"));
+
+		let mut canonical_auto_review = canonical.clone();
+		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
+		assert!(
+			decode_quick_task_thread_start_response(
+				&start_request,
+				&serde_json::to_vec(&canonical_auto_review).unwrap(),
+			)
+			.is_ok()
+		);
 
 		let resume = decode_quick_task_thread_resume_response(&resume_request(), &thread_bytes)
 			.expect("pinned thread/resume response must decode");
@@ -1838,20 +1849,9 @@ mod tests {
 	}
 
 	#[test]
-	fn malformed_or_mismatched_results_never_mint_quick_task_success() {
+	fn malformed_or_unknown_wire_shape_failures_never_mint_quick_task_success() {
 		let start_request = start_request();
-		let resume_request = resume_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
-
-		let mut canonical_auto_review = canonical.clone();
-		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
-		assert!(
-			decode_quick_task_thread_start_response(
-				&start_request,
-				&serde_json::to_vec(&canonical_auto_review).unwrap(),
-			)
-			.is_ok()
-		);
 
 		let mut unknown_nested = canonical.clone();
 		unknown_nested["thread"]["unexpected"] = json!(true);
@@ -1877,28 +1877,6 @@ mod tests {
 
 		let mut malformed_nested = canonical.clone();
 		malformed_nested["sandbox"] = json!({"type": "readOnly", "access": {"type": "restricted"}});
-
-		let mut nonempty_turns = canonical.clone();
-		nonempty_turns["thread"]["turns"] = json!([{}]);
-
-		let mut wrong_thread = canonical.clone();
-		wrong_thread["thread"]["id"] = json!("thread-2");
-
-		let mut wrong_model = canonical.clone();
-		wrong_model["model"] = json!("gpt-other");
-
-		let mut wrong_cwd = canonical;
-		wrong_cwd["cwd"] = json!("/other");
-
-		let nonempty_items = json!({
-			"turn": {
-				"id": "turn-1",
-				"items": [{}],
-				"itemsView": "notLoaded",
-				"status": "inProgress",
-			},
-		});
-		let oversized = vec![b' '; MAX_QUICK_TASK_RESPONSE_BYTES + 1];
 
 		let cases = [
 			(
@@ -1943,6 +1921,42 @@ mod tests {
 				.map(|_| ()),
 				QuickTaskContractError::MalformedResponse,
 			),
+		];
+
+		for (case, actual, expected) in cases {
+			assert_eq!(actual, Err(expected), "{case}");
+		}
+	}
+
+	#[test]
+	fn semantic_identity_collection_or_bounds_failures_never_mint_quick_task_success() {
+		let start_request = start_request();
+		let resume_request = resume_request();
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+
+		let mut nonempty_turns = canonical.clone();
+		nonempty_turns["thread"]["turns"] = json!([{}]);
+
+		let mut wrong_thread = canonical.clone();
+		wrong_thread["thread"]["id"] = json!("thread-2");
+
+		let mut wrong_model = canonical.clone();
+		wrong_model["model"] = json!("gpt-other");
+
+		let mut wrong_cwd = canonical;
+		wrong_cwd["cwd"] = json!("/other");
+
+		let nonempty_items = json!({
+			"turn": {
+				"id": "turn-1",
+				"items": [{}],
+				"itemsView": "notLoaded",
+				"status": "inProgress",
+			},
+		});
+		let oversized = vec![b' '; MAX_QUICK_TASK_RESPONSE_BYTES + 1];
+
+		let cases = [
 			(
 				"nonempty turns",
 				decode_quick_task_thread_start_response(
