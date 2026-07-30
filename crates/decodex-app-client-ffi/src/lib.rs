@@ -631,26 +631,13 @@ async fn execute_request(
 ) -> Result<Value, RequestFailure> {
 	let profile = native_client.profile.clone();
 	match request {
-		Request::ListAccounts { .. } =>
-			to_value(AccountClient::new(profile).list().await.map_err(RequestFailure::Client)?),
+		Request::ListAccounts { .. } => list_accounts(profile).await,
 		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
 		Request::GetAccountProfile { account_id, include_email, .. } =>
 			get_account_profile(profile, account_id, include_email).await,
-		Request::GetCodexAuthProjection { .. } => to_value(
-			AccountClient::new(profile)
-				.codex_auth_projection()
-				.await
-				.map_err(RequestFailure::Client)?,
-		),
-		Request::ResetCardStatus { idempotency_key, .. } => {
-			let idempotency_key = parse_idempotency_key(idempotency_key)?;
-			to_value(
-				ResetCardClient::new(profile)
-					.status(idempotency_key)
-					.await
-					.map_err(RequestFailure::Client)?,
-			)
-		},
+		Request::GetCodexAuthProjection { .. } => get_codex_auth_projection(profile).await,
+		Request::ResetCardStatus { idempotency_key, .. } =>
+			get_reset_card_status(profile, idempotency_key).await,
 		Request::UseResetCard {
 			account_id,
 			granted_at_unix_seconds,
@@ -668,14 +655,8 @@ async fn execute_request(
 				idempotency_key,
 			)
 			.await,
-		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } => {
-			let payload = CommandPayload::EnrollAccountFromSharedCodex {
-				operation_id: entity_id(&operation_id)?,
-				account_id: entity_id(&account_id)?,
-				enabled,
-			};
-			execute_account_command(profile, payload, None, idempotency_key).await
-		},
+		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } =>
+			enroll_account(profile, operation_id, account_id, enabled, idempotency_key).await,
 		Request::EnableAccount { account_id, expected_revision, idempotency_key, .. } =>
 			set_account_enabled(profile, account_id, true, expected_revision, idempotency_key).await,
 		Request::DisableAccount { account_id, expected_revision, idempotency_key, .. } =>
@@ -687,19 +668,9 @@ async fn execute_request(
 			expected_revision,
 			idempotency_key,
 			..
-		} => {
-			let payload = CommandPayload::LogoutAccount {
-				operation_id: entity_id(&operation_id)?,
-				account_id: entity_id(&account_id)?,
-			};
-			execute_account_command(
-				profile,
-				payload,
-				Some(revision(expected_revision)?),
-				idempotency_key,
-			)
-			.await
-		},
+		} =>
+			logout_account(profile, operation_id, account_id, expected_revision, idempotency_key)
+				.await,
 		Request::SetFixedSelection {
 			account_id,
 			expected_account_revision,
@@ -723,19 +694,9 @@ async fn execute_request(
 			expected_revision,
 			idempotency_key,
 			..
-		} => {
-			let payload = CommandPayload::RefreshAccount {
-				operation_id: entity_id(&operation_id)?,
-				account_id: entity_id(&account_id)?,
-			};
-			execute_account_command(
-				profile,
-				payload,
-				Some(revision(expected_revision)?),
-				idempotency_key,
-			)
-			.await
-		},
+		} =>
+			refresh_account(profile, operation_id, account_id, expected_revision, idempotency_key)
+				.await,
 		Request::StartAccountReauthentication {
 			session_id,
 			operation_id,
@@ -744,56 +705,173 @@ async fn execute_request(
 			idempotency_key,
 			codex_bin,
 			..
-		} => {
-			if !is_canonical_uuid(&session_id)
-				|| codex_bin.is_empty()
-				|| codex_bin.len() > 4_096
-				|| codex_bin.chars().any(char::is_control)
-			{
-				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
-			}
-			let start = account_reauthentication::Start {
+		} => start_account_reauthentication(
+			&native_client,
+			profile,
+			AccountReauthenticationInput {
 				session_id,
-				operation_id: entity_id(&operation_id)?,
-				account_id: entity_id(&account_id)?,
-				expected_revision: revision(expected_revision)?,
-				idempotency_key: parse_idempotency_key(idempotency_key)?,
-				codex_bin: PathBuf::from(codex_bin),
-			};
-			to_value(native_client.account_reauthentication.start(
-				start,
-				profile,
-				tokio::runtime::Handle::current(),
-			))
-		},
-		Request::PollAccountReauthentication { session_id, .. } => {
-			if !is_canonical_uuid(&session_id) {
-				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
-			}
-			to_value(native_client.account_reauthentication.poll(&session_id))
-		},
-		Request::CancelAccountReauthentication { session_id, .. } => {
-			if !is_canonical_uuid(&session_id) {
-				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
-			}
-			to_value(native_client.account_reauthentication.cancel(&session_id))
-		},
+				operation_id,
+				account_id,
+				expected_revision,
+				idempotency_key,
+				codex_bin,
+			},
+		),
+		Request::PollAccountReauthentication { session_id, .. } =>
+			poll_account_reauthentication(&native_client, session_id),
+		Request::CancelAccountReauthentication { session_id, .. } =>
+			cancel_account_reauthentication(&native_client, session_id),
 		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } =>
 			use_account_in_codex(profile, account_id, expected_revision, idempotency_key).await,
-		Request::FastModeStatus { .. } => {
-			let enabled = fast_mode::status().map_err(RequestFailure::FastMode)?;
-			to_value(FastModeData { enabled })
-		},
-		Request::SetFastMode { enabled, .. } => {
-			let enabled = fast_mode::set_enabled(enabled).map_err(RequestFailure::FastMode)?;
-			to_value(FastModeData { enabled })
-		},
+		Request::FastModeStatus { .. } => fast_mode_status(),
+		Request::SetFastMode { enabled, .. } => set_fast_mode(enabled),
 	}
 }
 
 #[derive(Serialize)]
 struct FastModeData {
 	enabled: bool,
+}
+
+struct AccountReauthenticationInput {
+	session_id: String,
+	operation_id: String,
+	account_id: String,
+	expected_revision: u64,
+	idempotency_key: String,
+	codex_bin: String,
+}
+
+async fn list_accounts(profile: ClientProfile) -> Result<Value, RequestFailure> {
+	to_value(AccountClient::new(profile).list().await.map_err(RequestFailure::Client)?)
+}
+
+async fn get_codex_auth_projection(profile: ClientProfile) -> Result<Value, RequestFailure> {
+	to_value(
+		AccountClient::new(profile)
+			.codex_auth_projection()
+			.await
+			.map_err(RequestFailure::Client)?,
+	)
+}
+
+async fn get_reset_card_status(
+	profile: ClientProfile,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let idempotency_key = parse_idempotency_key(idempotency_key)?;
+	to_value(
+		ResetCardClient::new(profile)
+			.status(idempotency_key)
+			.await
+			.map_err(RequestFailure::Client)?,
+	)
+}
+
+async fn enroll_account(
+	profile: ClientProfile,
+	operation_id: String,
+	account_id: String,
+	enabled: bool,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let payload = CommandPayload::EnrollAccountFromSharedCodex {
+		operation_id: entity_id(&operation_id)?,
+		account_id: entity_id(&account_id)?,
+		enabled,
+	};
+	execute_account_command(profile, payload, None, idempotency_key).await
+}
+
+async fn logout_account(
+	profile: ClientProfile,
+	operation_id: String,
+	account_id: String,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let payload = CommandPayload::LogoutAccount {
+		operation_id: entity_id(&operation_id)?,
+		account_id: entity_id(&account_id)?,
+	};
+	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
+		.await
+}
+
+async fn refresh_account(
+	profile: ClientProfile,
+	operation_id: String,
+	account_id: String,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let payload = CommandPayload::RefreshAccount {
+		operation_id: entity_id(&operation_id)?,
+		account_id: entity_id(&account_id)?,
+	};
+	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
+		.await
+}
+
+fn start_account_reauthentication(
+	native_client: &NativeClient,
+	profile: ClientProfile,
+	input: AccountReauthenticationInput,
+) -> Result<Value, RequestFailure> {
+	if !is_canonical_uuid(&input.session_id)
+		|| input.codex_bin.is_empty()
+		|| input.codex_bin.len() > 4_096
+		|| input.codex_bin.chars().any(char::is_control)
+	{
+		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+	}
+	let start = account_reauthentication::Start {
+		session_id: input.session_id,
+		operation_id: entity_id(&input.operation_id)?,
+		account_id: entity_id(&input.account_id)?,
+		expected_revision: revision(input.expected_revision)?,
+		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
+		codex_bin: PathBuf::from(input.codex_bin),
+	};
+	to_value(native_client.account_reauthentication.start(
+		start,
+		profile,
+		tokio::runtime::Handle::current(),
+	))
+}
+
+fn poll_account_reauthentication(
+	native_client: &NativeClient,
+	session_id: String,
+) -> Result<Value, RequestFailure> {
+	validate_session_id(&session_id)?;
+	to_value(native_client.account_reauthentication.poll(&session_id))
+}
+
+fn cancel_account_reauthentication(
+	native_client: &NativeClient,
+	session_id: String,
+) -> Result<Value, RequestFailure> {
+	validate_session_id(&session_id)?;
+	to_value(native_client.account_reauthentication.cancel(&session_id))
+}
+
+fn validate_session_id(session_id: &str) -> Result<(), RequestFailure> {
+	if is_canonical_uuid(session_id) {
+		Ok(())
+	} else {
+		Err(RequestFailure::Bridge(BridgeFailure::InvalidInput))
+	}
+}
+
+fn fast_mode_status() -> Result<Value, RequestFailure> {
+	let enabled = fast_mode::status().map_err(RequestFailure::FastMode)?;
+	to_value(FastModeData { enabled })
+}
+
+fn set_fast_mode(enabled: bool) -> Result<Value, RequestFailure> {
+	let enabled = fast_mode::set_enabled(enabled).map_err(RequestFailure::FastMode)?;
+	to_value(FastModeData { enabled })
 }
 
 async fn get_reset_cards(
