@@ -577,7 +577,9 @@ ProcessGeneration fence. Unsupported callback profiles fail closed before accoun
 
 The supported-OS adapter owns boot and process identity, generic session/descriptor setup, exact
 owned signaling, group observation, and positive exit witnesses. Linux uses `/proc` start ticks
-and pidfd. macOS uses `KERN_BOOTTIME`, `proc_pidinfo`, and a one-shot kqueue `NOTE_EXIT` filter.
+and pidfd. macOS uses a versioned stable `kern.bootsessionuuid`, `proc_pidinfo`, and a one-shot
+kqueue `NOTE_EXIT` filter. A persisted boot identity from another format is incomparable and
+cannot prove that a prior boot ended.
 Both use a new session. Generic retained-title and preflight setup grants no ProcessGeneration
 lifetime capability and does not install Linux `PR_SET_PDEATHSIG`. No exact Linux lifetime profile
 is accepted. A future parent-death primitive must be reachable only through such a profile. On
