@@ -73,6 +73,25 @@ pub(crate) fn repo_root() -> Result<PathBuf> {
 	Ok(root)
 }
 
+#[cfg(test)]
+pub(crate) fn repo_local_test_directory(prefix: &str) -> tempfile::TempDir {
+	let repo_root = repo_root().expect("repository root");
+	let target = repo_root.join("target");
+	let configured = env::var_os("DECODEX_VALIDATION_REPO_OUTPUT")
+		.map(PathBuf::from)
+		.unwrap_or_else(|| target.clone());
+	let configured = clean_absolute_path(&configured).expect("repo-local test output path");
+	assert!(
+		configured == target || configured.parent() == Some(target.as_path()),
+		"repo-local test output must be target or one direct child"
+	);
+	ensure_private_directory(&configured).expect("repo-local test output directory");
+	tempfile::Builder::new()
+		.prefix(prefix)
+		.tempdir_in(configured)
+		.expect("repo-local temporary directory")
+}
+
 pub(crate) fn resolve_against(root: &Path, path: &Path) -> PathBuf {
 	if path.is_absolute() { path.to_path_buf() } else { root.join(path) }
 }

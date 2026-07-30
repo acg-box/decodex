@@ -80,11 +80,7 @@ struct RadarFixture {
 impl RadarFixture {
 	fn create() -> Self {
 		let repo_root = crate::repo_root().expect("repo root");
-		let target = repo_root.join("target");
-		let temp = tempfile::Builder::new()
-			.prefix("social-gc-radar-")
-			.tempdir_in(&target)
-			.expect("private Radar fixture directory");
+		let temp = crate::repo_local_test_directory("social-gc-radar-");
 		let queue_dir = temp.path().join("github/review-queue");
 		let pairs_dir = temp.path().join("github/content-review-pairs");
 		crate::ensure_private_directory(&queue_dir).expect("private Radar queue collection");

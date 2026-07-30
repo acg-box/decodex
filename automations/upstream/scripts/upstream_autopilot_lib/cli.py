@@ -2012,6 +2012,10 @@ def main() -> int:
         fields: dict[str, Any] = {"error_code": error.code}
         if error.diagnostic_sha256 is not None:
             fields["error_digest"] = error.diagnostic_sha256
+        if error.related_error_codes:
+            fields["related_error_codes"] = list(
+                error.related_error_codes
+            )
         payload = result_payload("failed", **fields)
         print(
             json.dumps(

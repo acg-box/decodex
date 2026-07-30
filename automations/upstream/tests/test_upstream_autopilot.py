@@ -1062,6 +1062,42 @@ class UpstreamAutopilotTests(unittest.TestCase):
             },
         )
 
+    def test_autopilot_error_bounds_and_normalizes_related_codes(self):
+        normalized = self.autopilot.AutopilotError(
+            "primary_failure",
+            related_error_codes=(
+                "primary_failure",
+                "invalid code",
+                "alpha_failure",
+                "alpha_failure",
+            ),
+        )
+        self.assertEqual(
+            normalized.related_error_codes,
+            ("alpha_failure", "unclassified_failure"),
+        )
+
+        bounded = self.autopilot.AutopilotError(
+            "primary_failure",
+            related_error_codes=(
+                "epsilon_failure",
+                "delta_failure",
+                "gamma_failure",
+                "beta_failure",
+                "alpha_failure",
+            ),
+        )
+        self.assertEqual(
+            bounded.related_error_codes,
+            (
+                "alpha_failure",
+                "beta_failure",
+                "delta_failure",
+                "epsilon_failure",
+            ),
+        )
+        self.assertEqual(len(bounded.related_error_codes), 4)
+
     def test_cli_failure_returns_the_exact_validation_diagnostic_digest(self):
         digest = "a" * 64
         output = io.StringIO()
@@ -1078,6 +1114,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 side_effect=self.autopilot.AutopilotError(
                     "validation_profile_focused_tests_failed",
                     diagnostic_sha256=digest,
+                    related_error_codes=(
+                        "validation_candidate_output_cleanup_failed",
+                    ),
                 ),
             ),
             mock.patch.object(sys, "stdout", output),
@@ -1092,6 +1131,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "status": "failed",
                 "error_code": "validation_profile_focused_tests_failed",
                 "error_digest": digest,
+                "related_error_codes": [
+                    "validation_candidate_output_cleanup_failed"
+                ],
             },
         )
 
@@ -4918,6 +4960,19 @@ class UpstreamAutopilotTests(unittest.TestCase):
         git_common_directory = (
             self.autopilot.repository_git_common_directory(ROOT)
         )
+        candidate_output = self.autopilot.PinnedCandidateOutput(
+            path=Path(
+                "/candidate/target/"
+                "decodex-validation-00000000000000000000000000000000"
+            ),
+            name=(
+                "decodex-validation-"
+                "00000000000000000000000000000000"
+            ),
+            candidate_descriptor=-1,
+            target_descriptor=-1,
+            output_descriptor=-1,
+        )
         with (
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -4974,6 +5029,20 @@ class UpstreamAutopilotTests(unittest.TestCase):
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
+                "pinned_candidate_output_directory",
+                return_value=nullcontext(candidate_output),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "_verify_candidate_output_empty",
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_sandbox_profile",
+                return_value="(version 1)\n(deny default)\n",
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
                 "run_command",
                 return_value="validated",
             ) as run,
@@ -5020,6 +5089,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 environment["RUSTFMT"],
                 "/trusted/bin/nightly-rustfmt",
             )
+            self.assertEqual(
+                environment["DECODEX_VALIDATION_REPO_OUTPUT"],
+                str(candidate_output.path),
+            )
             for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
                 self.assertNotIn(secret, environment)
         self.assertNotIn("DEVELOPER_DIR", cargo_calls[0].kwargs["environment"])
@@ -5043,6 +5116,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     "GH_TOKEN": "secret",
                     "OPENAI_API_KEY": "secret",
                     "SSH_AUTH_SOCK": "/tmp/secret-agent",
+                    "DECODEX_VALIDATION_REPO_OUTPUT": "/tmp/hostile",
                     "PATH": "/tmp/hostile",
                 },
                 clear=False,
@@ -5055,6 +5129,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
             self.assertNotIn(secret, environment)
+        self.assertNotIn(
+            "DECODEX_VALIDATION_REPO_OUTPUT",
+            environment,
+        )
         self.assertNotIn("DECODEX_TEST_TEMP_ROOT", environment)
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
@@ -5199,6 +5277,269 @@ class UpstreamAutopilotTests(unittest.TestCase):
             all(not str(path).startswith(str(hostile)) for path in tools.values())
         )
 
+    def test_candidate_validation_output_rejects_symlink_and_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            temporary_home = Path(directory) / "sandbox"
+            candidate.mkdir()
+            temporary_home.mkdir()
+            source = candidate / "source.txt"
+            source.write_text("source", encoding="utf-8")
+            target = candidate / "target"
+            target.symlink_to(".", target_is_directory=True)
+
+            with self.assertRaises(self.autopilot.AutopilotError) as rejected:
+                with self.autopilot.pinned_candidate_output_directory(candidate):
+                    pass
+            self.assertEqual(
+                rejected.exception.code,
+                "validation_candidate_output_invalid",
+            )
+
+            target.unlink()
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    candidate,
+                    temporary_home,
+                    output.path,
+                )
+                self.assertIn(str(output.path), profile)
+                self.assertNotIn(
+                    f'(allow file-write* (subpath "{candidate}"))',
+                    profile,
+                )
+
+                hardlink = output.path / "preexisting-hardlink"
+                os.link(source, hardlink)
+                with self.assertRaises(
+                    self.autopilot.AutopilotError
+                ) as populated:
+                    self.autopilot.validation_module._verify_candidate_output_empty(
+                        output,
+                        changed=True,
+                    )
+                self.assertEqual(
+                    populated.exception.code,
+                    "validation_candidate_output_changed",
+                )
+                hardlink.unlink()
+                self.assertEqual(source.read_text(encoding="utf-8"), "source")
+
+                retained = candidate / "retained-target"
+                target.rename(retained)
+                target.mkdir(mode=0o700)
+                with self.assertRaises(
+                    self.autopilot.AutopilotError
+                ) as changed:
+                    self.autopilot.validation_module._verify_candidate_output_directory(
+                        output,
+                        changed=True,
+                    )
+                self.assertEqual(
+                    changed.exception.code,
+                    "validation_candidate_output_changed",
+                )
+                target.rmdir()
+                retained.rename(target)
+                self.autopilot.validation_module._verify_candidate_output_empty(
+                    output,
+                    changed=True,
+                )
+
+    def test_candidate_validation_output_cleanup_is_descriptor_relative(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate"
+            outside = root / "outside"
+            candidate.mkdir()
+            outside.mkdir()
+
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                target = candidate / "target"
+                retained = candidate / "retained-target"
+                target.rename(retained)
+                external_output = outside / output.name
+                external_output.mkdir(mode=0o700)
+                sentinel = external_output / "sentinel"
+                sentinel.write_text("outside", encoding="utf-8")
+                target.symlink_to(outside, target_is_directory=True)
+
+            self.assertFalse((retained / output.name).exists())
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"),
+                "outside",
+            )
+
+    def test_candidate_output_cleanup_preserves_an_active_error(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(
+                self.autopilot.validation_module.shutil,
+                "rmtree",
+                side_effect=OSError("cleanup failed"),
+            ),
+        ):
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            with self.assertRaises(self.autopilot.AutopilotError) as raised:
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    raise self.autopilot.AutopilotError(
+                        "original_validation_failure"
+                    )
+
+            self.assertEqual(
+                raised.exception.code,
+                "original_validation_failure",
+            )
+            self.assertEqual(
+                raised.exception.related_error_codes,
+                (
+                    "validation_candidate_output_cleanup_failed",
+                ),
+            )
+
+    def test_candidate_output_open_failure_removes_the_created_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            real_open = os.open
+            output_open_failed = False
+
+            def fail_output_open_once(
+                path,
+                flags,
+                mode=0o777,
+                *,
+                dir_fd=None,
+            ):
+                nonlocal output_open_failed
+                if (
+                    not output_open_failed
+                    and isinstance(path, str)
+                    and self.autopilot.CANDIDATE_OUTPUT_NAME_PATTERN.fullmatch(
+                        path
+                    )
+                ):
+                    output_open_failed = True
+                    raise OSError("output open failed")
+                return real_open(
+                    path,
+                    flags,
+                    mode,
+                    dir_fd=dir_fd,
+                )
+
+            with (
+                mock.patch.object(
+                    self.autopilot.validation_module.os,
+                    "open",
+                    side_effect=fail_output_open_once,
+                ),
+                self.assertRaises(self.autopilot.AutopilotError) as raised,
+            ):
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    pass
+
+            self.assertTrue(output_open_failed)
+            self.assertEqual(
+                raised.exception.code,
+                "validation_candidate_output_invalid",
+            )
+            self.assertEqual(
+                list((candidate / "target").iterdir()),
+                [],
+            )
+
+    def test_candidate_output_cleanup_failure_is_primary_without_active_error(
+        self,
+    ):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(
+                self.autopilot.validation_module.shutil,
+                "rmtree",
+                side_effect=OSError("cleanup failed"),
+            ),
+        ):
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            with self.assertRaises(self.autopilot.AutopilotError) as raised:
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    pass
+
+            self.assertEqual(
+                raised.exception.code,
+                "validation_candidate_output_cleanup_failed",
+            )
+
+    def test_profile_failure_preserves_diagnostic_and_output_contamination(self):
+        diagnostic = "a" * 64
+        failure = self.autopilot.CommandFailure(
+            "validation_profile_focused_tests_failed",
+            failure_kind="nonzero_exit",
+            output_tail=b"failed",
+            output_sha256="b" * 64,
+            return_code=1,
+        )
+        candidate_output = self.autopilot.PinnedCandidateOutput(
+            path=Path(
+                "/candidate/target/"
+                "decodex-validation-00000000000000000000000000000000"
+            ),
+            name=(
+                "decodex-validation-"
+                "00000000000000000000000000000000"
+            ),
+            candidate_descriptor=-1,
+            target_descriptor=-1,
+            output_descriptor=-1,
+        )
+        with (
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "write_validation_failure_diagnostic",
+                return_value=diagnostic,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "_verify_candidate_output_empty",
+                side_effect=self.autopilot.AutopilotError(
+                    "validation_candidate_output_changed"
+                ),
+            ),
+        ):
+            result = (
+                self.autopilot.validation_module._validation_profile_failure(
+                    ROOT,
+                    candidate_output,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=failure,
+                )
+            )
+
+        self.assertEqual(
+            result.code,
+            "validation_profile_focused_tests_failed",
+        )
+        self.assertEqual(result.diagnostic_sha256, diagnostic)
+        self.assertEqual(
+            result.related_error_codes,
+            ("validation_candidate_output_changed",),
+        )
+
     @unittest.skipUnless(
         sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
         "requires the macOS sandbox",
@@ -5218,6 +5559,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             host_secret.write_text("private", encoding="utf-8")
             candidate_file = candidate / "source.txt"
             candidate_file.write_text("source", encoding="utf-8")
+            candidate_target = candidate / "target"
+            candidate_target.mkdir(mode=0o700)
+            candidate_output = candidate_target / (
+                "decodex-validation-" + "0" * 32
+            )
+            candidate_output.mkdir(mode=0o700)
+            candidate_output.joinpath("source-link").symlink_to(
+                candidate_file
+            )
             cargo_source = (
                 temporary_home / "cargo-home/registry/src/example"
             )
@@ -5226,6 +5576,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 ROOT,
                 candidate,
                 temporary_home,
+                candidate_output.resolve(),
             )
 
             def sandbox(script):
@@ -5255,6 +5606,22 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
+                    f"Path({str(candidate_output / 'allowed')!r}).write_text('ok'); "
+                    "print('written')"
+                ),
+                "written",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
+                    f"Path({str(candidate_target / 'sibling')!r}).write_text('x'); "
+                    "print('written')"
+                ),
+                "",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
                     f"Path({str(ROOT / 'Makefile.toml')!r}).read_bytes(); "
                     "print('readable')"
                 ),
@@ -5276,6 +5643,27 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "",
             )
             self.assertEqual(candidate_file.read_text(encoding="utf-8"), "source")
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
+                    f"Path({str(candidate_output / 'source-link')!r}).write_text('changed'); "
+                    "print('written')"
+                ),
+                "",
+            )
+            self.assertEqual(candidate_file.read_text(encoding="utf-8"), "source")
+            self.assertEqual(
+                sandbox(
+                    "import os; "
+                    f"os.link({str(candidate_file)!r}, "
+                    f"{str(candidate_output / 'source-hardlink')!r}); "
+                    "print('linked')"
+                ),
+                "",
+            )
+            self.assertFalse(
+                (candidate_output / "source-hardlink").exists()
+            )
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
@@ -5364,11 +5752,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             receipt = private_directory / "candidate.json"
             receipt.write_bytes(b'{"schema":"candidate"}\n')
             receipt.chmod(0o600)
-            profile = self.autopilot.validation_sandbox_profile(
-                ROOT,
-                ROOT,
-                temporary_home,
-            )
+            with self.autopilot.pinned_candidate_output_directory(
+                ROOT
+            ) as candidate_output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    ROOT,
+                    temporary_home,
+                    candidate_output.path,
+                )
             git_output = self.autopilot.run_command(
                 [
                     "/usr/bin/sandbox-exec",

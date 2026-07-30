@@ -1348,8 +1348,7 @@ mod tests {
 
 	#[test]
 	fn private_xurl_entrypoint_accepts_only_the_fixed_secure_home_relative_path() {
-		let root = crate::repo_root().expect("repository root");
-		let temp = tempfile::tempdir_in(root).expect("tempdir");
+		let temp = crate::repo_local_test_directory("xurl-home-");
 		let bin = temp.path().join(".local/bin");
 		fs::create_dir_all(&bin).expect("private bin");
 		let script = executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
@@ -1362,10 +1361,9 @@ mod tests {
 
 	#[test]
 	fn private_xurl_entrypoint_rejects_group_or_world_writable_home_parents_and_file() {
-		let root = crate::repo_root().expect("repository root");
 		for mode in [0o770, 0o707] {
 			for relative in ["", ".local", ".local/bin", ".local/bin/xurl"] {
-				let temp = tempfile::tempdir_in(&root).expect("tempdir");
+				let temp = crate::repo_local_test_directory("xurl-home-");
 				let bin = temp.path().join(".local/bin");
 				fs::create_dir_all(&bin).expect("private bin");
 				executable_script(&bin, "xurl", "#!/bin/sh\nexit 0\n");
@@ -1387,8 +1385,7 @@ mod tests {
 
 	#[test]
 	fn private_xurl_entrypoint_rejects_a_final_symlink() {
-		let root = crate::repo_root().expect("repository root");
-		let temp = tempfile::tempdir_in(root).expect("tempdir");
+		let temp = crate::repo_local_test_directory("xurl-home-");
 		let bin = temp.path().join(".local/bin");
 		fs::create_dir_all(&bin).expect("private bin");
 		let target = executable_script(&bin, "xurl-real", "#!/bin/sh\nexit 0\n");
