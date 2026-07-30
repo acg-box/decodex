@@ -135,9 +135,13 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
-	func testProfileUnauthorizedDoesNotOverrideCanonicalAccountAvailability() {
+	func testProfileUnauthorizedCannotPresentLoginRecoveryOrHideCanonicalInventory() throws {
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
 		let account = ResetCardAccountRecord(
-			authority: nil,
+			authority: authority,
 			accountID: "11111111-1111-4111-8111-111111111111",
 			alias: "Account TEST0-00000",
 			accountRevision: 1,
@@ -149,7 +153,20 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 		let state = ResetCardAccountState(
 			account: account,
-			inventory: nil,
+			inventory: ResetCardInventory(
+				authority: authority,
+				accountID: account.accountID,
+				accountRevision: account.accountRevision,
+				cards: [
+					try ResetCardDescriptor(
+						grantedAtUnixSeconds: 1_700_000_000,
+						expiresAtUnixSeconds: 1_800_000_000
+					),
+				],
+				fiveHourQuota: .unknown(durationMinutes: 300),
+				sevenDayQuota: .unknown(durationMinutes: 10_080),
+				observationError: nil
+			),
 			error: nil,
 			isRefreshing: false,
 			profileUnavailable: AccountProfileUnavailable(
@@ -159,6 +176,35 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 
 		XCTAssertFalse(state.requiresLoginRefresh)
+		XCTAssertEqual(state.targets.count, 1)
+
+		let source = try resetCardSectionSource()
+		XCTAssertFalse(source.contains("state.needsLoginRecovery"))
+		XCTAssertEqual(
+			source.components(separatedBy: "state.requiresLoginRefresh").count - 1,
+			3
+		)
+	}
+
+	func testQuotaRowsUseSharedFixedColumnsAroundAFlexibleLongBar() throws {
+		let source = try resetCardSectionSource()
+
+		XCTAssertTrue(
+			source.contains(
+				".frame(width: Self.titleColumnWidth, alignment: .leading)"
+			)
+		)
+		XCTAssertTrue(
+			source.contains(
+				".frame(width: Self.valueColumnWidth, alignment: .leading)"
+			)
+		)
+		XCTAssertTrue(
+			source.contains("width: Self.resetDateColumnWidth")
+		)
+		XCTAssertTrue(
+			source.contains(".frame(minWidth: 72, maxWidth: .infinity)")
+		)
 	}
 
 	func testCodexProjectionDistinguishesUnmanagedUnavailableAndCurrent() {
@@ -489,6 +535,16 @@ private func descendants<T: NSView>(
 		matches.append(contentsOf: descendants(of: T.self, in: child))
 	}
 	return matches
+}
+
+private func resetCardSectionSource() throws -> String {
+	let testsURL = URL(fileURLWithPath: #filePath)
+		.deletingLastPathComponent()
+	let sourceURL = testsURL
+		.deletingLastPathComponent()
+		.deletingLastPathComponent()
+		.appendingPathComponent("Sources/DecodexApp/ResetCardSectionView.swift")
+	return try String(contentsOf: sourceURL, encoding: .utf8)
 }
 
 private struct StaticFastModeClient: FastModeClient {
