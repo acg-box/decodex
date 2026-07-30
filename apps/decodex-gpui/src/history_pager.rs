@@ -168,7 +168,7 @@ struct HistoryPagerInner {
 enum PageCacheOwner {
 	Dormant { parent: PathBuf, cache_schema_generation: u32 },
 	Enabled(HistoryPageCache),
-	Disabled(Option<CacheFailure>),
+	Disabled,
 }
 
 impl PageCacheOwner {
@@ -181,7 +181,7 @@ impl PageCacheOwner {
 			Self::Dormant { parent, cache_schema_generation } =>
 				Some((parent.clone(), *cache_schema_generation)),
 			Self::Enabled(_) => return true,
-			Self::Disabled(_) => return false,
+			Self::Disabled => return false,
 		};
 		let (parent, cache_schema_generation) =
 			dormant.expect("dormant cache owner was just observed");
@@ -213,7 +213,7 @@ impl PageCacheOwner {
 		}
 		let lookup = match self {
 			Self::Enabled(cache) => cache.lookup(&request, now_unix_seconds),
-			Self::Dormant { .. } | Self::Disabled(_) => return PageCacheLookupRead::Failure,
+			Self::Dormant { .. } | Self::Disabled => return PageCacheLookupRead::Failure,
 		};
 
 		match lookup {
@@ -236,7 +236,7 @@ impl PageCacheOwner {
 			PageCacheLookupRead::Hit(hit) => {
 				let recency_result = match self {
 					Self::Enabled(cache) => cache.record_hit_recency(&hit),
-					Self::Dormant { .. } | Self::Disabled(_) =>
+					Self::Dormant { .. } | Self::Disabled =>
 						return PageCacheLookupResult::Failure,
 				};
 				if let Err(failure) = recency_result {
@@ -271,7 +271,7 @@ impl PageCacheOwner {
 		let result = match self {
 			Self::Enabled(cache) =>
 				cache.prepare_publication(&request, &publication.page, admitted_at_unix_seconds),
-			Self::Dormant { .. } | Self::Disabled(_) => return Err(()),
+			Self::Dormant { .. } | Self::Disabled => return Err(()),
 		};
 
 		match result {
@@ -284,7 +284,7 @@ impl PageCacheOwner {
 	}
 
 	fn commit_publication(&mut self, prepared: PreparedCachePublication) -> PageCacheCommitResult {
-		let mut cache = match std::mem::replace(self, Self::Disabled(None)) {
+		let mut cache = match std::mem::replace(self, Self::Disabled) {
 			Self::Enabled(cache) => cache,
 			owner => {
 				*self = owner;
@@ -307,7 +307,7 @@ impl PageCacheOwner {
 	fn discard_stale(&mut self, prepared: PreparedCachePublication) {
 		let result = match self {
 			Self::Enabled(cache) => cache.discard_prepared_publication(prepared),
-			Self::Dormant { .. } | Self::Disabled(_) => return,
+			Self::Dormant { .. } | Self::Disabled => return,
 		};
 		if let Err(failure) = result {
 			self.disable(failure);
@@ -331,7 +331,7 @@ impl PageCacheOwner {
 	) -> PageCachePublishResult {
 		let result = match self {
 			Self::Enabled(cache) => cache.finish_publication(committed),
-			Self::Dormant { .. } | Self::Disabled(_) => return PageCachePublishResult::Failure,
+			Self::Dormant { .. } | Self::Disabled => return PageCachePublishResult::Failure,
 		};
 
 		match result {
@@ -344,8 +344,8 @@ impl PageCacheOwner {
 		}
 	}
 
-	fn disable(&mut self, failure: CacheFailure) {
-		*self = Self::Disabled(Some(failure));
+	fn disable(&mut self, _failure: CacheFailure) {
+		*self = Self::Disabled;
 	}
 }
 
@@ -359,7 +359,7 @@ impl HistoryPager {
 	}
 
 	fn new(limits: HistoryPagerLimits) -> Self {
-		Self::with_page_cache(limits, PageCacheOwner::Disabled(None), None)
+		Self::with_page_cache(limits, PageCacheOwner::Disabled, None)
 	}
 
 	fn with_page_cache(
