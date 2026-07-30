@@ -5,6 +5,7 @@ mod cache;
 mod cli;
 mod constants;
 mod content_eligibility;
+mod content_pair;
 mod content_review;
 mod core_io;
 mod github_api;
@@ -43,6 +44,7 @@ pub(crate) use self::{
 		UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA, UPSTREAM_SUBJECT_KINDS,
 	},
 	content_eligibility::content_eligibility,
+	content_pair::commit_content_pair,
 	content_review::review_next,
 	core_io::{
 		RefreshWriteReport, absolute_repo_path, collect_bundle_json_files, inspect_json_refresh,
@@ -63,6 +65,7 @@ pub(crate) use self::{
 		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
 		RadarBundleValidateRequest, RadarCacheGcReport, RadarCacheGcRequest,
 		RadarContentEligibilityReport, RadarContentEligibilityRequest,
+		RadarContentPairCommitReport, RadarContentPairCommitRequest,
 		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 		RadarQueueGeneration, RadarRefreshQueueReport, RadarRefreshQueueRequest,

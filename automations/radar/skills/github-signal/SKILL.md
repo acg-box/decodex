@@ -25,7 +25,8 @@ It consumes a reviewed bundle plus source-backed analysis and drafts the JSON th
 - A source-backed `upstream_review/v1` or code-analysis result from
   `automations/radar/skills/codex-code-analysis/SKILL.md`
 - An output path under `.agent/automations/radar/cache/generated/analysis/`
-- Optional upstream impact output under `.agent/automations/radar/cache/github/impact/`
+- Optional committed review and impact pair under
+  `.agent/automations/radar/cache/github/content-review-pairs/`
 - Optional Control Plane upgrade candidate output under
   `.agent/automations/radar/cache/github/control-plane-upgrades/`
 

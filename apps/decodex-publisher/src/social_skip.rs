@@ -1,6 +1,6 @@
 //! Atomic quality-skip terminalization.
 
-use std::{fs, path::Path};
+use std::path::Path;
 
 use serde_json::{Value, json};
 
@@ -12,8 +12,11 @@ use crate::{
 pub(crate) fn terminalize_social_skip(
 	request: &SocialTerminalizeSkipRequest,
 ) -> Result<SocialTerminalizeSkipReport> {
-	if request.daily_limit != 8 {
-		return Err(eyre::eyre!("daily_limit must be 8"));
+	if request.daily_limit != 1 {
+		return Err(eyre::eyre!("daily_limit must be 1"));
+	}
+	if !crate::social_publish::valid_run_id(&request.run_id) {
+		return Err(eyre::eyre!("run_id must be a lowercase UUID"));
 	}
 	if request.timezone.trim().is_empty() {
 		return Err(eyre::eyre!("timezone is required"));
@@ -25,7 +28,8 @@ pub(crate) fn terminalize_social_skip(
 	let root = crate::repo_root()?;
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let candidate_path = crate::resolve_against(&root, &request.candidate_path);
-	require_contained_regular_file(&candidate_path, &candidates_dir)?;
+	crate::require_contained_regular_file(&candidate_path, &candidates_dir)
+		.map_err(|error| eyre::eyre!("candidate is invalid: {error}"))?;
 	let candidate = crate::load_json(&candidate_path)?;
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
@@ -45,7 +49,6 @@ pub(crate) fn terminalize_social_skip(
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
 	let output_path = posts_dir
-		.join(&request.day)
 		.join(format!("{}.json", crate::social_publish::idempotency_digest(idempotency_key)));
 	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
 	let scan = crate::social_publish::scan::scan_social_publish_state(
@@ -58,6 +61,7 @@ pub(crate) fn terminalize_social_skip(
 		&candidate,
 		crate::path_arg(&root, &candidate_path),
 		reason,
+		&request.run_id,
 		&request.day,
 		&request.timezone,
 		scan.published_count,
@@ -118,6 +122,7 @@ fn skipped_post_payload(
 	candidate: &Value,
 	candidate_ref: String,
 	reason: &str,
+	run_id: &str,
 	day: &str,
 	timezone: &str,
 	published_count: usize,
@@ -132,15 +137,20 @@ fn skipped_post_payload(
 		"slug": required_string(candidate.get("slug"), "slug")?,
 		"channel": "x",
 		"target_account": "decodexspace",
-		"controller_account": "hackink",
+		"owner": {
+			"automation_id": "decodex-xurl-publisher",
+			"run_id": run_id,
+		},
 		"mode": required_string(candidate.get("mode"), "mode")?,
 		"status": "skipped",
-		"browser_touched": false,
 		"audience": required_string(candidate.get("audience"), "audience")?,
 		"text": candidate.get("candidate_text").cloned().ok_or_else(|| eyre::eyre!("candidate_text is required"))?,
-		"source_refs": {
-			"social_candidates": [candidate_ref],
-		},
+		"source_refs": crate::social_evidence::source_refs_with_lineage(
+			candidate,
+			candidate_ref,
+			None,
+		)?,
+		"evidence_digests": crate::social_evidence::evidence_digests_value(candidate),
 		"evidence_notes": candidate.get("evidence_notes").cloned().ok_or_else(|| eyre::eyre!("evidence_notes are required"))?,
 		"claims": candidate.get("claims").cloned().ok_or_else(|| eyre::eyre!("claims are required"))?,
 		"decision": {
@@ -148,7 +158,7 @@ fn skipped_post_payload(
 			"priority": required_string(candidate.get("priority"), "priority")?,
 			"idempotency_key": required_string(decision.get("idempotency_key"), "idempotency_key")?,
 			"reason": reason,
-			"daily_limit": 8,
+			"daily_limit": 1,
 			"daily_count_before": published_count,
 			"daily_count_after": published_count,
 			"day": day,
@@ -183,24 +193,6 @@ fn existing_result(
 		idempotency_key: idempotency_key.into(),
 		published_count,
 	})
-}
-
-fn require_contained_regular_file(path: &Path, root: &Path) -> Result<()> {
-	let metadata = fs::symlink_metadata(path)
-		.map_err(|error| eyre::eyre!("candidate is unavailable: {error}"))?;
-	if !metadata.file_type().is_file() || metadata.file_type().is_symlink() {
-		return Err(eyre::eyre!("candidate must be a regular non-symlink file"));
-	}
-	let canonical_root = root
-		.canonicalize()
-		.map_err(|error| eyre::eyre!("candidate root is unavailable: {error}"))?;
-	let canonical_path =
-		path.canonicalize().map_err(|error| eyre::eyre!("candidate is unavailable: {error}"))?;
-	if !canonical_path.starts_with(&canonical_root) {
-		return Err(eyre::eyre!("candidate must stay under the configured candidates directory"));
-	}
-
-	Ok(())
 }
 
 fn required_string<'a>(value: Option<&'a Value>, field: &str) -> Result<&'a str> {

@@ -1,6 +1,6 @@
 //! social_outcome/v1 schema validation.
 
-use crate::social_validation::{self, Map, Value, post::BrowserSessionRequirement};
+use crate::social_validation::{self, Map, Value};
 
 const OUTCOME_WINDOWS: &[&str] = &["24h", "7d"];
 const METRIC_FIELDS: &[&str] = &["bookmarks", "likes", "replies", "reposts", "views"];
@@ -10,10 +10,11 @@ pub(super) fn validate_social_outcome(entry: &Map<String, Value>, errors: &mut V
 		entry,
 		"social_outcome",
 		&[
-			"browser_session",
 			"metrics",
 			"notes",
+			"observation",
 			"observed_at",
+			"owner",
 			"published_url",
 			"schema",
 			"slug",
@@ -51,12 +52,75 @@ pub(super) fn validate_social_outcome(entry: &Map<String, Value>, errors: &mut V
 	}
 
 	validate_metrics(entry.get("metrics"), errors);
-	super::post::validate_browser_session(
-		entry.get("browser_session"),
-		BrowserSessionRequirement::Complete,
+	validate_observation(entry.get("observation"), errors);
+	validate_owner(entry.get("owner"), errors);
+	social_validation::validate_optional_string_list(entry.get("notes"), "notes", errors);
+}
+
+fn validate_owner(value: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(owner) = value.and_then(Value::as_object) else {
+		errors.push("owner must be an object".into());
+		return;
+	};
+	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
+	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
+		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
+	}
+	if social_validation::string_field(owner, "run_id")
+		.is_none_or(|value| !crate::social_publish::valid_run_id(value))
+	{
+		errors.push("owner.run_id must be a lowercase UUID".into());
+	}
+}
+
+fn validate_observation(value: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(observation) = value.and_then(Value::as_object) else {
+		errors.push("observation must be an object".into());
+		return;
+	};
+	social_validation::validate_exact_keys(
+		observation,
+		"observation",
+		&[
+			"publication_lineage_sha256",
+			"reader",
+			"recorded_cost_ceiling_microusd",
+			"response_sha256",
+			"verified_account",
+			"xurl_app",
+			"xurl_version",
+		],
 		errors,
 	);
-	social_validation::validate_optional_string_list(entry.get("notes"), "notes", errors);
+	if social_validation::string_field(observation, "reader") != Some("xurl") {
+		errors.push("observation.reader must be xurl".into());
+	}
+	if social_validation::string_field(observation, "xurl_app") != Some("default") {
+		errors.push("observation.xurl_app must be default".into());
+	}
+	if social_validation::string_field(observation, "verified_account") != Some("decodexspace") {
+		errors.push("observation.verified_account must be decodexspace".into());
+	}
+	if !observation.get("publication_lineage_sha256").and_then(Value::as_str).is_some_and(|value| {
+		value.len() == 64
+			&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+	}) {
+		errors.push(
+			"observation.publication_lineage_sha256 must be a lowercase SHA-256 digest".into(),
+		);
+	}
+	if observation.get("recorded_cost_ceiling_microusd").and_then(Value::as_u64) != Some(5_000) {
+		errors.push("observation.recorded_cost_ceiling_microusd must be 5000".into());
+	}
+	if social_validation::string_field(observation, "xurl_version") != Some("1.3.1") {
+		errors.push("observation.xurl_version must be exactly 1.3.1".into());
+	}
+	if !observation.get("response_sha256").and_then(Value::as_str).is_some_and(|value| {
+		value.len() == 64
+			&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+	}) {
+		errors.push("observation.response_sha256 must be a lowercase SHA-256 digest".into());
+	}
 }
 
 fn validate_metrics(metrics: Option<&Value>, errors: &mut Vec<String>) {

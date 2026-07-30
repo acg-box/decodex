@@ -168,7 +168,7 @@ Current shape:
 - Radar owns upstream review queues, release deltas, artifact validation, signals, ledgers, bundles, and control-plane upgrade candidates (`apps/radar/src/lib.rs`).
 - Control Plane owns registered projects, app-server integration, tracker writes, local runtime state, operator status, review handoff, landing, closeout, cleanup, and recovery (`apps/decodex/src/cli.rs`, `apps/decodex/src/orchestrator/`).
 - Publisher owns social candidates, reservations, posts, outcomes, strategy validation,
-  browser lease serialization, and idempotency or daily-cap checks
+  xurl usage attempts, and idempotency, cost, or daily-cap checks
   (`apps/decodex-publisher/src/lib.rs`,
   `apps/decodex-publisher/src/social_publish.rs`,
   `apps/decodex-publisher/src/social_validation.rs`).
@@ -181,6 +181,8 @@ Do not describe Radar artifacts as execution authority, Publisher content as shi
 Radar raw bundles, reviews, impacts, analysis drafts, and ledger records stay in
 owner-only bounded local cache. They are disposable working state, not source artifacts
 or remote recovery assets.
+Publisher social candidates, reservations, posts, outcomes, strategy records, xurl
+attempts, and generated media follow the same local-only rule.
 
 Why:
 

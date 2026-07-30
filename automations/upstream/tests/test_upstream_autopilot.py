@@ -3,19 +3,26 @@ import hashlib
 import io
 import json
 import os
+from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
 import socket
+import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
+import tomllib
 import unittest
 from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "automations/upstream/scripts/upstream_autopilot.py"
+X_PRICING_FIXTURE = (
+    ROOT / "automations/upstream/tests/fixtures/x-pricing-current.md"
+)
 
 
 def load_module():
@@ -34,6 +41,120 @@ class UpstreamAutopilotTests(unittest.TestCase):
         cls.policy = cls.autopilot.load_policy(
             ROOT / "automations/upstream/policy.json"
         )
+
+    def pricing_fixture(self) -> bytes:
+        return X_PRICING_FIXTURE.read_bytes()
+
+    def write_task_retention_evidence(
+        self,
+        repo_root,
+        kind,
+        thread_id,
+        value,
+        *,
+        filename=None,
+    ):
+        collection = self.autopilot.EVIDENCE_COLLECTIONS[kind]
+        path = repo_root / collection / (
+            filename or f"{thread_id}.json"
+        )
+        path.parent.mkdir(parents=True, exist_ok=True)
+        raw = (
+            json.dumps(value, sort_keys=True, separators=(",", ":"))
+            + "\n"
+        ).encode()
+        path.write_bytes(raw)
+        path.chmod(0o600)
+        validator = (
+            repo_root
+            / self.autopilot.SOCIAL_VALIDATOR_RELATIVE_PATH
+        )
+        if not validator.exists():
+            self.install_task_retention_validator(repo_root)
+        return path, raw
+
+    def install_task_retention_validator(
+        self,
+        repo_root,
+        *,
+        succeeds=True,
+    ):
+        validator = (
+            repo_root
+            / self.autopilot.SOCIAL_VALIDATOR_RELATIVE_PATH
+        )
+        validator.parent.mkdir(parents=True, exist_ok=True)
+        output = (
+            "printf 'validated 1 social state file(s)\\n'\n"
+            if succeeds
+            else "printf 'invalid social state\\n' >&2\nexit 1\n"
+        )
+        validator.write_text(
+            "#!/bin/sh\n"
+            "set -eu\n"
+            '[ "$#" -eq 1 ] && [ "$1" = "validate-social" ]\n'
+            f"{output}",
+            encoding="utf-8",
+        )
+        validator.chmod(0o700)
+        return validator
+
+    def commit_fixture_tree(self, repo_root, message, *, parent=None):
+        tree = subprocess.run(
+            ["git", "write-tree"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        arguments = ["git", "commit-tree", tree]
+        if parent is not None:
+            arguments.extend(["-p", parent])
+        arguments.extend(["-m", message])
+        commit = subprocess.run(
+            arguments,
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        subprocess.run(
+            ["git", "update-ref", "refs/heads/main", commit],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+        )
+        subprocess.run(
+            ["git", "symbolic-ref", "HEAD", "refs/heads/main"],
+            cwd=repo_root,
+            check=True,
+            capture_output=True,
+        )
+        return commit
+
+    def test_task_retention_managed_identity_matches_source_manifests(self):
+        managed = {}
+        for relative in (
+            "automations/upstream/automations.toml",
+            "automations/decodex/automations.toml",
+        ):
+            with (ROOT / relative).open("rb") as handle:
+                manifest = tomllib.load(handle)
+            managed.update(
+                {
+                    automation["id"]: automation["name"]
+                    for automation in manifest["automations"]
+                }
+            )
+        self.assertEqual(
+            {
+                automation_id: name
+                for automation_id, (name, _prompt_path)
+                in self.autopilot.MANAGED_TASKS.items()
+            },
+            managed,
+        )
+
 
     def test_fresh_state_uses_the_nonlegacy_v3_contract(self):
         state = self.autopilot.new_state(100)
@@ -1293,6 +1414,1065 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 codex_home=Path("/tmp/codex-home"),
                 expected_ids=expected_ids,
             )
+
+    def test_task_retention_cli_exposes_only_seal_plan_and_settle(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        cases = (
+            (
+                [
+                    "task-retention-seal",
+                    "--automation-id",
+                    "codex-upstream-maintainer",
+                    "--terminal-result-code",
+                    "review_pending",
+                    "--json",
+                ],
+                "task-retention-seal",
+            ),
+            (["task-retention-plan", "--json"], "task-retention-plan"),
+            (
+                [
+                    "task-retention-settle",
+                    "--thread-id",
+                    thread_id,
+                    "--result",
+                    "archived",
+                    "--json",
+                ],
+                "task-retention-settle",
+            ),
+        )
+        for arguments, command in cases:
+            with self.subTest(command=command), mock.patch.object(
+                sys,
+                "argv",
+                [str(SCRIPT), *arguments],
+            ):
+                self.assertEqual(self.autopilot.parse_args().command, command)
+
+        for removed in (
+            "task-retention-probe",
+            "task-retention-prepare",
+            "task-retention-attest",
+            "task-retention-discover",
+        ):
+            with self.subTest(removed=removed), self.assertRaises(
+                SystemExit
+            ), mock.patch("sys.stderr", new=io.StringIO()), mock.patch.object(
+                sys,
+                "argv",
+                [str(SCRIPT), removed, "--json"],
+            ):
+                self.autopilot.parse_args()
+
+    def test_task_retention_owner_receipt_is_bounded_private_and_path_free(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            evidence_path, evidence_bytes = (
+                self.write_task_retention_evidence(
+                    repo_root,
+                    "candidate",
+                    thread_id,
+                    {
+                        "schema": "social_candidate/v1",
+                        "candidate_text": ["private candidate content"],
+                        "decision": {"worthiness": "publish"},
+                    },
+                )
+            )
+            receipt = self.autopilot.seal_task_retention(
+                repo_root=repo_root,
+                thread_id=thread_id,
+                automation_id="decodex-content-manager",
+                terminal_result_code="candidate_recorded",
+                evidence_path=str(evidence_path.relative_to(repo_root)),
+                keep_visible_reason=None,
+                now=100,
+            )
+            path = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+                / f"{thread_id}.json"
+            )
+            stored = json.loads(path.read_text(encoding="utf-8"))
+
+            self.assertEqual(stored, receipt)
+            self.assertEqual(set(stored), self.autopilot.RECEIPT_KEYS)
+            self.assertEqual(stored["status"], "pending_archive")
+            self.assertEqual(path.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(path.parent.stat().st_mode & 0o777, 0o700)
+            self.assertEqual(stored["evidence_kind"], "candidate")
+            self.assertEqual(
+                stored["evidence_sha256"],
+                hashlib.sha256(evidence_bytes).hexdigest(),
+            )
+            self.assertNotIn(str(evidence_path), str(stored))
+            self.assertNotIn("private candidate content", str(stored))
+            self.assertNotIn(str(repo_root), str(stored))
+            self.assertNotIn("evidence_path_sha256", stored)
+            self.assertNotIn("rollout", str(stored))
+            self.assertNotIn("absolute", str(stored))
+
+    def test_task_retention_requires_canonical_full_store_validation(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            evidence_path, _raw = self.write_task_retention_evidence(
+                repo_root,
+                "candidate",
+                thread_id,
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "publish"},
+                },
+            )
+            self.install_task_retention_validator(
+                repo_root,
+                succeeds=False,
+            )
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_evidence_validation_failed",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="decodex-content-manager",
+                    terminal_result_code="candidate_recorded",
+                    evidence_path=str(
+                        evidence_path.relative_to(repo_root)
+                    ),
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+            receipt_path = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+                / f"{thread_id}.json"
+            )
+            self.assertFalse(receipt_path.exists())
+
+    def test_task_retention_digest_requires_post_validation_byte_identity(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            evidence_path, _raw = self.write_task_retention_evidence(
+                repo_root,
+                "candidate",
+                thread_id,
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "publish"},
+                },
+            )
+
+            def validate_then_replace(*_args, **_kwargs):
+                evidence_path.write_text(
+                    json.dumps(
+                        {
+                            "schema": "social_candidate/v1",
+                            "decision": {"worthiness": "publish"},
+                            "replacement": True,
+                        },
+                        sort_keys=True,
+                        separators=(",", ":"),
+                    )
+                    + "\n",
+                    encoding="utf-8",
+                )
+                return subprocess.CompletedProcess(
+                    args=[],
+                    returncode=0,
+                    stdout=b"validated 1 social state file(s)\n",
+                    stderr=b"",
+                )
+
+            with mock.patch.object(
+                self.autopilot.subprocess,
+                "run",
+                side_effect=validate_then_replace,
+            ), self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_evidence_invalid",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="decodex-content-manager",
+                    terminal_result_code="candidate_recorded",
+                    evidence_path=str(
+                        evidence_path.relative_to(repo_root)
+                    ),
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+    def test_task_retention_seal_is_idempotent_and_rejects_conflicts(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        common = {
+            "thread_id": thread_id,
+            "automation_id": "codex-upstream-reviewer",
+            "terminal_result_code": "landed",
+            "evidence_path": None,
+            "keep_visible_reason": None,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            first = self.autopilot.seal_task_retention(
+                repo_root=repo_root,
+                now=100,
+                **common,
+            )
+            second = self.autopilot.seal_task_retention(
+                repo_root=repo_root,
+                now=200,
+                **common,
+            )
+            self.assertEqual(first, second)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_receipt_conflict",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    now=200,
+                    **{**common, "terminal_result_code": "rejected"},
+                )
+
+    def test_task_retention_pending_result_allowlists_are_exact(self):
+        allowed_without_evidence = {
+            "codex-upstream-maintainer": {
+                "no_candidate",
+                "repair_queued",
+                "role_busy",
+                "review_pending",
+            },
+            "codex-upstream-reviewer": {
+                "no_candidate",
+                "repair_queued",
+                "role_busy",
+                "no_change",
+                "rejected",
+                "landed",
+                "repair_requested",
+                "stale_decision_requeued",
+            },
+            "codex-upstream-health": {"pass"},
+            "decodex-content-manager": {"proven_no_op"},
+            "decodex-xurl-publisher": {
+                "duplicate",
+                "proven_no_op",
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            index = 1
+            for automation_id, result_codes in (
+                allowed_without_evidence.items()
+            ):
+                for result_code in result_codes:
+                    thread_id = (
+                        f"00000000-0000-0000-0002-{index:012x}"
+                    )
+                    index += 1
+                    with self.subTest(
+                        automation_id=automation_id,
+                        result_code=result_code,
+                    ):
+                        receipt = self.autopilot.seal_task_retention(
+                            repo_root=repo_root,
+                            thread_id=thread_id,
+                            automation_id=automation_id,
+                            terminal_result_code=result_code,
+                            evidence_path=None,
+                            keep_visible_reason=None,
+                            now=index,
+                        )
+                        self.assertEqual(
+                            receipt["status"],
+                            "pending_archive",
+                        )
+                        self.assertIsNone(receipt["evidence_kind"])
+                        self.assertIsNone(receipt["evidence_sha256"])
+
+        invalid_pairings = (
+            ("codex-upstream-maintainer", "landed"),
+            ("codex-upstream-reviewer", "review_pending"),
+            ("codex-upstream-health", "healthy"),
+            ("decodex-content-manager", "duplicate"),
+            ("decodex-xurl-publisher", "candidate_recorded"),
+        )
+        for automation_id, result_code in invalid_pairings:
+            with self.subTest(
+                automation_id=automation_id,
+                result_code=result_code,
+            ), self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_receipt_invalid",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=Path("/not-used"),
+                    thread_id="01234567-89ab-cdef-0123-456789abcdef",
+                    automation_id=automation_id,
+                    terminal_result_code=result_code,
+                    evidence_path=None,
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+    def test_task_retention_keep_visible_accepts_bounded_failure_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            receipt = self.autopilot.seal_task_retention(
+                repo_root=Path(directory),
+                thread_id="01234567-89ab-cdef-0123-456789abcdef",
+                automation_id="codex-upstream-health",
+                terminal_result_code="contract_drift",
+                evidence_path=None,
+                keep_visible_reason="needs_attention",
+                now=100,
+            )
+
+        self.assertEqual(
+            receipt["status"],
+            "keep_visible:needs_attention",
+        )
+        self.assertIsNone(receipt["evidence_kind"])
+        self.assertIsNone(receipt["evidence_sha256"])
+
+    def test_task_retention_rejects_untrusted_ids_codes_and_evidence(self):
+        valid = {
+            "repo_root": Path("/not-used"),
+            "thread_id": "01234567-89ab-cdef-0123-456789abcdef",
+            "automation_id": "codex-upstream-health",
+            "terminal_result_code": "pass",
+            "evidence_path": None,
+            "keep_visible_reason": None,
+            "now": 100,
+        }
+        invalid = (
+            {"thread_id": "not-a-thread"},
+            {"automation_id": "other"},
+            {"terminal_result_code": "needs attention"},
+            {"keep_visible_reason": "human decision"},
+            {"evidence_path": ".agent/evidence/result.json"},
+        )
+        for overrides in invalid:
+            with self.subTest(overrides=overrides), self.assertRaises(
+                self.autopilot.AutopilotError
+            ):
+                self.autopilot.seal_task_retention(
+                    **{**valid, **overrides}
+                )
+
+    def test_task_retention_requires_real_authoritative_evidence(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        common = {
+            "thread_id": thread_id,
+            "automation_id": "decodex-content-manager",
+            "terminal_result_code": "candidate_recorded",
+            "keep_visible_reason": None,
+            "now": 100,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            invalid_paths = (
+                None,
+                "/Users/example/private.json",
+                "../private.json",
+                ".agent/evidence/result.json",
+                str(
+                    self.autopilot.EVIDENCE_COLLECTIONS["candidate"]
+                    / f"{thread_id}.json"
+                ),
+            )
+            for evidence_path in invalid_paths:
+                with self.subTest(
+                    evidence_path=evidence_path,
+                ), self.assertRaises(self.autopilot.AutopilotError):
+                    self.autopilot.seal_task_retention(
+                        repo_root=repo_root,
+                        evidence_path=evidence_path,
+                        **common,
+                    )
+
+            unrelated = repo_root / ".agent/evidence/result.json"
+            unrelated.parent.mkdir(parents=True)
+            unrelated.write_text('{"schema":"social_candidate/v1"}\n')
+            unrelated.chmod(0o600)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_evidence_path_invalid",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    evidence_path=str(unrelated.relative_to(repo_root)),
+                    **common,
+                )
+
+    def test_task_retention_accepts_exact_manager_and_publisher_evidence(self):
+        cases = (
+            (
+                "decodex-content-manager",
+                "candidate_recorded",
+                "candidate",
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "publish"},
+                },
+                None,
+            ),
+            (
+                "decodex-content-manager",
+                "quality_skip_recorded",
+                "candidate",
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "skip"},
+                },
+                None,
+            ),
+            (
+                "decodex-content-manager",
+                "strategy_recorded",
+                "strategy",
+                {"schema": "social_strategy/v1"},
+                None,
+            ),
+            (
+                "decodex-xurl-publisher",
+                "published",
+                "post",
+                {
+                    "schema": "social_post/v1",
+                    "status": "published",
+                },
+                None,
+            ),
+            (
+                "decodex-xurl-publisher",
+                "quality_skip",
+                "post",
+                {
+                    "schema": "social_post/v1",
+                    "status": "skipped",
+                },
+                "a" * 64 + ".json",
+            ),
+            (
+                "decodex-xurl-publisher",
+                "outcome_observed",
+                "outcome",
+                {"schema": "social_outcome/v1"},
+                None,
+            ),
+        )
+        for index, (
+            automation_id,
+            result_code,
+            kind,
+            value,
+            filename,
+        ) in enumerate(cases, start=1):
+            thread_id = f"00000000-0000-0000-0003-{index:012x}"
+            value["owner"] = {
+                "automation_id": automation_id,
+                "run_id": thread_id,
+            }
+            with tempfile.TemporaryDirectory() as directory:
+                repo_root = Path(directory)
+                path, raw = self.write_task_retention_evidence(
+                    repo_root,
+                    kind,
+                    thread_id,
+                    value,
+                    filename=filename,
+                )
+                receipt = self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id=automation_id,
+                    terminal_result_code=result_code,
+                    evidence_path=str(path.relative_to(repo_root)),
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+            with self.subTest(result_code=result_code):
+                self.assertEqual(receipt["evidence_kind"], kind)
+                self.assertEqual(
+                    receipt["evidence_sha256"],
+                    hashlib.sha256(raw).hexdigest(),
+                )
+
+    def test_task_retention_rejects_wrong_evidence_pairing(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        cases = (
+            (
+                "decodex-content-manager",
+                "candidate_recorded",
+                "candidate",
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "skip"},
+                },
+                None,
+            ),
+            (
+                "decodex-content-manager",
+                "strategy_recorded",
+                "strategy",
+                {"schema": "social_candidate/v1"},
+                None,
+            ),
+            (
+                "decodex-content-manager",
+                "candidate_recorded",
+                "candidate",
+                {
+                    "schema": "social_candidate/v1",
+                    "decision": {"worthiness": "publish"},
+                },
+                "wrong-run.json",
+            ),
+            (
+                "decodex-xurl-publisher",
+                "published",
+                "post",
+                {
+                    "schema": "social_post/v1",
+                    "status": "skipped",
+                    "owner": {
+                        "automation_id": "decodex-xurl-publisher",
+                        "run_id": thread_id,
+                    },
+                },
+                None,
+            ),
+            (
+                "decodex-xurl-publisher",
+                "published",
+                "post",
+                {
+                    "schema": "social_post/v1",
+                    "status": "published",
+                    "owner": {
+                        "automation_id": "decodex-xurl-publisher",
+                        "run_id": thread_id,
+                    },
+                },
+                "a" * 64 + ".json",
+            ),
+            (
+                "decodex-xurl-publisher",
+                "quality_skip",
+                "post",
+                {
+                    "schema": "social_post/v1",
+                    "status": "skipped",
+                    "owner": {
+                        "automation_id": "decodex-content-manager",
+                        "run_id": thread_id,
+                    },
+                },
+                "a" * 64 + ".json",
+            ),
+            (
+                "decodex-xurl-publisher",
+                "outcome_observed",
+                "outcome",
+                {
+                    "schema": "social_outcome/v1",
+                    "owner": {
+                        "automation_id": "decodex-xurl-publisher",
+                        "run_id": (
+                            "00000000-0000-0000-0000-000000000099"
+                        ),
+                    },
+                },
+                None,
+            ),
+            (
+                "decodex-xurl-publisher",
+                "outcome_observed",
+                "outcome",
+                {
+                    "schema": "social_outcome/v1",
+                    "owner": {
+                        "automation_id": "decodex-xurl-publisher",
+                        "run_id": thread_id,
+                    },
+                },
+                "wrong-run.json",
+            ),
+        )
+        for automation_id, result_code, kind, value, filename in cases:
+            with tempfile.TemporaryDirectory() as directory:
+                repo_root = Path(directory)
+                path, _raw = self.write_task_retention_evidence(
+                    repo_root,
+                    kind,
+                    thread_id,
+                    value,
+                    filename=filename,
+                )
+                with self.subTest(
+                    result_code=result_code,
+                    filename=filename,
+                ), self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "task_retention_evidence_invalid",
+                ):
+                    self.autopilot.seal_task_retention(
+                        repo_root=repo_root,
+                        thread_id=thread_id,
+                        automation_id=automation_id,
+                        terminal_result_code=result_code,
+                        evidence_path=str(path.relative_to(repo_root)),
+                        keep_visible_reason=None,
+                        now=100,
+                    )
+
+    def test_task_retention_rejects_evidence_for_no_evidence_result(self):
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "task_retention_evidence_unexpected",
+        ):
+            self.autopilot.seal_task_retention(
+                repo_root=Path("/not-used"),
+                thread_id="01234567-89ab-cdef-0123-456789abcdef",
+                automation_id="codex-upstream-reviewer",
+                terminal_result_code="landed",
+                evidence_path=(
+                    ".agent/automations/decodex/cache/social/x/posts/"
+                    "01234567-89ab-cdef-0123-456789abcdef.json"
+                ),
+                keep_visible_reason=None,
+                now=100,
+            )
+
+    def test_task_retention_plan_uses_receipts_and_excludes_manager(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        pending_ids = [
+            f"00000000-0000-0000-0000-{index:012x}"
+            for index in range(2, 54)
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            for index, thread_id in enumerate(
+                [manager_id, *pending_ids],
+                start=1,
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="codex-upstream-health",
+                    terminal_result_code="pass",
+                    evidence_path=None,
+                    keep_visible_reason=None,
+                    now=index,
+                )
+            keep_visible_id = (
+                "00000000-0000-0000-0000-000000000099"
+            )
+            self.autopilot.seal_task_retention(
+                repo_root=repo_root,
+                thread_id=keep_visible_id,
+                automation_id="codex-upstream-health",
+                terminal_result_code="needs_attention",
+                evidence_path=None,
+                keep_visible_reason="needs_attention",
+                now=100,
+            )
+
+            plan = self.autopilot.plan_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                now=200,
+            )
+
+            self.assertEqual(
+                [
+                    task["thread_id"]
+                    for task in plan["pending_tasks"]
+                ],
+                pending_ids[:self.autopilot.MAX_TASK_RETENTION_BATCH],
+            )
+            self.assertNotIn("pending_thread_ids", plan)
+            self.assertTrue(
+                all(
+                    set(task)
+                    == {
+                        "thread_id",
+                        "automation_id",
+                        "terminal_result_code",
+                        "evidence_kind",
+                        "evidence_sha256",
+                    }
+                    and task["automation_id"]
+                    == "codex-upstream-health"
+                    and task["terminal_result_code"] == "pass"
+                    and task["evidence_kind"] is None
+                    and task["evidence_sha256"] is None
+                    for task in plan["pending_tasks"]
+                )
+            )
+            self.assertEqual(plan["pending_count"], len(pending_ids))
+            self.assertTrue(plan["has_more"])
+            planned_ids = {
+                task["thread_id"] for task in plan["pending_tasks"]
+            }
+            self.assertNotIn(manager_id, planned_ids)
+            self.assertNotIn(keep_visible_id, planned_ids)
+
+    def test_task_retention_settle_requires_pending_nonmanager_receipt(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        archived_id = "00000000-0000-0000-0000-000000000002"
+        visible_id = "00000000-0000-0000-0000-000000000003"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            for thread_id in (archived_id, visible_id):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="codex-upstream-maintainer",
+                    terminal_result_code="review_pending",
+                    evidence_path=None,
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+            archived = self.autopilot.settle_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                thread_id=archived_id,
+                result="archived",
+                reason=None,
+                now=200,
+            )
+            visible = self.autopilot.settle_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                thread_id=visible_id,
+                result="keep-visible",
+                reason="needs_attention",
+                now=201,
+            )
+
+            self.assertEqual(
+                archived["status"],
+                "archived_readback_confirmed",
+            )
+            self.assertEqual(
+                visible["status"],
+                "keep_visible:needs_attention",
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_receipt_not_pending",
+            ):
+                self.autopilot.settle_task_retention(
+                    repo_root=repo_root,
+                    current_thread_id=manager_id,
+                    thread_id=archived_id,
+                    result="archived",
+                    reason=None,
+                    now=202,
+                )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_settle_invalid",
+            ):
+                self.autopilot.settle_task_retention(
+                    repo_root=repo_root,
+                    current_thread_id=manager_id,
+                    thread_id=manager_id,
+                    result="archived",
+                    reason=None,
+                    now=202,
+                )
+
+    def test_task_retention_prunes_only_settled_receipts(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        old_id = "00000000-0000-0000-0000-000000000002"
+        pending_id = "00000000-0000-0000-0000-000000000003"
+        max_age = self.autopilot.SETTLED_RECEIPT_MAX_AGE_SECONDS
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            for thread_id in (old_id, pending_id):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="codex-upstream-health",
+                    terminal_result_code="pass",
+                    evidence_path=None,
+                    keep_visible_reason=None,
+                    now=1,
+                )
+            self.autopilot.settle_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                thread_id=old_id,
+                result="archived",
+                reason=None,
+                now=2,
+            )
+            plan = self.autopilot.plan_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                now=max_age + 3,
+            )
+            root = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+            )
+
+            self.assertEqual(plan["pruned_settled_count"], 1)
+            self.assertFalse((root / f"{old_id}.json").exists())
+            self.assertTrue((root / f"{pending_id}.json").exists())
+            self.assertEqual(
+                [task["thread_id"] for task in plan["pending_tasks"]],
+                [pending_id],
+            )
+
+    def test_task_retention_caps_settled_receipt_count(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        receipt_ids = [
+            f"00000000-0000-0000-0001-{index:012x}"
+            for index in range(
+                self.autopilot.MAX_SETTLED_RECEIPTS + 2
+            )
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            for index, thread_id in enumerate(receipt_ids, start=1):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="codex-upstream-health",
+                    terminal_result_code="pass",
+                    evidence_path=None,
+                    keep_visible_reason=None,
+                    now=index,
+                )
+            for index, thread_id in enumerate(receipt_ids, start=1):
+                self.autopilot.settle_task_retention(
+                    repo_root=repo_root,
+                    current_thread_id=manager_id,
+                    thread_id=thread_id,
+                    result="archived",
+                    reason=None,
+                    now=1000 + index,
+                )
+            root = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+            )
+            retained = list(root.glob("*.json"))
+
+            self.assertEqual(
+                len(retained),
+                self.autopilot.MAX_SETTLED_RECEIPTS,
+            )
+            self.assertFalse((root / f"{receipt_ids[0]}.json").exists())
+            self.assertFalse((root / f"{receipt_ids[1]}.json").exists())
+
+    def test_task_retention_rejects_insecure_evidence_files(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        payload = {
+            "schema": "social_candidate/v1",
+            "decision": {"worthiness": "publish"},
+        }
+        common = {
+            "thread_id": thread_id,
+            "automation_id": "decodex-content-manager",
+            "terminal_result_code": "candidate_recorded",
+            "keep_visible_reason": None,
+            "now": 100,
+        }
+
+        for insecure_kind in ("mode", "hard_link", "file_symlink"):
+            with tempfile.TemporaryDirectory() as directory:
+                repo_root = Path(directory)
+                path, _raw = self.write_task_retention_evidence(
+                    repo_root,
+                    "candidate",
+                    thread_id,
+                    payload,
+                )
+                if insecure_kind == "mode":
+                    path.chmod(0o640)
+                elif insecure_kind == "hard_link":
+                    os.link(path, repo_root / "second-link.json")
+                else:
+                    target = repo_root / "target.json"
+                    path.rename(target)
+                    path.symlink_to(target)
+
+                with self.subTest(
+                    insecure_kind=insecure_kind,
+                ), self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "task_retention_evidence_invalid",
+                ):
+                    self.autopilot.seal_task_retention(
+                        repo_root=repo_root,
+                        evidence_path=str(path.relative_to(repo_root)),
+                        **common,
+                    )
+
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            real_collection = (
+                repo_root
+                / ".agent/automations/decodex/real-candidates"
+            )
+            real_collection.mkdir(parents=True)
+            path = real_collection / f"{thread_id}.json"
+            path.write_text(
+                json.dumps(payload) + "\n",
+                encoding="utf-8",
+            )
+            path.chmod(0o600)
+            expected_collection = (
+                repo_root
+                / self.autopilot.EVIDENCE_COLLECTIONS["candidate"]
+            )
+            expected_collection.parent.mkdir(parents=True)
+            expected_collection.symlink_to(
+                real_collection,
+                target_is_directory=True,
+            )
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_evidence_invalid",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    evidence_path=str(
+                        (
+                            expected_collection
+                            / f"{thread_id}.json"
+                        ).relative_to(repo_root)
+                    ),
+                    **common,
+                )
+
+    def test_task_retention_rejects_oversized_evidence(self):
+        thread_id = "01234567-89ab-cdef-0123-456789abcdef"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            path = (
+                repo_root
+                / self.autopilot.EVIDENCE_COLLECTIONS["strategy"]
+                / f"{thread_id}.json"
+            )
+            path.parent.mkdir(parents=True)
+            path.write_bytes(
+                b'{"schema":"social_strategy/v1","padding":"'
+                + b"a" * self.autopilot.MAX_EVIDENCE_BYTES
+                + b'"}'
+            )
+            path.chmod(0o600)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_evidence_invalid",
+            ):
+                self.autopilot.seal_task_retention(
+                    repo_root=repo_root,
+                    thread_id=thread_id,
+                    automation_id="decodex-content-manager",
+                    terminal_result_code="strategy_recorded",
+                    evidence_path=str(path.relative_to(repo_root)),
+                    keep_visible_reason=None,
+                    now=100,
+                )
+
+    def test_task_retention_rejects_malformed_or_symlinked_receipts(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        thread_id = "00000000-0000-0000-0000-000000000002"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            root = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+            )
+            root.mkdir(parents=True, mode=0o700)
+            target = repo_root / "outside.json"
+            target.write_text("{}\n", encoding="utf-8")
+            (root / f"{thread_id}.json").symlink_to(target)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_receipt_invalid",
+            ):
+                self.autopilot.plan_task_retention(
+                    repo_root=repo_root,
+                    current_thread_id=manager_id,
+                    now=100,
+                )
+
+    def test_task_retention_rejects_legacy_v1_receipt(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        thread_id = "00000000-0000-0000-0000-000000000002"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            root = (
+                repo_root
+                / self.autopilot.TASK_RETENTION_RECEIPT_ROOT
+            )
+            root.mkdir(parents=True, mode=0o700)
+            receipt_path = root / f"{thread_id}.json"
+            receipt_path.write_text(
+                json.dumps(
+                    {
+                        "schema": (
+                            "decodex/codex-task-retention-receipt/1"
+                        ),
+                        "automation_id": "codex-upstream-health",
+                        "thread_id": thread_id,
+                        "terminal_result_code": "pass",
+                        "evidence_path_sha256": None,
+                        "timestamp": 100,
+                        "status": "pending_archive",
+                    }
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            receipt_path.chmod(0o600)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "task_retention_receipt_invalid",
+            ):
+                self.autopilot.plan_task_retention(
+                    repo_root=repo_root,
+                    current_thread_id=manager_id,
+                    now=100,
+                )
+
+    def test_task_retention_has_no_codex_internal_reader_or_native_effect(self):
+        source = (
+            ROOT
+            / "automations/upstream/scripts/upstream_autopilot_lib/retention.py"
+        ).read_text(encoding="utf-8")
+        for forbidden in (
+            "sqlite3",
+            "state_5.sqlite",
+            "rollout-",
+            "list_threads",
+            "read_thread",
+            "set_thread_archived",
+            "tool_call",
+        ):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, source)
+
 
     def test_validation_cause_digest_ignores_raw_output_variation(self):
         first_output = (
@@ -3127,6 +4307,53 @@ class UpstreamAutopilotTests(unittest.TestCase):
         candidate = self.autopilot.find_candidate(state, queued[0])
         self.assertEqual(candidate["kind"], "stable_release")
         self.assertEqual(candidate["to_sha"], retargeted)
+
+    def test_repository_drift_belongs_only_to_installed_build_lanes(self):
+        state = self.autopilot.new_state(100)
+        queued = self.apply(
+            state,
+            self.observation(
+                "1" * 40,
+                repository_drift=(
+                    "ClientRequest.json",
+                    "ServerNotification.json",
+                ),
+            ),
+            now=100,
+        )
+        candidates = [
+            self.autopilot.find_candidate(state, candidate_id)
+            for candidate_id in queued
+        ]
+
+        self.assertEqual(
+            candidates[0]["contract_missing"],
+            [
+                "repository_digest:ClientRequest.json",
+                "repository_digest:ServerNotification.json",
+            ],
+        )
+        self.assertEqual(candidates[0]["priority"], "critical")
+        self.assertEqual(candidates[1]["kind"], "stable_release")
+        self.assertEqual(candidates[1]["contract_missing"], [])
+        self.assertEqual(candidates[1]["priority"], "normal")
+        self.assertEqual(candidates[2]["kind"], "prerelease_release")
+        self.assertEqual(candidates[2]["contract_missing"], [])
+        self.assertEqual(candidates[2]["priority"], "normal")
+        self.assertEqual(
+            self.observation(
+                "2" * 40,
+                repository_drift=("ClientRequest.json",),
+            ).contract_missing_for("local_build"),
+            ["repository_digest:ClientRequest.json"],
+        )
+        self.assertEqual(
+            self.observation(
+                "2" * 40,
+                repository_drift=("ClientRequest.json",),
+            ).contract_missing_for("automation_repair"),
+            [],
+        )
 
     def test_missing_contract_cannot_be_closed_as_no_change(self):
         state = self.autopilot.new_state(100)
@@ -7635,6 +8862,140 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(metrics["landed_rate_basis_points"], 0)
         self.assertEqual(metrics["average_lead_time_seconds"], 4)
 
+    def attach_validated_landed_diff(
+        self,
+        candidate,
+        *,
+        base_head="1" * 40,
+        head_sha="2" * 40,
+        tree_sha="3" * 40,
+    ):
+        maintainer_receipt = {
+            "base_head": base_head,
+            "repository_head": head_sha,
+            "repository_tree": tree_sha,
+        }
+        reviewer_receipt = deepcopy(maintainer_receipt)
+        candidate["status"] = "landed"
+        candidate["commit_receipt"] = {
+            "base_head": base_head,
+            "head_sha": head_sha,
+            "tree_sha": tree_sha,
+        }
+        candidate["pull_request"] = {
+            "head_sha": head_sha,
+            "validation_receipt": maintainer_receipt,
+        }
+        candidate["result"] = {
+            "outcome": "landed",
+            "merge_sha": "4" * 40,
+            "land_intent_sha256": "5" * 64,
+            "land_execution_receipt_sha256": "6" * 64,
+            "reviewer_receipt": reviewer_receipt,
+        }
+
+    def test_health_separates_contract_adaptation_from_assessment_landings(
+        self,
+    ):
+        state = self.autopilot.new_state(100)
+        queued = self.apply(
+            state,
+            self.observation(
+                "1" * 40,
+                repository_drift=("ClientRequest.json",),
+            ),
+            now=100,
+        )
+        adaptation = self.autopilot.find_candidate(state, queued[0])
+        self.attach_validated_landed_diff(adaptation)
+        assessment = self.autopilot.find_candidate(state, queued[1])
+        assessment["status"] = "landed"
+        assessment["result"] = {"outcome": "landed"}
+        repair = self.autopilot.find_candidate(state, queued[2])
+        repair["kind"] = "automation_repair"
+        repair["status"] = "landed"
+        repair["result"] = {"outcome": "landed"}
+
+        classes = self.autopilot.classify_lifetime_outcomes(state)
+
+        self.assertEqual(
+            classes,
+            {
+                "contract_adaptation_landed_count": 1,
+                "automation_repair_landed_count": 1,
+                "assessment_only_landed_count": 1,
+                "validated_no_change_count": 0,
+                "validated_rejected_count": 0,
+                "active_contract_gap_count": 0,
+            },
+        )
+        health = self.autopilot.state_health(state, None, 101, [])
+        self.assertEqual(
+            health["effectiveness"]["lifetime_outcome_classes"],
+            classes,
+        )
+
+    def test_stable_and_prerelease_landings_require_gap_and_diff_evidence(
+        self,
+    ):
+        state, source_id = self.bootstrap(now=100)
+        source = self.autopilot.find_candidate(state, source_id)
+        for index, kind in enumerate(
+            ("stable_release", "prerelease_release"),
+            start=1,
+        ):
+            with self.subTest(kind=kind):
+                candidate = deepcopy(source)
+                candidate["id"] = f"{index:016x}"
+                candidate["kind"] = kind
+                candidate["contract_missing"] = [
+                    "upstream:missing_method"
+                ]
+                self.attach_validated_landed_diff(candidate)
+
+                classes = self.autopilot.classify_lifetime_outcomes(
+                    {"candidates": [candidate]}
+                )
+
+                self.assertEqual(
+                    classes["contract_adaptation_landed_count"],
+                    1,
+                )
+                invalid = deepcopy(candidate)
+                invalid_head = "a" * 64
+                invalid["commit_receipt"]["head_sha"] = invalid_head
+                invalid["pull_request"]["head_sha"] = invalid_head
+                invalid["pull_request"]["validation_receipt"][
+                    "repository_head"
+                ] = invalid_head
+                invalid["result"]["reviewer_receipt"][
+                    "repository_head"
+                ] = invalid_head
+                classes = self.autopilot.classify_lifetime_outcomes(
+                    {"candidates": [invalid]}
+                )
+                self.assertEqual(
+                    classes["assessment_only_landed_count"],
+                    1,
+                )
+                candidate["contract_missing"] = []
+                classes = self.autopilot.classify_lifetime_outcomes(
+                    {"candidates": [candidate]}
+                )
+                self.assertEqual(
+                    classes["assessment_only_landed_count"],
+                    1,
+                )
+                candidate["status"] = "no_change"
+                candidate["result"] = {"outcome": "no_change"}
+                classes = self.autopilot.classify_lifetime_outcomes(
+                    {"candidates": [candidate]}
+                )
+                self.assertEqual(
+                    classes["validated_no_change_count"],
+                    1,
+                )
+
     def test_health_uses_pull_request_submission_time_not_lease_renewal(self):
         state, candidate_id = self.bootstrap(now=100)
         maintainer = self.autopilot.claim_candidate(
@@ -7689,6 +9050,45 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         self.assertEqual(len(state["events"]), self.autopilot.MAX_EVENTS)
         self.assertEqual(metrics["repair_request_count"], 3000)
+
+    def test_repeated_assessment_only_landings_queue_improvement(self):
+        state, candidate_id = self.bootstrap(now=100)
+        source = self.autopilot.find_candidate(state, candidate_id)
+        for index, kind in enumerate(
+            ("stable_release", "prerelease_release"),
+            start=1,
+        ):
+            candidate = deepcopy(source)
+            candidate["id"] = f"{index:016x}"
+            candidate["kind"] = kind
+            candidate["status"] = "landed"
+            candidate["contract_missing"] = []
+            candidate["result"] = {
+                "outcome": "landed",
+                "resolved_at": 150 + index,
+            }
+            state["candidates"].append(candidate)
+
+        first = self.autopilot.queue_effectiveness_improvements(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=200,
+        )
+        second = self.autopilot.queue_effectiveness_improvements(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=201,
+        )
+
+        self.assertEqual(len(first), 1)
+        self.assertEqual(second, [])
+        improvement = self.autopilot.find_candidate(state, first[0])
+        self.assertEqual(
+            improvement["path_summary"]["reason_code"],
+            "assessment_only_churn",
+        )
 
     def test_repeated_review_repairs_queue_one_proactive_improvement(self):
         state, candidate_id = self.bootstrap(now=100)
@@ -7752,6 +9152,770 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(second["priority"], "critical")
         self.autopilot.validate_state(state)
 
+    def test_task_retention_drift_queues_one_critical_improvement(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+
+        first = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="task_retention_contract_drift",
+            repository_head="9" * 40,
+            now=200,
+        )
+        second = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="task_retention_contract_drift",
+            repository_head="9" * 40,
+            now=201,
+        )
+
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(first["priority"], "critical")
+        self.assertEqual(
+            first["path_summary"]["reason_code"],
+            "task_retention_contract_drift",
+        )
+        self.autopilot.validate_state(state)
+
+    def test_x_pricing_parser_accepts_only_unique_exact_rows(self):
+        current = self.pricing_fixture()
+        self.assertEqual(
+            self.autopilot.parse_x_pricing_markdown(current),
+            {
+                "post_create": 15_000,
+                "post_create_with_url": 200_000,
+                "post_read": 5_000,
+                "user_read": 10_000,
+            },
+        )
+
+        changed = current.replace(b"\\$0.015", b"\\$0.016")
+        self.assertEqual(
+            self.autopilot.parse_x_pricing_markdown(changed)[
+                "post_create"
+            ],
+            16_000,
+        )
+        negative_cases = {
+            "cached create labels": current.replace(
+                b"Post: Create",
+                b"Content: Create",
+            ),
+            "wrong header case": current.replace(
+                b"Unit cost",
+                b"Unit Cost",
+                1,
+            ),
+            "extended unit statement": current.replace(
+                b"(writes/actions).",
+                b"(writes/actions). Additional text.",
+                1,
+            ),
+            "per thousand": current.replace(
+                b"\\$0.005 per resource",
+                b"\\$5.000 per 1,000 resources",
+                1,
+            ),
+            "duplicate target row": current.replace(
+                b"| **User: Read**",
+                (
+                    b"| **Posts: Read** | \\$0.005 per resource |\n"
+                    b"| **User: Read**"
+                ),
+                1,
+            ),
+            "split table": current.replace(
+                b"| **User: Read**",
+                b"not part of the table\n\n| **User: Read**",
+                1,
+            ),
+            "second read table": current.replace(
+                b"### Write operations",
+                (
+                    b"| Other | Unit cost |\n"
+                    b"| :--- | :--- |\n"
+                    b"| **Other: Read** | \\$0.001 per resource |\n\n"
+                    b"### Write operations"
+                ),
+                1,
+            ),
+            "nonadjacent operation sections": current.replace(
+                b"### Write operations",
+                b"### Other operations\n\n### Write operations",
+                1,
+            ),
+            "fenced target section": current.replace(
+                b"## Credit consumption details",
+                b"```\n## Credit consumption details",
+                1,
+            ).replace(b"## Owned Reads", b"```\n\n## Owned Reads", 1),
+        }
+        for name, candidate in negative_cases.items():
+            with self.subTest(name=name):
+                with self.assertRaises(
+                    self.autopilot.PricingAuditFailure
+                ):
+                    self.autopilot.parse_x_pricing_markdown(candidate)
+
+        arbitrary_rows = b"""# X API pricing
+| Resource | Unit cost |
+| --- | --- |
+| **Posts: Read** | \\$0.005 per resource |
+| **User: Read** | \\$0.010 per resource |
+| **Post: Create** | \\$0.015 per request |
+| **Post: Create (with URL)** | \\$0.200 per request |
+"""
+        with self.assertRaisesRegex(
+            self.autopilot.PricingAuditFailure,
+            "x_pricing_target_section_missing",
+        ):
+            self.autopilot.parse_x_pricing_markdown(arbitrary_rows)
+
+    def test_x_pricing_fetch_uses_fixed_curl_and_total_deadline(self):
+        module = self.autopilot.pricing_module
+
+        class FakeProcess:
+            pid = 42
+
+            def __init__(self, returncode=0, stdout=b"ok"):
+                self.returncode = returncode
+                self.stdout = stdout
+
+            def communicate(self, timeout=None):
+                self.timeout = timeout
+                return self.stdout, b""
+
+        process = FakeProcess()
+        with (
+            mock.patch.object(
+                module,
+                "_trusted_curl_path",
+                return_value="/usr/bin/curl",
+            ),
+            mock.patch.object(
+                module.time,
+                "monotonic",
+                side_effect=[100.0, 100.25],
+            ),
+            mock.patch.object(
+                module.subprocess,
+                "Popen",
+                return_value=process,
+            ) as popen,
+        ):
+            self.assertEqual(module.fetch_official_x_pricing(), b"ok")
+        arguments = popen.call_args.args[0]
+        self.assertEqual(arguments[0], "/usr/bin/curl")
+        self.assertIn("--disable", arguments)
+        self.assertEqual(
+            arguments[arguments.index("--max-redirs") + 1],
+            "0",
+        )
+        self.assertEqual(
+            arguments[arguments.index("--proto") + 1],
+            "=https",
+        )
+        self.assertEqual(
+            arguments[arguments.index("--max-filesize") + 1],
+            str(self.autopilot.X_PRICING_MAX_SOURCE_BYTES),
+        )
+        self.assertEqual(arguments[-1], self.autopilot.X_PRICING_SOURCE_URL)
+        self.assertLessEqual(process.timeout, 9.75)
+        self.assertNotIn("HTTP_PROXY", popen.call_args.kwargs["env"])
+        self.assertEqual(popen.call_args.kwargs["cwd"], "/")
+        self.assertTrue(popen.call_args.kwargs["start_new_session"])
+
+        for returncode, error_code in (
+            (47, "x_pricing_redirect_rejected"),
+            (60, "x_pricing_tls_invalid"),
+            (63, "x_pricing_source_oversize"),
+        ):
+            with (
+                self.subTest(returncode=returncode),
+                mock.patch.object(
+                    module,
+                    "_trusted_curl_path",
+                    return_value="/usr/bin/curl",
+                ),
+                mock.patch.object(
+                    module.time,
+                    "monotonic",
+                    side_effect=[100.0, 100.1],
+                ),
+                mock.patch.object(
+                    module.subprocess,
+                    "Popen",
+                    return_value=FakeProcess(returncode=returncode),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.PricingAuditFailure,
+                    error_code,
+                ):
+                    module.fetch_official_x_pricing()
+
+        timed_out = FakeProcess()
+        timed_out.communicate = mock.Mock(
+            side_effect=module.subprocess.TimeoutExpired(
+                cmd="/usr/bin/curl",
+                timeout=9.0,
+            )
+        )
+        with (
+            mock.patch.object(
+                module,
+                "_trusted_curl_path",
+                return_value="/usr/bin/curl",
+            ),
+            mock.patch.object(
+                module.time,
+                "monotonic",
+                side_effect=[100.0, 101.0],
+            ),
+            mock.patch.object(
+                module.subprocess,
+                "Popen",
+                return_value=timed_out,
+            ),
+            mock.patch.object(module, "_kill_curl") as killed,
+        ):
+            with self.assertRaisesRegex(
+                self.autopilot.PricingAuditFailure,
+                "x_pricing_deadline_exceeded",
+            ):
+                module.fetch_official_x_pricing()
+        killed.assert_called_once_with(timed_out)
+
+    def test_x_pricing_audit_renews_and_queues_bounded_drift(self):
+        current = self.pricing_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_139_200,
+                fetcher=lambda: current,
+            )
+            self.assertEqual(first["status"], "current")
+            self.assertIsNone(first["drift_evidence"])
+            self.assertEqual(first["receipt"]["status"], "current")
+            receipt_path = (
+                root
+                / self.autopilot.X_PRICING_RECEIPT_RELATIVE_PATH
+            )
+            self.assertEqual(
+                stat.S_IMODE(receipt_path.stat().st_mode),
+                0o600,
+            )
+            self.assertNotIn(
+                "# X API pricing",
+                receipt_path.read_text(encoding="utf-8"),
+            )
+            unavailable = self.autopilot.PricingAuditFailure(
+                "x_pricing_network_unavailable"
+            )
+            deferred = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_139_200 + 60 * 60,
+                fetcher=lambda: (_ for _ in ()).throw(unavailable),
+            )
+            self.assertEqual(deferred["status"], "network_deferred")
+            blocked = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_139_200 + 36 * 60 * 60 + 1,
+                fetcher=lambda: (_ for _ in ()).throw(unavailable),
+            )
+            self.assertEqual(blocked["status"], "blocked")
+            self.assertEqual(blocked["receipt"]["status"], "stale")
+
+            renewed = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_225_600,
+                fetcher=lambda: current,
+            )
+            self.assertEqual(renewed["status"], "current")
+            self.assertNotEqual(
+                renewed["fetched_at"],
+                first["fetched_at"],
+            )
+
+            changed = current.replace(b"\\$0.015", b"\\$0.016")
+            drift = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_229_200,
+                fetcher=lambda: changed,
+            )
+            self.assertEqual(drift["status"], "contract_drift")
+            self.assertEqual(
+                drift["drift_evidence"]["rates_microusd"][
+                    "post_create"
+                ],
+                16_000,
+            )
+            self.autopilot.validate_x_pricing_audit_evidence(
+                drift["drift_evidence"]
+            )
+
+            malformed = current.replace(
+                b"| **User: Read** | \\$0.010 per resource |\n",
+                b"",
+            )
+            failed = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_232_800,
+                fetcher=lambda: malformed,
+            )
+            self.assertEqual(failed["status"], "parse_failed")
+            self.assertEqual(
+                failed["drift_evidence"]["status"],
+                "parse_failed",
+            )
+            self.assertIsNone(
+                failed["drift_evidence"]["rates_microusd"]
+            )
+            self.assertEqual(failed["receipt"]["status"], "parse_failed")
+            failure_path = (
+                root
+                / self.autopilot.X_PRICING_FAILURE_RELATIVE_PATH
+            )
+            failure = json.loads(
+                failure_path.read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                failure["schema"],
+                "decodex/x-pricing-audit-failure/2",
+            )
+            self.assertEqual(
+                failure["diagnostic"]["schema"],
+                "decodex/x-pricing-parser-diagnostic/1",
+            )
+            self.assertEqual(
+                failure["diagnostic"]["raw_sha256"],
+                failed["raw_sha256"],
+            )
+            self.assertEqual(
+                failure["diagnostic_sha256"],
+                self.autopilot.pricing_module._canonical_json_sha256(
+                    failure["diagnostic"]
+                ),
+            )
+            self.assertLessEqual(
+                failure_path.stat().st_size,
+                self.autopilot.X_PRICING_MAX_RECEIPT_BYTES,
+            )
+            self.assertNotIn(
+                "# X API pricing",
+                failure_path.read_text(encoding="utf-8"),
+            )
+
+    def test_x_pricing_first_parse_failure_has_bounded_repair_evidence(self):
+        malformed = self.pricing_fixture().replace(
+            b"| Action | Unit cost |",
+            b"| Operation | Price per 1,000 requests |",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_139_200,
+                fetcher=lambda: malformed,
+            )
+
+            self.assertEqual(result["status"], "parse_failed")
+            self.assertEqual(result["receipt"]["status"], "parse_failed")
+            self.assertIsNotNone(result["drift_evidence"])
+            failure_path = (
+                root
+                / self.autopilot.X_PRICING_FAILURE_RELATIVE_PATH
+            )
+            raw_receipt = failure_path.read_bytes()
+            receipt = json.loads(raw_receipt)
+            self.assertEqual(
+                hashlib.sha256(raw_receipt).hexdigest(),
+                result["drift_evidence"]["receipt_sha256"],
+            )
+            diagnostic = receipt["diagnostic"]
+            self.assertEqual(diagnostic["target_section_count"], 1)
+            self.assertGreaterEqual(len(diagnostic["tables"]), 2)
+            write_table = next(
+                table
+                for table in diagnostic["tables"]
+                if table["nearest_h3"] == "### Write operations"
+            )
+            self.assertEqual(
+                write_table["header_cells"],
+                ["Operation", "Price per 1,000 requests"],
+            )
+            self.assertTrue(
+                any(
+                    row["cells"][0] == "**Post: Create**"
+                    for row in write_table["sample_rows"]
+                )
+            )
+            self.assertNotIn(
+                "All prices are per resource",
+                failure_path.read_text(encoding="utf-8"),
+            )
+
+    def test_x_pricing_receipt_staleness_tamper_and_atomic_race(self):
+        current = self.pricing_fixture()
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first_fetch_started = threading.Event()
+            release_first_fetch = threading.Event()
+            second_fetch_started = threading.Event()
+            failures = []
+
+            def first_fetch():
+                first_fetch_started.set()
+                release_first_fetch.wait(timeout=2)
+                return current
+
+            def second_fetch():
+                second_fetch_started.set()
+                return current
+
+            def run_audit(now, fetcher):
+                try:
+                    self.autopilot.audit_x_pricing(
+                        root,
+                        now=now,
+                        fetcher=fetcher,
+                    )
+                except Exception as error:
+                    failures.append(error)
+
+            first_thread = threading.Thread(
+                target=run_audit,
+                args=(1_785_139_200, first_fetch),
+            )
+            second_thread = threading.Thread(
+                target=run_audit,
+                args=(1_785_139_201, second_fetch),
+            )
+            first_thread.start()
+            self.assertTrue(first_fetch_started.wait(timeout=1))
+            second_thread.start()
+            time.sleep(0.05)
+            self.assertFalse(second_fetch_started.is_set())
+            release_first_fetch.set()
+            first_thread.join(timeout=2)
+            second_thread.join(timeout=2)
+            self.assertFalse(first_thread.is_alive())
+            self.assertFalse(second_thread.is_alive())
+            self.assertEqual(failures, [])
+
+            receipt_path = (
+                root
+                / self.autopilot.X_PRICING_RECEIPT_RELATIVE_PATH
+            )
+            receipt, _digest = (
+                self.autopilot.pricing_module._load_private_json(
+                    receipt_path
+                )
+            )
+            self.autopilot.pricing_module._validate_success_receipt(
+                receipt
+            )
+            self.assertEqual(
+                receipt["fetched_at"],
+                self.autopilot.pricing_module._format_timestamp(
+                    1_785_139_201
+                ),
+            )
+            self.assertEqual(
+                self.autopilot.pricing_module._receipt_freshness(
+                    receipt,
+                    now=1_785_139_201 + 36 * 60 * 60 + 1,
+                ),
+                "stale",
+            )
+            self.assertEqual(
+                list(
+                    receipt_path.parent.glob(
+                        ".x-pricing-receipt.json.*.tmp"
+                    )
+                ),
+                [],
+            )
+
+            tampered = deepcopy(receipt)
+            tampered["fetched_at"] = "2036-01-01T00:00:00Z"
+            receipt_path.write_text(
+                json.dumps(tampered, indent=2, sort_keys=True) + "\n",
+                encoding="utf-8",
+            )
+            receipt_path.chmod(0o600)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "x_pricing_receipt_invalid",
+            ):
+                self.autopilot.pricing_module._validate_success_receipt(
+                    tampered
+                )
+
+    def test_x_pricing_audit_cli_defers_then_queues_after_observation(self):
+        evidence = {
+            "schema": "decodex/x-pricing-drift-evidence/1",
+            "status": "contract_drift",
+            "source_url": (
+                "https://docs.x.com/x-api/getting-started/pricing.md"
+            ),
+            "parser_version": "x-pricing-markdown-table/1",
+            "fetched_at": "2026-07-27T12:00:00Z",
+            "raw_sha256": "a" * 64,
+            "receipt_sha256": "b" * 64,
+            "rates_microusd": {
+                "post_create": 16_000,
+                "post_create_with_url": 200_000,
+                "post_read": 5_000,
+                "user_read": 10_000,
+            },
+            "error_code": None,
+        }
+        audit = {
+            "status": "contract_drift",
+            "source_url": evidence["source_url"],
+            "parser_version": evidence["parser_version"],
+            "fetched_at": evidence["fetched_at"],
+            "raw_sha256": evidence["raw_sha256"],
+            "rates_microusd": evidence["rates_microusd"],
+            "receipt": {
+                "status": "contract_drift",
+                "source_url": evidence["source_url"],
+                "parser_version": evidence["parser_version"],
+                "fetched_at": evidence["fetched_at"],
+                "raw_sha256": evidence["raw_sha256"],
+                "rates_microusd": evidence["rates_microusd"],
+            },
+            "drift_evidence": evidence,
+            "error_code": None,
+        }
+        args = mock.Mock(command="x-pricing-audit")
+
+        def execute_with_state(state):
+            locked = lambda _root: nullcontext(
+                (state, Path("/tmp/upstream-state.json"))
+            )
+            with (
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "resolve_primary_checkout",
+                    return_value=ROOT,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "load_policy",
+                    return_value=self.policy,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_primary_clean_main",
+                    return_value={
+                        "head": "9" * 40,
+                        "branch": "main",
+                    },
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "locked_state",
+                    locked,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "save_state_guarded",
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "utc_now",
+                    return_value=200,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "audit_x_pricing",
+                    return_value=deepcopy(audit),
+                ),
+            ):
+                return self.autopilot.cli_module.execute(args)
+
+        pending = execute_with_state(self.autopilot.new_state(100))
+        self.assertEqual(
+            pending["candidate_status"],
+            "pending_observation",
+        )
+        self.assertIsNone(pending["candidate_id"])
+
+        observed, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(observed, candidate_id, now=101)
+        queued = execute_with_state(observed)
+        self.assertEqual(queued["candidate_status"], "created")
+        self.assertIsNotNone(queued["candidate_id"])
+        candidate = self.autopilot.find_candidate(
+            observed,
+            queued["candidate_id"],
+        )
+        self.assertEqual(
+            candidate["path_summary"]["pricing_audit"],
+            evidence,
+        )
+
+    def test_x_pricing_contract_drift_queues_one_critical_improvement(self):
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
+                "queue-improvement",
+                "--reason-code",
+                "x_pricing_contract_drift",
+                "--json",
+            ],
+        ):
+            args = self.autopilot.parse_args()
+        self.assertEqual(args.reason_code, "x_pricing_contract_drift")
+        self.assertNotIn(
+            "x_pricing_contract_drift",
+            self.autopilot.CONTENT_DEGRADATION_CODES,
+        )
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
+                "x-pricing-audit",
+                "--json",
+            ],
+        ):
+            audit_args = self.autopilot.parse_args()
+        self.assertEqual(audit_args.command, "x-pricing-audit")
+
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+        evidence = {
+            "schema": "decodex/x-pricing-drift-evidence/1",
+            "status": "contract_drift",
+            "source_url": (
+                "https://docs.x.com/x-api/getting-started/pricing.md"
+            ),
+            "parser_version": "x-pricing-markdown-table/1",
+            "fetched_at": "2026-07-27T12:00:00Z",
+            "raw_sha256": "a" * 64,
+            "receipt_sha256": "b" * 64,
+            "rates_microusd": {
+                "post_create": 16_000,
+                "post_create_with_url": 200_000,
+                "post_read": 5_000,
+                "user_read": 10_000,
+            },
+            "error_code": None,
+        }
+        first = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="x_pricing_contract_drift",
+            repository_head="9" * 40,
+            now=200,
+            pricing_audit=evidence,
+        )
+        second = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="x_pricing_contract_drift",
+            repository_head="9" * 40,
+            now=201,
+            pricing_audit=evidence,
+        )
+
+        self.assertEqual(first["id"], second["id"])
+        self.assertEqual(first["priority"], "critical")
+        self.assertEqual(
+            first["path_summary"]["reason_code"],
+            "x_pricing_contract_drift",
+        )
+        self.assertEqual(first["path_summary"]["pricing_audit"], evidence)
+        self.autopilot.validate_state(state)
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "content_degradation_evidence_not_applicable",
+        ):
+            self.autopilot.queue_automation_improvement(
+                state,
+                self.policy,
+                reason_code="x_pricing_contract_drift",
+                repository_head="9" * 40,
+                now=202,
+                degradation_codes=("candidate_unresolved",),
+                pricing_audit=evidence,
+            )
+
+        refreshed = deepcopy(evidence)
+        refreshed["fetched_at"] = "2026-07-27T13:00:00Z"
+        refreshed["raw_sha256"] = "c" * 64
+        refreshed["receipt_sha256"] = "d" * 64
+        same_candidate = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="x_pricing_contract_drift",
+            repository_head="9" * 40,
+            now=203,
+            pricing_audit=refreshed,
+        )
+        self.assertEqual(same_candidate["id"], first["id"])
+        self.assertEqual(
+            same_candidate["path_summary"]["pricing_audit"],
+            refreshed,
+        )
+
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            now=204,
+        )
+        self.assertEqual(claim["candidate"]["id"], same_candidate["id"])
+        successor_evidence = deepcopy(refreshed)
+        successor_evidence["fetched_at"] = "2026-07-27T14:00:00Z"
+        successor_evidence["raw_sha256"] = "e" * 64
+        successor_evidence["receipt_sha256"] = "f" * 64
+        successor = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="x_pricing_contract_drift",
+            repository_head="9" * 40,
+            now=205,
+            pricing_audit=successor_evidence,
+        )
+        self.assertNotEqual(successor["id"], first["id"])
+        self.assertEqual(successor["priority"], "critical")
+        self.assertEqual(
+            successor["path_summary"]["pricing_audit"],
+            successor_evidence,
+        )
+        self.autopilot.validate_state(state)
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "x_pricing_audit_evidence_missing",
+        ):
+            self.autopilot.queue_automation_improvement(
+                state,
+                self.policy,
+                reason_code="x_pricing_contract_drift",
+                repository_head="9" * 40,
+                now=206,
+            )
+
+        first["path_summary"]["reason_code"] = (
+            "x_pricing_contract_drift_alias"
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_path_summary_invalid",
+        ):
+            self.autopilot.validate_state(state)
+
     def test_content_degradation_queues_one_autonomous_improvement(self):
         state, candidate_id = self.bootstrap(now=100)
         self.resolve_bootstrap(state, candidate_id, now=101)
@@ -7763,7 +9927,6 @@ class UpstreamAutopilotTests(unittest.TestCase):
             repository_head="9" * 40,
             now=200,
             degradation_codes=(
-                "account_restore_failed",
                 "social_validation_failed",
                 "weekly_benchmark_missing",
             ),
@@ -7786,10 +9949,119 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(
             first["path_summary"]["degradation_codes"],
             [
-                "account_restore_failed",
+                "candidate_unresolved",
                 "social_validation_failed",
                 "weekly_benchmark_missing",
             ],
+        )
+        self.assertEqual(first["updated_at"], 201)
+        self.autopilot.validate_state(state)
+
+    def test_content_degradation_does_not_mutate_implementing_candidate(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+        first = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=200,
+            degradation_codes=("candidate_unresolved",),
+        )
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            now=201,
+        )
+        persisted_snapshot = deepcopy(first)
+        issued_snapshot = deepcopy(claim["candidate"])
+
+        successor = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=202,
+            degradation_codes=("candidate_unresolved",),
+        )
+
+        self.assertNotEqual(first["id"], successor["id"])
+        self.assertEqual(first, persisted_snapshot)
+        self.assertEqual(claim["candidate"], issued_snapshot)
+        self.assertEqual(first["status"], "implementing")
+        self.assertEqual(successor["status"], "queued")
+        self.assertEqual(
+            successor["path_summary"]["degradation_codes"],
+            ["candidate_unresolved"],
+        )
+
+        merged_successor = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=203,
+            degradation_codes=("social_validation_failed",),
+        )
+        self.assertEqual(successor["id"], merged_successor["id"])
+        self.assertEqual(first, persisted_snapshot)
+        self.assertEqual(claim["candidate"], issued_snapshot)
+        self.assertEqual(
+            successor["path_summary"]["degradation_codes"],
+            ["candidate_unresolved", "social_validation_failed"],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_content_degradation_does_not_mutate_reviewing_candidate(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+        first = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=200,
+            degradation_codes=("candidate_unresolved",),
+        )
+        maintainer_claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            now=201,
+        )
+        self.submit_pull_request(
+            state,
+            first["id"],
+            maintainer_claim,
+            now=202,
+        )
+        reviewer_claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            now=210,
+        )
+        persisted_snapshot = deepcopy(first)
+        issued_snapshot = deepcopy(reviewer_claim["candidate"])
+
+        successor = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code="content_loop_degraded",
+            repository_head="9" * 40,
+            now=211,
+            degradation_codes=("outcome_24h_overdue",),
+        )
+
+        self.assertNotEqual(first["id"], successor["id"])
+        self.assertEqual(first, persisted_snapshot)
+        self.assertEqual(reviewer_claim["candidate"], issued_snapshot)
+        self.assertEqual(first["status"], "reviewing")
+        self.assertEqual(successor["status"], "queued")
+        self.assertEqual(
+            successor["path_summary"]["degradation_codes"],
+            ["outcome_24h_overdue"],
         )
         self.autopilot.validate_state(state)
 
@@ -7820,7 +10092,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
         def queue_side_effect(*_args, **kwargs):
             self.assertEqual(
                 kwargs["degradation_codes"],
-                ["account_restore_failed", "social_validation_failed"],
+                ["candidate_unresolved", "social_validation_failed"],
             )
             candidate = {
                 "id": "repair-1",
@@ -7835,7 +10107,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             command="queue-improvement",
             reason_code="content_loop_degraded",
             degradation_code=[
-                "account_restore_failed",
+                "candidate_unresolved",
                 "social_validation_failed",
             ],
         )
@@ -7880,7 +10152,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(result["status"], "improvement_queued")
         self.assertEqual(
             result["degradation_codes"],
-            ["account_restore_failed", "social_validation_failed"],
+            ["candidate_unresolved", "social_validation_failed"],
         )
         queued.assert_called_once()
 
