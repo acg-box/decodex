@@ -117,6 +117,20 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
+	func testInstallingLoginCannotBeCancelledOrClosed() {
+		let presentation = AccountReauthenticationPresentation(
+			accountID: "10000000-0000-4000-8000-000000000001",
+			accountLabel: "Val",
+			sessionID: "20000000-0000-4000-8000-000000000001",
+			authority: nil,
+			phase: .installing,
+			prompt: nil
+		)
+
+		XCTAssertFalse(presentation.canRequestCancellation)
+		XCTAssertFalse(presentation.canCloseWithoutCancellation)
+	}
+
 	func testMissingAccountLabelDoesNotExposeAccountID() {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -135,7 +149,9 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
-	func testProfileUnauthorizedCannotPresentLoginRecoveryOrHideCanonicalInventory() throws {
+	func testUnavailableProfileUnauthorizedPresentsLoginRecoveryWithoutHidingCanonicalInventory()
+		throws
+	{
 		let authority = ResetCardAuthority(
 			profileName: "local",
 			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
@@ -175,7 +191,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			)
 		)
 
-		XCTAssertFalse(state.requiresLoginRefresh)
+		XCTAssertTrue(state.requiresLoginRefresh)
 		XCTAssertEqual(state.targets.count, 1)
 
 		let source = try resetCardSectionSource()

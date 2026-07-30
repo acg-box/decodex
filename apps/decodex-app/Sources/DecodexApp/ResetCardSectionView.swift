@@ -307,7 +307,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(
-					"Sign in to this account in Codex, then choose Refresh Login."
+					"Choose Refresh Login in the menu bar app to sign in with the official Codex device login."
 				)
 		} else if let error = state.inventory?.observationError {
 			Text("Reset Cards unavailable")

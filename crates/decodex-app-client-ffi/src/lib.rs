@@ -1,15 +1,18 @@
 //! In-process C ABI for the native Decodex app.
 //!
 //! The bridge is a credential-negative client of the one local `decodexd`
-//! service. It reuses the typed Rust protocol clients directly and never starts
-//! a command-line process.
+//! service. It reuses the typed Rust protocol clients directly. Its only child
+//! process is one bounded official Codex device-login session; Swift never
+//! receives credential bytes or a credential-file path.
 
+mod account_reauthentication;
 mod fast_mode;
 
 use std::{
 	collections::HashMap,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
+	path::PathBuf,
 	ptr, slice,
 	sync::{
 		Arc, Mutex, OnceLock,
@@ -34,9 +37,9 @@ static RUNTIME: OnceLock<Result<Runtime, ()>> = OnceLock::new();
 static CLIENTS: OnceLock<Mutex<HashMap<usize, Arc<NativeClient>>>> = OnceLock::new();
 static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
 
-#[derive(Clone)]
 struct NativeClient {
 	profile: ClientProfile,
+	account_reauthentication: account_reauthentication::Manager,
 }
 
 #[derive(Deserialize)]
@@ -124,6 +127,23 @@ enum Request {
 		expected_revision: u64,
 		idempotency_key: String,
 	},
+	StartAccountReauthentication {
+		schema: String,
+		session_id: String,
+		operation_id: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+		codex_bin: String,
+	},
+	PollAccountReauthentication {
+		schema: String,
+		session_id: String,
+	},
+	CancelAccountReauthentication {
+		schema: String,
+		session_id: String,
+	},
 	UseAccountInCodex {
 		schema: String,
 		account_id: String,
@@ -155,6 +175,9 @@ impl Request {
 			Self::SetFixedSelection { .. } => "set_fixed_selection",
 			Self::SetBalancedSelection { .. } => "set_balanced_selection",
 			Self::RefreshAccount { .. } => "refresh_account",
+			Self::StartAccountReauthentication { .. } => "start_account_reauthentication",
+			Self::PollAccountReauthentication { .. } => "poll_account_reauthentication",
+			Self::CancelAccountReauthentication { .. } => "cancel_account_reauthentication",
 			Self::UseAccountInCodex { .. } => "use_account_in_codex",
 			Self::FastModeStatus { .. } => "fast_mode_status",
 			Self::SetFastMode { .. } => "set_fast_mode",
@@ -176,6 +199,9 @@ impl Request {
 			| Self::SetFixedSelection { schema, .. }
 			| Self::SetBalancedSelection { schema, .. }
 			| Self::RefreshAccount { schema, .. }
+			| Self::StartAccountReauthentication { schema, .. }
+			| Self::PollAccountReauthentication { schema, .. }
+			| Self::CancelAccountReauthentication { schema, .. }
 			| Self::UseAccountInCodex { schema, .. }
 			| Self::FastModeStatus { schema }
 			| Self::SetFastMode { schema, .. } => schema,
@@ -332,13 +358,12 @@ pub extern "C" fn decodex_app_native_client_destroy(client: *mut c_void) {
 	}
 	let client_id = client as usize;
 	let clients = clients();
-	match clients.lock() {
-		Ok(mut clients) => {
-			clients.remove(&client_id);
-		},
-		Err(poisoned) => {
-			poisoned.into_inner().remove(&client_id);
-		},
+	let client = match clients.lock() {
+		Ok(mut clients) => clients.remove(&client_id),
+		Err(poisoned) => poisoned.into_inner().remove(&client_id),
+	};
+	if let Some(client) = client {
+		client.account_reauthentication.shutdown();
 	}
 }
 
@@ -484,7 +509,10 @@ fn create_client(
 	};
 
 	let client_id = next_client_id();
-	let client = Arc::new(NativeClient { profile });
+	let client = Arc::new(NativeClient {
+		profile,
+		account_reauthentication: account_reauthentication::Manager::default(),
+	});
 	match clients().lock() {
 		Ok(mut clients) => {
 			clients.insert(client_id, client);
@@ -564,7 +592,7 @@ fn request(
 		server_id: native_client.profile.expected_server_id().as_str().to_owned(),
 	};
 
-	match runtime.block_on(execute_request(native_client.profile.clone(), request)) {
+	match runtime.block_on(execute_request(native_client, request)) {
 		Ok(data) => write_serialized(
 			out_response_json,
 			out_response_len,
@@ -598,9 +626,10 @@ fn request(
 }
 
 async fn execute_request(
-	profile: ClientProfile,
+	native_client: Arc<NativeClient>,
 	request: Request,
 ) -> Result<Value, RequestFailure> {
+	let profile = native_client.profile.clone();
 	match request {
 		Request::ListAccounts { .. } =>
 			to_value(AccountClient::new(profile).list().await.map_err(RequestFailure::Client)?),
@@ -706,6 +735,48 @@ async fn execute_request(
 				idempotency_key,
 			)
 			.await
+		},
+		Request::StartAccountReauthentication {
+			session_id,
+			operation_id,
+			account_id,
+			expected_revision,
+			idempotency_key,
+			codex_bin,
+			..
+		} => {
+			if !is_canonical_uuid(&session_id)
+				|| codex_bin.is_empty()
+				|| codex_bin.len() > 4_096
+				|| codex_bin.chars().any(char::is_control)
+			{
+				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+			}
+			let start = account_reauthentication::Start {
+				session_id,
+				operation_id: entity_id(&operation_id)?,
+				account_id: entity_id(&account_id)?,
+				expected_revision: revision(expected_revision)?,
+				idempotency_key: parse_idempotency_key(idempotency_key)?,
+				codex_bin: PathBuf::from(codex_bin),
+			};
+			to_value(native_client.account_reauthentication.start(
+				start,
+				profile,
+				tokio::runtime::Handle::current(),
+			))
+		},
+		Request::PollAccountReauthentication { session_id, .. } => {
+			if !is_canonical_uuid(&session_id) {
+				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+			}
+			to_value(native_client.account_reauthentication.poll(&session_id))
+		},
+		Request::CancelAccountReauthentication { session_id, .. } => {
+			if !is_canonical_uuid(&session_id) {
+				return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+			}
+			to_value(native_client.account_reauthentication.cancel(&session_id))
 		},
 		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } =>
 			use_account_in_codex(profile, account_id, expected_revision, idempotency_key).await,
@@ -979,6 +1050,40 @@ mod tests {
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","idempotency_key":"use-account-test"}}"#
 		))
 		.is_err());
+	}
+
+	#[test]
+	fn account_reauthentication_requests_are_exact_and_revision_fenced() {
+		let session_id = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
+		let operation_id = "038f0f9e-7b6e-4a31-8f4c-1d2e3f405164";
+		let start = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+		))
+		.expect("start request must decode");
+		let poll = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"poll_account_reauthentication","session_id":"{session_id}"}}"#
+		))
+		.expect("poll request must decode");
+		let cancel = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"cancel_account_reauthentication","session_id":"{session_id}"}}"#
+		))
+		.expect("cancel request must decode");
+
+		assert_eq!(start.operation(), "start_account_reauthentication");
+		assert_eq!(poll.operation(), "poll_account_reauthentication");
+		assert_eq!(cancel.operation(), "cancel_account_reauthentication");
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+			))
+			.is_err()
+		);
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"poll_account_reauthentication","session_id":"{session_id}","extra":true}}"#
+			))
+			.is_err()
+		);
 	}
 
 	#[test]
