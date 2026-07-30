@@ -164,11 +164,18 @@ dispatch or automatic fallback.
 The Codex adapter must prove that one generated schema advertises both
 `account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
 complete unique inventory before it maps the public descriptor to one exact opaque credit
-ID. The daemon persists that exact ID and the unchanged logical-command idempotency key
-before it starts the provider effect. A terminal result requires a closed provider receipt
-and a fresh authoritative inventory readback. After an ambiguous stop, restart recovery
-may retry or reconcile only the persisted exact ID with the same key. It must never
-rematch a new inventory item or create a new provider key.
+ID. A read can publish a provider-reported available count with incomplete or absent detail
+rows, but it must publish no selectable descriptors from that partial inventory and must
+retain independently valid quota facts. A reported zero count is a definitive complete empty
+inventory. Null quota reset timestamps are unsupported windows, not protocol corruption.
+Before an observation, the Account Service refreshes only an expired access token or one
+that cannot cover the bounded provider-process deadline, under the existing account lock,
+refresh journal, and credential compare-and-swap. The daemon persists the resolved exact ID
+and the unchanged logical-command idempotency key before it starts the provider effect. A
+terminal result requires a closed provider receipt and a fresh complete authoritative
+inventory readback. After an ambiguous stop, restart recovery may retry or reconcile only
+the persisted exact ID with the same key. It must never rematch a new inventory item or
+create a new provider key.
 
 The caller creates and durably records the logical-command key before `use`. Account and
 inventory results bind the selected profile name and stable server UUID; all later

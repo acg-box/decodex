@@ -2031,22 +2031,14 @@ mod tests {
 	}
 
 	#[test]
-	fn absolute_parent_boundary_accepts_host_alias_and_refuses_missing_or_linked_leaf() {
+	fn absolute_parent_boundary_accepts_host_alias_and_refuses_missing_base() {
 		let temporary = host_temp_fixture();
 		let accepted_parent = temporary.path().join("accepted-parent");
 		let absent_parent = temporary.path().join("absent-base").join("cache-parent");
-		let linked_parent = temporary.path().join("linked-parent");
-		let linked_target = temporary.path().join("linked-target");
-
-		fs::create_dir(&linked_target).expect("link target is created");
-		fs::set_permissions(&linked_target, fs::Permissions::from_mode(0o700))
-			.expect("link target is owner-private");
-		symlink(&linked_target, &linked_parent).expect("final parent leaf is a symbolic link");
 
 		let cases = [
 			("host temporary path", accepted_parent.clone(), ParentExpectation::Opens),
 			("absent external base", absent_parent, ParentExpectation::Refuses),
-			("symbolic-link final leaf", linked_parent.clone(), ParentExpectation::Refuses),
 		];
 		for (name, parent, expectation) in cases {
 			let result = HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION);
@@ -2063,20 +2055,6 @@ mod tests {
 			}
 		}
 
-		assert!(
-			fs::symlink_metadata(&linked_parent)
-				.expect("linked leaf remains present")
-				.file_type()
-				.is_symlink()
-		);
-		assert!(
-			fs::read_dir(&linked_target)
-				.expect("link target remains readable")
-				.next()
-				.is_none(),
-			"the final leaf target must not be followed",
-		);
-
 		#[cfg(target_os = "macos")]
 		if temporary.path().starts_with("/var") {
 			assert!(
@@ -2085,6 +2063,113 @@ mod tests {
 					.starts_with("/private/var"),
 				"the host /var alias resolves through the external-base boundary",
 			);
+		}
+	}
+
+	#[derive(Clone, Copy, Debug)]
+	enum NoFollowBoundary {
+		FinalParentLeaf,
+		CacheRoot,
+		PagesDirectory,
+		LockFile,
+	}
+
+	#[test]
+	fn shared_no_follow_boundaries_refuse_representative_symlinks() {
+		let cases = [
+			("final parent leaf", NoFollowBoundary::FinalParentLeaf),
+			("cache root", NoFollowBoundary::CacheRoot),
+			("pages directory", NoFollowBoundary::PagesDirectory),
+			("lock file", NoFollowBoundary::LockFile),
+		];
+
+		for (name, boundary) in cases {
+			let temporary = host_temp_fixture();
+			let parent = temporary.path().join("cache-parent");
+			let root = parent.join("history-page-cache-v1");
+			let target = temporary.path().join("link-target");
+			let linked_path = match boundary {
+				NoFollowBoundary::FinalParentLeaf => {
+					fs::create_dir(&target).expect("directory link target is created");
+					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
+						.expect("directory link target is owner-private");
+					symlink(&target, &parent).expect("final parent leaf link is created");
+
+					parent.clone()
+				},
+				NoFollowBoundary::CacheRoot => {
+					fs::create_dir(&parent).expect("cache parent is created");
+					fs::set_permissions(&parent, fs::Permissions::from_mode(0o700))
+						.expect("cache parent is owner-private");
+					fs::create_dir(&target).expect("directory link target is created");
+					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
+						.expect("directory link target is owner-private");
+					symlink(&target, &root).expect("cache root link is created");
+
+					root.clone()
+				},
+				NoFollowBoundary::PagesDirectory => {
+					drop(
+						HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
+							.expect("baseline cache opens"),
+					);
+					fs::create_dir(&target).expect("directory link target is created");
+					fs::set_permissions(&target, fs::Permissions::from_mode(0o700))
+						.expect("directory link target is owner-private");
+					let pages = root.join("pages");
+
+					fs::remove_dir(&pages).expect("baseline pages directory is empty");
+					symlink(&target, &pages).expect("pages directory link is created");
+
+					pages
+				},
+				NoFollowBoundary::LockFile => {
+					drop(
+						HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
+							.expect("baseline cache opens"),
+					);
+					fs::write(&target, b"").expect("file link target is created");
+					fs::set_permissions(&target, fs::Permissions::from_mode(0o600))
+						.expect("file link target is owner-private");
+					let lock = root.join("lock");
+
+					fs::remove_file(&lock).expect("baseline lock file is removed");
+					symlink(&target, &lock).expect("lock file link is created");
+
+					lock
+				},
+			};
+
+			assert!(
+				HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION).is_err(),
+				"{name} symlink must be refused",
+			);
+			assert!(
+				fs::symlink_metadata(&linked_path)
+					.expect("linked boundary remains present")
+					.file_type()
+					.is_symlink(),
+				"{name} remains a symbolic link",
+			);
+			match boundary {
+				NoFollowBoundary::LockFile =>
+					assert!(
+						fs::read(&target)
+							.expect("file link target remains readable")
+							.is_empty(),
+						"{name} target must not be followed",
+					),
+				NoFollowBoundary::FinalParentLeaf
+				| NoFollowBoundary::CacheRoot
+				| NoFollowBoundary::PagesDirectory =>
+					assert!(
+						fs::read_dir(&target)
+							.expect("directory link target remains readable")
+							.next()
+							.is_none(),
+						"{name} target must not be followed",
+					),
+			}
 		}
 	}
 

@@ -814,7 +814,6 @@ impl AccountService {
 	}
 
 	/// Refresh one exact account through either proactive or exact generation-bound authority.
-	#[allow(clippy::too_many_lines)] // Keep the generation-bound refresh state machine auditable as one sequence.
 	pub async fn refresh(
 		&self,
 		operation_id: AccountOperationId,
@@ -825,6 +824,27 @@ impl AccountService {
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
+		self.refresh_while_locked(
+			operation_id,
+			account_id,
+			expected_account_revision,
+			callback_generation,
+			previous_provider_account_id,
+			false,
+		)
+		.await
+	}
+
+	#[allow(clippy::too_many_lines)] // Keep the generation-bound refresh state machine auditable as one sequence.
+	async fn refresh_while_locked(
+		&self,
+		operation_id: AccountOperationId,
+		account_id: &AccountId,
+		expected_account_revision: Option<i64>,
+		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
+		previous_provider_account_id: Option<&str>,
+		allow_disabled: bool,
+	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
 		if let Some((generation_id, process_binding)) = callback_generation {
 			self.require_active_callback_generation(account_id, generation_id, process_binding)
 				.await?;
@@ -870,6 +890,8 @@ impl AccountService {
 		}
 		let stored = if callback_generation.is_some() {
 			self.read_exact_for_bound_callback(&account).await?
+		} else if allow_disabled {
+			self.read_exact_for_existing_work(&account).await?
 		} else {
 			self.read_exact_for_admission(&account).await?
 		};
@@ -908,9 +930,20 @@ impl AccountService {
 			)?;
 		}
 		let refresher = Arc::clone(&self.refresher);
-		let refreshed = tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle()))
-			.await
-			.map_err(|_| AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous))?;
+		let refreshed =
+			match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await {
+				Ok(refreshed) => refreshed,
+				Err(_) => {
+					self.recover_or_cancel(
+						&operation_id,
+						AccountOperationPhase::ProviderEffectPending,
+						"provider_refresh_ambiguous",
+						true,
+					)
+					.await?;
+					return Err(AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous));
+				},
+			};
 		let refreshed = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(CredentialRefreshError::Rejected) => {
@@ -2378,16 +2411,39 @@ impl AccountService {
 	pub(crate) async fn process_credential_for_observation(
 		&self,
 		account_id: &AccountId,
-		expected_revision: i64,
+		minimum_validity: Duration,
 	) -> Result<AccountProcessCredential, AccountLifecycleError> {
 		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
-		let account = self.load_account(account_id).await?;
-		if account.revision != expected_revision {
-			return Err(AccountLifecycleError::StaleAccount);
+		let mut account = self.load_account(account_id).await?;
+		let mut stored = self.read_exact_for_existing_work(&account).await?;
+		let now_unix_micros = current_unix_micros()?;
+		if access_token_needs_refresh(
+			stored.bundle().access_token_expires_at_unix_micros(),
+			now_unix_micros,
+			minimum_validity,
+		)? {
+			let operation_id = AccountOperationId::generate()
+				.map_err(|_| AccountLifecycleError::InvalidOperation)?;
+			self.refresh_while_locked(
+				operation_id,
+				account_id,
+				Some(account.revision),
+				None,
+				None,
+				true,
+			)
+			.await?;
+			account = self.load_account(account_id).await?;
+			stored = self.read_exact_for_existing_work(&account).await?;
+			let refreshed_at_unix_micros = current_unix_micros()?;
+			require_refreshed_access_token_for_observation(
+				stored.bundle().access_token_expires_at_unix_micros(),
+				refreshed_at_unix_micros,
+				minimum_validity,
+			)?;
 		}
 		let credential =
 			account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		let stored = self.read_exact_for_existing_work(&account).await?;
 		let callback_profile = self.callback_profile().map_err(|_| {
 			AccountLifecycleError::NotReady(AccountLifecycleReadiness::CallbackCapabilityUnready)
 		})?;
@@ -2957,6 +3013,38 @@ fn projection(
 	}
 }
 
+fn current_unix_micros() -> Result<i64, AccountLifecycleError> {
+	SystemTime::now()
+		.duration_since(UNIX_EPOCH)
+		.ok()
+		.and_then(|duration| i64::try_from(duration.as_micros()).ok())
+		.ok_or(AccountLifecycleError::InvalidOperation)
+}
+
+fn access_token_needs_refresh(
+	expires_at_unix_micros: i64,
+	now_unix_micros: i64,
+	minimum_validity: Duration,
+) -> Result<bool, AccountLifecycleError> {
+	let minimum_validity_micros = i64::try_from(minimum_validity.as_micros())
+		.map_err(|_| AccountLifecycleError::InvalidOperation)?;
+	let required_until = now_unix_micros
+		.checked_add(minimum_validity_micros)
+		.ok_or(AccountLifecycleError::InvalidOperation)?;
+	Ok(expires_at_unix_micros <= required_until)
+}
+
+fn require_refreshed_access_token_for_observation(
+	expires_at_unix_micros: i64,
+	now_unix_micros: i64,
+	minimum_validity: Duration,
+) -> Result<(), AccountLifecycleError> {
+	if access_token_needs_refresh(expires_at_unix_micros, now_unix_micros, minimum_validity)? {
+		return Err(AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable));
+	}
+	Ok(())
+}
+
 fn refreshed_credential_target(
 	current: &CredentialBinding,
 	account_id: &AccountId,
@@ -3167,9 +3255,11 @@ mod tests {
 	use super::{
 		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, CredentialImportError, CredentialRefreshError,
 		CredentialSecretBundle, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
-		RefreshResponse, UseInCodexProjectionError, account_lock_for, codex_auth_projection_digest,
-		credential_refresh_result, matching_shared_refresh, projection_binding,
-		refreshed_credential_target, stable_account_alias, use_in_codex_receipt_result,
+		RefreshResponse, UseInCodexProjectionError, access_token_needs_refresh, account_lock_for,
+		codex_auth_projection_digest, credential_refresh_result, matching_shared_refresh,
+		projection_binding, refreshed_credential_target,
+		require_refreshed_access_token_for_observation, stable_account_alias,
+		use_in_codex_receipt_result,
 	};
 	use std::{
 		collections::{HashMap, HashSet},
@@ -3179,6 +3269,28 @@ mod tests {
 	use tokio::time;
 
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
+
+	#[test]
+	fn observation_refreshes_only_when_the_access_token_cannot_cover_the_process_deadline() {
+		let now = 1_000_000_i64;
+		let minimum_validity = Duration::from_micros(500);
+
+		assert!(access_token_needs_refresh(now - 1, now, minimum_validity).unwrap());
+		assert!(access_token_needs_refresh(now + 500, now, minimum_validity).unwrap());
+		assert!(!access_token_needs_refresh(now + 501, now, minimum_validity).unwrap());
+		assert!(matches!(
+			access_token_needs_refresh(i64::MAX, i64::MAX, minimum_validity),
+			Err(AccountLifecycleError::InvalidOperation)
+		));
+		assert!(matches!(
+			require_refreshed_access_token_for_observation(now + 500, now, minimum_validity),
+			Err(AccountLifecycleError::Refresh(CredentialRefreshError::Unavailable))
+		));
+		assert!(
+			require_refreshed_access_token_for_observation(now + 501, now, minimum_validity)
+				.is_ok()
+		);
+	}
 
 	#[test]
 	fn stable_alias_uses_the_canonical_provider_binding_vector() {

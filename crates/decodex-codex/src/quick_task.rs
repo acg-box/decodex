@@ -1018,7 +1018,7 @@ struct QuickTaskGranularApprovalWire {
 enum QuickTaskApprovalsReviewerWire {
 	#[serde(rename = "user")]
 	User,
-	#[serde(rename = "auto_review", alias = "guardian_subagent")]
+	#[serde(rename = "auto_review")]
 	AutoReview,
 }
 
@@ -1218,7 +1218,7 @@ struct QuickTaskThreadSpawnSourceWire {
 	agent_path: Option<QuickTaskAgentPathWire>,
 	#[serde(default)]
 	agent_nickname: Option<String>,
-	#[serde(default, alias = "agent_type")]
+	#[serde(default)]
 	agent_role: Option<String>,
 }
 
@@ -1843,8 +1843,32 @@ mod tests {
 		let resume_request = resume_request();
 		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
 
+		let mut canonical_auto_review = canonical.clone();
+		canonical_auto_review["approvalsReviewer"] = json!("auto_review");
+		assert!(
+			decode_quick_task_thread_start_response(
+				&start_request,
+				&serde_json::to_vec(&canonical_auto_review).unwrap(),
+			)
+			.is_ok()
+		);
+
 		let mut unknown_nested = canonical.clone();
 		unknown_nested["thread"]["unexpected"] = json!(true);
+
+		let mut legacy_reviewer = canonical.clone();
+		legacy_reviewer["approvalsReviewer"] = json!("guardian_subagent");
+
+		let mut legacy_agent_type = canonical.clone();
+		legacy_agent_type["thread"]["source"] = json!({
+			"subAgent": {
+				"thread_spawn": {
+					"parent_thread_id": "00000000-0000-4000-8000-000000000001",
+					"depth": 1,
+					"agent_type": "reviewer",
+				},
+			},
+		});
 
 		let duplicate_nested = serde_json::to_string(&canonical)
 			.expect("fixture response must serialize")
@@ -1882,6 +1906,24 @@ mod tests {
 				decode_quick_task_thread_start_response(
 					&start_request,
 					&serde_json::to_vec(&unknown_nested).unwrap(),
+				)
+				.map(|_| ()),
+				QuickTaskContractError::UnknownResponseField,
+			),
+			(
+				"legacy approvals reviewer",
+				decode_quick_task_thread_start_response(
+					&start_request,
+					&serde_json::to_vec(&legacy_reviewer).unwrap(),
+				)
+				.map(|_| ()),
+				QuickTaskContractError::MalformedResponse,
+			),
+			(
+				"legacy thread-spawn agent type",
+				decode_quick_task_thread_start_response(
+					&start_request,
+					&serde_json::to_vec(&legacy_agent_type).unwrap(),
 				)
 				.map(|_| ()),
 				QuickTaskContractError::UnknownResponseField,
