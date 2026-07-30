@@ -19,7 +19,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 
 		XCTAssertFalse(glassSurface.contains(".id(appearanceID)"))
 		XCTAssertFalse(accountPanel.contains("LazyVStack"))
-		XCTAssertTrue(accountPanel.contains("id: \\.element.id"))
+		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
 	func testPanelUsesNativeClearGlassWithoutCustomChrome() throws {
@@ -36,19 +36,32 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
 			encoding: .utf8
 		)
+		let accountControls = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
+			encoding: .utf8
+		)
+		let resetCards = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
 		let appScene = try String(
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
 		)
 
 		XCTAssertTrue(glassSurface.contains("Glass.clear"))
-		XCTAssertTrue(glassSurface.contains("glass.interactive()"))
+		XCTAssertFalse(glassSurface.contains("glass.interactive()"))
 		XCTAssertFalse(glassSurface.contains("Glass.regular"))
 		XCTAssertFalse(glassSurface.contains(".tint("))
 		XCTAssertFalse(glassSurface.contains(".background"))
 		XCTAssertFalse(glassSurface.contains(".overlay"))
 		XCTAssertFalse(glassSurface.contains(".shadow"))
-		XCTAssertTrue(accountPanel.contains("GlassEffectContainer"))
+		XCTAssertTrue(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
+		XCTAssertTrue(accountPanel.contains(".modernGlassSurface(cornerRadius: 18)"))
+		XCTAssertTrue(accountPanel.contains(".modernGlassSurface(cornerRadius: 16)"))
+		XCTAssertFalse(accountPanel.contains(".modernGlassSurface(cornerRadius: 20"))
+		XCTAssertFalse(accountControls.contains(".modernGlassSurface"))
+		XCTAssertFalse(resetCards.contains(".modernGlassSurface(cornerRadius: 6"))
 		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
