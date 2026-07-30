@@ -9,6 +9,7 @@ mod reservation;
 mod strategy;
 
 pub(crate) use cross_file::SocialValidationState;
+pub(crate) use post::contains_link_like_text;
 
 use std::path::Path;
 
@@ -29,14 +30,8 @@ const SOCIAL_POST_LIFECYCLE_STATES: &[&str] = &[
 	"superseded_published",
 	"superseded_text_only",
 ];
-const SOCIAL_POST_MODES: &[&str] = &[
-	"operator_impact",
-	"practical_explainer",
-	"release_pulse",
-	"release_rollup",
-	"thread",
-	"watch_note",
-];
+const SOCIAL_POST_MODES: &[&str] =
+	&["operator_impact", "practical_explainer", "release_pulse", "release_rollup", "watch_note"];
 const SOCIAL_POST_PRIORITIES: &[&str] = &["critical", "high", "low", "normal"];
 const SOCIAL_POST_STATUSES: &[&str] = &["blocked", "failed", "published", "skipped"];
 const SOCIAL_POST_WORTHINESS: &[&str] = &["block", "publish", "skip"];
@@ -50,7 +45,21 @@ pub(crate) fn validate_social_artifact_for_path(
 	_path: &Path,
 	payload: &Value,
 ) -> SocialArtifactValidation {
-	validate_social_artifact(payload)
+	let mut validation = validate_social_artifact(payload);
+	if validation.errors.is_empty()
+		&& let Err(error) = crate::social_record::validate_candidate_eligibility(payload)
+	{
+		validation.errors.push(format!("candidate Radar lineage validation failed: {error}"));
+	}
+	if validation.errors.is_empty()
+		&& let Err(error) = crate::social_record::validate_publication_identity(payload)
+	{
+		validation
+			.errors
+			.push(format!("candidate publication identity validation failed: {error}"));
+	}
+
+	validation
 }
 
 pub(crate) fn validate_social_artifact(payload: &Value) -> SocialArtifactValidation {
@@ -94,8 +103,20 @@ fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
 	post::validate_social_post_text(text, errors);
 }
 
-fn validate_social_post_claims(claims: Option<&Value>, errors: &mut Vec<String>) {
-	post::validate_social_post_claims(claims, errors);
+fn validate_social_post_claims(
+	claims: Option<&Value>,
+	source_refs: Option<&Value>,
+	evidence_digests: Option<&Value>,
+	allow_candidate_lineage: bool,
+	errors: &mut Vec<String>,
+) {
+	post::validate_social_post_claims(
+		claims,
+		source_refs,
+		evidence_digests,
+		allow_candidate_lineage,
+		errors,
+	);
 }
 
 fn validate_non_empty_string_list(value: Option<&Value>, label: &str, errors: &mut Vec<String>) {
@@ -137,10 +158,6 @@ fn non_empty_array(value: Option<&Value>) -> Option<&Vec<Value>> {
 
 fn is_empty_or_missing_array(value: Option<&Value>) -> bool {
 	common::is_empty_or_missing_array(value)
-}
-
-fn is_https_string(value: Option<&Value>) -> bool {
-	common::is_https_string(value)
 }
 
 fn is_https_string_array(value: &Value) -> bool {

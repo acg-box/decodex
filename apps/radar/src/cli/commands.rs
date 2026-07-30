@@ -12,7 +12,9 @@ use crate::{
 	cli::commands::{
 		bundle::RadarBundleCommand,
 		cache::RadarCacheGcCommand,
-		content::{RadarContentEligibilityCommand, RadarReviewNextCommand},
+		content::{
+			RadarContentEligibilityCommand, RadarContentPairCommitCommand, RadarReviewNextCommand,
+		},
 		ledger::RadarLedgerCommand,
 		refresh::{
 			RadarBackfillReleaseRangeCommand, RadarRefreshReleaseDeltaCommand,
@@ -32,6 +34,8 @@ pub(super) enum RadarSubcommand {
 	CacheGc(RadarCacheGcCommand),
 	/// Prove one reviewed queue subject is eligible for content consideration.
 	ContentEligibility(RadarContentEligibilityCommand),
+	/// Atomically commit one staged source-backed review and impact pair.
+	ContentPairCommit(RadarContentPairCommitCommand),
 	/// Select at most one queued subject for a source-review pass.
 	ReviewNext(RadarReviewNextCommand),
 	/// Refresh the upstream Codex review queue artifact.
@@ -53,6 +57,7 @@ impl RadarSubcommand {
 			Self::Validate(args) => args.run(),
 			Self::CacheGc(args) => args.run(),
 			Self::ContentEligibility(args) => args.run(),
+			Self::ContentPairCommit(args) => args.run(),
 			Self::ReviewNext(args) => args.run(),
 			Self::RefreshUpstreamQueue(args) => args.run(),
 			Self::RefreshReleaseDelta(args) => args.run(),

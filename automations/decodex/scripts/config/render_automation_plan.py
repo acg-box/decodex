@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Install Codex app automations from repo-local, privacy-safe manifests."""
+"""Render native Codex automation lifecycle inputs from checked-in manifests."""
 
 from __future__ import annotations
 
-from automation_sync.cli import main
+from automation_plan.cli import main
 
 
 if __name__ == "__main__":

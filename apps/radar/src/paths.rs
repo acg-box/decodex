@@ -18,8 +18,8 @@ pub(crate) const REVIEW_QUEUE_RELATIVE_PATH: &str = "github/review-queue/openai-
 pub(crate) const RETAINED_CACHE_COLLECTIONS: &[&str] = &[
 	"github/bundles",
 	"github/review-queue",
-	"github/reviews",
-	"github/impact",
+	"github/content-review-pairs",
+	"github/content-review-staging",
 	"github/control-plane-upgrades",
 	"site-content/signals",
 	"site-content/release-deltas",
@@ -28,8 +28,7 @@ pub(crate) const RETAINED_CACHE_COLLECTIONS: &[&str] = &[
 pub(crate) const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	".agent/automations/radar/cache/github/bundles",
 	".agent/automations/radar/cache/github/review-queue",
-	".agent/automations/radar/cache/github/reviews",
-	".agent/automations/radar/cache/github/impact",
+	".agent/automations/radar/cache/github/content-review-pairs",
 	".agent/automations/radar/cache/github/control-plane-upgrades",
 	".agent/automations/radar/cache/site-content/signals",
 	".agent/automations/radar/cache/site-content/release-deltas",

@@ -1600,11 +1600,14 @@ dependencies = [
  "clap",
  "color-eyre",
  "getrandom 0.4.2",
+ "libc",
+ "rustix 1.1.4",
  "serde",
  "serde_json",
  "sha2 0.11.0",
  "tempfile",
  "time",
+ "wait-timeout",
 ]
 
 [[package]]

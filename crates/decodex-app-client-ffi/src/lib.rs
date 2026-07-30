@@ -604,24 +604,9 @@ async fn execute_request(
 	match request {
 		Request::ListAccounts { .. } =>
 			to_value(AccountClient::new(profile).list().await.map_err(RequestFailure::Client)?),
-		Request::GetResetCards { account_id, .. } => {
-			let account_id = entity_id(&account_id)?;
-			to_value(
-				ResetCardClient::new(profile)
-					.list(account_id)
-					.await
-					.map_err(RequestFailure::Client)?,
-			)
-		},
-		Request::GetAccountProfile { account_id, include_email, .. } => {
-			let account_id = entity_id(&account_id)?;
-			to_value(
-				AccountClient::new(profile)
-					.profile(account_id, include_email)
-					.await
-					.map_err(RequestFailure::Client)?,
-			)
-		},
+		Request::GetResetCards { account_id, .. } => get_reset_cards(profile, account_id).await,
+		Request::GetAccountProfile { account_id, include_email, .. } =>
+			get_account_profile(profile, account_id, include_email).await,
 		Request::GetCodexAuthProjection { .. } => to_value(
 			AccountClient::new(profile)
 				.codex_auth_projection()
@@ -644,19 +629,16 @@ async fn execute_request(
 			expected_revision,
 			idempotency_key,
 			..
-		} => {
-			let account_id = entity_id(&account_id)?;
-			let descriptor =
-				ResetCardDescriptorDto::new(granted_at_unix_seconds, expires_at_unix_seconds)
-					.map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))?;
-			let expected_revision = revision(expected_revision)?;
-			let idempotency_key = parse_idempotency_key(idempotency_key)?;
-			let response = ResetCardClient::new(profile)
-				.consume(account_id, descriptor, expected_revision, idempotency_key)
-				.await
-				.map_err(RequestFailure::Client)?;
-			to_value(ResetCardConsumeDto::from(response))
-		},
+		} =>
+			consume_reset_card(
+				profile,
+				account_id,
+				granted_at_unix_seconds,
+				expires_at_unix_seconds,
+				expected_revision,
+				idempotency_key,
+			)
+			.await,
 		Request::EnrollAccount { operation_id, account_id, enabled, idempotency_key, .. } => {
 			let payload = CommandPayload::EnrollAccountFromSharedCodex {
 				operation_id: entity_id(&operation_id)?,
@@ -695,28 +677,17 @@ async fn execute_request(
 			expected_routing_revision,
 			idempotency_key,
 			..
-		} => {
-			let response = AccountClient::new(profile)
-				.set_fixed_account_selection(
-					entity_id(&account_id)?,
-					revision(expected_account_revision)?,
-					revision(expected_routing_revision)?,
-					parse_idempotency_key(idempotency_key)?,
-				)
-				.await
-				.map_err(RequestFailure::Client)?;
-			to_value(response)
-		},
-		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } => {
-			let response = AccountClient::new(profile)
-				.set_balanced_account_selection(
-					revision(expected_routing_revision)?,
-					parse_idempotency_key(idempotency_key)?,
-				)
-				.await
-				.map_err(RequestFailure::Client)?;
-			to_value(response)
-		},
+		} =>
+			set_fixed_selection(
+				profile,
+				account_id,
+				expected_account_revision,
+				expected_routing_revision,
+				idempotency_key,
+			)
+			.await,
+		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } =>
+			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
 		Request::RefreshAccount {
 			operation_id,
 			account_id,
@@ -736,17 +707,8 @@ async fn execute_request(
 			)
 			.await
 		},
-		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } => {
-			let response = AccountClient::new(profile)
-				.use_account_in_codex(
-					entity_id(&account_id)?,
-					revision(expected_revision)?,
-					parse_idempotency_key(idempotency_key)?,
-				)
-				.await
-				.map_err(RequestFailure::Client)?;
-			to_value(response)
-		},
+		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } =>
+			use_account_in_codex(profile, account_id, expected_revision, idempotency_key).await,
 		Request::FastModeStatus { .. } => {
 			let enabled = fast_mode::status().map_err(RequestFailure::FastMode)?;
 			to_value(FastModeData { enabled })
@@ -761,6 +723,104 @@ async fn execute_request(
 #[derive(Serialize)]
 struct FastModeData {
 	enabled: bool,
+}
+
+async fn get_reset_cards(
+	profile: ClientProfile,
+	account_id: String,
+) -> Result<Value, RequestFailure> {
+	to_value(
+		ResetCardClient::new(profile)
+			.list(entity_id(&account_id)?)
+			.await
+			.map_err(RequestFailure::Client)?,
+	)
+}
+
+async fn get_account_profile(
+	profile: ClientProfile,
+	account_id: String,
+	include_email: bool,
+) -> Result<Value, RequestFailure> {
+	to_value(
+		AccountClient::new(profile)
+			.profile(entity_id(&account_id)?, include_email)
+			.await
+			.map_err(RequestFailure::Client)?,
+	)
+}
+
+async fn consume_reset_card(
+	profile: ClientProfile,
+	account_id: String,
+	granted_at_unix_seconds: i64,
+	expires_at_unix_seconds: i64,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let descriptor = ResetCardDescriptorDto::new(granted_at_unix_seconds, expires_at_unix_seconds)
+		.map_err(|_| RequestFailure::Bridge(BridgeFailure::InvalidInput))?;
+	let response = ResetCardClient::new(profile)
+		.consume(
+			entity_id(&account_id)?,
+			descriptor,
+			revision(expected_revision)?,
+			parse_idempotency_key(idempotency_key)?,
+		)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(ResetCardConsumeDto::from(response))
+}
+
+async fn set_fixed_selection(
+	profile: ClientProfile,
+	account_id: String,
+	expected_account_revision: u64,
+	expected_routing_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let response = AccountClient::new(profile)
+		.set_fixed_account_selection(
+			entity_id(&account_id)?,
+			revision(expected_account_revision)?,
+			revision(expected_routing_revision)?,
+			parse_idempotency_key(idempotency_key)?,
+		)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(response)
+}
+
+async fn set_balanced_selection(
+	profile: ClientProfile,
+	expected_routing_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let response = AccountClient::new(profile)
+		.set_balanced_account_selection(
+			revision(expected_routing_revision)?,
+			parse_idempotency_key(idempotency_key)?,
+		)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(response)
+}
+
+async fn use_account_in_codex(
+	profile: ClientProfile,
+	account_id: String,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let response = AccountClient::new(profile)
+		.use_account_in_codex(
+			entity_id(&account_id)?,
+			revision(expected_revision)?,
+			parse_idempotency_key(idempotency_key)?,
+		)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(response)
 }
 
 async fn set_account_enabled(
