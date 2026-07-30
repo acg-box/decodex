@@ -4,7 +4,7 @@ import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
 	@MainActor
-	func testPanelWindowHostIsTransparentBehindSystemGlass() {
+	func testPanelWindowHostUsesStableDarkAppearanceBehindSeparatedCards() {
 		let window = NSWindow(
 			contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
 			styleMask: [.borderless],
@@ -18,6 +18,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 
 		XCTAssertFalse(window.isOpaque)
 		XCTAssertEqual(window.backgroundColor, .clear)
+		XCTAssertEqual(window.appearance?.name, .darkAqua)
 	}
 
 	@MainActor
