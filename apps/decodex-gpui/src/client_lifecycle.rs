@@ -845,11 +845,7 @@ impl ClientLifecycle {
 		let recovery = if is_disposable_corruption(error)
 			&& ClientCache::dispose_all(&cache_root).is_ok()
 		{
-			match ClientCache::open(
-				&cache_root,
-				self.cache_limits,
-				self.cache_authority.clone(),
-			) {
+			match ClientCache::open(&cache_root, self.cache_limits, self.cache_authority.clone()) {
 				Ok(cache) => {
 					self.cache = Some(cache);
 

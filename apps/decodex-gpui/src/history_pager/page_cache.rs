@@ -165,8 +165,7 @@ impl CacheRequest {
 		conversation_id: EntityId,
 		request_key: CacheRequestKey,
 	) -> Result<Self, CacheFailure> {
-		let request =
-			Self { authority: authority.identity.clone(), conversation_id, request_key };
+		let request = Self { authority: authority.identity.clone(), conversation_id, request_key };
 		validate_request(&request)?;
 
 		Ok(request)
@@ -321,21 +320,10 @@ impl HistoryPageCache {
 		let next_recency =
 			state.index.entries.iter().map(|entry| entry.recency).max().unwrap_or(0).checked_add(1);
 
-		Ok(Self {
-			root,
-			pages,
-			lock,
-			index: state.index,
-			hit_recency: Vec::new(),
-			next_recency,
-		})
+		Ok(Self { root, pages, lock, index: state.index, hit_recency: Vec::new(), next_recency })
 	}
 
-	pub(super) fn lookup(
-		&self,
-		request: &CacheRequest,
-		now_unix_seconds: i64,
-	) -> CacheLookup {
+	pub(super) fn lookup(&self, request: &CacheRequest, now_unix_seconds: i64) -> CacheLookup {
 		if let Err(failure) = validate_request(request) {
 			return CacheLookup::Failure(failure);
 		}
@@ -359,10 +347,8 @@ impl HistoryPageCache {
 			.ok_or_else(|| CacheFailure::new(CacheDiagnostic::RecencyExhausted))?;
 
 		self.next_recency = Some(next_recency);
-		if let Some(position) = self
-			.hit_recency
-			.iter()
-			.position(|(identity, _)| identity == &hit.identity)
+		if let Some(position) =
+			self.hit_recency.iter().position(|(identity, _)| identity == &hit.identity)
 		{
 			self.hit_recency[position].1 = recency;
 		} else {
@@ -425,12 +411,8 @@ impl HistoryPageCache {
 		validate_directory(&self.pages)?;
 		validate_known_shape(&self.root, &self.pages)?;
 
-		let Some(entry) = self
-			.index
-			.entries
-			.iter()
-			.find(|entry| entry_matches_request(entry, request))
-			.cloned()
+		let Some(entry) =
+			self.index.entries.iter().find(|entry| entry_matches_request(entry, request)).cloned()
 		else {
 			return Ok(CacheLookup::Miss(CacheDiagnostic::NotFound));
 		};
@@ -443,9 +425,9 @@ impl HistoryPageCache {
 			|| metadata.byte_length
 				!= usize::try_from(entry.byte_length)
 					.map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?
-			{
-				return Err(CacheFailure::new(CacheDiagnostic::Integrity));
-			}
+		{
+			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
+		}
 
 		Ok(CacheLookup::Hit(CacheHit {
 			identity: entry.identity,
@@ -467,13 +449,9 @@ impl HistoryPageCache {
 		if state.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
-		state =
-			clean_known_remnants(&self.root, &self.pages, &self.lock, state, faults)?;
+		state = clean_known_remnants(&self.root, &self.pages, &self.lock, state, faults)?;
 
-		let reinitialized = self
-			.next_recency
-			.and_then(|recency| recency.checked_add(1))
-			.is_none();
+		let reinitialized = self.next_recency.and_then(|recency| recency.checked_add(1)).is_none();
 		let (mut candidate, new_recency, following_recency) = if reinitialized {
 			(CacheIndex::empty(), 1, 2)
 		} else {
@@ -506,8 +484,7 @@ impl HistoryPageCache {
 		if !candidate.entries.iter().any(|entry| {
 			entry_matches_request(entry, request)
 				&& entry.identity.page_sha256 == page_sha256
-				&& entry.fresh_received_at_unix_seconds
-					== fresh_received_at_unix_seconds
+				&& entry.fresh_received_at_unix_seconds == fresh_received_at_unix_seconds
 		}) {
 			return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 		}
@@ -558,12 +535,7 @@ impl HistoryPageCache {
 		faults: &impl FaultInjector,
 	) -> Result<CommittedCachePublication, (PreparedCachePublication, CacheFailure)> {
 		let commit_result = faults.check(DurabilityEdge::IndexPublish).and_then(|()| {
-			rename_at(
-				self.root.as_raw_fd(),
-				INDEX_STAGE_NAME,
-				self.root.as_raw_fd(),
-				INDEX_NAME,
-			)
+			rename_at(self.root.as_raw_fd(), INDEX_STAGE_NAME, self.root.as_raw_fd(), INDEX_NAME)
 		});
 		if let Err(failure) = commit_result {
 			return Err((prepared, failure));
@@ -593,13 +565,8 @@ impl HistoryPageCache {
 		if published.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
-		let cleaned = clean_newly_unreferenced_pages(
-			&self.root,
-			&self.pages,
-			&self.lock,
-			published,
-			faults,
-		)?;
+		let cleaned =
+			clean_newly_unreferenced_pages(&self.root, &self.pages, &self.lock, published, faults)?;
 		if cleaned.index != self.index {
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
@@ -634,14 +601,14 @@ impl HistoryPageCache {
 			sync_file(&self.pages)?;
 		}
 
-		let discarded =
-			load_validated_cache_state(&self.root, &self.pages, &self.lock)?;
+		let discarded = load_validated_cache_state(&self.root, &self.pages, &self.lock)?;
 		if discarded.index != self.index
 			|| discarded.inventory.index_stage_present
 			|| discarded.inventory.page_stage_present
-			|| prepared.created_page_digest.as_ref().is_some_and(|digest| {
-				discarded.inventory.page_files.contains_key(digest)
-			})
+			|| prepared
+				.created_page_digest
+				.as_ref()
+				.is_some_and(|digest| discarded.inventory.page_files.contains_key(digest))
 		{
 			return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 		}
@@ -696,17 +663,13 @@ fn load_validated_cache_state(
 	let root_names = validated_directory_names(root, DirectoryShape::Root)?;
 	let page_names = validated_directory_names(pages, DirectoryShape::Pages)?;
 	if !root_names.iter().any(|name| name.as_slice() == LOCK_NAME.to_bytes())
-		|| !root_names
-			.iter()
-			.any(|name| name.as_slice() == PAGES_DIRECTORY_NAME.to_bytes())
+		|| !root_names.iter().any(|name| name.as_slice() == PAGES_DIRECTORY_NAME.to_bytes())
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
 
 	let (index, index_bytes, index_present) = read_index(root)?;
-	if root_names.iter().any(|name| name.as_slice() == INDEX_NAME.to_bytes())
-		!= index_present
-	{
+	if root_names.iter().any(|name| name.as_slice() == INDEX_NAME.to_bytes()) != index_present {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
 	let index_stage_present =
@@ -746,11 +709,11 @@ fn load_validated_cache_state(
 
 	Ok(ValidatedCacheState {
 		index,
-			inventory: CacheInventory {
-				page_files,
-				physical_bytes,
-				index_stage_present,
-				page_stage_present,
+		inventory: CacheInventory {
+			page_files,
+			physical_bytes,
+			index_stage_present,
+			page_stage_present,
 		},
 	})
 }
@@ -857,8 +820,7 @@ fn validate_page_identity(identity: &PageIdentity) -> Result<(), CacheFailure> {
 fn validate_request_key(request_key: &CacheRequestKey) -> Result<(), CacheFailure> {
 	match request_key {
 		CacheRequestKey::Head => Ok(()),
-		CacheRequestKey::After(after)
-			if bounded_identity(after.as_str(), MAX_CURSOR_BYTES) =>
+		CacheRequestKey::After(after) if bounded_identity(after.as_str(), MAX_CURSOR_BYTES) =>
 			Ok(()),
 		CacheRequestKey::After(_) => Err(CacheFailure::new(CacheDiagnostic::InvalidInput)),
 	}
@@ -892,10 +854,7 @@ fn page_identity_sort_key(identity: &PageIdentity) -> Vec<u8> {
 	key
 }
 
-fn conversation_sort_key(
-	authority: &AuthorityIdentity,
-	conversation_id: &EntityId,
-) -> Vec<u8> {
+fn conversation_sort_key(authority: &AuthorityIdentity, conversation_id: &EntityId) -> Vec<u8> {
 	let mut key = Vec::new();
 	append_sort_field(&mut key, authority.stable_server_id.as_str());
 	key.extend_from_slice(&authority.protocol_major.to_be_bytes());
@@ -915,8 +874,7 @@ fn validated_file_length(
 	name: &CStr,
 	maximum: usize,
 ) -> Result<usize, CacheFailure> {
-	let file = open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY)
-		.map_err(|_| io_failure())?;
+	let file = open_file_at(parent.as_raw_fd(), name, libc::O_RDONLY).map_err(|_| io_failure())?;
 	validate_regular_file(&file, Some(maximum))?;
 	let status = file_status(&file)?;
 
@@ -930,10 +888,8 @@ fn read_validated_page(
 	if !is_digest_name(digest.as_bytes()) {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
-	let name =
-		CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
-	let file = open_file_at(pages.as_raw_fd(), &name, libc::O_RDONLY)
-		.map_err(|_| io_failure())?;
+	let name = CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+	let file = open_file_at(pages.as_raw_fd(), &name, libc::O_RDONLY).map_err(|_| io_failure())?;
 	validate_regular_file(&file, Some(MAX_PAGE_BYTES))?;
 	let bytes = read_bounded(&file, MAX_PAGE_BYTES)?;
 	if bytes.is_empty() || sha256_hex(&bytes) != digest {
@@ -941,22 +897,19 @@ fn read_validated_page(
 	}
 	let page: ConversationHistoryPage = serde_json::from_slice(&bytes)
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
-	let (canonical, canonical_digest) = page_bytes_and_digest(&page)
-		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+	let (canonical, canonical_digest) =
+		page_bytes_and_digest(&page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	if canonical != bytes || canonical_digest != digest {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
 	let item_count = page.items.len();
 
-	Ok((
-		page,
-		ValidatedPageFile { byte_length: bytes.len(), item_count },
-	))
+	Ok((page, ValidatedPageFile { byte_length: bytes.len(), item_count }))
 }
 
 fn serialize_index(index: &CacheIndex) -> Result<Vec<u8>, CacheFailure> {
-	let bytes = serde_json::to_vec(index)
-		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+	let bytes =
+		serde_json::to_vec(index).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	if bytes.is_empty() || bytes.len() > MAX_INDEX_BYTES {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
@@ -980,24 +933,20 @@ fn merge_hit_recencies(index: &mut CacheIndex, hit_recencies: &[(PageIdentity, u
 }
 
 fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), CacheFailure> {
-	index.entries.retain(|entry| {
-		is_fresh_eligible(entry.fresh_received_at_unix_seconds, now_unix_seconds)
-	});
+	index
+		.entries
+		.retain(|entry| is_fresh_eligible(entry.fresh_received_at_unix_seconds, now_unix_seconds));
 
 	let conversation_keys = index
 		.entries
 		.iter()
 		.map(|entry| {
-			conversation_sort_key(
-				&entry.identity.authority,
-				&entry.identity.conversation_id,
-			)
+			conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 		})
 		.collect::<BTreeSet<_>>();
 	for conversation_key in conversation_keys {
 		loop {
-			let (pages, items, bytes) =
-				conversation_totals(index, &conversation_key)?;
+			let (pages, items, bytes) = conversation_totals(index, &conversation_key)?;
 			if pages <= MAX_CONVERSATION_PAGES
 				&& items <= MAX_CONVERSATION_ITEMS
 				&& bytes <= MAX_CONVERSATION_BYTES
@@ -1005,10 +954,8 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 				break;
 			}
 			remove_oldest_entry(index, |entry| {
-				conversation_sort_key(
-					&entry.identity.authority,
-					&entry.identity.conversation_id,
-				) == conversation_key
+				conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
+					== conversation_key
 			})?;
 		}
 	}
@@ -1016,10 +963,8 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 	while conversation_count(index) > MAX_CACHE_CONVERSATIONS {
 		let mut newest_by_conversation = BTreeMap::<Vec<u8>, u64>::new();
 		for entry in &index.entries {
-			let key = conversation_sort_key(
-				&entry.identity.authority,
-				&entry.identity.conversation_id,
-			);
+			let key =
+				conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id);
 			newest_by_conversation
 				.entry(key)
 				.and_modify(|recency| *recency = (*recency).max(entry.recency))
@@ -1031,10 +976,8 @@ fn evict_to_bounds(index: &mut CacheIndex, now_unix_seconds: i64) -> Result<(), 
 			.map(|(key, _)| key)
 			.ok_or_else(|| CacheFailure::new(CacheDiagnostic::Integrity))?;
 		index.entries.retain(|entry| {
-			conversation_sort_key(
-				&entry.identity.authority,
-				&entry.identity.conversation_id,
-			) != conversation
+			conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
+				!= conversation
 		});
 	}
 
@@ -1067,10 +1010,8 @@ fn conversation_totals(
 	let mut items = 0_usize;
 	let mut bytes = 0_usize;
 	for entry in &index.entries {
-		if conversation_sort_key(
-			&entry.identity.authority,
-			&entry.identity.conversation_id,
-		) != conversation_key
+		if conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
+			!= conversation_key
 		{
 			continue;
 		}
@@ -1091,10 +1032,7 @@ fn conversation_count(index: &CacheIndex) -> usize {
 		.entries
 		.iter()
 		.map(|entry| {
-			conversation_sort_key(
-				&entry.identity.authority,
-				&entry.identity.conversation_id,
-			)
+			conversation_sort_key(&entry.identity.authority, &entry.identity.conversation_id)
 		})
 		.collect::<BTreeSet<_>>()
 		.len()
@@ -1139,11 +1077,7 @@ fn eviction_order(left: &IndexEntry, right: &IndexEntry) -> Ordering {
 }
 
 fn referenced_digests(index: &CacheIndex) -> BTreeSet<String> {
-	index
-		.entries
-		.iter()
-		.map(|entry| entry.identity.page_sha256.clone())
-		.collect()
+	index.entries.iter().map(|entry| entry.identity.page_sha256.clone()).collect()
 }
 
 fn clean_known_remnants(
@@ -1168,8 +1102,8 @@ fn clean_known_remnants(
 		if referenced.contains(digest) {
 			continue;
 		}
-		let name =
-			CString::new(digest.as_str()).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+		let name = CString::new(digest.as_str())
+			.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 		unlink_at(pages.as_raw_fd(), &name)?;
 		pages_changed = true;
 	}
@@ -1185,11 +1119,7 @@ fn clean_known_remnants(
 	if cleaned.index != state.index
 		|| cleaned.inventory.index_stage_present
 		|| cleaned.inventory.page_stage_present
-		|| cleaned
-			.inventory
-			.page_files
-			.keys()
-			.any(|digest| !referenced.contains(digest))
+		|| cleaned.inventory.page_files.keys().any(|digest| !referenced.contains(digest))
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
@@ -1210,8 +1140,8 @@ fn clean_newly_unreferenced_pages(
 		if referenced.contains(digest) {
 			continue;
 		}
-		let name =
-			CString::new(digest.as_str()).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+		let name = CString::new(digest.as_str())
+			.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 		unlink_at(pages.as_raw_fd(), &name)?;
 		removed = true;
 	}
@@ -1221,11 +1151,7 @@ fn clean_newly_unreferenced_pages(
 	}
 	let cleaned = load_validated_cache_state(root, pages, lock)?;
 	if cleaned.index != state.index
-		|| cleaned
-			.inventory
-			.page_files
-			.keys()
-			.any(|digest| !referenced.contains(digest))
+		|| cleaned.inventory.page_files.keys().any(|digest| !referenced.contains(digest))
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
@@ -1251,12 +1177,8 @@ fn publish_page(
 	let digest_name =
 		CString::new(digest).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	faults.check(DurabilityEdge::PagePublish)?;
-	let created = link_create_only(
-		pages.as_raw_fd(),
-		PAGE_STAGE_NAME,
-		pages.as_raw_fd(),
-		&digest_name,
-	)?;
+	let created =
+		link_create_only(pages.as_raw_fd(), PAGE_STAGE_NAME, pages.as_raw_fd(), &digest_name)?;
 	unlink_at(pages.as_raw_fd(), PAGE_STAGE_NAME)?;
 	verify_page_target(pages, digest, bytes)?;
 	faults.check(DurabilityEdge::PagesSync)?;
@@ -1265,11 +1187,7 @@ fn publish_page(
 	Ok(created)
 }
 
-fn stage_index(
-	root: &File,
-	bytes: &[u8],
-	faults: &impl FaultInjector,
-) -> Result<(), CacheFailure> {
+fn stage_index(root: &File, bytes: &[u8], faults: &impl FaultInjector) -> Result<(), CacheFailure> {
 	let stage = create_new_file_at(root, INDEX_STAGE_NAME)?;
 	write_all(&stage, bytes)?;
 	validate_regular_file(&stage, Some(bytes.len()))?;
@@ -1295,14 +1213,10 @@ fn create_new_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> 
 	Ok(file)
 }
 
-fn verify_page_target(
-	pages: &File,
-	digest: &str,
-	expected: &[u8],
-) -> Result<(), CacheFailure> {
+fn verify_page_target(pages: &File, digest: &str, expected: &[u8]) -> Result<(), CacheFailure> {
 	let (page, metadata) = read_validated_page(pages, digest)?;
-	let bytes = serde_json::to_vec(&page)
-		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+	let bytes =
+		serde_json::to_vec(&page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	if bytes != expected || metadata.byte_length != expected.len() {
 		return Err(CacheFailure::new(CacheDiagnostic::Integrity));
 	}
@@ -1317,10 +1231,7 @@ fn validate_known_shape(root: &File, pages: &File) -> Result<(), CacheFailure> {
 	Ok(())
 }
 
-fn validate_directory_entries(
-	directory: &File,
-	shape: DirectoryShape,
-) -> Result<(), CacheFailure> {
+fn validate_directory_entries(directory: &File, shape: DirectoryShape) -> Result<(), CacheFailure> {
 	validated_directory_names(directory, shape).map(|_| ())
 }
 
@@ -1386,8 +1297,7 @@ fn directory_name_is_known(shape: DirectoryShape, name: &[u8]) -> bool {
 			PAGES_DIRECTORY_NAME.to_bytes(),
 		]
 		.contains(&name),
-		DirectoryShape::Pages =>
-			name == PAGE_STAGE_NAME.to_bytes() || is_digest_name(name),
+		DirectoryShape::Pages => name == PAGE_STAGE_NAME.to_bytes() || is_digest_name(name),
 	}
 }
 
@@ -1416,12 +1326,10 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 	{
 		return Err(CacheFailure::new(CacheDiagnostic::InvalidInput));
 	}
-	let external_base = path
-		.parent()
-		.ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
-	let cache_parent_leaf = path
-		.file_name()
-		.ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
+	let external_base =
+		path.parent().ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
+	let cache_parent_leaf =
+		path.file_name().ok_or_else(|| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
 	if !matches!(
 		path.components().next_back(),
 		Some(Component::Normal(name)) if name == cache_parent_leaf
@@ -1431,15 +1339,13 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 	let cache_parent_leaf = CString::new(cache_parent_leaf.as_bytes())
 		.map_err(|_| CacheFailure::new(CacheDiagnostic::InvalidInput))?;
 
-	let resolved_external_base =
-		std::fs::canonicalize(external_base).map_err(|_| io_failure())?;
+	let resolved_external_base = std::fs::canonicalize(external_base).map_err(|_| io_failure())?;
 	let mut resolved_components = resolved_external_base.components();
 	if !matches!(resolved_components.next(), Some(Component::RootDir)) {
 		return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
 	}
 
-	let mut directory =
-		open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?;
+	let mut directory = open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?;
 	validate_ancestor_directory(&directory)?;
 	for component in resolved_components {
 		let Component::Normal(name) = component else {
@@ -1447,8 +1353,7 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 		};
 		let name = CString::new(name.as_bytes())
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::UnsafeShape))?;
-		directory = open_directory_at(directory.as_raw_fd(), &name)
-			.map_err(|_| io_failure())?;
+		directory = open_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?;
 		validate_ancestor_directory(&directory)?;
 	}
 
@@ -1460,10 +1365,7 @@ fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, Cache
 		Ok(directory) => (directory, false),
 		Err(error) if error.raw_os_error() == Some(libc::ENOENT) => {
 			create_directory_at(parent.as_raw_fd(), name)?;
-			(
-				open_directory_at(parent.as_raw_fd(), name).map_err(|_| io_failure())?,
-				true,
-			)
+			(open_directory_at(parent.as_raw_fd(), name).map_err(|_| io_failure())?, true)
 		},
 		Err(_) => return Err(io_failure()),
 	};
@@ -1478,10 +1380,8 @@ fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, Cache
 fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> {
 	let file = match create_file_at(parent.as_raw_fd(), name) {
 		Ok(file) => file,
-		Err(error) if error.raw_os_error() == Some(libc::EEXIST) => {
-			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR)
-				.map_err(|_| io_failure())?
-		},
+		Err(error) if error.raw_os_error() == Some(libc::EEXIST) =>
+			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR).map_err(|_| io_failure())?,
 		Err(_) => return Err(io_failure()),
 	};
 	validate_regular_file(&file, Some(0))?;
@@ -1558,8 +1458,7 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 				parent,
 				name.as_ptr(),
 				libc::O_RDWR
-					| libc::O_CREAT
-					| libc::O_EXCL
+					| libc::O_CREAT | libc::O_EXCL
 					| libc::O_NOFOLLOW
 					| libc::O_CLOEXEC
 					| libc::O_NONBLOCK,
@@ -1572,8 +1471,7 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 		let error = io::Error::last_os_error();
 		match error.raw_os_error() {
 			Some(libc::EINTR) => interrupted = true,
-			Some(libc::EEXIST) if interrupted =>
-				return open_file_at(parent, name, libc::O_RDWR),
+			Some(libc::EEXIST) if interrupted => return open_file_at(parent, name, libc::O_RDWR),
 			_ => return Err(error),
 		}
 	}
@@ -1668,12 +1566,7 @@ fn rename_at(
 	let mut interrupted = false;
 	loop {
 		if unsafe {
-			libc::renameat(
-				source_parent,
-				source_name.as_ptr(),
-				target_parent,
-				target_name.as_ptr(),
-			)
+			libc::renameat(source_parent, source_name.as_ptr(), target_parent, target_name.as_ptr())
 		} == 0
 		{
 			return Ok(());
@@ -1743,8 +1636,7 @@ fn file_status(file: &File) -> Result<libc::stat, CacheFailure> {
 fn read_bounded(file: &File, maximum: usize) -> Result<Vec<u8>, CacheFailure> {
 	let status = file_status(file)?;
 	let length =
-		usize::try_from(status.st_size)
-			.map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?;
+		usize::try_from(status.st_size).map_err(|_| CacheFailure::new(CacheDiagnostic::Bounds))?;
 	if length > maximum {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
@@ -1777,8 +1669,8 @@ fn read_bounded(file: &File, maximum: usize) -> Result<Vec<u8>, CacheFailure> {
 fn page_bytes_and_digest(
 	page: &ConversationHistoryPage,
 ) -> Result<(Vec<u8>, String), CacheFailure> {
-	let bytes = serde_json::to_vec(page)
-		.map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
+	let bytes =
+		serde_json::to_vec(page).map_err(|_| CacheFailure::new(CacheDiagnostic::Integrity))?;
 	if page.items.len() > MAX_PAGE_ITEMS || bytes.len() > MAX_PAGE_BYTES {
 		return Err(CacheFailure::new(CacheDiagnostic::Bounds));
 	}
@@ -1889,8 +1781,7 @@ mod tests {
 	fn request() -> CacheRequest {
 		CacheRequest::head(
 			&authority(),
-			EntityId::new("history-cache-conversation")
-				.expect("conversation identity is bounded"),
+			EntityId::new("history-cache-conversation").expect("conversation identity is bounded"),
 		)
 		.expect("cache request is valid")
 	}
@@ -1926,12 +1817,10 @@ mod tests {
 		const NOW: i64 = 10_000;
 
 		let authority = authority().identity;
-		let entry = |
-			conversation_id: &str,
-			request_key: CacheRequestKey,
-			digest: u8,
-			recency: u64,
-		| IndexEntry {
+		let entry = |conversation_id: &str,
+		             request_key: CacheRequestKey,
+		             digest: u8,
+		             recency: u64| IndexEntry {
 			identity: PageIdentity {
 				authority: authority.clone(),
 				conversation_id: EntityId::new(conversation_id)
@@ -1955,12 +1844,7 @@ mod tests {
 						.expect("history cursor is bounded"),
 				)
 			};
-			pages.entries.push(entry(
-				"bounded-pages",
-				request_key,
-				number,
-				u64::from(number),
-			));
+			pages.entries.push(entry("bounded-pages", request_key, number, u64::from(number)));
 		}
 
 		evict_to_bounds(&mut pages, NOW).expect("page bounds evict deterministically");
@@ -1977,8 +1861,7 @@ mod tests {
 			entry(
 				"oldest-conversation",
 				CacheRequestKey::After(
-					HistoryCursorToken::new("oldest-next")
-						.expect("history cursor is bounded"),
+					HistoryCursorToken::new("oldest-next").expect("history cursor is bounded"),
 				),
 				11,
 				2,
@@ -1999,9 +1882,12 @@ mod tests {
 
 		assert_eq!(conversation_count(&conversations), 8);
 		assert_eq!(conversations.entries.len(), 8);
-		assert!(conversations.entries.iter().all(|entry| {
-			entry.identity.conversation_id.as_str() != "oldest-conversation"
-		}));
+		assert!(
+			conversations
+				.entries
+				.iter()
+				.all(|entry| { entry.identity.conversation_id.as_str() != "oldest-conversation" })
+		);
 
 		let lower_identity = entry("identity-tie", CacheRequestKey::Head, 40, 20);
 		let higher_identity = entry("identity-tie", CacheRequestKey::Head, 41, 20);
@@ -2014,14 +1900,8 @@ mod tests {
 				.cmp(higher_identity.identity.page_sha256.as_bytes()),
 			Ordering::Less,
 		);
-		assert_eq!(
-			eviction_order(&lower_identity, &higher_identity),
-			Ordering::Less,
-		);
-		assert_eq!(
-			eviction_order(&higher_identity, &lower_identity),
-			Ordering::Greater,
-		);
+		assert_eq!(eviction_order(&lower_identity, &higher_identity), Ordering::Less,);
+		assert_eq!(eviction_order(&higher_identity, &lower_identity), Ordering::Greater,);
 	}
 
 	#[derive(Clone, Copy, Debug)]
@@ -2152,23 +2032,19 @@ mod tests {
 				"{name} remains a symbolic link",
 			);
 			match boundary {
-				NoFollowBoundary::LockFile =>
-					assert!(
-						fs::read(&target)
-							.expect("file link target remains readable")
-							.is_empty(),
-						"{name} target must not be followed",
-					),
+				NoFollowBoundary::LockFile => assert!(
+					fs::read(&target).expect("file link target remains readable").is_empty(),
+					"{name} target must not be followed",
+				),
 				NoFollowBoundary::FinalParentLeaf
 				| NoFollowBoundary::CacheRoot
-				| NoFollowBoundary::PagesDirectory =>
-					assert!(
-						fs::read_dir(&target)
-							.expect("directory link target remains readable")
-							.next()
-							.is_none(),
-						"{name} target must not be followed",
-					),
+				| NoFollowBoundary::PagesDirectory => assert!(
+					fs::read_dir(&target)
+						.expect("directory link target remains readable")
+						.next()
+						.is_none(),
+					"{name} target must not be followed",
+				),
 			}
 		}
 	}
@@ -2181,11 +2057,9 @@ mod tests {
 		let page = page("cached-next");
 		let fresh_received_at = 10_000;
 		let expected_bytes: &[u8] = br#"{"items":[],"next_cursor":"cached-next"}"#;
-		let expected_digest =
-			"72908abdf71e80cf521b7dd94147f08d64e73d9d5a81544fea93391fed46fbcf";
+		let expected_digest = "72908abdf71e80cf521b7dd94147f08d64e73d9d5a81544fea93391fed46fbcf";
 		let serialized_bytes = serde_json::to_vec(&page).expect("page serializes");
-		let page_path =
-			parent.join("history-page-cache-v1").join("pages").join(expected_digest);
+		let page_path = parent.join("history-page-cache-v1").join("pages").join(expected_digest);
 		let mut cache =
 			HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION).expect("cache opens");
 
@@ -2194,10 +2068,7 @@ mod tests {
 		publish(&mut cache, &request, &page, fresh_received_at);
 
 		assert_eq!(cache.index.entries.len(), 1);
-		assert_eq!(
-			cache.index.entries[0].identity.page_sha256.as_str(),
-			expected_digest
-		);
+		assert_eq!(cache.index.entries[0].identity.page_sha256.as_str(), expected_digest);
 		let persisted_bytes = fs::read(&page_path).expect("published page is readable");
 
 		assert_eq!(persisted_bytes.as_slice(), expected_bytes);
@@ -2298,11 +2169,11 @@ mod tests {
 							&NoFaults,
 						)
 						.expect("replacement prepares");
-					let committed =
-						match cache.commit_publication_with_faults(prepared, &NoFaults) {
-							Ok(committed) => committed,
-							Err(_) => panic!("replacement index commits"),
-						};
+					let committed = match cache.commit_publication_with_faults(prepared, &NoFaults)
+					{
+						Ok(committed) => committed,
+						Err(_) => panic!("replacement index commits"),
+					};
 					let failure = cache
 						.finish_publication_with_faults(
 							committed,
@@ -2327,8 +2198,7 @@ mod tests {
 				DurabilityCase::PostIndexCleanup =>
 					match reopened.lookup(&request, fresh_received_at) {
 						CacheLookup::Hit(hit) => assert_eq!(hit.page(), &candidate),
-						other =>
-							panic!("the committed mapping must remain recoverable: {other:?}"),
+						other => panic!("the committed mapping must remain recoverable: {other:?}"),
 					},
 			}
 		}
