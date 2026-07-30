@@ -14,6 +14,7 @@ from automation_eval.validators import (
     validate_prompt_required_reads,
     validate_prompt_text,
     validate_required_paths,
+    validate_xurl_runtime,
 )
 
 
@@ -42,6 +43,8 @@ def evaluate_automation(
     validate_required_paths(automation, result)
     validate_prompt_required_reads(prompt, automation, result)
     validate_cache_prefixes(automation, cache_root, allowed_external_prefixes, result)
+    if automation_id == "decodex-xurl-publisher":
+        validate_xurl_runtime(result, repo_only=repo_only)
 
     if repo_only:
         return result

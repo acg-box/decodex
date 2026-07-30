@@ -13,7 +13,8 @@ pub(crate) use self::{
 	bundle::{RadarBundleBuildRequest, RadarBundleValidateRequest},
 	cache::{RadarCacheGcReport, RadarCacheGcRequest},
 	content::{
-		RadarContentEligibilityReport, RadarContentEligibilityRequest, RadarQueueGeneration,
+		RadarContentEligibilityReport, RadarContentEligibilityRequest,
+		RadarContentPairCommitReport, RadarContentPairCommitRequest, RadarQueueGeneration,
 		RadarReviewNextReport, RadarReviewNextRequest, RadarSelectedSubject, RadarSourceRef,
 	},
 	ledger::{

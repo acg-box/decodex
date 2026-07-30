@@ -58,25 +58,36 @@ Automation source is checked in under:
 
 - `automations/upstream/`: current standalone upstream maintenance, independent
   review/landing, health supervision, deterministic cursor/lease state, and policy.
-- `automations/decodex/`: the current Content Manager and browser Publisher
+- `automations/decodex/`: the current Content Manager and xurl Publisher
   definitions, shared config tooling, Publisher schemas, and skills.
 - `automations/radar/`: reusable Radar evidence tooling and skills.
 
-These are portable sources. Live Codex App configs under `$CODEX_HOME/automations/*/automation.toml` are generated and machine-local. Source manifests use relative paths and `{repo_root}` placeholders. Runtime cwd is always the primary checkout owning `main`: the installer rejects linked-worktree runtime roots and the evaluator treats any managed `.worktrees` cwd as a P0 failure. The installer also refuses configured private fragments such as absolute user-home paths, auth files, account files, or runtime databases (`automations/decodex/README.md`).
+These are portable sources. Live Codex App configs are machine-local and owned by
+the native automation lifecycle. Source manifests use relative paths and
+`{repo_root}` placeholders. Runtime cwd is always the primary checkout owning
+`main`: the plan renderer rejects linked-worktree runtime roots and the evaluator
+treats any managed `.worktrees` cwd as a P0 failure. The renderer also refuses
+configured private fragments such as absolute user-home paths, auth files, account
+files, or runtime databases (`automations/decodex/README.md`).
 
 Commands:
 
 ```sh
-python3 automations/decodex/scripts/config/sync_automations.py
-python3 automations/decodex/scripts/config/sync_automations.py --apply
+python3 automations/decodex/scripts/config/render_automation_plan.py --json
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
 python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
+The renderer cannot write scheduler state. Apply each planned definition only with
+the Codex native automation lifecycle tool, then read it back. Codex App owns its
+`created_at` and `updated_at` metadata. The rendered retirement list contains only
+`decodex-x-browser-publisher`; Health deletes that exact obsolete definition and
+verifies its absence without listing or changing unrelated definitions.
+
 The upstream operating loop has three explicit owners:
 
-- Upstream Maintainer polls hourly, preserves a complete first-parent cursor, observes
+- Upstream Maintainer polls every six hours, preserves a complete first-parent cursor, observes
   stable and prerelease tags, generates stable and experimental schemas from the exact
   installed Codex executable, and claims one change. It can edit and stage source.
   The checked-in state wrapper alone can run sandboxed tests, invoke
@@ -94,15 +105,22 @@ The upstream operating loop has three explicit owners:
 
 The content loop has two explicit owners:
 
-- Content Manager runs every six hours. It uses official sources, internal Radar
+- Content Manager runs once per day. It uses official sources, internal Radar
   evidence, landed Decodex evidence, and bounded outcome records to produce one
   source-backed candidate or one justified quality skip.
-- X Browser Publisher runs every two hours. It validates and reserves one candidate,
-  publishes through browser control as `@decodexspace`, reads the final URL, restores
-  the initial X account, and records due 24-hour or seven-day outcomes.
+- X Publisher runs three times per day. Each task processes at most one
+  publication, due 24-hour outcome, or due seven-day outcome. It validates and reserves
+  one candidate, delegates all X access to the pinned `decodex-publisher` xurl
+  entrypoint, verifies the exact `decodexspace` identity and created post, and
+  records one due 24-hour or seven-day outcome.
+- The five fixed definitions total 12 `high` task wakes per day: 4 Maintainer, 2
+  Reviewer, 2 Health, 1 Content Manager, and 3 Publisher. This is 360 wakes in 30
+  days and 372 wakes in 31 days. The three Publisher windows do not change the
+  one-post-per-day limit or the X API ceilings of $1.20 per 30 days, $1.24 per 31
+  days, and $1.25 per calendar month.
 - Upstream Health supervises all five managed definitions and queues a bounded
   `content_loop_degraded` code-improvement candidate when content validation, strategy,
-  candidate handling, outcome collection, or account restoration misses its service
+  candidate handling, outcome collection, or xurl publication misses its service
   level.
 
 None of these tasks uses Decodex server, MCP, Program Intake, Linear, or tracker state.
@@ -112,14 +130,10 @@ per-run resources, not automation bindings. Upstream text is untrusted data and 
 never executed. Candidate code runs only in the wrapper's credential-free,
 external-network-denied macOS sandbox. Generated state is bounded, local-only, and
 excludes prompt text, logs, credentials, private account identifiers, and personal
-data. Local browser evidence may contain only the two schema-bound public X handles
-that prove account switching and restoration. Social and strategy records are never
-committed or archived to Git.
-
-The old Publisher, Radar review, release curator, retention, health evaluator, daily
-review, Manager, and weekly growth task graph remains retired. The current
-`decodex-content-manager` and `decodex-x-browser-publisher` definitions are a new
-two-task contract and do not consume legacy task state.
+data. The xurl ledger stores only bounded operation metadata, response digests,
+verified public post identity, and cost ceilings. Social and strategy records are
+never committed or archived to Git. The managed portfolio contains only the three
+upstream tasks plus `decodex-content-manager` and `decodex-xurl-publisher`.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 
@@ -155,15 +169,18 @@ Source entrypoints:
 - `social_post/v1`
 - `social_outcome/v1`
 - `social_strategy/v1`
-- one serialized X browser lease
+- one serialized xurl publication and observation state machine
+- one-post-per-day and $1.25-per-month cost-ceiling enforcement
 - social artifact validation and reservation workflows
 
 Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
 Publisher consumes Radar handoff evidence, but must not refresh upstream state or
-perform fresh upstream source analysis (`automations/decodex/README.md`). X reads and
-writes use browser control only. X MCP and X API are outside this workflow. See
-[Radar Publisher contracts](radar-publisher-contracts.md) for reservation and social
-artifact boundaries.
+perform fresh upstream source analysis (`automations/decodex/README.md`). All X reads
+and writes use the fixed xurl entrypoint. Browser control, X MCP, direct HTTP, and
+account switching are outside this workflow. The normal publication ceiling is
+$0.030; a full post plus 24-hour and seven-day observation lifecycle is $0.040.
+See [Radar Publisher contracts](radar-publisher-contracts.md) for reservation,
+budget, and social artifact boundaries.
 
 Example command:
 

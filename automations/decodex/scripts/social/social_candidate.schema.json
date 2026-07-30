@@ -43,7 +43,6 @@
         "release_rollup",
         "practical_explainer",
         "operator_impact",
-        "thread",
         "watch_note"
       ]
     },
@@ -60,8 +59,9 @@
       "minItems": 1,
       "items": {
         "type": "string",
+        "description": "Runtime validation also requires at most 260 conservative twitter-text v3 weighted characters.",
         "minLength": 1,
-        "maxLength": 280,
+        "maxLength": 260,
         "allOf": [
           {
             "not": {
@@ -74,16 +74,137 @@
             }
           },
           {
-            "anyOf": [
-              {
-                "maxLength": 260
-              },
-              {
-                "pattern": "https://"
+            "not": {
+              "pattern": "(https?://|www\\.)"
               }
-            ]
           }
         ]
+      }
+    },
+    "text_segments": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 31,
+      "items": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "claim_index"],
+            "properties": {
+              "kind": {
+                "const": "claim"
+              },
+              "claim_index": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 15
+              }
+            }
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["kind", "text"],
+            "properties": {
+              "kind": {
+                "const": "connective"
+              },
+              "text": {
+                "type": "string",
+                "enum": [
+                  " "
+                ]
+              }
+            }
+          }
+        ]
+      }
+    },
+    "radar_eligibility": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "repo",
+        "subject_kind",
+        "subject_id",
+        "slug",
+        "upstream_head",
+        "commit_shas",
+        "queue_sha256",
+        "review_sha256",
+        "impact_sha256",
+        "lineage_sha256"
+      ],
+      "properties": {
+        "schema": {
+          "const": "radar_content_eligibility/v1"
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1
+        },
+        "subject_kind": {
+          "type": "string",
+          "enum": ["commit", "pr"]
+        },
+        "subject_id": {
+          "type": "string",
+          "minLength": 1
+        },
+        "slug": {
+          "type": "string",
+          "minLength": 1
+        },
+        "upstream_head": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+        },
+        "commit_shas": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{40}([0-9a-f]{24})?$"
+          }
+        },
+        "queue_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "review_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "impact_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "lineage_sha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        }
+      }
+    },
+    "radar_source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["queue", "review", "impact"],
+      "properties": {
+        "queue": {
+          "type": "string",
+          "pattern": "^\\.agent/automations/radar/cache/github/review-queue/.+\\.json$"
+        },
+        "review": {
+          "type": "string",
+          "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/review\\.json$"
+        },
+        "impact": {
+          "type": "string",
+          "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/impact\\.json$"
+        }
       }
     },
     "source_refs": {
@@ -129,7 +250,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/review\\.json$"
           }
         },
         "upstream_impacts": {
@@ -137,7 +258,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "minLength": 1
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/impact\\.json$"
           }
         },
         "signals": {
@@ -166,6 +287,17 @@
         }
       }
     },
+    "evidence_digests": {
+      "type": "object",
+      "maxProperties": 64,
+      "propertyNames": {
+        "pattern": "^[^/](?:.*\\.json)$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^[0-9a-f]{64}$"
+      }
+    },
     "evidence_notes": {
       "type": "array",
       "minItems": 1,
@@ -188,7 +320,8 @@
           },
           "evidence": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Exact value of one entry declared in source_refs."
           },
           "confidence": {
             "type": "string",
@@ -229,13 +362,79 @@
         "type": "string",
         "minLength": 1
       }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "decision": {
+            "properties": {
+              "worthiness": {
+                "const": "publish"
+              }
+            },
+            "required": ["worthiness"]
+          }
+        },
+        "required": ["decision"]
+      },
+      "then": {
+        "required": [
+          "radar_eligibility",
+          "radar_source_refs",
+          "text_segments"
+        ],
+        "properties": {
+          "candidate_text": {
+            "maxItems": 1,
+            "items": {
+              "type": "string",
+              "minLength": 80,
+              "maxLength": 260
+            }
+          },
+          "decision": {
+            "properties": {
+              "idempotency_key": {
+                "pattern": "^radar-publication:[0-9a-f]{64}$"
+              }
+            }
+          },
+          "source_refs": {
+            "required": [
+              "upstream_reviews",
+              "upstream_impacts"
+            ],
+            "properties": {
+              "upstream_reviews": {
+                "maxItems": 1
+              },
+              "upstream_impacts": {
+                "maxItems": 1
+              }
+            }
+          }
+        }
+      }
     },
-    "media_refs": {
-      "type": "array",
-      "items": {
-        "type": "string",
-        "minLength": 1
+    {
+      "if": {
+        "properties": {
+          "source_refs": {
+            "anyOf": [
+              {"required": ["upstream_reviews"]},
+              {"required": ["upstream_impacts"]},
+              {"required": ["signals"]},
+              {"required": ["release_deltas"]}
+            ]
+          }
+        },
+        "required": ["source_refs"]
+      },
+      "then": {
+        "required": ["evidence_digests"]
       }
     }
-  }
+  ]
 }
