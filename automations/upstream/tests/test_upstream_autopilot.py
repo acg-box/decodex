@@ -4874,11 +4874,25 @@ class UpstreamAutopilotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             developer = Path(directory) / "Xcode.app/Contents/Developer"
             xcodebuild = developer / "usr/bin/xcodebuild"
-            metal = Path(directory) / "Metal.xctoolchain/usr/bin/metal"
+            toolchain = developer / "Toolchains/XcodeDefault.xctoolchain"
+            clang = toolchain / "usr/bin/clang"
+            clangxx = toolchain / "usr/bin/clang++"
+            metal_root = Path(directory) / "Metal.xctoolchain"
+            metal = metal_root / "usr/bin/metal"
+            metallib = metal_root / "usr/bin/metallib"
+            sdk_root = (
+                developer
+                / "Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            )
             xcodebuild.parent.mkdir(parents=True)
             metal.parent.mkdir(parents=True)
+            clang.parent.mkdir(parents=True)
+            sdk_root.mkdir(parents=True)
             xcodebuild.write_bytes(b"xcodebuild")
+            clang.write_bytes(b"clang")
+            clangxx.write_bytes(b"clang++")
             metal.write_bytes(b"metal")
+            metallib.write_bytes(b"metallib")
 
             def fake_run(arguments, **kwargs):
                 if arguments == ["/usr/bin/xcode-select", "-p"]:
@@ -4887,8 +4901,21 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     kwargs["environment"],
                     {"DEVELOPER_DIR": str(developer.resolve())},
                 )
-                if arguments == ["/usr/bin/xcrun", "--find", "metal"]:
-                    return str(metal)
+                discovered = {
+                    "clang": clang,
+                    "clang++": clangxx,
+                    "metal": metal,
+                    "metallib": metallib,
+                }
+                if arguments[:2] == ["/usr/bin/xcrun", "--find"]:
+                    return str(discovered[arguments[2]])
+                if arguments == [
+                    "/usr/bin/xcrun",
+                    "--sdk",
+                    "macosx",
+                    "--show-sdk-path",
+                ]:
+                    return str(sdk_root)
                 if arguments == [str(xcodebuild.resolve()), "-version"]:
                     return "Xcode 27.0\nBuild version 27A5209h"
                 self.fail(f"unexpected command: {arguments}")
@@ -4904,31 +4931,188 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     side_effect=fake_run,
                 ),
             ):
-                environment, evidence = (
-                    self.autopilot.full_xcode_environment()
-                )
+                configuration = self.autopilot.full_xcode_environment()
 
         self.assertEqual(
-            environment,
-            {"DEVELOPER_DIR": str(developer.resolve())},
+            configuration.environment["DEVELOPER_DIR"],
+            str(developer.resolve()),
         )
         self.assertEqual(
-            set(evidence),
-            {
-                "developer_dir_sha256",
-                "xcode_select_sha256",
-                "xcode_version_sha256",
-                "xcodebuild_sha256",
-                "xcrun_sha256",
-                "metal_sha256",
-            },
+            configuration.environment["SDKROOT"],
+            str(sdk_root.resolve()),
+        )
+        self.assertEqual(configuration.developer_dir, developer.resolve())
+        self.assertEqual(
+            configuration.metal_toolchain_root,
+            metal_root.resolve(),
+        )
+        self.assertEqual(
+            set(configuration.evidence),
+            self.autopilot.FULL_XCODE_DISCOVERY_EVIDENCE_KEYS,
         )
         self.assertTrue(
             all(
                 self.autopilot.is_sha256(value)
-                for value in evidence.values()
+                for value in configuration.evidence.values()
             )
         )
+
+    def test_xcrun_proxy_allows_only_bound_metal_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configuration = self.autopilot.FullXcodeConfiguration(
+                environment={},
+                evidence={},
+                developer_dir=Path("/trusted/Xcode.app/Contents/Developer"),
+                metal_toolchain_root=Path("/trusted/Metal.xctoolchain"),
+                sdk_root=Path("/trusted/MacOSX.sdk"),
+                xcrun_tools=(
+                    ("metal", Path("/bin/echo")),
+                    ("metallib", Path("/bin/echo")),
+                ),
+            )
+            proxy, digest = self.autopilot.initialize_xcrun_proxy(
+                Path(directory),
+                configuration,
+                Path(sys.executable).resolve(),
+            )
+
+            found = subprocess.run(
+                [str(proxy), "--find", "metal"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            sdk = subprocess.run(
+                [str(proxy), "--sdk", "macosx", "--show-sdk-path"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            invoked = subprocess.run(
+                [str(proxy), "-sdk", "macosx", "metal", "shader.metal"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            denied = subprocess.run(
+                [str(proxy), "--find", "clang"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(found.stdout.strip(), "/bin/echo")
+            self.assertEqual(sdk.stdout.strip(), "/trusted/MacOSX.sdk")
+            self.assertEqual(
+                invoked.stdout.strip(),
+                (
+                    "shader.metal -fmodules-cache-path="
+                    f"{Path(directory).resolve() / 'metal-module-cache'}"
+                ),
+            )
+            self.assertEqual(denied.returncode, 64)
+            self.assertEqual(
+                denied.stderr.strip(),
+                "sandbox xcrun invocation denied",
+            )
+            self.assertEqual(proxy.stat().st_mode & 0o777, 0o500)
+            self.assertEqual(self.autopilot.hash_file_bounded(proxy), digest)
+
+    @unittest.skipUnless(
+        sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
+        "requires the macOS sandbox",
+    )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation sandbox owns this probe",
+    )
+    def test_validation_sandbox_keeps_the_xcrun_proxy_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory).resolve()
+            candidate = outer / "candidate"
+            temporary_home = outer / "sandbox"
+            developer = outer / "Xcode.app/Contents/Developer"
+            metal_root = outer / "Metal.xctoolchain"
+            sdk_root = developer / "SDKs/MacOSX.sdk"
+            candidate.mkdir()
+            temporary_home.mkdir()
+            metal_root.mkdir()
+            sdk_root.mkdir(parents=True)
+            configuration = self.autopilot.FullXcodeConfiguration(
+                environment={},
+                evidence={},
+                developer_dir=developer,
+                metal_toolchain_root=metal_root,
+                sdk_root=sdk_root,
+                xcrun_tools=(
+                    ("metal", Path("/bin/echo")),
+                    ("metallib", Path("/bin/echo")),
+                ),
+            )
+            proxy, _digest = self.autopilot.initialize_xcrun_proxy(
+                temporary_home,
+                configuration,
+                Path(sys.executable).resolve(),
+            )
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    candidate,
+                    temporary_home,
+                    output.path,
+                    full_xcode=configuration,
+                    xcrun_proxy=proxy,
+                )
+
+            mutation_attempts = (
+                f"import os; os.chmod({str(proxy)!r}, 0o700)",
+                f"import os; os.unlink({str(proxy)!r})",
+                (
+                    "import os; "
+                    f"os.rename({str(proxy.parent)!r}, "
+                    f"{str(temporary_home / 'moved')!r})"
+                ),
+                (
+                    "import os; "
+                    f"os.mkdir({str(temporary_home / 'replacement')!r}); "
+                    f"os.replace({str(temporary_home / 'replacement')!r}, "
+                    f"{str(proxy.parent)!r})"
+                ),
+            )
+            denied = [
+                self.autopilot.run_command(
+                    [
+                        "/usr/bin/sandbox-exec",
+                        "-p",
+                        profile,
+                        sys.executable,
+                        "-c",
+                        script,
+                    ],
+                    cwd=candidate,
+                    failure_code="sandbox_probe_failed",
+                    allow_failure=True,
+                )
+                for script in mutation_attempts
+            ]
+            invoked = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    str(proxy),
+                    "--find",
+                    "metal",
+                ],
+                cwd=candidate,
+                failure_code="sandbox_probe_failed",
+            )
+
+            self.assertEqual(denied, ["", "", "", ""])
+            self.assertEqual(proxy.stat().st_mode & 0o777, 0o500)
+            self.assertEqual(invoked, "/bin/echo")
 
     def test_full_validation_profile_receives_only_the_xcode_environment(self):
         head = "2" * 40
@@ -4939,16 +5123,32 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "closure_sha256": "5" * 64,
         }
         xcode_environment = {
-            "DEVELOPER_DIR": "/Applications/Xcode-test.app/Contents/Developer"
+            "CC": "/Applications/Xcode-test.app/clang",
+            "CXX": "/Applications/Xcode-test.app/clang++",
+            "DEVELOPER_DIR": "/Applications/Xcode-test.app/Contents/Developer",
+            "SDKROOT": "/Applications/Xcode-test.app/MacOSX.sdk",
+            "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": (
+                "/Applications/Xcode-test.app/clang"
+            ),
+            "CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER": (
+                "/Applications/Xcode-test.app/clang"
+            ),
         }
         xcode_evidence = {
-            "developer_dir_sha256": "6" * 64,
-            "xcode_version_sha256": "7" * 64,
-            "xcodebuild_sha256": "8" * 64,
-            "metal_sha256": "9" * 64,
-            "xcode_select_sha256": "a" * 64,
-            "xcrun_sha256": "b" * 64,
+            key: self.autopilot.sha256_value({"xcode": key})
+            for key in self.autopilot.FULL_XCODE_DISCOVERY_EVIDENCE_KEYS
         }
+        xcode_configuration = self.autopilot.FullXcodeConfiguration(
+            environment=xcode_environment,
+            evidence=xcode_evidence,
+            developer_dir=Path(xcode_environment["DEVELOPER_DIR"]),
+            metal_toolchain_root=Path("/trusted/Metal.xctoolchain"),
+            sdk_root=Path(xcode_environment["SDKROOT"]),
+            xcrun_tools=(
+                ("metal", Path("/trusted/bin/metal")),
+                ("metallib", Path("/trusted/bin/metallib")),
+            ),
+        )
         trusted_paths = {
             name: Path(f"/trusted/bin/{name}")
             for name in self.autopilot.VALIDATION_TOOL_NAMES
@@ -4992,7 +5192,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             mock.patch.object(
                 self.autopilot.validation_module,
                 "full_xcode_environment",
-                return_value=(xcode_environment, xcode_evidence),
+                return_value=xcode_configuration,
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -5100,6 +5300,16 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(
             cargo_calls[2].kwargs["environment"]["DEVELOPER_DIR"],
             xcode_environment["DEVELOPER_DIR"],
+        )
+        self.assertEqual(
+            cargo_calls[2].kwargs["environment"]["SDKROOT"],
+            xcode_environment["SDKROOT"],
+        )
+        self.assertEqual(
+            Path(cargo_calls[2].kwargs["environment"]["PATH"].split(
+                os.pathsep
+            )[0]).name,
+            "trusted-xcrun",
         )
         self.assertTrue(receipt["requires_full_gate"])
 
