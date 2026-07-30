@@ -7,37 +7,22 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(spacing: 4) {
 			CompactAccountActionButton(
-				title: isCodexProjection ? "Codex" : "Use in Codex",
-				symbol: isCodexProjection
-					? "checkmark.circle.fill"
-					: "arrow.right.circle",
-				isActive: isCodexProjection,
-				isDisabled: codexActionIsDisabled,
+				title: isRouteCurrent ? "Routed" : "Route",
+				symbol: isRouteCurrent
+					? "point.3.connected.trianglepath.dotted"
+					: "arrow.triangle.branch",
+				isActive: isRouteCurrent,
+				isDisabled: routeActionIsDisabled,
 				isBusy: store.isControllingAccount(
 					state.account.accountID,
-					activity: .codexProjection
+					activity: .route
 				),
-				help: isCodexProjection
-					? "This account is projected to the shared Codex login."
-					: "Use this account for new Codex processes. This does not change Decodex routing."
+				help: isRouteCurrent
+					? "This account is used by Decodex routing and new Codex processes."
+					: "Route Decodex and use this account for new Codex processes."
 			) {
 				Task {
-					await store.useAccountInCodex(state.account.accountID)
-				}
-			}
-
-			CompactAccountActionButton(
-				title: isFixed ? "Routed" : "Route",
-				symbol: isFixed ? "point.3.connected.trianglepath.dotted" : "arrow.triangle.branch",
-				isActive: isFixed,
-				isDisabled: routingActionIsDisabled,
-				isBusy: store.isRoutingAccountControl,
-				help: isFixed
-					? "Decodex is routed only to this account."
-					: "Route Decodex only to this account. This does not change the shared Codex login."
-			) {
-				Task {
-					await store.selectFixedAccount(state.account.accountID)
+					await store.routeAccount(state.account.accountID)
 				}
 			}
 		}
@@ -49,21 +34,14 @@ struct AccountPrimaryActionsView: View {
 		store.isCodexProjection(state.account.accountID)
 	}
 
-	private var codexActionIsDisabled: Bool {
-		isCodexProjection
-			|| canSelect == false
-			|| store.canPerformDirectAccountControl == false
-			|| store.isControllingAccount(state.account.accountID)
-			|| store.isEnrollingAccount
-			|| store.isRoutingAccountControl
-			|| store.submittingKey != nil
+	private var isRouteCurrent: Bool {
+		isCodexProjection && isFixed
 	}
 
-	private var routingActionIsDisabled: Bool {
-		isFixed
+	private var routeActionIsDisabled: Bool {
+		isRouteCurrent
 			|| canSelect == false
 			|| store.canPerformDirectAccountControl == false
-			|| store.isRoutingAccountControl
 			|| store.isAccountControlInProgress
 			|| store.submittingKey != nil
 	}

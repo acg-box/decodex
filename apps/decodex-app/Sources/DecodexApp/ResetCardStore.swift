@@ -130,7 +130,7 @@ struct ResetCardStoreMessage: Equatable {
 enum AccountControlActivity: Equatable {
 	case lifecycle
 	case loginRefresh
-	case codexProjection
+	case route
 }
 
 private enum ResetCardDispatchOutcome {
@@ -821,6 +821,58 @@ final class ResetCardStore {
 		)
 	}
 
+	func routeAccount(_ accountID: String) async {
+		guard let account = accountRecord(accountID),
+			isAwaitingFreshAccountSkeleton(accountID) == false,
+			let routing,
+			routing.order.contains(accountID),
+			let accountControlClient
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+		let needsCodexProjection = isCodexProjection(accountID) == false
+		let needsFixedRouting: Bool
+		if case .fixed(let fixedAccountID) = routing.mode {
+			needsFixedRouting = fixedAccountID != accountID
+		} else {
+			needsFixedRouting = true
+		}
+		guard needsCodexProjection || needsFixedRouting else {
+			return
+		}
+
+		await performAccountControl(
+			accountID: accountID,
+			activity: .route,
+			isRoutingControl: true,
+			allowsDuringRefresh: true,
+			successMessage: nil,
+			operation: {
+				if needsCodexProjection {
+					let projectionResult = try await accountControlClient.useAccountInCodex(
+						authority: account.authority ?? establishedAuthority,
+						accountID: accountID,
+						expectedRevision: account.accountRevision,
+						idempotencyKey: Self.newCanonicalUUID()
+					)
+					if needsFixedRouting == false {
+						return projectionResult
+					}
+					_ = applyAccountControlResult(projectionResult)
+				}
+
+				return try await accountControlClient.setFixedSelection(
+					authority: account.authority ?? establishedAuthority,
+					accountID: accountID,
+					expectedAccountRevision: account.accountRevision,
+					expectedRoutingRevision: routing.revision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+	}
+
 	func selectBalancedAccounts() async {
 		guard let routing,
 			let accountControlClient
@@ -877,7 +929,7 @@ final class ResetCardStore {
 		}
 		await performAccountControl(
 			accountID: accountID,
-			activity: .codexProjection,
+			activity: .route,
 			allowsDuringRefresh: true,
 			successMessage: nil,
 			operation: {
@@ -1719,6 +1771,7 @@ final class ResetCardStore {
 			guard activity != nil,
 				accountSkeletonRevisionTargets[accountID] == nil,
 				accountControlActivities[accountID] == nil,
+				isRoutingControl == false || accountControlActivities.isEmpty,
 				isEnrollingAccount == false,
 				isRoutingAccountControl == false
 			else {
@@ -1744,14 +1797,16 @@ final class ResetCardStore {
 
 		if let accountID, let activity {
 			accountControlActivities[accountID] = activity
-		} else if isRoutingControl {
+		}
+		if isRoutingControl {
 			isRoutingAccountControl = true
 		}
 		clearStaleControlError()
 		defer {
 			if let accountID {
 				accountControlActivities.removeValue(forKey: accountID)
-			} else if isRoutingControl {
+			}
+			if isRoutingControl {
 				isRoutingAccountControl = false
 			}
 			scheduleFreshAccountSkeletonRead()
