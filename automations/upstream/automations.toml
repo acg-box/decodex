@@ -34,6 +34,11 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"apps/decodex-publisher/README.md",
+	"apps/decodex-publisher/src/social_xurl/pricing.rs",
+	"apps/decodex-publisher/src/social_xurl/pricing/tests.rs",
+	"automations/decodex/scripts/config/automation_eval/evaluation.py",
+	"automations/decodex/scripts/config/automation_eval/validators.py",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
 	"automations/upstream/scripts/run_upstream_autopilot",
@@ -41,16 +46,21 @@ required_paths = [
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/handoff.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/pricing.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/retention.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"automations/upstream/tests/fixtures/x-pricing-current.md",
+	"automations/upstream/tests/test_upstream_autopilot.py",
 	"openwiki/operations/codex-upstream-autopilot.md",
 	"openwiki/operations/commands-and-validation.md",
 	"openwiki/quickstart.md",
 	"plugins/decodex/references/routing.md",
 	"scripts/audit_node_lock.py",
 ]
-rrule = "FREQ=HOURLY;BYMINUTE=5;BYSECOND=0"
+rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=5;BYSECOND=0"
 
 [[automations]]
 id = "codex-upstream-reviewer"
@@ -61,6 +71,11 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"apps/decodex-publisher/README.md",
+	"apps/decodex-publisher/src/social_xurl/pricing.rs",
+	"apps/decodex-publisher/src/social_xurl/pricing/tests.rs",
+	"automations/decodex/scripts/config/automation_eval/evaluation.py",
+	"automations/decodex/scripts/config/automation_eval/validators.py",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
 	"automations/upstream/scripts/run_upstream_autopilot",
@@ -68,16 +83,21 @@ required_paths = [
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/handoff.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/pricing.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/retention.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"automations/upstream/tests/fixtures/x-pricing-current.md",
+	"automations/upstream/tests/test_upstream_autopilot.py",
 	"openwiki/operations/codex-upstream-autopilot.md",
 	"openwiki/operations/commands-and-validation.md",
 	"openwiki/quickstart.md",
 	"plugins/decodex/references/routing.md",
 	"scripts/audit_node_lock.py",
 ]
-rrule = "FREQ=HOURLY;BYMINUTE=35;BYSECOND=0"
+rrule = "FREQ=HOURLY;INTERVAL=12;BYMINUTE=35;BYSECOND=0"
 
 [[automations]]
 id = "codex-upstream-health"
@@ -88,11 +108,48 @@ required_cache_prefixes = [
 ]
 required_paths = [
 	"AGENTS.md",
+	"apps/decodex-publisher/README.md",
+	"apps/decodex-publisher/src/cli/social.rs",
+	"apps/decodex-publisher/src/cli/validation.rs",
+	"apps/decodex-publisher/src/filesystem.rs",
 	"apps/decodex-publisher/src/lib.rs",
+	"apps/decodex-publisher/src/social_clock.rs",
+	"apps/decodex-publisher/src/social_contracts.rs",
+	"apps/decodex-publisher/src/social_evidence.rs",
+	"apps/decodex-publisher/src/social_gc.rs",
+	"apps/decodex-publisher/src/social_gc/inventory.rs",
+	"apps/decodex-publisher/src/social_gc/plan.rs",
+	"apps/decodex-publisher/src/social_gc/tests.rs",
+	"apps/decodex-publisher/src/social_publish.rs",
+	"apps/decodex-publisher/src/social_publish/scan.rs",
+	"apps/decodex-publisher/src/social_record.rs",
+	"apps/decodex-publisher/src/social_skip.rs",
+	"apps/decodex-publisher/src/social_validation.rs",
+	"apps/decodex-publisher/src/social_validation/candidate.rs",
+	"apps/decodex-publisher/src/social_validation/cross_file.rs",
+	"apps/decodex-publisher/src/social_xurl.rs",
+	"apps/decodex-publisher/src/social_xurl/auth_contract.rs",
+	"apps/decodex-publisher/src/social_xurl/ledger.rs",
+	"apps/decodex-publisher/src/social_xurl/model.rs",
+	"apps/decodex-publisher/src/social_xurl/observe.rs",
+	"apps/decodex-publisher/src/social_xurl/pricing.rs",
+	"apps/decodex-publisher/src/social_xurl/pricing/tests.rs",
+	"apps/decodex-publisher/src/social_xurl/publish.rs",
+	"apps/decodex-publisher/src/social_xurl/reconcile.rs",
+	"apps/decodex-publisher/src/social_xurl/runtime.rs",
+	"apps/decodex-publisher/src/tests.rs",
 	"automations/decodex/automations.toml",
 	"automations/decodex/prompts/content-manager.md",
-	"automations/decodex/prompts/x-browser-publisher.md",
+	"automations/decodex/prompts/xurl-publisher.md",
+	"automations/decodex/scripts/config/automation_checkout.py",
+	"automations/decodex/scripts/config/automation_eval/evaluation.py",
+	"automations/decodex/scripts/config/automation_eval/validators.py",
+	"automations/decodex/scripts/config/automation_plan/__init__.py",
+	"automations/decodex/scripts/config/automation_plan/cli.py",
+	"automations/decodex/scripts/config/automation_plan/manifest.py",
+	"automations/decodex/scripts/config/automation_plan/paths.py",
 	"automations/decodex/scripts/config/evaluate_automations.py",
+	"automations/decodex/scripts/config/render_automation_plan.py",
 	"automations/decodex/scripts/social/social_candidate.schema.json",
 	"automations/decodex/scripts/social/social_outcome.schema.json",
 	"automations/decodex/scripts/social/social_post.schema.json",
@@ -106,12 +163,17 @@ required_paths = [
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/handoff.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/observation.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/pricing.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/retention.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/state.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/validation.py",
+	"automations/upstream/tests/fixtures/x-pricing-current.md",
+	"automations/upstream/tests/test_upstream_autopilot.py",
 	"openwiki/operations/codex-upstream-autopilot.md",
 	"openwiki/operations/decodex-content-automation.md",
 	"openwiki/quickstart.md",
 	"scripts/audit_node_lock.py",
 ]
-rrule = "FREQ=HOURLY;INTERVAL=2;BYMINUTE=0;BYSECOND=0"
+rrule = "FREQ=DAILY;BYHOUR=6,18;BYMINUTE=0;BYSECOND=0"

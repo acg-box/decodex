@@ -948,18 +948,18 @@ source-only plugin tests are not copied into installed packages.
 Codex App automation sync and evaluation:
 
 ```sh
-python3 automations/decodex/scripts/config/sync_automations.py
-python3 automations/decodex/scripts/config/sync_automations.py --apply
+python3 automations/decodex/scripts/config/render_automation_plan.py --json
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
 python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
 python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 ```
 
 Automation source should stay portable: `{repo_root}` placeholders and relative paths
-in manifests, with machine-local absolute paths generated only under
-`$CODEX_HOME/automations` (`automations/upstream/README.md`). The current default
-installer renders three upstream tasks and two content tasks. Frozen v0.2 Decodex and
-Radar automation definitions were deleted and are not install inputs.
+in manifests. The current plan renderer emits three upstream tasks and two content
+tasks. It cannot write scheduler state. Apply the definitions only with the Codex
+native automation lifecycle tool, then read back each mutation. Codex App owns
+machine-local timestamps. Frozen v0.2 Decodex and Radar automation definitions were
+deleted and are not plan inputs.
 
 ## Static site checks
 

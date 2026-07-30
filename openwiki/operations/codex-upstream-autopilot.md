@@ -22,6 +22,12 @@ The loop observes four lanes:
 
 Official checked-in release schemas are read directly from Git objects. Candidate
 upstream binaries and scripts are not downloaded or executed.
+The upstream main and release lanes are early warnings. Their schema digests are not
+treated as local repository drift only because they differ from the installed Codex
+build. Bootstrap and local-build records own installed-schema marker changes. An
+upstream-only difference that removes no required method and needs no Decodex behavior
+change closes through an independently validated decision. It must not create a pull
+request that only records another rejected release digest.
 
 ## Roles
 
@@ -50,6 +56,19 @@ review to one read-only review subagent. It does not repair reviewed work. The
 Reviewer returns bounded finding codes so a later worker produces new evidence or a
 new head. A Maintainer cannot merge its own change or make a terminal
 no-change/rejected decision.
+
+After a claim, each parent has a closed command surface. It can use only direct
+read-only commands, the state-tool transaction for its role, exact managed-worktree
+lifecycle commands, one native `spawn_agent`, and one native `wait_agent`. It cannot
+use `apply_patch`, generic execution orchestration, `write_stdin`, `send_input`,
+shell redirection, pipelines, command chaining, or another write-capable command.
+The subagent spawn contains one exact
+`decodex/codex-upstream-agent-context/1` object that binds candidate, role, claim
+generation, absolute temporary worktree, and base HEAD. The subagent completion
+contains one exact `decodex/codex-upstream-agent-handoff-projection/1` object that
+also binds the hashed worktree, repository HEAD/tree, staged-path digest when
+applicable, disposition, finding codes, and canonical receipt digest. An incomplete
+handoff blocks that generation. The parent never repairs code or review evidence.
 
 The scheduled tasks do not use Decodex server, runtime, MCP, planning, or queue
 surfaces. Only the state wrapper can invoke `decodex commit` or `decodex land` after
@@ -88,9 +107,11 @@ the evidence and add a regression test; Reviewer owns the terminal decision.
 Health also reconciles the five fixed live Codex App automation IDs from the current
 upstream and content manifests and prompt files. It uses only the native automation
 lifecycle tool, reads each definition before a change, submits a complete definition,
-and reads it back. It cannot list, edit, or delete any other task and cannot write
-scheduler files or databases directly. This closes source-to-scheduler drift after an
-autonomous landing.
+and reads it back. The content manifest also names the exact retired
+`decodex-x-browser-publisher` definition. Health deletes that exact definition and
+verifies a not-found readback. It cannot list, edit, or delete any other task and
+cannot write scheduler files or databases directly. This closes
+source-to-scheduler drift after an autonomous landing.
 Each Health run first recovers expired work and reconciles live definitions. It then
 collects a new upstream observation and finishes with another health pass. A failed
 observation does not prevent scheduler or lease recovery.
@@ -99,9 +120,17 @@ another automation run or an operator must restore that scheduler activation.
 
 ## Scheduling
 
-- Maintainer: hourly.
-- Reviewer: hourly, 30 minutes after Maintainer.
-- Health and self-repair escalation: every two hours.
+- Maintainer: every six hours at minute 5, four tasks per day.
+- Reviewer: every 12 hours at minute 35, two tasks per day.
+- Health and self-repair escalation: daily at 06:00 and 18:00, two tasks per
+  day.
+- Content Manager: daily at 09:50, one task per day.
+- Xurl Publisher: daily at 10:20, 16:20, and 22:20, three tasks per day.
+
+All five definitions use `high` reasoning. The fixed model wake budget is 12
+tasks per day, 360 tasks in a 30-day month, and 372 tasks in a 31-day month.
+This is a task-count budget because the Codex App does not expose an
+authoritative per-task dollar price.
 
 The first observation queues independent main/bootstrap, current stable-release, and
 current prerelease-release candidates. A new installation therefore evaluates all
@@ -340,6 +369,16 @@ cryptographic identity signature. Exact commit and land crash recovery preserves
 original receipt and side-effect intent while a new lease generation becomes the
 active recovery owner.
 
+The worker receipt uses action `worker_staged`, the original base in both base and
+repository HEAD, `git write-tree` as the repository tree, and the SHA-256 of the
+exact NUL-delimited staged name-status bytes. The Reviewer receipt uses action
+`independent_review`, the exact reviewed base/head/tree, null staged-path digest,
+and an `accept`, `request_repair`, `no_change`, or `rejected` disposition. Each
+subagent returns the sanitized projection as its only typed completion record.
+Task-retention sealing compares that completion to the terminal state-tool result,
+candidate, claim generation, hashed worktree, tree, staged-path digest, and receipt
+digest. One spawn, one wait, and no follow-up message are accepted.
+
 ## Outcomes
 
 The fresh runtime state uses `decodex/codex-upstream-state/3`. It does not migrate
@@ -361,22 +400,109 @@ repository schema-digest mismatch cannot close as `no_change` or `rejected`.
 An `automation_repair` candidate cannot close as `rejected`: it must land a repair or
 independently reproduce that the transient failure cleared and close as `no_change`.
 
-After a terminal role persists and reads back its ownership result, it calls native
-`set_thread_archived` with `archived = true` and no `threadId`. The native tool can
-then archive only the current scheduled task. An ambiguous, human-only, or unowned
-result stays visible. Archival only cleans the Codex task list. It does not disable
-the recurring automation or delete state evidence.
+After a successful terminal role persists and reads back its ownership result, it
+creates a create-only, mode-`0600` task-ID receipt with `task-retention-seal`. The
+owner supplies the exact bounded terminal result code from that readback. The
+receipt keeps only schema, automation ID, task ID, result code, optional
+evidence kind and exact evidence-byte digest, timestamp, and status. Evidence-bearing
+seals also require the current owned Publisher binary to pass canonical full-store
+`validate-social`, then require an exact reread of the evidence bytes. The role does not
+archive its active task. A failed, blocked, needs-attention, ambiguous, human-only,
+or unowned result is sealed as keep-visible or remains visible when terminal
+readback is unavailable.
+Python never executes or parses xurl directly. Health builds the current Publisher,
+then runs `run_upstream_autopilot x-pricing-audit --json` before the Publisher
+probe. This audit can fetch only
+`https://docs.x.com/x-api/getting-started/pricing.md` through the root-owned
+system curl. The monotonic total deadline is 10 seconds. Redirects are disabled,
+protocols are HTTPS-only, and the source is limited to 1 MiB. The parser accepts
+only the exact `Credit consumption details` section and its reads-per-resource
+and writes-per-request statement. It requires adjacent `Read operations` and
+`Write operations` subsections, one contiguous table in each, exact `Resource |
+Unit cost` and `Action | Unit cost` headers, and exact `Posts: Read`, `User:
+Read`, `Post: Create`, and `Post: Create (with URL)` labels. Escaped-dollar
+amounts must say `per resource` for reads and `per request` for writes. Code
+fences, split or additional target tables, duplicates, old labels, wrong units,
+per-1,000 values, missing rows, and ambiguous values fail closed.
+
+A successful audit writes one atomic current-UID, mode-`0600` private receipt. The
+receipt stores only its schema and parser version, the exact URL, fetch time, raw
+SHA-256, and four integer micro-USD rates. It stores no source page, credential, or
+personal data. Publisher accepts the receipt for at most 36 hours and requires exact
+ceilings of 5,000, 10,000, 15,000, and 200,000 micro-USD plus the 1,250,000
+micro-USD monthly cap. The 36-hour expiry is calculated from each successful fetch;
+there is no calendar-based code expiry. An unchanged audit renews the receipt.
+
+An official rate change or any parser failure, including the first observation,
+creates or updates one critical `x_pricing_contract_drift` candidate with the
+receipt projection and exact private-receipt digest. A parser failure atomically
+writes a mode-`0600`, at-most-16-KiB private marker. It contains the raw digest and
+a separately digested, bounded diagnostic with section counts and at most four
+table summaries, eight two-cell samples per table, and row digests. It never
+contains the source page. A marker at least as new as the success receipt makes
+Rust return `parse_failed` immediately, even when that success is younger than 36
+hours. New evidence updates only an unclaimed candidate; otherwise it creates a
+successor. Maintainer changes the compiled constants, parser fixtures, tests, and
+documentation from the bound evidence. Reviewer independently checks the same
+binding. A network outage does not create rate evidence and preserves the prior
+receipt only until the 36-hour limit. Missing, stale, future, malformed, tampered,
+parse-failed, or mismatched receipts stop paid calls and readiness.
+
+Both Health and live config evaluation run only
+`decodex-publisher social probe-xurl`. They consume the bounded JSON readiness
+report. The hardened Rust entrypoint owns fixed version and OAuth-status calls,
+the non-secret least-privilege authorization contract, immutable runtime binding,
+and current pricing policy validation without calling a paid endpoint. Health
+uses Publisher `social cost-report` as the sole v4 ledger parser. Repo-only config
+evaluation is static and starts no process. Drift is
+`live_configuration_drift`: Health queues one automatic repair, Maintainer delegates
+the update and tests to its worker subagent, and Reviewer independently validates
+and lands it.
+
+Health owns the cross-task lifecycle that also cleans completed runs from
+[Decodex content automation](decodex-content-automation.md). Every cycle runs
+`task-retention-plan`. The planner scans at most 512 private owner receipts, uses
+the app-provided `CODEX_THREAD_ID` to exclude the active Health task, and returns at
+most 50 pending task records bound to the automation, allowlisted result, evidence
+kind, and evidence-byte digest. It does not inspect Codex SQLite, rollout files,
+task text, tool calls, or app-internal schemas. It does not use `list_threads`.
+
+For each planned record, Health calls native `read_thread`. A completed owner-sealed
+task can be passed to native `set_thread_archived`; Health then calls exact
+`read_thread` again and records `archived_readback_confirmed` with
+`task-retention-settle`. A needs-attention, user-continued, failed, cancelled,
+blocked, ambiguous, or human-decision task is settled as keep-visible with a
+bounded reason. Failed archive readback is restored to visible and confirmed
+before keep-visible settlement. Python never performs a native task operation.
+The store retains at most 128 settled receipts for 30 days. Pending receipts are
+not inferred from commentary and are not removed by age. Storage or native
+readback drift skips only task cleanup, records `task_retention_contract_drift`,
+and queues or reuses one critical automatic improvement. Archival does not disable
+recurring automation or delete state evidence.
+
+Before its first social validation, Health runs Publisher social GC. GC recovers any
+durable deletion journal under the shared social mutation lock before it scans or
+plans another deletion. A recovery conflict fails closed. Health memory uses only the
+fixed `decodex/automation-memory/1` title and typed field allowlist. It retains
+bounded reason codes, counts, opaque IDs, SHA values, and micro-USD ceilings. It
+never retains prompts, task or post text, raw responses, personal data, scheduler
+rules, project IDs, or local paths. Maintainer and Reviewer parents treat memory as
+read-only; their current-run authority is state, consumed handoff, and the
+task-retention receipt.
 
 ## Cost
 
 The compatibility loop uses Git fetch and local schema generation. It uses no X API
 calls, so X API cost is $0. It also uses no GitHub REST or GraphQL calls for discovery.
+The pricing audit uses one ordinary documentation HTTPS request and no paid X API
+endpoint.
 GitHub pull-request inspection, creation, and deterministic landing readback use the
 authenticated `gh` client. These calls have no per-resource X API charge model.
 
 Codex task execution consumes the user's Codex plan capacity. The Codex App does not
 expose an authoritative per-task dollar amount to this repository, so the loop must
-not invent one.
+not invent one. The source manifests permit exactly 12 `high` task wakes per day,
+360 in 30 days, or 372 in 31 days.
 
 ## Validation
 
@@ -386,10 +512,17 @@ Run:
 cargo make check-upstream-automation
 python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/upstream/automations.toml --repo-only
-python3 automations/upstream/scripts/upstream_autopilot.py observe --json
-python3 automations/upstream/scripts/upstream_autopilot.py health \
+cargo build --locked -p decodex-publisher
+python3 automations/decodex/scripts/config/evaluate_automations.py \
+  --manifest automations/decodex/automations.toml
+automations/upstream/scripts/run_upstream_autopilot observe --json
+automations/upstream/scripts/run_upstream_autopilot health \
   --repair-expired --queue-repairs --queue-improvements --json
 ```
+
+The repo-only config evaluation is static. The live content-manifest evaluation
+requires the just-built Publisher and invokes only its bounded nonbillable
+`social probe-xurl` entrypoint.
 
 For a landing claim on an excluded GPUI or Apple build surface, run the full
 repository gate on a capable host. Always read back the merged pull request, exact

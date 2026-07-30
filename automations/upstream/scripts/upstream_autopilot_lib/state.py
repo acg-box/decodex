@@ -12,7 +12,8 @@ import os
 from pathlib import Path
 import re
 import secrets
-from typing import Any, Iterator, Sequence
+import stat
+from typing import Any, Iterator, Mapping, Sequence
 
 from .core import (
     ALLOWED_CANDIDATE_KINDS,
@@ -31,6 +32,7 @@ from .core import (
     MAX_STATE_CANDIDATES,
     METRIC_BUCKET_SECONDS,
     PR_PATTERN,
+    PROACTIVE_IMPROVEMENT_REASON_CODES,
     REASON_PATTERN,
     SAFE_FACT_PATTERN,
     SHA_PATTERN,
@@ -54,6 +56,7 @@ from .core import (
     utc_now,
     validate_candidate_result,
     validate_path_summary,
+    validate_x_pricing_audit_evidence,
 )
 from .observation import mirror_arguments
 from .validation import validate_validation_receipt
@@ -1604,14 +1607,9 @@ def queue_automation_improvement(
     repository_head: str,
     now: int,
     degradation_codes: Sequence[str] = (),
+    pricing_audit: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    if reason_code not in {
-        "content_loop_degraded",
-        "lead_time_sla_missed",
-        "live_configuration_drift",
-        "repeated_blocked_attempts",
-        "repeated_review_repairs",
-    }:
+    if reason_code not in PROACTIVE_IMPROVEMENT_REASON_CODES:
         raise AutopilotError("improvement_reason_invalid")
     if not SHA_PATTERN.fullmatch(repository_head):
         raise AutopilotError("head_invalid")
@@ -1629,19 +1627,55 @@ def queue_automation_improvement(
             raise AutopilotError("content_degradation_evidence_missing")
     elif normalized_degradation_codes:
         raise AutopilotError("content_degradation_evidence_not_applicable")
-    active = next(
-        (
-            candidate
-            for candidate in state["candidates"]
-            if candidate["kind"] == "automation_repair"
-            and candidate.get("repair_of") is None
-            and candidate.get("path_summary", {}).get("reason_code") == reason_code
-            and candidate["status"] not in TERMINAL_STATUSES
-        ),
-        None,
+    normalized_pricing_audit = (
+        deepcopy(dict(pricing_audit))
+        if pricing_audit is not None
+        else None
     )
-    if active is not None:
-        return active
+    if reason_code == "x_pricing_contract_drift":
+        if normalized_pricing_audit is None:
+            raise AutopilotError("x_pricing_audit_evidence_missing")
+        validate_x_pricing_audit_evidence(normalized_pricing_audit)
+    elif normalized_pricing_audit is not None:
+        raise AutopilotError("x_pricing_audit_evidence_not_applicable")
+    active_candidates = [
+        candidate
+        for candidate in state["candidates"]
+        if candidate["kind"] == "automation_repair"
+        and candidate.get("repair_of") is None
+        and candidate.get("path_summary", {}).get("reason_code") == reason_code
+        and candidate["status"] not in TERMINAL_STATUSES
+    ]
+    merge_target = None
+    require_successor = False
+    if active_candidates:
+        if reason_code not in {
+            "content_loop_degraded",
+            "x_pricing_contract_drift",
+        }:
+            return active_candidates[0]
+        merge_target = next(
+            (
+                candidate
+                for candidate in active_candidates
+                if candidate["status"] == "queued"
+            ),
+            None,
+        )
+        if merge_target is None:
+            require_successor = True
+        elif reason_code == "content_loop_degraded":
+            existing_codes = tuple(
+                merge_target.get("path_summary", {}).get(
+                    "degradation_codes", []
+                )
+            )
+            merged_codes = tuple(
+                sorted(set(existing_codes) | set(normalized_degradation_codes))
+            )
+            if merged_codes == existing_codes:
+                return merge_target
+            normalized_degradation_codes = merged_codes
     local_build = state.get("local_build")
     source = state["source"]
     source_fingerprints = source["schema_fingerprints"]
@@ -1655,6 +1689,11 @@ def queue_automation_improvement(
         {
             "reason_code": reason_code,
             "degradation_codes": normalized_degradation_codes,
+            **(
+                {"pricing_audit": normalized_pricing_audit}
+                if reason_code == "x_pricing_contract_drift"
+                else {}
+            ),
             "repository_head": repository_head,
             "codex_version": local_build["codex_version"],
             "codex_executable_sha256": local_build["codex_executable_sha256"],
@@ -1672,6 +1711,30 @@ def queue_automation_improvement(
             "metrics_sha256": sha256_value(state["metrics"]["buckets"]),
         }
     )
+    if merge_target is not None:
+        if reason_code == "content_loop_degraded":
+            merge_target["path_summary"]["degradation_codes"] = list(
+                normalized_degradation_codes
+            )
+        else:
+            if (
+                merge_target["path_summary"].get("pricing_audit")
+                == normalized_pricing_audit
+            ):
+                return merge_target
+            merge_target["path_summary"][
+                "pricing_audit"
+            ] = normalized_pricing_audit
+        merge_target["path_summary"]["evidence_sha256"] = evidence_sha256
+        merge_target["updated_at"] = now
+        append_event(
+            state,
+            "automation_improvement_evidence_extended",
+            now,
+            candidate_id=merge_target["id"],
+            reason_code=reason_code,
+        )
+        return merge_target
     same_evidence = next(
         (
             candidate
@@ -1683,7 +1746,7 @@ def queue_automation_improvement(
         ),
         None,
     )
-    if same_evidence is not None:
+    if same_evidence is not None and not require_successor:
         return same_evidence
     discovery_sequence = allocate_discovery_sequence(state)
     identifier = candidate_identity(
@@ -1700,7 +1763,12 @@ def queue_automation_improvement(
         "status": "queued",
         "priority": (
             "critical"
-            if reason_code == "live_configuration_drift"
+            if reason_code
+            in {
+                "live_configuration_drift",
+                "task_retention_contract_drift",
+                "x_pricing_contract_drift",
+            }
             else "normal"
         ),
         "source_sequence": None,
@@ -1734,6 +1802,11 @@ def queue_automation_improvement(
             **(
                 {"degradation_codes": list(normalized_degradation_codes)}
                 if reason_code == "content_loop_degraded"
+                else {}
+            ),
+            **(
+                {"pricing_audit": normalized_pricing_audit}
+                if reason_code == "x_pricing_contract_drift"
                 else {}
             ),
         },
@@ -3752,8 +3825,23 @@ def queue_effectiveness_improvements(
         now=now,
         window_seconds=604800,
     )
+    assessment_only_landings = sum(
+        candidate["status"] == "landed"
+        and isinstance(candidate.get("result"), dict)
+        and candidate["result"].get("outcome") == "landed"
+        and int(candidate["result"].get("resolved_at") or 0)
+        >= now - 604800
+        and not (
+            candidate["contract_missing"]
+            and _has_validated_landed_diff(candidate)
+        )
+        and candidate["kind"] != "automation_repair"
+        for candidate in state["candidates"]
+    )
     reason_code: str | None = None
-    if metrics["repair_request_count"] >= 2:
+    if assessment_only_landings >= 2:
+        reason_code = "assessment_only_churn"
+    elif metrics["repair_request_count"] >= 2:
         reason_code = "repeated_review_repairs"
     elif metrics["blocked_attempt_count"] >= 3:
         reason_code = "repeated_blocked_attempts"
@@ -3918,6 +4006,7 @@ def state_health(
         "unresolved_external_effects": unresolved_external_effects,
         "blockers": blockers,
         "effectiveness": {
+            "lifetime_outcome_classes": classify_lifetime_outcomes(state),
             "rolling_24_hours": rolling_effectiveness(
                 state,
                 now=now,
@@ -3929,9 +4018,80 @@ def state_health(
                 window_seconds=604800,
             ),
         },
-        "cost": {
-            "x_api_calls": 0,
-            "x_api_estimated_usd": 0,
-            "github_api_calls": 0,
-        },
     }
+
+
+def classify_lifetime_outcomes(state: dict[str, Any]) -> dict[str, int]:
+    """Separate real contract adaptation from assessment-only activity."""
+
+    counts = {
+        "contract_adaptation_landed_count": 0,
+        "automation_repair_landed_count": 0,
+        "assessment_only_landed_count": 0,
+        "validated_no_change_count": 0,
+        "validated_rejected_count": 0,
+        "active_contract_gap_count": 0,
+    }
+    for candidate in state["candidates"]:
+        if (
+            candidate["status"] not in TERMINAL_STATUSES
+            and candidate["contract_missing"]
+        ):
+            counts["active_contract_gap_count"] += 1
+        result = candidate.get("result")
+        if not isinstance(result, dict):
+            continue
+        outcome = result.get("outcome")
+        if outcome == "no_change":
+            counts["validated_no_change_count"] += 1
+        elif outcome == "rejected":
+            counts["validated_rejected_count"] += 1
+        elif outcome == "landed":
+            if candidate["kind"] == "automation_repair":
+                counts["automation_repair_landed_count"] += 1
+            elif (
+                candidate["contract_missing"]
+                and _has_validated_landed_diff(candidate)
+            ):
+                counts["contract_adaptation_landed_count"] += 1
+            else:
+                counts["assessment_only_landed_count"] += 1
+    return counts
+
+
+def _has_validated_landed_diff(candidate: dict[str, Any]) -> bool:
+    commit = candidate.get("commit_receipt")
+    pull_request = candidate.get("pull_request")
+    result = candidate.get("result")
+    if not all(
+        isinstance(value, dict)
+        for value in (commit, pull_request, result)
+    ):
+        return False
+    maintainer = pull_request.get("validation_receipt")
+    reviewer = result.get("reviewer_receipt")
+    if not isinstance(maintainer, dict) or not isinstance(reviewer, dict):
+        return False
+    base_head = commit.get("base_head")
+    head_sha = commit.get("head_sha")
+    tree_sha = commit.get("tree_sha")
+    return bool(
+        re.fullmatch(r"[0-9a-f]{40}", str(base_head)) is not None
+        and re.fullmatch(r"[0-9a-f]{40}", str(head_sha)) is not None
+        and re.fullmatch(r"[0-9a-f]{40}", str(tree_sha)) is not None
+        and base_head != head_sha
+        and pull_request.get("head_sha") == head_sha
+        and maintainer.get("base_head") == base_head
+        and maintainer.get("repository_head") == head_sha
+        and maintainer.get("repository_tree") == tree_sha
+        and reviewer.get("base_head") == base_head
+        and reviewer.get("repository_head") == head_sha
+        and reviewer.get("repository_tree") == tree_sha
+        and re.fullmatch(
+            r"[0-9a-f]{40}",
+            str(result.get("merge_sha")),
+        )
+        is not None
+        and is_sha256(result.get("land_intent_sha256"))
+        and is_sha256(result.get("land_execution_receipt_sha256"))
+    )
