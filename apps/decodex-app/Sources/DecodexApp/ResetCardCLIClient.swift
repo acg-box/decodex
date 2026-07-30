@@ -12,6 +12,7 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 	case providerUnavailable = "provider_unavailable"
 	case inventoryIncomplete = "inventory_incomplete"
 	case inventoryChanged = "inventory_changed"
+	case requestTimedOut = "request_timed_out"
 	case resourceExhausted = "resource_exhausted"
 	case productStateUnavailable = "product_state_unavailable"
 	case effectAmbiguous = "effect_ambiguous"
@@ -34,6 +35,8 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 			return "The daemon could not establish a complete reset-card inventory."
 		case .inventoryChanged:
 			return "The reset cards changed. Refresh and select the card again."
+		case .requestTimedOut:
+			return "The reset-card provider did not respond in time."
 		case .resourceExhausted:
 			return "The reset-card service reached a bounded resource limit."
 		case .productStateUnavailable:

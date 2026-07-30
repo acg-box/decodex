@@ -63,11 +63,15 @@ struct AccountProfileObservation: Equatable, Sendable {
 	}
 
 	func redactingEmail() -> Self {
+		replacingEmail(nil)
+	}
+
+	func replacingEmail(_ email: String?) -> Self {
 		Self(
 			accountID: accountID,
 			accountRevision: accountRevision,
 			observedAtUnixMicros: observedAtUnixMicros,
-			email: nil,
+			email: email,
 			planType: planType,
 			displayName: displayName,
 			username: username,
@@ -82,7 +86,11 @@ struct AccountProfileClaims: Equatable, Sendable {
 	let planType: String?
 
 	func redactingEmail() -> Self {
-		Self(email: nil, planType: planType)
+		replacingEmail(nil)
+	}
+
+	func replacingEmail(_ email: String?) -> Self {
+		Self(email: email, planType: planType)
 	}
 }
 
@@ -91,7 +99,11 @@ struct AccountProfileUnavailable: Equatable, Sendable {
 	let claims: AccountProfileClaims
 
 	func redactingEmail() -> Self {
-		Self(error: error, claims: claims.redactingEmail())
+		replacingEmail(nil)
+	}
+
+	func replacingEmail(_ email: String?) -> Self {
+		Self(error: error, claims: claims.replacingEmail(email))
 	}
 }
 

@@ -38,7 +38,7 @@ struct AccountProfileDetailView: View {
 		VStack(alignment: .leading, spacing: 9) {
 			HStack(alignment: .firstTextBaseline) {
 				Text("Account details")
-					.font(.headline)
+					.font(PanelFont.transientTitle)
 
 				Spacer()
 
@@ -121,22 +121,7 @@ struct AccountProfileDetailView: View {
 
 struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
-	let totalAccountCount: Int
-	let currentProfileCount: Int
-	let degradedProfileCount: Int
 	@Environment(\.colorScheme) private var colorScheme
-
-	init(
-		aggregate: AccountProfileAggregate,
-		totalAccountCount: Int? = nil,
-		currentProfileCount: Int? = nil,
-		degradedProfileCount: Int = 0
-	) {
-		self.aggregate = aggregate
-		self.totalAccountCount = totalAccountCount ?? aggregate.accountCount
-		self.currentProfileCount = currentProfileCount ?? aggregate.accountCount
-		self.degradedProfileCount = degradedProfileCount
-	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
@@ -150,26 +135,19 @@ struct AccountProfileOverviewView: View {
 					.font(PanelFont.usageValue)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
-				Spacer(minLength: 4)
-
-				Text(profileCountLabel)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				Spacer(minLength: 0)
 			}
 
-			if completeAggregateMetrics.isEmpty == false {
+			if aggregateMetrics.isEmpty == false {
 				AccountProfileMetricsView(
-					metrics: completeAggregateMetrics
+					metrics: aggregateMetrics
 				)
 			}
 
 			if aggregate.dailyUsage.isEmpty == false {
 				AccountDailyUsageChart(
 					records: aggregate.dailyUsage,
-					showsAxis: true,
-					axisLabel: aggregate.dailyUsageCoverage == totalAccountCount
-						? nil
-						: "\(aggregate.dailyUsageCoverage) of \(totalAccountCount) daily"
+					showsAxis: true
 				)
 			}
 		}
@@ -178,30 +156,13 @@ struct AccountProfileOverviewView: View {
 		.accessibilityElement(children: .combine)
 	}
 
-	private var profileCountLabel: String {
-		AccountProfileCoveragePresentation(
-			currentCount: currentProfileCount,
-			totalCount: totalAccountCount
-		).label
-	}
-
-	private var completeAggregateMetrics: [AccountProfileMetric] {
-		AccountProfileMetric.make(
-			lifetimeTokens: aggregate.lifetimeTokensCoverage == totalAccountCount
-				? aggregate.lifetimeTokens
-				: nil,
-			peakDailyTokens: aggregate.peakDailyTokensCoverage == totalAccountCount
-				? aggregate.peakDailyTokens
-				: nil,
-			longestTaskSeconds: aggregate.longestTaskSecondsCoverage == totalAccountCount
-				? aggregate.longestTaskSeconds
-				: nil,
-			currentStreakDays: aggregate.currentStreakDaysCoverage == totalAccountCount
-				? aggregate.currentStreakDays
-				: nil,
-			longestStreakDays: aggregate.longestStreakDaysCoverage == totalAccountCount
-				? aggregate.longestStreakDays
-				: nil
+	private var aggregateMetrics: [AccountProfileMetric] {
+		AccountProfileMetric.makeOverview(
+			lifetimeTokens: aggregate.lifetimeTokens,
+			peakDailyTokens: aggregate.peakDailyTokens,
+			longestTaskSeconds: aggregate.longestTaskSeconds,
+			currentStreakDays: aggregate.currentStreakDays,
+			longestStreakDays: aggregate.longestStreakDays
 		)
 	}
 }
@@ -236,6 +197,37 @@ private struct AccountProfileMetric: Identifiable {
 			},
 		]
 		.compactMap { $0 }
+	}
+
+	static func makeOverview(
+		lifetimeTokens: UInt64?,
+		peakDailyTokens: UInt64?,
+		longestTaskSeconds: UInt64?,
+		currentStreakDays: UInt32?,
+		longestStreakDays: UInt32?
+	) -> [Self] {
+		[
+			Self(
+				id: "tokens",
+				label: "total",
+				value: lifetimeTokens.map(formatCompactCount) ?? "—"
+			),
+			Self(
+				id: "peak",
+				label: "peak",
+				value: peakDailyTokens.map(formatCompactCount) ?? "—"
+			),
+			Self(
+				id: "streak",
+				label: "streak",
+				value: streak(current: currentStreakDays, longest: longestStreakDays) ?? "—"
+			),
+			Self(
+				id: "task",
+				label: "task",
+				value: longestTaskSeconds.map(formatActivityDuration) ?? "—"
+			),
+		]
 	}
 
 	private static func streak(current: UInt32?, longest: UInt32?) -> String? {
@@ -284,21 +276,14 @@ private struct AccountProfileMetricsView: View {
 struct AccountDailyUsageChart: View {
 	let records: [AccountProfileDailyUsage]
 	let showsAxis: Bool
-	let axisLabel: String?
 	@Environment(\.colorScheme) private var colorScheme
-
-	init(
-		records: [AccountProfileDailyUsage],
-		showsAxis: Bool,
-		axisLabel: String? = nil
-	) {
-		self.records = records
-		self.showsAxis = showsAxis
-		self.axisLabel = axisLabel
-	}
 
 	var body: some View {
 		let values = displayRecords
+		let peak = max(1, values.map(\.tokens).max() ?? 1)
+		let totalTokens = values.reduce(UInt64(0)) {
+			$0.addingWithoutOverflow($1.tokens)
+		}
 
 		VStack(alignment: .leading, spacing: 2) {
 			GeometryReader { proxy in
@@ -310,12 +295,13 @@ struct AccountDailyUsageChart: View {
 					HStack(alignment: .bottom, spacing: 1.5) {
 						ForEach(values) { record in
 							RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-								.fill(barColor(record.tokens))
+								.fill(barColor(record.tokens, peak: peak))
 								.frame(
 									maxWidth: .infinity,
 									minHeight: 1,
 									maxHeight: barHeight(
 										record.tokens,
+										peak: peak,
 										available: proxy.size.height
 									)
 								)
@@ -334,10 +320,6 @@ struct AccountDailyUsageChart: View {
 				HStack {
 					Text(values.first.map { compactUsageDate($0.date) } ?? "")
 						.frame(maxWidth: .infinity, alignment: .leading)
-					if let axisLabel {
-						Text(axisLabel)
-							.frame(maxWidth: .infinity, alignment: .center)
-					}
 					Text(values.last.map { compactUsageDate($0.date) } ?? "")
 						.frame(maxWidth: .infinity, alignment: .trailing)
 				}
@@ -359,17 +341,11 @@ struct AccountDailyUsageChart: View {
 		normalizedDailyUsage(records, maximumCount: 36)
 	}
 
-	private var peak: UInt64 {
-		max(1, displayRecords.map(\.tokens).max() ?? 1)
-	}
-
-	private var totalTokens: UInt64 {
-		displayRecords.reduce(0) {
-			$0.addingWithoutOverflow($1.tokens)
-		}
-	}
-
-	private func barHeight(_ tokens: UInt64, available: CGFloat) -> CGFloat {
+	private func barHeight(
+		_ tokens: UInt64,
+		peak: UInt64,
+		available: CGFloat
+	) -> CGFloat {
 		guard tokens > 0 else {
 			return 1
 		}
@@ -378,7 +354,7 @@ struct AccountDailyUsageChart: View {
 		return max(2, available * CGFloat(normalized))
 	}
 
-	private func barColor(_ tokens: UInt64) -> Color {
+	private func barColor(_ tokens: UInt64, peak: UInt64) -> Color {
 		let normalized = sqrt(Double(tokens) / Double(peak))
 		return PanelPalette.usageCyan(colorScheme)
 			.opacity(0.3 + 0.62 * normalized)

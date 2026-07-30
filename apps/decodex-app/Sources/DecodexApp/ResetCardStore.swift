@@ -60,15 +60,6 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 	}
 
-	var isProfileDegraded: Bool {
-		guard profile != nil else {
-			return false
-		}
-		return profile?.isCached == true
-			|| profileUnavailable != nil
-			|| profileError != nil
-	}
-
 	var profileDegradationText: String? {
 		guard profile != nil else {
 			return nil
@@ -92,10 +83,14 @@ struct ResetCardAccountState: Identifiable, Equatable {
 
 private struct AccountProfileRequest: Equatable, Sendable {
 	let generation: UInt64
-	let privacyEpoch: UInt64
 	let includesEmail: Bool
 	let accountID: String
 	let accountRevision: UInt64
+}
+
+private struct CachedAccountEmail: Equatable, Sendable {
+	let accountRevision: UInt64
+	let email: String?
 }
 
 private enum ResetCardAccountRead: Sendable {
@@ -199,6 +194,8 @@ final class ResetCardStore {
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var profileRequestGenerations = [String: UInt64]()
+	@ObservationIgnored private var profileEmailCache = [String: CachedAccountEmail]()
+	@ObservationIgnored private var requestedProfileEmailVisibility = false
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
 
@@ -314,12 +311,13 @@ final class ResetCardStore {
 	}
 
 	func setProfileEmailVisibility(_ isVisible: Bool) async {
-		let didChange = profileEmailsVisible != isVisible
-		profileEmailsVisible = isVisible
+		let didChange = requestedProfileEmailVisibility != isVisible
+		requestedProfileEmailVisibility = isVisible
 		if didChange {
 			profilePrivacyEpoch &+= 1
 		}
 		if isVisible == false {
+			profileEmailsVisible = false
 			accounts = accounts.map { state in
 				ResetCardAccountState(
 					account: state.account,
@@ -335,10 +333,18 @@ final class ResetCardStore {
 			return
 		}
 
-		guard didChange, accountProfileClient != nil else {
+		guard didChange else {
+			return
+		}
+		let visibilityEpoch = profilePrivacyEpoch
+		if publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch) {
+			return
+		}
+		guard accountProfileClient != nil else {
 			return
 		}
 		await refreshProfiles()
+		_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
 	}
 
 	private func refreshReadState() async -> ResetCardRefreshResult {
@@ -442,6 +448,7 @@ final class ResetCardStore {
 					&& retainedProfileError == nil
 				)
 			}
+			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			if let projectionReadback,
 				applyCodexAuthProjection(
@@ -457,8 +464,9 @@ final class ResetCardStore {
 
 			let client = self.client
 			let accountProfileClient = self.accountProfileClient
-			let includeEmail = profileEmailsVisible
+			let includeEmail = true
 			var profileRequests = [AccountProfileRequest]()
+			let visibilityEpoch = profilePrivacyEpoch
 			var expectedAuthority = retainedAuthority
 			var reads = [@Sendable () async -> ResetCardAccountRead]()
 			for state in accounts {
@@ -481,7 +489,6 @@ final class ResetCardStore {
 						generation: beginProfileRequestGeneration(
 							accountID: account.accountID
 						),
-						privacyEpoch: profilePrivacyEpoch,
 						includesEmail: includeEmail,
 						accountID: account.accountID,
 						accountRevision: account.accountRevision
@@ -567,6 +574,7 @@ final class ResetCardStore {
 			for request in profileRequests {
 				finishProfileRequest(request)
 			}
+			_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
 		} catch {
 			let clientError = Self.clientError(error)
 			shouldRetry = clientError.isRetryableReadFailure
@@ -1165,13 +1173,12 @@ final class ResetCardStore {
 		}
 		let account = accounts[index].account
 		let client = self.client
-		let includeEmail = profileEmailsVisible
-		let profileRequest = accountProfileClient.map { _ in
-			AccountProfileRequest(
-				generation: beginProfileRequestGeneration(accountID: accountID),
-				privacyEpoch: profilePrivacyEpoch,
-				includesEmail: includeEmail,
-				accountID: accountID,
+		let includeEmail = true
+			let profileRequest = accountProfileClient.map { _ in
+				AccountProfileRequest(
+					generation: beginProfileRequestGeneration(accountID: accountID),
+					includesEmail: includeEmail,
+					accountID: accountID,
 				accountRevision: account.accountRevision
 			)
 		}
@@ -1302,6 +1309,7 @@ final class ResetCardStore {
 					&& accountProfileClient != nil
 				)
 			}
+			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			for accountID in accountsNeedingDetails {
 				scheduleAccountControlFollowUp(.account(accountID))
@@ -1456,47 +1464,26 @@ final class ResetCardStore {
 		request: AccountProfileRequest
 	) {
 		guard isCurrentProfileRequest(request),
-			request.accountID == accountID,
-			profile.accountID == accountID,
-			let index = accounts.firstIndex(where: { $0.account.accountID == accountID }),
-			profile.accountRevision == accounts[index].account.accountRevision
+			let index = accounts.firstIndex(where: {
+				$0.account.accountID == accountID
+			})
 		else {
-			applyProfileFailure(
-				.invalidResponse,
-				accountID: accountID,
-				request: request
-			)
 			return
 		}
-		let existing = accounts[index]
-		let candidate = profileEmailsVisible ? profile : profile.redactingEmail()
-		guard Self.canReplaceRetainedProfile(
-			existing.profile,
-			with: candidate,
-			allowsEmailEnrichment: profileEmailsVisible
-		) else {
-			accounts[index] = ResetCardAccountState(
-				account: existing.account,
-				inventory: existing.inventory,
-				error: existing.error,
-				isRefreshing: existing.isRefreshing,
-				profile: existing.profile,
-				profileUnavailable: nil,
-				profileError: .invalidResponse,
-				isProfileRefreshing: false
-			)
-			return
-		}
-		accounts[index] = ResetCardAccountState(
-			account: existing.account,
-			inventory: existing.inventory,
-			error: existing.error,
-			isRefreshing: existing.isRefreshing,
-			profile: candidate,
-			profileUnavailable: nil,
-			profileError: nil,
-			isProfileRefreshing: false
+		let read = ResetCardAccountRead.profileAvailable(
+			accountID: accountID,
+			request: request,
+			profile
 		)
+		let existing = accounts[index]
+		let updated = profileState(
+			existing,
+			applying: read,
+			includesEmail: profileEmailsVisible
+		)
+		cacheEmail(from: read, replacing: existing, with: updated)
+		accounts[index] = updated
+		_ = publishProfileEmailsIfReady(expectedEpoch: profilePrivacyEpoch)
 	}
 
 	private func applyProfileUnavailable(
@@ -1505,24 +1492,26 @@ final class ResetCardStore {
 		request: AccountProfileRequest
 	) {
 		guard isCurrentProfileRequest(request),
-			request.accountID == accountID,
-			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
+			let index = accounts.firstIndex(where: {
+				$0.account.accountID == accountID
+			})
 		else {
 			return
 		}
-		let existing = accounts[index]
-		accounts[index] = ResetCardAccountState(
-			account: existing.account,
-			inventory: existing.inventory,
-			error: existing.error,
-			isRefreshing: existing.isRefreshing,
-			profile: existing.profile,
-			profileUnavailable: profileEmailsVisible
-				? unavailable
-				: unavailable.redactingEmail(),
-			profileError: nil,
-			isProfileRefreshing: false
+		let read = ResetCardAccountRead.profileUnavailable(
+			accountID: accountID,
+			request: request,
+			unavailable
 		)
+		let existing = accounts[index]
+		let updated = profileState(
+			existing,
+			applying: read,
+			includesEmail: profileEmailsVisible
+		)
+		cacheEmail(from: read, replacing: existing, with: updated)
+		accounts[index] = updated
+		_ = publishProfileEmailsIfReady(expectedEpoch: profilePrivacyEpoch)
 	}
 
 	private func applyProfileFailure(
@@ -1531,21 +1520,20 @@ final class ResetCardStore {
 		request: AccountProfileRequest
 	) {
 		guard isCurrentProfileRequest(request),
-			request.accountID == accountID,
-			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
+			let index = accounts.firstIndex(where: {
+				$0.account.accountID == accountID
+			})
 		else {
 			return
 		}
-		let existing = accounts[index]
-		accounts[index] = ResetCardAccountState(
-			account: existing.account,
-			inventory: existing.inventory,
-			error: existing.error,
-			isRefreshing: existing.isRefreshing,
-			profile: existing.profile,
-			profileUnavailable: nil,
-			profileError: error,
-			isProfileRefreshing: false
+		accounts[index] = profileState(
+			accounts[index],
+			applying: .profileFailed(
+				accountID: accountID,
+				request: request,
+				error
+			),
+			includesEmail: profileEmailsVisible
 		)
 	}
 
@@ -1578,19 +1566,12 @@ final class ResetCardStore {
 		guard let accountProfileClient else {
 			return
 		}
-		accounts = accounts.map { state in
-			ResetCardAccountState(
-				account: state.account,
-				inventory: state.inventory,
-				error: state.error,
-				isRefreshing: state.isRefreshing,
-				profile: state.profile,
-				profileUnavailable: nil,
-				profileError: nil,
-				isProfileRefreshing: true
-			)
+		let accountSnapshot = accounts.filter {
+			hasCachedEmail(for: $0) == false
 		}
-		let includeEmail = profileEmailsVisible
+		guard accountSnapshot.isEmpty == false else {
+			return
+		}
 		var requests = [AccountProfileRequest]()
 		defer {
 			for request in requests {
@@ -1598,14 +1579,13 @@ final class ResetCardStore {
 			}
 		}
 		await withTaskGroup(of: ResetCardAccountRead.self) { group in
-			for state in accounts {
+			for state in accountSnapshot {
 				let account = state.account
 				let request = AccountProfileRequest(
 					generation: beginProfileRequestGeneration(
 						accountID: account.accountID
 					),
-					privacyEpoch: profilePrivacyEpoch,
-					includesEmail: includeEmail,
+					includesEmail: true,
 					accountID: account.accountID,
 					accountRevision: account.accountRevision
 				)
@@ -1614,7 +1594,7 @@ final class ResetCardStore {
 					do {
 						switch try await accountProfileClient.profile(
 							for: account,
-							includeEmail: includeEmail
+							includeEmail: true
 						) {
 						case .available(let profile):
 							return .profileAvailable(
@@ -1644,38 +1624,197 @@ final class ResetCardStore {
 					return
 				}
 				switch read {
-				case .profileAvailable(let accountID, let responseRequest, let profile):
-					guard isCurrentProfileRequest(responseRequest) else {
-						continue
-					}
-					applyProfile(
-						profile,
-						accountID: accountID,
-						request: responseRequest
-					)
-				case .profileUnavailable(let accountID, let responseRequest, let unavailable):
-					guard isCurrentProfileRequest(responseRequest) else {
-						continue
-					}
+				case .profileAvailable(let accountID, let request, let profile):
+					applyProfile(profile, accountID: accountID, request: request)
+				case .profileUnavailable(let accountID, let request, let unavailable):
 					applyProfileUnavailable(
 						unavailable,
 						accountID: accountID,
-						request: responseRequest
+						request: request
 					)
-				case .profileFailed(let accountID, let responseRequest, let error):
-					guard isCurrentProfileRequest(responseRequest) else {
-						continue
-					}
-					applyProfileFailure(
-						error,
-						accountID: accountID,
-						request: responseRequest
-					)
+				case .profileFailed(let accountID, let request, let error):
+					applyProfileFailure(error, accountID: accountID, request: request)
 				case .inventoryAvailable, .inventoryFailed:
 					break
 				}
 			}
 		}
+	}
+
+	@discardableResult
+	private func publishProfileEmailsIfReady(expectedEpoch: UInt64) -> Bool {
+		guard requestedProfileEmailVisibility,
+			profileEmailsVisible == false,
+			profilePrivacyEpoch == expectedEpoch,
+			accounts.isEmpty == false,
+			accounts.allSatisfy(hasCachedEmail)
+		else {
+			return false
+		}
+
+		// Identity changes are one whole-array publication. Profile metrics and
+		// errors continue to arrive independently while this reveal is pending.
+		profileEmailsVisible = true
+		accounts = accounts.map(revealingCachedEmail)
+		return true
+	}
+
+	private func hasCachedEmail(for state: ResetCardAccountState) -> Bool {
+		profileEmailCache[state.account.accountID]?.accountRevision
+			== state.account.accountRevision
+	}
+
+	private func revealingCachedEmail(
+		_ state: ResetCardAccountState
+	) -> ResetCardAccountState {
+		guard let cached = profileEmailCache[state.account.accountID],
+			cached.accountRevision == state.account.accountRevision
+		else {
+			return state
+		}
+		return ResetCardAccountState(
+			account: state.account,
+			inventory: state.inventory,
+			error: state.error,
+			isRefreshing: state.isRefreshing,
+			profile: state.profile?.replacingEmail(cached.email),
+			profileUnavailable: state.profileUnavailable?.replacingEmail(cached.email),
+			profileError: state.profileError,
+			isProfileRefreshing: state.isProfileRefreshing
+		)
+	}
+
+	private func cacheEmail(
+		from read: ResetCardAccountRead,
+		replacing existing: ResetCardAccountState,
+		with updated: ResetCardAccountState
+	) {
+		guard updated.profileError != .invalidResponse else {
+			return
+		}
+		switch read {
+		case .profileAvailable(let accountID, let request, let profile):
+			guard request.includesEmail,
+				accountID == existing.account.accountID,
+				profile.accountID == accountID,
+				profile.accountRevision == existing.account.accountRevision,
+				Self.canReplaceRetainedProfile(
+					existing.profile,
+					with: profile,
+					allowsEmailEnrichment: true
+				)
+			else {
+				return
+			}
+			profileEmailCache[accountID] = CachedAccountEmail(
+				accountRevision: profile.accountRevision,
+				email: profile.email
+			)
+		case .profileUnavailable(let accountID, let request, let unavailable):
+			guard request.includesEmail,
+				accountID == existing.account.accountID,
+				request.accountRevision == existing.account.accountRevision
+			else {
+				return
+			}
+			profileEmailCache[accountID] = CachedAccountEmail(
+				accountRevision: request.accountRevision,
+				email: unavailable.claims.email
+			)
+		case .profileFailed, .inventoryAvailable, .inventoryFailed:
+			break
+		}
+	}
+
+	private func pruneProfileEmailCache() {
+		let revisions = Dictionary(
+			uniqueKeysWithValues: accounts.map {
+				($0.account.accountID, $0.account.accountRevision)
+			}
+		)
+		profileEmailCache = profileEmailCache.filter { accountID, cached in
+			revisions[accountID] == cached.accountRevision
+		}
+	}
+
+	private func profileState(
+		_ state: ResetCardAccountState,
+		applying read: ResetCardAccountRead,
+		includesEmail: Bool
+	) -> ResetCardAccountState {
+		switch read {
+		case .profileAvailable(let accountID, let request, let profile):
+			guard request.accountID == accountID,
+				accountID == state.account.accountID,
+				profile.accountID == accountID,
+				profile.accountRevision == state.account.accountRevision
+			else {
+				return profileFailureState(state, error: .invalidResponse)
+			}
+			let candidate = includesEmail ? profile : profile.redactingEmail()
+			guard Self.canReplaceRetainedProfile(
+				state.profile,
+				with: candidate,
+				allowsEmailEnrichment: includesEmail
+			) else {
+				return profileFailureState(state, error: .invalidResponse)
+			}
+			return ResetCardAccountState(
+				account: state.account,
+				inventory: state.inventory,
+				error: state.error,
+				isRefreshing: state.isRefreshing,
+				profile: candidate,
+				profileUnavailable: nil,
+				profileError: nil,
+				isProfileRefreshing: false
+			)
+		case .profileUnavailable(let accountID, let request, let unavailable):
+			guard request.accountID == accountID,
+				accountID == state.account.accountID,
+				request.accountRevision == state.account.accountRevision
+			else {
+				return profileFailureState(state, error: .invalidResponse)
+			}
+			return ResetCardAccountState(
+				account: state.account,
+				inventory: state.inventory,
+				error: state.error,
+				isRefreshing: state.isRefreshing,
+				profile: state.profile,
+				profileUnavailable: includesEmail
+					? unavailable
+					: unavailable.redactingEmail(),
+				profileError: nil,
+				isProfileRefreshing: false
+			)
+		case .profileFailed(let accountID, let request, let error):
+			guard request.accountID == accountID,
+				accountID == state.account.accountID,
+				request.accountRevision == state.account.accountRevision
+			else {
+				return profileFailureState(state, error: .invalidResponse)
+			}
+			return profileFailureState(state, error: error)
+		case .inventoryAvailable, .inventoryFailed:
+			return state
+		}
+	}
+
+	private func profileFailureState(
+		_ state: ResetCardAccountState,
+		error: ResetCardClientError
+	) -> ResetCardAccountState {
+		ResetCardAccountState(
+			account: state.account,
+			inventory: state.inventory,
+			error: state.error,
+			isRefreshing: state.isRefreshing,
+			profile: state.profile,
+			profileUnavailable: nil,
+			profileError: error,
+			isProfileRefreshing: false
+		)
 	}
 
 	private func beginProfileRequestGeneration(accountID: String) -> UInt64 {
@@ -1686,8 +1825,6 @@ final class ResetCardStore {
 
 	private func isCurrentProfileRequest(_ request: AccountProfileRequest) -> Bool {
 		guard request.generation == profileRequestGenerations[request.accountID],
-			request.privacyEpoch == profilePrivacyEpoch,
-			request.includesEmail == profileEmailsVisible,
 			let state = accounts.first(where: {
 				$0.account.accountID == request.accountID
 			})
@@ -1699,7 +1836,6 @@ final class ResetCardStore {
 
 	private func finishProfileRequest(_ request: AccountProfileRequest) {
 		guard request.generation == profileRequestGenerations[request.accountID],
-			request.privacyEpoch == profilePrivacyEpoch,
 			let index = accounts.firstIndex(where: {
 				$0.account.accountID == request.accountID
 			}),
@@ -2040,7 +2176,7 @@ private extension ResetCardServiceError {
 	var isRetryableReadFailure: Bool {
 		switch self {
 		case .accountNotFound, .accountStateRejected, .vaultUnavailable, .providerUnavailable,
-			.inventoryIncomplete, .inventoryChanged, .resourceExhausted,
+			.inventoryIncomplete, .inventoryChanged, .requestTimedOut, .resourceExhausted,
 			.productStateUnavailable, .effectAmbiguous:
 			return true
 		case .invalidRequest, .schemaUnsupported:
