@@ -43,8 +43,10 @@ Transparent gaps remain visible; there is no background surface around the
 complete panel and no Liquid Glass effect.
 
 The app never identifies an account from its alias or vector position. The
-daemon derives a stable credential-negative alias. The canonical account UUID
-is the only row identity. There is no account rename surface.
+daemon derives a stable credential-negative one-word alias. The row displays
+either that alias or the account email in the same identity slot, and keeps the
+same account icon in both privacy states. The canonical account UUID is the only
+row identity. There is no account rename surface.
 
 Reset Card use requires two clicks on the same descriptor. The first click arms
 a five-second confirmation. The second click writes one credential-negative

@@ -812,15 +812,13 @@ struct ResetCardAccountWire: Decodable, Sendable {
 
 	private static func isCanonicalAlias(_ value: String) -> Bool {
 		let bytes = Array(value.utf8)
-		guard bytes.count == 19,
-			Array(bytes[0..<8]) == Array("Account ".utf8),
-			bytes[13] == 45
+		guard (2 ... 16).contains(bytes.count),
+			let first = bytes.first,
+			(65 ... 90).contains(first)
 		else {
 			return false
 		}
-		let alphabet = Set("0123456789ABCDEFGHJKMNPQRSTVWXYZ".utf8)
-		return bytes[8..<13].allSatisfy(alphabet.contains)
-			&& bytes[14..<19].allSatisfy(alphabet.contains)
+		return bytes.dropFirst().allSatisfy { (97 ... 122).contains($0) }
 	}
 }
 

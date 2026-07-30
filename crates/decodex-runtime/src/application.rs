@@ -1984,7 +1984,7 @@ mod tests {
 	fn prepared_account_uses_its_immutable_derived_alias_without_a_current_binding() {
 		let account = AccountRecord {
 			account_id: AccountId::new("40000000-0000-4000-8000-000000000002").unwrap(),
-			label: "Account DQ6WF-G8BTT".to_owned(),
+			label: "Val".to_owned(),
 			enabled: true,
 			revision: 1,
 			observed_state: AccountState::Unknown,
@@ -2010,7 +2010,7 @@ mod tests {
 
 		assert_eq!(
 			account_dto(account).expect("prepared account must remain listable").alias.as_str(),
-			"Account DQ6WF-G8BTT",
+			"Val",
 		);
 	}
 

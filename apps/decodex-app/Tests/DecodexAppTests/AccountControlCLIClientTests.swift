@@ -25,7 +25,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				data: """
 				{"outcome":"available","data":{
 				  "accounts":[
-				    \(controlAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 7)),
+				    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 7)),
 				    \(controlUnsettledAccountJSON(accountID: secondAccountID, operationID: operationID))
 				  ],
 				  "routing":{"revision":9,"mode":{"mode":"fixed","account_id":"\(secondAccountID)"},"order":["\(secondAccountID)","\(accountID)"]}
@@ -104,7 +104,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				payload = """
 				{"outcome":"applied","data":{"entity_revision":8,
 				  "result":{"name":"account_changed","data":{"account":
-				    \(controlAccountJSON(accountID: accountID, alias: "Account 00000-00001", revision: 8, enabled: enabled))
+				    \(controlAccountJSON(accountID: accountID, alias: "Iris", revision: 8, enabled: enabled))
 				  }}}}
 				"""
 			}
@@ -364,7 +364,7 @@ private func controlUnsettledAccountJSON(
 	operationID: String
 ) -> String {
 	"""
-	{"account_id":"\(accountID)","alias":"Account 00000-00002","enabled":true,
+	{"account_id":"\(accountID)","alias":"Jamie","enabled":true,
 	 "account_revision":8,"observed_state":"unknown","lifecycle_readiness":"operation_unsettled",
 	 "credential_binding":{"schema_version":1,"version":2,
 	   "fingerprint_sha256":"\(String(repeating: "b", count: 64))",

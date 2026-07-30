@@ -92,7 +92,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 	func testIdentityUsesExactlyOneEmailOrAliasSlot() {
 		let visible = AccountIdentityPresentation(
-			alias: "Account 7M4K-P2Q8",
+			alias: "Iris",
 			email: "iris@example.com",
 			revealsEmail: true
 		)
@@ -100,20 +100,20 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(visible.showsEmail)
 
 		let hidden = AccountIdentityPresentation(
-			alias: "Account 7M4K-P2Q8",
+			alias: "Iris",
 			email: "iris@example.com",
 			revealsEmail: false
 		)
-		XCTAssertEqual(hidden.text, "Account 7M4K-P2Q8")
+		XCTAssertEqual(hidden.text, "Iris")
 		XCTAssertFalse(hidden.showsEmail)
 
 		XCTAssertEqual(
 			AccountIdentityPresentation(
-				alias: "Account 7M4K-P2Q8",
+				alias: "Iris",
 				email: "  ",
 				revealsEmail: true
 			).text,
-			"Account 7M4K-P2Q8"
+			"Iris"
 		)
 	}
 
