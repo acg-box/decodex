@@ -50,8 +50,8 @@ fn validate_social_post_decision_counts(
 	decision: &Map<String, Value>,
 	errors: &mut Vec<String>,
 ) {
-	if decision.get("daily_limit").and_then(Value::as_i64) != Some(8) {
-		errors.push("decision.daily_limit must be 8".into());
+	if decision.get("daily_limit").and_then(Value::as_i64) != Some(1) {
+		errors.push("decision.daily_limit must be 1".into());
 	}
 
 	let before = decision.get("daily_count_before").and_then(Value::as_i64);

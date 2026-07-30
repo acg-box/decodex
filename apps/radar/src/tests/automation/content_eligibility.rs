@@ -323,8 +323,12 @@ fn write_fresh_private_artifacts(
 	let mut impact = fixtures::valid_upstream_impact();
 	let cache = root.join(crate::DEFAULT_CACHE_ROOT);
 	let queue_path = cache.join("github/review-queue/openai-codex-latest.json");
-	let review_path = cache.join("github/reviews/openai-codex-pr-22414.json");
-	let impact_path = cache.join("github/impact/openai-codex-pr-22414.json");
+	let pair = cache.join(
+		"github/content-review-pairs/fixture--\
+		 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+	);
+	let review_path = pair.join("review.json");
+	let impact_path = pair.join("impact.json");
 
 	queue["generated_at"] = serde_json::json!(timestamp);
 	review["reviewed_at"] = serde_json::json!(timestamp);

@@ -7,7 +7,7 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 - Radar owns upstream evidence and validation for `github_change_bundle/v1`, `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`, `analysis_draft`, `signal_entry/v1`, `release_delta/v1`, `control_plane_upgrade_candidate/v1`, the local Radar ledger, and bundle/signal/release operations (`apps/radar/src/constants.rs`, `apps/radar/src/cli/commands.rs`, `apps/radar/src/artifact_validation/core/dispatch.rs`).
 - Decodex Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`,
   `social_post/v1`, `social_outcome/v1`, `social_strategy/v1`, social validation,
-  browser lease serialization, and publication reservation workflows
+  xurl execution, paid-call ledgers, and publication reservation workflows
   (`apps/decodex-publisher/src/lib.rs`,
   `apps/decodex-publisher/src/social_validation.rs`,
   `apps/decodex-publisher/src/social_publish.rs`).
@@ -58,40 +58,33 @@ A candidate is not executable work by itself. Promote implementation only throug
 
 `social_candidate/v1` is a pre-publication handoff artifact. It may cite upstream reviews, upstream impacts, signals, release deltas, or URLs; current validation rejects Radar-derived candidates that cite upstream reviews or release deltas without the shared `upstream_impact/v1` handoff (`apps/decodex-publisher/src/social_validation/candidate.rs`). Candidate producers must not publish to X or write terminal post records.
 
-`social_publish_reservation/v1` is a pre-compose claim. Publisher automation must
-first acquire the single X browser lease and then create an active reservation through
-`decodex-publisher social reserve-publish`. It must not hand-write JSON. The command
-verifies the browser lease, checks the idempotency key, daily limit, candidate or URL
-refs, duplicate keys, active reservations, terminal posts, and schema. It uses one
-create-only path derived from the idempotency key, so concurrent writers cannot reserve
-the same publication under different slugs
-(`apps/decodex-publisher/src/social_browser_lease.rs`,
-`apps/decodex-publisher/src/social_publish.rs`).
-Publisher renews the exact lease before every browser action, including the public
-write, final readback, and account restoration. An operating-system file lock
-serializes lease mutation. The kernel releases that lock after a CLI process exits or
-crashes, so expiry recovery cannot race a paused renewal or overwrite a successor
-lease.
+`social_publish_reservation/v1` is a pre-write claim. Publisher automation creates
+it only through `decodex-publisher social reserve-publish`; it does not hand-write
+JSON. The command checks idempotency, the one-per-UTC-day limit, duplicate state,
+expiry, and schema under one operating-system lock. Expired active reservations
+are terminalized before the cap scan.
 
 `social_post/v1` is the durable terminal record for published, blocked, failed, or skipped social output. Validation enforces channel/account constants, modes, status-specific payloads, evidence notes, claims, source refs, and cross-file idempotency conflicts between active reservations and terminal posts (`apps/decodex-publisher/src/social_validation/post.rs`, `apps/decodex-publisher/src/social_validation/reservation.rs`, `apps/decodex-publisher/src/social_validation/cross_file.rs`).
 
-`social_outcome/v1` stores one browser-read 24-hour or seven-day metric snapshot for a
-confirmed `@decodexspace` post. It includes the source post, status URL, visible
-metrics, and the same structured account switch and restoration evidence used by
-published terminal records. The validator requires a matching published record and
-URL. A 24-hour read must occur 23 to 48 hours after publication. A seven-day read must
-occur 167 to 192 hours after publication.
+`social_outcome/v1` stores one xurl-read 24-hour or seven-day metric snapshot for a
+confirmed `@decodexspace` post. It binds owner/run_id to the exact Codex task and
+uses `<run-id>.json` for retention-compatible evidence. Duplicate post/window
+outcomes are rejected. A 24-hour read must occur 23 to 48 hours after publication.
+A seven-day read must occur 167 to 192 hours after publication.
 
-`social_strategy/v1` stores one bounded daily or weekly Content Manager review. It
-requires exact evidence refs, a unique cycle key, no more than 16 decisions, and
-unchanged evidence, privacy, idempotency, account, and publication guardrails.
+`social_strategy/v1` stores one bounded weekly Content Manager checkpoint or one
+evidence-backed strategy change. The daily no-change review belongs only in
+bounded automation memory so it cannot starve candidate production. A strategy
+artifact requires exact evidence refs, a unique cycle key, no more than 16
+decisions, and unchanged evidence, privacy, idempotency, account, and publication
+guardrails.
 
 Publisher is an artifact consumer. It must not refresh upstream state, perform fresh
 upstream source analysis, bypass reservations, exceed the social cap, publish
 unsupported claims, expose private/local details, or treat X search/social engagement
-as technical evidence (`automations/decodex/README.md`). It uses browser control only
-for X. X MCP, X API, direct HTTP, cookies, local storage, and private browser profile
-files are outside the publication contract.
+as technical evidence (`automations/decodex/README.md`). Only the checked-in
+Publisher auxiliary can execute xurl. X MCP, direct HTTP, browser control, cookies,
+local storage, and private browser profile files are outside the contract.
 
 ## Static site boundary
 
@@ -115,6 +108,10 @@ through the fixed cache descriptor, operates on it in memory, and atomically rep
 it through that descriptor while the cache lock remains held. Default validation
 includes bounded GC counts. Never commit or upload local Radar cache state
 (`apps/radar/src/cache.rs`, `apps/radar/src/private_fs.rs`).
+
+Publisher social candidates, reservations, posts, outcomes, strategy records, xurl
+attempts, and generated social media are also bounded local working state under
+`.agent/`. Never commit or upload them to GitHub.
 
 Do not read or document secret values. Configuration may reference token environment variable names, but OpenWiki and public artifacts must not include credentials, private issue details, hidden reasoning, local runtime paths, or account material.
 

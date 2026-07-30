@@ -17,6 +17,21 @@ use crate::{
 const CONTENT_ELIGIBILITY_SCHEMA: &str = "radar_content_eligibility/v1";
 const MAX_CONTENT_ARTIFACT_BYTES: u64 = 64 * 1024 * 1024;
 
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub(crate) struct ValidatedContentPair {
+	pub(crate) repo: String,
+	pub(crate) subject_kind: String,
+	pub(crate) subject_id: String,
+	pub(crate) slug: String,
+	pub(crate) upstream_head: String,
+	pub(crate) commit_shas: Vec<String>,
+	pub(crate) queue_sha256: String,
+	pub(crate) review_sha256: String,
+	pub(crate) impact_sha256: String,
+	pub(crate) public_signal_decision: String,
+	pub(crate) publisher_angle: String,
+}
+
 pub(crate) fn content_eligibility(
 	request: &RadarContentEligibilityRequest,
 ) -> Result<RadarContentEligibilityReport> {
@@ -31,12 +46,57 @@ pub(crate) fn content_eligibility(
 		artifacts.next().ok_or_else(|| eyre::eyre!("upstream review bytes are missing"))?;
 	let impact_raw =
 		artifacts.next().ok_or_else(|| eyre::eyre!("upstream impact bytes are missing"))?;
-	let queue_digest = sha256_hex(&queue_raw);
-	let review_digest = sha256_hex(&review_raw);
-	let impact_digest = sha256_hex(&impact_raw);
-	let queue = parse_artifact("Review queue", &queue_raw)?;
-	let review = parse_artifact("Upstream review", &review_raw)?;
-	let impact = parse_artifact("Upstream impact", &impact_raw)?;
+	let pair = validate_content_pair_raw(request, &queue_raw, &review_raw, &impact_raw)?;
+
+	if pair.public_signal_decision != "publish" {
+		eyre::bail!("upstream impact public_signal_decision must be publish");
+	}
+	if pair.publisher_angle == "none" {
+		eyre::bail!("upstream impact publisher_angle must be a content angle");
+	}
+	let lineage_sha256 = eligibility_lineage_sha256(
+		&pair.repo,
+		&pair.subject_kind,
+		&pair.subject_id,
+		&pair.slug,
+		&pair.upstream_head,
+		&pair.commit_shas,
+		&pair.queue_sha256,
+		&pair.review_sha256,
+		&pair.impact_sha256,
+	);
+
+	Ok(RadarContentEligibilityReport {
+		schema: CONTENT_ELIGIBILITY_SCHEMA.to_owned(),
+		repo: pair.repo,
+		subject_kind: pair.subject_kind,
+		subject_id: pair.subject_id,
+		slug: pair.slug,
+		upstream_head: pair.upstream_head,
+		commit_shas: pair.commit_shas,
+		queue_sha256: pair.queue_sha256,
+		review_sha256: pair.review_sha256,
+		impact_sha256: pair.impact_sha256,
+		lineage_sha256,
+	})
+}
+
+pub(crate) fn validate_content_pair_raw(
+	request: &RadarContentEligibilityRequest,
+	queue_raw: &[u8],
+	review_raw: &[u8],
+	impact_raw: &[u8],
+) -> Result<ValidatedContentPair> {
+	if request.max_age_hours == 0 {
+		eyre::bail!("source freshness limit must be at least one hour");
+	}
+
+	let queue_digest = sha256_hex(queue_raw);
+	let review_digest = sha256_hex(review_raw);
+	let impact_digest = sha256_hex(impact_raw);
+	let queue = parse_artifact("Review queue", queue_raw)?;
+	let review = parse_artifact("Upstream review", review_raw)?;
+	let impact = parse_artifact("Upstream impact", impact_raw)?;
 
 	crate::validate_expected_schema(&queue, UPSTREAM_REVIEW_QUEUE_SCHEMA, "Review queue")?;
 	crate::validate_expected_schema(&review, UPSTREAM_REVIEW_SCHEMA, "Upstream review")?;
@@ -111,26 +171,12 @@ pub(crate) fn content_eligibility(
 	if !review_requests_upstream_impact(review) {
 		eyre::bail!("upstream review must request an upstream_impact next action");
 	}
-	if crate::string_field(impact, "public_signal_decision") != Some("publish") {
-		eyre::bail!("upstream impact public_signal_decision must be publish");
-	}
-	if crate::string_field(impact, "publisher_angle").is_none_or(|angle| angle == "none") {
-		eyre::bail!("upstream impact publisher_angle must be a content angle");
-	}
-	let lineage_sha256 = eligibility_lineage_sha256(
-		repo,
-		subject_kind,
-		subject_id,
-		slug,
-		review_head,
-		&review_commits,
-		&queue_digest,
-		&review_digest,
-		&impact_digest,
-	);
+	let public_signal_decision =
+		crate::required_string(impact, "public_signal_decision", "upstream impact decision")?;
+	let publisher_angle =
+		crate::required_string(impact, "publisher_angle", "upstream impact publisher angle")?;
 
-	Ok(RadarContentEligibilityReport {
-		schema: CONTENT_ELIGIBILITY_SCHEMA.to_owned(),
+	Ok(ValidatedContentPair {
 		repo: repo.to_owned(),
 		subject_kind: subject_kind.to_owned(),
 		subject_id: subject_id.to_owned(),
@@ -140,7 +186,8 @@ pub(crate) fn content_eligibility(
 		queue_sha256: queue_digest,
 		review_sha256: review_digest,
 		impact_sha256: impact_digest,
-		lineage_sha256,
+		public_signal_decision: public_signal_decision.to_owned(),
+		publisher_angle: publisher_angle.to_owned(),
 	})
 }
 

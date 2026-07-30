@@ -2,7 +2,12 @@
 
 from __future__ import annotations
 
+import json
+import os
+from pathlib import Path
 import re
+import stat
+import subprocess
 from typing import Any
 
 from automation_eval.constants import (
@@ -13,6 +18,150 @@ from automation_eval.constants import (
 )
 from automation_eval.io import expected_cwd
 from automation_eval.model import AutomationResult
+
+
+_PUBLISHER_PROBE_MAX_BYTES = 64 * 1024
+_PROBE_REPORT_KEYS = {
+    "status",
+    "ready",
+    "xurl_version",
+    "xurl_app",
+    "account_label",
+    "authorization_contract",
+    "pricing_policy",
+}
+_AUTHORIZATION_CONTRACT_KEYS = {
+    "policy_id",
+    "status",
+    "target_account",
+    "xurl_app",
+    "required_operator_authorized_scopes",
+    "xurl_version",
+    "xurl_binary_sha256",
+    "sealed_at",
+}
+_PRICING_POLICY_KEYS = {
+    "policy_id",
+    "official_source",
+    "reviewed_at",
+    "effective_at",
+    "expires_at",
+    "status",
+    "user_read_cost_microusd",
+    "url_free_content_create_cost_microusd",
+    "post_read_cost_ceiling_microusd",
+    "monthly_reservation_cap_microusd",
+}
+_AUTOMATION_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
+def _bounded_probe_text(value: Any) -> bool:
+    return (
+        isinstance(value, str)
+        and 1 <= len(value) <= 256
+        and "\x00" not in value
+        and "\n" not in value
+        and "\r" not in value
+    )
+
+
+def _valid_xurl_version(value: Any) -> bool:
+    return value == "1.3.1"
+
+
+def _valid_publisher_probe_report(value: Any) -> bool:
+    if not isinstance(value, dict) or set(value) != _PROBE_REPORT_KEYS:
+        return False
+    auth = value.get("authorization_contract")
+    pricing = value.get("pricing_policy")
+    return bool(
+        value.get("status") == "ready"
+        and value.get("ready") is True
+        and _valid_xurl_version(value.get("xurl_version"))
+        and value.get("xurl_app") == "default"
+        and value.get("account_label") == "decodexspace"
+        and isinstance(auth, dict)
+        and set(auth) == _AUTHORIZATION_CONTRACT_KEYS
+        and auth.get("policy_id") == "xurl-oauth-least-privilege/3"
+        and auth.get("status") == "current"
+        and auth.get("target_account") == "decodexspace"
+        and auth.get("xurl_app") == "default"
+        and auth.get("required_operator_authorized_scopes")
+        == ["tweet.read", "users.read", "tweet.write", "offline.access"]
+        and auth.get("xurl_version") == "1.3.1"
+        and auth.get("xurl_binary_sha256")
+        == "7b85a210009db7a3f2d6183684674441fbf81276f1101f73d36d0266ec9aa01e"
+        and _bounded_probe_text(auth.get("sealed_at"))
+        and isinstance(pricing, dict)
+        and set(pricing) == _PRICING_POLICY_KEYS
+        and pricing.get("policy_id") == "x-api-pay-per-usage/2026-07-27"
+        and pricing.get("official_source")
+        == "https://docs.x.com/x-api/getting-started/pricing.md"
+        and pricing.get("status") == "current"
+        and pricing.get("user_read_cost_microusd") == 10_000
+        and pricing.get("url_free_content_create_cost_microusd") == 15_000
+        and pricing.get("post_read_cost_ceiling_microusd") == 5_000
+        and pricing.get("monthly_reservation_cap_microusd") == 1_250_000
+        and all(
+            _bounded_probe_text(pricing.get(field))
+            for field in ("reviewed_at", "effective_at", "expires_at")
+        )
+    )
+
+
+def validate_xurl_runtime(
+    result: AutomationResult,
+    *,
+    repo_only: bool,
+    publisher: Path | None = None,
+) -> None:
+    if repo_only:
+        return
+    executable = (
+        REPO_ROOT / "target/debug/decodex-publisher"
+        if publisher is None
+        else publisher
+    )
+    try:
+        metadata = executable.lstat()
+        if (
+            executable.is_symlink()
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o022
+            or not metadata.st_mode & stat.S_IXUSR
+        ):
+            result.fail("Publisher probe executable is not trusted")
+            return
+    except OSError:
+        result.fail("Publisher probe executable is unavailable")
+        return
+    try:
+        probe = subprocess.run(
+            [str(executable), "social", "probe-xurl"],
+            check=False,
+            capture_output=True,
+            cwd=REPO_ROOT,
+            timeout=60,
+        )
+    except (OSError, subprocess.SubprocessError):
+        result.fail("Publisher xurl readiness probe failed")
+        return
+    if (
+        probe.returncode != 0
+        or probe.stderr
+        or not 1 <= len(probe.stdout) <= _PUBLISHER_PROBE_MAX_BYTES
+    ):
+        result.fail("Publisher xurl readiness probe failed")
+        return
+    try:
+        report = json.loads(probe.stdout.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        result.fail("Publisher xurl readiness report is invalid")
+        return
+    if not _valid_publisher_probe_report(report):
+        result.fail("Publisher xurl readiness report is not ready")
 
 
 def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
@@ -43,8 +192,38 @@ def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
                     f"{fragment}"
                 )
     automations = manifest.get("automations")
+    valid_active_ids: list[str] = []
     if not isinstance(automations, list) or not automations:
         errors.append("manifest.automations must be a non-empty array")
+        active_ids: list[str] = []
+    else:
+        active_ids = [
+            automation.get("id")
+            for automation in automations
+            if isinstance(automation, dict)
+        ]
+        valid_active_ids = [
+            value
+            for value in active_ids
+            if isinstance(value, str) and _AUTOMATION_ID.fullmatch(value)
+        ]
+        if len(active_ids) != len(automations) or any(
+            not isinstance(value, str) or not _AUTOMATION_ID.fullmatch(value)
+            for value in active_ids
+        ):
+            errors.append("manifest.automations must contain valid ids")
+        elif len(active_ids) != len(set(active_ids)):
+            errors.append("manifest automation ids must be unique")
+    retired = manifest.get("retired_automation_ids", [])
+    if not isinstance(retired, list) or any(
+        not isinstance(value, str) or not _AUTOMATION_ID.fullmatch(value)
+        for value in retired
+    ):
+        errors.append("manifest.retired_automation_ids must be an array of valid ids")
+    elif len(retired) != len(set(retired)):
+        errors.append("manifest retired automation ids must be unique")
+    elif set(retired) & set(valid_active_ids):
+        errors.append("manifest active and retired automation ids must not overlap")
     return errors
 
 
@@ -63,7 +242,12 @@ def validate_prompt_text(
     if "GitHub Actions" not in prompt:
         result.fail("prompt must explicitly exclude GitHub Actions ownership")
     for required in REQUIRED_PREFLIGHT_FRAGMENTS:
-        if required not in prompt:
+        present = (
+            required in prompt.casefold()
+            if required == "fail closed"
+            else required in prompt
+        )
+        if not present:
             result.fail(f"prompt must include preflight requirement: {required}")
     for fragment in forbidden_fragments:
         if fragment in prompt:
@@ -136,6 +320,18 @@ def validate_active_config(
         actual = active_config.get(field_name)
         if actual != expected:
             result.fail(f"active {field_name} mismatch: expected {expected!r}, got {actual!r}")
+
+    destination = active_config.get("destination", defaults.get("execution_environment"))
+    target = active_config.get("target")
+    if (
+        destination != "local"
+        or not isinstance(target, dict)
+        or set(target) != {"type", "project_id"}
+        or target.get("type") != "project"
+        or not isinstance(target.get("project_id"), str)
+        or not target["project_id"]
+    ):
+        result.fail("active destination must be a local project")
 
     active_cwds = active_config.get("cwds")
     if isinstance(active_cwds, list) and any(

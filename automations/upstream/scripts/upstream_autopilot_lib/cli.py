@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from copy import deepcopy
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -12,18 +13,22 @@ from . import (
     CONTENT_DEGRADATION_CODES,
     DEFAULT_POLICY_PATH,
     LAND_EFFECT_LEASE_BUDGET_SECONDS,
+    MANAGED_TASKS,
+    PROACTIVE_IMPROVEMENT_REASON_CODES,
     REPO_ROOT,
     RESULT_SCHEMA,
     SIDE_EFFECT_LEASE_BUDGET_SECONDS,
     VALIDATION_LEASE_BUDGET_SECONDS,
     AutopilotError,
     advance_effect_phase,
+    agent_handoff_projection,
     apply_observation,
     assert_candidate_commit_worktree,
     assert_candidate_worktree,
     assert_detached_review_worktree,
     assert_primary_clean_main,
     assert_primary_snapshot,
+    audit_x_pricing,
     atomic_write_json,
     begin_observation,
     block_candidate,
@@ -49,6 +54,7 @@ from . import (
     observation_session_lock,
     prepare_effect,
     prepare_observation_plan,
+    plan_task_retention,
     pull_request_readback,
     refresh_primary_snapshot,
     queue_automation_improvement,
@@ -80,6 +86,8 @@ from . import (
     run_decodex_land,
     run_validation_profiles,
     save_state,
+    seal_task_retention,
+    settle_task_retention,
     sha256_value,
     staged_handoff_identity,
     state_health,
@@ -111,7 +119,7 @@ AUTOMATION_AUDIT_MANIFESTS = {
         "automations/decodex/automations.toml",
         (
             "decodex-content-manager",
-            "decodex-x-browser-publisher",
+            "decodex-xurl-publisher",
         ),
     ),
 }
@@ -252,13 +260,7 @@ def parse_args() -> argparse.Namespace:
     add_common_state_arguments(improve)
     improve.add_argument(
         "--reason-code",
-        choices=(
-            "content_loop_degraded",
-            "lead_time_sla_missed",
-            "live_configuration_drift",
-            "repeated_blocked_attempts",
-            "repeated_review_repairs",
-        ),
+        choices=tuple(sorted(PROACTIVE_IMPROVEMENT_REASON_CODES)),
         required=True,
     )
     improve.add_argument(
@@ -271,6 +273,9 @@ def parse_args() -> argparse.Namespace:
             "condition; required with content_loop_degraded."
         ),
     )
+
+    x_pricing_audit = subparsers.add_parser("x-pricing-audit")
+    add_common_state_arguments(x_pricing_audit)
 
     health = subparsers.add_parser("health")
     add_common_state_arguments(health)
@@ -294,6 +299,35 @@ def parse_args() -> argparse.Namespace:
         choices=("repo", "live"),
         required=True,
     )
+
+    task_retention_seal = subparsers.add_parser("task-retention-seal")
+    add_common_state_arguments(task_retention_seal)
+    task_retention_seal.add_argument(
+        "--automation-id",
+        choices=tuple(MANAGED_TASKS),
+        required=True,
+    )
+    task_retention_seal.add_argument(
+        "--terminal-result-code",
+        required=True,
+    )
+    task_retention_seal.add_argument("--evidence-path")
+    task_retention_seal.add_argument("--keep-visible-reason")
+
+    task_retention_plan = subparsers.add_parser("task-retention-plan")
+    add_common_state_arguments(task_retention_plan)
+
+    task_retention_settle = subparsers.add_parser(
+        "task-retention-settle"
+    )
+    add_common_state_arguments(task_retention_settle)
+    task_retention_settle.add_argument("--thread-id", required=True)
+    task_retention_settle.add_argument(
+        "--result",
+        choices=("archived", "keep-visible"),
+        required=True,
+    )
+    task_retention_settle.add_argument("--reason")
 
     snapshot = subparsers.add_parser("snapshot")
     add_common_state_arguments(snapshot)
@@ -376,6 +410,57 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         )
         return read_handoff_receipt(path, expected_path=expected)
 
+    if args.command == "x-pricing-audit":
+        now = utc_now()
+        audit = audit_x_pricing(repo_root, now=now)
+        evidence = audit["drift_evidence"]
+        improvement = None
+        created = False
+        candidate_status = None
+        if evidence is not None:
+            try:
+                with locked_state(cache_root) as (state, state_path):
+                    before = len(state["candidates"])
+                    improvement = queue_automation_improvement(
+                        state,
+                        policy,
+                        reason_code="x_pricing_contract_drift",
+                        repository_head=preflight["head"],
+                        now=now,
+                        pricing_audit=evidence,
+                    )
+                    persist(state, state_path, at=now)
+                    created = len(state["candidates"]) > before
+                candidate_status = (
+                    "created"
+                    if created
+                    else "already_recorded"
+                )
+            except AutopilotError as error:
+                if error.code != "improvement_evidence_missing":
+                    raise
+                candidate_status = "pending_observation"
+        return result_payload(
+            "x_pricing_audited",
+            audit_status=audit["status"],
+            source_url=audit["source_url"],
+            parser_version=audit["parser_version"],
+            fetched_at=audit["fetched_at"],
+            raw_sha256=audit["raw_sha256"],
+            rates_microusd=audit["rates_microusd"],
+            receipt=audit["receipt"],
+            error_code=audit["error_code"],
+            candidate_id=(
+                None if improvement is None else improvement["id"]
+            ),
+            candidate_status=candidate_status,
+            cost={
+                "x_api_calls": 0,
+                "x_api_recorded_cost_ceiling_usd": 0.0,
+                "ordinary_https_calls": 1,
+            },
+        )
+
     if args.command == "observe":
         with observation_session_lock(cache_root):
             started_at = utc_now()
@@ -429,7 +514,11 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             codex_executable_sha256=observation.codex_executable_sha256,
             contract_missing=observation.contract_missing,
             queued_candidate_ids=queued,
-            cost={"x_api_calls": 0, "x_api_estimated_usd": 0, "github_api_calls": 0},
+            cost={
+                "x_api_calls": 0,
+                "x_api_recorded_cost_ceiling_usd": 0.0,
+                "github_api_calls": 0,
+            },
         )
 
     if args.command == "claim":
@@ -694,6 +783,10 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             candidate_id=args.candidate_id,
             head_sha=evidence["head_sha"],
             tree_sha=evidence["tree_sha"],
+            agent_handoff=agent_handoff_projection(
+                worker_handoff,
+                worktree=args.worktree,
+            ),
         )
 
     if args.command == "publish":
@@ -825,7 +918,15 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "review_pending",
             candidate_id=args.candidate_id,
             pr_url=pr_url,
-            cost={"github_api_calls": 4, "x_api_calls": 0, "x_api_estimated_usd": 0},
+            agent_handoff=agent_handoff_projection(
+                commit_receipt["worker_handoff"],
+                worktree=args.worktree,
+            ),
+            cost={
+                "github_api_calls": 4,
+                "x_api_calls": 0,
+                "x_api_recorded_cost_ceiling_usd": 0.0,
+            },
         )
 
     if args.command == "retire-pr":
@@ -888,7 +989,11 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "pull_request_retired",
             candidate_id=args.candidate_id,
             pr_url=pull_request["url"],
-            cost={"github_api_calls": 4, "x_api_calls": 0, "x_api_estimated_usd": 0},
+            cost={
+                "github_api_calls": 4,
+                "x_api_calls": 0,
+                "x_api_recorded_cost_ceiling_usd": 0.0,
+            },
         )
 
     if args.command == "submit-decision":
@@ -1012,7 +1117,14 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                     generation=reviewer_handoff["claim_generation"],
                 ),
             )
-        return result_payload("repair_requested", candidate_id=args.candidate_id)
+        return result_payload(
+            "repair_requested",
+            candidate_id=args.candidate_id,
+            agent_handoff=agent_handoff_projection(
+                reviewer_handoff,
+                worktree=None,
+            ),
+        )
 
     if args.command == "resolve-decision":
         with locked_state(cache_root) as (state, _state_path):
@@ -1192,6 +1304,10 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             args.outcome,
             candidate_id=args.candidate_id,
             validation_receipt_sha256=sha256_value(reviewer_receipt),
+            agent_handoff=agent_handoff_projection(
+                reviewer_handoff,
+                worktree=args.worktree,
+            ),
         )
 
     if args.command == "land":
@@ -1356,6 +1472,10 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                         "repair_requested",
                         candidate_id=args.candidate_id,
                         finding_codes=["base_stale"],
+                        agent_handoff=agent_handoff_projection(
+                            reviewer_handoff,
+                            worktree=args.worktree,
+                        ),
                     )
                 verify_open_pull_request(
                     before,
@@ -1627,10 +1747,14 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             "landed",
             candidate_id=args.candidate_id,
             merge_sha=merge_sha,
+            agent_handoff=agent_handoff_projection(
+                reviewer_handoff,
+                worktree=args.worktree,
+            ),
             cost={
                 "github_api_calls": 3 + merge_visibility_api_calls,
                 "x_api_calls": 0,
-                "x_api_estimated_usd": 0,
+                "x_api_recorded_cost_ceiling_usd": 0.0,
             },
         )
 
@@ -1689,6 +1813,8 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     if args.command == "queue-improvement":
+        if args.reason_code == "x_pricing_contract_drift":
+            raise AutopilotError("x_pricing_audit_required")
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
             before = len(state["candidates"])
@@ -1808,6 +1934,46 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             manifest=args.manifest,
             scope=args.scope,
             automation_ids=automation_ids,
+        )
+
+    if args.command == "task-retention-seal":
+        receipt = seal_task_retention(
+            repo_root=repo_root,
+            thread_id=os.environ.get("CODEX_THREAD_ID", ""),
+            automation_id=args.automation_id,
+            terminal_result_code=args.terminal_result_code,
+            evidence_path=args.evidence_path,
+            keep_visible_reason=args.keep_visible_reason,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "task_retention_sealed",
+            **receipt,
+        )
+
+    if args.command == "task-retention-plan":
+        plan = plan_task_retention(
+            repo_root=repo_root,
+            current_thread_id=os.environ.get("CODEX_THREAD_ID", ""),
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "task_retention_planned",
+            **plan,
+        )
+
+    if args.command == "task-retention-settle":
+        settlement = settle_task_retention(
+            repo_root=repo_root,
+            current_thread_id=os.environ.get("CODEX_THREAD_ID", ""),
+            thread_id=args.thread_id,
+            result=args.result,
+            reason=args.reason,
+        )
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "task_retention_settled",
+            **settlement,
         )
 
     if args.command == "snapshot":

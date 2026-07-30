@@ -127,12 +127,12 @@ fn misleading_title_and_path_still_require_source_review() {
 }
 
 #[test]
-fn source_review_selection_does_not_modify_existing_authoritative_artifacts() {
+fn source_review_selection_does_not_modify_unrelated_cache_artifacts() {
 	let (_temp_dir, cache_root) = fresh_cache();
 
 	write_queue(&cache_root, &fresh_queue());
-	let review_path = cache_root.join("github/reviews/existing.json");
-	let impact_path = cache_root.join("github/impact/existing.json");
+	let review_path = cache_root.join("github/bundles/existing.json");
+	let impact_path = cache_root.join("github/control-plane-upgrades/existing.json");
 	let review = serde_json::json!({"sentinel": "review"});
 	let impact = serde_json::json!({"sentinel": "impact"});
 
@@ -265,15 +265,15 @@ fn digest_hex(payload: &[u8]) -> String {
 }
 
 fn assert_no_authoritative_artifacts(cache_root: &std::path::Path) {
-	assert!(!cache_root.join("github/reviews").exists());
-	assert!(!cache_root.join("github/impact").exists());
+	assert!(!cache_root.join("github/content-review-pairs").exists());
+	assert!(!cache_root.join("github/content-review-staging").exists());
 }
 
 fn assert_not_content_eligible(cache_root: &std::path::Path, slug: &str) {
 	let eligibility = crate::content_eligibility(&RadarContentEligibilityRequest {
 		queue: cache_root.join(crate::paths::REVIEW_QUEUE_RELATIVE_PATH),
-		review: cache_root.join(format!("github/reviews/{slug}.json")),
-		impact: cache_root.join(format!("github/impact/{slug}.json")),
+		review: cache_root.join(format!("github/content-review-pairs/{slug}/review.json")),
+		impact: cache_root.join(format!("github/content-review-pairs/{slug}/impact.json")),
 		max_age_hours: 12,
 	});
 
