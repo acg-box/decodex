@@ -393,7 +393,7 @@ impl ResetCardClient {
 		&self.profile
 	}
 
-	/// Read one fresh complete public reset-card inventory.
+	/// Read one fresh public reset-card observation with explicit detail completeness.
 	pub async fn list(
 		&self,
 		account_id: EntityId,
