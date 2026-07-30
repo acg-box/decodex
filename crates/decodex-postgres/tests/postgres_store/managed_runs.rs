@@ -364,29 +364,18 @@ async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::E
 	let lead_session = create_lead_session(&store, &routing.selected_account_id).await?;
 	assert_assignment_scope(&owner, &selected_managed_run_id, &lead_session).await?;
 	assert_event_namespace_contract(&store, &owner, &runtime, &selected_managed_run_id).await?;
-	let readback = assert_readback(
-		&store,
-		&selected_managed_run_id,
-		&routing.selected_runtime_session_id,
-	)
-	.await?;
+	let readback =
+		assert_readback(&store, &selected_managed_run_id, &routing.selected_runtime_session_id)
+			.await?;
 	assert!(matches!(
 		store
-			.read_managed_run_exact(
-				&ProjectId::new(PROJECT_ID)?,
-				&selected_managed_run_id,
-				2,
-			)
+			.read_managed_run_exact(&ProjectId::new(PROJECT_ID)?, &selected_managed_run_id, 2,)
 			.await,
 		Err(StoreError::InvalidInput("exact ManagedRun revision readback did not match"))
 	));
 	assert!(matches!(
 		store
-			.read_managed_run_exact(
-				&ProjectId::new(PROJECT_ID)?,
-				&selected_managed_run_id,
-				0,
-			)
+			.read_managed_run_exact(&ProjectId::new(PROJECT_ID)?, &selected_managed_run_id, 0,)
 			.await,
 		Err(StoreError::InvalidInput("ManagedRun revision must be positive"))
 	));
