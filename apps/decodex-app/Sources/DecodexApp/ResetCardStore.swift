@@ -77,7 +77,10 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	}
 
 	var requiresLoginRefresh: Bool {
-		account.observedState == .authFailed
+		if account.observedState == .authFailed {
+			return true
+		}
+		return profileUnavailable?.error == .unauthorized
 	}
 }
 
@@ -184,6 +187,7 @@ final class ResetCardStore {
 	private(set) var pendingAttempts: [ResetCardUseAttempt]
 	private(set) var isPendingRecoveryBlocked: Bool
 	private(set) var profileEmailsVisible = false
+	private(set) var accountReauthentication: AccountReauthenticationPresentation?
 	var message: ResetCardStoreMessage?
 
 	@ObservationIgnored private let client: any ResetCardClient
@@ -191,8 +195,11 @@ final class ResetCardStore {
 	@ObservationIgnored private let accountProfileClient: (any AccountProfileClient)?
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
+	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
+	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
+	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
 	@ObservationIgnored private var profileRequestGenerations = [String: UInt64]()
 	@ObservationIgnored private var profileEmailCache = [String: CachedAccountEmail]()
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
@@ -202,13 +209,19 @@ final class ResetCardStore {
 	init(
 		client: any ResetCardClient = DecodexNativeClient(),
 		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
-		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays
+		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays,
+		accountReauthenticationPollInterval: Duration = .seconds(1),
+		resolveCodexExecutable: @escaping @MainActor @Sendable () throws -> String = {
+			try CodexExecutableResolver.resolve()
+		}
 	) {
 		self.client = client
 		accountControlClient = client as? any AccountControlClient
 		accountProfileClient = client as? any AccountProfileClient
 		self.pendingStore = pendingStore
 		self.startupRetryDelays = startupRetryDelays
+		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
+		self.resolveCodexExecutable = resolveCodexExecutable
 		let pendingLoad = pendingStore.load()
 		pendingAttempts = pendingLoad.attempts
 		isPendingRecoveryBlocked = pendingLoad.isRecoveryBlocked
@@ -220,6 +233,7 @@ final class ResetCardStore {
 	deinit {
 		startupTask?.cancel()
 		pendingRecoveryTask?.cancel()
+		accountReauthenticationTask?.cancel()
 	}
 
 	var isInitialLoading: Bool {
@@ -292,6 +306,15 @@ final class ResetCardStore {
 				shouldRetry = retry
 			}
 		}
+	}
+
+	func prepareForApplicationTermination() {
+		startupTask?.cancel()
+		startupTask = nil
+		pendingRecoveryTask?.cancel()
+		pendingRecoveryTask = nil
+		accountReauthenticationTask?.cancel()
+		accountReauthenticationTask = nil
 	}
 
 	func refresh() async {
@@ -927,6 +950,134 @@ final class ResetCardStore {
 					idempotencyKey: idempotencyKey
 				)
 			}
+		)
+	}
+
+	func beginAccountReauthentication(for accountID: String) {
+		guard accountReauthentication == nil,
+			accountReauthenticationTask == nil,
+			let state = accounts.first(where: {
+				$0.account.accountID == accountID
+			}),
+			state.requiresLoginRefresh,
+			state.account.credentialBinding != nil,
+			let accountControlClient,
+			canPerformDirectAccountControl,
+			isAwaitingFreshAccountSkeleton(accountID) == false,
+			accountControlActivities[accountID] == nil,
+			isEnrollingAccount == false,
+			isRoutingAccountControl == false,
+			submittingKey == nil
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+
+		let sessionID = Self.newCanonicalUUID()
+		let operationID = Self.newCanonicalUUID()
+		let idempotencyKey = Self.newCanonicalUUID()
+		let account = state.account
+		let authority = account.authority ?? establishedAuthority
+		accountControlActivities[accountID] = .loginRefresh
+		clearStaleControlError()
+		accountReauthentication = AccountReauthenticationPresentation(
+			accountID: accountID,
+			accountLabel: AccountIdentityPresentation(
+				alias: account.alias,
+				email: state.profile?.email
+					?? state.profileUnavailable?.claims.email,
+				revealsEmail: profileEmailsVisible
+			).text,
+			sessionID: sessionID,
+			authority: authority,
+			phase: .resolvingCodex,
+			prompt: nil
+		)
+		accountReauthenticationTask = Task { [weak self] in
+			await self?.runAccountReauthentication(
+				client: accountControlClient,
+				authority: authority,
+				account: account,
+				sessionID: sessionID,
+				operationID: operationID,
+				idempotencyKey: idempotencyKey
+			)
+		}
+	}
+
+	func cancelAccountReauthentication() async {
+		guard let presentation = accountReauthentication,
+			let accountControlClient,
+			presentation.canRequestCancellation
+		else {
+			return
+		}
+		if presentation.canCloseWithoutCancellation {
+			closeAccountReauthentication()
+			return
+		}
+
+		do {
+			let status = try await accountControlClient.cancelAccountReauthentication(
+				authority: presentation.authority,
+				sessionID: presentation.sessionID
+			)
+			guard accountReauthentication?.sessionID == presentation.sessionID else {
+				return
+			}
+			switch status.state {
+			case .cancelled:
+				accountReauthenticationTask?.cancel()
+				accountReauthenticationTask = nil
+				finishAccountReauthentication(
+					accountID: presentation.accountID,
+					sessionID: presentation.sessionID
+				)
+			case .completed:
+				accountReauthenticationTask?.cancel()
+				accountReauthenticationTask = nil
+				await completeAccountReauthentication(
+					accountID: presentation.accountID,
+					sessionID: presentation.sessionID
+				)
+			case .failed:
+				accountReauthenticationTask?.cancel()
+				accountReauthenticationTask = nil
+				await failAccountReauthentication(
+					accountID: presentation.accountID,
+					sessionID: presentation.sessionID,
+					message: status.failure?.presentation
+						?? AccountControlError.invalidResponse.localizedDescription,
+					failure: status.failure
+				)
+			case .requestingCode, .waitingForBrowser, .installing:
+				setAccountReauthenticationPhase(
+					.cancellationFailed(
+						"The login is still active. Choose Cancel again."
+					),
+					sessionID: presentation.sessionID
+				)
+			}
+		} catch {
+			guard accountReauthentication?.sessionID == presentation.sessionID else {
+				return
+			}
+			setAccountReauthenticationPhase(
+				.cancellationFailed(Self.accountControlMessage(error)),
+				sessionID: presentation.sessionID
+			)
+		}
+	}
+
+	func closeAccountReauthentication() {
+		guard let presentation = accountReauthentication,
+			presentation.canCloseWithoutCancellation
+		else {
+			return
+		}
+		finishAccountReauthentication(
+			accountID: presentation.accountID,
+			sessionID: presentation.sessionID
 		)
 	}
 
@@ -1888,6 +2039,234 @@ final class ResetCardStore {
 
 	private func accountRecord(_ accountID: String) -> ResetCardAccountRecord? {
 		accounts.first(where: { $0.account.accountID == accountID })?.account
+	}
+
+	private func runAccountReauthentication(
+		client: any AccountControlClient,
+		authority: ResetCardAuthority?,
+		account: ResetCardAccountRecord,
+		sessionID: String,
+		operationID: String,
+		idempotencyKey: String
+	) async {
+		do {
+			let codexBin = try resolveCodexExecutable()
+			guard accountReauthentication?.sessionID == sessionID else {
+				return
+			}
+			setAccountReauthenticationPhase(
+				.requestingCode,
+				sessionID: sessionID
+			)
+			var status = try await client.startAccountReauthentication(
+				authority: authority,
+				sessionID: sessionID,
+				operationID: operationID,
+				accountID: account.accountID,
+				expectedRevision: account.accountRevision,
+				idempotencyKey: idempotencyKey,
+				codexBin: codexBin
+			)
+
+			while Task.isCancelled == false,
+				accountReauthentication?.sessionID == sessionID
+			{
+				if await applyAccountReauthenticationStatus(
+					status,
+					accountID: account.accountID,
+					sessionID: sessionID
+				) {
+					return
+				}
+				try await Task.sleep(for: accountReauthenticationPollInterval)
+				status = try await client.pollAccountReauthentication(
+					authority: authority,
+					sessionID: sessionID
+				)
+			}
+		} catch is CancellationError {
+			return
+		} catch {
+			guard accountReauthentication?.sessionID == sessionID else {
+				return
+			}
+			if let cancellationStatus = try? await client.cancelAccountReauthentication(
+				authority: authority,
+				sessionID: sessionID
+			),
+				await applyAccountReauthenticationStatus(
+					cancellationStatus,
+					accountID: account.accountID,
+					sessionID: sessionID
+				)
+			{
+				return
+			}
+			await failAccountReauthentication(
+				accountID: account.accountID,
+				sessionID: sessionID,
+				message: Self.accountControlMessage(error)
+			)
+		}
+	}
+
+	private func applyAccountReauthenticationStatus(
+		_ status: AccountReauthenticationStatus,
+		accountID: String,
+		sessionID: String
+	) async -> Bool {
+		guard status.sessionID == sessionID,
+			accountReauthentication?.sessionID == sessionID
+		else {
+			await failAccountReauthentication(
+				accountID: accountID,
+				sessionID: sessionID,
+				message: AccountControlError.invalidResponse.localizedDescription
+			)
+			return true
+		}
+
+		switch status.state {
+		case .requestingCode:
+			setAccountReauthenticationPhase(
+				.requestingCode,
+				sessionID: sessionID
+			)
+			return false
+		case .waitingForBrowser:
+			guard let prompt = status.prompt else {
+				await failAccountReauthentication(
+					accountID: accountID,
+					sessionID: sessionID,
+					message: AccountControlError.invalidResponse.localizedDescription
+				)
+				return true
+			}
+			setAccountReauthenticationPhase(
+				.waitingForBrowser,
+				sessionID: sessionID,
+				prompt: prompt
+			)
+			return false
+		case .installing:
+			setAccountReauthenticationPhase(
+				.installing,
+				sessionID: sessionID
+			)
+			return false
+		case .completed:
+			await completeAccountReauthentication(
+				accountID: accountID,
+				sessionID: sessionID
+			)
+			return true
+		case .failed:
+			await failAccountReauthentication(
+				accountID: accountID,
+				sessionID: sessionID,
+				message: status.failure?.presentation
+					?? AccountControlError.invalidResponse.localizedDescription,
+				failure: status.failure
+			)
+			return true
+		case .cancelled:
+			finishAccountReauthentication(
+				accountID: accountID,
+				sessionID: sessionID
+			)
+			return true
+		}
+	}
+
+	private func setAccountReauthenticationPhase(
+		_ phase: AccountReauthenticationPhase,
+		sessionID: String,
+		prompt: AccountReauthenticationPrompt? = nil
+	) {
+		guard let presentation = accountReauthentication,
+			presentation.sessionID == sessionID
+		else {
+			return
+		}
+		let nextPrompt: AccountReauthenticationPrompt? = switch phase {
+		case .waitingForBrowser, .cancellationFailed:
+			prompt ?? presentation.prompt
+		case .resolvingCodex, .requestingCode, .installing, .failed:
+			nil
+		}
+		accountReauthentication = AccountReauthenticationPresentation(
+			accountID: presentation.accountID,
+			accountLabel: presentation.accountLabel,
+			sessionID: sessionID,
+			authority: presentation.authority,
+			phase: phase,
+			prompt: nextPrompt
+		)
+	}
+
+	private func completeAccountReauthentication(
+		accountID: String,
+		sessionID: String
+	) async {
+		guard accountReauthentication?.sessionID == sessionID else {
+			return
+		}
+		accountControlActivities.removeValue(forKey: accountID)
+		accountReauthenticationTask = nil
+		message = ResetCardStoreMessage(
+			tone: .success,
+			text: "Account login refreshed."
+		)
+		accountReauthentication = nil
+		await refreshReauthenticatedAccountAuthority(accountID)
+	}
+
+	private func refreshReauthenticatedAccountAuthority(_ accountID: String) async {
+		await refreshAccountSkeleton()
+		await refreshAccountDetails(accountID)
+		await refreshAccountSkeleton()
+	}
+
+	private func failAccountReauthentication(
+		accountID: String,
+		sessionID: String,
+		message: String,
+		failure: AccountReauthenticationFailure? = nil
+	) async {
+		guard accountReauthentication?.sessionID == sessionID else {
+			return
+		}
+		accountControlActivities.removeValue(forKey: accountID)
+		accountReauthenticationTask = nil
+		setAccountReauthenticationPhase(
+			.failed(message),
+			sessionID: sessionID
+		)
+		if failure == .outcomeUnknown {
+			await refreshReauthenticatedAccountAuthority(accountID)
+		}
+	}
+
+	private func finishAccountReauthentication(
+		accountID: String,
+		sessionID: String
+	) {
+		guard accountReauthentication?.sessionID == sessionID else {
+			return
+		}
+		accountReauthenticationTask?.cancel()
+		accountReauthenticationTask = nil
+		accountControlActivities.removeValue(forKey: accountID)
+		accountReauthentication = nil
+	}
+
+	nonisolated private static func accountControlMessage(_ error: Error) -> String {
+		if let error = error as? LocalizedError,
+			let description = error.errorDescription
+		{
+			return description
+		}
+		return AccountControlError.invalidResponse.localizedDescription
 	}
 
 	private func performAccountControl(

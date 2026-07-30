@@ -47,6 +47,20 @@ pub(crate) fn read_shared_codex_credential() -> Result<ImportedCredential, Crede
 pub(crate) fn read_explicit_credential_file(
 	descriptor: &str,
 ) -> Result<ImportedCredential, CredentialImportError> {
+	read_explicit_source(descriptor, SourceKind::VersionedImport)
+}
+
+/// Read one explicit owner-private Codex auth file for an existing-account reauthentication.
+pub(crate) fn read_explicit_shared_codex_credential_file(
+	descriptor: &str,
+) -> Result<ImportedCredential, CredentialImportError> {
+	read_explicit_source(descriptor, SourceKind::SharedCodex)
+}
+
+fn read_explicit_source(
+	descriptor: &str,
+	source_kind: SourceKind,
+) -> Result<ImportedCredential, CredentialImportError> {
 	if descriptor.is_empty() || descriptor.len() > 4096 || descriptor.chars().any(char::is_control)
 	{
 		return Err(CredentialImportError::InvalidSource);
@@ -55,7 +69,7 @@ pub(crate) fn read_explicit_credential_file(
 	if !path.is_absolute() {
 		return Err(CredentialImportError::InvalidSource);
 	}
-	read_credential_file(path, SourceKind::VersionedImport)
+	read_credential_file(path, source_kind)
 }
 
 #[derive(Clone, Copy)]
@@ -324,14 +338,28 @@ pub(crate) enum CredentialImportError {
 
 #[cfg(test)]
 mod tests {
+	use std::{fs, os::unix::fs::PermissionsExt as _};
+
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use serde_json::json;
+	use tempfile::tempdir;
 
-	use super::{CredentialImportError, decode_chatgpt_identity};
+	use super::{
+		CredentialImportError, decode_chatgpt_identity, read_explicit_shared_codex_credential_file,
+	};
 
 	fn token(claims: serde_json::Value) -> String {
 		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
 		format!("header.{payload}.signature")
+	}
+
+	fn owner_private_json(value: serde_json::Value) -> (tempfile::TempDir, String) {
+		let temp = tempdir().unwrap();
+		let root = fs::canonicalize(temp.path()).unwrap();
+		let path = root.join("auth.json");
+		fs::write(&path, serde_json::to_vec(&value).unwrap()).unwrap();
+		fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+		(temp, path.to_string_lossy().into_owned())
 	}
 
 	#[test]
@@ -370,5 +398,56 @@ mod tests {
 				Err(CredentialImportError::InvalidCredential)
 			));
 		}
+	}
+
+	#[test]
+	fn explicit_shared_codex_source_parses_only_owner_private_auth_json() {
+		let account_id = "fresh-provider-account";
+		let id_token = token(json!({
+			"email": "fresh@example.test",
+			"https://api.openai.com/auth": {
+				"chatgpt_account_id": account_id,
+				"chatgpt_plan_type": "pro"
+			}
+		}));
+		let access_token = token(json!({"exp": 2_000_000_000_i64}));
+		let (_temp, path) = owner_private_json(json!({
+			"auth_mode": "chatgpt",
+			"OPENAI_API_KEY": null,
+			"tokens": {
+				"id_token": id_token,
+				"access_token": access_token,
+				"refresh_token": "fresh-refresh",
+				"account_id": account_id
+			},
+			"last_refresh": null
+		}));
+
+		let imported = read_explicit_shared_codex_credential_file(&path).unwrap();
+
+		assert_eq!(imported.provider.account_id(), account_id);
+		assert_eq!(imported.bundle.provider_email(), "fresh@example.test");
+		assert_eq!(imported.bundle.plan_type(), Some("pro"));
+	}
+
+	#[test]
+	fn explicit_shared_codex_source_rejects_relative_public_or_wrong_shape_inputs() {
+		assert!(matches!(
+			read_explicit_shared_codex_credential_file("auth.json"),
+			Err(CredentialImportError::InvalidSource)
+		));
+		let (_temp, path) = owner_private_json(json!({
+			"schema": "decodex/account-credential-import/1",
+			"provider": "chatgpt"
+		}));
+		assert!(matches!(
+			read_explicit_shared_codex_credential_file(&path),
+			Err(CredentialImportError::InvalidCredential)
+		));
+		fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+		assert!(matches!(
+			read_explicit_shared_codex_credential_file(&path),
+			Err(CredentialImportError::UnsafeSource)
+		));
 	}
 }
