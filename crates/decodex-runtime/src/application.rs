@@ -1789,6 +1789,7 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
 		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
 		ResetCardServiceError::InventoryChanged => "selected reset card changed",
+		ResetCardServiceError::RequestTimedOut => "reset-card provider observation timed out",
 		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
 		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
 		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
@@ -1810,6 +1811,7 @@ const fn protocol_reset_error(error: ResetCardServiceError) -> ResetCardError {
 		ResetCardServiceError::ProviderUnavailable => ResetCardError::ProviderUnavailable,
 		ResetCardServiceError::InventoryIncomplete => ResetCardError::InventoryIncomplete,
 		ResetCardServiceError::InventoryChanged => ResetCardError::InventoryChanged,
+		ResetCardServiceError::RequestTimedOut => ResetCardError::RequestTimedOut,
 		ResetCardServiceError::ResourceExhausted => ResetCardError::ResourceExhausted,
 		ResetCardServiceError::ProductStateUnavailable => ResetCardError::ProductStateUnavailable,
 		ResetCardServiceError::AcceptanceUnknown => ResetCardError::ProductStateUnavailable,
@@ -1936,6 +1938,7 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
+		protocol_reset_error,
 	};
 
 	#[test]
@@ -2038,6 +2041,14 @@ mod tests {
 			}
 		);
 		assert!(!matches!(result, ResetCardOperationResult::FailedBeforeEffect { .. }));
+	}
+
+	#[test]
+	fn inventory_deadline_projects_as_a_typed_query_error() {
+		assert_eq!(
+			protocol_reset_error(ResetCardServiceError::RequestTimedOut),
+			ResetCardError::RequestTimedOut,
+		);
 	}
 
 	#[test]

@@ -28,19 +28,12 @@ struct AccountProfileSnapshot: Equatable, Sendable {
 }
 
 struct AccountProfileAggregate: Equatable, Sendable {
-	let accountCount: Int
 	let lifetimeTokens: UInt64?
-	let lifetimeTokensCoverage: Int
 	let peakDailyTokens: UInt64?
-	let peakDailyTokensCoverage: Int
 	let longestTaskSeconds: UInt64?
-	let longestTaskSecondsCoverage: Int
 	let currentStreakDays: UInt32?
-	let currentStreakDaysCoverage: Int
 	let longestStreakDays: UInt32?
-	let longestStreakDaysCoverage: Int
 	let dailyUsage: [AccountProfileDailyUsage]
-	let dailyUsageCoverage: Int
 
 	static func make(_ profiles: [AccountProfileSnapshot]) -> Self? {
 		guard profiles.isEmpty == false else {
@@ -48,35 +41,27 @@ struct AccountProfileAggregate: Equatable, Sendable {
 		}
 
 		var lifetimeTokens: UInt64?
-		var lifetimeTokensCoverage = 0
+		var peakDailyTokens: UInt64?
 		var longestTaskSeconds: UInt64?
-		var longestTaskSecondsCoverage = 0
 		var currentStreakDays: UInt32?
-		var currentStreakDaysCoverage = 0
 		var longestStreakDays: UInt32?
-		var longestStreakDaysCoverage = 0
-		var dailyUsageCoverage = 0
 		var usageByDate = [String: UInt64]()
 
 		for profile in profiles {
 			if let value = profile.lifetimeTokens {
 				lifetimeTokens = (lifetimeTokens ?? 0).addingWithoutOverflow(value)
-				lifetimeTokensCoverage += 1
+			}
+			if let value = profile.peakDailyTokens {
+				peakDailyTokens = max(peakDailyTokens ?? 0, value)
 			}
 			if let value = profile.longestTaskSeconds {
 				longestTaskSeconds = max(longestTaskSeconds ?? 0, value)
-				longestTaskSecondsCoverage += 1
 			}
 			if let value = profile.currentStreakDays {
 				currentStreakDays = max(currentStreakDays ?? 0, value)
-				currentStreakDaysCoverage += 1
 			}
 			if let value = profile.longestStreakDays {
 				longestStreakDays = max(longestStreakDays ?? 0, value)
-				longestStreakDaysCoverage += 1
-			}
-			if profile.dailyUsage.isEmpty == false {
-				dailyUsageCoverage += 1
 			}
 			for record in profile.dailyUsage {
 				usageByDate[record.date] = (usageByDate[record.date] ?? 0)
@@ -89,21 +74,13 @@ struct AccountProfileAggregate: Equatable, Sendable {
 				AccountProfileDailyUsage(date: date, tokens: tokens)
 			}
 			.sorted { $0.date < $1.date }
-		let peakDailyTokens = dailyUsage.map(\.tokens).max()
 		let aggregate = Self(
-			accountCount: profiles.count,
 			lifetimeTokens: lifetimeTokens,
-			lifetimeTokensCoverage: lifetimeTokensCoverage,
 			peakDailyTokens: peakDailyTokens,
-			peakDailyTokensCoverage: dailyUsageCoverage,
 			longestTaskSeconds: longestTaskSeconds,
-			longestTaskSecondsCoverage: longestTaskSecondsCoverage,
 			currentStreakDays: currentStreakDays,
-			currentStreakDaysCoverage: currentStreakDaysCoverage,
 			longestStreakDays: longestStreakDays,
-			longestStreakDaysCoverage: longestStreakDaysCoverage,
-			dailyUsage: dailyUsage,
-			dailyUsageCoverage: dailyUsageCoverage
+			dailyUsage: dailyUsage
 		)
 
 		return aggregate.hasContent ? aggregate : nil
@@ -116,30 +93,6 @@ struct AccountProfileAggregate: Equatable, Sendable {
 			|| currentStreakDays != nil
 			|| longestStreakDays != nil
 			|| dailyUsage.isEmpty == false
-	}
-}
-
-struct AccountProfileOverviewStatus: Equatable, Sendable {
-	let totalAccountCount: Int
-	let profileCount: Int
-	let currentProfileCount: Int
-	let degradedProfileCount: Int
-
-	var label: String {
-		var parts = [String]()
-		if currentProfileCount > 0 {
-			parts.append("\(currentProfileCount) current")
-		}
-		if degradedProfileCount > 0 {
-			parts.append("\(degradedProfileCount) stored")
-		}
-		if profileCount < totalAccountCount {
-			parts.append("\(profileCount)/\(totalAccountCount)")
-		}
-		if parts.isEmpty {
-			return "\(profileCount) profiles"
-		}
-		return parts.joined(separator: " · ")
 	}
 }
 
@@ -172,16 +125,39 @@ func formatActivityDuration(_ seconds: UInt64) -> String {
 }
 
 func compactUsageDate(_ value: String) -> String {
-	let input = DateFormatter()
-	input.locale = Locale(identifier: "en_US_POSIX")
-	input.timeZone = TimeZone(secondsFromGMT: 0)
-	input.dateFormat = "yyyy-MM-dd"
-	guard let date = input.date(from: value) else {
+	let components = value.split(separator: "-", omittingEmptySubsequences: false)
+	guard components.count == 3,
+		components[0].count == 4,
+		components[1].count == 2,
+		components[2].count == 2,
+		let month = Int(components[1]),
+		let day = Int(components[2]),
+		(1 ... 12).contains(month),
+		(1 ... 31).contains(day),
+		let monthName = compactUsageMonth(month)
+	else {
 		return value
 	}
 
-	input.dateFormat = "MMM d"
-	return input.string(from: date)
+	return "\(monthName) \(day)"
+}
+
+private func compactUsageMonth(_ month: Int) -> String? {
+	switch month {
+	case 1: "Jan"
+	case 2: "Feb"
+	case 3: "Mar"
+	case 4: "Apr"
+	case 5: "May"
+	case 6: "Jun"
+	case 7: "Jul"
+	case 8: "Aug"
+	case 9: "Sep"
+	case 10: "Oct"
+	case 11: "Nov"
+	case 12: "Dec"
+	default: nil
+	}
 }
 
 func normalizedDailyUsage(
