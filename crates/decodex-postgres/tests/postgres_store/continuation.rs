@@ -3,19 +3,14 @@ use tokio_postgres::{Client, Config};
 
 use super::{
 	expected_peer_uid, isolated_blob_store,
-	routing_decision::{RoutingFixture, create_stale_evidence_snapshot},
+	routing_decision::RoutingFixture,
 };
 use decodex_core::{
-	BlobStore, CodexExperimentCommandOutcome, CodexExperimentIdentity,
-	CodexExperimentObservationKind, ContextPack, ContextPackInput, ContextPackPolicy,
-	ContinuationCommandOutcome, ContinuationPlanKind, ContinuationRejection, PinnedContextSource,
-	PossibleSideEffects, SameThreadContinuationEvidence,
+	BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
+	ContinuationPlanKind, ContinuationRejection, PinnedContextSource, PossibleSideEffects,
 };
 use decodex_postgres::{
-	AttestCodexExperimentRetainedTitle, BindCodexExperimentStart,
-	CodexExperimentCreationFenceOutcome, CodexExperimentTitleSetFenceOutcome,
-	ContinuationPlanEffect, FenceCodexExperimentTitleSet, PlanContinuation, PostgresStore,
-	PrepareCodexExperiment, RecordCodexExperimentObservation, RouteAccount,
+	ContinuationPlanEffect, PlanContinuation, PostgresStore, RouteAccount,
 };
 
 pub(super) async fn assert_continuation_contract(
@@ -28,18 +23,17 @@ pub(super) async fn assert_continuation_contract(
 	let blob_store = isolated_blob_store()?;
 	let fallback_pack = fallback_pack(owner, routing).await?;
 	prepare_continuation_fixture(owner, routing).await?;
-	assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
-	assert_alternate_fallback_contracts(store, owner, routing, &blob_store, &fallback_pack).await?;
-	let (same_thread, same_thread_request) =
-		assert_same_thread_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+	let (fallback, fallback_request) =
+		assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
+	assert_alternate_fallback_contracts(store, routing, &blob_store, &fallback_pack).await?;
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_lineage_and_restart_contract(
 		owner,
 		(migration, runtime),
 		&blob_store,
 		&fallback_pack,
-		&same_thread_request,
-		same_thread,
+		&fallback_request,
+		fallback,
 	)
 	.await?;
 	Ok(())
@@ -82,7 +76,7 @@ async fn assert_missing_fallback_contract(
 	routing: &RoutingFixture,
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
-) -> Result<(), Box<dyn std::error::Error>> {
+) -> Result<(ContinuationPlanEffect, PlanContinuation), Box<dyn std::error::Error>> {
 	let missing_request = plan_request(1, &routing.selected.decision_id);
 	let missing = continuation_success(
 		store
@@ -171,129 +165,57 @@ async fn assert_missing_fallback_contract(
 	assert_eq!(conflicting_plan_rows, 0);
 	assert_no_continuation_effects(owner, "v17-duplicate-consumption", &conflicting).await?;
 	assert_eq!(continuation_effect_inventory(owner, &conflicting).await?, conflicting_inventory,);
-	Ok(())
+	Ok((missing, missing_request))
 }
 
 async fn assert_alternate_fallback_contracts(
 	store: &PostgresStore,
-	owner: &Client,
 	routing: &RoutingFixture,
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let mismatch_decision = route_selected(store, routing, 2).await?;
-	create_positive_experiment(store, routing, 2, &mismatch_decision.decision.snapshot_id, true)
-		.await?;
-	let mismatch = continuation_success(
+	let second_decision = route_selected(store, routing, 2).await?;
+	let second = continuation_success(
 		store
 			.plan_continuation(
 				blob_store,
-				"v17-mismatch-fallback",
-				&plan_request(2, &mismatch_decision.decision_id),
+				"v17-second-fallback",
+				&plan_request(2, &second_decision.decision_id),
 				fallback_pack,
 			)
 			.await?,
 	)?;
-	assert_eq!(mismatch.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&mismatch.plan);
+	assert_eq!(second.plan.kind, ContinuationPlanKind::ContextPackFallback);
+	assert_inert_plan(&second.plan);
 
-	let stale_evidence_decision = route_selected(store, routing, 6).await?;
-	let stale_snapshot_id = create_stale_evidence_snapshot(store, owner, routing).await?;
-	create_positive_experiment(store, routing, 6, &stale_snapshot_id, true).await?;
-	let stale_evidence = continuation_success(
+	let third_decision = route_selected(store, routing, 6).await?;
+	let third = continuation_success(
 		store
 			.plan_continuation(
 				blob_store,
-				"v17-stale-evidence-fallback",
-				&plan_request(6, &stale_evidence_decision.decision_id),
+				"v17-third-fallback",
+				&plan_request(6, &third_decision.decision_id),
 				fallback_pack,
 			)
 			.await?,
 	)?;
-	assert_ne!(stale_snapshot_id, stale_evidence_decision.decision.snapshot_id);
-	assert_eq!(stale_evidence.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&stale_evidence.plan);
+	assert_eq!(third.plan.kind, ContinuationPlanKind::ContextPackFallback);
+	assert_inert_plan(&third.plan);
 
-	let ambiguous_decision = route_selected(store, routing, 4).await?;
-	create_ambiguous_creation_fence(store, routing, 4, &ambiguous_decision.decision.snapshot_id)
-		.await?;
-	let ambiguous = continuation_success(
+	let fourth_decision = route_selected(store, routing, 4).await?;
+	let fourth = continuation_success(
 		store
 			.plan_continuation(
 				blob_store,
-				"v17-ambiguous-fallback",
-				&plan_request(4, &ambiguous_decision.decision_id),
+				"v17-fourth-fallback",
+				&plan_request(4, &fourth_decision.decision_id),
 				fallback_pack,
 			)
 			.await?,
 	)?;
-	assert_eq!(ambiguous.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&ambiguous.plan);
+	assert_eq!(fourth.plan.kind, ContinuationPlanKind::ContextPackFallback);
+	assert_inert_plan(&fourth.plan);
 	Ok(())
-}
-
-async fn assert_same_thread_contract(
-	store: &PostgresStore,
-	owner: &Client,
-	routing: &RoutingFixture,
-	blob_store: &BlobStore,
-	fallback_pack: &ContextPack,
-) -> Result<(ContinuationPlanEffect, PlanContinuation), Box<dyn std::error::Error>> {
-	let same_thread_decision = route_selected(store, routing, 3).await?;
-	create_positive_experiment(
-		store,
-		routing,
-		3,
-		&same_thread_decision.decision.snapshot_id,
-		false,
-	)
-	.await?;
-	let same_thread_request = plan_request(3, &same_thread_decision.decision_id);
-	let same_thread = continuation_success(
-		store
-			.plan_continuation(blob_store, "v17-same-thread", &same_thread_request, fallback_pack)
-			.await?,
-	)?;
-	assert_eq!(same_thread.plan.kind, ContinuationPlanKind::SameThread);
-	assert_eq!(
-		same_thread.plan.codex_thread_id.as_deref(),
-		Some(routing.selected_thread_id.as_str())
-	);
-	let evidence = same_thread
-		.plan
-		.same_thread_evidence
-		.as_ref()
-		.expect("same-thread response carries typed evidence");
-	let SameThreadContinuationEvidence::CausalExperiment {
-		routing_evidence_id,
-		routing_evidence_revision,
-		schema_fingerprint,
-		experiment_id,
-		experiment_revision,
-		observation_id,
-	} = evidence
-	else {
-		return Err("ManagedRun same-thread plan carries ProviderAttempt evidence".into());
-	};
-	let persisted = owner
-		.query_one(
-			concat!(
-				"SELECT routing_evidence_id::text,routing_evidence_revision,schema_fingerprint,",
-				"codex_experiment_id::text,codex_experiment_revision,codex_observation_id::text ",
-				"FROM decodex.continuation_plans WHERE plan_id=$1::text::uuid",
-			),
-			&[&same_thread.plan.plan_id],
-		)
-		.await?;
-	assert_eq!(persisted.get::<_, String>(0), routing_evidence_id.as_str());
-	assert_eq!(persisted.get::<_, i64>(1), *routing_evidence_revision);
-	assert_eq!(persisted.get::<_, String>(2), schema_fingerprint.as_str());
-	assert_eq!(persisted.get::<_, String>(3), experiment_id.as_str());
-	assert_eq!(persisted.get::<_, i64>(4), *experiment_revision);
-	assert_eq!(persisted.get::<_, String>(5), observation_id.as_str());
-	assert!(same_thread.fallback_context_pack.is_none());
-	assert_inert_plan(&same_thread.plan);
-	Ok((same_thread, same_thread_request))
 }
 
 async fn assert_stale_revision_contract(
@@ -336,23 +258,25 @@ async fn assert_lineage_and_restart_contract(
 	configs: (&Config, &Config),
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
-	same_thread_request: &PlanContinuation,
-	same_thread: ContinuationPlanEffect,
+	fallback_request: &PlanContinuation,
+	fallback: ContinuationPlanEffect,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let lineage = owner
 		.query_one(
 			concat!(
 				"SELECT NOT plan.replay_permitted,NOT plan.dispatch_enabled,",
-				"plan.consumer_kind='managed_run_execution',",
-				"plan.managed_run_id IS NOT NULL AND plan.managed_run_revision=1 ",
-				"AND plan.managed_execution_id IS NOT NULL,",
+				"plan.consumer_kind='conversation_turn',",
+				"plan.consumer_conversation_id IS NOT NULL ",
+				"AND plan.conversation_revision=1 AND plan.turn_id IS NOT NULL,",
+				"plan.managed_run_id IS NULL AND plan.managed_run_revision IS NULL ",
+				"AND plan.managed_execution_id IS NULL,",
 				"(SELECT count(*) FROM decodex.activity WHERE aggregate_kind='continuation_plan'",
 				"AND aggregate_id=plan.plan_id::text AND event_kind='continuation_plan_created')=1,",
 				"(SELECT count(*) FROM decodex.outbox WHERE aggregate_kind='continuation_plan'",
 				"AND aggregate_id=plan.plan_id::text)=1 ",
 				"FROM decodex.continuation_plans AS plan WHERE plan.plan_id=$1::text::uuid",
 			),
-			&[&same_thread.plan.plan_id],
+			&[&fallback.plan.plan_id],
 		)
 		.await?;
 	for index in 0..6 {
@@ -363,62 +287,15 @@ async fn assert_lineage_and_restart_contract(
 		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted
-			.plan_continuation(blob_store, "v17-same-thread", same_thread_request, fallback_pack,)
+			.plan_continuation(
+				blob_store,
+				"v17-missing-fallback",
+				fallback_request,
+				fallback_pack,
+			)
 			.await?,
-		ContinuationCommandOutcome::Success(same_thread),
+		ContinuationCommandOutcome::Success(fallback),
 	);
-	Ok(())
-}
-
-async fn create_ambiguous_creation_fence(
-	store: &PostgresStore,
-	routing: &RoutingFixture,
-	marker: u8,
-	snapshot_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let experiment_id = uuid(0xe8, marker);
-	let mut identity = CodexExperimentIdentity {
-		experiment_id: experiment_id.clone(),
-		managed_run_id: routing.selected_managed_run_id.clone(),
-		managed_run_revision: 1,
-		routing_snapshot_id: snapshot_id.to_owned(),
-		account_id: routing.selected_account_id.clone(),
-		account_revision: 1,
-		role_profile_revision: 1,
-		build_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-		repository_cwd: "/srv/vnext-acceptance".into(),
-		thread_title: String::new(),
-	};
-	identity.thread_title = format!("V17 ambiguous creation fence {}", identity.retained_marker());
-	assert!(matches!(
-		store
-			.prepare_codex_experiment("v17-ambiguous-prepare", &PrepareCodexExperiment { identity },)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	let attempt_id = uuid(0xe9, marker);
-	assert!(matches!(
-		store
-			.mark_codex_experiment_creation_possible(
-				"v17-ambiguous-fence",
-				&experiment_id,
-				1,
-				&attempt_id,
-			)
-			.await?,
-		CodexExperimentCreationFenceOutcome::Fresh(_)
-	));
-	assert!(matches!(
-		store
-			.mark_codex_experiment_creation_possible(
-				"v17-ambiguous-fence",
-				&experiment_id,
-				1,
-				&attempt_id,
-			)
-			.await?,
-		CodexExperimentCreationFenceOutcome::ReplayedAmbiguous { .. }
-	));
 	Ok(())
 }
 
@@ -477,145 +354,6 @@ async fn route_selected(
 		decodex_core::RoutingCommandOutcome::Rejected(rejection) =>
 			Err(format!("V17 selected fixture rejected: {}", rejection.code).into()),
 	}
-}
-
-#[allow(clippy::too_many_lines)] // One complete positive continuation fixture.
-async fn create_positive_experiment(
-	store: &PostgresStore,
-	routing: &RoutingFixture,
-	marker: u8,
-	snapshot_id: &str,
-	mismatched_thread: bool,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let experiment_id = uuid(0xea, marker);
-	let marker_text = format!("decodex.experiment.v1:{experiment_id}");
-	let identity = CodexExperimentIdentity {
-		experiment_id: experiment_id.clone(),
-		managed_run_id: routing.selected_managed_run_id.clone(),
-		managed_run_revision: 1,
-		routing_snapshot_id: snapshot_id.to_owned(),
-		account_id: routing.selected_account_id.clone(),
-		account_revision: 1,
-		role_profile_revision: 1,
-		build_id: "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-		repository_cwd: "/srv/vnext-acceptance".into(),
-		thread_title: format!("V17 positive evidence {marker_text}"),
-	};
-	assert!(matches!(
-		store
-			.prepare_codex_experiment(
-				&format!("v17-experiment-prepare-{marker}"),
-				&PrepareCodexExperiment { identity: identity.clone() },
-			)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	let attempt_id = uuid(0xeb, marker);
-	assert!(matches!(
-		store
-			.mark_codex_experiment_creation_possible(
-				&format!("v17-experiment-fence-{marker}"),
-				&experiment_id,
-				1,
-				&attempt_id,
-			)
-			.await?,
-		CodexExperimentCreationFenceOutcome::Fresh(_)
-	));
-	let thread_id =
-		if mismatched_thread { uuid(0xec, marker) } else { routing.selected_thread_id.clone() };
-	assert!(matches!(
-		store
-			.bind_codex_experiment_start(
-				&format!("v17-experiment-bind-{marker}"),
-				&BindCodexExperimentStart {
-					experiment_id: experiment_id.clone(),
-					expected_revision: 2,
-					attempt_id: attempt_id.clone(),
-					thread_id: thread_id.clone(),
-					start_request_id: 10_000 + i64::from(marker),
-					start_request_digest:
-						"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa".into(),
-					request_cwd: identity.repository_cwd.clone(),
-					request_marker: marker_text.clone(),
-					request_ephemeral: false,
-					start_response_id: 10_000 + i64::from(marker),
-					start_response_digest:
-						"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb".into(),
-					response_cwd: identity.repository_cwd.clone(),
-					response_marker: marker_text.clone(),
-					response_ephemeral: false,
-					returned_name: None,
-				},
-			)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	let title_attempt_id = uuid(0xed, marker);
-	assert!(matches!(
-		store
-			.mark_codex_experiment_title_set_possible(
-				&format!("v17-experiment-title-fence-{marker}"),
-				&FenceCodexExperimentTitleSet {
-					experiment_id: experiment_id.clone(),
-					expected_revision: 3,
-					title_attempt_id: title_attempt_id.clone(),
-					thread_id: thread_id.clone(),
-					request_id: 20_000 + i64::from(marker),
-					request_digest:
-						"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc".into(),
-					requested_title: identity.thread_title.clone(),
-				},
-			)
-			.await?,
-		CodexExperimentTitleSetFenceOutcome::Fresh(_)
-	));
-	let attestation_id = uuid(0xee, marker);
-	assert!(matches!(
-		store
-			.attest_codex_experiment_retained_title(
-				&format!("v17-experiment-title-attest-{marker}"),
-				&AttestCodexExperimentRetainedTitle {
-					experiment_id: experiment_id.clone(),
-					expected_revision: 3,
-					attestation_id: attestation_id.clone(),
-					title_attempt_id,
-					thread_id: thread_id.clone(),
-					read_request_id: 30_000 + i64::from(marker),
-					read_request_digest:
-						"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd".into(),
-					read_response_id: 30_000 + i64::from(marker),
-					read_response_digest:
-						"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".into(),
-					returned_title: identity.thread_title,
-					returned_cwd: identity.repository_cwd,
-					returned_marker: marker_text.clone(),
-				},
-			)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	assert!(matches!(
-		store
-			.record_attested_codex_experiment_observation(
-				&format!("v17-experiment-observe-{marker}"),
-				&RecordCodexExperimentObservation {
-					experiment_id,
-					expected_revision: 3,
-					attestation_id,
-					observation_id: uuid(0xef, marker),
-					kind: CodexExperimentObservationKind::ThreadReadItem,
-					thread_id,
-					marker: marker_text,
-					source_id: format!("thread-read-{marker}"),
-					fact_digest: "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
-						.into(),
-				},
-			)
-			.await?,
-		CodexExperimentCommandOutcome::Applied(_)
-	));
-	Ok(())
 }
 
 fn continuation_success<T>(
@@ -721,13 +459,15 @@ pub(super) async fn assert_restored_continuation_contract(
 		.query_one(
 			concat!(
 				"SELECT (SELECT count(*) FROM decodex.continuation_plans ",
-				"WHERE kind='same_thread' AND NOT replay_permitted AND NOT dispatch_enabled)=1,",
+				"WHERE kind='same_thread')=0,",
 				"(SELECT count(*) FROM decodex.continuation_plans ",
 				"WHERE kind='context_pack_fallback' AND fallback_context_pack_id IS NOT NULL ",
 				"AND fallback_runtime_session_id IS NOT NULL)=4,",
-				"(SELECT bool_and(consumer_kind='managed_run_execution' ",
-				"AND managed_run_id IS NOT NULL AND managed_run_revision=1 ",
-				"AND managed_execution_id IS NOT NULL AND NOT replay_permitted ",
+				"(SELECT bool_and(consumer_kind='conversation_turn' ",
+				"AND consumer_conversation_id IS NOT NULL AND conversation_revision=1 ",
+				"AND turn_id IS NOT NULL AND managed_run_id IS NULL ",
+				"AND managed_run_revision IS NULL AND managed_execution_id IS NULL ",
+				"AND NOT replay_permitted ",
 				"AND NOT dispatch_enabled)",
 				"FROM decodex.continuation_plans)",
 			),
