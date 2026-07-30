@@ -5294,8 +5294,10 @@ pub(crate) async fn verify_runtime(
 	migration_role: &str,
 	runtime_role: &str,
 ) -> Result<(), StoreError> {
+	verify_namespace_owner_authority(client, migration_role).await?;
 	verify_semantic_authority(client, runtime_role).await?;
-	verify_manifest_contracts(client, migration_role, runtime_role).await
+	verify_configured_authority(client, migration_role, runtime_role).await?;
+	verify_schema_contract(client).await
 }
 
 const fn trigger_contract(
@@ -5452,17 +5454,6 @@ fn canonical_function_source_in_migration<'a>(
 	Some(source)
 }
 
-async fn verify_manifest_contracts(
-	client: &Client,
-	migration_role: &str,
-	runtime_role: &str,
-) -> Result<(), StoreError> {
-	// ACL facts intentionally overlap both manifests; classify unsafe authority before
-	// incompatibility.
-	verify_configured_authority(client, migration_role, runtime_role).await?;
-	verify_schema_contract(client).await
-}
-
 async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
 	let inventory = client.query_one(SCHEMA_CONTRACT_SQL, &[]).await?;
 	let manifest: Option<String> = inventory.get(0);
@@ -5506,6 +5497,28 @@ async fn verify_configured_authority(
 		));
 	}
 
+	Ok(())
+}
+
+async fn verify_namespace_owner_authority(
+	client: &Client,
+	migration_role: &str,
+) -> Result<(), StoreError> {
+	let owner_matches = client
+		.query_opt(
+			"SELECT owner.rolname=$1 \
+			 FROM pg_catalog.pg_namespace AS namespace \
+			 JOIN pg_catalog.pg_roles AS owner ON owner.oid=namespace.nspowner \
+			 WHERE namespace.nspname='decodex'",
+			&[&migration_role],
+		)
+		.await?
+		.map(|row| row.get::<_, bool>(0));
+	if owner_matches == Some(false) {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL Decodex schema owner differs from the configured migration role",
+		));
+	}
 	Ok(())
 }
 
