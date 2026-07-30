@@ -167,7 +167,7 @@ enum PanelWindowAppearance {
 		guard let window else {
 			return
 		}
-		window.appearance = NSAppearance(named: .darkAqua)
+		window.hasShadow = false
 		window.isOpaque = false
 		window.backgroundColor = .clear
 	}
