@@ -738,14 +738,215 @@ receive a typed refusal before application payload handling.
 Large artifacts use authenticated HTTP, never WebSocket snapshots. Non-loopback binding
 remains disabled until authentication, TLS, authorization, and redaction gates pass.
 
-GPUI is the primary workspace. Current source opens a real shell and window, but all
-destinations are placeholders and the app is not usable. Slice 1 delivers minimal
-Accounts, Conversation, and Health destinations with Quick Task. Slice 2 delivers
+GPUI is the primary workspace. Current source opens a real shell and window with a
+bounded live Health destination. Every other destination remains a placeholder. The
+Quick Task and WorkItem contracts do not make their shell destinations live, and the
+app is not generally usable. Slice 1 delivers minimal Accounts, Conversation, and
+Health destinations with Quick Task. Slice 2 delivers
 Project, Work, and Run destinations for the bounded managed-work flow. Graph/timeline,
 automation, broad history presentation, and polish are later obligations. SwiftUI stays
 a thin accounts/run-health menubar client over the restricted protocol. GPUI caches are
 bounded, disposable, cursor-paginated, and keyed by server/schema/content hash; project
 opening never eagerly loads all history.
+
+### GPUI history-page cache authority
+
+PostgreSQL remains product authority. The private `HistoryPageCache` is only GPUI-local,
+disposable presentation acceleration subordinate to `HistoryPager`. This first slice is
+dormant presentation infrastructure because no current shell destination renders
+`HistoryPager`. The pager keeps one active view and its existing four-page, 32-item,
+1 MiB in-memory window. This slice does not prove user-visible warm history.
+
+`ClientLifecycle` owns one explicit GPUI cache parent. The configured production parent
+remains exactly `std::env::temp_dir().join("box.acg.decodex")`; tests may inject one exact
+parent through the private lifecycle constructor. The configured parent remains lexical
+while `HistoryPageCache` is dormant. `ClientLifecycle` does not canonicalize it, and
+dormancy causes no history-cache filesystem I/O. The existing `ClientCache` remains exactly
+`<parent>/client-cache`, and `HistoryPageCache` is exactly
+`<parent>/history-page-cache-v1`. These sibling caches have separate namespaces,
+inventories, locks, and failure handling. This cache is not the `decodex-core` typed
+`~/.decodex/cache` authority, adds no `decodex-core` dependency, and is not a generic
+cache framework. It must never publish into, count against, mutate, dispose, switch,
+quarantine, recover, or otherwise change a `ClientCache` generation, checkpoint binding,
+inventory, path identity, or lifecycle state.
+
+The closed local schema ID is `decodex.gpui.history-page-cache/1`. One entry has the exact
+identity `(stable_server_id, protocol_major, protocol_minor, cache_schema_generation,
+conversation_id, request_key, page_sha256)`. `ClientLifecycle` supplies the positive local
+`cache_schema_generation`; it is exactly `1` for this schema, independent of protocol
+negotiation. Protocol major and minor remain separate identity fields, and this cache
+changes no protocol. `request_key` is either `head` or the exact opaque `after` cursor
+from a fresh live page; cursor text is not normalized. For schema `/1`, the page bytes and
+the bytes hashed for `page_sha256` are exactly
+`serde_json::to_vec(&ConversationHistoryPage)` with the protocol type's unchanged serde
+definitions and version. `page_sha256` is the lowercase SHA-256 digest of those complete
+bytes. No other JSON canonicalization or key sorting applies. Any serialization change
+requires a cache-schema bump. The digest is verified on each read. One
+authority/Conversation/request tuple points to one digest, and an admitted fresh response
+atomically replaces its older index mapping. An unknown schema or a changed protocol
+major, protocol minor, local cache schema generation, server, key, page size, bytes, or
+digest is incompatible cache data.
+
+Opening a view enqueues its fresh head request. Binding or replacing a transport session
+does the same for an active view. The existing retained-session snapshot application and
+confirmation gate controls when the transport may send that queued request; cache work
+does not bypass the gate. An authority-matched provisional lookup may start only after
+the transport successfully sends that exact queued request. A send failure starts no
+lookup. On session replacement, `HistoryPager` first cancels old work and clears every
+fresh and provisional page and all cursor topology. Only a new successful send may then
+start the matching post-send lookup. An admitted fresh page may independently start
+publication. No history-cache filesystem I/O occurs before the first exact post-send
+lookup starts or an admitted fresh page starts publication. Cache I/O must not delay,
+suppress, replace, or deduplicate the queued fresh request.
+
+A hit has source `cached_unverified`, never `FreshServer`, and has cursor observation
+`unknown`. It does not prove that content is current or present, or prove absence,
+completion, no continuation, or cursor validity. A matching cached head may populate the
+provisional `HistorySnapshot` only after its exact fresh head request was successfully
+sent and while that request is in flight. A continuation lookup is permitted only after
+a fresh page supplies the exact live
+`next_cursor` used as its `after` request key. The lookup preserves the live
+`RequestPurpose`; a cached prefetch never becomes visible or changes topology. A later
+visible request is distinct and must perform its own authority-matched lookup. A cached
+`next_cursor` never drives navigation or prefetch. Only fresh server pages create
+topology. A matching fresh response replaces or validates provisional bytes and then has
+source `FreshServer`.
+
+`fresh_received_at` is the immutable server-admission wall time for a fresh response. An
+entry is eligible only when `now >= fresh_received_at` and
+`now - fresh_received_at < 15 minutes`; a hit does not extend that interval. There is no
+wall-clock high-water mark. Clock rollback cannot grant authority because a future-dated
+entry is ineligible, every hit remains provisional, and a fresh request is always queued.
+An invalid timestamp, an expired entry, or an authority, key, page-size, byte-length, or
+digest mismatch is refused or removed under the cache lock. The server's one-hour cursor
+expiry remains unchanged.
+
+All cache limits apply at the same time:
+
+- one page has at most eight items and 256 KiB of the schema-defined page bytes;
+- one Conversation has at most four pages, 32 items, and 1 MiB;
+- the cache has at most eight Conversations, 32 pages, 256 items, and 8 MiB of
+  schema-defined page bytes; and
+- the index has at most 64 KiB, and the sum of all cache-owned regular-file lengths,
+  including one staged page and one staged index, never exceeds the 9 MiB physical
+  staging peak.
+
+Eligible hits update bounded in-memory LRU recency and require no durable write. The next
+cache-changing index publication persists the current recency of retained entries. Losing
+recent hit order on crash is allowed. After restart, eviction uses the last persisted
+recency and the exact entry identity in ascending byte order as the deterministic
+tie-break. Eviction first removes invalid or expired entries. It then enforces
+per-Conversation limits by oldest recency, removes the Conversation whose newest entry has
+the oldest recency while the Conversation cap is exceeded, and enforces aggregate limits
+by oldest entry recency. Correctness does not depend on an orderly-shutdown flush.
+
+At lazy open, `HistoryPageCache` requires the configured parent to be absolute. It
+lexically splits that parent into the existing external base `parent.parent()` and the
+unchanged final cache-parent leaf `parent.file_name()`. It requires both values and
+requires the external base to exist. It canonicalizes only that external base. The
+canonical result must be absolute and normal: it has one root, and every component after
+the root is normal. Starting from `/`, it opens each component of the resolved base
+descriptor-relative with `O_NOFOLLOW`. Each opened component must be a directory owned by
+root or the effective UID. Group or other write permission is prohibited except on a
+root-owned sticky directory. Only canonicalization of the complete external base may
+resolve a lexical alias. No component-level rule permits an arbitrary lexical symlink
+ancestor or permits a symlink because root owns it.
+
+From the validated resolved-base descriptor, `HistoryPageCache` opens or creates the
+unchanged final cache-parent leaf descriptor-relative with `O_NOFOLLOW` and validates it
+as a mode-`0700` directory owned by the effective UID. It never canonicalizes or follows
+that leaf, `history-page-cache-v1`, or any descendant. The resolved base and its
+descriptors remain private to `HistoryPageCache`. Resolution must not rewrite
+`ClientLifecycle.cache_parent`, pass a canonicalized path to `ClientCache`, or change
+`ClientCache` path identity, binding, generation, inventory, quarantine, or lifecycle
+state. This operation is not a generic path resolver or framework.
+
+The fixed owner-private filesystem shape is
+`history-page-cache-v1/{lock,index,.index.next,pages/<page_sha256>,pages/.page.next}`.
+Every index read or mutation, hit lookup, publication, eviction, remnant removal, and
+cleanup is serialized by the same cache lock. Canonicalization of the existing external
+base is the sole explicit exception to the descriptor-relative no-follow rule. The final
+cache-parent leaf, `history-page-cache-v1`, and every cache-owned component are opened
+descriptor-relative with `O_NOFOLLOW`; none is canonicalized or followed. Directories
+have mode `0700`; regular files have mode `0600`, one link, and the effective user as
+owner. Name counts, file lengths, owners, modes, link counts, and file kinds are bounded
+and validated. A foreign name, link, owner, mode, or file kind disables this cache. The
+cache remains inside the existing trusted same-UID boundary. It does not claim confinement
+against hostile code that already has the same effective UID. The implementation must use
+the existing workspace `libc` dependency for the descriptor-relative primitives.
+Hand-written Darwin FFI and any new crate or framework are prohibited.
+
+Before creating a stage file, the lock holder validates the complete known shape, removes
+only known stage remnants and valid digest-named pages not referenced by the validated
+index, and computes the complete physical peak. If publication must reclaim referenced
+space, it first publishes and syncs an eviction-only index, then deletes only pages that
+the published index no longer references, syncs `pages`, and recomputes the peak.
+
+Page publication creates and syncs `pages/.page.next`, then publishes the digest page
+create-only. If the exact digest target already exists, the cache verifies its exact
+bytes and digest and reuses it; it never replaces that target. After publication or reuse,
+`pages/.page.next` must be absent and `pages` must be synced before `.index.next` is
+staged. Publication then creates and syncs `.index.next`, replaces `index`, and syncs the
+cache root before it treats the mapping as durable. Only after the new index is durable
+may cleanup delete pages that it no longer references, followed by a final `pages`
+directory sync. Any cleanup failure disables only this cache. The index is cache metadata,
+not a credential vault, migration, compatibility layer, or product ledger.
+
+Each cache lookup and write carries the exact active view generation, transport session
+generation, stable server, protocol major, protocol minor, lifecycle-supplied local cache
+schema generation, Conversation, and request generation. It may publish or become visible
+only if all values still match at completion. Cancellation or replacement drops staged
+work, and stale completion is never shown. Crash, corruption, I/O, bounds, or cleanup
+failure may delete this cache only after safe validation; otherwise it disables only this
+cache. Parent resolution or validation failure disables only `HistoryPageCache`.
+History-cache work cannot delay or suppress the already-required fresh transport send.
+Cache open or publication failure cannot alter, reject, or make unusable an
+already-admitted fresh page. History-cache failure never starts lifecycle quarantine or
+recovery and never changes `ClientCache`.
+
+The first implementation write set is only
+`apps/decodex-gpui/src/history_pager.rs`, the new
+`apps/decodex-gpui/src/history_pager/page_cache.rs` and its module-local tests,
+`apps/decodex-gpui/src/client_lifecycle.rs`, and
+`apps/decodex-gpui/src/client_lifecycle/tests.rs`, plus
+`apps/decodex-gpui/Cargo.toml` solely to add the existing workspace `libc` dependency.
+`client_cache.rs`, `main.rs`, the root `Cargo.toml`, and all protocol, runtime, PostgreSQL,
+account, Swift, and FFI paths remain unchanged. Hand-written Darwin FFI, any new crate or
+framework, a generic cache framework, a ledger, a protocol change, and a user-visible
+destination remain prohibited. The active XY-1427 account lane owns `Cargo.lock`;
+regeneration and integration of that lockfile is one deferred mechanical step after
+XY-1427 lands and is not performed by the isolated source writer. The implementation is
+not ready or landable until that exact lockfile integration and locked validation
+complete. Local full-text search is deferred to future authoritative server/PostgreSQL
+work. Cached cursors never drive topology, and cache failure never enters lifecycle
+quarantine or recovery.
+
+Acceptance is limited to:
+
+- `HistorySnapshot` reports `cached_unverified`, cursor `unknown`, and no
+  cached-cursor topology; it preserves `RequestPurpose`, never exposes a cached prefetch,
+  and replaces or validates provisional bytes with the matching fresh response;
+- cancellation and exact active-view, request, transport-session, stable-server,
+  protocol-major, protocol-minor, and local-cache-schema identities prevent stale lookup,
+  publication, or visibility;
+- bounded platform evidence covers the macOS `/var` to `/private/var` external-base
+  alias and the Linux `/tmp/box.acg.decodex` temporary-path shape while preserving
+  the unchanged final cache-parent leaf;
+- an instrumented lifecycle test proves that no history-cache filesystem I/O occurs
+  before the successful transport send of the exact request or the start of an admitted
+  fresh-page publication;
+- filesystem tests refuse a symbolic link at the final cache-parent leaf,
+  `history-page-cache-v1`, or any descendant;
+- deterministic tests cover time eligibility, restart recency, cache limits, eviction,
+  corruption, known remnants, publication ordering, and publication and cleanup faults;
+  and
+- one lifecycle-focused test injects parent-resolution, validation, and page-cache
+  failure and proves that the fresh result remains unchanged and usable and that the
+  existing `ClientCache` generation, checkpoint binding, inventory, connection quarantine,
+  and lexical path identity do not change.
+
+User-visible warm history is not an acceptance claim until the Conversation destination
+consumes `HistoryPager`.
 
 ## Clean cutover and delivery
 

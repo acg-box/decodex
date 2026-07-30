@@ -3,7 +3,7 @@
 use std::{
 	collections::VecDeque,
 	fs,
-	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink},
 	path::{Path, PathBuf},
 	sync::{
 		Arc, Mutex,
@@ -231,7 +231,7 @@ fn production_owner_closes_connected_session_and_reaches_terminal_shutdown(
 	use crate::shell::{Shell, retain_lifecycle_task};
 
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let cancellation = lifecycle.cancellation();
 	let views = lifecycle.observe_views();
@@ -307,7 +307,7 @@ struct FakeIo {
 }
 
 impl FakeIo {
-	fn new(cache_root: PathBuf, connections: Vec<ConnectAction>) -> Self {
+	fn new(cache_parent: PathBuf, connections: Vec<ConnectAction>) -> Self {
 		Self {
 			connections: connections.into(),
 			delays: Vec::new(),
@@ -316,7 +316,7 @@ impl FakeIo {
 			maximum_active: 0,
 			closed: Arc::new(Mutex::new(0)),
 			confirmations: Arc::new(Mutex::new(Vec::new())),
-			cache_root,
+			cache_root: client_cache_root(&cache_parent),
 			cancel_backoff: false,
 			session: None,
 			requested_checkpoints: Vec::new(),
@@ -531,28 +531,37 @@ fn event(cursor: u64, entity_id: &str, revision: u64) -> EventEnvelope {
 	}
 }
 
-fn cache_root(temporary: &TempDir) -> PathBuf {
+fn cache_parent(temporary: &TempDir) -> PathBuf {
 	temporary.path().canonicalize().expect("temporary root canonicalizes").join("cache")
 }
 
-fn lifecycle(root: &Path) -> ClientLifecycle {
-	lifecycle_for(root, SERVER, 1)
+fn client_cache_root(cache_parent: &Path) -> PathBuf {
+	cache_parent.join("client-cache")
 }
 
-fn lifecycle_for(root: &Path, server_id: &str, schema_generation: u64) -> ClientLifecycle {
-	let config = retained_config(root, server_id);
+fn lifecycle(cache_parent: &Path) -> ClientLifecycle {
+	lifecycle_for(cache_parent, SERVER, 1)
+}
+
+fn lifecycle_for(
+	cache_parent: &Path,
+	server_id: &str,
+	schema_generation: u64,
+) -> ClientLifecycle {
+	let config = retained_config(cache_parent, server_id);
 
 	ClientLifecycle::new(
 		config,
-		root,
+		cache_parent,
 		CacheLimits::new(2 * 1_024 * 1_024, 32, 16).expect("limits are valid"),
 		schema_generation,
 	)
 	.expect("lifecycle constructs")
 }
 
-fn retained_config(root: &Path, server_id: &str) -> RetainedSessionConfig {
-	let transport_root = root.parent().expect("cache root has a parent").join("client-transport");
+fn retained_config(cache_parent: &Path, server_id: &str) -> RetainedSessionConfig {
+	let transport_root =
+		cache_parent.parent().expect("cache parent has a parent").join("client-transport");
 	let server_root = transport_root.join("server");
 
 	fs::create_dir_all(&server_root).expect("fixed local transport namespace is available");
@@ -592,7 +601,7 @@ expected_server_identity = "{server_id}"
 #[tokio::test]
 async fn retry_progression_is_capped_and_uses_only_fake_time() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let failures =
 		(0..5).map(|_| ConnectAction::Fail(RetainedSessionFailure::Disconnected)).collect();
@@ -616,7 +625,7 @@ async fn retry_progression_is_capped_and_uses_only_fake_time() {
 #[tokio::test]
 async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let pager = lifecycle.history_pager();
 
@@ -670,7 +679,7 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 #[tokio::test]
 async fn pending_history_send_blocks_replacement_until_settlement() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let pager = lifecycle.history_pager();
 	let cancellation = lifecycle.cancellation();
@@ -768,7 +777,7 @@ async fn pending_history_send_blocks_replacement_until_settlement() {
 #[tokio::test]
 async fn history_results_route_only_to_the_exact_current_view_request() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let pager = lifecycle.history_pager();
 	let server_id = server(SERVER);
@@ -825,7 +834,7 @@ async fn history_results_route_only_to_the_exact_current_view_request() {
 #[tokio::test]
 async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let config = retained_config(&root, SERVER);
 	let mut lifecycle = ClientLifecycle::new(
 		config,
@@ -887,9 +896,119 @@ async fn history_pages_leave_maximum_authoritative_snapshot_inventory_unchanged(
 }
 
 #[tokio::test]
+async fn unsafe_history_cache_path_preserves_fresh_results_and_client_cache_authority() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let mut lifecycle = lifecycle(&root);
+
+	lifecycle.connection_generation = 1;
+	let inspection = lifecycle
+		.apply_snapshot(1, snapshot(11, "system", 4))
+		.expect("authoritative snapshot publishes");
+	lifecycle
+		.bind_checkpoint(1, Cursor(11), checkpoint(INSTANCE, 11), inspection)
+		.expect("authoritative checkpoint binds");
+
+	let client_root = client_cache_root(&root);
+	let generation_inventory = |path: &Path| {
+		let mut names = fs::read_dir(path.join("generations"))
+			.expect("generation inventory is readable")
+			.map(|entry| entry.expect("generation entry is readable").file_name())
+			.collect::<Vec<_>>();
+
+		names.sort();
+		names
+	};
+	let inspection_before = lifecycle
+		.cache
+		.as_ref()
+		.expect("client cache is available")
+		.inspect_current()
+		.expect("client cache inspection succeeds")
+		.expect("current client generation exists");
+	let pointer_before =
+		fs::read(client_root.join("current")).expect("current pointer is readable");
+	let generations_before = generation_inventory(&client_root);
+	let binding_before = lifecycle.binding.clone();
+	let inventory_before = lifecycle.state.clone();
+	let cursor_before = lifecycle.last_cursor;
+	let quarantine_before = lifecycle.quarantine;
+	let lexical_parent_before = lifecycle.cache_parent.clone();
+	let linked_target = temporary.path().join("foreign-history-cache");
+	let linked_root = root.join("history-page-cache-v1");
+
+	fs::create_dir(&linked_target).expect("foreign history target is created");
+	fs::set_permissions(&linked_target, fs::Permissions::from_mode(0o700))
+		.expect("foreign history target is owner-private");
+	symlink(&linked_target, &linked_root).expect("history cache root is a symbolic link");
+
+	let pager = lifecycle.history_pager();
+	let server_id = server(SERVER);
+
+	pager.bind_session(1, server_id.clone());
+	pager.open(entity("conversation-isolated")).expect("history view opens");
+	let dispatch = pager.next_dispatch(1, &server_id).await;
+	let send = pager.begin_send(&dispatch).expect("history request enters the send phase");
+
+	assert!(pager.finish_send(&send));
+	pager.lookup_sent_request(&send);
+	assert_eq!(
+		pager.snapshot().cache_diagnostic,
+		Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable)
+	);
+
+	lifecycle
+		.route_history_result(1, history_result(&dispatch, &server_id, None))
+		.expect("fresh history result remains request-local and usable");
+
+	let fresh = pager.snapshot();
+
+	assert_eq!(fresh.visible, Some(history_page(None)));
+	assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
+	assert_eq!(fresh.cursor, HistoryCursorObservation::NoContinuationObserved);
+	assert_eq!(fresh.load, HistoryLoadState::Visible);
+	assert_eq!(
+		fresh.cache_diagnostic,
+		Some(crate::history_pager::HistoryCacheDiagnostic::Unavailable)
+	);
+	assert_eq!(
+		lifecycle
+			.cache
+			.as_ref()
+			.expect("client cache remains available")
+			.inspect_current()
+			.expect("client cache inspection still succeeds")
+			.expect("current client generation remains"),
+		inspection_before
+	);
+	assert_eq!(
+		fs::read(client_root.join("current")).expect("current pointer remains readable"),
+		pointer_before
+	);
+	assert_eq!(generation_inventory(&client_root), generations_before);
+	assert_eq!(lifecycle.binding, binding_before);
+	assert_eq!(lifecycle.state, inventory_before);
+	assert_eq!(lifecycle.last_cursor, cursor_before);
+	assert_eq!(lifecycle.quarantine, quarantine_before);
+	assert_eq!(lifecycle.cache_parent, lexical_parent_before);
+	assert_eq!(lifecycle.cache_parent, root);
+	assert_eq!(
+		lifecycle.view(),
+		ConnectionView::Online { generation: 1, applied: Some(Cursor(11)) }
+	);
+	assert!(
+		fs::read_dir(&linked_target)
+			.expect("foreign history target remains readable")
+			.next()
+			.is_none(),
+		"the unsafe history-cache link target must not be followed",
+	);
+}
+
+#[tokio::test]
 async fn wrong_history_payload_is_request_local_and_preserves_authoritative_state() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 
 	lifecycle.connection_generation = 1;
@@ -960,7 +1079,7 @@ async fn wrong_history_payload_is_request_local_and_preserves_authoritative_stat
 #[tokio::test]
 async fn session_replacement_requires_a_fresh_head_before_retained_topology_returns() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let pager = lifecycle.history_pager();
 	let server_id = server(SERVER);
@@ -1031,7 +1150,7 @@ async fn session_replacement_requires_a_fresh_head_before_retained_topology_retu
 #[tokio::test]
 async fn prior_session_result_cannot_replace_session_invalidated_view() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let pager = lifecycle.history_pager();
 	let server_id = server(SERVER);
@@ -1093,7 +1212,7 @@ async fn prior_session_result_cannot_replace_session_invalidated_view() {
 #[tokio::test]
 async fn observer_receives_the_complete_bounded_retry_progression() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let views = lifecycle.observe_views();
 	let failures =
@@ -1122,7 +1241,7 @@ async fn observer_receives_the_complete_bounded_retry_progression() {
 #[tokio::test]
 async fn cancellation_is_terminal_during_connect_backoff_and_receive() {
 	let connect_temporary = TempDir::new().expect("temporary directory is available");
-	let connect_root = cache_root(&connect_temporary);
+	let connect_root = cache_parent(&connect_temporary);
 	let mut connect_lifecycle = lifecycle(&connect_root);
 	let mut connect_io = FakeIo::new(connect_root, vec![ConnectAction::Cancel]);
 
@@ -1130,7 +1249,7 @@ async fn cancellation_is_terminal_during_connect_backoff_and_receive() {
 	assert_eq!(connect_lifecycle.view(), ConnectionView::Stopped);
 
 	let backoff_temporary = TempDir::new().expect("temporary directory is available");
-	let backoff_root = cache_root(&backoff_temporary);
+	let backoff_root = cache_parent(&backoff_temporary);
 	let mut backoff_lifecycle = lifecycle(&backoff_root);
 	let mut backoff_io =
 		FakeIo::new(backoff_root, vec![ConnectAction::Fail(RetainedSessionFailure::Disconnected)]);
@@ -1139,7 +1258,7 @@ async fn cancellation_is_terminal_during_connect_backoff_and_receive() {
 	assert_eq!(backoff_lifecycle.run_with_io(&mut backoff_io).await, RunResult::Stopped);
 
 	let receive_temporary = TempDir::new().expect("temporary directory is available");
-	let receive_root = cache_root(&receive_temporary);
+	let receive_root = cache_parent(&receive_temporary);
 	let mut receive_lifecycle = lifecycle(&receive_root);
 	let mut receive_io =
 		FakeIo::new(receive_root, vec![connected(vec![SessionAction::Cancel], None)]);
@@ -1151,7 +1270,7 @@ async fn cancellation_is_terminal_during_connect_backoff_and_receive() {
 #[tokio::test]
 async fn cache_and_state_application_precede_checkpoint_confirmation() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(
 		root.clone(),
@@ -1162,7 +1281,7 @@ async fn cache_and_state_application_precede_checkpoint_confirmation() {
 	);
 
 	assert_eq!(lifecycle.run_with_io(&mut io).await, RunResult::Stopped);
-	assert!(root.join("current").is_file());
+	assert!(client_cache_root(&root).join("current").is_file());
 	assert_eq!(lifecycle.last_cursor, Some(Cursor(7)));
 	assert_eq!(lifecycle.state["system"].revision, EntityRevision(3));
 	assert_eq!(*io.confirmations.lock().expect("confirmation log is available"), vec![Cursor(7)]);
@@ -1175,7 +1294,7 @@ async fn cache_and_state_application_precede_checkpoint_confirmation() {
 #[tokio::test]
 async fn event_publication_retains_the_complete_authoritative_state_before_confirmation() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let snapshot = SnapshotEnvelope {
 		version: CURRENT_VERSION,
@@ -1230,7 +1349,7 @@ async fn event_publication_retains_the_complete_authoritative_state_before_confi
 #[tokio::test]
 async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state() {
 	let resume_temporary = TempDir::new().expect("temporary directory is available");
-	let resume_root = cache_root(&resume_temporary);
+	let resume_root = cache_parent(&resume_temporary);
 	let mut resumed = lifecycle(&resume_root);
 	let mut resume_io = FakeIo::new(
 		resume_root,
@@ -1259,7 +1378,7 @@ async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state(
 	assert_eq!(resumed.state["system"].revision, EntityRevision(4));
 
 	let fallback_temporary = TempDir::new().expect("temporary directory is available");
-	let fallback_root = cache_root(&fallback_temporary);
+	let fallback_root = cache_parent(&fallback_temporary);
 	let mut fallback = lifecycle(&fallback_root);
 	let mut fallback_io = FakeIo::new(
 		fallback_root,
@@ -1316,7 +1435,7 @@ async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state(
 #[tokio::test]
 async fn checkpoint_mismatch_quarantines_then_recovers_only_from_a_fresh_snapshot() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(
 		root,
@@ -1350,7 +1469,7 @@ async fn checkpoint_mismatch_quarantines_then_recovers_only_from_a_fresh_snapsho
 #[tokio::test]
 async fn snapshot_fallback_rejects_events_until_verified_rebuild_completes() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let mut io = FakeIo::new(
 		root,
@@ -1393,7 +1512,7 @@ async fn snapshot_fallback_rejects_events_until_verified_rebuild_completes() {
 #[tokio::test]
 async fn material_failure_exhaustion_preserves_quarantine_authority_state() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	let failures = (0..5)
 		.map(|_| ConnectAction::Fail(RetainedSessionFailure::CheckpointIdentityMismatch))
@@ -1413,7 +1532,7 @@ async fn material_failure_exhaustion_preserves_quarantine_authority_state() {
 #[test]
 fn snapshot_fallback_stays_quarantined_until_checkpoint_binding() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	lifecycle.connection_generation = 1;
 	lifecycle.connection_established(1, true, None);
@@ -1443,7 +1562,7 @@ fn snapshot_fallback_stays_quarantined_until_checkpoint_binding() {
 #[tokio::test]
 async fn stable_server_and_schema_switches_require_verified_snapshot_replacement() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut original = lifecycle(&root);
 	original.connection_generation = 1;
 	let original_inspection =
@@ -1503,11 +1622,12 @@ async fn stable_server_and_schema_switches_require_verified_snapshot_replacement
 #[test]
 fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator() {
 	let corrupt_temporary = TempDir::new().expect("temporary directory is available");
-	let corrupt_root = cache_root(&corrupt_temporary);
+	let corrupt_root = cache_parent(&corrupt_temporary);
 	let mut original = lifecycle(&corrupt_root);
 	original.connection_generation = 1;
 	original.apply_snapshot(1, snapshot(1, "system", 1)).expect("cache publishes");
-	let generation = fs::read_dir(corrupt_root.join("generations"))
+	let corrupt_client_cache_root = client_cache_root(&corrupt_root);
+	let generation = fs::read_dir(corrupt_client_cache_root.join("generations"))
 		.expect("generation directory is readable")
 		.next()
 		.expect("one generation exists")
@@ -1558,7 +1678,7 @@ fn corrupt_cache_is_disposed_and_rebuilt_while_unsafe_root_requires_an_operator(
 #[test]
 fn checkpoint_reuse_requires_current_content_attestation() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	lifecycle.connection_generation = 1;
 	let inspection =
@@ -1566,7 +1686,8 @@ fn checkpoint_reuse_requires_current_content_attestation() {
 	lifecycle
 		.bind_checkpoint(1, Cursor(4), checkpoint(INSTANCE, 4), inspection)
 		.expect("checkpoint binds");
-	fs::write(root.join("current"), b"corrupt").expect("current attestation is corrupted");
+	fs::write(client_cache_root(&root).join("current"), b"corrupt")
+		.expect("current attestation is corrupted");
 
 	assert_eq!(lifecycle.reusable_checkpoint(), None);
 	assert_eq!(
@@ -1581,14 +1702,15 @@ fn checkpoint_reuse_requires_current_content_attestation() {
 #[test]
 fn complete_cache_deletion_cannot_remove_applied_product_state() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 	lifecycle.connection_generation = 1;
 	lifecycle.apply_snapshot(1, snapshot(1, "system", 5)).expect("snapshot publishes");
 
-	ClientCache::dispose_all(&root).expect("disposable cache is removed");
+	let client_root = client_cache_root(&root);
+	ClientCache::dispose_all(&client_root).expect("disposable cache is removed");
 
-	assert!(!root.exists());
+	assert!(!client_root.exists());
 	assert_eq!(lifecycle.state["system"].revision, EntityRevision(5));
 	assert_eq!(lifecycle.last_cursor, Some(Cursor(1)));
 }
@@ -1596,7 +1718,7 @@ fn complete_cache_deletion_cannot_remove_applied_product_state() {
 #[test]
 fn event_order_revision_and_connection_generation_are_fenced() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 
 	lifecycle.connection_generation = 2;
@@ -1633,7 +1755,7 @@ fn event_order_revision_and_connection_generation_are_fenced() {
 #[tokio::test]
 async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 	let incompatible_temporary = TempDir::new().expect("temporary directory is available");
-	let incompatible_root = cache_root(&incompatible_temporary);
+	let incompatible_root = cache_parent(&incompatible_temporary);
 	let mut incompatible = lifecycle(&incompatible_root);
 	let mut incompatible_io = FakeIo::new(
 		incompatible_root,
@@ -1647,7 +1769,7 @@ async fn transient_incompatible_and_stable_identity_failures_are_distinct() {
 	);
 
 	let identity_temporary = TempDir::new().expect("temporary directory is available");
-	let identity_root = cache_root(&identity_temporary);
+	let identity_root = cache_parent(&identity_temporary);
 	let mut identity = lifecycle(&identity_root);
 	let mut identity_io = FakeIo::new(
 		identity_root,
@@ -1672,7 +1794,7 @@ fn publication_instances_are_part_of_checkpoint_identity() {
 #[test]
 fn test_fixture_uses_only_typed_bounded_cache_content() {
 	let temporary = TempDir::new().expect("temporary directory is available");
-	let root = cache_root(&temporary);
+	let root = cache_parent(&temporary);
 	let mut lifecycle = lifecycle(&root);
 
 	lifecycle.connection_generation = 1;
@@ -1682,5 +1804,5 @@ fn test_fixture_uses_only_typed_bounded_cache_content() {
 
 	assert_eq!(inspection.records, 1);
 	assert!(!temporary.path().join("not-a-path").exists());
-	assert!(fs::read(root.join("current")).is_ok());
+	assert!(fs::read(client_cache_root(&root).join("current")).is_ok());
 }

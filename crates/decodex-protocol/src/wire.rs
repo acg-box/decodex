@@ -3,6 +3,7 @@
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
 	MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_RESET_CARD_ITEMS,
+	WorkItemPriority, WorkItemState,
 };
 
 use std::{
@@ -10,6 +11,10 @@ use std::{
 	fmt::{Display, Formatter},
 };
 
+use decodex_core::{
+	AgentId as CoreAgentId, ObjectiveId as CoreObjectiveId, ProgramId as CoreProgramId,
+	ProjectId as CoreProjectId, WorkItemId as CoreWorkItemId, contains_credential_material,
+};
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as _};
 use serde_json::Error;
 
@@ -24,6 +29,14 @@ pub const MAX_HISTORY_INLINE_BYTES: usize = 16 * 1_024;
 /// Maximum history items returned in one WebSocket query result. This keeps the worst-case
 /// encoded result below the default 256-KiB transport frame bound.
 pub const MAX_HISTORY_PAGE_SIZE: u16 = 8;
+/// Maximum WorkItem cards returned in one board page.
+pub const MAX_WORK_ITEM_BOARD_PAGE_SIZE: u16 = 16;
+/// Maximum Objective identities retained by one board card.
+pub const MAX_WORK_ITEM_BOARD_OBJECTIVES: usize = decodex_core::MAX_WORK_ITEM_OBJECTIVES;
+/// Maximum combined dependency and blocker identities retained by one board card.
+pub const MAX_WORK_ITEM_BOARD_RELATIONS: usize = decodex_core::MAX_WORK_ITEM_READINESS_RELATIONS;
+/// Maximum UTF-8 bytes in one board-card title.
+pub const MAX_WORK_ITEM_BOARD_TITLE_BYTES: usize = decodex_core::MAX_WORK_ITEM_TITLE_BYTES;
 /// Maximum daily usage facts retained and returned for one account profile.
 pub const MAX_ACCOUNT_PROFILE_DAILY_USAGE: usize = 36;
 /// Maximum verified payload length representable in a history blob reference.
@@ -143,6 +156,131 @@ impl Display for WireScalarTooLong {
 			"wire scalar is {} bytes; maximum is {}",
 			self.actual_bytes, self.maximum_bytes
 		)
+	}
+}
+
+/// Closed construction failures for the V2.0 WorkItem board contract.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum WorkItemBoardContractError {
+	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
+	InvalidIdentity,
+	/// A title was empty, oversized, credential-bearing, or contained control characters.
+	InvalidTitle,
+	/// A requested page size was outside the closed protocol bound.
+	InvalidPageSize,
+	/// A card violated its revision, collection, or relation invariants.
+	InvalidCard,
+	/// A page violated its request echo, ordering, cursor, filter, or size invariants.
+	InvalidPage,
+}
+impl Display for WorkItemBoardContractError {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::InvalidIdentity => "invalid canonical WorkItem board identity",
+			Self::InvalidTitle => "invalid bounded WorkItem board title",
+			Self::InvalidPageSize => "invalid WorkItem board page size",
+			Self::InvalidCard => "invalid WorkItem board card",
+			Self::InvalidPage => "invalid WorkItem board page",
+		})
+	}
+}
+
+macro_rules! work_item_board_id {
+	($name:ident, $domain:ty, $label:literal) => {
+		#[doc = concat!("Canonical ", $label, " identity in one WorkItem board observation.")]
+		#[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
+		#[serde(transparent)]
+		pub struct $name(String);
+		impl $name {
+			#[doc = concat!("Parse one canonical ", $label, " UUID-v4 identity.")]
+			pub fn new(value: impl Into<String>) -> Result<Self, WorkItemBoardContractError> {
+				let value = value.into();
+				<$domain>::new(value.clone())
+					.map_err(|_| WorkItemBoardContractError::InvalidIdentity)?;
+
+				Ok(Self(value))
+			}
+
+			#[doc = concat!("Borrow the canonical ", $label, " identity.")]
+			pub fn as_str(&self) -> &str {
+				&self.0
+			}
+		}
+		impl<'de> Deserialize<'de> for $name {
+			fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+			where
+				D: Deserializer<'de>,
+			{
+				Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
+			}
+		}
+	};
+}
+
+work_item_board_id!(WorkItemBoardProjectId, CoreProjectId, "Project");
+work_item_board_id!(WorkItemBoardWorkItemId, CoreWorkItemId, "WorkItem");
+work_item_board_id!(WorkItemBoardLeadId, CoreAgentId, "Lead");
+work_item_board_id!(WorkItemBoardProgramId, CoreProgramId, "Program");
+work_item_board_id!(WorkItemBoardObjectiveId, CoreObjectiveId, "Objective");
+
+/// Bounded credential-negative title carried by one WorkItem board card.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct WorkItemBoardTitle(String);
+impl WorkItemBoardTitle {
+	/// Validate one persisted WorkItem title for the bounded board projection.
+	pub fn new(value: impl Into<String>) -> Result<Self, WorkItemBoardContractError> {
+		let value = value.into();
+		if value.is_empty()
+			|| value.len() > MAX_WORK_ITEM_BOARD_TITLE_BYTES
+			|| value.chars().any(char::is_control)
+			|| contains_credential_material(&value)
+		{
+			return Err(WorkItemBoardContractError::InvalidTitle);
+		}
+
+		Ok(Self(value))
+	}
+
+	/// Borrow the bounded display title.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+impl<'de> Deserialize<'de> for WorkItemBoardTitle {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
+	}
+}
+
+/// Positive bounded card count requested for one WorkItem board page.
+#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
+#[serde(transparent)]
+pub struct WorkItemBoardPageSize(u16);
+impl WorkItemBoardPageSize {
+	/// Construct a page size inside the closed V2.0 protocol bound.
+	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
+		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
+			Err(WorkItemBoardContractError::InvalidPageSize)
+		} else {
+			Ok(Self(value))
+		}
+	}
+
+	/// Return the requested card count.
+	pub const fn get(self) -> u16 {
+		self.0
+	}
+}
+impl<'de> Deserialize<'de> for WorkItemBoardPageSize {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		Self::new(u16::deserialize(deserializer)?).map_err(D::Error::custom)
 	}
 }
 
@@ -2101,6 +2239,19 @@ pub enum QueryPayload {
 		/// Requested item count, bounded again by the daemon.
 		page_size: u16,
 	},
+	/// Read one bounded deterministic Project WorkItem board page.
+	GetWorkItemBoardPage {
+		/// Canonical Project identity whose WorkItems may inhabit the page.
+		project_id: WorkItemBoardProjectId,
+		/// Optional exact lifecycle lane filter.
+		#[serde(skip_serializing_if = "Option::is_none")]
+		state: Option<WorkItemState>,
+		/// Last fully applied WorkItem identity in the canonical keyset order.
+		#[serde(skip_serializing_if = "Option::is_none")]
+		after: Option<WorkItemBoardWorkItemId>,
+		/// Positive requested card count inside the protocol bound.
+		page_size: WorkItemBoardPageSize,
+	},
 	/// Read one complete reset-card inventory.
 	GetResetCards {
 		/// Canonical vNext account UUID.
@@ -2464,6 +2615,8 @@ pub enum QueryResultPayload {
 	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
+	/// Bounded canonical PostgreSQL WorkItem board observation.
+	WorkItemBoard(WorkItemBoardResult),
 	/// Complete reset-card inventory or a closed unavailable reason.
 	ResetCards(ResetCardInventoryResult),
 	/// Durable reset-card operation state.
@@ -2478,6 +2631,323 @@ pub enum QueryResultPayload {
 	InitialAccountSelection(AccountInitialSelectionResult),
 	/// Current shared Codex authentication projection.
 	CodexAuthProjection(CodexAuthProjectionResult),
+}
+
+/// One minimal canonical WorkItem card for a native Project board.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WorkItemBoardCard {
+	work_item_id: WorkItemBoardWorkItemId,
+	project_id: WorkItemBoardProjectId,
+	lead_id: WorkItemBoardLeadId,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	program_id: Option<WorkItemBoardProgramId>,
+	objective_ids: Vec<WorkItemBoardObjectiveId>,
+	depends_on_ids: Vec<WorkItemBoardWorkItemId>,
+	blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
+	title: WorkItemBoardTitle,
+	priority: WorkItemPriority,
+	state: WorkItemState,
+	revision: EntityRevision,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	accepted_revision: Option<EntityRevision>,
+}
+impl WorkItemBoardCard {
+	/// Construct one strict card from a canonical persisted WorkItem projection.
+	#[allow(clippy::too_many_arguments)]
+	pub fn new(
+		work_item_id: WorkItemBoardWorkItemId,
+		project_id: WorkItemBoardProjectId,
+		lead_id: WorkItemBoardLeadId,
+		program_id: Option<WorkItemBoardProgramId>,
+		objective_ids: Vec<WorkItemBoardObjectiveId>,
+		depends_on_ids: Vec<WorkItemBoardWorkItemId>,
+		blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
+		title: WorkItemBoardTitle,
+		priority: WorkItemPriority,
+		state: WorkItemState,
+		revision: EntityRevision,
+		accepted_revision: Option<EntityRevision>,
+	) -> Result<Self, WorkItemBoardContractError> {
+		let relation_count = depends_on_ids
+			.len()
+			.checked_add(blocked_by_ids.len())
+			.ok_or(WorkItemBoardContractError::InvalidCard)?;
+		if objective_ids.len() > MAX_WORK_ITEM_BOARD_OBJECTIVES
+			|| relation_count > MAX_WORK_ITEM_BOARD_RELATIONS
+			|| revision.0 == 0
+			|| accepted_revision.is_some_and(|accepted| accepted.0 == 0 || accepted > revision)
+			|| !strictly_sorted(&objective_ids)
+			|| !strictly_sorted(&depends_on_ids)
+			|| !strictly_sorted(&blocked_by_ids)
+		{
+			return Err(WorkItemBoardContractError::InvalidCard);
+		}
+
+		let mut relation_ids = HashSet::with_capacity(relation_count);
+		if depends_on_ids
+			.iter()
+			.chain(&blocked_by_ids)
+			.any(|id| id == &work_item_id || !relation_ids.insert(id.as_str()))
+		{
+			return Err(WorkItemBoardContractError::InvalidCard);
+		}
+		drop(relation_ids);
+
+		Ok(Self {
+			work_item_id,
+			project_id,
+			lead_id,
+			program_id,
+			objective_ids,
+			depends_on_ids,
+			blocked_by_ids,
+			title,
+			priority,
+			state,
+			revision,
+			accepted_revision,
+		})
+	}
+
+	/// Canonical WorkItem identity.
+	pub const fn work_item_id(&self) -> &WorkItemBoardWorkItemId {
+		&self.work_item_id
+	}
+
+	/// Canonical owning Project identity.
+	pub const fn project_id(&self) -> &WorkItemBoardProjectId {
+		&self.project_id
+	}
+
+	/// Canonical Lead identity.
+	pub const fn lead_id(&self) -> &WorkItemBoardLeadId {
+		&self.lead_id
+	}
+
+	/// Optional canonical Program identity.
+	pub fn program_id(&self) -> Option<&WorkItemBoardProgramId> {
+		self.program_id.as_ref()
+	}
+
+	/// Sorted unique canonical Objective identities.
+	pub fn objective_ids(&self) -> &[WorkItemBoardObjectiveId] {
+		&self.objective_ids
+	}
+
+	/// Sorted unique exact dependency identities.
+	pub fn depends_on_ids(&self) -> &[WorkItemBoardWorkItemId] {
+		&self.depends_on_ids
+	}
+
+	/// Sorted unique exact blocker identities.
+	pub fn blocked_by_ids(&self) -> &[WorkItemBoardWorkItemId] {
+		&self.blocked_by_ids
+	}
+
+	/// Bounded display title.
+	pub const fn title(&self) -> &WorkItemBoardTitle {
+		&self.title
+	}
+
+	/// Closed canonical priority.
+	pub const fn priority(&self) -> WorkItemPriority {
+		self.priority
+	}
+
+	/// Closed canonical lifecycle state.
+	pub const fn state(&self) -> WorkItemState {
+		self.state
+	}
+
+	/// Positive current WorkItem revision.
+	pub const fn revision(&self) -> EntityRevision {
+		self.revision
+	}
+
+	/// Latest accepted exact revision as an observation only.
+	pub const fn accepted_revision(&self) -> Option<EntityRevision> {
+		self.accepted_revision
+	}
+}
+impl<'de> Deserialize<'de> for WorkItemBoardCard {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct RawCard {
+			work_item_id: WorkItemBoardWorkItemId,
+			project_id: WorkItemBoardProjectId,
+			lead_id: WorkItemBoardLeadId,
+			program_id: Option<WorkItemBoardProgramId>,
+			objective_ids: Vec<WorkItemBoardObjectiveId>,
+			depends_on_ids: Vec<WorkItemBoardWorkItemId>,
+			blocked_by_ids: Vec<WorkItemBoardWorkItemId>,
+			title: WorkItemBoardTitle,
+			priority: WorkItemPriority,
+			state: WorkItemState,
+			revision: EntityRevision,
+			accepted_revision: Option<EntityRevision>,
+		}
+
+		let raw = RawCard::deserialize(deserializer)?;
+		Self::new(
+			raw.work_item_id,
+			raw.project_id,
+			raw.lead_id,
+			raw.program_id,
+			raw.objective_ids,
+			raw.depends_on_ids,
+			raw.blocked_by_ids,
+			raw.title,
+			raw.priority,
+			raw.state,
+			raw.revision,
+			raw.accepted_revision,
+		)
+		.map_err(D::Error::custom)
+	}
+}
+
+/// One strict bounded page with the exact request identity echoed.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct WorkItemBoardPage {
+	project_id: WorkItemBoardProjectId,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	state: Option<WorkItemState>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	after: Option<WorkItemBoardWorkItemId>,
+	page_size: WorkItemBoardPageSize,
+	cards: Vec<WorkItemBoardCard>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	next_cursor: Option<WorkItemBoardWorkItemId>,
+}
+impl WorkItemBoardPage {
+	/// Construct one verified page from a canonical ordered store observation.
+	pub fn new(
+		project_id: WorkItemBoardProjectId,
+		state: Option<WorkItemState>,
+		after: Option<WorkItemBoardWorkItemId>,
+		page_size: WorkItemBoardPageSize,
+		cards: Vec<WorkItemBoardCard>,
+		next_cursor: Option<WorkItemBoardWorkItemId>,
+	) -> Result<Self, WorkItemBoardContractError> {
+		let requested = usize::from(page_size.get());
+		if cards.len() > requested
+			|| cards.iter().any(|card| {
+				card.project_id() != &project_id
+					|| state.is_some_and(|expected| card.state() != expected)
+			}) || cards.windows(2).any(|pair| pair[0].work_item_id() >= pair[1].work_item_id())
+			|| after.as_ref().is_some_and(|cursor| {
+				cards.first().is_some_and(|card| card.work_item_id() <= cursor)
+			}) {
+			return Err(WorkItemBoardContractError::InvalidPage);
+		}
+
+		match (&next_cursor, cards.last()) {
+			(Some(next), Some(last)) if cards.len() == requested && next == last.work_item_id() => {
+			},
+			(Some(_), _) => return Err(WorkItemBoardContractError::InvalidPage),
+			(None, _) => {},
+		}
+
+		Ok(Self { project_id, state, after, page_size, cards, next_cursor })
+	}
+
+	/// Whether this page echoes one exact requested Project/filter/cursor/size identity.
+	pub fn matches_request(
+		&self,
+		project_id: &WorkItemBoardProjectId,
+		state: Option<WorkItemState>,
+		after: Option<&WorkItemBoardWorkItemId>,
+		page_size: WorkItemBoardPageSize,
+	) -> bool {
+		&self.project_id == project_id
+			&& self.state == state
+			&& self.after.as_ref() == after
+			&& self.page_size == page_size
+	}
+
+	/// Canonical requested Project identity.
+	pub const fn project_id(&self) -> &WorkItemBoardProjectId {
+		&self.project_id
+	}
+
+	/// Exact optional requested lifecycle filter.
+	pub const fn state(&self) -> Option<WorkItemState> {
+		self.state
+	}
+
+	/// Exact optional requested keyset cursor.
+	pub fn after(&self) -> Option<&WorkItemBoardWorkItemId> {
+		self.after.as_ref()
+	}
+
+	/// Exact requested page size.
+	pub const fn page_size(&self) -> WorkItemBoardPageSize {
+		self.page_size
+	}
+
+	/// Strictly ordered unique cards.
+	pub fn cards(&self) -> &[WorkItemBoardCard] {
+		&self.cards
+	}
+
+	/// Cursor for a known subsequent page, never a total-size claim.
+	pub fn next_cursor(&self) -> Option<&WorkItemBoardWorkItemId> {
+		self.next_cursor.as_ref()
+	}
+}
+impl<'de> Deserialize<'de> for WorkItemBoardPage {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		#[derive(Deserialize)]
+		#[serde(deny_unknown_fields)]
+		struct RawPage {
+			project_id: WorkItemBoardProjectId,
+			state: Option<WorkItemState>,
+			after: Option<WorkItemBoardWorkItemId>,
+			page_size: WorkItemBoardPageSize,
+			cards: Vec<WorkItemBoardCard>,
+			next_cursor: Option<WorkItemBoardWorkItemId>,
+		}
+
+		let raw = RawPage::deserialize(deserializer)?;
+		Self::new(raw.project_id, raw.state, raw.after, raw.page_size, raw.cards, raw.next_cursor)
+			.map_err(D::Error::custom)
+	}
+}
+
+/// Result of one bounded read-only WorkItem board observation.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
+pub enum WorkItemBoardResult {
+	/// One strict page without a total or exhaustive-board claim.
+	Page(WorkItemBoardPage),
+	/// Closed unavailable result without infrastructure detail.
+	Unavailable {
+		/// Stable reason class.
+		error: WorkItemBoardQueryError,
+	},
+}
+
+/// Closed WorkItem board query failure classes safe for remote clients.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkItemBoardQueryError {
+	/// Request Project, filter, cursor, or bound was invalid.
+	InvalidRequest,
+	/// Authoritative PostgreSQL product state was unavailable.
+	ProductStateUnavailable,
+	/// Persisted page facts failed strict integrity verification.
+	IntegrityUnavailable,
+}
+
+fn strictly_sorted<T: Ord>(values: &[T]) -> bool {
+	values.windows(2).all(|pair| pair[0] < pair[1])
 }
 
 /// Result of an immutable V16 route-decision observation.
@@ -3362,14 +3832,55 @@ mod tests {
 		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
 		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryId, ResetCardDescriptorDto,
-		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
+		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE,
+		QueryId, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
+		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardPage,
+		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId,
+		WorkItemState,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
 			ResumeCursor, decode_client_message,
 		},
 	};
+
+	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
+	const OTHER_PROJECT: &str = "10000000-0000-4000-8000-000000000002";
+	const BOARD_ITEM_1: &str = "20000000-0000-4000-8000-000000000001";
+	const BOARD_ITEM_2: &str = "20000000-0000-4000-8000-000000000002";
+	const BOARD_ITEM_3: &str = "20000000-0000-4000-8000-000000000003";
+	const BOARD_LEAD: &str = "30000000-0000-4000-8000-000000000001";
+
+	fn board_card_value(work_item_id: &str) -> serde_json::Value {
+		serde_json::json!({
+			"work_item_id": work_item_id,
+			"project_id": BOARD_PROJECT,
+			"lead_id": BOARD_LEAD,
+			"program_id": null,
+			"objective_ids": [],
+			"depends_on_ids": [],
+			"blocked_by_ids": [],
+			"title": "Implement board page",
+			"priority": "medium",
+			"state": "planned",
+			"revision": 2,
+			"accepted_revision": 1,
+		})
+	}
+
+	fn board_page_value() -> serde_json::Value {
+		serde_json::json!({
+			"project_id": BOARD_PROJECT,
+			"state": "planned",
+			"after": null,
+			"page_size": 2,
+			"cards": [
+				board_card_value(BOARD_ITEM_1),
+				board_card_value(BOARD_ITEM_2),
+			],
+			"next_cursor": BOARD_ITEM_2,
+		})
+	}
 
 	#[test]
 	fn account_alias_accepts_only_one_canonical_word() {
@@ -3595,6 +4106,134 @@ mod tests {
 		assert!(encoded.contains("\"type\":\"query\""));
 		assert!(encoded.contains("\"name\":\"get_doctor_status\""));
 		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
+	}
+
+	#[test]
+	fn work_item_board_query_is_exact_current_and_round_trips_a_canonical_page() {
+		let project_id = WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap();
+		let page_size = WorkItemBoardPageSize::new(2).unwrap();
+		let page =
+			serde_json::from_value::<WorkItemBoardPage>(board_page_value()).expect("valid page");
+		let payload = QueryPayload::GetWorkItemBoardPage {
+			project_id: project_id.clone(),
+			state: Some(WorkItemState::Planned),
+			after: None,
+			page_size,
+		};
+
+		assert!(payload.is_supported_in(CURRENT_VERSION));
+		assert!(!payload.is_supported_in(crate::ProtocolVersion { major: 1, minor: 6 }));
+		assert!(page.matches_request(&project_id, Some(WorkItemState::Planned), None, page_size,));
+		assert_eq!(page.cards().len(), 2);
+		assert_eq!(page.next_cursor().map(|cursor| cursor.as_str()), Some(BOARD_ITEM_2));
+
+		let result = WorkItemBoardResult::Page(page);
+		let encoded_result = serde_json::to_value(&result).expect("valid result must serialize");
+		assert!(encoded_result["data"].get("total").is_none());
+		assert!(encoded_result["data"].get("total_count").is_none());
+		assert_eq!(serde_json::from_value::<WorkItemBoardResult>(encoded_result).unwrap(), result);
+
+		let message = ClientMessage::Query(QueryEnvelope {
+			version: CURRENT_VERSION,
+			query_id: QueryId::new("work-item-board").unwrap(),
+			payload,
+		});
+		let encoded = serde_json::to_string(&message).unwrap();
+
+		assert!(encoded.contains(r#""name":"get_work_item_board_page""#));
+		assert_eq!(decode_client_message(&encoded).unwrap(), message);
+	}
+
+	#[test]
+	fn work_item_board_card_and_page_matrix_rejects_noncanonical_shapes() {
+		assert_eq!(
+			WorkItemBoardProjectId::new("not-a-project"),
+			Err(WorkItemBoardContractError::InvalidIdentity)
+		);
+		assert_eq!(
+			super::WorkItemBoardTitle::new(""),
+			Err(WorkItemBoardContractError::InvalidTitle)
+		);
+		assert_eq!(WorkItemBoardPageSize::new(0), Err(WorkItemBoardContractError::InvalidPageSize));
+		assert_eq!(
+			WorkItemBoardPageSize::new(MAX_WORK_ITEM_BOARD_PAGE_SIZE + 1),
+			Err(WorkItemBoardContractError::InvalidPageSize)
+		);
+
+		let mut zero_revision = board_card_value(BOARD_ITEM_1);
+		zero_revision["revision"] = serde_json::json!(0);
+		let mut duplicate_relation = board_card_value(BOARD_ITEM_1);
+		duplicate_relation["depends_on_ids"] = serde_json::json!([BOARD_ITEM_3, BOARD_ITEM_3]);
+		let mut cross_bucket_relation = board_card_value(BOARD_ITEM_1);
+		cross_bucket_relation["depends_on_ids"] = serde_json::json!([BOARD_ITEM_3]);
+		cross_bucket_relation["blocked_by_ids"] = serde_json::json!([BOARD_ITEM_3]);
+		let mut self_relation = board_card_value(BOARD_ITEM_1);
+		self_relation["blocked_by_ids"] = serde_json::json!([BOARD_ITEM_1]);
+		let mut unknown_card_field = board_card_value(BOARD_ITEM_1);
+		unknown_card_field["unknown"] = serde_json::json!(true);
+
+		for (case, value) in [
+			("zero revision", zero_revision),
+			("duplicate relation", duplicate_relation),
+			("cross-bucket relation", cross_bucket_relation),
+			("self relation", self_relation),
+			("unknown card field", unknown_card_field),
+		] {
+			assert!(serde_json::from_value::<super::WorkItemBoardCard>(value).is_err(), "{case}");
+		}
+
+		let mut wrong_project = board_page_value();
+		wrong_project["project_id"] = serde_json::json!(OTHER_PROJECT);
+		let mut wrong_filter = board_page_value();
+		wrong_filter["state"] = serde_json::json!("ready");
+		let mut wrong_order = board_page_value();
+		wrong_order["cards"].as_array_mut().unwrap().swap(0, 1);
+		let mut wrong_cursor = board_page_value();
+		wrong_cursor["after"] = serde_json::json!(BOARD_ITEM_1);
+		let mut inconsistent_next_cursor = board_page_value();
+		inconsistent_next_cursor["next_cursor"] = serde_json::json!(BOARD_ITEM_1);
+		let mut unknown_page_field = board_page_value();
+		unknown_page_field["total_count"] = serde_json::json!(2);
+
+		for (case, value) in [
+			("wrong project", wrong_project),
+			("wrong filter", wrong_filter),
+			("wrong order", wrong_order),
+			("wrong cursor", wrong_cursor),
+			("inconsistent next cursor", inconsistent_next_cursor),
+			("unknown page field", unknown_page_field),
+		] {
+			assert!(serde_json::from_value::<WorkItemBoardPage>(value).is_err(), "{case}");
+		}
+
+		let page = serde_json::from_value::<WorkItemBoardPage>(board_page_value()).unwrap();
+		let other_project = WorkItemBoardProjectId::new(OTHER_PROJECT).unwrap();
+		let other_cursor = WorkItemBoardWorkItemId::new(BOARD_ITEM_3).unwrap();
+
+		assert!(!page.matches_request(
+			&other_project,
+			Some(WorkItemState::Planned),
+			None,
+			WorkItemBoardPageSize::new(2).unwrap(),
+		));
+		assert!(!page.matches_request(
+			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
+			Some(WorkItemState::Ready),
+			None,
+			WorkItemBoardPageSize::new(2).unwrap(),
+		));
+		assert!(!page.matches_request(
+			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
+			Some(WorkItemState::Planned),
+			Some(&other_cursor),
+			WorkItemBoardPageSize::new(2).unwrap(),
+		));
+		assert!(!page.matches_request(
+			&WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
+			Some(WorkItemState::Planned),
+			None,
+			WorkItemBoardPageSize::new(1).unwrap(),
+		));
 	}
 
 	#[test]
@@ -4057,6 +4696,16 @@ mod tests {
 		assert!(query.is_supported_in(CURRENT_VERSION));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(event.is_supported_in(CURRENT_VERSION));
+		let board_query = QueryPayload::GetWorkItemBoardPage {
+			project_id: WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
+			state: None,
+			after: None,
+			page_size: WorkItemBoardPageSize::new(1).unwrap(),
+		};
+		for version in [legacy, future] {
+			assert!(!board_query.is_supported_in(version));
+		}
+		assert!(board_query.is_supported_in(CURRENT_VERSION));
 	}
 
 	#[test]
