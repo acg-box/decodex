@@ -38,25 +38,43 @@ fn review_next_with_hook(
 	let raw = lock.read(queue_relative)?;
 	let queue = parse_current_queue(request, queue_relative, &raw)?;
 	let queue_generation = queue_generation(&queue, queue_relative, &raw)?;
+	let handled = crate::content_pair::handled_subjects(&lock, &raw)?;
+	let handled_state_sha256 = crate::content_pair::handled_state_sha256(&handled)?;
 	let candidates = triage_subjects(&queue)?;
 	let selected = candidates
 		.into_iter()
-		.next()
 		.map(|subject| selected_subject(&queue, subject))
-		.transpose()?;
+		.collect::<Result<Vec<_>>>()?
+		.into_iter()
+		.find(|(selected, _)| {
+			!handled.contains(&crate::content_pair::SubjectLineage {
+				repo: selected.repo.clone(),
+				subject_kind: selected.subject_kind.clone(),
+				subject_id: selected.subject_id.clone(),
+				commit_shas: selected.commit_shas.clone(),
+			})
+		});
 
 	after_selection();
 
 	let Some((selected, source_refs)) = selected else {
-		return Ok(empty_report(queue_generation));
+		return Ok(empty_report(queue_generation, handled.len(), handled_state_sha256));
 	};
-	let selection_sha256 = selection_sha256(&queue_generation, &selected, source_refs.as_slice())?;
+	let selection_sha256 = selection_sha256(
+		&queue_generation,
+		&selected,
+		source_refs.as_slice(),
+		handled.len(),
+		&handled_state_sha256,
+	)?;
 
 	Ok(RadarReviewNextReport {
 		schema: REVIEW_NEXT_SCHEMA.to_owned(),
 		status: "needs_source_review".to_owned(),
 		selected: Some(selected),
 		queue_generation,
+		handled_count: handled.len(),
+		handled_state_sha256,
 		source_refs,
 		selection_sha256: Some(selection_sha256),
 	})
@@ -243,10 +261,14 @@ fn selection_sha256(
 	queue_generation: &RadarQueueGeneration,
 	selected: &RadarSelectedSubject,
 	source_refs: &[RadarSourceRef],
+	handled_count: usize,
+	handled_state_sha256: &str,
 ) -> Result<String> {
 	let payload = serde_json::json!({
 		"schema": SELECTION_LINEAGE_SCHEMA,
 		"queue_generation": queue_generation,
+		"handled_count": handled_count,
+		"handled_state_sha256": handled_state_sha256,
 		"selected": selected,
 		"source_refs": source_refs,
 	});
@@ -265,12 +287,18 @@ fn relative_ref(path: &Path) -> String {
 		.join("/")
 }
 
-fn empty_report(queue_generation: RadarQueueGeneration) -> RadarReviewNextReport {
+fn empty_report(
+	queue_generation: RadarQueueGeneration,
+	handled_count: usize,
+	handled_state_sha256: String,
+) -> RadarReviewNextReport {
 	RadarReviewNextReport {
 		schema: REVIEW_NEXT_SCHEMA.to_owned(),
 		status: "no_eligible_item".to_owned(),
 		selected: None,
 		queue_generation,
+		handled_count,
+		handled_state_sha256,
 		source_refs: Vec::new(),
 		selection_sha256: None,
 	}

@@ -15,7 +15,6 @@ pub(super) fn validate_social_publish_reservation(
 			"candidate_refs",
 			"channel",
 			"consumed_by_social_post",
-			"controller_account",
 			"day",
 			"duplicate_keys",
 			"evidence_notes",
@@ -23,6 +22,7 @@ pub(super) fn validate_social_publish_reservation(
 			"idempotency_key",
 			"mode",
 			"owner",
+			"publication_lineage_sha256",
 			"release_reason",
 			"reserved_at",
 			"schema",
@@ -39,6 +39,9 @@ pub(super) fn validate_social_publish_reservation(
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
+	if !entry.get("publication_lineage_sha256").and_then(Value::as_str).is_some_and(valid_sha256) {
+		errors.push("publication_lineage_sha256 must be a lowercase SHA-256 digest".into());
+	}
 
 	validate_social_publish_reservation_constants(entry, errors);
 	validate_social_publish_reservation_refs(entry.get("candidate_refs"), errors);
@@ -48,6 +51,11 @@ pub(super) fn validate_social_publish_reservation(
 		"duplicate_keys",
 		errors,
 	);
+	if entry.get("duplicate_keys").and_then(Value::as_array).map(Vec::len) != Some(2) {
+		errors.push(
+			"duplicate_keys must contain exactly the candidate slug and idempotency_key".into(),
+		);
+	}
 	social_validation::validate_optional_string_list(
 		entry.get("evidence_notes"),
 		"evidence_notes",
@@ -62,6 +70,11 @@ pub(super) fn validate_social_publish_reservation(
 	validate_social_publish_reservation_status_payload(entry, errors);
 }
 
+fn valid_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+
 fn validate_social_publish_reservation_constants(
 	entry: &Map<String, Value>,
 	errors: &mut Vec<String>,
@@ -71,9 +84,6 @@ fn validate_social_publish_reservation_constants(
 	}
 	if social_validation::string_field(entry, "target_account") != Some("decodexspace") {
 		errors.push("target_account must be decodexspace".into());
-	}
-	if social_validation::string_field(entry, "controller_account") != Some("hackink") {
-		errors.push("controller_account must be hackink".into());
 	}
 	if !social_validation::matches_one_of(entry.get("mode"), SOCIAL_POST_MODES) {
 		errors
@@ -94,32 +104,20 @@ fn validate_social_publish_reservation_refs(refs: Option<&Value>, errors: &mut V
 
 		return;
 	};
-	social_validation::validate_exact_keys(
-		refs,
-		"candidate_refs",
-		&["social_candidates", "urls"],
-		errors,
-	);
-	let has_refs = ["social_candidates", "urls"]
-		.iter()
-		.any(|field| social_validation::non_empty_array(refs.get(*field)).is_some());
-
-	if !has_refs {
-		errors.push("candidate_refs must include social_candidates or urls".into());
-	}
-	if refs.get("urls").is_some_and(|urls| !social_validation::is_https_string_array(urls)) {
-		errors.push("candidate_refs.urls must be a list of https URLs".into());
-	}
-
+	social_validation::validate_exact_keys(refs, "candidate_refs", &["social_candidates"], errors);
 	social_validation::validate_optional_string_list(
 		refs.get("social_candidates"),
 		"candidate_refs.social_candidates",
 		errors,
 	);
+	if refs.get("social_candidates").and_then(Value::as_array).map(Vec::len) != Some(1) {
+		errors.push("candidate_refs.social_candidates must contain exactly one item".into());
+	}
 }
 
 fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(owner) = owner else {
+		errors.push("owner is required".into());
 		return;
 	};
 	let Some(owner) = owner.as_object() else {
@@ -127,24 +125,14 @@ fn validate_social_publish_reservation_owner(owner: Option<&Value>, errors: &mut
 
 		return;
 	};
-	social_validation::validate_exact_keys(
-		owner,
-		"owner",
-		&["automation_id", "branch", "pr_url", "run_id"],
-		errors,
-	);
+	social_validation::validate_exact_keys(owner, "owner", &["automation_id", "run_id"], errors);
 
-	for field in ["automation_id", "branch", "pr_url", "run_id"] {
-		if owner
-			.get(field)
-			.is_some_and(|value| !social_validation::is_non_empty_string(Some(value)))
-		{
-			errors.push(format!("owner.{field} must be non-empty when present"));
-		}
+	if social_validation::string_field(owner, "automation_id") != Some("decodex-xurl-publisher") {
+		errors.push("owner.automation_id must be decodex-xurl-publisher".into());
 	}
-
-	if owner.get("pr_url").is_some_and(|value| !social_validation::is_https_string(Some(value))) {
-		errors.push("owner.pr_url must be an https URL when present".into());
+	let run_id = social_validation::string_field(owner, "run_id");
+	if run_id.is_none_or(|value| !crate::social_publish::valid_run_id(value)) {
+		errors.push("owner.run_id must be a lowercase UUID".into());
 	}
 }
 

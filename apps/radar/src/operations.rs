@@ -55,6 +55,14 @@ pub(crate) fn validate(request: &RadarValidateRequest) -> Result<RadarValidation
 	if max_age_hours == Some(0) {
 		eyre::bail!("source freshness limit must be at least one hour");
 	}
+	if uses_default_paths && !request.bootstrap {
+		let cache =
+			crate::private_fs::PrivateCache::open_existing(Path::new(crate::DEFAULT_CACHE_ROOT))?;
+		let lock = cache.lock()?;
+		let queue_raw = lock.read(Path::new(crate::paths::REVIEW_QUEUE_RELATIVE_PATH))?;
+
+		crate::content_pair::handled_subjects(&lock, &queue_raw)?;
+	}
 
 	let mut state = ValidationState::new();
 	let mut errors = Vec::new();

@@ -519,7 +519,7 @@ fn inspect_target(directory: &File) -> Result<Option<TargetIdentity>, CodexAuthP
 	{
 		return Err(CodexAuthProjectionError::UnsafePath);
 	}
-	Ok(Some(TargetIdentity { device: status.st_dev as u64, inode: status.st_ino as u64 }))
+	Ok(Some(TargetIdentity { device: status.st_dev as u64, inode: status.st_ino }))
 }
 
 fn create_temporary(directory: &File) -> Result<(File, CString), CodexAuthProjectionError> {

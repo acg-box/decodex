@@ -1,10 +1,10 @@
-#[cfg(unix)] use std::os::unix::fs::MetadataExt as _;
 use std::{
-	fs::{self, File, OpenOptions},
+	fs::File,
 	path::{Path, PathBuf},
 };
 
 use serde_json::Value;
+use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{SOCIAL_POST_SCHEMA, SOCIAL_PUBLISH_RESERVATION_SCHEMA, prelude::Result};
 
@@ -75,35 +75,53 @@ pub(crate) fn scan_social_publish_state(
 	Ok(scan)
 }
 
+pub(crate) fn expire_active_reservations(
+	reservations_dir: &Path,
+	now: OffsetDateTime,
+) -> Result<usize> {
+	let mut expired_count = 0;
+	for payload_path in existing_json_files(reservations_dir)? {
+		let payload = crate::load_json(&payload_path)?;
+		if payload.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
+			|| payload.get("status").and_then(Value::as_str) != Some("active")
+		{
+			continue;
+		}
+		let expires_at = payload
+			.get("expires_at")
+			.and_then(Value::as_str)
+			.ok_or_else(|| crate::prelude::eyre::eyre!("active reservation has no expires_at"))
+			.and_then(|value| {
+				OffsetDateTime::parse(value, &Rfc3339).map_err(|_| {
+					crate::prelude::eyre::eyre!("active reservation expires_at is invalid")
+				})
+			})?;
+		if expires_at > now {
+			continue;
+		}
+		let mut expired = payload.clone();
+		let object = expired.as_object_mut().ok_or_else(|| {
+			crate::prelude::eyre::eyre!("social publish reservation must be an object")
+		})?;
+		object.insert("status".into(), Value::String("expired".into()));
+		object.insert(
+			"release_reason".into(),
+			Value::String("Reservation expired before publication.".into()),
+		);
+		crate::validate_generated_social_artifact(&expired)?;
+		crate::replace_existing_json(&payload_path, &payload, &expired)?;
+		expired_count += 1;
+	}
+
+	Ok(expired_count)
+}
+
 pub(crate) fn acquire_social_state_lock(locks_dir: &Path) -> Result<File> {
 	let root = crate::repo_root()?;
 	let locks_dir = crate::resolve_against(&root, locks_dir);
-	fs::create_dir_all(&locks_dir)?;
+	crate::ensure_private_directory(&locks_dir)?;
 	let path = locks_dir.join(STATE_MUTATION_LOCK);
-
-	if path.exists() && fs::symlink_metadata(&path)?.file_type().is_symlink() {
-		return Err(crate::prelude::eyre::eyre!(
-			"social state mutation lock file must not be a symlink"
-		));
-	}
-	let file =
-		OpenOptions::new().read(true).write(true).create(true).truncate(false).open(&path)?;
-	let path_metadata = fs::symlink_metadata(&path)?;
-	if path_metadata.file_type().is_symlink() || !path_metadata.is_file() {
-		return Err(crate::prelude::eyre::eyre!(
-			"social state mutation lock path must be a regular file"
-		));
-	}
-	#[cfg(unix)]
-	{
-		let file_metadata = file.metadata()?;
-		if file_metadata.dev() != path_metadata.dev() || file_metadata.ino() != path_metadata.ino()
-		{
-			return Err(crate::prelude::eyre::eyre!(
-				"social state mutation lock path changed during open"
-			));
-		}
-	}
+	let file = crate::open_or_create_private_lock(&path)?;
 	file.lock()?;
 
 	Ok(file)

@@ -48,16 +48,8 @@ macro_rules! stable_delivery_id {
 	};
 }
 
-stable_delivery_id!(
-	AutomationDeliveryIntentId,
-	InvalidIntentId,
-	"Automation delivery intent"
-);
-stable_delivery_id!(
-	AutomationDeliveryReceiptId,
-	InvalidReceiptId,
-	"Automation delivery receipt"
-);
+stable_delivery_id!(AutomationDeliveryIntentId, InvalidIntentId, "Automation delivery intent");
+stable_delivery_id!(AutomationDeliveryReceiptId, InvalidReceiptId, "Automation delivery receipt");
 
 /// Closed Automation delivery validation failure without caller-controlled text.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
