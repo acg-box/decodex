@@ -173,7 +173,7 @@ struct ResetCardAccountRow: View {
 
 	private var identityHeader: some View {
 		HStack(alignment: .firstTextBaseline, spacing: 5) {
-			Image(systemName: identity.showsEmail ? "envelope" : "person.crop.circle")
+			Image(systemName: "person.crop.circle")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.accessibilityHidden(true)

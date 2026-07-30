@@ -70,6 +70,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains(".panelCardSurface(cornerRadius: 6"))
 		XCTAssertFalse(resetCards.contains(".enumerated()"))
 		XCTAssertFalse(resetCards.contains("ordinal"))
+		XCTAssertTrue(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
+		XCTAssertFalse(resetCards.contains("identity.showsEmail ? \"envelope\""))
 		XCTAssertTrue(appScene.contains(".containerBackground(.clear, for: .window)"))
 		XCTAssertTrue(appScene.contains(".preferredColorScheme(.dark)"))
 		XCTAssertTrue(panelWindow.contains("window.hasShadow = false"))
