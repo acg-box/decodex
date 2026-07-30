@@ -188,7 +188,7 @@ fn rejects_short_publish_text_and_free_form_claim_evidence() {
 #[test]
 fn internal_evidence_digest_is_rechecked_before_reservation_and_publication() {
 	let repo_root = crate::repo_root().expect("repo root");
-	let temp = tempfile::tempdir_in(&repo_root).expect("repo-local temporary directory");
+	let temp = crate::repo_local_test_directory("publisher-evidence-");
 	let evidence_path = temp.path().join("evidence/signal.json");
 	let original_evidence = json!({
 		"schema": "signal_entry/v1",
@@ -249,7 +249,7 @@ fn internal_evidence_digest_is_rechecked_before_reservation_and_publication() {
 #[test]
 fn internal_evidence_rejects_missing_and_unsupported_sources() {
 	let repo_root = crate::repo_root().expect("repo root");
-	let temp = tempfile::tempdir_in(&repo_root).expect("repo-local temporary directory");
+	let temp = crate::repo_local_test_directory("publisher-evidence-");
 	let missing_path = temp.path().join("evidence/missing.json");
 	let missing_ref = crate::path_arg(&repo_root, &missing_path);
 	let mut missing_candidate = valid_social_candidate();
@@ -3050,12 +3050,7 @@ fn attach_test_radar_lineage(candidate: &mut Value) -> Vec<tempfile::TempDir> {
 	}
 
 	let repo_root = crate::repo_root().expect("repo root");
-	let target = repo_root.join("target");
-	crate::ensure_private_directory(&target).expect("test target directory");
-	let directory = tempfile::Builder::new()
-		.prefix("publisher-radar-")
-		.tempdir_in(&target)
-		.expect("private Radar test directory");
+	let directory = crate::repo_local_test_directory("publisher-radar-");
 	let queue_dir = directory.path().join("github/review-queue");
 	let pairs_dir = directory.path().join("github/content-review-pairs");
 	crate::ensure_private_directory(&queue_dir).expect("private Radar queue collection");
