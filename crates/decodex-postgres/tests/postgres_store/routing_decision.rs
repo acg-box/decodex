@@ -116,49 +116,7 @@ async fn prepare_routing_contract(
 	owner: &Client,
 ) -> Result<RoutingContractSetup, Box<dyn std::error::Error>> {
 	create_project_and_policy(owner).await?;
-	owner.batch_execute("BEGIN; SELECT decodex.lock_account_routing_universe_exact()").await?;
-	for (account_id, label) in [
-		(SELECTED_ACCOUNT_ID, "V16 account 16"),
-		(WAITING_ACCOUNT_ID, "V16 account 17"),
-		(NO_ROUTE_ACCOUNT_ID, "V16 account 18"),
-	] {
-		let marker = account_marker(account_id)?;
-		let provider_account_id = provider_account_id(marker);
-		let writer_operation_id = uuid(0xa6, marker);
-		owner
-			.execute(
-				"INSERT INTO decodex.accounts(\
-				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
-				 credential_store_schema_version,credential_version,credential_fingerprint,\
-				 credential_writer_operation_id,credential_store_observation,\
-				 credential_store_observed_at) \
-				 VALUES($1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,\
-				 $5::text::uuid,'exact',pg_catalog.clock_timestamp())",
-				&[
-					&account_id,
-					&label,
-					&provider_account_id,
-					&PROCESS_CREDENTIAL_FINGERPRINT,
-					&writer_operation_id,
-				],
-			)
-			.await?;
-		owner
-			.execute(
-				"INSERT INTO decodex.account_routing_order(account_id,position) \
-				 SELECT $1::text::uuid,pg_catalog.count(*)::integer \
-				 FROM decodex.account_routing_order",
-				&[&account_id],
-			)
-			.await?;
-	}
-	owner
-		.batch_execute(
-			"UPDATE decodex.account_routing_control SET revision=revision+1,\
-			 updated_at=pg_catalog.clock_timestamp() WHERE singleton; \
-			 SELECT decodex.lock_account_routing_universe_exact(); COMMIT",
-		)
-		.await?;
+	create_routing_accounts(owner).await?;
 	prepare_routing_process_generations(store, owner).await?;
 	insert_quota_pair(owner, SELECTED_ACCOUNT_ID, Some(73), Some(41), "selected").await?;
 	insert_quota_pair(owner, WAITING_ACCOUNT_ID, Some(0), Some(0), "waiting").await?;
@@ -248,6 +206,53 @@ async fn prepare_routing_contract(
 		cancel_request,
 		stale_request,
 	})
+}
+
+async fn create_routing_accounts(owner: &Client) -> Result<(), Box<dyn std::error::Error>> {
+	owner.batch_execute("BEGIN; SELECT decodex.lock_account_routing_universe_exact()").await?;
+	for (account_id, label) in [
+		(SELECTED_ACCOUNT_ID, "V16 account 16"),
+		(WAITING_ACCOUNT_ID, "V16 account 17"),
+		(NO_ROUTE_ACCOUNT_ID, "V16 account 18"),
+	] {
+		let marker = account_marker(account_id)?;
+		let provider_account_id = provider_account_id(marker);
+		let writer_operation_id = uuid(0xa6, marker);
+		owner
+			.execute(
+				"INSERT INTO decodex.accounts(\
+				 account_id,display_label,state,enabled,provider_kind,provider_account_id,\
+				 credential_store_schema_version,credential_version,credential_fingerprint,\
+				 credential_writer_operation_id,credential_store_observation,\
+				 credential_store_observed_at) \
+				 VALUES($1::text::uuid,$2,'available',true,'chatgpt',$3,1,1,$4,\
+				 $5::text::uuid,'exact',pg_catalog.clock_timestamp())",
+				&[
+					&account_id,
+					&label,
+					&provider_account_id,
+					&PROCESS_CREDENTIAL_FINGERPRINT,
+					&writer_operation_id,
+				],
+			)
+			.await?;
+		owner
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 SELECT $1::text::uuid,pg_catalog.count(*)::integer \
+				 FROM decodex.account_routing_order",
+				&[&account_id],
+			)
+			.await?;
+	}
+	owner
+		.batch_execute(
+			"UPDATE decodex.account_routing_control SET revision=revision+1,\
+			 updated_at=pg_catalog.clock_timestamp() WHERE singleton; \
+			 SELECT decodex.lock_account_routing_universe_exact(); COMMIT",
+		)
+		.await?;
+	Ok(())
 }
 
 async fn assert_rolled_back_routing_decision(
