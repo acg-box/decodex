@@ -863,18 +863,20 @@ pub struct ResetCardObservationDto {
 	pub descriptor: ResetCardDescriptorDto,
 }
 
-/// Bounded current reset-card inventory for one account.
+/// Bounded current reset-card observation for one account.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ResetCardInventoryResult {
-	/// A complete inventory safe for explicit selection.
+	/// One observation whose descriptors are present only when detail completeness is true.
 	Available {
 		/// Canonical vNext account UUID.
 		account_id: EntityId,
 		/// Current optimistic account revision.
 		account_revision: EntityRevision,
-		/// Exact current number of available cards.
-		available_count: u16,
-		/// Complete unique public card observations.
+		/// Provider-reported current number of available cards, when reported.
+		reported_available_count: Option<u64>,
+		/// Whether every reported card has one complete unique public descriptor.
+		details_complete: bool,
+		/// Complete unique public card observations, present only when details are complete.
 		cards: Vec<ResetCardObservationDto>,
 		/// Freshness and value of the exact 300-minute window from this same provider call.
 		five_hour_quota: AccountQuotaWindowDto,
@@ -911,7 +913,8 @@ impl Serialize for ResetCardInventoryResult {
 			Available {
 				account_id: &'a EntityId,
 				account_revision: EntityRevision,
-				available_count: u16,
+				reported_available_count: Option<u64>,
+				details_complete: bool,
 				cards: &'a [ResetCardObservationDto],
 				five_hour_quota: AccountQuotaWindowDto,
 				seven_day_quota: AccountQuotaWindowDto,
@@ -932,7 +935,8 @@ impl Serialize for ResetCardInventoryResult {
 			Self::Available {
 				account_id,
 				account_revision,
-				available_count,
+				reported_available_count,
+				details_complete,
 				cards,
 				five_hour_quota,
 				seven_day_quota,
@@ -940,7 +944,8 @@ impl Serialize for ResetCardInventoryResult {
 				validate_reset_card_inventory(
 					account_id,
 					*account_revision,
-					*available_count,
+					*reported_available_count,
+					*details_complete,
 					cards,
 					*five_hour_quota,
 					*seven_day_quota,
@@ -949,7 +954,8 @@ impl Serialize for ResetCardInventoryResult {
 				RawResult::Available {
 					account_id,
 					account_revision: *account_revision,
-					available_count: *available_count,
+					reported_available_count: *reported_available_count,
+					details_complete: *details_complete,
 					cards,
 					five_hour_quota: *five_hour_quota,
 					seven_day_quota: *seven_day_quota,
@@ -994,7 +1000,8 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 			Available {
 				account_id: EntityId,
 				account_revision: EntityRevision,
-				available_count: u16,
+				reported_available_count: Option<u64>,
+				details_complete: bool,
 				cards: Vec<ResetCardObservationDto>,
 				five_hour_quota: AccountQuotaWindowDto,
 				seven_day_quota: AccountQuotaWindowDto,
@@ -1015,7 +1022,8 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 			RawResult::Available {
 				account_id,
 				account_revision,
-				available_count,
+				reported_available_count,
+				details_complete,
 				cards,
 				five_hour_quota,
 				seven_day_quota,
@@ -1023,7 +1031,8 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 				validate_reset_card_inventory(
 					&account_id,
 					account_revision,
-					available_count,
+					reported_available_count,
+					details_complete,
 					&cards,
 					five_hour_quota,
 					seven_day_quota,
@@ -1033,7 +1042,8 @@ impl<'de> Deserialize<'de> for ResetCardInventoryResult {
 				Ok(Self::Available {
 					account_id,
 					account_revision,
-					available_count,
+					reported_available_count,
+					details_complete,
 					cards,
 					five_hour_quota,
 					seven_day_quota,
@@ -3279,7 +3289,8 @@ fn canonical_calendar_date(value: &str) -> bool {
 fn validate_reset_card_inventory(
 	account_id: &EntityId,
 	account_revision: EntityRevision,
-	available_count: u16,
+	reported_available_count: Option<u64>,
+	details_complete: bool,
 	cards: &[ResetCardObservationDto],
 	five_hour_quota: AccountQuotaWindowDto,
 	seven_day_quota: AccountQuotaWindowDto,
@@ -3293,8 +3304,17 @@ fn validate_reset_card_inventory(
 	if cards.len() > MAX_RESET_CARD_ITEMS {
 		return Err("reset-card inventory exceeds item bound");
 	}
-	if usize::from(available_count) != cards.len() {
-		return Err("reset-card inventory is incomplete");
+	if details_complete {
+		if reported_available_count != u64::try_from(cards.len()).ok() {
+			return Err("complete reset-card inventory does not match its reported count");
+		}
+	} else {
+		if !cards.is_empty() {
+			return Err("partial reset-card inventory exposes selectable descriptors");
+		}
+		if reported_available_count == Some(0) {
+			return Err("zero reset-card inventory must be complete");
+		}
 	}
 
 	let unique = cards.iter().map(|card| card.descriptor).collect::<HashSet<_>>();
@@ -3891,7 +3911,8 @@ mod tests {
 			"data":{
 				"account_id":account_id,
 				"account_revision":1,
-				"available_count":2,
+				"reported_available_count":2,
+				"details_complete":true,
 				"cards":[card.clone(),card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
@@ -3902,7 +3923,8 @@ mod tests {
 			"data":{
 				"account_id":account_id,
 				"account_revision":1,
-				"available_count":2,
+				"reported_available_count":2,
+				"details_complete":true,
 				"cards":[card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
@@ -3913,7 +3935,8 @@ mod tests {
 			"data":{
 				"account_id":account_id,
 				"account_revision":0,
-				"available_count":1,
+				"reported_available_count":1,
+				"details_complete":true,
 				"cards":[card.clone()],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
@@ -3924,7 +3947,8 @@ mod tests {
 			"data":{
 				"account_id":account_id,
 				"account_revision":1,
-				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
+				"reported_available_count":u64::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
+				"details_complete":true,
 				"cards":vec![card; MAX_RESET_CARD_ITEMS + 1],
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
@@ -3945,7 +3969,8 @@ mod tests {
 			"data":{
 				"account_id":account_id,
 				"account_revision":1,
-				"available_count":u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
+				"reported_available_count":u64::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
+				"details_complete":true,
 				"cards":bounded_cards,
 				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
 				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
@@ -3958,6 +3983,32 @@ mod tests {
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(incomplete).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(zero_revision).is_err());
 		assert!(serde_json::from_value::<ResetCardInventoryResult>(oversized).is_err());
+		let partial = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"reported_available_count":2,
+				"details_complete":false,
+				"cards":[],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+			}
+		});
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(partial).is_ok());
+		let contradictory_empty = serde_json::json!({
+			"outcome":"available",
+			"data":{
+				"account_id":account_id,
+				"account_revision":1,
+				"reported_available_count":0,
+				"details_complete":false,
+				"cards":[],
+				"five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":null,"result":{"state":"unknown"}},
+				"seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+			}
+		});
+		assert!(serde_json::from_value::<ResetCardInventoryResult>(contradictory_empty).is_err());
 		assert_reset_card_outbound_bounds(account_id);
 	}
 
@@ -3974,7 +4025,8 @@ mod tests {
 		let bounded_outbound = ResetCardInventoryResult::Available {
 			account_id: EntityId::new(account_id).unwrap(),
 			account_revision: EntityRevision(1),
-			available_count: u16::try_from(MAX_RESET_CARD_ITEMS).unwrap(),
+			reported_available_count: u64::try_from(MAX_RESET_CARD_ITEMS).ok(),
+			details_complete: true,
 			cards: outbound_cards.clone(),
 			five_hour_quota: super::AccountQuotaWindowDto {
 				duration_minutes: 300,
@@ -3990,7 +4042,8 @@ mod tests {
 		let oversized_outbound = ResetCardInventoryResult::Available {
 			account_id: EntityId::new(account_id).unwrap(),
 			account_revision: EntityRevision(1),
-			available_count: u16::try_from(MAX_RESET_CARD_ITEMS + 1).unwrap(),
+			reported_available_count: u64::try_from(MAX_RESET_CARD_ITEMS + 1).ok(),
+			details_complete: true,
 			cards: outbound_cards
 				.into_iter()
 				.chain([super::ResetCardObservationDto {
@@ -4011,7 +4064,8 @@ mod tests {
 		let zero_revision_outbound = ResetCardInventoryResult::Available {
 			account_id: EntityId::new(account_id).unwrap(),
 			account_revision: EntityRevision(0),
-			available_count: 0,
+			reported_available_count: Some(0),
+			details_complete: true,
 			cards: Vec::new(),
 			five_hour_quota: super::AccountQuotaWindowDto {
 				duration_minutes: 300,
