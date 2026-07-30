@@ -1,8 +1,12 @@
 //! Presentation-neutral, bounded ConversationHistory paging for one GPUI view.
 
+mod page_cache;
+
 use std::{
 	collections::VecDeque,
-	sync::{Arc, Mutex, MutexGuard},
+	path::{Path, PathBuf},
+	sync::{Arc, Mutex, MutexGuard, TryLockError},
+	time::{SystemTime, UNIX_EPOCH},
 };
 
 use tokio::sync::Notify;
@@ -11,6 +15,11 @@ use decodex_protocol::{
 	CURRENT_VERSION, ConversationHistoryPage, ConversationHistoryResult, EntityId,
 	HistoryCursorToken, HistoryQueryError, MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultEnvelope, QueryResultPayload, ServerId,
+};
+
+use self::page_cache::{
+	CacheAuthority, CacheDiagnostic, CacheFailure, CacheHit, CacheLookup, CachePublishResult,
+	CacheRequest, CommittedCachePublication, HistoryPageCache, PreparedCachePublication,
 };
 
 const MAX_CANCELLED_REQUESTS: usize = 8;
@@ -47,6 +56,7 @@ pub(crate) struct HistorySnapshot {
 	pub(crate) visible: Option<ConversationHistoryPage>,
 	pub(crate) visible_source: Option<HistoryPageSource>,
 	pub(crate) cursor: HistoryCursorObservation,
+	pub(crate) cache_diagnostic: Option<HistoryCacheDiagnostic>,
 	pub(crate) retained_pages: usize,
 	pub(crate) retained_items: usize,
 	pub(crate) retained_bytes: usize,
@@ -69,6 +79,13 @@ pub(crate) enum HistoryLoadState {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum HistoryPageSource {
 	FreshServer,
+	CachedUnverified,
+}
+
+/// Bounded local-cache observation with no product-content or credential meaning.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum HistoryCacheDiagnostic {
+	Unavailable,
 }
 
 /// Latest page-level continuation observation.
@@ -129,25 +146,238 @@ pub(crate) struct HistoryPager {
 
 struct HistoryPagerInner {
 	state: Mutex<PagerState>,
+	page_cache: Mutex<PageCacheOwner>,
+	// Publication lock order is page_cache -> commit gate -> state.
+	cache_publication_commit_gate: Mutex<()>,
+	cache_schema_generation: Option<u32>,
 	notify: Notify,
 }
 
+enum PageCacheOwner {
+	Dormant { parent: PathBuf, cache_schema_generation: u32 },
+	Enabled(HistoryPageCache),
+	Disabled(Option<CacheFailure>),
+}
+
+impl PageCacheOwner {
+	fn dormant(parent: &Path, cache_schema_generation: u32) -> Self {
+		Self::Dormant { parent: parent.to_path_buf(), cache_schema_generation }
+	}
+
+	fn ensure_open(&mut self) -> bool {
+		let dormant = match self {
+			Self::Dormant { parent, cache_schema_generation } =>
+				Some((parent.clone(), *cache_schema_generation)),
+			Self::Enabled(_) => return true,
+			Self::Disabled(_) => return false,
+		};
+		let (parent, cache_schema_generation) =
+			dormant.expect("dormant cache owner was just observed");
+		match HistoryPageCache::open(&parent, cache_schema_generation) {
+			Ok(cache) => {
+				*self = Self::Enabled(cache);
+				true
+			},
+			Err(failure) => {
+				self.disable(failure);
+				false
+			},
+		}
+	}
+
+	fn read_lookup(&mut self, identity: &CacheOperationIdentity) -> PageCacheLookupRead {
+		let request = match identity.cache_request() {
+			Ok(request) => request,
+			Err(failure) => {
+				self.disable(failure);
+				return PageCacheLookupRead::Failure;
+			},
+		};
+		let Some(now_unix_seconds) = current_unix_seconds() else {
+			return PageCacheLookupRead::Failure;
+		};
+		if !self.ensure_open() {
+			return PageCacheLookupRead::Failure;
+		}
+		let lookup = match self {
+			Self::Enabled(cache) => cache.lookup(&request, now_unix_seconds),
+			Self::Dormant { .. } | Self::Disabled(_) =>
+				return PageCacheLookupRead::Failure,
+		};
+
+		match lookup {
+			CacheLookup::Hit(hit) => PageCacheLookupRead::Hit(hit),
+			CacheLookup::Miss(CacheDiagnostic::NotFound | CacheDiagnostic::Ineligible) =>
+				PageCacheLookupRead::Miss,
+			CacheLookup::Miss(diagnostic) => {
+				self.disable(CacheFailure::new(diagnostic));
+				PageCacheLookupRead::Failure
+			},
+			CacheLookup::Failure(failure) => {
+				self.disable(failure);
+				PageCacheLookupRead::Failure
+			},
+		}
+	}
+
+	fn complete_lookup(&mut self, lookup: PageCacheLookupRead) -> PageCacheLookupResult {
+		match lookup {
+			PageCacheLookupRead::Hit(hit) => {
+				let recency_result = match self {
+					Self::Enabled(cache) => cache.record_hit_recency(&hit),
+					Self::Dormant { .. } | Self::Disabled(_) =>
+						return PageCacheLookupResult::Failure,
+				};
+				if let Err(failure) = recency_result {
+					self.disable(failure);
+					return PageCacheLookupResult::Failure;
+				}
+
+				PageCacheLookupResult::Hit(hit.into_page())
+			},
+			PageCacheLookupRead::Miss => PageCacheLookupResult::Miss,
+			PageCacheLookupRead::Failure => PageCacheLookupResult::Failure,
+		}
+	}
+
+	fn prepare_publication(
+		&mut self,
+		publication: &CachePublication,
+	) -> Result<PreparedCachePublication, ()> {
+		let request = match publication.identity.cache_request() {
+			Ok(request) => request,
+			Err(failure) => {
+				self.disable(failure);
+				return Err(());
+			},
+		};
+		let Some(admitted_at_unix_seconds) = publication.admitted_at_unix_seconds else {
+			return Err(());
+		};
+		if !self.ensure_open() {
+			return Err(());
+		}
+		let result = match self {
+			Self::Enabled(cache) =>
+				cache.prepare_publication(
+					&request,
+					&publication.page,
+					admitted_at_unix_seconds,
+				),
+			Self::Dormant { .. } | Self::Disabled(_) => return Err(()),
+		};
+
+		match result {
+			Ok(prepared) => Ok(prepared),
+			Err(failure) => {
+				self.disable(failure);
+				Err(())
+			},
+		}
+	}
+
+	fn commit_publication(
+		&mut self,
+		prepared: PreparedCachePublication,
+	) -> PageCacheCommitResult {
+		let mut cache = match std::mem::replace(self, Self::Disabled(None)) {
+			Self::Enabled(cache) => cache,
+			owner => {
+				*self = owner;
+				unreachable!("prepared publication requires an enabled page cache owner");
+			},
+		};
+
+		match cache.commit_publication(prepared) {
+			Ok(committed) => {
+				*self = Self::Enabled(cache);
+				PageCacheCommitResult::Committed(committed)
+			},
+			Err((prepared, failure)) => {
+				self.disable(failure.clone());
+				PageCacheCommitResult::Failed(cache, prepared, failure)
+			},
+		}
+	}
+
+	fn discard_stale(&mut self, prepared: PreparedCachePublication) {
+		let result = match self {
+			Self::Enabled(cache) => cache.discard_prepared_publication(prepared),
+			Self::Dormant { .. } | Self::Disabled(_) => return,
+		};
+		if let Err(failure) = result {
+			self.disable(failure);
+		}
+	}
+
+	fn discard_failed(
+		&mut self,
+		cache: HistoryPageCache,
+		prepared: PreparedCachePublication,
+		failure: CacheFailure,
+	) {
+		let cleanup_failure = cache.discard_prepared_publication(prepared).err();
+
+		self.disable(cleanup_failure.unwrap_or(failure));
+	}
+
+	fn finish_publication(
+		&mut self,
+		committed: CommittedCachePublication,
+	) -> PageCachePublishResult {
+		let result = match self {
+			Self::Enabled(cache) => cache.finish_publication(committed),
+			Self::Dormant { .. } | Self::Disabled(_) =>
+				return PageCachePublishResult::Failure,
+		};
+
+		match result {
+			Ok(CachePublishResult::Published | CachePublishResult::Reinitialized) =>
+				PageCachePublishResult::Stored,
+			Err(failure) => {
+				self.disable(failure);
+				PageCachePublishResult::Failure
+			},
+		}
+	}
+
+	fn disable(&mut self, failure: CacheFailure) {
+		*self = Self::Disabled(Some(failure));
+	}
+}
+
 impl HistoryPager {
-	pub(crate) fn production() -> Self {
-		Self::new(HistoryPagerLimits::production())
+	pub(crate) fn production(parent: &Path, cache_schema_generation: u32) -> Self {
+		Self::with_page_cache(
+			HistoryPagerLimits::production(),
+			PageCacheOwner::dormant(parent, cache_schema_generation),
+			Some(cache_schema_generation),
+		)
 	}
 
 	fn new(limits: HistoryPagerLimits) -> Self {
+		Self::with_page_cache(limits, PageCacheOwner::Disabled(None), None)
+	}
+
+	fn with_page_cache(
+		limits: HistoryPagerLimits,
+		page_cache: PageCacheOwner,
+		cache_schema_generation: Option<u32>,
+	) -> Self {
 		Self {
-			inner: Arc::new(HistoryPagerInner {
-				state: Mutex::new(PagerState::new(limits)),
-				notify: Notify::new(),
+				inner: Arc::new(HistoryPagerInner {
+					state: Mutex::new(PagerState::new(limits)),
+					page_cache: Mutex::new(page_cache),
+					cache_publication_commit_gate: Mutex::new(()),
+					cache_schema_generation,
+					notify: Notify::new(),
 			}),
 		}
 	}
 
 	/// Start a fresh view and cancel every result bound to the previous view.
 	pub(crate) fn open(&self, conversation_id: EntityId) -> Result<(), HistoryClosedReason> {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let generation =
 			state.next_view_generation().ok_or(HistoryClosedReason::RequestIdentityExhausted)?;
@@ -162,6 +392,7 @@ impl HistoryPager {
 
 	/// Move to the next retained page or request the exact observed continuation.
 	pub(crate) fn show_next(&self) -> HistoryNavigationResult {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let Some(active) = state.active.as_ref() else {
 			return HistoryNavigationResult::Inactive;
@@ -192,16 +423,22 @@ impl HistoryPager {
 		active.generation = generation;
 		active.unavailable = None;
 		active.retry_request = None;
+		active.clear_cache_presentation();
+		active.cache_lookup_armed = None;
+		active.cache_publication_fence = None;
 		if let Some(next_index) = retained_next {
 			active.visible_index = Some(next_index);
 			active.pending = None;
 			active.enqueue_adjacent_prefetch();
 		} else if let Some(after) = continuation {
-			active.pending = Some(PageRequest::new(
+			let request = PageRequest::new(
 				generation,
 				PageKey::new(conversation_id, Some(after)),
 				RequestPurpose::Visible,
-			));
+			);
+
+			active.pending = Some(request.clone());
+			active.cache_lookup_armed = Some(request);
 		}
 		drop(state);
 		self.inner.notify.notify_one();
@@ -211,6 +448,7 @@ impl HistoryPager {
 
 	/// Move to the previous retained page. Evicted history remains unknown.
 	pub(crate) fn show_previous(&self) -> HistoryNavigationResult {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let Some(active) = state.active.as_ref() else {
 			return HistoryNavigationResult::Inactive;
@@ -236,6 +474,9 @@ impl HistoryPager {
 		active.pending = None;
 		active.unavailable = None;
 		active.retry_request = None;
+		active.clear_cache_presentation();
+		active.cache_lookup_armed = None;
+		active.cache_publication_fence = None;
 		active.enqueue_adjacent_prefetch();
 		drop(state);
 		self.inner.notify.notify_one();
@@ -254,6 +495,7 @@ impl HistoryPager {
 		};
 
 		active.pending = Some(request);
+		active.cache_lookup_armed = None;
 		active.unavailable = None;
 		drop(state);
 		self.inner.notify.notify_one();
@@ -263,6 +505,7 @@ impl HistoryPager {
 
 	/// Cancel the current view without claiming that its Conversation is absent.
 	pub(crate) fn cancel(&self) {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 
 		state.cancel_in_flight(HistoryStaleReason::ViewCancelled);
@@ -314,8 +557,58 @@ impl HistoryPager {
 		remains_current
 	}
 
+	/// Perform caller-owned cache lookup only after one exact query was sent successfully.
+	pub(crate) fn lookup_sent_request(&self, token: &HistorySendToken) {
+		let Some(cache_schema_generation) = self.inner.cache_schema_generation else {
+			return;
+		};
+		let identity = {
+			let mut state = self.lock();
+			let Some(identity) =
+				state.take_sent_cache_lookup(token, cache_schema_generation)
+			else {
+				return;
+			};
+
+			identity
+		};
+		let Some(mut page_cache) = self.try_lock_page_cache() else {
+			return;
+		};
+		let lookup = page_cache.read_lookup(&identity);
+		let mut state = self.lock();
+
+		if self.inner.cache_schema_generation != Some(identity.cache_schema_generation)
+			|| !state.matches_cache_lookup(&identity)
+		{
+			return;
+		}
+
+		let result = page_cache.complete_lookup(lookup);
+		let limits = state.limits;
+		let active = state.active.as_mut().expect("cache lookup matched an active view");
+		let changed = match (identity.request.purpose, result) {
+			(RequestPurpose::Initial | RequestPurpose::Visible, PageCacheLookupResult::Hit(page)) => {
+				active.admit_provisional_page(identity.request.clone(), page, limits);
+				true
+			},
+			(_, PageCacheLookupResult::Failure) => {
+				active.provisional = None;
+				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable);
+				true
+			},
+			(_, PageCacheLookupResult::Hit(_) | PageCacheLookupResult::Miss) => false,
+		};
+		drop(state);
+		drop(page_cache);
+		if changed {
+			self.inner.notify.notify_one();
+		}
+	}
+
 	/// Bind future dispatch to one retained-session generation and stable server.
 	pub(crate) fn bind_session(&self, generation: u64, server_id: ServerId) {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let binding = SessionBinding { generation, server_id };
 
@@ -332,6 +625,7 @@ impl HistoryPager {
 
 	/// Invalidate every page and cursor observation when the owning session ends.
 	pub(crate) fn session_ended(&self, generation: u64) {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 
 		if state.session.as_ref().is_some_and(|session| session.generation == generation) {
@@ -369,6 +663,7 @@ impl HistoryPager {
 		session_generation: u64,
 		server_id: &ServerId,
 	) -> Option<HistoryDispatch> {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let expected =
 			SessionBinding { generation: session_generation, server_id: server_id.clone() };
@@ -431,6 +726,7 @@ impl HistoryPager {
 		server_id: &ServerId,
 		result: QueryResultEnvelope,
 	) -> HistoryRouteOutcome {
+		let commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		let Some(active_query) =
 			state.active.as_ref().and_then(|active| active.in_flight.as_ref()).map(|request| {
@@ -472,6 +768,15 @@ impl HistoryPager {
 			.as_mut()
 			.and_then(|active| active.in_flight.take())
 			.expect("active query was just observed");
+		let cache_identity = self
+			.inner
+			.cache_schema_generation
+			.map(|generation| CacheOperationIdentity::new(&in_flight, generation));
+		let active = state.active.as_mut().expect("in-flight request has an active view");
+
+		active.cache_lookup_armed = None;
+		active.cache_publication_fence = None;
+		active.clear_provisional_cache_page();
 		let QueryResultPayload::ConversationHistory(history) = result.payload else {
 			state.set_closed(HistoryClosedReason::ProtocolMismatch);
 
@@ -489,10 +794,11 @@ impl HistoryPager {
 
 				HistoryRouteOutcome::Unavailable
 			},
-			ConversationHistoryResult::Page(page) => {
-				let limits = state.limits;
-				let request = in_flight.request;
-				let active = state.active.as_mut().expect("in-flight request has an active view");
+				ConversationHistoryResult::Page(page) => {
+					let limits = state.limits;
+					let request = in_flight.request;
+					let active = state.active.as_mut().expect("in-flight request has an active view");
+					let publication_page = page.clone();
 
 				if let Err(reason) = active.admit_live_page(request.clone(), page, limits) {
 					active.unavailable = Some(HistoryAvailability::Closed(reason));
@@ -503,22 +809,204 @@ impl HistoryPager {
 
 				active.unavailable = None;
 				active.retry_request = None;
-				if request.purpose != RequestPurpose::Prefetch {
-					active.enqueue_adjacent_prefetch();
-				}
+				active.cache_publication_fence = cache_identity.clone();
+					if request.purpose != RequestPurpose::Prefetch {
+						active.enqueue_adjacent_prefetch();
+					}
 
-				if active.pending.is_some() {
-					self.inner.notify.notify_one();
-				}
+					let notify_follow_on = active.pending.is_some();
+					let publication = cache_identity.map(|identity| CachePublication {
+						identity,
+						page: publication_page,
+						admitted_at_unix_seconds: current_unix_seconds(),
+					});
+					drop(state);
+					drop(commit_gate);
+					if notify_follow_on {
+						self.inner.notify.notify_one();
+					}
+					if let Some(publication) = publication {
+						self.publish_fresh_page(publication);
+					}
 
-				HistoryRouteOutcome::Fresh
+					HistoryRouteOutcome::Fresh
+				},
+			}
+		}
+
+	fn publish_fresh_page(&self, publication: CachePublication) {
+		let identity = publication.identity.clone();
+		let Some(mut page_cache) = self.try_lock_page_cache() else {
+			self.complete_cache_publication(&identity, PageCachePublishResult::Skipped);
+
+			return;
+		};
+		let prepared = match page_cache.prepare_publication(&publication) {
+			Ok(prepared) => prepared,
+			Err(()) => {
+				let commit_gate = self.lock_cache_publication_commit_gate();
+				let mut state = self.lock();
+				let remains_current = self.inner.cache_schema_generation
+					== Some(identity.cache_schema_generation)
+					&& state.matches_cache_publication(&identity);
+
+				if remains_current {
+					let active =
+						state.active.as_mut().expect("publication matched an active view");
+
+					active.cache_publication_fence = None;
+					active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable);
+				}
+				drop(state);
+				drop(commit_gate);
+				drop(page_cache);
+
+				return;
 			},
+		};
+
+		let commit_gate = self.lock_cache_publication_commit_gate();
+		let state = self.lock();
+		if self.inner.cache_schema_generation != Some(identity.cache_schema_generation)
+			|| !state.matches_cache_publication(&identity)
+		{
+			drop(state);
+			drop(commit_gate);
+			page_cache.discard_stale(prepared);
+
+			return;
+		}
+		drop(state);
+		let commit_result = page_cache.commit_publication(prepared);
+		drop(commit_gate);
+
+		let publish_result = match commit_result {
+			PageCacheCommitResult::Committed(committed) =>
+				page_cache.finish_publication(committed),
+			PageCacheCommitResult::Failed(cache, prepared, failure) => {
+				page_cache.discard_failed(cache, prepared, failure);
+				PageCachePublishResult::Failure
+			},
+		};
+		drop(page_cache);
+		self.complete_cache_publication(&identity, publish_result);
+	}
+
+	fn complete_cache_publication(
+		&self,
+		identity: &CacheOperationIdentity,
+		result: PageCachePublishResult,
+	) {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
+		let mut state = self.lock();
+
+		if self.inner.cache_schema_generation != Some(identity.cache_schema_generation)
+			|| !state.matches_cache_publication(identity)
+		{
+			return;
+		}
+		let active = state.active.as_mut().expect("publication matched an active view");
+
+		active.cache_publication_fence = None;
+		match result {
+			PageCachePublishResult::Stored => active.cache_diagnostic = None,
+			PageCachePublishResult::Failure =>
+				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable),
+			PageCachePublishResult::Skipped => {},
 		}
 	}
 
 	fn lock(&self) -> MutexGuard<'_, PagerState> {
 		self.inner.state.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 	}
+
+	fn try_lock_page_cache(&self) -> Option<MutexGuard<'_, PageCacheOwner>> {
+		match self.inner.page_cache.try_lock() {
+			Ok(cache) => Some(cache),
+			Err(TryLockError::WouldBlock) => None,
+			Err(TryLockError::Poisoned(error)) => Some(error.into_inner()),
+		}
+	}
+
+	fn lock_cache_publication_commit_gate(&self) -> MutexGuard<'_, ()> {
+		self.inner
+			.cache_publication_commit_gate
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner)
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CacheOperationIdentity {
+	view_generation: u64,
+	session_generation: u64,
+	server_id: ServerId,
+	protocol_major: u16,
+	protocol_minor: u16,
+	cache_schema_generation: u32,
+	query_id: QueryId,
+	request_sequence: u64,
+	request: PageRequest,
+}
+
+impl CacheOperationIdentity {
+	fn new(in_flight: &InFlightRequest, cache_schema_generation: u32) -> Self {
+		Self {
+			view_generation: in_flight.request.view_generation,
+			session_generation: in_flight.session_generation,
+			server_id: in_flight.server_id.clone(),
+			protocol_major: CURRENT_VERSION.major,
+			protocol_minor: CURRENT_VERSION.minor,
+			cache_schema_generation,
+			query_id: in_flight.query_id.clone(),
+			request_sequence: in_flight.request_sequence,
+			request: in_flight.request.clone(),
+		}
+	}
+
+	fn cache_request(&self) -> Result<CacheRequest, CacheFailure> {
+		let authority = CacheAuthority::new(
+			self.server_id.clone(),
+			self.protocol_major,
+			self.protocol_minor,
+			self.cache_schema_generation,
+		)?;
+
+		match self.request.key.after.clone() {
+			Some(after) =>
+				CacheRequest::after(&authority, self.request.key.conversation_id.clone(), after),
+			None => CacheRequest::head(&authority, self.request.key.conversation_id.clone()),
+		}
+	}
+}
+
+struct CachePublication {
+	identity: CacheOperationIdentity,
+	page: ConversationHistoryPage,
+	admitted_at_unix_seconds: Option<i64>,
+}
+
+enum PageCacheLookupRead {
+	Hit(CacheHit),
+	Miss,
+	Failure,
+}
+
+enum PageCacheLookupResult {
+	Hit(ConversationHistoryPage),
+	Miss,
+	Failure,
+}
+
+enum PageCacheCommitResult {
+	Committed(CommittedCachePublication),
+	Failed(HistoryPageCache, PreparedCachePublication, CacheFailure),
+}
+
+enum PageCachePublishResult {
+	Stored,
+	Skipped,
+	Failure,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -637,11 +1125,73 @@ impl PagerState {
 
 	fn set_closed(&mut self, reason: HistoryClosedReason) {
 		if let Some(active) = self.active.as_mut() {
+			active.clear_cache_presentation();
+			active.cache_lookup_armed = None;
+			active.cache_publication_fence = None;
 			active.unavailable = Some(HistoryAvailability::Closed(reason));
 			active.pending = None;
 			active.in_flight = None;
 			active.retry_request = None;
 		}
+	}
+
+	fn take_sent_cache_lookup(
+		&mut self,
+		token: &HistorySendToken,
+		cache_schema_generation: u32,
+	) -> Option<CacheOperationIdentity> {
+		let session = self.session.as_ref()?;
+		let active = self.active.as_mut()?;
+		let in_flight = active.in_flight.as_ref()?;
+
+		if !in_flight.matches_send_token(token)
+			|| active.cache_lookup_armed.as_ref() != Some(&in_flight.request)
+			|| active.generation != in_flight.request.view_generation
+			|| session.generation != in_flight.session_generation
+			|| session.server_id != in_flight.server_id
+		{
+			return None;
+		}
+		let identity = CacheOperationIdentity::new(in_flight, cache_schema_generation);
+
+		active.cache_lookup_armed = None;
+
+		Some(identity)
+	}
+
+	fn matches_cache_identity(&self, identity: &CacheOperationIdentity) -> bool {
+		if CURRENT_VERSION.major != identity.protocol_major
+			|| CURRENT_VERSION.minor != identity.protocol_minor
+		{
+			return false;
+		}
+		let Some(session) = self.session.as_ref() else {
+			return false;
+		};
+		let Some(active) = self.active.as_ref() else {
+			return false;
+		};
+
+		session.generation == identity.session_generation
+			&& session.server_id == identity.server_id
+			&& active.generation == identity.view_generation
+			&& active.conversation_id == identity.request.key.conversation_id
+	}
+
+	fn matches_cache_lookup(&self, identity: &CacheOperationIdentity) -> bool {
+		self.matches_cache_identity(identity)
+			&& self
+				.active
+				.as_ref()
+				.and_then(|active| active.in_flight.as_ref())
+				.is_some_and(|in_flight| in_flight.matches_cache_identity(identity))
+	}
+
+	fn matches_cache_publication(&self, identity: &CacheOperationIdentity) -> bool {
+		self.matches_cache_identity(identity)
+			&& self.active.as_ref().is_some_and(|active| {
+				active.cache_publication_fence.as_ref() == Some(identity)
+			})
 	}
 
 	fn snapshot(&self) -> HistorySnapshot {
@@ -653,13 +1203,37 @@ impl PagerState {
 				visible: None,
 				visible_source: None,
 				cursor: HistoryCursorObservation::Unknown,
+				cache_diagnostic: None,
 				retained_pages: 0,
 				retained_items: 0,
 				retained_bytes: 0,
 				last_stale_cancellation: self.last_stale_cancellation,
 			};
 		};
-		let visible = active.visible_index.and_then(|index| active.pages.get(index));
+		let fresh_visible = active.visible_index.and_then(|index| active.pages.get(index));
+		let provisional = active
+			.provisional
+			.as_ref()
+			.filter(|page| page.request.purpose != RequestPurpose::Prefetch);
+		let (visible, visible_source, cursor) = if let Some(page) = provisional {
+			(
+				Some(page.page.clone()),
+				Some(HistoryPageSource::CachedUnverified),
+				HistoryCursorObservation::Unknown,
+			)
+		} else if let Some(page) = fresh_visible {
+			(
+				Some(page.page.clone()),
+				Some(HistoryPageSource::FreshServer),
+				if page.page.next_cursor.is_some() {
+					HistoryCursorObservation::ContinuationAvailable
+				} else {
+					HistoryCursorObservation::NoContinuationObserved
+				},
+			)
+		} else {
+			(None, None, HistoryCursorObservation::Unknown)
+		};
 		let current_request = active
 			.in_flight
 			.as_ref()
@@ -678,28 +1252,23 @@ impl PagerState {
 				(false, None) => HistoryLoadState::InitialLoading,
 			},
 		};
-		let cursor = visible.map_or(HistoryCursorObservation::Unknown, |page| {
-			if page.page.next_cursor.is_some() {
-				HistoryCursorObservation::ContinuationAvailable
-			} else {
-				HistoryCursorObservation::NoContinuationObserved
-			}
-		});
-		let retained_pages = active.pages.len();
-		let retained_items = active.pages.iter().map(|page| page.page.items.len()).sum::<usize>();
-		let retained_bytes = active.pages.iter().map(|page| page.byte_length).sum::<usize>();
+		let retained_pages = active.pages.len() + usize::from(active.provisional.is_some());
+		let retained_items = active.pages.iter().map(|page| page.page.items.len()).sum::<usize>()
+			+ active
+				.provisional
+				.as_ref()
+				.map_or(0, |page| page.page.items.len());
+		let retained_bytes = active.pages.iter().map(|page| page.byte_length).sum::<usize>()
+			+ active.provisional.as_ref().map_or(0, |page| page.byte_length);
 
 		HistorySnapshot {
 			conversation_id: Some(active.conversation_id.clone()),
 			view_generation: active.generation,
 			load,
-			visible: visible.map(|page| page.page.clone()),
-			visible_source: if visible.is_some() {
-				Some(HistoryPageSource::FreshServer)
-			} else {
-				None
-			},
+			visible,
+			visible_source,
 			cursor,
+			cache_diagnostic: active.cache_diagnostic,
 			retained_pages,
 			retained_items,
 			retained_bytes,
@@ -723,6 +1292,10 @@ struct ActiveView {
 	in_flight: Option<InFlightRequest>,
 	retry_request: Option<PageRequest>,
 	unavailable: Option<HistoryAvailability>,
+	cache_lookup_armed: Option<PageRequest>,
+	cache_publication_fence: Option<CacheOperationIdentity>,
+	provisional: Option<ProvisionalPage>,
+	cache_diagnostic: Option<HistoryCacheDiagnostic>,
 }
 
 impl ActiveView {
@@ -738,24 +1311,73 @@ impl ActiveView {
 			generation,
 			pages: VecDeque::new(),
 			visible_index: None,
-			pending: Some(initial),
+			pending: Some(initial.clone()),
 			in_flight: None,
 			retry_request: None,
 			unavailable: None,
+			cache_lookup_armed: Some(initial),
+			cache_publication_fence: None,
+			provisional: None,
+			cache_diagnostic: None,
 		}
 	}
 
 	fn invalidate_session_authority(&mut self, unavailable: Option<HistoryAvailability>) {
+		self.clear_cache_presentation();
 		self.pages.clear();
 		self.visible_index = None;
-		self.pending = Some(PageRequest::new(
+		let request = PageRequest::new(
 			self.generation,
 			PageKey::initial(self.conversation_id.clone()),
 			RequestPurpose::Initial,
-		));
+		);
+
+		self.pending = Some(request.clone());
 		self.in_flight = None;
 		self.retry_request = None;
 		self.unavailable = unavailable;
+		self.cache_lookup_armed = Some(request);
+		self.cache_publication_fence = None;
+	}
+
+	fn admit_provisional_page(
+		&mut self,
+		request: PageRequest,
+		page: ConversationHistoryPage,
+		limits: HistoryPagerLimits,
+	) {
+		match validated_page_byte_length(&page, limits) {
+			Ok(byte_length) => {
+				let retained_items =
+					self.pages.iter().map(|retained| retained.page.items.len()).sum::<usize>();
+				let retained_bytes =
+					self.pages.iter().map(|retained| retained.byte_length).sum::<usize>();
+
+				if self.pages.len().saturating_add(1) > limits.max_window_pages
+					|| retained_items.saturating_add(page.items.len()) > limits.max_window_items
+					|| retained_bytes.saturating_add(byte_length) > limits.max_window_bytes
+				{
+					self.provisional = None;
+					self.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable);
+				} else {
+					self.provisional = Some(ProvisionalPage { request, page, byte_length });
+					self.cache_diagnostic = None;
+				}
+			},
+			Err(_) => {
+				self.provisional = None;
+				self.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable);
+			},
+		}
+	}
+
+	fn clear_cache_presentation(&mut self) {
+		self.clear_provisional_cache_page();
+		self.cache_diagnostic = None;
+	}
+
+	fn clear_provisional_cache_page(&mut self) {
+		self.provisional = None;
 	}
 
 	fn admit_live_page(
@@ -774,26 +1396,18 @@ impl ActiveView {
 			return Err(HistoryClosedReason::MalformedContinuation);
 		}
 
-		let bytes = serde_json::to_vec(&page).map_err(|_| HistoryClosedReason::LocalBounds)?;
-
-		if page.items.len() > usize::from(MAX_HISTORY_PAGE_SIZE)
-			|| bytes.len() > limits.max_page_bytes
-			|| bytes.len() > limits.max_window_bytes
-			|| page.items.len() > limits.max_window_items
-		{
-			return Err(HistoryClosedReason::LocalBounds);
-		}
+		let byte_length = validated_page_byte_length(&page, limits)?;
 
 		let existing = self.pages.iter().position(|retained| retained.key == request.key);
 		let index = if let Some(index) = existing {
 			self.pages[index] =
-				RetainedPage { key: request.key.clone(), page, byte_length: bytes.len() };
+				RetainedPage { key: request.key.clone(), page, byte_length };
 			index
 		} else {
 			self.pages.push_back(RetainedPage {
 				key: request.key.clone(),
 				page,
-				byte_length: bytes.len(),
+				byte_length,
 			});
 			self.pages.len() - 1
 		};
@@ -822,7 +1436,10 @@ impl ActiveView {
 			return;
 		}
 
-		self.pending = Some(PageRequest::new(self.generation, key, RequestPurpose::Prefetch));
+		let request = PageRequest::new(self.generation, key, RequestPurpose::Prefetch);
+
+		self.pending = Some(request.clone());
+		self.cache_lookup_armed = Some(request);
 	}
 
 	fn evict_to_limits(&mut self, limits: HistoryPagerLimits) {
@@ -855,6 +1472,12 @@ impl ActiveView {
 
 struct RetainedPage {
 	key: PageKey,
+	page: ConversationHistoryPage,
+	byte_length: usize,
+}
+
+struct ProvisionalPage {
+	request: PageRequest,
 	page: ConversationHistoryPage,
 	byte_length: usize,
 }
@@ -901,6 +1524,29 @@ enum RequestPurpose {
 	Prefetch,
 }
 
+fn validated_page_byte_length(
+	page: &ConversationHistoryPage,
+	limits: HistoryPagerLimits,
+) -> Result<usize, HistoryClosedReason> {
+	let bytes = serde_json::to_vec(page).map_err(|_| HistoryClosedReason::LocalBounds)?;
+
+	if page.items.len() > usize::from(MAX_HISTORY_PAGE_SIZE)
+		|| bytes.len() > limits.max_page_bytes
+		|| bytes.len() > limits.max_window_bytes
+		|| page.items.len() > limits.max_window_items
+	{
+		return Err(HistoryClosedReason::LocalBounds);
+	}
+
+	Ok(bytes.len())
+}
+
+fn current_unix_seconds() -> Option<i64> {
+	let elapsed = SystemTime::now().duration_since(UNIX_EPOCH).ok()?;
+
+	i64::try_from(elapsed.as_secs()).ok()
+}
+
 struct InFlightRequest {
 	query_id: QueryId,
 	session_generation: u64,
@@ -934,6 +1580,14 @@ impl InFlightRequest {
 			&& self.server_id == token.server_id
 			&& self.request_sequence == token.request_sequence
 	}
+
+	fn matches_cache_identity(&self, identity: &CacheOperationIdentity) -> bool {
+		self.query_id == identity.query_id
+			&& self.session_generation == identity.session_generation
+			&& self.server_id == identity.server_id
+			&& self.request_sequence == identity.request_sequence
+			&& self.request == identity.request
+	}
 }
 
 struct CancelledRequest {
@@ -958,8 +1612,10 @@ fn history_availability(error: HistoryQueryError) -> HistoryAvailability {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use tempfile::TempDir;
 
 	const SESSION_GENERATION: u64 = 7;
+	const TEST_CACHE_SCHEMA_GENERATION: u32 = 1;
 
 	fn server(value: &str) -> ServerId {
 		ServerId::new(value).expect("test server identity is bounded")
@@ -990,19 +1646,52 @@ mod tests {
 		}
 	}
 
-	fn open_pager() -> (HistoryPager, ServerId) {
-		let pager = HistoryPager::production();
+	fn open_pager() -> (TempDir, HistoryPager, ServerId) {
+		let temporary = TempDir::new().expect("temporary cache parent is available");
+		let pager = HistoryPager::production(temporary.path(), 1);
 		let server_id = server("server-a");
 
 		pager.bind_session(SESSION_GENERATION, server_id.clone());
 		pager.open(entity("conversation-a")).expect("view identity is available");
 
-		(pager, server_id)
+		(temporary, pager, server_id)
+	}
+
+	fn seed_cached_head(
+		parent: &Path,
+		server_id: &ServerId,
+		conversation_id: &EntityId,
+		page: &ConversationHistoryPage,
+	) {
+		let authority = CacheAuthority::new(
+			server_id.clone(),
+			CURRENT_VERSION.major,
+			CURRENT_VERSION.minor,
+			TEST_CACHE_SCHEMA_GENERATION,
+		)
+		.expect("cache authority is valid");
+		let request = CacheRequest::head(&authority, conversation_id.clone())
+			.expect("head request is valid");
+		let mut cache = HistoryPageCache::open(parent, TEST_CACHE_SCHEMA_GENERATION)
+			.expect("history page cache opens");
+		let prepared = cache
+			.prepare_publication(
+				&request,
+				page,
+				current_unix_seconds().expect("current wall time is representable"),
+			)
+			.expect("cached head prepares");
+		let committed = match cache.commit_publication(prepared) {
+			Ok(committed) => committed,
+			Err(_) => panic!("cached head commits"),
+		};
+
+		cache.finish_publication(committed).expect("cached head publication finishes");
 	}
 
 	#[test]
 	fn one_view_reserves_at_most_one_current_request() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let dispatch = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1020,8 +1709,140 @@ mod tests {
 	}
 
 	#[test]
+	fn cached_head_requires_sent_lookup_and_fresh_response_for_topology() {
+		let temporary = TempDir::new_in(std::env::temp_dir())
+			.expect("host temporary directory accepts an isolated fixture");
+		let cache_parent = temporary.path().join("cache-parent");
+		let server_id = server("server-cache-flow");
+		let conversation_a = entity("conversation-cache-a");
+		let conversation_b = entity("conversation-cache-b");
+		let cached_page = page(Some("cached-next"));
+		let fresh_page = page(Some("fresh-next"));
+
+		seed_cached_head(&cache_parent, &server_id, &conversation_a, &cached_page);
+		seed_cached_head(&cache_parent, &server_id, &conversation_b, &cached_page);
+
+		let pager = HistoryPager::production(&cache_parent, TEST_CACHE_SCHEMA_GENERATION);
+
+		assert!(matches!(
+			&*pager
+				.inner
+				.page_cache
+				.lock()
+				.unwrap_or_else(std::sync::PoisonError::into_inner),
+			PageCacheOwner::Dormant { parent, cache_schema_generation }
+				if parent == &cache_parent
+					&& *cache_schema_generation == TEST_CACHE_SCHEMA_GENERATION
+		));
+
+		pager.bind_session(SESSION_GENERATION, server_id.clone());
+		pager.open(conversation_a.clone()).expect("cached conversation view opens");
+		let head = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("fresh head request is ready");
+
+		assert!(pager.snapshot().visible.is_none());
+		let send = pager.begin_send(&head).expect("current head enters the send phase");
+		assert!(pager.snapshot().visible.is_none());
+		assert!(pager.finish_send(&send));
+		assert!(pager.snapshot().visible.is_none());
+		assert!(matches!(
+			&*pager
+				.inner
+				.page_cache
+				.lock()
+				.unwrap_or_else(std::sync::PoisonError::into_inner),
+			PageCacheOwner::Dormant { .. }
+		));
+
+		pager.lookup_sent_request(&send);
+
+		let provisional = pager.snapshot();
+
+		assert_eq!(provisional.visible, Some(cached_page.clone()));
+		assert_eq!(provisional.visible_source, Some(HistoryPageSource::CachedUnverified));
+		assert_eq!(provisional.cursor, HistoryCursorObservation::Unknown);
+		assert_eq!(provisional.retained_pages, 1);
+		assert!(matches!(
+			&*pager
+				.inner
+				.page_cache
+				.lock()
+				.unwrap_or_else(std::sync::PoisonError::into_inner),
+			PageCacheOwner::Enabled(_)
+		));
+		{
+			let state = pager.lock();
+			let active = state.active.as_ref().expect("cached view remains active");
+
+			assert!(active.pages.is_empty());
+			assert!(active.pending.is_none());
+		}
+		assert_eq!(pager.show_next(), HistoryNavigationResult::BoundaryUnknown);
+		assert!(pager.try_take_dispatch(SESSION_GENERATION, &server_id).is_none());
+
+		assert!(matches!(
+			pager.route_result(
+				SESSION_GENERATION,
+				&server_id,
+				result(
+					&head,
+					&server_id,
+					ConversationHistoryResult::Page(fresh_page.clone()),
+				),
+			),
+			HistoryRouteOutcome::Fresh
+		));
+
+		let fresh = pager.snapshot();
+
+		assert_eq!(fresh.visible, Some(fresh_page));
+		assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
+		assert_eq!(fresh.cursor, HistoryCursorObservation::ContinuationAvailable);
+		assert_eq!(fresh.retained_pages, 1);
+
+		let prefetch = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("only the matching fresh cursor enables prefetch");
+
+		assert!(matches!(
+			&prefetch.envelope.payload,
+			QueryPayload::GetConversationHistory { after: Some(after), .. }
+				if after == &cursor("fresh-next")
+		));
+
+		pager.open(conversation_b).expect("second cached conversation opens");
+		let stale_dispatch = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("second cached head request is ready");
+		let stale_send = pager
+			.begin_send(&stale_dispatch)
+			.expect("second cached head enters the send phase");
+
+		assert!(pager.finish_send(&stale_send));
+		pager
+			.open(entity("conversation-cache-c"))
+			.expect("replacement view identity is available");
+		pager.lookup_sent_request(&stale_send);
+
+		let replaced = pager.snapshot();
+
+		assert_eq!(replaced.conversation_id, Some(entity("conversation-cache-c")));
+		assert!(replaced.visible.is_none());
+		assert_eq!(replaced.visible_source, None);
+		assert_eq!(replaced.cursor, HistoryCursorObservation::Unknown);
+		assert_eq!(
+			replaced.last_stale_cancellation,
+			Some(HistoryStaleCancellation {
+				request_sequence: stale_dispatch.request_sequence,
+				reason: HistoryStaleReason::ConversationChanged,
+			})
+		);
+	}
+
+	#[test]
 	fn retry_reissues_only_the_exact_retryable_request() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let first = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1057,7 +1878,7 @@ mod tests {
 
 	#[test]
 	fn cancel_makes_the_in_flight_request_stale_and_closes_the_view() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let dispatch = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1086,7 +1907,7 @@ mod tests {
 
 	#[test]
 	fn empty_page_is_visible_without_proving_history_completion() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let dispatch = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1110,7 +1931,7 @@ mod tests {
 
 	#[test]
 	fn navigation_cancels_the_exact_prefetch_and_ignores_its_late_result() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let initial = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1165,7 +1986,7 @@ mod tests {
 
 	#[test]
 	fn self_referential_continuation_closes_without_reissuing_the_cursor() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let head = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1205,7 +2026,7 @@ mod tests {
 
 	#[test]
 	fn continuation_to_a_retained_page_closes_without_creating_a_cycle() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let head = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1259,7 +2080,7 @@ mod tests {
 
 	#[test]
 	fn session_replacement_discards_visible_and_retained_fresh_topology() {
-		let (pager, server_id) = open_pager();
+		let (_temporary, pager, server_id) = open_pager();
 		let initial = pager
 			.try_take_dispatch(SESSION_GENERATION, &server_id)
 			.expect("initial request is ready");
@@ -1325,7 +2146,7 @@ mod tests {
 
 	#[test]
 	fn server_replacement_rejects_late_prefetch_until_matching_head_upgrade() {
-		let (pager, old_server) = open_pager();
+		let (_temporary, pager, old_server) = open_pager();
 		let initial = pager
 			.try_take_dispatch(SESSION_GENERATION, &old_server)
 			.expect("initial request is ready");

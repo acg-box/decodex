@@ -8,11 +8,14 @@ use gpui::{
 	rgb,
 };
 
-use decodex_protocol::ClientFailure;
+use decodex_protocol::{AppServerCapability, ClientFailure, DoctorComponent, DoctorStatus};
 
-use crate::client_lifecycle::{
-	ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation, QuarantineReason,
-	QuarantineRecovery,
+use crate::{
+	client_lifecycle::{
+		ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation,
+		QuarantineReason, QuarantineRecovery,
+	},
+	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 };
 
 const SIDEBAR_WIDTH: f32 = 224.0;
@@ -20,9 +23,9 @@ const HEADER_HEIGHT: f32 = 64.0;
 const STATUS_HEIGHT: f32 = 72.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
 
-actions!(decodex_shell, [FocusNext, FocusPrevious, ActivateDestination]);
+actions!(decodex_shell, [FocusNext, FocusPrevious, ActivateDestination, RefreshHealth]);
 
-/// Stable shell destinations. Product behavior belongs to later issues.
+/// Stable shell destinations. Each live destination remains issue-owned.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum Destination {
 	Advisor,
@@ -31,7 +34,7 @@ pub(crate) enum Destination {
 	Runs,
 	Automations,
 	Accounts,
-	System,
+	Health,
 }
 
 impl Destination {
@@ -42,7 +45,7 @@ impl Destination {
 		Self::Runs,
 		Self::Automations,
 		Self::Accounts,
-		Self::System,
+		Self::Health,
 	];
 
 	pub(crate) const fn label(self) -> &'static str {
@@ -53,8 +56,12 @@ impl Destination {
 			Self::Runs => "Runs",
 			Self::Automations => "Automations",
 			Self::Accounts => "Accounts",
-			Self::System => "System",
+			Self::Health => "Health",
 		}
+	}
+
+	const fn is_live(self) -> bool {
+		matches!(self, Self::Health)
 	}
 
 	const fn description(self) -> &'static str {
@@ -65,7 +72,7 @@ impl Destination {
 			Self::Runs => "Managed run activity will appear here.",
 			Self::Automations => "Automation operations will appear here.",
 			Self::Accounts => "Account readiness will appear here.",
-			Self::System => "System health and diagnostics will appear here.",
+			Self::Health => "Health",
 		}
 	}
 }
@@ -204,8 +211,10 @@ pub(crate) fn bind_keys(cx: &mut App) {
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
-		KeyBinding::new("enter", ActivateDestination, None),
-		KeyBinding::new("space", ActivateDestination, None),
+		KeyBinding::new("enter", ActivateDestination, Some("Destination")),
+		KeyBinding::new("space", ActivateDestination, Some("Destination")),
+		KeyBinding::new("enter", RefreshHealth, Some("HealthRefresh")),
+		KeyBinding::new("space", RefreshHealth, Some("HealthRefresh")),
 	]);
 }
 
@@ -215,6 +224,9 @@ pub(crate) struct Shell {
 	connection: ConnectionView,
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
+	refresh_focus: FocusHandle,
+	health_query: HealthQuery,
+	health: HealthSnapshot,
 }
 
 impl Shell {
@@ -228,6 +240,10 @@ impl Shell {
 			.enumerate()
 			.map(|(index, _)| cx.focus_handle().tab_index(index as isize).tab_stop(true))
 			.collect::<Vec<_>>();
+		let refresh_focus =
+			cx.focus_handle().tab_index(Destination::ALL.len() as isize).tab_stop(true);
+		let health_query = HealthQuery::production();
+		let health = health_query.snapshot();
 		window.focus(&destination_focus[0], cx);
 
 		Self {
@@ -235,6 +251,9 @@ impl Shell {
 			connection,
 			root_focus: cx.focus_handle(),
 			destination_focus,
+			refresh_focus,
+			health_query,
+			health,
 		}
 	}
 
@@ -255,9 +274,44 @@ impl Shell {
 		if let Some(index) =
 			self.destination_focus.iter().position(|handle| handle.is_focused(window))
 		{
-			self.selected = Destination::ALL[index];
+			self.select_destination(Destination::ALL[index], cx);
+		}
+	}
+
+	fn select_destination(&mut self, destination: Destination, cx: &mut Context<Self>) {
+		if self.selected == destination {
+			return;
+		}
+		if self.selected == Destination::Health {
+			self.health_query.deactivate();
+		}
+
+		self.selected = destination;
+		if destination == Destination::Health {
+			self.health_query.activate();
+		}
+		self.health = self.health_query.snapshot();
+		cx.notify();
+	}
+
+	fn refresh_health(&mut self, _: &RefreshHealth, _: &mut Window, cx: &mut Context<Self>) {
+		self.request_health_refresh(cx);
+	}
+
+	fn request_health_refresh(&mut self, cx: &mut Context<Self>) {
+		if self.health_query.refresh() {
+			self.health = self.health_query.snapshot();
 			cx.notify();
 		}
+	}
+
+	fn bind_health_query(&mut self, health_query: HealthQuery, cx: &mut Context<Self>) {
+		self.health_query = health_query;
+		if self.selected == Destination::Health {
+			self.health_query.activate();
+		}
+		self.health = self.health_query.snapshot();
+		cx.notify();
 	}
 }
 
@@ -347,6 +401,10 @@ pub(crate) fn retain_lifecycle(
 	let cancellation = lifecycle.cancellation();
 	let views = lifecycle.observe_views();
 	let initial_view = lifecycle.view();
+	let shell = window.entity(cx).expect("the production shell window remains open");
+	let health_query = lifecycle.health_query();
+	shell.update(cx, |shell, cx| shell.bind_health_query(health_query, cx));
+	let shell = shell.downgrade();
 	let background = cx.background_executor().spawn(async move {
 		let runtime = tokio::runtime::Builder::new_current_thread()
 			.enable_all()
@@ -355,7 +413,6 @@ pub(crate) fn retain_lifecycle(
 
 		runtime.block_on(lifecycle.run())
 	});
-	let shell = window.entity(cx).expect("the production shell window remains open").downgrade();
 	retain_lifecycle_task(
 		window.window_id(),
 		shell,
@@ -411,6 +468,14 @@ fn publish_views(
 			cx.notify();
 		});
 	}
+	let _ = shell.update(cx, |shell, cx| {
+		let health = shell.health_query.snapshot();
+
+		if health != shell.health {
+			shell.health = health;
+			cx.notify();
+		}
+	});
 }
 
 fn navigation_item(
@@ -426,6 +491,7 @@ fn navigation_item(
 		.role(Role::Tab)
 		.aria_label(destination.label())
 		.aria_selected(is_selected)
+		.key_context("Destination")
 		.track_focus(&focus)
 		.on_action(cx.listener(Shell::focus_next))
 		.on_action(cx.listener(Shell::focus_previous))
@@ -441,17 +507,331 @@ fn navigation_item(
 		.border_1()
 		.border_color(if focus.is_focused(window) { rgb(0x60a5fa) } else { rgb(0x121a2a) })
 		.on_click(cx.listener(move |shell, _, _, cx| {
-			shell.selected = destination;
-			cx.notify();
+			shell.select_destination(destination, cx);
 		}))
 		.child(destination.label())
+		.into_any_element()
+}
+
+struct RefreshTooltip;
+
+impl Render for RefreshTooltip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_2()
+			.py_1()
+			.rounded_sm()
+			.bg(rgb(0x25324a))
+			.text_sm()
+			.text_color(rgb(0xffffff))
+			.child("Refresh health")
+	}
+}
+
+#[derive(Clone, Copy)]
+struct HealthPresentation {
+	label: &'static str,
+	detail: &'static str,
+	color: u32,
+}
+
+fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
+	match snapshot.load {
+		HealthLoadState::NeverRequested => HealthPresentation {
+			label: "Not requested",
+			detail: "No health report is available.",
+			color: 0x64748b,
+		},
+		HealthLoadState::Loading => HealthPresentation {
+			label: "Loading",
+			detail: if snapshot.report.is_some() {
+				"Refreshing the retained report."
+			} else {
+				"Requesting the current report."
+			},
+			color: 0x60a5fa,
+		},
+		HealthLoadState::Ready => HealthPresentation {
+			label: "Current",
+			detail: "The bounded health report is current.",
+			color: 0x22c55e,
+		},
+		HealthLoadState::Offline => HealthPresentation {
+			label: "Offline",
+			detail: "Health is unavailable while the daemon is offline.",
+			color: 0xf97316,
+		},
+		HealthLoadState::Stale => HealthPresentation {
+			label: "Stale",
+			detail: "The retained report belongs to an earlier connection.",
+			color: 0xf59e0b,
+		},
+		HealthLoadState::Refused => HealthPresentation {
+			label: "Response refused",
+			detail: "The retained report was not replaced.",
+			color: 0xef4444,
+		},
+	}
+}
+
+fn component_label(component: DoctorComponent) -> &'static str {
+	match component {
+		DoctorComponent::Configuration => "Configuration",
+		DoctorComponent::Database => "Product database",
+		DoctorComponent::Protocol => "Protocol",
+		DoctorComponent::ProtocolVersion => "Protocol version",
+		DoctorComponent::ServerIdentity => "Server identity",
+		DoctorComponent::SharedCodexHome => "Shared Codex home",
+		DoctorComponent::AppServerCapability(capability) => match capability {
+			AppServerCapability::Initialize => "App server: initialize",
+			AppServerCapability::AccountRead => "App server: account read",
+			AppServerCapability::ThreadList => "App server: thread list",
+			AppServerCapability::ThreadRead => "App server: thread read",
+			AppServerCapability::ThreadArchive => "App server: thread archive",
+			AppServerCapability::PaginatedHistory => "App server: paginated history",
+			AppServerCapability::NativeCollaboration => "App server: native collaboration",
+			AppServerCapability::ThreadSearch => "App server: thread search",
+		},
+		DoctorComponent::ServerRepositories => "Server repositories",
+		DoctorComponent::BlobIntegrity => "Blob integrity",
+		DoctorComponent::CredentialVault => "Credential vault",
+		DoctorComponent::PluginReadiness => "Plugin readiness",
+	}
+}
+
+fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
+	match status {
+		Some(DoctorStatus::Ready) =>
+			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e },
+		Some(DoctorStatus::Unavailable(_)) =>
+			HealthPresentation { label: "Unavailable", detail: "", color: 0xef4444 },
+		Some(DoctorStatus::Unknown(_)) =>
+			HealthPresentation { label: "Unknown", detail: "", color: 0xf59e0b },
+		None => HealthPresentation { label: "No report", detail: "", color: 0x64748b },
+	}
+}
+
+fn health_component_row(
+	index: usize,
+	component: DoctorComponent,
+	status: Option<DoctorStatus>,
+) -> AnyElement {
+	let label = component_label(component);
+	let presentation = component_presentation(status);
+
+	div()
+		.id(("health-component", index))
+		.role(Role::ListItem)
+		.aria_label(format!("{label}: {}", presentation.label))
+		.h(px(44.0))
+		.min_h(px(44.0))
+		.flex()
+		.items_center()
+		.justify_between()
+		.gap_4()
+		.border_b_1()
+		.border_color(rgb(0x263249))
+		.child(div().min_w_0().child(label))
+		.child(
+			div()
+				.w(px(128.0))
+				.min_w(px(128.0))
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					div().size(px(9.0)).min_w(px(9.0)).rounded_full().bg(rgb(presentation.color)),
+				)
+				.child(presentation.label),
+		)
+		.into_any_element()
+}
+
+fn refresh_control(
+	focus: FocusHandle,
+	can_refresh: bool,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+		.id("health-refresh")
+		.role(Role::Button)
+		.aria_label("Refresh health")
+		.tooltip(|_, cx| cx.new(|_| RefreshTooltip).into())
+		.size(px(36.0))
+		.min_w(px(36.0))
+		.min_h(px(36.0))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_md()
+		.border_1()
+		.border_color(if can_refresh && focus.is_focused(window) {
+			rgb(0x60a5fa)
+		} else {
+			rgb(0x3b4962)
+		})
+		.bg(if can_refresh { rgb(0x1b263b) } else { rgb(0x121a2a) })
+		.text_color(if can_refresh { rgb(0xe5e7eb) } else { rgb(0x64748b) })
+		.when(can_refresh, |element| {
+			element
+				.key_context("HealthRefresh")
+				.track_focus(&focus)
+				.on_action(cx.listener(Shell::focus_next))
+				.on_action(cx.listener(Shell::focus_previous))
+				.on_action(cx.listener(Shell::refresh_health))
+				.on_click(cx.listener(|shell, _, _, cx| shell.request_health_refresh(cx)))
+				.cursor_pointer()
+				.hover(|element| element.bg(rgb(0x25324a)))
+		})
+		.text_xl()
+		.child("↻")
+		.into_any_element()
+}
+
+fn destination_header(
+	selected: Destination,
+	health: &HealthSnapshot,
+	refresh_focus: FocusHandle,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let title = if selected == Destination::Health {
+		div()
+			.id("health-heading")
+			.role(Role::Heading)
+			.aria_level(1)
+			.aria_label("Health workspace")
+			.child(selected.label())
+			.into_any_element()
+	} else {
+		div().child(selected.label()).into_any_element()
+	};
+	let header = div()
+		.h(px(HEADER_HEIGHT))
+		.min_h(px(HEADER_HEIGHT))
+		.px_6()
+		.flex()
+		.items_center()
+		.justify_between()
+		.border_b_1()
+		.border_color(rgb(0x263249))
+		.text_xl()
+		.child(title);
+
+	if selected == Destination::Health {
+		header
+			.child(refresh_control(refresh_focus, health.can_refresh, window, cx))
+			.into_any_element()
+	} else {
+		header.into_any_element()
+	}
+}
+
+fn placeholder_content(selected: Destination) -> AnyElement {
+	div()
+		.flex_1()
+		.min_h_0()
+		.p_6()
+		.flex()
+		.flex_col()
+		.gap_3()
+		.child(
+			div()
+				.id("destination-heading")
+				.role(Role::Heading)
+				.aria_level(1)
+				.aria_label(format!("{} workspace", selected.label()))
+				.text_2xl()
+				.child(selected.label()),
+		)
+		.child(selected.description())
+		.child(
+			"This operational destination is intentionally bounded until its owning feature gate lands.",
+		)
+		.into_any_element()
+}
+
+fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
+	let presentation = health_presentation(snapshot);
+	let rows = DoctorComponent::ALL.into_iter().enumerate().map(|(index, component)| {
+		let status = snapshot
+			.report
+			.as_ref()
+			.and_then(|report| report.check(component))
+			.map(|check| check.status);
+
+		health_component_row(index, component, status)
+	});
+
+	div()
+		.id("health-scroll-viewport")
+		.flex_1()
+		.min_h_0()
+		.overflow_y_scroll()
+		.px_6()
+		.py_4()
+		.child(
+			div()
+				.id("health-query-status")
+				.role(Role::Status)
+				.aria_label(format!("Health report: {}", presentation.label))
+				.h(px(52.0))
+				.min_h(px(52.0))
+				.flex()
+				.items_center()
+				.gap_3()
+				.child(
+					div().size(px(10.0)).min_w(px(10.0)).rounded_full().bg(rgb(presentation.color)),
+				)
+				.child(div().w(px(144.0)).min_w(px(144.0)).child(presentation.label))
+				.child(div().min_w_0().text_color(rgb(0xa8b3c7)).child(presentation.detail)),
+		)
+		.child(
+			div()
+				.id("health-components")
+				.role(Role::List)
+				.aria_label("Health components")
+				.border_t_1()
+				.border_color(rgb(0x263249))
+				.children(rows),
+		)
+		.into_any_element()
+}
+
+fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
+	div()
+		.id("connection-status")
+		.role(Role::Status)
+		.aria_label(format!("Connection: {}", presentation.label))
+		.h(px(STATUS_HEIGHT))
+		.min_h(px(STATUS_HEIGHT))
+		.px_6()
+		.flex()
+		.items_center()
+		.gap_3()
+		.border_t_1()
+		.border_color(rgb(0x263249))
+		.child(div().w(px(10.0)).h(px(10.0)).rounded_full().bg(rgb(presentation.color)))
+		.child(div().w(px(184.0)).min_w(px(184.0)).child(presentation.label))
+		.child(div().min_w_0().child(presentation.detail))
 		.into_any_element()
 }
 
 fn destination_content(
 	selected: Destination,
 	presentation: ConnectionPresentation,
-) -> impl IntoElement {
+	health: &HealthSnapshot,
+	refresh_focus: FocusHandle,
+	window: &Window,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let content = if selected.is_live() {
+		health_content(health)
+	} else {
+		placeholder_content(selected)
+	};
+
 	div()
 		.id("destination-content")
 		.role(Role::Main)
@@ -461,57 +841,10 @@ fn destination_content(
 		.h_full()
 		.flex()
 		.flex_col()
-		.child(
-			div()
-				.h(px(HEADER_HEIGHT))
-				.min_h(px(HEADER_HEIGHT))
-				.px_6()
-				.flex()
-				.items_center()
-				.border_b_1()
-				.border_color(rgb(0x263249))
-				.text_xl()
-				.child(selected.label()),
-		)
-		.child(
-			div()
-				.flex_1()
-				.min_h_0()
-				.p_6()
-				.flex()
-				.flex_col()
-				.gap_3()
-				.child(
-					div()
-						.id("destination-heading")
-						.role(Role::Heading)
-						.aria_level(1)
-						.aria_label(format!("{} workspace", selected.label()))
-						.text_2xl()
-						.child(selected.label()),
-				)
-				.child(selected.description())
-				.child(
-					"This operational destination is intentionally bounded until its owning feature gate lands.",
-				),
-		)
-		.child(
-			div()
-				.id("connection-status")
-				.role(Role::Status)
-				.aria_label(format!("Connection: {}", presentation.label))
-				.h(px(STATUS_HEIGHT))
-				.min_h(px(STATUS_HEIGHT))
-				.px_6()
-				.flex()
-				.items_center()
-				.gap_3()
-				.border_t_1()
-				.border_color(rgb(0x263249))
-				.child(div().w(px(10.0)).h(px(10.0)).rounded_full().bg(rgb(presentation.color)))
-				.child(div().w(px(184.0)).min_w(px(184.0)).child(presentation.label))
-				.child(div().min_w_0().child(presentation.detail)),
-		)
+		.child(destination_header(selected, health, refresh_focus, window, cx))
+		.child(content)
+		.child(connection_status(presentation))
+		.into_any_element()
 }
 
 impl Render for Shell {
@@ -560,7 +893,14 @@ impl Render for Shell {
 					)
 					.children(navigation),
 			)
-			.child(destination_content(selected, presentation))
+			.child(destination_content(
+				selected,
+				presentation,
+				&self.health,
+				self.refresh_focus.clone(),
+				window,
+				cx,
+			))
 	}
 }
 
@@ -577,10 +917,18 @@ mod tests {
 	}
 
 	#[test]
-	fn destinations_are_exact_stable_placeholders() {
+	fn destinations_have_exact_labels_and_live_classification() {
 		assert_eq!(
-			Destination::ALL.map(Destination::label),
-			["Advisor", "Projects", "Quick Tasks", "Runs", "Automations", "Accounts", "System"]
+			Destination::ALL.map(|destination| (destination.label(), destination.is_live())),
+			[
+				("Advisor", false),
+				("Projects", false),
+				("Quick Tasks", false),
+				("Runs", false),
+				("Automations", false),
+				("Accounts", false),
+				("Health", true),
+			]
 		);
 	}
 

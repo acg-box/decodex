@@ -24,7 +24,8 @@ use crate::{
 	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
 	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
 	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal, WorkItemBoardPageSize,
+	WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -495,8 +496,8 @@ impl ResetCardClient {
 		payload: QueryPayload,
 	) -> Result<QueryResultPayload, ClientFailure> {
 		let mut socket = self.connect().await?;
-		let query_id = QueryId::new(query_identity)
-			.expect("fixed reset-card query identity is bounded and nonempty");
+		let query_id =
+			QueryId::new(query_identity).expect("fixed query identity is bounded and nonempty");
 
 		self.send(
 			&mut socket,
@@ -735,7 +736,7 @@ impl ResetCardClient {
 		S: Sink<Message, Error = tokio_tungstenite::tungstenite::Error> + Unpin,
 	{
 		let encoded = serde_json::to_string(&message)
-			.expect("typed bounded reset-card message serialization cannot fail");
+			.expect("typed bounded client message serialization cannot fail");
 
 		time::timeout(self.timeout, socket.send(Message::Text(encoded.into())))
 			.await
@@ -788,6 +789,63 @@ impl ResetCardClient {
 			ClientFailure::ServerIdentityMismatch
 		} else {
 			map_refusal(refusal.refusal)
+		}
+	}
+}
+
+/// Read-only V2.0 client for bounded canonical WorkItem board pages.
+pub struct WorkItemBoardClient {
+	transport: ResetCardClient,
+}
+impl WorkItemBoardClient {
+	/// Build a board client over one selected pinned server profile.
+	pub const fn new(profile: ClientProfile) -> Self {
+		Self { transport: ResetCardClient::new(profile) }
+	}
+
+	/// Selected client profile.
+	pub const fn profile(&self) -> &ClientProfile {
+		self.transport.profile()
+	}
+
+	/// Read one exact Project/filter/cursor page without mutation or execution authority.
+	pub async fn page(
+		&self,
+		project_id: WorkItemBoardProjectId,
+		state: Option<WorkItemState>,
+		after: Option<WorkItemBoardWorkItemId>,
+		page_size: WorkItemBoardPageSize,
+	) -> Result<WorkItemBoardResult, ClientFailure> {
+		let expected_project_id = project_id.clone();
+		let expected_after = after.clone();
+		let payload = time::timeout(
+			CLIENT_TIMEOUT,
+			self.transport.query_inner(
+				"decodex-work-item-board-page",
+				QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+
+		match payload {
+			QueryResultPayload::WorkItemBoard(result) => {
+				if matches!(
+					&result,
+					WorkItemBoardResult::Page(page)
+						if !page.matches_request(
+							&expected_project_id,
+							state,
+							expected_after.as_ref(),
+							page_size,
+						)
+				) {
+					Err(ClientFailure::ProtocolMalformed)
+				} else {
+					Ok(result)
+				}
+			},
+			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
 }
@@ -1379,7 +1437,8 @@ mod tests {
 		ReconnectMode, Refusal, RefusalEnvelope, ResetCardClient, ResetCardConsumeResponse,
 		ResetCardDescriptorDto, ResetCardOperationResult, ResultPayload, RetainedSessionFailure,
 		ServerId, ServerMessage, ServerWelcome, SnapshotEnvelope, SupportedVersions,
-		VersionRefusal, WireText,
+		VersionRefusal, WireText, WorkItemBoardClient, WorkItemBoardPage, WorkItemBoardPageSize,
+		WorkItemBoardProjectId, WorkItemBoardResult, WorkItemState,
 	};
 	use decodex_core::{DecodexRoot, LocalTrustPolicy, ServerIdentity};
 
@@ -1643,6 +1702,39 @@ max_entry_bytes = 0
 			SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 0 },
 		);
 		assert!(WireText::new("bounded").is_ok());
+	}
+
+	#[tokio::test]
+	async fn work_item_board_client_rejects_an_exact_page_echo_mismatch() {
+		let requested_project =
+			WorkItemBoardProjectId::new("10000000-0000-4000-8000-000000000001").unwrap();
+		let echoed_project =
+			WorkItemBoardProjectId::new("10000000-0000-4000-8000-000000000002").unwrap();
+		let page_size = WorkItemBoardPageSize::new(2).unwrap();
+		let page = WorkItemBoardPage::new(
+			echoed_project,
+			Some(WorkItemState::Planned),
+			None,
+			page_size,
+			Vec::new(),
+			None,
+		)
+		.expect("mismatched echo must remain internally valid");
+		let response = typed(ServerMessage::QueryResult(QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: ServerId::new(SERVER_ID).unwrap(),
+			query_id: QueryId::new("decodex-work-item-board-page").unwrap(),
+			payload: QueryResultPayload::WorkItemBoard(WorkItemBoardResult::Page(page)),
+		}));
+		let (profile, task, _temp) = fixture(initial(SERVER_ID), vec![response]).await;
+
+		assert_eq!(
+			WorkItemBoardClient::new(profile)
+				.page(requested_project, Some(WorkItemState::Planned), None, page_size,)
+				.await,
+			Err(ClientFailure::ProtocolMalformed),
+		);
+		task.await.expect("test server must settle");
 	}
 
 	#[tokio::test]

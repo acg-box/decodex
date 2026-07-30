@@ -1,9 +1,10 @@
 //! Typed, fail-closed Codex app-server adapter foundation.
 //!
 //! This crate owns protocol decoding, capability evidence, and redaction. Private
-//! process supervision belongs to the runtime composition owner. This crate deliberately
-//! has no child-launch or production turn-dispatch API while the XY-1304 live-routing gate
-//! remains failed.
+//! process supervision belongs to the runtime composition owner. This crate defines a pure
+//! ordinary Quick Task contract but deliberately has no child-launch or production
+//! turn-dispatch API. XY-1304 governs only later automatic cross-account fallback and
+//! all-depleted wake.
 //!
 //! Product runner capacity and PostgreSQL authorization are deliberately absent:
 //!
@@ -20,6 +21,7 @@ mod capability;
 mod dispatch;
 mod event;
 mod experiment;
+mod quick_task;
 mod reset_card;
 
 pub use self::{
@@ -28,11 +30,16 @@ pub use self::{
 		DegradedReason, LiveMethodOutcome, MethodObservation, NegotiationError, UnavailableReason,
 		UnsupportedReason,
 	},
-	dispatch::{DispatchDenied, DispatchGate, DispatchOperation, LIVE_ROUTING_GATE},
+	dispatch::{
+		AUTOMATIC_FALLBACK_WAKE_GATE, DispatchDenied, DispatchGate, DispatchOperation,
+		DispatchPath, LIVE_ROUTING_GATE,
+	},
 	event::{
 		CollaborationActivityKind, CollaborationTool, CollaborationToolCall,
-		CollaborationToolStatus, EventDecodeError, NormalizedEvent, NormalizedItemKind, OpaqueId,
-		RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
+		CollaborationToolStatus, EventDecodeError, MAX_QUICK_TASK_MESSAGE_DELTA_BYTES,
+		NormalizedEvent, NormalizedItemKind, OpaqueId, QuickTaskMessageDelta,
+		QuickTaskMessageDeltaError, RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
+		project_quick_task_message_delta,
 	},
 	experiment::{
 		ExactRpcRequestFact, ExactRpcResponseFact, PositiveExperimentFact,
@@ -47,6 +54,20 @@ pub use self::{
 		MAX_THREAD_SEARCH_TERM_BYTES, MAX_THREAD_TITLE_BYTES, ThreadArchivedFilter,
 		ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
 	},
+	quick_task::{
+		ExactTurnId, MAX_EXACT_TURN_ID_BYTES, MAX_QUICK_TASK_INPUT_BYTES,
+		MAX_QUICK_TASK_INPUT_ITEMS, MAX_QUICK_TASK_INSTRUCTIONS_BYTES, MAX_QUICK_TASK_MODEL_BYTES,
+		MAX_QUICK_TASK_REASONING_EFFORT_BYTES, MAX_QUICK_TASK_RESPONSE_BYTES,
+		MAX_QUICK_TASK_TEXT_BYTES, QuickTaskContractError, QuickTaskInstructions, QuickTaskMethod,
+		QuickTaskModel, QuickTaskNotification, QuickTaskReasoningEffort, QuickTaskText,
+		QuickTaskThreadArchiveRequest, QuickTaskThreadArchiveResponse,
+		QuickTaskThreadResumeRequest, QuickTaskThreadResumeResponse, QuickTaskThreadStartRequest,
+		QuickTaskThreadStartResponse, QuickTaskTurnInput, QuickTaskTurnInterruptRequest,
+		QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest, QuickTaskTurnStartResponse,
+		QuickTaskTurnStatus, decode_quick_task_thread_archive_response,
+		decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
+		decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
+	},
 	reset_card::{
 		AccountRateLimitObservation, AvailableResetCardObservation, ExactResetCreditId,
 		MAX_EXACT_RESET_CREDIT_ID_BYTES, MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES,
@@ -57,16 +78,15 @@ pub use self::{
 		decode_reset_card_inventory,
 	},
 	schema::{
-		ACCEPTED_SCHEMA_RECEIPT, REQUIRED_NOTIFICATION_METHODS, REQUIRED_REQUEST_METHODS,
-		SchemaContract, SchemaMarker,
+		ACCEPTED_SCHEMA_RECEIPT, QuickTaskSchemaError, QuickTaskSchemaRequirement,
+		REQUIRED_NOTIFICATION_METHODS, REQUIRED_REQUEST_METHODS, SchemaContract, SchemaMarker,
 	},
 };
 
 use decodex_core::{Availability, ConversationRuntime};
 
-/// Live conversation execution remains unavailable until the separate gate passes.
-pub const LIVE_DISPATCH_UNAVAILABLE: &str =
-	"Codex live dispatch is disabled while the XY-1304 gate is failed";
+/// Production conversation I/O remains unavailable because no composition root owns it.
+pub const LIVE_DISPATCH_UNAVAILABLE: &str = "Codex production app-server I/O is not composed";
 /// Stable composition-root reason retained while live execution is unavailable.
 pub const NOT_IMPLEMENTED: &str = LIVE_DISPATCH_UNAVAILABLE;
 
@@ -98,7 +118,7 @@ impl CodexAdapter {
 
 	/// Return the hard live-dispatch guard.
 	pub const fn dispatch_gate(self) -> DispatchGate {
-		DispatchGate::failed_xy_1304()
+		DispatchGate::production_io_unavailable()
 	}
 }
 

@@ -12,6 +12,8 @@ use serde::{
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
 
+use crate::quick_task::{QuickTaskMethod, QuickTaskNotification};
+
 /// Accepted XY-1262 schema receipt used by the marker golden.
 pub const ACCEPTED_SCHEMA_RECEIPT: &str = "decodex/vnext-codex-schema-receipt/1";
 /// Request methods required by the accepted schema receipt.
@@ -105,9 +107,32 @@ impl SchemaMarker {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SchemaContract {
 	request_methods: BTreeSet<String>,
+	notification_methods: BTreeSet<String>,
 	paginated_history: bool,
 	native_collaboration: bool,
 }
+
+/// One missing closed schema requirement for ordinary Quick Task.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuickTaskSchemaRequirement {
+	/// Required client request.
+	Request(QuickTaskMethod),
+	/// Required server notification.
+	Notification(QuickTaskNotification),
+}
+
+/// Bounded schema gap that contains no generated schema or raw protocol text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuickTaskSchemaError {
+	missing: Vec<QuickTaskSchemaRequirement>,
+}
+impl QuickTaskSchemaError {
+	/// Return missing requirements in fixed contract order.
+	pub fn missing(&self) -> &[QuickTaskSchemaRequirement] {
+		&self.missing
+	}
+}
+
 impl SchemaContract {
 	/// Validate all required markers before any process or side effect is started.
 	pub fn validate(marker: SchemaMarker) -> Result<Self, Vec<String>> {
@@ -141,6 +166,7 @@ impl SchemaContract {
 		if missing.is_empty() {
 			Ok(Self {
 				request_methods: marker.request_methods,
+				notification_methods: marker.notification_methods,
 				paginated_history: marker.paginated_history,
 				native_collaboration: true,
 			})
@@ -169,7 +195,12 @@ impl SchemaContract {
 		}
 
 		if missing.is_empty() {
-			Ok(Self { request_methods, paginated_history, native_collaboration })
+			Ok(Self {
+				request_methods,
+				notification_methods,
+				paginated_history,
+				native_collaboration,
+			})
 		} else {
 			Err(missing)
 		}
@@ -178,6 +209,29 @@ impl SchemaContract {
 	/// Return whether the schema advertises an exact request method.
 	pub fn advertises_request(&self, method: &str) -> bool {
 		self.request_methods.contains(method)
+	}
+
+	/// Return whether the schema advertises an exact notification method.
+	pub fn advertises_notification(&self, method: &str) -> bool {
+		self.notification_methods.contains(method)
+	}
+
+	/// Check the complete ordinary Quick Task schema without granting dispatch authority.
+	pub fn check_quick_task_contract(&self) -> Result<(), QuickTaskSchemaError> {
+		let mut missing = Vec::new();
+
+		for method in QuickTaskMethod::ALL {
+			if !self.advertises_request(method.as_str()) {
+				missing.push(QuickTaskSchemaRequirement::Request(method));
+			}
+		}
+		for notification in QuickTaskNotification::ALL {
+			if !self.advertises_notification(notification.as_str()) {
+				missing.push(QuickTaskSchemaRequirement::Notification(notification));
+			}
+		}
+
+		if missing.is_empty() { Ok(()) } else { Err(QuickTaskSchemaError { missing }) }
 	}
 
 	/// Return whether an accepted collaboration marker is present.
@@ -764,20 +818,47 @@ mod tests {
 		os::unix::net::UnixListener,
 	};
 
-	use crate::schema::{REQUIRED_REQUEST_METHODS, SchemaContract, SchemaMarker};
+	use crate::{
+		quick_task::{QuickTaskMethod, QuickTaskNotification},
+		schema::{ACCEPTED_SCHEMA_RECEIPT, REQUIRED_REQUEST_METHODS, SchemaContract, SchemaMarker},
+	};
 
 	#[test]
 	fn accepted_marker_golden_satisfies_the_xy_1262_contract() {
 		let marker = SchemaMarker::accepted();
+
+		assert_eq!(marker.receipt, ACCEPTED_SCHEMA_RECEIPT);
+		assert_eq!(marker.canonical_digests().len(), 3);
+		for (file, digest) in [
+			(
+				"ClientRequest.json",
+				"ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
+			),
+			(
+				"ServerNotification.json",
+				"189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
+			),
+			(
+				"codex_app_server_protocol.v2.schemas.json",
+				"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
+			),
+		] {
+			assert_eq!(marker.canonical_digests().get(file).map(String::as_str), Some(digest));
+		}
+
 		let contract = SchemaContract::validate(marker).unwrap();
 
 		for method in REQUIRED_REQUEST_METHODS {
 			assert!(contract.advertises_request(method));
 		}
-		for method in ["thread/archive", "thread/search"] {
-			assert!(contract.advertises_request(method));
+		for method in QuickTaskMethod::ALL {
+			assert!(contract.advertises_request(method.as_str()));
+		}
+		for notification in QuickTaskNotification::ALL {
+			assert!(contract.advertises_notification(notification.as_str()));
 		}
 
+		assert_eq!(contract.check_quick_task_contract(), Ok(()));
 		assert!(contract.advertises_collaboration());
 		assert!(contract.advertises_paginated_history());
 	}

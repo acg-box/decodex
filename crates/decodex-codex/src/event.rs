@@ -1,8 +1,16 @@
+use std::fmt::{Debug, Formatter};
+
 use serde_json::Value;
 
-use crate::{ThreadId, protocol::MAX_APP_SERVER_FRAME_BYTES};
+use crate::{
+	ThreadId,
+	protocol::{MAX_APP_SERVER_FRAME_BYTES, MAX_EXACT_THREAD_ID_BYTES},
+	quick_task::{MAX_EXACT_TURN_ID_BYTES, QuickTaskNotification},
+};
 
 const MAX_COLLABORATION_RECEIVERS: usize = 64;
+/// Maximum UTF-8 bytes in one user-visible Quick Task message delta.
+pub const MAX_QUICK_TASK_MESSAGE_DELTA_BYTES: usize = 64 * 1_024;
 
 /// Opaque, bounded correlation identifier.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -146,6 +154,123 @@ pub enum NormalizedItemKind {
 	Tool,
 	/// Forward-compatible unknown item type.
 	Unknown,
+}
+
+/// Separate bounded user-visible projection for one ordinary Quick Task message delta.
+///
+/// This projection does not change the authority or redaction behavior of [`NormalizedEvent`].
+#[derive(Clone, Eq, PartialEq)]
+pub struct QuickTaskMessageDelta {
+	thread_id: ThreadId,
+	turn_id: OpaqueId,
+	item_id: OpaqueId,
+	text: String,
+}
+impl QuickTaskMessageDelta {
+	/// Opaque thread correlation.
+	pub fn thread_id(&self) -> &ThreadId {
+		&self.thread_id
+	}
+
+	/// Opaque turn correlation.
+	pub fn turn_id(&self) -> &OpaqueId {
+		&self.turn_id
+	}
+
+	/// Opaque message-item correlation.
+	pub fn item_id(&self) -> &OpaqueId {
+		&self.item_id
+	}
+
+	/// Exact bounded user-visible delta text.
+	pub fn text(&self) -> &str {
+		&self.text
+	}
+}
+impl Debug for QuickTaskMessageDelta {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("QuickTaskMessageDelta")
+			.field("thread_id", &self.thread_id)
+			.field("turn_id", &self.turn_id)
+			.field("item_id", &self.item_id)
+			.field("text", &"[REDACTED]")
+			.finish()
+	}
+}
+
+/// Stable user-visible projection error that never embeds app-server input.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum QuickTaskMessageDeltaError {
+	/// Input was not valid JSON.
+	InvalidJson,
+	/// The recognized delta lacked required typed fields or contained invalid text.
+	InvalidMessageDelta,
+	/// Input exceeded a mechanical frame or text bound.
+	LimitExceeded,
+}
+
+/// Project one bounded user-visible message delta and discard all other notifications.
+pub fn project_quick_task_message_delta(
+	bytes: &[u8],
+) -> Result<Option<QuickTaskMessageDelta>, QuickTaskMessageDeltaError> {
+	if bytes.len() > MAX_APP_SERVER_FRAME_BYTES {
+		return Err(QuickTaskMessageDeltaError::LimitExceeded);
+	}
+
+	let value: Value =
+		serde_json::from_slice(bytes).map_err(|_| QuickTaskMessageDeltaError::InvalidJson)?;
+	let Some(method) = value.get("method").and_then(Value::as_str) else {
+		return Err(QuickTaskMessageDeltaError::InvalidMessageDelta);
+	};
+
+	if method != QuickTaskNotification::AgentMessageDelta.as_str() {
+		return Ok(None);
+	}
+
+	let params = value.get("params").ok_or(QuickTaskMessageDeltaError::InvalidMessageDelta)?;
+	let thread_id = params
+		.get("threadId")
+		.and_then(Value::as_str)
+		.ok_or(QuickTaskMessageDeltaError::InvalidMessageDelta)?;
+	let turn_id = params
+		.get("turnId")
+		.and_then(Value::as_str)
+		.ok_or(QuickTaskMessageDeltaError::InvalidMessageDelta)?;
+	let item_id = params
+		.get("itemId")
+		.and_then(Value::as_str)
+		.ok_or(QuickTaskMessageDeltaError::InvalidMessageDelta)?;
+	let text = params
+		.get("delta")
+		.and_then(Value::as_str)
+		.ok_or(QuickTaskMessageDeltaError::InvalidMessageDelta)?;
+
+	if !valid_projection_id(thread_id, MAX_EXACT_THREAD_ID_BYTES)
+		|| !valid_projection_id(turn_id, MAX_EXACT_TURN_ID_BYTES)
+		|| !valid_projection_id(item_id, MAX_EXACT_TURN_ID_BYTES)
+	{
+		return Err(QuickTaskMessageDeltaError::InvalidMessageDelta);
+	}
+	if text.is_empty() || text.contains('\0') {
+		return Err(QuickTaskMessageDeltaError::InvalidMessageDelta);
+	}
+	if text.len() > MAX_QUICK_TASK_MESSAGE_DELTA_BYTES {
+		return Err(QuickTaskMessageDeltaError::LimitExceeded);
+	}
+
+	Ok(Some(QuickTaskMessageDelta {
+		thread_id: ThreadId::from_protocol(thread_id),
+		turn_id: OpaqueId::from_protocol(turn_id),
+		item_id: OpaqueId::from_protocol(item_id),
+		text: text.to_owned(),
+	}))
+}
+
+fn valid_projection_id(value: &str, maximum: usize) -> bool {
+	!value.is_empty()
+		&& value.len() <= maximum
+		&& !value.chars().any(|character| character.is_control())
 }
 
 /// Redacted event model exported to domain/runtime callers.
