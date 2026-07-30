@@ -1462,7 +1462,7 @@ fn create_file_at(parent: RawFd, name: &CStr) -> io::Result<File> {
 					| libc::O_NOFOLLOW
 					| libc::O_CLOEXEC
 					| libc::O_NONBLOCK,
-				PRIVATE_FILE_MODE,
+				PRIVATE_FILE_MODE as libc::c_uint,
 			)
 		};
 		if descriptor != -1 {
