@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import fcntl
 import json
 import os
@@ -118,6 +119,10 @@ SANDBOX_EVIDENCE_KEYS = {
 FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
 VALIDATION_TEMP_PREFIX = "dxv-"
 DARWIN_VALIDATION_TEMP_PARENT = Path("/private/tmp")
+CANDIDATE_OUTPUT_ENV = "DECODEX_VALIDATION_REPO_OUTPUT"
+CANDIDATE_OUTPUT_NAME_PATTERN = re.compile(
+    r"decodex-validation-[0-9a-f]{32}"
+)
 VALIDATION_DIAGNOSTIC_SCHEMA = (
     "decodex/codex-upstream-validation-diagnostic/2"
 )
@@ -2029,10 +2034,316 @@ def prepare_dependency_cache(
     )
 
 
+@dataclass(frozen=True)
+class PinnedCandidateOutput:
+    """Descriptor-pinned candidate-local validation output."""
+
+    path: Path
+    name: str
+    candidate_descriptor: int
+    target_descriptor: int
+    output_descriptor: int
+
+
+def _candidate_output_identity(
+    parent_descriptor: int,
+    name: str,
+    *,
+    failure_code: str,
+) -> tuple[int, int]:
+    try:
+        metadata = os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError(failure_code)
+    return metadata.st_dev, metadata.st_ino
+
+
+def _verify_pinned_directory(
+    parent_descriptor: int,
+    name: str,
+    descriptor: int,
+    *,
+    exact_mode: int | None,
+    failure_code: str,
+) -> None:
+    try:
+        pinned = os.fstat(descriptor)
+        current = os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    pinned_mode = stat.S_IMODE(pinned.st_mode)
+    current_mode = stat.S_IMODE(current.st_mode)
+    if (
+        not stat.S_ISDIR(pinned.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or pinned.st_uid != os.getuid()
+        or current.st_uid != os.getuid()
+        or pinned_mode & 0o022
+        or current_mode & 0o022
+        or (exact_mode is not None and pinned_mode != exact_mode)
+        or (exact_mode is not None and current_mode != exact_mode)
+        or (pinned.st_dev, pinned.st_ino)
+        != (current.st_dev, current.st_ino)
+    ):
+        raise AutopilotError(failure_code)
+
+
+def _verify_candidate_output_directory(
+    output: PinnedCandidateOutput,
+    *,
+    changed: bool,
+) -> None:
+    failure_code = (
+        "validation_candidate_output_changed"
+        if changed
+        else "validation_candidate_output_invalid"
+    )
+    _verify_pinned_directory(
+        output.candidate_descriptor,
+        "target",
+        output.target_descriptor,
+        exact_mode=None,
+        failure_code=failure_code,
+    )
+    _verify_pinned_directory(
+        output.target_descriptor,
+        output.name,
+        output.output_descriptor,
+        exact_mode=0o700,
+        failure_code=failure_code,
+    )
+
+
+def _verify_candidate_output_empty(
+    output: PinnedCandidateOutput,
+    *,
+    changed: bool,
+) -> None:
+    _verify_candidate_output_directory(output, changed=changed)
+    failure_code = (
+        "validation_candidate_output_changed"
+        if changed
+        else "validation_candidate_output_invalid"
+    )
+    try:
+        entries = os.listdir(output.output_descriptor)
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    if entries:
+        raise AutopilotError(failure_code)
+
+
+@contextmanager
+def pinned_candidate_output_directory(
+    worktree: Path,
+) -> Iterator[PinnedCandidateOutput]:
+    """Pin the only candidate-local directory writable during validation."""
+
+    candidate = worktree.resolve()
+    candidate_descriptor: int | None = None
+    target_descriptor: int | None = None
+    output_descriptor: int | None = None
+    output: PinnedCandidateOutput | None = None
+    output_created = False
+    output_identity: tuple[int, int] | None = None
+    output_name = f"decodex-validation-{secrets.token_hex(16)}"
+    try:
+        candidate_descriptor = os.open(
+            candidate,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        try:
+            os.mkdir(
+                "target",
+                mode=0o700,
+                dir_fd=candidate_descriptor,
+            )
+        except FileExistsError:
+            pass
+        target_descriptor = os.open(
+            "target",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=candidate_descriptor,
+        )
+        _verify_pinned_directory(
+            candidate_descriptor,
+            "target",
+            target_descriptor,
+            exact_mode=None,
+            failure_code="validation_candidate_output_invalid",
+        )
+        os.mkdir(
+            output_name,
+            mode=0o700,
+            dir_fd=target_descriptor,
+        )
+        output_created = True
+        output_identity = _candidate_output_identity(
+            target_descriptor,
+            output_name,
+            failure_code="validation_candidate_output_invalid",
+        )
+        output_descriptor = os.open(
+            output_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=target_descriptor,
+        )
+        output = PinnedCandidateOutput(
+            path=candidate / "target" / output_name,
+            name=output_name,
+            candidate_descriptor=candidate_descriptor,
+            target_descriptor=target_descriptor,
+            output_descriptor=output_descriptor,
+        )
+        _verify_candidate_output_empty(
+            output,
+            changed=False,
+        )
+        yield output
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        ) from error
+    finally:
+        active_error = sys.exception()
+        cleanup_error: BaseException | None = None
+        if output_created and target_descriptor is not None:
+            try:
+                if output is not None:
+                    _verify_pinned_directory(
+                        output.target_descriptor,
+                        output.name,
+                        output.output_descriptor,
+                        exact_mode=0o700,
+                        failure_code=(
+                            "validation_candidate_output_cleanup_failed"
+                        ),
+                    )
+                elif output_identity is None or (
+                    _candidate_output_identity(
+                        target_descriptor,
+                        output_name,
+                        failure_code=(
+                            "validation_candidate_output_cleanup_failed"
+                        ),
+                    )
+                    != output_identity
+                ):
+                    raise AutopilotError(
+                        "validation_candidate_output_cleanup_failed"
+                    )
+                if not shutil.rmtree.avoids_symlink_attacks:
+                    raise OSError("descriptor-safe rmtree unavailable")
+                shutil.rmtree(
+                    output_name,
+                    dir_fd=target_descriptor,
+                )
+            except OSError as error:
+                cleanup_error = error
+            except AutopilotError as error:
+                cleanup_error = error
+        if output_descriptor is not None:
+            os.close(output_descriptor)
+        if target_descriptor is not None:
+            os.close(target_descriptor)
+        if candidate_descriptor is not None:
+            os.close(candidate_descriptor)
+        if cleanup_error is not None:
+            if isinstance(active_error, AutopilotError):
+                active_error.add_related_error_code(
+                    "validation_candidate_output_cleanup_failed"
+                )
+            elif active_error is not None:
+                active_error.add_note(
+                    "validation_candidate_output_cleanup_failed"
+                )
+            else:
+                raise AutopilotError(
+                    "validation_candidate_output_cleanup_failed"
+                ) from cleanup_error
+
+
+def _validation_profile_failure(
+    repo_root: Path,
+    candidate_output: PinnedCandidateOutput,
+    *,
+    profile: str,
+    repository_head: str,
+    repository_tree: str,
+    failure: CommandFailure,
+) -> AutopilotError:
+    diagnostic_sha256 = write_validation_failure_diagnostic(
+        repo_root,
+        profile=profile,
+        repository_head=repository_head,
+        repository_tree=repository_tree,
+        failure=failure,
+    )
+    result = AutopilotError(
+        failure.code,
+        diagnostic_sha256=diagnostic_sha256,
+    )
+    try:
+        _verify_candidate_output_empty(
+            candidate_output,
+            changed=True,
+        )
+    except AutopilotError as related:
+        result.add_related_error_code(related.code)
+    return result
+
+
+def _validate_candidate_output_path(
+    candidate: Path,
+    output: Path,
+) -> None:
+    expected_parent = candidate / "target"
+    if (
+        output.parent != expected_parent
+        or CANDIDATE_OUTPUT_NAME_PATTERN.fullmatch(output.name) is None
+    ):
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        )
+    try:
+        target_metadata = expected_parent.lstat()
+        output_metadata = output.lstat()
+    except OSError as error:
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        ) from error
+    if (
+        not stat.S_ISDIR(target_metadata.st_mode)
+        or not stat.S_ISDIR(output_metadata.st_mode)
+        or target_metadata.st_uid != os.getuid()
+        or output_metadata.st_uid != os.getuid()
+        or target_metadata.st_mode & 0o022
+        or stat.S_IMODE(output_metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError("validation_candidate_output_invalid")
+
+
 def validation_sandbox_profile(
     repo_root: Path,
     worktree: Path,
     temporary_home: Path,
+    candidate_output: Path,
 ) -> str:
     root = repo_root.resolve()
     candidate = worktree.resolve()
@@ -2040,6 +2351,7 @@ def validation_sandbox_profile(
     rustup_home = trusted_rustup_home()
     git_common_directory = repository_git_common_directory(root)
     trusted_makefile = root / "Makefile.toml"
+    _validate_candidate_output_path(candidate, candidate_output)
     if (
         not candidate.is_dir()
         or not root.is_dir()
@@ -2050,8 +2362,9 @@ def validation_sandbox_profile(
     ):
         raise AutopilotError("validation_sandbox_path_invalid")
 
-    def literal(path: Path) -> str:
-        return json.dumps(str(path.resolve(strict=False)))
+    def literal(path: Path, *, resolve: bool = True) -> str:
+        value = path.resolve(strict=False) if resolve else path.absolute()
+        return json.dumps(str(value))
 
     readable = (
         candidate,
@@ -2060,8 +2373,8 @@ def validation_sandbox_profile(
         rustup_home / "settings.toml",
         temporary_home,
     )
-    writable = (
-        temporary_home,
+    candidate_writable = (
+        candidate_output,
         candidate / "site/.astro",
         candidate / "site/dist",
         candidate / "site/node_modules/.astro",
@@ -2118,8 +2431,12 @@ def validation_sandbox_profile(
     lines.append(
         f"(allow file-read* (literal {literal(trusted_makefile)}))"
     )
+    lines.append(
+        f"(allow file-write* (subpath {literal(temporary_home)}))"
+    )
     lines.extend(
-        f"(allow file-write* (subpath {literal(path)}))" for path in writable
+        f"(allow file-write* (subpath {literal(path, resolve=False)}))"
+        for path in candidate_writable
     )
     lines.append('(allow file-write* (literal "/dev/null"))')
     cargo_home = temporary_home / "cargo-home"
@@ -2203,7 +2520,10 @@ def run_validation_profiles(
         ),
         "RUSTFMT": str(formatter_tools["rustfmt"]),
     }
-    with validation_temporary_directory() as temporary:
+    with (
+        validation_temporary_directory() as temporary,
+        pinned_candidate_output_directory(worktree) as candidate_output,
+    ):
         temporary_home = Path(temporary).resolve()
         initialize_validation_home(temporary_home)
         acquisition_environment = sanitized_validation_environment(
@@ -2244,11 +2564,21 @@ def run_validation_profiles(
                 trusted_audit,
             )
         )
-        profile_environment.update(formatter_environment)
+        profile_environment.update(
+            {
+                **formatter_environment,
+                CANDIDATE_OUTPUT_ENV: str(candidate_output.path),
+            }
+        )
+        _verify_candidate_output_empty(
+            candidate_output,
+            changed=True,
+        )
         profile = validation_sandbox_profile(
             repo_root,
             worktree,
             temporary_home,
+            candidate_output.path,
         )
         profile_path = temporary_home / "validation.sb"
         try:
@@ -2283,12 +2613,19 @@ def run_validation_profiles(
                     overrides={
                         **xcode_environment,
                         **formatter_environment,
+                        CANDIDATE_OUTPUT_ENV: str(
+                            candidate_output.path
+                        ),
                     },
                 )
             profile_command = trusted_profile_command(
                 repo_root,
                 name,
                 cargo_executable=tool_paths["cargo"],
+            )
+            _verify_candidate_output_empty(
+                candidate_output,
+                changed=True,
             )
             try:
                 output = run_command(
@@ -2306,17 +2643,18 @@ def run_validation_profiles(
                     capture_failure_diagnostic=True,
                 )
             except CommandFailure as error:
-                diagnostic_sha256 = write_validation_failure_diagnostic(
+                raise _validation_profile_failure(
                     repo_root,
+                    candidate_output,
                     profile=name,
                     repository_head=head,
                     repository_tree=tree,
                     failure=error,
-                )
-                raise AutopilotError(
-                    error.code,
-                    diagnostic_sha256=diagnostic_sha256,
                 ) from error
+            _verify_candidate_output_empty(
+                candidate_output,
+                changed=True,
+            )
             current_head, current_tree = repository_identity(worktree)
             if current_head != head or current_tree != tree:
                 raise AutopilotError("validation_repository_changed")

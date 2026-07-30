@@ -247,6 +247,7 @@ class AutopilotError(RuntimeError):
         code: str,
         *,
         diagnostic_sha256: str | None = None,
+        related_error_codes: tuple[str, ...] = (),
     ) -> None:
         if not REASON_PATTERN.fullmatch(code):
             code = "unclassified_failure"
@@ -256,7 +257,21 @@ class AutopilotError(RuntimeError):
             diagnostic_sha256 = None
         self.code = code
         self.diagnostic_sha256 = diagnostic_sha256
+        self.related_error_codes: tuple[str, ...] = ()
+        for related_code in related_error_codes:
+            self.add_related_error_code(related_code)
         super().__init__(code)
+
+    def add_related_error_code(self, code: str) -> None:
+        """Attach one bounded secondary failure without masking the primary."""
+
+        if REASON_PATTERN.fullmatch(code) is None:
+            code = "unclassified_failure"
+        if code == self.code or code in self.related_error_codes:
+            return
+        self.related_error_codes = tuple(
+            sorted((*self.related_error_codes, code))
+        )[:4]
 
 
 class CommandFailure(AutopilotError):
