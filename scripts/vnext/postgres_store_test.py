@@ -2028,8 +2028,8 @@ def register_authority_scenarios(add: object) -> None:
 	add(
 		"indirect-trigger-owner-effect", unsafe_store, unsafe, RUNTIME_ROLE,
 		mutation_sql=(
-			"INSERT INTO decodex.accounts(account_id,display_label) VALUES "
-			"('91000000-0000-4000-8000-000000000001','indirect owner fixture'); "
+			"INSERT INTO decodex.accounts(account_id,display_label,enabled) VALUES "
+			"('91000000-0000-4000-8000-000000000001','indirect owner fixture',true); "
 			"INSERT INTO decodex.account_routing_order(account_id,position) SELECT "
 			"'91000000-0000-4000-8000-000000000001',pg_catalog.count(*)::integer "
 			"FROM decodex.account_routing_order; "
