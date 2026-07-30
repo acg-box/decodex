@@ -666,6 +666,13 @@ fn read_json_bytes_bounded(
 
 fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory> {
 	let path = clean_absolute_path(path)?;
+	#[cfg(test)]
+	if let Some(current) = open_sandbox_private_root(&path, create)? {
+		let relative = path
+			.strip_prefix(&current.path)
+			.map_err(|_| eyre::eyre!("sandboxed private path escaped its pinned root"))?;
+		return descend_private_directory(current, relative.components(), create);
+	}
 	let root_fd = unix_fs::open(
 		"/",
 		OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
@@ -679,7 +686,100 @@ fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory>
 	let metadata = current.file.metadata()?;
 	current.private_anchor_found = validate_directory_metadata(&current.path, &metadata, false)?;
 
-	for component in path.components() {
+	descend_private_directory(current, path.components(), create)
+}
+
+#[cfg(test)]
+fn open_sandbox_private_root(path: &Path, create: bool) -> Result<Option<PrivateDirectory>> {
+	if env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() != Some(OsStr::new("1")) {
+		return Ok(None);
+	}
+	let roots = ["DECODEX_VALIDATION_REPO_OUTPUT", "TMPDIR"]
+		.into_iter()
+		.filter_map(env::var_os)
+		.map(PathBuf::from)
+		.map(|root| clean_absolute_path(&root))
+		.collect::<Result<Vec<_>>>()?;
+	if matching_sandbox_root(path, roots.clone()).is_some() {
+		return Ok(Some(open_pinned_sandbox_private_root(path, roots)?));
+	}
+	let candidate = repo_root()?;
+	if path == candidate || path.starts_with(&candidate) {
+		if create {
+			return Err(eyre::eyre!("sandboxed private path is outside its writable pinned roots"));
+		}
+		return Ok(Some(open_pinned_sandbox_read_root(candidate)?));
+	}
+
+	Err(eyre::eyre!("sandboxed private path is outside its pinned roots"))
+}
+
+#[cfg(test)]
+fn open_pinned_sandbox_private_root(path: &Path, roots: Vec<PathBuf>) -> Result<PrivateDirectory> {
+	let root = matching_sandbox_root(path, roots)
+		.ok_or_else(|| eyre::eyre!("sandboxed private path is outside its pinned roots"))?;
+	open_pinned_sandbox_root(root, true)
+}
+
+#[cfg(test)]
+fn matching_sandbox_root(path: &Path, mut roots: Vec<PathBuf>) -> Option<PathBuf> {
+	roots.sort_by_key(|root| root.components().count());
+	roots.into_iter().rev().find(|root| path == root || path.starts_with(root))
+}
+
+#[cfg(test)]
+fn open_pinned_sandbox_read_root(root: PathBuf) -> Result<PrivateDirectory> {
+	open_pinned_sandbox_root(root, false)
+}
+
+#[cfg(test)]
+fn open_pinned_sandbox_root(root: PathBuf, exact_private: bool) -> Result<PrivateDirectory> {
+	let before = fs::symlink_metadata(&root)?;
+	let private_anchor_found = if exact_private {
+		validate_exact_sandbox_private_directory_metadata(&before)?;
+		true
+	} else {
+		validate_directory_metadata(&root, &before, false)?
+	};
+	let fd = unix_fs::open(
+		&root,
+		OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+		Mode::empty(),
+	)?;
+	let file = File::from(fd);
+	let after = file.metadata()?;
+	if exact_private {
+		validate_exact_sandbox_private_directory_metadata(&after)?;
+	} else if validate_directory_metadata(&root, &after, false)? != private_anchor_found {
+		return Err(eyre::eyre!("sandboxed read root authority changed while opening"));
+	}
+	if (before.dev(), before.ino()) != (after.dev(), after.ino()) {
+		return Err(eyre::eyre!("sandboxed private root changed while opening"));
+	}
+
+	Ok(PrivateDirectory { file, path: root, private_anchor_found })
+}
+
+#[cfg(test)]
+fn validate_exact_sandbox_private_directory_metadata(metadata: &fs::Metadata) -> Result<()> {
+	if !metadata.is_dir()
+		|| metadata.uid() != current_uid()
+		|| metadata.permissions().mode() & 0o7777 != u32::from(PRIVATE_DIRECTORY_MODE)
+	{
+		return Err(eyre::eyre!(
+			"sandboxed private root is not an owned exact mode-0700 directory"
+		));
+	}
+
+	Ok(())
+}
+
+fn descend_private_directory<'a>(
+	mut current: PrivateDirectory,
+	components: impl Iterator<Item = Component<'a>>,
+	create: bool,
+) -> Result<PrivateDirectory> {
+	for component in components {
 		let Component::Normal(name) = component else {
 			continue;
 		};
@@ -902,7 +1002,10 @@ mod tests {
 
 	use serde_json::json;
 
-	use super::{open_private_directory, validate_sandbox_test_output, write_new_json_in_parent};
+	use super::{
+		open_pinned_sandbox_private_root, open_pinned_sandbox_read_root, open_private_directory,
+		validate_sandbox_test_output, write_new_json_in_parent,
+	};
 
 	#[test]
 	fn sandbox_test_output_requires_an_exact_private_direct_child() {
@@ -932,6 +1035,43 @@ mod tests {
 		fs::remove_dir(&output).expect("remove output");
 		symlink(&outside, &output).expect("symlink output");
 		assert!(validate_sandbox_test_output(&target, &output).is_err());
+	}
+
+	#[test]
+	fn sandbox_private_root_is_opened_directly_and_rejects_unsafe_roots() {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let root = temp.path().join("root");
+		let outside = temp.path().join("outside");
+		fs::create_dir(&root).expect("private root");
+		fs::create_dir(&outside).expect("outside directory");
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("private root mode");
+		let path = root.join("child");
+
+		let pinned = open_pinned_sandbox_private_root(&path, vec![root.clone()])
+			.expect("pinned sandbox root");
+		assert_eq!(pinned.path, root);
+		assert!(open_pinned_sandbox_private_root(&outside, vec![root.clone()]).is_err());
+
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o1700)).expect("sticky root mode");
+		assert!(open_pinned_sandbox_private_root(&path, vec![root.clone()]).is_err());
+
+		fs::remove_dir(&root).expect("remove unsafe root");
+		symlink(&outside, &root).expect("replace root with symlink");
+		assert!(open_pinned_sandbox_private_root(&path, vec![root]).is_err());
+	}
+
+	#[test]
+	fn sandbox_read_root_allows_safe_read_only_candidate_modes() {
+		let temp = tempfile::tempdir().expect("temporary directory");
+		let root = temp.path().join("candidate");
+		fs::create_dir(&root).expect("candidate root");
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o755)).expect("candidate mode");
+		let pinned = open_pinned_sandbox_read_root(root.clone()).expect("pinned read root");
+		assert_eq!(pinned.path, root);
+
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o775))
+			.expect("unsafe candidate mode");
+		assert!(open_pinned_sandbox_read_root(root).is_err());
 	}
 
 	#[test]
