@@ -27,18 +27,11 @@ final class AccountProfilePresentationTests: XCTestCase {
 			),
 		])
 
-		XCTAssertEqual(aggregate?.accountCount, 2)
 		XCTAssertEqual(aggregate?.lifetimeTokens, 3_000)
-		XCTAssertEqual(aggregate?.lifetimeTokensCoverage, 2)
-		XCTAssertEqual(aggregate?.peakDailyTokens, 1_200)
-		XCTAssertEqual(aggregate?.peakDailyTokensCoverage, 2)
+		XCTAssertEqual(aggregate?.peakDailyTokens, 900)
 		XCTAssertEqual(aggregate?.longestTaskSeconds, 120)
-		XCTAssertEqual(aggregate?.longestTaskSecondsCoverage, 2)
 		XCTAssertEqual(aggregate?.currentStreakDays, 4)
-		XCTAssertEqual(aggregate?.currentStreakDaysCoverage, 2)
 		XCTAssertEqual(aggregate?.longestStreakDays, 6)
-		XCTAssertEqual(aggregate?.longestStreakDaysCoverage, 2)
-		XCTAssertEqual(aggregate?.dailyUsageCoverage, 2)
 		XCTAssertEqual(
 			aggregate?.dailyUsage,
 			[
@@ -73,10 +66,9 @@ final class AccountProfilePresentationTests: XCTestCase {
 		])
 
 		XCTAssertEqual(aggregate?.peakDailyTokens, 900)
-		XCTAssertEqual(aggregate?.peakDailyTokensCoverage, 2)
 	}
 
-	func testAggregateTracksPartialCoverageAndHasNoPeakWithoutDailySeries() {
+	func testAggregateRetainsAvailableMetricsWhenSomeProfilesArePartial() {
 		let aggregate = AccountProfileAggregate.make([
 			AccountProfileSnapshot(
 				lifetimeTokens: 1_000,
@@ -96,13 +88,12 @@ final class AccountProfilePresentationTests: XCTestCase {
 			),
 		])
 
-		XCTAssertEqual(aggregate?.accountCount, 2)
 		XCTAssertEqual(aggregate?.lifetimeTokens, 1_000)
-		XCTAssertEqual(aggregate?.lifetimeTokensCoverage, 1)
-		XCTAssertNil(aggregate?.peakDailyTokens)
-		XCTAssertEqual(aggregate?.peakDailyTokensCoverage, 0)
-		XCTAssertEqual(aggregate?.longestTaskSecondsCoverage, 1)
-		XCTAssertEqual(aggregate?.dailyUsageCoverage, 0)
+		XCTAssertEqual(aggregate?.peakDailyTokens, 900)
+		XCTAssertEqual(aggregate?.longestTaskSeconds, 90)
+		XCTAssertEqual(aggregate?.currentStreakDays, 2)
+		XCTAssertEqual(aggregate?.longestStreakDays, 6)
+		XCTAssertEqual(aggregate?.dailyUsage, [])
 	}
 
 	func testAggregateReturnsNilWhenNoProfileHasContent() {
@@ -129,23 +120,6 @@ final class AccountProfilePresentationTests: XCTestCase {
 		XCTAssertEqual(formatActivityDuration(7_500), "2h 5m")
 	}
 
-	func testOverviewUsesDirectCurrentProfileLanguage() {
-		XCTAssertEqual(
-			AccountProfileCoveragePresentation(
-				currentCount: 4,
-				totalCount: 6
-			).label,
-			"4 of 6 profiles current"
-		)
-		XCTAssertEqual(
-			AccountProfileCoveragePresentation(
-				currentCount: 6,
-				totalCount: 6
-			).label,
-			"6 of 6 profiles current"
-		)
-	}
-
 	func testDailyUsageNormalizationKeepsFixedCalendarSlotsAndExplicitGaps() {
 		let records = normalizedDailyUsage(
 			[
@@ -165,5 +139,12 @@ final class AccountProfilePresentationTests: XCTestCase {
 				AccountProfileDailyUsage(date: "2026-07-28", tokens: 900),
 			]
 		)
+	}
+
+	func testCompactUsageDateUsesStablePosixPresentationWithoutAcceptingDrift() {
+		XCTAssertEqual(compactUsageDate("2026-07-28"), "Jul 28")
+		XCTAssertEqual(compactUsageDate("2026-13-28"), "2026-13-28")
+		XCTAssertEqual(compactUsageDate("2026-07-00"), "2026-07-00")
+		XCTAssertEqual(compactUsageDate("not-a-date"), "not-a-date")
 	}
 }
