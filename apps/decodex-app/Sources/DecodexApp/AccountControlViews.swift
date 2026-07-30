@@ -128,10 +128,10 @@ struct AccountUtilityActionsView: View {
 	private var logoutConfirmation: some View {
 		VStack(alignment: .leading, spacing: 9) {
 			Text("Log out this account?")
-				.font(.headline)
+				.font(PanelFont.transientTitle)
 
 			Text("The account and its saved credential binding will be removed from Decodex.")
-				.font(.callout)
+				.font(PanelFont.transientBody)
 				.foregroundStyle(.secondary)
 				.fixedSize(horizontal: false, vertical: true)
 
@@ -251,13 +251,13 @@ struct AccountEnrollmentView: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: 10) {
 			Text("Add Codex login")
-				.font(.headline)
+				.font(PanelFont.transientTitle)
 
 			Text(
 				"Import the account currently signed in to Codex. "
 					+ "Decodex assigns a stable account alias."
 			)
-			.font(.callout)
+			.font(PanelFont.transientBody)
 			.foregroundStyle(.secondary)
 			.fixedSize(horizontal: false, vertical: true)
 

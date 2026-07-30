@@ -153,7 +153,5 @@ private struct StatusPanelRootView: View {
 
 	var body: some View {
 		AccountPanelView(store: store)
-			.environment(\.colorScheme, .dark)
-			.preferredColorScheme(.dark)
 	}
 }
