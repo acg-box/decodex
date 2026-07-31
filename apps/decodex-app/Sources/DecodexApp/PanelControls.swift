@@ -11,6 +11,7 @@ struct PanelIconButtonView: View {
 	let size: CGFloat
 	let action: () -> Void
 	let help: String
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	init(
@@ -41,8 +42,10 @@ struct PanelIconButtonView: View {
 		Button(action: action) {
 			buttonLabel
 		}
-		.buttonStyle(.plain)
+		.buttonStyle(PanelPressButtonStyle())
 		.disabled(isDisabled)
+		.animation(controlStateAnimation, value: symbol)
+		.animation(controlStateAnimation, value: isActive)
 		.help(help)
 		.accessibilityLabel(help)
 	}
@@ -56,9 +59,14 @@ struct PanelIconButtonView: View {
 		Image(systemName: symbol)
 			.font(PanelFont.iconButton)
 			.symbolRenderingMode(.monochrome)
+			.contentTransition(.symbolEffect(.replace))
 			.foregroundStyle(foregroundColor)
 			.frame(width: size, height: size)
 			.contentShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
+	}
+
+	private var controlStateAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
 	}
 
 	private var foregroundColor: Color {
@@ -82,5 +90,24 @@ struct PanelIconButtonView: View {
 
 	private var iconCornerRadius: CGFloat {
 		size * 0.5
+	}
+}
+
+struct PanelPressButtonStyle: ButtonStyle {
+	let pressedScale: CGFloat
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+	init(pressedScale: CGFloat = 0.92) {
+		self.pressedScale = pressedScale
+	}
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.opacity(configuration.isPressed ? 0.7 : 1)
+			.scaleEffect(configuration.isPressed ? pressedScale : 1)
+			.animation(
+				reduceMotion ? nil : PanelMotion.press,
+				value: configuration.isPressed
+			)
 	}
 }
