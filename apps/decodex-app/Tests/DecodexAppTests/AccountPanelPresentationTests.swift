@@ -53,10 +53,31 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertTrue(presentation.isVisible)
 		XCTAssertEqual(presentation.valueText, "21%")
-		XCTAssertEqual(presentation.tone, .current)
+		XCTAssertEqual(presentation.tone, .warning)
 		XCTAssertEqual(presentation.usedPercent, 79)
 		XCTAssertEqual(presentation.remainingPercent, 21)
 		XCTAssertNotNil(presentation.resetDate)
+	}
+
+	func testCurrentQuotaToneTracksRemainingCapacity() {
+		func tone(usedPercent: UInt8) -> ResetCardQuotaPresentationTone {
+			ResetCardQuotaPresentation(
+				window: ResetCardQuotaWindow(
+					durationMinutes: 10_080,
+					observedAtUnixMicros: 1_000_000,
+					state: .current(
+						usedPercent: usedPercent,
+						resetsAtUnixMicros: 2_000_000
+					)
+				)
+			).tone
+		}
+
+		XCTAssertEqual(tone(usedPercent: 49), .healthy)
+		XCTAssertEqual(tone(usedPercent: 50), .warning)
+		XCTAssertEqual(tone(usedPercent: 79), .warning)
+		XCTAssertEqual(tone(usedPercent: 80), .critical)
+		XCTAssertEqual(tone(usedPercent: 100), .critical)
 	}
 
 	func testUnknownOptionalQuotaWindowIsHidden() {

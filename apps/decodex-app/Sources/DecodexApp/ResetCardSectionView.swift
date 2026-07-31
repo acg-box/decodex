@@ -612,8 +612,9 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 }
 
 enum ResetCardQuotaPresentationTone: Equatable {
-	case current
+	case healthy
 	case warning
+	case critical
 	case muted
 	case error
 }
@@ -634,7 +635,15 @@ struct ResetCardQuotaPresentation: Equatable {
 			let remainingPercent = 100 - min(100, usedPercent)
 			valueText = "\(remainingPercent)%"
 			detailText = nil
-			tone = .current
+			tone =
+				switch remainingPercent {
+				case 51...:
+					.healthy
+				case 21...:
+					.warning
+				default:
+					.critical
+				}
 			self.usedPercent = usedPercent
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
@@ -739,14 +748,14 @@ private struct ResetCardQuotaWindowView: View {
 
 	private func stateColor(for tone: ResetCardQuotaPresentationTone) -> Color {
 		switch tone {
-		case .current:
-			return PanelPalette.usageCyan(colorScheme)
+		case .healthy:
+			return PanelPalette.quotaHealthy(colorScheme)
 		case .warning:
 			return PanelPalette.warning(colorScheme)
+		case .critical, .error:
+			return PanelPalette.destructive(colorScheme)
 		case .muted:
 			return PanelPalette.secondaryText(colorScheme)
-		case .error:
-			return PanelPalette.destructive(colorScheme)
 		}
 	}
 
