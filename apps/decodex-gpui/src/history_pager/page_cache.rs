@@ -827,9 +827,9 @@ fn bounded_identity(value: &str, maximum: usize) -> bool {
 }
 
 fn entry_matches_request(entry: &IndexEntry, request: &CacheRequest) -> bool {
-	&entry.identity.authority == &request.authority
-		&& &entry.identity.conversation_id == &request.conversation_id
-		&& &entry.identity.request_key == &request.request_key
+	entry.identity.authority == request.authority
+		&& entry.identity.conversation_id == request.conversation_id
+		&& entry.identity.request_key == request.request_key
 }
 
 fn mapping_sort_key(identity: &PageIdentity) -> Vec<u8> {
@@ -2095,8 +2095,7 @@ mod tests {
 
 		fs::write(&page_path, b"tampered").expect("fixture corrupts the page bytes");
 		let failure = HistoryPageCache::open(&parent, CACHE_SCHEMA_GENERATION)
-			.err()
-			.expect("digest mismatch is refused");
+			.expect_err("digest mismatch is refused");
 
 		assert_eq!(failure.diagnostic, CacheDiagnostic::Integrity);
 	}
@@ -2175,8 +2174,7 @@ mod tests {
 							committed,
 							&FailAt(DurabilityEdge::CleanupSync),
 						)
-						.err()
-						.expect("post-index cleanup fault is injected");
+						.expect_err("post-index cleanup fault is injected");
 
 					assert_eq!(failure.diagnostic, CacheDiagnostic::DurabilityFault);
 				},

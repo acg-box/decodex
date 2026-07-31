@@ -11,9 +11,15 @@ import, or runtime scheduling.
 ## Scope
 
 The app has one account authority: the Decodex daemon. Its in-process Rust
-client connects to the daemon through the owner-only Unix transport. The app
-does not start a CLI process. Swift does not read account credentials,
-PostgreSQL, Keychain, or provider-private Reset Card identifiers.
+client connects to the daemon through the owner-only Unix transport. When the
+user explicitly refreshes an expired login, the Rust bridge starts one finite
+official Codex device-login child in an owner-private temporary home. It shows
+Swift only the official URL, one-time code, and closed session state. The daemon
+verifies and installs the exact account credential, and the bridge removes the
+temporary home on success, failure, cancellation, or App exit. The app never
+starts the Decodex CLI, helper, app-server, or legacy account process. Swift
+does not read account credentials, auth-file paths, PostgreSQL, Keychain, or
+provider-private Reset Card identifiers.
 
 The primary panel reads the complete account skeleton, uses the returned
 routing UUID order, and immediately renders every account. It then runs
@@ -21,16 +27,25 @@ independent Reset Card and account-profile requests for each row. A slow or
 failed provider request affects only its account row and does not block another
 row or account action.
 
-Each row shows the exact 300-minute and 10,080-minute quota observations in a
-vertical stack, their current or stale state, the percentage left and reset
-time when known, and every complete public Reset Card expiry. The 300-minute
-row is absent when the provider does not return a supported observation.
+Each row shows the exact current 300-minute and 10,080-minute quota
+observations in a vertical stack, the percentage left and reset time when
+known, and every complete public Reset Card expiry. Expired observations are
+not shown as current data. The 300-minute row is absent when the provider does
+not return a supported observation. Current quota bars and percentages stay
+inside the panel theme: accent blue above 50% remaining, warning amber from 21%
+to 50%, and destructive red at 20% or below. The numeric percentage and
+accessibility value remain the primary status.
 
-Each account detail popover contains lifetime tokens, peak daily tokens,
-longest task, current and longest streaks, and a 36-day usage chart. The compact
-panel keeps aggregate total, peak, streak, and longest-task metrics with one
-daily chart across all accounts. It does not expose profile coverage counters
-as account status.
+The app performs one non-overlapping refresh every 15 seconds, matching the
+pre-cutover native cadence. Opening the panel also requests one refresh. An
+already active refresh absorbs either trigger, and one failed account remains
+isolated to its row until the next cycle.
+
+The account plan appears beside the account identity. Each detail popover
+contains only lifetime tokens, peak daily tokens, longest task, current and
+longest streaks, and a 36-day usage chart. The compact panel keeps aggregate
+total, peak, streak, and longest-task metrics with one daily chart across all
+accounts. It does not expose profile coverage counters as account status.
 Email is redacted by default. The eye control changes only the published
 identity slot. Hiding email removes it from SwiftUI presentation state. A
 revision-bound, process-only cache keeps later visibility changes immediate and
@@ -41,11 +56,16 @@ data remains row-scoped and never hides Reset Cards.
 The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
-The header, overview, and each account row use separate appearance-adaptive
-system material surfaces with a restrained fill, border, and shadow. The host
-window follows the system Light or Dark appearance and does not draw its own
-full-window shadow or backdrop. Transparent gaps remain visible; there is no
-background surface around the complete panel and no Liquid Glass effect.
+The header and aggregate overview share one compact appearance-adaptive
+frosted-material surface. Each account row uses its own separate system material
+surface with no opaque custom fill or drawn border.
+Primary cards use one shared compact spacing rhythm and identical content insets.
+Popovers and floating login recovery use one larger shared inset.
+The host window follows the system Light or Dark appearance and does not draw
+its own full-window shadow or backdrop. Login recovery uses a stronger floating
+material inside that same transparent window, without a window-wide modal dimmer.
+Transparent gaps remain visible; there is no background surface around the
+complete panel and no Liquid Glass effect.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative one-word alias. The row displays
@@ -53,13 +73,16 @@ either that alias or the account email in the same identity slot without an
 identity icon. The canonical account UUID is the only row identity. There is no
 account rename surface.
 
-Reset Card use requires two clicks on the same descriptor. The first click arms
-a five-second confirmation. The second click writes one credential-negative
-pending handle, then sends one native daemon request with the same account
-revision, descriptor, and operation key. Restart recovery reads durable status
-and retains that key. It never selects another card or generates a replacement
-key for an unresolved request. Expiry times use compact bordered controls so
-their click action remains visible without adding a second card container.
+Reset Card controls use a subtle neutral border that remains visible on each
+material card. The armed confirmation uses the existing warning accent without
+changing the control size. Reset Card use requires two clicks on the same
+descriptor. The first click arms a five-second confirmation. The second click
+writes one credential-negative pending handle, then sends one native daemon
+request with the same account revision, descriptor, and operation key. Restart
+recovery reads durable status and retains that key. It never selects another
+card or generates a replacement key for an unresolved request. Expiry times use
+compact bordered controls so their click action remains visible without adding
+a second card container.
 
 The bounded recovery journal is
 `Application Support/Decodex/reset-card-pending-v1.json`. It uses an atomic
@@ -68,9 +91,12 @@ modes, and one cross-process dispatch lock. A malformed or unsafe journal is
 preserved and blocks new use.
 
 The panel also exposes current daemon-owned account controls: enroll the
-currently signed-in shared Codex login, enable or disable, refresh credentials,
-log out, and select fixed or balanced routing. Each account row has one `Route`
-control. It first projects that exact daemon-owned login to shared
+currently signed-in shared Codex login, enable or disable, log out, and select
+fixed or balanced routing. An account with a provider-confirmed unauthorized
+profile shows `Refresh login`; that action presents the official device code
+with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
+account after the daemon completes the exact credential replacement. Each
+account row has one `Route` control. It first projects that exact daemon-owned login to shared
 `~/.codex/auth.json` for future Codex launches, then selects the same account as
 the fixed Decodex route. The underlying typed commands remain independently
 fenced, and retrying the control completes whichever step is not current. The

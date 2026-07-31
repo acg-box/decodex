@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from dataclasses import dataclass
 import fcntl
 import json
 import os
@@ -95,12 +96,20 @@ TRUSTED_TOOL_DISCOVERY_PATHS = tuple(
     str(path) for path in TRUSTED_SYSTEM_TOOL_DIRECTORIES
 )
 FULL_XCODE_EVIDENCE_KEYS = {
+    "clang_sha256",
+    "clangxx_sha256",
     "developer_dir_sha256",
     "metal_sha256",
+    "metallib_sha256",
+    "sdk_root_sha256",
     "xcode_select_sha256",
     "xcode_version_sha256",
     "xcodebuild_sha256",
     "xcrun_sha256",
+    "xcrun_proxy_sha256",
+}
+FULL_XCODE_DISCOVERY_EVIDENCE_KEYS = FULL_XCODE_EVIDENCE_KEYS - {
+    "xcrun_proxy_sha256"
 }
 TOOLCHAIN_EVIDENCE_KEYS = {
     "full_xcode",
@@ -118,6 +127,10 @@ SANDBOX_EVIDENCE_KEYS = {
 FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
 VALIDATION_TEMP_PREFIX = "dxv-"
 DARWIN_VALIDATION_TEMP_PARENT = Path("/private/tmp")
+CANDIDATE_OUTPUT_ENV = "DECODEX_VALIDATION_REPO_OUTPUT"
+CANDIDATE_OUTPUT_NAME_PATTERN = re.compile(
+    r"decodex-validation-[0-9a-f]{32}"
+)
 VALIDATION_DIAGNOSTIC_SCHEMA = (
     "decodex/codex-upstream-validation-diagnostic/2"
 )
@@ -151,6 +164,18 @@ _DIAGNOSTIC_REASON_MARKERS = {
     "process_killed": ("killed",),
     "timed_out": ("timed out", "timeout expired"),
 }
+
+
+@dataclass(frozen=True)
+class FullXcodeConfiguration:
+    """Bind a full-gate environment to exact Xcode tools and read roots."""
+
+    environment: dict[str, str]
+    evidence: dict[str, str]
+    developer_dir: Path
+    metal_toolchain_root: Path
+    sdk_root: Path
+    xcrun_tools: tuple[tuple[str, Path], ...]
 
 
 def validation_failure_facts(output_tail: bytes) -> dict[str, Any]:
@@ -1228,7 +1253,14 @@ def sandbox_task_graph_sha256(repo_root: Path) -> str:
     )
 
 
-def full_xcode_environment() -> tuple[dict[str, str], dict[str, str]]:
+def _xctoolchain_root(path: Path) -> Path:
+    for parent in (path, *path.parents):
+        if parent.name.endswith(".xctoolchain"):
+            return parent
+    raise AutopilotError("full_xcode_unavailable")
+
+
+def full_xcode_environment() -> FullXcodeConfiguration:
     xcode_select = Path("/usr/bin/xcode-select")
     xcrun = Path("/usr/bin/xcrun")
     if (
@@ -1275,8 +1307,17 @@ def full_xcode_environment() -> tuple[dict[str, str], dict[str, str]]:
         if xcodebuild.is_symlink() or not xcodebuild.is_file():
             continue
         environment = {"DEVELOPER_DIR": str(resolved)}
-        metal = run_command(
-            [str(xcrun), "--find", "metal"],
+        discovered_tools = {
+            name: run_command(
+                [str(xcrun), "--find", name],
+                environment=environment,
+                failure_code="full_xcode_unavailable",
+                allow_failure=True,
+            )
+            for name in ("clang", "clang++", "metal", "metallib")
+        }
+        sdk_root = run_command(
+            [str(xcrun), "--sdk", "macosx", "--show-sdk-path"],
             environment=environment,
             failure_code="full_xcode_unavailable",
             allow_failure=True,
@@ -1287,22 +1328,166 @@ def full_xcode_environment() -> tuple[dict[str, str], dict[str, str]]:
             failure_code="full_xcode_unavailable",
             allow_failure=True,
         )
-        if not metal or not version:
+        if not all(discovered_tools.values()) or not sdk_root or not version:
             continue
         try:
-            metal_path = Path(metal).resolve(strict=True)
+            execution_paths = {
+                name: Path(value).expanduser().absolute().parent.resolve(
+                    strict=True
+                )
+                / Path(value).name
+                for name, value in discovered_tools.items()
+            }
+            tool_paths = {
+                name: path.resolve(strict=True)
+                for name, path in execution_paths.items()
+            }
+            sdk_path = Path(sdk_root).resolve(strict=True)
+            metal_root = _xctoolchain_root(tool_paths["metal"])
+            metal_execution_root = _xctoolchain_root(
+                execution_paths["metal"]
+            ).resolve(strict=True)
+            if (
+                _xctoolchain_root(tool_paths["metallib"]) != metal_root
+                or _xctoolchain_root(
+                    execution_paths["metallib"]
+                ).resolve(strict=True)
+                != metal_execution_root
+                or metal_execution_root != metal_root
+                or not tool_paths["clang"].is_relative_to(resolved)
+                or not tool_paths["clang++"].is_relative_to(resolved)
+                or not execution_paths["clang"].is_relative_to(resolved)
+                or not execution_paths["clang++"].is_relative_to(resolved)
+                or not sdk_path.is_relative_to(resolved)
+            ):
+                continue
+            full_environment = {
+                "CC": str(execution_paths["clang"]),
+                "CXX": str(execution_paths["clang++"]),
+                "DEVELOPER_DIR": str(resolved),
+                "SDKROOT": str(sdk_path),
+                "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": str(
+                    execution_paths["clang"]
+                ),
+                "CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER": str(
+                    execution_paths["clang"]
+                ),
+            }
             evidence = {
+                "clang_sha256": hash_file_bounded(tool_paths["clang"]),
+                "clangxx_sha256": hash_file_bounded(
+                    tool_paths["clang++"]
+                ),
                 "developer_dir_sha256": sha256_value(str(resolved)),
+                "metallib_sha256": hash_file_bounded(
+                    tool_paths["metallib"]
+                ),
+                "sdk_root_sha256": sha256_value(str(sdk_path)),
                 "xcode_select_sha256": hash_file_bounded(xcode_select),
                 "xcode_version_sha256": sha256_value(version),
                 "xcodebuild_sha256": hash_file_bounded(xcodebuild),
                 "xcrun_sha256": hash_file_bounded(xcrun),
-                "metal_sha256": hash_file_bounded(metal_path),
+                "metal_sha256": hash_file_bounded(tool_paths["metal"]),
             }
         except (OSError, AutopilotError):
             continue
-        return environment, evidence
+        if set(evidence) != FULL_XCODE_DISCOVERY_EVIDENCE_KEYS:
+            raise AutopilotError("full_xcode_unavailable")
+        return FullXcodeConfiguration(
+            environment=full_environment,
+            evidence=evidence,
+            developer_dir=resolved,
+            metal_toolchain_root=metal_root,
+            sdk_root=sdk_path,
+            xcrun_tools=tuple(
+                (name, execution_paths[name])
+                for name in ("metal", "metallib")
+            ),
+        )
     raise AutopilotError("full_xcode_unavailable")
+
+
+def initialize_xcrun_proxy(
+    temporary_home: Path,
+    configuration: FullXcodeConfiguration,
+    python_executable: Path,
+) -> tuple[Path, str]:
+    """Create a fail-closed xcrun proxy that cannot touch the host cache."""
+
+    temporary_home = temporary_home.resolve(strict=True)
+    tools = {name: str(path) for name, path in configuration.xcrun_tools}
+    payload = (
+        f"#!{python_executable}\n"
+        "import os\n"
+        "import sys\n"
+        f"SDK_ROOT = {str(configuration.sdk_root)!r}\n"
+        f"MODULE_CACHE = {str(temporary_home / 'metal-module-cache')!r}\n"
+        f"TOOLS = {tools!r}\n"
+        "args = sys.argv[1:]\n"
+        "sdk_queries = ([\"--show-sdk-path\"], "
+        "[\"--sdk\", \"macosx\", \"--show-sdk-path\"], "
+        "[\"-sdk\", \"macosx\", \"--show-sdk-path\"], "
+        "[\"--show-sdk-path\", \"--sdk\", \"macosx\"], "
+        "[\"--show-sdk-path\", \"-sdk\", \"macosx\"])\n"
+        "if args in sdk_queries:\n"
+        "    print(SDK_ROOT)\n"
+        "    raise SystemExit(0)\n"
+        "if len(args) == 2 and args[0] in {\"--find\", \"-f\"}:\n"
+        "    tool = TOOLS.get(args[1])\n"
+        "    if tool is not None:\n"
+        "        print(tool)\n"
+        "        raise SystemExit(0)\n"
+        "if (len(args) >= 3 and args[0] in {\"--sdk\", \"-sdk\"} "
+        "and args[1] == \"macosx\"):\n"
+        "    tool = TOOLS.get(args[2])\n"
+        "    if tool is not None:\n"
+        "        os.environ[\"SDKROOT\"] = SDK_ROOT\n"
+        "        tool_args = args[3:]\n"
+        "        if args[2] == \"metal\":\n"
+        "            tool_args = [*tool_args, "
+        "f\"-fmodules-cache-path={MODULE_CACHE}\"]\n"
+        "        os.execv(tool, [tool, *tool_args])\n"
+        "print(\"sandbox xcrun invocation denied\", file=sys.stderr)\n"
+        "raise SystemExit(64)\n"
+    ).encode("utf-8")
+    proxy_directory = temporary_home / "trusted-xcrun"
+    proxy = proxy_directory / "xcrun"
+    descriptor: int | None = None
+    try:
+        proxy_directory.mkdir(mode=0o700)
+        descriptor = os.open(
+            proxy,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW,
+            0o500,
+        )
+        written = 0
+        while written < len(payload):
+            count = os.write(descriptor, payload[written:])
+            if count <= 0:
+                raise OSError("xcrun proxy write made no progress")
+            written += count
+        os.fsync(descriptor)
+        metadata = os.fstat(descriptor)
+        directory_metadata = proxy_directory.stat()
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or stat.S_IMODE(metadata.st_mode) != 0o500
+            or metadata.st_size != len(payload)
+            or not stat.S_ISDIR(directory_metadata.st_mode)
+            or directory_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(directory_metadata.st_mode) != 0o700
+        ):
+            raise AutopilotError("full_xcode_proxy_invalid")
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError("full_xcode_proxy_invalid") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    return proxy, hash_file_bounded(proxy)
 
 
 def validation_tools(
@@ -2029,10 +2214,319 @@ def prepare_dependency_cache(
     )
 
 
+@dataclass(frozen=True)
+class PinnedCandidateOutput:
+    """Descriptor-pinned candidate-local validation output."""
+
+    path: Path
+    name: str
+    candidate_descriptor: int
+    target_descriptor: int
+    output_descriptor: int
+
+
+def _candidate_output_identity(
+    parent_descriptor: int,
+    name: str,
+    *,
+    failure_code: str,
+) -> tuple[int, int]:
+    try:
+        metadata = os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError(failure_code)
+    return metadata.st_dev, metadata.st_ino
+
+
+def _verify_pinned_directory(
+    parent_descriptor: int,
+    name: str,
+    descriptor: int,
+    *,
+    exact_mode: int | None,
+    failure_code: str,
+) -> None:
+    try:
+        pinned = os.fstat(descriptor)
+        current = os.stat(
+            name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    pinned_mode = stat.S_IMODE(pinned.st_mode)
+    current_mode = stat.S_IMODE(current.st_mode)
+    if (
+        not stat.S_ISDIR(pinned.st_mode)
+        or not stat.S_ISDIR(current.st_mode)
+        or pinned.st_uid != os.getuid()
+        or current.st_uid != os.getuid()
+        or pinned_mode & 0o022
+        or current_mode & 0o022
+        or (exact_mode is not None and pinned_mode != exact_mode)
+        or (exact_mode is not None and current_mode != exact_mode)
+        or (pinned.st_dev, pinned.st_ino)
+        != (current.st_dev, current.st_ino)
+    ):
+        raise AutopilotError(failure_code)
+
+
+def _verify_candidate_output_directory(
+    output: PinnedCandidateOutput,
+    *,
+    changed: bool,
+) -> None:
+    failure_code = (
+        "validation_candidate_output_changed"
+        if changed
+        else "validation_candidate_output_invalid"
+    )
+    _verify_pinned_directory(
+        output.candidate_descriptor,
+        "target",
+        output.target_descriptor,
+        exact_mode=None,
+        failure_code=failure_code,
+    )
+    _verify_pinned_directory(
+        output.target_descriptor,
+        output.name,
+        output.output_descriptor,
+        exact_mode=0o700,
+        failure_code=failure_code,
+    )
+
+
+def _verify_candidate_output_empty(
+    output: PinnedCandidateOutput,
+    *,
+    changed: bool,
+) -> None:
+    _verify_candidate_output_directory(output, changed=changed)
+    failure_code = (
+        "validation_candidate_output_changed"
+        if changed
+        else "validation_candidate_output_invalid"
+    )
+    try:
+        entries = os.listdir(output.output_descriptor)
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    if entries:
+        raise AutopilotError(failure_code)
+
+
+@contextmanager
+def pinned_candidate_output_directory(
+    worktree: Path,
+) -> Iterator[PinnedCandidateOutput]:
+    """Pin the only candidate-local directory writable during validation."""
+
+    candidate = worktree.resolve()
+    candidate_descriptor: int | None = None
+    target_descriptor: int | None = None
+    output_descriptor: int | None = None
+    output: PinnedCandidateOutput | None = None
+    output_created = False
+    output_identity: tuple[int, int] | None = None
+    output_name = f"decodex-validation-{secrets.token_hex(16)}"
+    try:
+        candidate_descriptor = os.open(
+            candidate,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+        )
+        try:
+            os.mkdir(
+                "target",
+                mode=0o700,
+                dir_fd=candidate_descriptor,
+            )
+        except FileExistsError:
+            pass
+        target_descriptor = os.open(
+            "target",
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=candidate_descriptor,
+        )
+        _verify_pinned_directory(
+            candidate_descriptor,
+            "target",
+            target_descriptor,
+            exact_mode=None,
+            failure_code="validation_candidate_output_invalid",
+        )
+        os.mkdir(
+            output_name,
+            mode=0o700,
+            dir_fd=target_descriptor,
+        )
+        output_created = True
+        output_identity = _candidate_output_identity(
+            target_descriptor,
+            output_name,
+            failure_code="validation_candidate_output_invalid",
+        )
+        output_descriptor = os.open(
+            output_name,
+            os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW,
+            dir_fd=target_descriptor,
+        )
+        output = PinnedCandidateOutput(
+            path=candidate / "target" / output_name,
+            name=output_name,
+            candidate_descriptor=candidate_descriptor,
+            target_descriptor=target_descriptor,
+            output_descriptor=output_descriptor,
+        )
+        _verify_candidate_output_empty(
+            output,
+            changed=False,
+        )
+        yield output
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        ) from error
+    finally:
+        active_error = sys.exception()
+        cleanup_error: BaseException | None = None
+        if output_created and target_descriptor is not None:
+            try:
+                if output is not None:
+                    _verify_pinned_directory(
+                        output.target_descriptor,
+                        output.name,
+                        output.output_descriptor,
+                        exact_mode=0o700,
+                        failure_code=(
+                            "validation_candidate_output_cleanup_failed"
+                        ),
+                    )
+                elif output_identity is None or (
+                    _candidate_output_identity(
+                        target_descriptor,
+                        output_name,
+                        failure_code=(
+                            "validation_candidate_output_cleanup_failed"
+                        ),
+                    )
+                    != output_identity
+                ):
+                    raise AutopilotError(
+                        "validation_candidate_output_cleanup_failed"
+                    )
+                if not shutil.rmtree.avoids_symlink_attacks:
+                    raise OSError("descriptor-safe rmtree unavailable")
+                shutil.rmtree(
+                    output_name,
+                    dir_fd=target_descriptor,
+                )
+            except OSError as error:
+                cleanup_error = error
+            except AutopilotError as error:
+                cleanup_error = error
+        if output_descriptor is not None:
+            os.close(output_descriptor)
+        if target_descriptor is not None:
+            os.close(target_descriptor)
+        if candidate_descriptor is not None:
+            os.close(candidate_descriptor)
+        if cleanup_error is not None:
+            if isinstance(active_error, AutopilotError):
+                active_error.add_related_error_code(
+                    "validation_candidate_output_cleanup_failed"
+                )
+            elif active_error is not None:
+                active_error.add_note(
+                    "validation_candidate_output_cleanup_failed"
+                )
+            else:
+                raise AutopilotError(
+                    "validation_candidate_output_cleanup_failed"
+                ) from cleanup_error
+
+
+def _validation_profile_failure(
+    repo_root: Path,
+    candidate_output: PinnedCandidateOutput,
+    *,
+    profile: str,
+    repository_head: str,
+    repository_tree: str,
+    failure: CommandFailure,
+) -> AutopilotError:
+    diagnostic_sha256 = write_validation_failure_diagnostic(
+        repo_root,
+        profile=profile,
+        repository_head=repository_head,
+        repository_tree=repository_tree,
+        failure=failure,
+    )
+    result = AutopilotError(
+        failure.code,
+        diagnostic_sha256=diagnostic_sha256,
+    )
+    try:
+        _verify_candidate_output_empty(
+            candidate_output,
+            changed=True,
+        )
+    except AutopilotError as related:
+        result.add_related_error_code(related.code)
+    return result
+
+
+def _validate_candidate_output_path(
+    candidate: Path,
+    output: Path,
+) -> None:
+    expected_parent = candidate / "target"
+    if (
+        output.parent != expected_parent
+        or CANDIDATE_OUTPUT_NAME_PATTERN.fullmatch(output.name) is None
+    ):
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        )
+    try:
+        target_metadata = expected_parent.lstat()
+        output_metadata = output.lstat()
+    except OSError as error:
+        raise AutopilotError(
+            "validation_candidate_output_invalid"
+        ) from error
+    if (
+        not stat.S_ISDIR(target_metadata.st_mode)
+        or not stat.S_ISDIR(output_metadata.st_mode)
+        or target_metadata.st_uid != os.getuid()
+        or output_metadata.st_uid != os.getuid()
+        or target_metadata.st_mode & 0o022
+        or stat.S_IMODE(output_metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError("validation_candidate_output_invalid")
+
+
 def validation_sandbox_profile(
     repo_root: Path,
     worktree: Path,
     temporary_home: Path,
+    candidate_output: Path,
+    *,
+    full_xcode: FullXcodeConfiguration | None = None,
+    xcrun_proxy: Path | None = None,
 ) -> str:
     root = repo_root.resolve()
     candidate = worktree.resolve()
@@ -2040,6 +2534,32 @@ def validation_sandbox_profile(
     rustup_home = trusted_rustup_home()
     git_common_directory = repository_git_common_directory(root)
     trusted_makefile = root / "Makefile.toml"
+    _validate_candidate_output_path(candidate, candidate_output)
+    if (full_xcode is None) != (xcrun_proxy is None):
+        raise AutopilotError("validation_sandbox_path_invalid")
+    if full_xcode is not None and xcrun_proxy is not None:
+        try:
+            proxy_metadata = xcrun_proxy.lstat()
+            proxy_directory_metadata = xcrun_proxy.parent.lstat()
+        except OSError as error:
+            raise AutopilotError(
+                "validation_sandbox_path_invalid"
+            ) from error
+        if (
+            xcrun_proxy.absolute()
+            != temporary_home / "trusted-xcrun/xcrun"
+            or not full_xcode.developer_dir.is_dir()
+            or not full_xcode.metal_toolchain_root.is_dir()
+            or not full_xcode.sdk_root.is_dir()
+            or not stat.S_ISREG(proxy_metadata.st_mode)
+            or proxy_metadata.st_uid != os.getuid()
+            or proxy_metadata.st_nlink != 1
+            or stat.S_IMODE(proxy_metadata.st_mode) != 0o500
+            or not stat.S_ISDIR(proxy_directory_metadata.st_mode)
+            or proxy_directory_metadata.st_uid != os.getuid()
+            or stat.S_IMODE(proxy_directory_metadata.st_mode) != 0o700
+        ):
+            raise AutopilotError("validation_sandbox_path_invalid")
     if (
         not candidate.is_dir()
         or not root.is_dir()
@@ -2050,18 +2570,27 @@ def validation_sandbox_profile(
     ):
         raise AutopilotError("validation_sandbox_path_invalid")
 
-    def literal(path: Path) -> str:
-        return json.dumps(str(path.resolve(strict=False)))
+    def literal(path: Path, *, resolve: bool = True) -> str:
+        value = path.resolve(strict=False) if resolve else path.absolute()
+        return json.dumps(str(value))
 
-    readable = (
+    readable = [
         candidate,
         git_common_directory,
         rustup_home / "toolchains",
         rustup_home / "settings.toml",
         temporary_home,
-    )
-    writable = (
-        temporary_home,
+    ]
+    if full_xcode is not None and xcrun_proxy is not None:
+        readable.extend(
+            (
+                full_xcode.developer_dir,
+                full_xcode.metal_toolchain_root,
+                xcrun_proxy.parent,
+            )
+        )
+    candidate_writable = (
+        candidate_output,
         candidate / "site/.astro",
         candidate / "site/dist",
         candidate / "site/node_modules/.astro",
@@ -2118,8 +2647,16 @@ def validation_sandbox_profile(
     lines.append(
         f"(allow file-read* (literal {literal(trusted_makefile)}))"
     )
+    lines.append(
+        f"(allow file-write* (subpath {literal(temporary_home)}))"
+    )
+    if xcrun_proxy is not None:
+        lines.append(
+            f"(deny file-write* (subpath {literal(xcrun_proxy.parent)}))"
+        )
     lines.extend(
-        f"(allow file-write* (subpath {literal(path)}))" for path in writable
+        f"(allow file-write* (subpath {literal(path, resolve=False)}))"
+        for path in candidate_writable
     )
     lines.append('(allow file-write* (literal "/dev/null"))')
     cargo_home = temporary_home / "cargo-home"
@@ -2190,6 +2727,11 @@ def run_validation_profiles(
     task_graph_sha256 = sandbox_task_graph_sha256(repo_root)
     results: list[dict[str, Any]] = []
     profile_names = required_profile_names(scope["requires_full_gate"])
+    full_xcode = (
+        full_xcode_environment()
+        if FULL_VALIDATION_PROFILE in profile_names
+        else None
+    )
     trusted_audit = (repo_root / "scripts/audit_node_lock.py").resolve()
     tool_paths, tool_evidence = validation_tools(repo_root)
     formatter_tools = trusted_formatter_tools(
@@ -2203,9 +2745,20 @@ def run_validation_profiles(
         ),
         "RUSTFMT": str(formatter_tools["rustfmt"]),
     }
-    with validation_temporary_directory() as temporary:
+    with (
+        validation_temporary_directory() as temporary,
+        pinned_candidate_output_directory(worktree) as candidate_output,
+    ):
         temporary_home = Path(temporary).resolve()
         initialize_validation_home(temporary_home)
+        xcrun_proxy: Path | None = None
+        xcrun_proxy_sha256: str | None = None
+        if full_xcode is not None:
+            xcrun_proxy, xcrun_proxy_sha256 = initialize_xcrun_proxy(
+                temporary_home,
+                full_xcode,
+                tool_paths["python3"],
+            )
         acquisition_environment = sanitized_validation_environment(
             temporary_home,
             tool_paths,
@@ -2244,11 +2797,23 @@ def run_validation_profiles(
                 trusted_audit,
             )
         )
-        profile_environment.update(formatter_environment)
+        profile_environment.update(
+            {
+                **formatter_environment,
+                CANDIDATE_OUTPUT_ENV: str(candidate_output.path),
+            }
+        )
+        _verify_candidate_output_empty(
+            candidate_output,
+            changed=True,
+        )
         profile = validation_sandbox_profile(
             repo_root,
             worktree,
             temporary_home,
+            candidate_output.path,
+            full_xcode=full_xcode,
+            xcrun_proxy=xcrun_proxy,
         )
         profile_path = temporary_home / "validation.sb"
         try:
@@ -2272,23 +2837,43 @@ def run_validation_profiles(
             full_xcode_evidence = None
             current_environment = profile_environment
             if name == FULL_VALIDATION_PROFILE:
-                xcode_environment, full_xcode_evidence = (
-                    full_xcode_environment()
-                )
+                if (
+                    full_xcode is None
+                    or xcrun_proxy is None
+                    or xcrun_proxy_sha256 is None
+                ):
+                    raise AutopilotError("full_xcode_unavailable")
+                full_xcode_evidence = {
+                    **full_xcode.evidence,
+                    "xcrun_proxy_sha256": xcrun_proxy_sha256,
+                }
                 current_environment = sanitized_validation_environment(
                     temporary_home,
                     tool_paths,
                     cargo_home=temporary_home / "cargo-home",
                     offline=True,
                     overrides={
-                        **xcode_environment,
+                        **full_xcode.environment,
                         **formatter_environment,
+                        CANDIDATE_OUTPUT_ENV: str(
+                            candidate_output.path
+                        ),
+                        "PATH": os.pathsep.join(
+                            (
+                                str(xcrun_proxy.parent),
+                                *_validation_path_entries(tool_paths),
+                            )
+                        ),
                     },
                 )
             profile_command = trusted_profile_command(
                 repo_root,
                 name,
                 cargo_executable=tool_paths["cargo"],
+            )
+            _verify_candidate_output_empty(
+                candidate_output,
+                changed=True,
             )
             try:
                 output = run_command(
@@ -2306,17 +2891,18 @@ def run_validation_profiles(
                     capture_failure_diagnostic=True,
                 )
             except CommandFailure as error:
-                diagnostic_sha256 = write_validation_failure_diagnostic(
+                raise _validation_profile_failure(
                     repo_root,
+                    candidate_output,
                     profile=name,
                     repository_head=head,
                     repository_tree=tree,
                     failure=error,
-                )
-                raise AutopilotError(
-                    error.code,
-                    diagnostic_sha256=diagnostic_sha256,
                 ) from error
+            _verify_candidate_output_empty(
+                candidate_output,
+                changed=True,
+            )
             current_head, current_tree = repository_identity(worktree)
             if current_head != head or current_tree != tree:
                 raise AutopilotError("validation_repository_changed")
@@ -2326,6 +2912,18 @@ def run_validation_profiles(
                 raise AutopilotError("validation_task_graph_changed")
             if validation_tool_evidence(tool_paths) != tool_evidence:
                 raise AutopilotError("validation_tool_changed")
+            if (
+                xcrun_proxy is not None
+                and xcrun_proxy_sha256 is not None
+                and hash_file_bounded(xcrun_proxy)
+                != xcrun_proxy_sha256
+            ):
+                raise AutopilotError("validation_xcode_proxy_changed")
+            if (
+                name == FULL_VALIDATION_PROFILE
+                and full_xcode_environment() != full_xcode
+            ):
+                raise AutopilotError("validation_xcode_changed")
             trusted_node_provenance = run_command(
                 [
                     str(tool_paths["python3"]),

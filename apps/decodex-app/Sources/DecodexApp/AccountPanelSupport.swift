@@ -6,16 +6,17 @@ enum AccountPanelLayout {
 	static let panelVerticalPadding: CGFloat = 12
 	static let panelWidth: CGFloat = 276
 	static let minimumAccountListHeight: CGFloat = 110
-	static let estimatedAccountRowHeight: CGFloat = 74
+	static let estimatedAccountRowHeight: CGFloat = 84
 	static let statusMaximumHeight: CGFloat = 92
-	// Header, routing/projection status, aggregate activity card, and panel spacing.
-	static let fixedChromeHeight: CGFloat = 142
+	// Combined header/activity card and panel spacing.
+	static let fixedChromeHeight: CGFloat = 90
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation
-		let screen = NSScreen.screens.first { screen in
-			screen.frame.contains(mouseLocation)
-		} ?? NSScreen.main
+		let screen =
+			NSScreen.screens.first { screen in
+				screen.frame.contains(mouseLocation)
+			} ?? NSScreen.main
 
 		return screen?.visibleFrame.height ?? 760
 	}
@@ -30,7 +31,8 @@ enum AccountPanelLayout {
 			windowVisibleFrame: windowVisibleFrame,
 			fallback: activeScreenVisibleHeight()
 		)
-		let boundedAdditionalChromeHeight = additionalChromeHeight.isFinite
+		let boundedAdditionalChromeHeight =
+			additionalChromeHeight.isFinite
 			? max(0, additionalChromeHeight)
 			: 0
 		let screenBound = max(
@@ -41,8 +43,9 @@ enum AccountPanelLayout {
 				- fixedChromeHeight
 				- boundedAdditionalChromeHeight
 		)
-		let rowCount = max(1, accountCount)
-		let contentEstimate = CGFloat(rowCount) * estimatedAccountRowHeight
+		let contentEstimate = estimatedAccountListContentHeight(
+			accountCount: accountCount
+		)
 		let contentHeight = resolvedAccountListContentHeight(
 			measured: measuredContentHeight,
 			estimated: contentEstimate
@@ -52,6 +55,19 @@ enum AccountPanelLayout {
 			screenBound,
 			max(minimumAccountListHeight, contentHeight)
 		)
+	}
+
+	static func estimatedAccountListContentHeight(
+		accountCount: Int
+	) -> CGFloat {
+		let rowCount = max(1, accountCount)
+		let rowHeights = CGFloat(rowCount) * estimatedAccountRowHeight
+		let rowGaps =
+			CGFloat(max(0, rowCount - 1))
+			* PanelSpacing.section
+		// The list keeps a one-point rendering inset on every edge so card
+		// shadows are not clipped.
+		return rowHeights + rowGaps + 2
 	}
 
 	static func resolvedAccountListContentHeight(
@@ -96,27 +112,6 @@ struct AccountIdentityPresentation: Equatable, Sendable {
 		} else {
 			text = alias
 			showsEmail = false
-		}
-	}
-}
-
-struct CodexProjectionPresentation: Equatable, Sendable {
-	let text: String
-
-	init(
-		projection: CodexAuthProjection?,
-		currentIdentity: String?,
-		isInitialLoading: Bool
-	) {
-		switch projection {
-		case .current:
-			text = currentIdentity ?? "Checking account"
-		case .unmanaged:
-			text = "Not managed by Decodex"
-		case .unavailable:
-			text = "Unavailable"
-		case nil:
-			text = isInitialLoading ? "Loading" : "Checking"
 		}
 	}
 }

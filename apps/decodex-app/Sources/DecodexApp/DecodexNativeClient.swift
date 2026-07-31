@@ -19,6 +19,8 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var expectedRoutingRevision: UInt64? = nil
 	var idempotencyKey: String? = nil
 	var operationID: String? = nil
+	var sessionID: String? = nil
+	var codexBin: String? = nil
 	var enabled: Bool? = nil
 
 	enum CodingKeys: String, CodingKey {
@@ -33,6 +35,8 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case expectedRoutingRevision = "expected_routing_revision"
 		case idempotencyKey = "idempotency_key"
 		case operationID = "operation_id"
+		case sessionID = "session_id"
+		case codexBin = "codex_bin"
 		case enabled
 	}
 }
@@ -217,6 +221,12 @@ final class DecodexNativeClient: @unchecked Sendable, CustomDebugStringConvertib
 		"DecodexNativeClient(transport: in-process)"
 	}
 
+	static func shutdownSharedSession() async {
+		await Task.detached {
+			sharedSession.shutdown()
+		}.value
+	}
+
 	func perform<Payload: Decodable>(
 		_ request: DecodexNativeRequest,
 		authority requestedAuthority: ResetCardAuthority?,
@@ -312,6 +322,7 @@ private final class DecodexNativeSession: @unchecked Sendable {
 	private let lock = NSLock()
 	private var client: UnsafeMutableRawPointer?
 	private var authority: ResetCardAuthority?
+	private var closed = false
 
 	func request(
 		_ requestData: Data,
@@ -319,7 +330,8 @@ private final class DecodexNativeSession: @unchecked Sendable {
 	) throws -> Data {
 		let library = try DecodexNativeLibrary.shared.get()
 		let handle = try lock.withLock {
-			guard authority == nil
+			guard closed == false,
+				authority == nil
 				|| requestedAuthority == nil
 				|| authority == requestedAuthority
 			else {
@@ -391,14 +403,22 @@ private final class DecodexNativeSession: @unchecked Sendable {
 		return Data(bytes: responseBuffer, count: responseLength)
 	}
 
-	deinit {
+	func shutdown() {
 		let handle = lock.withLock {
-			defer { client = nil }
+			closed = true
+			defer {
+				client = nil
+				authority = nil
+			}
 			return client
 		}
 		if let handle, let library = try? DecodexNativeLibrary.shared.get() {
 			library.destroy(handle)
 		}
+	}
+
+	deinit {
+		shutdown()
 	}
 }
 

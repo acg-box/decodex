@@ -674,7 +674,15 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertNotIn("--codex-home", help_result.stdout)
 
 		with tempfile.TemporaryDirectory() as directory:
-			codex_home = Path(directory)
+			temp_root = Path(directory)
+			codex_home = temp_root / "codex-home"
+			repo_root = temp_root / "primary"
+			subprocess.run(
+				["git", "init", "--initial-branch=main", str(repo_root)],
+				check=True,
+				capture_output=True,
+				text=True,
+			)
 			runtime = (
 				codex_home
 				/ "automations"
@@ -691,7 +699,13 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			environment["CODEX_HOME"] = str(codex_home)
 
 			result = subprocess.run(
-				[sys.executable, str(plan_script), "--json"],
+				[
+					sys.executable,
+					str(plan_script),
+					"--repo-root",
+					str(repo_root),
+					"--json",
+				],
 				check=True,
 				capture_output=True,
 				text=True,
@@ -702,6 +716,13 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			self.assertEqual(payload["status"], "pass")
 			self.assertEqual(payload["mode"], "native-lifecycle-plan")
 			self.assertEqual(len(payload["definitions"]), 5)
+			self.assertEqual(
+				{
+					tuple(item["native_fields"]["cwds"])
+					for item in payload["definitions"]
+				},
+				{(str(repo_root.resolve()),)},
+			)
 			self.assertEqual(
 				payload["retirements"],
 				["decodex-x-browser-publisher"],

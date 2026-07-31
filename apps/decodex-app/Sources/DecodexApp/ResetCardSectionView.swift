@@ -6,7 +6,7 @@ struct ResetCardMessageView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 6) {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
 			Image(systemName: symbol)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(color)
@@ -23,12 +23,12 @@ struct ResetCardMessageView: View {
 				Image(systemName: "xmark")
 					.font(PanelFont.tertiary)
 			}
-			.buttonStyle(.plain)
+			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			.help("Dismiss message")
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
 	}
 
@@ -60,9 +60,9 @@ struct ResetCardPendingAttemptsView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			ForEach(store.pendingAttempts, id: \.idempotencyKey) { attempt in
-				HStack(spacing: 6) {
+				HStack(spacing: PanelSpacing.related) {
 					Image(systemName: "clock.arrow.circlepath")
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.warning(colorScheme))
@@ -95,8 +95,8 @@ struct ResetCardPendingAttemptsView: View {
 				}
 			}
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
 	}
 }
@@ -108,6 +108,7 @@ struct ResetCardAccountRow: View {
 	let store: ResetCardStore
 	let showsEmail: Bool
 	@Binding private var detailedAccountID: String?
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
@@ -125,8 +126,8 @@ struct ResetCardAccountRow: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 2) {
-			HStack(alignment: .center, spacing: 4) {
+		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
+			HStack(alignment: .center, spacing: PanelSpacing.compact) {
 				identityHeader
 				AccountPrimaryActionsView(
 					state: state,
@@ -136,11 +137,12 @@ struct ResetCardAccountRow: View {
 
 			if exceptionalStatusText != nil {
 				exceptionalStatus
+					.transition(.panelInline)
 			}
 
 			quotaWindows
 
-			HStack(alignment: .center, spacing: 4) {
+			HStack(alignment: .center, spacing: PanelSpacing.compact) {
 				cardInventory
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.layoutPriority(1)
@@ -152,8 +154,8 @@ struct ResetCardAccountRow: View {
 				)
 			}
 		}
-		.padding(.horizontal, 9)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -169,26 +171,35 @@ struct ResetCardAccountRow: View {
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
+		.animation(rowStateAnimation, value: exceptionalStatusText)
 	}
 
 	private var identityHeader: some View {
-		Text(identity.text)
-			.font(PanelFont.accountName)
-			.foregroundStyle(PanelPalette.primaryText(colorScheme))
-			.lineLimit(1)
-			.truncationMode(.middle)
-			.layoutPriority(1)
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
+			Text(identity.text)
+				.font(PanelFont.accountName)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.contentTransition(.opacity)
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.layoutPriority(1)
+				.animation(identityTransitionAnimation, value: identity.text)
+
+			if let planType {
+				Text(planType)
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+					.fixedSize(horizontal: true, vertical: false)
+			}
+		}
 		.frame(maxWidth: .infinity, alignment: .leading)
 		.accessibilityElement(children: .ignore)
-		.accessibilityLabel(
-			identity.showsEmail
-				? "Account email \(identity.text)"
-				: "Account \(identity.text)"
-		)
+		.accessibilityLabel(identityAccessibilityLabel)
 	}
 
 	private var exceptionalStatus: some View {
-		HStack(spacing: 5) {
+		HStack(spacing: PanelSpacing.related) {
 			Text(exceptionalStatusText ?? "")
 				.font(PanelFont.accountDetail)
 				.foregroundStyle(exceptionalStatusColor)
@@ -216,6 +227,21 @@ struct ResetCardAccountRow: View {
 
 	private var profileEmail: String? {
 		state.profile?.email ?? state.profileUnavailable?.claims.email
+	}
+
+	private var planType: String? {
+		state.profile?.planType ?? state.profileUnavailable?.claims.planType
+	}
+
+	private var identityAccessibilityLabel: String {
+		let accountLabel =
+			identity.showsEmail
+			? "Account email \(identity.text)"
+			: "Account \(identity.text)"
+		guard let planType else {
+			return accountLabel
+		}
+		return "\(accountLabel), \(planType) plan"
 	}
 
 	private var exceptionalStatusText: String? {
@@ -249,7 +275,7 @@ struct ResetCardAccountRow: View {
 		case .authFailed:
 			return "Login refresh required"
 		case .depleted:
-			return "Weekly quota depleted"
+			return nil
 		case .pluginUnready:
 			return "Provider update required"
 		case .unknown:
@@ -261,7 +287,6 @@ struct ResetCardAccountRow: View {
 
 	private var exceptionalStatusColor: Color {
 		if state.account.enabled == false
-			|| state.account.observedState == .depleted
 			|| state.account.observedState == .unknown
 			|| state.account.observedState == .pluginUnready
 		{
@@ -283,7 +308,7 @@ struct ResetCardAccountRow: View {
 
 	@ViewBuilder
 	private var quotaWindows: some View {
-		VStack(alignment: .leading, spacing: 2) {
+		VStack(alignment: .leading, spacing: PanelSpacing.micro) {
 			if ResetCardQuotaPresentation(window: state.fiveHourQuota).isVisible {
 				ResetCardQuotaWindowView(
 					title: "5h",
@@ -307,7 +332,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(
-					"Sign in to this account in Codex, then choose Refresh Login."
+					"Choose Refresh login in the menu bar app to sign in with the official Codex device login."
 				)
 		} else if let error = state.inventory?.observationError {
 			Text("Reset Cards unavailable")
@@ -349,28 +374,30 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 		} else {
 			ScrollView(.horizontal, showsIndicators: false) {
-				HStack(spacing: 4) {
+				HStack(spacing: PanelSpacing.compact) {
 					ForEach(state.targets, id: \.self) { target in
 						Button {
 							tap(target)
 						} label: {
 							cardChip(target)
 						}
-						.buttonStyle(.bordered)
-						.buttonBorderShape(.roundedRectangle(radius: 6))
-						.controlSize(.small)
-						.tint(
-							confirmation.isArmed(target)
-								? PanelPalette.warning(colorScheme)
-								: PanelPalette.actionBlue(colorScheme)
+						.buttonStyle(
+							ResetCardChipButtonStyle(
+								isArmed: confirmation.isArmed(target)
+							)
 						)
 						.disabled(store.blocksNewAttempt(for: target))
-						.frame(minHeight: 24)
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target))
+						.transition(
+							.opacity.combined(
+								with: .scale(scale: 0.96)
+							)
+						)
 					}
 				}
+				.animation(rowStateAnimation, value: state.targets)
 			}
 			.frame(height: 26)
 			.fixedSize(horizontal: false, vertical: true)
@@ -390,18 +417,31 @@ struct ResetCardAccountRow: View {
 				.hidden()
 
 			Text(cardChipTitle(target))
+				.contentTransition(.opacity)
 				.foregroundStyle(
 					confirmation.isArmed(target)
 						? PanelPalette.warning(colorScheme)
-						: PanelPalette.primaryText(colorScheme).opacity(0.9)
+						: PanelPalette.secondaryText(colorScheme)
 				)
 		}
 		.font(PanelFont.resetCardAction)
 		.monospacedDigit()
 		.lineLimit(1)
 		.fixedSize(horizontal: true, vertical: false)
-		.padding(.horizontal, 1)
+		.padding(.horizontal, PanelSpacing.micro)
 		.contentShape(Rectangle())
+		.animation(
+			rowStateAnimation,
+			value: confirmation.isArmed(target)
+		)
+		.animation(
+			rowStateAnimation,
+			value: confirmation.isSubmitting(target)
+		)
+		.animation(
+			rowStateAnimation,
+			value: confirmationSecondsRemaining
+		)
 	}
 
 	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
@@ -409,7 +449,8 @@ struct ResetCardAccountRow: View {
 			return "Using…"
 		}
 		if confirmation.isArmed(target) {
-			let seconds = confirmationSecondsRemaining > 0
+			let seconds =
+				confirmationSecondsRemaining > 0
 				? confirmationSecondsRemaining
 				: Self.confirmationWindowSeconds
 			return "Confirm · \(seconds)s"
@@ -419,7 +460,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private func normalCardChipTitle(_ target: ResetCardUseTarget) -> String {
-		"Use · \(Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds))"
+		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
 	}
 
 	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
@@ -463,6 +504,14 @@ struct ResetCardAccountRow: View {
 			let completion = await store.use(attempt)
 			confirmation.finish(attempt, completion: completion)
 		}
+	}
+
+	private var identityTransitionAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.identity
+	}
+
+	private var rowStateAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
 	}
 
 	@MainActor
@@ -521,12 +570,19 @@ struct ResetCardAccountRow: View {
 		timeZone: TimeZone = .current
 	) -> String {
 		let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
-		let formatter = DateFormatter()
-		formatter.locale = Locale(identifier: "en_US_POSIX")
-		formatter.calendar = Calendar(identifier: .gregorian)
-		formatter.timeZone = timeZone
-		formatter.dateFormat = "MMM d HH:mm"
-		return formatter.string(from: date)
+		var dayStyle = Date.FormatStyle.dateTime
+			.month(.abbreviated)
+			.day()
+		dayStyle.locale = Locale(identifier: "en_US_POSIX")
+		dayStyle.calendar = Calendar(identifier: .gregorian)
+		dayStyle.timeZone = timeZone
+		var timeStyle = Date.FormatStyle.dateTime
+			.hour(.twoDigits(amPM: .omitted))
+			.minute(.twoDigits)
+		timeStyle.locale = Locale(identifier: "en_US_POSIX@hours=h23")
+		timeStyle.calendar = Calendar(identifier: .gregorian)
+		timeStyle.timeZone = timeZone
+		return "\(date.formatted(dayStyle)) \(date.formatted(timeStyle))"
 	}
 
 	static func cardAccessibilityLabel(
@@ -545,15 +601,67 @@ struct ResetCardAccountRow: View {
 			spokenExpiry = expiry
 		}
 		let date = Date(timeIntervalSince1970: TimeInterval(expiresAtUnixSeconds))
-		let zone = timeZone.abbreviation(for: date)
+		let zone =
+			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
 		return "Reset Card, expires \(spokenExpiry) \(zone)"
 	}
 }
 
+private struct ResetCardChipButtonStyle: ButtonStyle {
+	let isArmed: Bool
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+	@Environment(\.colorScheme) private var colorScheme
+	@Environment(\.isEnabled) private var isEnabled
+
+	func makeBody(configuration: Configuration) -> some View {
+		let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+
+		configuration.label
+			.padding(.horizontal, PanelSpacing.compact)
+			.frame(minHeight: 24)
+			.background {
+				shape.fill(fillColor)
+			}
+			.overlay {
+				shape.strokeBorder(borderColor, lineWidth: 1)
+			}
+			.contentShape(shape)
+			.opacity(isEnabled ? (configuration.isPressed ? 0.76 : 1) : 0.46)
+			.scaleEffect(configuration.isPressed ? 0.985 : 1)
+			.animation(
+				reduceMotion ? nil : PanelMotion.press,
+				value: configuration.isPressed
+			)
+			.animation(
+				reduceMotion ? nil : PanelMotion.controlState,
+				value: isArmed
+			)
+	}
+
+	private var fillColor: Color {
+		if isArmed {
+			return PanelPalette.warning(colorScheme)
+				.opacity(colorScheme == .dark ? 0.12 : 0.09)
+		}
+		return PanelPalette.primaryText(colorScheme)
+			.opacity(colorScheme == .dark ? 0.055 : 0.04)
+	}
+
+	private var borderColor: Color {
+		if isArmed {
+			return PanelPalette.warning(colorScheme)
+				.opacity(colorScheme == .dark ? 0.72 : 0.62)
+		}
+		return PanelPalette.primaryText(colorScheme)
+			.opacity(colorScheme == .dark ? 0.22 : 0.18)
+	}
+}
+
 enum ResetCardQuotaPresentationTone: Equatable {
-	case current
+	case healthy
 	case warning
+	case critical
 	case muted
 	case error
 }
@@ -572,18 +680,17 @@ struct ResetCardQuotaPresentation: Equatable {
 		case .current(let usedPercent, _):
 			isVisible = true
 			let remainingPercent = 100 - min(100, usedPercent)
-			valueText = "\(remainingPercent)% left"
+			valueText = "\(remainingPercent)%"
 			detailText = nil
-			tone = .current
-			self.usedPercent = usedPercent
-			self.remainingPercent = remainingPercent
-			resetDate = window.resetDate
-		case .stale(let usedPercent, _):
-			isVisible = true
-			let remainingPercent = 100 - min(100, usedPercent)
-			valueText = "\(remainingPercent)% left"
-			detailText = "stale"
-			tone = .current
+			tone =
+				switch remainingPercent {
+				case 51...:
+					.healthy
+				case 21...:
+					.warning
+				default:
+					.critical
+				}
 			self.usedPercent = usedPercent
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
@@ -598,7 +705,8 @@ struct ResetCardQuotaPresentation: Equatable {
 		case .error(let error):
 			isVisible = false
 			valueText = "—"
-			detailText = error == .unsupportedWindow
+			detailText =
+				error == .unsupportedWindow
 				? "Not reported"
 				: error.presentation
 			tone = .muted
@@ -610,40 +718,24 @@ struct ResetCardQuotaPresentation: Equatable {
 }
 
 private struct ResetCardQuotaWindowView: View {
-	private static let titleColumnWidth: CGFloat = 16
-	private static let valueColumnWidth: CGFloat = 86
-	private static let resetDateColumnWidth: CGFloat = 80
+	private static let titleColumnWidth: CGFloat = 17
 
 	let title: String
 	let window: ResetCardQuotaWindow
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		let presentation = ResetCardQuotaPresentation(window: window)
+		let remainingPercent = presentation.remainingPercent ?? 0
 
-		HStack(alignment: .center, spacing: 4) {
+		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(title)
 				.font(PanelFont.quotaText)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.frame(width: Self.titleColumnWidth, alignment: .leading)
 
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Text(presentation.valueText)
-					.font(PanelFont.usageValue)
-
-				if let detailText = presentation.detailText,
-					presentation.resetDate != nil
-				{
-					Text(detailText)
-						.font(PanelFont.quotaText)
-				}
-			}
-			.foregroundStyle(stateColor(for: presentation.tone))
-			.monospacedDigit()
-			.lineLimit(1)
-			.frame(width: Self.valueColumnWidth, alignment: .leading)
-
-			if let remainingPercent = presentation.remainingPercent {
+			if presentation.remainingPercent != nil {
 				GeometryReader { proxy in
 					ZStack(alignment: .leading) {
 						Capsule(style: .continuous)
@@ -656,11 +748,36 @@ private struct ResetCardQuotaWindowView: View {
 									* CGFloat(remainingPercent)
 									/ 100
 							)
+							.animation(
+								quotaValueAnimation,
+								value: remainingPercent
+							)
 					}
 				}
-				.frame(minWidth: 72, maxWidth: .infinity)
-				.frame(height: 4)
+				.frame(minWidth: 88, maxWidth: .infinity)
+				.frame(height: 5)
+				.layoutPriority(1)
 			}
+
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
+				Text(presentation.valueText)
+					.font(PanelFont.usageValue)
+					.contentTransition(
+						.numericText(value: Double(remainingPercent))
+					)
+
+				if let detailText = presentation.detailText,
+					presentation.resetDate != nil
+				{
+					Text(detailText)
+						.font(PanelFont.quotaText)
+				}
+			}
+			.foregroundStyle(stateColor(for: presentation.tone))
+			.monospacedDigit()
+			.lineLimit(1)
+			.fixedSize(horizontal: true, vertical: false)
+			.animation(quotaValueAnimation, value: remainingPercent)
 
 			if let resetDate = presentation.resetDate {
 				Text(Self.compactDateTime(resetDate))
@@ -668,21 +785,14 @@ private struct ResetCardQuotaWindowView: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 					.monospacedDigit()
 					.lineLimit(1)
-					.layoutPriority(1)
-					.frame(
-						width: Self.resetDateColumnWidth,
-						alignment: .trailing
-					)
+					.fixedSize(horizontal: true, vertical: false)
 			} else if let detailText = presentation.detailText {
 				Text(detailText)
 					.font(PanelFont.quotaText)
 					.foregroundStyle(stateColor(for: presentation.tone))
 					.lineLimit(1)
 					.truncationMode(.tail)
-					.frame(
-						width: Self.resetDateColumnWidth,
-						alignment: .trailing
-					)
+					.frame(maxWidth: .infinity, alignment: .trailing)
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
@@ -693,16 +803,20 @@ private struct ResetCardQuotaWindowView: View {
 		.help(window.accessibilityValue)
 	}
 
+	private var quotaValueAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.quotaValue
+	}
+
 	private func stateColor(for tone: ResetCardQuotaPresentationTone) -> Color {
 		switch tone {
-		case .current:
+		case .healthy:
 			return PanelPalette.usageCyan(colorScheme)
 		case .warning:
 			return PanelPalette.warning(colorScheme)
+		case .critical, .error:
+			return PanelPalette.destructive(colorScheme)
 		case .muted:
 			return PanelPalette.secondaryText(colorScheme)
-		case .error:
-			return PanelPalette.destructive(colorScheme)
 		}
 	}
 

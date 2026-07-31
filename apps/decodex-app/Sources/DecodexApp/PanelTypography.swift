@@ -9,8 +9,7 @@ enum PanelFont {
 		.system(size: size, weight: weight, design: design)
 	}
 
-	static let headerTitle = text(15.4, weight: .semibold)
-	static let headerSubtitle = text(10.8, weight: .regular)
+	static let headerTitle = text(14.2, weight: .semibold)
 
 	static let emptyIcon = text(17, weight: .medium)
 	static let emptyTitle = text(12.5, weight: .semibold)
@@ -19,9 +18,10 @@ enum PanelFont {
 	static let transientBody = emptyBody
 	static let accountName = text(12.4, weight: .semibold)
 	static let accountDetail = text(10.6, weight: .regular)
+	static let loginCode = text(19, weight: .semibold, design: .monospaced)
 	static let usageLabel = text(9.8, weight: .regular)
 	static let usageValue = text(10.4, weight: .medium)
-	static let resetCardAction = usageValue
+	static let resetCardAction = text(9.4, weight: .medium)
 	static let quotaText = text(10.4, weight: .regular)
 	static let tertiary = text(9.5, weight: .regular)
 	static let compactAction = text(9.8, weight: .medium)

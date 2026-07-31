@@ -2,7 +2,7 @@ use std::{collections::HashSet, thread};
 
 use reqwest::{
 	Error, StatusCode, Url,
-	blocking::Client,
+	blocking::{Client, ClientBuilder},
 	header::{ACCEPT, AUTHORIZATION, HeaderMap, LINK, RETRY_AFTER, USER_AGENT},
 };
 use serde_json::{self, Value};
@@ -29,22 +29,26 @@ impl GitHubApi {
 	}
 
 	fn new_with_origin(token: Option<String>, origin: Url) -> crate::prelude::Result<Self> {
-		Ok(Self {
-			client: Client::builder()
-				.timeout(GITHUB_REQUEST_TIMEOUT)
-				.redirect(reqwest::redirect::Policy::none())
-				.build()?,
-			origin,
-			token,
-		})
+		Ok(Self { client: Self::client_builder().build()?, origin, token })
+	}
+
+	fn client_builder() -> ClientBuilder {
+		Client::builder()
+			.timeout(GITHUB_REQUEST_TIMEOUT)
+			.redirect(reqwest::redirect::Policy::none())
 	}
 
 	#[cfg(test)]
 	pub(crate) fn new_for_test(
 		token: Option<String>,
 		origin: &str,
+		unix_socket: &std::path::Path,
 	) -> crate::prelude::Result<Self> {
-		Self::new_with_origin(token, Url::parse(origin)?)
+		Ok(Self {
+			client: Self::client_builder().unix_socket(unix_socket).build()?,
+			origin: Url::parse(origin)?,
+			token,
+		})
 	}
 
 	pub(super) fn get(&self, url: &str) -> crate::prelude::Result<GitHubResponse> {

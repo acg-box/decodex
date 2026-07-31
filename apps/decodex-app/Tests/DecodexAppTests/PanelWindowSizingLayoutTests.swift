@@ -1,8 +1,19 @@
 import AppKit
+import SwiftUI
 @testable import DecodexApp
 import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
+	func testPanelSpacingUsesOneCompactTwoPointRhythm() {
+		XCTAssertEqual(PanelSpacing.micro, 2)
+		XCTAssertEqual(PanelSpacing.compact, 4)
+		XCTAssertEqual(PanelSpacing.related, 6)
+		XCTAssertEqual(PanelSpacing.section, 8)
+		XCTAssertEqual(PanelSpacing.cardHorizontal, 10)
+		XCTAssertEqual(PanelSpacing.cardVertical, 8)
+		XCTAssertEqual(PanelSpacing.popoverInset, 12)
+	}
+
 	@MainActor
 	func testPanelWindowHostStaysTransparentWithoutOverridingSystemAppearance() {
 		let window = NSWindow(
@@ -20,7 +31,15 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		XCTAssertFalse(window.hasShadow)
 		XCTAssertFalse(window.isOpaque)
 		XCTAssertEqual(window.backgroundColor, .clear)
+		XCTAssertEqual(window.contentView?.layer?.backgroundColor?.alpha, 0)
 		XCTAssertNil(window.appearance)
+	}
+
+	@MainActor
+	func testStatusPanelHostingViewDoesNotPaintAWindowSizedBackdrop() {
+		let hostingView = TransparentHostingView(rootView: Text("Decodex"))
+
+		XCTAssertFalse(hostingView.isOpaque)
 	}
 
 	@MainActor
@@ -79,6 +98,32 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
+	func testStatusItemPressDefersDeactivateHideForTheToggleAction() {
+		let statusItemRect = NSRect(x: 400, y: 900, width: 28, height: 24)
+
+		XCTAssertTrue(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseDown,
+				mouseLocation: NSPoint(x: 414, y: 912),
+				statusItemRect: statusItemRect
+			)
+		)
+		XCTAssertFalse(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseDown,
+				mouseLocation: NSPoint(x: 300, y: 700),
+				statusItemRect: statusItemRect
+			)
+		)
+		XCTAssertFalse(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseUp,
+				mouseLocation: NSPoint(x: 414, y: 912),
+				statusItemRect: statusItemRect
+			)
+		)
+	}
+
 	func testRoundedContentSizeCeilsFractionalDimensions() {
 		let size = PanelWindowSizingLayout.roundedContentSize(for: CGSize(width: 339.2, height: 641.1))
 
@@ -108,6 +153,21 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 				estimated: 730
 			),
 			730
+		)
+	}
+
+	func testAccountListEstimateUsesRowHeightAndSharedSectionSpacing() {
+		XCTAssertEqual(
+			AccountPanelLayout.estimatedAccountListContentHeight(
+				accountCount: 6
+			),
+			546
+		)
+		XCTAssertEqual(
+			AccountPanelLayout.estimatedAccountListContentHeight(
+				accountCount: 0
+			),
+			86
 		)
 	}
 
