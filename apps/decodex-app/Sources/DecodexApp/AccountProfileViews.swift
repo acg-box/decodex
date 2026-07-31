@@ -5,7 +5,7 @@ struct AccountProfileSummaryView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			AccountProfileMetricsView(metrics: metrics)
 
 			if profile.dailyUsage.isEmpty == false {
@@ -34,7 +34,7 @@ struct AccountProfileDetailView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 9) {
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
 
@@ -51,7 +51,7 @@ struct AccountProfileDetailView: View {
 						.fixedSize(horizontal: false, vertical: true)
 				}
 			} else if state.isProfileRefreshing {
-				HStack(spacing: 6) {
+				HStack(spacing: PanelSpacing.related) {
 					ProgressView()
 						.controlSize(.mini)
 					Text("Loading saved activity")
@@ -73,7 +73,7 @@ struct AccountProfileDetailView: View {
 			}
 		}
 		.frame(width: 270)
-		.padding(12)
+		.padding(PanelSpacing.popoverInset)
 		.accessibilityElement(children: .contain)
 	}
 
@@ -105,7 +105,7 @@ struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
+		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
 			if aggregateMetrics.isEmpty == false {
 				AccountProfileMetricsView(
 					metrics: aggregateMetrics
@@ -119,7 +119,7 @@ struct AccountProfileOverviewView: View {
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(.horizontal, 2)
+		.padding(.horizontal, PanelSpacing.micro)
 		.accessibilityElement(children: .combine)
 	}
 
@@ -217,9 +217,9 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 				ForEach(metrics) { metric in
-					HStack(alignment: .firstTextBaseline, spacing: 2) {
+					HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 						Text(metric.label)
 							.font(PanelFont.usageLabel)
 							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
