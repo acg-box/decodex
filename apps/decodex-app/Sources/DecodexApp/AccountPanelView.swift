@@ -180,9 +180,6 @@ struct AccountPanelView: View {
 				symbol: "plus",
 				tint: PanelPalette.actionBlue(colorScheme),
 				isActive: false,
-				isDisabled: store.isAccountControlInProgress
-					|| store.isRefreshing
-					|| store.isRefreshingAccountSkeleton,
 				isSubtle: true,
 				isPrimary: true,
 				size: 24,

@@ -43,14 +43,13 @@ struct PanelIconButtonView: View {
 		}
 		.buttonStyle(.plain)
 		.disabled(isDisabled)
-		.opacity(isDisabled && isActive == false ? 0.56 : 1)
 		.help(help)
 		.accessibilityLabel(help)
 	}
 
 	private var buttonLabel: some View {
 		iconContent
-			.opacity(isDisabled && isActive == false ? 0.34 : 0.9)
+			.opacity(isDisabled && isActive == false ? 0.5 : 0.9)
 	}
 
 	private var iconContent: some View {
@@ -67,7 +66,7 @@ struct PanelIconButtonView: View {
 			return tint.opacity(colorScheme == .dark ? 0.98 : 0.92)
 		}
 		if isDisabled {
-			return PanelPalette.secondaryText(colorScheme).opacity(0.38)
+			return PanelPalette.secondaryText(colorScheme)
 		}
 		if isDestructive {
 			return tint.opacity(colorScheme == .dark ? 0.96 : 0.9)

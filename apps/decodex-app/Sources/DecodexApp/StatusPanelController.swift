@@ -26,15 +26,24 @@ final class StatusPanelController: NSObject {
 
 		configureStatusItem()
 		configurePanel()
+		observeApplicationLifecycle()
+	}
+
+	deinit {
+		NotificationCenter.default.removeObserver(self)
 	}
 
 	@objc
 	private func togglePanel() {
 		if panel.isVisible {
-			panel.orderOut(nil)
+			hidePanel()
 			return
 		}
 
+		showPanel()
+	}
+
+	private func showPanel() {
 		hostingView.layoutSubtreeIfNeeded()
 		let fittingSize = hostingView.fittingSize
 		if fittingSize.width > 0, fittingSize.height > 0 {
@@ -46,6 +55,15 @@ final class StatusPanelController: NSObject {
 		store.requestRefresh()
 	}
 
+	private func hidePanel() {
+		panel.orderOut(nil)
+	}
+
+	@objc
+	private func applicationDidResignActive(_: Notification) {
+		hidePanel()
+	}
+
 	private func configureStatusItem() {
 		guard let button = statusItem.button else {
 			return
@@ -55,6 +73,7 @@ final class StatusPanelController: NSObject {
 		button.imagePosition = .imageOnly
 		button.target = self
 		button.action = #selector(togglePanel)
+		button.sendAction(on: [.leftMouseDown])
 		button.toolTip = "Decodex"
 		button.setAccessibilityLabel("Decodex")
 	}
@@ -66,7 +85,10 @@ final class StatusPanelController: NSObject {
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
 		panel.hasShadow = false
-		panel.hidesOnDeactivate = true
+		// AppKit's automatic deactivate hiding can restore the panel before a
+		// status-item mouse-up action and turn the first click into a close.
+		// Own the deactivate transition explicitly instead.
+		panel.hidesOnDeactivate = false
 		panel.isMovable = false
 		panel.level = .popUpMenu
 		panel.collectionBehavior = [
@@ -76,6 +98,15 @@ final class StatusPanelController: NSObject {
 		]
 		panel.contentView = hostingView
 		PanelWindowAppearance.apply(to: panel)
+	}
+
+	private func observeApplicationLifecycle() {
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(applicationDidResignActive(_:)),
+			name: NSApplication.didResignActiveNotification,
+			object: NSApp
+		)
 	}
 
 	private func positionPanel() {
