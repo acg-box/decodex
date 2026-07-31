@@ -17,6 +17,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertTrue(presentation.isDisabled)
 		XCTAssertFalse(presentation.isVisuallyDisabled)
+		XCTAssertFalse(presentation.usesDisabledEnvironment)
 	}
 
 	func testUnavailableRouteRemainsVisiblyDisabled() {
@@ -30,6 +31,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertTrue(presentation.isDisabled)
 		XCTAssertTrue(presentation.isVisuallyDisabled)
+		XCTAssertTrue(presentation.usesDisabledEnvironment)
 	}
 
 	func testUnsupportedQuotaWindowIsHidden() {
