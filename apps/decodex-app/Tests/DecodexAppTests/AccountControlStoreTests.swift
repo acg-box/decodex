@@ -306,6 +306,46 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(finalReads.inventory, 1)
 	}
 
+	func testEnrollmentStartsAfterSkeletonPublishesWhileDetailReadIsPending() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true,
+			allowsEnrollment: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertTrue(store.canBeginEnrollment)
+
+		await store.enrollFromSharedCodex()
+
+		let enrollmentRequestCount = await client.enrollmentRequestCount()
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertEqual(enrollmentRequestCount, 1)
+		XCTAssertEqual(store.message?.tone, .success)
+
+		await client.releaseInventory()
+		await refreshTask.value
+		XCTAssertFalse(store.isRefreshing)
+	}
+
 	func testUseInCodexCompletesWhileDetailReadIsPendingWithoutChangingRouting() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -844,6 +884,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let snapshotGate: AccountControlReadGate?
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
+	private let allowsEnrollment: Bool
 	private var routing: AccountRoutingControl
 	private var fixedSelectionError: AccountControlError?
 	private let useAccountError: AccountControlError?
@@ -857,6 +898,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private var projectionReads = 0
 	private var snapshotReadCount = 0
 	private var inventoryReadCount = 0
+	private var enrollmentRequests = 0
 	private var reauthenticationStates: [AccountReauthenticationState]
 	private var lastReauthenticationStartRequest: AccountControlStoreReauthenticationRequest?
 	private var reauthenticationPolls = 0
@@ -873,6 +915,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		suspendsSnapshotAfterFirstRead: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
+		allowsEnrollment: Bool = false,
 		routing: AccountRoutingControl? = nil,
 		fixedSelectionError: AccountControlError? = nil,
 		useAccountError: AccountControlError? = nil,
@@ -888,6 +931,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
+		self.allowsEnrollment = allowsEnrollment
 		self.routing = routing
 			?? AccountRoutingControl(
 				revision: 9,
@@ -1060,7 +1104,20 @@ private actor AccountControlStoreClient: AccountControlClient {
 		enabled: Bool,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard allowsEnrollment,
+			DecodexNativeClient.isCanonicalUUID(operationID),
+			DecodexNativeClient.isCanonicalUUID(accountID),
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			enabled
+		else {
+			throw AccountControlError.applicationUnavailable
+		}
+		enrollmentRequests += 1
+		return .accountChanged(account)
+	}
+
+	func enrollmentRequestCount() -> Int {
+		enrollmentRequests
 	}
 
 	func codexAuthProjection(
