@@ -868,7 +868,7 @@ added. No retained-title evidence gate enables production routing.
 
 ### Account lifecycle and Mac dogfood gate
 
-The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V30
+The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V31
 PostgreSQL database with an empty Account Registry, verifies the signed daemon wrapper
 and same-UID Unix transport, imports test accounts through the ordinary public account
 command, restarts once for exact-build callback attestation, and verifies list, routing,
