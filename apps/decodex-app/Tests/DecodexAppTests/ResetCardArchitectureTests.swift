@@ -78,7 +78,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"Enable account",
 			"Log out",
 			"Refresh login",
-			"Open browser",
+			"Open Codex sign-in page",
+			"Copy one-time code",
+			"Cancel login",
+			"Close login",
 		] {
 			XCTAssertTrue(
 				source.contains("\"\(canonicalLabel)"),
@@ -356,9 +359,26 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(view.contains("\"Copy\""))
-		XCTAssertTrue(view.contains("\"Open browser\""))
-		XCTAssertTrue(view.contains("\"Cancel\""))
+		XCTAssertTrue(view.contains(#"Image(systemName: "xmark")"#))
+		XCTAssertTrue(view.contains(#"Image(systemName: "safari")"#))
+		XCTAssertTrue(
+			view.contains(#"copyFeedback ? "checkmark" : "doc.on.doc""#)
+		)
+		XCTAssertTrue(view.contains(".lineLimit(1)"))
+		XCTAssertTrue(
+			view.contains(".frame(maxWidth: .infinity, alignment: .leading)")
+		)
+		XCTAssertTrue(view.contains(".layoutPriority(1)"))
+		XCTAssertTrue(view.contains(".accessibilityLabel(\"Copy one-time code\")"))
+		XCTAssertTrue(view.contains(".accessibilityLabel(\"Open Codex sign-in page\")"))
+		XCTAssertTrue(view.contains(".keyboardShortcut(.defaultAction)"))
+		XCTAssertTrue(view.contains(".keyboardShortcut(.cancelAction)"))
+		XCTAssertFalse(
+			view.contains(#"Button(copyFeedback ? "Copied" : "Copy")"#)
+		)
+		XCTAssertFalse(
+			view.contains(#"Button(openFeedback ? "Opened" : "Open browser")"#)
+		)
 		XCTAssertTrue(view.contains(".frame(width: 220)"))
 		XCTAssertTrue(view.contains(".padding(14)"))
 		XCTAssertFalse(view.contains("Enter this one-time code"))
@@ -387,5 +407,37 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(app.contains("await DecodexNativeClient.shutdownSharedSession()"))
 		XCTAssertTrue(native.contains("sharedSession.shutdown()"))
 		XCTAssertTrue(native.contains("library.destroy(handle)"))
+	}
+
+	func testAccountDataUsesTheFormerFifteenSecondRefreshCadence() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let store = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
+			encoding: .utf8
+		)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("StatusPanelController.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(
+			store.contains(
+				"defaultAutomaticRefreshInterval: Duration = .seconds(15)"
+			)
+		)
+		XCTAssertTrue(store.contains("private var automaticRefreshTask"))
+		XCTAssertTrue(store.contains("private var refreshCycleTask"))
+		XCTAssertTrue(store.contains("startAutomaticRefresh()"))
+		XCTAssertTrue(store.contains("automaticRefreshTask?.cancel()"))
+		XCTAssertTrue(store.contains("ContinuousClock()"))
+		XCTAssertTrue(store.contains("clock.sleep(until: nextRefresh)"))
+		XCTAssertTrue(store.contains("self.requestRefresh()"))
+		XCTAssertTrue(store.contains("await self.performRefreshCycle()"))
+		XCTAssertFalse(store.contains("Timer.publish"))
+		XCTAssertTrue(panel.contains("store.requestRefresh()"))
 	}
 }

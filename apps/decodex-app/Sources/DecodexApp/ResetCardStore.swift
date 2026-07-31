@@ -162,6 +162,7 @@ final class ResetCardStore {
 	// account-bound provider process. Keep the progressive fan-out below the host
 	// process burst that can make otherwise healthy accounts fail transiently.
 	private static let maximumConcurrentAccountReads = 3
+	private static let defaultAutomaticRefreshInterval: Duration = .seconds(15)
 
 	private static let defaultStartupRetryDelays: [Duration] = [
 		.seconds(1),
@@ -195,11 +196,15 @@ final class ResetCardStore {
 	@ObservationIgnored private let accountProfileClient: (any AccountProfileClient)?
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
+	@ObservationIgnored private let automaticRefreshInterval: Duration
 	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
+	@ObservationIgnored private var automaticRefreshTask: Task<Void, Never>?
+	@ObservationIgnored private var refreshCycleTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
+	@ObservationIgnored private(set) var isPreparingForTermination = false
 	@ObservationIgnored private var profileRequestGenerations = [String: UInt64]()
 	@ObservationIgnored private var profileEmailCache = [String: CachedAccountEmail]()
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
@@ -210,6 +215,7 @@ final class ResetCardStore {
 		client: any ResetCardClient = DecodexNativeClient(),
 		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
 		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays,
+		automaticRefreshInterval: Duration = ResetCardStore.defaultAutomaticRefreshInterval,
 		accountReauthenticationPollInterval: Duration = .seconds(1),
 		resolveCodexExecutable: @escaping @MainActor @Sendable () throws -> String = {
 			try CodexExecutableResolver.resolve()
@@ -220,6 +226,7 @@ final class ResetCardStore {
 		accountProfileClient = client as? any AccountProfileClient
 		self.pendingStore = pendingStore
 		self.startupRetryDelays = startupRetryDelays
+		self.automaticRefreshInterval = automaticRefreshInterval
 		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
 		self.resolveCodexExecutable = resolveCodexExecutable
 		let pendingLoad = pendingStore.load()
@@ -232,6 +239,8 @@ final class ResetCardStore {
 
 	deinit {
 		startupTask?.cancel()
+		automaticRefreshTask?.cancel()
+		refreshCycleTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
 	}
@@ -257,10 +266,14 @@ final class ResetCardStore {
 	}
 
 	func start() {
-		guard startupTask == nil, pendingRecoveryTask == nil else {
+		guard startupTask == nil,
+			automaticRefreshTask == nil,
+			pendingRecoveryTask == nil
+		else {
 			return
 		}
 
+		startAutomaticRefresh()
 		let retryDelays = startupRetryDelays
 		startupTask = Task { [weak self] in
 			guard var result = await self?.refreshReadState() else {
@@ -308,28 +321,104 @@ final class ResetCardStore {
 		}
 	}
 
-	func prepareForApplicationTermination() {
+	func prepareForApplicationTermination() async {
+		guard isPreparingForTermination == false else {
+			return
+		}
+		isPreparingForTermination = true
+
+		let inFlightStartupTask = startupTask
+		let inFlightAutomaticRefreshTask = automaticRefreshTask
+		let inFlightRefreshCycleTask = refreshCycleTask
+		let inFlightPendingRecoveryTask = pendingRecoveryTask
+		let inFlightAccountReauthenticationTask = accountReauthenticationTask
+
 		startupTask?.cancel()
 		startupTask = nil
+		automaticRefreshTask?.cancel()
+		automaticRefreshTask = nil
+		refreshCycleTask?.cancel()
+		refreshCycleTask = nil
 		pendingRecoveryTask?.cancel()
 		pendingRecoveryTask = nil
 		accountReauthenticationTask?.cancel()
 		accountReauthenticationTask = nil
+
+		await inFlightStartupTask?.value
+		await inFlightAutomaticRefreshTask?.value
+		await inFlightRefreshCycleTask?.value
+		await inFlightPendingRecoveryTask?.value
+		await inFlightAccountReauthenticationTask?.value
+	}
+
+	private func startAutomaticRefresh() {
+		let clock = ContinuousClock()
+		let interval = automaticRefreshInterval
+		automaticRefreshTask = Task { [weak self] in
+			var nextRefresh = clock.now.advanced(by: interval)
+			while Task.isCancelled == false {
+				do {
+					try await clock.sleep(until: nextRefresh)
+				} catch {
+					return
+				}
+
+				guard Task.isCancelled == false, let self else {
+					return
+				}
+				self.requestRefresh()
+				repeat {
+					nextRefresh = nextRefresh.advanced(by: interval)
+				} while nextRefresh <= clock.now
+			}
+		}
+	}
+
+	func requestRefresh() {
+		guard isPreparingForTermination == false,
+			refreshCycleTask == nil
+		else {
+			return
+		}
+
+		refreshCycleTask = Task { [weak self] in
+			guard let self else {
+				return
+			}
+			await self.performRefreshCycle()
+			self.refreshCycleTask = nil
+		}
 	}
 
 	func refresh() async {
+		requestRefresh()
+		await refreshCycleTask?.value
+	}
+
+	private func performRefreshCycle() async {
 		guard isRefreshing == false,
 			isRefreshingAccountSkeleton == false,
 			isAccountControlInProgress == false
 		else {
 			return
 		}
+		let inFlightStartupTask = startupTask
+		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		startupTask?.cancel()
 		startupTask = nil
 		pendingRecoveryTask?.cancel()
 		pendingRecoveryTask = nil
+		await inFlightStartupTask?.value
+		await inFlightPendingRecoveryTask?.value
+
+		guard Task.isCancelled == false else {
+			return
+		}
 		clearStaleControlError()
 		_ = await refreshReadState()
+		guard Task.isCancelled == false else {
+			return
+		}
 		_ = await recoverPendingAttempts()
 	}
 
