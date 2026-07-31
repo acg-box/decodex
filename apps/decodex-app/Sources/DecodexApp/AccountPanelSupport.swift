@@ -6,7 +6,7 @@ enum AccountPanelLayout {
 	static let panelVerticalPadding: CGFloat = 12
 	static let panelWidth: CGFloat = 276
 	static let minimumAccountListHeight: CGFloat = 110
-	static let estimatedAccountRowHeight: CGFloat = 74
+	static let estimatedAccountRowHeight: CGFloat = 84
 	static let statusMaximumHeight: CGFloat = 92
 	// Combined header/activity card and panel spacing.
 	static let fixedChromeHeight: CGFloat = 90
@@ -43,8 +43,9 @@ enum AccountPanelLayout {
 				- fixedChromeHeight
 				- boundedAdditionalChromeHeight
 		)
-		let rowCount = max(1, accountCount)
-		let contentEstimate = CGFloat(rowCount) * estimatedAccountRowHeight
+		let contentEstimate = estimatedAccountListContentHeight(
+			accountCount: accountCount
+		)
 		let contentHeight = resolvedAccountListContentHeight(
 			measured: measuredContentHeight,
 			estimated: contentEstimate
@@ -54,6 +55,19 @@ enum AccountPanelLayout {
 			screenBound,
 			max(minimumAccountListHeight, contentHeight)
 		)
+	}
+
+	static func estimatedAccountListContentHeight(
+		accountCount: Int
+	) -> CGFloat {
+		let rowCount = max(1, accountCount)
+		let rowHeights = CGFloat(rowCount) * estimatedAccountRowHeight
+		let rowGaps =
+			CGFloat(max(0, rowCount - 1))
+			* PanelSpacing.section
+		// The list keeps a one-point rendering inset on every edge so card
+		// shadows are not clipped.
+		return rowHeights + rowGaps + 2
 	}
 
 	static func resolvedAccountListContentHeight(

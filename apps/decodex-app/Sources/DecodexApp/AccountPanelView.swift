@@ -43,7 +43,7 @@ struct AccountPanelView: View {
 			}
 		}
 		.frame(width: AccountPanelLayout.panelWidth)
-		.padding(6)
+		.padding(PanelSpacing.related)
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
 		.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
@@ -92,7 +92,7 @@ struct AccountPanelView: View {
 	}
 
 	private var panelContent: some View {
-		VStack(alignment: .leading, spacing: 7) {
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			headerOverview
 
 			if hasTransientStatus {
@@ -105,7 +105,7 @@ struct AccountPanelView: View {
 	}
 
 	private var headerOverview: some View {
-		VStack(alignment: .leading, spacing: 6) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			header
 
 			if let profileAggregate {
@@ -115,8 +115,8 @@ struct AccountPanelView: View {
 					.transition(.panelSection)
 			}
 		}
-		.padding(.horizontal, 10)
-		.padding(.vertical, 8)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 18)
 	}
 
@@ -133,7 +133,7 @@ struct AccountPanelView: View {
 	}
 
 	private var header: some View {
-		HStack(alignment: .center, spacing: 6) {
+		HStack(alignment: .center, spacing: PanelSpacing.related) {
 			Image(nsImage: AppAssets.statusBarIcon)
 				.resizable()
 				.renderingMode(.template)
@@ -269,10 +269,10 @@ struct AccountPanelView: View {
 	}
 
 	private var transientStatus: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			if hasBoundedTransientStatus {
 				ScrollView(.vertical, showsIndicators: false) {
-					VStack(alignment: .leading, spacing: 5) {
+					VStack(alignment: .leading, spacing: PanelSpacing.related) {
 						if let errorMessage = fastMode.errorMessage {
 							ResetCardMessageView(
 								message: ResetCardStoreMessage(
@@ -338,7 +338,7 @@ struct AccountPanelView: View {
 			emptyOrLoadingState
 		} else {
 			ScrollView(.vertical, showsIndicators: false) {
-				VStack(alignment: .leading, spacing: 7) {
+				VStack(alignment: .leading, spacing: PanelSpacing.section) {
 					ForEach(store.accounts) { state in
 						ResetCardAccountRow(
 							state: state,
@@ -368,8 +368,9 @@ struct AccountPanelView: View {
 	private var accountListContentHeight: CGFloat {
 		AccountPanelLayout.resolvedAccountListContentHeight(
 			measured: measuredAccountListContentHeight,
-			estimated: CGFloat(max(1, store.accounts.count))
-				* AccountPanelLayout.estimatedAccountRowHeight
+			estimated: AccountPanelLayout.estimatedAccountListContentHeight(
+				accountCount: store.accounts.count
+			)
 		)
 	}
 
@@ -394,7 +395,7 @@ struct AccountPanelView: View {
 	}
 
 	private var emptyOrLoadingState: some View {
-		HStack(alignment: .center, spacing: 8) {
+		HStack(alignment: .center, spacing: PanelSpacing.section) {
 			if store.isInitialLoading {
 				ProgressView()
 					.controlSize(.small)
@@ -404,7 +405,7 @@ struct AccountPanelView: View {
 					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			}
 
-			VStack(alignment: .leading, spacing: 2) {
+			VStack(alignment: .leading, spacing: PanelSpacing.micro) {
 				Text(store.isInitialLoading ? "Loading accounts" : "No accounts")
 					.font(PanelFont.emptyTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
@@ -419,7 +420,8 @@ struct AccountPanelView: View {
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
-		.padding(9)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 16)
 	}
 }
