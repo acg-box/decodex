@@ -1,16 +1,13 @@
-import AppKit
 import SwiftUI
 
 struct AccountReauthenticationView: View {
 	private enum FocusedAction: Hashable {
 		case cancel
-		case openBrowser
 	}
 
 	let store: ResetCardStore
 	@Environment(\.colorScheme) private var colorScheme
 	@FocusState private var focusedAction: FocusedAction?
-	@State private var copyFeedback = false
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 9) {
@@ -18,10 +15,6 @@ struct AccountReauthenticationView: View {
 				let desiredFocus = desiredFocus(for: presentation)
 
 				header(presentation)
-
-				if let prompt = presentation.prompt {
-					promptContent(prompt)
-				}
 
 				if let failure = presentation.failureText {
 					Text(failure)
@@ -61,23 +54,6 @@ struct AccountReauthenticationView: View {
 							.help("Saving login")
 							.accessibilityLabel("Saving login")
 					}
-
-					Spacer(minLength: 8)
-
-					if let prompt = presentation.prompt {
-						Button {
-							open(prompt.verificationURL)
-						} label: {
-							Image(systemName: "safari")
-								.frame(width: 22, height: 18)
-						}
-						.buttonStyle(.borderedProminent)
-						.keyboardShortcut(.defaultAction)
-						.focused($focusedAction, equals: .openBrowser)
-						.help("Open Codex sign-in page")
-						.accessibilityLabel("Open Codex sign-in page")
-						.accessibilityHint("Opens the official Codex device sign-in page.")
-					}
 				}
 				.task(id: desiredFocus) {
 					await Task.yield()
@@ -98,9 +74,6 @@ struct AccountReauthenticationView: View {
 	private func desiredFocus(
 		for presentation: AccountReauthenticationPresentation
 	) -> FocusedAction? {
-		if presentation.prompt != nil {
-			return .openBrowser
-		}
 		if presentation.canRequestCancellation
 			|| presentation.canCloseWithoutCancellation
 		{
@@ -121,9 +94,7 @@ struct AccountReauthenticationView: View {
 				Spacer(minLength: 6)
 
 				HStack(alignment: .firstTextBaseline, spacing: 3) {
-					if presentation.prompt == nil,
-						presentation.failureText == nil
-					{
+					if presentation.failureText == nil {
 						ProgressView()
 							.controlSize(.mini)
 							.accessibilityHidden(true)
@@ -148,57 +119,5 @@ struct AccountReauthenticationView: View {
 				.truncationMode(.tail)
 				.accessibilityLabel(presentation.statusText)
 		}
-	}
-
-	private func promptContent(
-		_ prompt: AccountReauthenticationPrompt
-	) -> some View {
-		VStack(alignment: .leading, spacing: 0) {
-			HStack(spacing: 8) {
-				Text(prompt.userCode)
-					.font(PanelFont.loginCode)
-					.monospacedDigit()
-					.tracking(1)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-					.textSelection(.enabled)
-					.lineLimit(1)
-					.frame(maxWidth: .infinity, alignment: .leading)
-					.layoutPriority(1)
-
-				Button {
-					copy(prompt.userCode)
-				} label: {
-					Image(systemName: copyFeedback ? "checkmark" : "doc.on.doc")
-						.frame(width: 22, height: 18)
-				}
-				.buttonStyle(.bordered)
-				.help(copyFeedback ? "Copied" : "Copy one-time code")
-				.accessibilityLabel("Copy one-time code")
-				.accessibilityValue(copyFeedback ? "Copied" : "")
-				.accessibilityHint("Copies the one-time Codex login code.")
-			}
-			.padding(.horizontal, 9)
-			.padding(.vertical, 8)
-			.background {
-				RoundedRectangle(cornerRadius: 9, style: .continuous)
-					.fill(.ultraThinMaterial)
-			}
-			.accessibilityElement(children: .contain)
-			.accessibilityLabel("One-time login code \(prompt.userCode)")
-		}
-	}
-
-	private func copy(_ code: String) {
-		NSPasteboard.general.clearContents()
-		NSPasteboard.general.setString(code, forType: .string)
-		copyFeedback = true
-		Task { @MainActor in
-			try? await Task.sleep(for: .milliseconds(850))
-			copyFeedback = false
-		}
-	}
-
-	private func open(_ url: URL) {
-		NSWorkspace.shared.open(url)
 	}
 }
