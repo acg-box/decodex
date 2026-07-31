@@ -15,9 +15,9 @@ struct ResetCardMessageView: View {
 			Text(message.text)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(color)
+				.frame(maxWidth: .infinity, alignment: .leading)
 				.fixedSize(horizontal: false, vertical: true)
-
-			Spacer(minLength: 2)
+				.layoutPriority(1)
 
 			Button(action: dismiss) {
 				Image(systemName: "xmark")
@@ -25,7 +25,9 @@ struct ResetCardMessageView: View {
 			}
 			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.fixedSize()
 			.help("Dismiss message")
+			.accessibilityLabel("Dismiss message")
 		}
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
@@ -62,42 +64,58 @@ struct ResetCardPendingAttemptsView: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			ForEach(store.pendingAttempts, id: \.idempotencyKey) { attempt in
+				let accountLabel = store.accountLabel(for: attempt.target.accountID)
+				let status = store.pendingStatus(for: attempt)
+
 				HStack(spacing: PanelSpacing.related) {
 					Image(systemName: "clock.arrow.circlepath")
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.warning(colorScheme))
 						.accessibilityHidden(true)
 
-					Text(
-						"\(store.accountLabel(for: attempt.target.accountID)) · pending …\(attempt.idempotencyKey.suffix(8))"
-					)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.middle)
+					Text(accountLabel)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.88))
+						.lineLimit(1)
+						.truncationMode(.tail)
 
-					Spacer(minLength: 2)
+					Text("·")
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.fixedSize()
 
-					Button("Resume") {
-						Task {
-							await store.resume(attempt)
-						}
-					}
-					.buttonStyle(.borderless)
-					.controlSize(.mini)
-					.frame(minHeight: 24)
-					.disabled(store.submittingKey != nil)
-					.help(
-						store.isPendingRecoveryBlocked
-							? "Read durable status only. Repair the recovery journal before any retry."
-							: "Read durable status and use the same operation key if the command is absent."
-					)
+					Text(status.text)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.lineLimit(1)
+						.fixedSize(horizontal: true, vertical: false)
+						.layoutPriority(1)
+
+					Spacer(minLength: 0)
 				}
+				.help(helpText(for: status, attempt: attempt))
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel("\(accountLabel). \(status.accessibilityText).")
+				.accessibilityHint(
+					"Saved operation ending in \(attempt.idempotencyKey.suffix(8)). Decodex checks automatically."
+				)
 			}
 		}
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
+	}
+
+	private func helpText(
+		for status: ResetCardPendingStatus,
+		attempt: ResetCardUseAttempt
+	) -> String {
+		let automaticCheck = "Decodex checks this saved request automatically."
+		let operation = "Operation …\(attempt.idempotencyKey.suffix(8))."
+		guard let detail = status.detail else {
+			return "\(automaticCheck) \(operation)"
+		}
+		return "\(detail) \(automaticCheck) \(operation)"
 	}
 }
 

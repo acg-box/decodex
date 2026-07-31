@@ -216,10 +216,10 @@ decodex-publisher validate-social
   supervised service becomes ready. Row-scoped profile or Reset Card failures remain
   local until explicit refresh. It does not retry consume, replace an idempotency key,
   or take service lifecycle ownership.
-- Shows a `Resume` action for retained attempts. Resume checks durable status first and,
-  only when the daemon reports `not_found`, may invoke `use` again with the same profile,
-  server UUID, selection, and idempotency key. It never substitutes a new key for that
-  pending card.
+- Shows one compact status row for each retained attempt and checks durable status
+  automatically. A nonterminal state or temporary read failure updates that row. A
+  terminal result removes the row and shows the result message. The UI does not
+  redispatch `use` or substitute a new key for that pending card.
 
 The reset-card path is not the scheduler, project registry owner, credential owner,
 app-server process owner, or runtime authority. Its bounded private journal retains at
