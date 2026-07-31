@@ -12,6 +12,7 @@ if str(SCRIPT_ROOT) not in sys.path:
 
 from upstream_autopilot_lib import *  # noqa: F403
 from upstream_autopilot_lib import cli as cli_module
+from upstream_autopilot_lib import agent as agent_module
 from upstream_autopilot_lib import core as core_module
 from upstream_autopilot_lib import effects as effects_module
 from upstream_autopilot_lib import handoff as handoff_module
