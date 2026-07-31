@@ -1690,9 +1690,8 @@ def _materialize_agent_workspace(
             for member in members:
                 relative = Path(member.name)
                 canonical = relative.as_posix()
-                expected_archive_name = (
-                    f"{canonical}/" if member.isdir() else canonical
-                )
+                # tarfile removes the conventional trailing slash from directories.
+                expected_archive_name = canonical
                 if (
                     relative.is_absolute()
                     or not relative.parts
