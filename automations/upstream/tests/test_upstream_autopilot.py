@@ -158,6 +158,70 @@ class UpstreamAutopilotTests(unittest.TestCase):
             managed,
         )
 
+    def test_agent_workspace_accepts_real_git_archive_directories(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = root / "repository"
+            run_path = root / "run"
+            worktree.mkdir(mode=0o700)
+            run_path.mkdir(mode=0o700)
+            subprocess.run(
+                ["git", "init", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            )
+            nested = worktree / "nested"
+            nested.mkdir()
+            (nested / "fixture.txt").write_text(
+                "workspace fixture\n",
+                encoding="utf-8",
+            )
+            subprocess.run(
+                ["git", "add", "nested/fixture.txt"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            )
+            tree = subprocess.run(
+                ["git", "write-tree"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            commit = subprocess.run(
+                ["git", "commit-tree", tree, "-m", "fixture"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "GIT_AUTHOR_NAME": "Automation Test",
+                    "GIT_AUTHOR_EMAIL": "automation@example.invalid",
+                    "GIT_COMMITTER_NAME": "Automation Test",
+                    "GIT_COMMITTER_EMAIL": "automation@example.invalid",
+                },
+            ).stdout.strip()
+
+            workspace, digest = (
+                self.autopilot.agent_module._materialize_agent_workspace(
+                    worktree=worktree,
+                    run_path=run_path,
+                    head_sha=commit,
+                )
+            )
+
+            self.assertEqual(
+                (workspace / "nested/fixture.txt").read_text(
+                    encoding="utf-8"
+                ),
+                "workspace fixture\n",
+            )
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+            self.assertFalse((run_path / "workspace.tar").exists())
+
 
     def test_fresh_state_uses_the_nonlegacy_v4_contract(self):
         state = self.autopilot.new_state(100)
