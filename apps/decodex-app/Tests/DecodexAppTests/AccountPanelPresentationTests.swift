@@ -103,8 +103,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 			accountLabel: "Val",
 			sessionID: "20000000-0000-4000-8000-000000000001",
 			authority: nil,
-			phase: .installing,
-			prompt: nil
+			phase: .installing
 		)
 
 		XCTAssertFalse(presentation.canRequestCancellation)

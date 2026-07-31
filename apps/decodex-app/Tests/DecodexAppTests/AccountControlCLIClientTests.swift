@@ -353,13 +353,11 @@ final class AccountControlNativeClientTests: XCTestCase {
 			switch operation {
 			case "start_account_reauthentication":
 				data = """
-					{"session_id":"\(sessionID)","state":"requesting_code"}
+					{"session_id":"\(sessionID)","state":"opening_browser"}
 					"""
 			case "poll_account_reauthentication":
 				data = """
-					{"session_id":"\(sessionID)","state":"waiting_for_browser",
-					 "prompt":{"verification_url":"https://auth.openai.com/codex/device",
-					 "user_code":"AB12-CDE34"}}
+					{"session_id":"\(sessionID)","state":"waiting_for_browser"}
 					"""
 			case "cancel_account_reauthentication":
 				data = """
@@ -393,14 +391,8 @@ final class AccountControlNativeClientTests: XCTestCase {
 			sessionID: sessionID
 		)
 
-		XCTAssertEqual(started.state, .requestingCode)
-		XCTAssertEqual(
-			polled.prompt,
-			AccountReauthenticationPrompt(
-				verificationURL: AccountReauthenticationPrompt.verificationURL,
-				userCode: "AB12-CDE34"
-			)
-		)
+		XCTAssertEqual(started.state, .openingBrowser)
+		XCTAssertEqual(polled.state, .waitingForBrowser)
 		XCTAssertEqual(cancelled.state, .cancelled)
 
 		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
@@ -461,7 +453,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 
 		XCTAssertEqual(status.state, .failed)
 		XCTAssertEqual(status.failure, .accountMismatch)
-		XCTAssertNil(status.prompt)
 	}
 
 	func testAccountReauthenticationRejectsMalformedOrUnexpectedPromptState() async {
@@ -492,7 +483,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			{"session_id":"\(sessionID)","state":"failed","failure":"future_failure"}
 			""",
 			"""
-			{"session_id":"\(sessionID)","state":"requesting_code","unexpected":true}
+			{"session_id":"\(sessionID)","state":"opening_browser","unexpected":true}
 			""",
 		]
 
