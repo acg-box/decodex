@@ -1336,6 +1336,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(repair.reviewer_receipt, Path("/tmp/reviewer.json"))
         self.assertIsNone(recovery.reviewer_receipt)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires nested host sandbox and loopback probes",
+    )
     def test_ephemeral_agent_is_max_bounded_and_hides_auth_capsule(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1572,6 +1576,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 [],
             )
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_kills_background_child_and_removes_auth(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1649,6 +1657,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
                 os.close(lock_descriptor)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_kills_setsid_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1881,6 +1893,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
             finally:
                 shutil.rmtree(run_root)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_cleans_up_after_parent_death(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -2697,6 +2713,10 @@ os._exit(0)
             )
 
     @unittest.skipUnless(sys.platform == "darwin", "requires Seatbelt")
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires nested host sandbox and loopback probes",
+    )
     def test_agent_sandbox_denies_host_and_git_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -4881,6 +4901,10 @@ os._exit(0)
             mock.patch.object(
                 self.autopilot.cli_module,
                 "assert_primary_snapshot",
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "cleanup_stale_agent_runs",
             ),
         ):
             with mock.patch.object(
@@ -14482,6 +14506,10 @@ os._exit(0)
                 ),
                 mock.patch.object(
                     self.autopilot.cli_module,
+                    "cleanup_stale_agent_runs",
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
                     "audit_x_pricing",
                     return_value=deepcopy(audit),
                 ),
@@ -14894,6 +14922,10 @@ os._exit(0)
                 "queue_automation_improvement",
                 side_effect=queue_side_effect,
             ) as queued,
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "cleanup_stale_agent_runs",
+            ),
         ):
             result = self.autopilot.cli_module.execute(args)
 
