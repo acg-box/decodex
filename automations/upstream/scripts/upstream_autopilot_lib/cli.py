@@ -3,26 +3,38 @@
 from __future__ import annotations
 
 import argparse
+from contextvars import ContextVar
 from copy import deepcopy
+import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
+import sys
 from typing import Any
 
 from . import (
     CONTENT_DEGRADATION_CODES,
     DEFAULT_POLICY_PATH,
+    AGENT_LEASE_BUDGET_SECONDS,
+    HANDOFF_CHALLENGE_PATTERN,
+    HANDOFF_RECEIPT_SCHEMA,
     LAND_EFFECT_LEASE_BUDGET_SECONDS,
     MANAGED_TASKS,
     PROACTIVE_IMPROVEMENT_REASON_CODES,
     REPO_ROOT,
     RESULT_SCHEMA,
+    SHA_PATTERN,
     SIDE_EFFECT_LEASE_BUDGET_SECONDS,
+    TERMINAL_STATUSES,
     VALIDATION_LEASE_BUDGET_SECONDS,
     AutopilotError,
+    abandon_missing_completed_agent_run,
+    acquire_agent_run_fence,
     advance_effect_phase,
     agent_handoff_projection,
     apply_observation,
+    apply_agent_patch,
     assert_candidate_commit_worktree,
     assert_candidate_worktree,
     assert_detached_review_worktree,
@@ -32,12 +44,16 @@ from . import (
     atomic_write_json,
     begin_observation,
     block_candidate,
+    canonical_json,
     check_lease_budget,
     classify_commit_entry,
     classify_land_entry,
     claim_candidate,
     collect_observation,
+    cleanup_stale_agent_runs,
     commit_execution_receipt,
+    complete_agent_run,
+    complete_expired_agent_run,
     decodex_identity,
     ensure_lease_budget,
     ensure_cache_root,
@@ -53,6 +69,8 @@ from . import (
     managed_worktree_identity,
     observation_session_lock,
     prepare_effect,
+    prepare_agent_run,
+    prepare_stale_pull_request_refresh,
     prepare_observation_plan,
     plan_task_retention,
     pull_request_readback,
@@ -61,12 +79,15 @@ from . import (
     queue_automation_repair,
     queue_effectiveness_improvements,
     queue_needed_repairs,
+    reconcile_handoff_receipts,
     record_land_execution,
     record_land_command_execution,
     record_candidate_commit,
     read_handoff_receipt,
     read_validation_failure_diagnostic,
+    read_x_pricing_failure_diagnostic,
     remove_handoff_receipt,
+    reset_agent_patch_worktree,
     referenced_schema_evidence,
     requeue_stale_decision,
     repository_identity,
@@ -81,6 +102,7 @@ from . import (
     recover_started_land_readback,
     remote_branch_head,
     renew_lease,
+    run_ephemeral_codex_agent,
     run_command,
     run_decodex_commit,
     run_decodex_land,
@@ -104,6 +126,7 @@ from . import (
     verify_merged_pull_request,
     verify_open_pull_request,
     verify_remote_main_contains,
+    write_handoff_receipt,
 )
 
 AUTOMATION_AUDIT_MANIFESTS = {
@@ -125,8 +148,141 @@ AUTOMATION_AUDIT_MANIFESTS = {
 }
 
 
+class _AgentPatchRollback:
+    """Restore a staged child patch unless state completion disarms it."""
+
+    def __init__(
+        self,
+        *,
+        worktree: Path,
+        expected_head: str,
+        expected_tree: str,
+        receipt_path: Path,
+        run_fence: Any,
+    ) -> None:
+        self.worktree = worktree
+        self.expected_head = expected_head
+        self.expected_tree = expected_tree
+        self.receipt_path = receipt_path
+        self.run_fence = run_fence
+        self.armed = True
+        self.fence_closed = False
+
+    def disarm(self) -> None:
+        self.armed = False
+
+    def close_fence(self) -> None:
+        if self.fence_closed:
+            return
+        self.fence_closed = True
+        self.run_fence.close()
+
+    def rollback(self) -> None:
+        if not self.armed:
+            return
+        self.armed = False
+        cleanup_error: BaseException | None = None
+        try:
+            remove_handoff_receipt(
+                self.receipt_path,
+                expected_path=self.receipt_path,
+                missing_ok=True,
+            )
+        except BaseException as error:
+            cleanup_error = error
+        try:
+            reset_agent_patch_worktree(
+                self.worktree,
+                expected_head=self.expected_head,
+                expected_tree=self.expected_tree,
+            )
+        except BaseException as error:
+            cleanup_error = cleanup_error or error
+        finally:
+            self.close_fence()
+        if cleanup_error is not None:
+            raise AutopilotError(
+                "agent_patch_rollback_failed"
+            ) from cleanup_error
+
+
+_ACTIVE_AGENT_PATCH_ROLLBACK: ContextVar[_AgentPatchRollback | None] = (
+    ContextVar("active_agent_patch_rollback", default=None)
+)
+
+
+def _arm_agent_patch_rollback(guard: _AgentPatchRollback) -> None:
+    if _ACTIVE_AGENT_PATCH_ROLLBACK.get() is not None:
+        raise AutopilotError("agent_patch_rollback_conflict")
+    _ACTIVE_AGENT_PATCH_ROLLBACK.set(guard)
+
+
+def _disarm_agent_patch_rollback() -> None:
+    guard = _ACTIVE_AGENT_PATCH_ROLLBACK.get()
+    if guard is None:
+        raise AutopilotError("agent_patch_rollback_missing")
+    guard.disarm()
+    _ACTIVE_AGENT_PATCH_ROLLBACK.set(None)
+
+
 def result_payload(status: str, **fields: Any) -> dict[str, Any]:
     return {"schema": RESULT_SCHEMA, "status": status, **fields}
+
+
+def _promote_expired_agent_receipts(
+    cache_root: Path,
+    state: dict[str, Any],
+    now: int,
+) -> list[str]:
+    """Promote canonical receipts before lease recovery clears handoffs."""
+
+    promoted: list[str] = []
+    for candidate in state["candidates"]:
+        lease = candidate.get("lease")
+        handoff = candidate.get("handoff")
+        agent_run = (
+            handoff.get("agent_run")
+            if isinstance(handoff, dict)
+            else None
+        )
+        if (
+            not isinstance(lease, dict)
+            or lease["expires_at"] > now
+            or not isinstance(handoff, dict)
+            or handoff.get("role") != lease.get("role")
+            or handoff.get("generation") != lease.get("generation")
+            or not isinstance(agent_run, dict)
+            or agent_run.get("phase") != "prepared"
+        ):
+            continue
+        path = handoff_receipt_path(
+            cache_root,
+            candidate_id=candidate["id"],
+            role=lease["role"],
+            generation=lease["generation"],
+        )
+        try:
+            receipt = read_handoff_receipt(
+                path,
+                expected_path=path,
+            )
+        except AutopilotError as error:
+            if error.code == "handoff_receipt_unavailable":
+                continue
+            raise
+        receipt_file_sha256 = hashlib.sha256(
+            canonical_json(receipt) + b"\n"
+        ).hexdigest()
+        complete_expired_agent_run(
+            state,
+            candidate_id=candidate["id"],
+            role=lease["role"],
+            receipt=receipt,
+            receipt_file_sha256=receipt_file_sha256,
+            now=now,
+        )
+        promoted.append(candidate["id"])
+    return promoted
 
 
 def task_retention_result_payload(
@@ -234,6 +390,10 @@ def parse_args() -> argparse.Namespace:
 
     renew = subparsers.add_parser("renew")
     add_leased_candidate_arguments(renew, role=True)
+
+    run_agent = subparsers.add_parser("run-agent")
+    add_leased_candidate_arguments(run_agent, role=True, worktree=True)
+    run_agent.add_argument("--handoff-challenge", required=True)
 
     commit = subparsers.add_parser("commit-candidate")
     add_leased_candidate_arguments(commit, worktree=True)
@@ -344,7 +504,7 @@ def parse_args() -> argparse.Namespace:
     task_retention_settle.add_argument("--thread-id", required=True)
     task_retention_settle.add_argument(
         "--result",
-        choices=("archived", "keep-visible"),
+        choices=("archived", "defer", "keep-visible"),
         required=True,
     )
     task_retention_settle.add_argument("--reason")
@@ -355,7 +515,7 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def execute(args: argparse.Namespace) -> dict[str, Any]:
+def _execute(args: argparse.Namespace) -> dict[str, Any]:
     repo_root = resolve_primary_checkout(REPO_ROOT, "main")
     if REPO_ROOT.resolve() != repo_root:
         raise AutopilotError("state_tool_not_primary_authority")
@@ -372,6 +532,8 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     ):
         if protected_root.exists() and protected_root.is_symlink():
             raise AutopilotError("cache_root_symlink")
+    if sys.platform == "darwin":
+        cleanup_stale_agent_runs(cache_root)
     preflight = assert_primary_clean_main(repo_root, policy)
 
     def persist(
@@ -432,7 +594,22 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
 
     if args.command == "x-pricing-audit":
         now = utc_now()
-        audit = audit_x_pricing(repo_root, now=now)
+        with locked_state(cache_root) as (state, _state_path):
+            retained_failure_receipts = {
+                pricing_audit["receipt_sha256"]
+                for candidate in state["candidates"]
+                if candidate.get("status") not in TERMINAL_STATUSES
+                for path_summary in (candidate.get("path_summary"),)
+                if isinstance(path_summary, dict)
+                for pricing_audit in (path_summary.get("pricing_audit"),)
+                if isinstance(pricing_audit, dict)
+                and pricing_audit.get("status") == "parse_failed"
+            }
+        audit = audit_x_pricing(
+            repo_root,
+            now=now,
+            retained_failure_receipts=retained_failure_receipts,
+        )
         evidence = audit["drift_evidence"]
         improvement = None
         created = False
@@ -544,7 +721,72 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
     if args.command == "claim":
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
-            claimed = claim_candidate(state, policy, args.role, now)
+            _promote_expired_agent_receipts(
+                cache_root,
+                state,
+                now,
+            )
+            claimed = claim_candidate(
+                state,
+                policy,
+                args.role,
+                now,
+                prepared_agent_runs_reconciled=True,
+            )
+            if (
+                isinstance(claimed, dict)
+                and "busy" not in claimed
+                and claimed.get("completed_agent_run_recovery") is True
+            ):
+                recovered_candidate = find_candidate(
+                    state,
+                    claimed["candidate"]["id"],
+                )
+                recovered_handoff = recovered_candidate["handoff"]
+                recovered_receipt_path = handoff_receipt_path(
+                    cache_root,
+                    candidate_id=recovered_candidate["id"],
+                    role=args.role,
+                    generation=recovered_handoff["generation"],
+                )
+                try:
+                    recovered_receipt = read_handoff_receipt(
+                        recovered_receipt_path,
+                        expected_path=recovered_receipt_path,
+                    )
+                except AutopilotError as error:
+                    if error.code != "handoff_receipt_unavailable":
+                        raise
+                    abandon_missing_completed_agent_run(
+                        state,
+                        candidate_id=recovered_candidate["id"],
+                        role=args.role,
+                        token=claimed["lease_token"],
+                        now=now,
+                    )
+                    claimed = claim_candidate(
+                        state,
+                        policy,
+                        args.role,
+                        now,
+                        prepared_agent_runs_reconciled=True,
+                    )
+                else:
+                    recovered_file_sha256 = hashlib.sha256(
+                        canonical_json(recovered_receipt) + b"\n"
+                    ).hexdigest()
+                    complete_agent_run(
+                        state,
+                        candidate_id=recovered_candidate["id"],
+                        role=args.role,
+                        token=claimed["lease_token"],
+                        receipt=recovered_receipt,
+                        receipt_file_sha256=recovered_file_sha256,
+                        now=now,
+                    )
+                    claimed["handoff_challenge"] = recovered_receipt[
+                        "challenge"
+                    ]
             queued_repairs = queue_needed_repairs(
                 state,
                 policy,
@@ -592,6 +834,662 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             candidate_id=args.candidate_id,
             role=args.role,
             lease_expires_at=expires_at,
+        )
+
+    if args.command == "run-agent":
+        if (
+            HANDOFF_CHALLENGE_PATTERN.fullmatch(args.handoff_challenge)
+            is None
+        ):
+            raise AutopilotError("handoff_challenge_invalid")
+        challenge_sha256 = hashlib.sha256(
+            args.handoff_challenge.encode("utf-8")
+        ).hexdigest()
+        now = utc_now()
+        repair_target = None
+        recovering_prepared_run = False
+        with locked_state(cache_root) as (state, state_path):
+            ensure_lease_budget(
+                state,
+                policy,
+                candidate_id=args.candidate_id,
+                role=args.role,
+                token=args.lease_token,
+                minimum_seconds=AGENT_LEASE_BUDGET_SECONDS,
+                now=now,
+            )
+            current = find_candidate(state, args.candidate_id)
+            lease = current.get("lease")
+            handoff = current.get("handoff")
+            if (
+                not isinstance(lease, dict)
+                or not isinstance(handoff, dict)
+                or lease.get("role") != args.role
+                or handoff.get("role") != args.role
+                or lease.get("generation") != handoff.get("generation")
+                or not hmac.compare_digest(
+                    str(handoff.get("challenge_sha256", "")),
+                    challenge_sha256,
+                )
+            ):
+                raise AutopilotError("handoff_challenge_invalid")
+            active_agent_run = handoff.get("agent_run")
+            recovering_prepared_run = bool(
+                isinstance(active_agent_run, dict)
+                and active_agent_run.get("phase") == "prepared"
+            )
+            candidate = deepcopy(current)
+            if candidate.get("repair_of") is not None:
+                repair_target = deepcopy(
+                    find_candidate(state, candidate["repair_of"])
+                )
+            persist(state, state_path, at=now)
+
+        generation = candidate["lease"]["generation"]
+        receipt_path = handoff_receipt_path(
+            cache_root,
+            candidate_id=args.candidate_id,
+            role=args.role,
+            generation=generation,
+        )
+        try:
+            agent_run_fence = acquire_agent_run_fence(
+                cache_root,
+                candidate_id=args.candidate_id,
+                role=args.role,
+                generation=generation,
+            )
+        except AutopilotError as error:
+            if error.code != "agent_run_in_progress":
+                raise
+            active_agent_run = candidate["handoff"].get("agent_run")
+            return result_payload(
+                "agent_run_in_progress",
+                candidate_id=args.candidate_id,
+                role=args.role,
+                generation=generation,
+                started_at=(
+                    active_agent_run.get("started_at")
+                    if isinstance(active_agent_run, dict)
+                    else candidate["handoff"]["issued_at"]
+                ),
+            )
+
+        active_agent_run = candidate["handoff"].get("agent_run")
+        recovered_receipt = None
+        if isinstance(active_agent_run, dict):
+            try:
+                recovered_receipt = read_handoff_receipt(
+                    receipt_path,
+                    expected_path=receipt_path,
+                )
+            except AutopilotError as error:
+                if (
+                    active_agent_run["phase"] == "prepared"
+                    and error.code == "handoff_receipt_unavailable"
+                ):
+                    recovering_prepared_run = True
+                else:
+                    raise
+            if recovered_receipt is not None and (
+                not isinstance(recovered_receipt, dict)
+                or recovered_receipt.get("schema") != HANDOFF_RECEIPT_SCHEMA
+                or recovered_receipt.get("candidate_id")
+                != args.candidate_id
+                or recovered_receipt.get("role") != args.role
+                or recovered_receipt.get("claim_generation")
+                != generation
+            ):
+                raise AutopilotError("agent_run_receipt_invalid")
+            if (
+                recovered_receipt is not None
+                and active_agent_run["phase"] == "prepared"
+                and (
+                    recovered_receipt.get("base_head")
+                    != active_agent_run["base_head"]
+                    or recovered_receipt.get("repository_head")
+                    != active_agent_run["repository_head"]
+                    or not hmac.compare_digest(
+                        hashlib.sha256(
+                            str(
+                                recovered_receipt.get("challenge", "")
+                            ).encode("utf-8")
+                        ).hexdigest(),
+                        active_agent_run["challenge_sha256"],
+                    )
+                )
+            ):
+                remove_handoff_receipt(
+                    receipt_path,
+                    expected_path=receipt_path,
+                    missing_ok=False,
+                )
+                recovered_receipt = None
+                recovering_prepared_run = True
+        if recovered_receipt is not None:
+            if args.role == "maintainer":
+                recovered_head = assert_candidate_commit_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    branch=candidate["branch_name"],
+                )
+                recovered_identity = staged_handoff_identity(args.worktree)
+                if (
+                    recovered_head
+                    != active_agent_run["repository_head"]
+                    or recovered_identity["repository_head"]
+                    != recovered_receipt["repository_head"]
+                    or recovered_identity["repository_tree"]
+                    != recovered_receipt["repository_tree"]
+                    or recovered_identity["staged_paths_sha256"]
+                    != recovered_receipt["staged_paths_sha256"]
+                ):
+                    raise AutopilotError(
+                        "agent_run_recovery_worktree_mismatch"
+                    )
+            else:
+                if isinstance(candidate.get("pull_request"), dict):
+                    recovered_tree = assert_candidate_worktree(
+                        repo_root,
+                        args.worktree,
+                        policy,
+                        branch=candidate["branch_name"],
+                        head_sha=active_agent_run["repository_head"],
+                    )
+                else:
+                    recovered_tree = assert_detached_review_worktree(
+                        repo_root,
+                        args.worktree,
+                        policy,
+                        head_sha=active_agent_run["repository_head"],
+                    )
+                if recovered_tree != recovered_receipt["repository_tree"]:
+                    raise AutopilotError(
+                        "agent_run_recovery_worktree_mismatch"
+                    )
+            recovered_file_sha256 = hashlib.sha256(
+                canonical_json(recovered_receipt) + b"\n"
+            ).hexdigest()
+            recovered_at = utc_now()
+            try:
+                with locked_state(cache_root) as (state, state_path):
+                    completed_run = complete_agent_run(
+                        state,
+                        candidate_id=args.candidate_id,
+                        role=args.role,
+                        token=args.lease_token,
+                        receipt=recovered_receipt,
+                        receipt_file_sha256=recovered_file_sha256,
+                        now=recovered_at,
+                    )
+                    persist(state, state_path, at=recovered_at)
+            finally:
+                agent_run_fence.close()
+            recovered_execution = recovered_receipt["agent_execution"]
+            assert_primary_snapshot(repo_root, policy, preflight["head"])
+            return result_payload(
+                "agent_completed",
+                candidate_id=args.candidate_id,
+                role=args.role,
+                disposition=recovered_receipt["disposition"],
+                finding_codes=recovered_receipt["finding_codes"],
+                handoff_receipt_path=str(receipt_path),
+                handoff_receipt_file_sha256=recovered_file_sha256,
+                agent_execution_sha256=completed_run[
+                    "agent_execution_sha256"
+                ],
+                codex_version=recovered_execution["codex_version"],
+                codex_executable_sha256=recovered_execution[
+                    "codex_executable_sha256"
+                ],
+                started_at=recovered_execution["started_at"],
+                completed_at=recovered_execution["completed_at"],
+                recovered=True,
+            )
+
+        result = candidate.get("result")
+        stale_pull_request = candidate.get("pull_request")
+        if (
+            args.role == "maintainer"
+            and isinstance(result, dict)
+            and result.get("outcome") == "repair_requested"
+            and "base_stale" in result.get("finding_codes", [])
+            and isinstance(stale_pull_request, dict)
+        ):
+            old_head = stale_pull_request["head_sha"]
+            stale_refresh = candidate.get("stale_refresh")
+            accepted_worktree_heads = {old_head, preflight["head"]}
+            if isinstance(stale_refresh, dict):
+                accepted_worktree_heads.add(
+                    stale_refresh["target_base_head"]
+                )
+            current_worktree_head = run_command(
+                ["git", "rev-parse", "HEAD"],
+                cwd=args.worktree,
+                failure_code="stale_pull_request_worktree_invalid",
+            )
+            if current_worktree_head not in accepted_worktree_heads:
+                raise AutopilotError(
+                    "stale_pull_request_worktree_invalid"
+                )
+            assert_candidate_worktree(
+                repo_root,
+                args.worktree,
+                policy,
+                branch=candidate["branch_name"],
+                head_sha=current_worktree_head,
+                require_clean=False,
+            )
+            if (
+                remote_branch_head(
+                    args.worktree,
+                    candidate["branch_name"],
+                )
+                != old_head
+            ):
+                raise AutopilotError("stale_pull_request_remote_conflict")
+            stale_readback = pull_request_readback(
+                stale_pull_request["url"]
+            )
+            verify_open_pull_request(
+                stale_readback,
+                policy,
+                pr_url=stale_pull_request["url"],
+                branch=candidate["branch_name"],
+                base_head=preflight["head"],
+                head_sha=old_head,
+            )
+            refresh_at = utc_now()
+            with locked_state(cache_root) as (state, state_path):
+                prepare_stale_pull_request_refresh(
+                    state,
+                    candidate_id=args.candidate_id,
+                    token=args.lease_token,
+                    current_main_head=preflight["head"],
+                    now=refresh_at,
+                )
+                candidate = deepcopy(
+                    find_candidate(state, args.candidate_id)
+                )
+                persist(state, state_path, at=refresh_at)
+
+        if args.role == "maintainer":
+            if isinstance(candidate.get("effect"), dict):
+                raise AutopilotError("agent_effect_recovery_required")
+            commit_receipt = candidate.get("commit_receipt")
+            if isinstance(commit_receipt, dict):
+                base_head = commit_receipt["base_head"]
+                review_head = commit_receipt["head_sha"]
+            else:
+                base_head = preflight["head"]
+                review_head = base_head
+            current_worktree_head = run_command(
+                ["git", "rev-parse", "HEAD"],
+                cwd=args.worktree,
+                failure_code="candidate_worktree_unavailable",
+            )
+            accepted_worktree_heads = {review_head}
+            prepared_run = candidate["handoff"].get("agent_run")
+            if isinstance(prepared_run, dict):
+                accepted_worktree_heads.add(
+                    prepared_run["repository_head"]
+                )
+                accepted_worktree_heads.add(prepared_run["input_head"])
+            if isinstance(commit_receipt, dict):
+                accepted_worktree_heads.update(
+                    {
+                        commit_receipt["base_head"],
+                        commit_receipt["head_sha"],
+                    }
+                )
+            if isinstance(stale_pull_request, dict):
+                accepted_worktree_heads.add(stale_pull_request["head_sha"])
+            stale_refresh = candidate.get("stale_refresh")
+            if isinstance(stale_refresh, dict):
+                accepted_worktree_heads.add(
+                    stale_refresh["target_base_head"]
+                )
+            if current_worktree_head not in accepted_worktree_heads:
+                raise AutopilotError(
+                    "candidate_worktree_identity_mismatch"
+                )
+            assert_candidate_worktree(
+                repo_root,
+                args.worktree,
+                policy,
+                branch=candidate["branch_name"],
+                head_sha=current_worktree_head,
+                require_clean=False,
+            )
+            review_tree = run_command(
+                ["git", "rev-parse", "--verify", f"{review_head}^{{tree}}"],
+                cwd=args.worktree,
+                failure_code="candidate_worktree_identity_mismatch",
+                max_output_bytes=128,
+            )
+        else:
+            pull_request = candidate.get("pull_request")
+            decision = candidate.get("decision")
+            if isinstance(pull_request, dict):
+                validation_receipt = pull_request["validation_receipt"]
+                base_head = validation_receipt["base_head"]
+                review_head = pull_request["head_sha"]
+                review_tree = validation_receipt["repository_tree"]
+                actual_tree = assert_candidate_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    branch=candidate["branch_name"],
+                    head_sha=review_head,
+                    require_clean=False,
+                )
+            elif isinstance(decision, dict):
+                validation_receipt = decision["maintainer_receipt"]
+                base_head = validation_receipt["base_head"]
+                review_head = validation_receipt["repository_head"]
+                review_tree = validation_receipt["repository_tree"]
+                actual_tree = assert_detached_review_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    head_sha=review_head,
+                    require_clean=False,
+                )
+            else:
+                raise AutopilotError("review_evidence_missing")
+            if actual_tree != review_tree:
+                raise AutopilotError("review_worktree_identity_mismatch")
+
+        receipt_repository_head = (
+            base_head if args.role == "maintainer" else review_head
+        )
+        fence_at = utc_now()
+        with locked_state(cache_root) as (state, state_path):
+            agent_run = prepare_agent_run(
+                state,
+                candidate_id=args.candidate_id,
+                role=args.role,
+                token=args.lease_token,
+                challenge_sha256=challenge_sha256,
+                base_head=base_head,
+                input_head=review_head,
+                repository_head=receipt_repository_head,
+                input_tree=review_tree,
+                now=fence_at,
+            )
+            persist(state, state_path, at=fence_at)
+
+        diagnostics: dict[str, Any] = {}
+        path_summary = candidate.get("path_summary")
+        pricing_audit = (
+            path_summary.get("pricing_audit")
+            if isinstance(path_summary, dict)
+            else None
+        )
+        if (
+            isinstance(pricing_audit, dict)
+            and pricing_audit.get("status") == "parse_failed"
+        ):
+            diagnostics["x_pricing_parser"] = (
+                read_x_pricing_failure_diagnostic(
+                    repo_root,
+                    evidence=pricing_audit,
+                )
+            )
+        if isinstance(repair_target, dict):
+            target_result = repair_target.get("result")
+            if (
+                isinstance(target_result, dict)
+                and target_result.get("reason_code") == "validation_failed"
+                and isinstance(target_result.get("error_digest"), str)
+            ):
+                try:
+                    diagnostics["validation_failure"] = (
+                        read_validation_failure_diagnostic(
+                            repo_root,
+                            cause_digest=target_result["error_digest"],
+                        )
+                    )
+                except AutopilotError as error:
+                    if error.code != "validation_diagnostic_read_failed":
+                        raise
+
+        reserve_lease_budget(
+            candidate_id=args.candidate_id,
+            role=args.role,
+            token=args.lease_token,
+            minimum_seconds=AGENT_LEASE_BUDGET_SECONDS,
+        )
+        try:
+            execution = run_ephemeral_codex_agent(
+                repo_root=repo_root,
+                worktree=args.worktree,
+                cache_root=cache_root,
+                candidate=candidate,
+                role=args.role,
+                generation=generation,
+                base_head=base_head,
+                head_sha=review_head,
+                tree_sha=review_tree,
+                relevant_path_prefixes=policy[
+                    "relevant_path_prefixes"
+                ],
+                recover_prepared=recovering_prepared_run,
+                repair_target=repair_target,
+                diagnostics=diagnostics,
+                run_fence=agent_run_fence,
+            )
+        except AutopilotError as error:
+            agent_run_fence.close()
+            if error.code != "agent_run_in_progress":
+                raise
+            return result_payload(
+                "agent_run_in_progress",
+                candidate_id=args.candidate_id,
+                role=args.role,
+                generation=generation,
+                started_at=agent_run["started_at"],
+            )
+        agent_run_fence = execution.pop("_agent_run_fence", None)
+        if not callable(getattr(agent_run_fence, "close", None)):
+            raise AutopilotError("agent_run_fence_missing")
+        agent_patch = execution.pop("patch", None)
+        agent_result = execution["result"]
+        if (
+            args.role == "maintainer"
+            and not isinstance(agent_patch, bytes)
+        ) or (args.role == "reviewer" and agent_patch is not None):
+            raise AutopilotError("agent_patch_invalid")
+
+        verified_at = utc_now()
+        with locked_state(cache_root) as (state, state_path):
+            ensure_lease_budget(
+                state,
+                policy,
+                candidate_id=args.candidate_id,
+                role=args.role,
+                token=args.lease_token,
+                minimum_seconds=SIDE_EFFECT_LEASE_BUDGET_SECONDS,
+                now=verified_at,
+            )
+            current = find_candidate(state, args.candidate_id)
+            lease = current.get("lease")
+            handoff = current.get("handoff")
+            active_agent_run = (
+                handoff.get("agent_run")
+                if isinstance(handoff, dict)
+                else None
+            )
+            if (
+                not isinstance(lease, dict)
+                or not isinstance(handoff, dict)
+                or not isinstance(active_agent_run, dict)
+                or lease.get("generation") != generation
+                or handoff.get("generation") != generation
+                or active_agent_run.get("phase") != "prepared"
+                or active_agent_run.get("base_head") != base_head
+                or active_agent_run.get("input_head") != review_head
+                or active_agent_run.get("repository_head")
+                != receipt_repository_head
+                or active_agent_run.get("input_tree") != review_tree
+                or not hmac.compare_digest(
+                    str(handoff.get("challenge_sha256", "")),
+                    challenge_sha256,
+                )
+            ):
+                raise AutopilotError("agent_claim_changed")
+            persist(state, state_path, at=verified_at)
+
+        if args.role == "maintainer":
+            apply_agent_patch(
+                args.worktree,
+                candidate=candidate,
+                patch=agent_patch,
+                patch_sha256=agent_result["patch_sha256"],
+                expected_head=review_head,
+                expected_tree=review_tree,
+            )
+            patch_rollback_guard = _AgentPatchRollback(
+                worktree=args.worktree,
+                expected_head=review_head,
+                expected_tree=review_tree,
+                receipt_path=receipt_path,
+                run_fence=agent_run_fence,
+            )
+            _arm_agent_patch_rollback(patch_rollback_guard)
+            assert_candidate_commit_worktree(
+                repo_root,
+                args.worktree,
+                policy,
+                branch=candidate["branch_name"],
+            )
+            if isinstance(commit_receipt, dict):
+                allowed_remote_heads = {None, base_head}
+                existing_pr = candidate.get("pull_request")
+                if isinstance(existing_pr, dict):
+                    if (
+                        existing_pr["branch"] != candidate["branch_name"]
+                        or existing_pr["head_sha"] != commit_receipt["head_sha"]
+                    ):
+                        raise AutopilotError("recorded_commit_remote_conflict")
+                    allowed_remote_heads.add(existing_pr["head_sha"])
+                rewind_recorded_candidate_commit(
+                    args.worktree,
+                    candidate_id=args.candidate_id,
+                    branch=candidate["branch_name"],
+                    commit_receipt=commit_receipt,
+                    allowed_remote_heads=allowed_remote_heads,
+                )
+                assert_candidate_commit_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    branch=candidate["branch_name"],
+                )
+            staged_identity = staged_handoff_identity(args.worktree)
+            if staged_identity["repository_head"] != base_head:
+                raise AutopilotError("handoff_worktree_identity_invalid")
+            disposition = "staged"
+            finding_codes: list[str] = []
+            repository_head = staged_identity["repository_head"]
+            repository_tree = staged_identity["repository_tree"]
+            staged_paths_sha256 = staged_identity["staged_paths_sha256"]
+            patch_sha256 = agent_result["patch_sha256"]
+            action = "worker_staged"
+        else:
+            pull_request = candidate.get("pull_request")
+            if isinstance(pull_request, dict):
+                actual_tree = assert_candidate_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    branch=candidate["branch_name"],
+                    head_sha=review_head,
+                )
+                if agent_result["disposition"] not in {
+                    "accept",
+                    "request_repair",
+                }:
+                    raise AutopilotError("agent_result_invalid")
+            else:
+                actual_tree = assert_detached_review_worktree(
+                    repo_root,
+                    args.worktree,
+                    policy,
+                    head_sha=review_head,
+                )
+                decision = candidate["decision"]
+                if agent_result["disposition"] not in {
+                    decision["outcome"],
+                    "request_repair",
+                }:
+                    raise AutopilotError("agent_result_invalid")
+            if actual_tree != review_tree:
+                raise AutopilotError("review_worktree_identity_mismatch")
+            disposition = agent_result["disposition"]
+            finding_codes = agent_result["finding_codes"]
+            repository_head = review_head
+            repository_tree = review_tree
+            staged_paths_sha256 = None
+            patch_sha256 = None
+            action = "independent_review"
+
+        receipt = {
+            "schema": HANDOFF_RECEIPT_SCHEMA,
+            "candidate_id": args.candidate_id,
+            "role": args.role,
+            "action": action,
+            "claim_generation": generation,
+            "challenge": args.handoff_challenge,
+            "base_head": base_head,
+            "repository_head": repository_head,
+            "repository_tree": repository_tree,
+            "staged_paths_sha256": staged_paths_sha256,
+            "patch_sha256": patch_sha256,
+            "disposition": disposition,
+            "finding_codes": finding_codes,
+            "agent_execution": execution["execution"],
+        }
+        receipt_file_sha256 = write_handoff_receipt(
+            receipt_path,
+            expected_path=receipt_path,
+            receipt=receipt,
+        )
+        completed_state_at = utc_now()
+        try:
+            with locked_state(cache_root) as (state, state_path):
+                complete_agent_run(
+                    state,
+                    candidate_id=args.candidate_id,
+                    role=args.role,
+                    token=args.lease_token,
+                    receipt=receipt,
+                    receipt_file_sha256=receipt_file_sha256,
+                    now=completed_state_at,
+                )
+                persist(state, state_path, at=completed_state_at)
+            if args.role == "maintainer":
+                _disarm_agent_patch_rollback()
+        finally:
+            if args.role == "maintainer":
+                patch_rollback_guard.close_fence()
+            else:
+                agent_run_fence.close()
+        assert_primary_snapshot(repo_root, policy, preflight["head"])
+        return result_payload(
+            "agent_completed",
+            candidate_id=args.candidate_id,
+            role=args.role,
+            disposition=disposition,
+            finding_codes=finding_codes,
+            handoff_receipt_path=str(receipt_path),
+            handoff_receipt_file_sha256=receipt_file_sha256,
+            agent_execution_sha256=execution["execution_sha256"],
+            codex_version=execution["codex_version"],
+            codex_executable_sha256=execution["codex_executable_sha256"],
+            started_at=execution["started_at"],
+            completed_at=execution["completed_at"],
         )
 
     if args.command == "commit-candidate":
@@ -1074,6 +1972,8 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         )
 
     if args.command == "request-repair":
+        if "base_stale" in args.finding_code:
+            raise AutopilotError("finding_codes_invalid")
         now = utc_now()
         with locked_state(cache_root) as (state, state_path):
             candidate = find_candidate(state, args.candidate_id)
@@ -1478,6 +2378,13 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 if not current:
                     if not safe_stale_effect:
                         raise AutopilotError("land_base_stale_after_effect")
+                    stale_target_base_head = before.get("baseRefOid")
+                    if (
+                        not isinstance(stale_target_base_head, str)
+                        or SHA_PATTERN.fullmatch(stale_target_base_head) is None
+                        or stale_target_base_head == current_base
+                    ):
+                        raise AutopilotError("land_validation_stale")
                     stale_at = utc_now()
                     request_repair(
                         state,
@@ -1485,6 +2392,7 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                         token=args.lease_token,
                         finding_codes=["base_stale"],
                         reviewer_handoff=reviewer_handoff,
+                        stale_target_base_head=stale_target_base_head,
                         now=stale_at,
                     )
                     persist(state, state_path, at=stale_at)
@@ -1863,8 +2771,22 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
         if not mirror.exists():
             mirror = None
         with locked_state(cache_root) as (state, state_path):
+            promoted_agent_receipts = (
+                _promote_expired_agent_receipts(
+                    cache_root,
+                    state,
+                    now,
+                )
+                if args.repair_expired
+                else []
+            )
             recovered = (
-                recover_expired_leases(state, policy, now)
+                recover_expired_leases(
+                    state,
+                    policy,
+                    now,
+                    prepared_agent_runs_reconciled=True,
+                )
                 if args.repair_expired
                 else []
             )
@@ -1889,6 +2811,10 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
                 else []
             )
             persist(state, state_path, at=now)
+            removed_handoff_receipts = reconcile_handoff_receipts(
+                cache_root,
+                state,
+            )
             snapshot = deepcopy(state)
         health = state_health(
             snapshot,
@@ -1897,6 +2823,12 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             recovered,
             queued_repairs,
             queued_improvements,
+        )
+        health["orphan_handoff_receipts_removed"] = (
+            removed_handoff_receipts
+        )
+        health["expired_agent_receipts_promoted"] = (
+            promoted_agent_receipts
         )
         assert_primary_snapshot(repo_root, policy, preflight["head"])
         atomic_write_json(ensure_cache_root(cache_root) / "health/latest.json", health)
@@ -2002,6 +2934,19 @@ def execute(args: argparse.Namespace) -> dict[str, Any]:
             return result_payload("snapshot", state=state)
 
     raise AutopilotError("command_unknown")
+
+
+def execute(args: argparse.Namespace) -> dict[str, Any]:
+    token = _ACTIVE_AGENT_PATCH_ROLLBACK.set(None)
+    try:
+        return _execute(args)
+    finally:
+        guard = _ACTIVE_AGENT_PATCH_ROLLBACK.get()
+        try:
+            if guard is not None:
+                guard.rollback()
+        finally:
+            _ACTIVE_AGENT_PATCH_ROLLBACK.reset(token)
 
 
 def main() -> int:
