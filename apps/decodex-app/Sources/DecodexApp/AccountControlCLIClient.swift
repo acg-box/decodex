@@ -158,7 +158,7 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 }
 
 enum AccountReauthenticationState: String, Decodable, Equatable, Sendable {
-	case requestingCode = "requesting_code"
+	case openingBrowser = "opening_browser"
 	case waitingForBrowser = "waiting_for_browser"
 	case installing
 	case completed
@@ -186,7 +186,7 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 		case .loginFailed:
 			return "Codex could not complete the login."
 		case .loginTimedOut:
-			return "The login code expired. Request a new code."
+			return "The browser login timed out. Try again."
 		case .accountMismatch:
 			return "This login belongs to a different account."
 		case .accountChanged:
@@ -207,21 +207,9 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	}
 }
 
-struct AccountReauthenticationPrompt: Equatable, Sendable {
-	static let verificationURL = URL(string: "https://auth.openai.com/codex/device")!
-
-	let verificationURL: URL
-	let userCode: String
-
-	var compactCode: String {
-		userCode.replacingOccurrences(of: "-", with: "")
-	}
-}
-
 struct AccountReauthenticationStatus: Equatable, Sendable {
 	let sessionID: String
 	let state: AccountReauthenticationState
-	let prompt: AccountReauthenticationPrompt?
 	let failure: AccountReauthenticationFailure?
 }
 
@@ -731,7 +719,7 @@ private struct AccountReauthenticationWire: Decodable {
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(
 			in: decoder,
-			allowed: ["session_id", "state", "prompt", "failure"]
+			allowed: ["session_id", "state", "failure"]
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		let sessionID = try container.decode(String.self, forKey: .sessionID)
@@ -739,96 +727,38 @@ private struct AccountReauthenticationWire: Decodable {
 			AccountReauthenticationState.self,
 			forKey: .state
 		)
-		let prompt = try container.decodeIfPresent(
-			PromptWire.self,
-			forKey: .prompt
-		)?.value
 		let failure = try container.decodeIfPresent(
 			AccountReauthenticationFailure.self,
 			forKey: .failure
 		)
 		guard DecodexNativeClient.isCanonicalUUID(sessionID),
-			Self.hasValidShape(state: state, prompt: prompt, failure: failure)
+			Self.hasValidShape(state: state, failure: failure)
 		else {
 			throw AccountControlError.invalidResponse
 		}
 		value = AccountReauthenticationStatus(
 			sessionID: sessionID,
 			state: state,
-			prompt: prompt,
 			failure: failure
 		)
 	}
 
 	private static func hasValidShape(
 		state: AccountReauthenticationState,
-		prompt: AccountReauthenticationPrompt?,
 		failure: AccountReauthenticationFailure?
 	) -> Bool {
 		switch state {
-		case .requestingCode:
-			return prompt == nil && failure == nil
-		case .waitingForBrowser:
-			return prompt != nil && failure == nil
-		case .installing:
-			return prompt == nil && failure == nil
-		case .completed, .cancelled:
-			return prompt == nil && failure == nil
+		case .openingBrowser, .waitingForBrowser, .installing,
+			.completed, .cancelled:
+			return failure == nil
 		case .failed:
-			return prompt == nil && failure != nil
-		}
-	}
-
-	private struct PromptWire: Decodable {
-		let value: AccountReauthenticationPrompt
-
-		init(from decoder: Decoder) throws {
-			try requireExactFields(
-				in: decoder,
-				expected: ["verification_url", "user_code"]
-			)
-			let container = try decoder.container(keyedBy: CodingKeys.self)
-			let verificationURLText = try container.decode(
-				String.self,
-				forKey: .verificationURL
-			)
-			let userCode = try container.decode(String.self, forKey: .userCode)
-			guard let verificationURL = URL(string: verificationURLText),
-				verificationURL == AccountReauthenticationPrompt.verificationURL,
-				Self.isValidUserCode(userCode)
-			else {
-				throw AccountControlError.invalidResponse
-			}
-			value = AccountReauthenticationPrompt(
-				verificationURL: verificationURL,
-				userCode: userCode
-			)
-		}
-
-		private static func isValidUserCode(_ value: String) -> Bool {
-			let bytes = Array(value.utf8)
-			guard bytes.count == 10, bytes[4] == 0x2d else {
-				return false
-			}
-			return bytes.enumerated().allSatisfy { index, byte in
-				if index == 4 {
-					return true
-				}
-				return (byte >= 0x30 && byte <= 0x39)
-					|| (byte >= 0x41 && byte <= 0x5a)
-			}
-		}
-
-		private enum CodingKeys: String, CodingKey {
-			case verificationURL = "verification_url"
-			case userCode = "user_code"
+			return failure != nil
 		}
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case sessionID = "session_id"
 		case state
-		case prompt
 		case failure
 	}
 }

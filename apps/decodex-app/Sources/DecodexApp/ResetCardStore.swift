@@ -1085,8 +1085,7 @@ final class ResetCardStore {
 			).text,
 			sessionID: sessionID,
 			authority: authority,
-			phase: .resolvingCodex,
-			prompt: nil
+			phase: .resolvingCodex
 		)
 		accountReauthenticationTask = Task { [weak self] in
 			await self?.runAccountReauthentication(
@@ -1145,7 +1144,7 @@ final class ResetCardStore {
 						?? AccountControlError.invalidResponse.localizedDescription,
 					failure: status.failure
 				)
-			case .requestingCode, .waitingForBrowser, .installing:
+			case .openingBrowser, .waitingForBrowser, .installing:
 				setAccountReauthenticationPhase(
 					.cancellationFailed(
 						"The login is still active. Choose Cancel again."
@@ -2150,7 +2149,7 @@ final class ResetCardStore {
 				return
 			}
 			setAccountReauthenticationPhase(
-				.requestingCode,
+				.openingBrowser,
 				sessionID: sessionID
 			)
 			var status = try await client.startAccountReauthentication(
@@ -2222,25 +2221,16 @@ final class ResetCardStore {
 		}
 
 		switch status.state {
-		case .requestingCode:
+		case .openingBrowser:
 			setAccountReauthenticationPhase(
-				.requestingCode,
+				.openingBrowser,
 				sessionID: sessionID
 			)
 			return false
 		case .waitingForBrowser:
-			guard let prompt = status.prompt else {
-				await failAccountReauthentication(
-					accountID: accountID,
-					sessionID: sessionID,
-					message: AccountControlError.invalidResponse.localizedDescription
-				)
-				return true
-			}
 			setAccountReauthenticationPhase(
 				.waitingForBrowser,
-				sessionID: sessionID,
-				prompt: prompt
+				sessionID: sessionID
 			)
 			return false
 		case .installing:
@@ -2275,27 +2265,19 @@ final class ResetCardStore {
 
 	private func setAccountReauthenticationPhase(
 		_ phase: AccountReauthenticationPhase,
-		sessionID: String,
-		prompt: AccountReauthenticationPrompt? = nil
+		sessionID: String
 	) {
 		guard let presentation = accountReauthentication,
 			presentation.sessionID == sessionID
 		else {
 			return
 		}
-		let nextPrompt: AccountReauthenticationPrompt? = switch phase {
-		case .waitingForBrowser, .cancellationFailed:
-			prompt ?? presentation.prompt
-		case .resolvingCodex, .requestingCode, .installing, .failed:
-			nil
-		}
 		accountReauthentication = AccountReauthenticationPresentation(
 			accountID: presentation.accountID,
 			accountLabel: presentation.accountLabel,
 			sessionID: sessionID,
 			authority: presentation.authority,
-			phase: phase,
-			prompt: nextPrompt
+			phase: phase
 		)
 	}
 
