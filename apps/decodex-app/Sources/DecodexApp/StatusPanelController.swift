@@ -8,9 +8,11 @@ final class StatusPanelController: NSObject {
 
 	private let statusItem: NSStatusItem
 	private let panel: TransparentStatusPanel
-	private let hostingView: NSHostingView<StatusPanelRootView>
+	private let hostingView: TransparentHostingView<StatusPanelRootView>
+	private let store: ResetCardStore
 
 	init(store: ResetCardStore) {
+		self.store = store
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		panel = TransparentStatusPanel(
 			contentRect: .zero,
@@ -18,21 +20,30 @@ final class StatusPanelController: NSObject {
 			backing: .buffered,
 			defer: true
 		)
-		hostingView = NSHostingView(rootView: StatusPanelRootView(store: store))
+		hostingView = TransparentHostingView(rootView: StatusPanelRootView(store: store))
 
 		super.init()
 
 		configureStatusItem()
 		configurePanel()
+		observeApplicationLifecycle()
+	}
+
+	deinit {
+		NotificationCenter.default.removeObserver(self)
 	}
 
 	@objc
 	private func togglePanel() {
 		if panel.isVisible {
-			panel.orderOut(nil)
+			hidePanel()
 			return
 		}
 
+		showPanel()
+	}
+
+	private func showPanel() {
 		hostingView.layoutSubtreeIfNeeded()
 		let fittingSize = hostingView.fittingSize
 		if fittingSize.width > 0, fittingSize.height > 0 {
@@ -41,6 +52,26 @@ final class StatusPanelController: NSObject {
 		positionPanel()
 		NSApp.activate(ignoringOtherApps: true)
 		panel.makeKeyAndOrderFront(nil)
+		store.requestRefresh()
+	}
+
+	private func hidePanel() {
+		panel.orderOut(nil)
+	}
+
+	@objc
+	private func applicationDidResignActive(_: Notification) {
+		if let eventType = NSApp.currentEvent?.type,
+			let statusItemRect = statusItemScreenRect(),
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: eventType,
+				mouseLocation: NSEvent.mouseLocation,
+				statusItemRect: statusItemRect
+			)
+		{
+			return
+		}
+		hidePanel()
 	}
 
 	private func configureStatusItem() {
@@ -52,16 +83,22 @@ final class StatusPanelController: NSObject {
 		button.imagePosition = .imageOnly
 		button.target = self
 		button.action = #selector(togglePanel)
+		button.sendAction(on: [.leftMouseDown])
 		button.toolTip = "Decodex"
 		button.setAccessibilityLabel("Decodex")
 	}
 
 	private func configurePanel() {
+		hostingView.wantsLayer = true
+		hostingView.layer?.backgroundColor = NSColor.clear.cgColor
 		panel.isReleasedWhenClosed = false
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
 		panel.hasShadow = false
-		panel.hidesOnDeactivate = true
+		// AppKit's automatic deactivate hiding can restore the panel before a
+		// status-item mouse-up action and turn the first click into a close.
+		// Own the deactivate transition explicitly instead.
+		panel.hidesOnDeactivate = false
 		panel.isMovable = false
 		panel.level = .popUpMenu
 		panel.collectionBehavior = [
@@ -70,18 +107,25 @@ final class StatusPanelController: NSObject {
 			.fullScreenAuxiliary,
 		]
 		panel.contentView = hostingView
+		PanelWindowAppearance.apply(to: panel)
+	}
+
+	private func observeApplicationLifecycle() {
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(applicationDidResignActive(_:)),
+			name: NSApplication.didResignActiveNotification,
+			object: NSApp
+		)
 	}
 
 	private func positionPanel() {
-		guard let button = statusItem.button,
-			let statusWindow = button.window
+		guard let anchorRect = statusItemScreenRect(),
+			let statusWindow = statusItem.button?.window
 		else {
 			return
 		}
 
-		let anchorRect = statusWindow.convertToScreen(
-			button.convert(button.bounds, to: nil)
-		)
 		guard let screen = statusWindow.screen
 			?? NSScreen.screens.first(where: {
 				$0.frame.intersects(anchorRect)
@@ -100,6 +144,24 @@ final class StatusPanelController: NSObject {
 				menuBarGap: Self.menuBarGap
 			)
 		)
+	}
+
+	private func statusItemScreenRect() -> NSRect? {
+		guard let button = statusItem.button,
+			let statusWindow = button.window
+		else {
+			return nil
+		}
+		return statusWindow.convertToScreen(
+			button.convert(button.bounds, to: nil)
+		)
+	}
+}
+
+@MainActor
+final class TransparentHostingView<Content: View>: NSHostingView<Content> {
+	override var isOpaque: Bool {
+		false
 	}
 }
 
@@ -134,6 +196,16 @@ enum StatusPanelLayout {
 			return minimum
 		}
 		return min(max(value, minimum), maximum)
+	}
+}
+
+enum StatusPanelInteraction {
+	static func isStatusItemPress(
+		eventType: NSEvent.EventType,
+		mouseLocation: NSPoint,
+		statusItemRect: NSRect
+	) -> Bool {
+		eventType == .leftMouseDown && statusItemRect.contains(mouseLocation)
 	}
 }
 

@@ -253,9 +253,18 @@ Service and returns the root refresh response. This source capability can satisf
 generated-schema, and live callback preflights also pass. Initial token projection alone is
 insufficient.
 
-The supported macOS build must also prove that device login can write to an isolated
-daemon-readable auth backend without changing ambient `~/.codex`. Ambient `Use in
-Codex` is a separate later capability and is not required for Mac dogfood.
+The supported macOS bridge can launch one explicit official Codex device-login in an
+owner-private temporary home without changing ambient `~/.codex`. It publishes only the
+official URL, one-time code, and closed session state to Swift. On successful login, the
+daemon opens that private `auth.json`, verifies the exact provider identity and current
+account revision, journals an existing-account `Refresh`, and applies only the immediate
+next HostCredentialStore version by compare-and-swap. The temporary home is removed on
+success, failure, cancellation, timeout, or bridge destruction. Ambient `Use in Codex`
+remains a separate explicit projection command; neither action implies the other.
+An acceptance-unknown install replays only the same operation and idempotency key while
+the private source exists. Prepared-operation startup and command replay compare both the
+expected and target bindings; only an exact expected binding can prove that cancellation
+is safe, and ambiguous store state becomes `RecoveryRequired`.
 
 ## ProcessGeneration binding
 
@@ -334,7 +343,7 @@ fields are absent when the provider or current credential does not supply them.
 The product has no legacy-account migration mode. Normal startup and installation do
 not read an old account pool, mapping, helper, environment projection, migration
 manifest, or migration receipt. V27 is the landed clean-break account schema in the
-current V1–V30 migration ledger and accepts only an empty Account Registry. A populated
+current V1–V31 migration ledger and accepts only an empty Account Registry. A populated
 older registry requires a fresh local product database.
 
 An operator can move credentials once by creating owner-private

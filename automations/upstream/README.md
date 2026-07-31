@@ -156,6 +156,9 @@ bounded test IDs, exception classes, reason codes, and counts. It never stores r
 command output, absolute paths, credentials, email addresses, or private prose. The
 failed command returns the stable cause digest as its `error_digest`. The named
 artifact is the unambiguous local lookup for that cause.
+If candidate output contamination or cleanup also fails, the command keeps the
+profile failure as `error_code` and returns the additional bounded reason in
+`related_error_codes`.
 Maintainer and Health read it only through
 `run_upstream_autopilot validation-diagnostic --error-digest <digest> --json`, which
 revalidates the cause identity and the separate artifact digest. Maintainer passes

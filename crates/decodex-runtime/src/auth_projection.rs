@@ -406,6 +406,15 @@ fn now_rfc3339() -> Result<String, CodexAuthProjectionError> {
 }
 
 fn open_codex_directory(home: &Path) -> Result<File, CodexAuthProjectionError> {
+	#[cfg(test)]
+	if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref() == Some(std::ffi::OsStr::new("1")) {
+		let root = std::env::var_os("TMPDIR")
+			.filter(|value| !value.is_empty())
+			.map(PathBuf::from)
+			.ok_or(CodexAuthProjectionError::UnsafePath)?;
+		return open_pinned_sandbox_codex_directory(home, &root);
+	}
+
 	if !home.is_absolute() {
 		return Err(CodexAuthProjectionError::UnsafePath);
 	}
@@ -426,6 +435,168 @@ fn open_codex_directory(home: &Path) -> Result<File, CodexAuthProjectionError> {
 	let codex = open_directory_at(current.as_raw_fd(), CODEX_DIRECTORY_NAME.to_bytes())?;
 	validate_ancestor(&codex, true)?;
 	Ok(codex)
+}
+
+#[cfg(test)]
+fn open_pinned_sandbox_codex_directory(
+	home: &Path,
+	root: &Path,
+) -> Result<File, CodexAuthProjectionError> {
+	if !root.is_absolute() || home == root || !home.starts_with(root) {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	let mut current = open_exact_sandbox_root(root)?;
+	let relative = home.strip_prefix(root).map_err(|_| CodexAuthProjectionError::UnsafePath)?;
+	for component in relative.components() {
+		let Component::Normal(name) = component else {
+			return Err(CodexAuthProjectionError::UnsafePath);
+		};
+		current = open_directory_at(current.as_raw_fd(), name.as_bytes())?;
+		validate_ancestor(&current, true)?;
+	}
+	let codex = open_directory_at(current.as_raw_fd(), CODEX_DIRECTORY_NAME.to_bytes())?;
+	validate_ancestor(&codex, true)?;
+	Ok(codex)
+}
+
+#[cfg(test)]
+fn open_exact_sandbox_root(root: &Path) -> Result<File, CodexAuthProjectionError> {
+	open_exact_sandbox_root_after_metadata(root, || {})
+}
+
+#[cfg(test)]
+fn open_exact_sandbox_root_after_metadata<F>(
+	root: &Path,
+	after_metadata: F,
+) -> Result<File, CodexAuthProjectionError>
+where
+	F: FnOnce(),
+{
+	if !root.is_absolute() {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	let before =
+		std::fs::symlink_metadata(root).map_err(|_| CodexAuthProjectionError::UnsafePath)?;
+	validate_exact_sandbox_root(&before)?;
+	after_metadata();
+	let current = open_directory_path(root)?;
+	let after = current.metadata().map_err(|_| CodexAuthProjectionError::UnsafePath)?;
+	validate_exact_sandbox_root(&after)?;
+	if before.dev() != after.dev() || before.ino() != after.ino() {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	Ok(current)
+}
+
+#[cfg(test)]
+fn validate_exact_sandbox_root(
+	metadata: &std::fs::Metadata,
+) -> Result<(), CodexAuthProjectionError> {
+	let effective_uid = unsafe { libc::geteuid() };
+	if !metadata.is_dir() || metadata.uid() != effective_uid || metadata.mode() & 0o7777 != 0o700 {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	Ok(())
+}
+
+#[cfg(test)]
+struct PinnedSandboxFixtureHome {
+	root: File,
+	home: File,
+	codex: File,
+	path: PathBuf,
+	name: CString,
+}
+
+#[cfg(test)]
+impl PinnedSandboxFixtureHome {
+	fn new() -> Result<Self, CodexAuthProjectionError> {
+		let root_path = std::env::var_os("TMPDIR")
+			.filter(|value| !value.is_empty())
+			.map(PathBuf::from)
+			.ok_or(CodexAuthProjectionError::UnsafePath)?;
+		let root = open_exact_sandbox_root(&root_path)?;
+		let sequence = TEMP_SEQUENCE.fetch_add(1, Ordering::Relaxed);
+		let name =
+			CString::new(format!("auth-projection-fixture-{}-{sequence}", std::process::id()))
+				.map_err(|_| CodexAuthProjectionError::UnsafePath)?;
+		let home = create_exact_private_directory_at(&root, &name)?;
+		let codex = match create_exact_private_directory_at(&home, CODEX_DIRECTORY_NAME) {
+			Ok(codex) => codex,
+			Err(error) => {
+				let _ =
+					unsafe { libc::unlinkat(root.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR) };
+				return Err(error);
+			},
+		};
+		let path = root_path.join(std::ffi::OsStr::from_bytes(name.to_bytes()));
+		Ok(Self { root, home, codex, path, name })
+	}
+
+	fn path(&self) -> &Path {
+		&self.path
+	}
+}
+
+#[cfg(test)]
+impl Drop for PinnedSandboxFixtureHome {
+	fn drop(&mut self) {
+		let _ = unsafe { libc::unlinkat(self.codex.as_raw_fd(), AUTH_FILE_NAME.as_ptr(), 0) };
+		let _ = unsafe { libc::unlinkat(self.home.as_raw_fd(), c"outside".as_ptr(), 0) };
+		if directory_entry_matches(&self.home, CODEX_DIRECTORY_NAME, &self.codex) {
+			let _ = unsafe {
+				libc::unlinkat(
+					self.home.as_raw_fd(),
+					CODEX_DIRECTORY_NAME.as_ptr(),
+					libc::AT_REMOVEDIR,
+				)
+			};
+		}
+		if directory_entry_matches(&self.root, &self.name, &self.home) {
+			let _ = unsafe {
+				libc::unlinkat(self.root.as_raw_fd(), self.name.as_ptr(), libc::AT_REMOVEDIR)
+			};
+		}
+	}
+}
+
+#[cfg(test)]
+fn create_exact_private_directory_at(
+	parent: &File,
+	name: &CStr,
+) -> Result<File, CodexAuthProjectionError> {
+	if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700) } != 0 {
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	let directory = match open_directory_at(parent.as_raw_fd(), name.to_bytes()) {
+		Ok(directory) => directory,
+		Err(error) => {
+			let _ =
+				unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR) };
+			return Err(error);
+		},
+	};
+	if unsafe { libc::fchmod(directory.as_raw_fd(), 0o700) } != 0
+		|| validate_exact_sandbox_root(
+			&directory.metadata().map_err(|_| CodexAuthProjectionError::UnsafePath)?,
+		)
+		.is_err()
+	{
+		let _ = unsafe { libc::unlinkat(parent.as_raw_fd(), name.as_ptr(), libc::AT_REMOVEDIR) };
+		return Err(CodexAuthProjectionError::UnsafePath);
+	}
+	Ok(directory)
+}
+
+#[cfg(test)]
+fn directory_entry_matches(parent: &File, name: &CStr, expected: &File) -> bool {
+	let Ok(current) = open_directory_at(parent.as_raw_fd(), name.to_bytes()) else {
+		return false;
+	};
+	let (Ok(current), Ok(expected)) = (current.metadata(), expected.metadata()) else {
+		return false;
+	};
+	current.dev() == expected.dev() && current.ino() == expected.ino()
 }
 
 fn open_directory_path(path: &Path) -> Result<File, CodexAuthProjectionError> {
@@ -647,11 +818,27 @@ mod tests {
 	use tempfile::tempdir_in;
 
 	use super::{
-		CodexAuthProjectionError, ProjectionFault, SharedCodexAuthIdentity, current_auth_matches,
-		open_codex_directory, project_shared_codex_auth_at, project_to_directory,
+		CodexAuthProjectionError, PinnedSandboxFixtureHome, ProjectionFault,
+		SharedCodexAuthIdentity, current_auth_matches, open_codex_directory,
+		open_exact_sandbox_root, open_exact_sandbox_root_after_metadata,
+		open_pinned_sandbox_codex_directory, project_shared_codex_auth_at, project_to_directory,
 		read_identity_from_directory,
 	};
 	use crate::host_credentials::CredentialSecretBundle;
+
+	enum FixtureHome {
+		Ordinary(tempfile::TempDir),
+		Sandboxed(PinnedSandboxFixtureHome),
+	}
+
+	impl FixtureHome {
+		fn path(&self) -> &Path {
+			match self {
+				Self::Ordinary(home) => home.path(),
+				Self::Sandboxed(home) => home.path(),
+			}
+		}
+	}
 
 	fn bundle(id_token: Option<&str>, suffix: &str) -> CredentialSecretBundle {
 		CredentialSecretBundle::chatgpt(
@@ -666,11 +853,64 @@ mod tests {
 		.unwrap()
 	}
 
-	fn fixture_home() -> tempfile::TempDir {
-		let current = std::env::current_dir().unwrap();
-		let home = tempdir_in(current).unwrap();
-		fs::create_dir(home.path().join(".codex")).unwrap();
-		home
+	fn fixture_home() -> FixtureHome {
+		if std::env::var_os("DECODEX_CANDIDATE_SANDBOX").as_deref()
+			== Some(std::ffi::OsStr::new("1"))
+		{
+			FixtureHome::Sandboxed(PinnedSandboxFixtureHome::new().unwrap())
+		} else {
+			let home = tempdir_in(std::env::current_dir().unwrap()).unwrap();
+			fs::create_dir(home.path().join(".codex")).unwrap();
+			FixtureHome::Ordinary(home)
+		}
+	}
+
+	#[test]
+	fn sandbox_codex_root_is_exact_private_and_descriptor_pinned() {
+		let fixture = fixture_home();
+		let root = fixture.path().join("sandbox");
+		let home = root.join("home");
+		fs::create_dir(&root).unwrap();
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+		fs::create_dir(&home).unwrap();
+		fs::create_dir(home.join(".codex")).unwrap();
+
+		open_pinned_sandbox_codex_directory(&home, &root).unwrap();
+		assert!(open_pinned_sandbox_codex_directory(fixture.path(), &root).is_err());
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o1700)).unwrap();
+		assert!(open_pinned_sandbox_codex_directory(&home, &root).is_err());
+		fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+
+		let root_link = fixture.path().join("root-link");
+		symlink(&root, &root_link).unwrap();
+		assert!(open_exact_sandbox_root(&root_link).is_err());
+		fs::remove_file(&root_link).unwrap();
+
+		let retained = fixture.path().join("retained-root");
+		assert!(
+			open_exact_sandbox_root_after_metadata(&root, || {
+				fs::rename(&root, &retained).unwrap();
+				symlink(&retained, &root).unwrap();
+			})
+			.is_err()
+		);
+		fs::remove_file(&root).unwrap();
+		fs::rename(&retained, &root).unwrap();
+
+		let symlink_home = root.join("symlink-home");
+		symlink(&home, &symlink_home).unwrap();
+		assert!(open_pinned_sandbox_codex_directory(&symlink_home, &root).is_err());
+		fs::remove_file(symlink_home).unwrap();
+
+		let linked_codex_home = root.join("linked-codex-home");
+		fs::create_dir(&linked_codex_home).unwrap();
+		symlink(home.join(".codex"), linked_codex_home.join(".codex")).unwrap();
+		assert!(open_pinned_sandbox_codex_directory(&linked_codex_home, &root).is_err());
+		fs::remove_file(linked_codex_home.join(".codex")).unwrap();
+		fs::remove_dir(linked_codex_home).unwrap();
+		fs::remove_dir(home.join(".codex")).unwrap();
+		fs::remove_dir(home).unwrap();
+		fs::remove_dir(root).unwrap();
 	}
 
 	fn read_auth(home: &Path) -> Value {

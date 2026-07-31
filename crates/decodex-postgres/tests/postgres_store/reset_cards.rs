@@ -1886,7 +1886,7 @@ async fn enroll_v27_account(
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
 				build_identity: "codex-cli 0.146.0-alpha.3.1".to_owned(),
 				executable_sha256:
-					"fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e".to_owned(),
+					"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4".to_owned(),
 				schema_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 					.to_owned(),
 				callback_profile_sha256: CALLBACK_PROFILE.to_owned(),

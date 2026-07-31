@@ -1062,6 +1062,42 @@ class UpstreamAutopilotTests(unittest.TestCase):
             },
         )
 
+    def test_autopilot_error_bounds_and_normalizes_related_codes(self):
+        normalized = self.autopilot.AutopilotError(
+            "primary_failure",
+            related_error_codes=(
+                "primary_failure",
+                "invalid code",
+                "alpha_failure",
+                "alpha_failure",
+            ),
+        )
+        self.assertEqual(
+            normalized.related_error_codes,
+            ("alpha_failure", "unclassified_failure"),
+        )
+
+        bounded = self.autopilot.AutopilotError(
+            "primary_failure",
+            related_error_codes=(
+                "epsilon_failure",
+                "delta_failure",
+                "gamma_failure",
+                "beta_failure",
+                "alpha_failure",
+            ),
+        )
+        self.assertEqual(
+            bounded.related_error_codes,
+            (
+                "alpha_failure",
+                "beta_failure",
+                "delta_failure",
+                "epsilon_failure",
+            ),
+        )
+        self.assertEqual(len(bounded.related_error_codes), 4)
+
     def test_cli_failure_returns_the_exact_validation_diagnostic_digest(self):
         digest = "a" * 64
         output = io.StringIO()
@@ -1078,6 +1114,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 side_effect=self.autopilot.AutopilotError(
                     "validation_profile_focused_tests_failed",
                     diagnostic_sha256=digest,
+                    related_error_codes=(
+                        "validation_candidate_output_cleanup_failed",
+                    ),
                 ),
             ),
             mock.patch.object(sys, "stdout", output),
@@ -1092,6 +1131,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "status": "failed",
                 "error_code": "validation_profile_focused_tests_failed",
                 "error_digest": digest,
+                "related_error_codes": [
+                    "validation_candidate_output_cleanup_failed"
+                ],
             },
         )
 
@@ -4832,11 +4874,25 @@ class UpstreamAutopilotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             developer = Path(directory) / "Xcode.app/Contents/Developer"
             xcodebuild = developer / "usr/bin/xcodebuild"
-            metal = Path(directory) / "Metal.xctoolchain/usr/bin/metal"
+            toolchain = developer / "Toolchains/XcodeDefault.xctoolchain"
+            clang = toolchain / "usr/bin/clang"
+            clangxx = toolchain / "usr/bin/clang++"
+            metal_root = Path(directory) / "Metal.xctoolchain"
+            metal = metal_root / "usr/bin/metal"
+            metallib = metal_root / "usr/bin/metallib"
+            sdk_root = (
+                developer
+                / "Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk"
+            )
             xcodebuild.parent.mkdir(parents=True)
             metal.parent.mkdir(parents=True)
+            clang.parent.mkdir(parents=True)
+            sdk_root.mkdir(parents=True)
             xcodebuild.write_bytes(b"xcodebuild")
+            clang.write_bytes(b"clang")
+            clangxx.write_bytes(b"clang++")
             metal.write_bytes(b"metal")
+            metallib.write_bytes(b"metallib")
 
             def fake_run(arguments, **kwargs):
                 if arguments == ["/usr/bin/xcode-select", "-p"]:
@@ -4845,8 +4901,21 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     kwargs["environment"],
                     {"DEVELOPER_DIR": str(developer.resolve())},
                 )
-                if arguments == ["/usr/bin/xcrun", "--find", "metal"]:
-                    return str(metal)
+                discovered = {
+                    "clang": clang,
+                    "clang++": clangxx,
+                    "metal": metal,
+                    "metallib": metallib,
+                }
+                if arguments[:2] == ["/usr/bin/xcrun", "--find"]:
+                    return str(discovered[arguments[2]])
+                if arguments == [
+                    "/usr/bin/xcrun",
+                    "--sdk",
+                    "macosx",
+                    "--show-sdk-path",
+                ]:
+                    return str(sdk_root)
                 if arguments == [str(xcodebuild.resolve()), "-version"]:
                     return "Xcode 27.0\nBuild version 27A5209h"
                 self.fail(f"unexpected command: {arguments}")
@@ -4862,31 +4931,188 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     side_effect=fake_run,
                 ),
             ):
-                environment, evidence = (
-                    self.autopilot.full_xcode_environment()
-                )
+                configuration = self.autopilot.full_xcode_environment()
 
         self.assertEqual(
-            environment,
-            {"DEVELOPER_DIR": str(developer.resolve())},
+            configuration.environment["DEVELOPER_DIR"],
+            str(developer.resolve()),
         )
         self.assertEqual(
-            set(evidence),
-            {
-                "developer_dir_sha256",
-                "xcode_select_sha256",
-                "xcode_version_sha256",
-                "xcodebuild_sha256",
-                "xcrun_sha256",
-                "metal_sha256",
-            },
+            configuration.environment["SDKROOT"],
+            str(sdk_root.resolve()),
+        )
+        self.assertEqual(configuration.developer_dir, developer.resolve())
+        self.assertEqual(
+            configuration.metal_toolchain_root,
+            metal_root.resolve(),
+        )
+        self.assertEqual(
+            set(configuration.evidence),
+            self.autopilot.FULL_XCODE_DISCOVERY_EVIDENCE_KEYS,
         )
         self.assertTrue(
             all(
                 self.autopilot.is_sha256(value)
-                for value in evidence.values()
+                for value in configuration.evidence.values()
             )
         )
+
+    def test_xcrun_proxy_allows_only_bound_metal_tools(self):
+        with tempfile.TemporaryDirectory() as directory:
+            configuration = self.autopilot.FullXcodeConfiguration(
+                environment={},
+                evidence={},
+                developer_dir=Path("/trusted/Xcode.app/Contents/Developer"),
+                metal_toolchain_root=Path("/trusted/Metal.xctoolchain"),
+                sdk_root=Path("/trusted/MacOSX.sdk"),
+                xcrun_tools=(
+                    ("metal", Path("/bin/echo")),
+                    ("metallib", Path("/bin/echo")),
+                ),
+            )
+            proxy, digest = self.autopilot.initialize_xcrun_proxy(
+                Path(directory),
+                configuration,
+                Path(sys.executable).resolve(),
+            )
+
+            found = subprocess.run(
+                [str(proxy), "--find", "metal"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            sdk = subprocess.run(
+                [str(proxy), "--sdk", "macosx", "--show-sdk-path"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            invoked = subprocess.run(
+                [str(proxy), "-sdk", "macosx", "metal", "shader.metal"],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            denied = subprocess.run(
+                [str(proxy), "--find", "clang"],
+                check=False,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(found.stdout.strip(), "/bin/echo")
+            self.assertEqual(sdk.stdout.strip(), "/trusted/MacOSX.sdk")
+            self.assertEqual(
+                invoked.stdout.strip(),
+                (
+                    "shader.metal -fmodules-cache-path="
+                    f"{Path(directory).resolve() / 'metal-module-cache'}"
+                ),
+            )
+            self.assertEqual(denied.returncode, 64)
+            self.assertEqual(
+                denied.stderr.strip(),
+                "sandbox xcrun invocation denied",
+            )
+            self.assertEqual(proxy.stat().st_mode & 0o777, 0o500)
+            self.assertEqual(self.autopilot.hash_file_bounded(proxy), digest)
+
+    @unittest.skipUnless(
+        sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
+        "requires the macOS sandbox",
+    )
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "the outer validation sandbox owns this probe",
+    )
+    def test_validation_sandbox_keeps_the_xcrun_proxy_read_only(self):
+        with tempfile.TemporaryDirectory() as directory:
+            outer = Path(directory).resolve()
+            candidate = outer / "candidate"
+            temporary_home = outer / "sandbox"
+            developer = outer / "Xcode.app/Contents/Developer"
+            metal_root = outer / "Metal.xctoolchain"
+            sdk_root = developer / "SDKs/MacOSX.sdk"
+            candidate.mkdir()
+            temporary_home.mkdir()
+            metal_root.mkdir()
+            sdk_root.mkdir(parents=True)
+            configuration = self.autopilot.FullXcodeConfiguration(
+                environment={},
+                evidence={},
+                developer_dir=developer,
+                metal_toolchain_root=metal_root,
+                sdk_root=sdk_root,
+                xcrun_tools=(
+                    ("metal", Path("/bin/echo")),
+                    ("metallib", Path("/bin/echo")),
+                ),
+            )
+            proxy, _digest = self.autopilot.initialize_xcrun_proxy(
+                temporary_home,
+                configuration,
+                Path(sys.executable).resolve(),
+            )
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    candidate,
+                    temporary_home,
+                    output.path,
+                    full_xcode=configuration,
+                    xcrun_proxy=proxy,
+                )
+
+            mutation_attempts = (
+                f"import os; os.chmod({str(proxy)!r}, 0o700)",
+                f"import os; os.unlink({str(proxy)!r})",
+                (
+                    "import os; "
+                    f"os.rename({str(proxy.parent)!r}, "
+                    f"{str(temporary_home / 'moved')!r})"
+                ),
+                (
+                    "import os; "
+                    f"os.mkdir({str(temporary_home / 'replacement')!r}); "
+                    f"os.replace({str(temporary_home / 'replacement')!r}, "
+                    f"{str(proxy.parent)!r})"
+                ),
+            )
+            denied = [
+                self.autopilot.run_command(
+                    [
+                        "/usr/bin/sandbox-exec",
+                        "-p",
+                        profile,
+                        sys.executable,
+                        "-c",
+                        script,
+                    ],
+                    cwd=candidate,
+                    failure_code="sandbox_probe_failed",
+                    allow_failure=True,
+                )
+                for script in mutation_attempts
+            ]
+            invoked = self.autopilot.run_command(
+                [
+                    "/usr/bin/sandbox-exec",
+                    "-p",
+                    profile,
+                    str(proxy),
+                    "--find",
+                    "metal",
+                ],
+                cwd=candidate,
+                failure_code="sandbox_probe_failed",
+            )
+
+            self.assertEqual(denied, ["", "", "", ""])
+            self.assertEqual(proxy.stat().st_mode & 0o777, 0o500)
+            self.assertEqual(invoked, "/bin/echo")
 
     def test_full_validation_profile_receives_only_the_xcode_environment(self):
         head = "2" * 40
@@ -4897,16 +5123,32 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "closure_sha256": "5" * 64,
         }
         xcode_environment = {
-            "DEVELOPER_DIR": "/Applications/Xcode-test.app/Contents/Developer"
+            "CC": "/Applications/Xcode-test.app/clang",
+            "CXX": "/Applications/Xcode-test.app/clang++",
+            "DEVELOPER_DIR": "/Applications/Xcode-test.app/Contents/Developer",
+            "SDKROOT": "/Applications/Xcode-test.app/MacOSX.sdk",
+            "CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER": (
+                "/Applications/Xcode-test.app/clang"
+            ),
+            "CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER": (
+                "/Applications/Xcode-test.app/clang"
+            ),
         }
         xcode_evidence = {
-            "developer_dir_sha256": "6" * 64,
-            "xcode_version_sha256": "7" * 64,
-            "xcodebuild_sha256": "8" * 64,
-            "metal_sha256": "9" * 64,
-            "xcode_select_sha256": "a" * 64,
-            "xcrun_sha256": "b" * 64,
+            key: self.autopilot.sha256_value({"xcode": key})
+            for key in self.autopilot.FULL_XCODE_DISCOVERY_EVIDENCE_KEYS
         }
+        xcode_configuration = self.autopilot.FullXcodeConfiguration(
+            environment=xcode_environment,
+            evidence=xcode_evidence,
+            developer_dir=Path(xcode_environment["DEVELOPER_DIR"]),
+            metal_toolchain_root=Path("/trusted/Metal.xctoolchain"),
+            sdk_root=Path(xcode_environment["SDKROOT"]),
+            xcrun_tools=(
+                ("metal", Path("/trusted/bin/metal")),
+                ("metallib", Path("/trusted/bin/metallib")),
+            ),
+        )
         trusted_paths = {
             name: Path(f"/trusted/bin/{name}")
             for name in self.autopilot.VALIDATION_TOOL_NAMES
@@ -4917,6 +5159,19 @@ class UpstreamAutopilotTests(unittest.TestCase):
         }
         git_common_directory = (
             self.autopilot.repository_git_common_directory(ROOT)
+        )
+        candidate_output = self.autopilot.PinnedCandidateOutput(
+            path=Path(
+                "/candidate/target/"
+                "decodex-validation-00000000000000000000000000000000"
+            ),
+            name=(
+                "decodex-validation-"
+                "00000000000000000000000000000000"
+            ),
+            candidate_descriptor=-1,
+            target_descriptor=-1,
+            output_descriptor=-1,
         )
         with (
             mock.patch.object(
@@ -4937,7 +5192,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             mock.patch.object(
                 self.autopilot.validation_module,
                 "full_xcode_environment",
-                return_value=(xcode_environment, xcode_evidence),
+                return_value=xcode_configuration,
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -4971,6 +5226,20 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     )
                     for key in self.autopilot.SANDBOX_EVIDENCE_KEYS
                 },
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "pinned_candidate_output_directory",
+                return_value=nullcontext(candidate_output),
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "_verify_candidate_output_empty",
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "validation_sandbox_profile",
+                return_value="(version 1)\n(deny default)\n",
             ),
             mock.patch.object(
                 self.autopilot.validation_module,
@@ -5020,6 +5289,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 environment["RUSTFMT"],
                 "/trusted/bin/nightly-rustfmt",
             )
+            self.assertEqual(
+                environment["DECODEX_VALIDATION_REPO_OUTPUT"],
+                str(candidate_output.path),
+            )
             for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
                 self.assertNotIn(secret, environment)
         self.assertNotIn("DEVELOPER_DIR", cargo_calls[0].kwargs["environment"])
@@ -5027,6 +5300,16 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(
             cargo_calls[2].kwargs["environment"]["DEVELOPER_DIR"],
             xcode_environment["DEVELOPER_DIR"],
+        )
+        self.assertEqual(
+            cargo_calls[2].kwargs["environment"]["SDKROOT"],
+            xcode_environment["SDKROOT"],
+        )
+        self.assertEqual(
+            Path(cargo_calls[2].kwargs["environment"]["PATH"].split(
+                os.pathsep
+            )[0]).name,
+            "trusted-xcrun",
         )
         self.assertTrue(receipt["requires_full_gate"])
 
@@ -5043,6 +5326,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     "GH_TOKEN": "secret",
                     "OPENAI_API_KEY": "secret",
                     "SSH_AUTH_SOCK": "/tmp/secret-agent",
+                    "DECODEX_VALIDATION_REPO_OUTPUT": "/tmp/hostile",
                     "PATH": "/tmp/hostile",
                 },
                 clear=False,
@@ -5055,6 +5339,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         for secret in ("GH_TOKEN", "OPENAI_API_KEY", "SSH_AUTH_SOCK"):
             self.assertNotIn(secret, environment)
+        self.assertNotIn(
+            "DECODEX_VALIDATION_REPO_OUTPUT",
+            environment,
+        )
         self.assertNotIn("DECODEX_TEST_TEMP_ROOT", environment)
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
@@ -5199,6 +5487,269 @@ class UpstreamAutopilotTests(unittest.TestCase):
             all(not str(path).startswith(str(hostile)) for path in tools.values())
         )
 
+    def test_candidate_validation_output_rejects_symlink_and_replacement(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            temporary_home = Path(directory) / "sandbox"
+            candidate.mkdir()
+            temporary_home.mkdir()
+            source = candidate / "source.txt"
+            source.write_text("source", encoding="utf-8")
+            target = candidate / "target"
+            target.symlink_to(".", target_is_directory=True)
+
+            with self.assertRaises(self.autopilot.AutopilotError) as rejected:
+                with self.autopilot.pinned_candidate_output_directory(candidate):
+                    pass
+            self.assertEqual(
+                rejected.exception.code,
+                "validation_candidate_output_invalid",
+            )
+
+            target.unlink()
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    candidate,
+                    temporary_home,
+                    output.path,
+                )
+                self.assertIn(str(output.path), profile)
+                self.assertNotIn(
+                    f'(allow file-write* (subpath "{candidate}"))',
+                    profile,
+                )
+
+                hardlink = output.path / "preexisting-hardlink"
+                os.link(source, hardlink)
+                with self.assertRaises(
+                    self.autopilot.AutopilotError
+                ) as populated:
+                    self.autopilot.validation_module._verify_candidate_output_empty(
+                        output,
+                        changed=True,
+                    )
+                self.assertEqual(
+                    populated.exception.code,
+                    "validation_candidate_output_changed",
+                )
+                hardlink.unlink()
+                self.assertEqual(source.read_text(encoding="utf-8"), "source")
+
+                retained = candidate / "retained-target"
+                target.rename(retained)
+                target.mkdir(mode=0o700)
+                with self.assertRaises(
+                    self.autopilot.AutopilotError
+                ) as changed:
+                    self.autopilot.validation_module._verify_candidate_output_directory(
+                        output,
+                        changed=True,
+                    )
+                self.assertEqual(
+                    changed.exception.code,
+                    "validation_candidate_output_changed",
+                )
+                target.rmdir()
+                retained.rename(target)
+                self.autopilot.validation_module._verify_candidate_output_empty(
+                    output,
+                    changed=True,
+                )
+
+    def test_candidate_validation_output_cleanup_is_descriptor_relative(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            candidate = root / "candidate"
+            outside = root / "outside"
+            candidate.mkdir()
+            outside.mkdir()
+
+            with self.autopilot.pinned_candidate_output_directory(
+                candidate
+            ) as output:
+                target = candidate / "target"
+                retained = candidate / "retained-target"
+                target.rename(retained)
+                external_output = outside / output.name
+                external_output.mkdir(mode=0o700)
+                sentinel = external_output / "sentinel"
+                sentinel.write_text("outside", encoding="utf-8")
+                target.symlink_to(outside, target_is_directory=True)
+
+            self.assertFalse((retained / output.name).exists())
+            self.assertEqual(
+                sentinel.read_text(encoding="utf-8"),
+                "outside",
+            )
+
+    def test_candidate_output_cleanup_preserves_an_active_error(self):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(
+                self.autopilot.validation_module.shutil,
+                "rmtree",
+                side_effect=OSError("cleanup failed"),
+            ),
+        ):
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            with self.assertRaises(self.autopilot.AutopilotError) as raised:
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    raise self.autopilot.AutopilotError(
+                        "original_validation_failure"
+                    )
+
+            self.assertEqual(
+                raised.exception.code,
+                "original_validation_failure",
+            )
+            self.assertEqual(
+                raised.exception.related_error_codes,
+                (
+                    "validation_candidate_output_cleanup_failed",
+                ),
+            )
+
+    def test_candidate_output_open_failure_removes_the_created_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            real_open = os.open
+            output_open_failed = False
+
+            def fail_output_open_once(
+                path,
+                flags,
+                mode=0o777,
+                *,
+                dir_fd=None,
+            ):
+                nonlocal output_open_failed
+                if (
+                    not output_open_failed
+                    and isinstance(path, str)
+                    and self.autopilot.CANDIDATE_OUTPUT_NAME_PATTERN.fullmatch(
+                        path
+                    )
+                ):
+                    output_open_failed = True
+                    raise OSError("output open failed")
+                return real_open(
+                    path,
+                    flags,
+                    mode,
+                    dir_fd=dir_fd,
+                )
+
+            with (
+                mock.patch.object(
+                    self.autopilot.validation_module.os,
+                    "open",
+                    side_effect=fail_output_open_once,
+                ),
+                self.assertRaises(self.autopilot.AutopilotError) as raised,
+            ):
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    pass
+
+            self.assertTrue(output_open_failed)
+            self.assertEqual(
+                raised.exception.code,
+                "validation_candidate_output_invalid",
+            )
+            self.assertEqual(
+                list((candidate / "target").iterdir()),
+                [],
+            )
+
+    def test_candidate_output_cleanup_failure_is_primary_without_active_error(
+        self,
+    ):
+        with (
+            tempfile.TemporaryDirectory() as directory,
+            mock.patch.object(
+                self.autopilot.validation_module.shutil,
+                "rmtree",
+                side_effect=OSError("cleanup failed"),
+            ),
+        ):
+            candidate = Path(directory) / "candidate"
+            candidate.mkdir()
+            with self.assertRaises(self.autopilot.AutopilotError) as raised:
+                with self.autopilot.pinned_candidate_output_directory(
+                    candidate
+                ):
+                    pass
+
+            self.assertEqual(
+                raised.exception.code,
+                "validation_candidate_output_cleanup_failed",
+            )
+
+    def test_profile_failure_preserves_diagnostic_and_output_contamination(self):
+        diagnostic = "a" * 64
+        failure = self.autopilot.CommandFailure(
+            "validation_profile_focused_tests_failed",
+            failure_kind="nonzero_exit",
+            output_tail=b"failed",
+            output_sha256="b" * 64,
+            return_code=1,
+        )
+        candidate_output = self.autopilot.PinnedCandidateOutput(
+            path=Path(
+                "/candidate/target/"
+                "decodex-validation-00000000000000000000000000000000"
+            ),
+            name=(
+                "decodex-validation-"
+                "00000000000000000000000000000000"
+            ),
+            candidate_descriptor=-1,
+            target_descriptor=-1,
+            output_descriptor=-1,
+        )
+        with (
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "write_validation_failure_diagnostic",
+                return_value=diagnostic,
+            ),
+            mock.patch.object(
+                self.autopilot.validation_module,
+                "_verify_candidate_output_empty",
+                side_effect=self.autopilot.AutopilotError(
+                    "validation_candidate_output_changed"
+                ),
+            ),
+        ):
+            result = (
+                self.autopilot.validation_module._validation_profile_failure(
+                    ROOT,
+                    candidate_output,
+                    profile="focused_tests",
+                    repository_head="1" * 40,
+                    repository_tree="2" * 40,
+                    failure=failure,
+                )
+            )
+
+        self.assertEqual(
+            result.code,
+            "validation_profile_focused_tests_failed",
+        )
+        self.assertEqual(result.diagnostic_sha256, diagnostic)
+        self.assertEqual(
+            result.related_error_codes,
+            ("validation_candidate_output_changed",),
+        )
+
     @unittest.skipUnless(
         sys.platform == "darwin" and Path("/usr/bin/sandbox-exec").is_file(),
         "requires the macOS sandbox",
@@ -5218,6 +5769,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             host_secret.write_text("private", encoding="utf-8")
             candidate_file = candidate / "source.txt"
             candidate_file.write_text("source", encoding="utf-8")
+            candidate_target = candidate / "target"
+            candidate_target.mkdir(mode=0o700)
+            candidate_output = candidate_target / (
+                "decodex-validation-" + "0" * 32
+            )
+            candidate_output.mkdir(mode=0o700)
+            candidate_output.joinpath("source-link").symlink_to(
+                candidate_file
+            )
             cargo_source = (
                 temporary_home / "cargo-home/registry/src/example"
             )
@@ -5226,6 +5786,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 ROOT,
                 candidate,
                 temporary_home,
+                candidate_output.resolve(),
             )
 
             def sandbox(script):
@@ -5255,6 +5816,22 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
+                    f"Path({str(candidate_output / 'allowed')!r}).write_text('ok'); "
+                    "print('written')"
+                ),
+                "written",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
+                    f"Path({str(candidate_target / 'sibling')!r}).write_text('x'); "
+                    "print('written')"
+                ),
+                "",
+            )
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
                     f"Path({str(ROOT / 'Makefile.toml')!r}).read_bytes(); "
                     "print('readable')"
                 ),
@@ -5276,6 +5853,27 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "",
             )
             self.assertEqual(candidate_file.read_text(encoding="utf-8"), "source")
+            self.assertEqual(
+                sandbox(
+                    "from pathlib import Path; "
+                    f"Path({str(candidate_output / 'source-link')!r}).write_text('changed'); "
+                    "print('written')"
+                ),
+                "",
+            )
+            self.assertEqual(candidate_file.read_text(encoding="utf-8"), "source")
+            self.assertEqual(
+                sandbox(
+                    "import os; "
+                    f"os.link({str(candidate_file)!r}, "
+                    f"{str(candidate_output / 'source-hardlink')!r}); "
+                    "print('linked')"
+                ),
+                "",
+            )
+            self.assertFalse(
+                (candidate_output / "source-hardlink").exists()
+            )
             self.assertEqual(
                 sandbox(
                     "from pathlib import Path; "
@@ -5364,11 +5962,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             receipt = private_directory / "candidate.json"
             receipt.write_bytes(b'{"schema":"candidate"}\n')
             receipt.chmod(0o600)
-            profile = self.autopilot.validation_sandbox_profile(
-                ROOT,
-                ROOT,
-                temporary_home,
-            )
+            with self.autopilot.pinned_candidate_output_directory(
+                ROOT
+            ) as candidate_output:
+                profile = self.autopilot.validation_sandbox_profile(
+                    ROOT,
+                    ROOT,
+                    temporary_home,
+                    candidate_output.path,
+                )
             git_output = self.autopilot.run_command(
                 [
                     "/usr/bin/sandbox-exec",

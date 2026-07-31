@@ -1282,11 +1282,17 @@ preparation failure leaves the receipt pending; it remains `AcceptanceUnknown` u
 same exact request can reclaim it after expiry.
 
 The macOS UI calls an in-process Rust protocol client and decodes the stable JSON
-projection returned across that private ABI. It never starts a CLI process. Its
-five-second second-click confirmation is presentation state only.
-Swift does not stage credentials, create a temporary Codex home, launch app-server, resolve
-an opaque credit ID, or call the provider method. It persists only a credential-negative
-pending operation handle so it can read durable daemon status after an app restart.
+projection returned across that private ABI. The Rust bridge may start one finite official
+Codex device-login child in an owner-private temporary home when the user explicitly chooses
+`Refresh login`; it never starts the Decodex CLI, a helper, or app-server. The bridge exposes
+only the official URL, one-time code, and closed session state to Swift. It gives the resulting
+private auth-file descriptor to the daemon, which verifies the exact provider, account revision,
+and credential binding before a host-store CAS, then removes the temporary home after success,
+failure, cancellation, or client destruction. Its five-second Reset Card second-click
+confirmation is presentation state only.
+Swift does not stage or read credentials, create a temporary Codex home, launch a process,
+resolve an opaque credit ID, or call the provider method. It persists only a credential-negative
+pending Reset Card operation handle so it can read durable daemon status after an app restart.
 Provider-effect retry and authoritative reconciliation remain daemon-only.
 
 After the caller creates and durably records an idempotency key for `use`, every CLI
