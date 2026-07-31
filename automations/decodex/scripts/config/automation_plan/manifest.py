@@ -7,6 +7,11 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
+from automation_model_policy import (
+    DEFAULT_REASONING_EFFORT,
+    expected_model,
+    expected_reasoning_effort,
+)
 from automation_plan.paths import REPO_ROOT
 
 _AUTOMATION_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
@@ -29,6 +34,16 @@ def assert_public_manifest(manifest_path: Path, manifest: dict[str, Any]) -> Non
         raise ValueError(
             f"{manifest_path}: defaults.cwd must stay the portable "
             "{repo_root} placeholder"
+        )
+    if "model" in defaults:
+        raise ValueError(
+            f"{manifest_path}: defaults.model is forbidden; each automation "
+            "must declare its exact model"
+        )
+    if defaults.get("reasoning_effort") != DEFAULT_REASONING_EFFORT:
+        raise ValueError(
+            f"{manifest_path}: defaults.reasoning_effort must be "
+            f"{DEFAULT_REASONING_EFFORT!r}"
         )
     for required in ["/Users/", "/home/", "accounts.jsonl", "auth.json", "runtime.sqlite3"]:
         if required not in forbidden_fragments(defaults):
@@ -62,6 +77,22 @@ def _manifest_automation_ids(
             automation_id
         ):
             raise ValueError(f"{manifest_path}: invalid automation id")
+        expected = expected_model(automation_id)
+        if automation.get("model") != expected:
+            raise ValueError(
+                f"{manifest_path}: automation {automation_id!r} model must be "
+                f"{expected!r}"
+            )
+        expected_effort = expected_reasoning_effort(automation_id)
+        actual_effort = automation.get(
+            "reasoning_effort",
+            manifest["defaults"]["reasoning_effort"],
+        )
+        if actual_effort != expected_effort:
+            raise ValueError(
+                f"{manifest_path}: automation {automation_id!r} "
+                f"reasoning_effort must be {expected_effort!r}"
+            )
         ids.append(automation_id)
     if len(ids) != len(set(ids)):
         raise ValueError(f"{manifest_path}: automation ids must be unique")
@@ -114,8 +145,11 @@ def automation_specs(manifest_path: Path) -> list[dict[str, Any]]:
                 "prompt": prompt,
                 "status": defaults["status"],
                 "rrule": automation["rrule"],
-                "model": defaults["model"],
-                "reasoning_effort": defaults["reasoning_effort"],
+                "model": automation["model"],
+                "reasoning_effort": automation.get(
+                    "reasoning_effort",
+                    defaults["reasoning_effort"],
+                ),
                 "execution_environment": defaults["execution_environment"],
                 "source_manifest": str(manifest_path.relative_to(REPO_ROOT)),
                 "prompt_file": automation["prompt_file"],

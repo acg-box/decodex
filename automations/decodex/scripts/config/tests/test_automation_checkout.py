@@ -48,18 +48,21 @@ branch refs/heads/xy/task
 		defaults = {
 			"kind": "cron",
 			"status": "ACTIVE",
-			"model": "gpt-5.6-sol",
 			"reasoning_effort": "high",
 			"execution_environment": "local",
 			"cwd": "{repo_root}",
 		}
-		automation = {"name": "Manager", "rrule": "FREQ=DAILY"}
+		automation = {
+			"name": "Manager",
+			"rrule": "FREQ=DAILY",
+			"model": "gpt-5.6-terra",
+		}
 		active = {
 			"kind": "cron",
 			"name": "Manager",
 			"status": "ACTIVE",
 			"rrule": "FREQ=DAILY",
-			"model": "gpt-5.6-sol",
+			"model": "gpt-5.6-terra",
 			"reasoning_effort": "high",
 			"execution_environment": "local",
 			"cwds": ["/repo/.worktrees/task"],
@@ -79,18 +82,21 @@ branch refs/heads/xy/task
 		defaults = {
 			"kind": "cron",
 			"status": "ACTIVE",
-			"model": "gpt-5.6-sol",
 			"reasoning_effort": "high",
 			"execution_environment": "local",
 			"cwd": "{repo_root}",
 		}
-		automation = {"name": "Manager", "rrule": "FREQ=DAILY"}
+		automation = {
+			"name": "Manager",
+			"rrule": "FREQ=DAILY",
+			"model": "gpt-5.6-terra",
+		}
 		active = {
 			"kind": "cron",
 			"name": "Manager",
 			"status": "ACTIVE",
 			"rrule": "FREQ=DAILY",
-			"model": "gpt-5.6-sol",
+			"model": "gpt-5.6-terra",
 			"reasoning_effort": "high",
 			"execution_environment": "local",
 			"target": {"type": "project", "project_id": "local-test"},

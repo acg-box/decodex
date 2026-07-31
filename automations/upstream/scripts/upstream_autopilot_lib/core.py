@@ -18,11 +18,11 @@ import time
 from typing import Any, Mapping, Sequence
 
 
-STATE_SCHEMA = "decodex/codex-upstream-state/3"
+STATE_SCHEMA = "decodex/codex-upstream-state/4"
 RESULT_SCHEMA = "decodex/codex-upstream-command-result/1"
 POLICY_SCHEMA = "decodex/codex-upstream-policy/2"
 AGENT_HANDOFF_PROJECTION_SCHEMA = (
-    "decodex/codex-upstream-agent-handoff-projection/1"
+    "decodex/codex-upstream-agent-handoff-projection/2"
 )
 POLICY_KEYS = {
     "schema",
@@ -104,6 +104,7 @@ MAX_GIT_TEXT_BYTES = 8 * 1024 * 1024
 MAX_STATE_BYTES = 4 * 1024 * 1024
 MAX_UPSTREAM_COMMITS = 65_536
 MAX_COMMAND_OUTPUT_BYTES = 64 * 1024 * 1024
+MAX_COMMAND_INPUT_BYTES = 64 * 1024
 MAX_FAILURE_DIAGNOSTIC_CAPTURE_BYTES = 256 * 1024
 MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024
 COMMAND_TIMEOUT_SECONDS = 300
@@ -232,6 +233,8 @@ CANDIDATE_KEYS = {
     "handoff",
     "effect",
     "commit_receipt",
+    "stale_refresh",
+    "stale_refresh_credit",
     "pull_request",
     "retired_pull_requests",
     "decision",
@@ -425,6 +428,9 @@ def agent_handoff_projection(
         "staged_paths_sha256": handoff["staged_paths_sha256"],
         "disposition": handoff["disposition"],
         "finding_codes": handoff["finding_codes"],
+        "agent_execution_sha256": handoff["agent_execution"][
+            "execution_sha256"
+        ],
         "receipt_sha256": handoff["receipt_sha256"],
     }
 
@@ -627,14 +633,39 @@ def run_command(
     cwd: Path | None = None,
     environment: Mapping[str, str] | None = None,
     inherit_environment: bool = True,
+    input_bytes: bytes | None = None,
     failure_code: str,
     allow_failure: bool = False,
     timeout_seconds: int = COMMAND_TIMEOUT_SECONDS,
+    max_input_bytes: int = MAX_COMMAND_INPUT_BYTES,
     max_output_bytes: int = MAX_COMMAND_OUTPUT_BYTES,
     capture_failure_diagnostic: bool = False,
+    pass_fds: Sequence[int] = (),
+    graceful_termination: bool = False,
 ) -> str:
+    if (
+        not isinstance(max_input_bytes, int)
+        or isinstance(max_input_bytes, bool)
+        or max_input_bytes < 0
+        or max_input_bytes > MAX_GIT_TEXT_BYTES
+    ):
+        raise AutopilotError("command_input_budget_invalid")
     if max_output_bytes < 1 or max_output_bytes > MAX_COMMAND_OUTPUT_BYTES:
         raise AutopilotError("command_output_budget_invalid")
+    if input_bytes is not None and (
+        not isinstance(input_bytes, bytes)
+        or len(input_bytes) > max_input_bytes
+    ):
+        raise AutopilotError("command_input_budget_invalid")
+    inherited_descriptors = tuple(pass_fds)
+    if (
+        len(inherited_descriptors) != len(set(inherited_descriptors))
+        or any(
+            not isinstance(descriptor, int) or descriptor < 0
+            for descriptor in inherited_descriptors
+        )
+    ):
+        raise AutopilotError("command_pass_fds_invalid")
     command = trusted_command_arguments(arguments)
     process_environment = {
         **(trusted_operational_environment() if inherit_environment else {}),
@@ -672,10 +703,31 @@ def run_command(
             command,
             cwd=cwd,
             env=process_environment,
+            stdin=(
+                subprocess.PIPE
+                if input_bytes is not None
+                else subprocess.DEVNULL
+            ),
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             start_new_session=True,
+            pass_fds=inherited_descriptors,
         )
+        if input_bytes is not None:
+            if process.stdin is None:
+                if capture_failure_diagnostic:
+                    raise command_failure("pipe_unavailable")
+                raise AutopilotError(failure_code)
+            try:
+                process.stdin.write(input_bytes)
+            except BrokenPipeError:
+                pass
+            finally:
+                try:
+                    process.stdin.close()
+                except BrokenPipeError:
+                    pass
+            process.stdin = None
         if process.stdout is None or process.stderr is None:
             if capture_failure_diagnostic:
                 raise command_failure("pipe_unavailable")
@@ -724,7 +776,10 @@ def run_command(
         return_code = process.wait(timeout=max(0.01, deadline - time.monotonic()))
     except subprocess.TimeoutExpired as error:
         if process is not None and process.poll() is None:
-            terminate_process_group(process)
+            terminate_process_group(
+                process,
+                graceful=graceful_termination,
+            )
         if allow_failure:
             return ""
         if capture_failure_diagnostic:
@@ -732,7 +787,10 @@ def run_command(
         raise AutopilotError(failure_code) from error
     except OSError as error:
         if process is not None and process.poll() is None:
-            terminate_process_group(process)
+            terminate_process_group(
+                process,
+                graceful=graceful_termination,
+            )
         if allow_failure:
             return ""
         if capture_failure_diagnostic:
@@ -742,7 +800,10 @@ def run_command(
         raise AutopilotError(failure_code) from error
     except AutopilotError:
         if process is not None and process.poll() is None:
-            terminate_process_group(process)
+            terminate_process_group(
+                process,
+                graceful=graceful_termination,
+            )
         raise
     finally:
         if selector is not None:
@@ -766,7 +827,23 @@ def run_command(
         raise AutopilotError(failure_code) from error
 
 
-def terminate_process_group(process: subprocess.Popen[bytes]) -> None:
+def terminate_process_group(
+    process: subprocess.Popen[bytes],
+    *,
+    graceful: bool = False,
+) -> None:
+    if graceful:
+        try:
+            os.killpg(process.pid, signal.SIGTERM)
+        except ProcessLookupError:
+            pass
+        except OSError:
+            process.terminate()
+        try:
+            process.wait(timeout=5)
+            return
+        except subprocess.TimeoutExpired:
+            pass
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:

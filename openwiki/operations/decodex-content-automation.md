@@ -7,9 +7,13 @@ The content loop has two scheduled tasks:
 - `decodex-content-manager` runs once per day at 09:50.
 - `decodex-xurl-publisher` runs at 10:20, 16:20, and 22:20.
 
-Both use the primary clean `main` checkout, local execution, `gpt-5.6-sol`, and
-`high` reasoning. They do not use Decodex server surfaces and do not run from
+Both use the primary clean `main` checkout, local execution, and `high`
+reasoning. Content Manager uses `gpt-5.6-terra`; Xurl Publisher uses
+`gpt-5.6-luna`. They do not use Decodex server surfaces and do not run from
 worktree paths.
+Runtime memory is bounded, mode `0600`, advisory only, and cannot override current
+repository, artifact, Publisher, or cost-report state. A fresh cutover deletes old
+memory; it does not migrate it.
 
 The three Publisher windows are required because one task processes at most one
 operation: one publication, one due 24-hour outcome, or one due seven-day
@@ -175,7 +179,8 @@ never archived to GitHub.
 
 Weekly it compares topic coverage and usefulness with CodexRadar and public release
 sources, then queues concrete reason-specific improvements. Maintainer implements
-them with a native worker subagent. Reviewer independently validates and lands them
+them through the trusted ephemeral Codex child wrapper. Reviewer independently
+validates and lands them
 with local `decodex commit` and `decodex land` authority boundaries.
 
 ## Task Retention

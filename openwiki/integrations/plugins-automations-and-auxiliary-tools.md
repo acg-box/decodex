@@ -81,17 +81,20 @@ python3 -m unittest automations.upstream.tests.test_upstream_autopilot
 
 The renderer cannot write scheduler state. Apply each planned definition only with
 the Codex native automation lifecycle tool, then read it back. Codex App owns its
-`created_at` and `updated_at` metadata. The rendered retirement list contains only
-`decodex-x-browser-publisher`; Health deletes that exact obsolete definition and
-verifies its absence without listing or changing unrelated definitions.
+`created_at` and `updated_at` metadata. The current plan has exactly five managed
+definitions and one exact retired ID, `decodex-x-browser-publisher`. Health removes
+that retired definition when present and does not list, change, or delete unrelated
+definitions.
 
 The upstream operating loop has three explicit owners:
 
 - Upstream Maintainer polls every six hours, preserves a complete first-parent cursor, observes
   stable and prerelease tags, generates stable and experimental schemas from the exact
-  installed Codex executable, and claims one change. It can edit and stage source.
-  The checked-in state wrapper alone can run sandboxed tests, invoke
-  `decodex commit --manual-authority`, push, and open a pull request.
+  installed Codex executable, and claims one change. One fenced ephemeral Codex
+  child reads a Git-free snapshot and returns a bounded patch. The child cannot edit
+  the isolated candidate worktree. The checked-in state wrapper alone verifies and
+  stages the patch, runs sandboxed tests, invokes
+  `decodex commit --manual-authority`, pushes, and opens a pull request.
 - Upstream Reviewer runs in a separate task and context. It verifies the exact
   pull-request head, performs an independent code review, repeats sandboxed tests
   through the wrapper, requests bounded repairs, or lets the wrapper invoke
@@ -113,7 +116,7 @@ The content loop has two explicit owners:
   one candidate, delegates all X access to the pinned `decodex-publisher` xurl
   entrypoint, verifies the exact `decodexspace` identity and created post, and
   records one due 24-hour or seven-day outcome.
-- The five fixed definitions total 12 `high` task wakes per day: 4 Maintainer, 2
+- The five fixed definitions total 12 scheduled task wakes per day: 4 Maintainer, 2
   Reviewer, 2 Health, 1 Content Manager, and 3 Publisher. This is 360 wakes in 30
   days and 372 wakes in 31 days. The three Publisher windows do not change the
   one-post-per-day limit or the X API ceilings of $1.20 per 30 days, $1.24 per 31
