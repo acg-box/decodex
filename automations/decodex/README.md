@@ -7,9 +7,11 @@ This directory is the canonical source for two content tasks:
 - `decodex-xurl-publisher`: skip terminalization, bounded X publication, exact
   readback, and 24-hour or seven-day outcome collection.
 
-Both run from the primary clean `main` checkout with local execution,
-`gpt-5.6-sol`, and `high` reasoning. Scheduled definitions never use a worktree
-cwd.
+Both run from the primary clean `main` checkout with local execution and `high`
+reasoning. Content Manager uses `gpt-5.6-terra`; Xurl Publisher uses
+`gpt-5.6-luna`. Scheduled definitions never use a worktree cwd.
+Runtime memory is bounded, mode `0600`, advisory only, and never supplies workflow
+authority. A fresh cutover deletes prior memory instead of migrating it.
 
 Content Manager runs once at 09:50. Publisher runs at 10:20, 16:20, and 22:20.
 Each Publisher task handles at most one publication, one due 24-hour outcome, or
@@ -119,9 +121,9 @@ fail-closed replacement races, and bounded social GC.
 The plan command is read-only. Apply each definition only through the Codex native
 automation lifecycle tool. View an existing ID before an update and read back every
 create or update. Repository tooling cannot write scheduler TOML or manage Codex App
-timestamps. The plan also emits the exact retirement
-`decodex-x-browser-publisher`; Health deletes that definition through the native
-tool and verifies an exact not-found readback.
+timestamps. The plan emits the exact retired ID
+`decodex-x-browser-publisher`; Health deletes it if it still exists and never
+recreates it.
 
 ## Task Retention
 

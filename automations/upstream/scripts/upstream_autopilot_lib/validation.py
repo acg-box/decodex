@@ -340,7 +340,7 @@ def _read_bounded_json_at(
 def _nonterminal_error_digest_references(
     cache_descriptor: int,
 ) -> set[str] | None:
-    state_names = ("state.json", "state.recovery.json")
+    state_names = ("state-v4.json", "state-v4.recovery.json")
     present: list[str] = []
     for name in state_names:
         try:
@@ -355,7 +355,7 @@ def _nonterminal_error_digest_references(
     lock_descriptor: int | None = None
     try:
         lock_descriptor = os.open(
-            "state.lock",
+            "state-v4.lock",
             os.O_RDONLY | os.O_NOFOLLOW,
             dir_fd=cache_descriptor,
         )
@@ -835,7 +835,13 @@ GIT_SOURCE_PATTERN = re.compile(
 MINIMUM_VALIDATION_PYTHON = (3, 11)
 
 
-def repository_identity(worktree: Path) -> tuple[str, str]:
+def repository_identity(
+    worktree: Path,
+    *,
+    require_clean: bool = True,
+) -> tuple[str, str]:
+    if not isinstance(require_clean, bool):
+        raise AutopilotError("validation_worktree_identity_invalid")
     head = run_command(
         ["git", "rev-parse", "HEAD"],
         cwd=worktree,
@@ -854,7 +860,7 @@ def repository_identity(worktree: Path) -> tuple[str, str]:
     if (
         SHA_PATTERN.fullmatch(head) is None
         or SHA_PATTERN.fullmatch(tree) is None
-        or status
+        or (require_clean and status)
     ):
         raise AutopilotError("validation_worktree_not_clean")
     return head, tree
@@ -3023,6 +3029,7 @@ def assert_candidate_worktree(
     *,
     branch: str,
     head_sha: str,
+    require_clean: bool = True,
 ) -> str:
     resolved = worktree.resolve()
     expected_parent = (repo_root / ".worktrees").resolve()
@@ -3054,7 +3061,10 @@ def assert_candidate_worktree(
         cwd=resolved,
         failure_code="candidate_worktree_unavailable",
     )
-    current_head, tree = repository_identity(resolved)
+    current_head, tree = repository_identity(
+        resolved,
+        require_clean=require_clean,
+    )
     if current_branch != branch or current_head != head_sha:
         raise AutopilotError("candidate_worktree_identity_mismatch")
     target_origin_urls(resolved, policy["target_repository"])
@@ -3067,6 +3077,7 @@ def assert_detached_review_worktree(
     policy: dict[str, Any],
     *,
     head_sha: str,
+    require_clean: bool = True,
 ) -> str:
     resolved = worktree.resolve()
     expected_parent = (repo_root / ".worktrees").resolve()
@@ -3094,7 +3105,10 @@ def assert_detached_review_worktree(
         cwd=resolved,
         failure_code="review_worktree_unavailable",
     )
-    current_head, tree = repository_identity(resolved)
+    current_head, tree = repository_identity(
+        resolved,
+        require_clean=require_clean,
+    )
     if (
         root != resolved
         or common_dir.resolve() != (repo_root / ".git").resolve()

@@ -14,6 +14,7 @@ from automation_eval.validators import (
     validate_prompt_required_reads,
     validate_prompt_text,
     validate_required_paths,
+    validate_runtime_memory,
     validate_xurl_runtime,
 )
 
@@ -23,6 +24,7 @@ def evaluate_automation(
     defaults: dict[str, Any],
     codex_home: Path,
     repo_only: bool,
+    retired_automation_ids: tuple[str, ...] = (),
 ) -> AutomationResult:
     automation_id = automation["id"]
     result = AutomationResult(automation_id=automation_id)
@@ -49,6 +51,13 @@ def evaluate_automation(
     if repo_only:
         return result
 
+    for retired_id in retired_automation_ids:
+        retired_root = active_automation_path(codex_home, retired_id).parent
+        if retired_root.exists():
+            result.fail(
+                f"retired automation config still exists: {retired_root}"
+            )
+
     active_path = active_automation_path(codex_home, automation_id)
     if not active_path.exists():
         result.fail(f"active automation config does not exist: {active_path}")
@@ -58,5 +67,6 @@ def evaluate_automation(
     if active_config.get("id") != automation_id:
         result.fail(f"active id mismatch: {active_config.get('id')!r}")
     validate_active_config(automation, defaults, prompt, active_config, result)
+    validate_runtime_memory(automation_id, active_path.parent, result)
 
     return result

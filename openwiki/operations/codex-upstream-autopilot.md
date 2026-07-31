@@ -35,11 +35,11 @@ request that only records another rejected release digest.
 flowchart LR
     U["Official Codex main and tags"] --> M["Maintainer parent"]
     L["Installed Codex schemas"] --> M
-    M --> W["Worker subagent"]
+    M --> W["Ephemeral implementation child"]
     W -->|"Staged candidate"| M
     M -->|"No change"| C["Terminal cursor outcome"]
     M -->|"Signed commit and PR"| R["Reviewer parent"]
-    R --> V["Read-only review subagent"]
+    R --> V["Ephemeral read-only review child"]
     V -->|"Accept or repair codes"| R
     R -->|"Repair codes"| M
     R -->|"decodex land"| C
@@ -50,25 +50,64 @@ flowchart LR
 
 The Maintainer and Reviewer are separate Codex App tasks and contexts. The Maintainer
 parent owns discovery, claims, worktree lifecycle, and state transitions. It cannot
-edit or stage candidate files. It delegates those writes to exactly one worker
-subagent and verifies the staged diff. The Reviewer parent delegates the exact diff
-review to one read-only review subagent. It does not repair reviewed work. The
+edit or stage candidate files. The trusted wrapper delegates those writes to exactly
+one ephemeral implementation child and verifies the staged diff. The Reviewer parent
+delegates the exact diff review through one ephemeral read-only child. It does not
+repair reviewed work. The
 Reviewer returns bounded finding codes so a later worker produces new evidence or a
 new head. A Maintainer cannot merge its own change or make a terminal
 no-change/rejected decision.
 
 After a claim, each parent has a closed command surface. It can use only direct
-read-only commands, the state-tool transaction for its role, exact managed-worktree
-lifecycle commands, one native `spawn_agent`, and one native `wait_agent`. It cannot
-use `apply_patch`, generic execution orchestration, `write_stdin`, `send_input`,
-shell redirection, pipelines, command chaining, or another write-capable command.
-The subagent spawn contains one exact
-`decodex/codex-upstream-agent-context/1` object that binds candidate, role, claim
-generation, absolute temporary worktree, and base HEAD. The subagent completion
-contains one exact `decodex/codex-upstream-agent-handoff-projection/1` object that
-also binds the hashed worktree, repository HEAD/tree, staged-path digest when
-applicable, disposition, finding codes, and canonical receipt digest. An incomplete
-handoff blocks that generation. The parent never repairs code or review evidence.
+read-only commands, the state-tool transaction for its role, and exact
+managed-worktree lifecycle commands. Standalone scheduled tasks do not receive
+native multi-agent tools. The checked-in `run-agent` transaction invokes one
+`codex exec --ephemeral` child with model `gpt-5.6-sol`, effort `max`, no network,
+no user configuration or execution rules, an empty model shell environment, and
+`project_doc_max_bytes=0`. The child sandbox uses root read access to prevent
+automatic `:minimal` injection, denies every discovered top-level root, then reopens
+only trusted runtime files, a private Git-free snapshot, a private evidence package,
+and a model directory. The candidate worktree remains denied. An executable
+preflight probe verifies each denial, the `/System/Volumes/Data` data root and exact
+protected-path aliases, candidate-write denial from an environment-cleared new
+session, denied TCP and UDP loopback sockets, and denied Keychain secret access
+before the model call. The Keychain canary proves host access to a temporary fake
+item before it proves that the child cannot use SecurityServer. The final child
+profile also denies `security`, `defaults`, `osascript`, Security.framework, and
+LocalAuthentication.framework.
+
+The package contains exact upstream patches and protocol schemas, installed schema
+evidence, the target patch, and bounded diagnostics. Initial-commit evidence omits
+commit metadata, and the child context uses worktree-relative paths. It does not
+expose the complete upstream mirror, target `.git`, or Git common directory. A
+watchdog receives the current access and ID tokens through a pipe and creates an
+empty-refresh-token capsule only after it owns the candidate lock. On exit, timeout,
+signal, or parent death, it kills the child process group and performs bounded
+best-effort cleanup of same-user descendants bound by PID, start time, and a per-run
+random supervision marker. The inherited filesystem and network Seatbelt profile,
+not descendant discovery, is the authority boundary and remains active after an
+environment clear or new session. The marker scan is not retained or logged. The
+watchdog then deletes the capsule. Every state-tool command removes unlocked stale run
+directories before other work. The host proves that the real authentication file
+did not change. The child returns one
+schema-constrained `decodex/codex-upstream-agent-result/2` object. Maintainer output
+is one bounded Git binary patch. The trusted parent verifies the snapshot and patch
+digests, applies the patch to the unchanged candidate with Git's indexed binary
+patch path, permits only regular modes, and authorizes each changed path for the
+candidate kind. Scheduler, GitHub Actions, authentication, landing,
+managed-repository, X execution, schema, and automation-control paths are denied.
+Any rejected or internally invalid applied patch is reset to the exact clean
+baseline. The parent then writes the create-only mode-`0600` handoff receipt. The
+candidate-and-role lock remains held through receipt persistence. A global root lock
+serializes stale-run cleanup and safe removal of inactive candidate lock files. A
+retry cannot overlap an active child, and lock-file churn cannot consume the run-root
+entry budget. After a crash, the next owner acquires the candidate lock before
+worktree inspection, recovers an exact completed receipt, or resets and reruns the
+same state-bound context. A prepared run records the child input head separately
+from the expected staged receipt head. It can retarget to a new primary `main` while
+the child still reads the prior committed candidate. A receipt that predates that
+retarget is removed only after its generation and old context are verified. The
+parent never repairs code or review evidence.
 
 The scheduled tasks do not use Decodex server, runtime, MCP, planning, or queue
 surfaces. Only the state wrapper can invoke `decodex commit` or `decodex land` after
@@ -90,7 +129,7 @@ Health observes the loop but does not implement or land a candidate. The state
 transaction deterministically turns each exhausted item into one deduplicated
 critical `automation_repair` candidate before it persists the result. Health is a
 backstop that recovers expired leases and any unowned repair. Maintainer delegates
-that repair to a worker subagent, and Reviewer
+that repair through the ephemeral implementation child, and Reviewer
 must independently approve it. A landed repair, or an independently reproduced
 no-change result after a transient condition clears, resets and requeues the original
 item.
@@ -107,11 +146,9 @@ the evidence and add a regression test; Reviewer owns the terminal decision.
 Health also reconciles the five fixed live Codex App automation IDs from the current
 upstream and content manifests and prompt files. It uses only the native automation
 lifecycle tool, reads each definition before a change, submits a complete definition,
-and reads it back. The content manifest also names the exact retired
-`decodex-x-browser-publisher` definition. Health deletes that exact definition and
-verifies a not-found readback. It cannot list, edit, or delete any other task and
-cannot write scheduler files or databases directly. This closes
-source-to-scheduler drift after an autonomous landing.
+and reads it back. It cannot list, edit, or delete any other task and cannot write
+scheduler files or databases directly. This closes source-to-scheduler drift after
+an autonomous landing.
 Each Health run first recovers expired work and reconciles live definitions. It then
 collects a new upstream observation and finishes with another health pass. A failed
 observation does not prevent scheduler or lease recovery.
@@ -127,10 +164,16 @@ another automation run or an operator must restore that scheduler activation.
 - Content Manager: daily at 09:50, one task per day.
 - Xurl Publisher: daily at 10:20, 16:20, and 22:20, three tasks per day.
 
-All five definitions use `high` reasoning. The fixed model wake budget is 12
-tasks per day, 360 tasks in a 30-day month, and 372 tasks in a 31-day month.
+Maintainer and Reviewer use `gpt-5.6-sol` with `max` reasoning. Health and Content
+Manager use `gpt-5.6-terra` with `high`, and Xurl Publisher uses `gpt-5.6-luna`
+with `high`. No definition uses `xhigh`. The fixed model wake budget is 12 scheduled
+task wakes per day, 360 tasks in a 30-day month, and 372 tasks in a 31-day month.
 This is a task-count budget because the Codex App does not expose an
 authoritative per-task dollar price.
+Only successful implementation or review claims create children. Maintainer can
+create at most four children per day and Reviewer at most two, so the hard upper
+bound is 18 model invocations per day. The measured total is normally lower
+because no-op wakes create no child.
 
 The first observation queues independent main/bootstrap, current stable-release, and
 current prerelease-release candidates. A new installation therefore evaluates all
@@ -158,12 +201,20 @@ generation compare-and-set rejects a late result before it can overwrite newer s
 
 One role can hold one candidate lease. A run can renew at most five times. The state
 tool rejects a sixth renewal. Explicit and automatic renewals share this budget.
+Lease expiry does not discard a completed, unconsumed agent run. The next claim
+keeps its generation and attempt count and recovers the canonical receipt. A missing
+canonical receipt refunds that recovery claim before one replacement generation is
+created only if the original execution spent an attempt. A `base_stale` refresh
+claim spends one attempt from a bounded credit. Only a completed child receipt for
+that generation refunds the attempt; a child failure, block, or expired lease keeps
+it spent.
 The wrapper automatically renews only when the remaining lease cannot fence the
-complete trusted validation timeout of 11,700 seconds or an external-effect budget
-of 9,000 seconds. Landing has a separate 21,000-second budget inside a 21,600-second
-lease. The state tool computes that budget from a fresh timestamp after all validation
-and remote preflight. It checks the same complete budget again immediately before the
-irreversible operation. Commit, push, pull-request creation or retirement, and
+complete 16,200-second child and post-child write budget, trusted validation timeout
+of 11,700 seconds, or external-effect budget of 9,000 seconds. Landing has a separate
+21,000-second budget inside a 21,600-second lease. The state tool computes that budget
+from a fresh timestamp after all validation and remote preflight. It checks the same
+complete budget again immediately before the irreversible operation. Commit, push,
+pull-request creation or retirement, and
 landing are not free-standing prompt actions. Their state-tool commands hold the
 state lock, persist an intent that contains the lease generation and exact identities,
 perform the effect, and read it back. A new owner can adopt only the same persisted
@@ -358,8 +409,9 @@ recorded candidate commit to its original base before it creates one replacement
 commit.
 
 Every Maintainer and Reviewer claim returns a lease token and a separate one-time
-handoff challenge. The parent keeps the lease token and gives only the challenge to
-one subagent. The state tool requires a bounded mode `0600` receipt before the first
+handoff challenge. The parent gives both to the trusted wrapper. The wrapper never
+passes the lease token or state authority to the child. The state tool requires a
+bounded mode `0600` receipt before the first
 commit, repair request, decision resolution, or land intent. Worker receipts bind the
 exact staged tree and staged-path digest. Reviewer receipts bind the exact reviewed
 base, head, tree, disposition, and finding codes. State stores no raw challenge. It
@@ -369,20 +421,43 @@ cryptographic identity signature. Exact commit and land crash recovery preserves
 original receipt and side-effect intent while a new lease generation becomes the
 active recovery owner.
 
+Before it launches a child, state persists a prepared run that binds the exact
+generation, role, challenge, base, head, and input tree. Only one such run can exist
+for that generation. The create-only
+`decodex/codex-upstream-handoff-receipt/4` receipt completes it and binds the fixed
+model and effort, Codex version and binary digest, command and permission digests,
+sandbox-probe, watchdog, workspace and evidence manifests, prompt, schema, patch,
+and result digests, and start and completion times. A process restart recovers that
+exact receipt. If no
+receipt exists and the watchdog lock is free, it can retarget current `main`, resets
+the worktree, and safely repeats the context. If the receipt exists, recovery runs
+before retargeting. If a prepared run has already written its exact canonical receipt
+when its lease expires, Health promotes that receipt before lease recovery. A
+completed run remains a live handoff across lease expiry, so Health preserves its
+canonical receipt. State validation rejects a lease-less prepared handoff. Health
+removes only canonical receipt files that no live state handoff can consume.
+
 The worker receipt uses action `worker_staged`, the original base in both base and
 repository HEAD, `git write-tree` as the repository tree, and the SHA-256 of the
 exact NUL-delimited staged name-status bytes. The Reviewer receipt uses action
 `independent_review`, the exact reviewed base/head/tree, null staged-path digest,
-and an `accept`, `request_repair`, `no_change`, or `rejected` disposition. Each
-subagent returns the sanitized projection as its only typed completion record.
-Task-retention sealing compares that completion to the terminal state-tool result,
-candidate, claim generation, hashed worktree, tree, staged-path digest, and receipt
-digest. One spawn, one wait, and no follow-up message are accepted.
+and an `accept`, `request_repair`, `no_change`, or `rejected` disposition. The child
+returns only a schema-constrained disposition and bounded finding codes. The wrapper
+owns repository identity checks, staging, receipt construction, and the execution
+attestation. Raw prompts, model output, authentication material, and temporary files
+are deleted.
 
 ## Outcomes
 
-The fresh runtime state uses `decodex/codex-upstream-state/3`. It does not migrate
-or accept an earlier state contract.
+The fresh runtime state uses `decodex/codex-upstream-state/4` in
+`state-v4.json`. It does not migrate or accept an earlier state contract. Before
+the first v4 start, deployment must quiesce the old loop, prove that it has no
+unresolved external effect, and delete the exact `state.json` and
+`state.recovery.json` artifacts. It must also delete all five managed runtime
+memory files. Every v4 transaction acquires the old `state.lock` as a nonblocking
+cutover fence. An active v3 process stops v4 before state creation, and either exact
+legacy state file stops every v4 transaction. V4 then creates one clean state.
+There is no state or memory compatibility path.
 
 Every candidate reaches one of these states:
 
@@ -399,6 +474,19 @@ The independent Reviewer owns all three outcomes. Missing required methods or a
 repository schema-digest mismatch cannot close as `no_change` or `rejected`.
 An `automation_repair` candidate cannot close as `rejected`: it must land a repair or
 independently reproduce that the transient failure cleared and close as `no_change`.
+
+Only the formal land path can report `base_stale`. It must provide a valid pull
+request `baseRefOid` that differs from the recorded base. Child output and the public
+repair command cannot claim this condition. The state transition validates the exact
+open pull request, old remote head, clean automation-owned branch, and current
+`main`. It then atomically removes the old commit receipt and records complete
+stale-refresh metadata before Maintainer can claim the work. Maintainer resets only
+that branch to current `main`, runs one new fenced child, and updates the same pull
+request with an exact force-with-lease. Reviewer refunds its stale-base attempt.
+Maintainer claims one bounded refresh credit, spends an attempt, and refunds it only
+after the completed child receipt is recorded for that generation. A child failure,
+block, or lease expiry clears the credit and keeps the attempt spent. This explicit
+state transition does not retain legacy compatibility.
 
 After a successful terminal role persists and reads back its ownership result, it
 creates a create-only, mode-`0600` task-ID receipt with `task-retention-seal`. The
@@ -439,14 +527,19 @@ receipt projection and exact private-receipt digest. A parser failure atomically
 writes a mode-`0600`, at-most-16-KiB private marker. It contains the raw digest and
 a separately digested, bounded diagnostic with section counts and at most four
 table summaries, eight two-cell samples per table, and row digests. It never
-contains the source page. A marker at least as new as the success receipt makes
-Rust return `parse_failed` immediately, even when that success is younger than 36
-hours. New evidence updates only an unclaimed candidate; otherwise it creates a
-successor. Maintainer changes the compiled constants, parser fixtures, tests, and
-documentation from the bound evidence. Reviewer independently checks the same
-binding. A network outage does not create rate evidence and preserves the prior
-receipt only until the 36-hour limit. Missing, stale, future, malformed, tampered,
-parse-failed, or mismatched receipts stop paid calls and readiness.
+contains the source page. It also writes the same validated marker to a
+content-addressed private archive. Candidate state binds that exact digest, so a
+later failure or successful audit cannot replace evidence under review. Cleanup
+preserves referenced markers, keeps at most 64 unreferenced markers, and reserves
+one incoming marker beyond 512 retained files. The hard limit is 513 files and
+8,404,992 bytes. A current marker at least as new as the success receipt makes Rust
+return `parse_failed` immediately, even when that success is younger than 36 hours.
+New evidence updates only an unclaimed candidate; otherwise it creates a successor.
+Maintainer changes the compiled constants, parser fixtures, tests, and documentation
+from the bound evidence. Reviewer independently checks the same binding. A network
+outage does not create rate evidence and preserves the prior receipt only until the
+36-hour limit. Missing, stale, future, malformed,
+tampered, parse-failed, or mismatched receipts stop paid calls and readiness.
 
 Both Health and live config evaluation run only
 `decodex-publisher social probe-xurl`. They consume the bounded JSON readiness
@@ -456,7 +549,7 @@ and current pricing policy validation without calling a paid endpoint. Health
 uses Publisher `social cost-report` as the sole v4 ledger parser. Repo-only config
 evaluation is static and starts no process. Drift is
 `live_configuration_drift`: Health queues one automatic repair, Maintainer delegates
-the update and tests to its worker subagent, and Reviewer independently validates
+the update and tests through its ephemeral implementation child, and Reviewer independently validates
 and lands it.
 
 Health owns the cross-task lifecycle that also cleans completed runs from
@@ -486,9 +579,10 @@ plans another deletion. A recovery conflict fails closed. Health memory uses onl
 fixed `decodex/automation-memory/1` title and typed field allowlist. It retains
 bounded reason codes, counts, opaque IDs, SHA values, and micro-USD ceilings. It
 never retains prompts, task or post text, raw responses, personal data, scheduler
-rules, project IDs, or local paths. Maintainer and Reviewer parents treat memory as
-read-only; their current-run authority is state, consumed handoff, and the
-task-retention receipt.
+rules, project IDs, or local paths. Live evaluation rejects memory that is not an
+owner-only, mode-`0600`, regular non-symlink file of at most 4 KiB. Maintainer and
+Reviewer do not read or write memory, and their memory files must be absent. Their
+current-run authority is state, consumed handoff, and the task-retention receipt.
 
 ## Cost
 
@@ -501,8 +595,8 @@ authenticated `gh` client. These calls have no per-resource X API charge model.
 
 Codex task execution consumes the user's Codex plan capacity. The Codex App does not
 expose an authoritative per-task dollar amount to this repository, so the loop must
-not invent one. The source manifests permit exactly 12 `high` task wakes per day,
-360 in 30 days, or 372 in 31 days.
+not invent one. The source manifests permit exactly 12 scheduled task wakes per
+day, 360 in 30 days, or 372 in 31 days.
 
 ## Validation
 
