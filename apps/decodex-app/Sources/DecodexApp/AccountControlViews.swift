@@ -23,6 +23,10 @@ struct AccountRouteActionPresentation: Equatable {
 					|| isSubmittingResetCard
 			)
 	}
+
+	var usesDisabledEnvironment: Bool {
+		isCurrent || isVisuallyDisabled
+	}
 }
 
 struct AccountPrimaryActionsView: View {
@@ -39,6 +43,7 @@ struct AccountPrimaryActionsView: View {
 				isActive: presentation.isCurrent,
 				isDisabled: presentation.isDisabled,
 				isVisuallyDisabled: presentation.isVisuallyDisabled,
+				usesDisabledEnvironment: presentation.usesDisabledEnvironment,
 				isBusy: store.isControllingAccount(
 					state.account.accountID,
 					activity: .route
@@ -204,6 +209,7 @@ struct AccountRefreshLoginButton: View {
 			isActive: false,
 			isDisabled: isDisabled,
 			isVisuallyDisabled: isDisabled,
+			usesDisabledEnvironment: isDisabled,
 			isBusy: store.isControllingAccount(
 				state.account.accountID,
 				activity: .loginRefresh
@@ -232,6 +238,7 @@ private struct CompactAccountActionButton: View {
 	let isActive: Bool
 	let isDisabled: Bool
 	let isVisuallyDisabled: Bool
+	let usesDisabledEnvironment: Bool
 	let isBusy: Bool
 	let help: String
 	let action: () -> Void
@@ -239,7 +246,12 @@ private struct CompactAccountActionButton: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		Button(action: action) {
+		Button {
+			guard isDisabled == false else {
+				return
+			}
+			action()
+		} label: {
 			ZStack {
 				HStack(spacing: PanelSpacing.compact) {
 					Image(systemName: symbol)
@@ -274,7 +286,8 @@ private struct CompactAccountActionButton: View {
 			.contentShape(Rectangle())
 		}
 		.buttonStyle(.plain)
-		.disabled(isDisabled)
+		.disabled(usesDisabledEnvironment)
+		.allowsHitTesting(isDisabled == false)
 		.opacity(isVisuallyDisabled && isActive == false ? 0.44 : 1)
 		.animation(controlStateAnimation, value: isActive)
 		.animation(controlStateAnimation, value: isBusy)
