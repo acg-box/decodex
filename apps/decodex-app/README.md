@@ -31,10 +31,10 @@ Each row shows the exact current 300-minute and 10,080-minute quota
 observations in a vertical stack, the percentage left and reset time when
 known, and every complete public Reset Card expiry. Expired observations are
 not shown as current data. The 300-minute row is absent when the provider does
-not return a supported observation. Current quota bars and percentages use
-system-adaptive capacity colors: green above 50% remaining, orange from 21% to
-50%, and red at 20% or below. The numeric percentage and accessibility value
-remain the primary status.
+not return a supported observation. Current quota bars and percentages stay
+inside the panel theme: accent blue above 50% remaining, warning amber from 21%
+to 50%, and destructive red at 20% or below. The numeric percentage and
+accessibility value remain the primary status.
 
 The app performs one non-overlapping refresh every 15 seconds, matching the
 pre-cutover native cadence. Opening the panel also requests one refresh. An

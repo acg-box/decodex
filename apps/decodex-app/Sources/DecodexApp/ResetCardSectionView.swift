@@ -749,7 +749,7 @@ private struct ResetCardQuotaWindowView: View {
 	private func stateColor(for tone: ResetCardQuotaPresentationTone) -> Color {
 		switch tone {
 		case .healthy:
-			return PanelPalette.quotaHealthy(colorScheme)
+			return PanelPalette.usageCyan(colorScheme)
 		case .warning:
 			return PanelPalette.warning(colorScheme)
 		case .critical, .error:
