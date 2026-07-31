@@ -201,10 +201,13 @@ decodex-publisher validate-social
   provider request does not hide the other accounts. A provider-unsupported quota
   duration stays a muted row-local fact and does not mark the account as failed.
 - Uses Reset Cards from the common daemon service. The first click starts a
-  five-second local confirmation. The second click first persists a pending attempt,
-  then submits one in-process Rust request with a vNext account UUID, exact revision,
-  public grant/expiry descriptor, and one idempotency key. `decodexd` owns credentials,
-  app-server, the opaque credit ID, the provider effect, and durable recovery.
+  five-second local confirmation. The second click ends the countdown, shows a busy
+  indicator, persists a pending attempt, and submits one in-process Rust request with
+  a vNext account UUID, exact revision, public grant/expiry descriptor, and one
+  idempotency key. `decodexd` owns credentials, app-server, the opaque credit ID, the
+  provider effect, and durable recovery. If inventory advances during a skeleton
+  read, the app queues one newer skeleton read instead of leaving the row in a
+  checking state.
 - Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,
   routing, Codex projection, and Fast requests. The app does not start the CLI, a
   service, or a credential helper, and Swift does not inject credentials. Operators

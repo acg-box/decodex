@@ -22,22 +22,21 @@ final class ResetCardUseConfirmationTests: XCTestCase {
 		XCTAssertTrue(confirmation.isSubmitting(target))
 	}
 
-	func testUnresolvedAttemptRetainsTheOriginalPublicTargetAndKey() throws {
+	func testSubmittedAttemptDisarmsWhileDurableStatusRemainsPending() throws {
 		let target = try makeTarget(expiresAt: 200)
 		var confirmation = ResetCardUseConfirmation()
 		XCTAssertNil(
 			confirmation.tap(target, makeIdempotencyKey: { "attempt-1" })
 		)
-		let firstAttempt = try XCTUnwrap(confirmation.tap(target))
+		let attempt = try XCTUnwrap(confirmation.tap(target))
 
 		confirmation.finish(
-			firstAttempt,
+			attempt,
 			completion: ResetCardUseCompletion(resolved: false)
 		)
-		let retry = try XCTUnwrap(confirmation.tap(target))
 
-		XCTAssertEqual(retry.target, target)
-		XCTAssertEqual(retry.idempotencyKey, "attempt-1")
+		XCTAssertFalse(confirmation.isArmed(target))
+		XCTAssertFalse(confirmation.isSubmitting)
 	}
 
 	func testResolvedAttemptDisarmsTheCard() throws {

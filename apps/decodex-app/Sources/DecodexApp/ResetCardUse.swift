@@ -76,16 +76,14 @@ struct ResetCardUseConfirmation: Equatable {
 
 	mutating func finish(
 		_ attempt: ResetCardUseAttempt,
-		completion: ResetCardUseCompletion
+		completion _: ResetCardUseCompletion
 	) {
 		guard armedAttempt == attempt else {
 			return
 		}
 
 		isSubmitting = false
-		if completion.resolved {
-			armedAttempt = nil
-		}
+		armedAttempt = nil
 	}
 
 	@discardableResult
