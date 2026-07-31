@@ -9,7 +9,7 @@ enum PanelFont {
 		.system(size: size, weight: weight, design: design)
 	}
 
-	static let headerTitle = text(15.4, weight: .semibold)
+	static let headerTitle = text(14.2, weight: .semibold)
 
 	static let emptyIcon = text(17, weight: .medium)
 	static let emptyTitle = text(12.5, weight: .semibold)

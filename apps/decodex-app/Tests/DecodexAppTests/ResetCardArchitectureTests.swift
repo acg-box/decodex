@@ -22,19 +22,27 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
-	func testAllAccountsOverviewShowsAggregateMetricsWithoutCoverageCounters() throws {
+	func testHeaderAndOverviewShareOneCardWithoutARedundantTitleRow() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
 		let profileViews = try String(
 			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(profileViews.contains("Text(\"All accounts\")"))
+		XCTAssertTrue(accountPanel.contains("private var headerOverview: some View"))
+		XCTAssertTrue(accountPanel.contains("AccountProfileOverviewView("))
+		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
+		XCTAssertFalse(profileViews.contains("Text(\"All accounts\")"))
 		XCTAssertFalse(profileViews.contains("Text(\"All Accounts\")"))
+		XCTAssertFalse(profileViews.contains("Image(systemName: \"chart.bar.xaxis\")"))
 		XCTAssertTrue(profileViews.contains("lifetimeTokens: aggregate.lifetimeTokens"))
 		XCTAssertTrue(profileViews.contains("peakDailyTokens: aggregate.peakDailyTokens"))
 		XCTAssertTrue(profileViews.contains("longestTaskSeconds: aggregate.longestTaskSeconds"))
