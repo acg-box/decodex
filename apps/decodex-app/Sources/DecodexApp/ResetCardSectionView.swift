@@ -270,7 +270,7 @@ struct ResetCardAccountRow: View {
 		case .authFailed:
 			return "Login refresh required"
 		case .depleted:
-			return "Weekly quota depleted"
+			return nil
 		case .pluginUnready:
 			return "Provider update required"
 		case .unknown:
@@ -282,7 +282,6 @@ struct ResetCardAccountRow: View {
 
 	private var exceptionalStatusColor: Color {
 		if state.account.enabled == false
-			|| state.account.observedState == .depleted
 			|| state.account.observedState == .unknown
 			|| state.account.observedState == .pluginUnready
 		{
