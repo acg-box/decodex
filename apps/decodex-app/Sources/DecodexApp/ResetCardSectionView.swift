@@ -119,6 +119,65 @@ struct ResetCardPendingAttemptsView: View {
 	}
 }
 
+enum ResetCardInventoryPresentation: Equatable {
+	case loginRequired
+	case checking
+	case updating
+	case reconnecting(detail: String)
+	case unavailable(detail: String)
+	case reportedCount(UInt64)
+	case empty
+	case available
+
+	init(
+		state: ResetCardAccountState,
+		isAwaitingFreshAccountSkeleton: Bool
+	) {
+		if state.requiresLoginRefresh {
+			self = .loginRequired
+			return
+		}
+
+		if case .retryable(let detail) = state.inventoryFailure {
+			self = .reconnecting(detail: detail)
+			return
+		}
+		if case .unavailable(let detail) = state.inventoryFailure,
+			state.isRefreshing == false,
+			isAwaitingFreshAccountSkeleton == false
+		{
+			self = .unavailable(detail: detail)
+			return
+		}
+
+		if state.isRefreshing
+			|| isAwaitingFreshAccountSkeleton
+			|| (state.inventory != nil && state.inventoryIsCurrent == false)
+		{
+			self = state.inventory == nil ? .checking : .updating
+			return
+		}
+
+		if case .unavailable(let detail) = state.inventoryFailure {
+			self = .unavailable(detail: detail)
+			return
+		}
+		guard let inventory = state.inventory else {
+			self = .checking
+			return
+		}
+		guard inventory.detailsComplete else {
+			if let count = inventory.reportedAvailableCount {
+				self = .reportedCount(count)
+			} else {
+				self = .checking
+			}
+			return
+		}
+		self = state.targets.isEmpty ? .empty : .available
+	}
+}
+
 struct ResetCardAccountRow: View {
 	private static let confirmationWindowSeconds = 5
 
@@ -190,6 +249,7 @@ struct ResetCardAccountRow: View {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
 		.animation(rowStateAnimation, value: exceptionalStatusText)
+		.animation(rowStateAnimation, value: inventoryPresentation)
 	}
 
 	private var identityHeader: some View {
@@ -344,7 +404,8 @@ struct ResetCardAccountRow: View {
 
 	@ViewBuilder
 	private var cardInventory: some View {
-		if state.requiresLoginRefresh {
+		switch inventoryPresentation {
+		case .loginRequired:
 			Text("Reset Cards need this login")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
@@ -352,45 +413,43 @@ struct ResetCardAccountRow: View {
 				.help(
 					"Choose Refresh login in the menu bar app to sign in with the official Codex device login."
 				)
-		} else if let error = state.inventory?.observationError {
+		case .checking:
+			inventoryProgress(
+				"Checking Reset Cards…",
+				help: "Waiting for the current Reset Card inventory."
+			)
+		case .updating:
+			inventoryProgress(
+				"Updating usage…",
+				help: "Waiting for the current account revision and usage."
+			)
+		case .reconnecting(let detail):
+			inventoryProgress("Reconnecting…", help: detail)
+		case .unavailable(let detail):
 			Text("Reset Cards unavailable")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
-				.help(error.presentation)
-		} else if let error = state.error {
-			Text("Reset Cards unavailable")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.help(error.localizedDescription)
-		} else if state.isRefreshing, state.inventory == nil {
-			Text("Checking Reset Cards…")
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-		} else if let inventory = state.inventory,
-			inventory.detailsComplete == false
-		{
-			if let count = inventory.reportedAvailableCount {
-				Text(
-					count == 0
-						? "No Reset Cards"
-						: "\(count) Reset \(count == 1 ? "Card" : "Cards")"
-				)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.lineLimit(1)
-				.help(
-					count == 0
-						? "The provider reported no available Reset Cards."
-						: "The provider reported the count without expiration details."
-				)
-			}
-		} else if state.targets.isEmpty {
+				.help(detail)
+		case .reportedCount(let count):
+			Text(
+				count == 0
+					? "No Reset Cards"
+					: "\(count) Reset \(count == 1 ? "Card" : "Cards")"
+			)
+			.font(PanelFont.tertiary)
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.lineLimit(1)
+			.help(
+				count == 0
+					? "The provider reported no available Reset Cards."
+					: "The provider reported the count without expiration details."
+			)
+		case .empty:
 			Text("No Reset Cards")
 				.font(PanelFont.tertiary)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-		} else {
+		case .available:
 			ScrollView(.horizontal, showsIndicators: false) {
 				HStack(spacing: PanelSpacing.compact) {
 					ForEach(state.targets, id: \.self) { target in
@@ -421,6 +480,34 @@ struct ResetCardAccountRow: View {
 			.frame(height: 26)
 			.fixedSize(horizontal: false, vertical: true)
 		}
+	}
+
+	private func inventoryProgress(
+		_ text: String,
+		help: String
+	) -> some View {
+		HStack(spacing: PanelSpacing.related) {
+			ProgressView()
+				.controlSize(.mini)
+				.accessibilityHidden(true)
+
+			Text(text)
+				.font(PanelFont.tertiary)
+				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.lineLimit(1)
+		}
+		.help(help)
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(text)
+	}
+
+	private var inventoryPresentation: ResetCardInventoryPresentation {
+		ResetCardInventoryPresentation(
+			state: state,
+			isAwaitingFreshAccountSkeleton: store.isAwaitingFreshAccountSkeleton(
+				state.account.accountID
+			)
+		)
 	}
 
 	private var countdownAttempt: ResetCardUseAttempt? {

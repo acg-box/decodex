@@ -262,6 +262,79 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
+	func testStaleInventoryKeepsQuotaVisibleWithoutExposingUseTargets() throws {
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let account = ResetCardAccountRecord(
+			authority: authority,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Account TEST0-00000",
+			accountRevision: 8,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let retainedQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 100,
+				resetsAtUnixMicros: 2_000_000
+			)
+		)
+		let staleInventory = ResetCardInventory(
+			authority: authority,
+			accountID: account.accountID,
+			accountRevision: 7,
+			cards: [
+				try ResetCardDescriptor(
+					grantedAtUnixSeconds: 100,
+					expiresAtUnixSeconds: 200
+				)
+			],
+			fiveHourQuota: retainedQuota,
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+		let state = ResetCardAccountState(
+			account: account,
+			inventory: staleInventory,
+			error: .commandFailed,
+			isRefreshing: false
+		)
+
+		XCTAssertEqual(state.fiveHourQuota, retainedQuota)
+		XCTAssertTrue(
+			state.targets.isEmpty,
+			"A retained inventory is display-only after the account revision advances."
+		)
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: state,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.reconnecting(
+				detail: ResetCardClientError.commandFailed.localizedDescription
+			)
+		)
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: ResetCardAccountState(
+					account: account,
+					inventory: staleInventory,
+					error: nil,
+					isRefreshing: true
+				),
+				isAwaitingFreshAccountSkeleton: true
+			),
+			.updating
+		)
+	}
+
 	func testQuotaRowsPutTheFlexibleBarBeforeTheCompactPercentage() throws {
 		let source = try resetCardSectionSource()
 
