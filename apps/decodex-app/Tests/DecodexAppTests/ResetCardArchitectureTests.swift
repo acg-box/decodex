@@ -29,6 +29,60 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(accountRows.contains("withAnimation"))
 	}
 
+	func testPanelMotionStaysLocalAndHonorsReduceMotion() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let controls = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelControls.swift"),
+			encoding: .utf8
+		)
+		let accountControls = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
+			encoding: .utf8
+		)
+		let rows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let login = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountReauthenticationView.swift"
+			),
+			encoding: .utf8
+		)
+		let motion = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelSupport.swift"),
+			encoding: .utf8
+		)
+		let combined = panel + controls + accountControls + rows + login
+
+		XCTAssertTrue(motion.contains("static let press"))
+		XCTAssertTrue(motion.contains("static let identity"))
+		XCTAssertTrue(controls.contains("PanelPressButtonStyle"))
+		XCTAssertTrue(
+			controls.contains(".contentTransition(.symbolEffect(.replace))")
+		)
+		XCTAssertTrue(rows.contains("value: identity.text"))
+		XCTAssertTrue(rows.contains("value: state.targets"))
+		XCTAssertTrue(rows.contains("value: confirmationSecondsRemaining"))
+		XCTAssertTrue(
+			login.contains("value: store.accountReauthentication?.phase")
+		)
+		XCTAssertTrue(
+			[panel, controls, rows, login].allSatisfy {
+				$0.contains("@Environment(\\.accessibilityReduceMotion)")
+			}
+		)
+		XCTAssertFalse(combined.contains("withAnimation"))
+	}
+
 	func testRepeatedAccountRowsUseIndependentCardSurfaces() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()

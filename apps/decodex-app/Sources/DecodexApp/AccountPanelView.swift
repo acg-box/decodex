@@ -5,6 +5,7 @@ struct AccountPanelView: View {
 	let store: ResetCardStore
 	private let layoutVisibleFrameOverride: CGRect?
 	private let loadsExternalState: Bool
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
 	@State private var measuredAccountListContentHeight: CGFloat = 0
@@ -46,7 +47,7 @@ struct AccountPanelView: View {
 		.padding(PanelSpacing.related)
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
-		.animation(PanelMotion.panelLayout, value: store.accounts.map(\.id))
+		.animation(panelLayoutAnimation, value: store.accounts.map(\.id))
 		.sizesPanelWindowToContent { visibleFrame in
 			if panelScreenVisibleFrame != visibleFrame {
 				panelScreenVisibleFrame = visibleFrame
@@ -60,7 +61,7 @@ struct AccountPanelView: View {
 				isPresentingEnrollment = false
 			}
 		}
-		.animation(PanelMotion.panelLayout, value: store.accountReauthentication != nil)
+		.animation(panelLayoutAnimation, value: store.accountReauthentication != nil)
 		.task {
 			guard loadsExternalState else {
 				return
@@ -102,6 +103,7 @@ struct AccountPanelView: View {
 
 			accountContent
 		}
+		.animation(panelLayoutAnimation, value: hasTransientStatus)
 	}
 
 	private var headerOverview: some View {
@@ -118,6 +120,7 @@ struct AccountPanelView: View {
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 18)
+		.animation(panelLayoutAnimation, value: profileAggregate != nil)
 	}
 
 	private var reauthenticationOverlay: some View {
@@ -347,6 +350,7 @@ struct AccountPanelView: View {
 							detailedAccountID: $detailedAccountID
 						)
 						.panelCardSurface(cornerRadius: 16)
+						.transition(.panelSection)
 					}
 				}
 				.padding(1)
@@ -392,6 +396,10 @@ struct AccountPanelView: View {
 				value: proxy.size.height
 			)
 		}
+	}
+
+	private var panelLayoutAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.panelLayout
 	}
 
 	private var emptyOrLoadingState: some View {
