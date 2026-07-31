@@ -25,6 +25,7 @@ use crate::{
 		CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection,
 		ObjectCertainty, ObjectInput,
 	},
+	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
 };
 
@@ -38,6 +39,8 @@ const MAX_CONNECTION_ATTEMPTS: u8 = 5;
 const PRODUCTION_CACHE_BYTES: u64 = 64 * 1_024 * 1_024;
 const PRODUCTION_CACHE_OBJECTS: usize = 2_048;
 const PRODUCTION_CACHE_GENERATIONS: usize = 16;
+const CLIENT_CACHE_SCHEMA_GENERATION: u64 = 1;
+const HISTORY_PAGE_CACHE_SCHEMA_GENERATION: u32 = 1;
 
 /// State rendered by the later shell without exposing transport or cache internals.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -196,6 +199,7 @@ enum Delivery<C> {
 
 enum SessionStep<C> {
 	Delivery(Result<Delivery<C>, RetainedSessionFailure>),
+	Health(HealthDispatch),
 	History(HistoryDispatch),
 }
 
@@ -297,10 +301,11 @@ impl LifecycleIo for TokioIo {
 pub(crate) struct ClientLifecycle {
 	config: RetainedSessionConfig,
 	server_id: ServerId,
-	cache_root: PathBuf,
+	cache_parent: PathBuf,
 	cache_limits: CacheLimits,
 	cache_authority: CacheAuthority,
 	cache: Option<ClientCache>,
+	health_query: HealthQuery,
 	history_pager: HistoryPager,
 	state: HashMap<String, AppliedEntity>,
 	last_cursor: Option<Cursor>,
@@ -315,31 +320,40 @@ pub(crate) struct ClientLifecycle {
 impl ClientLifecycle {
 	/// Construct the production lifecycle without exposing disposable-cache policy to the shell.
 	pub(crate) fn production(config: RetainedSessionConfig) -> Result<Self, LifecycleBuildError> {
+		Self::production_with_temp_dir(config, &std::env::temp_dir())
+	}
+
+	fn production_with_temp_dir(
+		config: RetainedSessionConfig,
+		temp_dir: &Path,
+	) -> Result<Self, LifecycleBuildError> {
 		let cache_limits = CacheLimits::new(
 			PRODUCTION_CACHE_BYTES,
 			PRODUCTION_CACHE_OBJECTS,
 			PRODUCTION_CACHE_GENERATIONS,
 		)
 		.expect("fixed production cache limits are valid");
-		let cache_root = std::env::temp_dir().join("box.acg.decodex").join("client-cache");
-		let schema_generation = u64::from(CURRENT_VERSION.minor);
+		let cache_parent = production_cache_parent(temp_dir)?;
 
-		Self::new(config, cache_root, cache_limits, schema_generation)
+		Self::new(config, cache_parent, cache_limits, CLIENT_CACHE_SCHEMA_GENERATION)
 	}
 
-	/// Bind the lifecycle to one exact stable server, protocol/schema generation, and cache root.
+	/// Bind the lifecycle to one exact stable server, protocol/schema generation, and cache parent.
 	fn new(
 		config: RetainedSessionConfig,
-		cache_root: impl Into<PathBuf>,
+		cache_parent: impl Into<PathBuf>,
 		cache_limits: CacheLimits,
 		schema_generation: u64,
 	) -> Result<Self, LifecycleBuildError> {
 		let server_id = config.expected_server_id().clone();
 		let cache_authority = CacheAuthority::new(&server_id, CURRENT_VERSION, schema_generation)
 			.map_err(LifecycleBuildError::Cache)?;
-		let cache_root = cache_root.into();
+		let cache_parent = cache_parent.into();
+		let client_cache_root = cache_parent.join("client-cache");
 		let (cache, quarantine) =
-			initialize_cache(&cache_root, cache_limits, cache_authority.clone());
+			initialize_cache(&client_cache_root, cache_limits, cache_authority.clone());
+		let history_pager =
+			HistoryPager::production(&cache_parent, HISTORY_PAGE_CACHE_SCHEMA_GENERATION);
 		let view = quarantine.map_or(ConnectionView::Stopped, |quarantine| {
 			ConnectionView::Quarantined { reason: quarantine.reason, recovery: quarantine.recovery }
 		});
@@ -347,11 +361,12 @@ impl ClientLifecycle {
 		Ok(Self {
 			config,
 			server_id,
-			cache_root,
+			cache_parent,
 			cache_limits,
 			cache_authority,
 			cache,
-			history_pager: HistoryPager::production(),
+			health_query: HealthQuery::production(),
+			history_pager,
 			state: HashMap::new(),
 			last_cursor: None,
 			binding: None,
@@ -392,6 +407,11 @@ impl ClientLifecycle {
 	)]
 	pub(crate) fn history_pager(&self) -> HistoryPager {
 		self.history_pager.clone()
+	}
+
+	/// Clone the presentation-neutral Health controller before moving the lifecycle task.
+	pub(crate) fn health_query(&self) -> HealthQuery {
+		self.health_query.clone()
 	}
 
 	/// Run the bounded lifecycle without spawning or detaching any work.
@@ -444,10 +464,12 @@ impl ClientLifecycle {
 				requested_checkpoint.is_some(),
 				connected_checkpoint.as_ref(),
 			);
+			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
 			let failure =
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
+			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
 			if self.quarantine.is_none() {
 				self.set_view(ConnectionView::ShuttingDown);
@@ -484,10 +506,13 @@ impl ClientLifecycle {
 		I: LifecycleIo,
 	{
 		loop {
+			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
 				delivery = io.next() => SessionStep::Delivery(delivery),
+				dispatch = health_query.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::Health(dispatch),
 				dispatch = history_pager.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::History(dispatch),
 			};
@@ -497,15 +522,23 @@ impl ClientLifecycle {
 			}
 
 			match step {
+				SessionStep::Health(dispatch) => {
+					if let Err(failure) = io.send_query(dispatch.envelope().clone()).await {
+						return failure;
+					}
+				},
 				SessionStep::History(dispatch) => {
 					let Some(send_token) = self.history_pager.begin_send(&dispatch) else {
 						continue;
 					};
 					let send_result = io.send_query(dispatch.envelope().clone()).await;
 
-					self.history_pager.finish_send(&send_token);
+					let remains_current = self.history_pager.finish_send(&send_token);
 					if let Err(failure) = send_result {
 						return failure;
+					}
+					if remains_current {
+						self.history_pager.lookup_sent_request(&send_token);
 					}
 				},
 				SessionStep::Delivery(delivery) => match delivery {
@@ -551,7 +584,7 @@ impl ClientLifecycle {
 						}
 					},
 					Ok(Delivery::QueryResult(result)) => {
-						if let Err(failure) = self.route_history_result(generation, result) {
+						if let Err(failure) = self.route_query_result(generation, result) {
 							return failure;
 						}
 					},
@@ -629,6 +662,18 @@ impl ClientLifecycle {
 			| HistoryRouteOutcome::Stale
 			| HistoryRouteOutcome::Unmatched
 			| HistoryRouteOutcome::ProtocolMismatch => Ok(()),
+		}
+	}
+
+	fn route_query_result(
+		&mut self,
+		generation: u64,
+		result: QueryResultEnvelope,
+	) -> Result<(), RetainedSessionFailure> {
+		match self.health_query.route_result(generation, &self.server_id, &result) {
+			HealthRouteOutcome::Unmatched => self.route_history_result(generation, result),
+			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale =>
+				Ok(()),
 		}
 	}
 
@@ -803,14 +848,11 @@ impl ClientLifecycle {
 	}
 
 	fn handle_cache_failure(&mut self, error: CacheError) {
+		let cache_root = self.cache_parent.join("client-cache");
 		let recovery = if is_disposable_corruption(error)
-			&& ClientCache::dispose_all(&self.cache_root).is_ok()
+			&& ClientCache::dispose_all(&cache_root).is_ok()
 		{
-			match ClientCache::open(
-				&self.cache_root,
-				self.cache_limits,
-				self.cache_authority.clone(),
-			) {
+			match ClientCache::open(&cache_root, self.cache_limits, self.cache_authority.clone()) {
 				Ok(cache) => {
 					self.cache = Some(cache);
 
@@ -951,6 +993,52 @@ impl ClientLifecycle {
 			let _ = observer.send(view);
 		}
 	}
+}
+
+fn production_cache_parent(os_temp_dir: &Path) -> Result<PathBuf, LifecycleBuildError> {
+	#[cfg(target_os = "macos")]
+	let platform_temp_dir = normalize_macos_var_prefix(os_temp_dir, validate_macos_var_mapping)?;
+	#[cfg(not(target_os = "macos"))]
+	let platform_temp_dir = os_temp_dir.to_path_buf();
+
+	Ok(platform_temp_dir.join("box.acg.decodex"))
+}
+
+#[cfg(target_os = "macos")]
+fn normalize_macos_var_prefix(
+	os_temp_dir: &Path,
+	validate_var_mapping: fn() -> Result<(), CacheError>,
+) -> Result<PathBuf, LifecycleBuildError> {
+	let Ok(relative_temp_dir) = os_temp_dir.strip_prefix("/var") else {
+		return Ok(os_temp_dir.to_path_buf());
+	};
+
+	validate_var_mapping().map_err(LifecycleBuildError::Cache)?;
+
+	Ok(Path::new("/private/var").join(relative_temp_dir))
+}
+
+#[cfg(target_os = "macos")]
+fn validate_macos_var_mapping() -> Result<(), CacheError> {
+	use std::os::unix::fs::MetadataExt as _;
+
+	let alias_metadata = std::fs::symlink_metadata("/var")?;
+	if alias_metadata.uid() != 0
+		|| !alias_metadata.file_type().is_symlink()
+		|| std::fs::read_link("/var")? != Path::new("private/var")
+	{
+		return Err(CacheError::UnsafeRoot);
+	}
+
+	let physical_metadata = std::fs::symlink_metadata("/private/var")?;
+	if physical_metadata.uid() != 0
+		|| !physical_metadata.is_dir()
+		|| physical_metadata.mode() & 0o022 != 0
+	{
+		return Err(CacheError::UnsafeRoot);
+	}
+
+	Ok(())
 }
 
 fn initialize_cache(

@@ -9,6 +9,7 @@
 )]
 mod client_cache;
 mod client_lifecycle;
+mod health_query;
 #[cfg_attr(
 	not(test),
 	allow(

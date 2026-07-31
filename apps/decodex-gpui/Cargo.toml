@@ -12,6 +12,7 @@ version.workspace    = true
 decodex-protocol = { workspace = true }
 gpui             = { workspace = true }
 gpui_platform    = { workspace = true }
+libc             = { workspace = true }
 serde            = { workspace = true }
 serde_json       = { workspace = true }
 sha2             = { workspace = true }
