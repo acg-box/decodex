@@ -275,7 +275,7 @@ struct AccountEnrollmentView: View {
 					}
 				}
 				.keyboardShortcut(.defaultAction)
-				.disabled(store.isEnrollingAccount)
+				.disabled(store.canBeginEnrollment == false)
 			}
 		}
 		.frame(width: 260)
