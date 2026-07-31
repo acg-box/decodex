@@ -1,5 +1,30 @@
 import SwiftUI
 
+struct AccountRouteActionPresentation: Equatable {
+	let isCurrent: Bool
+	let canSelect: Bool
+	let canPerformDirectAccountControl: Bool
+	let isAccountControlInProgress: Bool
+	let isSubmittingResetCard: Bool
+
+	var isDisabled: Bool {
+		isCurrent
+			|| canSelect == false
+			|| canPerformDirectAccountControl == false
+			|| isAccountControlInProgress
+			|| isSubmittingResetCard
+	}
+
+	var isVisuallyDisabled: Bool {
+		isCurrent == false
+			&& (
+				canSelect == false
+					|| canPerformDirectAccountControl == false
+					|| isSubmittingResetCard
+			)
+	}
+}
+
 struct AccountPrimaryActionsView: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
@@ -7,17 +32,18 @@ struct AccountPrimaryActionsView: View {
 	var body: some View {
 		HStack(spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
-				title: isRouteCurrent ? "Routed" : "Route",
-				symbol: isRouteCurrent
+				title: presentation.isCurrent ? "Routed" : "Route",
+				symbol: presentation.isCurrent
 					? "point.3.connected.trianglepath.dotted"
 					: "arrow.triangle.branch",
-				isActive: isRouteCurrent,
-				isDisabled: routeActionIsDisabled,
+				isActive: presentation.isCurrent,
+				isDisabled: presentation.isDisabled,
+				isVisuallyDisabled: presentation.isVisuallyDisabled,
 				isBusy: store.isControllingAccount(
 					state.account.accountID,
 					activity: .route
 				),
-				help: isRouteCurrent
+				help: presentation.isCurrent
 					? "This account is used by Decodex routing and new Codex processes."
 					: "Route Decodex and use this account for new Codex processes."
 			) {
@@ -38,12 +64,14 @@ struct AccountPrimaryActionsView: View {
 		isCodexProjection && isFixed
 	}
 
-	private var routeActionIsDisabled: Bool {
-		isRouteCurrent
-			|| canSelect == false
-			|| store.canPerformDirectAccountControl == false
-			|| store.isAccountControlInProgress
-			|| store.submittingKey != nil
+	private var presentation: AccountRouteActionPresentation {
+		AccountRouteActionPresentation(
+			isCurrent: isRouteCurrent,
+			canSelect: canSelect,
+			canPerformDirectAccountControl: store.canPerformDirectAccountControl,
+			isAccountControlInProgress: store.isAccountControlInProgress,
+			isSubmittingResetCard: store.submittingKey != nil
+		)
 	}
 
 	private var canSelect: Bool {
@@ -175,6 +203,7 @@ struct AccountRefreshLoginButton: View {
 			symbol: "person.crop.circle.badge.plus",
 			isActive: false,
 			isDisabled: isDisabled,
+			isVisuallyDisabled: isDisabled,
 			isBusy: store.isControllingAccount(
 				state.account.accountID,
 				activity: .loginRefresh
@@ -202,20 +231,34 @@ private struct CompactAccountActionButton: View {
 	let symbol: String
 	let isActive: Bool
 	let isDisabled: Bool
+	let isVisuallyDisabled: Bool
 	let isBusy: Bool
 	let help: String
 	let action: () -> Void
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		Button(action: action) {
 			ZStack {
-				Label(title, systemImage: symbol)
+				HStack(spacing: PanelSpacing.compact) {
+					Image(systemName: symbol)
+						.contentTransition(.symbolEffect(.replace))
+
+					Text(title)
+						.contentTransition(.opacity)
+				}
 					.opacity(isBusy ? 0 : 1)
+					.scaleEffect(isBusy ? 0.96 : 1)
 
 				if isBusy {
 					ProgressView()
 						.controlSize(.mini)
+						.transition(
+							.opacity.combined(
+								with: .scale(scale: 0.88)
+							)
+						)
 						.accessibilityHidden(true)
 				}
 			}
@@ -232,13 +275,19 @@ private struct CompactAccountActionButton: View {
 		}
 		.buttonStyle(.plain)
 		.disabled(isDisabled)
-		.opacity(isDisabled && isActive == false ? 0.44 : 1)
+		.opacity(isVisuallyDisabled && isActive == false ? 0.44 : 1)
+		.animation(controlStateAnimation, value: isActive)
+		.animation(controlStateAnimation, value: isBusy)
 		.help(help)
 		.accessibilityLabel(title)
 		.accessibilityHint(help)
 		.accessibilityValue(
 			isBusy ? "In progress" : (isActive ? "Current" : "")
 		)
+	}
+
+	private var controlStateAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
 	}
 }
 
