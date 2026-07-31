@@ -28,6 +28,10 @@ const CACHE_SCHEMA_GENERATION: u32 = 1;
 
 const PRIVATE_DIRECTORY_MODE: libc::mode_t = 0o700;
 const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
+#[cfg(target_vendor = "apple")]
+const ANCESTOR_DIRECTORY_ACCESS: libc::c_int = libc::O_SEARCH;
+#[cfg(not(target_vendor = "apple"))]
+const ANCESTOR_DIRECTORY_ACCESS: libc::c_int = libc::O_RDONLY;
 const MAX_PAGE_ITEMS: usize = 8;
 const MAX_PAGE_BYTES: usize = 256 * 1_024;
 const MAX_CONVERSATION_PAGES: usize = 4;
@@ -1341,15 +1345,24 @@ fn open_or_create_absolute_parent(path: &Path) -> Result<File, CacheFailure> {
 		return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
 	}
 
-	let mut directory = open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?;
+	let mut components = resolved_components.peekable();
+	let mut directory = if components.peek().is_some() {
+		open_search_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?
+	} else {
+		open_directory_at(libc::AT_FDCWD, c"/").map_err(|_| io_failure())?
+	};
 	validate_ancestor_directory(&directory)?;
-	for component in resolved_components {
+	while let Some(component) = components.next() {
 		let Component::Normal(name) = component else {
 			return Err(CacheFailure::new(CacheDiagnostic::UnsafeShape));
 		};
 		let name = CString::new(name.as_bytes())
 			.map_err(|_| CacheFailure::new(CacheDiagnostic::UnsafeShape))?;
-		directory = open_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?;
+		directory = if components.peek().is_some() {
+			open_search_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?
+		} else {
+			open_directory_at(directory.as_raw_fd(), &name).map_err(|_| io_failure())?
+		};
 		validate_ancestor_directory(&directory)?;
 	}
 
@@ -1395,12 +1408,24 @@ fn open_optional_file_at(parent: &File, name: &CStr) -> Result<Option<File>, Cac
 }
 
 fn open_directory_at(parent: RawFd, name: &CStr) -> io::Result<File> {
+	open_directory_with_access_at(parent, name, libc::O_RDONLY)
+}
+
+fn open_search_directory_at(parent: RawFd, name: &CStr) -> io::Result<File> {
+	open_directory_with_access_at(parent, name, ANCESTOR_DIRECTORY_ACCESS)
+}
+
+fn open_directory_with_access_at(
+	parent: RawFd,
+	name: &CStr,
+	access: libc::c_int,
+) -> io::Result<File> {
 	loop {
 		let descriptor = unsafe {
 			libc::openat(
 				parent,
 				name.as_ptr(),
-				libc::O_RDONLY | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
+				access | libc::O_DIRECTORY | libc::O_NOFOLLOW | libc::O_CLOEXEC,
 			)
 		};
 		if descriptor != -1 {
