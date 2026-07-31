@@ -285,7 +285,7 @@ private struct CompactAccountActionButton: View {
 			.frame(minHeight: 20)
 			.contentShape(Rectangle())
 		}
-		.buttonStyle(.plain)
+		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.97))
 		.disabled(usesDisabledEnvironment)
 		.allowsHitTesting(isDisabled == false)
 		.opacity(isVisuallyDisabled && isActive == false ? 0.44 : 1)

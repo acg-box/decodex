@@ -23,7 +23,7 @@ struct ResetCardMessageView: View {
 				Image(systemName: "xmark")
 					.font(PanelFont.tertiary)
 			}
-			.buttonStyle(.plain)
+			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			.help("Dismiss message")
 		}
@@ -108,6 +108,7 @@ struct ResetCardAccountRow: View {
 	let store: ResetCardStore
 	let showsEmail: Bool
 	@Binding private var detailedAccountID: String?
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
@@ -136,6 +137,7 @@ struct ResetCardAccountRow: View {
 
 			if exceptionalStatusText != nil {
 				exceptionalStatus
+					.transition(.panelInline)
 			}
 
 			quotaWindows
@@ -169,6 +171,7 @@ struct ResetCardAccountRow: View {
 		.task(id: countdownAttempt) {
 			await runConfirmationCountdown(for: countdownAttempt)
 		}
+		.animation(rowStateAnimation, value: exceptionalStatusText)
 	}
 
 	private var identityHeader: some View {
@@ -176,9 +179,11 @@ struct ResetCardAccountRow: View {
 			Text(identity.text)
 				.font(PanelFont.accountName)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.contentTransition(.opacity)
 				.lineLimit(1)
 				.truncationMode(.middle)
 				.layoutPriority(1)
+				.animation(identityTransitionAnimation, value: identity.text)
 
 			if let planType {
 				Text(planType)
@@ -385,8 +390,14 @@ struct ResetCardAccountRow: View {
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target))
+						.transition(
+							.opacity.combined(
+								with: .scale(scale: 0.96)
+							)
+						)
 					}
 				}
+				.animation(rowStateAnimation, value: state.targets)
 			}
 			.frame(height: 26)
 			.fixedSize(horizontal: false, vertical: true)
@@ -406,6 +417,7 @@ struct ResetCardAccountRow: View {
 				.hidden()
 
 			Text(cardChipTitle(target))
+				.contentTransition(.opacity)
 				.foregroundStyle(
 					confirmation.isArmed(target)
 						? PanelPalette.warning(colorScheme)
@@ -418,6 +430,18 @@ struct ResetCardAccountRow: View {
 		.fixedSize(horizontal: true, vertical: false)
 		.padding(.horizontal, PanelSpacing.micro)
 		.contentShape(Rectangle())
+		.animation(
+			rowStateAnimation,
+			value: confirmation.isArmed(target)
+		)
+		.animation(
+			rowStateAnimation,
+			value: confirmation.isSubmitting(target)
+		)
+		.animation(
+			rowStateAnimation,
+			value: confirmationSecondsRemaining
+		)
 	}
 
 	private func cardChipTitle(_ target: ResetCardUseTarget) -> String {
@@ -482,6 +506,14 @@ struct ResetCardAccountRow: View {
 		}
 	}
 
+	private var identityTransitionAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.identity
+	}
+
+	private var rowStateAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
+	}
+
 	@MainActor
 	private func runConfirmationCountdown(
 		for attempt: ResetCardUseAttempt?
@@ -538,12 +570,19 @@ struct ResetCardAccountRow: View {
 		timeZone: TimeZone = .current
 	) -> String {
 		let date = Date(timeIntervalSince1970: TimeInterval(unixSeconds))
-		let formatter = DateFormatter()
-		formatter.locale = Locale(identifier: "en_US_POSIX")
-		formatter.calendar = Calendar(identifier: .gregorian)
-		formatter.timeZone = timeZone
-		formatter.dateFormat = "MMM d HH:mm"
-		return formatter.string(from: date)
+		var dayStyle = Date.FormatStyle.dateTime
+			.month(.abbreviated)
+			.day()
+		dayStyle.locale = Locale(identifier: "en_US_POSIX")
+		dayStyle.calendar = Calendar(identifier: .gregorian)
+		dayStyle.timeZone = timeZone
+		var timeStyle = Date.FormatStyle.dateTime
+			.hour(.twoDigits(amPM: .omitted))
+			.minute(.twoDigits)
+		timeStyle.locale = Locale(identifier: "en_US_POSIX@hours=h23")
+		timeStyle.calendar = Calendar(identifier: .gregorian)
+		timeStyle.timeZone = timeZone
+		return "\(date.formatted(dayStyle)) \(date.formatted(timeStyle))"
 	}
 
 	static func cardAccessibilityLabel(
@@ -571,6 +610,7 @@ struct ResetCardAccountRow: View {
 
 private struct ResetCardChipButtonStyle: ButtonStyle {
 	let isArmed: Bool
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.isEnabled) private var isEnabled
 
@@ -589,7 +629,14 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 			.contentShape(shape)
 			.opacity(isEnabled ? (configuration.isPressed ? 0.76 : 1) : 0.46)
 			.scaleEffect(configuration.isPressed ? 0.985 : 1)
-			.animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+			.animation(
+				reduceMotion ? nil : PanelMotion.press,
+				value: configuration.isPressed
+			)
+			.animation(
+				reduceMotion ? nil : PanelMotion.controlState,
+				value: isArmed
+			)
 	}
 
 	private var fillColor: Color {

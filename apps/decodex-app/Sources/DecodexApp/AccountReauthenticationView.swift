@@ -6,6 +6,7 @@ struct AccountReauthenticationView: View {
 	}
 
 	let store: ResetCardStore
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@FocusState private var focusedAction: FocusedAction?
 
@@ -21,6 +22,7 @@ struct AccountReauthenticationView: View {
 						.font(PanelFont.transientBody)
 						.foregroundStyle(PanelPalette.destructive(colorScheme))
 						.fixedSize(horizontal: false, vertical: true)
+						.transition(.panelInline)
 				}
 
 				HStack(spacing: PanelSpacing.section) {
@@ -47,12 +49,22 @@ struct AccountReauthenticationView: View {
 						.focused($focusedAction, equals: .cancel)
 						.help(actionLabel)
 						.accessibilityLabel(actionLabel)
+						.transition(
+							.opacity.combined(
+								with: .scale(scale: 0.94, anchor: .leading)
+							)
+						)
 					} else {
 						ProgressView()
 							.controlSize(.mini)
 							.frame(width: 38, height: 24)
 							.help("Saving login")
 							.accessibilityLabel("Saving login")
+							.transition(
+								.opacity.combined(
+									with: .scale(scale: 0.9)
+								)
+							)
 					}
 				}
 				.task(id: desiredFocus) {
@@ -69,6 +81,10 @@ struct AccountReauthenticationView: View {
 		.controlSize(.small)
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel("Refresh login")
+		.animation(
+			phaseTransitionAnimation,
+			value: store.accountReauthentication?.phase
+		)
 	}
 
 	private func desiredFocus(
@@ -97,6 +113,7 @@ struct AccountReauthenticationView: View {
 					if presentation.failureText == nil {
 						ProgressView()
 							.controlSize(.mini)
+							.transition(.opacity)
 							.accessibilityHidden(true)
 					}
 
@@ -115,9 +132,14 @@ struct AccountReauthenticationView: View {
 			Text(presentation.statusText)
 				.font(PanelFont.transientBody)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+				.contentTransition(.opacity)
 				.lineLimit(1)
 				.truncationMode(.tail)
 				.accessibilityLabel(presentation.statusText)
 		}
+	}
+
+	private var phaseTransitionAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
 	}
 }
