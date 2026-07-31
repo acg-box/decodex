@@ -56,6 +56,8 @@ the account list remains scrollable without a persistent scroll indicator.
 The header and aggregate overview share one compact appearance-adaptive
 frosted-material surface. Each account row uses its own separate system material
 surface with no opaque custom fill or drawn border.
+Primary cards use one shared compact spacing rhythm and identical content insets.
+Popovers and floating login recovery use one larger shared inset.
 The host window follows the system Light or Dark appearance and does not draw
 its own full-window shadow or backdrop. Login recovery uses a stronger floating
 material inside that same transparent window, without a window-wide modal dimmer.

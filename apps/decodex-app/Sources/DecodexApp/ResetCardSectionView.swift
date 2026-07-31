@@ -6,7 +6,7 @@ struct ResetCardMessageView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 6) {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
 			Image(systemName: symbol)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(color)
@@ -27,8 +27,8 @@ struct ResetCardMessageView: View {
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 			.help("Dismiss message")
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
 	}
 
@@ -60,9 +60,9 @@ struct ResetCardPendingAttemptsView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			ForEach(store.pendingAttempts, id: \.idempotencyKey) { attempt in
-				HStack(spacing: 6) {
+				HStack(spacing: PanelSpacing.related) {
 					Image(systemName: "clock.arrow.circlepath")
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.warning(colorScheme))
@@ -95,8 +95,8 @@ struct ResetCardPendingAttemptsView: View {
 				}
 			}
 		}
-		.padding(.horizontal, 8)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
 	}
 }
@@ -125,8 +125,8 @@ struct ResetCardAccountRow: View {
 	}
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 2) {
-			HStack(alignment: .center, spacing: 4) {
+		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
+			HStack(alignment: .center, spacing: PanelSpacing.compact) {
 				identityHeader
 				AccountPrimaryActionsView(
 					state: state,
@@ -140,7 +140,7 @@ struct ResetCardAccountRow: View {
 
 			quotaWindows
 
-			HStack(alignment: .center, spacing: 4) {
+			HStack(alignment: .center, spacing: PanelSpacing.compact) {
 				cardInventory
 					.frame(maxWidth: .infinity, alignment: .leading)
 					.layoutPriority(1)
@@ -152,8 +152,8 @@ struct ResetCardAccountRow: View {
 				)
 			}
 		}
-		.padding(.horizontal, 9)
-		.padding(.vertical, 6)
+		.padding(.horizontal, PanelSpacing.cardHorizontal)
+		.padding(.vertical, PanelSpacing.cardVertical)
 		.fixedSize(horizontal: false, vertical: true)
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
@@ -172,7 +172,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var identityHeader: some View {
-		HStack(alignment: .firstTextBaseline, spacing: 5) {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			Text(identity.text)
 				.font(PanelFont.accountName)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
@@ -194,7 +194,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var exceptionalStatus: some View {
-		HStack(spacing: 5) {
+		HStack(spacing: PanelSpacing.related) {
 			Text(exceptionalStatusText ?? "")
 				.font(PanelFont.accountDetail)
 				.foregroundStyle(exceptionalStatusColor)
@@ -303,7 +303,7 @@ struct ResetCardAccountRow: View {
 
 	@ViewBuilder
 	private var quotaWindows: some View {
-		VStack(alignment: .leading, spacing: 2) {
+		VStack(alignment: .leading, spacing: PanelSpacing.micro) {
 			if ResetCardQuotaPresentation(window: state.fiveHourQuota).isVisible {
 				ResetCardQuotaWindowView(
 					title: "5h",
@@ -369,7 +369,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 		} else {
 			ScrollView(.horizontal, showsIndicators: false) {
-				HStack(spacing: 4) {
+				HStack(spacing: PanelSpacing.compact) {
 					ForEach(state.targets, id: \.self) { target in
 						Button {
 							tap(target)
@@ -420,7 +420,7 @@ struct ResetCardAccountRow: View {
 		.monospacedDigit()
 		.lineLimit(1)
 		.fixedSize(horizontal: true, vertical: false)
-		.padding(.horizontal, 1)
+		.padding(.horizontal, PanelSpacing.micro)
 		.contentShape(Rectangle())
 	}
 
@@ -633,7 +633,7 @@ private struct ResetCardQuotaWindowView: View {
 	var body: some View {
 		let presentation = ResetCardQuotaPresentation(window: window)
 
-		HStack(alignment: .center, spacing: 4) {
+		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(title)
 				.font(PanelFont.quotaText)
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
@@ -659,7 +659,7 @@ private struct ResetCardQuotaWindowView: View {
 				.layoutPriority(1)
 			}
 
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 				Text(presentation.valueText)
 					.font(PanelFont.usageValue)
 
