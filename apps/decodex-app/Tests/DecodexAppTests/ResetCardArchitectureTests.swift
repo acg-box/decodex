@@ -267,6 +267,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertFalse(resetCards.contains("\"Use · "))
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"creditcard\")"))
+		XCTAssertFalse(resetCards.contains("Weekly quota depleted"))
 		XCTAssertTrue(resetCards.contains(".frame(minWidth: 88, maxWidth: .infinity)"))
 		XCTAssertFalse(accountPanel.contains("headerState("))
 		XCTAssertFalse(accountPanel.contains("routingSubtitle"))
