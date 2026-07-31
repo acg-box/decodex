@@ -16,8 +16,10 @@ enum PanelSpacing {
 }
 
 enum PanelMotion {
+	static let press = Animation.easeOut(duration: 0.08)
 	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
 	static let controlState = Animation.easeInOut(duration: 0.16)
+	static let identity = Animation.easeInOut(duration: 0.2)
 	static let quotaValue = Animation.easeOut(duration: 0.46)
 }
 
@@ -40,6 +42,12 @@ extension View {
 }
 
 extension AnyTransition {
+	static var panelInline: AnyTransition {
+		.opacity.combined(
+			with: .scale(scale: 0.985, anchor: .leading)
+		)
+	}
+
 	static var panelSection: AnyTransition {
 		.asymmetric(
 			insertion: .opacity
