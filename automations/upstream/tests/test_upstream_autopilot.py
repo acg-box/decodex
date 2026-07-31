@@ -1,4 +1,5 @@
 import importlib.util
+import fcntl
 import hashlib
 import io
 import json
@@ -6,6 +7,8 @@ import os
 from contextlib import nullcontext
 from copy import deepcopy
 from pathlib import Path
+import shutil
+import signal
 import socket
 import stat
 import subprocess
@@ -156,14 +159,14 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
 
 
-    def test_fresh_state_uses_the_nonlegacy_v3_contract(self):
+    def test_fresh_state_uses_the_nonlegacy_v4_contract(self):
         state = self.autopilot.new_state(100)
 
-        self.assertEqual(state["schema"], "decodex/codex-upstream-state/3")
+        self.assertEqual(state["schema"], "decodex/codex-upstream-state/4")
         self.autopilot.validate_state(state)
 
         legacy = deepcopy(state)
-        legacy["schema"] = "decodex/codex-upstream-state/2"
+        legacy["schema"] = "decodex/codex-upstream-state/3"
         with self.assertRaisesRegex(
             self.autopilot.AutopilotError,
             "state_schema_invalid",
@@ -185,6 +188,17 @@ class UpstreamAutopilotTests(unittest.TestCase):
             repository_tree="2" * 40,
             staged_paths_sha256="3" * 64,
             disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            claim,
+            raw,
+            role="maintainer",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="1" * 40,
+            now=102,
         )
 
         provenance = self.autopilot.consume_handoff_receipt(
@@ -228,6 +242,676 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         self.autopilot.validate_state(state)
 
+    def test_agent_run_fence_is_single_writer_and_receipt_bound(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        challenge_sha256 = hashlib.sha256(
+            claim["handoff_challenge"].encode("utf-8")
+        ).hexdigest()
+        prepared = self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            challenge_sha256=challenge_sha256,
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=102,
+        )
+        repeated = self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            challenge_sha256=challenge_sha256,
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=103,
+        )
+        self.assertEqual(prepared, repeated)
+        self.assertEqual(prepared["phase"], "prepared")
+
+        receipt = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="3" * 40,
+            staged_paths_sha256="4" * 64,
+            disposition="staged",
+        )
+        receipt_file_sha256 = hashlib.sha256(
+            self.autopilot.canonical_json(receipt) + b"\n"
+        ).hexdigest()
+        completed = self.autopilot.complete_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            receipt=receipt,
+            receipt_file_sha256=receipt_file_sha256,
+            now=104,
+        )
+        self.assertEqual(completed["phase"], "completed")
+        self.assertEqual(
+            completed["agent_execution_sha256"],
+            receipt["agent_execution"]["execution_sha256"],
+        )
+        self.assertEqual(
+            self.autopilot.complete_agent_run(
+                state,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=claim["lease_token"],
+                receipt=receipt,
+                receipt_file_sha256=receipt_file_sha256,
+                now=105,
+            ),
+            completed,
+        )
+        self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            receipt=receipt,
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="3" * 40,
+            staged_paths_sha256="4" * 64,
+            disposition="staged",
+            finding_codes=[],
+            now=106,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_repair_agent_run_binds_input_commit_to_staged_base(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        commit_receipt = deepcopy(candidate["commit_receipt"])
+        reviewer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=["validation_failed"],
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["validation_failed"],
+            reviewer_handoff=reviewer_handoff,
+            now=111,
+        )
+        repair = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            112,
+        )
+        receipt = self.handoff_receipt(
+            repair,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head=commit_receipt["base_head"],
+            repository_head=commit_receipt["base_head"],
+            repository_tree="7" * 40,
+            staged_paths_sha256="8" * 64,
+            disposition="staged",
+        )
+
+        completed = self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            repair,
+            receipt,
+            role="maintainer",
+            base_head=commit_receipt["base_head"],
+            input_head=commit_receipt["head_sha"],
+            repository_head=commit_receipt["base_head"],
+            input_tree=commit_receipt["tree_sha"],
+            now=114,
+        )
+
+        self.assertEqual(completed["input_head"], commit_receipt["head_sha"])
+        self.assertEqual(
+            completed["repository_head"],
+            commit_receipt["base_head"],
+        )
+        self.autopilot.consume_handoff_receipt(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=repair["lease_token"],
+            receipt=receipt,
+            action="worker_staged",
+            base_head=commit_receipt["base_head"],
+            repository_head=commit_receipt["base_head"],
+            repository_tree="7" * 40,
+            staged_paths_sha256="8" * 64,
+            disposition="staged",
+            finding_codes=[],
+            now=115,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_prepared_agent_run_can_retarget_before_receipt_exists(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        challenge_sha256 = hashlib.sha256(
+            claim["handoff_challenge"].encode("utf-8")
+        ).hexdigest()
+        self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            challenge_sha256=challenge_sha256,
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=102,
+        )
+        retargeted = self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            challenge_sha256=challenge_sha256,
+            base_head="3" * 40,
+            repository_head="3" * 40,
+            input_tree="4" * 40,
+            now=103,
+        )
+
+        self.assertEqual(retargeted["phase"], "prepared")
+        self.assertEqual(retargeted["base_head"], "3" * 40)
+        self.assertEqual(retargeted["repository_head"], "3" * 40)
+        self.assertEqual(retargeted["input_tree"], "4" * 40)
+        self.assertEqual(retargeted["started_at"], 103)
+        self.assertEqual(
+            [
+                event["event"]
+                for event in state["events"]
+                if event.get("candidate_id") == candidate_id
+                and event["event"] == "agent_run_context_retargeted"
+            ],
+            ["agent_run_context_retargeted"],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_completed_agent_run_survives_lease_expiry_for_same_generation(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        receipt = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="3" * 40,
+            staged_paths_sha256="4" * 64,
+            disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            claim,
+            receipt,
+            role="maintainer",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=102,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        generation = candidate["handoff"]["generation"]
+        attempts = candidate["attempts"]["maintainer"]
+        expiry = candidate["lease"]["expires_at"]
+
+        self.assertEqual(
+            self.autopilot.recover_expired_leases(
+                state,
+                self.policy,
+                expiry,
+            ),
+            [candidate_id],
+        )
+        self.assertEqual(candidate["status"], "queued")
+        self.assertIsNone(candidate["lease"])
+        self.assertEqual(candidate["handoff"]["generation"], generation)
+        self.assertEqual(
+            candidate["handoff"]["agent_run"]["phase"],
+            "completed",
+        )
+
+        recovered = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            expiry,
+        )
+        self.assertTrue(recovered["completed_agent_run_recovery"])
+        self.assertIsNone(recovered["handoff_challenge"])
+        self.assertEqual(
+            recovered["candidate"]["handoff"]["generation"],
+            generation,
+        )
+        self.assertEqual(candidate["attempts"]["maintainer"], attempts)
+        self.autopilot.validate_state(state)
+
+    def test_expired_prepared_receipt_is_promoted_before_lease_recovery(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory)
+                / ".agent/automations/upstream/cache"
+            )
+            cache_root.mkdir(parents=True, mode=0o700)
+            state, candidate_id = self.bootstrap()
+            claim = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                101,
+            )
+            challenge_sha256 = hashlib.sha256(
+                claim["handoff_challenge"].encode("utf-8")
+            ).hexdigest()
+            self.autopilot.prepare_agent_run(
+                state,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=claim["lease_token"],
+                challenge_sha256=challenge_sha256,
+                base_head="1" * 40,
+                repository_head="1" * 40,
+                input_tree="2" * 40,
+                now=102,
+            )
+            receipt = self.handoff_receipt(
+                claim,
+                candidate_id=candidate_id,
+                role="maintainer",
+                action="worker_staged",
+                base_head="1" * 40,
+                repository_head="1" * 40,
+                repository_tree="3" * 40,
+                staged_paths_sha256="4" * 64,
+                disposition="staged",
+            )
+            generation = claim["candidate"]["handoff"]["generation"]
+            receipt_path = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            self.autopilot.write_handoff_receipt(
+                receipt_path,
+                expected_path=receipt_path,
+                receipt=receipt,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            expiry = candidate["lease"]["expires_at"]
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "expired_agent_run_reconciliation_required",
+            ):
+                self.autopilot.recover_expired_leases(
+                    state,
+                    self.policy,
+                    expiry,
+                )
+            self.assertEqual(
+                self.autopilot.cli_module._promote_expired_agent_receipts(
+                    cache_root,
+                    state,
+                    expiry,
+                ),
+                [candidate_id],
+            )
+            self.assertEqual(
+                candidate["handoff"]["agent_run"]["phase"],
+                "completed",
+            )
+            self.assertEqual(
+                self.autopilot.recover_expired_leases(
+                    state,
+                    self.policy,
+                    expiry,
+                    prepared_agent_runs_reconciled=True,
+                ),
+                [candidate_id],
+            )
+            self.assertEqual(
+                self.autopilot.reconcile_handoff_receipts(
+                    cache_root,
+                    state,
+                ),
+                [],
+            )
+            self.assertTrue(receipt_path.exists())
+            recovered = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                expiry,
+                prepared_agent_runs_reconciled=True,
+            )
+            self.assertTrue(recovered["completed_agent_run_recovery"])
+            self.assertEqual(
+                recovered["candidate"]["handoff"]["generation"],
+                generation,
+            )
+            self.autopilot.validate_state(state)
+
+    def test_state_rejects_lease_less_prepared_agent_handoff(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            challenge_sha256=hashlib.sha256(
+                claim["handoff_challenge"].encode("utf-8")
+            ).hexdigest(),
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=102,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["lease"] = None
+        candidate["status"] = "queued"
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_handoff_invalid",
+        ):
+            self.autopilot.validate_state(state)
+
+    def test_missing_completed_agent_receipt_refunds_recovery_claim(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        receipt = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="3" * 40,
+            staged_paths_sha256="4" * 64,
+            disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            claim,
+            receipt,
+            role="maintainer",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            input_tree="2" * 40,
+            now=102,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        expiry = candidate["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(
+            state,
+            self.policy,
+            expiry,
+        )
+        recovery = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            expiry,
+        )
+        attempts = candidate["attempts"]["maintainer"]
+
+        self.autopilot.abandon_missing_completed_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=recovery["lease_token"],
+            now=expiry,
+        )
+        replacement = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            expiry,
+        )
+
+        self.assertFalse(replacement["completed_agent_run_recovery"])
+        self.assertIsInstance(replacement["handoff_challenge"], str)
+        self.assertEqual(candidate["attempts"]["maintainer"], attempts)
+        self.autopilot.validate_state(state)
+
+    def test_missing_stale_base_receipt_does_not_refund_an_unspent_attempt(
+        self,
+    ):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(
+            state,
+            candidate_id,
+            maintainer,
+            now=102,
+        )
+        reviewer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["base_stale"],
+            reviewer_handoff=reviewer_handoff,
+            stale_target_base_head="9" * 40,
+            now=111,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        attempts = candidate["attempts"]["maintainer"]
+        repair = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            112,
+        )
+        self.assertEqual(candidate["attempts"]["maintainer"], attempts + 1)
+        receipt = self.handoff_receipt(
+            repair,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="9" * 40,
+            repository_head="9" * 40,
+            repository_tree="8" * 40,
+            staged_paths_sha256="7" * 64,
+            disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            repair,
+            receipt,
+            role="maintainer",
+            base_head="9" * 40,
+            repository_head="9" * 40,
+            input_tree="6" * 40,
+            now=113,
+        )
+        expiry = candidate["lease"]["expires_at"]
+        self.autopilot.recover_expired_leases(
+            state,
+            self.policy,
+            expiry,
+        )
+        recovery = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            expiry,
+        )
+
+        self.autopilot.abandon_missing_completed_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=recovery["lease_token"],
+            now=expiry,
+        )
+        replacement = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            expiry,
+        )
+
+        self.assertFalse(replacement["completed_agent_run_recovery"])
+        self.assertEqual(candidate["attempts"]["maintainer"], attempts + 1)
+        self.autopilot.validate_state(state)
+
+    def test_handoff_receipt_requires_completed_agent_run(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        receipt = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+        )
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_run_missing",
+        ):
+            self.autopilot.consume_handoff_receipt(
+                state,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=claim["lease_token"],
+                receipt=receipt,
+                action="worker_staged",
+                base_head="1" * 40,
+                repository_head="1" * 40,
+                repository_tree="2" * 40,
+                staged_paths_sha256="3" * 64,
+                disposition="staged",
+                finding_codes=[],
+                now=102,
+            )
+
+    def test_handoff_receipt_rejects_mutated_agent_execution(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        receipt = self.handoff_receipt(
+            claim,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="1" * 40,
+            repository_head="1" * 40,
+            repository_tree="2" * 40,
+            staged_paths_sha256="3" * 64,
+            disposition="staged",
+        )
+        receipt["agent_execution"]["result_sha256"] = "0" * 64
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "handoff_receipt_invalid|agent_execution_invalid",
+        ):
+            self.autopilot.validate_handoff_receipt(
+                receipt,
+                candidate_id=candidate_id,
+                role="maintainer",
+                action="worker_staged",
+                generation=claim["candidate"]["handoff"]["generation"],
+                challenge_sha256=hashlib.sha256(
+                    claim["handoff_challenge"].encode("utf-8")
+                ).hexdigest(),
+                base_head="1" * 40,
+                repository_head="1" * 40,
+                repository_tree="2" * 40,
+                staged_paths_sha256="3" * 64,
+                patch_sha256="9" * 64,
+                disposition="staged",
+                finding_codes=[],
+                consumed_at=102,
+            )
+
     def test_handoff_receipt_file_round_trip_is_private_and_contained(self):
         with tempfile.TemporaryDirectory() as directory:
             cache_root = (
@@ -240,19 +924,37 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 generation=1,
             )
             receipt = {"schema": "test", "value": "bounded"}
-            descriptor = os.open(
+            digest = self.autopilot.write_handoff_receipt(
                 expected,
-                os.O_WRONLY | os.O_CREAT | os.O_EXCL,
-                0o600,
+                expected_path=expected,
+                receipt=receipt,
             )
-            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
-                json.dump(receipt, handle)
+            repeated = self.autopilot.write_handoff_receipt(
+                expected,
+                expected_path=expected,
+                receipt=receipt,
+            )
 
             loaded = self.autopilot.read_handoff_receipt(
                 expected,
                 expected_path=expected,
             )
             self.assertEqual(loaded, receipt)
+            self.assertEqual(repeated, digest)
+            self.assertEqual(expected.stat().st_mode & 0o777, 0o600)
+            self.assertEqual(
+                expected.read_bytes(),
+                self.autopilot.canonical_json(receipt) + b"\n",
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "handoff_receipt_conflict",
+            ):
+                self.autopilot.write_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                    receipt={"schema": "test", "value": "changed"},
+                )
             self.autopilot.remove_handoff_receipt(
                 expected,
                 expected_path=expected,
@@ -262,6 +964,37 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 expected.parent.stat().st_mode & 0o777,
                 0o700,
             )
+
+    def test_handoff_receipt_recovers_linked_crash_temp(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory) / ".agent/automations/upstream/cache"
+            )
+            expected = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id="0" * 16,
+                role="reviewer",
+                generation=1,
+            )
+            receipt = {"schema": "test", "value": "crash-recovery"}
+            payload = self.autopilot.canonical_json(receipt) + b"\n"
+            temporary = expected.parent / (
+                f".handoff-{os.getpid()}-{'a' * 16}.tmp"
+            )
+            temporary.write_bytes(payload)
+            temporary.chmod(0o600)
+            os.link(temporary, expected)
+            self.assertEqual(expected.stat().st_nlink, 2)
+
+            self.assertEqual(
+                self.autopilot.read_handoff_receipt(
+                    expected,
+                    expected_path=expected,
+                ),
+                receipt,
+            )
+            self.assertFalse(temporary.exists())
+            self.assertEqual(expected.stat().st_nlink, 1)
 
     def test_handoff_receipt_rejects_symlinked_parent_without_external_io(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -437,6 +1170,25 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "argv",
             [
                 "upstream_autopilot",
+                "run-agent",
+                "--candidate-id",
+                "0" * 16,
+                "--role",
+                "reviewer",
+                "--lease-token",
+                "lease",
+                "--handoff-challenge",
+                "a" * 32,
+                "--worktree",
+                "/tmp/worktree",
+            ],
+        ):
+            agent = self.autopilot.parse_args()
+        with mock.patch.object(
+            sys,
+            "argv",
+            [
+                "upstream_autopilot",
                 "commit-candidate",
                 "--candidate-id",
                 "0" * 16,
@@ -482,9 +1234,2348 @@ class UpstreamAutopilotTests(unittest.TestCase):
         ):
             recovery = self.autopilot.parse_args()
 
+        self.assertEqual(agent.role, "reviewer")
+        self.assertEqual(agent.handoff_challenge, "a" * 32)
+        self.assertEqual(agent.worktree, Path("/tmp/worktree"))
         self.assertEqual(commit.worker_receipt, Path("/tmp/worker.json"))
         self.assertEqual(repair.reviewer_receipt, Path("/tmp/reviewer.json"))
         self.assertIsNone(recovery.reviewer_receipt)
+
+    def test_ephemeral_agent_is_max_bounded_and_hides_auth_capsule(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            repo_root = root / "repo"
+            worktree = root / "worktree"
+            cache_root = repo_root / ".agent/automations/upstream/cache"
+            schema = (
+                repo_root
+                / "automations/upstream/schemas/agent-result.schema.json"
+            )
+            schema.parent.mkdir(parents=True)
+            schema.write_text(
+                (
+                    ROOT
+                    / "automations/upstream/schemas/agent-result.schema.json"
+                ).read_text(encoding="utf-8"),
+                encoding="utf-8",
+            )
+            watchdog = (
+                repo_root / "automations/upstream/scripts/agent_watchdog.py"
+            )
+            watchdog.parent.mkdir(parents=True, exist_ok=True)
+            watchdog.write_bytes(
+                (
+                    ROOT / "automations/upstream/scripts/agent_watchdog.py"
+                ).read_bytes()
+            )
+            worktree.mkdir()
+            git_common = root / "git-common"
+            git_common.mkdir()
+            home = root / "home"
+            (home / ".codex").mkdir(parents=True)
+            captured = []
+            fake_keychain_secret = ""
+
+            def fake_run(arguments, **_kwargs):
+                nonlocal fake_keychain_secret
+                captured.append(list(arguments))
+                if arguments[0] == "git":
+                    if "--git-common-dir" in arguments:
+                        return str(git_common)
+                    return ""
+                if arguments[1:] == ["--version"]:
+                    return "codex-cli 0.146.0-test"
+                if arguments[0] == "/usr/bin/security":
+                    keychain_path = Path(arguments[-1])
+                    if "create-keychain" in arguments:
+                        keychain_path.write_bytes(b"fake-keychain")
+                        keychain_path.chmod(0o600)
+                    if "add-generic-password" in arguments:
+                        fake_keychain_secret = arguments[
+                            arguments.index("-w") + 1
+                        ]
+                    if "find-generic-password" in arguments:
+                        return fake_keychain_secret
+                    if "delete-keychain" in arguments:
+                        keychain_path.unlink(missing_ok=True)
+                    return ""
+                if "sandbox" in arguments:
+                    return (
+                        '{"schema":"decodex/agent-sandbox-probe/1",'
+                        '"status":"pass"}'
+                    )
+                output_path = Path(
+                    arguments[arguments.index("--output-last-message") + 1]
+                )
+                output_path.write_text(
+                    json.dumps(
+                        {
+                            "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                            "role": "reviewer",
+                            "disposition": "accept",
+                            "finding_codes": [],
+                            "patch": None,
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                return "bounded"
+
+            def fake_workspace(*, worktree, run_path, head_sha):
+                del worktree, head_sha
+                workspace = run_path / "workspace"
+                workspace.mkdir(mode=0o700)
+                (workspace / "README.md").write_text(
+                    "snapshot\n",
+                    encoding="utf-8",
+                )
+                return workspace, "d" * 64
+
+            with (
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "real_home_directory",
+                    return_value=home,
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "resolve_executable",
+                    return_value=(Path("/trusted/codex"), "a" * 64),
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "run_command",
+                    side_effect=fake_run,
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "_agent_evidence",
+                    return_value=(
+                        {
+                            "upstream_mirror": None,
+                            "upstream_sources": [],
+                            "installed_schema_artifacts": [],
+                        },
+                        (),
+                    ),
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "_real_codex_auth_capsule",
+                    return_value=(
+                        {
+                            "auth_mode": "chatgpt",
+                            "last_refresh": "2026-07-30T00:00:00Z",
+                            "tokens": {
+                                "id_token": "a" * 64,
+                                "access_token": "b" * 64,
+                                "refresh_token": "",
+                                "account_id": (
+                                    "00000000-0000-0000-0000-000000000000"
+                                ),
+                            },
+                        },
+                        home / ".codex/auth.json",
+                        {},
+                    ),
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "_assert_real_auth_unchanged",
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "_reset_prepared_worktree",
+                ),
+                mock.patch.object(
+                    self.autopilot.agent_module,
+                    "_materialize_agent_workspace",
+                    side_effect=fake_workspace,
+                ),
+            ):
+                result = self.autopilot.run_ephemeral_codex_agent(
+                    repo_root=repo_root,
+                    worktree=worktree,
+                    cache_root=cache_root,
+                    candidate={"id": "0" * 16, "kind": "bootstrap"},
+                    role="reviewer",
+                    generation=1,
+                    base_head="1" * 40,
+                    head_sha="1" * 40,
+                    tree_sha="2" * 40,
+                    relevant_path_prefixes=self.policy[
+                        "relevant_path_prefixes"
+                    ],
+                )
+                result.pop("_agent_run_fence").close()
+
+            command = next(value for value in captured if "exec" in value)
+            joined = " ".join(command)
+            self.assertEqual(result["result"]["disposition"], "accept")
+            self.assertIn("--ephemeral", command)
+            self.assertIn("--ignore-user-config", command)
+            self.assertIn("--ignore-rules", command)
+            self.assertIn("--strict-config", command)
+            self.assertIn("--skip-git-repo-check", command)
+            self.assertIn("gpt-5.6-sol", command)
+            self.assertIn('model_reasoning_effort="max"', joined)
+            self.assertIn(
+                f'{json.dumps(":root")}=\"read\"',
+                joined,
+            )
+            for denied_root in ("/Library", "/private", "/opt", "/Users"):
+                self.assertIn(
+                    f'{json.dumps(denied_root)}=\"none\"',
+                    joined,
+                )
+            self.assertIn(
+                f'{json.dumps(self.autopilot.AGENT_SYSTEM_DATA_ROOT)}="none"',
+                joined,
+            )
+            self.assertNotIn(":minimal", joined)
+            self.assertIn("project_doc_max_bytes=0", joined)
+            self.assertIn("--disable apps", joined)
+            self.assertIn("--disable multi_agent", joined)
+            workspace_argument = command[command.index("--cd") + 1]
+            self.assertEqual(Path(workspace_argument).name, "workspace")
+            self.assertTrue(
+                workspace_argument.startswith(
+                    f"/private/tmp/decodex-agent-runs-{os.getuid()}-"
+                )
+            )
+            self.assertNotEqual(Path(workspace_argument), worktree.resolve())
+            self.assertIn("permissions.autopilot.network.enabled=false", joined)
+            self.assertIn('shell_environment_policy.inherit="none"', joined)
+            self.assertNotIn("--sandbox", command)
+            self.assertNotIn("/usr/bin/sandbox-exec", command)
+            self.assertNotIn("xhigh", joined)
+            self.assertIn("agent-watchdog.py", joined)
+            self.assertEqual(
+                list(
+                    (cache_root / "agent-runs").glob(
+                        "0" * 16 + "-reviewer-[0-9]*"
+                    )
+                ),
+                [],
+            )
+
+    def test_agent_watchdog_kills_background_child_and_removes_auth(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            auth_directory = root / "codex-home"
+            auth_directory.mkdir(mode=0o700)
+            auth_path = auth_directory / "auth.json"
+            lock_path = root / "agent.lock"
+            lock_descriptor = os.open(
+                lock_path,
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+                0o600,
+            )
+            fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+            child_pid_path = root / "child.pid"
+            child_source = (
+                "import pathlib,subprocess,sys;"
+                "p=subprocess.Popen([sys.executable,'-c',"
+                "'import time;time.sleep(60)']);"
+                "pathlib.Path(sys.argv[1]).write_text(str(p.pid))"
+            )
+            auth_payload = json.dumps(
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "a" * 64},
+                }
+            ).encode() + b"\n"
+            try:
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(
+                            ROOT
+                            / "automations/upstream/scripts/"
+                            "agent_watchdog.py"
+                        ),
+                        "--parent-pid",
+                        str(os.getpid()),
+                        "--timeout-seconds",
+                        "30",
+                        "--auth-path",
+                        str(auth_path),
+                        "--auth-stdin",
+                        "--lock-fd",
+                        str(lock_descriptor),
+                        "--",
+                        sys.executable,
+                        "-c",
+                        child_source,
+                        str(child_pid_path),
+                    ],
+                    input=auth_payload,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    pass_fds=(lock_descriptor,),
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(
+                    completed.returncode,
+                    0,
+                    completed.stderr.decode(errors="replace"),
+                )
+                child_pid = int(child_pid_path.read_text())
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    try:
+                        os.kill(child_pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail("watchdog background child survived")
+                self.assertFalse(auth_path.exists())
+            finally:
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+                os.close(lock_descriptor)
+
+    def test_agent_watchdog_kills_setsid_grandchild(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            auth_directory = root / "codex-home"
+            auth_directory.mkdir(mode=0o700)
+            auth_path = auth_directory / "auth.json"
+            lock_path = root / "agent.lock"
+            lock_descriptor = os.open(
+                lock_path,
+                os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW,
+                0o600,
+            )
+            fcntl.flock(lock_descriptor, fcntl.LOCK_EX)
+            grandchild_pid_path = root / "grandchild.pid"
+            grandchild_source = (
+                "import os,pathlib,sys,time;"
+                "os.setsid();"
+                "pathlib.Path(sys.argv[1]).write_text(str(os.getpid()));"
+                "time.sleep(60)"
+            )
+            child_source = (
+                "import subprocess,sys,time;"
+                "subprocess.Popen([sys.executable,'-c',sys.argv[1],sys.argv[2]]);"
+                "time.sleep(0.05)"
+            )
+            supervision_token = "test-supervision-token-0123456789"
+            supervision_marker = (
+                "DECODEX_AGENT_SUPERVISION=" + supervision_token
+            )
+            auth_payload = json.dumps(
+                {
+                    "auth_mode": "chatgpt",
+                    "tokens": {"access_token": "a" * 64},
+                }
+            ).encode() + b"\n"
+            try:
+                completed = subprocess.run(
+                    [
+                        sys.executable,
+                        str(
+                            ROOT
+                            / "automations/upstream/scripts/"
+                            "agent_watchdog.py"
+                        ),
+                        "--parent-pid",
+                        str(os.getpid()),
+                        "--timeout-seconds",
+                        "30",
+                        "--auth-path",
+                        str(auth_path),
+                        "--auth-stdin",
+                        "--lock-fd",
+                        str(lock_descriptor),
+                        "--",
+                        sys.executable,
+                        "-c",
+                        child_source,
+                        grandchild_source,
+                        str(grandchild_pid_path),
+                        supervision_marker,
+                    ],
+                    input=auth_payload,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    pass_fds=(lock_descriptor,),
+                    env={
+                        **os.environ,
+                        "DECODEX_AGENT_SUPERVISION": supervision_token,
+                    },
+                    timeout=15,
+                    check=False,
+                )
+                self.assertEqual(
+                    completed.returncode,
+                    0,
+                    completed.stderr.decode(errors="replace"),
+                )
+                grandchild_pid = int(grandchild_pid_path.read_text())
+                deadline = time.monotonic() + 5
+                while time.monotonic() < deadline:
+                    try:
+                        os.kill(grandchild_pid, 0)
+                    except ProcessLookupError:
+                        break
+                    time.sleep(0.05)
+                else:
+                    self.fail("watchdog setsid grandchild survived")
+                self.assertFalse(auth_path.exists())
+            finally:
+                if grandchild_pid_path.exists():
+                    try:
+                        os.kill(
+                            int(grandchild_pid_path.read_text()),
+                            signal.SIGKILL,
+                        )
+                    except ProcessLookupError:
+                        pass
+                fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
+                os.close(lock_descriptor)
+
+    def test_agent_run_fence_blocks_overlap_until_receipt_phase_closes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory)
+                / ".agent/automations/upstream/cache"
+            )
+            cache_root.mkdir(parents=True, mode=0o700)
+            descriptor, run_path = (
+                self.autopilot.agent_module._acquire_agent_run(
+                    cache_root,
+                    candidate_id="0" * 16,
+                    role="maintainer",
+                    generation=1,
+                )
+            )
+            fence = self.autopilot.AgentRunFence(
+                descriptor,
+                run_path,
+                candidate_id="0" * 16,
+                role="maintainer",
+                generation=1,
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_run_in_progress",
+            ):
+                self.autopilot.agent_module._acquire_agent_run(
+                    cache_root,
+                    candidate_id="0" * 16,
+                    role="maintainer",
+                    generation=2,
+                )
+            fence.close()
+
+            next_descriptor, next_run_path = (
+                self.autopilot.agent_module._acquire_agent_run(
+                    cache_root,
+                    candidate_id="0" * 16,
+                    role="maintainer",
+                    generation=2,
+                )
+            )
+            self.autopilot.agent_module._release_agent_run(
+                next_descriptor,
+                next_run_path,
+            )
+
+    def test_agent_run_cleanup_removes_all_unlocked_auth_capsules(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory)
+                / ".agent/automations/upstream/cache"
+            )
+            cache_root.mkdir(parents=True, mode=0o700)
+            run_root = self.autopilot.agent_module._agent_run_root(
+                cache_root
+            )
+            try:
+                for index, role in enumerate(
+                    ("maintainer", "reviewer"),
+                    start=1,
+                ):
+                    run_path = (
+                        run_root
+                        / f"{index:016x}-{role}-1"
+                    )
+                    run_path.mkdir(mode=0o700)
+                    codex_home = run_path / "host/codex-home"
+                    codex_home.mkdir(parents=True, mode=0o700)
+                    auth_path = codex_home / "auth.json"
+                    auth_path.write_text(
+                        '{"tokens":{"access_token":"stale"}}\n',
+                        encoding="utf-8",
+                    )
+                    auth_path.chmod(0o600)
+
+                removed = (
+                    self.autopilot.cleanup_stale_agent_runs(cache_root)
+                )
+
+                self.assertEqual(removed, 2)
+                self.assertEqual(
+                    [
+                        entry.name
+                        for entry in run_root.iterdir()
+                        if entry.is_dir()
+                    ],
+                    [],
+                )
+                self.assertEqual(
+                    [
+                        entry.name
+                        for entry in run_root.iterdir()
+                        if entry.name
+                        != self.autopilot.AGENT_RUN_ROOT_LOCK_NAME
+                    ],
+                    [],
+                )
+            finally:
+                shutil.rmtree(run_root)
+
+    def test_agent_run_cleanup_prunes_historical_lock_churn_before_capacity(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory)
+                / ".agent/automations/upstream/cache"
+            )
+            cache_root.mkdir(parents=True, mode=0o700)
+            run_root = self.autopilot.agent_module._agent_run_root(
+                cache_root
+            )
+            try:
+                for index in range(8):
+                    path = run_root / f"{index:016x}-maintainer.lock"
+                    path.write_bytes(b"")
+                    path.chmod(0o600)
+                with mock.patch.object(
+                    self.autopilot.agent_module,
+                    "AGENT_RUN_ROOT_MAX_ENTRIES",
+                    2,
+                ):
+                    self.assertEqual(
+                        self.autopilot.cleanup_stale_agent_runs(cache_root),
+                        0,
+                    )
+                self.assertEqual(
+                    sorted(entry.name for entry in run_root.iterdir()),
+                    [self.autopilot.AGENT_RUN_ROOT_LOCK_NAME],
+                )
+            finally:
+                shutil.rmtree(run_root)
+
+    def test_agent_watchdog_cleans_up_after_parent_death(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            auth_directory = root / "codex-home"
+            auth_directory.mkdir(mode=0o700)
+            auth_path = auth_directory / "auth.json"
+            lock_path = root / "agent.lock"
+            watchdog_pid_path = root / "watchdog.pid"
+            child_pid_path = root / "child.pid"
+            watchdog = (
+                ROOT / "automations/upstream/scripts/agent_watchdog.py"
+            )
+            child_source = (
+                "import pathlib,sys,time;"
+                "pathlib.Path(sys.argv[1]).write_text(str(__import__('os').getpid()));"
+                "time.sleep(60)"
+            )
+            helper_source = """
+import fcntl
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+
+watchdog, auth_path, lock_path, watchdog_pid_path, child_pid_path, child_source = sys.argv[1:]
+descriptor = os.open(lock_path, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW, 0o600)
+fcntl.flock(descriptor, fcntl.LOCK_EX)
+process = subprocess.Popen(
+    [
+        sys.executable,
+        watchdog,
+        "--parent-pid",
+        str(os.getpid()),
+        "--timeout-seconds",
+        "30",
+        "--auth-path",
+        auth_path,
+        "--auth-stdin",
+        "--lock-fd",
+        str(descriptor),
+        "--",
+        sys.executable,
+        "-c",
+        child_source,
+        child_pid_path,
+    ],
+    stdin=subprocess.PIPE,
+    stdout=subprocess.DEVNULL,
+    stderr=subprocess.DEVNULL,
+    pass_fds=(descriptor,),
+)
+payload = json.dumps(
+    {"auth_mode": "chatgpt", "tokens": {"access_token": "a" * 64}}
+).encode() + b"\\n"
+process.stdin.write(payload)
+process.stdin.close()
+Path(watchdog_pid_path).write_text(str(process.pid))
+deadline = time.monotonic() + 5
+while time.monotonic() < deadline and not Path(child_pid_path).exists():
+    time.sleep(0.05)
+os._exit(0)
+"""
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    helper_source,
+                    str(watchdog),
+                    str(auth_path),
+                    str(lock_path),
+                    str(watchdog_pid_path),
+                    str(child_pid_path),
+                    child_source,
+                ],
+                check=True,
+                timeout=10,
+            )
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline:
+                if child_pid_path.exists():
+                    child_pid = int(child_pid_path.read_text())
+                    try:
+                        os.kill(child_pid, 0)
+                    except ProcessLookupError:
+                        if not auth_path.exists():
+                            break
+                time.sleep(0.05)
+            else:
+                self.fail("watchdog did not clean up after parent death")
+
+            descriptor = os.open(lock_path, os.O_RDWR | os.O_NOFOLLOW)
+            try:
+                deadline = time.monotonic() + 5
+                while True:
+                    try:
+                        fcntl.flock(
+                            descriptor,
+                            fcntl.LOCK_EX | fcntl.LOCK_NB,
+                        )
+                        break
+                    except BlockingIOError:
+                        if time.monotonic() >= deadline:
+                            raise
+                        time.sleep(0.05)
+            finally:
+                os.close(descriptor)
+
+    def test_agent_worktree_inventory_rejects_ignored_and_special_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = Path(directory) / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            (worktree / ".gitignore").write_text(".env\n", encoding="utf-8")
+            (worktree / "tracked.txt").write_text("tracked\n", encoding="utf-8")
+            subprocess.run(
+                ["git", "add", ".gitignore", "tracked.txt"],
+                cwd=worktree,
+                check=True,
+            )
+            self.commit_fixture_tree(worktree, "fixture")
+
+            (worktree / ".env").write_text("secret\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_worktree_ignored_artifacts",
+            ):
+                self.autopilot.agent_module._worktree_artifact_inventory(
+                    worktree
+                )
+            (worktree / ".env").unlink()
+
+            os.mkfifo(worktree / "pipe")
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_worktree_special_file_invalid",
+            ):
+                self.autopilot.agent_module._worktree_artifact_inventory(
+                    worktree
+                )
+            (worktree / "pipe").unlink()
+
+            (worktree / "link").symlink_to("tracked.txt")
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_worktree_symlink_invalid",
+            ):
+                self.autopilot.agent_module._worktree_artifact_inventory(
+                    worktree
+                )
+            (worktree / "link").unlink()
+            self.assertRegex(
+                self.autopilot.agent_module._worktree_artifact_inventory(
+                    worktree
+                ),
+                r"^[0-9a-f]{64}$",
+            )
+            expected_head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            expected_tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            (worktree / "tracked.txt").write_text(
+                "dirty\n",
+                encoding="utf-8",
+            )
+            (worktree / ".env").write_text("ignored\n", encoding="utf-8")
+            (worktree / "untracked.txt").write_text(
+                "untracked\n",
+                encoding="utf-8",
+            )
+            self.autopilot.agent_module._reset_prepared_worktree(
+                worktree,
+                expected_head=expected_head,
+                expected_tree=expected_tree,
+            )
+            self.assertFalse((worktree / ".env").exists())
+            self.assertFalse((worktree / "untracked.txt").exists())
+            self.assertEqual(
+                (worktree / "tracked.txt").read_text(encoding="utf-8"),
+                "tracked\n",
+            )
+
+    def test_agent_patch_applies_regular_files_and_deletions(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = Path(directory) / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            source = worktree / "crates/decodex-codex"
+            source.mkdir(parents=True)
+            (source / "keep.txt").write_text("base\n", encoding="utf-8")
+            (source / "delete.txt").write_text(
+                "delete\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"],
+                cwd=worktree,
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            (source / "keep.txt").write_text("updated\n", encoding="utf-8")
+            (source / "delete.txt").unlink()
+            (source / "new.txt").write_text("new\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
+            patch = subprocess.run(
+                ["git", "diff", "--cached", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+
+            changed = self.autopilot.apply_agent_patch(
+                worktree,
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+                patch=patch,
+                patch_sha256=hashlib.sha256(patch).hexdigest(),
+                expected_head=head,
+                expected_tree=tree,
+            )
+
+            self.assertEqual(
+                set(changed),
+                {
+                    "crates/decodex-codex/delete.txt",
+                    "crates/decodex-codex/keep.txt",
+                    "crates/decodex-codex/new.txt",
+                },
+            )
+            self.assertFalse((source / "delete.txt").exists())
+            self.assertEqual(
+                (source / "keep.txt").read_text(encoding="utf-8"),
+                "updated\n",
+            )
+            self.assertEqual(
+                (source / "new.txt").read_text(encoding="utf-8"),
+                "new\n",
+            )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "diff", "--name-only"],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
+
+    def test_agent_patch_applies_above_default_command_input_limit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = Path(directory) / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            source = worktree / "crates/decodex-codex"
+            source.mkdir(parents=True)
+            (source / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"],
+                cwd=worktree,
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            payload = b"".join(
+                hashlib.sha256(index.to_bytes(4, "big")).digest()
+                for index in range(4096)
+            )
+            large_file = source / "large.bin"
+            large_file.write_bytes(payload)
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            patch = subprocess.run(
+                ["git", "diff", "--cached", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            self.assertGreater(
+                len(patch),
+                self.autopilot.MAX_COMMAND_INPUT_BYTES,
+            )
+            self.assertLessEqual(
+                len(patch),
+                self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES,
+            )
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+
+            changed = self.autopilot.apply_agent_patch(
+                worktree,
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+                patch=patch,
+                patch_sha256=hashlib.sha256(patch).hexdigest(),
+                expected_head=head,
+                expected_tree=tree,
+            )
+
+            self.assertEqual(
+                changed,
+                ("crates/decodex-codex/large.bin",),
+            )
+            self.assertEqual(large_file.read_bytes(), payload)
+
+    def test_agent_patch_rejects_nonregular_modes_and_whitespace(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = Path(directory) / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            source = worktree / "crates/decodex-codex"
+            source.mkdir(parents=True)
+            (source / "tracked.txt").write_text(
+                "tracked\n",
+                encoding="utf-8",
+            )
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"],
+                cwd=worktree,
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+
+            (source / "link").symlink_to("tracked.txt")
+            subprocess.run(
+                ["git", "add", "crates/decodex-codex/link"],
+                cwd=worktree,
+                check=True,
+            )
+            symlink_patch = subprocess.run(
+                ["git", "diff", "--cached", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_patch_identity_invalid",
+            ):
+                self.autopilot.apply_agent_patch(
+                    worktree,
+                    candidate={"id": "0" * 16, "kind": "bootstrap"},
+                    patch=symlink_patch,
+                    patch_sha256=hashlib.sha256(
+                        symlink_patch
+                    ).hexdigest(),
+                    expected_head=head,
+                    expected_tree=tree,
+                )
+
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "clean", "-fdx", "-q"],
+                cwd=worktree,
+                check=True,
+            )
+            (source / "tracked.txt").write_text(
+                "trailing space \n",
+                encoding="utf-8",
+            )
+            whitespace_patch = subprocess.run(
+                ["git", "diff", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_patch_check_failed",
+            ):
+                self.autopilot.apply_agent_patch(
+                    worktree,
+                    candidate={"id": "0" * 16, "kind": "bootstrap"},
+                    patch=whitespace_patch,
+                    patch_sha256=hashlib.sha256(
+                        whitespace_patch
+                    ).hexdigest(),
+                    expected_head=head,
+                    expected_tree=tree,
+                )
+
+    def test_agent_patch_authorization_denies_control_planes_and_rolls_back(
+        self,
+    ):
+        normal = {"id": "0" * 16, "kind": "bootstrap"}
+        repair = {
+            "id": "1" * 16,
+            "kind": "automation_repair",
+            "path_summary": {"reason_code": "validation_failed"},
+        }
+        pricing = {
+            "id": "2" * 16,
+            "kind": "automation_repair",
+            "path_summary": {"reason_code": "x_pricing_contract_drift"},
+        }
+        authorize = (
+            self.autopilot.agent_module._agent_patch_paths_authorized
+        )
+        self.assertTrue(
+            authorize(normal, ["crates/decodex-protocol/src/lib.rs"])
+        )
+        self.assertTrue(
+            authorize(repair, ["automations/upstream/prompts/health.md"])
+        )
+        for path in (
+            ".github/workflows/ci.yml",
+            "apps/decodex/src/manual/land.rs",
+            "apps/decodex-publisher/src/social_xurl/client.rs",
+            "automations/upstream/scripts/upstream_autopilot.py",
+        ):
+            self.assertFalse(authorize(repair, [path]), path)
+        self.assertTrue(
+            authorize(
+                pricing,
+                [
+                    "apps/decodex-publisher/src/social_xurl/pricing.rs",
+                    "automations/upstream/tests/fixtures/x-pricing-current.md",
+                ],
+            )
+        )
+        self.assertFalse(
+            authorize(pricing, ["apps/decodex-publisher/src/lib.rs"])
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = Path(directory) / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            (worktree / "README.md").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"],
+                cwd=worktree,
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            workflow = worktree / ".github/workflows/ci.yml"
+            workflow.parent.mkdir(parents=True)
+            workflow.write_text("name: unauthorized\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
+            patch = subprocess.run(
+                ["git", "diff", "--cached", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "clean", "-fdx", "-q"],
+                cwd=worktree,
+                check=True,
+            )
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_patch_path_unauthorized",
+            ):
+                self.autopilot.apply_agent_patch(
+                    worktree,
+                    candidate=repair,
+                    patch=patch,
+                    patch_sha256=hashlib.sha256(patch).hexdigest(),
+                    expected_head=head,
+                    expected_tree=tree,
+                )
+
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "status", "--porcelain=v1"],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
+            self.assertFalse(workflow.exists())
+
+    def test_agent_patch_guard_removes_receipt_and_restores_real_worktree(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = root / "repo"
+            worktree.mkdir()
+            subprocess.run(
+                ["git", "init", "-q", "--initial-branch=main"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=worktree,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=worktree,
+                check=True,
+            )
+            hooks = root / "empty-hooks"
+            hooks.mkdir()
+            subprocess.run(
+                ["git", "config", "core.hooksPath", str(hooks)],
+                cwd=worktree,
+                check=True,
+            )
+            tracked = worktree / "crates/decodex-codex/tracked.txt"
+            tracked.parent.mkdir(parents=True)
+            tracked.write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+            subprocess.run(
+                ["git", "commit", "-q", "-m", "base"],
+                cwd=worktree,
+                check=True,
+            )
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tree = subprocess.run(
+                ["git", "rev-parse", "HEAD^{tree}"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            tracked.write_text("staged\n", encoding="utf-8")
+            subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
+            cache = root / ".agent/automations/upstream/cache"
+            receipt_path = self.autopilot.ensure_handoff_receipt_path(
+                cache,
+                candidate_id="0" * 16,
+                role="maintainer",
+                generation=1,
+            )
+            receipt_path.write_text("{}\n", encoding="utf-8")
+            receipt_path.chmod(0o600)
+            fence = mock.Mock()
+            guard = self.autopilot.cli_module._AgentPatchRollback(
+                worktree=worktree,
+                expected_head=head,
+                expected_tree=tree,
+                receipt_path=receipt_path,
+                run_fence=fence,
+            )
+
+            guard.rollback()
+            guard.close_fence()
+
+            self.assertFalse(receipt_path.exists())
+            self.assertEqual(tracked.read_text(encoding="utf-8"), "base\n")
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "status", "--porcelain=v1"],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
+            fence.close.assert_called_once_with()
+
+    def test_agent_filesystem_profile_denies_every_discovered_root(self):
+        with tempfile.TemporaryDirectory() as directory:
+            run_path = Path(directory)
+            workspace = run_path / "workspace"
+            evidence = run_path / "evidence"
+            model = run_path / "model"
+            for path in (workspace, evidence, model):
+                path.mkdir()
+
+            entries = self.autopilot.agent_module._agent_filesystem_entries(
+                run_path=run_path,
+                workspace=workspace,
+                evidence_root=evidence,
+                model_path=model,
+            )
+
+            for root_entry in Path("/").iterdir():
+                self.assertIn(str(root_entry), entries)
+            self.assertEqual(entries[str(workspace)], "read")
+            self.assertEqual(entries[str(evidence)], "read")
+            self.assertEqual(entries[str(model)], "write")
+            self.assertEqual(entries[str(run_path)], "none")
+            self.assertEqual(
+                entries[self.autopilot.AGENT_SYSTEM_DATA_ROOT],
+                "none",
+            )
+            self.assertEqual(
+                self.autopilot.agent_module._system_data_alias(
+                    "/Users/example/private.txt"
+                ),
+                "/System/Volumes/Data/Users/example/private.txt",
+            )
+            self.assertEqual(
+                self.autopilot.agent_module._system_data_alias(
+                    "/var/folders/example/private.txt"
+                ),
+                (
+                    "/System/Volumes/Data/private/var/folders/"
+                    "example/private.txt"
+                ),
+            )
+            for path in self.autopilot.AGENT_SENSITIVE_SYSTEM_PATHS:
+                self.assertEqual(entries[path], "none")
+                self.assertIn(
+                    f'{json.dumps(path)}="read"',
+                    self.autopilot.agent_module._agent_keychain_probe_profile(
+                        entries
+                    ),
+                )
+            self.assertIn(b"env={}", self.autopilot.SANDBOX_PROBE_SOURCE)
+            self.assertIn(
+                b"start_new_session=True",
+                self.autopilot.SANDBOX_PROBE_SOURCE,
+            )
+
+    @unittest.skipUnless(sys.platform == "darwin", "requires Seatbelt")
+    def test_agent_sandbox_denies_host_and_git_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            root.chmod(0o700)
+            cache_root = root / "cache"
+            cache_root.mkdir(mode=0o700)
+            run_path = root / "run"
+            run_path.mkdir(mode=0o700)
+            host_path = run_path / "host"
+            model_path = run_path / "model"
+            evidence_root = run_path / "evidence"
+            workspace = run_path / "workspace"
+            isolated_home = host_path / "home"
+            isolated_codex_home = host_path / "codex-home"
+            host_tmp = host_path / "tmp"
+            for path in (
+                host_path,
+                model_path,
+                evidence_root,
+                workspace,
+                isolated_home,
+                isolated_codex_home,
+                host_tmp,
+            ):
+                path.mkdir(mode=0o700)
+            (evidence_root / "manifest.json").write_text(
+                '{"schema":"probe"}\n',
+                encoding="utf-8",
+            )
+            (evidence_root / "manifest.json").chmod(0o600)
+            isolated_auth = isolated_codex_home / "auth.json"
+            isolated_auth.write_text("{}\n", encoding="utf-8")
+            isolated_auth.chmod(0o600)
+
+            worktree = root / "worktree"
+            worktree.mkdir(mode=0o700)
+            subprocess.run(["git", "init", "-q"], cwd=worktree, check=True)
+            (worktree / "tracked.txt").write_text(
+                "tracked\n",
+                encoding="utf-8",
+            )
+            git_common = worktree / ".git"
+            codex, _codex_sha256 = (
+                self.autopilot.agent_module.resolve_executable("codex")
+            )
+            python, _python_sha256 = (
+                self.autopilot.agent_module.resolve_executable("python3")
+            )
+            home = self.autopilot.real_home_directory()
+            real_auth = home / ".codex/auth.json"
+            if not real_auth.exists():
+                self.skipTest("Codex auth is unavailable")
+
+            filesystem = (
+                self.autopilot.agent_module._agent_filesystem_entries(
+                    run_path=run_path,
+                    workspace=workspace,
+                    evidence_root=evidence_root,
+                    model_path=model_path,
+                    runtime_read_paths=(
+                        self.autopilot.agent_module._runtime_read_paths(
+                            python
+                        )
+                    ),
+                )
+            )
+            permission_profile = (
+                self.autopilot.agent_module._filesystem_config(filesystem)
+            )
+            keychain_permission_profile = (
+                self.autopilot.agent_module._agent_keychain_probe_profile(
+                    filesystem
+                )
+            )
+            isolated_environment = {
+                "LANG": "C.UTF-8",
+                "PATH": os.pathsep.join(
+                    str(path)
+                    for path in self.autopilot.TRUSTED_SYSTEM_TOOL_DIRECTORIES
+                ),
+                "HOME": str(isolated_home),
+                "CODEX_HOME": str(isolated_codex_home),
+                "TMPDIR": str(host_tmp),
+            }
+            try:
+                digest = self.autopilot.agent_module._agent_sandbox_probe(
+                    codex=codex,
+                    python=python,
+                    permission_profile=permission_profile,
+                    keychain_permission_profile=(
+                        keychain_permission_profile
+                    ),
+                    isolated_environment=isolated_environment,
+                    host_path=host_path,
+                    model_path=model_path,
+                    evidence_root=evidence_root,
+                    workspace=workspace,
+                    candidate_worktree=worktree,
+                    cache_root=cache_root,
+                    git_common_dir=git_common,
+                    mirror_path=None,
+                    real_auth_path=real_auth,
+                    isolated_auth_path=isolated_auth,
+                    candidate_id="0" * 16,
+                    generation=1,
+                )
+            except self.autopilot.CommandFailure as error:
+                self.fail(
+                    error.output_tail.decode("utf-8", errors="replace")
+                )
+            self.assertRegex(digest, r"^[0-9a-f]{64}$")
+            probe_config = json.loads(
+                (model_path / "sandbox-probe.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            self.assertIn(
+                self.autopilot.AGENT_SYSTEM_DATA_ROOT,
+                probe_config["read_denied"],
+            )
+            self.assertIn(
+                self.autopilot.agent_module._system_data_alias(real_auth),
+                probe_config["read_denied"],
+            )
+            self.assertIn(
+                self.autopilot.agent_module._system_data_alias(isolated_auth),
+                probe_config["read_denied"],
+            )
+            data_worktree = self.autopilot.agent_module._system_data_alias(
+                worktree
+            )
+            self.assertIsNotNone(data_worktree)
+            self.assertTrue(
+                any(
+                    denied.startswith(f"{data_worktree}/")
+                    for denied in probe_config["write_denied"]
+                )
+            )
+
+    def test_command_input_is_bounded_and_passed_only_on_stdin(self):
+        output = self.autopilot.run_command(
+            [
+                sys.executable,
+                "-c",
+                (
+                    "import hashlib,sys;"
+                    "data=sys.stdin.buffer.read();"
+                    "print(hashlib.sha256(data).hexdigest())"
+                ),
+            ],
+            input_bytes=b"transient-access-token\n",
+            inherit_environment=False,
+            failure_code="test_stdin_failed",
+        )
+        self.assertEqual(
+            output,
+            hashlib.sha256(b"transient-access-token\n").hexdigest(),
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "command_input_budget_invalid",
+        ):
+            self.autopilot.run_command(
+                [sys.executable, "-c", "pass"],
+                input_bytes=b"x" * (
+                    self.autopilot.MAX_COMMAND_INPUT_BYTES + 1
+                ),
+                inherit_environment=False,
+                failure_code="test_stdin_failed",
+            )
+
+    def test_agent_auth_capsule_omits_refresh_authority(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory) / "home"
+            codex_home = home / ".codex"
+            codex_home.mkdir(parents=True, mode=0o700)
+            auth_path = codex_home / "auth.json"
+            source = {
+                "auth_mode": "chatgpt",
+                "last_refresh": "2026-07-30T00:00:00Z",
+                "tokens": {
+                    "id_token": "a" * 64,
+                    "access_token": "b" * 64,
+                    "refresh_token": "do-not-copy",
+                    "account_id": (
+                        "00000000-0000-0000-0000-000000000000"
+                    ),
+                },
+            }
+            auth_path.write_text(
+                json.dumps(source),
+                encoding="utf-8",
+            )
+            auth_path.chmod(0o600)
+            with mock.patch.object(
+                self.autopilot.agent_module,
+                "real_home_directory",
+                return_value=home,
+            ):
+                capsule, returned_path, identity = (
+                    self.autopilot.agent_module._real_codex_auth_capsule()
+                )
+                self.autopilot.agent_module._assert_real_auth_unchanged(
+                    returned_path,
+                    identity,
+                )
+            self.assertEqual(returned_path, auth_path)
+            self.assertEqual(capsule["tokens"]["refresh_token"], "")
+            self.assertNotIn("do-not-copy", json.dumps(capsule))
+            self.assertEqual(
+                capsule["tokens"]["access_token"],
+                source["tokens"]["access_token"],
+            )
+            self.assertEqual(auth_path.stat().st_mode & 0o777, 0o600)
+
+    def test_agent_result_rejects_replacement_and_symlink(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            result_path = root / "result.json"
+            result_path.write_text("{}", encoding="utf-8")
+            result_path.chmod(0o600)
+            identity = (
+                result_path.stat().st_dev,
+                result_path.stat().st_ino,
+            )
+            replacement = root / "replacement.json"
+            replacement.write_text("{}", encoding="utf-8")
+            replacement.chmod(0o600)
+            result_path.unlink()
+            replacement.rename(result_path)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_result_path_invalid",
+            ):
+                self.autopilot.agent_module._read_agent_result(
+                    result_path,
+                    expected_identity=identity,
+                )
+
+            result_path.unlink()
+            external = root / "external.json"
+            external.write_text("{}", encoding="utf-8")
+            external.chmod(0o600)
+            result_path.symlink_to(external)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_result_unavailable",
+            ):
+                self.autopilot.agent_module._read_agent_result(
+                    result_path,
+                    expected_identity=(
+                        external.stat().st_dev,
+                        external.stat().st_ino,
+                    ),
+                )
+
+    def test_agent_result_accepts_max_patch_after_json_expansion(self):
+        with tempfile.TemporaryDirectory() as directory:
+            result_path = Path(directory) / "result.json"
+            prefix = "diff --git a/large.txt b/large.txt\n"
+            patch = prefix + "\n" * (
+                self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES
+                - len(prefix.encode("utf-8"))
+            )
+            self.assertEqual(
+                len(patch.encode("utf-8")),
+                self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES,
+            )
+            encoded = self.autopilot.canonical_json(
+                {
+                    "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                    "role": "maintainer",
+                    "disposition": "staged",
+                    "finding_codes": [],
+                    "patch": patch,
+                }
+            )
+            self.assertGreater(
+                len(encoded),
+                self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES
+                + 32 * 1024,
+            )
+            self.assertLessEqual(
+                len(encoded),
+                self.autopilot.agent_module.AGENT_RESULT_MAX_BYTES,
+            )
+            result_path.write_bytes(encoded)
+            result_path.chmod(0o600)
+            metadata = result_path.stat()
+
+            loaded = self.autopilot.agent_module._read_agent_result(
+                result_path,
+                expected_identity=(metadata.st_dev, metadata.st_ino),
+            )
+            _result, patch_bytes = (
+                self.autopilot.agent_module._validate_agent_result(
+                    loaded,
+                    role="maintainer",
+                )
+            )
+
+            self.assertEqual(
+                len(patch_bytes),
+                self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES,
+            )
+
+    def test_reviewer_agent_result_cannot_claim_reserved_base_stale(self):
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_invalid",
+        ):
+            self.autopilot.agent_module._validate_agent_result(
+                {
+                    "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                    "role": "reviewer",
+                    "disposition": "request_repair",
+                    "finding_codes": ["base_stale"],
+                    "patch": None,
+                },
+                role="reviewer",
+            )
+
+    def test_agent_lease_budget_covers_write_guard(self):
+        self.assertEqual(
+            self.autopilot.AGENT_LEASE_BUDGET_SECONDS,
+            self.autopilot.AGENT_TIMEOUT_SECONDS
+            + self.autopilot.SIDE_EFFECT_LEASE_BUDGET_SECONDS,
+        )
+        self.assertGreaterEqual(
+            self.autopilot.AGENT_LEASE_BUDGET_SECONDS,
+            self.policy["lease_write_guard_seconds"],
+        )
+
+    def test_agent_context_keeps_typed_diagnostics_and_repair_findings(self):
+        candidate = {
+            "id": "0" * 16,
+            "kind": "automation_repair",
+            "result": {
+                "outcome": "repair_requested",
+                "finding_codes": ["cursor_gap"],
+            },
+        }
+        repair_target = {
+            "id": "1" * 16,
+            "kind": "bootstrap",
+            "result": {
+                "outcome": "blocked",
+                "reason_code": "validation_failed",
+                "error_digest": "2" * 64,
+                "at": 100,
+            },
+        }
+        prompt = self.autopilot.agent_module._agent_prompt(
+            candidate=candidate,
+            repair_target=repair_target,
+            role="maintainer",
+            generation=1,
+            worktree=Path("/tmp/bounded-worktree"),
+            base_head="3" * 40,
+            head_sha="3" * 40,
+            tree_sha="4" * 40,
+            evidence={
+                "root": "/tmp/private-evidence",
+                "manifest": "/tmp/private-evidence/manifest.json",
+                "manifest_sha256": "5" * 64,
+                "upstream_mirror": None,
+                "upstream_sources": [],
+                "installed_schema_artifacts": [],
+            },
+            diagnostics={
+                "pricing_parser": {"schema": "pricing"},
+                "validation_failure": {"schema": "validation"},
+            },
+        )
+        context = json.loads(prompt.split("Context:\n", 1)[1])
+        self.assertEqual(context["worktree"], ".")
+        self.assertNotIn("/tmp/bounded-worktree", prompt)
+        self.assertNotIn("/tmp/private-evidence", prompt)
+        self.assertEqual(
+            context["evidence"]["manifest"],
+            "../private-evidence/manifest.json",
+        )
+        self.assertEqual(
+            sorted(context["diagnostics"]),
+            ["pricing_parser", "validation_failure"],
+        )
+        self.assertEqual(
+            context["candidate"]["result"]["finding_codes"],
+            ["cursor_gap"],
+        )
+        self.assertEqual(
+            context["repair_target"]["result"]["reason_code"],
+            "validation_failed",
+        )
+
+    def test_agent_evidence_binds_exact_mirror_commit_and_schema_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "source"
+            source.mkdir()
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=source,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=source,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=source,
+                check=True,
+            )
+            (source / "README").write_text("bounded\n", encoding="utf-8")
+            for relative in self.autopilot.UPSTREAM_CORE_SCHEMA_PATHS:
+                path = source / relative
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(
+                    json.dumps({"title": path.name}) + "\n",
+                    encoding="utf-8",
+                )
+            subprocess.run(
+                ["git", "add", "."],
+                cwd=source,
+                check=True,
+            )
+            self.commit_fixture_tree(source, "bounded")
+            head = subprocess.run(
+                ["git", "rev-parse", "HEAD"],
+                cwd=source,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            cache = (
+                root / "repo/.agent/automations/upstream/cache"
+            )
+            mirror_root = cache / "mirror"
+            mirror_root.mkdir(parents=True)
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "-q",
+                    "--bare",
+                    str(source),
+                    str(mirror_root / "openai-codex.git"),
+                ],
+                check=True,
+            )
+            snapshot = {
+                "fingerprint": "1" * 64,
+                "file_digests": {"schema.json": "2" * 64},
+                "core_schemas": {},
+                "request_method_count": 1,
+                "notification_method_count": 1,
+                "missing_request_methods": [],
+                "missing_notification_methods": [],
+            }
+            stable = self.autopilot.persist_schema_evidence(
+                cache,
+                codex_version="codex-cli 0.146.0",
+                executable_sha256="3" * 64,
+                experimental=False,
+                snapshot=snapshot,
+            )
+            experimental = self.autopilot.persist_schema_evidence(
+                cache,
+                codex_version="codex-cli 0.146.0",
+                executable_sha256="3" * 64,
+                experimental=True,
+                snapshot=snapshot,
+                retained_evidence={stable},
+            )
+            candidate = {
+                "id": "0" * 16,
+                "kind": "bootstrap",
+                "from_sha": None,
+                "to_sha": head,
+                "release_tag": None,
+                "schema_evidence": {
+                    "stable": stable,
+                    "experimental": experimental,
+                },
+            }
+            evidence, paths = self.autopilot.agent_module._agent_evidence(
+                cache_root=cache,
+                candidate=candidate,
+                repair_target=None,
+            )
+            self.assertEqual(
+                evidence["upstream_sources"][0]["to_sha"],
+                head,
+            )
+            self.assertEqual(
+                {
+                    artifact["sha256"]
+                    for artifact in evidence["installed_schema_artifacts"]
+                },
+                {stable, experimental},
+            )
+            self.assertIn(
+                (mirror_root / "openai-codex.git").resolve(),
+                paths,
+            )
+            target = root / "target"
+            target.mkdir()
+            subprocess.run(["git", "init", "-q"], cwd=target, check=True)
+            subprocess.run(
+                ["git", "config", "user.name", "Test"],
+                cwd=target,
+                check=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "test@example.invalid"],
+                cwd=target,
+                check=True,
+            )
+            (target / "target.txt").write_text("target\n", encoding="utf-8")
+            subprocess.run(["git", "add", "."], cwd=target, check=True)
+            target_head = self.commit_fixture_tree(target, "target")
+            run_root = root / "run"
+            run_root.mkdir(mode=0o700)
+            package, package_sha256 = (
+                self.autopilot.agent_module._materialize_agent_evidence(
+                    package_root=run_root / "evidence",
+                    worktree=target,
+                    candidate_id=candidate["id"],
+                    role="reviewer",
+                    generation=1,
+                    base_head=target_head,
+                    head_sha=target_head,
+                    evidence=evidence,
+                    diagnostics={},
+                    relevant_path_prefixes=self.policy[
+                        "relevant_path_prefixes"
+                    ],
+                )
+            )
+            manifest = json.loads(
+                Path(package["manifest"]).read_text(encoding="utf-8")
+            )
+            self.assertEqual(
+                manifest["manifest_sha256"],
+                package_sha256,
+            )
+            self.assertNotIn(
+                str(mirror_root),
+                json.dumps(package, sort_keys=True),
+            )
+            packaged_paths = {
+                item["path"] for item in manifest["files"]
+            }
+            self.assertIn("target/change.patch", packaged_paths)
+            self.assertIn(
+                (
+                    f"upstream/{candidate['id']}/"
+                    "codex_app_server_protocol.v2.schemas.json"
+                ),
+                packaged_paths,
+            )
+            upstream_patch = (
+                Path(package["root"])
+                / f"upstream/{candidate['id']}/change.patch"
+            ).read_text(encoding="utf-8")
+            self.assertNotIn("test@example.invalid", upstream_patch)
+            self.assertNotIn("Author:", upstream_patch)
+            self.assertNotIn("Commit:", upstream_patch)
+
+            tampered = cache / "schema-evidence" / f"{stable}.json"
+            value = json.loads(tampered.read_text(encoding="utf-8"))
+            value["codex_version"] = "codex-cli tampered"
+            tampered.write_text(
+                json.dumps(value, sort_keys=True),
+                encoding="utf-8",
+            )
+            tampered.chmod(0o600)
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_schema_evidence_invalid",
+            ):
+                self.autopilot.agent_module._agent_evidence(
+                    cache_root=cache,
+                    candidate=candidate,
+                    repair_target=None,
+                )
+
+    def test_run_agent_cli_retargets_main_and_recovers_receipt_write_crash(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory) / "repo"
+            repo_root.mkdir()
+            repo_root = repo_root.resolve()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            now = int(time.time())
+            state, candidate_id = self.bootstrap(now=now - 1)
+            claim = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                now,
+            )
+            generation = claim["candidate"]["handoff"]["generation"]
+            receipt_path = self.autopilot.ensure_handoff_receipt_path(
+                repo_root / ".agent/automations/upstream/cache",
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            agent_result = {
+                "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                "role": "maintainer",
+                "disposition": "staged",
+                "finding_codes": [],
+                "patch_sha256": "9" * 64,
+            }
+            execution = self.agent_execution(
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+                disposition="staged",
+                started_at=now,
+                completed_at=now + 1,
+            )
+            execution_result = {
+                "result": agent_result,
+                "execution": execution,
+                "execution_sha256": execution["execution_sha256"],
+                "codex_version": execution["codex_version"],
+                "codex_executable_sha256": execution[
+                    "codex_executable_sha256"
+                ],
+                "started_at": execution["started_at"],
+                "completed_at": execution["completed_at"],
+                "patch": b"diff --git a/a b/a\n",
+            }
+            run_fences = [
+                mock.Mock(),
+                mock.Mock(),
+                mock.Mock(),
+                mock.Mock(),
+            ]
+            child_calls = 0
+            completion_calls = 0
+            worktree_head_calls = 0
+            complete_agent_run = self.autopilot.complete_agent_run
+
+            def run_child(**kwargs):
+                nonlocal child_calls
+                child_calls += 1
+                if child_calls <= 2:
+                    raise self.autopilot.AutopilotError(
+                        "agent_execution_failed"
+                    )
+                if child_calls == 4:
+                    self.assertFalse(receipt_path.exists())
+                return {
+                    **execution_result,
+                    "_agent_run_fence": kwargs["run_fence"],
+                }
+
+            def complete_with_one_crash(*args, **kwargs):
+                nonlocal completion_calls
+                completion_calls += 1
+                if completion_calls == 1:
+                    raise self.autopilot.AutopilotError(
+                        "simulated_state_persist_crash"
+                    )
+                return complete_agent_run(*args, **kwargs)
+
+            def run_cli_command(arguments, **_kwargs):
+                nonlocal worktree_head_calls
+                if arguments == ["git", "rev-parse", "HEAD"]:
+                    worktree_head_calls += 1
+                    return (
+                        "1" * 40
+                        if worktree_head_calls <= 2
+                        else "5" * 40
+                    )
+                if arguments == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{'1' * 40}^{{tree}}",
+                ]:
+                    return "2" * 40
+                if arguments == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{'5' * 40}^{{tree}}",
+                ]:
+                    return "6" * 40
+                return ""
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=claim["lease_token"],
+                handoff_challenge=claim["handoff_challenge"],
+                worktree=worktree,
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state.json",
+                    )
+                )
+
+            with (
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "REPO_ROOT",
+                    repo_root,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "DEFAULT_POLICY_PATH",
+                    policy_path,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "resolve_primary_checkout",
+                    return_value=repo_root,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "load_policy",
+                    return_value=self.policy,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_primary_clean_main",
+                    side_effect=[
+                        {
+                            "head": "1" * 40,
+                            "tree": "2" * 40,
+                        },
+                        {
+                            "head": "5" * 40,
+                            "tree": "6" * 40,
+                        },
+                        {
+                            "head": "5" * 40,
+                            "tree": "6" * 40,
+                        },
+                        {
+                            "head": "5" * 40,
+                            "tree": "6" * 40,
+                        },
+                    ],
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "locked_state",
+                    side_effect=locked,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "save_state_guarded",
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_candidate_worktree",
+                    return_value="2" * 40,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "acquire_agent_run_fence",
+                    side_effect=run_fences,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "run_ephemeral_codex_agent",
+                    side_effect=run_child,
+                ) as run_agent,
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "run_command",
+                    side_effect=run_cli_command,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_candidate_commit_worktree",
+                    return_value="5" * 40,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "apply_agent_patch",
+                    return_value=("a",),
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "reset_agent_patch_worktree",
+                ) as reset_patch,
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "staged_handoff_identity",
+                    return_value={
+                        "repository_head": "5" * 40,
+                        "repository_tree": "3" * 40,
+                        "staged_paths_sha256": "4" * 64,
+                    },
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "complete_agent_run",
+                    side_effect=complete_with_one_crash,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_primary_snapshot",
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_execution_failed",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_execution_failed",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+                old_receipt = self.handoff_receipt(
+                    claim,
+                    candidate_id=candidate_id,
+                    role="maintainer",
+                    action="worker_staged",
+                    base_head="1" * 40,
+                    repository_head="1" * 40,
+                    repository_tree="3" * 40,
+                    staged_paths_sha256="4" * 64,
+                    disposition="staged",
+                )
+                self.autopilot.write_handoff_receipt(
+                    receipt_path,
+                    expected_path=receipt_path,
+                    receipt=old_receipt,
+                )
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "simulated_state_persist_crash",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+                completed = self.autopilot.cli_module.execute(arguments)
+
+            self.assertEqual(completed["status"], "agent_completed")
+            self.assertNotIn("recovered", completed)
+            self.assertEqual(run_agent.call_count, 4)
+            reset_patch.assert_called_once_with(
+                worktree,
+                expected_head="5" * 40,
+                expected_tree="6" * 40,
+            )
+            self.assertTrue(receipt_path.exists())
+            self.assertFalse(
+                run_agent.call_args_list[0].kwargs["recover_prepared"]
+            )
+            self.assertTrue(
+                run_agent.call_args_list[1].kwargs["recover_prepared"]
+            )
+            self.assertEqual(
+                run_agent.call_args_list[1].kwargs["head_sha"],
+                "5" * 40,
+            )
+            self.assertEqual(
+                run_agent.call_args_list[1].kwargs["tree_sha"],
+                "6" * 40,
+            )
+            self.assertTrue(
+                run_agent.call_args_list[2].kwargs["recover_prepared"]
+            )
+            self.assertEqual(
+                run_agent.call_args_list[2].kwargs["head_sha"],
+                "5" * 40,
+            )
+            self.assertTrue(
+                run_agent.call_args_list[3].kwargs["recover_prepared"]
+            )
+            for run_fence in run_fences:
+                run_fence.close.assert_called_once()
+            self.assertEqual(
+                state["candidates"][0]["handoff"]["agent_run"]["phase"],
+                "completed",
+            )
+
+    def test_run_agent_fence_blocks_before_worktree_inspection(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory) / "repo"
+            repo_root.mkdir()
+            repo_root = repo_root.resolve()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            now = int(time.time())
+            state, candidate_id = self.bootstrap(now=now - 1)
+            claim = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                now,
+            )
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=claim["lease_token"],
+                handoff_challenge=claim["handoff_challenge"],
+                worktree=worktree,
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state.json",
+                    )
+                )
+
+            with (
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "REPO_ROOT",
+                    repo_root,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "DEFAULT_POLICY_PATH",
+                    policy_path,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "resolve_primary_checkout",
+                    return_value=repo_root,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "load_policy",
+                    return_value=self.policy,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_primary_clean_main",
+                    return_value={
+                        "head": "1" * 40,
+                        "tree": "2" * 40,
+                    },
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "locked_state",
+                    side_effect=locked,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "save_state_guarded",
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "acquire_agent_run_fence",
+                    side_effect=self.autopilot.AutopilotError(
+                        "agent_run_in_progress"
+                    ),
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "run_command",
+                ) as run_command,
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "assert_candidate_worktree",
+                ) as assert_worktree,
+            ):
+                result = self.autopilot.cli_module.execute(arguments)
+
+            self.assertEqual(result["status"], "agent_run_in_progress")
+            run_command.assert_not_called()
+            assert_worktree.assert_not_called()
 
     def test_initial_commit_effect_rejects_missing_worker_handoff(self):
         state, candidate_id = self.bootstrap()
@@ -794,23 +3885,124 @@ class UpstreamAutopilotTests(unittest.TestCase):
         repository_head,
         repository_tree,
         staged_paths_sha256=None,
+        patch_sha256=None,
         disposition,
         finding_codes=(),
     ):
+        generation = claim["candidate"]["handoff"]["generation"]
+        normalized_codes = sorted(set(finding_codes))
+        if patch_sha256 is None and role == "maintainer":
+            patch_sha256 = "9" * 64
         return {
             "schema": self.autopilot.HANDOFF_RECEIPT_SCHEMA,
             "candidate_id": candidate_id,
             "role": role,
             "action": action,
-            "claim_generation": claim["candidate"]["handoff"]["generation"],
+            "claim_generation": generation,
             "challenge": claim["handoff_challenge"],
             "base_head": base_head,
             "repository_head": repository_head,
             "repository_tree": repository_tree,
             "staged_paths_sha256": staged_paths_sha256,
+            "patch_sha256": patch_sha256,
+            "disposition": disposition,
+            "finding_codes": normalized_codes,
+            "agent_execution": self.agent_execution(
+                candidate_id=candidate_id,
+                role=role,
+                generation=generation,
+                disposition=disposition,
+                finding_codes=normalized_codes,
+                patch_sha256=patch_sha256,
+            ),
+        }
+
+    def agent_execution(
+        self,
+        *,
+        candidate_id,
+        role,
+        generation,
+        disposition,
+        finding_codes=(),
+        patch_sha256=None,
+        started_at=100,
+        completed_at=101,
+    ):
+        if patch_sha256 is None and role == "maintainer":
+            patch_sha256 = "9" * 64
+        result = {
+            "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+            "role": role,
             "disposition": disposition,
             "finding_codes": sorted(set(finding_codes)),
+            "patch_sha256": patch_sha256,
         }
+        unsigned = {
+            "schema": self.autopilot.AGENT_EXECUTION_SCHEMA,
+            "candidate_id": candidate_id,
+            "role": role,
+            "generation": generation,
+            "model": self.autopilot.AGENT_MODEL,
+            "reasoning_effort": self.autopilot.AGENT_REASONING_EFFORT,
+            "codex_version": "codex-cli 0.146.0",
+            "codex_executable_sha256": "1" * 64,
+            "command_sha256": "2" * 64,
+            "permission_profile_sha256": "3" * 64,
+            "sandbox_probe_sha256": "4" * 64,
+            "watchdog_sha256": "5" * 64,
+            "workspace_manifest_sha256": "a" * 64,
+            "evidence_manifest_sha256": "6" * 64,
+            "prompt_sha256": "7" * 64,
+            "schema_sha256": "8" * 64,
+            "result_sha256": self.autopilot.sha256_value(result),
+            "started_at": started_at,
+            "completed_at": completed_at,
+        }
+        return {
+            **unsigned,
+            "execution_sha256": self.autopilot.sha256_value(unsigned),
+        }
+
+    def complete_handoff_agent_run(
+        self,
+        state,
+        candidate_id,
+        claim,
+        receipt,
+        *,
+        role,
+        base_head,
+        repository_head,
+        input_tree,
+        now,
+        input_head=None,
+    ):
+        self.autopilot.prepare_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role=role,
+            token=claim["lease_token"],
+            challenge_sha256=hashlib.sha256(
+                claim["handoff_challenge"].encode("utf-8")
+            ).hexdigest(),
+            base_head=base_head,
+            input_head=input_head,
+            repository_head=repository_head,
+            input_tree=input_tree,
+            now=now - 2,
+        )
+        return self.autopilot.complete_agent_run(
+            state,
+            candidate_id=candidate_id,
+            role=role,
+            token=claim["lease_token"],
+            receipt=receipt,
+            receipt_file_sha256=hashlib.sha256(
+                self.autopilot.canonical_json(receipt) + b"\n"
+            ).hexdigest(),
+            now=now - 1,
+        )
 
     def stored_review_handoff(
         self,
@@ -832,8 +4024,16 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "repository_head": receipt["repository_head"],
             "repository_tree": receipt["repository_tree"],
             "staged_paths_sha256": None,
+            "patch_sha256": None,
             "disposition": disposition,
             "finding_codes": sorted(set(finding_codes)),
+            "agent_execution": self.agent_execution(
+                candidate_id=candidate_id,
+                role="reviewer",
+                generation=generation,
+                disposition=disposition,
+                finding_codes=finding_codes,
+            ),
             "challenge_sha256": "7" * 64,
             "receipt_sha256": "8" * 64,
             "consumed_at": consumed_at,
@@ -874,6 +4074,17 @@ class UpstreamAutopilotTests(unittest.TestCase):
             disposition=disposition,
             finding_codes=finding_codes,
         )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            claim,
+            raw,
+            role="reviewer",
+            base_head=base_head,
+            repository_head=head,
+            input_tree=tree,
+            now=now,
+        )
         return self.autopilot.consume_handoff_receipt(
             state,
             candidate_id=candidate_id,
@@ -911,6 +4122,17 @@ class UpstreamAutopilotTests(unittest.TestCase):
             repository_tree=tree,
             staged_paths_sha256=staged_paths_sha256,
             disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            claim,
+            raw,
+            role="maintainer",
+            base_head=base_head,
+            repository_head=base_head,
+            input_tree=base_head,
+            now=now,
         )
         return self.autopilot.consume_handoff_receipt(
             state,
@@ -2325,6 +5547,55 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     now=202,
                 )
 
+    def test_task_retention_degraded_health_can_defer_then_archive(self):
+        manager_id = "00000000-0000-0000-0000-000000000001"
+        health_id = "00000000-0000-0000-0000-000000000002"
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory)
+            self.autopilot.seal_task_retention(
+                repo_root=repo_root,
+                thread_id=health_id,
+                automation_id="codex-upstream-health",
+                terminal_result_code="degraded",
+                evidence_path=None,
+                keep_visible_reason=None,
+                now=100,
+            )
+
+            deferred = self.autopilot.settle_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                thread_id=health_id,
+                result="defer",
+                reason="task_not_terminal",
+                now=200,
+            )
+            plan = self.autopilot.plan_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                now=201,
+            )
+            archived = self.autopilot.settle_task_retention(
+                repo_root=repo_root,
+                current_thread_id=manager_id,
+                thread_id=health_id,
+                result="archived",
+                reason=None,
+                now=202,
+            )
+
+            self.assertFalse(deferred["settled"])
+            self.assertEqual(deferred["status"], "pending_archive")
+            self.assertEqual(
+                [item["thread_id"] for item in plan["pending_tasks"]],
+                [health_id],
+            )
+            self.assertTrue(archived["settled"])
+            self.assertEqual(
+                archived["status"],
+                "archived_readback_confirmed",
+            )
+
     def test_task_retention_prunes_only_settled_receipts(self):
         manager_id = "00000000-0000-0000-0000-000000000001"
         old_id = "00000000-0000-0000-0000-000000000002"
@@ -2820,10 +6091,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     }
                 ],
             }
-            state_path = cache / "state.json"
+            state_path = cache / "state-v4.json"
             state_path.write_text(json.dumps(state), encoding="utf-8")
             state_path.chmod(0o600)
-            state_lock = cache / "state.lock"
+            state_lock = cache / "state-v4.lock"
             state_lock.touch(mode=0o600)
             state_lock.chmod(0o600)
             with (
@@ -3027,9 +6298,86 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 state["last_observed_at"] = 123
                 self.autopilot.save_state(state, state_path, 123)
 
-            loaded = self.autopilot.load_state(cache / "state.json")
+            loaded = self.autopilot.load_state(cache / "state-v4.json")
 
         self.assertEqual(loaded["last_observed_at"], 123)
+
+    def test_locked_state_refuses_exact_legacy_state_cutover_artifacts(self):
+        for legacy_name in self.autopilot.state_module.LEGACY_STATE_NAMES:
+            with self.subTest(legacy_name=legacy_name):
+                with tempfile.TemporaryDirectory() as directory:
+                    cache = (
+                        Path(directory)
+                        / ".agent"
+                        / "automations"
+                        / "upstream"
+                        / "cache"
+                    )
+                    cache.mkdir(parents=True, mode=0o700)
+                    (cache / legacy_name).write_text(
+                        "{}\n",
+                        encoding="utf-8",
+                    )
+
+                    with self.assertRaisesRegex(
+                        self.autopilot.AutopilotError,
+                        "legacy_state_cutover_required",
+                    ):
+                        with self.autopilot.locked_state(cache):
+                            self.fail("legacy state must stop the v4 cutover")
+
+                    self.assertFalse((cache / "state-v4.json").exists())
+
+    def test_locked_state_refuses_an_active_legacy_process(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = (
+                Path(directory)
+                / ".agent"
+                / "automations"
+                / "upstream"
+                / "cache"
+            )
+            cache.mkdir(parents=True, mode=0o700)
+            legacy_lock = (
+                cache / self.autopilot.state_module.LEGACY_STATE_LOCK_NAME
+            )
+            holder = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-c",
+                    (
+                        "import fcntl,sys,time;"
+                        "lock=open(sys.argv[1],'a+');"
+                        "fcntl.flock(lock.fileno(),fcntl.LOCK_EX);"
+                        "print('ready',flush=True);"
+                        "time.sleep(30)"
+                    ),
+                    str(legacy_lock),
+                ],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                self.assertEqual(holder.stdout.readline().strip(), "ready")
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "legacy_state_process_active",
+                ):
+                    with self.autopilot.locked_state(cache):
+                        self.fail("an active v3 process must stop cutover")
+                self.assertFalse((cache / "state-v4.json").exists())
+            finally:
+                holder.terminate()
+                holder.wait(timeout=5)
+                if holder.stdout is not None:
+                    holder.stdout.close()
+                if holder.stderr is not None:
+                    holder.stderr.close()
+
+            with self.autopilot.locked_state(cache) as (state, state_path):
+                self.autopilot.save_state(state, state_path, 101)
+            self.assertTrue((cache / "state-v4.json").is_file())
 
     def test_state_recovers_the_newest_durable_generation(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -4294,6 +7642,68 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "state_source_continuity_invalid",
         ):
             self.autopilot.validate_state(state)
+
+    def test_handoff_reconciliation_keeps_only_live_state_receipt(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache_root = (
+                Path(directory)
+                / ".agent/automations/upstream/cache"
+            )
+            state, candidate_id = self.bootstrap()
+            claim = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                101,
+            )
+            generation = claim["candidate"]["handoff"]["generation"]
+            live_path = self.autopilot.ensure_handoff_receipt_path(
+                cache_root,
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            orphan_path = self.autopilot.handoff_receipt_path(
+                cache_root,
+                candidate_id="f" * 16,
+                role="reviewer",
+                generation=9,
+            )
+            self.autopilot.write_handoff_receipt(
+                live_path,
+                expected_path=live_path,
+                receipt={"kind": "live"},
+            )
+            self.autopilot.write_handoff_receipt(
+                orphan_path,
+                expected_path=orphan_path,
+                receipt={"kind": "orphan"},
+            )
+
+            self.assertEqual(
+                self.autopilot.reconcile_handoff_receipts(
+                    cache_root,
+                    state,
+                ),
+                [orphan_path.name],
+            )
+            self.assertTrue(live_path.exists())
+            self.assertFalse(orphan_path.exists())
+
+            expiry = state["candidates"][0]["lease"]["expires_at"]
+            self.autopilot.recover_expired_leases(
+                state,
+                self.policy,
+                expiry,
+            )
+            self.assertEqual(
+                self.autopilot.reconcile_handoff_receipts(
+                    cache_root,
+                    state,
+                ),
+                [live_path.name],
+            )
+            self.assertFalse(live_path.exists())
 
     def test_state_rejects_a_broken_source_sha_chain(self):
         old_head = "1" * 40
@@ -7851,6 +11261,8 @@ class UpstreamAutopilotTests(unittest.TestCase):
             "reviewer",
             103,
         )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["reviewer"] = 3
 
         self.autopilot.requeue_stale_decision(
             state,
@@ -7862,9 +11274,325 @@ class UpstreamAutopilotTests(unittest.TestCase):
 
         candidate = self.autopilot.find_candidate(state, candidate_id)
         self.assertEqual(candidate["status"], "queued")
+        self.assertEqual(candidate["attempts"]["reviewer"], 2)
         self.assertIsNone(candidate["decision"])
         self.assertIsNone(candidate["lease"])
         self.assertEqual(state["events"][-1]["reason_code"], "base_stale")
+        self.autopilot.validate_state(state)
+
+    def test_stale_pull_request_refresh_drops_old_commit_once(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", 110
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"]
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["base_stale"],
+            reviewer_handoff=reviewer_handoff,
+            stale_target_base_head="9" * 40,
+            now=111,
+        )
+        self.assertEqual(
+            candidate["attempts"]["reviewer"],
+            self.policy["max_attempts"] - 1,
+        )
+        repair = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 112
+        )
+        self.assertIsNotNone(repair)
+        self.assertEqual(
+            candidate["attempts"]["maintainer"],
+            self.policy["max_attempts"] + 1,
+        )
+
+        first = self.autopilot.prepare_stale_pull_request_refresh(
+            state,
+            candidate_id=candidate_id,
+            token=repair["lease_token"],
+            current_main_head="9" * 40,
+            now=113,
+        )
+        second = self.autopilot.prepare_stale_pull_request_refresh(
+            state,
+            candidate_id=candidate_id,
+            token=repair["lease_token"],
+            current_main_head="9" * 40,
+            now=114,
+        )
+        third = self.autopilot.prepare_stale_pull_request_refresh(
+            state,
+            candidate_id=candidate_id,
+            token=repair["lease_token"],
+            current_main_head="8" * 40,
+            now=115,
+        )
+
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        self.assertEqual(
+            candidate["attempts"]["maintainer"],
+            self.policy["max_attempts"] + 1,
+        )
+        self.assertFalse(first["prepared"])
+        self.assertFalse(second["prepared"])
+        self.assertFalse(second["retargeted"])
+        self.assertTrue(third["retargeted"])
+        self.assertIsNone(candidate["commit_receipt"])
+        self.assertEqual(candidate["pull_request"]["head_sha"], "2" * 40)
+        self.assertEqual(first["new_base_head"], "9" * 40)
+        self.assertEqual(third["new_base_head"], "8" * 40)
+        self.assertEqual(
+            candidate["stale_refresh"]["target_base_head"],
+            "8" * 40,
+        )
+        self.assertEqual(
+            [
+                event["event"]
+                for event in state["events"]
+                if event["event"]
+                == "stale_pull_request_refresh_prepared"
+            ],
+            ["stale_pull_request_refresh_prepared"],
+        )
+        self.assertEqual(
+            [
+                event["event"]
+                for event in state["events"]
+                if event["event"]
+                == "stale_pull_request_refresh_retargeted"
+            ],
+            ["stale_pull_request_refresh_retargeted"],
+        )
+        receipt = self.handoff_receipt(
+            repair,
+            candidate_id=candidate_id,
+            role="maintainer",
+            action="worker_staged",
+            base_head="8" * 40,
+            repository_head="8" * 40,
+            repository_tree="7" * 40,
+            staged_paths_sha256="6" * 64,
+            disposition="staged",
+        )
+        self.complete_handoff_agent_run(
+            state,
+            candidate_id,
+            repair,
+            receipt,
+            role="maintainer",
+            base_head="8" * 40,
+            repository_head="8" * 40,
+            input_tree="5" * 40,
+            now=118,
+        )
+        self.assertEqual(
+            candidate["attempts"]["maintainer"],
+            self.policy["max_attempts"],
+        )
+        self.assertIsNone(candidate["stale_refresh_credit"])
+        self.assertEqual(
+            [
+                event["event"]
+                for event in state["events"]
+                if event["event"] == "stale_refresh_credit_refunded"
+            ],
+            ["stale_refresh_credit_refunded"],
+        )
+        self.autopilot.validate_state(state)
+
+    def test_reviewer_finding_cannot_forge_base_stale_credit(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", 110
+        )
+        forged_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=["base_stale"],
+            now=111,
+        )
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "reviewer_handoff_receipt_invalid",
+        ):
+            self.autopilot.request_repair(
+                state,
+                candidate_id=candidate_id,
+                token=reviewer["lease_token"],
+                finding_codes=["base_stale"],
+                reviewer_handoff=forged_handoff,
+                stale_target_base_head="9" * 40,
+                now=111,
+            )
+
+    def test_verified_base_stale_requires_a_different_live_base(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        reviewer = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", 110
+        )
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "stale_pull_request_refresh_invalid",
+        ):
+            self.autopilot.request_repair(
+                state,
+                candidate_id=candidate_id,
+                token=reviewer["lease_token"],
+                finding_codes=["base_stale"],
+                reviewer_handoff=reviewer_handoff,
+                stale_target_base_head=candidate["pull_request"][
+                    "validation_receipt"
+                ]["base_head"],
+                now=111,
+            )
+
+    def test_stale_refresh_preflight_failure_keeps_the_spent_attempt(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", 110
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"]
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["base_stale"],
+            reviewer_handoff=reviewer_handoff,
+            stale_target_base_head="9" * 40,
+            now=111,
+        )
+        repair = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 112
+        )
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=repair["lease_token"],
+            reason_code="agent_execution_failed",
+            error_digest="a" * 64,
+            now=113,
+        )
+
+        self.assertEqual(
+            candidate["attempts"]["maintainer"],
+            self.policy["max_attempts"] + 1,
+        )
+        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["result"]["finding_codes"], ["base_stale"])
+        self.assertIsNone(candidate["stale_refresh_credit"])
+        self.assertFalse(
+            any(
+                event["event"] == "stale_refresh_credit_refunded"
+                for event in state["events"]
+            )
+        )
+        self.autopilot.validate_state(state)
+
+    def test_stale_refresh_preflight_expiry_keeps_the_spent_attempt(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 101
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state, self.policy, "reviewer", 110
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"]
+        candidate["attempts"]["reviewer"] = self.policy["max_attempts"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="accept",
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=["base_stale"],
+            reviewer_handoff=reviewer_handoff,
+            stale_target_base_head="9" * 40,
+            now=111,
+        )
+        repair = self.autopilot.claim_candidate(
+            state, self.policy, "maintainer", 112
+        )
+        expiry = candidate["lease"]["expires_at"]
+        self.assertEqual(
+            self.autopilot.recover_expired_leases(
+                state,
+                self.policy,
+                expiry,
+                prepared_agent_runs_reconciled=True,
+            ),
+            [candidate_id],
+        )
+
+        self.assertEqual(
+            candidate["attempts"]["maintainer"],
+            self.policy["max_attempts"] + 1,
+        )
+        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["result"]["finding_codes"], ["base_stale"])
+        self.assertIsNone(candidate["stale_refresh_credit"])
+        self.assertFalse(
+            any(
+                event["event"] == "stale_refresh_credit_refunded"
+                for event in state["events"]
+            )
+        )
         self.autopilot.validate_state(state)
 
     def test_unstarted_land_intent_is_cleared_before_repair(self):
@@ -7939,6 +11667,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             token=recovered["lease_token"],
             finding_codes=["base_stale"],
             reviewer_handoff=retry_handoff,
+            stale_target_base_head="9" * 40,
             now=expiry + 1,
         )
 
@@ -9328,6 +13057,19 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 root_clone["result"]["reviewer_handoff"][
                     "candidate_id"
                 ] = root_id
+                root_execution = root_clone["result"]["reviewer_handoff"][
+                    "agent_execution"
+                ]
+                root_execution["candidate_id"] = root_id
+                root_execution["execution_sha256"] = (
+                    self.autopilot.sha256_value(
+                        {
+                            key: value
+                            for key, value in root_execution.items()
+                            if key != "execution_sha256"
+                        }
+                    )
+                )
                 root_clone["discovery_sequence"] = state["source"][
                     "next_discovery_sequence"
                 ]
@@ -9339,6 +13081,19 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 repair_clone["result"]["reviewer_handoff"][
                     "candidate_id"
                 ] = repair_id
+                repair_execution = repair_clone["result"][
+                    "reviewer_handoff"
+                ]["agent_execution"]
+                repair_execution["candidate_id"] = repair_id
+                repair_execution["execution_sha256"] = (
+                    self.autopilot.sha256_value(
+                        {
+                            key: value
+                            for key, value in repair_execution.items()
+                            if key != "execution_sha256"
+                        }
+                    )
+                )
                 repair_clone["discovery_sequence"] = state["source"][
                     "next_discovery_sequence"
                 ]
@@ -10241,6 +13996,23 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 result["drift_evidence"]["receipt_sha256"],
             )
             diagnostic = receipt["diagnostic"]
+            self.assertEqual(
+                self.autopilot.read_x_pricing_failure_diagnostic(
+                    root,
+                    evidence=result["drift_evidence"],
+                ),
+                diagnostic,
+            )
+            mismatched = deepcopy(result["drift_evidence"])
+            mismatched["receipt_sha256"] = "0" * 64
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "x_pricing_failure_diagnostic_invalid",
+            ):
+                self.autopilot.read_x_pricing_failure_diagnostic(
+                    root,
+                    evidence=mismatched,
+                )
             self.assertEqual(diagnostic["target_section_count"], 1)
             self.assertGreaterEqual(len(diagnostic["tables"]), 2)
             write_table = next(
@@ -10262,6 +14034,144 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 "All prices are per resource",
                 failure_path.read_text(encoding="utf-8"),
             )
+
+    def test_x_pricing_failure_archives_survive_rotation_and_success(self):
+        current = self.pricing_fixture()
+        malformed_a = current.replace(
+            b"| Action | Unit cost |",
+            b"| Operation | Price per 1,000 requests |",
+            1,
+        )
+        malformed_b = current.replace(
+            b"| Resource | Unit cost |",
+            b"| Object | Price per 1,000 resources |",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            first = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_139_200,
+                fetcher=lambda: malformed_a,
+            )
+            first_digest = first["drift_evidence"]["receipt_sha256"]
+            second = self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_142_800,
+                fetcher=lambda: malformed_b,
+                retained_failure_receipts={first_digest},
+            )
+            second_digest = second["drift_evidence"]["receipt_sha256"]
+            self.autopilot.audit_x_pricing(
+                root,
+                now=1_785_146_400,
+                fetcher=lambda: current,
+                retained_failure_receipts={
+                    first_digest,
+                    second_digest,
+                },
+            )
+
+            first_diagnostic = (
+                self.autopilot.read_x_pricing_failure_diagnostic(
+                    root,
+                    evidence=first["drift_evidence"],
+                )
+            )
+            second_diagnostic = (
+                self.autopilot.read_x_pricing_failure_diagnostic(
+                    root,
+                    evidence=second["drift_evidence"],
+                )
+            )
+            self.assertNotEqual(first_digest, second_digest)
+            self.assertEqual(
+                first_diagnostic["raw_sha256"],
+                first["raw_sha256"],
+            )
+            self.assertEqual(
+                second_diagnostic["raw_sha256"],
+                second["raw_sha256"],
+            )
+            self.assertFalse(
+                (
+                    root
+                    / self.autopilot.X_PRICING_FAILURE_RELATIVE_PATH
+                ).exists()
+            )
+            archive = (
+                root
+                / self.autopilot.X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+            )
+            self.assertEqual(
+                sorted(path.stem for path in archive.glob("*.json")),
+                sorted([first_digest, second_digest]),
+            )
+
+    def test_x_pricing_failure_archive_prunes_unreferenced_history(self):
+        malformed = self.pricing_fixture().replace(
+            b"| Action | Unit cost |",
+            b"| Operation | Price per 1,000 requests |",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for index in range(
+                self.autopilot.X_PRICING_MAX_UNREFERENCED_FAILURES + 3
+            ):
+                self.autopilot.audit_x_pricing(
+                    root,
+                    now=1_785_139_200 + index,
+                    fetcher=lambda: malformed,
+                )
+            archive = (
+                root
+                / self.autopilot.X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+            )
+            self.assertLessEqual(
+                len(list(archive.glob("*.json"))),
+                self.autopilot.X_PRICING_MAX_UNREFERENCED_FAILURES + 1,
+            )
+
+    def test_x_pricing_failure_archive_reserves_the_513th_write(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            archive = (
+                root
+                / self.autopilot.X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+            )
+            self.autopilot.pricing_module._ensure_failure_archive_root(root)
+            retained = set()
+            for index in range(512):
+                failure = {
+                    "schema": self.autopilot.pricing_module.X_PRICING_FAILURE_SCHEMA,
+                    "fetched_at": "2026-07-30T00:00:00Z",
+                    "nonce": index,
+                }
+                digest = self.autopilot.pricing_module._serialized_sha256(
+                    failure
+                )
+                self.autopilot.pricing_module._atomic_private_json(
+                    archive / f"{digest}.json",
+                    failure,
+                )
+                retained.add(digest)
+
+            next_failure = {
+                "schema": self.autopilot.pricing_module.X_PRICING_FAILURE_SCHEMA,
+                "fetched_at": "2026-07-30T00:00:01Z",
+                "nonce": 512,
+            }
+            next_digest = (
+                self.autopilot.pricing_module._write_failure_archive(
+                    root,
+                    next_failure,
+                    retained_receipts=retained,
+                )
+            )
+
+            self.assertTrue((archive / f"{next_digest}.json").is_file())
+            self.assertEqual(len(list(archive.glob("*.json"))), 513)
 
     def test_x_pricing_receipt_staleness_tamper_and_atomic_race(self):
         current = self.pricing_fixture()

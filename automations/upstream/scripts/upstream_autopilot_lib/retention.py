@@ -83,7 +83,7 @@ SUCCESS_RESULT_CODES = {
             "stale_decision_requeued",
         }
     ),
-    "codex-upstream-health": frozenset({"pass"}),
+    "codex-upstream-health": frozenset({"degraded", "pass"}),
     "decodex-content-manager": frozenset(
         {
             "candidate_recorded",
@@ -749,7 +749,7 @@ def settle_task_retention(
         not _valid_thread_id(current_thread_id)
         or not _valid_thread_id(thread_id)
         or current_thread_id == thread_id
-        or result not in {"archived", "keep-visible"}
+        or result not in {"archived", "defer", "keep-visible"}
         or (
             result == "archived"
             and reason is not None
@@ -758,6 +758,7 @@ def settle_task_retention(
             result == "keep-visible"
             and not _valid_result_code(reason)
         )
+        or (result == "defer" and not _valid_result_code(reason))
     ):
         raise AutopilotError("task_retention_settle_invalid")
     timestamp = utc_now() if now is None else now
@@ -769,11 +770,10 @@ def settle_task_retention(
         if receipt["status"] != PENDING_STATUS:
             raise AutopilotError("task_retention_receipt_not_pending")
         receipt["timestamp"] = timestamp
-        receipt["status"] = (
-            ARCHIVED_STATUS
-            if result == "archived"
-            else f"{KEEP_VISIBLE_PREFIX}{reason}"
-        )
+        if result == "archived":
+            receipt["status"] = ARCHIVED_STATUS
+        elif result == "keep-visible":
+            receipt["status"] = f"{KEEP_VISIBLE_PREFIX}{reason}"
         _validate_receipt(receipt)
         atomic_write_json(path, receipt)
         records = _scan_receipts(root)
@@ -781,6 +781,7 @@ def settle_task_retention(
     return {
         "thread_id": thread_id,
         "status": receipt["status"],
-        "settled": True,
+        "settled": result != "defer",
+        "reason": reason,
         "pruned_settled_count": pruned,
     }
