@@ -9,7 +9,8 @@ generated app-server schema. It does not authorize another Codex build.
 | --- | --- |
 | Platform | macOS arm64 |
 | Codex version | `codex-cli 0.146.0-alpha.3.1` |
-| Executable SHA-256 | `fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e` |
+| Executable SHA-256 | `fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4` |
+| Release archive SHA-256 | `147297da351dc408e4f1e7f9d9c4d96873f4da70c13af6d5416d3c5e1cef4cd4` |
 | Code-signing team | `2DC432GLL2` |
 | `ClientRequest.json` | `ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735` |
 | `ServerNotification.json` | `189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166` |
@@ -30,5 +31,5 @@ reproduced the checked-in schema digests and callback profile for this exact rep
 The final local-service installation must pass the daemon callback preflight and report the
 credential vault ready.
 
-The upstream source for this profile is the OpenAI Codex tag
-[`rust-v0.146.0-alpha.3.1`](https://github.com/openai/codex/tree/rust-v0.146.0-alpha.3.1).
+The accepted executable is the signed `codex-aarch64-apple-darwin` binary from the
+OpenAI Codex [`rust-v0.146.0-alpha.3.1` release](https://github.com/openai/codex/releases/tag/rust-v0.146.0-alpha.3.1).
