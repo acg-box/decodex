@@ -48,7 +48,9 @@ const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
 	include_str!("../migrations/V29__account_profile_array_zip.sql");
 const CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION: &str =
 	include_str!("../migrations/V30__current_codex_account_capability.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 26] = [
+const OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
+	include_str!("../migrations/V31__official_codex_release_capability.sql");
+const CANONICAL_FUNCTION_MIGRATIONS: [&str; 27] = [
 	FOUNDATION_MIGRATION,
 	CONVERSATION_MIGRATION,
 	PROJECT_AGENT_MIGRATION,
@@ -75,6 +77,7 @@ const CANONICAL_FUNCTION_MIGRATIONS: [&str; 26] = [
 	ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
 	ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION,
 	CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION,
+	OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION,
 ];
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
@@ -6292,7 +6295,7 @@ mod tests {
 
 	#[test]
 	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 26);
+		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 27);
 		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
 		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
 			.into_iter()

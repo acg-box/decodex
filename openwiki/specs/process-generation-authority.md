@@ -88,7 +88,7 @@ The current accepted profile is intentionally narrow:
 | --- | --- |
 | Platform evidence | macOS arm64 |
 | Version | `codex-cli 0.146.0-alpha.3.1` |
-| Executable SHA-256 | `fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e` |
+| Executable SHA-256 | `fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4` |
 | Command | canonical Codex path as both executable and argv0, suspended before user code, with fixed `app-server --stdio` arguments |
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` selects `DisabledEphemeral`; no remote-control argument |
 | Protocol boundary | Child stdin and stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
