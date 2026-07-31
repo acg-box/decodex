@@ -247,6 +247,100 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
 	}
 
+	func testAdvancedInventoryQueuesAnotherSkeletonReadWhenOneIsInFlight() async throws {
+		let secondAccountID = "22222222-2222-4222-8222-222222222222"
+		let firstAccount = accountRecord()
+		let secondAccount = accountRecord(
+			accountID: secondAccountID,
+			alias: "Account 00000-00002"
+		)
+		let client = AccountControlStoreClient(
+			account: firstAccount,
+			secondaryAccount: secondAccount,
+			authority: authority,
+			suspendsSnapshotAfterFirstRead: true,
+			capturesSnapshotBeforeWait: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let attempt = ResetCardUseAttempt(
+			target: ResetCardUseTarget(
+				authority: authority,
+				accountID: secondAccountID,
+				expectedRevision: 7,
+				descriptor: try ResetCardDescriptor(
+					grantedAtUnixSeconds: 100,
+					expiresAtUnixSeconds: 200
+				)
+			),
+			idempotencyKey: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+		)
+		XCTAssertEqual(fixture.store.insert(attempt), [attempt])
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.logoutAccount(accountID)
+		for _ in 0 ..< 200 {
+			if await client.snapshotIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.snapshotIsPending() else {
+			await client.releaseSnapshot()
+			return XCTFail("Skeleton reconciliation did not enter the pending state.")
+		}
+
+		await client.replaceSecondaryAccount(
+			accountRecord(
+				accountID: secondAccountID,
+				alias: "Account 00000-00002",
+				revision: 8
+			)
+		)
+		await client.setInventoryRevision(8, accountID: secondAccountID)
+		await client.setResetCardStatus(.completed(.reset))
+		await store.checkPendingStatus(attempt)
+		await Task.yield()
+
+		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(secondAccountID))
+		XCTAssertTrue(
+			store.accounts.first(where: {
+				$0.account.accountID == secondAccountID
+			})?.isRefreshing == true
+		)
+
+		await client.releaseSnapshot()
+		for _ in 0 ..< 200 {
+			let state = store.accounts.first(where: {
+				$0.account.accountID == secondAccountID
+			})
+			if state?.account.accountRevision == 8,
+				state?.inventory?.accountRevision == 8,
+				store.isAwaitingFreshAccountSkeleton(secondAccountID) == false
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let finalState = try XCTUnwrap(
+			store.accounts.first(where: {
+				$0.account.accountID == secondAccountID
+			})
+		)
+		XCTAssertEqual(finalState.account.accountRevision, 8)
+		XCTAssertEqual(finalState.inventory?.accountRevision, 8)
+		XCTAssertFalse(finalState.isRefreshing)
+		XCTAssertFalse(store.isAwaitingFreshAccountSkeleton(secondAccountID))
+		let reads = await client.readCounts()
+		XCTAssertGreaterThanOrEqual(reads.snapshot, 3)
+	}
+
 	func testRoutingCompletesWhileDetailReadIsPendingWithoutFullRefresh() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -992,12 +1086,15 @@ private struct AccountControlStoreCounts: Equatable, Sendable {
 
 private actor AccountControlStoreClient: AccountControlClient {
 	private var account: ResetCardAccountRecord
-	private let secondaryAccount: ResetCardAccountRecord?
+	private var secondaryAccount: ResetCardAccountRecord?
 	private let authority: ResetCardAuthority
 	private let inventoryGate: AccountControlReadGate?
 	private let snapshotGate: AccountControlReadGate?
+	private let capturesSnapshotBeforeWait: Bool
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
+	private var inventoryRevisionsByAccountID = [String: UInt64]()
+	private var resetCardStatus: ResetCardOperationState = .notFound
 	private let allowsEnrollment: Bool
 	private var routing: AccountRoutingControl
 	private var fixedSelectionError: AccountControlError?
@@ -1029,6 +1126,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		authority: ResetCardAuthority,
 		suspendsInventory: Bool = false,
 		suspendsSnapshotAfterFirstRead: Bool = false,
+		capturesSnapshotBeforeWait: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
 		allowsEnrollment: Bool = false,
@@ -1045,6 +1143,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		self.projection = projection
 		inventoryGate = suspendsInventory ? AccountControlReadGate() : nil
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
+		self.capturesSnapshotBeforeWait = capturesSnapshotBeforeWait
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
 		self.allowsEnrollment = allowsEnrollment
@@ -1068,12 +1167,15 @@ private actor AccountControlStoreClient: AccountControlClient {
 			throw ResetCardClientError.invalidResponse
 		}
 		snapshotReadCount += 1
+		let capturedAccounts = [account] + (secondaryAccount.map { [$0] } ?? [])
 		if snapshotReadCount > 1, let snapshotGate {
 			await snapshotGate.wait()
 		}
 		return AccountControlSnapshot(
 			authority: authority,
-			accounts: [account] + (secondaryAccount.map { [$0] } ?? []),
+			accounts: capturesSnapshotBeforeWait
+				? capturedAccounts
+				: [account] + (secondaryAccount.map { [$0] } ?? []),
 			routing: routing
 		)
 	}
@@ -1107,7 +1209,9 @@ private actor AccountControlStoreClient: AccountControlClient {
 		return ResetCardInventory(
 			authority: authority,
 			accountID: account.accountID,
-			accountRevision: inventoryRevisionOverride ?? account.accountRevision,
+			accountRevision: inventoryRevisionsByAccountID[account.accountID]
+				?? inventoryRevisionOverride
+				?? account.accountRevision,
 			cards: [],
 			fiveHourQuota: account.fiveHourQuota,
 			sevenDayQuota: account.sevenDayQuota,
@@ -1120,7 +1224,15 @@ private actor AccountControlStoreClient: AccountControlClient {
 	}
 
 	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
-		.notFound
+		resetCardStatus
+	}
+
+	func setResetCardStatus(_ status: ResetCardOperationState) {
+		resetCardStatus = status
+	}
+
+	func setInventoryRevision(_ revision: UInt64, accountID: String) {
+		inventoryRevisionsByAccountID[accountID] = revision
 	}
 
 	func setFixedSelection(
@@ -1211,6 +1323,10 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	func replaceAccount(_ account: ResetCardAccountRecord) {
 		self.account = account
+	}
+
+	func replaceSecondaryAccount(_ account: ResetCardAccountRecord) {
+		secondaryAccount = account
 	}
 
 	func enrollFromSharedCodex(
