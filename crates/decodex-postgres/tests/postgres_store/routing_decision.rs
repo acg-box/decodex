@@ -42,7 +42,7 @@ const PROCESS_CREDENTIAL_FINGERPRINT: &str =
 const PROCESS_CALLBACK_PROFILE: &str =
 	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const CURRENT_CODEX_EXECUTABLE_SHA256: &str =
-	"fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e";
+	"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4";
 
 #[derive(Clone)]
 pub(super) struct RoutingFixture {
