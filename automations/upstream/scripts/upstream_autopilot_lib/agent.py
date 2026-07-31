@@ -3133,7 +3133,6 @@ def _run_ephemeral_codex_agent_locked(
                 ),
                 "--config",
                 "permissions.autopilot.network.enabled=false",
-                "--sandbox-state-disable-network",
                 "--config",
                 'shell_environment_policy.inherit="none"',
                 "--config",
