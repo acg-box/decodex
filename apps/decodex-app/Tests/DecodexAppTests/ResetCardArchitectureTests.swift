@@ -22,6 +22,47 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
+	func testPanelCardsAndPopoversUseSharedSpacingTokens() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let rows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let details = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
+			encoding: .utf8
+		)
+		let login = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountReauthenticationView.swift"
+			),
+			encoding: .utf8
+		)
+
+		for source in [panel, rows] {
+			XCTAssertTrue(
+				source.contains(
+					".padding(.horizontal, PanelSpacing.cardHorizontal)"
+				)
+			)
+			XCTAssertTrue(
+				source.contains(
+					".padding(.vertical, PanelSpacing.cardVertical)"
+				)
+			)
+		}
+		XCTAssertTrue(details.contains(".padding(PanelSpacing.popoverInset)"))
+		XCTAssertTrue(login.contains(".padding(PanelSpacing.popoverInset)"))
+	}
+
 	func testHeaderAndOverviewShareOneCardWithoutARedundantTitleRow() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
@@ -258,8 +299,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertFalse(statusPanel.contains(".preferredColorScheme"))
 		XCTAssertFalse(statusPanel.contains(".environment(\\.colorScheme"))
-		XCTAssertTrue(resetCards.contains(".buttonStyle(.bordered)"))
-		XCTAssertTrue(resetCards.contains(".controlSize(.small)"))
+		XCTAssertTrue(resetCards.contains("ResetCardChipButtonStyle("))
+		XCTAssertTrue(resetCards.contains("shape.strokeBorder(borderColor, lineWidth: 1)"))
+		XCTAssertTrue(resetCards.contains("configuration.isPressed ? 0.985 : 1"))
+		XCTAssertFalse(resetCards.contains(".buttonStyle(.bordered)"))
 		XCTAssertTrue(
 			resetCards.contains(
 				"Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)"
@@ -442,7 +485,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(view.contains("verificationURL"))
 		XCTAssertTrue(view.contains(".keyboardShortcut(.cancelAction)"))
 		XCTAssertTrue(view.contains(".frame(width: 220)"))
-		XCTAssertTrue(view.contains(".padding(14)"))
+		XCTAssertTrue(view.contains(".padding(PanelSpacing.popoverInset)"))
 		XCTAssertFalse(view.contains("Enter this one-time code"))
 		XCTAssertFalse(view.contains("Divider()"))
 		XCTAssertFalse(view.contains(".interactiveDismissDisabled"))
