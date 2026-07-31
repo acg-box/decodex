@@ -128,6 +128,10 @@ FORMATTER_TOOLCHAIN = "nightly-2026-07-16"
 VALIDATION_TEMP_PREFIX = "dxv-"
 DARWIN_VALIDATION_TEMP_PARENT = Path("/private/tmp")
 CANDIDATE_OUTPUT_ENV = "DECODEX_VALIDATION_REPO_OUTPUT"
+VALIDATION_AGENT_RUN_PARENT_ENV = (
+    "DECODEX_UPSTREAM_VALIDATION_AGENT_RUN_PARENT"
+)
+VALIDATION_AGENT_RUN_PARENT_NAME = "agent-test-runs"
 CANDIDATE_OUTPUT_NAME_PATTERN = re.compile(
     r"decodex-validation-[0-9a-f]{32}"
 )
@@ -1774,6 +1778,9 @@ def sanitized_validation_environment(
         "CARGO_TERM_COLOR": "never",
         "CI": "1",
         "DECODEX_CANDIDATE_SANDBOX": "1",
+        VALIDATION_AGENT_RUN_PARENT_ENV: str(
+            temporary_home / VALIDATION_AGENT_RUN_PARENT_NAME
+        ),
         "GCM_INTERACTIVE": "never",
         "GH_PROMPT_DISABLED": "1",
         "GIT_CONFIG_GLOBAL": "/dev/null",
@@ -1820,6 +1827,19 @@ def initialize_validation_home(temporary_home: Path) -> None:
             os.chmod(path, 0o400)
         except OSError as error:
             raise AutopilotError("validation_home_initialization_failed") from error
+    agent_run_parent = temporary_home / VALIDATION_AGENT_RUN_PARENT_NAME
+    try:
+        agent_run_parent.mkdir(mode=0o700)
+        metadata = agent_run_parent.lstat()
+    except OSError as error:
+        raise AutopilotError("validation_home_initialization_failed") from error
+    if (
+        agent_run_parent.is_symlink()
+        or not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError("validation_home_initialization_failed")
 
 
 def validation_temporary_directory():

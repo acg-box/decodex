@@ -44,6 +44,37 @@ class UpstreamAutopilotTests(unittest.TestCase):
         cls.policy = cls.autopilot.load_policy(
             ROOT / "automations/upstream/policy.json"
         )
+        validation_parent = os.environ.get(
+            cls.autopilot.VALIDATION_AGENT_RUN_PARENT_ENV
+        )
+        if validation_parent is not None:
+            parent = Path(validation_parent).resolve(strict=True)
+            metadata = parent.lstat()
+            if (
+                parent.is_symlink()
+                or not stat.S_ISDIR(metadata.st_mode)
+                or metadata.st_uid != os.getuid()
+                or stat.S_IMODE(metadata.st_mode) != 0o700
+            ):
+                raise RuntimeError("invalid validation agent run parent")
+
+            def validation_agent_run_root(cache_root):
+                resolved = cls.autopilot.ensure_cache_root(cache_root)
+                cache_identity = hashlib.sha256(
+                    os.fsencode(resolved)
+                ).hexdigest()[:16]
+                return cls.autopilot.agent_module._ensure_private_directory(
+                    parent
+                    / f"decodex-agent-runs-{os.getuid()}-{cache_identity}"
+                )
+
+            patcher = mock.patch.object(
+                cls.autopilot.agent_module,
+                "_agent_run_root",
+                new=validation_agent_run_root,
+            )
+            patcher.start()
+            cls.addClassCleanup(patcher.stop)
 
     def pricing_fixture(self) -> bytes:
         return X_PRICING_FIXTURE.read_bytes()
@@ -1305,6 +1336,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
         self.assertEqual(repair.reviewer_receipt, Path("/tmp/reviewer.json"))
         self.assertIsNone(recovery.reviewer_receipt)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires nested host sandbox and loopback probes",
+    )
     def test_ephemeral_agent_is_max_bounded_and_hides_auth_capsule(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1507,7 +1542,15 @@ class UpstreamAutopilotTests(unittest.TestCase):
             self.assertEqual(Path(workspace_argument).name, "workspace")
             self.assertTrue(
                 workspace_argument.startswith(
-                    f"/private/tmp/decodex-agent-runs-{os.getuid()}-"
+                    str(
+                        Path(
+                            os.environ.get(
+                                self.autopilot.VALIDATION_AGENT_RUN_PARENT_ENV,
+                                "/private/tmp",
+                            )
+                        )
+                        / f"decodex-agent-runs-{os.getuid()}-"
+                    )
                 )
             )
             self.assertNotEqual(Path(workspace_argument), worktree.resolve())
@@ -1533,6 +1576,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 [],
             )
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_kills_background_child_and_removes_auth(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1610,6 +1657,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
                 os.close(lock_descriptor)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_kills_setsid_grandchild(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1842,6 +1893,10 @@ class UpstreamAutopilotTests(unittest.TestCase):
             finally:
                 shutil.rmtree(run_root)
 
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires host process inspection and signaling",
+    )
     def test_agent_watchdog_cleans_up_after_parent_death(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -2658,6 +2713,10 @@ os._exit(0)
             )
 
     @unittest.skipUnless(sys.platform == "darwin", "requires Seatbelt")
+    @unittest.skipIf(
+        os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
+        "requires nested host sandbox and loopback probes",
+    )
     def test_agent_sandbox_denies_host_and_git_authority(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -4842,6 +4901,10 @@ os._exit(0)
             mock.patch.object(
                 self.autopilot.cli_module,
                 "assert_primary_snapshot",
+            ),
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "cleanup_stale_agent_runs",
             ),
         ):
             with mock.patch.object(
@@ -8756,6 +8819,15 @@ os._exit(0)
             self.assertFalse(call.kwargs["inherit_environment"])
             environment = call.kwargs["environment"]
             self.assertEqual(environment["HOME"], environment["TMPDIR"])
+            self.assertEqual(
+                environment[
+                    self.autopilot.VALIDATION_AGENT_RUN_PARENT_ENV
+                ],
+                str(
+                    Path(environment["TMPDIR"])
+                    / self.autopilot.VALIDATION_AGENT_RUN_PARENT_NAME
+                ),
+            )
             self.assertEqual(environment["GIT_CONFIG_GLOBAL"], "/dev/null")
             npm_config_paths = {
                 environment["NPM_CONFIG_GLOBALCONFIG"],
@@ -8828,6 +8900,13 @@ os._exit(0)
             environment,
         )
         self.assertNotIn("DECODEX_TEST_TEMP_ROOT", environment)
+        self.assertEqual(
+            environment[self.autopilot.VALIDATION_AGENT_RUN_PARENT_ENV],
+            str(
+                Path(directory)
+                / self.autopilot.VALIDATION_AGENT_RUN_PARENT_NAME
+            ),
+        )
         self.assertNotIn("/tmp/hostile", environment["PATH"].split(os.pathsep))
         self.assertEqual(
             environment["PATH"].split(os.pathsep)[0],
@@ -8868,6 +8947,11 @@ os._exit(0)
                 self.assertTrue(path.is_file())
                 self.assertEqual(path.read_text(encoding="utf-8"), "")
                 self.assertEqual(path.stat().st_mode & 0o777, 0o400)
+            agent_run_parent = Path(
+                environment[self.autopilot.VALIDATION_AGENT_RUN_PARENT_ENV]
+            )
+            self.assertTrue(agent_run_parent.is_dir())
+            self.assertEqual(agent_run_parent.stat().st_mode & 0o777, 0o700)
 
     @unittest.skipUnless(
         sys.platform == "darwin",
@@ -14422,6 +14506,10 @@ os._exit(0)
                 ),
                 mock.patch.object(
                     self.autopilot.cli_module,
+                    "cleanup_stale_agent_runs",
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
                     "audit_x_pricing",
                     return_value=deepcopy(audit),
                 ),
@@ -14834,6 +14922,10 @@ os._exit(0)
                 "queue_automation_improvement",
                 side_effect=queue_side_effect,
             ) as queued,
+            mock.patch.object(
+                self.autopilot.cli_module,
+                "cleanup_stale_agent_runs",
+            ),
         ):
             result = self.autopilot.cli_module.execute(args)
 
