@@ -2,7 +2,7 @@ import Foundation
 
 enum AccountReauthenticationPhase: Equatable {
 	case resolvingCodex
-	case requestingCode
+	case openingBrowser
 	case waitingForBrowser
 	case installing
 	case failed(String)
@@ -15,7 +15,6 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 	let sessionID: String
 	let authority: ResetCardAuthority?
 	let phase: AccountReauthenticationPhase
-	let prompt: AccountReauthenticationPrompt?
 
 	var id: String {
 		sessionID
@@ -25,8 +24,8 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		switch phase {
 		case .resolvingCodex:
 			return "Finding Codex"
-		case .requestingCode:
-			return "Requesting a one-time code"
+		case .openingBrowser:
+			return "Opening browser sign-in"
 		case .waitingForBrowser:
 			return "Waiting for browser sign-in"
 		case .installing:
@@ -42,7 +41,7 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		switch phase {
 		case .failed(let message), .cancellationFailed(let message):
 			return message
-		case .resolvingCodex, .requestingCode, .waitingForBrowser, .installing:
+		case .resolvingCodex, .openingBrowser, .waitingForBrowser, .installing:
 			return nil
 		}
 	}

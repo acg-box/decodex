@@ -61,6 +61,16 @@ final class StatusPanelController: NSObject {
 
 	@objc
 	private func applicationDidResignActive(_: Notification) {
+		if let eventType = NSApp.currentEvent?.type,
+			let statusItemRect = statusItemScreenRect(),
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: eventType,
+				mouseLocation: NSEvent.mouseLocation,
+				statusItemRect: statusItemRect
+			)
+		{
+			return
+		}
 		hidePanel()
 	}
 
@@ -110,15 +120,12 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func positionPanel() {
-		guard let button = statusItem.button,
-			let statusWindow = button.window
+		guard let anchorRect = statusItemScreenRect(),
+			let statusWindow = statusItem.button?.window
 		else {
 			return
 		}
 
-		let anchorRect = statusWindow.convertToScreen(
-			button.convert(button.bounds, to: nil)
-		)
 		guard let screen = statusWindow.screen
 			?? NSScreen.screens.first(where: {
 				$0.frame.intersects(anchorRect)
@@ -136,6 +143,17 @@ final class StatusPanelController: NSObject {
 				screenMargin: Self.screenMargin,
 				menuBarGap: Self.menuBarGap
 			)
+		)
+	}
+
+	private func statusItemScreenRect() -> NSRect? {
+		guard let button = statusItem.button,
+			let statusWindow = button.window
+		else {
+			return nil
+		}
+		return statusWindow.convertToScreen(
+			button.convert(button.bounds, to: nil)
 		)
 	}
 }
@@ -178,6 +196,16 @@ enum StatusPanelLayout {
 			return minimum
 		}
 		return min(max(value, minimum), maximum)
+	}
+}
+
+enum StatusPanelInteraction {
+	static func isStatusItemPress(
+		eventType: NSEvent.EventType,
+		mouseLocation: NSPoint,
+		statusItemRect: NSRect
+	) -> Bool {
+		eventType == .leftMouseDown && statusItemRect.contains(mouseLocation)
 	}
 }
 
