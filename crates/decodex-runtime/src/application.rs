@@ -1764,28 +1764,31 @@ fn decode_account_command_receipt(
 }
 
 fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaWindowDto, ()> {
-	let result = match observation.disposition {
-		AccountQuotaDisposition::Unknown => AccountQuotaStateDto::Unknown,
-		AccountQuotaDisposition::Current(fact) => AccountQuotaStateDto::Current {
-			used_percent: fact.used_percent,
-			resets_at_unix_micros: fact.resets_at_unix_micros,
-		},
-		AccountQuotaDisposition::Stale(fact) => AccountQuotaStateDto::Stale {
-			used_percent: fact.used_percent,
-			resets_at_unix_micros: fact.resets_at_unix_micros,
-		},
-		AccountQuotaDisposition::Error(error) => AccountQuotaStateDto::Error {
-			error: match error {
-				AccountQuotaObservationError::ProviderUnavailable =>
-					AccountQuotaErrorDto::ProviderUnavailable,
-				AccountQuotaObservationError::ProtocolUnavailable =>
-					AccountQuotaErrorDto::ProtocolUnavailable,
-				AccountQuotaObservationError::AccountMismatch =>
-					AccountQuotaErrorDto::AccountMismatch,
-				AccountQuotaObservationError::UnsupportedWindow =>
-					AccountQuotaErrorDto::UnsupportedWindow,
+	let (observed_at_unix_micros, result) = match observation.disposition {
+		AccountQuotaDisposition::Unknown => (None, AccountQuotaStateDto::Unknown),
+		AccountQuotaDisposition::Current(fact) => (
+			observation.observed_at_unix_micros,
+			AccountQuotaStateDto::Current {
+				used_percent: fact.used_percent,
+				resets_at_unix_micros: fact.resets_at_unix_micros,
 			},
-		},
+		),
+		AccountQuotaDisposition::Stale(_) => (None, AccountQuotaStateDto::Unknown),
+		AccountQuotaDisposition::Error(error) => (
+			observation.observed_at_unix_micros,
+			AccountQuotaStateDto::Error {
+				error: match error {
+					AccountQuotaObservationError::ProviderUnavailable =>
+						AccountQuotaErrorDto::ProviderUnavailable,
+					AccountQuotaObservationError::ProtocolUnavailable =>
+						AccountQuotaErrorDto::ProtocolUnavailable,
+					AccountQuotaObservationError::AccountMismatch =>
+						AccountQuotaErrorDto::AccountMismatch,
+					AccountQuotaObservationError::UnsupportedWindow =>
+						AccountQuotaErrorDto::UnsupportedWindow,
+				},
+			},
+		),
 	};
 	if !matches!(observation.duration_minutes, 300 | 10_080) {
 		return Err(());
@@ -1793,7 +1796,7 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 
 	Ok(AccountQuotaWindowDto {
 		duration_minutes: observation.duration_minutes,
-		observed_at_unix_micros: observation.observed_at_unix_micros,
+		observed_at_unix_micros,
 		result,
 	})
 }
@@ -1961,16 +1964,17 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 mod tests {
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
-		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaWindow,
-		AccountQuotaWindowObservation, AccountRecord, AccountState, ProviderIdentity,
+		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
+		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
+		ProviderIdentity,
 	};
 	use decodex_postgres::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
 		ResetCardFailureCode, ResetCardOperationStatus,
 	};
 	use decodex_protocol::{
-		AccountCommandRejectionDto, AccountProfileEmailDto, CommandError, ResetCardError,
-		ResetCardOperationResult,
+		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
+		ResetCardError, ResetCardOperationResult,
 	};
 
 	use super::{
@@ -1979,8 +1983,24 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		protocol_reset_error,
+		protocol_reset_error, quota_dto,
 	};
+
+	#[test]
+	fn stale_internal_quota_is_publicly_unknown_without_old_values() {
+		let dto = quota_dto(AccountQuotaWindowObservation {
+			duration_minutes: AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+			observed_at_unix_micros: Some(1_000_000),
+			disposition: AccountQuotaDisposition::Stale(
+				AccountQuotaWindow::new(AccountQuotaWindow::SEVEN_DAYS_MINUTES, 42, 2_000_000)
+					.unwrap(),
+			),
+		})
+		.expect("supported stale quota should have a bounded public projection");
+
+		assert_eq!(dto.observed_at_unix_micros, None);
+		assert_eq!(dto.result, AccountQuotaStateDto::Unknown);
+	}
 
 	#[test]
 	fn account_profile_projection_keeps_email_visibility_and_bounded_daily_facts_explicit() {

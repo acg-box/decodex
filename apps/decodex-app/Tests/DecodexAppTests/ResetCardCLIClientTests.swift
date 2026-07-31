@@ -158,6 +158,37 @@ final class ResetCardNativeClientTests: XCTestCase {
 		XCTAssertEqual(inventory.sevenDayQuota.usedPercent, 0)
 	}
 
+	func testNativeInventoryRejectsRetiredStaleQuotaState() async {
+		let accountID = accountID
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "get_reset_cards",
+				authority: authority,
+				data: """
+				{"outcome":"available","data":{
+				  "account_id":"\(accountID)",
+				  "account_revision":7,
+				  "reported_available_count":0,
+				  "details_complete":true,
+				  "cards":[],
+				  "five_hour_quota":{"duration_minutes":300,"observed_at_unix_micros":1000000,"result":{"state":"stale","data":{"used_percent":20,"resets_at_unix_micros":2000000}}},
+				  "seven_day_quota":{"duration_minutes":10080,"observed_at_unix_micros":null,"result":{"state":"unknown"}}
+				}}
+				"""
+			)
+		}
+
+		do {
+			_ = try await client.inventory(
+				for: nativeAccount(authority: authority, accountID: accountID, revision: 7)
+			)
+			XCTFail("retired stale quota state must be rejected")
+		} catch {
+			XCTAssertEqual(error as? ResetCardClientError, .invalidResponse)
+		}
+	}
+
 	func testNativeInventoryAcceptsCountOnlyPartialDetailsWithoutSelectableCards() async throws {
 		let accountID = accountID
 		let authority = authority
