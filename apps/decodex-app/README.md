@@ -70,13 +70,16 @@ either that alias or the account email in the same identity slot without an
 identity icon. The canonical account UUID is the only row identity. There is no
 account rename surface.
 
-Reset Card use requires two clicks on the same descriptor. The first click arms
-a five-second confirmation. The second click writes one credential-negative
-pending handle, then sends one native daemon request with the same account
-revision, descriptor, and operation key. Restart recovery reads durable status
-and retains that key. It never selects another card or generates a replacement
-key for an unresolved request. Expiry times use compact bordered controls so
-their click action remains visible without adding a second card container.
+Reset Card controls use a subtle neutral border that remains visible on each
+material card. The armed confirmation uses the existing warning accent without
+changing the control size. Reset Card use requires two clicks on the same
+descriptor. The first click arms a five-second confirmation. The second click
+writes one credential-negative pending handle, then sends one native daemon
+request with the same account revision, descriptor, and operation key. Restart
+recovery reads durable status and retains that key. It never selects another
+card or generates a replacement key for an unresolved request. Expiry times use
+compact bordered controls so their click action remains visible without adding
+a second card container.
 
 The bounded recovery journal is
 `Application Support/Decodex/reset-card-pending-v1.json`. It uses an atomic

@@ -376,16 +376,12 @@ struct ResetCardAccountRow: View {
 						} label: {
 							cardChip(target)
 						}
-						.buttonStyle(.bordered)
-						.buttonBorderShape(.roundedRectangle(radius: 6))
-						.controlSize(.small)
-						.tint(
-							confirmation.isArmed(target)
-								? PanelPalette.warning(colorScheme)
-								: PanelPalette.actionBlue(colorScheme)
+						.buttonStyle(
+							ResetCardChipButtonStyle(
+								isArmed: confirmation.isArmed(target)
+							)
 						)
 						.disabled(store.blocksNewAttempt(for: target))
-						.frame(minHeight: 24)
 						.accessibilityLabel(accessibilityLabel(target))
 						.accessibilityHint(accessibilityHint(target))
 						.help(help(target))
@@ -570,6 +566,48 @@ struct ResetCardAccountRow: View {
 			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
 		return "Reset Card, expires \(spokenExpiry) \(zone)"
+	}
+}
+
+private struct ResetCardChipButtonStyle: ButtonStyle {
+	let isArmed: Bool
+	@Environment(\.colorScheme) private var colorScheme
+	@Environment(\.isEnabled) private var isEnabled
+
+	func makeBody(configuration: Configuration) -> some View {
+		let shape = RoundedRectangle(cornerRadius: 6, style: .continuous)
+
+		configuration.label
+			.padding(.horizontal, PanelSpacing.compact)
+			.frame(minHeight: 24)
+			.background {
+				shape.fill(fillColor)
+			}
+			.overlay {
+				shape.strokeBorder(borderColor, lineWidth: 1)
+			}
+			.contentShape(shape)
+			.opacity(isEnabled ? (configuration.isPressed ? 0.76 : 1) : 0.46)
+			.scaleEffect(configuration.isPressed ? 0.985 : 1)
+			.animation(.easeOut(duration: 0.08), value: configuration.isPressed)
+	}
+
+	private var fillColor: Color {
+		if isArmed {
+			return PanelPalette.warning(colorScheme)
+				.opacity(colorScheme == .dark ? 0.12 : 0.09)
+		}
+		return PanelPalette.primaryText(colorScheme)
+			.opacity(colorScheme == .dark ? 0.055 : 0.04)
+	}
+
+	private var borderColor: Color {
+		if isArmed {
+			return PanelPalette.warning(colorScheme)
+				.opacity(colorScheme == .dark ? 0.72 : 0.62)
+		}
+		return PanelPalette.primaryText(colorScheme)
+			.opacity(colorScheme == .dark ? 0.22 : 0.18)
 	}
 }
 

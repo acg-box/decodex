@@ -299,8 +299,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertFalse(statusPanel.contains(".preferredColorScheme"))
 		XCTAssertFalse(statusPanel.contains(".environment(\\.colorScheme"))
-		XCTAssertTrue(resetCards.contains(".buttonStyle(.bordered)"))
-		XCTAssertTrue(resetCards.contains(".controlSize(.small)"))
+		XCTAssertTrue(resetCards.contains("ResetCardChipButtonStyle("))
+		XCTAssertTrue(resetCards.contains("shape.strokeBorder(borderColor, lineWidth: 1)"))
+		XCTAssertTrue(resetCards.contains("configuration.isPressed ? 0.985 : 1"))
+		XCTAssertFalse(resetCards.contains(".buttonStyle(.bordered)"))
 		XCTAssertTrue(
 			resetCards.contains(
 				"Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)"
