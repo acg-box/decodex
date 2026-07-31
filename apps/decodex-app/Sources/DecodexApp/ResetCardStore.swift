@@ -244,6 +244,7 @@ final class ResetCardStore {
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
+	@ObservationIgnored private var accountSkeletonRefreshGeneration: UInt64 = 0
 
 	init(
 		client: any ResetCardClient = DecodexNativeClient(),
@@ -1582,9 +1583,13 @@ final class ResetCardStore {
 		else {
 			return
 		}
+		let refreshGeneration = accountSkeletonRefreshGeneration
 		isRefreshingAccountSkeleton = true
 		defer {
 			isRefreshingAccountSkeleton = false
+			if refreshGeneration != accountSkeletonRefreshGeneration {
+				scheduleFreshAccountSkeletonRead()
+			}
 		}
 		do {
 			let projectionGeneration = beginCodexProjectionRequest()
@@ -1725,18 +1730,19 @@ final class ResetCardStore {
 			isProfileRefreshing: existing.isProfileRefreshing
 		)
 
-		if let target = accountSkeletonRevisionTargets[accountID] {
-			accountSkeletonRevisionTargets[accountID] = max(target, inventoryRevision)
-			return
-		}
-		accountSkeletonRevisionTargets[accountID] = inventoryRevision
+		accountSkeletonRevisionTargets[accountID] = max(
+			accountSkeletonRevisionTargets[accountID] ?? 0,
+			inventoryRevision
+		)
 		scheduleFreshAccountSkeletonRead()
 	}
 
 	private func scheduleFreshAccountSkeletonRead() {
-		guard accountSkeletonRevisionTargets.isEmpty == false,
-			isAccountControlInProgress == false
-		else {
+		guard accountSkeletonRevisionTargets.isEmpty == false else {
+			return
+		}
+		accountSkeletonRefreshGeneration &+= 1
+		guard isAccountControlInProgress == false else {
 			return
 		}
 		Task { [weak self] in

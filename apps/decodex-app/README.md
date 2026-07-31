@@ -77,15 +77,18 @@ Reset Card controls use a subtle neutral border that remains visible on each
 material card. The armed confirmation uses the existing warning accent without
 changing the control size. Reset Card use requires two clicks on the same
 descriptor. The first click arms a five-second confirmation. The second click
-writes one credential-negative pending handle, then sends one native daemon
-request with the same account revision, descriptor, and operation key. Restart
-recovery reads durable status and retains that key. It never selects another
-card or generates a replacement key for an unresolved request. While the
-request is unresolved, the panel shows one compact status row and checks the
-saved request automatically. It does not show a separate transient message or
-a manual Resume control for the same operation. Expiry times use compact
-bordered controls so their click action remains visible without adding a second
-card container.
+ends the confirmation countdown, shows one busy indicator, writes one
+credential-negative pending handle, and sends one native daemon request with
+the same account revision, descriptor, and operation key. Restart recovery
+reads durable status and retains that key. It never selects another card or
+generates a replacement key for an unresolved request. While the request is
+unresolved, the panel shows one compact status row and checks the saved request
+automatically. It does not keep a disabled confirmation countdown, show a
+separate transient message, or show a manual Resume control for the same
+operation. If an inventory read advances during a skeleton read, the app queues
+one newer skeleton read so the account row does not remain in its checking
+state. Expiry times use compact bordered controls so their click action remains
+visible without adding a second card container.
 
 The bounded recovery journal is
 `Application Support/Decodex/reset-card-pending-v1.json`. It uses an atomic
