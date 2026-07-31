@@ -26,7 +26,7 @@ const OPERATION_POLL_INTERVAL: Duration = Duration::from_millis(200);
 /// Reset-card operations served by the common daemon authority.
 #[derive(Clone, Eq, PartialEq, Subcommand)]
 pub enum ResetCardCommand {
-	/// Read one account's complete public reset-card inventory.
+	/// Read one account's bounded current public reset-card observation.
 	List {
 		/// Canonical vNext account UUID.
 		#[arg(long, value_name = "UUID")]

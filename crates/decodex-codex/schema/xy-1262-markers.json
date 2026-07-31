@@ -12,9 +12,11 @@
     "thread/resume",
     "thread/search",
     "thread/start",
+    "turn/interrupt",
     "turn/start"
   ],
   "notification_methods": [
+    "item/agentMessage/delta",
     "item/completed",
     "item/started",
     "thread/started",

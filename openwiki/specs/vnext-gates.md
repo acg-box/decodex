@@ -499,8 +499,10 @@ exact-PID cold-launch Accessibility result remains accepted only for the isolate
 foundation.
 
 Current source opens a real GPUI application shell and window. It is not print-and-exit.
-Its destinations are placeholder-only, so the app is not yet usable. Slice 1 must make
-Accounts, Conversation, and Health usable. Slice 2 must make Project, Work, and Run
+Health is the only bounded live destination. Every other destination remains a
+placeholder. The Quick Task and WorkItem contracts do not make their shell destinations
+live. GPUI is not generally usable. Remaining Slice 1 UI work is Accounts and
+Conversation. Slice 2 must make Project, Work, and Run
 usable. Slice 3 owns the exact Mac package gate. The former P/K/L/S component sequence
 and rejected combined XY-1269 candidate are historical planning provenance, not current
 delivery gates. Marked-text/IME, signing/notarization, VoiceOver, large-history rendering,

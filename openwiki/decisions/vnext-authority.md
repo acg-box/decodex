@@ -345,8 +345,11 @@ Delivery uses exactly three vertical slices:
    and one Mac package, including clean-startup proof against legacy account authority.
 
 The dependency recommendation is `Slice 1 -> Slice 2 -> Slice 3`. Current GPUI opens a
-real shell and window, but its destinations are placeholder-only and not usable. The
-slices replace the former component-first/global-gate sequence.
+real shell and window. Health is the only bounded live destination. Every other
+destination remains a placeholder. The Quick Task and WorkItem contracts do not make
+their shell destinations live. GPUI is not generally usable. Remaining Slice 1 UI work
+is Accounts and Conversation. The slices replace the former component-first/global-gate
+sequence.
 
 ## XY-1262 gate split
 
