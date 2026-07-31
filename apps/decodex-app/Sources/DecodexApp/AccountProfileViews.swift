@@ -35,19 +35,6 @@ struct AccountProfileDetailView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 9) {
-			HStack(alignment: .firstTextBaseline) {
-				Text("Account details")
-					.font(PanelFont.transientTitle)
-
-				Spacer()
-
-				if let planType {
-					Text(planType)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				}
-			}
-
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
 
@@ -90,10 +77,6 @@ struct AccountProfileDetailView: View {
 		.accessibilityElement(children: .contain)
 	}
 
-	private var planType: String? {
-		state.profile?.planType ?? state.profileUnavailable?.claims.planType
-	}
-
 	private var quotaDiagnostic: String? {
 		let diagnostics = [
 			quotaDiagnostic(title: "5-hour", window: state.fiveHourQuota),
@@ -120,23 +103,9 @@ struct AccountProfileDetailView: View {
 
 struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 4) {
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Image(systemName: "chart.bar.xaxis")
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.usageCyan(colorScheme))
-					.accessibilityHidden(true)
-
-				Text("All accounts")
-					.font(PanelFont.usageValue)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-
-				Spacer(minLength: 0)
-			}
-
 			if aggregateMetrics.isEmpty == false {
 				AccountProfileMetricsView(
 					metrics: aggregateMetrics
@@ -149,8 +118,8 @@ struct AccountProfileOverviewView: View {
 				)
 			}
 		}
-		.padding(.horizontal, 10)
-		.padding(.vertical, 7)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal, 2)
 		.accessibilityElement(children: .combine)
 	}
 

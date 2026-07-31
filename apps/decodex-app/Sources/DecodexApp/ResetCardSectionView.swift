@@ -172,19 +172,25 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var identityHeader: some View {
-		Text(identity.text)
-			.font(PanelFont.accountName)
-			.foregroundStyle(PanelPalette.primaryText(colorScheme))
-			.lineLimit(1)
-			.truncationMode(.middle)
-			.layoutPriority(1)
-			.frame(maxWidth: .infinity, alignment: .leading)
-			.accessibilityElement(children: .ignore)
-			.accessibilityLabel(
-				identity.showsEmail
-					? "Account email \(identity.text)"
-					: "Account \(identity.text)"
-			)
+		HStack(alignment: .firstTextBaseline, spacing: 5) {
+			Text(identity.text)
+				.font(PanelFont.accountName)
+				.foregroundStyle(PanelPalette.primaryText(colorScheme))
+				.lineLimit(1)
+				.truncationMode(.middle)
+				.layoutPriority(1)
+
+			if let planType {
+				Text(planType)
+					.font(PanelFont.tertiary)
+					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+					.lineLimit(1)
+					.fixedSize(horizontal: true, vertical: false)
+			}
+		}
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.accessibilityElement(children: .ignore)
+		.accessibilityLabel(identityAccessibilityLabel)
 	}
 
 	private var exceptionalStatus: some View {
@@ -218,6 +224,21 @@ struct ResetCardAccountRow: View {
 		state.profile?.email ?? state.profileUnavailable?.claims.email
 	}
 
+	private var planType: String? {
+		state.profile?.planType ?? state.profileUnavailable?.claims.planType
+	}
+
+	private var identityAccessibilityLabel: String {
+		let accountLabel =
+			identity.showsEmail
+			? "Account email \(identity.text)"
+			: "Account \(identity.text)"
+		guard let planType else {
+			return accountLabel
+		}
+		return "\(accountLabel), \(planType) plan"
+	}
+
 	private var exceptionalStatusText: String? {
 		if state.account.enabled == false {
 			return "Disabled"
@@ -249,7 +270,7 @@ struct ResetCardAccountRow: View {
 		case .authFailed:
 			return "Login refresh required"
 		case .depleted:
-			return "Weekly quota depleted"
+			return nil
 		case .pluginUnready:
 			return "Provider update required"
 		case .unknown:
@@ -261,7 +282,6 @@ struct ResetCardAccountRow: View {
 
 	private var exceptionalStatusColor: Color {
 		if state.account.enabled == false
-			|| state.account.observedState == .depleted
 			|| state.account.observedState == .unknown
 			|| state.account.observedState == .pluginUnready
 		{
@@ -393,7 +413,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(
 					confirmation.isArmed(target)
 						? PanelPalette.warning(colorScheme)
-						: PanelPalette.primaryText(colorScheme).opacity(0.9)
+						: PanelPalette.secondaryText(colorScheme)
 				)
 		}
 		.font(PanelFont.resetCardAction)
