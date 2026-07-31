@@ -35,11 +35,11 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		await store.refresh()
 
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
+		XCTAssertNil(store.message)
 		XCTAssertEqual(
-			store.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "Reset-card use is reconciling authoritative state."
+			store.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.checking(
+				detail: "The service is reconciling authoritative Reset Card state."
 			)
 		)
 		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
@@ -60,11 +60,11 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
 		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
+		XCTAssertNil(store.message)
 		XCTAssertEqual(
-			store.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "Authoritative reset-card status is unavailable. Authoritative reset-card state is unavailable."
+			store.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.retrying(
+				detail: "Authoritative reset-card state is unavailable."
 			)
 		)
 	}
@@ -88,16 +88,16 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		XCTAssertEqual(completion, ResetCardUseCompletion(resolved: false))
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
 		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
+		XCTAssertNil(store.message)
 		XCTAssertEqual(
-			store.message,
-			ResetCardStoreMessage(
-				tone: .error,
-				text: "The reset-card request was not dispatched. Resume the pending request with the same operation key."
+			store.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.retrying(
+				detail: "The reset-card request was not dispatched."
 			)
 		)
 	}
 
-	func testPotentiallyDispatchedResumeChecksStatusWithoutRedispatch() async throws {
+	func testPotentiallyDispatchedStatusCheckDoesNotRedispatch() async throws {
 		let fixture = try makeSubmissionFixture(
 			useDocument: """
 			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
@@ -112,15 +112,15 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		await store.refresh()
 		_ = await store.use(fixture.attempt)
 
-		await store.resume(fixture.attempt)
+		await store.checkPendingStatus(fixture.attempt)
 
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
 		XCTAssertEqual(fixture.pendingStore.load(), .available([fixture.attempt]))
+		XCTAssertNil(store.message)
 		XCTAssertEqual(
-			store.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "No durable reset-card operation was found."
+			store.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.checking(
+				detail: "No durable Reset Card operation was found yet."
 			)
 		)
 		let invocations = try fixture.invocations()
@@ -199,11 +199,11 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			try fixture.invocations().filter { $0.contains("reset-card use") },
 			[]
 		)
+		XCTAssertNil(store.message)
 		XCTAssertEqual(
-			store.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "Resume the pending request for this reset card with its existing operation key."
+			store.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.checking(
+				detail: "This saved Reset Card request is already being checked automatically."
 			)
 		)
 	}
@@ -320,7 +320,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 
 		await store.refresh()
-		await store.resume(fixture.attempt)
+		await store.checkPendingStatus(fixture.attempt)
 
 		XCTAssertTrue(store.isPendingRecoveryBlocked)
 		XCTAssertEqual(store.pendingAttempts, [fixture.attempt])
@@ -337,7 +337,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 	}
 
-	func testPendingResumeKeepsItsPinnedAuthorityAfterActiveProfileChanges() async throws {
+	func testPendingStatusCheckKeepsItsPinnedAuthorityAfterActiveProfileChanges() async throws {
 		let fixture = try makeSubmissionFixture(
 			useDocument: """
 			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"accepted","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"durably_accepted","account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200},"account_revision":7,"state":{"state":"prepared","data":{"account_id":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405160","account_revision":7,"descriptor":{"granted_at_unix_seconds":100,"expires_at_unix_seconds":200}}}}
@@ -354,7 +354,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 
 		await store.refresh()
-		await store.resume(fixture.attempt)
+		await store.checkPendingStatus(fixture.attempt)
 
 		let invocations = try fixture.invocations()
 		let statusInvocations = invocations.filter { $0.contains("reset-card status") }
@@ -372,7 +372,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 	}
 
-	func testStaleInstanceCannotResumeAfterAnotherInstanceRemovesTheKey() async throws {
+	func testStaleInstanceCannotCheckAfterAnotherInstanceRemovesTheKey() async throws {
 		let fixture = try makeSubmissionFixture(
 			useDocument: """
 			{"schema":"decodex/reset-card-cli/1","command":"use","outcome":"failure","idempotency_key":"018f0f9e-7b6e-4a31-8f4c-1d2e3f405161","dispatch_state":"potentially_dispatched","failure":"protocol_timeout"}
@@ -388,7 +388,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		await staleStore.refresh()
 		XCTAssertEqual(fixture.pendingStore.remove(fixture.attempt), [])
 
-		await staleStore.resume(fixture.attempt)
+		await staleStore.checkPendingStatus(fixture.attempt)
 
 		XCTAssertEqual(staleStore.pendingAttempts, [])
 		let invocations = try fixture.invocations()
@@ -400,13 +400,8 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			invocations.filter { $0.contains("reset-card status") }.count,
 			1
 		)
-		XCTAssertEqual(
-			staleStore.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "Another app instance changed or is using this pending reset-card request. Refresh before continuing."
-			)
-		)
+		XCTAssertNil(staleStore.message)
+		XCTAssertEqual(staleStore.pendingStatuses, [:])
 	}
 
 	func testConcurrentStatusCompletionRemovesTheKeyWithoutRedispatch() async throws {
@@ -420,7 +415,7 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			client: fixture.client,
 			pendingStore: fixture.pendingStore
 		)
-		let resumingStore = ResetCardStore(
+		let checkingStore = ResetCardStore(
 			client: fixture.client,
 			pendingStore: ResetCardPendingAttemptStore(
 				journalURL: fixture.journalURL
@@ -428,19 +423,19 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 		)
 
 		let completion = Task {
-			await completingStore.resume(fixture.attempt)
+			await completingStore.checkPendingStatus(fixture.attempt)
 		}
 		try await waitForFile(fixture.statusEnteredURL)
 
-		let concurrentResume = Task {
-			await resumingStore.resume(fixture.attempt)
+		let concurrentCheck = Task {
+			await checkingStore.checkPendingStatus(fixture.attempt)
 		}
-		await concurrentResume.value
+		await concurrentCheck.value
+		XCTAssertNil(checkingStore.message)
 		XCTAssertEqual(
-			resumingStore.message,
-			ResetCardStoreMessage(
-				tone: .information,
-				text: "Another app instance changed or is using this pending reset-card request. Refresh before continuing."
+			checkingStore.pendingStatus(for: fixture.attempt),
+			ResetCardPendingStatus.retrying(
+				detail: "Another app instance changed or is checking this saved Reset Card request."
 			)
 		)
 
@@ -457,9 +452,9 @@ final class ResetCardStoreRecoveryTests: XCTestCase {
 			)
 		)
 
-		await resumingStore.resume(fixture.attempt)
+		await checkingStore.checkPendingStatus(fixture.attempt)
 
-		XCTAssertEqual(resumingStore.pendingAttempts, [])
+		XCTAssertEqual(checkingStore.pendingAttempts, [])
 		let invocations = try fixture.invocations()
 		XCTAssertEqual(
 			invocations.filter { $0.contains("reset-card status") }.count,

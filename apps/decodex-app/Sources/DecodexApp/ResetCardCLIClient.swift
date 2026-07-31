@@ -346,11 +346,11 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 		case .commandRejected:
 			return "The reset-card request was rejected. Refresh and try again."
 		case .useDefinitelyNotDispatched:
-			return "The reset-card request was not dispatched. Resume the pending request with the same operation key."
+			return "The reset-card request was not dispatched."
 		case .usePotentiallyDispatched:
-			return "The reset-card request may have been dispatched. Resume the pending request to check authoritative state with the same operation key."
+			return "The reset-card request may have been dispatched."
 		case .commandFailed:
-			return "The reset-card service is unavailable. Start decodexd, then resume the pending request."
+			return "The reset-card service is unavailable. Start decodexd."
 		case .invalidResponse:
 			return "The Decodex service returned an invalid reset-card response."
 		case .service(let error):

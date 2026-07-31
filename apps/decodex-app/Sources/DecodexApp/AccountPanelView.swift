@@ -293,7 +293,9 @@ struct AccountPanelView: View {
 							}
 						}
 
-						if store.pendingAttempts.isEmpty == false {
+						if store.pendingAttempts.isEmpty == false,
+							store.message?.tone != .error
+						{
 							ResetCardPendingAttemptsView(store: store)
 						}
 					}
@@ -307,7 +309,7 @@ struct AccountPanelView: View {
 				}
 			}
 		}
-		.accessibilityLabel("Decodex status and pending actions")
+		.accessibilityLabel("Decodex status and pending requests")
 	}
 
 	private var displayedIntrinsicMessage: ResetCardStoreMessage? {
