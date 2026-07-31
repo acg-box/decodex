@@ -135,7 +135,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertNil(store.accounts.first?.error)
 	}
 
-	func testCachedProfileUnauthorizedDoesNotDriveAccountLoginRecovery() {
+	func testCachedProfileUnauthorizedRequiresLoginRefresh() {
 		let profile = profileObservation(
 			observedAt: 300,
 			lifetimeTokens: 3_000,
@@ -149,7 +149,7 @@ final class AccountProfileStoreTests: XCTestCase {
 			profile: profile
 		)
 
-		XCTAssertFalse(availableState.requiresLoginRefresh)
+		XCTAssertTrue(availableState.requiresLoginRefresh)
 		XCTAssertEqual(
 			availableState.profileDegradationText,
 			AccountProfileObservationError.unauthorized.presentation
