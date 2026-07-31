@@ -26,7 +26,8 @@ use crate::{
 	client_lifecycle::{
 		AppliedEntity, CacheAuthority, CacheError, CacheLimits, ClientCache, ClientLifecycle,
 		CompatibilityReason, ConnectionView, Delivery, LifecycleBuildError, LifecycleCancellation,
-		LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult, production_cache_parent,
+		LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult,
+		CLIENT_CACHE_SCHEMA_GENERATION, production_cache_parent,
 	},
 	history_pager::{
 		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
@@ -95,6 +96,27 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 			.expect("non-macOS temporary path remains lexical"),
 		Path::new("/var/folders/decodex-test/T/box.acg.decodex")
 	);
+}
+
+#[test]
+fn production_client_cache_authority_is_valid_at_protocol_v2_0() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let fixture_temp_dir =
+		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
+	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
+	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
+		.expect("production lifecycle constructs at protocol V2.0");
+
+	assert_eq!(CURRENT_VERSION.major, 2);
+	assert_eq!(CURRENT_VERSION.minor, 0);
+	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
+	assert!(lifecycle.cache.is_some(), "the production client cache opens");
+	let encoded =
+		serde_json::to_value(&lifecycle.cache_authority).expect("cache authority serializes");
+
+	assert_eq!(encoded["protocol_major"].as_u64(), Some(u64::from(CURRENT_VERSION.major)));
+	assert_eq!(encoded["protocol_minor"].as_u64(), Some(u64::from(CURRENT_VERSION.minor)));
+	assert_eq!(encoded["schema_generation"].as_u64(), Some(CLIENT_CACHE_SCHEMA_GENERATION));
 }
 
 #[derive(Clone, Debug)]

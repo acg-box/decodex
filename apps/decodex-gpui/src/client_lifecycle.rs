@@ -39,6 +39,7 @@ const MAX_CONNECTION_ATTEMPTS: u8 = 5;
 const PRODUCTION_CACHE_BYTES: u64 = 64 * 1_024 * 1_024;
 const PRODUCTION_CACHE_OBJECTS: usize = 2_048;
 const PRODUCTION_CACHE_GENERATIONS: usize = 16;
+const CLIENT_CACHE_SCHEMA_GENERATION: u64 = 1;
 const HISTORY_PAGE_CACHE_SCHEMA_GENERATION: u32 = 1;
 
 /// State rendered by the later shell without exposing transport or cache internals.
@@ -319,16 +320,22 @@ pub(crate) struct ClientLifecycle {
 impl ClientLifecycle {
 	/// Construct the production lifecycle without exposing disposable-cache policy to the shell.
 	pub(crate) fn production(config: RetainedSessionConfig) -> Result<Self, LifecycleBuildError> {
+		Self::production_with_temp_dir(config, &std::env::temp_dir())
+	}
+
+	fn production_with_temp_dir(
+		config: RetainedSessionConfig,
+		temp_dir: &Path,
+	) -> Result<Self, LifecycleBuildError> {
 		let cache_limits = CacheLimits::new(
 			PRODUCTION_CACHE_BYTES,
 			PRODUCTION_CACHE_OBJECTS,
 			PRODUCTION_CACHE_GENERATIONS,
 		)
 		.expect("fixed production cache limits are valid");
-		let cache_parent = production_cache_parent(&std::env::temp_dir())?;
-		let schema_generation = u64::from(CURRENT_VERSION.minor);
+		let cache_parent = production_cache_parent(temp_dir)?;
 
-		Self::new(config, cache_parent, cache_limits, schema_generation)
+		Self::new(config, cache_parent, cache_limits, CLIENT_CACHE_SCHEMA_GENERATION)
 	}
 
 	/// Bind the lifecycle to one exact stable server, protocol/schema generation, and cache parent.
