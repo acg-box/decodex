@@ -24,7 +24,7 @@ use decodex_protocol::{
 use serde::Serialize;
 use tokio::runtime::Handle;
 
-const DEVICE_LOGIN_URL: &str = "https://auth.openai.com/codex/device";
+const FILE_AUTH_STORE_CONFIG: &str = r#"cli_auth_credentials_store="file""#;
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const CHILD_POLL_INTERVAL: Duration = Duration::from_millis(40);
 const MAX_LOGIN_OUTPUT_BYTES: usize = 64 * 1024;
@@ -50,7 +50,7 @@ pub(crate) enum Failure {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
 enum State {
-	RequestingCode,
+	OpeningBrowser,
 	WaitingForBrowser,
 	Installing,
 	Completed,
@@ -59,49 +59,36 @@ enum State {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct Prompt {
-	verification_url: &'static str,
-	user_code: String,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct Status {
 	session_id: String,
 	state: State,
-	#[serde(skip_serializing_if = "Option::is_none")]
-	prompt: Option<Prompt>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	failure: Option<Failure>,
 }
 
 impl Status {
-	fn requesting(session_id: String) -> Self {
-		Self { session_id, state: State::RequestingCode, prompt: None, failure: None }
+	fn opening_browser(session_id: String) -> Self {
+		Self { session_id, state: State::OpeningBrowser, failure: None }
 	}
 
-	fn waiting(session_id: String, user_code: String) -> Self {
-		Self {
-			session_id,
-			state: State::WaitingForBrowser,
-			prompt: Some(Prompt { verification_url: DEVICE_LOGIN_URL, user_code }),
-			failure: None,
-		}
+	fn waiting(session_id: String) -> Self {
+		Self { session_id, state: State::WaitingForBrowser, failure: None }
 	}
 
 	fn installing(session_id: String) -> Self {
-		Self { session_id, state: State::Installing, prompt: None, failure: None }
+		Self { session_id, state: State::Installing, failure: None }
 	}
 
 	fn completed(session_id: String) -> Self {
-		Self { session_id, state: State::Completed, prompt: None, failure: None }
+		Self { session_id, state: State::Completed, failure: None }
 	}
 
 	fn failed(session_id: String, failure: Failure) -> Self {
-		Self { session_id, state: State::Failed, prompt: None, failure: Some(failure) }
+		Self { session_id, state: State::Failed, failure: Some(failure) }
 	}
 
 	fn cancelled(session_id: String) -> Self {
-		Self { session_id, state: State::Cancelled, prompt: None, failure: None }
+		Self { session_id, state: State::Cancelled, failure: None }
 	}
 
 	fn is_terminal(&self) -> bool {
@@ -126,7 +113,7 @@ struct Shared {
 impl Shared {
 	fn new(session_id: String) -> Self {
 		Self {
-			status: Mutex::new(Status::requesting(session_id)),
+			status: Mutex::new(Status::opening_browser(session_id)),
 			cancel_requested: AtomicBool::new(false),
 		}
 	}
@@ -317,27 +304,11 @@ fn run_login_in_home(
 	login_home: &Path,
 ) -> Status {
 	let session_id = start.session_id.clone();
-	let mut child = match Command::new(codex_bin)
-		.arg("login")
-		.arg("--device-auth")
-		.current_dir(login_home)
-		.env_remove("OPENAI_API_KEY")
-		.env_remove("CODEX_API_KEY")
-		.env_remove("CODEX_ACCESS_TOKEN")
-		.env_remove("CHATGPT_ACCESS_TOKEN")
-		.env_remove("CODEX_HOME")
-		.env_remove("CODEX_SQLITE_HOME")
-		.env("CODEX_HOME", login_home)
-		.env("CODEX_SQLITE_HOME", login_home)
-		.stdin(Stdio::null())
-		.stdout(Stdio::piped())
-		.stderr(Stdio::piped())
-		.process_group(0)
-		.spawn()
-	{
+	let mut child = match browser_login_command(&codex_bin, login_home).spawn() {
 		Ok(child) => child,
 		Err(_) => return Status::failed(session_id, Failure::CodexUnavailable),
 	};
+	shared.set_status(Status::waiting(session_id.clone()));
 	let Some(stdout) = child.stdout.take() else {
 		terminate_child(&mut child);
 		return Status::failed(session_id, Failure::LoginFailed);
@@ -373,7 +344,7 @@ fn run_login_in_home(
 		Ok(output) => output,
 		Err(status) => return status,
 	};
-	if output.reader_failed || !output.exit.success() || !output.prompt_published {
+	if output.reader_failed || !output.exit.success() {
 		return Status::failed(session_id, Failure::LoginFailed);
 	}
 	if shared.cancel_requested.load(Ordering::Acquire) {
@@ -391,10 +362,31 @@ fn run_login_in_home(
 	}
 }
 
+fn browser_login_command(codex_bin: &Path, login_home: &Path) -> Command {
+	let mut command = Command::new(codex_bin);
+	command
+		.arg("login")
+		.arg("-c")
+		.arg(FILE_AUTH_STORE_CONFIG)
+		.current_dir(login_home)
+		.env_remove("OPENAI_API_KEY")
+		.env_remove("CODEX_API_KEY")
+		.env_remove("CODEX_ACCESS_TOKEN")
+		.env_remove("CHATGPT_ACCESS_TOKEN")
+		.env_remove("CODEX_HOME")
+		.env_remove("CODEX_SQLITE_HOME")
+		.env("CODEX_HOME", login_home)
+		.env("CODEX_SQLITE_HOME", login_home)
+		.stdin(Stdio::null())
+		.stdout(Stdio::piped())
+		.stderr(Stdio::piped())
+		.process_group(0);
+	command
+}
+
 struct LoginChildOutput {
 	exit: ExitStatus,
 	reader_failed: bool,
-	prompt_published: bool,
 }
 
 fn collect_login_child(
@@ -408,7 +400,6 @@ fn collect_login_child(
 	let deadline = Instant::now() + LOGIN_TIMEOUT;
 	let mut output = Vec::new();
 	let mut reader_failed = false;
-	let mut prompt_published = false;
 	let mut open_readers = 2_u8;
 	let mut exit = None;
 	loop {
@@ -423,20 +414,12 @@ fn collect_login_child(
 			return Err(Status::failed(session_id.to_owned(), Failure::LoginTimedOut));
 		}
 		match receiver.recv_timeout(CHILD_POLL_INTERVAL) {
-			Ok(PipeEvent::Bytes(bytes)) => {
+			Ok(PipeEvent::Bytes(bytes)) =>
 				if append_output(&mut output, &bytes).is_err() {
 					terminate_child(child);
 					join_readers(stdout_reader, stderr_reader);
 					return Err(Status::failed(session_id.to_owned(), Failure::LoginFailed));
-				}
-				if !prompt_published
-					&& let Some(code) = parse_device_code(&output)
-					&& contains_device_url(&output)
-				{
-					shared.set_status(Status::waiting(session_id.to_owned(), code));
-					prompt_published = true;
-				}
-			},
+				},
 			Ok(PipeEvent::Closed { failed }) => {
 				reader_failed |= failed;
 				open_readers = open_readers.saturating_sub(1);
@@ -462,7 +445,7 @@ fn collect_login_child(
 			&& let Some(exit) = exit
 		{
 			join_readers(stdout_reader, stderr_reader);
-			return Ok(LoginChildOutput { exit, reader_failed, prompt_published });
+			return Ok(LoginChildOutput { exit, reader_failed });
 		}
 	}
 }
@@ -626,23 +609,6 @@ fn append_output(output: &mut Vec<u8>, bytes: &[u8]) -> Result<(), ()> {
 	Ok(())
 }
 
-fn contains_device_url(output: &[u8]) -> bool {
-	output.windows(DEVICE_LOGIN_URL.len()).any(|window| window == DEVICE_LOGIN_URL.as_bytes())
-}
-
-fn parse_device_code(output: &[u8]) -> Option<String> {
-	output.windows(10).find_map(|candidate| {
-		if candidate[4] != b'-' {
-			return None;
-		}
-		let valid = candidate
-			.iter()
-			.enumerate()
-			.all(|(index, byte)| index == 4 || byte.is_ascii_uppercase() || byte.is_ascii_digit());
-		valid.then(|| String::from_utf8_lossy(candidate).into_owned())
-	})
-}
-
 struct LoginHome {
 	path: PathBuf,
 	device: u64,
@@ -720,19 +686,15 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn parser_accepts_the_exact_device_prompt_across_ansi_output() {
-		let output =
-			b"\x1b[32mOpen https://auth.openai.com/codex/device\x1b[0m\nCode: ZL92-P3SQ0\n";
+	fn browser_login_forces_the_private_file_credential_store() {
+		let command = browser_login_command(
+			Path::new("/Applications/ChatGPT.app/Contents/Resources/codex"),
+			Path::new("/private/tmp/decodex-login"),
+		);
+		let args =
+			command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
 
-		assert!(contains_device_url(output));
-		assert_eq!(parse_device_code(output).as_deref(), Some("ZL92-P3SQ0"));
-	}
-
-	#[test]
-	fn parser_rejects_noncanonical_codes() {
-		assert_eq!(parse_device_code(b"zl92-p3sq0"), None);
-		assert_eq!(parse_device_code(b"ZL9-P3SQ0"), None);
-		assert_eq!(parse_device_code(b"ZL92_P3SQ0"), None);
+		assert_eq!(args, ["login", "-c", r#"cli_auth_credentials_store="file""#]);
 	}
 
 	#[test]
@@ -907,7 +869,7 @@ mod tests {
 				.arg("-c")
 				.arg(
 					"printf '%s' \"$$\" > \"$1\"; \
-					 printf 'Open https://auth.openai.com/codex/device\\nCode: AB12-CDE34\\n'; \
+					 printf 'Waiting for browser login\\n'; \
 					 (sleep 60) & exit 0",
 				)
 				.arg("decodex-login-fixture")
@@ -932,10 +894,7 @@ mod tests {
 				stderr_reader,
 				&worker_session_id,
 			) {
-				Ok(output)
-					if output.exit.success()
-						&& !output.reader_failed
-						&& output.prompt_published =>
+				Ok(output) if output.exit.success() && !output.reader_failed =>
 					Status::completed(worker_session_id),
 				Ok(_) => Status::failed(worker_session_id, Failure::LoginFailed),
 				Err(status) => status,

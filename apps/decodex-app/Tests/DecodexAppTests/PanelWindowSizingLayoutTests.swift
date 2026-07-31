@@ -88,6 +88,32 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
+	func testStatusItemPressDefersDeactivateHideForTheToggleAction() {
+		let statusItemRect = NSRect(x: 400, y: 900, width: 28, height: 24)
+
+		XCTAssertTrue(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseDown,
+				mouseLocation: NSPoint(x: 414, y: 912),
+				statusItemRect: statusItemRect
+			)
+		)
+		XCTAssertFalse(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseDown,
+				mouseLocation: NSPoint(x: 300, y: 700),
+				statusItemRect: statusItemRect
+			)
+		)
+		XCTAssertFalse(
+			StatusPanelInteraction.isStatusItemPress(
+				eventType: .leftMouseUp,
+				mouseLocation: NSPoint(x: 414, y: 912),
+				statusItemRect: statusItemRect
+			)
+		)
+	}
+
 	func testRoundedContentSizeCeilsFractionalDimensions() {
 		let size = PanelWindowSizingLayout.roundedContentSize(for: CGSize(width: 339.2, height: 641.1))
 
