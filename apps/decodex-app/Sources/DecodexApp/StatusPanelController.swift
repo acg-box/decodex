@@ -9,8 +9,10 @@ final class StatusPanelController: NSObject {
 	private let statusItem: NSStatusItem
 	private let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
+	private let store: ResetCardStore
 
 	init(store: ResetCardStore) {
+		self.store = store
 		statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 		panel = TransparentStatusPanel(
 			contentRect: .zero,
@@ -41,6 +43,7 @@ final class StatusPanelController: NSObject {
 		positionPanel()
 		NSApp.activate(ignoringOtherApps: true)
 		panel.makeKeyAndOrderFront(nil)
+		store.requestRefresh()
 	}
 
 	private func configureStatusItem() {

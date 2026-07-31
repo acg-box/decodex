@@ -580,15 +580,6 @@ struct ResetCardQuotaPresentation: Equatable {
 			self.usedPercent = usedPercent
 			self.remainingPercent = remainingPercent
 			resetDate = window.resetDate
-		case .stale(let usedPercent, _):
-			isVisible = true
-			let remainingPercent = 100 - min(100, usedPercent)
-			valueText = "\(remainingPercent)%"
-			detailText = "stale"
-			tone = .current
-			self.usedPercent = usedPercent
-			self.remainingPercent = remainingPercent
-			resetDate = window.resetDate
 		case .unknown:
 			isVisible = false
 			valueText = "—"

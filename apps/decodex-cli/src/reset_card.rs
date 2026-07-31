@@ -476,8 +476,6 @@ fn quota_summary(quota: &AccountQuotaWindowDto) -> String {
 		AccountQuotaStateDto::Unknown => "unknown".to_owned(),
 		AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros } =>
 			format!("current:{used_percent}:{resets_at_unix_micros}"),
-		AccountQuotaStateDto::Stale { used_percent, resets_at_unix_micros } =>
-			format!("stale:{used_percent}:{resets_at_unix_micros}"),
 		AccountQuotaStateDto::Error { error } => format!("error:{error:?}"),
 	};
 	format!("{}:{observed}:{result}", quota.duration_minutes)
