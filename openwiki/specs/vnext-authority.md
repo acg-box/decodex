@@ -764,11 +764,19 @@ dormant presentation infrastructure because no current shell destination renders
 `HistoryPager`. The pager keeps one active view and its existing four-page, 32-item,
 1 MiB in-memory window. This slice does not prove user-visible warm history.
 
-`ClientLifecycle` owns one explicit GPUI cache parent. The configured production parent
-remains exactly `std::env::temp_dir().join("box.acg.decodex")`; tests may inject one exact
-parent through the private lifecycle constructor. The configured parent remains lexical
-while `HistoryPageCache` is dormant. `ClientLifecycle` does not canonicalize it, and
-dormancy causes no history-cache filesystem I/O. The existing `ClientCache` remains exactly
+`ClientLifecycle` owns one explicit GPUI cache parent. It starts with the lexical
+`std::env::temp_dir()`. On macOS only, when that path starts with the `/var` component,
+the lifecycle verifies that `/var` is a root-owned symbolic link whose exact relative
+target is `private/var`, and that `/private/var` is a root-owned directory without group
+or other write permission. It then replaces only that leading component with
+`/private/var`. It does not canonicalize or follow any remaining component. A malformed
+or drifted fixed mapping fails lifecycle construction. A non-`/var` macOS path and every
+non-macOS path remain lexical. Only after this platform-prefix decision does the lifecycle
+append `box.acg.decodex`; tests may inject one exact parent through the private lifecycle
+constructor. This is not a generic path resolver, and arbitrary aliases remain prohibited
+by the existing no-follow cache boundary. The current unlanded disposable path has no
+migration or compatibility obligation. Dormancy causes no history-cache filesystem I/O.
+The existing `ClientCache` remains exactly
 `<parent>/client-cache`, and `HistoryPageCache` is exactly
 `<parent>/history-page-cache-v1`. These sibling caches have separate namespaces,
 inventories, locks, and failure handling. This cache is not the `decodex-core` typed
@@ -847,7 +855,9 @@ per-Conversation limits by oldest recency, removes the Conversation whose newest
 the oldest recency while the Conversation cap is exceeded, and enforces aggregate limits
 by oldest entry recency. Correctness does not depend on an orderly-shutdown flush.
 
-At lazy open, `HistoryPageCache` requires the configured parent to be absolute. It
+At lazy open, `HistoryPageCache` requires the configured parent to be absolute. The fixed
+macOS platform-prefix decision above is already complete and has constructed the common
+parent for both sibling cache paths. `HistoryPageCache`
 lexically splits that parent into the existing external base `parent.parent()` and the
 unchanged final cache-parent leaf `parent.file_name()`. It requires both values and
 requires the external base to exist. It canonicalizes only that external base. The
@@ -856,8 +866,10 @@ the root is normal. Starting from `/`, it opens each component of the resolved b
 descriptor-relative with `O_NOFOLLOW`. Each opened component must be a directory owned by
 root or the effective UID. Group or other write permission is prohibited except on a
 root-owned sticky directory. Only canonicalization of the complete external base may
-resolve a lexical alias. No component-level rule permits an arbitrary lexical symlink
-ancestor or permits a symlink because root owns it.
+resolve a lexical alias for this cache's private descriptor. It grants no authority to an
+arbitrary `ClientLifecycle` parent: the eager `ClientCache` no-follow validation rejects
+that parent before history-cache use. No component-level rule permits an arbitrary lexical
+symlink ancestor or permits a symlink because root owns it.
 
 From the validated resolved-base descriptor, `HistoryPageCache` opens or creates the
 unchanged final cache-parent leaf descriptor-relative with `O_NOFOLLOW` and validates it
@@ -866,7 +878,8 @@ that leaf, `history-page-cache-v1`, or any descendant. The resolved base and its
 descriptors remain private to `HistoryPageCache`. Resolution must not rewrite
 `ClientLifecycle.cache_parent`, pass a canonicalized path to `ClientCache`, or change
 `ClientCache` path identity, binding, generation, inventory, quarantine, or lifecycle
-state. This operation is not a generic path resolver or framework.
+state. The earlier fixed macOS component replacement is complete before this lazy
+page-cache-only resolution. Neither operation is a generic path resolver or framework.
 
 The fixed owner-private filesystem shape is
 `history-page-cache-v1/{lock,index,.index.next,pages/<page_sha256>,pages/.page.next}`.
@@ -936,9 +949,10 @@ Acceptance is limited to:
 - cancellation and exact active-view, request, transport-session, stable-server,
   protocol-major, protocol-minor, and local-cache-schema identities prevent stale lookup,
   publication, or visibility;
-- bounded platform evidence covers the macOS `/var` to `/private/var` external-base
-  alias and the Linux `/tmp/box.acg.decodex` temporary-path shape while preserving
-  the unchanged final cache-parent leaf;
+- bounded platform evidence covers the validated fixed macOS `/var` to `/private/var`
+  lifecycle-prefix replacement, refusal of arbitrary aliases, and the lexical Linux
+  `/tmp/box.acg.decodex` temporary-path shape while preserving the unchanged final
+  cache-parent leaf;
 - an instrumented lifecycle test proves that no history-cache filesystem I/O occurs
   before the successful transport send of the exact request or the start of an admitted
   fresh-page publication;
