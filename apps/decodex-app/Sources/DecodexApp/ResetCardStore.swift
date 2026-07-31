@@ -1,6 +1,11 @@
 import Foundation
 import Observation
 
+enum ResetCardInventoryFailure: Equatable {
+	case retryable(detail: String)
+	case unavailable(detail: String)
+}
+
 struct ResetCardAccountState: Identifiable, Equatable {
 	let account: ResetCardAccountRecord
 	let inventory: ResetCardInventory?
@@ -43,8 +48,33 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		inventory?.sevenDayQuota ?? account.sevenDayQuota
 	}
 
+	var inventoryIsCurrent: Bool {
+		guard let inventory else {
+			return false
+		}
+		return inventory.accountID == account.accountID
+			&& inventory.accountRevision == account.accountRevision
+	}
+
+	var inventoryFailure: ResetCardInventoryFailure? {
+		if let error {
+			return error.isRetryableReadFailure
+				? .retryable(detail: error.localizedDescription)
+				: .unavailable(detail: error.localizedDescription)
+		}
+		if let error = inventory?.observationError {
+			return error.isRetryableReadFailure
+				? .retryable(detail: error.presentation)
+				: .unavailable(detail: error.presentation)
+		}
+		return nil
+	}
+
 	var targets: [ResetCardUseTarget] {
 		guard let inventory,
+			inventoryIsCurrent,
+			error == nil,
+			inventory.observationError == nil,
 			inventory.detailsComplete
 		else {
 			return []
@@ -245,6 +275,9 @@ final class ResetCardStore {
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
 	@ObservationIgnored private var accountSkeletonRefreshGeneration: UInt64 = 0
+	@ObservationIgnored private var advancedInventoriesAwaitingSkeleton = [
+		String: ResetCardInventory
+	]()
 
 	init(
 		client: any ResetCardClient = DecodexNativeClient(),
@@ -568,12 +601,13 @@ final class ResetCardStore {
 						previous?.error?.isRetryableReadFailure == true
 							|| previous?.inventory?.observationError?.isRetryableReadFailure == true
 					)
-				let retainedInventory = sameRevision && retriesInventory == false
-					? previous?.inventory
-					: nil
-				let retainedError = sameRevision && retriesInventory == false
+				let retainedInventory = previous?.inventory
+				let retainedError = sameRevision
 					? previous?.error
 					: nil
+				let inventoryIsStale = retainedInventory.map {
+					$0.accountRevision != boundAccount.accountRevision
+				} ?? false
 				let retainedProfile = sameRevision
 					? previous?.profile
 					: nil
@@ -596,6 +630,8 @@ final class ResetCardStore {
 					inventory: retainedInventory,
 					error: retainedError,
 					isRefreshing: awaitsNewerSkeleton
+						|| inventoryIsStale
+						|| retriesInventory
 						|| (retainedInventory == nil && retainedError == nil),
 					profile: profileEmailsVisible
 						? retainedProfile
@@ -1488,7 +1524,10 @@ final class ResetCardStore {
 		}
 	}
 
-	private func refreshAccountDetails(_ accountID: String) async {
+	private func refreshAccountDetails(
+		_ accountID: String,
+		refreshInventory: Bool = true
+	) async {
 		guard let index = accounts.firstIndex(where: {
 			$0.account.accountID == accountID
 		}) else {
@@ -1512,17 +1551,19 @@ final class ResetCardStore {
 		}
 
 		await withTaskGroup(of: ResetCardAccountRead.self) { group in
-			group.addTask {
-				do {
-					return .inventoryAvailable(
-						accountID: accountID,
-						try await client.inventory(for: account)
-					)
-				} catch {
-					return .inventoryFailed(
-						accountID: accountID,
-						Self.clientError(error)
-					)
+			if refreshInventory {
+				group.addTask {
+					do {
+						return .inventoryAvailable(
+							accountID: accountID,
+							try await client.inventory(for: account)
+						)
+					} catch {
+						return .inventoryFailed(
+							accountID: accountID,
+							Self.clientError(error)
+						)
+					}
 				}
 			}
 			if let accountProfileClient, let profileRequest {
@@ -1606,7 +1647,10 @@ final class ResetCardStore {
 				}
 			)
 			routing = snapshot.routing
-			var accountsNeedingDetails = [String]()
+			var accountsNeedingDetails = [(
+				accountID: String,
+				refreshInventory: Bool
+			)]()
 			accounts = snapshot.accounts.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = snapshot.authority
@@ -1616,17 +1660,39 @@ final class ResetCardStore {
 				let bound = Self.account(account, authority: authority)
 				let sameRevision = previous?.account.accountRevision
 					== bound.accountRevision
+				let advancedInventory = advancedInventoriesAwaitingSkeleton[
+					bound.accountID
+				].flatMap { inventory in
+					inventory.accountID == bound.accountID
+						&& inventory.accountRevision == bound.accountRevision
+						? inventory
+						: nil
+				}
+				let retainedInventory = advancedInventory ?? previous?.inventory
+				let inventoryIsCurrent = retainedInventory.map {
+					$0.accountID == bound.accountID
+						&& $0.accountRevision == bound.accountRevision
+				} ?? false
 				let awaitsNewerSkeleton = accountSkeletonRevisionTargets[
 					bound.accountID
 				].map { bound.accountRevision < $0 } ?? false
 				if sameRevision == false {
-					accountsNeedingDetails.append(bound.accountID)
+					accountsNeedingDetails.append(
+						(
+							accountID: bound.accountID,
+							refreshInventory: advancedInventory == nil
+								|| advancedInventory?.observationError != nil
+						)
+					)
 				}
 				return ResetCardAccountState(
 					account: bound,
-					inventory: sameRevision ? previous?.inventory : nil,
-					error: sameRevision ? previous?.error : nil,
-					isRefreshing: sameRevision == false || awaitsNewerSkeleton,
+					inventory: retainedInventory,
+					error: advancedInventory == nil && sameRevision
+						? previous?.error
+						: nil,
+					isRefreshing: awaitsNewerSkeleton
+						|| (sameRevision == false && inventoryIsCurrent == false),
 					profile: sameRevision ? previous?.profile : nil,
 					profileUnavailable: sameRevision
 						? previous?.profileUnavailable
@@ -1638,8 +1704,14 @@ final class ResetCardStore {
 			}
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
-			for accountID in accountsNeedingDetails {
-				scheduleAccountControlFollowUp(.account(accountID))
+			pruneAdvancedInventoriesAwaitingSkeleton()
+			for details in accountsNeedingDetails {
+				scheduleAccountControlFollowUp(
+					.account(
+						details.accountID,
+						refreshInventory: details.refreshInventory
+					)
+				)
 			}
 			if applyCodexAuthProjection(
 				await projectionRead ?? .unavailable,
@@ -1671,8 +1743,8 @@ final class ResetCardStore {
 		}
 		guard inventory.accountRevision == existing.accountRevision else {
 			rejectAdvancedInventory(
+				inventory,
 				accountID: accountID,
-				inventoryRevision: inventory.accountRevision,
 				index: index
 			)
 			return
@@ -1705,6 +1777,11 @@ final class ResetCardStore {
 			profileError: retainsProfileState ? accounts[index].profileError : nil,
 			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
+		if let deferred = advancedInventoriesAwaitingSkeleton[accountID],
+			deferred.accountRevision <= inventory.accountRevision
+		{
+			advancedInventoriesAwaitingSkeleton.removeValue(forKey: accountID)
+		}
 		if revisionChanged {
 			invalidateCodexProjectionAfterRevisionChange(
 				accountID: accountID,
@@ -1714,8 +1791,8 @@ final class ResetCardStore {
 	}
 
 	private func rejectAdvancedInventory(
+		_ inventory: ResetCardInventory,
 		accountID: String,
-		inventoryRevision: UInt64,
 		index: Int
 	) {
 		let existing = accounts[index]
@@ -1729,10 +1806,15 @@ final class ResetCardStore {
 			profileError: existing.profileError,
 			isProfileRefreshing: existing.isProfileRefreshing
 		)
+		if advancedInventoriesAwaitingSkeleton[accountID].map({
+			$0.accountRevision <= inventory.accountRevision
+		}) ?? true {
+			advancedInventoriesAwaitingSkeleton[accountID] = inventory
+		}
 
 		accountSkeletonRevisionTargets[accountID] = max(
 			accountSkeletonRevisionTargets[accountID] ?? 0,
-			inventoryRevision
+			inventory.accountRevision
 		)
 		scheduleFreshAccountSkeletonRead()
 	}
@@ -1764,6 +1846,21 @@ final class ResetCardStore {
 			}
 			return revision < targetRevision
 		}
+	}
+
+	private func pruneAdvancedInventoriesAwaitingSkeleton() {
+		let revisionsByID = Dictionary(
+			uniqueKeysWithValues: accounts.map {
+				($0.account.accountID, $0.account.accountRevision)
+			}
+		)
+		advancedInventoriesAwaitingSkeleton =
+			advancedInventoriesAwaitingSkeleton.filter { accountID, inventory in
+				guard let accountRevision = revisionsByID[accountID] else {
+					return false
+				}
+				return accountRevision < inventory.accountRevision
+			}
 	}
 
 	private func applyInventoryFailure(
@@ -2516,7 +2613,7 @@ final class ResetCardStore {
 
 	private enum AccountControlFollowUp {
 		case none
-		case account(String)
+		case account(String, refreshInventory: Bool)
 		case skeleton
 	}
 
@@ -2544,6 +2641,7 @@ final class ResetCardStore {
 			}
 			accounts.removeAll { $0.account.accountID == accountID }
 			accountSkeletonRevisionTargets.removeValue(forKey: accountID)
+			advancedInventoriesAwaitingSkeleton.removeValue(forKey: accountID)
 			return .skeleton
 		case .accountChanged(let account):
 			guard let index = accounts.firstIndex(where: {
@@ -2559,7 +2657,7 @@ final class ResetCardStore {
 			let sameRevision = existing.account.accountRevision == bound.accountRevision
 			accounts[index] = ResetCardAccountState(
 				account: bound,
-				inventory: sameRevision ? existing.inventory : nil,
+				inventory: existing.inventory,
 				error: nil,
 				isRefreshing: sameRevision == false,
 				profile: sameRevision ? existing.profile : nil,
@@ -2574,7 +2672,9 @@ final class ResetCardStore {
 					accountRevision: bound.accountRevision
 				)
 			}
-			return sameRevision ? .none : .account(account.accountID)
+			return sameRevision
+				? .none
+				: .account(account.accountID, refreshInventory: true)
 		}
 	}
 
@@ -2584,9 +2684,12 @@ final class ResetCardStore {
 		switch followUp {
 		case .none:
 			return
-		case .account(let accountID):
+		case .account(let accountID, let refreshInventory):
 			Task { [weak self] in
-				await self?.refreshAccountDetails(accountID)
+				await self?.refreshAccountDetails(
+					accountID,
+					refreshInventory: refreshInventory
+				)
 			}
 		case .skeleton:
 			Task { [weak self] in
