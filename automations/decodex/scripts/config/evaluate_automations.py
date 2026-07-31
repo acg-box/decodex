@@ -63,7 +63,13 @@ def main() -> int:
         return 2
 
     results = [
-        evaluate_automation(automation, defaults, Path(args.codex_home), args.repo_only)
+        evaluate_automation(
+            automation,
+            defaults,
+            Path(args.codex_home),
+            args.repo_only,
+            tuple(manifest.get("retired_automation_ids", [])),
+        )
         for automation in automations
     ]
     status = "pass" if all(result.status == "pass" for result in results) else "fail"

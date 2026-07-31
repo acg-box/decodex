@@ -13,7 +13,7 @@ import signal
 import stat
 import subprocess
 import time
-from typing import Any, Callable
+from typing import Any, Callable, Mapping
 
 from .core import (
     X_PRICING_AUDIT_EVIDENCE_SCHEMA,
@@ -29,6 +29,10 @@ __all__ = [
     "PricingAuditFailure",
     "X_PRICING_COMPILED_RATES_MICROUSD",
     "X_PRICING_FAILURE_RELATIVE_PATH",
+    "X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH",
+    "X_PRICING_MAX_FAILURE_ARCHIVE_BYTES",
+    "X_PRICING_MAX_FAILURE_ARCHIVE_FILES",
+    "X_PRICING_MAX_UNREFERENCED_FAILURES",
     "X_PRICING_FRESH_SECONDS",
     "X_PRICING_LOCK_RELATIVE_PATH",
     "X_PRICING_MAX_RECEIPT_BYTES",
@@ -38,6 +42,7 @@ __all__ = [
     "audit_x_pricing",
     "fetch_official_x_pricing",
     "parse_x_pricing_markdown",
+    "read_x_pricing_failure_diagnostic",
 ]
 
 
@@ -51,11 +56,19 @@ X_PRICING_RECEIPT_RELATIVE_PATH = Path(
 X_PRICING_FAILURE_RELATIVE_PATH = Path(
     ".agent/automations/decodex/cache/social/x/x-pricing-failure.json"
 )
+X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH = Path(
+    ".agent/automations/decodex/cache/social/x/x-pricing-failures"
+)
 X_PRICING_LOCK_RELATIVE_PATH = Path(
     ".agent/automations/decodex/cache/social/x/x-pricing-audit.lock"
 )
 X_PRICING_MAX_SOURCE_BYTES = 1024 * 1024
 X_PRICING_MAX_RECEIPT_BYTES = 16 * 1024
+X_PRICING_MAX_FAILURE_ARCHIVE_FILES = 513
+X_PRICING_MAX_FAILURE_ARCHIVE_BYTES = (
+    X_PRICING_MAX_FAILURE_ARCHIVE_FILES * X_PRICING_MAX_RECEIPT_BYTES
+)
+X_PRICING_MAX_UNREFERENCED_FAILURES = 64
 X_PRICING_FETCH_TIMEOUT_SECONDS = 10
 X_PRICING_FRESH_SECONDS = 36 * 60 * 60
 X_PRICING_MONTHLY_CAP_MICROUSD = 1_250_000
@@ -500,6 +513,7 @@ def audit_x_pricing(
     *,
     now: int,
     fetcher: Callable[[], bytes] | None = None,
+    retained_failure_receipts: set[str] | None = None,
 ) -> dict[str, Any]:
     """Fetch, parse, persist, and classify one pricing observation."""
 
@@ -541,6 +555,14 @@ def audit_x_pricing(
             failure_path = repo_root / X_PRICING_FAILURE_RELATIVE_PATH
             _atomic_private_json(failure_path, failure)
             failure_sha256 = _serialized_sha256(failure)
+            _write_failure_archive(
+                repo_root,
+                failure,
+                retained_receipts={
+                    *(retained_failure_receipts or set()),
+                    failure_sha256,
+                },
+            )
             evidence = _drift_evidence(
                 status="parse_failed",
                 fetched_at=fetched_at,
@@ -572,6 +594,10 @@ def audit_x_pricing(
         _remove_private_file(
             repo_root / X_PRICING_FAILURE_RELATIVE_PATH
         )
+        _prune_failure_archives(
+            repo_root,
+            retained_receipts=set(retained_failure_receipts or ()),
+        )
         contract_matches = rates == X_PRICING_COMPILED_RATES_MICROUSD
         evidence = None
         if not contract_matches:
@@ -594,6 +620,70 @@ def audit_x_pricing(
             "drift_evidence": evidence,
             "error_code": None,
         }
+
+
+def read_x_pricing_failure_diagnostic(
+    repo_root: Path,
+    *,
+    evidence: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Read the exact bounded parser diagnostic named by drift evidence."""
+
+    validate_x_pricing_audit_evidence(evidence)
+    if evidence["status"] != "parse_failed":
+        raise AutopilotError("x_pricing_failure_diagnostic_not_applicable")
+
+    pricing_root = _ensure_private_pricing_root(repo_root)
+    try:
+        with _pricing_lock(pricing_root):
+            receipt, receipt_sha256 = _load_private_json(
+                repo_root
+                / X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+                / f"{evidence['receipt_sha256']}.json"
+            )
+    except FileNotFoundError as error:
+        archive_root = (
+            repo_root / X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+        )
+        if archive_root.is_dir() and not archive_root.is_symlink():
+            raise AutopilotError(
+                "x_pricing_failure_diagnostic_invalid"
+            ) from error
+        raise AutopilotError(
+            "x_pricing_failure_diagnostic_unavailable"
+        ) from error
+
+    expected_keys = {
+        "schema",
+        "parser_version",
+        "source_url",
+        "fetched_at",
+        "raw_sha256",
+        "error_code",
+        "diagnostic",
+        "diagnostic_sha256",
+        "integrity_sha256",
+    }
+    diagnostic = receipt.get("diagnostic")
+    if (
+        set(receipt) != expected_keys
+        or receipt["schema"] != X_PRICING_FAILURE_SCHEMA
+        or receipt["parser_version"] != X_PRICING_PARSER_VERSION
+        or receipt["source_url"] != X_PRICING_SOURCE_URL
+        or receipt["fetched_at"] != evidence["fetched_at"]
+        or receipt["raw_sha256"] != evidence["raw_sha256"]
+        or receipt["error_code"] != evidence["error_code"]
+        or receipt_sha256 != evidence["receipt_sha256"]
+        or not isinstance(diagnostic, dict)
+        or receipt != _failure_receipt(
+            fetched_at=receipt["fetched_at"],
+            raw_sha256=receipt["raw_sha256"],
+            error_code=receipt["error_code"],
+            diagnostic=diagnostic,
+        )
+    ):
+        raise AutopilotError("x_pricing_failure_diagnostic_invalid")
+    return diagnostic
 
 
 def _success_receipt(
@@ -1066,6 +1156,162 @@ def _atomic_private_json(path: Path, value: dict[str, Any]) -> None:
     loaded, digest = _load_private_json(path)
     if loaded != value or digest != _serialized_sha256(value):
         raise AutopilotError("x_pricing_receipt_write_failed")
+
+
+def _ensure_failure_archive_root(repo_root: Path) -> Path:
+    pricing_root = _ensure_private_pricing_root(repo_root)
+    archive_root = (
+        repo_root.resolve() / X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+    )
+    if archive_root.parent != pricing_root:
+        raise AutopilotError("x_pricing_failure_archive_invalid")
+    try:
+        archive_root.mkdir(mode=0o700)
+    except FileExistsError:
+        pass
+    try:
+        metadata = archive_root.lstat()
+    except OSError as error:
+        raise AutopilotError("x_pricing_failure_archive_invalid") from error
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_uid != os.getuid()
+        or stat.S_IMODE(metadata.st_mode) != 0o700
+    ):
+        raise AutopilotError("x_pricing_failure_archive_invalid")
+    return archive_root
+
+
+def _failure_archive_entries(
+    archive_root: Path,
+) -> list[tuple[Path, dict[str, Any], int, int]]:
+    entries: list[tuple[Path, dict[str, Any], int, int]] = []
+    try:
+        paths = sorted(archive_root.iterdir(), key=lambda path: path.name)
+    except OSError as error:
+        raise AutopilotError("x_pricing_failure_archive_invalid") from error
+    for path in paths:
+        if (
+            re.fullmatch(r"[0-9a-f]{64}\.json", path.name) is None
+            or path.is_symlink()
+        ):
+            raise AutopilotError("x_pricing_failure_archive_invalid")
+        try:
+            value, digest = _load_private_json(path)
+            size = path.stat().st_size
+            fetched_at = _parse_timestamp(value.get("fetched_at", ""))
+        except (OSError, AutopilotError) as error:
+            raise AutopilotError(
+                "x_pricing_failure_archive_invalid"
+            ) from error
+        if (
+            digest != path.stem
+            or value.get("schema") != X_PRICING_FAILURE_SCHEMA
+        ):
+            raise AutopilotError("x_pricing_failure_archive_invalid")
+        entries.append((path, value, size, fetched_at))
+    return entries
+
+
+def _prune_failure_archives(
+    repo_root: Path,
+    *,
+    retained_receipts: set[str],
+    reserve_files: int = 0,
+    reserve_bytes: int = 0,
+) -> None:
+    if any(
+        not isinstance(digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+        for digest in retained_receipts
+    ):
+        raise AutopilotError("x_pricing_failure_retention_invalid")
+    if (
+        not isinstance(reserve_files, int)
+        or not 0 <= reserve_files <= 1
+        or not isinstance(reserve_bytes, int)
+        or not 0 <= reserve_bytes <= X_PRICING_MAX_RECEIPT_BYTES
+    ):
+        raise AutopilotError("x_pricing_failure_retention_invalid")
+    archive_path = (
+        repo_root.resolve() / X_PRICING_FAILURE_ARCHIVE_RELATIVE_PATH
+    )
+    if not archive_path.exists():
+        if archive_path.is_symlink():
+            raise AutopilotError("x_pricing_failure_archive_invalid")
+        return
+    archive_root = _ensure_failure_archive_root(repo_root)
+    entries = _failure_archive_entries(archive_root)
+    total_bytes = sum(entry[2] for entry in entries)
+    unreferenced = sorted(
+        (
+            entry
+            for entry in entries
+            if entry[0].stem not in retained_receipts
+        ),
+        key=lambda entry: (entry[3], entry[0].name),
+    )
+    removed = False
+    while unreferenced and (
+        len(entries) + reserve_files
+        > X_PRICING_MAX_FAILURE_ARCHIVE_FILES
+        or total_bytes + reserve_bytes
+        > X_PRICING_MAX_FAILURE_ARCHIVE_BYTES
+        or len(unreferenced) > X_PRICING_MAX_UNREFERENCED_FAILURES
+    ):
+        removable = unreferenced.pop(0)
+        removable[0].unlink()
+        entries.remove(removable)
+        total_bytes -= removable[2]
+        removed = True
+    if (
+        len(entries) + reserve_files
+        > X_PRICING_MAX_FAILURE_ARCHIVE_FILES
+        or total_bytes + reserve_bytes
+        > X_PRICING_MAX_FAILURE_ARCHIVE_BYTES
+    ):
+        raise AutopilotError("x_pricing_failure_archive_capacity")
+    if removed:
+        directory = os.open(archive_root, os.O_RDONLY | os.O_DIRECTORY)
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+
+
+def _write_failure_archive(
+    repo_root: Path,
+    failure: dict[str, Any],
+    *,
+    retained_receipts: set[str],
+) -> str:
+    digest = _serialized_sha256(failure)
+    archive_root = _ensure_failure_archive_root(repo_root)
+    path = archive_root / f"{digest}.json"
+    try:
+        existing, existing_digest = _load_private_json(path)
+    except FileNotFoundError:
+        payload_size = len(_serialized_json_bytes(failure))
+        if not 1 <= payload_size <= X_PRICING_MAX_RECEIPT_BYTES:
+            raise AutopilotError("x_pricing_failure_archive_capacity")
+        _prune_failure_archives(
+            repo_root,
+            retained_receipts=set(retained_receipts),
+            reserve_files=1,
+            reserve_bytes=payload_size,
+        )
+        _atomic_private_json(path, failure)
+    else:
+        if existing != failure or existing_digest != digest:
+            raise AutopilotError("x_pricing_failure_archive_conflict")
+    retained = set(retained_receipts)
+    retained.add(digest)
+    _prune_failure_archives(
+        repo_root,
+        retained_receipts=retained,
+    )
+    return digest
 
 
 def _validate_existing_private_target(path: Path) -> None:

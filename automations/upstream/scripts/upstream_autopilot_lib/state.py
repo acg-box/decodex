@@ -63,6 +63,106 @@ from .validation import validate_validation_receipt
 from .handoff import validate_handoff_provenance, validate_handoff_receipt
 
 
+AGENT_RUN_KEYS = {
+    "phase",
+    "role",
+    "generation",
+    "base_head",
+    "input_head",
+    "repository_head",
+    "input_tree",
+    "repository_tree",
+    "challenge_sha256",
+    "started_at",
+    "completed_at",
+    "receipt_sha256",
+    "receipt_file_sha256",
+    "agent_execution_sha256",
+    "disposition",
+    "finding_codes",
+}
+STALE_REFRESH_KEYS = {
+    "old_base_head",
+    "old_head_sha",
+    "target_base_head",
+    "prepared_at",
+    "updated_at",
+}
+LEGACY_STATE_NAMES = (
+    "state.json",
+    "state.recovery.json",
+)
+LEGACY_STATE_LOCK_NAME = "state.lock"
+
+
+def validate_agent_run(value: Any) -> None:
+    if (
+        not has_exact_keys(value, AGENT_RUN_KEYS)
+        or value.get("phase") not in {"prepared", "completed"}
+        or value.get("role") not in {"maintainer", "reviewer"}
+        or not isinstance(value.get("generation"), int)
+        or value["generation"] < 1
+        or any(
+            SHA_PATTERN.fullmatch(str(value.get(key, ""))) is None
+            for key in (
+                "base_head",
+                "input_head",
+                "repository_head",
+                "input_tree",
+            )
+        )
+        or not is_sha256(value.get("challenge_sha256"))
+        or not isinstance(value.get("started_at"), int)
+    ):
+        raise AutopilotError("candidate_agent_run_invalid")
+    completed_fields = (
+        value.get("completed_at"),
+        value.get("receipt_sha256"),
+        value.get("receipt_file_sha256"),
+        value.get("agent_execution_sha256"),
+        value.get("disposition"),
+        value.get("finding_codes"),
+    )
+    if value["phase"] == "prepared":
+        if (
+            value.get("repository_tree") is not None
+            or any(field is not None for field in completed_fields)
+        ):
+            raise AutopilotError("candidate_agent_run_invalid")
+        return
+    if (
+        SHA_PATTERN.fullmatch(str(value.get("repository_tree", ""))) is None
+        or not isinstance(value.get("completed_at"), int)
+        or value["completed_at"] < value["started_at"]
+        or not is_sha256(value.get("receipt_sha256"))
+        or not is_sha256(value.get("receipt_file_sha256"))
+        or not is_sha256(value.get("agent_execution_sha256"))
+        or value.get("disposition")
+        not in {"staged", "accept", "request_repair", "no_change", "rejected"}
+        or not bounded_string_list(
+            value.get("finding_codes"),
+            pattern=REASON_PATTERN,
+            maximum=16,
+        )
+        or (
+            value["disposition"] == "request_repair"
+        )
+        != bool(value["finding_codes"])
+        or (
+            value["role"] == "maintainer"
+            and (
+                value["disposition"] != "staged"
+                or value["finding_codes"]
+            )
+        )
+        or (
+            value["role"] == "reviewer"
+            and value["disposition"] == "staged"
+        )
+    ):
+        raise AutopilotError("candidate_agent_run_invalid")
+
+
 def valid_owned_worktrees(value: Any) -> bool:
     if (
         not isinstance(value, list)
@@ -221,16 +321,40 @@ def load_state(path: Path) -> dict[str, Any]:
 @contextmanager
 def locked_state(cache_root: Path) -> Iterator[tuple[dict[str, Any], Path]]:
     root = ensure_cache_root(cache_root)
-    lock_path = root / "state.lock"
-    state_path = root / "state.json"
+    lock_path = root / "state-v4.lock"
+    state_path = root / "state-v4.json"
     if lock_path.exists() and lock_path.is_symlink():
         raise AutopilotError("state_lock_symlink")
     try:
         with lock_path.open("a+", encoding="utf-8") as lock:
             os.chmod(lock_path, 0o600)
             fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
-            state = load_state(state_path)
-            yield state, state_path
+            legacy_lock_path = root / LEGACY_STATE_LOCK_NAME
+            if (
+                os.path.lexists(legacy_lock_path)
+                and legacy_lock_path.is_symlink()
+            ):
+                raise AutopilotError("state_lock_symlink")
+            with legacy_lock_path.open("a+", encoding="utf-8") as legacy_lock:
+                os.chmod(legacy_lock_path, 0o600)
+                try:
+                    fcntl.flock(
+                        legacy_lock.fileno(),
+                        fcntl.LOCK_EX | fcntl.LOCK_NB,
+                    )
+                except BlockingIOError as error:
+                    raise AutopilotError(
+                        "legacy_state_process_active"
+                    ) from error
+                for name in LEGACY_STATE_NAMES:
+                    legacy_path = root / name
+                    if os.path.lexists(legacy_path):
+                        raise AutopilotError(
+                            "legacy_state_cutover_required"
+                        )
+                state = load_state(state_path)
+                yield state, state_path
+                fcntl.flock(legacy_lock.fileno(), fcntl.LOCK_UN)
             fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     except OSError as error:
         raise AutopilotError("state_lock_failed") from error
@@ -594,6 +718,7 @@ def validate_state(state: dict[str, Any]) -> None:
                         "challenge_sha256",
                         "issued_at",
                         "consumed",
+                        "agent_run",
                     },
                 )
                 or handoff.get("role") not in {"maintainer", "reviewer"}
@@ -612,6 +737,16 @@ def validate_state(state: dict[str, Any]) -> None:
             ):
                 raise AutopilotError("candidate_handoff_invalid")
             seen_handoff_challenges.add(handoff["challenge_sha256"])
+            agent_run = handoff["agent_run"]
+            if agent_run is not None:
+                validate_agent_run(agent_run)
+                if (
+                    agent_run["role"] != handoff["role"]
+                    or agent_run["generation"] != handoff["generation"]
+                    or agent_run["challenge_sha256"]
+                    != handoff["challenge_sha256"]
+                ):
+                    raise AutopilotError("candidate_handoff_invalid")
             consumed = handoff["consumed"]
             if consumed is not None:
                 validate_handoff_provenance(consumed)
@@ -622,9 +757,34 @@ def validate_state(state: dict[str, Any]) -> None:
                     or consumed["challenge_sha256"]
                     != handoff["challenge_sha256"]
                     or consumed["receipt_sha256"] in seen_handoff_receipts
+                    or (
+                        isinstance(agent_run, dict)
+                        and agent_run["phase"] == "completed"
+                        and (
+                            consumed["receipt_sha256"]
+                            != agent_run["receipt_sha256"]
+                            or consumed["agent_execution"][
+                                "execution_sha256"
+                            ]
+                            != agent_run["agent_execution_sha256"]
+                        )
+                    )
                 ):
                     raise AutopilotError("candidate_handoff_invalid")
                 seen_handoff_receipts.add(consumed["receipt_sha256"])
+            if lease is None:
+                recovery_role = {
+                    "queued": "maintainer",
+                    "repair_requested": "maintainer",
+                    "review_pending": "reviewer",
+                }.get(status)
+                if not (
+                    recovery_role == handoff["role"]
+                    and consumed is None
+                    and isinstance(agent_run, dict)
+                    and agent_run["phase"] == "completed"
+                ):
+                    raise AutopilotError("candidate_handoff_invalid")
         effect = candidate.get("effect")
         if effect is not None:
             if (
@@ -994,6 +1154,93 @@ def validate_state(state: dict[str, Any]) -> None:
             raise AutopilotError("candidate_review_evidence_invalid")
         validate_candidate_result(candidate)
         result = candidate.get("result")
+        stale_refresh = candidate.get("stale_refresh")
+        stale_credit = candidate.get("stale_refresh_credit")
+        if stale_credit is not None:
+            credit_generation = (
+                stale_credit.get("generation")
+                if isinstance(stale_credit, dict)
+                else None
+            )
+            credit_incremented = (
+                stale_credit.get("attempt_incremented")
+                if isinstance(stale_credit, dict)
+                else None
+            )
+            lease = candidate.get("lease")
+            if (
+                not has_exact_keys(
+                    stale_credit,
+                    {"generation", "attempt_incremented"},
+                )
+                or (
+                    credit_generation is not None
+                    and (
+                        not isinstance(credit_generation, int)
+                        or credit_generation < 1
+                    )
+                )
+                or not isinstance(credit_incremented, bool)
+                or (
+                    credit_generation is None
+                    and credit_incremented
+                )
+                or not isinstance(result, dict)
+                or result.get("outcome") != "repair_requested"
+                or result.get("finding_codes") != ["base_stale"]
+                or (
+                    credit_generation is not None
+                    and (
+                        not isinstance(lease, dict)
+                        or lease.get("role") != "maintainer"
+                        or lease.get("generation") != credit_generation
+                        or status != "implementing"
+                    )
+                )
+            ):
+                raise AutopilotError(
+                    "candidate_stale_refresh_credit_invalid"
+                )
+        if stale_refresh is not None:
+            if (
+                not has_exact_keys(stale_refresh, STALE_REFRESH_KEYS)
+                or any(
+                    SHA_PATTERN.fullmatch(
+                        str(stale_refresh.get(key, ""))
+                    )
+                    is None
+                    for key in (
+                        "old_base_head",
+                        "old_head_sha",
+                        "target_base_head",
+                    )
+                )
+                or stale_refresh["old_base_head"]
+                == stale_refresh["target_base_head"]
+                or not isinstance(stale_refresh.get("prepared_at"), int)
+                or not isinstance(stale_refresh.get("updated_at"), int)
+                or stale_refresh["updated_at"]
+                < stale_refresh["prepared_at"]
+                or status
+                not in {
+                    "repair_requested",
+                    "implementing",
+                    "retry_wait",
+                    "needs_attention",
+                    "repair_pending",
+                }
+                or not isinstance(pull_request, dict)
+                or not isinstance(result, dict)
+                or result.get("outcome") != "repair_requested"
+                or "base_stale" not in result.get("finding_codes", [])
+                or stale_refresh["old_base_head"]
+                != pull_request["validation_receipt"]["base_head"]
+                or stale_refresh["old_head_sha"]
+                != pull_request["head_sha"]
+                or commit_receipt is not None
+                or decision is not None
+            ):
+                raise AutopilotError("candidate_stale_refresh_invalid")
         if isinstance(result, dict) and result.get("outcome") == "repair_requested":
             codes = result["finding_codes"]
             disposition = result["reviewer_handoff"]["disposition"]
@@ -1090,11 +1337,19 @@ def validate_state(state: dict[str, Any]) -> None:
             or candidate["result"].get("outcome") != "repair_requested"
         ):
             raise AutopilotError("candidate_result_invalid")
-        if status in {"retry_wait", "needs_attention", "repair_pending"} and (
-            not isinstance(candidate["result"], dict)
-            or candidate["result"].get("outcome") != "blocked"
-        ):
-            raise AutopilotError("candidate_result_invalid")
+        if status in {"retry_wait", "needs_attention", "repair_pending"}:
+            retry_result = candidate.get("result")
+            preserves_stale_repair = bool(
+                isinstance(retry_result, dict)
+                and retry_result.get("outcome") == "repair_requested"
+                and retry_result.get("finding_codes") == ["base_stale"]
+                and isinstance(candidate.get("stale_refresh"), dict)
+            )
+            if (
+                not isinstance(retry_result, dict)
+                or retry_result.get("outcome") != "blocked"
+            ) and not preserves_stale_repair:
+                raise AutopilotError("candidate_result_invalid")
     candidates_by_id = {candidate["id"]: candidate for candidate in candidates}
     active_repairs_by_target: dict[str, list[dict[str, Any]]] = {}
     for candidate in candidates:
@@ -1491,6 +1746,8 @@ def queue_candidate(
         "handoff": None,
         "effect": None,
         "commit_receipt": None,
+        "stale_refresh": None,
+        "stale_refresh_credit": None,
         "pull_request": None,
         "retired_pull_requests": [],
         "decision": None,
@@ -1581,6 +1838,8 @@ def queue_automation_repair(
         "handoff": None,
         "effect": None,
         "commit_receipt": None,
+        "stale_refresh": None,
+        "stale_refresh_credit": None,
         "pull_request": None,
         "retired_pull_requests": [],
         "decision": None,
@@ -1821,6 +2080,8 @@ def queue_automation_improvement(
         "handoff": None,
         "effect": None,
         "commit_receipt": None,
+        "stale_refresh": None,
+        "stale_refresh_credit": None,
         "pull_request": None,
         "retired_pull_requests": [],
         "decision": None,
@@ -2060,6 +2321,276 @@ def lease_matches(candidate: dict[str, Any], role: str, token: str, now: int) ->
         raise AutopilotError("lease_token_invalid")
 
 
+def prepare_agent_run(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    token: str,
+    challenge_sha256: str,
+    base_head: str,
+    repository_head: str,
+    input_tree: str,
+    now: int,
+    input_head: str | None = None,
+) -> dict[str, Any]:
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, role, token, now)
+    handoff = candidate.get("handoff")
+    resolved_input_head = (
+        repository_head if input_head is None else input_head
+    )
+    if (
+        not isinstance(handoff, dict)
+        or handoff.get("role") != role
+        or handoff.get("generation") != candidate["lease"]["generation"]
+        or not hmac.compare_digest(
+            str(handoff.get("challenge_sha256", "")),
+            challenge_sha256,
+        )
+        or any(
+            SHA_PATTERN.fullmatch(value) is None
+            for value in (
+                base_head,
+                resolved_input_head,
+                repository_head,
+                input_tree,
+            )
+        )
+    ):
+        raise AutopilotError("agent_run_context_invalid")
+    intended = {
+        "phase": "prepared",
+        "role": role,
+        "generation": candidate["lease"]["generation"],
+        "base_head": base_head,
+        "input_head": resolved_input_head,
+        "repository_head": repository_head,
+        "input_tree": input_tree,
+        "repository_tree": None,
+        "challenge_sha256": challenge_sha256,
+        "started_at": now,
+        "completed_at": None,
+        "receipt_sha256": None,
+        "receipt_file_sha256": None,
+        "agent_execution_sha256": None,
+        "disposition": None,
+        "finding_codes": None,
+    }
+    existing = handoff.get("agent_run")
+    if existing is not None:
+        validate_agent_run(existing)
+        immutable_keys = {
+            "role",
+            "generation",
+            "base_head",
+            "input_head",
+            "repository_head",
+            "input_tree",
+            "challenge_sha256",
+        }
+        if any(existing[key] != intended[key] for key in immutable_keys):
+            if (
+                existing["phase"] != "prepared"
+                or existing["role"] != role
+                or existing["generation"] != intended["generation"]
+                or not hmac.compare_digest(
+                    existing["challenge_sha256"],
+                    challenge_sha256,
+                )
+            ):
+                raise AutopilotError("agent_run_context_conflict")
+            handoff["agent_run"] = intended
+            candidate["updated_at"] = now
+            append_event(
+                state,
+                "agent_run_context_retargeted",
+                now,
+                candidate_id=candidate_id,
+            )
+            return deepcopy(intended)
+        return deepcopy(existing)
+    handoff["agent_run"] = intended
+    candidate["updated_at"] = now
+    append_event(state, "agent_run_prepared", now, candidate_id=candidate_id)
+    return deepcopy(intended)
+
+
+def _complete_agent_run_record(
+    state: dict[str, Any],
+    candidate: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    generation: int,
+    receipt: dict[str, Any],
+    receipt_file_sha256: str,
+    now: int,
+) -> dict[str, Any]:
+    handoff = candidate.get("handoff")
+    agent_run = (
+        handoff.get("agent_run") if isinstance(handoff, dict) else None
+    )
+    if (
+        not isinstance(agent_run, dict)
+        or agent_run.get("role") != role
+        or agent_run.get("generation") != generation
+        or not is_sha256(receipt_file_sha256)
+    ):
+        raise AutopilotError("agent_run_missing")
+    validate_agent_run(agent_run)
+    disposition = receipt.get("disposition")
+    finding_codes = receipt.get("finding_codes")
+    if not isinstance(disposition, str) or not isinstance(finding_codes, list):
+        raise AutopilotError("agent_run_receipt_invalid")
+    action = "worker_staged" if role == "maintainer" else "independent_review"
+    provenance = validate_handoff_receipt(
+        receipt,
+        candidate_id=candidate_id,
+        role=role,
+        action=action,
+        generation=agent_run["generation"],
+        challenge_sha256=agent_run["challenge_sha256"],
+        base_head=agent_run["base_head"],
+        repository_head=agent_run["repository_head"],
+        repository_tree=receipt.get("repository_tree"),
+        staged_paths_sha256=receipt.get("staged_paths_sha256"),
+        patch_sha256=receipt.get("patch_sha256"),
+        disposition=disposition,
+        finding_codes=finding_codes,
+        consumed_at=now,
+    )
+    actual_file_sha256 = hashlib.sha256(
+        canonical_json(receipt) + b"\n"
+    ).hexdigest()
+    if not hmac.compare_digest(actual_file_sha256, receipt_file_sha256):
+        raise AutopilotError("agent_run_receipt_invalid")
+    completed = {
+        **{
+            key: agent_run[key]
+            for key in (
+                "role",
+                "generation",
+                "base_head",
+                "input_head",
+                "repository_head",
+                "input_tree",
+                "challenge_sha256",
+                "started_at",
+            )
+        },
+        "phase": "completed",
+        "repository_tree": receipt["repository_tree"],
+        "completed_at": now,
+        "receipt_sha256": provenance["receipt_sha256"],
+        "receipt_file_sha256": receipt_file_sha256,
+        "agent_execution_sha256": receipt["agent_execution"][
+            "execution_sha256"
+        ],
+        "disposition": disposition,
+        "finding_codes": list(finding_codes),
+    }
+    validate_agent_run(completed)
+    if agent_run["phase"] == "completed":
+        comparable = dict(completed)
+        comparable["completed_at"] = agent_run["completed_at"]
+        if agent_run != comparable:
+            raise AutopilotError("agent_run_completion_conflict")
+        return deepcopy(agent_run)
+    stale_credit = candidate.get("stale_refresh_credit")
+    if (
+        role == "maintainer"
+        and isinstance(candidate.get("stale_refresh"), dict)
+        and isinstance(stale_credit, dict)
+        and stale_credit.get("generation") == generation
+    ):
+        if stale_credit.get("attempt_incremented"):
+            candidate["attempts"]["maintainer"] = max(
+                0,
+                candidate["attempts"]["maintainer"] - 1,
+            )
+        candidate["stale_refresh_credit"] = None
+        append_event(
+            state,
+            "stale_refresh_credit_refunded",
+            now,
+            candidate_id=candidate_id,
+            reason_code="base_stale",
+        )
+    handoff["agent_run"] = completed
+    candidate["updated_at"] = now
+    append_event(state, "agent_run_completed", now, candidate_id=candidate_id)
+    return deepcopy(completed)
+
+
+def complete_agent_run(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    token: str,
+    receipt: dict[str, Any],
+    receipt_file_sha256: str,
+    now: int,
+) -> dict[str, Any]:
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, role, token, now)
+    return _complete_agent_run_record(
+        state,
+        candidate,
+        candidate_id=candidate_id,
+        role=role,
+        generation=candidate["lease"]["generation"],
+        receipt=receipt,
+        receipt_file_sha256=receipt_file_sha256,
+        now=now,
+    )
+
+
+def complete_expired_agent_run(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    receipt: dict[str, Any],
+    receipt_file_sha256: str,
+    now: int,
+) -> dict[str, Any]:
+    """Promote one canonical receipt before its expired lease is recovered."""
+
+    candidate = find_candidate(state, candidate_id)
+    lease = candidate.get("lease")
+    handoff = candidate.get("handoff")
+    agent_run = (
+        handoff.get("agent_run") if isinstance(handoff, dict) else None
+    )
+    if (
+        not isinstance(lease, dict)
+        or lease.get("role") != role
+        or lease["expires_at"] > now
+        or not isinstance(agent_run, dict)
+        or agent_run.get("phase") != "prepared"
+    ):
+        raise AutopilotError("expired_agent_run_recovery_invalid")
+    completed = _complete_agent_run_record(
+        state,
+        candidate,
+        candidate_id=candidate_id,
+        role=role,
+        generation=lease["generation"],
+        receipt=receipt,
+        receipt_file_sha256=receipt_file_sha256,
+        now=now,
+    )
+    append_event(
+        state,
+        "expired_agent_run_receipt_promoted",
+        now,
+        candidate_id=candidate_id,
+    )
+    return completed
+
+
 def consume_handoff_receipt(
     state: dict[str, Any],
     *,
@@ -2102,11 +2633,27 @@ def consume_handoff_receipt(
         repository_head=repository_head,
         repository_tree=repository_tree,
         staged_paths_sha256=staged_paths_sha256,
+        patch_sha256=(
+            receipt.get("patch_sha256")
+            if isinstance(receipt, dict)
+            else None
+        ),
         disposition=disposition,
         finding_codes=finding_codes,
         consumed_at=consumed_at,
     )
     existing = handoff.get("consumed")
+    agent_run = handoff.get("agent_run")
+    if not isinstance(agent_run, dict):
+        raise AutopilotError("agent_run_missing")
+    validate_agent_run(agent_run)
+    if (
+        agent_run["phase"] != "completed"
+        or agent_run["receipt_sha256"] != provenance["receipt_sha256"]
+        or agent_run["agent_execution_sha256"]
+        != provenance["agent_execution"]["execution_sha256"]
+    ):
+        raise AutopilotError("agent_run_receipt_mismatch")
     if existing is not None and existing != provenance:
         raise AutopilotError("handoff_receipt_replayed")
     if existing == provenance:
@@ -2138,10 +2685,37 @@ def retry_delay(policy: dict[str, Any], attempt: int) -> int:
     return values[min(max(attempt - 1, 0), len(values) - 1)]
 
 
+def recoverable_completed_agent_run(
+    candidate: dict[str, Any],
+    *,
+    role: str,
+) -> dict[str, Any] | None:
+    """Return one completed, unconsumed run that a new lease can reclaim."""
+
+    handoff = candidate.get("handoff")
+    agent_run = (
+        handoff.get("agent_run") if isinstance(handoff, dict) else None
+    )
+    if (
+        isinstance(handoff, dict)
+        and handoff.get("role") == role
+        and handoff.get("consumed") is None
+        and isinstance(agent_run, dict)
+        and agent_run.get("phase") == "completed"
+        and agent_run.get("role") == role
+        and agent_run.get("generation") == handoff.get("generation")
+    ):
+        validate_agent_run(agent_run)
+        return handoff
+    return None
+
+
 def recover_expired_leases(
     state: dict[str, Any],
     policy: dict[str, Any],
     now: int,
+    *,
+    prepared_agent_runs_reconciled: bool = False,
 ) -> list[str]:
     recovered: list[str] = []
     for candidate in state["candidates"]:
@@ -2149,7 +2723,64 @@ def recover_expired_leases(
         if lease is None or lease["expires_at"] > now:
             continue
         role = lease["role"]
+        handoff = candidate.get("handoff")
+        agent_run = (
+            handoff.get("agent_run")
+            if isinstance(handoff, dict)
+            else None
+        )
+        if (
+            isinstance(agent_run, dict)
+            and agent_run.get("phase") == "prepared"
+            and not prepared_agent_runs_reconciled
+        ):
+            raise AutopilotError(
+                "expired_agent_run_reconciliation_required"
+            )
+        completed_handoff = recoverable_completed_agent_run(
+            candidate,
+            role=role,
+        )
+        if completed_handoff is not None:
+            candidate["lease"] = None
+            candidate["updated_at"] = now
+            if role == "reviewer":
+                candidate["status"] = "review_pending"
+                candidate["next_retry_at"] = None
+                candidate["retry_role"] = None
+            else:
+                result = candidate.get("result")
+                if (
+                    isinstance(result, dict)
+                    and result.get("outcome") == "repair_requested"
+                ):
+                    candidate["status"] = "repair_requested"
+                else:
+                    candidate["status"] = "queued"
+                    candidate["result"] = None
+                candidate["next_retry_at"] = None
+                candidate["retry_role"] = None
+            append_event(
+                state,
+                "completed_agent_run_recovery_pending",
+                now,
+                candidate_id=candidate["id"],
+            )
+            recovered.append(candidate["id"])
+            continue
         attempts = candidate["attempts"][role]
+        stale_base_retry = bool(
+            role == "maintainer"
+            and isinstance(candidate.get("result"), dict)
+            and candidate["result"].get("outcome") == "repair_requested"
+            and candidate["result"].get("finding_codes") == ["base_stale"]
+        )
+        stale_credit = candidate.get("stale_refresh_credit")
+        if (
+            isinstance(stale_credit, dict)
+            and stale_credit.get("generation") == lease["generation"]
+        ):
+            candidate["stale_refresh_credit"] = None
         effect = candidate.get("effect")
         if (
             isinstance(effect, dict)
@@ -2166,14 +2797,15 @@ def recover_expired_leases(
             candidate["status"] = "needs_attention"
             candidate["next_retry_at"] = None
             candidate["retry_role"] = role
-            candidate["result"] = {
-                "outcome": "blocked",
-                "reason_code": "lease_expired",
-                "error_digest": sha256_value(
-                    {"reason_code": "lease_expired", "role": role}
-                ),
-                "at": now,
-            }
+            if not stale_base_retry:
+                candidate["result"] = {
+                    "outcome": "blocked",
+                    "reason_code": "lease_expired",
+                    "error_digest": sha256_value(
+                        {"reason_code": "lease_expired", "role": role}
+                    ),
+                    "at": now,
+                }
         elif role == "reviewer":
             candidate["status"] = "review_pending"
             candidate["next_retry_at"] = None
@@ -2182,14 +2814,15 @@ def recover_expired_leases(
             candidate["status"] = "retry_wait"
             candidate["next_retry_at"] = now
             candidate["retry_role"] = "maintainer"
-            candidate["result"] = {
-                "outcome": "blocked",
-                "reason_code": "lease_expired",
-                "error_digest": sha256_value(
-                    {"reason_code": "lease_expired", "role": role}
-                ),
-                "at": now,
-            }
+            if not stale_base_retry:
+                candidate["result"] = {
+                    "outcome": "blocked",
+                    "reason_code": "lease_expired",
+                    "error_digest": sha256_value(
+                        {"reason_code": "lease_expired", "role": role}
+                    ),
+                    "at": now,
+                }
         append_event(
             state,
             "lease_expired_recovered",
@@ -2198,6 +2831,60 @@ def recover_expired_leases(
         )
         recovered.append(candidate["id"])
     return recovered
+
+
+def abandon_missing_completed_agent_run(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    role: str,
+    token: str,
+    now: int,
+) -> None:
+    """Replace a completed state record whose canonical receipt is missing."""
+
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, role, token, now)
+    if recoverable_completed_agent_run(candidate, role=role) is None:
+        raise AutopilotError("agent_run_recovery_invalid")
+    stale_base_recovery = bool(
+        role == "maintainer"
+        and isinstance(candidate.get("result"), dict)
+        and candidate["result"].get("outcome") == "repair_requested"
+        and candidate["result"].get("finding_codes") == ["base_stale"]
+    )
+    if not stale_base_recovery:
+        candidate["attempts"][role] = max(
+            0,
+            candidate["attempts"][role] - 1,
+        )
+    else:
+        candidate["stale_refresh_credit"] = None
+    candidate["lease"] = None
+    candidate["handoff"] = None
+    candidate["updated_at"] = now
+    if role == "reviewer":
+        candidate["status"] = "review_pending"
+        candidate["next_retry_at"] = None
+        candidate["retry_role"] = None
+    else:
+        result = candidate.get("result")
+        if (
+            isinstance(result, dict)
+            and result.get("outcome") == "repair_requested"
+        ):
+            candidate["status"] = "repair_requested"
+        else:
+            candidate["status"] = "queued"
+            candidate["result"] = None
+        candidate["next_retry_at"] = None
+        candidate["retry_role"] = None
+    append_event(
+        state,
+        "completed_agent_run_receipt_missing",
+        now,
+        candidate_id=candidate_id,
+    )
 
 
 def candidate_is_claimable(candidate: dict[str, Any], role: str, now: int) -> bool:
@@ -2240,8 +2927,15 @@ def claim_candidate(
     policy: dict[str, Any],
     role: str,
     now: int,
+    *,
+    prepared_agent_runs_reconciled: bool = False,
 ) -> dict[str, Any] | None:
-    recover_expired_leases(state, policy, now)
+    recover_expired_leases(
+        state,
+        policy,
+        now,
+        prepared_agent_runs_reconciled=prepared_agent_runs_reconciled,
+    )
     active = next(
         (
             candidate
@@ -2300,6 +2994,10 @@ def claim_candidate(
         )
     )
     candidate = candidates[0]
+    completed_handoff = recoverable_completed_agent_run(
+        candidate,
+        role=role,
+    )
     effect = candidate.get("effect")
     if isinstance(effect, dict):
         effect_role = (
@@ -2308,22 +3006,41 @@ def claim_candidate(
         if effect_role != role:
             raise AutopilotError("candidate_effect_role_mismatch")
     attempts = candidate["attempts"][role]
-    if attempts >= int(policy["max_attempts"]):
+    stale_credit_available = bool(
+        role == "maintainer"
+        and isinstance(candidate.get("result"), dict)
+        and candidate["result"].get("outcome") == "repair_requested"
+        and candidate["result"].get("finding_codes") == ["base_stale"]
+        and candidate.get("stale_refresh_credit")
+        == {"generation": None, "attempt_incremented": False}
+    )
+    if (
+        completed_handoff is None
+        and not stale_credit_available
+        and attempts >= int(policy["max_attempts"])
+    ):
+        stale_base_retry = bool(
+            role == "maintainer"
+            and isinstance(candidate.get("result"), dict)
+            and candidate["result"].get("outcome") == "repair_requested"
+            and candidate["result"].get("finding_codes") == ["base_stale"]
+        )
         candidate["status"] = "needs_attention"
         candidate["next_retry_at"] = None
         candidate["retry_role"] = role
-        candidate["result"] = {
-            "outcome": "blocked",
-            "reason_code": "attempt_budget_exhausted",
-            "error_digest": sha256_value(
-                {
-                    "reason_code": "attempt_budget_exhausted",
-                    "role": role,
-                    "attempts": attempts,
-                }
-            ),
-            "at": now,
-        }
+        if not stale_base_retry:
+            candidate["result"] = {
+                "outcome": "blocked",
+                "reason_code": "attempt_budget_exhausted",
+                "error_digest": sha256_value(
+                    {
+                        "reason_code": "attempt_budget_exhausted",
+                        "role": role,
+                        "attempts": attempts,
+                    }
+                ),
+                "at": now,
+            }
         candidate["updated_at"] = now
         append_event(
             state,
@@ -2333,25 +3050,38 @@ def claim_candidate(
         )
         return None
     raw_token = secrets.token_urlsafe(32)
-    used_challenges = {
-        value["handoff"]["challenge_sha256"]
-        for value in state["candidates"]
-        if isinstance(value.get("handoff"), dict)
-    }
-    raw_challenge = ""
-    challenge_sha256 = ""
-    for _attempt in range(8):
-        raw_challenge = secrets.token_urlsafe(32)
-        challenge_sha256 = hashlib.sha256(
-            raw_challenge.encode("utf-8")
-        ).hexdigest()
-        if challenge_sha256 not in used_challenges:
-            break
+    if completed_handoff is not None:
+        raw_challenge: str | None = None
+        generation = completed_handoff["generation"]
     else:
-        raise AutopilotError("handoff_challenge_generation_failed")
-    generation = state["source"]["next_lease_generation"]
-    state["source"]["next_lease_generation"] += 1
-    candidate["attempts"][role] += 1
+        used_challenges = {
+            value["handoff"]["challenge_sha256"]
+            for value in state["candidates"]
+            if isinstance(value.get("handoff"), dict)
+        }
+        raw_challenge = ""
+        challenge_sha256 = ""
+        for _attempt in range(8):
+            raw_challenge = secrets.token_urlsafe(32)
+            challenge_sha256 = hashlib.sha256(
+                raw_challenge.encode("utf-8")
+            ).hexdigest()
+            if challenge_sha256 not in used_challenges:
+                break
+        else:
+            raise AutopilotError("handoff_challenge_generation_failed")
+        generation = state["source"]["next_lease_generation"]
+        state["source"]["next_lease_generation"] += 1
+        if stale_credit_available:
+            incremented = attempts < 10
+            if incremented:
+                candidate["attempts"][role] += 1
+            candidate["stale_refresh_credit"] = {
+                "generation": generation,
+                "attempt_incremented": incremented,
+            }
+        else:
+            candidate["attempts"][role] += 1
     candidate["status"] = "implementing" if role == "maintainer" else "reviewing"
     candidate["next_retry_at"] = None
     candidate["retry_role"] = None
@@ -2363,13 +3093,15 @@ def claim_candidate(
         "expires_at": now + int(policy["lease_seconds"]),
         "renewals": 0,
     }
-    candidate["handoff"] = {
-        "role": role,
-        "generation": generation,
-        "challenge_sha256": challenge_sha256,
-        "issued_at": now,
-        "consumed": None,
-    }
+    if completed_handoff is None:
+        candidate["handoff"] = {
+            "role": role,
+            "generation": generation,
+            "challenge_sha256": challenge_sha256,
+            "issued_at": now,
+            "consumed": None,
+            "agent_run": None,
+        }
     if isinstance(effect, dict):
         effect["active_lease_generation"] = generation
         effect["updated_at"] = now
@@ -2385,13 +3117,19 @@ def claim_candidate(
     public_candidate["handoff"] = {
         "role": role,
         "generation": generation,
-        "issued_at": now,
+        "issued_at": candidate["handoff"]["issued_at"],
         "consumed": False,
+        "agent_run": (
+            None
+            if completed_handoff is None
+            else {"phase": "completed"}
+        ),
     }
     return {
         "candidate": public_candidate,
         "lease_token": raw_token,
         "handoff_challenge": raw_challenge,
+        "completed_agent_run_recovery": completed_handoff is not None,
     }
 
 
@@ -3120,6 +3858,8 @@ def submit_candidate(
     candidate["lease"] = None
     candidate["handoff"] = None
     candidate["effect"] = None
+    candidate["stale_refresh"] = None
+    candidate["stale_refresh_credit"] = None
     candidate["updated_at"] = now
     append_event(state, "candidate_submitted", now, candidate_id=candidate_id)
 
@@ -3207,6 +3947,11 @@ def record_candidate_commit(
         decodex_identity=effect["decodex_identity"],
         observed_at=now,
     )
+    stale_refresh = candidate.get("stale_refresh")
+    if isinstance(stale_refresh, dict) and (
+        base_head != stale_refresh["target_base_head"]
+    ):
+        raise AutopilotError("candidate_commit_evidence_invalid")
     candidate["commit_receipt"] = {
         "base_head": base_head,
         "head_sha": head_sha,
@@ -3218,6 +3963,8 @@ def record_candidate_commit(
         "worker_handoff": deepcopy(effect["handoff_receipt"]),
         "committed_at": now,
     }
+    candidate["stale_refresh"] = None
+    candidate["stale_refresh_credit"] = None
     candidate["effect"] = None
     candidate["updated_at"] = now
     append_event(state, "candidate_committed", now, candidate_id=candidate_id)
@@ -3348,6 +4095,7 @@ def request_repair(
     finding_codes: Sequence[str],
     now: int,
     reviewer_handoff: dict[str, Any] | None = None,
+    stale_target_base_head: str | None = None,
 ) -> None:
     candidate = find_candidate(state, candidate_id)
     lease_matches(candidate, "reviewer", token, now)
@@ -3356,6 +4104,19 @@ def request_repair(
     codes = sorted(set(finding_codes))
     if not codes or len(codes) > 16 or any(
         REASON_PATTERN.fullmatch(value) is None for value in codes
+    ):
+        raise AutopilotError("finding_codes_invalid")
+    stale_base = codes == ["base_stale"]
+    if (
+        ("base_stale" in codes and not stale_base)
+        or (
+            stale_base
+            and (
+                not isinstance(stale_target_base_head, str)
+                or SHA_PATTERN.fullmatch(stale_target_base_head) is None
+            )
+        )
+        or (not stale_base and stale_target_base_head is not None)
     ):
         raise AutopilotError("finding_codes_invalid")
     effect = candidate.get("effect")
@@ -3368,8 +4129,10 @@ def request_repair(
         ):
             raise AutopilotError("repair_effect_not_reversible")
     validate_handoff_provenance(reviewer_handoff)
-    allowed_disposition = reviewer_handoff["disposition"] == "request_repair" or (
-        reviewer_handoff["disposition"] == "accept" and codes == ["base_stale"]
+    allowed_disposition = (
+        reviewer_handoff["disposition"] == "accept"
+        if stale_base
+        else reviewer_handoff["disposition"] == "request_repair"
     )
     if (
         reviewer_handoff["candidate_id"] != candidate_id
@@ -3398,6 +4161,46 @@ def request_repair(
         raise AutopilotError("reviewer_handoff_receipt_invalid")
     if effect is not None:
         candidate["effect"] = None
+    if stale_base:
+        pull_request = candidate.get("pull_request")
+        commit_receipt = candidate.get("commit_receipt")
+        if (
+            not isinstance(pull_request, dict)
+            or candidate.get("decision") is not None
+            or not isinstance(commit_receipt, dict)
+            or commit_receipt.get("base_head")
+            != pull_request["validation_receipt"]["base_head"]
+            or commit_receipt.get("head_sha") != pull_request["head_sha"]
+            or stale_target_base_head
+            == pull_request["validation_receipt"]["base_head"]
+        ):
+            raise AutopilotError("stale_pull_request_refresh_invalid")
+        candidate["commit_receipt"] = None
+        candidate["stale_refresh"] = {
+            "old_base_head": pull_request["validation_receipt"]["base_head"],
+            "old_head_sha": pull_request["head_sha"],
+            "target_base_head": stale_target_base_head,
+            "prepared_at": now,
+            "updated_at": now,
+        }
+        candidate["attempts"]["reviewer"] = max(
+            0,
+            candidate["attempts"]["reviewer"] - 1,
+        )
+        candidate["stale_refresh_credit"] = {
+            "generation": None,
+            "attempt_incremented": False,
+        }
+        append_event(
+            state,
+            "stale_pull_request_refresh_prepared",
+            now,
+            candidate_id=candidate_id,
+            reason_code="base_stale",
+        )
+    else:
+        candidate["stale_refresh"] = None
+        candidate["stale_refresh_credit"] = None
     candidate["status"] = "repair_requested"
     candidate["lease"] = None
     candidate["handoff"] = None
@@ -3441,6 +4244,10 @@ def requeue_stale_decision(
     ):
         raise AutopilotError("decision_not_stale")
     candidate["decision"] = None
+    candidate["attempts"]["reviewer"] = max(
+        0,
+        candidate["attempts"]["reviewer"] - 1,
+    )
     candidate["status"] = "queued"
     candidate["lease"] = None
     candidate["handoff"] = None
@@ -3455,6 +4262,99 @@ def requeue_stale_decision(
         candidate_id=candidate_id,
         reason_code="base_stale",
     )
+
+
+def prepare_stale_pull_request_refresh(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    token: str,
+    current_main_head: str,
+    now: int,
+) -> dict[str, Any]:
+    if SHA_PATTERN.fullmatch(current_main_head) is None:
+        raise AutopilotError("current_main_head_invalid")
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, "maintainer", token, now)
+    pull_request = candidate.get("pull_request")
+    result = candidate.get("result")
+    commit_receipt = candidate.get("commit_receipt")
+    if (
+        candidate["status"] != "implementing"
+        or not isinstance(pull_request, dict)
+        or not isinstance(result, dict)
+        or result.get("outcome") != "repair_requested"
+        or "base_stale" not in result.get("finding_codes", [])
+        or candidate.get("decision") is not None
+        or candidate.get("effect") is not None
+        or pull_request["validation_receipt"]["base_head"]
+        == current_main_head
+    ):
+        raise AutopilotError("stale_pull_request_refresh_invalid")
+    if commit_receipt is not None and (
+        not isinstance(commit_receipt, dict)
+        or commit_receipt["head_sha"] != pull_request["head_sha"]
+        or commit_receipt["base_head"]
+        != pull_request["validation_receipt"]["base_head"]
+        or commit_receipt["tree_sha"]
+        != pull_request["validation_receipt"]["repository_tree"]
+    ):
+        raise AutopilotError("stale_pull_request_refresh_invalid")
+    stale_refresh = candidate.get("stale_refresh")
+    if stale_refresh is not None and (
+        not has_exact_keys(stale_refresh, STALE_REFRESH_KEYS)
+        or stale_refresh["old_base_head"]
+        != pull_request["validation_receipt"]["base_head"]
+        or stale_refresh["old_head_sha"] != pull_request["head_sha"]
+    ):
+        raise AutopilotError("stale_pull_request_refresh_invalid")
+    previous_target = (
+        None
+        if stale_refresh is None
+        else stale_refresh["target_base_head"]
+    )
+    changed = (
+        commit_receipt is not None
+        or stale_refresh is None
+        or previous_target != current_main_head
+    )
+    if changed:
+        if commit_receipt is not None:
+            candidate["commit_receipt"] = None
+        candidate["stale_refresh"] = {
+            "old_base_head": pull_request["validation_receipt"]["base_head"],
+            "old_head_sha": pull_request["head_sha"],
+            "target_base_head": current_main_head,
+            "prepared_at": (
+                now if stale_refresh is None else stale_refresh["prepared_at"]
+            ),
+            "updated_at": now,
+        }
+        candidate["updated_at"] = now
+        append_event(
+            state,
+            (
+                "stale_pull_request_refresh_retargeted"
+                if previous_target is not None
+                and previous_target != current_main_head
+                else "stale_pull_request_refresh_prepared"
+            ),
+            now,
+            candidate_id=candidate_id,
+            reason_code="base_stale",
+        )
+    return {
+        "branch": pull_request["branch"],
+        "pr_url": pull_request["url"],
+        "old_base_head": pull_request["validation_receipt"]["base_head"],
+        "old_head_sha": pull_request["head_sha"],
+        "new_base_head": candidate["stale_refresh"]["target_base_head"],
+        "prepared": commit_receipt is not None,
+        "retargeted": (
+            previous_target is not None
+            and previous_target != current_main_head
+        ),
+    }
 
 
 def advance_source_cursor(state: dict[str, Any]) -> None:
@@ -3596,6 +4496,8 @@ def resolve_candidate(
     candidate["lease"] = None
     candidate["handoff"] = None
     candidate["effect"] = None
+    candidate["stale_refresh"] = None
+    candidate["stale_refresh_credit"] = None
     candidate["result"] = {
         "outcome": outcome,
         "reason_code": reason_code,
@@ -3654,6 +4556,8 @@ def resolve_candidate(
             repaired["retry_role"] = None
             repaired["lease"] = None
             repaired["handoff"] = None
+            repaired["stale_refresh"] = None
+            repaired["stale_refresh_credit"] = None
             repaired["result"] = {
                 "outcome": "automation_repair_resolved",
                 "repair_candidate_id": candidate_id,
@@ -3691,6 +4595,19 @@ def block_candidate(
     candidate = find_candidate(state, candidate_id)
     lease_matches(candidate, role, token, now)
     attempt = candidate["attempts"][role]
+    stale_base_retry = bool(
+        role == "maintainer"
+        and isinstance(candidate.get("result"), dict)
+        and candidate["result"].get("outcome") == "repair_requested"
+        and candidate["result"].get("finding_codes") == ["base_stale"]
+    )
+    stale_credit = candidate.get("stale_refresh_credit")
+    if (
+        isinstance(stale_credit, dict)
+        and stale_credit.get("generation")
+        == candidate["lease"]["generation"]
+    ):
+        candidate["stale_refresh_credit"] = None
     effect = candidate.get("effect")
     if (
         isinstance(effect, dict)
@@ -3701,12 +4618,13 @@ def block_candidate(
     candidate["lease"] = None
     candidate["handoff"] = None
     candidate["retry_role"] = role
-    candidate["result"] = {
-        "outcome": "blocked",
-        "reason_code": reason_code,
-        "error_digest": error_digest,
-        "at": now,
-    }
+    if not stale_base_retry:
+        candidate["result"] = {
+            "outcome": "blocked",
+            "reason_code": reason_code,
+            "error_digest": error_digest,
+            "at": now,
+        }
     if attempt >= int(policy["max_attempts"]):
         candidate["status"] = "needs_attention"
         candidate["next_retry_at"] = None

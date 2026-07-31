@@ -25,13 +25,13 @@ forbidden_prompt_fragments = [
 	"~/.codex/decodex",
 ]
 kind = "cron"
-model = "gpt-5.6-sol"
 reasoning_effort = "high"
 source_root = "automations/decodex"
 status = "ACTIVE"
 
 [[automations]]
 id = "decodex-content-manager"
+model = "gpt-5.6-terra"
 name = "Decodex Content Manager"
 prompt_file = "automations/decodex/prompts/content-manager.md"
 required_cache_prefixes = [
@@ -114,6 +114,7 @@ rrule = "FREQ=DAILY;BYHOUR=9;BYMINUTE=50;BYSECOND=0"
 
 [[automations]]
 id = "decodex-xurl-publisher"
+model = "gpt-5.6-luna"
 name = "Decodex Xurl Publisher"
 prompt_file = "automations/decodex/prompts/xurl-publisher.md"
 required_cache_prefixes = [

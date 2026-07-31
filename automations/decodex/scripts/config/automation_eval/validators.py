@@ -10,6 +10,11 @@ import stat
 import subprocess
 from typing import Any
 
+from automation_model_policy import (
+    DEFAULT_REASONING_EFFORT,
+    expected_model,
+    expected_reasoning_effort,
+)
 from automation_eval.constants import (
     REQUIRED_FORBIDDEN_PROMPT_FRAGMENTS,
     REQUIRED_PREFLIGHT_FRAGMENTS,
@@ -21,6 +26,11 @@ from automation_eval.model import AutomationResult
 
 
 _PUBLISHER_PROBE_MAX_BYTES = 64 * 1024
+_RUNTIME_MEMORY_MAX_BYTES = 4 * 1024
+_MEMORY_DISABLED_AUTOMATION_IDS = {
+    "codex-upstream-maintainer",
+    "codex-upstream-reviewer",
+}
 _PROBE_REPORT_KEYS = {
     "status",
     "ready",
@@ -40,6 +50,73 @@ _AUTHORIZATION_CONTRACT_KEYS = {
     "xurl_binary_sha256",
     "sealed_at",
 }
+
+
+def validate_runtime_memory(
+    automation_id: str,
+    automation_root: Path,
+    result: AutomationResult,
+) -> None:
+    """Validate one optional bounded runtime-memory file without following links."""
+
+    memory_path = automation_root / "memory.md"
+    if not os.path.lexists(memory_path):
+        return
+    if automation_id in _MEMORY_DISABLED_AUTOMATION_IDS:
+        result.fail("runtime memory must be absent for this automation")
+        return
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(memory_path, os.O_RDONLY | os.O_NOFOLLOW)
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o600
+            or metadata.st_nlink != 1
+            or not 1 <= metadata.st_size <= _RUNTIME_MEMORY_MAX_BYTES
+        ):
+            result.fail("runtime memory file is not private and bounded")
+            return
+        payload = os.read(descriptor, _RUNTIME_MEMORY_MAX_BYTES + 1)
+        if len(payload) != metadata.st_size or os.read(descriptor, 1):
+            result.fail("runtime memory file changed during read")
+            return
+    except (OSError, ValueError):
+        result.fail("runtime memory file is not safely readable")
+        return
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    try:
+        text = payload.decode("utf-8")
+    except UnicodeDecodeError:
+        result.fail("runtime memory file is not valid UTF-8")
+        return
+    lines = text.splitlines()
+    if (
+        not 2 <= len(lines) <= 32
+        or any(not line or len(line) > 512 for line in lines)
+        or any(
+            fragment in text
+            for fragment in (
+                "/Users/",
+                "/home/",
+                "access_token",
+                "refresh_token",
+                "auth.json",
+            )
+        )
+    ):
+        result.fail("runtime memory content is not bounded and private")
+        return
+    if automation_id == "codex-upstream-health" and (
+        not lines[0].startswith("# ")
+        or lines[1] != "Schema: decodex/automation-memory/1"
+    ):
+        result.fail("runtime health memory grammar is invalid")
+
+
 _PRICING_POLICY_KEYS = {
     "policy_id",
     "official_source",
@@ -191,6 +268,16 @@ def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
                     "manifest.defaults.forbidden_prompt_fragments must forbid "
                     f"{fragment}"
                 )
+        if "model" in defaults:
+            errors.append(
+                "manifest.defaults.model is forbidden; each automation "
+                "must declare its exact model"
+            )
+        if defaults.get("reasoning_effort") != DEFAULT_REASONING_EFFORT:
+            errors.append(
+                "manifest.defaults.reasoning_effort must be "
+                f"{DEFAULT_REASONING_EFFORT}"
+            )
     automations = manifest.get("automations")
     valid_active_ids: list[str] = []
     if not isinstance(automations, list) or not automations:
@@ -214,6 +301,35 @@ def validate_manifest_shape(manifest: dict[str, Any]) -> list[str]:
             errors.append("manifest.automations must contain valid ids")
         elif len(active_ids) != len(set(active_ids)):
             errors.append("manifest automation ids must be unique")
+        for automation in automations:
+            if not isinstance(automation, dict):
+                continue
+            automation_id = automation.get("id")
+            if not isinstance(automation_id, str):
+                continue
+            try:
+                expected = expected_model(automation_id)
+            except ValueError as error:
+                errors.append(str(error))
+                continue
+            if automation.get("model") != expected:
+                errors.append(
+                    f"manifest automation {automation_id} model must be "
+                    f"{expected}"
+                )
+            expected_effort = expected_reasoning_effort(automation_id)
+            actual_effort = automation.get(
+                "reasoning_effort",
+                defaults.get("reasoning_effort")
+                if isinstance(defaults, dict)
+                else None,
+            )
+            if actual_effort != expected_effort:
+                errors.append(
+                    f"manifest automation {automation_id} "
+                    "reasoning_effort must be "
+                    f"{expected_effort}"
+                )
     retired = manifest.get("retired_automation_ids", [])
     if not isinstance(retired, list) or any(
         not isinstance(value, str) or not _AUTOMATION_ID.fullmatch(value)
@@ -312,8 +428,11 @@ def validate_active_config(
         "name": automation.get("name"),
         "status": defaults.get("status"),
         "rrule": automation.get("rrule"),
-        "model": defaults.get("model"),
-        "reasoning_effort": defaults.get("reasoning_effort"),
+        "model": automation.get("model"),
+        "reasoning_effort": automation.get(
+            "reasoning_effort",
+            defaults.get("reasoning_effort"),
+        ),
         "execution_environment": defaults.get("execution_environment"),
     }
     for field_name, expected in field_map.items():

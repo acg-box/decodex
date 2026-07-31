@@ -20,15 +20,16 @@ forbidden_prompt_fragments = [
 	"~/.codex/decodex",
 ]
 kind = "cron"
-model = "gpt-5.6-sol"
 reasoning_effort = "high"
 source_root = "automations/upstream"
 status = "ACTIVE"
 
 [[automations]]
 id = "codex-upstream-maintainer"
+model = "gpt-5.6-sol"
 name = "Codex Upstream Maintainer"
 prompt_file = "automations/upstream/prompts/maintainer.md"
+reasoning_effort = "max"
 required_cache_prefixes = [
 	".agent/automations/upstream/cache",
 ]
@@ -39,10 +40,14 @@ required_paths = [
 	"apps/decodex-publisher/src/social_xurl/pricing/tests.rs",
 	"automations/decodex/scripts/config/automation_eval/evaluation.py",
 	"automations/decodex/scripts/config/automation_eval/validators.py",
+	"automations/decodex/scripts/config/automation_model_policy.py",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
+	"automations/upstream/schemas/agent-result.schema.json",
+	"automations/upstream/scripts/agent_watchdog.py",
 	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/agent.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
@@ -64,8 +69,10 @@ rrule = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=5;BYSECOND=0"
 
 [[automations]]
 id = "codex-upstream-reviewer"
+model = "gpt-5.6-sol"
 name = "Codex Upstream Reviewer And Lander"
 prompt_file = "automations/upstream/prompts/reviewer.md"
+reasoning_effort = "max"
 required_cache_prefixes = [
 	".agent/automations/upstream/cache",
 ]
@@ -76,10 +83,14 @@ required_paths = [
 	"apps/decodex-publisher/src/social_xurl/pricing/tests.rs",
 	"automations/decodex/scripts/config/automation_eval/evaluation.py",
 	"automations/decodex/scripts/config/automation_eval/validators.py",
+	"automations/decodex/scripts/config/automation_model_policy.py",
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/policy.json",
+	"automations/upstream/schemas/agent-result.schema.json",
+	"automations/upstream/scripts/agent_watchdog.py",
 	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/agent.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
@@ -101,6 +112,7 @@ rrule = "FREQ=HOURLY;INTERVAL=12;BYMINUTE=35;BYSECOND=0"
 
 [[automations]]
 id = "codex-upstream-health"
+model = "gpt-5.6-terra"
 name = "Codex Upstream Automation Health"
 prompt_file = "automations/upstream/prompts/health.md"
 required_cache_prefixes = [
@@ -144,6 +156,7 @@ required_paths = [
 	"automations/decodex/scripts/config/automation_checkout.py",
 	"automations/decodex/scripts/config/automation_eval/evaluation.py",
 	"automations/decodex/scripts/config/automation_eval/validators.py",
+	"automations/decodex/scripts/config/automation_model_policy.py",
 	"automations/decodex/scripts/config/automation_plan/__init__.py",
 	"automations/decodex/scripts/config/automation_plan/cli.py",
 	"automations/decodex/scripts/config/automation_plan/manifest.py",
@@ -158,8 +171,11 @@ required_paths = [
 	"automations/decodex/skills/references/scheduled-run-thread-retention.md",
 	"automations/upstream/automations.toml",
 	"automations/upstream/policy.json",
+	"automations/upstream/schemas/agent-result.schema.json",
+	"automations/upstream/scripts/agent_watchdog.py",
 	"automations/upstream/scripts/run_upstream_autopilot",
 	"automations/upstream/scripts/upstream_autopilot.py",
+	"automations/upstream/scripts/upstream_autopilot_lib/agent.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/cli.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/core.py",
 	"automations/upstream/scripts/upstream_autopilot_lib/effects.py",
