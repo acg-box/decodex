@@ -414,7 +414,7 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(
 					confirmation.isArmed(target)
 						? PanelPalette.warning(colorScheme)
-						: PanelPalette.primaryText(colorScheme).opacity(0.9)
+						: PanelPalette.secondaryText(colorScheme)
 				)
 		}
 		.font(PanelFont.resetCardAction)

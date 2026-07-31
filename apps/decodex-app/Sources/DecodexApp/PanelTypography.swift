@@ -21,7 +21,7 @@ enum PanelFont {
 	static let loginCode = text(19, weight: .semibold, design: .monospaced)
 	static let usageLabel = text(9.8, weight: .regular)
 	static let usageValue = text(10.4, weight: .medium)
-	static let resetCardAction = usageValue
+	static let resetCardAction = text(9.4, weight: .medium)
 	static let quotaText = text(10.4, weight: .regular)
 	static let tertiary = text(9.5, weight: .regular)
 	static let compactAction = text(9.8, weight: .medium)
