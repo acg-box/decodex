@@ -6,6 +6,32 @@ import XCTest
 
 @MainActor
 final class AccountPanelPresentationTests: XCTestCase {
+	func testSharedRouteOperationBlocksWithoutDimmingOtherAvailableRoutes() {
+		let presentation = AccountRouteActionPresentation(
+			isCurrent: false,
+			canSelect: true,
+			canPerformDirectAccountControl: true,
+			isAccountControlInProgress: true,
+			isSubmittingResetCard: false
+		)
+
+		XCTAssertTrue(presentation.isDisabled)
+		XCTAssertFalse(presentation.isVisuallyDisabled)
+	}
+
+	func testUnavailableRouteRemainsVisiblyDisabled() {
+		let presentation = AccountRouteActionPresentation(
+			isCurrent: false,
+			canSelect: false,
+			canPerformDirectAccountControl: true,
+			isAccountControlInProgress: false,
+			isSubmittingResetCard: false
+		)
+
+		XCTAssertTrue(presentation.isDisabled)
+		XCTAssertTrue(presentation.isVisuallyDisabled)
+	}
+
 	func testUnsupportedQuotaWindowIsHidden() {
 		let presentation = ResetCardQuotaPresentation(
 			window: ResetCardQuotaWindow(
