@@ -78,8 +78,6 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"Enable account",
 			"Log out",
 			"Refresh login",
-			"Open Codex sign-in page",
-			"Copy one-time code",
 			"Cancel login",
 			"Close login",
 		] {
@@ -361,7 +359,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		}
 	}
 
-	func testLoginRecoveryUsesExplicitNativePromptControlsAndNoPanelDisappearCancel() throws {
+	func testLoginRecoveryUsesNativeBrowserOAuthAndNoPanelDisappearCancel() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -393,25 +391,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 
 		XCTAssertTrue(view.contains(#"Image(systemName: "xmark")"#))
-		XCTAssertTrue(view.contains(#"Image(systemName: "safari")"#))
-		XCTAssertTrue(
-			view.contains(#"copyFeedback ? "checkmark" : "doc.on.doc""#)
-		)
-		XCTAssertTrue(view.contains(".lineLimit(1)"))
-		XCTAssertTrue(
-			view.contains(".frame(maxWidth: .infinity, alignment: .leading)")
-		)
-		XCTAssertTrue(view.contains(".layoutPriority(1)"))
-		XCTAssertTrue(view.contains(".accessibilityLabel(\"Copy one-time code\")"))
-		XCTAssertTrue(view.contains(".accessibilityLabel(\"Open Codex sign-in page\")"))
-		XCTAssertTrue(view.contains(".keyboardShortcut(.defaultAction)"))
+		XCTAssertFalse(view.contains(#"Image(systemName: "safari")"#))
+		XCTAssertFalse(view.contains("doc.on.doc"))
+		XCTAssertFalse(view.contains("one-time code"))
+		XCTAssertFalse(view.contains("verificationURL"))
 		XCTAssertTrue(view.contains(".keyboardShortcut(.cancelAction)"))
-		XCTAssertFalse(
-			view.contains(#"Button(copyFeedback ? "Copied" : "Copy")"#)
-		)
-		XCTAssertFalse(
-			view.contains(#"Button(openFeedback ? "Opened" : "Open browser")"#)
-		)
 		XCTAssertTrue(view.contains(".frame(width: 220)"))
 		XCTAssertTrue(view.contains(".padding(14)"))
 		XCTAssertFalse(view.contains("Enter this one-time code"))
@@ -428,7 +412,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(panel.contains(".padding(.horizontal, 20)"))
 		XCTAssertFalse(panel.contains("isPresented: Binding("))
 		XCTAssertTrue(view.contains("@FocusState private var focusedAction"))
-		XCTAssertTrue(view.contains(".focused($focusedAction, equals: .openBrowser)"))
+		XCTAssertTrue(view.contains(".focused($focusedAction, equals: .cancel)"))
 		XCTAssertTrue(view.contains(".task(id: desiredFocus)"))
 		XCTAssertTrue(view.contains("presentation.canCloseWithoutCancellation"))
 		XCTAssertTrue(

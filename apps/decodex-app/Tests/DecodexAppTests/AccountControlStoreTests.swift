@@ -656,7 +656,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(finalProjectionReads, 2)
 	}
 
-	func testDeviceLoginCompletesAndRefreshesOnlyTheChangedAccountAuthority() async throws {
+	func testBrowserLoginCompletesAndRefreshesOnlyTheChangedAccountAuthority() async throws {
 		let account = accountRecord(observedState: .authFailed)
 		let client = AccountControlStoreClient(
 			account: account,
@@ -714,7 +714,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertGreaterThanOrEqual(reads.inventory, 2)
 	}
 
-	func testDeviceLoginRemainsActiveUntilExplicitCancel() async throws {
+	func testBrowserLoginRemainsActiveUntilExplicitCancel() async throws {
 		let account = accountRecord(observedState: .authFailed)
 		let client = AccountControlStoreClient(
 			account: account,
@@ -736,15 +736,12 @@ final class AccountControlStoreTests: XCTestCase {
 
 		store.beginAccountReauthentication(for: accountID)
 		for _ in 0 ..< 200 {
-			if store.accountReauthentication?.prompt != nil {
+			if store.accountReauthentication?.phase == .waitingForBrowser {
 				break
 			}
 			try await Task.sleep(for: .milliseconds(5))
 		}
-		XCTAssertEqual(
-			store.accountReauthentication?.prompt?.userCode,
-			"AB12-CDE34"
-		)
+		XCTAssertEqual(store.accountReauthentication?.phase, .waitingForBrowser)
 		XCTAssertTrue(store.isControllingAccount(accountID))
 
 		await store.cancelAccountReauthentication()
@@ -778,7 +775,7 @@ final class AccountControlStoreTests: XCTestCase {
 
 		store.beginAccountReauthentication(for: accountID)
 		for _ in 0 ..< 200 {
-			if store.accountReauthentication?.prompt != nil {
+			if store.accountReauthentication?.phase == .waitingForBrowser {
 				break
 			}
 			try await Task.sleep(for: .milliseconds(5))
@@ -1312,16 +1309,9 @@ private actor AccountControlStoreClient: AccountControlClient {
 		sessionID: String,
 		failure: AccountReauthenticationFailure? = nil
 	) -> AccountReauthenticationStatus {
-		let prompt = state == .waitingForBrowser
-			? AccountReauthenticationPrompt(
-				verificationURL: AccountReauthenticationPrompt.verificationURL,
-				userCode: "AB12-CDE34"
-			)
-			: nil
 		return AccountReauthenticationStatus(
 			sessionID: sessionID,
 			state: state,
-			prompt: prompt,
 			failure: failure
 		)
 	}
