@@ -779,7 +779,14 @@ migration or compatibility obligation. Dormancy causes no history-cache filesyst
 The existing `ClientCache` remains exactly
 `<parent>/client-cache`, and `HistoryPageCache` is exactly
 `<parent>/history-page-cache-v1`. These sibling caches have separate namespaces,
-inventories, locks, and failure handling. This cache is not the `decodex-core` typed
+inventories, locks, failure handling, and local schema generations. `ClientCache` uses
+the explicit positive local schema generation `1` for its current schema.
+`HistoryPageCache` independently uses local schema generation `1` for its current
+schema. The equal values are separate local facts: neither derives from protocol major
+or minor, and each cache changes only its own generation when its local schema changes.
+`CacheAuthority` keeps the stable server ID, protocol major, protocol minor, and
+`ClientCache` local schema generation as separate identity fields. This cache is not the
+`decodex-core` typed
 `~/.decodex/cache` authority, adds no `decodex-core` dependency, and is not a generic
 cache framework. It must never publish into, count against, mutate, dispose, switch,
 quarantine, recover, or otherwise change a `ClientCache` generation, checkpoint binding,
