@@ -401,7 +401,8 @@ struct ResetCardAccountRow: View {
 						}
 						.buttonStyle(
 							ResetCardChipButtonStyle(
-								isArmed: confirmation.isArmed(target)
+								isArmed: confirmation.isArmed(target),
+								isBusy: confirmation.isSubmitting(target)
 							)
 						)
 						.disabled(store.blocksNewAttempt(for: target))
@@ -434,13 +435,17 @@ struct ResetCardAccountRow: View {
 			Text("Confirm · \(Self.confirmationWindowSeconds)s")
 				.hidden()
 
-			Text(cardChipTitle(target))
-				.contentTransition(.opacity)
-				.foregroundStyle(
-					confirmation.isArmed(target)
-						? PanelPalette.warning(colorScheme)
-						: PanelPalette.secondaryText(colorScheme)
-				)
+			HStack(spacing: PanelSpacing.micro) {
+				if confirmation.isSubmitting(target) {
+					ProgressView()
+						.controlSize(.mini)
+						.accessibilityHidden(true)
+				}
+
+				Text(cardChipTitle(target))
+					.contentTransition(.opacity)
+			}
+			.foregroundStyle(cardChipForeground(target))
 		}
 		.font(PanelFont.resetCardAction)
 		.monospacedDigit()
@@ -481,6 +486,15 @@ struct ResetCardAccountRow: View {
 		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
 	}
 
+	private func cardChipForeground(_ target: ResetCardUseTarget) -> Color {
+		if confirmation.isSubmitting(target) {
+			return PanelPalette.actionBlue(colorScheme)
+		}
+		return confirmation.isArmed(target)
+			? PanelPalette.warning(colorScheme)
+			: PanelPalette.secondaryText(colorScheme)
+	}
+
 	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
 		Self.cardAccessibilityLabel(
 			expiresAtUnixSeconds: target.descriptor.expiresAtUnixSeconds
@@ -517,6 +531,7 @@ struct ResetCardAccountRow: View {
 		guard let attempt = confirmation.tap(target) else {
 			return
 		}
+		confirmationSecondsRemaining = 0
 
 		Task {
 			let completion = await store.use(attempt)
@@ -628,6 +643,7 @@ struct ResetCardAccountRow: View {
 
 private struct ResetCardChipButtonStyle: ButtonStyle {
 	let isArmed: Bool
+	let isBusy: Bool
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.isEnabled) private var isEnabled
@@ -645,7 +661,11 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 				shape.strokeBorder(borderColor, lineWidth: 1)
 			}
 			.contentShape(shape)
-			.opacity(isEnabled ? (configuration.isPressed ? 0.76 : 1) : 0.46)
+			.opacity(
+				isEnabled || isBusy
+					? (configuration.isPressed ? 0.76 : 1)
+					: 0.46
+			)
 			.scaleEffect(configuration.isPressed ? 0.985 : 1)
 			.animation(
 				reduceMotion ? nil : PanelMotion.press,
@@ -658,6 +678,10 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 	}
 
 	private var fillColor: Color {
+		if isBusy {
+			return PanelPalette.actionBlue(colorScheme)
+				.opacity(colorScheme == .dark ? 0.12 : 0.09)
+		}
 		if isArmed {
 			return PanelPalette.warning(colorScheme)
 				.opacity(colorScheme == .dark ? 0.12 : 0.09)
@@ -667,6 +691,10 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 	}
 
 	private var borderColor: Color {
+		if isBusy {
+			return PanelPalette.actionBlue(colorScheme)
+				.opacity(colorScheme == .dark ? 0.72 : 0.62)
+		}
 		if isArmed {
 			return PanelPalette.warning(colorScheme)
 				.opacity(colorScheme == .dark ? 0.72 : 0.62)
