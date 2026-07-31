@@ -158,8 +158,7 @@ struct AccountUtilityActionsView: View {
 	}
 
 	private var lifecycleActionIsDisabled: Bool {
-		store.isRefreshing
-			|| store.isRefreshingAccountSkeleton
+		store.canPerformDirectAccountControl == false
 			|| store.isAccountControlInProgress
 			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
 			|| store.submittingKey != nil

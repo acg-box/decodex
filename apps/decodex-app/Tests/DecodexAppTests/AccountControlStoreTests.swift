@@ -346,6 +346,97 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.isRefreshing)
 	}
 
+	func testDepletedAccountCanBeDisabledWhileDetailReadIsPending() async throws {
+		let account = accountRecord(
+			observedState: .depleted,
+			sevenDayQuota: depletedSevenDayQuota()
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertEqual(store.accounts.first?.account.sevenDayQuota.usedPercent, 100)
+
+		await store.setAccount(accountID, enabled: false)
+
+		let request = await client.enabledRequest()
+		XCTAssertEqual(
+			request,
+			AccountControlStoreEnabledRequest(
+				authority: nil,
+				accountID: accountID,
+				enabled: false,
+				expectedRevision: 7
+			)
+		)
+
+		await client.releaseInventory()
+		await refreshTask.value
+	}
+
+	func testDepletedAccountCanBeLoggedOutWhileDetailReadIsPending() async throws {
+		let account = accountRecord(
+			observedState: .depleted,
+			sevenDayQuota: depletedSevenDayQuota()
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertEqual(store.accounts.first?.account.sevenDayQuota.usedPercent, 100)
+
+		await store.logoutAccount(accountID)
+
+		let request = await client.logoutRequest()
+		XCTAssertNil(request?.authority)
+		XCTAssertEqual(request?.accountID, accountID)
+		XCTAssertEqual(request?.expectedRevision, 7)
+		XCTAssertTrue(
+			request.map {
+				DecodexNativeClient.isCanonicalUUID($0.operationID)
+			} ?? false
+		)
+
+		await client.releaseInventory()
+		await refreshTask.value
+	}
+
 	func testUseInCodexCompletesWhileDetailReadIsPendingWithoutChangingRouting() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -803,7 +894,8 @@ final class AccountControlStoreTests: XCTestCase {
 		revision: UInt64 = 7,
 		enabled: Bool = true,
 		observedState: ResetCardObservedState = .available,
-		lifecycleReadiness: ResetCardLifecycleReadiness = .ready
+		lifecycleReadiness: ResetCardLifecycleReadiness = .ready,
+		sevenDayQuota: ResetCardQuotaWindow = .unknown(durationMinutes: 10_080)
 	) -> ResetCardAccountRecord {
 		let accountID = accountID ?? self.accountID
 		return ResetCardAccountRecord(
@@ -822,7 +914,18 @@ final class AccountControlStoreTests: XCTestCase {
 				providerAccountID: accountID == self.accountID ? "provider-a" : "provider-b"
 			),
 			fiveHourQuota: .unknown(durationMinutes: 300),
-			sevenDayQuota: .unknown(durationMinutes: 10_080)
+			sevenDayQuota: sevenDayQuota
+		)
+	}
+
+	private func depletedSevenDayQuota() -> ResetCardQuotaWindow {
+		ResetCardQuotaWindow(
+			durationMinutes: 10_080,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 100,
+				resetsAtUnixMicros: 2_000_000
+			)
 		)
 	}
 
@@ -853,6 +956,20 @@ private struct AccountControlStoreUseRequest: Equatable, Sendable {
 
 private struct AccountControlStoreRefreshRequest: Equatable, Sendable {
 	let authority: ResetCardAuthority?
+	let accountID: String
+	let expectedRevision: UInt64
+}
+
+private struct AccountControlStoreEnabledRequest: Equatable, Sendable {
+	let authority: ResetCardAuthority?
+	let accountID: String
+	let enabled: Bool
+	let expectedRevision: UInt64
+}
+
+private struct AccountControlStoreLogoutRequest: Equatable, Sendable {
+	let authority: ResetCardAuthority?
+	let operationID: String
 	let accountID: String
 	let expectedRevision: UInt64
 }
@@ -888,6 +1005,8 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private var lastFixedRequest: AccountControlStoreFixedRequest?
 	private var lastUseRequest: AccountControlStoreUseRequest?
 	private var lastRefreshRequest: AccountControlStoreRefreshRequest?
+	private var lastEnabledRequest: AccountControlStoreEnabledRequest?
+	private var lastLogoutRequest: AccountControlStoreLogoutRequest?
 	private var controlOperations = [AccountControlStoreOperation]()
 	private var fixedRequestCount = 0
 	private var projectionRequestCount = 0
@@ -1171,7 +1290,36 @@ private actor AccountControlStoreClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			accountID == account.accountID,
+			expectedRevision == account.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		lastEnabledRequest = AccountControlStoreEnabledRequest(
+			authority: authority,
+			accountID: accountID,
+			enabled: enabled,
+			expectedRevision: expectedRevision
+		)
+		account = ResetCardAccountRecord(
+			authority: account.authority,
+			accountID: account.accountID,
+			alias: account.alias,
+			accountRevision: account.accountRevision + 1,
+			enabled: enabled,
+			observedState: account.observedState,
+			lifecycleReadiness: account.lifecycleReadiness,
+			credentialBinding: account.credentialBinding,
+			unsettledOperation: account.unsettledOperation,
+			fiveHourQuota: account.fiveHourQuota,
+			sevenDayQuota: account.sevenDayQuota
+		)
+		return .accountChanged(account)
+	}
+
+	func enabledRequest() -> AccountControlStoreEnabledRequest? {
+		lastEnabledRequest
 	}
 
 	func logoutAccount(
@@ -1181,7 +1329,27 @@ private actor AccountControlStoreClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard DecodexNativeClient.isCanonicalUUID(operationID),
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			accountID == account.accountID,
+			expectedRevision == account.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		lastLogoutRequest = AccountControlStoreLogoutRequest(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			expectedRevision: expectedRevision
+		)
+		return .accountLoggedOut(
+			accountID: accountID,
+			tombstoneRevision: expectedRevision + 1
+		)
+	}
+
+	func logoutRequest() -> AccountControlStoreLogoutRequest? {
+		lastLogoutRequest
 	}
 
 	func setBalancedSelection(

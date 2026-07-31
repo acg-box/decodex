@@ -885,6 +885,7 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
+			allowsDuringRefresh: true,
 			successMessage: enabled ? "Account enabled." : "Account disabled.",
 			operation: {
 				try await accountControlClient.setAccountEnabled(
@@ -910,6 +911,7 @@ final class ResetCardStore {
 		await performAccountControl(
 			accountID: accountID,
 			activity: .lifecycle,
+			allowsDuringRefresh: true,
 			successMessage: "Account logged out.",
 			operation: {
 				try await accountControlClient.logoutAccount(
