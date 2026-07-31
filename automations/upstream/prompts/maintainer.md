@@ -209,7 +209,9 @@ Workflow:
     succeeds. Preserve the branch for Reviewer. On failure, use `block` with a
     bounded reason code and the exact `error_digest` returned by the wrapper when a
     bounded validation diagnostic exists. Do not replace, recompute, or omit that
-    digest. Accept `auto_repair_pending` only
+    digest. Preserve any `related_error_codes` in the bounded run report and treat
+    candidate-output change or cleanup failures as automation repair evidence.
+    Accept `auto_repair_pending` only
     when its repair candidate IDs are present in the persisted readback. Do not
     store raw logs, prompts, paths, credentials, identities, or upstream prose.
 

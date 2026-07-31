@@ -157,6 +157,62 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 	}
 }
 
+enum AccountReauthenticationState: String, Decodable, Equatable, Sendable {
+	case openingBrowser = "opening_browser"
+	case waitingForBrowser = "waiting_for_browser"
+	case installing
+	case completed
+	case failed
+	case cancelled
+}
+
+enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
+	case codexUnavailable = "codex_unavailable"
+	case loginFailed = "login_failed"
+	case loginTimedOut = "login_timed_out"
+	case accountMismatch = "account_mismatch"
+	case accountChanged = "account_changed"
+	case accountUnavailable = "account_unavailable"
+	case credentialStoreUnavailable = "credential_store_unavailable"
+	case serviceUnavailable = "service_unavailable"
+	case outcomeUnknown = "outcome_unknown"
+	case sessionNotFound = "session_not_found"
+	case busy
+
+	var presentation: String {
+		switch self {
+		case .codexUnavailable:
+			return "The Codex login tool is unavailable."
+		case .loginFailed:
+			return "Codex could not complete the login."
+		case .loginTimedOut:
+			return "The browser login timed out. Try again."
+		case .accountMismatch:
+			return "This login belongs to a different account."
+		case .accountChanged:
+			return "The account changed. Close this login and try again."
+		case .accountUnavailable:
+			return "This account is not available for login."
+		case .credentialStoreUnavailable:
+			return "The credential store is unavailable."
+		case .serviceUnavailable:
+			return "The Decodex account service is unavailable."
+		case .outcomeUnknown:
+			return "The login may have completed. Refresh the account before trying again."
+		case .sessionNotFound:
+			return "This login session is no longer available."
+		case .busy:
+			return "Another account login is already in progress."
+		}
+	}
+}
+
+struct AccountReauthenticationStatus: Equatable, Sendable {
+	let sessionID: String
+	let state: AccountReauthenticationState
+	let failure: AccountReauthenticationFailure?
+}
+
 protocol AccountControlClient: ResetCardClient {
 	func accountSnapshot(
 		authority: ResetCardAuthority?
@@ -218,6 +274,54 @@ protocol AccountControlClient: ResetCardClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult
+
+	func startAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String,
+		operationID: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey: String,
+		codexBin: String
+	) async throws -> AccountReauthenticationStatus
+
+	func pollAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus
+
+	func cancelAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus
+}
+
+extension AccountControlClient {
+	func startAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID _: String,
+		operationID _: String,
+		accountID _: String,
+		expectedRevision _: UInt64,
+		idempotencyKey _: String,
+		codexBin _: String
+	) async throws -> AccountReauthenticationStatus {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func pollAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID _: String
+	) async throws -> AccountReauthenticationStatus {
+		throw AccountControlError.applicationUnavailable
+	}
+
+	func cancelAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID _: String
+	) async throws -> AccountReauthenticationStatus {
+		throw AccountControlError.applicationUnavailable
+	}
 }
 
 extension DecodexNativeClient: AccountControlClient {
@@ -443,6 +547,64 @@ extension DecodexNativeClient: AccountControlClient {
 		)
 	}
 
+	func startAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String,
+		operationID: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey: String,
+		codexBin: String
+	) async throws -> AccountReauthenticationStatus {
+		try Self.validateAccountControlInput(
+			authority: authority,
+			accountID: accountID,
+			operationID: operationID,
+			expectedRevision: expectedRevision,
+			idempotencyKey: idempotencyKey
+		)
+		guard Self.isCanonicalUUID(sessionID),
+			Self.isValidCodexExecutablePath(codexBin)
+		else {
+			throw AccountControlError.invalidInput
+		}
+		return try await executeAccountReauthentication(
+			request: DecodexNativeRequest(
+				operation: "start_account_reauthentication",
+				accountID: accountID,
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID,
+				sessionID: sessionID,
+				codexBin: codexBin
+			),
+			authority: authority,
+			expectedSessionID: sessionID
+		)
+	}
+
+	func pollAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		try await accountReauthenticationSessionRequest(
+			operation: "poll_account_reauthentication",
+			authority: authority,
+			sessionID: sessionID
+		)
+	}
+
+	func cancelAccountReauthentication(
+		authority: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		try await accountReauthenticationSessionRequest(
+			operation: "cancel_account_reauthentication",
+			authority: authority,
+			sessionID: sessionID
+		)
+	}
+
 	private static func validateAccountControlInput(
 		authority: ResetCardAuthority?,
 		accountID: String,
@@ -458,6 +620,62 @@ extension DecodexNativeClient: AccountControlClient {
 		else {
 			throw AccountControlError.invalidInput
 		}
+	}
+
+	private static func isValidCodexExecutablePath(_ value: String) -> Bool {
+		guard value.utf8.count <= 4_096,
+			value.utf8.contains(0) == false
+		else {
+			return false
+		}
+		let url = URL(fileURLWithPath: value)
+		return url.path.hasPrefix("/")
+			&& url.standardizedFileURL.path == value
+	}
+
+	private func accountReauthenticationSessionRequest(
+		operation: String,
+		authority: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		guard authority.map(Self.isValidAuthority) ?? true,
+			Self.isCanonicalUUID(sessionID)
+		else {
+			throw AccountControlError.invalidInput
+		}
+		return try await executeAccountReauthentication(
+			request: DecodexNativeRequest(
+				operation: operation,
+				sessionID: sessionID
+			),
+			authority: authority,
+			expectedSessionID: sessionID
+		)
+	}
+
+	private func executeAccountReauthentication(
+		request: DecodexNativeRequest,
+		authority: ResetCardAuthority?,
+		expectedSessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		let response: (
+			authority: ResetCardAuthority,
+			data: AccountReauthenticationWire
+		)
+		do {
+			response = try await perform(request, authority: authority)
+		} catch let error as ResetCardClientError {
+			if error == .invalidResponse {
+				throw AccountControlError.invalidResponse
+			}
+			throw AccountControlError.client(error)
+		} catch {
+			throw AccountControlError.invalidResponse
+		}
+		guard response.data.value.sessionID == expectedSessionID else {
+			throw AccountControlError.invalidResponse
+		}
+		return response.data.value
 	}
 
 	private func executeAccountControl(
@@ -492,6 +710,56 @@ extension DecodexNativeClient: AccountControlClient {
 		case .potentiallyDispatched:
 			throw AccountControlError.potentiallyDispatched
 		}
+	}
+}
+
+private struct AccountReauthenticationWire: Decodable {
+	let value: AccountReauthenticationStatus
+
+	init(from decoder: Decoder) throws {
+		try rejectUnknownFields(
+			in: decoder,
+			allowed: ["session_id", "state", "failure"]
+		)
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		let sessionID = try container.decode(String.self, forKey: .sessionID)
+		let state = try container.decode(
+			AccountReauthenticationState.self,
+			forKey: .state
+		)
+		let failure = try container.decodeIfPresent(
+			AccountReauthenticationFailure.self,
+			forKey: .failure
+		)
+		guard DecodexNativeClient.isCanonicalUUID(sessionID),
+			Self.hasValidShape(state: state, failure: failure)
+		else {
+			throw AccountControlError.invalidResponse
+		}
+		value = AccountReauthenticationStatus(
+			sessionID: sessionID,
+			state: state,
+			failure: failure
+		)
+	}
+
+	private static func hasValidShape(
+		state: AccountReauthenticationState,
+		failure: AccountReauthenticationFailure?
+	) -> Bool {
+		switch state {
+		case .openingBrowser, .waitingForBrowser, .installing,
+			.completed, .cancelled:
+			return failure == nil
+		case .failed:
+			return failure != nil
+		}
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case sessionID = "session_id"
+		case state
+		case failure
 	}
 }
 private enum AccountControlExpectedResult {

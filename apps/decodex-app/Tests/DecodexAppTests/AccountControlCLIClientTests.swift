@@ -340,6 +340,174 @@ final class AccountControlNativeClientTests: XCTestCase {
 			}
 		}
 	}
+
+	func testAccountReauthenticationUsesExactStartPollAndCancelRequests() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			let object = try nativeJSONObject(request)
+			let operation = try XCTUnwrap(object["operation"] as? String)
+			let data: String
+			switch operation {
+			case "start_account_reauthentication":
+				data = """
+					{"session_id":"\(sessionID)","state":"opening_browser"}
+					"""
+			case "poll_account_reauthentication":
+				data = """
+					{"session_id":"\(sessionID)","state":"waiting_for_browser"}
+					"""
+			case "cancel_account_reauthentication":
+				data = """
+					{"session_id":"\(sessionID)","state":"cancelled"}
+					"""
+			default:
+				return nativeFailure(operation: operation, failure: "invalid_request")
+			}
+			return nativeSuccess(
+				operation: operation,
+				authority: authority,
+				data: data
+			)
+		}
+
+		let started = try await client.startAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID,
+			operationID: operationID,
+			accountID: accountID,
+			expectedRevision: 7,
+			idempotencyKey: idempotencyKey,
+			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex"
+		)
+		let polled = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+		let cancelled = try await client.cancelAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(started.state, .openingBrowser)
+		XCTAssertEqual(polled.state, .waitingForBrowser)
+		XCTAssertEqual(cancelled.state, .cancelled)
+
+		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
+		XCTAssertEqual(
+			requests.compactMap { $0["operation"] as? String },
+			[
+				"start_account_reauthentication",
+				"poll_account_reauthentication",
+				"cancel_account_reauthentication",
+			]
+		)
+		XCTAssertEqual(
+			Set(requests[0].keys),
+			[
+				"schema", "operation", "session_id", "operation_id",
+				"account_id", "expected_revision", "idempotency_key", "codex_bin",
+			]
+		)
+		XCTAssertEqual(requests[0]["session_id"] as? String, sessionID)
+		XCTAssertEqual(requests[0]["account_id"] as? String, accountID)
+		XCTAssertEqual(requests[0]["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(
+			requests[0]["codex_bin"] as? String,
+			"/Applications/ChatGPT.app/Contents/Resources/codex"
+		)
+		XCTAssertEqual(
+			Set(requests[1].keys),
+			["schema", "operation", "session_id"]
+		)
+		XCTAssertEqual(
+			Set(requests[2].keys),
+			["schema", "operation", "session_id"]
+		)
+		XCTAssertEqual(
+			recorder.requests.map(\.authority),
+			Array(repeating: authority, count: 3)
+		)
+	}
+
+	func testAccountReauthenticationDecodesClosedFailure() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"failed",
+					 "failure":"account_mismatch"}
+					"""
+			)
+		}
+
+		let status = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(status.state, .failed)
+		XCTAssertEqual(status.failure, .accountMismatch)
+	}
+
+	func testAccountReauthenticationRejectsMalformedOrUnexpectedPromptState() async {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let malformed = [
+			"""
+			{"session_id":"\(sessionID)","state":"waiting_for_browser",
+			 "prompt":{"verification_url":"http://auth.openai.com/codex/device",
+			 "user_code":"AB12-CDE34"}}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"waiting_for_browser",
+			 "prompt":{"verification_url":"https://auth.openai.com/codex/device",
+			 "user_code":"AB12-cde34"}}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"completed",
+			 "prompt":{"verification_url":"https://auth.openai.com/codex/device",
+			 "user_code":"AB12-CDE34"}}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"installing",
+			 "prompt":{"verification_url":"https://auth.openai.com/codex/device",
+			 "user_code":"AB12-CDE34"}}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"failed","failure":"future_failure"}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"opening_browser","unexpected":true}
+			""",
+		]
+
+		for data in malformed {
+			let client = DecodexNativeClient { _, _ in
+				nativeSuccess(
+					operation: "poll_account_reauthentication",
+					authority: authority,
+					data: data
+				)
+			}
+			do {
+				_ = try await client.pollAccountReauthentication(
+					authority: authority,
+					sessionID: sessionID
+				)
+				XCTFail("Malformed login status must fail")
+			} catch let error as AccountControlError {
+				XCTAssertEqual(error, .invalidResponse)
+			} catch {
+				XCTFail("Unexpected error: \(error)")
+			}
+		}
+	}
 }
 
 private func controlAccountJSON(

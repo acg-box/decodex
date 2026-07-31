@@ -131,10 +131,11 @@ final class AccountProfileStoreTests: XCTestCase {
 			store.accounts.first?.profileUnavailable?.error,
 			.providerUnavailable
 		)
+		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
 		XCTAssertNil(store.accounts.first?.error)
 	}
 
-	func testProfileUnauthorizedDoesNotDriveAccountLoginRecovery() {
+	func testCachedProfileUnauthorizedRequiresLoginRefresh() {
 		let profile = profileObservation(
 			observedAt: 300,
 			lifetimeTokens: 3_000,
@@ -148,8 +149,7 @@ final class AccountProfileStoreTests: XCTestCase {
 			profile: profile
 		)
 
-		XCTAssertFalse(availableState.requiresLoginRefresh)
-		XCTAssertFalse(availableState.requiresLoginRefresh)
+		XCTAssertTrue(availableState.requiresLoginRefresh)
 		XCTAssertEqual(
 			availableState.profileDegradationText,
 			AccountProfileObservationError.unauthorized.presentation
@@ -163,7 +163,21 @@ final class AccountProfileStoreTests: XCTestCase {
 			profile: profile
 		)
 		XCTAssertTrue(authFailedState.requiresLoginRefresh)
-		XCTAssertTrue(authFailedState.requiresLoginRefresh)
+	}
+
+	func testUnavailableUnauthorizedRequiresLoginRefresh() {
+		let state = ResetCardAccountState(
+			account: profileTestAccount(),
+			inventory: nil,
+			error: nil,
+			isRefreshing: false,
+			profileUnavailable: AccountProfileUnavailable(
+				error: .unauthorized,
+				claims: AccountProfileClaims(email: nil, planType: "pro")
+			)
+		)
+
+		XCTAssertTrue(state.requiresLoginRefresh)
 	}
 
 	func testOlderObservationCannotReplaceNewerRetainedProfile() async throws {

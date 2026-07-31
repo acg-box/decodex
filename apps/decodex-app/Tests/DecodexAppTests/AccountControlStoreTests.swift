@@ -306,6 +306,137 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(finalReads.inventory, 1)
 	}
 
+	func testEnrollmentStartsAfterSkeletonPublishesWhileDetailReadIsPending() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true,
+			allowsEnrollment: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertTrue(store.canBeginEnrollment)
+
+		await store.enrollFromSharedCodex()
+
+		let enrollmentRequestCount = await client.enrollmentRequestCount()
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertEqual(enrollmentRequestCount, 1)
+		XCTAssertEqual(store.message?.tone, .success)
+
+		await client.releaseInventory()
+		await refreshTask.value
+		XCTAssertFalse(store.isRefreshing)
+	}
+
+	func testDepletedAccountCanBeDisabledWhileDetailReadIsPending() async throws {
+		let account = accountRecord(
+			observedState: .depleted,
+			sevenDayQuota: depletedSevenDayQuota()
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertEqual(store.accounts.first?.account.sevenDayQuota.usedPercent, 100)
+
+		await store.setAccount(accountID, enabled: false)
+
+		let request = await client.enabledRequest()
+		XCTAssertEqual(
+			request,
+			AccountControlStoreEnabledRequest(
+				authority: nil,
+				accountID: accountID,
+				enabled: false,
+				expectedRevision: 7
+			)
+		)
+
+		await client.releaseInventory()
+		await refreshTask.value
+	}
+
+	func testDepletedAccountCanBeLoggedOutWhileDetailReadIsPending() async throws {
+		let account = accountRecord(
+			observedState: .depleted,
+			sevenDayQuota: depletedSevenDayQuota()
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsInventory: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.inventoryIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.isRefreshing)
+		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertEqual(store.accounts.first?.account.sevenDayQuota.usedPercent, 100)
+
+		await store.logoutAccount(accountID)
+
+		let request = await client.logoutRequest()
+		XCTAssertNil(request?.authority)
+		XCTAssertEqual(request?.accountID, accountID)
+		XCTAssertEqual(request?.expectedRevision, 7)
+		XCTAssertTrue(
+			request.map {
+				DecodexNativeClient.isCanonicalUUID($0.operationID)
+			} ?? false
+		)
+
+		await client.releaseInventory()
+		await refreshTask.value
+	}
+
 	func testUseInCodexCompletesWhileDetailReadIsPendingWithoutChangingRouting() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -616,13 +747,155 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(finalProjectionReads, 2)
 	}
 
+	func testBrowserLoginCompletesAndRefreshesOnlyTheChangedAccountAuthority() async throws {
+		let account = accountRecord(observedState: .authFailed)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [
+				.waitingForBrowser,
+				.installing,
+				.completed,
+			]
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .zero,
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
+		)
+		await store.refresh()
+		XCTAssertTrue(store.accounts.first?.requiresLoginRefresh == true)
+
+		store.beginAccountReauthentication(for: accountID)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication == nil,
+				store.accounts.first?.account.accountRevision == 8
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertNil(store.accountReauthentication)
+		XCTAssertFalse(store.isControllingAccount(accountID))
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertEqual(store.accounts.first?.account.observedState, .available)
+		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
+		XCTAssertEqual(store.message?.text, "Account login refreshed.")
+		let recordedRequest = await client.reauthenticationStartRequest()
+		let request = try XCTUnwrap(recordedRequest)
+		XCTAssertEqual(request.accountID, accountID)
+		XCTAssertEqual(request.expectedRevision, 7)
+		XCTAssertEqual(
+			request.codexBin,
+			"/Applications/ChatGPT.app/Contents/Resources/codex"
+		)
+		let pollCount = await client.reauthenticationPollCount()
+		let cancelCount = await client.reauthenticationCancelCount()
+		XCTAssertEqual(pollCount, 2)
+		XCTAssertEqual(cancelCount, 0)
+		let reads = await client.readCounts()
+		XCTAssertGreaterThanOrEqual(reads.snapshot, 3)
+		XCTAssertGreaterThanOrEqual(reads.inventory, 2)
+	}
+
+	func testBrowserLoginRemainsActiveUntilExplicitCancel() async throws {
+		let account = accountRecord(observedState: .authFailed)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [.waitingForBrowser]
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .seconds(60),
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
+		)
+		await store.refresh()
+
+		store.beginAccountReauthentication(for: accountID)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication?.phase == .waitingForBrowser {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertEqual(store.accountReauthentication?.phase, .waitingForBrowser)
+		XCTAssertTrue(store.isControllingAccount(accountID))
+
+		await store.cancelAccountReauthentication()
+
+		XCTAssertNil(store.accountReauthentication)
+		XCTAssertFalse(store.isControllingAccount(accountID))
+		let cancelCount = await client.reauthenticationCancelCount()
+		XCTAssertEqual(cancelCount, 1)
+	}
+
+	func testCancelOutcomeUnknownKeepsFailureWhileReadingBackAuthoritativeState() async throws {
+		let account = accountRecord(observedState: .authFailed)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [.waitingForBrowser],
+			cancelReauthenticationWithOutcomeUnknown: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .seconds(60),
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
+		)
+		await store.refresh()
+
+		store.beginAccountReauthentication(for: accountID)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication?.phase == .waitingForBrowser {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		await store.cancelAccountReauthentication()
+
+		XCTAssertEqual(
+			store.accountReauthentication?.failureText,
+			AccountReauthenticationFailure.outcomeUnknown.presentation
+		)
+		XCTAssertNotEqual(store.message?.text, "Account login refreshed.")
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertEqual(store.accounts.first?.account.observedState, .available)
+		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
+		let cancelCount = await client.reauthenticationCancelCount()
+		XCTAssertEqual(cancelCount, 1)
+		let reads = await client.readCounts()
+		XCTAssertGreaterThanOrEqual(reads.snapshot, 3)
+		XCTAssertGreaterThanOrEqual(reads.inventory, 2)
+	}
+
 	private func accountRecord(
 		accountID: String? = nil,
 		alias: String = "Account 00000-00001",
 		revision: UInt64 = 7,
 		enabled: Bool = true,
 		observedState: ResetCardObservedState = .available,
-		lifecycleReadiness: ResetCardLifecycleReadiness = .ready
+		lifecycleReadiness: ResetCardLifecycleReadiness = .ready,
+		sevenDayQuota: ResetCardQuotaWindow = .unknown(durationMinutes: 10_080)
 	) -> ResetCardAccountRecord {
 		let accountID = accountID ?? self.accountID
 		return ResetCardAccountRecord(
@@ -641,7 +914,18 @@ final class AccountControlStoreTests: XCTestCase {
 				providerAccountID: accountID == self.accountID ? "provider-a" : "provider-b"
 			),
 			fiveHourQuota: .unknown(durationMinutes: 300),
-			sevenDayQuota: .unknown(durationMinutes: 10_080)
+			sevenDayQuota: sevenDayQuota
+		)
+	}
+
+	private func depletedSevenDayQuota() -> ResetCardQuotaWindow {
+		ResetCardQuotaWindow(
+			durationMinutes: 10_080,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 100,
+				resetsAtUnixMicros: 2_000_000
+			)
 		)
 	}
 
@@ -676,6 +960,26 @@ private struct AccountControlStoreRefreshRequest: Equatable, Sendable {
 	let expectedRevision: UInt64
 }
 
+private struct AccountControlStoreEnabledRequest: Equatable, Sendable {
+	let authority: ResetCardAuthority?
+	let accountID: String
+	let enabled: Bool
+	let expectedRevision: UInt64
+}
+
+private struct AccountControlStoreLogoutRequest: Equatable, Sendable {
+	let authority: ResetCardAuthority?
+	let operationID: String
+	let accountID: String
+	let expectedRevision: UInt64
+}
+
+private struct AccountControlStoreReauthenticationRequest: Equatable, Sendable {
+	let accountID: String
+	let expectedRevision: UInt64
+	let codexBin: String
+}
+
 private enum AccountControlStoreOperation: Equatable, Sendable {
 	case codexProjection
 	case fixedRouting
@@ -694,12 +998,15 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let snapshotGate: AccountControlReadGate?
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
+	private let allowsEnrollment: Bool
 	private var routing: AccountRoutingControl
 	private var fixedSelectionError: AccountControlError?
 	private let useAccountError: AccountControlError?
 	private var lastFixedRequest: AccountControlStoreFixedRequest?
 	private var lastUseRequest: AccountControlStoreUseRequest?
 	private var lastRefreshRequest: AccountControlStoreRefreshRequest?
+	private var lastEnabledRequest: AccountControlStoreEnabledRequest?
+	private var lastLogoutRequest: AccountControlStoreLogoutRequest?
 	private var controlOperations = [AccountControlStoreOperation]()
 	private var fixedRequestCount = 0
 	private var projectionRequestCount = 0
@@ -707,6 +1014,14 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private var projectionReads = 0
 	private var snapshotReadCount = 0
 	private var inventoryReadCount = 0
+	private var enrollmentRequests = 0
+	private var reauthenticationStates: [AccountReauthenticationState]
+	private var lastReauthenticationStartRequest: AccountControlStoreReauthenticationRequest?
+	private var reauthenticationPolls = 0
+	private var reauthenticationCancels = 0
+	private var reauthenticationSessionID: String?
+	private var reauthenticationCompleted = false
+	private let cancelReauthenticationWithOutcomeUnknown: Bool
 
 	init(
 		account: ResetCardAccountRecord,
@@ -716,10 +1031,13 @@ private actor AccountControlStoreClient: AccountControlClient {
 		suspendsSnapshotAfterFirstRead: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
+		allowsEnrollment: Bool = false,
 		routing: AccountRoutingControl? = nil,
 		fixedSelectionError: AccountControlError? = nil,
 		useAccountError: AccountControlError? = nil,
-		projection: CodexAuthProjection = .unmanaged
+		projection: CodexAuthProjection = .unmanaged,
+		reauthenticationStates: [AccountReauthenticationState] = [],
+		cancelReauthenticationWithOutcomeUnknown: Bool = false
 	) {
 		self.account = account
 		self.secondaryAccount = secondaryAccount
@@ -729,6 +1047,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
+		self.allowsEnrollment = allowsEnrollment
 		self.routing = routing
 			?? AccountRoutingControl(
 				revision: 9,
@@ -737,6 +1056,9 @@ private actor AccountControlStoreClient: AccountControlClient {
 			)
 		self.fixedSelectionError = fixedSelectionError
 		self.useAccountError = useAccountError
+		self.reauthenticationStates = reauthenticationStates
+		self.cancelReauthenticationWithOutcomeUnknown =
+			cancelReauthenticationWithOutcomeUnknown
 	}
 
 	func accountSnapshot(
@@ -766,6 +1088,21 @@ private actor AccountControlStoreClient: AccountControlClient {
 		inventoryReadCount += 1
 		if let inventoryGate {
 			await inventoryGate.wait()
+		}
+		if reauthenticationCompleted, self.account.observedState == .authFailed {
+			self.account = ResetCardAccountRecord(
+				authority: self.account.authority,
+				accountID: self.account.accountID,
+				alias: self.account.alias,
+				accountRevision: self.account.accountRevision,
+				enabled: self.account.enabled,
+				observedState: .available,
+				lifecycleReadiness: self.account.lifecycleReadiness,
+				credentialBinding: self.account.credentialBinding,
+				unsettledOperation: self.account.unsettledOperation,
+				fiveHourQuota: self.account.fiveHourQuota,
+				sevenDayQuota: self.account.sevenDayQuota
+			)
 		}
 		return ResetCardInventory(
 			authority: authority,
@@ -883,7 +1220,20 @@ private actor AccountControlStoreClient: AccountControlClient {
 		enabled: Bool,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard allowsEnrollment,
+			DecodexNativeClient.isCanonicalUUID(operationID),
+			DecodexNativeClient.isCanonicalUUID(accountID),
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			enabled
+		else {
+			throw AccountControlError.applicationUnavailable
+		}
+		enrollmentRequests += 1
+		return .accountChanged(account)
+	}
+
+	func enrollmentRequestCount() -> Int {
+		enrollmentRequests
 	}
 
 	func codexAuthProjection(
@@ -940,7 +1290,36 @@ private actor AccountControlStoreClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			accountID == account.accountID,
+			expectedRevision == account.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		lastEnabledRequest = AccountControlStoreEnabledRequest(
+			authority: authority,
+			accountID: accountID,
+			enabled: enabled,
+			expectedRevision: expectedRevision
+		)
+		account = ResetCardAccountRecord(
+			authority: account.authority,
+			accountID: account.accountID,
+			alias: account.alias,
+			accountRevision: account.accountRevision + 1,
+			enabled: enabled,
+			observedState: account.observedState,
+			lifecycleReadiness: account.lifecycleReadiness,
+			credentialBinding: account.credentialBinding,
+			unsettledOperation: account.unsettledOperation,
+			fiveHourQuota: account.fiveHourQuota,
+			sevenDayQuota: account.sevenDayQuota
+		)
+		return .accountChanged(account)
+	}
+
+	func enabledRequest() -> AccountControlStoreEnabledRequest? {
+		lastEnabledRequest
 	}
 
 	func logoutAccount(
@@ -950,7 +1329,27 @@ private actor AccountControlStoreClient: AccountControlClient {
 		expectedRevision: UInt64,
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard DecodexNativeClient.isCanonicalUUID(operationID),
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			accountID == account.accountID,
+			expectedRevision == account.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		lastLogoutRequest = AccountControlStoreLogoutRequest(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			expectedRevision: expectedRevision
+		)
+		return .accountLoggedOut(
+			accountID: accountID,
+			tombstoneRevision: expectedRevision + 1
+		)
+	}
+
+	func logoutRequest() -> AccountControlStoreLogoutRequest? {
+		lastLogoutRequest
 	}
 
 	func setBalancedSelection(
@@ -999,6 +1398,107 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	func refreshRequest() -> AccountControlStoreRefreshRequest? {
 		lastRefreshRequest
+	}
+
+	func startAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID: String,
+		operationID _: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey _: String,
+		codexBin: String
+	) async throws -> AccountReauthenticationStatus {
+		guard reauthenticationStates.isEmpty == false else {
+			throw AccountControlError.applicationUnavailable
+		}
+		reauthenticationSessionID = sessionID
+		lastReauthenticationStartRequest = AccountControlStoreReauthenticationRequest(
+			accountID: accountID,
+			expectedRevision: expectedRevision,
+			codexBin: codexBin
+		)
+		return reauthenticationStatus(
+			state: reauthenticationStates.removeFirst(),
+			sessionID: sessionID
+		)
+	}
+
+	func pollAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		guard sessionID == reauthenticationSessionID,
+			reauthenticationStates.isEmpty == false
+		else {
+			throw AccountControlError.invalidResponse
+		}
+		reauthenticationPolls += 1
+		let state = reauthenticationStates.removeFirst()
+		if state == .completed {
+			markReauthenticationCompleted()
+		}
+		return reauthenticationStatus(state: state, sessionID: sessionID)
+	}
+
+	func cancelAccountReauthentication(
+		authority _: ResetCardAuthority?,
+		sessionID: String
+	) async throws -> AccountReauthenticationStatus {
+		guard sessionID == reauthenticationSessionID else {
+			throw AccountControlError.invalidResponse
+		}
+		reauthenticationCancels += 1
+		if cancelReauthenticationWithOutcomeUnknown {
+			markReauthenticationCompleted()
+			return reauthenticationStatus(
+				state: .failed,
+				sessionID: sessionID,
+				failure: .outcomeUnknown
+			)
+		}
+		return reauthenticationStatus(state: .cancelled, sessionID: sessionID)
+	}
+
+	func reauthenticationStartRequest() -> AccountControlStoreReauthenticationRequest? {
+		lastReauthenticationStartRequest
+	}
+
+	func reauthenticationPollCount() -> Int {
+		reauthenticationPolls
+	}
+
+	func reauthenticationCancelCount() -> Int {
+		reauthenticationCancels
+	}
+
+	private func reauthenticationStatus(
+		state: AccountReauthenticationState,
+		sessionID: String,
+		failure: AccountReauthenticationFailure? = nil
+	) -> AccountReauthenticationStatus {
+		return AccountReauthenticationStatus(
+			sessionID: sessionID,
+			state: state,
+			failure: failure
+		)
+	}
+
+	private func markReauthenticationCompleted() {
+		reauthenticationCompleted = true
+		account = ResetCardAccountRecord(
+			authority: account.authority,
+			accountID: account.accountID,
+			alias: account.alias,
+			accountRevision: account.accountRevision + 1,
+			enabled: account.enabled,
+			observedState: account.observedState,
+			lifecycleReadiness: .ready,
+			credentialBinding: account.credentialBinding,
+			unsettledOperation: nil,
+			fiveHourQuota: account.fiveHourQuota,
+			sevenDayQuota: account.sevenDayQuota
+		)
 	}
 }
 

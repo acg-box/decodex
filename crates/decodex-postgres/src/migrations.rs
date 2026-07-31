@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 30;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 31;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
@@ -24,6 +24,9 @@ const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
 #[cfg(test)]
 const CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION: &str =
 	include_str!("../migrations/V30__current_codex_account_capability.sql");
+#[cfg(test)]
+const OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
+	include_str!("../migrations/V31__official_codex_release_capability.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -117,7 +120,7 @@ async fn verify_exact_ledger(
 		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V30 ledger".into(),
+			"embedded migration inventory does not end at the canonical V31 ledger".into(),
 		));
 	}
 	expected.retain(|migration| migration.version() <= terminal_version);
@@ -169,7 +172,7 @@ mod tests {
 	use super::{
 		ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION, ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
 		CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION,
-		MAC_ACCOUNT_LIFECYCLE_MIGRATION, migrations,
+		MAC_ACCOUNT_LIFECYCLE_MIGRATION, OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION, migrations,
 	};
 
 	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
@@ -458,6 +461,40 @@ mod tests {
 		assert!(migration.contains("AS duplicate_date(value)"));
 		assert!(migration.contains("GROUP BY duplicate_date.value"));
 		for forbidden in ["CREATE TABLE", "CREATE TYPE", "account_migration", "legacy"] {
+			assert!(!migration.contains(forbidden), "{forbidden}");
+		}
+	}
+
+	#[test]
+	fn v31_rebinds_only_the_official_codex_release_capability() {
+		let migration = OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION;
+
+		for function in [
+			"read_account_registry_exact",
+			"read_reset_card_account_admission_exact",
+			"attest_codex_account_capability_exact",
+			"prepare_process_generation_exact",
+		] {
+			assert!(
+				migration.contains(&format!("CREATE OR REPLACE FUNCTION decodex.{function}(")),
+				"{function}"
+			);
+		}
+		assert_eq!(
+			migration
+				.matches("fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4")
+				.count(),
+			4
+		);
+		for forbidden in [
+			"fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e",
+			"CREATE TABLE",
+			"CREATE TYPE",
+			"GRANT ",
+			"REVOKE ",
+			"account_migration",
+			"legacy",
+		] {
 			assert!(!migration.contains(forbidden), "{forbidden}");
 		}
 	}

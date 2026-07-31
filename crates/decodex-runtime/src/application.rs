@@ -525,6 +525,31 @@ impl ServiceApplication {
 					})
 					.await
 			},
+			CommandPayload::ReauthenticateAccountFromCredentialFile {
+				operation_id,
+				account_id,
+				source_descriptor,
+			} => {
+				let operation_id = operation_id_from_wire(operation_id)?;
+				let account_id = account_id_from_wire(account_id)?;
+				let expected = required_expected_revision(command)?;
+				service
+					.reauthenticate_from_credential_file_command(
+						lease,
+						operation_id,
+						&account_id,
+						expected,
+						source_descriptor.as_str(),
+						|result| {
+							encode_account_command_receipt(
+								&result.map_err(account_lifecycle_command_error).and_then(
+									|account| account_changed_publication(account.clone()),
+								),
+							)
+						},
+					)
+					.await
+			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
@@ -946,6 +971,7 @@ impl Application for ServiceApplication {
 			| CommandPayload::SetBalancedAccountSelection
 			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
+			| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 			| CommandPayload::RecoverAccountOperation { .. }
 			| CommandPayload::UseAccountInCodex { .. } => self.execute_account_command(command).await,
 			CommandPayload::RefreshSystemObservation { .. } =>
@@ -1545,6 +1571,8 @@ fn account_command_descriptor(
 			(AccountCommandKind::SetAccountOrder, "account-routing"),
 		CommandPayload::RefreshAccount { account_id, .. } =>
 			(AccountCommandKind::Refresh, account_id.as_str()),
+		CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. } =>
+			(AccountCommandKind::Refresh, account_id.as_str()),
 		CommandPayload::RecoverAccountOperation { operation_id, .. } =>
 			(AccountCommandKind::Recover, operation_id.as_str()),
 		_ => return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
@@ -1569,6 +1597,19 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
+		},
+		CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+		} => {
+			let _ = operation_id_from_wire(operation_id)?;
+			let _ = account_id_from_wire(account_id)?;
+			let _ = required_expected_revision(command)?;
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
+			}
 		},
 		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
 			let _ = account_id_from_wire(account_id)?;
@@ -1879,28 +1920,31 @@ fn decode_account_command_receipt(
 }
 
 fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaWindowDto, ()> {
-	let result = match observation.disposition {
-		AccountQuotaDisposition::Unknown => AccountQuotaStateDto::Unknown,
-		AccountQuotaDisposition::Current(fact) => AccountQuotaStateDto::Current {
-			used_percent: fact.used_percent,
-			resets_at_unix_micros: fact.resets_at_unix_micros,
-		},
-		AccountQuotaDisposition::Stale(fact) => AccountQuotaStateDto::Stale {
-			used_percent: fact.used_percent,
-			resets_at_unix_micros: fact.resets_at_unix_micros,
-		},
-		AccountQuotaDisposition::Error(error) => AccountQuotaStateDto::Error {
-			error: match error {
-				AccountQuotaObservationError::ProviderUnavailable =>
-					AccountQuotaErrorDto::ProviderUnavailable,
-				AccountQuotaObservationError::ProtocolUnavailable =>
-					AccountQuotaErrorDto::ProtocolUnavailable,
-				AccountQuotaObservationError::AccountMismatch =>
-					AccountQuotaErrorDto::AccountMismatch,
-				AccountQuotaObservationError::UnsupportedWindow =>
-					AccountQuotaErrorDto::UnsupportedWindow,
+	let (observed_at_unix_micros, result) = match observation.disposition {
+		AccountQuotaDisposition::Unknown => (None, AccountQuotaStateDto::Unknown),
+		AccountQuotaDisposition::Current(fact) => (
+			observation.observed_at_unix_micros,
+			AccountQuotaStateDto::Current {
+				used_percent: fact.used_percent,
+				resets_at_unix_micros: fact.resets_at_unix_micros,
 			},
-		},
+		),
+		AccountQuotaDisposition::Stale(_) => (None, AccountQuotaStateDto::Unknown),
+		AccountQuotaDisposition::Error(error) => (
+			observation.observed_at_unix_micros,
+			AccountQuotaStateDto::Error {
+				error: match error {
+					AccountQuotaObservationError::ProviderUnavailable =>
+						AccountQuotaErrorDto::ProviderUnavailable,
+					AccountQuotaObservationError::ProtocolUnavailable =>
+						AccountQuotaErrorDto::ProtocolUnavailable,
+					AccountQuotaObservationError::AccountMismatch =>
+						AccountQuotaErrorDto::AccountMismatch,
+					AccountQuotaObservationError::UnsupportedWindow =>
+						AccountQuotaErrorDto::UnsupportedWindow,
+				},
+			},
+		),
 	};
 	if !matches!(observation.duration_minutes, 300 | 10_080) {
 		return Err(());
@@ -1908,7 +1952,7 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 
 	Ok(AccountQuotaWindowDto {
 		duration_minutes: observation.duration_minutes,
-		observed_at_unix_micros: observation.observed_at_unix_micros,
+		observed_at_unix_micros,
 		result,
 	})
 }
@@ -2076,9 +2120,9 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 mod tests {
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
-		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaWindow,
-		AccountQuotaWindowObservation, AccountRecord, AccountState, AgentId, ProjectId,
-		ProviderIdentity, WorkItem, WorkItemCorrelationId, WorkItemId, WorkItemPriority,
+		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
+		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState, AgentId,
+		ProjectId, ProviderIdentity, WorkItem, WorkItemCorrelationId, WorkItemId, WorkItemPriority,
 		WorkItemProvenance, WorkItemTimestamp,
 	};
 	use decodex_postgres::{
@@ -2086,8 +2130,8 @@ mod tests {
 		ResetCardFailureCode, ResetCardOperationStatus, StoredWorkItem,
 	};
 	use decodex_protocol::{
-		AccountCommandRejectionDto, AccountProfileEmailDto, CommandError, ResetCardError,
-		ResetCardOperationResult, WorkItemBoardPageSize, WorkItemBoardProjectId,
+		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
+		ResetCardError, ResetCardOperationResult, WorkItemBoardPageSize, WorkItemBoardProjectId,
 		WorkItemBoardQueryError, WorkItemBoardResult,
 	};
 
@@ -2097,7 +2141,7 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		protocol_reset_error, work_item_board_page_dto,
+		protocol_reset_error, quota_dto, work_item_board_page_dto,
 	};
 
 	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
@@ -2202,6 +2246,22 @@ mod tests {
 				"{case}",
 			);
 		}
+	}
+
+	#[test]
+	fn stale_internal_quota_is_publicly_unknown_without_old_values() {
+		let dto = quota_dto(AccountQuotaWindowObservation {
+			duration_minutes: AccountQuotaWindow::SEVEN_DAYS_MINUTES,
+			observed_at_unix_micros: Some(1_000_000),
+			disposition: AccountQuotaDisposition::Stale(
+				AccountQuotaWindow::new(AccountQuotaWindow::SEVEN_DAYS_MINUTES, 42, 2_000_000)
+					.unwrap(),
+			),
+		})
+		.expect("supported stale quota should have a bounded public projection");
+
+		assert_eq!(dto.observed_at_unix_micros, None);
+		assert_eq!(dto.result, AccountQuotaStateDto::Unknown);
 	}
 
 	#[test]

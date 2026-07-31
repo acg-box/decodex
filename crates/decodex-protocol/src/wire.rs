@@ -1431,21 +1431,14 @@ pub enum AccountQuotaErrorDto {
 	UnsupportedWindow,
 }
 
-/// Server-owned quota freshness and value classification.
+/// Server-owned quota value classification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AccountQuotaStateDto {
-	/// No observation exists.
+	/// No current public quota fact is available.
 	Unknown,
 	/// The retained quota fact is current.
 	Current {
-		/// Provider-reported percentage used.
-		used_percent: u8,
-		/// Provider-reported reset time in Unix microseconds.
-		resets_at_unix_micros: i64,
-	},
-	/// The retained quota fact is no longer current.
-	Stale {
 		/// Provider-reported percentage used.
 		used_percent: u8,
 		/// Provider-reported reset time in Unix microseconds.
@@ -1718,7 +1711,7 @@ pub struct AccountQuotaWindowDto {
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
-	/// Closed current, unknown, stale, or error result.
+	/// Closed current, unknown, or error result.
 	pub result: AccountQuotaStateDto,
 }
 
@@ -2371,6 +2364,15 @@ pub enum CommandPayload {
 		operation_id: EntityId,
 		/// Canonical account identity.
 		account_id: EntityId,
+	},
+	/// Replace one exact account credential from an owner-private Codex auth file.
+	ReauthenticateAccountFromCredentialFile {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical existing account identity.
+		account_id: EntityId,
+		/// Owner-private Codex auth path descriptor opened by the daemon.
+		source_descriptor: WireText,
 	},
 	/// Project one exact daemon-owned account into the normal Codex shared auth file.
 	UseAccountInCodex {
@@ -3465,6 +3467,23 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
+		CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+		} => {
+			validate_canonical_operation(operation_id)?;
+			validate_canonical_account(account_id)?;
+			if !positive_expected {
+				return Err("account revision is required");
+			}
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				Err("account credential source descriptor is invalid")
+			} else {
+				Ok(())
+			}
+		},
 		CommandPayload::UseAccountInCodex { account_id } => {
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -3830,9 +3849,6 @@ fn validate_quota_window(
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
 			Ok(()),
-		(Some(observed), AccountQuotaStateDto::Stale { used_percent, resets_at_unix_micros })
-			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
-			Ok(()),
 		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
 		_ => Err("account quota observation shape is invalid"),
 	}
@@ -3850,9 +3866,10 @@ mod tests {
 	use crate::{
 		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountProfileDailyUsageDto,
 		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
-		CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError,
-		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		AccountQuotaStateDto, CURRENT_VERSION, CausationId, ClientCommandId,
+		CodexAuthProjectionResult, CommandError, CorrelationId, EntityId, EventPayload,
+		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
 		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId,
 		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
@@ -3902,6 +3919,19 @@ mod tests {
 			],
 			"next_cursor": BOARD_ITEM_2,
 		})
+	}
+
+	#[test]
+	fn retired_stale_quota_state_is_rejected() {
+		let stale = serde_json::json!({
+			"state": "stale",
+			"data": {
+				"used_percent": 42,
+				"resets_at_unix_micros": 2_000_000,
+			},
+		});
+
+		assert!(serde_json::from_value::<AccountQuotaStateDto>(stale).is_err());
 	}
 
 	#[test]
@@ -4073,6 +4103,54 @@ mod tests {
 				},
 			}))
 			.is_err(),
+		);
+	}
+
+	#[test]
+	fn account_reauthentication_is_revision_fenced_and_path_only() {
+		let account_id =
+			EntityId::new("31234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let operation_id =
+			EntityId::new("32234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
+		let payload = CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id: operation_id.clone(),
+			account_id: account_id.clone(),
+			source_descriptor: WireText::new("/private/tmp/decodex-login/auth.json")
+				.expect("bounded source descriptor"),
+		};
+		let message = |payload, expected_revision| {
+			ClientMessage::Command(CommandEnvelope {
+				version: CURRENT_VERSION,
+				client_command_id: ClientCommandId::new("reauth-command").unwrap(),
+				idempotency_key: IdempotencyKey::new("reauth-key").unwrap(),
+				expected_revision,
+				correlation_id: CorrelationId::new("reauth-command").unwrap(),
+				causation_id: None,
+				payload,
+			})
+		};
+		let encoded =
+			serde_json::to_string(&message(payload.clone(), Some(EntityRevision(7)))).unwrap();
+
+		assert!(decode_client_message(&encoded).is_ok());
+		assert!(encoded.contains("\"name\":\"reauthenticate_account_from_credential_file\""));
+		assert!(!encoded.contains("access_token"));
+		assert!(
+			decode_client_message(&serde_json::to_string(&message(payload.clone(), None)).unwrap())
+				.is_err()
+		);
+		let invalid = CommandPayload::ReauthenticateAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor: WireText::new("relative/auth.json").unwrap(),
+		};
+		// Absolute-path enforcement belongs to the daemon's no-follow source reader.
+		// The public wire still rejects empty and control-bearing descriptors.
+		assert!(
+			decode_client_message(
+				&serde_json::to_string(&message(invalid, Some(EntityRevision(7)))).unwrap()
+			)
+			.is_ok()
 		);
 	}
 

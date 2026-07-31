@@ -5,13 +5,12 @@ struct AccountProfileSummaryView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			AccountProfileMetricsView(metrics: metrics)
 
 			if profile.dailyUsage.isEmpty == false {
 				AccountDailyUsageChart(
-					records: profile.dailyUsage,
-					showsAxis: false
+					records: profile.dailyUsage
 				)
 			}
 		}
@@ -35,20 +34,7 @@ struct AccountProfileDetailView: View {
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 9) {
-			HStack(alignment: .firstTextBaseline) {
-				Text("Account details")
-					.font(PanelFont.transientTitle)
-
-				Spacer()
-
-				if let planType {
-					Text(planType)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				}
-			}
-
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
 
@@ -65,7 +51,7 @@ struct AccountProfileDetailView: View {
 						.fixedSize(horizontal: false, vertical: true)
 				}
 			} else if state.isProfileRefreshing {
-				HStack(spacing: 6) {
+				HStack(spacing: PanelSpacing.related) {
 					ProgressView()
 						.controlSize(.mini)
 					Text("Loading saved activity")
@@ -87,12 +73,8 @@ struct AccountProfileDetailView: View {
 			}
 		}
 		.frame(width: 270)
-		.padding(12)
+		.padding(PanelSpacing.popoverInset)
 		.accessibilityElement(children: .contain)
-	}
-
-	private var planType: String? {
-		state.profile?.planType ?? state.profileUnavailable?.claims.planType
 	}
 
 	private var quotaDiagnostic: String? {
@@ -121,23 +103,9 @@ struct AccountProfileDetailView: View {
 
 struct AccountProfileOverviewView: View {
 	let aggregate: AccountProfileAggregate
-	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 4) {
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
-				Image(systemName: "chart.bar.xaxis")
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.usageCyan(colorScheme))
-					.accessibilityHidden(true)
-
-				Text("All accounts")
-					.font(PanelFont.usageValue)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
-
-				Spacer(minLength: 0)
-			}
-
+		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
 			if aggregateMetrics.isEmpty == false {
 				AccountProfileMetricsView(
 					metrics: aggregateMetrics
@@ -146,13 +114,12 @@ struct AccountProfileOverviewView: View {
 
 			if aggregate.dailyUsage.isEmpty == false {
 				AccountDailyUsageChart(
-					records: aggregate.dailyUsage,
-					showsAxis: true
+					records: aggregate.dailyUsage
 				)
 			}
 		}
-		.padding(.horizontal, 10)
-		.padding(.vertical, 7)
+		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal, PanelSpacing.micro)
 		.accessibilityElement(children: .combine)
 	}
 
@@ -250,9 +217,9 @@ private struct AccountProfileMetricsView: View {
 
 	var body: some View {
 		if metrics.isEmpty == false {
-			HStack(alignment: .firstTextBaseline, spacing: 3) {
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 				ForEach(metrics) { metric in
-					HStack(alignment: .firstTextBaseline, spacing: 2) {
+					HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 						Text(metric.label)
 							.font(PanelFont.usageLabel)
 							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
@@ -275,7 +242,6 @@ private struct AccountProfileMetricsView: View {
 
 struct AccountDailyUsageChart: View {
 	let records: [AccountProfileDailyUsage]
-	let showsAxis: Bool
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
@@ -285,56 +251,42 @@ struct AccountDailyUsageChart: View {
 			$0.addingWithoutOverflow($1.tokens)
 		}
 
-		VStack(alignment: .leading, spacing: 2) {
-			GeometryReader { proxy in
-				ZStack(alignment: .bottom) {
-					Rectangle()
-						.fill(PanelPalette.separator(colorScheme))
-						.frame(height: 0.5)
+		GeometryReader { proxy in
+			ZStack(alignment: .bottom) {
+				Rectangle()
+					.fill(PanelPalette.separator(colorScheme))
+					.frame(height: 0.5)
 
-					HStack(alignment: .bottom, spacing: 1.5) {
-						ForEach(values) { record in
-							RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-								.fill(barColor(record.tokens, peak: peak))
-								.frame(
-									maxWidth: .infinity,
-									minHeight: 1,
-									maxHeight: barHeight(
-										record.tokens,
-										peak: peak,
-										available: proxy.size.height
-									)
+				HStack(alignment: .bottom, spacing: 1.5) {
+					ForEach(values) { record in
+						RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+							.fill(barColor(record.tokens, peak: peak))
+							.frame(
+								maxWidth: .infinity,
+								minHeight: 1,
+								maxHeight: barHeight(
+									record.tokens,
+									peak: peak,
+									available: proxy.size.height
 								)
-								.help(
-									"\(compactUsageDate(record.date)): "
-										+ "\(record.tokens.formatted()) tokens"
-								)
-						}
+							)
+							.help(
+								"\(compactUsageDate(record.date)): "
+									+ "\(record.tokens.formatted()) tokens"
+							)
 					}
-					.frame(maxHeight: .infinity, alignment: .bottom)
 				}
-			}
-			.frame(height: showsAxis ? 20 : 16)
-
-			if showsAxis {
-				HStack {
-					Text(values.first.map { compactUsageDate($0.date) } ?? "")
-						.frame(maxWidth: .infinity, alignment: .leading)
-					Text(values.last.map { compactUsageDate($0.date) } ?? "")
-						.frame(maxWidth: .infinity, alignment: .trailing)
-				}
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme).opacity(0.72))
-				.lineLimit(1)
+				.frame(maxHeight: .infinity, alignment: .bottom)
 			}
 		}
+		.frame(height: 16)
 		.accessibilityElement(children: .ignore)
 		.accessibilityLabel(
-				"Daily token usage from \(values.first?.date ?? "unknown") "
-					+ "through \(values.last?.date ?? "unknown"), "
-					+ "\(totalTokens.formatted()) tokens total, "
-					+ "\(values.map(\.tokens).max().map { $0.formatted() } ?? "0") tokens peak"
-			)
+			"Daily token usage from \(values.first?.date ?? "unknown") "
+				+ "through \(values.last?.date ?? "unknown"), "
+				+ "\(totalTokens.formatted()) tokens total, "
+				+ "\(values.map(\.tokens).max().map { $0.formatted() } ?? "0") tokens peak"
+		)
 	}
 
 	private var displayRecords: [AccountProfileDailyUsage] {

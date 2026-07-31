@@ -11,6 +11,7 @@ struct PanelIconButtonView: View {
 	let size: CGFloat
 	let action: () -> Void
 	let help: String
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	init(
@@ -41,25 +42,31 @@ struct PanelIconButtonView: View {
 		Button(action: action) {
 			buttonLabel
 		}
-		.buttonStyle(.plain)
+		.buttonStyle(PanelPressButtonStyle())
 		.disabled(isDisabled)
-		.opacity(isDisabled && isActive == false ? 0.56 : 1)
+		.animation(controlStateAnimation, value: symbol)
+		.animation(controlStateAnimation, value: isActive)
 		.help(help)
 		.accessibilityLabel(help)
 	}
 
 	private var buttonLabel: some View {
 		iconContent
-			.opacity(isDisabled && isActive == false ? 0.34 : 0.9)
+			.opacity(isDisabled && isActive == false ? 0.5 : 0.9)
 	}
 
 	private var iconContent: some View {
 		Image(systemName: symbol)
 			.font(PanelFont.iconButton)
 			.symbolRenderingMode(.monochrome)
+			.contentTransition(.symbolEffect(.replace))
 			.foregroundStyle(foregroundColor)
 			.frame(width: size, height: size)
 			.contentShape(RoundedRectangle(cornerRadius: iconCornerRadius, style: .continuous))
+	}
+
+	private var controlStateAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.controlState
 	}
 
 	private var foregroundColor: Color {
@@ -67,7 +74,7 @@ struct PanelIconButtonView: View {
 			return tint.opacity(colorScheme == .dark ? 0.98 : 0.92)
 		}
 		if isDisabled {
-			return PanelPalette.secondaryText(colorScheme).opacity(0.38)
+			return PanelPalette.secondaryText(colorScheme)
 		}
 		if isDestructive {
 			return tint.opacity(colorScheme == .dark ? 0.96 : 0.9)
@@ -83,5 +90,24 @@ struct PanelIconButtonView: View {
 
 	private var iconCornerRadius: CGFloat {
 		size * 0.5
+	}
+}
+
+struct PanelPressButtonStyle: ButtonStyle {
+	let pressedScale: CGFloat
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+	init(pressedScale: CGFloat = 0.92) {
+		self.pressedScale = pressedScale
+	}
+
+	func makeBody(configuration: Configuration) -> some View {
+		configuration.label
+			.opacity(configuration.isPressed ? 0.7 : 1)
+			.scaleEffect(configuration.isPressed ? pressedScale : 1)
+			.animation(
+				reduceMotion ? nil : PanelMotion.press,
+				value: configuration.isPressed
+			)
 	}
 }
