@@ -53,6 +53,32 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(profileViews.contains("showsAxis"))
 	}
 
+	func testPlanTierLivesBesideIdentityAndNotInTheDetailPopoverHeader() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountRows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let profileViews = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(accountRows.contains("if let planType"))
+		XCTAssertTrue(accountRows.contains("Text(planType)"))
+		XCTAssertTrue(
+			accountRows.contains(
+				"state.profile?.planType ?? state.profileUnavailable?.claims.planType"
+			)
+		)
+		XCTAssertFalse(profileViews.contains("Text(\"Account details\")"))
+		XCTAssertFalse(profileViews.contains("Text(planType)"))
+	}
+
 	func testAccountPanelControlsUseSentenceCase() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()

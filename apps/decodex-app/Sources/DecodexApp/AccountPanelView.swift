@@ -140,7 +140,6 @@ struct AccountPanelView: View {
 				.scaledToFit()
 				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
 				.frame(width: 17, height: 17)
-				.frame(width: 24, height: 24)
 				.accessibilityHidden(true)
 
 			Text("Decodex")
@@ -256,7 +255,6 @@ struct AccountPanelView: View {
 			.help("Decodex menu")
 			.accessibilityLabel("Decodex menu")
 		}
-		.padding(.horizontal, 2)
 	}
 
 	private var hasTransientStatus: Bool {
