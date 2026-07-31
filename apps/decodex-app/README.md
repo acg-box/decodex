@@ -53,8 +53,9 @@ data remains row-scoped and never hides Reset Cards.
 The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
-The header, overview, and each account row use separate appearance-adaptive
-system frosted-material surfaces with no opaque custom fill or drawn border.
+The header and aggregate overview share one compact appearance-adaptive
+frosted-material surface. Each account row uses its own separate system material
+surface with no opaque custom fill or drawn border.
 The host window follows the system Light or Dark appearance and does not draw
 its own full-window shadow or backdrop. Login recovery uses a stronger floating
 material inside that same transparent window, without a window-wide modal dimmer.
