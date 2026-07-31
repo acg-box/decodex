@@ -20,8 +20,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			return .terminateLater
 		}
 		terminationIsPending = true
-		store?.prepareForApplicationTermination()
-		Task {
+		Task { [store] in
+			await store?.prepareForApplicationTermination()
 			await DecodexNativeClient.shutdownSharedSession()
 			sender.reply(toApplicationShouldTerminate: true)
 		}

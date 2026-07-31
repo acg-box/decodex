@@ -11,7 +11,6 @@ struct AccountReauthenticationView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@FocusState private var focusedAction: FocusedAction?
 	@State private var copyFeedback = false
-	@State private var openFeedback = false
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 9) {
@@ -32,34 +31,51 @@ struct AccountReauthenticationView: View {
 				}
 
 				HStack(spacing: 8) {
-					Button(
-						presentation.canCloseWithoutCancellation
-							? "Close"
-							: presentation.canRequestCancellation ? "Cancel" : "Saving…"
-					) {
-						if presentation.canCloseWithoutCancellation {
-							store.closeAccountReauthentication()
-						} else if presentation.canRequestCancellation {
-							Task {
-								await store.cancelAccountReauthentication()
+					if presentation.canCloseWithoutCancellation
+						|| presentation.canRequestCancellation
+					{
+						let actionLabel = presentation.canCloseWithoutCancellation
+							? "Close login"
+							: "Cancel login"
+						Button {
+							if presentation.canCloseWithoutCancellation {
+								store.closeAccountReauthentication()
+							} else {
+								Task {
+									await store.cancelAccountReauthentication()
+								}
 							}
+						} label: {
+							Image(systemName: "xmark")
+								.frame(width: 22, height: 18)
 						}
+						.buttonStyle(.bordered)
+						.keyboardShortcut(.cancelAction)
+						.focused($focusedAction, equals: .cancel)
+						.help(actionLabel)
+						.accessibilityLabel(actionLabel)
+					} else {
+						ProgressView()
+							.controlSize(.mini)
+							.frame(width: 38, height: 24)
+							.help("Saving login")
+							.accessibilityLabel("Saving login")
 					}
-					.disabled(
-						presentation.canCloseWithoutCancellation == false
-							&& presentation.canRequestCancellation == false
-					)
-					.keyboardShortcut(.cancelAction)
-					.focused($focusedAction, equals: .cancel)
 
 					Spacer(minLength: 8)
 
 					if let prompt = presentation.prompt {
-						Button(openFeedback ? "Opened" : "Open browser") {
+						Button {
 							open(prompt.verificationURL)
+						} label: {
+							Image(systemName: "safari")
+								.frame(width: 22, height: 18)
 						}
 						.buttonStyle(.borderedProminent)
+						.keyboardShortcut(.defaultAction)
 						.focused($focusedAction, equals: .openBrowser)
+						.help("Open Codex sign-in page")
+						.accessibilityLabel("Open Codex sign-in page")
 						.accessibilityHint("Opens the official Codex device sign-in page.")
 					}
 				}
@@ -145,13 +161,20 @@ struct AccountReauthenticationView: View {
 					.tracking(1)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 					.textSelection(.enabled)
+					.lineLimit(1)
+					.frame(maxWidth: .infinity, alignment: .leading)
+					.layoutPriority(1)
 
-				Spacer(minLength: 4)
-
-				Button(copyFeedback ? "Copied" : "Copy") {
+				Button {
 					copy(prompt.userCode)
+				} label: {
+					Image(systemName: copyFeedback ? "checkmark" : "doc.on.doc")
+						.frame(width: 22, height: 18)
 				}
 				.buttonStyle(.bordered)
+				.help(copyFeedback ? "Copied" : "Copy one-time code")
+				.accessibilityLabel("Copy one-time code")
+				.accessibilityValue(copyFeedback ? "Copied" : "")
 				.accessibilityHint("Copies the one-time Codex login code.")
 			}
 			.padding(.horizontal, 9)
@@ -176,11 +199,6 @@ struct AccountReauthenticationView: View {
 	}
 
 	private func open(_ url: URL) {
-		openFeedback = true
 		NSWorkspace.shared.open(url)
-		Task { @MainActor in
-			try? await Task.sleep(for: .milliseconds(650))
-			openFeedback = false
-		}
 	}
 }
