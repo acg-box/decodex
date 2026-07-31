@@ -38,11 +38,11 @@ pre-cutover native cadence. Opening the panel also requests one refresh. An
 already active refresh absorbs either trigger, and one failed account remains
 isolated to its row until the next cycle.
 
-Each account detail popover contains lifetime tokens, peak daily tokens,
-longest task, current and longest streaks, and a 36-day usage chart. The compact
-panel keeps aggregate total, peak, streak, and longest-task metrics with one
-daily chart across all accounts. It does not expose profile coverage counters
-as account status.
+The account plan appears beside the account identity. Each detail popover
+contains only lifetime tokens, peak daily tokens, longest task, current and
+longest streaks, and a 36-day usage chart. The compact panel keeps aggregate
+total, peak, streak, and longest-task metrics with one daily chart across all
+accounts. It does not expose profile coverage counters as account status.
 Email is redacted by default. The eye control changes only the published
 identity slot. Hiding email removes it from SwiftUI presentation state. A
 revision-bound, process-only cache keeps later visibility changes immediate and
