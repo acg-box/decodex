@@ -325,7 +325,7 @@ impl ClientLifecycle {
 			PRODUCTION_CACHE_GENERATIONS,
 		)
 		.expect("fixed production cache limits are valid");
-		let cache_parent = std::env::temp_dir().join("box.acg.decodex");
+		let cache_parent = production_cache_parent(&std::env::temp_dir())?;
 		let schema_generation = u64::from(CURRENT_VERSION.minor);
 
 		Self::new(config, cache_parent, cache_limits, schema_generation)
@@ -986,6 +986,52 @@ impl ClientLifecycle {
 			let _ = observer.send(view);
 		}
 	}
+}
+
+fn production_cache_parent(os_temp_dir: &Path) -> Result<PathBuf, LifecycleBuildError> {
+	#[cfg(target_os = "macos")]
+	let platform_temp_dir = normalize_macos_var_prefix(os_temp_dir, validate_macos_var_mapping)?;
+	#[cfg(not(target_os = "macos"))]
+	let platform_temp_dir = os_temp_dir.to_path_buf();
+
+	Ok(platform_temp_dir.join("box.acg.decodex"))
+}
+
+#[cfg(target_os = "macos")]
+fn normalize_macos_var_prefix(
+	os_temp_dir: &Path,
+	validate_var_mapping: fn() -> Result<(), CacheError>,
+) -> Result<PathBuf, LifecycleBuildError> {
+	let Ok(relative_temp_dir) = os_temp_dir.strip_prefix("/var") else {
+		return Ok(os_temp_dir.to_path_buf());
+	};
+
+	validate_var_mapping().map_err(LifecycleBuildError::Cache)?;
+
+	Ok(Path::new("/private/var").join(relative_temp_dir))
+}
+
+#[cfg(target_os = "macos")]
+fn validate_macos_var_mapping() -> Result<(), CacheError> {
+	use std::os::unix::fs::MetadataExt as _;
+
+	let alias_metadata = std::fs::symlink_metadata("/var")?;
+	if alias_metadata.uid() != 0
+		|| !alias_metadata.file_type().is_symlink()
+		|| std::fs::read_link("/var")? != Path::new("private/var")
+	{
+		return Err(CacheError::UnsafeRoot);
+	}
+
+	let physical_metadata = std::fs::symlink_metadata("/private/var")?;
+	if physical_metadata.uid() != 0
+		|| !physical_metadata.is_dir()
+		|| physical_metadata.mode() & 0o022 != 0
+	{
+		return Err(CacheError::UnsafeRoot);
+	}
+
+	Ok(())
 }
 
 fn initialize_cache(
