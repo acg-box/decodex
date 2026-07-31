@@ -1432,3 +1432,31 @@ fn validate_account_command_response(value: &Value) -> Result<(), StoreError> {
 fn incompatible(value: &'static str) -> StoreError {
 	StoreError::Incompatible(format!("stored {value} is malformed"))
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn expired_quota_remains_stale_inside_the_store_boundary() {
+		let observation = parse_quota(
+			AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			"stale",
+			Some(42),
+			Some(2_000_000),
+			Some(1_000_000),
+			None,
+		)
+		.expect("valid expired quota should remain readable");
+
+		assert_eq!(observation.observed_at_unix_micros, Some(1_000_000));
+		assert!(matches!(
+			observation.disposition,
+			AccountQuotaDisposition::Stale(AccountQuotaWindow {
+				used_percent: 42,
+				resets_at_unix_micros: 2_000_000,
+				..
+			})
+		));
+	}
+}

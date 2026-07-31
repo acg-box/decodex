@@ -170,6 +170,69 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		)
 	}
 
+	func testAutomaticRefreshRepeatsUntilApplicationTermination() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ScriptedResetCardClient(
+			accountSteps: [],
+			accountFallback: .value([Self.account]),
+			inventoryFallback: .value(try Self.inventory)
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			automaticRefreshInterval: .milliseconds(5)
+		)
+
+		store.start()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts >= 2
+				&& counts.inventory >= 2
+				&& store.isRefreshing == false
+		}
+
+		await store.prepareForApplicationTermination()
+		let stoppedCounts = await client.callCounts()
+		try await Task.sleep(for: .milliseconds(20))
+		let finalCounts = await client.callCounts()
+		XCTAssertEqual(finalCounts, stoppedCounts)
+	}
+
+	func testTerminationRejectsRefreshWhileDrainingTheActiveCycle() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = TerminationBlockingResetCardClient(
+			account: Self.account,
+			inventory: try Self.inventory
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		store.requestRefresh()
+		try await waitUntil {
+			await client.isAccountReadBlocked()
+		}
+
+		let termination = Task {
+			await store.prepareForApplicationTermination()
+		}
+		try await waitUntil {
+			store.isPreparingForTermination
+		}
+
+		store.requestRefresh()
+		await client.releaseAccountRead()
+		await termination.value
+
+		let accountCallCount = await client.accountCallCount()
+		XCTAssertEqual(accountCallCount, 1)
+	}
+
 	func testManualRefreshChecksPendingStatusOnceWithoutDispatchingUse() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -487,7 +550,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 				sevenDayQuota: ResetCardQuotaWindow(
 					durationMinutes: 10_080,
 					observedAtUnixMicros: 1_000_000,
-					state: .stale(
+					state: .current(
 						usedPercent: 80,
 						resetsAtUnixMicros: 3_000_000
 					)
@@ -627,6 +690,54 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		case .failure(let error):
 			throw error
 		}
+	}
+}
+
+private actor TerminationBlockingResetCardClient: ResetCardClient {
+	private let account: ResetCardAccountRecord
+	private let retainedInventory: ResetCardInventory
+	private var accountCalls = 0
+	private var blockedAccountRead: CheckedContinuation<Void, Never>?
+
+	init(account: ResetCardAccountRecord, inventory: ResetCardInventory) {
+		self.account = account
+		retainedInventory = inventory
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		accountCalls += 1
+		await withCheckedContinuation { continuation in
+			blockedAccountRead = continuation
+		}
+		return [account]
+	}
+
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		retainedInventory
+	}
+
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.notFound
+	}
+
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.prepared
+	}
+
+	func isAccountReadBlocked() -> Bool {
+		blockedAccountRead != nil
+	}
+
+	func releaseAccountRead() {
+		let continuation = blockedAccountRead
+		blockedAccountRead = nil
+		continuation?.resume()
+	}
+
+	func accountCallCount() -> Int {
+		accountCalls
 	}
 }
 

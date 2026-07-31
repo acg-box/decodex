@@ -27,10 +27,16 @@ independent Reset Card and account-profile requests for each row. A slow or
 failed provider request affects only its account row and does not block another
 row or account action.
 
-Each row shows the exact 300-minute and 10,080-minute quota observations in a
-vertical stack, their current or stale state, the percentage left and reset
-time when known, and every complete public Reset Card expiry. The 300-minute
-row is absent when the provider does not return a supported observation.
+Each row shows the exact current 300-minute and 10,080-minute quota
+observations in a vertical stack, the percentage left and reset time when
+known, and every complete public Reset Card expiry. Expired observations are
+not shown as current data. The 300-minute row is absent when the provider does
+not return a supported observation.
+
+The app performs one non-overlapping refresh every 15 seconds, matching the
+pre-cutover native cadence. Opening the panel also requests one refresh. An
+already active refresh absorbs either trigger, and one failed account remains
+isolated to its row until the next cycle.
 
 Each account detail popover contains lifetime tokens, peak daily tokens,
 longest task, current and longest streaks, and a 36-day usage chart. The compact
@@ -78,10 +84,10 @@ preserved and blocks new use.
 The panel also exposes current daemon-owned account controls: enroll the
 currently signed-in shared Codex login, enable or disable, log out, and select
 fixed or balanced routing. An account with a provider-confirmed unauthorized
-profile shows `Refresh login`; that action presents the official device code,
-Copy, Open browser, and Cancel controls, then refreshes only that account after
-the daemon completes the exact credential replacement. Each account row has one `Route`
-control. It first projects that exact daemon-owned login to shared
+profile shows `Refresh login`; that action presents the official device code
+with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
+account after the daemon completes the exact credential replacement. Each
+account row has one `Route` control. It first projects that exact daemon-owned login to shared
 `~/.codex/auth.json` for future Codex launches, then selects the same account as
 the fixed Decodex route. The underlying typed commands remain independently
 fenced, and retrying the control completes whichever step is not current. The

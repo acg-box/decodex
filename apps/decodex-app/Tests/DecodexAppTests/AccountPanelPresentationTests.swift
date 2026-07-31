@@ -59,27 +59,6 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertNotNil(presentation.resetDate)
 	}
 
-	func testStaleQuotaHasANonColorStatusMarker() {
-		let presentation = ResetCardQuotaPresentation(
-			window: ResetCardQuotaWindow(
-				durationMinutes: 300,
-				observedAtUnixMicros: 1_000_000,
-				state: .stale(
-					usedPercent: 42,
-					resetsAtUnixMicros: 2_000_000
-				)
-			)
-		)
-
-		XCTAssertTrue(presentation.isVisible)
-		XCTAssertEqual(presentation.valueText, "58%")
-		XCTAssertEqual(presentation.detailText, "stale")
-		XCTAssertEqual(presentation.tone, .current)
-		XCTAssertEqual(presentation.usedPercent, 42)
-		XCTAssertEqual(presentation.remainingPercent, 58)
-		XCTAssertNotNil(presentation.resetDate)
-	}
-
 	func testUnknownOptionalQuotaWindowIsHidden() {
 		let presentation = ResetCardQuotaPresentation(
 			window: .unknown(durationMinutes: 300)
