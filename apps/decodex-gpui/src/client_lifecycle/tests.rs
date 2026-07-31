@@ -24,9 +24,9 @@ use decodex_protocol::{
 
 use crate::{
 	client_lifecycle::{
-		AppliedEntity, CacheLimits, ClientCache, ClientLifecycle, CompatibilityReason,
-		ConnectionView, Delivery, LifecycleCancellation, LifecycleIo, QuarantineReason,
-		QuarantineRecovery, RunResult,
+		AppliedEntity, CacheAuthority, CacheError, CacheLimits, ClientCache, ClientLifecycle,
+		CompatibilityReason, ConnectionView, Delivery, LifecycleBuildError, LifecycleCancellation,
+		LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult, production_cache_parent,
 	},
 	history_pager::{
 		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
@@ -37,6 +37,65 @@ use crate::{
 const SERVER: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const OTHER_SERVER: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const INSTANCE: &str = "publication-a";
+
+#[test]
+fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let physical_root = temporary.path().canonicalize().expect("fixture root canonicalizes");
+	let physical_temp = physical_root.join("physical-temp");
+	let arbitrary_alias = physical_root.join("arbitrary-alias");
+
+	fs::create_dir(&physical_temp).expect("physical temporary directory is created");
+	std::os::unix::fs::symlink(&physical_temp, &arbitrary_alias)
+		.expect("arbitrary temporary directory alias is created");
+
+	assert_eq!(
+		production_cache_parent(&physical_temp).expect("physical temporary directory is accepted"),
+		physical_temp.join("box.acg.decodex")
+	);
+	let aliased_cache_parent =
+		production_cache_parent(&arbitrary_alias).expect("non-platform alias remains lexical");
+	assert_eq!(
+		aliased_cache_parent,
+		arbitrary_alias.join("box.acg.decodex"),
+		"arbitrary aliases must not be resolved"
+	);
+	assert!(matches!(
+		ClientCache::open(
+			aliased_cache_parent.join("client-cache"),
+			CacheLimits::new(1_024, 4, 2).expect("test cache limits are valid"),
+			CacheAuthority::new(&server(SERVER), CURRENT_VERSION, 1)
+				.expect("test cache authority is valid"),
+		),
+		Err(CacheError::UnsafeRoot)
+	));
+
+	#[cfg(target_os = "macos")]
+	{
+		use crate::client_lifecycle::normalize_macos_var_prefix;
+
+		fn reject_drifted_mapping() -> Result<(), CacheError> {
+			Err(CacheError::UnsafeRoot)
+		}
+
+		let logical_temp = Path::new("/var/folders/decodex-test/T");
+		assert_eq!(
+			production_cache_parent(logical_temp).expect("fixed macOS mapping is valid"),
+			Path::new("/private/var/folders/decodex-test/T/box.acg.decodex")
+		);
+		assert_eq!(
+			normalize_macos_var_prefix(logical_temp, reject_drifted_mapping),
+			Err(LifecycleBuildError::Cache(CacheError::UnsafeRoot))
+		);
+	}
+
+	#[cfg(not(target_os = "macos"))]
+	assert_eq!(
+		production_cache_parent(Path::new("/var/folders/decodex-test/T"))
+			.expect("non-macOS temporary path remains lexical"),
+		Path::new("/var/folders/decodex-test/T/box.acg.decodex")
+	);
+}
 
 #[derive(Clone, Debug)]
 struct FakeConfirmation {
