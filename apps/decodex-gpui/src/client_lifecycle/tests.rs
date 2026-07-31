@@ -24,10 +24,10 @@ use decodex_protocol::{
 
 use crate::{
 	client_lifecycle::{
-		AppliedEntity, CacheAuthority, CacheError, CacheLimits, ClientCache, ClientLifecycle,
-		CompatibilityReason, ConnectionView, Delivery, LifecycleBuildError, LifecycleCancellation,
-		LifecycleIo, QuarantineReason, QuarantineRecovery, RunResult,
-		CLIENT_CACHE_SCHEMA_GENERATION, production_cache_parent,
+		AppliedEntity, CLIENT_CACHE_SCHEMA_GENERATION, CacheAuthority, CacheError, CacheLimits,
+		ClientCache, ClientLifecycle, CompatibilityReason, ConnectionView, Delivery,
+		LifecycleBuildError, LifecycleCancellation, LifecycleIo, QuarantineReason,
+		QuarantineRecovery, RunResult, production_cache_parent,
 	},
 	history_pager::{
 		HistoryCacheProbeEvent, HistoryCursorObservation, HistoryDispatch, HistoryLoadState,
