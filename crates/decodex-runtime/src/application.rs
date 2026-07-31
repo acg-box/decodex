@@ -13,15 +13,16 @@ use decodex_core::{
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	ExecutionConsumer, HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState,
+	ExecutionConsumer, HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProjectId,
 	QuotaWindowClass, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
-	RoutingBlocker, RoutingDecisionKind, TurnRole,
+	RoutingBlocker, RoutingDecisionKind, TurnRole, WorkItemEdgeKind, WorkItemId, WorkItemState,
 };
 use decodex_postgres::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 	AccountCommandReceiptLease, AccountLifecycleRejection, BootstrapFailure, CommandIdentity,
 	ExecutionDecisionReadback, ExecutionQuotaExclusion, HistoryCursor, HistoryEntry, PostgresStore,
 	ResetCardFailureCode, ResetCardOperationStatus, RoutingControlOutcome, StoreError,
+	StoredWorkItem,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -43,7 +44,10 @@ use decodex_protocol::{
 	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
 	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
 	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
-	ResultPayload, Sha256Digest, SnapshotItem, WireText,
+	ResultPayload, Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard, WorkItemBoardLeadId,
+	WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProgramId,
+	WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardTitle,
+	WorkItemBoardWorkItemId,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -62,6 +66,7 @@ use crate::{
 	managed_repository_runtime::{
 		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
 	},
+	work_item_board::WorkItemBoardQuery,
 };
 
 /// The only mutation/observation seam reachable from the WebSocket server.
@@ -177,6 +182,7 @@ impl ProductState for ProductStore {
 /// Runtime-owned application service retaining the selected adapter and doctor report.
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
+	work_item_board: Option<WorkItemBoardQuery>,
 	_managed_repositories: Option<ManagedRepositoryRuntime>,
 	_managed_repository_readiness: ManagedRepositoryReadiness,
 	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
@@ -191,7 +197,7 @@ pub(crate) struct ServiceApplication {
 }
 impl ServiceApplication {
 	#[allow(clippy::too_many_arguments)] // Composition keeps each independently owned runtime capability explicit.
-	pub(crate) const fn new(
+	pub(crate) fn new(
 		store: ProductStore,
 		managed_repositories: Option<ManagedRepositoryRuntime>,
 		managed_repository_readiness: ManagedRepositoryReadiness,
@@ -202,8 +208,14 @@ impl ServiceApplication {
 		blob_store: Option<BlobStore>,
 		doctor: DoctorReport,
 	) -> Self {
+		let work_item_board = match &store {
+			ProductStore::Available(store) => Some(WorkItemBoardQuery::new(store.clone())),
+			ProductStore::Unavailable { .. } => None,
+		};
+
 		Self {
 			store,
+			work_item_board,
 			_managed_repositories: managed_repositories,
 			_managed_repository_readiness: managed_repository_readiness,
 			_managed_repository_startup_error: managed_repository_startup_error,
@@ -848,6 +860,61 @@ impl ServiceApplication {
 			},
 		}
 	}
+
+	async fn work_item_board_page(
+		&self,
+		project_id: &WorkItemBoardProjectId,
+		state: Option<WorkItemState>,
+		after: Option<&WorkItemBoardWorkItemId>,
+		page_size: WorkItemBoardPageSize,
+	) -> WorkItemBoardResult {
+		let Some(board) = &self.work_item_board else {
+			return WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::ProductStateUnavailable,
+			};
+		};
+		let Ok(project) = ProjectId::new(project_id.as_str()) else {
+			return WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::InvalidRequest,
+			};
+		};
+		let after_id = match after.map(|cursor| WorkItemId::new(cursor.as_str())).transpose() {
+			Ok(after_id) => after_id,
+			Err(_) => {
+				return WorkItemBoardResult::Unavailable {
+					error: WorkItemBoardQueryError::InvalidRequest,
+				};
+			},
+		};
+		let Some(store_limit) = usize::from(page_size.get()).checked_add(1) else {
+			return WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::InvalidRequest,
+			};
+		};
+
+		match board.page(&project, state, after_id.as_ref(), store_limit).await {
+			Ok(items) => match work_item_board_page_dto(
+				project_id.clone(),
+				state,
+				after.cloned(),
+				page_size,
+				items,
+			) {
+				Ok(page) => WorkItemBoardResult::Page(page),
+				Err(()) => WorkItemBoardResult::Unavailable {
+					error: WorkItemBoardQueryError::IntegrityUnavailable,
+				},
+			},
+			Err(StoreError::InvalidInput(_)) =>
+				WorkItemBoardResult::Unavailable { error: WorkItemBoardQueryError::InvalidRequest },
+			Err(StoreError::Incompatible(_)) => WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::IntegrityUnavailable,
+			},
+			Err(_) => WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::ProductStateUnavailable,
+			},
+		}
+	}
 }
 
 impl Application for ServiceApplication {
@@ -977,6 +1044,10 @@ impl Application for ServiceApplication {
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
 				),
+			QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size } =>
+				QueryResultPayload::WorkItemBoard(
+					self.work_item_board_page(project_id, *state, after.as_ref(), *page_size).await,
+				),
 			QueryPayload::GetResetCards { account_id } =>
 				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
 			QueryPayload::GetResetCardOperation { idempotency_key } =>
@@ -996,6 +1067,91 @@ impl Application for ServiceApplication {
 				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
 		}
 	}
+}
+
+fn work_item_board_page_dto(
+	project_id: WorkItemBoardProjectId,
+	state: Option<WorkItemState>,
+	after: Option<WorkItemBoardWorkItemId>,
+	page_size: WorkItemBoardPageSize,
+	items: Vec<StoredWorkItem>,
+) -> Result<WorkItemBoardPage, ()> {
+	let requested = usize::from(page_size.get());
+	let maximum_observation = requested.checked_add(1).ok_or(())?;
+	if items.len() > maximum_observation {
+		return Err(());
+	}
+
+	let mut cards =
+		items.into_iter().map(work_item_board_card_dto).collect::<Result<Vec<_>, _>>()?;
+	if cards.iter().any(|card| {
+		card.project_id() != &project_id || state.is_some_and(|expected| card.state() != expected)
+	}) || cards.windows(2).any(|pair| pair[0].work_item_id() >= pair[1].work_item_id())
+		|| after
+			.as_ref()
+			.is_some_and(|cursor| cards.first().is_some_and(|card| card.work_item_id() <= cursor))
+	{
+		return Err(());
+	}
+
+	let has_more = cards.len() > requested;
+	if has_more {
+		cards.pop().ok_or(())?;
+	}
+	let next_cursor =
+		if has_more { Some(cards.last().ok_or(())?.work_item_id().clone()) } else { None };
+
+	WorkItemBoardPage::new(project_id, state, after, page_size, cards, next_cursor).map_err(|_| ())
+}
+
+fn work_item_board_card_dto(stored: StoredWorkItem) -> Result<WorkItemBoardCard, ()> {
+	let StoredWorkItem { work_item, edges, accepted_revision } = stored;
+	let work_item_id = WorkItemBoardWorkItemId::new(work_item.id().as_str()).map_err(|_| ())?;
+	let project_id =
+		WorkItemBoardProjectId::new(work_item.project_id().as_str()).map_err(|_| ())?;
+	let lead_id =
+		WorkItemBoardLeadId::new(work_item.declared_lead_id().as_str()).map_err(|_| ())?;
+	let program_id = work_item
+		.program()
+		.map(|program| WorkItemBoardProgramId::new(program.program_id().as_str()))
+		.transpose()
+		.map_err(|_| ())?;
+	let objective_ids = work_item
+		.objectives()
+		.iter()
+		.map(|objective| WorkItemBoardObjectiveId::new(objective.objective_id().as_str()))
+		.collect::<Result<Vec<_>, _>>()
+		.map_err(|_| ())?;
+	let mut depends_on_ids = Vec::new();
+	let mut blocked_by_ids = Vec::new();
+
+	for edge in edges {
+		if edge.work_item_id() != work_item.id() || edge.project_id() != work_item.project_id() {
+			return Err(());
+		}
+		let related =
+			WorkItemBoardWorkItemId::new(edge.related_work_item_id().as_str()).map_err(|_| ())?;
+		match edge.kind() {
+			WorkItemEdgeKind::DependsOn => depends_on_ids.push(related),
+			WorkItemEdgeKind::BlockedBy => blocked_by_ids.push(related),
+		}
+	}
+
+	WorkItemBoardCard::new(
+		work_item_id,
+		project_id,
+		lead_id,
+		program_id,
+		objective_ids,
+		depends_on_ids,
+		blocked_by_ids,
+		WorkItemBoardTitle::new(work_item.title()).map_err(|_| ())?,
+		work_item.priority(),
+		work_item.state(),
+		EntityRevision(work_item.revision()),
+		accepted_revision.map(EntityRevision),
+	)
+	.map_err(|_| ())
 }
 
 fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<ExecutionDecisionDto, ()> {
@@ -1965,16 +2121,18 @@ mod tests {
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
-		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		ProviderIdentity,
+		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState, AgentId,
+		ProjectId, ProviderIdentity, WorkItem, WorkItemCorrelationId, WorkItemId, WorkItemPriority,
+		WorkItemProvenance, WorkItemTimestamp,
 	};
 	use decodex_postgres::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
-		ResetCardFailureCode, ResetCardOperationStatus,
+		ResetCardFailureCode, ResetCardOperationStatus, StoredWorkItem,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
-		ResetCardError, ResetCardOperationResult,
+		ResetCardError, ResetCardOperationResult, WorkItemBoardPageSize, WorkItemBoardProjectId,
+		WorkItemBoardQueryError, WorkItemBoardResult,
 	};
 
 	use super::{
@@ -1983,8 +2141,112 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		protocol_reset_error, quota_dto,
+		protocol_reset_error, quota_dto, work_item_board_page_dto,
 	};
+
+	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
+	const OTHER_PROJECT: &str = "10000000-0000-4000-8000-000000000002";
+	const BOARD_LEAD: &str = "30000000-0000-4000-8000-000000000001";
+
+	fn stored_work_item(
+		work_item_id: &str,
+		project_id: &str,
+		accepted_revision: Option<u64>,
+	) -> StoredWorkItem {
+		let project_id = ProjectId::new(project_id).expect("fixture Project ID must be valid");
+		let lead_id = AgentId::new(BOARD_LEAD).expect("fixture Lead ID must be valid");
+		let provenance = WorkItemProvenance::new(
+			lead_id.clone(),
+			WorkItemCorrelationId::new("60000000-0000-4000-8000-000000000001")
+				.expect("fixture correlation ID must be valid"),
+			"Board projection fixture",
+		)
+		.expect("fixture provenance must be valid");
+		let work_item = WorkItem::new(
+			WorkItemId::new(work_item_id).expect("fixture WorkItem ID must be valid"),
+			project_id,
+			lead_id,
+			None,
+			Vec::new(),
+			"Board item",
+			"Exercise bounded board projection.",
+			WorkItemPriority::Medium,
+			vec!["The projection is accepted.".to_owned()],
+			vec!["The projection is validated.".to_owned()],
+			WorkItemTimestamp::from_unix_microseconds(1).unwrap(),
+			provenance,
+		)
+		.expect("fixture WorkItem must be valid");
+
+		StoredWorkItem { work_item, edges: Vec::new(), accepted_revision }
+	}
+
+	fn mapped_board_result(items: Vec<StoredWorkItem>) -> WorkItemBoardResult {
+		match work_item_board_page_dto(
+			WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
+			None,
+			None,
+			WorkItemBoardPageSize::new(2).unwrap(),
+			items,
+		) {
+			Ok(page) => WorkItemBoardResult::Page(page),
+			Err(()) => WorkItemBoardResult::Unavailable {
+				error: WorkItemBoardQueryError::IntegrityUnavailable,
+			},
+		}
+	}
+
+	#[test]
+	fn board_lookahead_maps_one_extra_row_and_refuses_malformed_or_cross_project_data() {
+		let result = mapped_board_result(vec![
+			stored_work_item("20000000-0000-4000-8000-000000000001", BOARD_PROJECT, Some(1)),
+			stored_work_item("20000000-0000-4000-8000-000000000002", BOARD_PROJECT, Some(1)),
+			stored_work_item("20000000-0000-4000-8000-000000000003", BOARD_PROJECT, Some(1)),
+		]);
+		let WorkItemBoardResult::Page(page) = &result else {
+			panic!("bounded lookahead must produce a page");
+		};
+
+		assert_eq!(
+			page.cards().iter().map(|card| card.work_item_id().as_str()).collect::<Vec<_>>(),
+			vec!["20000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000002",]
+		);
+		assert_eq!(
+			page.next_cursor().map(|cursor| cursor.as_str()),
+			Some("20000000-0000-4000-8000-000000000002")
+		);
+		let encoded = serde_json::to_value(result).expect("valid page must serialize");
+		assert!(encoded["data"].get("total").is_none());
+		assert!(encoded["data"].get("total_count").is_none());
+		assert!(encoded["data"].get("exhaustive").is_none());
+
+		for (case, items) in [
+			(
+				"malformed accepted revision",
+				vec![stored_work_item(
+					"20000000-0000-4000-8000-000000000001",
+					BOARD_PROJECT,
+					Some(0),
+				)],
+			),
+			(
+				"cross-project card",
+				vec![stored_work_item(
+					"20000000-0000-4000-8000-000000000001",
+					OTHER_PROJECT,
+					Some(1),
+				)],
+			),
+		] {
+			assert_eq!(
+				mapped_board_result(items),
+				WorkItemBoardResult::Unavailable {
+					error: WorkItemBoardQueryError::IntegrityUnavailable,
+				},
+				"{case}",
+			);
+		}
+	}
 
 	#[test]
 	fn stale_internal_quota_is_publicly_unknown_without_old_values() {
