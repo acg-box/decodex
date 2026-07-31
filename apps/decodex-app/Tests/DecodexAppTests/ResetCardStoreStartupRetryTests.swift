@@ -76,6 +76,76 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		)
 	}
 
+	func testRevisionRefreshRetainsQuotaAcrossATransientInventoryFailure() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let oldInventory = try Self.inventory
+		let updatedAccount = ResetCardAccountRecord(
+			authority: Self.authority,
+			accountID: Self.account.accountID,
+			alias: Self.account.alias,
+			accountRevision: 8,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let restoredQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 2_000_000,
+			state: .current(
+				usedPercent: 0,
+				resetsAtUnixMicros: 4_000_000
+			)
+		)
+		let restoredInventory = ResetCardInventory(
+			authority: Self.authority,
+			accountID: updatedAccount.accountID,
+			accountRevision: updatedAccount.accountRevision,
+			cards: [],
+			fiveHourQuota: restoredQuota,
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+		let client = ScriptedResetCardClient(
+			accountSteps: [
+				.value([Self.account]),
+				.value([updatedAccount]),
+				.value([updatedAccount]),
+			],
+			accountFallback: .value([updatedAccount]),
+			inventorySteps: [
+				.value(oldInventory),
+				.failure(.commandFailed),
+				.value(restoredInventory),
+			],
+			inventoryFallback: .value(restoredInventory)
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		XCTAssertEqual(store.accounts.first?.inventory, oldInventory)
+
+		await store.refresh()
+		let interrupted = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(interrupted.account.accountRevision, 8)
+		XCTAssertEqual(interrupted.inventory, oldInventory)
+		XCTAssertEqual(interrupted.fiveHourQuota, oldInventory.fiveHourQuota)
+		XCTAssertEqual(interrupted.error, .commandFailed)
+		XCTAssertTrue(interrupted.targets.isEmpty)
+
+		await store.refresh()
+		let restored = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(restored.inventory, restoredInventory)
+		XCTAssertEqual(restored.fiveHourQuota, restoredQuota)
+		XCTAssertNil(restored.error)
+	}
+
 	func testStartupDoesNotRetryPermanentReadFailure() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
