@@ -144,6 +144,22 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("PanelWindowSizing.swift"),
 			encoding: .utf8
 		)
+		let panelControls = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelControls.swift"),
+			encoding: .utf8
+		)
+		let addControlStart = try XCTUnwrap(
+			accountPanel.range(of: "symbol: \"plus\"")
+		)
+		let addControlEnd = try XCTUnwrap(
+			accountPanel.range(
+				of: "help: \"Add Codex login\"",
+				range: addControlStart.lowerBound ..< accountPanel.endIndex
+			)
+		)
+		let addControl = accountPanel[
+			addControlStart.lowerBound ..< addControlEnd.upperBound
+		]
 
 		XCTAssertTrue(cardSurface.contains("shape.fill(.thinMaterial)"))
 		XCTAssertTrue(cardSurface.contains("shape.fill(.regularMaterial)"))
@@ -159,6 +175,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(cardSurface.contains("Glass"))
 		XCTAssertFalse(cardSurface.contains("glassEffect"))
 		XCTAssertFalse(accountPanel.contains("GlassEffectContainer"))
+		XCTAssertFalse(addControl.contains("isDisabled:"))
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 16)"))
 		XCTAssertFalse(accountPanel.contains(".panelCardSurface(cornerRadius: 20"))
@@ -166,6 +183,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(accountControls.contains("\"Use in Codex\""))
 		XCTAssertTrue(accountControls.contains("await store.routeAccount("))
 		XCTAssertFalse(accountControls.contains("await store.useAccountInCodex("))
+		XCTAssertTrue(
+			accountControls.contains(".disabled(store.canBeginEnrollment == false)")
+		)
 		XCTAssertFalse(resetCards.contains(".panelCardSurface(cornerRadius: 6"))
 		XCTAssertFalse(resetCards.contains(".enumerated()"))
 		XCTAssertFalse(resetCards.contains("ordinal"))
@@ -180,7 +200,20 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("TransparentHostingView(rootView: StatusPanelRootView"))
 		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
 		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
-		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
+		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = false"))
+		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseDown])"))
+		XCTAssertTrue(
+			statusPanel.contains("NSApplication.didResignActiveNotification")
+		)
+		XCTAssertTrue(
+			statusPanel.contains("#selector(applicationDidResignActive(_:))")
+		)
+		XCTAssertEqual(
+			panelControls.components(
+				separatedBy: "isDisabled && isActive == false"
+			).count - 1,
+			1
+		)
 		XCTAssertFalse(statusPanel.contains(".preferredColorScheme"))
 		XCTAssertFalse(statusPanel.contains(".environment(\\.colorScheme"))
 		XCTAssertTrue(resetCards.contains(".buttonStyle(.bordered)"))
