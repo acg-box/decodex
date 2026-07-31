@@ -10,7 +10,7 @@ struct AccountReauthenticationView: View {
 	@FocusState private var focusedAction: FocusedAction?
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 9) {
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			if let presentation = store.accountReauthentication {
 				let desiredFocus = desiredFocus(for: presentation)
 
@@ -23,7 +23,7 @@ struct AccountReauthenticationView: View {
 						.fixedSize(horizontal: false, vertical: true)
 				}
 
-				HStack(spacing: 8) {
+				HStack(spacing: PanelSpacing.section) {
 					if presentation.canCloseWithoutCancellation
 						|| presentation.canRequestCancellation
 					{
@@ -65,7 +65,7 @@ struct AccountReauthenticationView: View {
 			}
 		}
 		.frame(width: 220)
-		.padding(14)
+		.padding(PanelSpacing.popoverInset)
 		.controlSize(.small)
 		.accessibilityElement(children: .contain)
 		.accessibilityLabel("Refresh login")
@@ -85,15 +85,15 @@ struct AccountReauthenticationView: View {
 	private func header(
 		_ presentation: AccountReauthenticationPresentation
 	) -> some View {
-		VStack(alignment: .leading, spacing: 2) {
-			HStack(alignment: .firstTextBaseline, spacing: 5) {
+		VStack(alignment: .leading, spacing: PanelSpacing.micro) {
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
 				Text("Refresh login")
 					.font(PanelFont.transientTitle)
 					.foregroundStyle(PanelPalette.primaryText(colorScheme))
 
 				Spacer(minLength: 6)
 
-				HStack(alignment: .firstTextBaseline, spacing: 3) {
+				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 					if presentation.failureText == nil {
 						ProgressView()
 							.controlSize(.mini)

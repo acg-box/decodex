@@ -5,7 +5,7 @@ struct AccountPrimaryActionsView: View {
 	let store: ResetCardStore
 
 	var body: some View {
-		HStack(spacing: 4) {
+		HStack(spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
 				title: isRouteCurrent ? "Routed" : "Route",
 				symbol: isRouteCurrent
@@ -69,7 +69,7 @@ struct AccountUtilityActionsView: View {
 	@State private var isLogoutArmed = false
 
 	var body: some View {
-		HStack(spacing: 2) {
+		HStack(spacing: PanelSpacing.micro) {
 			PanelIconButtonView(
 				symbol: "chart.bar.xaxis",
 				tint: PanelPalette.actionBlue(colorScheme),
@@ -126,7 +126,7 @@ struct AccountUtilityActionsView: View {
 	}
 
 	private var logoutConfirmation: some View {
-		VStack(alignment: .leading, spacing: 9) {
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			Text("Log out this account?")
 				.font(PanelFont.transientTitle)
 
@@ -154,7 +154,7 @@ struct AccountUtilityActionsView: View {
 			}
 		}
 		.frame(width: 240)
-		.padding(12)
+		.padding(PanelSpacing.popoverInset)
 	}
 
 	private var lifecycleActionIsDisabled: Bool {
@@ -227,7 +227,7 @@ private struct CompactAccountActionButton: View {
 					? PanelPalette.routeAccent(colorScheme)
 					: PanelPalette.primaryText(colorScheme).opacity(0.88)
 			)
-			.padding(.horizontal, 2)
+			.padding(.horizontal, PanelSpacing.micro)
 			.frame(minHeight: 20)
 			.contentShape(Rectangle())
 		}
@@ -248,7 +248,7 @@ struct AccountEnrollmentView: View {
 	let dismiss: () -> Void
 
 	var body: some View {
-		VStack(alignment: .leading, spacing: 10) {
+		VStack(alignment: .leading, spacing: PanelSpacing.section) {
 			Text("Add Codex login")
 				.font(PanelFont.transientTitle)
 
@@ -279,6 +279,6 @@ struct AccountEnrollmentView: View {
 			}
 		}
 		.frame(width: 260)
-		.padding(14)
+		.padding(PanelSpacing.popoverInset)
 	}
 }
