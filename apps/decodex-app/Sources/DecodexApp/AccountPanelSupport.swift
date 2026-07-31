@@ -8,8 +8,8 @@ enum AccountPanelLayout {
 	static let minimumAccountListHeight: CGFloat = 110
 	static let estimatedAccountRowHeight: CGFloat = 74
 	static let statusMaximumHeight: CGFloat = 92
-	// Compact header, aggregate activity card, and panel spacing.
-	static let fixedChromeHeight: CGFloat = 114
+	// Combined header/activity card and panel spacing.
+	static let fixedChromeHeight: CGFloat = 90
 
 	static func activeScreenVisibleHeight() -> CGFloat {
 		let mouseLocation = NSEvent.mouseLocation

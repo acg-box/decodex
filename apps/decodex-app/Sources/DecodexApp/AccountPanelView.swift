@@ -93,26 +93,31 @@ struct AccountPanelView: View {
 
 	private var panelContent: some View {
 		VStack(alignment: .leading, spacing: 7) {
-			header
-				.padding(.horizontal, 10)
-				.padding(.vertical, 8)
-				.panelCardSurface(cornerRadius: 18)
+			headerOverview
 
 			if hasTransientStatus {
 				transientStatus
 					.transition(.panelSection)
 			}
 
+			accountContent
+		}
+	}
+
+	private var headerOverview: some View {
+		VStack(alignment: .leading, spacing: 6) {
+			header
+
 			if let profileAggregate {
 				AccountProfileOverviewView(
 					aggregate: profileAggregate
 				)
-					.panelCardSurface(cornerRadius: 16)
 					.transition(.panelSection)
 			}
-
-			accountContent
 		}
+		.padding(.horizontal, 10)
+		.padding(.vertical, 8)
+		.panelCardSurface(cornerRadius: 18)
 	}
 
 	private var reauthenticationOverlay: some View {
@@ -134,8 +139,8 @@ struct AccountPanelView: View {
 				.renderingMode(.template)
 				.scaledToFit()
 				.foregroundStyle(PanelPalette.actionBlue(colorScheme))
-				.frame(width: 19, height: 19)
-				.frame(width: 26, height: 26)
+				.frame(width: 17, height: 17)
+				.frame(width: 24, height: 24)
 				.accessibilityHidden(true)
 
 			Text("Decodex")
