@@ -254,6 +254,12 @@ final class ResetCardStore {
 			&& (isRefreshing == false || refreshSkeletonIsPublished)
 	}
 
+	var canBeginEnrollment: Bool {
+		accountControlClient != nil
+			&& canPerformDirectAccountControl
+			&& isAccountControlInProgress == false
+	}
+
 	func blocksNewAttempt(for target: ResetCardUseTarget) -> Bool {
 		isPendingRecoveryBlocked
 			|| submittingKey != nil
@@ -835,9 +841,7 @@ final class ResetCardStore {
 	}
 
 	func enrollFromSharedCodex(enabled: Bool = true) async {
-		guard isRefreshing == false,
-			isRefreshingAccountSkeleton == false,
-			isAccountControlInProgress == false,
+		guard canBeginEnrollment,
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -853,6 +857,7 @@ final class ResetCardStore {
 		let idempotencyKey = Self.newCanonicalUUID()
 		await performAccountControl(
 			isEnrollment: true,
+			allowsDuringRefresh: true,
 			successMessage: "Account login imported.",
 			operation: {
 				try await accountControlClient.enrollFromSharedCodex(
