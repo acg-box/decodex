@@ -2,6 +2,34 @@ import Foundation
 import XCTest
 
 final class ResetCardArchitectureTests: XCTestCase {
+	func testPendingResetCardUsesOneAutomaticStatusRow() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let rows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let store = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(rows.contains("Text(status.text)"))
+		XCTAssertTrue(
+			rows.contains("Decodex checks this saved request automatically.")
+		)
+		XCTAssertTrue(
+			rows.contains(".frame(maxWidth: .infinity, alignment: .leading)")
+		)
+		XCTAssertTrue(store.contains("Checking reset result…"))
+		XCTAssertTrue(store.contains("Check delayed; retrying…"))
+		XCTAssertFalse(rows.contains("Button(\"Resume\")"))
+		XCTAssertFalse(store.contains("Resume the pending request"))
+	}
+
 	func testQuotaMotionTracksOnlyTheAuthoritativeRemainingValue() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
