@@ -35,19 +35,6 @@ struct AccountProfileDetailView: View {
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: 9) {
-			HStack(alignment: .firstTextBaseline) {
-				Text("Account details")
-					.font(PanelFont.transientTitle)
-
-				Spacer()
-
-				if let planType {
-					Text(planType)
-						.font(PanelFont.tertiary)
-						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				}
-			}
-
 			if let profile = state.profile {
 				AccountProfileSummaryView(profile: profile.snapshot)
 
@@ -88,10 +75,6 @@ struct AccountProfileDetailView: View {
 		.frame(width: 270)
 		.padding(12)
 		.accessibilityElement(children: .contain)
-	}
-
-	private var planType: String? {
-		state.profile?.planType ?? state.profileUnavailable?.claims.planType
 	}
 
 	private var quotaDiagnostic: String? {
@@ -136,6 +119,7 @@ struct AccountProfileOverviewView: View {
 			}
 		}
 		.frame(maxWidth: .infinity, alignment: .leading)
+		.padding(.horizontal, 2)
 		.accessibilityElement(children: .combine)
 	}
 
