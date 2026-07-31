@@ -1474,6 +1474,9 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 result.pop("_agent_run_fence").close()
 
             command = next(value for value in captured if "exec" in value)
+            sandbox_commands = [
+                value for value in captured if "sandbox" in value
+            ]
             joined = " ".join(command)
             self.assertEqual(result["result"]["disposition"], "accept")
             self.assertIn("--ephemeral", command)
@@ -1509,6 +1512,13 @@ class UpstreamAutopilotTests(unittest.TestCase):
             )
             self.assertNotEqual(Path(workspace_argument), worktree.resolve())
             self.assertIn("permissions.autopilot.network.enabled=false", joined)
+            self.assertNotIn("--sandbox-state-disable-network", command)
+            self.assertEqual(len(sandbox_commands), 2)
+            for sandbox_command in sandbox_commands:
+                self.assertIn(
+                    "--sandbox-state-disable-network",
+                    sandbox_command,
+                )
             self.assertIn('shell_environment_policy.inherit="none"', joined)
             self.assertNotIn("--sandbox", command)
             self.assertNotIn("/usr/bin/sandbox-exec", command)
