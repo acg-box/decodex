@@ -29,6 +29,10 @@ enum PanelPalette {
 		.accentColor
 	}
 
+	static func quotaHealthy(_: ColorScheme) -> Color {
+		.green
+	}
+
 	static func fastModeAccent(_ colorScheme: ColorScheme) -> Color {
 		colorScheme == .dark ? .yellow : .orange
 	}
