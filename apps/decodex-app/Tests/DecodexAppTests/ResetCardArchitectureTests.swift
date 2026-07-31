@@ -2,6 +2,33 @@ import Foundation
 import XCTest
 
 final class ResetCardArchitectureTests: XCTestCase {
+	func testQuotaMotionTracksOnlyTheAuthoritativeRemainingValue() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountRows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(
+			accountRows.contains(
+				".animation(quotaValueAnimation, value: remainingPercent)"
+			)
+		)
+		XCTAssertTrue(
+			accountRows.contains(
+				".numericText(value: Double(remainingPercent))"
+			)
+		)
+		XCTAssertTrue(
+			accountRows.contains("@Environment(\\.accessibilityReduceMotion)")
+		)
+		XCTAssertFalse(accountRows.contains("withAnimation"))
+	}
+
 	func testRepeatedAccountRowsUseIndependentCardSurfaces() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()

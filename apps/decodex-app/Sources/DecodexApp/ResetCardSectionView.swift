@@ -675,10 +675,12 @@ private struct ResetCardQuotaWindowView: View {
 
 	let title: String
 	let window: ResetCardQuotaWindow
+	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 
 	var body: some View {
 		let presentation = ResetCardQuotaPresentation(window: window)
+		let remainingPercent = presentation.remainingPercent ?? 0
 
 		HStack(alignment: .center, spacing: PanelSpacing.compact) {
 			Text(title)
@@ -686,7 +688,7 @@ private struct ResetCardQuotaWindowView: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.frame(width: Self.titleColumnWidth, alignment: .leading)
 
-			if let remainingPercent = presentation.remainingPercent {
+			if presentation.remainingPercent != nil {
 				GeometryReader { proxy in
 					ZStack(alignment: .leading) {
 						Capsule(style: .continuous)
@@ -699,6 +701,10 @@ private struct ResetCardQuotaWindowView: View {
 									* CGFloat(remainingPercent)
 									/ 100
 							)
+							.animation(
+								quotaValueAnimation,
+								value: remainingPercent
+							)
 					}
 				}
 				.frame(minWidth: 88, maxWidth: .infinity)
@@ -709,6 +715,9 @@ private struct ResetCardQuotaWindowView: View {
 			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
 				Text(presentation.valueText)
 					.font(PanelFont.usageValue)
+					.contentTransition(
+						.numericText(value: Double(remainingPercent))
+					)
 
 				if let detailText = presentation.detailText,
 					presentation.resetDate != nil
@@ -721,6 +730,7 @@ private struct ResetCardQuotaWindowView: View {
 			.monospacedDigit()
 			.lineLimit(1)
 			.fixedSize(horizontal: true, vertical: false)
+			.animation(quotaValueAnimation, value: remainingPercent)
 
 			if let resetDate = presentation.resetDate {
 				Text(Self.compactDateTime(resetDate))
@@ -744,6 +754,10 @@ private struct ResetCardQuotaWindowView: View {
 		.accessibilityLabel("\(title) quota")
 		.accessibilityValue(window.accessibilityValue)
 		.help(window.accessibilityValue)
+	}
+
+	private var quotaValueAnimation: Animation? {
+		reduceMotion ? nil : PanelMotion.quotaValue
 	}
 
 	private func stateColor(for tone: ResetCardQuotaPresentationTone) -> Color {
