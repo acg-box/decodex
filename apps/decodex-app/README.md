@@ -38,11 +38,11 @@ pre-cutover native cadence. Opening the panel also requests one refresh. An
 already active refresh absorbs either trigger, and one failed account remains
 isolated to its row until the next cycle.
 
-Each account detail popover contains lifetime tokens, peak daily tokens,
-longest task, current and longest streaks, and a 36-day usage chart. The compact
-panel keeps aggregate total, peak, streak, and longest-task metrics with one
-daily chart across all accounts. It does not expose profile coverage counters
-as account status.
+The account plan appears beside the account identity. Each detail popover
+contains only lifetime tokens, peak daily tokens, longest task, current and
+longest streaks, and a 36-day usage chart. The compact panel keeps aggregate
+total, peak, streak, and longest-task metrics with one daily chart across all
+accounts. It does not expose profile coverage counters as account status.
 Email is redacted by default. The eye control changes only the published
 identity slot. Hiding email removes it from SwiftUI presentation state. A
 revision-bound, process-only cache keeps later visibility changes immediate and
@@ -53,8 +53,9 @@ data remains row-scoped and never hides Reset Cards.
 The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
-The header, overview, and each account row use separate appearance-adaptive
-system frosted-material surfaces with no opaque custom fill or drawn border.
+The header and aggregate overview share one compact appearance-adaptive
+frosted-material surface. Each account row uses its own separate system material
+surface with no opaque custom fill or drawn border.
 The host window follows the system Light or Dark appearance and does not draw
 its own full-window shadow or backdrop. Login recovery uses a stronger floating
 material inside that same transparent window, without a window-wide modal dimmer.

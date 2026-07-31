@@ -22,19 +22,27 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
 	}
 
-	func testAllAccountsOverviewShowsAggregateMetricsWithoutCoverageCounters() throws {
+	func testHeaderAndOverviewShareOneCardWithoutARedundantTitleRow() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
 			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
 		let profileViews = try String(
 			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(profileViews.contains("Text(\"All accounts\")"))
+		XCTAssertTrue(accountPanel.contains("private var headerOverview: some View"))
+		XCTAssertTrue(accountPanel.contains("AccountProfileOverviewView("))
+		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
+		XCTAssertFalse(profileViews.contains("Text(\"All accounts\")"))
 		XCTAssertFalse(profileViews.contains("Text(\"All Accounts\")"))
+		XCTAssertFalse(profileViews.contains("Image(systemName: \"chart.bar.xaxis\")"))
 		XCTAssertTrue(profileViews.contains("lifetimeTokens: aggregate.lifetimeTokens"))
 		XCTAssertTrue(profileViews.contains("peakDailyTokens: aggregate.peakDailyTokens"))
 		XCTAssertTrue(profileViews.contains("longestTaskSeconds: aggregate.longestTaskSeconds"))
@@ -43,6 +51,32 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(profileViews.contains("profiles current"))
 		XCTAssertFalse(profileViews.contains(" of \\(totalAccountCount) daily"))
 		XCTAssertFalse(profileViews.contains("showsAxis"))
+	}
+
+	func testPlanTierLivesBesideIdentityAndNotInTheDetailPopoverHeader() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountRows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let profileViews = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountProfileViews.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(accountRows.contains("if let planType"))
+		XCTAssertTrue(accountRows.contains("Text(planType)"))
+		XCTAssertTrue(
+			accountRows.contains(
+				"state.profile?.planType ?? state.profileUnavailable?.claims.planType"
+			)
+		)
+		XCTAssertFalse(profileViews.contains("Text(\"Account details\")"))
+		XCTAssertFalse(profileViews.contains("Text(planType)"))
 	}
 
 	func testAccountPanelControlsUseSentenceCase() throws {
@@ -130,6 +164,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
 			encoding: .utf8
 		)
+		let typography = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelTypography.swift"),
+			encoding: .utf8
+		)
 		let appScene = try String(
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
@@ -190,6 +228,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
 		XCTAssertFalse(resetCards.contains("identity.showsEmail ? \"envelope\""))
 		XCTAssertTrue(resetCards.contains(".font(PanelFont.quotaText)"))
+		XCTAssertTrue(
+			typography.contains(
+				"static let resetCardAction = text(9.4, weight: .medium)"
+			)
+		)
+		XCTAssertTrue(resetCards.contains(": PanelPalette.secondaryText(colorScheme)"))
 		XCTAssertFalse(appScene.contains("MenuBarExtra"))
 		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
@@ -223,6 +267,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertFalse(resetCards.contains("\"Use · "))
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"creditcard\")"))
+		XCTAssertFalse(resetCards.contains("Weekly quota depleted"))
 		XCTAssertTrue(resetCards.contains(".frame(minWidth: 88, maxWidth: .infinity)"))
 		XCTAssertFalse(accountPanel.contains("headerState("))
 		XCTAssertFalse(accountPanel.contains("routingSubtitle"))
