@@ -4,6 +4,16 @@ import SwiftUI
 import XCTest
 
 final class PanelWindowSizingLayoutTests: XCTestCase {
+	func testPanelSpacingUsesOneCompactTwoPointRhythm() {
+		XCTAssertEqual(PanelSpacing.micro, 2)
+		XCTAssertEqual(PanelSpacing.compact, 4)
+		XCTAssertEqual(PanelSpacing.related, 6)
+		XCTAssertEqual(PanelSpacing.section, 8)
+		XCTAssertEqual(PanelSpacing.cardHorizontal, 10)
+		XCTAssertEqual(PanelSpacing.cardVertical, 8)
+		XCTAssertEqual(PanelSpacing.popoverInset, 12)
+	}
+
 	@MainActor
 	func testPanelWindowHostStaysTransparentWithoutOverridingSystemAppearance() {
 		let window = NSWindow(
@@ -143,6 +153,21 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 				estimated: 730
 			),
 			730
+		)
+	}
+
+	func testAccountListEstimateUsesRowHeightAndSharedSectionSpacing() {
+		XCTAssertEqual(
+			AccountPanelLayout.estimatedAccountListContentHeight(
+				accountCount: 6
+			),
+			546
+		)
+		XCTAssertEqual(
+			AccountPanelLayout.estimatedAccountListContentHeight(
+				accountCount: 0
+			),
+			86
 		)
 	}
 
