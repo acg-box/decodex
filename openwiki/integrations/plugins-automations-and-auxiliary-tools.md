@@ -207,7 +207,13 @@ decodex-publisher validate-social
   idempotency key. `decodexd` owns credentials, app-server, the opaque credit ID, the
   provider effect, and durable recovery. If inventory advances during a skeleton
   read, the app queues one newer skeleton read instead of leaving the row in a
-  checking state.
+  checking state. During that reconciliation, the app keeps the last quota visible
+  but does not expose Reset Cards from the old account revision. It holds an
+  advanced inventory until the matching account skeleton arrives and then applies
+  it without a duplicate provider read. A retryable detail-read failure shows a
+  compact reconnecting state while the retained quota remains visible. The next
+  current inventory replaces the retained value directly, so the quota bar can
+  animate to the restored value.
 - Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,
   routing, Codex projection, and Fast requests. The app does not start the CLI, a
   service, or a credential helper, and Swift does not inject credentials. Operators
