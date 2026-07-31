@@ -81,6 +81,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 			return true
 		}
 		return profileUnavailable?.error == .unauthorized
+			|| profile?.refreshError == .unauthorized
 	}
 }
 
