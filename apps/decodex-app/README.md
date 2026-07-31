@@ -87,8 +87,15 @@ automatically. It does not keep a disabled confirmation countdown, show a
 separate transient message, or show a manual Resume control for the same
 operation. If an inventory read advances during a skeleton read, the app queues
 one newer skeleton read so the account row does not remain in its checking
-state. Expiry times use compact bordered controls so their click action remains
-visible without adding a second card container.
+state. The app keeps the last quota visible while it waits for the new account
+revision, but it does not expose Reset Cards from that old revision. It retains
+an advanced inventory until the matching account skeleton arrives, then applies
+that inventory without a duplicate provider read. This direct old-to-new update
+lets the quota bar animate to the restored value. A retryable detail-read failure
+keeps the last quota visible and shows a compact reconnecting indicator. Only a
+non-retryable failure shows the unavailable state. Expiry times use compact
+bordered controls so their click action remains visible without adding a second
+card container.
 
 The bounded recovery journal is
 `Application Support/Decodex/reset-card-pending-v1.json`. It uses an atomic
