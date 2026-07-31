@@ -247,6 +247,65 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
 	}
 
+	func testAdvancedInventoryIsReusedAfterItsSkeletonArrives() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			maxSuccessfulInventoryReads: 2
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let attempt = ResetCardUseAttempt(
+			target: ResetCardUseTarget(
+				authority: authority,
+				accountID: accountID,
+				expectedRevision: 7,
+				descriptor: try ResetCardDescriptor(
+					grantedAtUnixSeconds: 100,
+					expiresAtUnixSeconds: 200
+				)
+			),
+			idempotencyKey: "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+		)
+		XCTAssertEqual(fixture.store.insert(attempt), [attempt])
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 7)
+
+		await client.replaceAccount(accountRecord(revision: 8))
+		await client.setInventoryRevision(8, accountID: accountID)
+		await client.setResetCardStatus(.completed(.reset))
+		await store.checkPendingStatus(attempt)
+
+		for _ in 0 ..< 200 {
+			if store.accounts.first?.account.accountRevision == 8,
+				store.accounts.first?.inventory?.accountRevision == 8,
+				store.accounts.first?.isRefreshing == false
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let finalState = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(finalState.account.accountRevision, 8)
+		XCTAssertEqual(finalState.inventory?.accountRevision, 8)
+		XCTAssertNil(finalState.error)
+		XCTAssertFalse(finalState.isRefreshing)
+		let reads = await client.readCounts()
+		XCTAssertEqual(
+			reads.inventory,
+			2,
+			"The advanced authoritative inventory must replace a duplicate provider read."
+		)
+	}
+
 	func testAdvancedInventoryQueuesAnotherSkeletonReadWhenOneIsInFlight() async throws {
 		let secondAccountID = "22222222-2222-4222-8222-222222222222"
 		let firstAccount = accountRecord()
@@ -1093,6 +1152,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let capturesSnapshotBeforeWait: Bool
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
+	private let maxSuccessfulInventoryReads: Int?
 	private var inventoryRevisionsByAccountID = [String: UInt64]()
 	private var resetCardStatus: ResetCardOperationState = .notFound
 	private let allowsEnrollment: Bool
@@ -1129,6 +1189,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		capturesSnapshotBeforeWait: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
+		maxSuccessfulInventoryReads: Int? = nil,
 		allowsEnrollment: Bool = false,
 		routing: AccountRoutingControl? = nil,
 		fixedSelectionError: AccountControlError? = nil,
@@ -1146,6 +1207,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		self.capturesSnapshotBeforeWait = capturesSnapshotBeforeWait
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
+		self.maxSuccessfulInventoryReads = maxSuccessfulInventoryReads
 		self.allowsEnrollment = allowsEnrollment
 		self.routing = routing
 			?? AccountRoutingControl(
@@ -1188,6 +1250,11 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
 		inventoryReadCount += 1
+		if let maxSuccessfulInventoryReads,
+			inventoryReadCount > maxSuccessfulInventoryReads
+		{
+			throw ResetCardClientError.commandFailed
+		}
 		if let inventoryGate {
 			await inventoryGate.wait()
 		}
