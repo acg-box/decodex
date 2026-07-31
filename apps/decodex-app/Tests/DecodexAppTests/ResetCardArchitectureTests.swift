@@ -164,6 +164,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
 			encoding: .utf8
 		)
+		let typography = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelTypography.swift"),
+			encoding: .utf8
+		)
 		let appScene = try String(
 			contentsOf: sourceURL.appendingPathComponent("DecodexApp.swift"),
 			encoding: .utf8
@@ -224,6 +228,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(resetCards.contains("Image(systemName: \"person.crop.circle\")"))
 		XCTAssertFalse(resetCards.contains("identity.showsEmail ? \"envelope\""))
 		XCTAssertTrue(resetCards.contains(".font(PanelFont.quotaText)"))
+		XCTAssertTrue(
+			typography.contains(
+				"static let resetCardAction = text(9.4, weight: .medium)"
+			)
+		)
+		XCTAssertTrue(resetCards.contains(": PanelPalette.secondaryText(colorScheme)"))
 		XCTAssertFalse(appScene.contains("MenuBarExtra"))
 		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
