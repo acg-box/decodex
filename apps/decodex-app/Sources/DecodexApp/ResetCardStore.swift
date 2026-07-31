@@ -128,6 +128,38 @@ struct ResetCardStoreMessage: Equatable {
 	let text: String
 }
 
+enum ResetCardPendingStatus: Equatable {
+	case checking(detail: String?)
+	case retrying(detail: String)
+
+	var text: String {
+		switch self {
+		case .checking:
+			return "Checking reset result…"
+		case .retrying:
+			return "Check delayed; retrying…"
+		}
+	}
+
+	var accessibilityText: String {
+		switch self {
+		case .checking:
+			return "Checking reset result"
+		case .retrying:
+			return "Reset result check delayed; retrying"
+		}
+	}
+
+	var detail: String? {
+		switch self {
+		case .checking(let detail):
+			return detail
+		case .retrying(let detail):
+			return detail
+		}
+	}
+}
+
 enum AccountControlActivity: Equatable {
 	case lifecycle
 	case loginRefresh
@@ -187,6 +219,7 @@ final class ResetCardStore {
 	private(set) var isRoutingAccountControl = false
 	private(set) var accountSkeletonRevisionTargets = [String: UInt64]()
 	private(set) var pendingAttempts: [ResetCardUseAttempt]
+	private(set) var pendingStatuses: [String: ResetCardPendingStatus]
 	private(set) var isPendingRecoveryBlocked: Bool
 	private(set) var profileEmailsVisible = false
 	private(set) var accountReauthentication: AccountReauthenticationPresentation?
@@ -211,6 +244,7 @@ final class ResetCardStore {
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
+	@ObservationIgnored private var accountSkeletonRefreshGeneration: UInt64 = 0
 
 	init(
 		client: any ResetCardClient = DecodexNativeClient(),
@@ -232,6 +266,11 @@ final class ResetCardStore {
 		self.resolveCodexExecutable = resolveCodexExecutable
 		let pendingLoad = pendingStore.load()
 		pendingAttempts = pendingLoad.attempts
+		pendingStatuses = Dictionary(
+			uniqueKeysWithValues: pendingLoad.attempts.map {
+				($0.idempotencyKey, ResetCardPendingStatus.checking(detail: nil))
+			}
+		)
 		isPendingRecoveryBlocked = pendingLoad.isRecoveryBlocked
 		if isPendingRecoveryBlocked {
 			message = Self.pendingRecoveryBlockedMessage
@@ -270,6 +309,10 @@ final class ResetCardStore {
 				$0.target.accountID == target.accountID
 					&& $0.target.descriptor == target.descriptor
 			})
+	}
+
+	func pendingStatus(for attempt: ResetCardUseAttempt) -> ResetCardPendingStatus {
+		pendingStatuses[attempt.idempotencyKey] ?? .checking(detail: nil)
 	}
 
 	func start() {
@@ -744,14 +787,16 @@ final class ResetCardStore {
 			)
 			return ResetCardUseCompletion(resolved: true)
 		}
-		guard pendingAttempts.contains(where: {
+		if let pendingAttempt = pendingAttempts.first(where: {
 			$0.target.accountID == attempt.target.accountID
 				&& $0.target.descriptor == attempt.target.descriptor
-		}) == false
-		else {
-			message = ResetCardStoreMessage(
-				tone: .information,
-				text: "Resume the pending request for this reset card with its existing operation key."
+		}) {
+			clearStaleControlError()
+			setPendingStatus(
+				.checking(
+					detail: "This saved Reset Card request is already being checked automatically."
+				),
+				for: pendingAttempt
 			)
 			return ResetCardUseCompletion(resolved: true)
 		}
@@ -767,7 +812,7 @@ final class ResetCardStore {
 		return await submit(attempt)
 	}
 
-	func resume(_ attempt: ResetCardUseAttempt) async {
+	func checkPendingStatus(_ attempt: ResetCardUseAttempt) async {
 		guard submittingKey == nil,
 			pendingAttempts.contains(attempt)
 		else {
@@ -775,6 +820,7 @@ final class ResetCardStore {
 		}
 
 		clearStaleControlError()
+		setPendingStatus(.checking(detail: nil), for: attempt)
 		submittingKey = attempt.idempotencyKey
 		defer {
 			submittingKey = nil
@@ -808,9 +854,14 @@ final class ResetCardStore {
 			shouldRemove: \.removesPendingAttempt
 		) else {
 			reloadPendingJournal()
-			message = isPendingRecoveryBlocked
-				? Self.pendingRecoveryBlockedMessage
-				: Self.pendingDispatchUnavailableMessage
+			if isPendingRecoveryBlocked {
+				message = Self.pendingRecoveryBlockedMessage
+			} else {
+				setPendingStatus(
+					.retrying(detail: Self.pendingDispatchUnavailableDetail),
+					for: attempt
+				)
+			}
 			return
 		}
 		_ = await apply(dispatch, to: attempt)
@@ -1218,6 +1269,8 @@ final class ResetCardStore {
 	}
 
 	private func submit(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
+		message = nil
+		setPendingStatus(.checking(detail: nil), for: attempt)
 		submittingKey = attempt.idempotencyKey
 		defer {
 			submittingKey = nil
@@ -1237,9 +1290,14 @@ final class ResetCardStore {
 			shouldRemove: \.removesPendingAttempt
 		) else {
 			reloadPendingJournal()
-			message = isPendingRecoveryBlocked
-				? Self.pendingRecoveryBlockedMessage
-				: Self.pendingDispatchUnavailableMessage
+			if isPendingRecoveryBlocked {
+				message = Self.pendingRecoveryBlockedMessage
+			} else {
+				setPendingStatus(
+					.retrying(detail: Self.pendingDispatchUnavailableDetail),
+					for: attempt
+				)
+			}
 			return ResetCardUseCompletion(resolved: false)
 		}
 
@@ -1277,13 +1335,12 @@ final class ResetCardStore {
 		to attempt: ResetCardUseAttempt,
 		removeTerminalAttempt: Bool = true
 	) async -> ResetCardUseCompletion {
-		message = ResetCardStoreMessage(
-			tone: .error,
-			text: error.localizedDescription
-		)
-
 		switch error {
 		case .commandRejected:
+			message = ResetCardStoreMessage(
+				tone: .error,
+				text: error.localizedDescription
+			)
 			if removeTerminalAttempt {
 				forget(attempt)
 			}
@@ -1293,6 +1350,10 @@ final class ResetCardStore {
 			.useDefinitelyNotDispatched, .usePotentiallyDispatched,
 			.commandFailed, .invalidResponse, .service:
 			reloadPendingJournal()
+			setPendingStatus(
+				.retrying(detail: error.localizedDescription),
+				for: attempt
+			)
 			return ResetCardUseCompletion(resolved: false)
 		}
 	}
@@ -1302,13 +1363,12 @@ final class ResetCardStore {
 		to attempt: ResetCardUseAttempt,
 		removeTerminalAttempt: Bool = true
 	) async -> ResetCardUseCompletion {
-		message = ResetCardStoreMessage(
-			tone: Self.messageTone(for: state),
-			text: state.presentation
-		)
-
 		switch state {
 		case .completed, .failedBeforeEffect:
+			message = ResetCardStoreMessage(
+				tone: Self.messageTone(for: state),
+				text: state.presentation
+			)
 			if removeTerminalAttempt {
 				forget(attempt)
 			}
@@ -1316,6 +1376,7 @@ final class ResetCardStore {
 			return ResetCardUseCompletion(resolved: true)
 		case .prepared, .effectAmbiguous, .notFound, .unavailable:
 			reloadPendingJournal()
+			setPendingStatus(Self.pendingStatus(for: state), for: attempt)
 			return ResetCardUseCompletion(resolved: false)
 		}
 	}
@@ -1338,29 +1399,21 @@ final class ResetCardStore {
 					_ = await apply(state, to: attempt)
 				case .prepared, .effectAmbiguous:
 					shouldRetry = true
-					message = ResetCardStoreMessage(
-						tone: Self.messageTone(for: state),
-						text: state.presentation
-					)
+					_ = await apply(state, to: attempt)
 				case .unavailable(let error):
 					shouldRetry = shouldRetry || error.isRetryableReadFailure
-					message = ResetCardStoreMessage(
-						tone: Self.messageTone(for: state),
-						text: state.presentation
-					)
+					_ = await apply(state, to: attempt)
 				case .notFound:
 					shouldRetry = true
-					message = ResetCardStoreMessage(
-						tone: .information,
-						text: "A pending reset-card request can be resumed with the same operation key."
-					)
+					_ = await apply(state, to: attempt)
 				}
 			} catch {
 				let clientError = Self.clientError(error)
 				shouldRetry = shouldRetry || clientError.isRetryableReadFailure
-				message = ResetCardStoreMessage(
-					tone: .error,
-					text: clientError.localizedDescription
+				reloadPendingJournal()
+				setPendingStatus(
+					.retrying(detail: clientError.localizedDescription),
+					for: attempt
 				)
 			}
 		}
@@ -1380,6 +1433,7 @@ final class ResetCardStore {
 			return false
 		}
 		pendingAttempts = updated
+		reconcilePendingStatuses()
 		return true
 	}
 
@@ -1389,6 +1443,7 @@ final class ResetCardStore {
 		}
 		if let updated = pendingStore.remove(attempt) {
 			pendingAttempts = updated
+			reconcilePendingStatuses()
 		}
 	}
 
@@ -1396,6 +1451,27 @@ final class ResetCardStore {
 		let load = pendingStore.load()
 		pendingAttempts = load.attempts
 		isPendingRecoveryBlocked = load.isRecoveryBlocked
+		reconcilePendingStatuses()
+	}
+
+	private func setPendingStatus(
+		_ status: ResetCardPendingStatus,
+		for attempt: ResetCardUseAttempt
+	) {
+		guard pendingAttempts.contains(attempt) else {
+			pendingStatuses.removeValue(forKey: attempt.idempotencyKey)
+			return
+		}
+		pendingStatuses[attempt.idempotencyKey] = status
+	}
+
+	private func reconcilePendingStatuses() {
+		let pendingKeys = Set(pendingAttempts.map(\.idempotencyKey))
+		pendingStatuses = pendingStatuses.filter { pendingKeys.contains($0.key) }
+		for attempt in pendingAttempts
+		where pendingStatuses[attempt.idempotencyKey] == nil {
+			pendingStatuses[attempt.idempotencyKey] = .checking(detail: nil)
+		}
 	}
 
 	private func refreshAccount(_ accountID: String) async {
@@ -1507,9 +1583,13 @@ final class ResetCardStore {
 		else {
 			return
 		}
+		let refreshGeneration = accountSkeletonRefreshGeneration
 		isRefreshingAccountSkeleton = true
 		defer {
 			isRefreshingAccountSkeleton = false
+			if refreshGeneration != accountSkeletonRefreshGeneration {
+				scheduleFreshAccountSkeletonRead()
+			}
 		}
 		do {
 			let projectionGeneration = beginCodexProjectionRequest()
@@ -1650,18 +1730,19 @@ final class ResetCardStore {
 			isProfileRefreshing: existing.isProfileRefreshing
 		)
 
-		if let target = accountSkeletonRevisionTargets[accountID] {
-			accountSkeletonRevisionTargets[accountID] = max(target, inventoryRevision)
-			return
-		}
-		accountSkeletonRevisionTargets[accountID] = inventoryRevision
+		accountSkeletonRevisionTargets[accountID] = max(
+			accountSkeletonRevisionTargets[accountID] ?? 0,
+			inventoryRevision
+		)
 		scheduleFreshAccountSkeletonRead()
 	}
 
 	private func scheduleFreshAccountSkeletonRead() {
-		guard accountSkeletonRevisionTargets.isEmpty == false,
-			isAccountControlInProgress == false
-		else {
+		guard accountSkeletonRevisionTargets.isEmpty == false else {
+			return
+		}
+		accountSkeletonRefreshGeneration &+= 1
+		guard isAccountControlInProgress == false else {
 			return
 		}
 		Task { [weak self] in
@@ -2600,19 +2681,38 @@ final class ResetCardStore {
 		}
 	}
 
+	private static func pendingStatus(
+		for state: ResetCardOperationState
+	) -> ResetCardPendingStatus {
+		switch state {
+		case .prepared:
+			return .checking(detail: "The service accepted this Reset Card request.")
+		case .effectAmbiguous:
+			return .checking(
+				detail: "The service is reconciling authoritative Reset Card state."
+			)
+		case .notFound:
+			return .checking(
+				detail: "No durable Reset Card operation was found yet."
+			)
+		case .unavailable(let error):
+			return .retrying(detail: error.presentation)
+		case .completed, .failedBeforeEffect:
+			return .checking(detail: nil)
+		}
+	}
+
 	private static let pendingRecoveryBlockedMessage = ResetCardStoreMessage(
 		tone: .error,
 		text: "The pending reset-card recovery journal is invalid or unavailable. New use is blocked. Preserve the journal for manual inspection; no automatic repair is available."
 	)
 
-	private static let pendingDispatchUnavailableMessage = ResetCardStoreMessage(
-		tone: .information,
-		text: "Another app instance changed or is using this pending reset-card request. Refresh before continuing."
-	)
+	private static let pendingDispatchUnavailableDetail =
+		"Another app instance changed or is checking this saved Reset Card request."
 
 	private static let pendingTerminalRemovalFailedMessage = ResetCardStoreMessage(
 		tone: .error,
-		text: "The reset-card operation is terminal, but the recovery journal could not be updated. Preserve the journal and resume this request before starting another."
+		text: "The Reset Card operation finished, but the recovery journal could not be updated. Preserve the journal and refresh before starting another request."
 	)
 }
 

@@ -177,6 +177,38 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 	}
 
+	func testPendingStatusRowStaysCompactAtPanelWidth() throws {
+		let directory = FileManager.default.temporaryDirectory
+			.appendingPathComponent(UUID().uuidString, isDirectory: true)
+		defer { try? FileManager.default.removeItem(at: directory) }
+		try FileManager.default.createDirectory(
+			at: directory,
+			withIntermediateDirectories: true
+		)
+		try FileManager.default.setAttributes(
+			[.posixPermissions: 0o700],
+			ofItemAtPath: directory.path
+		)
+		let pendingStore = ResetCardPendingAttemptStore(
+			journalURL: directory.appendingPathComponent("pending.json")
+		)
+		let attempt = try pendingAttempt(1)
+		XCTAssertEqual(pendingStore.insert(attempt), [attempt])
+		let store = ResetCardStore(
+			client: AccountPanelLayoutClient(),
+			pendingStore: pendingStore,
+			startupRetryDelays: []
+		)
+		let hostingView = NSHostingView(
+			rootView: ResetCardPendingAttemptsView(store: store)
+				.frame(width: 276)
+		)
+
+		hostingView.layoutSubtreeIfNeeded()
+
+		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 44)
+	}
+
 	func testUnavailableProfileUnauthorizedPresentsLoginRecoveryWithoutHidingCanonicalInventory()
 		throws
 	{
@@ -448,7 +480,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertLessThanOrEqual(hostingView.fittingSize.height, 1_350)
 	}
 
-	func testPendingActionsUseTheirOwnBoundedScrollWithoutHidingAccounts() async throws {
+	func testPendingRequestsUseTheirOwnBoundedScrollWithoutHidingAccounts() async throws {
 		let directory = FileManager.default.temporaryDirectory
 			.appendingPathComponent(UUID().uuidString, isDirectory: true)
 		defer { try? FileManager.default.removeItem(at: directory) }

@@ -15,9 +15,9 @@ struct ResetCardMessageView: View {
 			Text(message.text)
 				.font(PanelFont.tertiary)
 				.foregroundStyle(color)
+				.frame(maxWidth: .infinity, alignment: .leading)
 				.fixedSize(horizontal: false, vertical: true)
-
-			Spacer(minLength: 2)
+				.layoutPriority(1)
 
 			Button(action: dismiss) {
 				Image(systemName: "xmark")
@@ -25,7 +25,9 @@ struct ResetCardMessageView: View {
 			}
 			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
 			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.fixedSize()
 			.help("Dismiss message")
+			.accessibilityLabel("Dismiss message")
 		}
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
@@ -62,42 +64,58 @@ struct ResetCardPendingAttemptsView: View {
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.related) {
 			ForEach(store.pendingAttempts, id: \.idempotencyKey) { attempt in
+				let accountLabel = store.accountLabel(for: attempt.target.accountID)
+				let status = store.pendingStatus(for: attempt)
+
 				HStack(spacing: PanelSpacing.related) {
 					Image(systemName: "clock.arrow.circlepath")
 						.font(PanelFont.tertiary)
 						.foregroundStyle(PanelPalette.warning(colorScheme))
 						.accessibilityHidden(true)
 
-					Text(
-						"\(store.accountLabel(for: attempt.target.accountID)) · pending …\(attempt.idempotencyKey.suffix(8))"
-					)
-					.font(PanelFont.tertiary)
-					.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-					.lineLimit(1)
-					.truncationMode(.middle)
+					Text(accountLabel)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.primaryText(colorScheme).opacity(0.88))
+						.lineLimit(1)
+						.truncationMode(.tail)
 
-					Spacer(minLength: 2)
+					Text("·")
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.fixedSize()
 
-					Button("Resume") {
-						Task {
-							await store.resume(attempt)
-						}
-					}
-					.buttonStyle(.borderless)
-					.controlSize(.mini)
-					.frame(minHeight: 24)
-					.disabled(store.submittingKey != nil)
-					.help(
-						store.isPendingRecoveryBlocked
-							? "Read durable status only. Repair the recovery journal before any retry."
-							: "Read durable status and use the same operation key if the command is absent."
-					)
+					Text(status.text)
+						.font(PanelFont.tertiary)
+						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+						.lineLimit(1)
+						.fixedSize(horizontal: true, vertical: false)
+						.layoutPriority(1)
+
+					Spacer(minLength: 0)
 				}
+				.help(helpText(for: status, attempt: attempt))
+				.accessibilityElement(children: .ignore)
+				.accessibilityLabel("\(accountLabel). \(status.accessibilityText).")
+				.accessibilityHint(
+					"Saved operation ending in \(attempt.idempotencyKey.suffix(8)). Decodex checks automatically."
+				)
 			}
 		}
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
 		.panelCardSurface(cornerRadius: 14)
+	}
+
+	private func helpText(
+		for status: ResetCardPendingStatus,
+		attempt: ResetCardUseAttempt
+	) -> String {
+		let automaticCheck = "Decodex checks this saved request automatically."
+		let operation = "Operation …\(attempt.idempotencyKey.suffix(8))."
+		guard let detail = status.detail else {
+			return "\(automaticCheck) \(operation)"
+		}
+		return "\(detail) \(automaticCheck) \(operation)"
 	}
 }
 
@@ -383,7 +401,8 @@ struct ResetCardAccountRow: View {
 						}
 						.buttonStyle(
 							ResetCardChipButtonStyle(
-								isArmed: confirmation.isArmed(target)
+								isArmed: confirmation.isArmed(target),
+								isBusy: confirmation.isSubmitting(target)
 							)
 						)
 						.disabled(store.blocksNewAttempt(for: target))
@@ -416,13 +435,17 @@ struct ResetCardAccountRow: View {
 			Text("Confirm · \(Self.confirmationWindowSeconds)s")
 				.hidden()
 
-			Text(cardChipTitle(target))
-				.contentTransition(.opacity)
-				.foregroundStyle(
-					confirmation.isArmed(target)
-						? PanelPalette.warning(colorScheme)
-						: PanelPalette.secondaryText(colorScheme)
-				)
+			HStack(spacing: PanelSpacing.micro) {
+				if confirmation.isSubmitting(target) {
+					ProgressView()
+						.controlSize(.mini)
+						.accessibilityHidden(true)
+				}
+
+				Text(cardChipTitle(target))
+					.contentTransition(.opacity)
+			}
+			.foregroundStyle(cardChipForeground(target))
 		}
 		.font(PanelFont.resetCardAction)
 		.monospacedDigit()
@@ -463,6 +486,15 @@ struct ResetCardAccountRow: View {
 		Self.cardExpiryText(target.descriptor.expiresAtUnixSeconds)
 	}
 
+	private func cardChipForeground(_ target: ResetCardUseTarget) -> Color {
+		if confirmation.isSubmitting(target) {
+			return PanelPalette.actionBlue(colorScheme)
+		}
+		return confirmation.isArmed(target)
+			? PanelPalette.warning(colorScheme)
+			: PanelPalette.secondaryText(colorScheme)
+	}
+
 	private func accessibilityLabel(_ target: ResetCardUseTarget) -> String {
 		Self.cardAccessibilityLabel(
 			expiresAtUnixSeconds: target.descriptor.expiresAtUnixSeconds
@@ -499,6 +531,7 @@ struct ResetCardAccountRow: View {
 		guard let attempt = confirmation.tap(target) else {
 			return
 		}
+		confirmationSecondsRemaining = 0
 
 		Task {
 			let completion = await store.use(attempt)
@@ -610,6 +643,7 @@ struct ResetCardAccountRow: View {
 
 private struct ResetCardChipButtonStyle: ButtonStyle {
 	let isArmed: Bool
+	let isBusy: Bool
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@Environment(\.isEnabled) private var isEnabled
@@ -627,7 +661,11 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 				shape.strokeBorder(borderColor, lineWidth: 1)
 			}
 			.contentShape(shape)
-			.opacity(isEnabled ? (configuration.isPressed ? 0.76 : 1) : 0.46)
+			.opacity(
+				isEnabled || isBusy
+					? (configuration.isPressed ? 0.76 : 1)
+					: 0.46
+			)
 			.scaleEffect(configuration.isPressed ? 0.985 : 1)
 			.animation(
 				reduceMotion ? nil : PanelMotion.press,
@@ -640,6 +678,10 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 	}
 
 	private var fillColor: Color {
+		if isBusy {
+			return PanelPalette.actionBlue(colorScheme)
+				.opacity(colorScheme == .dark ? 0.12 : 0.09)
+		}
 		if isArmed {
 			return PanelPalette.warning(colorScheme)
 				.opacity(colorScheme == .dark ? 0.12 : 0.09)
@@ -649,6 +691,10 @@ private struct ResetCardChipButtonStyle: ButtonStyle {
 	}
 
 	private var borderColor: Color {
+		if isBusy {
+			return PanelPalette.actionBlue(colorScheme)
+				.opacity(colorScheme == .dark ? 0.72 : 0.62)
+		}
 		if isArmed {
 			return PanelPalette.warning(colorScheme)
 				.opacity(colorScheme == .dark ? 0.72 : 0.62)
