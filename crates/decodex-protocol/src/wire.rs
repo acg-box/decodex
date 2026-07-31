@@ -1293,21 +1293,14 @@ pub enum AccountQuotaErrorDto {
 	UnsupportedWindow,
 }
 
-/// Server-owned quota freshness and value classification.
+/// Server-owned quota value classification.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "state", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum AccountQuotaStateDto {
-	/// No observation exists.
+	/// No current public quota fact is available.
 	Unknown,
 	/// The retained quota fact is current.
 	Current {
-		/// Provider-reported percentage used.
-		used_percent: u8,
-		/// Provider-reported reset time in Unix microseconds.
-		resets_at_unix_micros: i64,
-	},
-	/// The retained quota fact is no longer current.
-	Stale {
 		/// Provider-reported percentage used.
 		used_percent: u8,
 		/// Provider-reported reset time in Unix microseconds.
@@ -1580,7 +1573,7 @@ pub struct AccountQuotaWindowDto {
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
-	/// Closed current, unknown, stale, or error result.
+	/// Closed current, unknown, or error result.
 	pub result: AccountQuotaStateDto,
 }
 
@@ -3386,9 +3379,6 @@ fn validate_quota_window(
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
 			Ok(()),
-		(Some(observed), AccountQuotaStateDto::Stale { used_percent, resets_at_unix_micros })
-			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
-			Ok(()),
 		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
 		_ => Err("account quota observation shape is invalid"),
 	}
@@ -3406,9 +3396,10 @@ mod tests {
 	use crate::{
 		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountProfileDailyUsageDto,
 		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
-		CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError,
-		CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		AccountQuotaStateDto, CURRENT_VERSION, CausationId, ClientCommandId,
+		CodexAuthProjectionResult, CommandError, CorrelationId, EntityId, EventPayload,
+		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
+		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
 		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, QueryId, ResetCardDescriptorDto,
 		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
@@ -3418,6 +3409,19 @@ mod tests {
 			ResumeCursor, decode_client_message,
 		},
 	};
+
+	#[test]
+	fn retired_stale_quota_state_is_rejected() {
+		let stale = serde_json::json!({
+			"state": "stale",
+			"data": {
+				"used_percent": 42,
+				"resets_at_unix_micros": 2_000_000,
+			},
+		});
+
+		assert!(serde_json::from_value::<AccountQuotaStateDto>(stale).is_err());
+	}
 
 	#[test]
 	fn account_alias_accepts_only_one_canonical_word() {

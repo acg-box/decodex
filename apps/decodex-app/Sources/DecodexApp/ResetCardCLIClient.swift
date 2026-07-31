@@ -136,7 +136,6 @@ enum ResetCardQuotaError: String, Decodable, Equatable, Sendable {
 enum ResetCardQuotaState: Equatable, Sendable {
 	case unknown
 	case current(usedPercent: UInt8, resetsAtUnixMicros: Int64)
-	case stale(usedPercent: UInt8, resetsAtUnixMicros: Int64)
 	case error(ResetCardQuotaError)
 }
 
@@ -147,7 +146,7 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 
 	var usedPercent: UInt8? {
 		switch state {
-		case .current(let usedPercent, _), .stale(let usedPercent, _):
+		case .current(let usedPercent, _):
 			return usedPercent
 		case .unknown, .error:
 			return nil
@@ -157,7 +156,7 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 	var resetDate: Date? {
 		let micros: Int64
 		switch state {
-		case .current(_, let resetsAtUnixMicros), .stale(_, let resetsAtUnixMicros):
+		case .current(_, let resetsAtUnixMicros):
 			micros = resetsAtUnixMicros
 		case .unknown, .error:
 			return nil
@@ -172,8 +171,6 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 			return "Unknown"
 		case .current:
 			return "Current"
-		case .stale:
-			return "Stale"
 		case .error:
 			return "Error"
 		}
@@ -185,7 +182,7 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 			return "No observation"
 		case .error(let error):
 			return error.presentation
-		case .current, .stale:
+		case .current:
 			return ""
 		}
 	}
@@ -196,8 +193,6 @@ struct ResetCardQuotaWindow: Equatable, Sendable {
 			return "Unknown, no observation"
 		case .current(let usedPercent, _):
 			return "Current, \(usedPercent) percent used, resets \(resetDate?.formatted() ?? "unknown")"
-		case .stale(let usedPercent, _):
-			return "Stale, \(usedPercent) percent used, resets \(resetDate?.formatted() ?? "unknown")"
 		case .error(let error):
 			return "Error, \(error.presentation)"
 		}
@@ -1033,7 +1028,6 @@ private struct ResetCardQuotaWindowWire: Decodable, Sendable {
 private enum ResetCardQuotaStateWire: Decodable, Sendable {
 	case unknown
 	case current(ResetCardQuotaValueWire)
-	case stale(ResetCardQuotaValueWire)
 	case error(ResetCardQuotaError)
 
 	init(from decoder: Decoder) throws {
@@ -1045,11 +1039,6 @@ private enum ResetCardQuotaStateWire: Decodable, Sendable {
 		case "current":
 			try rejectUnknownFields(in: decoder, allowed: ["state", "data"])
 			self = .current(
-				try container.decode(ResetCardQuotaValueWire.self, forKey: .data)
-			)
-		case "stale":
-			try rejectUnknownFields(in: decoder, allowed: ["state", "data"])
-			self = .stale(
 				try container.decode(ResetCardQuotaValueWire.self, forKey: .data)
 			)
 		case "error":
@@ -1077,18 +1066,6 @@ private enum ResetCardQuotaStateWire: Decodable, Sendable {
 				throw ResetCardClientError.invalidResponse
 			}
 			return .current(
-				usedPercent: value.usedPercent,
-				resetsAtUnixMicros: value.resetsAtUnixMicros
-			)
-		case .stale(let value):
-			let observed = try validatedObservation(
-				observedAtUnixMicros,
-				value: value
-			)
-			guard value.resetsAtUnixMicros > observed else {
-				throw ResetCardClientError.invalidResponse
-			}
-			return .stale(
 				usedPercent: value.usedPercent,
 				resetsAtUnixMicros: value.resetsAtUnixMicros
 			)
