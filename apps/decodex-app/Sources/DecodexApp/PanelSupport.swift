@@ -18,6 +18,7 @@ enum PanelSpacing {
 enum PanelMotion {
 	static let panelLayout = Animation.interactiveSpring(response: 0.3, dampingFraction: 0.92, blendDuration: 0.05)
 	static let controlState = Animation.easeInOut(duration: 0.16)
+	static let quotaValue = Animation.easeOut(duration: 0.46)
 }
 
 extension View {
