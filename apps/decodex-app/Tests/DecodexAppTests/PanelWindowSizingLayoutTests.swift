@@ -89,6 +89,41 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
+	func testAccountReorderRebasesFramesBeforeASecondDrag() throws {
+		let initialOrder = ["first", "second", "third"]
+		let reordered = ["second", "first", "third"]
+		let rebasedFrames = try XCTUnwrap(
+			AccountCardReorderLayout.rebasedFrames(
+				from: initialOrder,
+				to: reordered,
+				frames: accountReorderFrames(),
+				spacing: PanelSpacing.section
+			)
+		)
+
+		XCTAssertEqual(rebasedFrames["second"]?.minY, 0)
+		XCTAssertEqual(rebasedFrames["first"]?.minY, 88)
+		XCTAssertEqual(rebasedFrames["third"]?.minY, 176)
+		XCTAssertEqual(
+			AccountCardReorderLayout.constrainedTranslationY(
+				for: "third",
+				baseOrder: reordered,
+				frames: rebasedFrames,
+				proposed: -500
+			),
+			-176
+		)
+		XCTAssertEqual(
+			AccountCardReorderLayout.reorderedAccountIDs(
+				dragging: "third",
+				baseOrder: reordered,
+				frames: rebasedFrames,
+				translationY: -176
+			),
+			["third", "second", "first"]
+		)
+	}
+
 	private func accountReorderFrames() -> [String: CGRect] {
 		[
 			"first": CGRect(x: 0, y: 0, width: 260, height: 80),
@@ -157,6 +192,22 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 
 		XCTAssertEqual(origin, NSPoint(x: 2_315, y: 692))
+	}
+
+	func testStatusPanelSelectsTheDisplayContainingTheStatusItemBeforeAStaleFallback() {
+		let screenFrames = [
+			NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+			NSRect(x: 1_920, y: 0, width: 1_080, height: 1_344),
+		]
+
+		XCTAssertEqual(
+			StatusPanelLayout.screenIndex(
+				containing: NSRect(x: 2_470, y: 1_320, width: 30, height: 24),
+				screenFrames: screenFrames,
+				fallbackIndex: 0
+			),
+			1
+		)
 	}
 
 	func testStatusPanelOriginClampsAtBothHorizontalDisplayEdges() {
