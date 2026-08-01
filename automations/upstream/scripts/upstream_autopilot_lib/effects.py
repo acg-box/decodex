@@ -458,6 +458,7 @@ def find_or_create_pull_request(
         )
     value = pull_request_readback(pr_url)
     verify_open_pull_request(
+        worktree,
         value,
         policy,
         pr_url=pr_url,
@@ -511,6 +512,7 @@ def retire_pull_request(
     before = pull_request_readback(pr_url)
     if before.get("state") == "OPEN":
         verify_open_pull_request(
+            worktree,
             before,
             policy,
             pr_url=pr_url,
