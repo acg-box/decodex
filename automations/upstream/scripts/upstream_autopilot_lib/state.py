@@ -59,6 +59,11 @@ from .core import (
     validate_x_pricing_audit_evidence,
 )
 from .observation import mirror_arguments
+from .effectiveness import (
+    classify_lifetime_outcomes,
+    effectiveness_improvement_reason,
+    rolling_effectiveness,
+)
 from .validation import validate_validation_receipt
 from .handoff import validate_handoff_provenance, validate_handoff_receipt
 
@@ -890,6 +895,7 @@ def validate_state(state: dict[str, Any]) -> None:
                 or not isinstance(effect.get("updated_at"), int)
                 or effect["updated_at"] < effect["started_at"]
                 or status in TERMINAL_STATUSES
+                or status == "review_pending"
             ):
                 raise AutopilotError("candidate_effect_invalid")
             effect_receipt = effect["validation_receipt"]
@@ -2388,6 +2394,27 @@ def has_unresolved_external_effect(candidate: dict[str, Any]) -> bool:
     }
 
 
+def preserved_finding_codes(candidate: Mapping[str, Any]) -> list[str]:
+    result = candidate.get("result")
+    finding_codes = (
+        result.get("finding_codes")
+        if isinstance(result, Mapping)
+        else None
+    )
+    return list(finding_codes) if isinstance(finding_codes, list) else []
+
+
+def external_effect_recovery_role(candidate: Mapping[str, Any]) -> str | None:
+    effect = candidate.get("effect")
+    if not isinstance(effect, Mapping):
+        return None
+    if effect.get("kind") == "land":
+        return "reviewer"
+    if effect.get("kind") in {"publish", "retire_pr"}:
+        return "maintainer"
+    return None
+
+
 def lease_matches(candidate: dict[str, Any], role: str, token: str, now: int) -> None:
     lease = candidate.get("lease")
     if lease is None or lease.get("role") != role:
@@ -2877,7 +2904,22 @@ def recover_expired_leases(
         candidate["lease"] = None
         candidate["handoff"] = None
         candidate["updated_at"] = now
-        if attempts >= int(policy["max_attempts"]):
+        recovery_role = external_effect_recovery_role(candidate)
+        if recovery_role == role:
+            candidate["status"] = "retry_wait"
+            candidate["next_retry_at"] = now
+            candidate["retry_role"] = role
+            if not stale_base_retry:
+                candidate["result"] = {
+                    "outcome": "blocked",
+                    "reason_code": "lease_expired",
+                    "error_digest": sha256_value(
+                        {"reason_code": "lease_expired", "role": role}
+                    ),
+                    "finding_codes": preserved_finding_codes(candidate),
+                    "at": now,
+                }
+        elif attempts >= int(policy["max_attempts"]):
             candidate["status"] = "needs_attention"
             candidate["next_retry_at"] = None
             candidate["retry_role"] = role
@@ -2888,6 +2930,7 @@ def recover_expired_leases(
                     "error_digest": sha256_value(
                         {"reason_code": "lease_expired", "role": role}
                     ),
+                    "finding_codes": preserved_finding_codes(candidate),
                     "at": now,
                 }
         elif role == "reviewer":
@@ -2905,6 +2948,7 @@ def recover_expired_leases(
                     "error_digest": sha256_value(
                         {"reason_code": "lease_expired", "role": role}
                     ),
+                    "finding_codes": preserved_finding_codes(candidate),
                     "at": now,
                 }
         append_event(
@@ -3095,6 +3139,9 @@ def claim_candidate(
         )
         if effect_role != role:
             raise AutopilotError("candidate_effect_role_mismatch")
+    external_effect_recovery = bool(
+        external_effect_recovery_role(candidate) == role
+    )
     attempts = candidate["attempts"][role]
     stale_credit_available = bool(
         role == "maintainer"
@@ -3107,6 +3154,7 @@ def claim_candidate(
     if (
         completed_handoff is None
         and not stale_credit_available
+        and not external_effect_recovery
         and attempts >= int(policy["max_attempts"])
     ):
         stale_base_retry = bool(
@@ -3129,6 +3177,7 @@ def claim_candidate(
                         "attempts": attempts,
                     }
                 ),
+                "finding_codes": preserved_finding_codes(candidate),
                 "at": now,
             }
         candidate["updated_at"] = now
@@ -3170,7 +3219,7 @@ def claim_candidate(
                 "generation": generation,
                 "attempt_incremented": incremented,
             }
-        else:
+        elif not external_effect_recovery:
             candidate["attempts"][role] += 1
     candidate["status"] = "implementing" if role == "maintainer" else "reviewing"
     candidate["next_retry_at"] = None
@@ -4103,6 +4152,7 @@ def retire_candidate_pull_request(
     )
     candidate["pull_request"] = None
     candidate["effect"] = None
+    candidate["result"] = None
     candidate["updated_at"] = now
     append_event(
         state,
@@ -4137,6 +4187,8 @@ def submit_decision(
         raise AutopilotError("automation_repair_cannot_reject")
     if candidate.get("pull_request") is not None:
         raise AutopilotError("decision_has_pull_request")
+    if candidate.get("effect") is not None:
+        raise AutopilotError("decision_effect_unresolved")
     validate_validation_receipt(maintainer_receipt, role="maintainer")
     candidate["decision"] = {
         "outcome": outcome,
@@ -4717,6 +4769,7 @@ def resolve_candidate(
     if outcome in {"landed", "no_change"} and candidate.get("repair_of") is not None:
         repaired = find_candidate(state, candidate["repair_of"])
         if repaired["status"] in {"needs_attention", "repair_pending"}:
+            repair_target_findings = preserved_finding_codes(repaired)
             blocked_role = repaired["retry_role"]
             resumed_role = blocked_role
             if resumed_role == "reviewer":
@@ -4755,6 +4808,7 @@ def resolve_candidate(
                 "repair_outcome": outcome,
                 "blocked_role": blocked_role,
                 "resumed_role": resumed_role,
+                "finding_codes": repair_target_findings,
                 "at": now,
             }
             repaired["updated_at"] = now
@@ -4815,13 +4869,18 @@ def block_candidate(
         candidate["stale_refresh"] = None
     candidate["retry_role"] = role
     if not stale_base_retry:
+        finding_codes = preserved_finding_codes(candidate)
         candidate["result"] = {
             "outcome": "blocked",
             "reason_code": reason_code,
             "error_digest": error_digest,
+            "finding_codes": finding_codes,
             "at": now,
         }
-    if attempt >= int(policy["max_attempts"]):
+    if external_effect_recovery_role(candidate) == role:
+        candidate["status"] = "retry_wait"
+        candidate["next_retry_at"] = now + retry_delay(policy, attempt)
+    elif attempt >= int(policy["max_attempts"]):
         candidate["status"] = "needs_attention"
         candidate["next_retry_at"] = None
     else:
@@ -4849,6 +4908,18 @@ def queue_needed_repairs(
         if blocked["status"] != "needs_attention":
             continue
         if has_unresolved_external_effect(blocked):
+            recovery_role = external_effect_recovery_role(blocked)
+            if recovery_role is not None:
+                blocked["status"] = "retry_wait"
+                blocked["next_retry_at"] = now
+                blocked["retry_role"] = recovery_role
+                blocked["updated_at"] = now
+                append_event(
+                    state,
+                    "external_effect_recovery_requeued",
+                    now,
+                    candidate_id=blocked["id"],
+                )
             continue
         result = blocked.get("result")
         reason_code = result.get("reason_code") if isinstance(result, dict) else None
@@ -4871,62 +4942,6 @@ def queue_needed_repairs(
     return queued
 
 
-def rolling_effectiveness(
-    state: dict[str, Any],
-    *,
-    now: int,
-    window_seconds: int,
-) -> dict[str, Any]:
-    cutoff = now - window_seconds
-    coverage_start = cutoff - (cutoff % METRIC_BUCKET_SECONDS)
-    buckets = [
-        bucket
-        for bucket in state["metrics"]["buckets"]
-        if int(bucket["start"]) >= coverage_start
-    ]
-    outcome_counts = {
-        outcome: sum(bucket["outcomes"][outcome] for bucket in buckets)
-        for outcome in sorted(TERMINAL_STATUSES)
-    }
-    terminal_count = sum(outcome_counts.values())
-    lead_time_count = sum(bucket["lead_time_count"] for bucket in buckets)
-    lead_time_total = sum(
-        bucket["lead_time_seconds_total"] for bucket in buckets
-    )
-    event_counts = {
-        event: sum(bucket["events"][event] for bucket in buckets)
-        for event in (
-            "candidate_blocked",
-            "repair_requested",
-            "automation_repair_queued",
-            "automation_improvement_queued",
-        )
-    }
-    return {
-        "window_seconds": window_seconds,
-        "bucket_seconds": METRIC_BUCKET_SECONDS,
-        "coverage_start": coverage_start,
-        "terminal_count": terminal_count,
-        "outcome_counts": outcome_counts,
-        "landed_rate_basis_points": (
-            outcome_counts["landed"] * 10_000 // terminal_count
-            if terminal_count
-            else None
-        ),
-        "average_lead_time_seconds": (
-            lead_time_total // lead_time_count if lead_time_count else None
-        ),
-        "blocked_attempt_count": event_counts["candidate_blocked"],
-        "repair_request_count": event_counts["repair_requested"],
-        "automation_repair_queued_count": event_counts[
-            "automation_repair_queued"
-        ],
-        "automation_improvement_queued_count": event_counts[
-            "automation_improvement_queued"
-        ],
-    }
-
-
 def queue_effectiveness_improvements(
     state: dict[str, Any],
     policy: dict[str, Any],
@@ -4934,37 +4949,10 @@ def queue_effectiveness_improvements(
     repository_head: str,
     now: int,
 ) -> list[str]:
-    metrics = rolling_effectiveness(
+    reason_code = effectiveness_improvement_reason(
         state,
         now=now,
-        window_seconds=604800,
     )
-    assessment_only_landings = sum(
-        candidate["status"] == "landed"
-        and isinstance(candidate.get("result"), dict)
-        and candidate["result"].get("outcome") == "landed"
-        and int(candidate["result"].get("resolved_at") or 0)
-        >= now - 604800
-        and not (
-            candidate["contract_missing"]
-            and _has_validated_landed_diff(candidate)
-        )
-        and candidate["kind"] != "automation_repair"
-        for candidate in state["candidates"]
-    )
-    reason_code: str | None = None
-    if assessment_only_landings >= 2:
-        reason_code = "assessment_only_churn"
-    elif metrics["repair_request_count"] >= 2:
-        reason_code = "repeated_review_repairs"
-    elif metrics["blocked_attempt_count"] >= 3:
-        reason_code = "repeated_blocked_attempts"
-    elif (
-        metrics["terminal_count"] >= 3
-        and metrics["average_lead_time_seconds"] is not None
-        and metrics["average_lead_time_seconds"] > 21600
-    ):
-        reason_code = "lead_time_sla_missed"
     if reason_code is None:
         return []
     if any(
@@ -5133,79 +5121,3 @@ def state_health(
             ),
         },
     }
-
-
-def classify_lifetime_outcomes(state: dict[str, Any]) -> dict[str, int]:
-    """Separate real contract adaptation from assessment-only activity."""
-
-    counts = {
-        "contract_adaptation_landed_count": 0,
-        "automation_repair_landed_count": 0,
-        "assessment_only_landed_count": 0,
-        "validated_no_change_count": 0,
-        "validated_rejected_count": 0,
-        "active_contract_gap_count": 0,
-    }
-    for candidate in state["candidates"]:
-        if (
-            candidate["status"] not in TERMINAL_STATUSES
-            and candidate["contract_missing"]
-        ):
-            counts["active_contract_gap_count"] += 1
-        result = candidate.get("result")
-        if not isinstance(result, dict):
-            continue
-        outcome = result.get("outcome")
-        if outcome == "no_change":
-            counts["validated_no_change_count"] += 1
-        elif outcome == "rejected":
-            counts["validated_rejected_count"] += 1
-        elif outcome == "landed":
-            if candidate["kind"] == "automation_repair":
-                counts["automation_repair_landed_count"] += 1
-            elif (
-                candidate["contract_missing"]
-                and _has_validated_landed_diff(candidate)
-            ):
-                counts["contract_adaptation_landed_count"] += 1
-            else:
-                counts["assessment_only_landed_count"] += 1
-    return counts
-
-
-def _has_validated_landed_diff(candidate: dict[str, Any]) -> bool:
-    commit = candidate.get("commit_receipt")
-    pull_request = candidate.get("pull_request")
-    result = candidate.get("result")
-    if not all(
-        isinstance(value, dict)
-        for value in (commit, pull_request, result)
-    ):
-        return False
-    maintainer = pull_request.get("validation_receipt")
-    reviewer = result.get("reviewer_receipt")
-    if not isinstance(maintainer, dict) or not isinstance(reviewer, dict):
-        return False
-    base_head = commit.get("base_head")
-    head_sha = commit.get("head_sha")
-    tree_sha = commit.get("tree_sha")
-    return bool(
-        re.fullmatch(r"[0-9a-f]{40}", str(base_head)) is not None
-        and re.fullmatch(r"[0-9a-f]{40}", str(head_sha)) is not None
-        and re.fullmatch(r"[0-9a-f]{40}", str(tree_sha)) is not None
-        and base_head != head_sha
-        and pull_request.get("head_sha") == head_sha
-        and maintainer.get("base_head") == base_head
-        and maintainer.get("repository_head") == head_sha
-        and maintainer.get("repository_tree") == tree_sha
-        and reviewer.get("base_head") == base_head
-        and reviewer.get("repository_head") == head_sha
-        and reviewer.get("repository_tree") == tree_sha
-        and re.fullmatch(
-            r"[0-9a-f]{40}",
-            str(result.get("merge_sha")),
-        )
-        is not None
-        and is_sha256(result.get("land_intent_sha256"))
-        and is_sha256(result.get("land_execution_receipt_sha256"))
-    )

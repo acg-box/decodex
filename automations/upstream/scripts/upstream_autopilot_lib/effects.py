@@ -396,8 +396,11 @@ def find_or_create_pull_request(
     policy: dict[str, Any],
     candidate: dict[str, Any],
     *,
+    base_head: str,
     head_sha: str,
 ) -> str:
+    if SHA_PATTERN.fullmatch(base_head) is None:
+        raise AutopilotError("pull_request_base_invalid")
     branch = candidate["branch_name"]
     output = run_command(
         [
@@ -459,10 +462,40 @@ def find_or_create_pull_request(
         policy,
         pr_url=pr_url,
         branch=branch,
-        base_head=candidate["commit_receipt"]["base_head"],
+        base_head=base_head,
         head_sha=head_sha,
     )
     return pr_url
+
+
+def verify_retired_pull_request(
+    worktree: Path,
+    value: dict[str, Any],
+    policy: dict[str, Any],
+    *,
+    pr_url: str,
+    branch: str,
+    base_head: str,
+    head_sha: str,
+) -> None:
+    recorded_base = value.get("baseRefOid")
+    if (
+        value.get("state") != "CLOSED"
+        or value.get("url") != pr_url
+        or value.get("isCrossRepository") is not False
+        or value.get("baseRefName") != policy["target_branch"]
+        or SHA_PATTERN.fullmatch(str(recorded_base)) is None
+        or value.get("headRefName") != branch
+        or value.get("headRefOid") != head_sha
+        or value.get("mergeCommit") is not None
+    ):
+        raise AutopilotError("pull_request_retirement_mismatch")
+    if recorded_base != base_head and not command_succeeds(
+        ["git", "merge-base", "--is-ancestor", recorded_base, base_head],
+        cwd=worktree,
+        failure_code="pull_request_retirement_mismatch",
+    ):
+        raise AutopilotError("pull_request_retirement_mismatch")
 
 
 def retire_pull_request(
@@ -501,29 +534,26 @@ def retire_pull_request(
             cwd=worktree,
             failure_code="pull_request_retirement_failed",
         )
-    elif (
-        before.get("state") != "CLOSED"
-        or before.get("url") != pr_url
-        or before.get("isCrossRepository") is not False
-        or before.get("baseRefName") != policy["target_branch"]
-        or before.get("baseRefOid") != base_head
-        or before.get("headRefName") != branch
-        or before.get("headRefOid") != head_sha
-        or before.get("mergeCommit") is not None
-    ):
-        raise AutopilotError("pull_request_retirement_mismatch")
+    else:
+        verify_retired_pull_request(
+            worktree,
+            before,
+            policy,
+            pr_url=pr_url,
+            branch=branch,
+            base_head=base_head,
+            head_sha=head_sha,
+        )
     after = pull_request_readback(pr_url)
-    if (
-        after.get("state") != "CLOSED"
-        or after.get("url") != pr_url
-        or after.get("isCrossRepository") is not False
-        or after.get("baseRefName") != policy["target_branch"]
-        or after.get("baseRefOid") != base_head
-        or after.get("headRefName") != branch
-        or after.get("headRefOid") != head_sha
-        or after.get("mergeCommit") is not None
-    ):
-        raise AutopilotError("pull_request_retirement_mismatch")
+    verify_retired_pull_request(
+        worktree,
+        after,
+        policy,
+        pr_url=pr_url,
+        branch=branch,
+        base_head=base_head,
+        head_sha=head_sha,
+    )
     remote_head = remote_branch_head(worktree, branch)
     if remote_head is not None:
         if remote_head != head_sha:

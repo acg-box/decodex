@@ -15,6 +15,7 @@ from upstream_autopilot_lib import cli as cli_module
 from upstream_autopilot_lib import agent as agent_module
 from upstream_autopilot_lib import core as core_module
 from upstream_autopilot_lib import effects as effects_module
+from upstream_autopilot_lib import effectiveness as effectiveness_module
 from upstream_autopilot_lib import handoff as handoff_module
 from upstream_autopilot_lib import observation as observation_module
 from upstream_autopilot_lib import pricing as pricing_module

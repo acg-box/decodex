@@ -50,7 +50,7 @@ POLICY_KEYS = {
 }
 REPO_ROOT = Path(__file__).resolve().parents[4]
 DEFAULT_POLICY_PATH = REPO_ROOT / "automations/upstream/policy.json"
-TERMINAL_STATUSES = {"landed", "no_change", "rejected"}
+TERMINAL_STATUSES = frozenset({"landed", "no_change", "rejected"})
 CONTENT_DEGRADATION_CODES = (
     "candidate_unresolved",
     "daily_strategy_overdue",
@@ -1086,11 +1086,29 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
             raise AutopilotError("candidate_result_invalid")
         return
     if outcome == "blocked":
+        finding_codes = result.get("finding_codes", [])
         if (
-            not has_exact_keys(
-                result,
-                {"outcome", "reason_code", "error_digest", "at"},
+            frozenset(result)
+            not in {
+                frozenset(
+                    {"outcome", "reason_code", "error_digest", "at"}
+                ),
+                frozenset(
+                    {
+                        "outcome",
+                        "reason_code",
+                        "error_digest",
+                        "finding_codes",
+                        "at",
+                    }
+                ),
+            }
+            or not bounded_string_list(
+                finding_codes,
+                pattern=REASON_PATTERN,
+                maximum=16,
             )
+            or finding_codes != sorted(finding_codes)
             or REASON_PATTERN.fullmatch(str(result["reason_code"])) is None
             or not is_sha256(result["error_digest"])
             or not isinstance(result["at"], int)
@@ -1124,6 +1142,7 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
                     "repair_outcome",
                     "blocked_role",
                     "resumed_role",
+                    "finding_codes",
                     "at",
                 },
             )
@@ -1135,6 +1154,12 @@ def validate_candidate_result(candidate: dict[str, Any]) -> None:
             or result["repair_outcome"] not in {"landed", "no_change"}
             or result["blocked_role"] not in {"maintainer", "reviewer"}
             or result["resumed_role"] not in {"maintainer", "reviewer"}
+            or not bounded_string_list(
+                result["finding_codes"],
+                pattern=REASON_PATTERN,
+                maximum=16,
+            )
+            or result["finding_codes"] != sorted(result["finding_codes"])
             or (
                 result["repair_outcome"] == "landed"
                 and not SHA_PATTERN.fullmatch(str(result["merge_sha"]))
