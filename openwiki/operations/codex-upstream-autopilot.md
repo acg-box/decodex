@@ -96,6 +96,12 @@ digests, applies the patch to the unchanged candidate with Git's indexed binary
 patch path, permits only regular modes, and authorizes each changed path for the
 candidate kind. Scheduler, GitHub Actions, authentication, landing,
 managed-repository, X execution, schema, and automation-control paths are denied.
+The sole exception lets an `automation_repair` change the effect-free outcome
+evaluation module `upstream_autopilot_lib/effectiveness.py`; state persistence,
+CLI, effect, agent, watchdog, policy, manifest, and schema authority remain denied.
+The protected parent requires that module to remain non-executable `100644` source
+with fixed imports, a bounded pure AST subset, no input mutation, no top-level
+execution, and no recursive call graph. Repairable tests cannot weaken this check.
 Any rejected or internally invalid applied patch is reset to the exact clean
 baseline. The parent then writes the create-only mode-`0600` handoff receipt. The
 candidate-and-role lock remains held through receipt persistence. A global root lock
@@ -227,7 +233,21 @@ intent. An old lease token cannot complete an effect after ownership changes.
 Automation-owned branch replacement uses the recorded old remote HEAD as an exact
 force-with-lease precondition. The initial publish accepts only an absent remote ref
 or the exact recorded candidate base. A PR repair accepts only the prior recorded PR
-head. No unrelated branch can be rewritten.
+head. No unrelated branch can be rewritten. After validation, publish and
+pull-request retirement refresh primary `main` and require pull-request `baseRefOid`
+to equal that fresh head. The validation receipt retains the candidate's original
+commit base. A difference can therefore proceed only to independent review; the
+formal land transaction owns the `base_stale` classification and refresh.
+
+Persisted publish, pull-request retirement, and started landing effects remain
+claimable after the normal model-attempt budget is exhausted. Recovery does not
+increment that budget. Health requeues an older exhausted effect for its owning role,
+and that role completes only the recorded effect and deterministic readback without
+starting a new child.
+Reviewer finding codes remain in blocked and automation-repair resolution records, so
+the resumed Maintainer receives the original bounded repair target. If PR retirement
+completed before a crash, closed-PR recovery accepts its recorded base only when Git
+proves that it is an ancestor of the freshly verified current main.
 
 All scheduled tasks use local execution from the primary clean `main` checkout. The
 automation configuration cannot use a worktree cwd. Maintainer and Reviewer can create
