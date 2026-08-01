@@ -148,11 +148,13 @@ The same health result includes rolling 24-hour and seven-day outcome, landing-r
 lead-time, blocked-attempt, review-repair, and self-repair metrics.
 
 Health converts repeated seven-day failures into work instead of only reporting
-them. Two Reviewer repair requests, three blocked attempts, or average lead time
-above six hours across at least three terminal samples creates one deduplicated
-improvement candidate. A live scheduler mismatch that remains after native
-reconciliation can create the same bounded candidate type. Maintainer must reproduce
-the evidence and add a regression test; Reviewer owns the terminal decision.
+them. It creates one deduplicated improvement candidate after two Reviewer repair
+requests or when average lead time exceeds six hours across at least three terminal
+samples. Blocked-attempt totals remain health evidence; attempt exhaustion creates
+only a repair scoped to the affected candidate. A live scheduler mismatch that
+remains after native reconciliation can create the same bounded candidate type.
+Maintainer must reproduce the evidence and add a regression test; Reviewer owns the
+terminal decision.
 
 Health also reconciles the five fixed live Codex App automation IDs from the current
 upstream and content manifests and prompt files. It uses only the native automation

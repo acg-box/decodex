@@ -15171,6 +15171,36 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         self.assertEqual(len(state["events"]), self.autopilot.MAX_EVENTS)
         self.assertEqual(metrics["repair_request_count"], 3000)
 
+    def test_blocked_attempt_metrics_do_not_queue_unscoped_improvement(self):
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+        for offset in range(3):
+            self.autopilot.append_event(
+                state,
+                "candidate_blocked",
+                150 + offset,
+                candidate_id=candidate_id,
+            )
+
+        metrics = self.autopilot.rolling_effectiveness(
+            state,
+            now=200,
+            window_seconds=604800,
+        )
+        health_prompt = (
+            ROOT / "automations/upstream/prompts/health.md"
+        ).read_text(encoding="utf-8")
+        queued = self.autopilot.queue_effectiveness_improvements(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=200,
+        )
+
+        self.assertEqual(metrics["blocked_attempt_count"], 3)
+        self.assertNotIn("repeated_blocked_attempts", health_prompt)
+        self.assertEqual(queued, [])
+
     def test_repeated_assessment_only_landings_queue_improvement(self):
         state, candidate_id = self.bootstrap(now=100)
         source = self.autopilot.find_candidate(state, candidate_id)

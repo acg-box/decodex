@@ -232,10 +232,11 @@ Workflow:
    adaptation. An assessment-only landing is process churn and must queue a bounded
    improvement when it repeats.
 10. Queue or reuse one reason-specific improvement for each detected degradation.
-    Use the exact `queue-improvement` command for
-    `assessment_only_churn`, `lead_time_sla_missed`, `repeated_blocked_attempts`,
-    `repeated_review_repairs`, and `task_retention_contract_drift` when each
-    condition applies.
+    Use the exact `queue-improvement` command for `assessment_only_churn`,
+    `lead_time_sla_missed`, `repeated_review_repairs`, and
+    `task_retention_contract_drift` when each condition applies.
+    Treat blocked-attempt totals as health evidence only; attempt exhaustion already
+    queues a repair scoped to the affected candidate.
     The manager owns follow-through: confirm a Maintainer generation exists, then
     confirm Reviewer validates and lands it. Keep unresolved or failed work visible;
     do not ask the user to advance routine work.

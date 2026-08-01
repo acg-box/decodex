@@ -180,8 +180,6 @@ def effectiveness_improvement_reason(
         return "assessment_only_churn"
     if metrics["repair_request_count"] >= 2:
         return "repeated_review_repairs"
-    if metrics["blocked_attempt_count"] >= 3:
-        return "repeated_blocked_attempts"
     if (
         metrics["terminal_count"] >= 3
         and metrics["average_lead_time_seconds"] is not None
