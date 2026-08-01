@@ -198,8 +198,26 @@ decodex-publisher validate-social
 
 - Reads the complete account skeleton from the common daemon service and renders one
   compact UUID-keyed row for every account in canonical routing order. Rows use
-  independent material cards with transparent gaps, compact quota meters, and
-  single-line Reset Card controls.
+  independent cards with transparent gaps, compact quota meters, and single-line
+  Reset Card controls. The overflow menu stores one panel-wide appearance choice:
+  `Thin` by default, or the system `Liquid Glass` effect. The same menu keeps only
+  `Refresh all`, that material selector, and Quit. A manual refresh remains available
+  during a background read and coalesces into the active refresh cycle; account
+  mutations and Reset Card submissions still disable it.
+- Reveals a compact trailing-edge reorder grip over an account card's padding while
+  the pointer is over that card, so the grip does not reserve a layout column. A
+  drag uses the stable list coordinate space and keeps the full-size card on a
+  fixed vertical track. Crossing an adjacent card's center springs that card into
+  the open slot, and release springs the dragged card into its final slot. A
+  completed reorder, or the grip's accessible Move up or Move down action, sends
+  one complete `set_account_order` request through the in-process native client
+  with the current routing revision. The daemon-owned
+  [Account Lifecycle Authority](../specs/account-lifecycle-authority.md#versioned-account-controls)
+  remains canonical. The returned routing order replaces the immediate order, and a
+  rejection restores the last authoritative order. Reordering is unavailable while
+  an account control or Reset Card submission is in progress, when routing and
+  account membership disagree, or when fewer than two accounts exist. The app does
+  not persist a separate local order.
 - Loads quota windows and Reset Cards independently for each row. One slow or failed
   provider request does not hide the other accounts. A provider-unsupported quota
   duration stays a muted row-local fact and does not mark the account as failed.
