@@ -1124,6 +1124,23 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                     raise AutopilotError(
                         "pre_publish_stale_refresh_base_invalid"
                     )
+                current_main_tree = run_command(
+                    [
+                        "git",
+                        "rev-parse",
+                        "--verify",
+                        f"{preflight['head']}^{{tree}}",
+                    ],
+                    cwd=repo_root,
+                    failure_code=(
+                        "pre_publish_stale_refresh_tree_unavailable"
+                    ),
+                    max_output_bytes=128,
+                )
+                if SHA_PATTERN.fullmatch(current_main_tree) is None:
+                    raise AutopilotError(
+                        "pre_publish_stale_refresh_tree_invalid"
+                    )
                 refresh_at = utc_now()
                 with locked_state(cache_root) as (state, state_path):
                     prepare_pre_publish_stale_refresh(
@@ -1132,7 +1149,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                         token=args.lease_token,
                         challenge_sha256=challenge_sha256,
                         current_main_head=preflight["head"],
-                        current_main_tree=preflight["tree"],
+                        current_main_tree=current_main_tree,
                         commit_receipt_sha256=sha256_value(recorded_commit),
                         now=refresh_at,
                     )
