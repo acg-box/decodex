@@ -160,27 +160,47 @@ enum AccountCardReorderLayout {
 		frames: [String: CGRect],
 		spacing: CGFloat
 	) -> CGFloat {
-		guard visualOrder.count == baseOrder.count,
-			Set(visualOrder) == Set(baseOrder),
-			let originalFrame = frames[accountID],
-			let firstID = baseOrder.first,
-			let firstFrame = frames[firstID],
-			baseOrder.allSatisfy({ frames[$0] != nil })
+		guard let originalFrame = frames[accountID],
+			let projectedFrame = rebasedFrames(
+				from: baseOrder,
+				to: visualOrder,
+				frames: frames,
+				spacing: spacing
+			)?[accountID]
 		else {
 			return 0
 		}
+		return projectedFrame.minY - originalFrame.minY
+	}
 
-		var projectedMinY = firstFrame.minY
-		for orderedID in visualOrder {
-			guard let frame = frames[orderedID] else {
-				return 0
-			}
-			if orderedID == accountID {
-				return projectedMinY - originalFrame.minY
-			}
-			projectedMinY += frame.height + spacing
+	static func rebasedFrames(
+		from baseOrder: [String],
+		to reorderedAccountIDs: [String],
+		frames: [String: CGRect],
+		spacing: CGFloat
+	) -> [String: CGRect]? {
+		guard spacing.isFinite,
+			baseOrder.count == reorderedAccountIDs.count,
+			Set(baseOrder).count == baseOrder.count,
+			Set(reorderedAccountIDs) == Set(baseOrder),
+			let firstAccountID = baseOrder.first,
+			let firstFrame = frames[firstAccountID],
+			baseOrder.allSatisfy({ frames[$0] != nil })
+		else {
+			return nil
 		}
-		return 0
+
+		var nextMinY = firstFrame.minY
+		var rebasedFrames = [String: CGRect]()
+		for accountID in reorderedAccountIDs {
+			guard var frame = frames[accountID] else {
+				return nil
+			}
+			frame.origin.y = nextMinY
+			rebasedFrames[accountID] = frame
+			nextMinY += frame.height + spacing
+		}
+		return rebasedFrames
 	}
 }
 
