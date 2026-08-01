@@ -23,6 +23,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "automations/upstream/scripts/upstream_autopilot.py"
+WATCHDOG_SCRIPT = ROOT / "automations/upstream/scripts/agent_watchdog.py"
 X_PRICING_FIXTURE = (
     ROOT / "automations/upstream/tests/fixtures/x-pricing-current.md"
 )
@@ -37,10 +38,22 @@ def load_module():
     return module
 
 
+def load_watchdog_module():
+    spec = importlib.util.spec_from_file_location(
+        "upstream_agent_watchdog",
+        WATCHDOG_SCRIPT,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 class UpstreamAutopilotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.autopilot = load_module()
+        cls.watchdog = load_watchdog_module()
         cls.policy = cls.autopilot.load_policy(
             ROOT / "automations/upstream/policy.json"
         )
@@ -1870,6 +1883,57 @@ class UpstreamAutopilotTests(unittest.TestCase):
                         pass
                 fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
                 os.close(lock_descriptor)
+
+    def test_agent_watchdog_normalizes_single_digit_process_start(self):
+        started = "Sat Aug 1 08:47:20 2026"
+        completed = mock.Mock(
+            returncode=0,
+            stdout=(
+                f"42 1 {os.getuid()} Sat Aug  1 08:47:20 2026\n"
+            ).encode(),
+        )
+        with mock.patch.object(
+            self.watchdog.subprocess,
+            "run",
+            return_value=completed,
+        ):
+            table = self.watchdog._process_table()
+
+        self.assertEqual(table[42], (1, os.getuid(), started))
+        self.assertEqual(
+            self.watchdog._normalize_process_start(
+                "Sat Aug  1 08:47:20 2026"
+            ),
+            started,
+        )
+
+    def test_agent_watchdog_process_table_failures_are_os_errors(self):
+        invalid_outputs = (
+            b"not-a-pid 1 2 Sat Aug  1 08:47:20 2026\n",
+            b"42 1 2 Sat Aug  1 08:47:20 2026\xff\n",
+        )
+        for output in invalid_outputs:
+            with self.subTest(output=output), mock.patch.object(
+                self.watchdog.subprocess,
+                "run",
+                return_value=mock.Mock(returncode=0, stdout=output),
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "process table invalid",
+                ):
+                    self.watchdog._process_table()
+
+        with mock.patch.object(
+            self.watchdog.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["/bin/ps"], 5),
+        ):
+            with self.assertRaisesRegex(
+                OSError,
+                "process table timed out",
+            ):
+                self.watchdog._process_table()
 
     def test_agent_run_fence_blocks_overlap_until_receipt_phase_closes(self):
         with tempfile.TemporaryDirectory() as directory:
