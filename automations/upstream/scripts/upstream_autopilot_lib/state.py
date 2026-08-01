@@ -88,6 +88,14 @@ STALE_REFRESH_KEYS = {
     "prepared_at",
     "updated_at",
 }
+PUBLISH_VALIDATION_REPAIR_REASON_CODES = frozenset(
+    {
+        "validation_diff_invalid",
+        "validation_profile_cargo_make_check_failed",
+        "validation_profile_cargo_make_check_upstream_automation_failed",
+        "validation_profile_focused_tests_failed",
+    }
+)
 LEGACY_STATE_NAMES = (
     "state.json",
     "state.recovery.json",
@@ -161,6 +169,30 @@ def validate_agent_run(value: Any) -> None:
         )
     ):
         raise AutopilotError("candidate_agent_run_invalid")
+
+
+def candidate_has_blocked_publish_validation(
+    candidate: Mapping[str, Any],
+) -> bool:
+    result = candidate.get("result")
+    return bool(
+        isinstance(result, Mapping)
+        and result.get("outcome") == "blocked"
+        and result.get("reason_code")
+        in PUBLISH_VALIDATION_REPAIR_REASON_CODES
+    )
+
+
+def candidate_has_pre_publish_stale_refresh(
+    candidate: Mapping[str, Any],
+) -> bool:
+    stale_refresh = candidate.get("stale_refresh")
+    return bool(
+        isinstance(stale_refresh, Mapping)
+        and candidate_has_blocked_publish_validation(candidate)
+        and candidate.get("pull_request") is None
+        and candidate.get("commit_receipt") is None
+    )
 
 
 def valid_owned_worktrees(value: Any) -> bool:
@@ -1221,26 +1253,72 @@ def validate_state(state: dict[str, Any]) -> None:
                 or not isinstance(stale_refresh.get("updated_at"), int)
                 or stale_refresh["updated_at"]
                 < stale_refresh["prepared_at"]
-                or status
-                not in {
-                    "repair_requested",
-                    "implementing",
-                    "retry_wait",
-                    "needs_attention",
-                    "repair_pending",
-                }
-                or not isinstance(pull_request, dict)
-                or not isinstance(result, dict)
-                or result.get("outcome") != "repair_requested"
-                or "base_stale" not in result.get("finding_codes", [])
-                or stale_refresh["old_base_head"]
-                != pull_request["validation_receipt"]["base_head"]
-                or stale_refresh["old_head_sha"]
-                != pull_request["head_sha"]
-                or commit_receipt is not None
-                or decision is not None
             ):
                 raise AutopilotError("candidate_stale_refresh_invalid")
+            if not candidate_has_pre_publish_stale_refresh(candidate):
+                if (
+                    status
+                    not in {
+                        "repair_requested",
+                        "implementing",
+                        "retry_wait",
+                        "needs_attention",
+                        "repair_pending",
+                    }
+                    or not isinstance(pull_request, dict)
+                    or not isinstance(result, dict)
+                    or result.get("outcome") != "repair_requested"
+                    or "base_stale"
+                    not in result.get("finding_codes", [])
+                    or stale_refresh["old_base_head"]
+                    != pull_request["validation_receipt"]["base_head"]
+                    or stale_refresh["old_head_sha"]
+                    != pull_request["head_sha"]
+                    or commit_receipt is not None
+                    or decision is not None
+                ):
+                    raise AutopilotError("candidate_stale_refresh_invalid")
+            else:
+                handoff = candidate.get("handoff")
+                agent_run = (
+                    handoff.get("agent_run")
+                    if isinstance(handoff, dict)
+                    else None
+                )
+                effect = candidate.get("effect")
+                pre_publish_commit_effect = bool(
+                    isinstance(effect, Mapping)
+                    and effect.get("kind") == "commit"
+                    and effect.get("phase") == "prepared"
+                    and effect.get("head_sha")
+                    == stale_refresh["target_base_head"]
+                    and isinstance(handoff, Mapping)
+                    and isinstance(agent_run, Mapping)
+                    and agent_run.get("phase") == "completed"
+                    and handoff.get("consumed")
+                    == effect.get("handoff_receipt")
+                )
+                if (
+                    status != "implementing"
+                    or result["at"] > stale_refresh["prepared_at"]
+                    or candidate["attempts"]["maintainer"] < 2
+                    or not isinstance(agent_run, Mapping)
+                    or pull_request is not None
+                    or decision is not None
+                    or (
+                        effect is not None
+                        and not pre_publish_commit_effect
+                    )
+                    or commit_receipt is not None
+                    or stale_credit is not None
+                    or agent_run["base_head"]
+                    != stale_refresh["target_base_head"]
+                    or agent_run["input_head"]
+                    != stale_refresh["target_base_head"]
+                    or agent_run["repository_head"]
+                    != stale_refresh["target_base_head"]
+                ):
+                    raise AutopilotError("candidate_stale_refresh_invalid")
         if isinstance(result, dict) and result.get("outcome") == "repair_requested":
             codes = result["finding_codes"]
             disposition = result["reviewer_handoff"]["disposition"]
@@ -2723,6 +2801,10 @@ def recover_expired_leases(
         if lease is None or lease["expires_at"] > now:
             continue
         role = lease["role"]
+        pre_publish_stale_refresh = bool(
+            role == "maintainer"
+            and candidate_has_pre_publish_stale_refresh(candidate)
+        )
         handoff = candidate.get("handoff")
         agent_run = (
             handoff.get("agent_run")
@@ -2741,6 +2823,8 @@ def recover_expired_leases(
             candidate,
             role=role,
         )
+        if pre_publish_stale_refresh:
+            candidate["stale_refresh"] = None
         if completed_handoff is not None:
             candidate["lease"] = None
             candidate["updated_at"] = now
@@ -2853,7 +2937,11 @@ def abandon_missing_completed_agent_run(
         and candidate["result"].get("outcome") == "repair_requested"
         and candidate["result"].get("finding_codes") == ["base_stale"]
     )
-    if not stale_base_recovery:
+    pre_publish_stale_refresh = bool(
+        role == "maintainer"
+        and candidate_has_pre_publish_stale_refresh(candidate)
+    )
+    if not stale_base_recovery and not pre_publish_stale_refresh:
         candidate["attempts"][role] = max(
             0,
             candidate["attempts"][role] - 1,
@@ -2862,6 +2950,8 @@ def abandon_missing_completed_agent_run(
         candidate["stale_refresh_credit"] = None
     candidate["lease"] = None
     candidate["handoff"] = None
+    if pre_publish_stale_refresh:
+        candidate["stale_refresh"] = None
     candidate["updated_at"] = now
     if role == "reviewer":
         candidate["status"] = "review_pending"
@@ -4264,6 +4354,106 @@ def requeue_stale_decision(
     )
 
 
+def prepare_pre_publish_stale_refresh(
+    state: dict[str, Any],
+    *,
+    candidate_id: str,
+    token: str,
+    challenge_sha256: str,
+    current_main_head: str,
+    current_main_tree: str,
+    commit_receipt_sha256: str,
+    now: int,
+) -> None:
+    if (
+        SHA_PATTERN.fullmatch(current_main_head) is None
+        or SHA_PATTERN.fullmatch(current_main_tree) is None
+        or not is_sha256(challenge_sha256)
+        or not is_sha256(commit_receipt_sha256)
+    ):
+        raise AutopilotError("pre_publish_stale_refresh_invalid")
+    candidate = find_candidate(state, candidate_id)
+    lease_matches(candidate, "maintainer", token, now)
+    result = candidate.get("result")
+    handoff = candidate.get("handoff")
+    agent_run = (
+        handoff.get("agent_run") if isinstance(handoff, dict) else None
+    )
+    commit_receipt = candidate.get("commit_receipt")
+    prepared_old_commit_run = bool(
+        isinstance(agent_run, dict)
+        and agent_run.get("phase") == "prepared"
+        and agent_run.get("role") == "maintainer"
+        and agent_run.get("generation") == handoff.get("generation")
+        and hmac.compare_digest(
+            str(agent_run.get("challenge_sha256", "")),
+            challenge_sha256,
+        )
+        and isinstance(commit_receipt, dict)
+        and agent_run.get("base_head") == commit_receipt.get("base_head")
+        and agent_run.get("input_head") == commit_receipt.get("head_sha")
+        and agent_run.get("repository_head")
+        == commit_receipt.get("base_head")
+        and agent_run.get("input_tree") == commit_receipt.get("tree_sha")
+    )
+    if (
+        candidate["status"] != "implementing"
+        or candidate["attempts"]["maintainer"] < 2
+        or not candidate_has_blocked_publish_validation(candidate)
+        or not isinstance(commit_receipt, dict)
+        or not hmac.compare_digest(
+            sha256_value(commit_receipt),
+            commit_receipt_sha256,
+        )
+        or result["at"] < commit_receipt["committed_at"]
+        or current_main_head
+        in {commit_receipt["base_head"], commit_receipt["head_sha"]}
+        or not isinstance(handoff, dict)
+        or handoff.get("role") != "maintainer"
+        or handoff.get("generation") != candidate["lease"]["generation"]
+        or handoff.get("consumed") is not None
+        or not hmac.compare_digest(
+            str(handoff.get("challenge_sha256", "")),
+            challenge_sha256,
+        )
+        or candidate.get("pull_request") is not None
+        or candidate.get("decision") is not None
+        or candidate.get("effect") is not None
+        or candidate.get("stale_refresh") is not None
+        or candidate.get("stale_refresh_credit") is not None
+        or (agent_run is not None and not prepared_old_commit_run)
+    ):
+        raise AutopilotError("pre_publish_stale_refresh_invalid")
+
+    prepare_agent_run(
+        state,
+        candidate_id=candidate_id,
+        role="maintainer",
+        token=token,
+        challenge_sha256=challenge_sha256,
+        base_head=current_main_head,
+        input_head=current_main_head,
+        repository_head=current_main_head,
+        input_tree=current_main_tree,
+        now=now,
+    )
+    candidate["commit_receipt"] = None
+    candidate["stale_refresh"] = {
+        "old_base_head": commit_receipt["base_head"],
+        "old_head_sha": commit_receipt["head_sha"],
+        "target_base_head": current_main_head,
+        "prepared_at": now,
+        "updated_at": now,
+    }
+    append_event(
+        state,
+        "pre_publish_stale_refresh_prepared",
+        now,
+        candidate_id=candidate_id,
+        reason_code=result["reason_code"],
+    )
+
+
 def prepare_stale_pull_request_refresh(
     state: dict[str, Any],
     *,
@@ -4602,6 +4792,10 @@ def block_candidate(
         and candidate["result"].get("finding_codes") == ["base_stale"]
     )
     stale_credit = candidate.get("stale_refresh_credit")
+    pre_publish_stale_refresh = bool(
+        role == "maintainer"
+        and candidate_has_pre_publish_stale_refresh(candidate)
+    )
     if (
         isinstance(stale_credit, dict)
         and stale_credit.get("generation")
@@ -4617,6 +4811,8 @@ def block_candidate(
         candidate["effect"] = None
     candidate["lease"] = None
     candidate["handoff"] = None
+    if pre_publish_stale_refresh:
+        candidate["stale_refresh"] = None
     candidate["retry_role"] = role
     if not stale_base_retry:
         candidate["result"] = {
