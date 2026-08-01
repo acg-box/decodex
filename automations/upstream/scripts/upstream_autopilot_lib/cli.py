@@ -233,6 +233,23 @@ def result_payload(status: str, **fields: Any) -> dict[str, Any]:
     return {"schema": RESULT_SCHEMA, "status": status, **fields}
 
 
+def failure_error_digest(
+    error_code: str,
+    related_error_codes: tuple[str, ...] = (),
+) -> str:
+    return sha256_value(
+        {
+            "error_code": error_code,
+            "related_error_codes": list(related_error_codes),
+        }
+    )
+
+
+def require_agent_effect_absent(candidate: dict[str, Any]) -> None:
+    if isinstance(candidate.get("effect"), dict):
+        raise AutopilotError("agent_effect_recovery_required")
+
+
 def _promote_expired_agent_receipts(
     cache_root: Path,
     state: dict[str, Any],
@@ -883,6 +900,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 and active_agent_run.get("phase") == "prepared"
             )
             candidate = deepcopy(current)
+            require_agent_effect_absent(candidate)
             if candidate.get("repair_of") is not None:
                 repair_target = deepcopy(
                     find_candidate(state, candidate["repair_of"])
@@ -1224,8 +1242,6 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 persist(state, state_path, at=refresh_at)
 
         if args.role == "maintainer":
-            if isinstance(candidate.get("effect"), dict):
-                raise AutopilotError("agent_effect_recovery_required")
             commit_receipt = candidate.get("commit_receipt")
             if isinstance(commit_receipt, dict):
                 base_head = commit_receipt["base_head"]
@@ -1886,6 +1902,12 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             base_head=commit_receipt["base_head"],
             expected_head=commit_receipt["head_sha"],
         )
+        refresh_primary_snapshot(repo_root, policy, preflight["head"])
+        if (
+            validation_receipt["validation_authority"]
+            != validation_authority_identity(repo_root)
+        ):
+            raise AutopilotError("validation_authority_changed")
         with locked_state(cache_root) as (state, state_path):
             candidate = find_candidate(state, args.candidate_id)
             existing_pr = candidate.get("pull_request")
@@ -1936,6 +1958,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 args.worktree,
                 policy,
                 candidate,
+                base_head=preflight["head"],
                 head_sha=commit_receipt["head_sha"],
             )
             submitted_at = utc_now()
@@ -1989,6 +2012,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             branch=pull_request["branch"],
             head_sha=pull_request["head_sha"],
         )
+        refresh_primary_snapshot(repo_root, policy, preflight["head"])
         with locked_state(cache_root) as (state, state_path):
             now = utc_now()
             ensure_lease_budget(
@@ -2019,7 +2043,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 candidate_id=args.candidate_id,
                 pr_url=pull_request["url"],
                 branch=pull_request["branch"],
-                base_head=pull_request["validation_receipt"]["base_head"],
+                base_head=preflight["head"],
                 head_sha=pull_request["head_sha"],
             )
             retired_at = utc_now()
@@ -3083,9 +3107,16 @@ def main() -> int:
     try:
         payload = execute(args)
     except AutopilotError as error:
-        fields: dict[str, Any] = {"error_code": error.code}
-        if error.diagnostic_sha256 is not None:
-            fields["error_digest"] = error.diagnostic_sha256
+        fields: dict[str, Any] = {
+            "error_code": error.code,
+            "error_digest": (
+                error.diagnostic_sha256
+                or failure_error_digest(
+                    error.code,
+                    error.related_error_codes,
+                )
+            ),
+        }
         if error.related_error_codes:
             fields["related_error_codes"] = list(
                 error.related_error_codes
@@ -3100,7 +3131,12 @@ def main() -> int:
         )
         return 1
     except Exception:
-        payload = result_payload("failed", error_code="unclassified_failure")
+        error_code = "unclassified_failure"
+        payload = result_payload(
+            "failed",
+            error_code=error_code,
+            error_digest=failure_error_digest(error_code),
+        )
         print(
             json.dumps(
                 payload,

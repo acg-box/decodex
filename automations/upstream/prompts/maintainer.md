@@ -58,6 +58,13 @@ Workflow:
    Treat the result as a successful terminal no-op and continue to task
    retention. These statuses are terminal results and are not exceptions to this
    seal requirement.
+   If the claim contains a persisted `publish` or `retire_pr` effect, this is an
+   effect-recovery claim. Recover the exact recorded clean worktree and invoke
+   `publish` or `retire-pr`, respectively. Do not invoke `run-agent` or consume
+   another model attempt. After a recovered retirement, continue to
+   `submit-decision` only when the current immutable evidence independently
+   supports that outcome. The state tool rejects every other transition while
+   the effect remains unresolved and adopts only the exact persisted intent.
 3. Inspect only the claimed immutable SHA range, release commit, local schema
    evidence, or bounded automation-repair evidence. Use the local Git mirror.
    Check app-server protocol, configuration, permissions, sandbox, auth, MCP,
@@ -133,10 +140,18 @@ Workflow:
    `100644` or `100755` results, rejects whitespace errors and unstaged or
    untracked files, and authorizes every changed path for the candidate kind.
    Scheduler, GitHub Actions, authentication, landing, managed-repository, X
-   execution, schema, and automation-control paths are denied. A rejected patch
-   is reset to the exact clean baseline. The parent then writes the canonical
-   create-only mode `0600` handoff receipt. State records the prepared child
-   generation before launch.
+   execution, schema, and automation-control paths are denied. An
+   `automation_repair` may change only the exact effect-free outcome evaluation
+   module
+   `automations/upstream/scripts/upstream_autopilot_lib/effectiveness.py` in
+   addition to its normal repair paths. State persistence, CLI, effect, agent,
+   watchdog, policy, manifest, and schema authority remain denied. The protected
+   parent requires that module to remain non-executable `100644` source with fixed
+   imports, a bounded pure AST subset, no input mutation, no top-level execution,
+   and no recursive call graph. Repairable tests cannot weaken this check. A rejected
+   patch is reset to the exact clean baseline. The parent then writes the canonical
+   create-only mode `0600` handoff receipt. State records the prepared child generation
+   before launch.
    An active watchdog keeps retries at `agent_run_in_progress`; after a crash, the
    next retry either recovers the exact completed receipt or resets and reruns the
    same state-bound context. The fence must be held before any worktree inspection

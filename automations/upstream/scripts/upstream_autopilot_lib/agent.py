@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 from contextlib import nullcontext
 import fcntl
 import hashlib
@@ -150,6 +151,10 @@ AGENT_REPAIR_PATCH_ALLOWED_PREFIXES = (
     "automations/upstream/prompts/",
     "automations/upstream/tests/",
 )
+AGENT_REPAIR_EVALUATION_EXACT_PATHS = {
+    "automations/upstream/scripts/upstream_autopilot_lib/effectiveness.py",
+}
+AGENT_REPAIR_EVALUATION_MAX_BYTES = 64 * 1024
 AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS = {
     "apps/decodex/src/accounts.rs",
     "apps/decodex/src/github.rs",
@@ -309,24 +314,402 @@ def _agent_patch_paths_authorized(
     if kind == "automation_repair" and reason_code == "x_pricing_contract_drift":
         return all(path in X_PRICING_PATCH_PATHS for path in paths)
     for path in paths:
+        evaluation_repair = bool(
+            kind == "automation_repair"
+            and path in AGENT_REPAIR_EVALUATION_EXACT_PATHS
+        )
         if (
-            path in AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
-            or any(
-                path.startswith(prefix)
-                for prefix in AGENT_PATCH_ALWAYS_DENIED_PREFIXES
+            not evaluation_repair
+            and (
+                path in AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
+                or any(
+                    path.startswith(prefix)
+                    for prefix in AGENT_PATCH_ALWAYS_DENIED_PREFIXES
+                )
             )
         ):
             return False
-    if kind == "automation_repair":
-        exact = AGENT_REPAIR_PATCH_ALLOWED_EXACT_PATHS
-        prefixes = AGENT_REPAIR_PATCH_ALLOWED_PREFIXES
-    else:
-        exact = AGENT_PATCH_ALLOWED_EXACT_PATHS
-        prefixes = AGENT_PATCH_ALLOWED_PREFIXES
-    return all(
-        path in exact or any(path.startswith(prefix) for prefix in prefixes)
-        for path in paths
+        if evaluation_repair:
+            continue
+        if kind == "automation_repair":
+            exact = AGENT_REPAIR_PATCH_ALLOWED_EXACT_PATHS
+            prefixes = AGENT_REPAIR_PATCH_ALLOWED_PREFIXES
+        else:
+            exact = AGENT_PATCH_ALLOWED_EXACT_PATHS
+            prefixes = AGENT_PATCH_ALLOWED_PREFIXES
+        if path not in exact and not any(
+            path.startswith(prefix) for prefix in prefixes
+        ):
+            return False
+    return True
+
+
+def _validate_repair_evaluation_source(source: bytes) -> None:
+    """Accept only the effect-free Python subset used by repair evaluation."""
+
+    if not isinstance(source, bytes) or not 1 <= len(source) <= (
+        AGENT_REPAIR_EVALUATION_MAX_BYTES
+    ):
+        raise AutopilotError("agent_repair_evaluation_invalid")
+    try:
+        text = source.decode("utf-8")
+        tree = ast.parse(text, filename="effectiveness.py")
+    except (SyntaxError, UnicodeDecodeError, ValueError) as error:
+        raise AutopilotError("agent_repair_evaluation_invalid") from error
+
+    body = tree.body
+    if (
+        len(body) < 6
+        or not isinstance(body[0], ast.Expr)
+        or not isinstance(body[0].value, ast.Constant)
+        or not isinstance(body[0].value.value, str)
+        or not 1 <= len(body[0].value.value) <= 512
+    ):
+        raise AutopilotError("agent_repair_evaluation_invalid")
+    future_import, regex_import, typing_import, core_import = body[1:5]
+    if (
+        not isinstance(future_import, ast.ImportFrom)
+        or future_import.level != 0
+        or future_import.module != "__future__"
+        or [(alias.name, alias.asname) for alias in future_import.names]
+        != [("annotations", None)]
+        or not isinstance(regex_import, ast.Import)
+        or [(alias.name, alias.asname) for alias in regex_import.names]
+        != [("re", None)]
+        or not isinstance(typing_import, ast.ImportFrom)
+        or typing_import.level != 0
+        or typing_import.module != "typing"
+        or [(alias.name, alias.asname) for alias in typing_import.names]
+        != [("Any", None)]
+        or not isinstance(core_import, ast.ImportFrom)
+        or core_import.level != 1
+        or core_import.module != "core"
+        or {(alias.name, alias.asname) for alias in core_import.names}
+        != {
+            ("METRIC_BUCKET_SECONDS", None),
+            ("TERMINAL_STATUSES", None),
+            ("is_sha256", None),
+        }
+    ):
+        raise AutopilotError("agent_repair_evaluation_invalid")
+
+    functions = body[5:]
+    allowed_import_nodes = {
+        future_import,
+        regex_import,
+        typing_import,
+        core_import,
+    }
+    if (
+        not 1 <= len(functions) <= 16
+        or not all(isinstance(node, ast.FunctionDef) for node in functions)
+    ):
+        raise AutopilotError("agent_repair_evaluation_invalid")
+    function_names = {node.name for node in functions}
+    if (
+        len(function_names) != len(functions)
+        or not {
+            "rolling_effectiveness",
+            "classify_lifetime_outcomes",
+            "effectiveness_improvement_reason",
+        }.issubset(function_names)
+        or any(
+            re.fullmatch(r"_?[a-z][a-z0-9_]{0,63}", name) is None
+            for name in function_names
+        )
+        or function_names
+        & {
+            "Any",
+            "METRIC_BUCKET_SECONDS",
+            "TERMINAL_STATUSES",
+            "is_sha256",
+            "re",
+        }
+    ):
+        raise AutopilotError("agent_repair_evaluation_invalid")
+
+    allowed_nodes = (
+        ast.Module,
+        ast.Expr,
+        ast.Constant,
+        ast.Import,
+        ast.ImportFrom,
+        ast.alias,
+        ast.FunctionDef,
+        ast.arguments,
+        ast.arg,
+        ast.Return,
+        ast.Assign,
+        ast.AnnAssign,
+        ast.For,
+        ast.If,
+        ast.Break,
+        ast.Continue,
+        ast.Pass,
+        ast.Dict,
+        ast.List,
+        ast.Tuple,
+        ast.Set,
+        ast.DictComp,
+        ast.ListComp,
+        ast.SetComp,
+        ast.GeneratorExp,
+        ast.comprehension,
+        ast.Name,
+        ast.Load,
+        ast.Store,
+        ast.Subscript,
+        ast.Slice,
+        ast.Call,
+        ast.keyword,
+        ast.Attribute,
+        ast.Compare,
+        ast.BoolOp,
+        ast.BinOp,
+        ast.UnaryOp,
+        ast.IfExp,
+        ast.Add,
+        ast.Sub,
+        ast.Mult,
+        ast.FloorDiv,
+        ast.Mod,
+        ast.BitOr,
+        ast.And,
+        ast.Or,
+        ast.Not,
+        ast.UAdd,
+        ast.USub,
+        ast.Eq,
+        ast.NotEq,
+        ast.Lt,
+        ast.LtE,
+        ast.Gt,
+        ast.GtE,
+        ast.Is,
+        ast.IsNot,
+        ast.In,
+        ast.NotIn,
     )
+    pure_names = {
+        "all",
+        "any",
+        "bool",
+        "dict",
+        "int",
+        "isinstance",
+        "len",
+        "list",
+        "max",
+        "min",
+        "set",
+        "sorted",
+        "str",
+        "sum",
+        "tuple",
+    }
+    imported_names = {
+        "Any",
+        "METRIC_BUCKET_SECONDS",
+        "TERMINAL_STATUSES",
+        "is_sha256",
+        "re",
+    }
+    parents = {
+        child: parent
+        for parent in ast.walk(tree)
+        for child in ast.iter_child_nodes(parent)
+    }
+    docstrings = {body[0]}
+    call_graph = {name: set() for name in function_names}
+
+    for function in functions:
+        if (
+            function.decorator_list
+            or function.args.posonlyargs
+            or function.args.vararg is not None
+            or function.args.kwarg is not None
+            or function.args.defaults
+            or any(value is not None for value in function.args.kw_defaults)
+            or len(function.args.args) + len(function.args.kwonlyargs) > 8
+            or getattr(function, "type_params", ())
+        ):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if (
+            function.body
+            and isinstance(function.body[0], ast.Expr)
+            and isinstance(function.body[0].value, ast.Constant)
+            and isinstance(function.body[0].value.value, str)
+        ):
+            docstrings.add(function.body[0])
+        arguments = {
+            argument.arg
+            for argument in (*function.args.args, *function.args.kwonlyargs)
+        }
+        stored_names = {
+            node.id
+            for node in ast.walk(function)
+            if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store)
+        }
+        reserved = imported_names | pure_names | function_names
+        if (arguments | stored_names) & reserved:
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        available_names = (
+            arguments
+            | stored_names
+            | imported_names
+            | pure_names
+            | function_names
+        )
+        for node in ast.walk(function):
+            if isinstance(node, ast.FunctionDef) and node is not function:
+                raise AutopilotError("agent_repair_evaluation_invalid")
+            if (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Load)
+                and node.id not in available_names
+            ):
+                raise AutopilotError("agent_repair_evaluation_invalid")
+            if (
+                isinstance(node, ast.Name)
+                and isinstance(node.ctx, ast.Load)
+                and node.id in function_names
+            ):
+                parent = parents.get(node)
+                if not isinstance(parent, ast.Call) or parent.func is not node:
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                if node.func.id not in pure_names | function_names | {
+                    "is_sha256"
+                }:
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+                if node.func.id in function_names:
+                    call_graph[function.name].add(node.func.id)
+
+    for node in ast.walk(tree):
+        if not isinstance(node, allowed_nodes):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if (
+            isinstance(node, (ast.Import, ast.ImportFrom))
+            and node not in allowed_import_nodes
+        ):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.Expr) and node not in docstrings:
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.Constant) and (
+            type(node.value) not in {bool, int, str, type(None)}
+            or (isinstance(node.value, str) and len(node.value) > 4096)
+            or (
+                isinstance(node.value, int)
+                and not isinstance(node.value, bool)
+                and abs(node.value) > 2**63 - 1
+            )
+        ):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, (ast.Assign, ast.AnnAssign)):
+            targets = (
+                node.targets
+                if isinstance(node, ast.Assign)
+                else [node.target]
+            )
+            if not all(isinstance(target, ast.Name) for target in targets):
+                raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.For) and not isinstance(node.target, ast.Name):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.comprehension) and (
+            node.is_async or not isinstance(node.target, ast.Name)
+        ):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.Attribute):
+            parent = parents.get(node)
+            if not isinstance(parent, ast.Call) or parent.func is not node:
+                raise AutopilotError("agent_repair_evaluation_invalid")
+            if node.attr == "fullmatch":
+                if not isinstance(node.value, ast.Name) or node.value.id != "re":
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+            elif node.attr not in {"get", "values"}:
+                raise AutopilotError("agent_repair_evaluation_invalid")
+        if isinstance(node, ast.Call):
+            if (
+                len(node.args) + len(node.keywords) > 8
+                or any(keyword.arg is None for keyword in node.keywords)
+            ):
+                raise AutopilotError("agent_repair_evaluation_invalid")
+            if isinstance(node.func, ast.Attribute):
+                if node.func.attr == "values" and (node.args or node.keywords):
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+                if node.func.attr == "get" and (
+                    not 1 <= len(node.args) <= 2 or node.keywords
+                ):
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+                if node.func.attr == "fullmatch" and (
+                    len(node.args) != 2 or node.keywords
+                ):
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+                if node.func.attr == "fullmatch" and not (
+                    isinstance(node.args[0], ast.Constant)
+                    and isinstance(node.args[0].value, str)
+                    and len(node.args[0].value) <= 256
+                ):
+                    raise AutopilotError("agent_repair_evaluation_invalid")
+            elif not isinstance(node.func, ast.Name):
+                raise AutopilotError("agent_repair_evaluation_invalid")
+            elif node.func.id in pure_names and node.keywords:
+                raise AutopilotError("agent_repair_evaluation_invalid")
+
+    active: set[str] = set()
+    complete: set[str] = set()
+
+    def visit(name: str) -> None:
+        if name in active:
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        if name in complete:
+            return
+        active.add(name)
+        for dependency in call_graph[name]:
+            visit(dependency)
+        active.remove(name)
+        complete.add(name)
+
+    for name in sorted(function_names):
+        visit(name)
+
+
+def _validate_repair_evaluation_file(path: Path) -> None:
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(path, os.O_RDONLY | os.O_NOFOLLOW)
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o022
+            or metadata.st_mode & 0o111
+            or not 1 <= metadata.st_size <= AGENT_REPAIR_EVALUATION_MAX_BYTES
+        ):
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        source = bytearray()
+        while len(source) <= AGENT_REPAIR_EVALUATION_MAX_BYTES:
+            chunk = os.read(
+                descriptor,
+                min(
+                    64 * 1024,
+                    AGENT_REPAIR_EVALUATION_MAX_BYTES + 1 - len(source),
+                ),
+            )
+            if not chunk:
+                break
+            source.extend(chunk)
+        if len(source) != metadata.st_size:
+            raise AutopilotError("agent_repair_evaluation_invalid")
+        _validate_repair_evaluation_source(bytes(source))
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError("agent_repair_evaluation_invalid") from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
 
 
 def _shell_environment_config(
@@ -1996,6 +2379,10 @@ def apply_agent_patch(
         )
         if not _agent_patch_paths_authorized(candidate, changed_paths):
             raise AutopilotError("agent_patch_path_unauthorized")
+        for path in AGENT_REPAIR_EVALUATION_EXACT_PATHS.intersection(
+            changed_paths
+        ):
+            _validate_repair_evaluation_file(worktree / path)
         return changed_paths
     except BaseException:
         if applied:
