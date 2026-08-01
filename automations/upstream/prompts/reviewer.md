@@ -52,6 +52,11 @@ Workflow:
    Treat the result as a successful terminal no-op and continue to task
    retention. These statuses are terminal results and are not exceptions to this
    seal requirement.
+   If the claim contains a persisted `land` effect, this is an effect-recovery
+   claim. Recover the exact recorded review worktree and invoke only `land`
+   without a new reviewer receipt. Do not invoke `run-agent` or consume another
+   model attempt. The state tool adopts only the exact persisted intent and
+   completes deterministic merge readback.
 2. For a decision, inspect the immutable source and schema evidence. For a pull
    request, require the configured repository, open non-draft state, base
    `main`, recorded branch, and recorded head SHA.
