@@ -192,15 +192,27 @@ workspace manifest and patch digest, applies the patch to the unchanged candidat
 with `git apply --check --index --binary`, permits only regular file modes, rejects
 whitespace and unstaged or untracked residue, and authorizes every changed path for
 the candidate kind. It denies scheduler, GitHub Actions, authentication, landing,
-managed-repository, X execution, schema, and automation-control paths. The sole
-exception lets an `automation_repair` change the effect-free outcome evaluation
-module `upstream_autopilot_lib/effectiveness.py`; state persistence, CLI, effect,
-agent, watchdog, policy, manifest, and schema authority remain denied. Any rejected
-or internally invalid applied patch is reset to the exact clean baseline. A protected
-validator requires that module to remain non-executable `100644` source with exact
-imports, a bounded pure AST subset, no input mutation, no top-level execution, and no
-recursive call graph. Repairable tests cannot weaken this validator. The parent then
-writes the canonical create-only mode-`0600`
+managed-repository, X execution, schema, and automation-control paths. An
+`automation_repair` can change the effect-free outcome evaluation module
+`upstream_autopilot_lib/effectiveness.py`. A separate retirement-only exception can
+remove exactly one existing active reason literal per patch from the single
+`PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset({...})` assignment in `core.py`.
+That active set owns new queue and CLI choices. The separate explicit
+`KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES` set is the immutable recognition
+authority for persisted candidates and retains retired identifiers.
+The parent compares the applied file with the exact non-executable `100644` blob at
+the expected head. The result must be non-empty and differ by exactly one removed
+reason, and the complete source must equal that blob with only that literal line
+removed. This path cannot edit the known set, add, rename, reformat, or otherwise
+grow authority.
+State persistence, CLI, effects, agent, watchdog, policy, manifest, schema,
+scheduler, landing, authentication, GitHub Actions, and X authority remain denied.
+Any rejected or
+internally invalid applied patch is reset to the exact clean baseline. A protected
+validator requires `effectiveness.py` to remain non-executable `100644` source with
+exact imports, a bounded pure AST subset, no input mutation, no top-level execution,
+and no recursive call graph. Repairable tests cannot weaken either validator. The
+parent then writes the canonical create-only mode-`0600`
 `decodex/codex-upstream-handoff-receipt/4` receipt. The receipt binds
 the fixed model and effort, Codex version and executable digest, command and
 permission digests, sandbox-probe, watchdog, workspace and evidence manifests,

@@ -18,6 +18,12 @@ Authority:
 - Health may recover state, synchronize the five definitions, archive validated
   completed tasks, and queue concrete repair or improvement candidates. Maintainer
   and Reviewer own code changes and landing.
+- `PROACTIVE_IMPROVEMENT_REASON_CODES` is the active queue and CLI set.
+  `KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES` is immutable persisted-state
+  recognition and retains retired identifiers. An `automation_repair` may only
+  delete exactly one existing literal line per patch from the active assignment
+  under the trusted expected-head validator. It cannot edit the known set or grow
+  authority.
 
 Preflight:
 1. Run `pwd`, `git status --short --branch`, `git branch --show-current`, and

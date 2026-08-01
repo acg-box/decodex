@@ -92,6 +92,118 @@ class UpstreamAutopilotTests(unittest.TestCase):
     def pricing_fixture(self) -> bytes:
         return X_PRICING_FIXTURE.read_bytes()
 
+    def create_reason_retirement_repository(self, directory, *, core_source=None):
+        worktree = Path(directory) / "repo"
+        worktree.mkdir()
+        subprocess.run(
+            ["git", "init", "-q", "--initial-branch=main"],
+            cwd=worktree,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.email", "test@example.invalid"],
+            cwd=worktree,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "config", "user.name", "Test"],
+            cwd=worktree,
+            check=True,
+        )
+        hooks = Path(directory) / "empty-hooks"
+        hooks.mkdir()
+        subprocess.run(
+            ["git", "config", "core.hooksPath", str(hooks)],
+            cwd=worktree,
+            check=True,
+        )
+        library = (
+            worktree
+            / "automations/upstream/scripts/upstream_autopilot_lib"
+        )
+        library.mkdir(parents=True)
+        source = (
+            core_source
+            if core_source is not None
+            else (
+                ROOT
+                / "automations/upstream/scripts/upstream_autopilot_lib/core.py"
+            ).read_bytes()
+        )
+        (library / "core.py").write_bytes(source)
+        (library / "state.py").write_text("STATE = 1\n", encoding="utf-8")
+        (library / "cli.py").write_text("CLI = 1\n", encoding="utf-8")
+        (library / "effects.py").write_text(
+            "EFFECTS = 1\n",
+            encoding="utf-8",
+        )
+        upstream = worktree / "automations/upstream"
+        (upstream / "policy.json").write_text("{}\n", encoding="utf-8")
+        (upstream / "README.md").write_text("base\n", encoding="utf-8")
+        subprocess.run(["git", "add", "."], cwd=worktree, check=True)
+        subprocess.run(
+            ["git", "commit", "-q", "-m", "base"],
+            cwd=worktree,
+            check=True,
+        )
+        head = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=worktree,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        tree = subprocess.run(
+            ["git", "rev-parse", "HEAD^{tree}"],
+            cwd=worktree,
+            check=True,
+            capture_output=True,
+            text=True,
+        ).stdout.strip()
+        return worktree, library, head, tree
+
+    def build_agent_patch(
+        self,
+        worktree,
+        path,
+        source,
+        *,
+        extra_changes=(),
+        executable=False,
+    ):
+        path.write_bytes(source)
+        for extra_path, extra_source in extra_changes:
+            extra_path.write_bytes(extra_source)
+        if executable:
+            path.chmod(0o755)
+        subprocess.run(["git", "add", "-A"], cwd=worktree, check=True)
+        patch = subprocess.run(
+            ["git", "diff", "--cached", "--binary"],
+            cwd=worktree,
+            check=True,
+            capture_output=True,
+        ).stdout
+        self.assertTrue(patch)
+        subprocess.run(
+            ["git", "reset", "--hard", "-q", "HEAD"],
+            cwd=worktree,
+            check=True,
+        )
+        return patch
+
+    def assert_agent_patch_rolled_back(self, worktree, path, baseline):
+        self.assertEqual(path.read_bytes(), baseline)
+        self.assertEqual(
+            subprocess.run(
+                ["git", "status", "--porcelain=v1"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout,
+            "",
+        )
+
     def write_task_retention_evidence(
         self,
         repo_root,
@@ -2682,6 +2794,446 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
                 ):
                     validate(source.encode("utf-8"))
 
+    def test_automation_repair_can_retire_existing_reason_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(directory)
+            )
+            core = library / "core.py"
+            baseline = core.read_bytes()
+            reason_line = b'        "repeated_blocked_attempts",\n'
+            self.assertEqual(baseline.count(reason_line), 2)
+            retired = baseline.replace(reason_line, b"", 1)
+            patch = self.build_agent_patch(worktree, core, retired)
+
+            changed = self.autopilot.apply_agent_patch(
+                worktree,
+                candidate={
+                    "id": "1" * 16,
+                    "kind": "automation_repair",
+                    "path_summary": {
+                        "reason_code": "repeated_blocked_attempts"
+                    },
+                },
+                patch=patch,
+                patch_sha256=hashlib.sha256(patch).hexdigest(),
+                expected_head=head,
+                expected_tree=tree,
+            )
+
+            self.assertEqual(
+                changed,
+                (
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py",
+                ),
+            )
+            self.assertEqual(core.read_bytes(), retired)
+            self.assertTrue(
+                subprocess.run(
+                    [
+                        "git",
+                        "ls-files",
+                        "--stage",
+                        "--",
+                        str(core.relative_to(worktree)),
+                    ],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.startswith("100644 ")
+            )
+
+    def test_reason_retirement_source_validator_fails_closed(self):
+        baseline = (
+            ROOT
+            / "automations/upstream/scripts/upstream_autopilot_lib/core.py"
+        ).read_bytes()
+        validate = (
+            self.autopilot.agent_module._validate_reason_retirement_sources
+        )
+        reason_line = b'        "repeated_blocked_attempts",\n'
+        self.assertEqual(baseline.count(reason_line), 2)
+        retired = baseline.replace(reason_line, b"", 1)
+        validate(baseline, retired)
+
+        reasons, reason_lines = (
+            self.autopilot.agent_module._reason_retirement_assignment(baseline)
+        )
+        empty = b"".join(
+            line
+            for line_number, line in enumerate(
+                baseline.splitlines(keepends=True),
+                start=1,
+            )
+            if line_number not in set(reason_lines.values())
+        )
+        invalid_sources = {
+            "addition": baseline.replace(
+                reason_line,
+                b'        "new_reason",\n' + reason_line,
+                1,
+            ),
+            "rename": baseline.replace(
+                reason_line,
+                b'        "renamed_reason",\n',
+                1,
+            ),
+            "duplicate": baseline.replace(
+                reason_line,
+                reason_line + reason_line,
+                1,
+            ),
+            "non_string": baseline.replace(
+                reason_line,
+                b"        7,\n",
+                1,
+            ),
+            "empty": empty,
+            "missing_assignment": baseline.replace(
+                b"PROACTIVE_IMPROVEMENT_REASON_CODES =",
+                b"RETIRED_IMPROVEMENT_REASON_CODES =",
+                1,
+            ),
+            "multiple_assignments": retired
+            + b'\nPROACTIVE_IMPROVEMENT_REASON_CODES = frozenset({"extra"})\n',
+            "altered_shape": retired.replace(
+                b"PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset(",
+                b"PROACTIVE_IMPROVEMENT_REASON_CODES = set(",
+                1,
+            ),
+            "formatting": retired.replace(
+                b'        "assessment_only_churn",\n',
+                b'            "assessment_only_churn",\n',
+                1,
+            ),
+            "comment": retired.replace(
+                b'        "assessment_only_churn",\n',
+                b'        "assessment_only_churn",  # retained\n',
+                1,
+            ),
+            "multiple_deletions": retired.replace(
+                b'        "assessment_only_churn",\n',
+                b"",
+                1,
+            ),
+            "non_utf8": retired + b"\xff",
+            "recognition_set": retired.replace(
+                b'        "repeated_blocked_attempts",\n',
+                b'        "renamed_reason",\n',
+                1,
+            ),
+        }
+        self.assertGreater(len(reasons), 1)
+        for kind, source in invalid_sources.items():
+            with self.subTest(kind=kind):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_repair_reason_retirement_invalid",
+                ):
+                    validate(baseline, source)
+
+        unrecognized_baseline = baseline.replace(
+            reason_line,
+            b'        "unrecognized_active_reason",\n' + reason_line,
+            1,
+        )
+        unrecognized_retirement = unrecognized_baseline.replace(
+            reason_line,
+            b"",
+            1,
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_repair_reason_retirement_invalid",
+        ):
+            validate(unrecognized_baseline, unrecognized_retirement)
+
+    def test_reason_retirement_rejects_mode_and_source_changes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(directory)
+            )
+            core = library / "core.py"
+            baseline = core.read_bytes()
+            retired = baseline.replace(
+                b'        "repeated_blocked_attempts",\n',
+                b"",
+                1,
+            )
+            variants = {
+                "addition": (
+                    baseline.replace(
+                        b'        "repeated_blocked_attempts",\n',
+                        b'        "new_reason",\n'
+                        b'        "repeated_blocked_attempts",\n',
+                        1,
+                    ),
+                    False,
+                ),
+                "unrelated": (
+                    retired.replace(
+                        b"MAX_STATE_CANDIDATES = 512",
+                        b"MAX_STATE_CANDIDATES = 513",
+                        1,
+                    ),
+                    False,
+                ),
+                "executable": (retired, True),
+                "formatting": (
+                    retired.replace(
+                        b'        "assessment_only_churn",\n',
+                        b'            "assessment_only_churn",\n',
+                        1,
+                    ),
+                    False,
+                ),
+                "comment": (
+                    retired.replace(
+                        b'        "assessment_only_churn",\n',
+                        b'        "assessment_only_churn",  # retained\n',
+                        1,
+                    ),
+                    False,
+                ),
+                "multiple_deletions": (
+                    retired.replace(
+                        b'        "assessment_only_churn",\n',
+                        b"",
+                        1,
+                    ),
+                    False,
+                ),
+                "recognition_set": (
+                    retired.replace(
+                        b'        "repeated_blocked_attempts",\n',
+                        b'        "renamed_reason",\n',
+                        1,
+                    ),
+                    False,
+                ),
+                "non_utf8": (retired + b"\xff", False),
+            }
+            for kind, (source, executable) in variants.items():
+                with self.subTest(kind=kind):
+                    patch = self.build_agent_patch(
+                        worktree,
+                        core,
+                        source,
+                        executable=executable,
+                    )
+                    with self.assertRaisesRegex(
+                        self.autopilot.AutopilotError,
+                        "agent_repair_reason_retirement_invalid",
+                    ):
+                        self.autopilot.apply_agent_patch(
+                            worktree,
+                            candidate={
+                                "id": "1" * 16,
+                                "kind": "automation_repair",
+                            },
+                            patch=patch,
+                            patch_sha256=hashlib.sha256(patch).hexdigest(),
+                            expected_head=head,
+                            expected_tree=tree,
+                        )
+                    self.assert_agent_patch_rolled_back(
+                        worktree,
+                        core,
+                        baseline,
+                    )
+
+    def test_reason_retirement_uses_exact_expected_head_blob_bytes(self):
+        baseline = (
+            ROOT
+            / "automations/upstream/scripts/upstream_autopilot_lib/core.py"
+        ).read_bytes() + b"\n"
+        self.assertTrue(baseline.endswith(b"\n\n"))
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(
+                    directory,
+                    core_source=baseline,
+                )
+            )
+            environment = {
+                "GIT_CONFIG_GLOBAL": "/dev/null",
+                "GIT_CONFIG_NOSYSTEM": "1",
+                "GIT_TERMINAL_PROMPT": "0",
+                "GIT_OPTIONAL_LOCKS": "0",
+                "HOME": "/var/empty",
+                "LANG": "C.UTF-8",
+            }
+            core = library / "core.py"
+            core.write_bytes(b"worktree-only source\n")
+            observed = (
+                self.autopilot.agent_module._expected_reason_retirement_blob(
+                    worktree,
+                    expected_head=head,
+                    environment=environment,
+                )
+            )
+            self.assertEqual(observed, baseline)
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            self.assertEqual(core.read_bytes(), baseline)
+
+            retired = baseline.replace(
+                b'        "repeated_blocked_attempts",\n',
+                b"",
+                1,
+            )
+            patch = self.build_agent_patch(worktree, core, retired)
+            changed = self.autopilot.apply_agent_patch(
+                worktree,
+                candidate={
+                    "id": "1" * 16,
+                    "kind": "automation_repair",
+                },
+                patch=patch,
+                patch_sha256=hashlib.sha256(patch).hexdigest(),
+                expected_head=head,
+                expected_tree=tree,
+            )
+            self.assertEqual(
+                changed,
+                (
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py",
+                ),
+            )
+            self.assertEqual(core.read_bytes(), retired)
+
+    def test_x_pricing_repair_can_retire_its_active_reason(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(directory)
+            )
+            core = library / "core.py"
+            baseline = core.read_bytes()
+            retired = baseline.replace(
+                b'        "x_pricing_contract_drift",\n',
+                b"",
+                1,
+            )
+            readme = worktree / "automations/upstream/README.md"
+            readme_baseline = readme.read_bytes()
+            patch = self.build_agent_patch(
+                worktree,
+                core,
+                retired,
+                extra_changes=((readme, b"pricing retired\n"),),
+            )
+
+            changed = self.autopilot.apply_agent_patch(
+                worktree,
+                candidate={
+                    "id": "2" * 16,
+                    "kind": "automation_repair",
+                    "path_summary": {
+                        "reason_code": "x_pricing_contract_drift"
+                    },
+                },
+                patch=patch,
+                patch_sha256=hashlib.sha256(patch).hexdigest(),
+                expected_head=head,
+                expected_tree=tree,
+            )
+            self.assertEqual(
+                set(changed),
+                {
+                    "automations/upstream/README.md",
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py",
+                },
+            )
+            self.assertEqual(core.read_bytes(), retired)
+            self.assertNotEqual(readme.read_bytes(), readme_baseline)
+
+    def test_non_automation_candidate_cannot_retire_reason_code(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(directory)
+            )
+            core = library / "core.py"
+            baseline = core.read_bytes()
+            retired = baseline.replace(
+                b'        "repeated_blocked_attempts",\n',
+                b"",
+                1,
+            )
+            patch = self.build_agent_patch(worktree, core, retired)
+
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_patch_path_unauthorized",
+            ):
+                self.autopilot.apply_agent_patch(
+                    worktree,
+                    candidate={"id": "0" * 16, "kind": "bootstrap"},
+                    patch=patch,
+                    patch_sha256=hashlib.sha256(patch).hexdigest(),
+                    expected_head=head,
+                    expected_tree=tree,
+                )
+            self.assert_agent_patch_rolled_back(worktree, core, baseline)
+
+    def test_reason_retirement_mixed_with_control_plane_change_is_denied(self):
+        with tempfile.TemporaryDirectory() as directory:
+            worktree, library, head, tree = (
+                self.create_reason_retirement_repository(directory)
+            )
+            core = library / "core.py"
+            core_baseline = core.read_bytes()
+            retired = core_baseline.replace(
+                b'        "repeated_blocked_attempts",\n',
+                b"",
+                1,
+            )
+            candidate = {
+                "id": "1" * 16,
+                "kind": "automation_repair",
+            }
+            denied_paths = (
+                library / "state.py",
+                library / "cli.py",
+                library / "effects.py",
+                worktree / "automations/upstream/policy.json",
+            )
+            for path in denied_paths:
+                baseline = path.read_bytes()
+                patch = self.build_agent_patch(
+                    worktree,
+                    core,
+                    retired,
+                    extra_changes=(
+                        (path, baseline + b"EXTRA_AUTHORITY = True\n"),
+                    ),
+                )
+                with self.subTest(path=path.relative_to(worktree)):
+                    with self.assertRaisesRegex(
+                        self.autopilot.AutopilotError,
+                        "agent_patch_path_unauthorized",
+                    ):
+                        self.autopilot.apply_agent_patch(
+                            worktree,
+                            candidate=candidate,
+                            patch=patch,
+                            patch_sha256=hashlib.sha256(patch).hexdigest(),
+                            expected_head=head,
+                            expected_tree=tree,
+                        )
+                    self.assertEqual(core.read_bytes(), core_baseline)
+                    self.assert_agent_patch_rolled_back(
+                        worktree,
+                        path,
+                        baseline,
+                    )
+
     def test_agent_patch_authorization_denies_control_planes_and_rolls_back(
         self,
     ):
@@ -2716,6 +3268,24 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
                 ],
             )
         )
+        self.assertTrue(
+            authorize(
+                repair,
+                [
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py"
+                ],
+            )
+        )
+        self.assertFalse(
+            authorize(
+                normal,
+                [
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py"
+                ],
+            )
+        )
         for path in (
             ".github/workflows/ci.yml",
             "apps/decodex/src/manual/land.rs",
@@ -2734,6 +3304,8 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
                 [
                     "apps/decodex-publisher/src/social_xurl/pricing.rs",
                     "automations/upstream/tests/fixtures/x-pricing-current.md",
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py",
                 ],
             )
         )
@@ -2746,6 +3318,17 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
                 [
                     "automations/upstream/scripts/"
                     "upstream_autopilot_lib/effectiveness.py"
+                ],
+            )
+        )
+        self.assertFalse(
+            authorize(
+                pricing,
+                [
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/core.py",
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/state.py",
                 ],
             )
         )
@@ -15249,6 +15832,74 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
             "repeated_review_repairs",
         )
         self.autopilot.validate_state(state)
+
+    def test_inactive_proactive_reason_remains_loadable_from_state(self):
+        reason = "repeated_blocked_attempts"
+        self.assertLessEqual(
+            self.autopilot.PROACTIVE_IMPROVEMENT_REASON_CODES,
+            self.autopilot.KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES,
+        )
+        self.assertIn(
+            reason,
+            self.autopilot.KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES,
+        )
+        state, candidate_id = self.bootstrap(now=100)
+        self.resolve_bootstrap(state, candidate_id, now=101)
+        improvement = self.autopilot.queue_automation_improvement(
+            state,
+            self.policy,
+            reason_code=reason,
+            repository_head="9" * 40,
+            now=200,
+        )
+
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state-v4.json"
+            self.autopilot.save_state(state, path, 201)
+            inactive = frozenset(
+                self.autopilot.PROACTIVE_IMPROVEMENT_REASON_CODES - {reason}
+            )
+            with (
+                mock.patch.object(
+                    self.autopilot.core_module,
+                    "PROACTIVE_IMPROVEMENT_REASON_CODES",
+                    inactive,
+                ),
+                mock.patch.object(
+                    self.autopilot.state_module,
+                    "PROACTIVE_IMPROVEMENT_REASON_CODES",
+                    inactive,
+                ),
+                mock.patch.object(
+                    self.autopilot.cli_module,
+                    "PROACTIVE_IMPROVEMENT_REASON_CODES",
+                    inactive,
+                ),
+            ):
+                loaded = self.autopilot.load_state(path)
+                persisted = self.autopilot.find_candidate(
+                    loaded,
+                    improvement["id"],
+                )
+                self.assertEqual(
+                    persisted["path_summary"]["reason_code"],
+                    reason,
+                )
+                self.assertNotIn(
+                    reason,
+                    self.autopilot.cli_module.PROACTIVE_IMPROVEMENT_REASON_CODES,
+                )
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "improvement_reason_invalid",
+                ):
+                    self.autopilot.queue_automation_improvement(
+                        loaded,
+                        self.policy,
+                        reason_code=reason,
+                        repository_head="9" * 40,
+                        now=202,
+                    )
 
     def test_live_drift_is_not_suppressed_by_another_active_improvement(self):
         state, candidate_id = self.bootstrap(now=100)

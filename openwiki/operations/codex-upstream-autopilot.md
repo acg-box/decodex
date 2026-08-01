@@ -96,14 +96,24 @@ digests, applies the patch to the unchanged candidate with Git's indexed binary
 patch path, permits only regular modes, and authorizes each changed path for the
 candidate kind. Scheduler, GitHub Actions, authentication, landing,
 managed-repository, X execution, schema, and automation-control paths are denied.
-The sole exception lets an `automation_repair` change the effect-free outcome
-evaluation module `upstream_autopilot_lib/effectiveness.py`; state persistence,
-CLI, effect, agent, watchdog, policy, manifest, and schema authority remain denied.
-The protected parent requires that module to remain non-executable `100644` source
-with fixed imports, a bounded pure AST subset, no input mutation, no top-level
-execution, and no recursive call graph. Repairable tests cannot weaken this check.
-Any rejected or internally invalid applied patch is reset to the exact clean
-baseline. The parent then writes the create-only mode-`0600` handoff receipt. The
+An `automation_repair` can change the effect-free outcome evaluation module
+`upstream_autopilot_lib/effectiveness.py`. A separate retirement-only exception can
+remove exactly one existing active reason literal per patch from the single
+`PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset({...})` assignment in `core.py`.
+This active set controls new queue and CLI choices. The separate explicit
+`KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES` set is immutable persisted-state
+recognition and retains identifiers after retirement.
+The parent compares the applied source with the exact non-executable `100644` blob
+at the expected head. The new reason set must be non-empty and differ by exactly one
+removed reason, and no other source byte can change. The exception cannot edit the
+known set, add or rename reasons, or grow control-plane authority. State persistence,
+CLI, effects, agent, watchdog, policy, manifest, schema, scheduler, landing,
+authentication, GitHub Actions, and X paths remain denied. The protected parent
+requires `effectiveness.py` to retain fixed imports, a bounded pure AST subset, no
+input mutation, no top-level execution, and no recursive call graph. Repairable
+tests cannot weaken either validator. Any rejected or internally invalid applied
+patch is reset to the exact clean baseline. The parent then writes the create-only
+mode-`0600` handoff receipt. The
 candidate-and-role lock remains held through receipt persistence. A global root lock
 serializes stale-run cleanup and safe removal of inactive candidate lock files. A
 retry cannot overlap an active child, and lock-file churn cannot consume the run-root
