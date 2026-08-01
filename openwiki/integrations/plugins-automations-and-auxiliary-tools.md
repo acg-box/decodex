@@ -213,10 +213,14 @@ decodex-publisher validate-social
   checking state. During that reconciliation, the app keeps the last quota visible
   but does not expose Reset Cards from the old account revision. It holds an
   advanced inventory until the matching account skeleton arrives and then applies
-  it without a duplicate provider read. A retryable detail-read failure shows a
-  compact reconnecting state while the retained quota remains visible. The next
-  current inventory replaces the retained value directly, so the quota bar can
-  animate to the restored value.
+  it without a duplicate provider read. One per-account coordinator coalesces
+  same-revision inventory calls. A use gate waits for any older provider read and
+  blocks fresh reads until the effect dispatch ends. A terminal use result starts
+  bounded background reconciliation without holding the button busy. Internal contention, provider
+  cleanup, and other retryable detail failures show `Updating usage…` while the
+  retained quota remains visible. Only a typed local daemon transport loss shows
+  `Connecting to Decodex…`. The next current inventory replaces the retained value
+  directly, so the quota bar can animate to the restored value.
 - Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,
   routing, Codex projection, and Fast requests. The app does not start the CLI, a
   service, or a credential helper, and Swift does not inject credentials. Operators

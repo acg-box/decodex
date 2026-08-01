@@ -327,11 +327,12 @@ struct ResetCardInventory: Equatable, Sendable {
 enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDebugStringConvertible {
 	case nativeClientUnavailable
 	case timedOut
+	case transportDisconnected
+	case transportBackpressured
 	case outputTooLarge
 	case commandRejected
 	case useDefinitelyNotDispatched
 	case usePotentiallyDispatched
-	case commandFailed
 	case invalidResponse
 	case service(ResetCardServiceError)
 
@@ -341,6 +342,10 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 			return "The native Decodex client is unavailable."
 		case .timedOut:
 			return "The Decodex request timed out."
+		case .transportDisconnected:
+			return "The Decodex daemon is not reachable."
+		case .transportBackpressured:
+			return "The Decodex service is busy."
 		case .outputTooLarge:
 			return "The Decodex service returned too much data."
 		case .commandRejected:
@@ -349,8 +354,6 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 			return "The reset-card request was not dispatched."
 		case .usePotentiallyDispatched:
 			return "The reset-card request may have been dispatched."
-		case .commandFailed:
-			return "The reset-card service is unavailable. Start decodexd."
 		case .invalidResponse:
 			return "The Decodex service returned an invalid reset-card response."
 		case .service(let error):
@@ -364,6 +367,10 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 			return "ResetCardClientError.nativeClientUnavailable"
 		case .timedOut:
 			return "ResetCardClientError.timedOut"
+		case .transportDisconnected:
+			return "ResetCardClientError.transportDisconnected"
+		case .transportBackpressured:
+			return "ResetCardClientError.transportBackpressured"
 		case .outputTooLarge:
 			return "ResetCardClientError.outputTooLarge"
 		case .commandRejected:
@@ -372,8 +379,6 @@ enum ResetCardClientError: Error, Equatable, LocalizedError, Sendable, CustomDeb
 			return "ResetCardClientError.useDefinitelyNotDispatched"
 		case .usePotentiallyDispatched:
 			return "ResetCardClientError.usePotentiallyDispatched"
-		case .commandFailed:
-			return "ResetCardClientError.commandFailed"
 		case .invalidResponse:
 			return "ResetCardClientError.invalidResponse"
 		case .service(let error):
