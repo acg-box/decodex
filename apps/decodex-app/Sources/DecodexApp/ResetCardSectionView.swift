@@ -188,27 +188,39 @@ struct ResetCardAccountRow: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
 	let showsEmail: Bool
+	let isReorderGestureEnabled: Bool
+	let onReorderDragChanged: (CGFloat) -> Void
+	let onReorderDragEnded: () -> Void
 	@Binding private var detailedAccountID: String?
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
+	@State private var isAccountCardHovered = false
+	@State private var isReorderHandleHovered = false
+	@State private var isReorderHandleDragging = false
 
 	init(
 		state: ResetCardAccountState,
 		store: ResetCardStore,
 		showsEmail: Bool = false,
-		detailedAccountID: Binding<String?> = .constant(nil)
+		detailedAccountID: Binding<String?> = .constant(nil),
+		isReorderGestureEnabled: Bool = true,
+		onReorderDragChanged: @escaping (CGFloat) -> Void = { _ in },
+		onReorderDragEnded: @escaping () -> Void = {}
 	) {
 		self.state = state
 		self.store = store
 		self.showsEmail = showsEmail
+		self.isReorderGestureEnabled = isReorderGestureEnabled
+		self.onReorderDragChanged = onReorderDragChanged
+		self.onReorderDragEnded = onReorderDragEnded
 		_detailedAccountID = detailedAccountID
 	}
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.compact) {
-			HStack(alignment: .center, spacing: PanelSpacing.compact) {
+			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 				identityHeader
 				AccountPrimaryActionsView(
 					state: state,
@@ -235,9 +247,17 @@ struct ResetCardAccountRow: View {
 				)
 			}
 		}
+		.frame(maxWidth: .infinity, alignment: .leading)
 		.padding(.horizontal, PanelSpacing.cardHorizontal)
 		.padding(.vertical, PanelSpacing.cardVertical)
+		.overlay(alignment: .trailing) {
+			reorderHandle
+				.offset(x: -PanelSpacing.micro)
+		}
 		.fixedSize(horizontal: false, vertical: true)
+		.onHover { isHovered in
+			isAccountCardHovered = isHovered
+		}
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
 			confirmation.retainOnly(Set(state.targets))
@@ -254,6 +274,99 @@ struct ResetCardAccountRow: View {
 		}
 		.animation(rowStateAnimation, value: exceptionalStatusText)
 		.animation(rowStateAnimation, value: inventoryPresentation)
+		.animation(rowStateAnimation, value: showsReorderHandle)
+		.animation(rowStateAnimation, value: isReorderHandleHovered)
+	}
+
+	private var reorderHandle: some View {
+		ZStack {
+			RoundedRectangle(cornerRadius: 5, style: .continuous)
+				.frame(width: 14, height: 18)
+				.foregroundStyle(
+					isReorderHandleHovered
+						? PanelPalette.actionBlue(colorScheme).opacity(0.15)
+						: PanelPalette.primaryText(colorScheme).opacity(
+							colorScheme == .dark ? 0.08 : 0.055
+						)
+				)
+
+			Image(systemName: "line.3.horizontal")
+				.font(.system(size: 9, weight: .semibold))
+				.foregroundStyle(
+					isReorderHandleHovered
+						? PanelPalette.actionBlue(colorScheme)
+						: PanelPalette.secondaryText(colorScheme).opacity(0.68)
+				)
+		}
+			.frame(width: 18, height: 28)
+			.opacity(showsReorderHandle ? 1 : 0)
+			.contentShape(Rectangle())
+			.highPriorityGesture(
+				DragGesture(
+					minimumDistance: 1,
+					coordinateSpace: .named(
+						AccountCardReorderLayout.coordinateSpaceName
+					)
+				)
+					.onChanged { value in
+						isReorderHandleDragging = true
+						onReorderDragChanged(value.translation.height)
+					}
+					.onEnded { _ in
+						isReorderHandleDragging = false
+						onReorderDragEnded()
+					}
+			)
+			.allowsHitTesting(
+				store.canReorderAccounts && isReorderGestureEnabled
+			)
+			.onHover { isHovered in
+				isReorderHandleHovered = isHovered
+			}
+			.help("Drag to reorder accounts")
+			.accessibilityElement()
+			.accessibilityLabel("Reorder \(identity.text)")
+			.accessibilityValue(reorderAccessibilityValue)
+			.accessibilityHint("Drag to change the account routing order.")
+			.accessibilityHidden(store.canReorderAccounts == false)
+			.accessibilityAction(named: Text("Move up")) {
+				moveAccount(by: -1)
+			}
+			.accessibilityAction(named: Text("Move down")) {
+				moveAccount(by: 1)
+			}
+	}
+
+	private var showsReorderHandle: Bool {
+		store.canReorderAccounts
+			&& (
+				(isAccountCardHovered && isReorderGestureEnabled)
+					|| isReorderHandleDragging
+			)
+	}
+
+	private var reorderAccessibilityValue: String {
+		guard let index = store.accounts.firstIndex(where: {
+			$0.account.accountID == state.account.accountID
+		}) else {
+			return ""
+		}
+		return "Position \(index + 1) of \(store.accounts.count)"
+	}
+
+	private func moveAccount(by offset: Int) {
+		guard store.canReorderAccounts,
+			let index = store.accounts.firstIndex(where: {
+				$0.account.accountID == state.account.accountID
+			}),
+			store.accounts.indices.contains(index + offset)
+		else {
+			return
+		}
+		let targetAccountID = store.accounts[index + offset].account.accountID
+		Task {
+			await store.moveAccount(state.account.accountID, onto: targetAccountID)
+		}
 	}
 
 	private var identityHeader: some View {

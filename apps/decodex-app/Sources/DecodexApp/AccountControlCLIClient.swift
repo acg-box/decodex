@@ -271,6 +271,13 @@ protocol AccountControlClient: ResetCardClient {
 		idempotencyKey: String
 	) async throws -> AccountControlResult
 
+	func setAccountOrder(
+		authority: ResetCardAuthority?,
+		order: [String],
+		expectedRoutingRevision: UInt64,
+		idempotencyKey: String
+	) async throws -> AccountControlResult
+
 	func refreshAccountCredentials(
 		authority: ResetCardAuthority?,
 		operationID: String,
@@ -518,6 +525,33 @@ extension DecodexNativeClient: AccountControlClient {
 			),
 			authority: authority,
 			expected: .routing(mode: .balanced)
+		)
+	}
+
+	func setAccountOrder(
+		authority: ResetCardAuthority?,
+		order: [String],
+		expectedRoutingRevision: UInt64,
+		idempotencyKey: String
+	) async throws -> AccountControlResult {
+		guard authority.map(Self.isValidAuthority) ?? true,
+			expectedRoutingRevision > 0,
+			order.count <= 512,
+			order.allSatisfy(Self.isCanonicalAccountID),
+			Set(order).count == order.count,
+			Self.isCanonicalUUID(idempotencyKey)
+		else {
+			throw AccountControlError.invalidInput
+		}
+		return try await executeAccountControl(
+			request: DecodexNativeRequest(
+				operation: "set_account_order",
+				expectedRoutingRevision: expectedRoutingRevision,
+				order: order,
+				idempotencyKey: idempotencyKey
+			),
+			authority: authority,
+			expected: .routingOrder(order)
 		)
 	}
 
@@ -770,6 +804,7 @@ private enum AccountControlExpectedResult {
 	case accountChanged(accountID: String, enabled: Bool?)
 	case accountLoggedOut(accountID: String)
 	case routing(mode: AccountRoutingMode)
+	case routingOrder([String])
 	case codexAuthProjected(accountID: String, accountRevision: UInt64)
 }
 
@@ -1040,6 +1075,12 @@ private enum AccountControlResultPayloadWire: Decodable {
 		case (.routingChanged(let wire), .routing(let expectedMode)):
 			let routing = wire.routing
 			guard routing.revision == entityRevision, routing.mode == expectedMode else {
+				throw AccountControlError.invalidResponse
+			}
+			return .routingChanged(routing)
+		case (.routingChanged(let wire), .routingOrder(let expectedOrder)):
+			let routing = wire.routing
+			guard routing.revision == entityRevision, routing.order == expectedOrder else {
 				throw AccountControlError.invalidResponse
 			}
 			return .routingChanged(routing)
