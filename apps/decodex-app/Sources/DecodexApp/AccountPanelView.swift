@@ -1,6 +1,16 @@
 import AppKit
 import SwiftUI
 
+private struct AccountReorderInteraction {
+	let token = UUID()
+	let accountID: String
+	let baseOrder: [String]
+	var visualOrder: [String]
+	let frames: [String: CGRect]
+	var draggedOffsetY: CGFloat
+	var isSettling = false
+}
+
 struct AccountPanelView: View {
 	let store: ResetCardStore
 	private let layoutVisibleFrameOverride: CGRect?
@@ -9,10 +19,13 @@ struct AccountPanelView: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
 	@State private var measuredAccountListContentHeight: CGFloat = 0
+	@State private var accountCardFrames = [String: CGRect]()
+	@State private var accountReorderInteraction: AccountReorderInteraction?
 	@State private var isPresentingEnrollment = false
 	@State private var detailedAccountID: String?
 	@State private var fastMode: FastModeStore
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
+	@AppStorage(PanelCardMaterial.storageKey) private var panelCardMaterialRawValue = PanelCardMaterial.thin.rawValue
 
 	init(
 		store: ResetCardStore,
@@ -27,22 +40,25 @@ struct AccountPanelView: View {
 	}
 
 	var body: some View {
-		ZStack {
-			panelContent
-				.disabled(store.accountReauthentication != nil)
-				.allowsHitTesting(store.accountReauthentication == nil)
-				.accessibilityHidden(store.accountReauthentication != nil)
+		GlassEffectContainer(spacing: 0) {
+			ZStack {
+				panelContent
+					.disabled(store.accountReauthentication != nil)
+					.allowsHitTesting(store.accountReauthentication == nil)
+					.accessibilityHidden(store.accountReauthentication != nil)
 
-			if store.accountReauthentication != nil {
-				reauthenticationOverlay
-					.transition(
-						.opacity.combined(
-							with: .scale(scale: 0.98, anchor: .center)
+				if store.accountReauthentication != nil {
+					reauthenticationOverlay
+						.transition(
+							.opacity.combined(
+								with: .scale(scale: 0.98, anchor: .center)
+							)
 						)
-					)
-					.zIndex(1)
+						.zIndex(1)
+				}
 			}
 		}
+		.environment(\.panelCardMaterial, panelCardMaterial)
 		.frame(width: AccountPanelLayout.panelWidth)
 		.padding(PanelSpacing.related)
 		.controlSize(.small)
@@ -90,6 +106,17 @@ struct AccountPanelView: View {
 			}
 			store.dismissMessage()
 		}
+	}
+
+	private var panelCardMaterial: PanelCardMaterial {
+		PanelCardMaterial(rawValue: panelCardMaterialRawValue) ?? .thin
+	}
+
+	private var panelCardMaterialSelection: Binding<PanelCardMaterial> {
+		Binding(
+			get: { panelCardMaterial },
+			set: { panelCardMaterialRawValue = $0.rawValue }
+		)
 	}
 
 	private var panelContent: some View {
@@ -197,47 +224,19 @@ struct AccountPanelView: View {
 			)
 
 			Menu {
-				Button(
-					accountPrivacy == AccountPrivacy.hidden
-						? "Show email addresses"
-						: "Hide email addresses"
-				) {
-					accountPrivacy =
-						accountPrivacy == AccountPrivacy.hidden
-						? AccountPrivacy.visible
-						: AccountPrivacy.hidden
-				}
-
-				Button(fastMode.isEnabled ? "Turn Fast mode off" : "Turn Fast mode on") {
-					Task {
-						await fastMode.toggle()
-					}
-				}
-				.disabled(fastMode.isLoading)
-
 				Button("Refresh all") {
-					Task {
-						await store.refresh()
-					}
+					store.requestRefresh()
 				}
 				.disabled(
-					store.isRefreshing
-						|| store.isRefreshingAccountSkeleton
-						|| store.isAccountControlInProgress
+					store.isAccountControlInProgress
 						|| store.submittingKey != nil
 				)
 
-				if case .fixed = store.routing?.mode {
-					Button("Use balanced routing") {
-						Task {
-							await store.selectBalancedAccounts()
-						}
+				Picker("Material", selection: panelCardMaterialSelection) {
+					ForEach(PanelCardMaterial.allCases) { material in
+						Text(material.title)
+							.tag(material)
 					}
-					.disabled(
-						store.canPerformDirectAccountControl == false
-							|| store.isRoutingAccountControl
-							|| store.submittingKey != nil
-					)
 				}
 
 				Divider()
@@ -344,17 +343,48 @@ struct AccountPanelView: View {
 		} else {
 			ScrollView(.vertical, showsIndicators: false) {
 				VStack(alignment: .leading, spacing: PanelSpacing.section) {
-					ForEach(store.accounts) { state in
+					ForEach(presentedAccountStates) { state in
 						ResetCardAccountRow(
 							state: state,
 							store: store,
 							showsEmail: accountPrivacy == AccountPrivacy.visible,
-							detailedAccountID: $detailedAccountID
+							detailedAccountID: $detailedAccountID,
+							isReorderGestureEnabled: canDragAccount(state.id),
+							onReorderDragChanged: { translationY in
+								updateAccountReorder(
+									accountID: state.id,
+									translationY: translationY
+								)
+							},
+							onReorderDragEnded: {
+								finishAccountReorder(accountID: state.id)
+							}
 						)
 						.panelCardSurface(cornerRadius: 16)
+						.background {
+							GeometryReader { proxy in
+								Color.clear.preference(
+									key: AccountCardFramesPreferenceKey.self,
+									value: [
+										state.id: proxy.frame(
+											in: .named(
+												AccountCardReorderLayout.coordinateSpaceName
+											)
+										)
+									]
+								)
+							}
+						}
+						.offset(y: accountReorderOffset(for: state.id))
+						.zIndex(isDraggedAccount(state.id) ? 1 : 0)
+						.animation(
+							accountReorderAnimation(for: state.id),
+							value: accountReorderOffset(for: state.id)
+						)
 						.transition(.panelSection)
 					}
 				}
+				.coordinateSpace(name: AccountCardReorderLayout.coordinateSpaceName)
 				.padding(1)
 				.background(accountRowsHeightProbe)
 			}
@@ -367,8 +397,177 @@ struct AccountPanelView: View {
 					measuredAccountListContentHeight = measuredHeight
 				}
 			}
+			.onPreferenceChange(AccountCardFramesPreferenceKey.self) { frames in
+				updateAccountCardFrames(frames)
+			}
 			.accessibilityLabel("Decodex accounts")
 		}
+	}
+
+	private var presentedAccountStates: [ResetCardAccountState] {
+		guard let interaction = accountReorderInteraction else {
+			return store.accounts
+		}
+		let stateByID = Dictionary(
+			uniqueKeysWithValues: store.accounts.map { ($0.id, $0) }
+		)
+		let states = interaction.baseOrder.compactMap { stateByID[$0] }
+		return states.count == store.accounts.count ? states : store.accounts
+	}
+
+	private func updateAccountCardFrames(_ frames: [String: CGRect]) {
+		guard accountReorderInteraction == nil else {
+			return
+		}
+		let accountIDs = Set(store.accounts.map(\.id))
+		let currentFrames = frames.filter { accountIDs.contains($0.key) }
+		if accountCardFrames != currentFrames {
+			accountCardFrames = currentFrames
+		}
+	}
+
+	private func canDragAccount(_ accountID: String) -> Bool {
+		guard store.canReorderAccounts else {
+			return false
+		}
+		guard let interaction = accountReorderInteraction else {
+			return true
+		}
+		return interaction.accountID == accountID
+			&& interaction.isSettling == false
+	}
+
+	private func updateAccountReorder(
+		accountID: String,
+		translationY: CGFloat
+	) {
+		if accountReorderInteraction == nil {
+			let baseOrder = store.accounts.map(\.id)
+			guard store.canReorderAccounts,
+				baseOrder.contains(accountID),
+				baseOrder.allSatisfy({ accountCardFrames[$0] != nil })
+			else {
+				return
+			}
+			accountReorderInteraction = AccountReorderInteraction(
+				accountID: accountID,
+				baseOrder: baseOrder,
+				visualOrder: baseOrder,
+				frames: accountCardFrames,
+				draggedOffsetY: 0
+			)
+		}
+
+		guard var interaction = accountReorderInteraction,
+			interaction.accountID == accountID,
+			interaction.isSettling == false
+		else {
+			return
+		}
+		let constrainedTranslation = AccountCardReorderLayout.constrainedTranslationY(
+			for: accountID,
+			baseOrder: interaction.baseOrder,
+			frames: interaction.frames,
+			proposed: translationY
+		)
+		interaction.draggedOffsetY = constrainedTranslation
+		interaction.visualOrder = AccountCardReorderLayout.reorderedAccountIDs(
+			dragging: accountID,
+			baseOrder: interaction.baseOrder,
+			frames: interaction.frames,
+			translationY: constrainedTranslation
+		)
+		accountReorderInteraction = interaction
+	}
+
+	private func finishAccountReorder(accountID: String) {
+		guard var interaction = accountReorderInteraction,
+			interaction.accountID == accountID,
+			interaction.isSettling == false
+		else {
+			return
+		}
+		interaction.isSettling = true
+		interaction.draggedOffsetY = AccountCardReorderLayout.verticalOffset(
+			for: accountID,
+			baseOrder: interaction.baseOrder,
+			visualOrder: interaction.visualOrder,
+			frames: interaction.frames,
+			spacing: PanelSpacing.section
+		)
+		accountReorderInteraction = interaction
+
+		let token = interaction.token
+		let finalOrder = interaction.visualOrder
+		let targetAccountID = accountIDAfter(
+			accountID,
+			in: finalOrder
+		)
+		Task {
+			if reduceMotion == false {
+				try? await Task.sleep(for: .milliseconds(240))
+			}
+			guard Task.isCancelled == false,
+				accountReorderInteraction?.token == token
+			else {
+				return
+			}
+			if finalOrder != interaction.baseOrder {
+				await store.moveAccounts(
+					[accountID],
+					before: targetAccountID
+				)
+			}
+			guard accountReorderInteraction?.token == token else {
+				return
+			}
+			accountReorderInteraction = nil
+		}
+	}
+
+	private func accountIDAfter(
+		_ accountID: String,
+		in order: [String]
+	) -> String? {
+		guard let index = order.firstIndex(of: accountID),
+			order.indices.contains(index + 1)
+		else {
+			return nil
+		}
+		return order[index + 1]
+	}
+
+	private func accountReorderOffset(for accountID: String) -> CGFloat {
+		guard let interaction = accountReorderInteraction else {
+			return 0
+		}
+		if interaction.accountID == accountID {
+			return interaction.draggedOffsetY
+		}
+		return AccountCardReorderLayout.verticalOffset(
+			for: accountID,
+			baseOrder: interaction.baseOrder,
+			visualOrder: interaction.visualOrder,
+			frames: interaction.frames,
+			spacing: PanelSpacing.section
+		)
+	}
+
+	private func isDraggedAccount(_ accountID: String) -> Bool {
+		accountReorderInteraction?.accountID == accountID
+	}
+
+	private func accountReorderAnimation(for accountID: String) -> Animation? {
+		guard reduceMotion == false else {
+			return nil
+		}
+		if let interaction = accountReorderInteraction,
+			interaction.accountID == accountID,
+			interaction.isSettling == false
+		{
+			return nil
+		}
+		return PanelMotion.accountReorder
 	}
 
 	private var accountListContentHeight: CGFloat {

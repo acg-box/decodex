@@ -120,6 +120,12 @@ enum Request {
 		expected_routing_revision: u64,
 		idempotency_key: String,
 	},
+	SetAccountOrder {
+		schema: String,
+		order: Vec<String>,
+		expected_routing_revision: u64,
+		idempotency_key: String,
+	},
 	RefreshAccount {
 		schema: String,
 		operation_id: String,
@@ -174,6 +180,7 @@ impl Request {
 			Self::LogoutAccount { .. } => "logout_account",
 			Self::SetFixedSelection { .. } => "set_fixed_selection",
 			Self::SetBalancedSelection { .. } => "set_balanced_selection",
+			Self::SetAccountOrder { .. } => "set_account_order",
 			Self::RefreshAccount { .. } => "refresh_account",
 			Self::StartAccountReauthentication { .. } => "start_account_reauthentication",
 			Self::PollAccountReauthentication { .. } => "poll_account_reauthentication",
@@ -198,6 +205,7 @@ impl Request {
 			| Self::LogoutAccount { schema, .. }
 			| Self::SetFixedSelection { schema, .. }
 			| Self::SetBalancedSelection { schema, .. }
+			| Self::SetAccountOrder { schema, .. }
 			| Self::RefreshAccount { schema, .. }
 			| Self::StartAccountReauthentication { schema, .. }
 			| Self::PollAccountReauthentication { schema, .. }
@@ -688,6 +696,8 @@ async fn execute_request(
 			.await,
 		Request::SetBalancedSelection { expected_routing_revision, idempotency_key, .. } =>
 			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
+		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } =>
+			set_account_order(profile, order, expected_routing_revision, idempotency_key).await,
 		Request::RefreshAccount {
 			operation_id,
 			account_id,
@@ -955,6 +965,27 @@ async fn set_balanced_selection(
 	to_value(response)
 }
 
+async fn set_account_order(
+	profile: ClientProfile,
+	order: Vec<String>,
+	expected_routing_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let order = order
+		.into_iter()
+		.map(|account_id| entity_id(&account_id))
+		.collect::<Result<Vec<_>, _>>()?;
+	let response = AccountClient::new(profile)
+		.set_account_order(
+			order,
+			revision(expected_routing_revision)?,
+			parse_idempotency_key(idempotency_key)?,
+		)
+		.await
+		.map_err(RequestFailure::Client)?;
+	to_value(response)
+}
+
 async fn use_account_in_codex(
 	profile: ClientProfile,
 	account_id: String,
@@ -1104,6 +1135,7 @@ mod tests {
 	use super::*;
 
 	const ACCOUNT_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+	const SECOND_ACCOUNT_ID: &str = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
 
 	#[test]
 	fn strict_request_accepts_the_versioned_operations() {
@@ -1126,6 +1158,24 @@ mod tests {
 		assert_eq!(request.operation(), "use_account_in_codex");
 		assert!(serde_json::from_str::<Request>(&format!(
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"use_account_in_codex","account_id":"{ACCOUNT_ID}","idempotency_key":"use-account-test"}}"#
+		))
+		.is_err());
+	}
+
+	#[test]
+	fn account_order_request_is_exact_and_routing_revision_fenced() {
+		let request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"set_account_order","order":["{SECOND_ACCOUNT_ID}","{ACCOUNT_ID}"],"expected_routing_revision":9,"idempotency_key":"account-order-test"}}"#
+		))
+		.expect("account-order request must decode");
+
+		assert_eq!(request.operation(), "set_account_order");
+		assert!(serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"set_account_order","order":["{SECOND_ACCOUNT_ID}","{ACCOUNT_ID}"],"idempotency_key":"account-order-test"}}"#
+		))
+		.is_err());
+		assert!(serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"set_account_order","order":["{SECOND_ACCOUNT_ID}","{ACCOUNT_ID}"],"expected_routing_revision":9,"idempotency_key":"account-order-test","extra":true}}"#
 		))
 		.is_err());
 	}
