@@ -144,14 +144,25 @@ Workflow:
    `automation_repair` may change only the exact effect-free outcome evaluation
    module
    `automations/upstream/scripts/upstream_autopilot_lib/effectiveness.py` in
-   addition to its normal repair paths. State persistence, CLI, effect, agent,
-   watchdog, policy, manifest, and schema authority remain denied. The protected
-   parent requires that module to remain non-executable `100644` source with fixed
-   imports, a bounded pure AST subset, no input mutation, no top-level execution,
-   and no recursive call graph. Repairable tests cannot weaken this check. A rejected
+   addition to its normal repair paths. It may also remove exactly one existing
+   active reason literal per patch from the single
+   `PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset({...})` assignment in
+   `automations/upstream/scripts/upstream_autopilot_lib/core.py`. This is
+   retirement-only: leave at least one baseline reason, preserve the assignment and
+   call shape, and make no other source change. The active set controls new queue and
+   CLI choices. The explicit `KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES` set retains
+   immutable recognition of persisted reasons and must not change. The exception
+   cannot add or rename a reason or grow authority. The parent compares the result
+   with the exact non-executable
+   `100644` blob at the expected head. State persistence, CLI, effects, agent,
+   watchdog, policy, manifest, schema, scheduler, landing, authentication, GitHub
+   Actions, and X authority remain denied. The protected parent requires
+   `effectiveness.py` to remain non-executable `100644` source with fixed imports, a
+   bounded pure AST subset, no input mutation, no top-level execution, and no
+   recursive call graph. Repairable tests cannot weaken either check. A rejected
    patch is reset to the exact clean baseline. The parent then writes the canonical
-   create-only mode `0600` handoff receipt. State records the prepared child generation
-   before launch.
+   create-only mode `0600` handoff receipt. State records the prepared child
+   generation before launch.
    An active watchdog keeps retries at `agent_run_in_progress`; after a crash, the
    next retry either recovers the exact completed receipt or resets and reruns the
    same state-bound context. The fence must be held before any worktree inspection
