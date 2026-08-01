@@ -2,7 +2,8 @@ import Foundation
 import Observation
 
 enum ResetCardInventoryFailure: Equatable {
-	case retryable(detail: String)
+	case updating(detail: String)
+	case connecting(detail: String)
 	case unavailable(detail: String)
 }
 
@@ -41,11 +42,17 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	}
 
 	var fiveHourQuota: ResetCardQuotaWindow {
-		inventory?.fiveHourQuota ?? account.fiveHourQuota
+		Self.preferredQuota(
+			inventory?.fiveHourQuota,
+			account.fiveHourQuota
+		)
 	}
 
 	var sevenDayQuota: ResetCardQuotaWindow {
-		inventory?.sevenDayQuota ?? account.sevenDayQuota
+		Self.preferredQuota(
+			inventory?.sevenDayQuota,
+			account.sevenDayQuota
+		)
 	}
 
 	var inventoryIsCurrent: Bool {
@@ -58,16 +65,38 @@ struct ResetCardAccountState: Identifiable, Equatable {
 
 	var inventoryFailure: ResetCardInventoryFailure? {
 		if let error {
+			if error.isConnectionFailure {
+				return .connecting(detail: error.localizedDescription)
+			}
 			return error.isRetryableReadFailure
-				? .retryable(detail: error.localizedDescription)
+				? .updating(detail: error.localizedDescription)
 				: .unavailable(detail: error.localizedDescription)
 		}
 		if let error = inventory?.observationError {
 			return error.isRetryableReadFailure
-				? .retryable(detail: error.presentation)
+				? .updating(detail: error.presentation)
 				: .unavailable(detail: error.presentation)
 		}
 		return nil
+	}
+
+	private static func preferredQuota(
+		_ inventory: ResetCardQuotaWindow?,
+		_ account: ResetCardQuotaWindow
+	) -> ResetCardQuotaWindow {
+		guard let inventory else {
+			return account
+		}
+		guard case .current = account.state else {
+			return inventory
+		}
+		guard case .current = inventory.state else {
+			return account
+		}
+		return (account.observedAtUnixMicros ?? 0)
+			> (inventory.observedAtUnixMicros ?? 0)
+			? account
+			: inventory
 	}
 
 	var targets: [ResetCardUseTarget] {
@@ -218,6 +247,14 @@ private enum ResetCardRefreshResult: Equatable {
 	case skipped
 }
 
+private enum ResetCardInventoryRefreshResult: Equatable {
+	case current
+	case awaitingSkeleton
+	case retryNeeded
+	case failed
+	case missing
+}
+
 @MainActor
 @Observable
 final class ResetCardStore {
@@ -226,6 +263,11 @@ final class ResetCardStore {
 	// process burst that can make otherwise healthy accounts fail transiently.
 	private static let maximumConcurrentAccountReads = 3
 	private static let defaultAutomaticRefreshInterval: Duration = .seconds(15)
+	private static let defaultPostUseRetryDelays: [Duration] = [
+		.seconds(1),
+		.seconds(3),
+		.seconds(7),
+	]
 
 	private static let defaultStartupRetryDelays: [Duration] = [
 		.seconds(1),
@@ -256,10 +298,12 @@ final class ResetCardStore {
 	var message: ResetCardStoreMessage?
 
 	@ObservationIgnored private let client: any ResetCardClient
+	@ObservationIgnored private let inventoryReads: ResetCardInventoryReadCoordinator
 	@ObservationIgnored private let accountControlClient: (any AccountControlClient)?
 	@ObservationIgnored private let accountProfileClient: (any AccountProfileClient)?
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
+	@ObservationIgnored private let postUseRetryDelays: [Duration]
 	@ObservationIgnored private let automaticRefreshInterval: Duration
 	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
@@ -268,6 +312,10 @@ final class ResetCardStore {
 	@ObservationIgnored private var refreshCycleTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
+	@ObservationIgnored private var postUseReconciliationTasks = [
+		String: Task<Void, Never>
+	]()
+	@ObservationIgnored private var postUseReconciliationAccountIDs = Set<String>()
 	@ObservationIgnored private(set) var isPreparingForTermination = false
 	@ObservationIgnored private var profileRequestGenerations = [String: UInt64]()
 	@ObservationIgnored private var profileEmailCache = [String: CachedAccountEmail]()
@@ -283,6 +331,7 @@ final class ResetCardStore {
 		client: any ResetCardClient = DecodexNativeClient(),
 		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
 		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays,
+		postUseRetryDelays: [Duration] = ResetCardStore.defaultPostUseRetryDelays,
 		automaticRefreshInterval: Duration = ResetCardStore.defaultAutomaticRefreshInterval,
 		accountReauthenticationPollInterval: Duration = .seconds(1),
 		resolveCodexExecutable: @escaping @MainActor @Sendable () throws -> String = {
@@ -290,10 +339,12 @@ final class ResetCardStore {
 		}
 	) {
 		self.client = client
+		inventoryReads = ResetCardInventoryReadCoordinator(client: client)
 		accountControlClient = client as? any AccountControlClient
 		accountProfileClient = client as? any AccountProfileClient
 		self.pendingStore = pendingStore
 		self.startupRetryDelays = startupRetryDelays
+		self.postUseRetryDelays = postUseRetryDelays
 		self.automaticRefreshInterval = automaticRefreshInterval
 		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
 		self.resolveCodexExecutable = resolveCodexExecutable
@@ -316,6 +367,9 @@ final class ResetCardStore {
 		refreshCycleTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
+		for task in postUseReconciliationTasks.values {
+			task.cancel()
+		}
 	}
 
 	var isInitialLoading: Bool {
@@ -336,6 +390,7 @@ final class ResetCardStore {
 	func blocksNewAttempt(for target: ResetCardUseTarget) -> Bool {
 		isPendingRecoveryBlocked
 			|| submittingKey != nil
+			|| postUseReconciliationAccountIDs.contains(target.accountID)
 			|| isAwaitingFreshAccountSkeleton(target.accountID)
 			|| pendingAttempts.count >= ResetCardPendingAttemptStore.maximumAttempts
 			|| pendingAttempts.contains(where: {
@@ -415,6 +470,9 @@ final class ResetCardStore {
 		let inFlightRefreshCycleTask = refreshCycleTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		let inFlightAccountReauthenticationTask = accountReauthenticationTask
+		let inFlightPostUseReconciliationTasks = Array(
+			postUseReconciliationTasks.values
+		)
 
 		startupTask?.cancel()
 		startupTask = nil
@@ -426,12 +484,20 @@ final class ResetCardStore {
 		pendingRecoveryTask = nil
 		accountReauthenticationTask?.cancel()
 		accountReauthenticationTask = nil
+		for task in inFlightPostUseReconciliationTasks {
+			task.cancel()
+		}
+		postUseReconciliationTasks.removeAll()
 
 		await inFlightStartupTask?.value
 		await inFlightAutomaticRefreshTask?.value
 		await inFlightRefreshCycleTask?.value
 		await inFlightPendingRecoveryTask?.value
 		await inFlightAccountReauthenticationTask?.value
+		for task in inFlightPostUseReconciliationTasks {
+			await task.value
+		}
+		await inventoryReads.cancelAll()
 	}
 
 	private func startAutomaticRefresh() {
@@ -632,6 +698,9 @@ final class ResetCardStore {
 					isRefreshing: awaitsNewerSkeleton
 						|| inventoryIsStale
 						|| retriesInventory
+						|| postUseReconciliationAccountIDs.contains(
+							account.accountID
+						)
 						|| (retainedInventory == nil && retainedError == nil),
 					profile: profileEmailsVisible
 						? retainedProfile
@@ -646,6 +715,7 @@ final class ResetCardStore {
 					&& retainedProfileError == nil
 				)
 			}
+			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			if let projectionReadback,
@@ -660,7 +730,7 @@ final class ResetCardStore {
 			}
 			refreshSkeletonIsPublished = true
 
-			let client = self.client
+			let inventoryReads = self.inventoryReads
 			let accountProfileClient = self.accountProfileClient
 			let includeEmail = true
 			var profileRequests = [AccountProfileRequest]()
@@ -673,7 +743,7 @@ final class ResetCardStore {
 					do {
 						return .inventoryAvailable(
 							accountID: account.accountID,
-							try await client.inventory(for: account)
+							try await inventoryReads.inventory(for: account)
 						)
 					} catch {
 						return .inventoryFailed(
@@ -1311,6 +1381,7 @@ final class ResetCardStore {
 		defer {
 			submittingKey = nil
 		}
+		await inventoryReads.beginEffect(attempt.target.accountID)
 
 		guard let dispatch = await pendingStore.withDispatchLock(
 			for: attempt,
@@ -1325,6 +1396,7 @@ final class ResetCardStore {
 			},
 			shouldRemove: \.removesPendingAttempt
 		) else {
+			await inventoryReads.endEffect(attempt.target.accountID)
 			reloadPendingJournal()
 			if isPendingRecoveryBlocked {
 				message = Self.pendingRecoveryBlockedMessage
@@ -1337,7 +1409,9 @@ final class ResetCardStore {
 			return ResetCardUseCompletion(resolved: false)
 		}
 
-		return await apply(dispatch, to: attempt)
+		let completion = await apply(dispatch, to: attempt)
+		await inventoryReads.endEffect(attempt.target.accountID)
+		return completion
 	}
 
 	private func apply(
@@ -1380,11 +1454,12 @@ final class ResetCardStore {
 			if removeTerminalAttempt {
 				forget(attempt)
 			}
-			await refreshAccount(attempt.target.accountID)
+			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
 		case .nativeClientUnavailable, .timedOut, .outputTooLarge,
 			.useDefinitelyNotDispatched, .usePotentiallyDispatched,
-			.commandFailed, .invalidResponse, .service:
+			.transportDisconnected, .transportBackpressured,
+			.invalidResponse, .service:
 			reloadPendingJournal()
 			setPendingStatus(
 				.retrying(detail: error.localizedDescription),
@@ -1408,7 +1483,7 @@ final class ResetCardStore {
 			if removeTerminalAttempt {
 				forget(attempt)
 			}
-			await refreshAccount(attempt.target.accountID)
+			await beginPostUseReconciliation(attempt.target.accountID)
 			return ResetCardUseCompletion(resolved: true)
 		case .prepared, .effectAmbiguous, .notFound, .unavailable:
 			reloadPendingJournal()
@@ -1510,17 +1585,180 @@ final class ResetCardStore {
 		}
 	}
 
-	private func refreshAccount(_ accountID: String) async {
-		guard let index = accounts.firstIndex(where: { $0.account.accountID == accountID }) else {
+	private func beginPostUseReconciliation(_ accountID: String) async {
+		guard postUseReconciliationTasks[accountID] == nil else {
 			return
+		}
+
+		// A terminal use result is an effect boundary. A read that started before
+		// this point may finish, but it must not satisfy the post-effect refresh.
+		await inventoryReads.invalidate(accountID)
+		guard isPreparingForTermination == false,
+			let index = accounts.firstIndex(where: {
+				$0.account.accountID == accountID
+			})
+		else {
+			return
+		}
+
+		postUseReconciliationAccountIDs.insert(accountID)
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: nil,
+			isRefreshing: true,
+			profile: existing.profile,
+			profileUnavailable: existing.profileUnavailable,
+			profileError: existing.profileError,
+			isProfileRefreshing: existing.isProfileRefreshing
+		)
+
+		postUseReconciliationTasks[accountID] = Task { [weak self] in
+			await self?.runPostUseReconciliation(accountID)
+		}
+	}
+
+	private func runPostUseReconciliation(_ accountID: String) async {
+		defer {
+			postUseReconciliationTasks.removeValue(forKey: accountID)
+		}
+
+		var result = await refreshAccount(
+			accountID,
+			completesPostUseReconciliation: true
+		)
+		if await finishPostUseReconciliationStep(
+			result,
+			accountID: accountID
+		) {
+			return
+		}
+
+		for delay in postUseRetryDelays {
+			do {
+				try await Task.sleep(for: delay)
+			} catch {
+				return
+			}
+			guard Task.isCancelled == false else {
+				return
+			}
+			guard postUseReconciliationAccountIDs.contains(accountID) else {
+				return
+			}
+
+			result = await refreshAccount(
+				accountID,
+				completesPostUseReconciliation: true
+			)
+			if await finishPostUseReconciliationStep(
+				result,
+				accountID: accountID
+			) {
+				return
+			}
+		}
+	}
+
+	private func finishPostUseReconciliationStep(
+		_ result: ResetCardInventoryRefreshResult,
+		accountID: String
+	) async -> Bool {
+		switch result {
+		case .current, .failed, .missing:
+			return true
+		case .awaitingSkeleton:
+			await refreshAccountSkeleton()
+			if canCompletePostUseReconciliation(accountID) {
+				completePostUseReconciliation(accountID)
+				return true
+			}
+			return postUseReconciliationAccountIDs.contains(accountID) == false
+		case .retryNeeded:
+			if isAwaitingFreshAccountSkeleton(accountID) {
+				await refreshAccountSkeleton()
+			}
+			return postUseReconciliationAccountIDs.contains(accountID) == false
+		}
+	}
+
+	private func canCompletePostUseReconciliation(_ accountID: String) -> Bool {
+		guard let state = accounts.first(where: {
+			$0.account.accountID == accountID
+		}) else {
+			return false
+		}
+		return state.inventoryIsCurrent
+			&& state.error == nil
+			&& state.inventory?.observationError == nil
+	}
+
+	private func completePostUseReconciliation(_ accountID: String) {
+		guard postUseReconciliationAccountIDs.remove(accountID) != nil else {
+			return
+		}
+		guard let index = accounts.firstIndex(where: {
+			$0.account.accountID == accountID
+		}) else {
+			return
+		}
+		let existing = accounts[index]
+		accounts[index] = ResetCardAccountState(
+			account: existing.account,
+			inventory: existing.inventory,
+			error: existing.error,
+			isRefreshing: isAwaitingFreshAccountSkeleton(accountID),
+			profile: existing.profile,
+			profileUnavailable: existing.profileUnavailable,
+			profileError: existing.profileError,
+			isProfileRefreshing: existing.isProfileRefreshing
+		)
+	}
+
+	private func prunePostUseReconciliationsForCurrentAccounts() {
+		let currentAccountIDs = Set(accounts.map(\.account.accountID))
+		let removedAccountIDs = postUseReconciliationAccountIDs.subtracting(
+			currentAccountIDs
+		)
+		guard removedAccountIDs.isEmpty == false else {
+			return
+		}
+
+		for accountID in removedAccountIDs {
+			postUseReconciliationAccountIDs.remove(accountID)
+			postUseReconciliationTasks.removeValue(forKey: accountID)?.cancel()
+			Task { [inventoryReads] in
+				await inventoryReads.discard(accountID)
+			}
+		}
+	}
+
+	private func refreshAccount(
+		_ accountID: String,
+		completesPostUseReconciliation: Bool = false
+	) async -> ResetCardInventoryRefreshResult {
+		guard let index = accounts.firstIndex(where: { $0.account.accountID == accountID }) else {
+			postUseReconciliationAccountIDs.remove(accountID)
+			return .missing
 		}
 
 		let existing = accounts[index]
 		do {
-			let inventory = try await client.inventory(for: existing.account)
-			applyInventory(inventory, accountID: accountID)
+			let inventory = try await inventoryReads.inventory(for: existing.account)
+			return applyInventory(
+				inventory,
+				accountID: accountID,
+				completesPostUseReconciliation: completesPostUseReconciliation
+			)
 		} catch {
-			applyInventoryFailure(Self.clientError(error), accountID: accountID)
+			let clientError = Self.clientError(error)
+			applyInventoryFailure(
+				clientError,
+				accountID: accountID,
+				completesPostUseReconciliation: completesPostUseReconciliation
+			)
+			return clientError.isRetryableReadFailure ? .retryNeeded : .failed
 		}
 	}
 
@@ -1534,7 +1772,7 @@ final class ResetCardStore {
 			return
 		}
 		let account = accounts[index].account
-		let client = self.client
+		let inventoryReads = self.inventoryReads
 		let includeEmail = true
 			let profileRequest = accountProfileClient.map { _ in
 				AccountProfileRequest(
@@ -1556,7 +1794,7 @@ final class ResetCardStore {
 					do {
 						return .inventoryAvailable(
 							accountID: accountID,
-							try await client.inventory(for: account)
+							try await inventoryReads.inventory(for: account)
 						)
 					} catch {
 						return .inventoryFailed(
@@ -1651,6 +1889,7 @@ final class ResetCardStore {
 				accountID: String,
 				refreshInventory: Bool
 			)]()
+			var postUseReconciledAccountIDs = Set<String>()
 			accounts = snapshot.accounts.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = snapshot.authority
@@ -1667,6 +1906,12 @@ final class ResetCardStore {
 						&& inventory.accountRevision == bound.accountRevision
 						? inventory
 						: nil
+				}
+				let reconcilesPostUse = advancedInventory != nil
+					&& postUseReconciliationAccountIDs.contains(bound.accountID)
+					&& postUseReconciliationTasks[bound.accountID] == nil
+				if reconcilesPostUse {
+					postUseReconciledAccountIDs.insert(bound.accountID)
 				}
 				let retainedInventory = advancedInventory ?? previous?.inventory
 				let inventoryIsCurrent = retainedInventory.map {
@@ -1692,7 +1937,11 @@ final class ResetCardStore {
 						? previous?.error
 						: nil,
 					isRefreshing: awaitsNewerSkeleton
-						|| (sameRevision == false && inventoryIsCurrent == false),
+						|| (sameRevision == false && inventoryIsCurrent == false)
+						|| (
+							postUseReconciliationAccountIDs.contains(bound.accountID)
+								&& reconcilesPostUse == false
+						),
 					profile: sameRevision ? previous?.profile : nil,
 					profileUnavailable: sameRevision
 						? previous?.profileUnavailable
@@ -1702,6 +1951,10 @@ final class ResetCardStore {
 					&& accountProfileClient != nil
 				)
 			}
+			postUseReconciliationAccountIDs.subtract(
+				postUseReconciledAccountIDs
+			)
+			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			pruneAdvancedInventoriesAwaitingSkeleton()
@@ -1727,19 +1980,50 @@ final class ResetCardStore {
 		}
 	}
 
+	@discardableResult
 	private func applyInventory(
 		_ inventory: ResetCardInventory,
-		accountID: String
-	) {
+		accountID: String,
+		completesPostUseReconciliation: Bool = false
+	) -> ResetCardInventoryRefreshResult {
+		if completesPostUseReconciliation == false,
+			postUseReconciliationAccountIDs.contains(accountID),
+			postUseReconciliationTasks[accountID] != nil
+		{
+			return .retryNeeded
+		}
 		guard inventory.accountID == accountID,
 			let index = accounts.firstIndex(where: { $0.account.accountID == accountID })
 		else {
-			applyInventoryFailure(.invalidResponse, accountID: accountID)
-			return
+			applyInventoryFailure(
+				.invalidResponse,
+				accountID: accountID,
+				completesPostUseReconciliation: completesPostUseReconciliation
+			)
+			return .failed
 		}
 		let existing = accounts[index].account
 		guard inventory.accountRevision >= existing.accountRevision else {
-			return
+			return .retryNeeded
+		}
+		if let observationError = inventory.observationError {
+			if inventory.accountRevision > existing.accountRevision {
+				accountSkeletonRevisionTargets[accountID] = max(
+					accountSkeletonRevisionTargets[accountID] ?? 0,
+					inventory.accountRevision
+				)
+			}
+			applyInventoryFailure(
+				.service(observationError),
+				accountID: accountID,
+				completesPostUseReconciliation: completesPostUseReconciliation
+			)
+			if inventory.accountRevision > existing.accountRevision {
+				scheduleFreshAccountSkeletonRead()
+			}
+			return observationError.isRetryableReadFailure
+				? .retryNeeded
+				: .failed
 		}
 		guard inventory.accountRevision == existing.accountRevision else {
 			rejectAdvancedInventory(
@@ -1747,7 +2031,7 @@ final class ResetCardStore {
 				accountID: accountID,
 				index: index
 			)
-			return
+			return .awaitingSkeleton
 		}
 		let account = ResetCardAccountRecord(
 			authority: inventory.authority,
@@ -1769,7 +2053,8 @@ final class ResetCardStore {
 			account: account,
 			inventory: inventory,
 			error: nil,
-			isRefreshing: false,
+			isRefreshing: postUseReconciliationAccountIDs.contains(accountID)
+				|| isAwaitingFreshAccountSkeleton(accountID),
 			profile: retainsProfileState ? accounts[index].profile : nil,
 			profileUnavailable: retainsProfileState
 				? accounts[index].profileUnavailable
@@ -1777,6 +2062,11 @@ final class ResetCardStore {
 			profileError: retainsProfileState ? accounts[index].profileError : nil,
 			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
+		if completesPostUseReconciliation
+			|| postUseReconciliationTasks[accountID] == nil
+		{
+			completePostUseReconciliation(accountID)
+		}
 		if let deferred = advancedInventoriesAwaitingSkeleton[accountID],
 			deferred.accountRevision <= inventory.accountRevision
 		{
@@ -1788,6 +2078,7 @@ final class ResetCardStore {
 				accountRevision: inventory.accountRevision
 			)
 		}
+		return .current
 	}
 
 	private func rejectAdvancedInventory(
@@ -1865,17 +2156,37 @@ final class ResetCardStore {
 
 	private func applyInventoryFailure(
 		_ error: ResetCardClientError,
-		accountID: String
+		accountID: String,
+		completesPostUseReconciliation: Bool = false
 	) {
+		guard completesPostUseReconciliation
+			|| postUseReconciliationAccountIDs.contains(accountID) == false
+			|| postUseReconciliationTasks[accountID] == nil
+		else {
+			return
+		}
 		guard let index = accounts.firstIndex(where: { $0.account.accountID == accountID }) else {
 			return
+		}
+		let isRetryable = error.isRetryableReadFailure
+		if isRetryable == false
+			&& (
+				completesPostUseReconciliation
+					|| postUseReconciliationTasks[accountID] == nil
+			)
+		{
+			postUseReconciliationAccountIDs.remove(accountID)
 		}
 		let existing = accounts[index]
 		accounts[index] = ResetCardAccountState(
 			account: existing.account,
 			inventory: existing.inventory,
 			error: error,
-			isRefreshing: false,
+			isRefreshing: isRetryable
+				&& (
+					postUseReconciliationAccountIDs.contains(accountID)
+						|| isAwaitingFreshAccountSkeleton(accountID)
+				),
 			profile: existing.profile,
 			profileUnavailable: existing.profileUnavailable,
 			profileError: existing.profileError,
@@ -2640,8 +2951,13 @@ final class ResetCardStore {
 				codexAuthProjection = nil
 			}
 			accounts.removeAll { $0.account.accountID == accountID }
+			postUseReconciliationAccountIDs.remove(accountID)
+			postUseReconciliationTasks.removeValue(forKey: accountID)?.cancel()
 			accountSkeletonRevisionTargets.removeValue(forKey: accountID)
 			advancedInventoriesAwaitingSkeleton.removeValue(forKey: accountID)
+			Task { [inventoryReads] in
+				await inventoryReads.discard(accountID)
+			}
 			return .skeleton
 		case .accountChanged(let account):
 			guard let index = accounts.firstIndex(where: {
@@ -2820,9 +3136,21 @@ final class ResetCardStore {
 }
 
 private extension ResetCardClientError {
+	var isConnectionFailure: Bool {
+		switch self {
+		case .transportDisconnected:
+			return true
+		case .nativeClientUnavailable, .timedOut, .transportBackpressured,
+			.outputTooLarge, .commandRejected, .useDefinitelyNotDispatched,
+			.usePotentiallyDispatched, .invalidResponse, .service:
+			return false
+		}
+	}
+
 	var isRetryableReadFailure: Bool {
 		switch self {
-		case .nativeClientUnavailable, .timedOut, .commandFailed:
+		case .nativeClientUnavailable, .timedOut, .transportDisconnected,
+			.transportBackpressured:
 			return true
 		case .service(let error):
 			return error.isRetryableReadFailure
