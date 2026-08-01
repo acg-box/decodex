@@ -21,6 +21,7 @@ struct AccountPanelView: View {
 	@State private var measuredAccountListContentHeight: CGFloat = 0
 	@State private var accountCardFrames = [String: CGRect]()
 	@State private var accountReorderInteraction: AccountReorderInteraction?
+	@State private var hoveredAccountID: String?
 	@State private var isPresentingEnrollment = false
 	@State private var detailedAccountID: String?
 	@State private var fastMode: FastModeStore
@@ -349,6 +350,7 @@ struct AccountPanelView: View {
 							store: store,
 							showsEmail: accountPrivacy == AccountPrivacy.visible,
 							detailedAccountID: $detailedAccountID,
+							isAccountCardHovered: hoveredAccountID == state.id,
 							isReorderGestureEnabled: canDragAccount(state.id),
 							onReorderDragChanged: { translationY in
 								updateAccountReorder(
@@ -385,6 +387,13 @@ struct AccountPanelView: View {
 					}
 				}
 				.coordinateSpace(name: AccountCardReorderLayout.coordinateSpaceName)
+				.overlay {
+					AccountCardHoverTrackingView(
+						cardFrames: accountCardFrames,
+						onHoveredAccountChanged: updateHoveredAccount
+					)
+					.accessibilityHidden(true)
+				}
 				.padding(1)
 				.background(accountRowsHeightProbe)
 			}
@@ -413,6 +422,12 @@ struct AccountPanelView: View {
 		)
 		let states = interaction.baseOrder.compactMap { stateByID[$0] }
 		return states.count == store.accounts.count ? states : store.accounts
+	}
+
+	private func updateHoveredAccount(_ accountID: String?) {
+		if hoveredAccountID != accountID {
+			hoveredAccountID = accountID
+		}
 	}
 
 	private func updateAccountCardFrames(_ frames: [String: CGRect]) {

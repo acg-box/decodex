@@ -163,9 +163,45 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 
 		XCTAssertTrue(rows.contains(#"Image(systemName: "line.3.horizontal")"#))
-		XCTAssertTrue(rows.contains("isAccountCardHovered"))
+		XCTAssertTrue(rows.contains("let isAccountCardHovered: Bool"))
+		XCTAssertFalse(rows.contains("@State private var isAccountCardHovered"))
+		XCTAssertFalse(rows.contains("isAccountCardHovered = isHovered"))
 		XCTAssertTrue(rows.contains("isReorderHandleHovered"))
 		XCTAssertTrue(rows.contains("isReorderHandleDragging"))
+		XCTAssertTrue(panel.contains("@State private var hoveredAccountID: String?"))
+		XCTAssertTrue(panel.contains(".panelCardSurface(cornerRadius: 16)"))
+		XCTAssertTrue(
+			panel.contains("isAccountCardHovered: hoveredAccountID == state.id")
+		)
+		XCTAssertEqual(
+			panel.components(separatedBy: "AccountCardHoverTrackingView(").count - 1,
+			1
+		)
+		XCTAssertTrue(
+			panel.contains("cardFrames: accountCardFrames")
+		)
+		XCTAssertTrue(
+			panel.contains("onHoveredAccountChanged: updateHoveredAccount")
+		)
+		XCTAssertFalse(panel.contains(".onContinuousHover"))
+		XCTAssertTrue(
+			support.contains("struct AccountCardHoverTrackingView: NSViewRepresentable")
+		)
+		XCTAssertTrue(support.contains("let cardFrames: [String: CGRect]"))
+		XCTAssertTrue(support.contains("NSTrackingArea("))
+		XCTAssertTrue(support.contains(".mouseEnteredAndExited"))
+		XCTAssertTrue(support.contains(".mouseMoved"))
+		XCTAssertTrue(support.contains(".inVisibleRect"))
+		XCTAssertTrue(support.contains("override func mouseMoved(with event: NSEvent)"))
+		XCTAssertTrue(
+			support.contains("override func hitTest(_: NSPoint) -> NSView?")
+		)
+		XCTAssertTrue(
+			rows.contains("isAccountCardHovered || isReorderHandleHovered")
+		)
+		XCTAssertFalse(rows.contains("DECODEX_HOVER_DEBUG"))
+		XCTAssertFalse(panel.contains("DECODEX_HOVER_DEBUG"))
+		XCTAssertFalse(support.contains("DECODEX_HOVER_DEBUG"))
 		XCTAssertTrue(rows.contains(".opacity(showsReorderHandle ? 1 : 0)"))
 		XCTAssertTrue(rows.contains(".frame(width: 14, height: 18)"))
 		XCTAssertTrue(rows.contains(".font(.system(size: 9, weight: .semibold))"))
