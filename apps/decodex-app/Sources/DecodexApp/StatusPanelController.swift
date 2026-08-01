@@ -117,6 +117,20 @@ final class StatusPanelController: NSObject {
 			name: NSApplication.didResignActiveNotification,
 			object: NSApp
 		)
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(panelDidResize(_:)),
+			name: NSWindow.didResizeNotification,
+			object: panel
+		)
+	}
+
+	@objc
+	private func panelDidResize(_: Notification) {
+		guard panel.isVisible else {
+			return
+		}
+		positionPanel()
 	}
 
 	private func positionPanel() {
@@ -126,14 +140,19 @@ final class StatusPanelController: NSObject {
 			return
 		}
 
-		guard let screen = statusWindow.screen
-			?? NSScreen.screens.first(where: {
-				$0.frame.intersects(anchorRect)
-			})
-			?? NSScreen.main
-		else {
+		let screens = NSScreen.screens
+		let fallbackScreen = statusWindow.screen ?? NSScreen.main
+		let fallbackIndex = fallbackScreen.flatMap { fallbackScreen in
+			screens.firstIndex(where: { $0 === fallbackScreen })
+		}
+		guard let screenIndex = StatusPanelLayout.screenIndex(
+			containing: anchorRect,
+			screenFrames: screens.map(\.frame),
+			fallbackIndex: fallbackIndex
+		) else {
 			return
 		}
+		let screen = screens[screenIndex]
 
 		panel.setFrameOrigin(
 			StatusPanelLayout.origin(
@@ -166,6 +185,31 @@ final class TransparentHostingView<Content: View>: NSHostingView<Content> {
 }
 
 enum StatusPanelLayout {
+	static func screenIndex(
+		containing anchorRect: NSRect,
+		screenFrames: [NSRect],
+		fallbackIndex: Int?
+	) -> Int? {
+		let anchorCenter = NSPoint(x: anchorRect.midX, y: anchorRect.midY)
+		if let containingIndex = screenFrames.firstIndex(where: {
+			$0.contains(anchorCenter)
+		}) {
+			return containingIndex
+		}
+
+		if let intersectingIndex = screenFrames.firstIndex(where: {
+			$0.intersects(anchorRect)
+		}) {
+			return intersectingIndex
+		}
+
+		if let fallbackIndex, screenFrames.indices.contains(fallbackIndex) {
+			return fallbackIndex
+		}
+
+		return screenFrames.indices.first
+	}
+
 	static func origin(
 		anchorRect: NSRect,
 		panelSize: NSSize,
