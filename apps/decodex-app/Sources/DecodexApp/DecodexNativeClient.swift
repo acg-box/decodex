@@ -116,8 +116,10 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 		switch self {
 		case .protocolTimeout:
 			return .timedOut
-		case .protocolDisconnected, .protocolBackpressure:
-			return .commandFailed
+		case .protocolDisconnected:
+			return .transportDisconnected
+		case .protocolBackpressure:
+			return .transportBackpressured
 		case .runtimeUnavailable, .invalidHandle, .internalFailure:
 			return .nativeClientUnavailable
 		case .applicationAcceptanceUnknown:

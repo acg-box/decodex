@@ -87,6 +87,58 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertNotNil(presentation.resetDate)
 	}
 
+	func testQuotaUsesTheNewestCurrentObservationDuringReconciliation() {
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let inventoryQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 100,
+				resetsAtUnixMicros: 2_000_000
+			)
+		)
+		let skeletonQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 2_000_000,
+			state: .current(
+				usedPercent: 0,
+				resetsAtUnixMicros: 4_000_000
+			)
+		)
+		let account = ResetCardAccountRecord(
+			authority: authority,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Account TEST0-00000",
+			accountRevision: 8,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: skeletonQuota,
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let retainedInventory = ResetCardInventory(
+			authority: authority,
+			accountID: account.accountID,
+			accountRevision: 7,
+			cards: [],
+			fiveHourQuota: inventoryQuota,
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+
+		let state = ResetCardAccountState(
+			account: account,
+			inventory: retainedInventory,
+			error: nil,
+			isRefreshing: true
+		)
+
+		XCTAssertEqual(state.fiveHourQuota, skeletonQuota)
+	}
+
 	func testCurrentQuotaToneTracksRemainingCapacity() {
 		func tone(usedPercent: UInt8) -> ResetCardQuotaPresentationTone {
 			ResetCardQuotaPresentation(
@@ -303,7 +355,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		let state = ResetCardAccountState(
 			account: account,
 			inventory: staleInventory,
-			error: .commandFailed,
+			error: .transportBackpressured,
 			isRefreshing: false
 		)
 
@@ -317,8 +369,22 @@ final class AccountPanelPresentationTests: XCTestCase {
 				state: state,
 				isAwaitingFreshAccountSkeleton: false
 			),
-			.reconnecting(
-				detail: ResetCardClientError.commandFailed.localizedDescription
+			.updating(
+				detail: ResetCardClientError.transportBackpressured.localizedDescription
+			)
+		)
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: ResetCardAccountState(
+					account: account,
+					inventory: staleInventory,
+					error: .transportDisconnected,
+					isRefreshing: false
+				),
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.connecting(
+				detail: ResetCardClientError.transportDisconnected.localizedDescription
 			)
 		)
 		XCTAssertEqual(
@@ -331,8 +397,13 @@ final class AccountPanelPresentationTests: XCTestCase {
 				),
 				isAwaitingFreshAccountSkeleton: true
 			),
-			.updating
+			.updating(detail: nil)
 		)
+
+		let source = try resetCardSectionSource()
+		XCTAssertTrue(source.contains("Updating usage…"))
+		XCTAssertTrue(source.contains("Connecting to Decodex…"))
+		XCTAssertFalse(source.contains("Reconnecting…"))
 	}
 
 	func testQuotaRowsPutTheFlexibleBarBeforeTheCompactPercentage() throws {

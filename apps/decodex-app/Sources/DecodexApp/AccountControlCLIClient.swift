@@ -134,10 +134,14 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 				return "The native Decodex client is unavailable."
 			case .timedOut:
 				return "The account request timed out."
+			case .transportDisconnected:
+				return "The Decodex daemon is not reachable."
+			case .transportBackpressured:
+				return "The Decodex account service is busy."
 			case .outputTooLarge:
 				return "The Decodex service returned too much account data."
 			case .commandRejected, .useDefinitelyNotDispatched,
-				.usePotentiallyDispatched, .commandFailed, .invalidResponse,
+				.usePotentiallyDispatched, .invalidResponse,
 				.service:
 				return "The Decodex account service is unavailable."
 			}

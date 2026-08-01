@@ -59,11 +59,13 @@ extension DecodexNativeClient: FastModeClient {
 				throw FastModeClientError.unavailable
 			case .timedOut:
 				throw FastModeClientError.timedOut
+			case .transportDisconnected:
+				throw FastModeClientError.unavailable
 			case .commandRejected:
 				throw FastModeClientError.rejected
 			case .outputTooLarge,
 				.useDefinitelyNotDispatched, .usePotentiallyDispatched,
-				.commandFailed, .invalidResponse, .service:
+				.transportBackpressured, .invalidResponse, .service:
 				throw FastModeClientError.invalidResponse
 			}
 		} catch {
