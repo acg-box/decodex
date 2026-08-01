@@ -435,7 +435,8 @@ final class ResetCardNativeClientTests: XCTestCase {
 		let authority = authority
 		let cases: [(String, ResetCardClientError)] = [
 			("protocol_timeout", .timedOut),
-			("protocol_disconnected", .commandFailed),
+			("protocol_disconnected", .transportDisconnected),
+			("protocol_backpressure", .transportBackpressured),
 			("runtime_unavailable", .nativeClientUnavailable),
 			("protocol_malformed", .invalidResponse),
 		]
