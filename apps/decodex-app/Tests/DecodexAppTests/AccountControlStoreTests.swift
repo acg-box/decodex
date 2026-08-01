@@ -364,7 +364,12 @@ final class AccountControlStoreTests: XCTestCase {
 		await client.setInventoryRevision(8, accountID: secondAccountID)
 		await client.setResetCardStatus(.completed(.reset))
 		await store.checkPendingStatus(attempt)
-		await Task.yield()
+		for _ in 0 ..< 200 {
+			if store.isAwaitingFreshAccountSkeleton(secondAccountID) {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
 
 		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(secondAccountID))
 		XCTAssertTrue(
@@ -1253,7 +1258,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		if let maxSuccessfulInventoryReads,
 			inventoryReadCount > maxSuccessfulInventoryReads
 		{
-			throw ResetCardClientError.commandFailed
+			throw ResetCardClientError.transportBackpressured
 		}
 		if let inventoryGate {
 			await inventoryGate.wait()

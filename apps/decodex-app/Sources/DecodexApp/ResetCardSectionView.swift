@@ -122,8 +122,8 @@ struct ResetCardPendingAttemptsView: View {
 enum ResetCardInventoryPresentation: Equatable {
 	case loginRequired
 	case checking
-	case updating
-	case reconnecting(detail: String)
+	case updating(detail: String?)
+	case connecting(detail: String)
 	case unavailable(detail: String)
 	case reportedCount(UInt64)
 	case empty
@@ -138,8 +138,12 @@ enum ResetCardInventoryPresentation: Equatable {
 			return
 		}
 
-		if case .retryable(let detail) = state.inventoryFailure {
-			self = .reconnecting(detail: detail)
+		if case .connecting(let detail) = state.inventoryFailure {
+			self = .connecting(detail: detail)
+			return
+		}
+		if case .updating(let detail) = state.inventoryFailure {
+			self = .updating(detail: detail)
 			return
 		}
 		if case .unavailable(let detail) = state.inventoryFailure,
@@ -154,7 +158,7 @@ enum ResetCardInventoryPresentation: Equatable {
 			|| isAwaitingFreshAccountSkeleton
 			|| (state.inventory != nil && state.inventoryIsCurrent == false)
 		{
-			self = state.inventory == nil ? .checking : .updating
+			self = state.inventory == nil ? .checking : .updating(detail: nil)
 			return
 		}
 
@@ -418,13 +422,14 @@ struct ResetCardAccountRow: View {
 				"Checking Reset Cards…",
 				help: "Waiting for the current Reset Card inventory."
 			)
-		case .updating:
+		case .updating(let detail):
 			inventoryProgress(
 				"Updating usage…",
-				help: "Waiting for the current account revision and usage."
+				help: detail
+					?? "Waiting for the current account revision and usage."
 			)
-		case .reconnecting(let detail):
-			inventoryProgress("Reconnecting…", help: detail)
+		case .connecting(let detail):
+			inventoryProgress("Connecting to Decodex…", help: detail)
 		case .unavailable(let detail):
 			Text("Reset Cards unavailable")
 				.font(PanelFont.tertiary)

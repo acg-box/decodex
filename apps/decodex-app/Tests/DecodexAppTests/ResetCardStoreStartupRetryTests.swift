@@ -11,7 +11,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		let expectedInventory = try Self.inventory
 		let client = ScriptedResetCardClient(
 			accountSteps: [
-				.failure(.commandFailed),
+				.failure(.transportDisconnected),
 				.failure(.service(.productStateUnavailable)),
 				.value([account]),
 			],
@@ -117,7 +117,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			accountFallback: .value([updatedAccount]),
 			inventorySteps: [
 				.value(oldInventory),
-				.failure(.commandFailed),
+				.failure(.transportBackpressured),
 				.value(restoredInventory),
 			],
 			inventoryFallback: .value(restoredInventory)
@@ -136,7 +136,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(interrupted.account.accountRevision, 8)
 		XCTAssertEqual(interrupted.inventory, oldInventory)
 		XCTAssertEqual(interrupted.fiveHourQuota, oldInventory.fiveHourQuota)
-		XCTAssertEqual(interrupted.error, .commandFailed)
+		XCTAssertEqual(interrupted.error, .transportBackpressured)
 		XCTAssertTrue(interrupted.targets.isEmpty)
 
 		await store.refresh()
@@ -186,7 +186,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		defer { fixture.remove() }
 		let client = ScriptedResetCardClient(
 			accountSteps: [],
-			accountFallback: .failure(.commandFailed),
+			accountFallback: .failure(.transportDisconnected),
 			inventoryFallback: .value(try Self.inventory)
 		)
 		let store = ResetCardStore(
@@ -218,7 +218,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		defer { fixture.remove() }
 		let client = ScriptedResetCardClient(
 			accountSteps: [],
-			accountFallback: .failure(.commandFailed),
+			accountFallback: .failure(.transportDisconnected),
 			inventoryFallback: .value(try Self.inventory)
 		)
 		let store = ResetCardStore(
@@ -514,6 +514,219 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertNil(store.accounts.first?.error)
 	}
 
+	func testObservationFailureRetainsTheLastCompleteInventory() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let retainedInventory = try Self.inventory
+		let failedObservation = ResetCardInventory(
+			authority: Self.authority,
+			accountID: Self.account.accountID,
+			accountRevision: Self.account.accountRevision,
+			cards: [],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: .providerUnavailable
+		)
+		let client = ScriptedResetCardClient(
+			accountSteps: [],
+			accountFallback: .value([Self.account]),
+			inventorySteps: [
+				.value(retainedInventory),
+				.value(failedObservation),
+			],
+			inventoryFallback: .value(failedObservation)
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.refresh()
+
+		let state = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(state.inventory, retainedInventory)
+		XCTAssertEqual(state.fiveHourQuota, retainedInventory.fiveHourQuota)
+		XCTAssertEqual(state.error, .service(.providerUnavailable))
+		XCTAssertTrue(state.targets.isEmpty)
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: state,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.updating(detail: ResetCardServiceError.providerUnavailable.presentation)
+		)
+	}
+
+	func testCompletedUseReconcilesInBackgroundAcrossTransientContention() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let retainedInventory = try Self.inventory
+		let restoredQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 2_000_000,
+			state: .current(
+				usedPercent: 0,
+				resetsAtUnixMicros: 4_000_000
+			)
+		)
+		let restoredInventory = ResetCardInventory(
+			authority: Self.authority,
+			accountID: Self.account.accountID,
+			accountRevision: Self.account.accountRevision,
+			cards: [],
+			fiveHourQuota: restoredQuota,
+			sevenDayQuota: retainedInventory.sevenDayQuota,
+			observationError: nil
+		)
+		let contendedObservation = ResetCardInventory(
+			authority: Self.authority,
+			accountID: Self.account.accountID,
+			accountRevision: Self.account.accountRevision,
+			cards: [],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: .resourceExhausted
+		)
+		let client = ScriptedResetCardClient(
+			accountSteps: [],
+			accountFallback: .value([Self.account]),
+			inventorySteps: [
+				.value(retainedInventory),
+				.value(contendedObservation),
+				.value(restoredInventory),
+			],
+			inventoryFallback: .value(restoredInventory),
+			useFallback: .value(.completed(.reset))
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			postUseRetryDelays: [.milliseconds(100)]
+		)
+		await store.refresh()
+
+		let attempt = try Self.attempt
+		let completion = await store.use(attempt)
+		XCTAssertEqual(completion, ResetCardUseCompletion(resolved: true))
+		try await waitUntil {
+			store.accounts.first?.error == .service(.resourceExhausted)
+		}
+
+		let updating = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(updating.inventory, retainedInventory)
+		XCTAssertEqual(updating.fiveHourQuota, retainedInventory.fiveHourQuota)
+		XCTAssertTrue(updating.isRefreshing)
+		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: updating,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.updating(detail: ResetCardServiceError.resourceExhausted.presentation)
+		)
+
+		try await waitUntil {
+			store.accounts.first?.inventory == restoredInventory
+				&& store.accounts.first?.isRefreshing == false
+		}
+		let restored = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(restored.fiveHourQuota, restoredQuota)
+		XCTAssertNil(restored.error)
+		let counts = await client.callCounts()
+		XCTAssertEqual(
+			counts,
+			ClientCallCounts(accounts: 1, inventory: 3, status: 0, use: 1)
+		)
+	}
+
+	func testUseWaitsForPreEffectReadAndReconciliationRemainsAuthoritative() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let retainedInventory = try Self.inventory
+		let restoredInventory = ResetCardInventory(
+			authority: Self.authority,
+			accountID: Self.account.accountID,
+			accountRevision: Self.account.accountRevision,
+			cards: [],
+			fiveHourQuota: ResetCardQuotaWindow(
+				durationMinutes: 300,
+				observedAtUnixMicros: 2_000_000,
+				state: .current(
+					usedPercent: 0,
+					resetsAtUnixMicros: 4_000_000
+				)
+			),
+			sevenDayQuota: retainedInventory.sevenDayQuota,
+			observationError: nil
+		)
+		let client = OverlappingPostUseClient(
+			account: Self.account,
+			retainedInventory: retainedInventory,
+			restoredInventory: restoredInventory,
+			preEffectFailure: .invalidResponse
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			postUseRetryDelays: []
+		)
+		await store.refresh()
+
+		let preEffectRefresh = Task {
+			await store.refresh()
+		}
+		try await waitUntil {
+			await client.isInventoryCallPending(2)
+		}
+
+		let attempt = try Self.attempt
+		let useTask = Task {
+			await store.use(attempt)
+		}
+		try await Task.sleep(for: .milliseconds(20))
+		let useCallsBeforeReadRelease = await client.useCallCount()
+		XCTAssertEqual(
+			useCallsBeforeReadRelease,
+			0,
+			"Use must wait for the older inventory provider process."
+		)
+
+		await client.releaseInventoryCall(2)
+		let completion = await useTask.value
+		XCTAssertEqual(completion, ResetCardUseCompletion(resolved: true))
+		try await waitUntil {
+			await client.isInventoryCallPending(3)
+		}
+		await preEffectRefresh.value
+
+		let afterPreEffectRead = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(afterPreEffectRead.inventory, retainedInventory)
+		XCTAssertNil(afterPreEffectRead.error)
+		XCTAssertTrue(afterPreEffectRead.isRefreshing)
+		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: afterPreEffectRead,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.updating(detail: nil)
+		)
+
+		await client.releaseInventoryCall(3)
+		try await waitUntil {
+			store.accounts.first?.inventory == restoredInventory
+				&& store.accounts.first?.isRefreshing == false
+		}
+		let maximumActiveInventoryCalls = await client.maximumActiveInventoryCalls()
+		let useOverlappedInventory = await client.didUseOverlapInventory()
+		XCTAssertEqual(maximumActiveInventoryCalls, 1)
+		XCTAssertFalse(useOverlappedInventory)
+	}
+
 	func testExplicitUseDispatchesOnlyOnce() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -667,6 +880,8 @@ private actor ScriptedResetCardClient: ResetCardClient {
 	private let inventoryFallback: ClientStep<ResetCardInventory>
 	private var statusSteps: [ClientStep<ResetCardOperationState>]
 	private let statusFallback: ClientStep<ResetCardOperationState>
+	private var useSteps: [ClientStep<ResetCardOperationState>]
+	private let useFallback: ClientStep<ResetCardOperationState>
 	private let requiredInventoryAuthority: ResetCardAuthority?
 	private var counts = ClientCallCounts(accounts: 0, inventory: 0, status: 0, use: 0)
 	private var requestedAccountAuthorities = [ResetCardAuthority?]()
@@ -678,6 +893,8 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		inventoryFallback: ClientStep<ResetCardInventory>,
 		statusSteps: [ClientStep<ResetCardOperationState>] = [],
 		statusFallback: ClientStep<ResetCardOperationState> = .value(.notFound),
+		useSteps: [ClientStep<ResetCardOperationState>] = [],
+		useFallback: ClientStep<ResetCardOperationState> = .value(.prepared),
 		requiredInventoryAuthority: ResetCardAuthority? = nil
 	) {
 		self.accountSteps = accountSteps
@@ -686,6 +903,8 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		self.inventoryFallback = inventoryFallback
 		self.statusSteps = statusSteps
 		self.statusFallback = statusFallback
+		self.useSteps = useSteps
+		self.useFallback = useFallback
 		self.requiredInventoryAuthority = requiredInventoryAuthority
 	}
 
@@ -740,7 +959,9 @@ private actor ScriptedResetCardClient: ResetCardClient {
 			status: counts.status,
 			use: counts.use + 1
 		)
-		return .prepared
+		return try Self.resolve(
+			useSteps.isEmpty ? useFallback : useSteps.removeFirst()
+		)
 	}
 
 	func callCounts() -> ClientCallCounts {
@@ -760,6 +981,88 @@ private actor ScriptedResetCardClient: ResetCardClient {
 		case .failure(let error):
 			throw error
 		}
+	}
+}
+
+private actor OverlappingPostUseClient: ResetCardClient {
+	private let account: ResetCardAccountRecord
+	private let retainedInventory: ResetCardInventory
+	private let restoredInventory: ResetCardInventory
+	private let preEffectFailure: ResetCardClientError?
+	private var inventoryCalls = 0
+	private var activeInventoryCalls = 0
+	private var maximumActiveCalls = 0
+	private var useCalls = 0
+	private var useOverlappedInventory = false
+	private var pendingInventoryCalls = [
+		Int: CheckedContinuation<Void, Never>
+	]()
+
+	init(
+		account: ResetCardAccountRecord,
+		retainedInventory: ResetCardInventory,
+		restoredInventory: ResetCardInventory,
+		preEffectFailure: ResetCardClientError? = nil
+	) {
+		self.account = account
+		self.retainedInventory = retainedInventory
+		self.restoredInventory = restoredInventory
+		self.preEffectFailure = preEffectFailure
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		[account]
+	}
+
+	func inventory(
+		for account: ResetCardAccountRecord
+	) async throws -> ResetCardInventory {
+		inventoryCalls += 1
+		let call = inventoryCalls
+		activeInventoryCalls += 1
+		maximumActiveCalls = max(maximumActiveCalls, activeInventoryCalls)
+		if call > 1 {
+			await withCheckedContinuation { continuation in
+				pendingInventoryCalls[call] = continuation
+			}
+		}
+		activeInventoryCalls -= 1
+		if call == 2, let preEffectFailure {
+			throw preEffectFailure
+		}
+		return call < 3 ? retainedInventory : restoredInventory
+	}
+
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		useCalls += 1
+		useOverlappedInventory = activeInventoryCalls > 0
+		return .completed(.reset)
+	}
+
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.notFound
+	}
+
+	func isInventoryCallPending(_ call: Int) -> Bool {
+		pendingInventoryCalls[call] != nil
+	}
+
+	func releaseInventoryCall(_ call: Int) {
+		pendingInventoryCalls.removeValue(forKey: call)?.resume()
+	}
+
+	func maximumActiveInventoryCalls() -> Int {
+		maximumActiveCalls
+	}
+
+	func useCallCount() -> Int {
+		useCalls
+	}
+
+	func didUseOverlapInventory() -> Bool {
+		useOverlappedInventory
 	}
 }
 
