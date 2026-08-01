@@ -563,6 +563,116 @@ class UpstreamAutopilotTests(unittest.TestCase):
         )
         self.autopilot.validate_state(state)
 
+    def test_pre_publish_refresh_commit_effect_survives_validation(self):
+        state, candidate_id, retry = self.committed_validation_retry()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        old_receipt = deepcopy(candidate["commit_receipt"])
+        target_base = "3" * 40
+        target_tree = "4" * 40
+        committed_tree = "5" * 40
+        committed_head = "6" * 40
+        generation = candidate["handoff"]["generation"]
+        attempts = candidate["attempts"]["maintainer"]
+        refresh_at = candidate["lease"]["issued_at"] + 2
+        self.autopilot.prepare_pre_publish_stale_refresh(
+            state,
+            candidate_id=candidate_id,
+            token=retry["lease_token"],
+            challenge_sha256=hashlib.sha256(
+                retry["handoff_challenge"].encode("utf-8")
+            ).hexdigest(),
+            current_main_head=target_base,
+            current_main_tree=target_tree,
+            commit_receipt_sha256=self.autopilot.sha256_value(
+                old_receipt
+            ),
+            now=refresh_at,
+        )
+        run = candidate["handoff"]["agent_run"]
+        self.assertIsNone(candidate["commit_receipt"])
+        self.assertTrue(
+            self.autopilot.candidate_has_pre_publish_stale_refresh(
+                candidate
+            )
+        )
+        self.assertEqual(run["generation"], generation)
+        self.assertEqual(run["base_head"], target_base)
+        self.assertEqual(run["input_head"], target_base)
+        self.assertEqual(run["repository_head"], target_base)
+        self.assertEqual(run["input_tree"], target_tree)
+        self.assertEqual(candidate["attempts"]["maintainer"], attempts)
+        self.autopilot.validate_state(state)
+
+        worker_handoff = self.record_test_commit(
+            state,
+            candidate_id,
+            retry,
+            base_head=target_base,
+            head_sha=committed_head,
+            tree=committed_tree,
+            input_tree=target_tree,
+            validate_transitions=True,
+            now=refresh_at + 2,
+        )
+
+        self.assertIsNone(candidate["stale_refresh"])
+        self.assertIsNone(candidate["effect"])
+        self.assertEqual(candidate["commit_receipt"]["base_head"], target_base)
+        self.assertEqual(
+            candidate["commit_receipt"]["worker_handoff"],
+            worker_handoff,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_pre_publish_refresh_rejects_other_agent_run_states(self):
+        state, candidate_id, retry = self.committed_validation_retry()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        challenge_sha256 = hashlib.sha256(
+            retry["handoff_challenge"].encode("utf-8")
+        ).hexdigest()
+        mutations = {
+            "completed": {"phase": "completed"},
+            "wrong_role": {"role": "reviewer"},
+            "wrong_generation": {
+                "generation": candidate["handoff"]["generation"] + 1
+            },
+            "wrong_challenge": {"challenge_sha256": "0" * 64},
+            "wrong_base": {"base_head": "7" * 40},
+            "wrong_input": {"input_head": "8" * 40},
+            "wrong_repository": {"repository_head": "9" * 40},
+            "wrong_tree": {"input_tree": "a" * 40},
+        }
+        for name, mutation in mutations.items():
+            with self.subTest(name=name):
+                rejected_state = deepcopy(state)
+                rejected_candidate = self.autopilot.find_candidate(
+                    rejected_state,
+                    candidate_id,
+                )
+                rejected_candidate["handoff"]["agent_run"].update(
+                    mutation
+                )
+                before = deepcopy(rejected_state)
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "pre_publish_stale_refresh_invalid",
+                ):
+                    self.autopilot.prepare_pre_publish_stale_refresh(
+                        rejected_state,
+                        candidate_id=candidate_id,
+                        token=retry["lease_token"],
+                        challenge_sha256=challenge_sha256,
+                        current_main_head="3" * 40,
+                        current_main_tree="4" * 40,
+                        commit_receipt_sha256=(
+                            self.autopilot.sha256_value(
+                                rejected_candidate["commit_receipt"]
+                            )
+                        ),
+                        now=rejected_candidate["lease"]["issued_at"] + 2,
+                    )
+                self.assertEqual(rejected_state, before)
+
     def test_completed_agent_run_survives_lease_expiry_for_same_generation(self):
         state, candidate_id = self.bootstrap()
         claim = self.autopilot.claim_candidate(
@@ -3614,6 +3724,316 @@ os._exit(0)
                 "completed",
             )
 
+    def test_run_agent_cli_repairs_same_base_with_own_diagnostic(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = (Path(directory) / "repo").resolve()
+            repo_root.mkdir()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            state, candidate_id, retry = self.committed_validation_retry(
+                now=int(time.time()) - 1_000,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            receipt = deepcopy(candidate["commit_receipt"])
+            generation = candidate["handoff"]["generation"]
+            self.autopilot.ensure_handoff_receipt_path(
+                repo_root / ".agent/automations/upstream/cache",
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            fence = mock.Mock()
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=retry["lease_token"],
+                handoff_challenge=retry["handoff_challenge"],
+                worktree=worktree,
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            def git_read(arguments, **_kwargs):
+                if arguments == ["git", "rev-parse", "HEAD"]:
+                    return receipt["head_sha"]
+                if arguments == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{receipt['head_sha']}^{{tree}}",
+                ]:
+                    return receipt["tree_sha"]
+                self.fail(f"unexpected git read: {arguments}")
+
+            remote_head = mock.Mock(return_value=None)
+            ancestor = mock.Mock()
+            read_diagnostic = mock.Mock(
+                return_value={"schema": "validation"}
+            )
+            run_agent = mock.Mock(
+                side_effect=self.autopilot.AutopilotError(
+                    "agent_execution_failed"
+                )
+            )
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={
+                        "head": receipt["base_head"],
+                        "tree": "4" * 40,
+                    }
+                ),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(),
+                acquire_agent_run_fence=mock.Mock(return_value=fence),
+                run_command=mock.Mock(side_effect=git_read),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=receipt["tree_sha"]
+                ),
+                remote_branch_head=remote_head,
+                command_succeeds=ancestor,
+                read_validation_failure_diagnostic=read_diagnostic,
+                run_ephemeral_codex_agent=run_agent,
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_execution_failed",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+
+            self.assertEqual(candidate["commit_receipt"], receipt)
+            self.assertEqual(
+                run_agent.call_args.kwargs["base_head"],
+                receipt["base_head"],
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["head_sha"],
+                receipt["head_sha"],
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["diagnostics"],
+                {"validation_failure": {"schema": "validation"}},
+            )
+            self.assertTrue(run_agent.call_args.kwargs["recover_prepared"])
+            read_diagnostic.assert_called_once_with(
+                repo_root,
+                cause_digest="c" * 64,
+            )
+            remote_head.assert_called_once_with(
+                worktree,
+                candidate["branch_name"],
+            )
+            ancestor.assert_not_called()
+            fence.close.assert_called_once()
+
+    def test_run_agent_cli_refreshes_advanced_base_from_fresh_retry_claim(
+        self,
+    ):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = (Path(directory) / "repo").resolve()
+            repo_root.mkdir()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            state, candidate_id, retry = self.committed_validation_retry(
+                now=int(time.time()) - 1_000,
+                prepare_retry_run=False,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            receipt = deepcopy(candidate["commit_receipt"])
+            generation = candidate["handoff"]["generation"]
+            attempts = candidate["attempts"]["maintainer"]
+            target_base = "3" * 40
+            target_tree = "4" * 40
+            self.assertIsNone(candidate["handoff"]["agent_run"])
+            self.autopilot.ensure_handoff_receipt_path(
+                repo_root / ".agent/automations/upstream/cache",
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            fence = mock.Mock()
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=retry["lease_token"],
+                handoff_challenge=retry["handoff_challenge"],
+                worktree=worktree,
+            )
+            persisted = []
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            def save_state(value, _path, _now, **_kwargs):
+                self.autopilot.validate_state(value)
+                persisted.append(deepcopy(value))
+
+            def git_read(arguments, **_kwargs):
+                if arguments == ["git", "rev-parse", "HEAD"]:
+                    return receipt["head_sha"]
+                if arguments == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_base}^{{tree}}",
+                ]:
+                    return target_tree
+                self.fail(f"unexpected git read: {arguments}")
+
+            remote_head = mock.Mock(return_value=None)
+            ancestor = mock.Mock(return_value=True)
+            read_diagnostic = mock.Mock(
+                return_value={"schema": "validation"}
+            )
+            run_agent = mock.Mock(
+                side_effect=self.autopilot.AutopilotError(
+                    "agent_execution_failed"
+                )
+            )
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={
+                        "head": target_base,
+                        "tree": target_tree,
+                    }
+                ),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(side_effect=save_state),
+                acquire_agent_run_fence=mock.Mock(return_value=fence),
+                run_command=mock.Mock(side_effect=git_read),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=receipt["tree_sha"]
+                ),
+                remote_branch_head=remote_head,
+                command_succeeds=ancestor,
+                read_validation_failure_diagnostic=read_diagnostic,
+                run_ephemeral_codex_agent=run_agent,
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_execution_failed",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+
+            self.assertIsNone(candidate["commit_receipt"])
+            self.assertEqual(candidate["attempts"]["maintainer"], attempts)
+            self.assertEqual(candidate["lease"]["generation"], generation)
+            self.assertEqual(candidate["handoff"]["generation"], generation)
+            run = candidate["handoff"]["agent_run"]
+            self.assertEqual(run["generation"], generation)
+            self.assertEqual(run["base_head"], target_base)
+            self.assertEqual(run["input_head"], target_base)
+            self.assertEqual(run["repository_head"], target_base)
+            self.assertEqual(run["input_tree"], target_tree)
+            stale_refresh = candidate["stale_refresh"]
+            self.assertEqual(
+                set(stale_refresh),
+                {
+                    "old_base_head",
+                    "old_head_sha",
+                    "target_base_head",
+                    "prepared_at",
+                    "updated_at",
+                },
+            )
+            self.assertEqual(
+                stale_refresh["old_base_head"],
+                receipt["base_head"],
+            )
+            self.assertEqual(
+                stale_refresh["old_head_sha"],
+                receipt["head_sha"],
+            )
+            self.assertEqual(
+                stale_refresh["target_base_head"],
+                target_base,
+            )
+            self.assertEqual(
+                stale_refresh["prepared_at"],
+                stale_refresh["updated_at"],
+            )
+            self.assertTrue(
+                any(
+                    self.autopilot.candidate_has_pre_publish_stale_refresh(
+                        self.autopilot.find_candidate(
+                            snapshot,
+                            candidate_id,
+                        )
+                    )
+                    for snapshot in persisted
+                )
+            )
+            self.autopilot.validate_state(state)
+            ancestor.assert_called_once_with(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    receipt["base_head"],
+                    target_base,
+                ],
+                cwd=repo_root,
+                failure_code="pre_publish_stale_refresh_base_unavailable",
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["base_head"],
+                target_base,
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["head_sha"],
+                target_base,
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["tree_sha"],
+                target_tree,
+            )
+            self.assertEqual(
+                run_agent.call_args.kwargs["diagnostics"],
+                {"validation_failure": {"schema": "validation"}},
+            )
+            self.assertFalse(
+                run_agent.call_args.kwargs["recover_prepared"]
+            )
+            read_diagnostic.assert_called_once_with(
+                repo_root,
+                cause_digest="c" * 64,
+            )
+            remote_head.assert_called_once_with(
+                worktree,
+                candidate["branch_name"],
+            )
+            fence.close.assert_called_once()
+
     def test_run_agent_fence_blocks_before_worktree_inspection(self):
         with tempfile.TemporaryDirectory() as directory:
             repo_root = Path(directory) / "repo"
@@ -4243,6 +4663,7 @@ os._exit(0)
         base_head,
         tree,
         now,
+        input_tree=None,
     ):
         staged_paths_sha256 = "c" * 64
         raw = self.handoff_receipt(
@@ -4264,7 +4685,7 @@ os._exit(0)
             role="maintainer",
             base_head=base_head,
             repository_head=base_head,
-            input_tree=base_head,
+            input_tree=base_head if input_tree is None else input_tree,
             now=now,
         )
         return self.autopilot.consume_handoff_receipt(
@@ -6791,6 +7212,143 @@ os._exit(0)
         ]
         return state, queued[0]
 
+    def commit_execution(self, effect, identity, now):
+        return self.autopilot.commit_execution_receipt(
+            intent_sha256=effect["intent_sha256"],
+            process_evidence={
+                "schema": "decodex/codex-upstream-commit-execution/1",
+                "execution_mode": "command_completed",
+                "decodex_version": identity["version"],
+                "decodex_executable_sha256": identity[
+                    "executable_sha256"
+                ],
+                "started_at": now,
+                "completed_at": now + 1,
+                "stdout_sha256": "b" * 64,
+            },
+        )
+
+    def record_test_commit(
+        self,
+        state,
+        candidate_id,
+        claim,
+        *,
+        base_head,
+        head_sha,
+        tree,
+        now,
+        input_tree=None,
+        validate_transitions=False,
+    ):
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        worker_handoff = self.consume_worker_handoff(
+            state,
+            candidate_id,
+            claim,
+            base_head=base_head,
+            tree=tree,
+            now=now,
+            input_tree=input_tree,
+        )
+        if validate_transitions:
+            self.autopilot.validate_state(state)
+        identity = {
+            "version": "decodex 0.2.0-test",
+            "executable_sha256": "9" * 64,
+        }
+        effect = self.autopilot.prepare_effect(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            kind="commit",
+            branch=candidate["branch_name"],
+            head_sha=base_head,
+            pr_url=None,
+            handoff_receipt=worker_handoff,
+            decodex_identity=identity,
+            now=now,
+        )
+        if validate_transitions:
+            self.autopilot.validate_state(state)
+        self.autopilot.record_candidate_commit(
+            state,
+            candidate_id=candidate_id,
+            token=claim["lease_token"],
+            base_head=base_head,
+            head_sha=head_sha,
+            tree_sha=tree,
+            message_sha256="a" * 64,
+            execution_receipt=self.commit_execution(
+                effect,
+                identity,
+                now,
+            ),
+            now=now + 1,
+        )
+        return worker_handoff
+
+    def committed_validation_retry(
+        self,
+        *,
+        now=100,
+        prepare_retry_run=True,
+    ):
+        state, candidate_id = self.bootstrap(now=now)
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            now + 1,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        base_head = "1" * 40
+        head_sha = "2" * 40
+        tree_sha = "d" * 40
+        self.record_test_commit(
+            state,
+            candidate_id,
+            maintainer,
+            base_head=base_head,
+            head_sha=head_sha,
+            tree=tree_sha,
+            now=now + 2,
+        )
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=maintainer["lease_token"],
+            reason_code="validation_profile_focused_tests_failed",
+            error_digest="c" * 64,
+            now=now + 4,
+        )
+        retry = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            candidate["next_retry_at"],
+        )
+        if prepare_retry_run:
+            self.autopilot.prepare_agent_run(
+                state,
+                candidate_id=candidate_id,
+                role="maintainer",
+                token=retry["lease_token"],
+                challenge_sha256=hashlib.sha256(
+                    retry["handoff_challenge"].encode("utf-8")
+                ).hexdigest(),
+                base_head=base_head,
+                input_head=head_sha,
+                repository_head=base_head,
+                input_tree=tree_sha,
+                now=candidate["lease"]["issued_at"] + 1,
+            )
+        return state, candidate_id, retry
+
     def automatic_repair_state(self):
         state, blocked_id = self.bootstrap()
         blocked = self.autopilot.find_candidate(state, blocked_id)
@@ -6958,56 +7516,14 @@ os._exit(0)
     ):
         candidate = self.autopilot.find_candidate(state, candidate_id)
         base_head = "1" * 40
-        identity = {
-            "version": "decodex 0.2.0-test",
-            "executable_sha256": "9" * 64,
-        }
-        worker_handoff = self.consume_worker_handoff(
+        self.record_test_commit(
             state,
             candidate_id,
             claim,
             base_head=base_head,
+            head_sha=head,
             tree=tree,
             now=now,
-        )
-        effect = self.autopilot.prepare_effect(
-            state,
-            self.policy,
-            candidate_id=candidate_id,
-            role="maintainer",
-            token=claim["lease_token"],
-            kind="commit",
-            branch=candidate["branch_name"],
-            head_sha=base_head,
-            pr_url=None,
-            handoff_receipt=worker_handoff,
-            decodex_identity=identity,
-            now=now,
-        )
-        commit_execution = self.autopilot.commit_execution_receipt(
-            intent_sha256=effect["intent_sha256"],
-            process_evidence={
-                "schema": "decodex/codex-upstream-commit-execution/1",
-                "execution_mode": "command_completed",
-                "decodex_version": identity["version"],
-                "decodex_executable_sha256": identity[
-                    "executable_sha256"
-                ],
-                "started_at": now,
-                "completed_at": now + 1,
-                "stdout_sha256": "b" * 64,
-            },
-        )
-        self.autopilot.record_candidate_commit(
-            state,
-            candidate_id=candidate_id,
-            token=claim["lease_token"],
-            base_head=base_head,
-            head_sha=head,
-            tree_sha=tree,
-            message_sha256="a" * 64,
-            execution_receipt=commit_execution,
-            now=now + 1,
         )
         receipt = self.validation_receipt(
             "maintainer",
