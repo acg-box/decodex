@@ -3907,6 +3907,7 @@ os._exit(0)
 
             remote_head = mock.Mock(return_value=None)
             ancestor = mock.Mock(return_value=True)
+            git_command = mock.Mock(side_effect=git_read)
             read_diagnostic = mock.Mock(
                 return_value={"schema": "validation"}
             )
@@ -3923,14 +3924,15 @@ os._exit(0)
                 load_policy=mock.Mock(return_value=self.policy),
                 assert_primary_clean_main=mock.Mock(
                     return_value={
+                        "repo_root": str(repo_root),
+                        "branch": "main",
                         "head": target_base,
-                        "tree": target_tree,
                     }
                 ),
                 locked_state=mock.Mock(side_effect=locked),
                 save_state_guarded=mock.Mock(side_effect=save_state),
                 acquire_agent_run_fence=mock.Mock(return_value=fence),
-                run_command=mock.Mock(side_effect=git_read),
+                run_command=git_command,
                 assert_candidate_worktree=mock.Mock(
                     return_value=receipt["tree_sha"]
                 ),
@@ -4005,6 +4007,17 @@ os._exit(0)
                 cwd=repo_root,
                 failure_code="pre_publish_stale_refresh_base_unavailable",
             )
+            git_command.assert_any_call(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_base}^{{tree}}",
+                ],
+                cwd=repo_root,
+                failure_code="pre_publish_stale_refresh_tree_unavailable",
+                max_output_bytes=128,
+            )
             self.assertEqual(
                 run_agent.call_args.kwargs["base_head"],
                 target_base,
@@ -4033,6 +4046,97 @@ os._exit(0)
                 candidate["branch_name"],
             )
             fence.close.assert_called_once()
+
+    def test_run_agent_cli_rejects_malformed_advanced_base_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = (Path(directory) / "repo").resolve()
+            repo_root.mkdir()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            state, candidate_id, retry = self.committed_validation_retry(
+                now=int(time.time()) - 1_000,
+                prepare_retry_run=False,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            before_candidate = deepcopy(candidate)
+            before_commit_receipt = deepcopy(candidate["commit_receipt"])
+            before_attempts = deepcopy(candidate["attempts"])
+            generation = candidate["handoff"]["generation"]
+            target_base = "3" * 40
+            self.autopilot.ensure_handoff_receipt_path(
+                repo_root / ".agent/automations/upstream/cache",
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=retry["lease_token"],
+                handoff_challenge=retry["handoff_challenge"],
+                worktree=worktree,
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            def git_read(command, **_kwargs):
+                if command == ["git", "rev-parse", "HEAD"]:
+                    return before_commit_receipt["head_sha"]
+                if command == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_base}^{{tree}}",
+                ]:
+                    return "not-a-tree"
+                self.fail(f"unexpected git read: {command}")
+
+            run_agent = mock.Mock()
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={
+                        "repo_root": str(repo_root),
+                        "branch": "main",
+                        "head": target_base,
+                    }
+                ),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(),
+                acquire_agent_run_fence=mock.Mock(return_value=mock.Mock()),
+                run_command=mock.Mock(side_effect=git_read),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=before_commit_receipt["tree_sha"]
+                ),
+                remote_branch_head=mock.Mock(return_value=None),
+                command_succeeds=mock.Mock(return_value=True),
+                run_ephemeral_codex_agent=run_agent,
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "pre_publish_stale_refresh_tree_invalid",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+
+            self.assertEqual(candidate, before_candidate)
+            self.assertEqual(candidate["commit_receipt"], before_commit_receipt)
+            self.assertEqual(candidate["attempts"], before_attempts)
+            run_agent.assert_not_called()
 
     def test_run_agent_fence_blocks_before_worktree_inspection(self):
         with tempfile.TemporaryDirectory() as directory:
