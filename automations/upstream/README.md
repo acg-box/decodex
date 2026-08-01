@@ -139,6 +139,13 @@ These receipts are non-replayable, state-bound handoffs. They are not cryptograp
 identity signatures. A prepared commit or started land effect keeps its original
 handoff receipt and intent generation across lease recovery; a new owner generation
 can resume only that exact intent and cannot replace its receipt.
+Persisted publish, pull-request retirement, and started landing effects remain
+claimable after the normal model-attempt budget is exhausted. Recovery does not
+increment that budget. Health requeues an older exhausted effect for the owning role,
+and the role completes only the recorded effect and readback without a new child.
+Reviewer finding codes survive failed implementation attempts and successful
+automation-repair resolution, so the resumed Maintainer receives the original repair
+target instead of a generic block reason.
 
 Standalone Codex app automations do not receive native multi-agent tools. The
 checked-in `run-agent` transaction therefore invokes at most one trusted
@@ -185,9 +192,15 @@ workspace manifest and patch digest, applies the patch to the unchanged candidat
 with `git apply --check --index --binary`, permits only regular file modes, rejects
 whitespace and unstaged or untracked residue, and authorizes every changed path for
 the candidate kind. It denies scheduler, GitHub Actions, authentication, landing,
-managed-repository, X execution, schema, and automation-control paths. Any rejected
-or internally invalid applied patch is reset to the exact clean baseline. The parent
-then writes the canonical create-only mode-`0600`
+managed-repository, X execution, schema, and automation-control paths. The sole
+exception lets an `automation_repair` change the effect-free outcome evaluation
+module `upstream_autopilot_lib/effectiveness.py`; state persistence, CLI, effect,
+agent, watchdog, policy, manifest, and schema authority remain denied. Any rejected
+or internally invalid applied patch is reset to the exact clean baseline. A protected
+validator requires that module to remain non-executable `100644` source with exact
+imports, a bounded pure AST subset, no input mutation, no top-level execution, and no
+recursive call graph. Repairable tests cannot weaken this validator. The parent then
+writes the canonical create-only mode-`0600`
 `decodex/codex-upstream-handoff-receipt/4` receipt. The receipt binds
 the fixed model and effort, Codex version and executable digest, command and
 permission digests, sandbox-probe, watchdog, workspace and evidence manifests,
@@ -208,6 +221,16 @@ normal failure attempts for this external base race. Maintainer refunds its
 generation-bound refresh attempt only after the completed child receipt is recorded.
 A child failure, block, or lease expiry keeps the attempt spent. The loop does not
 retain a legacy branch or compatibility state.
+
+Publish and pull-request retirement refresh and verify primary `main` before their
+remote effects. Pull-request readback binds `baseRefOid` to that fresh main head, not
+to a candidate's older
+commit base. The candidate validation receipt keeps the original base, so only the
+formal land transaction can classify a later base difference as `base_stale` and
+return it through the existing refresh path. This permits an exact pushed-effect
+recovery without accepting stale validation as landing authority.
+If retirement completed before a crash, closed-PR recovery accepts its recorded base
+only when Git proves that base is an ancestor of the freshly verified current main.
 
 The wrapper requires exact Decodex command output, the merged pull-request head and
 merge SHA, remote-main containment, and an exact JSON landed-change record that

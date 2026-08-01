@@ -2607,6 +2607,81 @@ os._exit(0)
                     expected_tree=tree,
                 )
 
+    def test_repairable_effectiveness_module_has_protected_pure_subset(self):
+        path = (
+            ROOT
+            / "automations/upstream/scripts/upstream_autopilot_lib/"
+            "effectiveness.py"
+        )
+        validate = (
+            self.autopilot.agent_module._validate_repair_evaluation_source
+        )
+        validate(path.read_bytes())
+
+        valid = '''"""Pure evaluation."""
+from __future__ import annotations
+
+import re
+from typing import Any
+
+from .core import METRIC_BUCKET_SECONDS, TERMINAL_STATUSES, is_sha256
+
+
+def rolling_effectiveness(state: dict[str, Any], *, now: int) -> dict[str, Any]:
+    return {"now": now, "count": len(state["candidates"])}
+
+
+def classify_lifetime_outcomes(state: dict[str, Any]) -> dict[str, int]:
+    return {"count": sum(1 for candidate in state["candidates"] if candidate.get("status") in TERMINAL_STATUSES)}
+
+
+def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str | None:
+    return "repair" if is_sha256(state.get("digest")) and now > METRIC_BUCKET_SECONDS and re.fullmatch(r"[a-z]+", "repair") else None
+'''
+        validate(valid.encode("utf-8"))
+        invalid = (
+            valid.replace("import re", "import os\nimport re"),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'return open("/tmp/effect", "w")',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'state["mutated"] = True\n    return {}',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'items = state["candidates"]\n'
+                '    items += [{}]\n'
+                '    return {}',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'state.clear()\n    return {}',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'return rolling_effectiveness(state, now=now)',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'return sorted(state, key=rolling_effectiveness)',
+            ),
+            valid.replace(
+                'return {"now": now, "count": len(state["candidates"])}',
+                'from .core import run_command as is_sha256\n'
+                '    return is_sha256(["id"], failure_code="effect")',
+            ),
+            valid + "\nrolling_effectiveness({}, now=0)\n",
+        )
+        for source in invalid:
+            with self.subTest(source=source[-80:]):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_repair_evaluation_invalid",
+                ):
+                    validate(source.encode("utf-8"))
+
     def test_agent_patch_authorization_denies_control_planes_and_rolls_back(
         self,
     ):
@@ -2630,11 +2705,27 @@ os._exit(0)
         self.assertTrue(
             authorize(repair, ["automations/upstream/prompts/health.md"])
         )
+        self.assertTrue(
+            authorize(
+                repair,
+                [
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/effectiveness.py",
+                    "automations/upstream/tests/"
+                    "test_upstream_autopilot.py",
+                ],
+            )
+        )
         for path in (
             ".github/workflows/ci.yml",
             "apps/decodex/src/manual/land.rs",
             "apps/decodex-publisher/src/social_xurl/client.rs",
             "automations/upstream/scripts/upstream_autopilot.py",
+            "automations/upstream/scripts/agent_watchdog.py",
+            "automations/upstream/scripts/upstream_autopilot_lib/agent.py",
+            "automations/upstream/scripts/upstream_autopilot_lib/cli.py",
+            "automations/upstream/scripts/upstream_autopilot_lib/effects.py",
+            "automations/upstream/scripts/upstream_autopilot_lib/state.py",
         ):
             self.assertFalse(authorize(repair, [path]), path)
         self.assertTrue(
@@ -2648,6 +2739,15 @@ os._exit(0)
         )
         self.assertFalse(
             authorize(pricing, ["apps/decodex-publisher/src/lib.rs"])
+        )
+        self.assertFalse(
+            authorize(
+                pricing,
+                [
+                    "automations/upstream/scripts/"
+                    "upstream_autopilot_lib/effectiveness.py"
+                ],
+            )
         )
 
         with tempfile.TemporaryDirectory() as directory:
@@ -2676,6 +2776,18 @@ os._exit(0)
                 check=True,
             )
             (worktree / "README.md").write_text("base\n", encoding="utf-8")
+            evaluation = (
+                worktree
+                / "automations/upstream/scripts/upstream_autopilot_lib/"
+                "effectiveness.py"
+            )
+            evaluation.parent.mkdir(parents=True)
+            shutil.copyfile(
+                ROOT
+                / "automations/upstream/scripts/upstream_autopilot_lib/"
+                "effectiveness.py",
+                evaluation,
+            )
             subprocess.run(["git", "add", "."], cwd=worktree, check=True)
             subprocess.run(
                 ["git", "commit", "-q", "-m", "base"],
@@ -2741,6 +2853,47 @@ os._exit(0)
                 "",
             )
             self.assertFalse(workflow.exists())
+
+            evaluation.write_text(
+                evaluation.read_text(encoding="utf-8")
+                + "\nrolling_effectiveness({}, now=0, window_seconds=1)\n",
+                encoding="utf-8",
+            )
+            malicious_patch = subprocess.run(
+                ["git", "diff", "--binary"],
+                cwd=worktree,
+                check=True,
+                capture_output=True,
+            ).stdout
+            subprocess.run(
+                ["git", "reset", "--hard", "-q", "HEAD"],
+                cwd=worktree,
+                check=True,
+            )
+            with self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "agent_repair_evaluation_invalid",
+            ):
+                self.autopilot.apply_agent_patch(
+                    worktree,
+                    candidate=repair,
+                    patch=malicious_patch,
+                    patch_sha256=hashlib.sha256(
+                        malicious_patch
+                    ).hexdigest(),
+                    expected_head=head,
+                    expected_tree=tree,
+                )
+            self.assertEqual(
+                subprocess.run(
+                    ["git", "status", "--porcelain=v1"],
+                    cwd=worktree,
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout,
+                "",
+            )
 
     def test_agent_patch_guard_removes_receipt_and_restores_real_worktree(
         self,
@@ -3240,6 +3393,7 @@ os._exit(0)
                 "outcome": "blocked",
                 "reason_code": "validation_failed",
                 "error_digest": "2" * 64,
+                "finding_codes": [],
                 "at": 100,
             },
         }
@@ -5080,6 +5234,46 @@ os._exit(0)
                 ],
             },
         )
+
+    def test_cli_failures_always_return_a_reproducible_error_digest(self):
+        cases = (
+            (
+                self.autopilot.AutopilotError(
+                    "agent_patch_path_unauthorized"
+                ),
+                "agent_patch_path_unauthorized",
+            ),
+            (RuntimeError("private detail"), "unclassified_failure"),
+        )
+        for failure, error_code in cases:
+            with self.subTest(error_code=error_code):
+                output = io.StringIO()
+                arguments = mock.Mock(json=True)
+                with (
+                    mock.patch.object(
+                        self.autopilot.cli_module,
+                        "parse_args",
+                        return_value=arguments,
+                    ),
+                    mock.patch.object(
+                        self.autopilot.cli_module,
+                        "execute",
+                        side_effect=failure,
+                    ),
+                    mock.patch.object(sys, "stdout", output),
+                ):
+                    return_code = self.autopilot.cli_module.main()
+
+                payload = json.loads(output.getvalue())
+                self.assertEqual(return_code, 1)
+                self.assertEqual(payload["error_code"], error_code)
+                self.assertRegex(payload["error_digest"], r"^[0-9a-f]{64}$")
+                self.assertEqual(
+                    payload["error_digest"],
+                    self.autopilot.cli_module.failure_error_digest(
+                        error_code
+                    ),
+                )
 
     @unittest.skipIf(
         os.environ.get("DECODEX_CANDIDATE_SANDBOX") == "1",
@@ -7527,6 +7721,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "a" * 64,
+            "finding_codes": [],
             "at": 150,
         }
         repair = self.autopilot.queue_automation_repair(
@@ -10599,12 +10794,14 @@ os._exit(0)
                 ROOT,
                 self.policy,
                 candidate,
+                base_head="1" * 40,
                 head_sha=head,
             )
             second = self.autopilot.find_or_create_pull_request(
                 ROOT,
                 self.policy,
                 candidate,
+                base_head="1" * 40,
                 head_sha=head,
             )
 
@@ -10616,6 +10813,78 @@ os._exit(0)
             if call.args[0][:3] == ["gh", "pr", "create"]
         ]
         self.assertEqual(len(create_calls), 1)
+
+    def test_pull_request_recovery_accepts_the_fresh_main_base(self):
+        state, candidate_id = self.bootstrap()
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        pr_url = "https://github.com/hack-ink/decodex/pull/123"
+        head = "2" * 40
+        current_base = "3" * 40
+        candidate["commit_receipt"] = {"base_head": "1" * 40}
+        readback = {
+            "url": pr_url,
+            "state": "OPEN",
+            "isDraft": False,
+            "isCrossRepository": False,
+            "baseRefName": "main",
+            "baseRefOid": current_base,
+            "headRefName": candidate["branch_name"],
+            "headRefOid": head,
+            "mergeCommit": None,
+        }
+        with (
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "run_command",
+                return_value=json.dumps([{"url": pr_url}]),
+            ),
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "pull_request_readback",
+                return_value=readback,
+            ),
+        ):
+            recovered = self.autopilot.find_or_create_pull_request(
+                ROOT,
+                self.policy,
+                candidate,
+                base_head=current_base,
+                head_sha=head,
+            )
+
+        self.assertEqual(recovered, pr_url)
+        closed = {**readback, "state": "CLOSED"}
+        with (
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "pull_request_readback",
+                side_effect=[readback, closed],
+            ),
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "remote_branch_head",
+                side_effect=[head, None],
+            ),
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "run_command",
+                return_value="",
+            ),
+        ):
+            retirement_receipt = self.autopilot.retire_pull_request(
+                ROOT,
+                self.policy,
+                candidate_id=candidate_id,
+                pr_url=pr_url,
+                branch=candidate["branch_name"],
+                base_head=current_base,
+                head_sha=head,
+            )
+
+        self.assertEqual(
+            retirement_receipt,
+            self.autopilot.sha256_value(closed),
+        )
 
     def test_pull_request_body_bounds_contract_gap_markers(self):
         candidate = {
@@ -10640,6 +10909,7 @@ os._exit(0)
     def test_pull_request_retirement_recovers_closed_pr_and_branch(self):
         branch = "xv/codex-upstream-0123456789abcdef"
         head = "2" * 40
+        current_base = "3" * 40
         pr_url = "https://github.com/hack-ink/decodex/pull/123"
         closed = {
             "url": pr_url,
@@ -10668,6 +10938,11 @@ os._exit(0)
                 "run_command",
                 return_value="",
             ) as run,
+            mock.patch.object(
+                self.autopilot.effects_module,
+                "command_succeeds",
+                return_value=True,
+            ) as succeeds,
         ):
             receipt = self.autopilot.retire_pull_request(
                 ROOT,
@@ -10675,7 +10950,7 @@ os._exit(0)
                 candidate_id="0123456789abcdef",
                 pr_url=pr_url,
                 branch=branch,
-                base_head="1" * 40,
+                base_head=current_base,
                 head_sha=head,
             )
 
@@ -10686,6 +10961,97 @@ os._exit(0)
             arguments,
         )
         self.assertEqual(arguments[-1], f":refs/heads/{branch}")
+        succeeds.assert_has_calls(
+            [
+                mock.call(
+                    [
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        "1" * 40,
+                        current_base,
+                    ],
+                    cwd=ROOT,
+                    failure_code="pull_request_retirement_mismatch",
+                ),
+                mock.call(
+                    [
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        "1" * 40,
+                        current_base,
+                    ],
+                    cwd=ROOT,
+                    failure_code="pull_request_retirement_mismatch",
+                ),
+            ]
+        )
+
+    def test_retire_cli_binds_readback_to_fresh_main(self):
+        state, candidate_id, token = self.external_effect_state(
+            "retire_pr",
+            "prepared",
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        current_base = "9" * 40
+        receipt_sha256 = "a" * 64
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory).resolve()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            arguments = mock.Mock(
+                command="retire-pr",
+                candidate_id=candidate_id,
+                lease_token=token,
+                worktree=worktree,
+                reason_code="semantic_compatible",
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            retire = mock.Mock(return_value=receipt_sha256)
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={
+                        "branch": "main",
+                        "head": current_base,
+                    }
+                ),
+                cleanup_stale_agent_runs=mock.Mock(),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=candidate["pull_request"][
+                        "validation_receipt"
+                    ]["repository_tree"]
+                ),
+                refresh_primary_snapshot=mock.Mock(),
+                retire_pull_request=retire,
+                utc_now=mock.Mock(side_effect=[113, 114]),
+            ):
+                result = self.autopilot.cli_module.execute(arguments)
+
+        self.assertEqual(result["status"], "pull_request_retired")
+        self.assertEqual(retire.call_args.kwargs["base_head"], current_base)
+        self.assertIsNone(candidate["effect"])
+        self.assertIsNone(candidate["pull_request"])
+        self.autopilot.validate_state(state)
 
     def test_landing_requires_the_exact_decodex_commit_record(self):
         intent_sha256 = "a" * 64
@@ -12749,6 +13115,8 @@ os._exit(0)
             receipt_sha256="a" * 64,
             now=114,
         )
+        self.assertIsNone(candidate["result"])
+        self.autopilot.validate_state(state)
         maintainer_receipt = self.validation_receipt(
             "maintainer",
             completed_at=115,
@@ -13468,6 +13836,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "a" * 64,
+            "finding_codes": [],
             "at": 150,
         }
 
@@ -13517,20 +13886,8 @@ os._exit(0)
         )
 
         self.assertEqual(repairs, [])
-        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["status"], "retry_wait")
         self.assertEqual(candidate["effect"]["phase"], "land_started")
-        with self.assertRaisesRegex(
-            self.autopilot.AutopilotError,
-            "repair_target_external_effect_unresolved",
-        ):
-            self.autopilot.queue_automation_repair(
-                state,
-                self.policy,
-                blocked_candidate_id=candidate_id,
-                reason_code="land_result_unconfirmed",
-                repository_head="9" * 40,
-                now=115,
-            )
         health = self.autopilot.state_health(state, None, 115, [])
         self.assertIn("external_effect_unresolved", health["blockers"])
         self.assertEqual(
@@ -13565,7 +13922,7 @@ os._exit(0)
 
         self.assertEqual(recovered, [candidate_id])
         self.assertEqual(repairs, [])
-        self.assertEqual(candidate["status"], "needs_attention")
+        self.assertEqual(candidate["status"], "retry_wait")
         self.assertEqual(candidate["effect"]["phase"], "land_started")
         health = self.autopilot.state_health(
             state,
@@ -13615,25 +13972,28 @@ os._exit(0)
                 )
 
                 self.assertEqual(repairs, [])
-                self.assertEqual(candidate["status"], "needs_attention")
+                self.assertEqual(candidate["status"], "retry_wait")
                 self.assertEqual(candidate["effect"]["kind"], kind)
                 self.assertEqual(candidate["effect"]["phase"], phase)
-                with self.assertRaisesRegex(
-                    self.autopilot.AutopilotError,
-                    "repair_target_external_effect_unresolved",
-                ):
-                    self.autopilot.queue_automation_repair(
-                        state,
-                        self.policy,
-                        blocked_candidate_id=candidate_id,
-                        reason_code="remote_result_unconfirmed",
-                        repository_head="9" * 40,
-                        now=117,
-                    )
+                attempts = candidate["attempts"]["maintainer"]
+                recovery = self.autopilot.claim_candidate(
+                    state,
+                    self.policy,
+                    "maintainer",
+                    candidate["next_retry_at"],
+                )
+                self.assertEqual(
+                    recovery["candidate"]["id"],
+                    candidate_id,
+                )
+                self.assertEqual(
+                    candidate["attempts"]["maintainer"],
+                    attempts,
+                )
                 health = self.autopilot.state_health(
                     state,
                     None,
-                    117,
+                    candidate["updated_at"],
                     [],
                 )
                 self.assertIn(
@@ -13651,6 +14011,134 @@ os._exit(0)
                     ],
                 )
                 self.autopilot.validate_state(state)
+
+    def test_health_requeues_an_exhausted_external_effect_for_recovery(self):
+        state, candidate_id, token = self.external_effect_state(
+            "publish",
+            "pushed",
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        candidate["attempts"]["maintainer"] = self.policy["max_attempts"]
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=token,
+            reason_code="remote_result_unconfirmed",
+            error_digest="c" * 64,
+            now=115,
+        )
+        candidate["status"] = "needs_attention"
+        candidate["next_retry_at"] = None
+
+        repairs = self.autopilot.queue_needed_repairs(
+            state,
+            self.policy,
+            repository_head="9" * 40,
+            now=200,
+        )
+
+        self.assertEqual(repairs, [])
+        self.assertEqual(candidate["status"], "retry_wait")
+        self.assertEqual(candidate["next_retry_at"], 200)
+        self.assertEqual(candidate["retry_role"], "maintainer")
+        self.assertEqual(
+            state["events"][-1]["event"],
+            "external_effect_recovery_requeued",
+        )
+        self.autopilot.validate_state(state)
+
+    def test_run_agent_rejects_maintainer_and_reviewer_effect_recovery(self):
+        publish_state, publish_id, _token = self.external_effect_state(
+            "publish",
+            "pushed",
+        )
+        land_state, land_id = self.land_started_state()
+        for state, candidate_id in (
+            (publish_state, publish_id),
+            (land_state, land_id),
+        ):
+            with self.subTest(candidate_id=candidate_id):
+                candidate = self.autopilot.find_candidate(
+                    state,
+                    candidate_id,
+                )
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "agent_effect_recovery_required",
+                ):
+                    self.autopilot.cli_module.require_agent_effect_absent(
+                        candidate
+                    )
+
+    def test_decision_cannot_bypass_a_publish_effect(self):
+        state, candidate_id = self.bootstrap()
+        claim = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        self.record_test_commit(
+            state,
+            candidate_id,
+            claim,
+            base_head="1" * 40,
+            head_sha="2" * 40,
+            tree="d" * 40,
+            now=102,
+        )
+        receipt = self.validation_receipt(
+            "maintainer",
+            head="2" * 40,
+            tree="d" * 40,
+            base="1" * 40,
+            completed_at=104,
+        )
+        self.autopilot.prepare_effect(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=claim["lease_token"],
+            kind="publish",
+            branch=candidate["branch_name"],
+            head_sha="2" * 40,
+            pr_url=None,
+            remote_head_before=None,
+            validation_receipt=receipt,
+            now=104,
+        )
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "decision_effect_unresolved",
+        ):
+            self.autopilot.submit_decision(
+                state,
+                candidate_id=candidate_id,
+                token=claim["lease_token"],
+                outcome="no_change",
+                reason_code="semantic_compatible",
+                maintainer_receipt=receipt,
+                now=105,
+            )
+
+        invalid = deepcopy(state)
+        invalid_candidate = self.autopilot.find_candidate(
+            invalid,
+            candidate_id,
+        )
+        invalid_candidate["status"] = "review_pending"
+        invalid_candidate["lease"] = None
+        invalid_candidate["handoff"] = None
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "candidate_effect_invalid",
+        ):
+            self.autopilot.validate_state(invalid)
 
     def test_reviewer_cannot_convert_land_started_into_repair_requested(self):
         state, candidate_id, token = self.land_started_state(
@@ -13729,10 +14217,79 @@ os._exit(0)
             "attempt_budget_exhausted",
         )
         self.assertEqual(len(candidate["result"]["error_digest"]), 64)
+        self.assertEqual(
+            candidate["result"]["finding_codes"],
+            ["validation_failed"],
+        )
         self.assertEqual(len(repairs), 1)
         self.assertEqual(
             self.autopilot.find_candidate(state, repairs[0])["repair_of"],
             candidate_id,
+        )
+        self.autopilot.validate_state(state)
+
+    def test_failed_repair_attempt_preserves_reviewer_findings(self):
+        state, candidate_id = self.bootstrap()
+        maintainer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            101,
+        )
+        self.submit_pull_request(state, candidate_id, maintainer, now=102)
+        reviewer = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "reviewer",
+            110,
+        )
+        finding_codes = ["missing_regression_test", "protocol_shape_stale"]
+        reviewer_handoff = self.consume_review_handoff(
+            state,
+            candidate_id,
+            reviewer,
+            disposition="request_repair",
+            finding_codes=finding_codes,
+            now=111,
+        )
+        self.autopilot.request_repair(
+            state,
+            candidate_id=candidate_id,
+            token=reviewer["lease_token"],
+            finding_codes=finding_codes,
+            reviewer_handoff=reviewer_handoff,
+            now=111,
+        )
+        repair = self.autopilot.claim_candidate(
+            state,
+            self.policy,
+            "maintainer",
+            112,
+        )
+
+        self.autopilot.block_candidate(
+            state,
+            self.policy,
+            candidate_id=candidate_id,
+            role="maintainer",
+            token=repair["lease_token"],
+            reason_code="agent_patch_path_unauthorized",
+            error_digest="a" * 64,
+            now=113,
+        )
+
+        candidate = self.autopilot.find_candidate(state, candidate_id)
+        self.assertEqual(candidate["result"]["outcome"], "blocked")
+        self.assertEqual(
+            candidate["result"]["finding_codes"],
+            finding_codes,
+        )
+        projection = self.autopilot.agent_module._bounded_candidate_projection(
+            candidate
+        )
+        self.assertEqual(
+            projection["result"]["finding_codes"],
+            finding_codes,
         )
         self.autopilot.validate_state(state)
 
@@ -13815,6 +14372,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "b" * 64,
+            "finding_codes": [],
             "at": 201,
         }
         nested = self.autopilot.queue_automation_repair(
@@ -13852,6 +14410,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "d" * 64,
+            "finding_codes": [],
             "at": 201,
         }
         repair = self.autopilot.queue_automation_repair(
@@ -14007,6 +14566,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "a" * 64,
+            "finding_codes": [],
             "at": 150,
         }
         critical = self.autopilot.queue_candidate(
@@ -14083,6 +14643,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "validation_failed",
             "error_digest": "a" * 64,
+            "finding_codes": [],
             "at": 150,
         }
         repair = self.autopilot.queue_automation_repair(
@@ -15681,6 +16242,13 @@ os._exit(0)
         blocked["status"] = "needs_attention"
         blocked["attempts"] = {"maintainer": 3, "reviewer": 1}
         blocked["retry_role"] = "maintainer"
+        blocked["result"] = {
+            "outcome": "blocked",
+            "reason_code": "validation_failed",
+            "error_digest": "a" * 64,
+            "finding_codes": ["protocol_shape_stale"],
+            "at": 199,
+        }
         repair = self.autopilot.queue_automation_repair(
             state,
             self.policy,
@@ -15720,6 +16288,16 @@ os._exit(0)
         )
         self.assertEqual(blocked["result"]["repair_outcome"], "landed")
         self.assertEqual(blocked["result"]["resumed_role"], "maintainer")
+        self.assertEqual(
+            blocked["result"]["finding_codes"],
+            ["protocol_shape_stale"],
+        )
+        self.assertEqual(
+            self.autopilot.agent_module._bounded_candidate_projection(
+                blocked
+            )["result"]["finding_codes"],
+            ["protocol_shape_stale"],
+        )
 
     def test_independently_confirmed_no_change_repair_requeues_candidate(self):
         state, blocked_id = self.bootstrap()
@@ -15731,6 +16309,7 @@ os._exit(0)
             "outcome": "blocked",
             "reason_code": "github_unavailable",
             "error_digest": "a" * 64,
+            "finding_codes": [],
             "at": 150,
         }
         repair = self.autopilot.queue_automation_repair(
