@@ -81,10 +81,12 @@ plane can repair itself. This prevents duplicate workers and commits for the sam
 unresolved compatibility gap without discarding lane evidence.
 
 Health does not stop at reporting. Deterministic seven-day thresholds can queue one
-deduplicated improvement candidate for repeated blocked attempts, repeated Reviewer
-repairs, or sustained lead-time failure with enough samples. A remaining live
-configuration mismatch queues the same bounded workflow. Maintainer must reproduce
-the evidence and add a test; Reviewer must approve the result.
+deduplicated improvement candidate for repeated Reviewer repairs or sustained
+lead-time failure with enough samples. A remaining live configuration mismatch queues
+the same bounded workflow. Blocked-attempt totals remain health metrics; an eligible
+exhausted candidate instead creates one exact repair bound to its candidate ID and
+failure code, so the aggregate never creates evidence-free work. Maintainer must
+reproduce the evidence and add a test; Reviewer must approve the result.
 
 Commit, publish, pull-request retirement, and landing are transactional state-tool
 commands. Each command persists an intent before its external effect, binds it to the

@@ -14339,6 +14339,31 @@ os._exit(0)
         self.assertEqual(len(state["events"]), self.autopilot.MAX_EVENTS)
         self.assertEqual(metrics["repair_request_count"], 3000)
 
+    def test_health_guidance_does_not_queue_unscoped_blocked_attempt_work(self):
+        guidance = "\n".join(
+            (ROOT / path).read_text(encoding="utf-8")
+            for path in (
+                "automations/upstream/README.md",
+                "automations/upstream/prompts/health.md",
+                "openwiki/operations/codex-upstream-autopilot.md",
+            )
+        )
+
+        self.assertNotIn("--queue-improvements", guidance)
+        self.assertNotIn("repeated_blocked_attempts", guidance)
+        self.assertIn("--queue-repairs", guidance)
+        for reason_code in (
+            "assessment_only_churn",
+            "lead_time_sla_missed",
+            "repeated_review_repairs",
+            "task_retention_contract_drift",
+        ):
+            self.assertIn(reason_code, guidance)
+        self.assertIn(
+            "Never create an unscoped improvement from the aggregate count.",
+            " ".join(guidance.split()),
+        )
+
     def test_repeated_assessment_only_landings_queue_improvement(self):
         state, candidate_id = self.bootstrap(now=100)
         source = self.autopilot.find_candidate(state, candidate_id)

@@ -75,7 +75,7 @@ Workflow:
    independent health and repair checks when the receipt store is invalid, and
    queue `task_retention_contract_drift`.
 2. Run:
-   `automations/upstream/scripts/run_upstream_autopilot health --repair-expired --queue-repairs --queue-improvements --json`.
+   `automations/upstream/scripts/run_upstream_autopilot health --repair-expired --queue-repairs --json`.
    Promote an exact canonical receipt for an expired prepared run before lease
    recovery. Recover expired leases and durable interrupted effects. Preserve a
    canonical handoff receipt while a completed unconsumed agent run can reclaim it
@@ -196,7 +196,7 @@ Workflow:
    `x-pricing-audit --json` once and require the exact drift receipt projection
    now has a critical candidate ID, including for the first parser failure. Then
    run final
-   `health --repair-expired --queue-repairs --queue-improvements --json`.
+   `health --repair-expired --queue-repairs --json`.
    Require fresh, contiguous upstream observation and no unowned external effect.
 8. Review every retry-wait, needs-attention, repair-requested, self-repair, and
    proactive-improvement item. Convert every autonomous repair into an owned
@@ -233,9 +233,11 @@ Workflow:
    improvement when it repeats.
 10. Queue or reuse one reason-specific improvement for each detected degradation.
     Use the exact `queue-improvement` command for
-    `assessment_only_churn`, `lead_time_sla_missed`, `repeated_blocked_attempts`,
-    `repeated_review_repairs`, and `task_retention_contract_drift` when each
-    condition applies.
+    `assessment_only_churn`, `lead_time_sla_missed`, `repeated_review_repairs`,
+    and `task_retention_contract_drift` when each condition applies. Blocked-attempt
+    totals are reporting evidence only; `--queue-repairs` already binds each eligible
+    exhausted item to its exact candidate and failure code. Never create an unscoped
+    improvement from the aggregate count.
     The manager owns follow-through: confirm a Maintainer generation exists, then
     confirm Reviewer validates and lands it. Keep unresolved or failed work visible;
     do not ask the user to advance routine work.

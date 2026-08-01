@@ -141,10 +141,12 @@ item.
 The same health result includes rolling 24-hour and seven-day outcome, landing-rate,
 lead-time, blocked-attempt, review-repair, and self-repair metrics.
 
-Health converts repeated seven-day failures into work instead of only reporting
-them. Two Reviewer repair requests, three blocked attempts, or average lead time
-above six hours across at least three terminal samples creates one deduplicated
-improvement candidate. A live scheduler mismatch that remains after native
+Health converts actionable repeated seven-day failures into work instead of only
+reporting them. Two Reviewer repair requests or average lead time above six hours
+across at least three terminal samples create one deduplicated improvement candidate.
+Blocked-attempt totals remain metrics because each eligible exhausted item instead
+creates one repair bound to its exact candidate ID and failure code; the aggregate
+never creates evidence-free work. A live scheduler mismatch that remains after native
 reconciliation can create the same bounded candidate type. Maintainer must reproduce
 the evidence and add a regression test; Reviewer owns the terminal decision.
 
@@ -616,7 +618,7 @@ python3 automations/decodex/scripts/config/evaluate_automations.py \
   --manifest automations/decodex/automations.toml
 automations/upstream/scripts/run_upstream_autopilot observe --json
 automations/upstream/scripts/run_upstream_autopilot health \
-  --repair-expired --queue-repairs --queue-improvements --json
+  --repair-expired --queue-repairs --json
 ```
 
 The repo-only config evaluation is static. The live content-manifest evaluation
