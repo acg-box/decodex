@@ -234,10 +234,12 @@ Automation-owned branch replacement uses the recorded old remote HEAD as an exac
 force-with-lease precondition. The initial publish accepts only an absent remote ref
 or the exact recorded candidate base. A PR repair accepts only the prior recorded PR
 head. No unrelated branch can be rewritten. After validation, publish and
-pull-request retirement refresh primary `main` and require pull-request `baseRefOid`
-to equal that fresh head. The validation receipt retains the candidate's original
-commit base. A difference can therefore proceed only to independent review; the
-formal land transaction owns the `base_stale` classification and refresh.
+pull-request retirement refresh primary `main`. The pull request `baseRefOid` must
+equal that fresh head or be a Git-proven ancestor of it. GitHub can retain the prior
+base object ID on an open pull request after `main` advances. The validation receipt
+retains the candidate's original commit base. A difference can therefore proceed only
+to independent review; the formal land transaction still requires exact equality and
+owns the `base_stale` classification and refresh.
 
 Persisted publish, pull-request retirement, and started landing effects remain
 claimable after the normal model-attempt budget is exhausted. Recovery does not

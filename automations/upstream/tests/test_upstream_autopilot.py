@@ -7872,13 +7872,14 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         candidate_id,
         claim,
         *,
+        base="1" * 40,
         head="2" * 40,
         tree="d" * 40,
         pr_url="https://github.com/hack-ink/decodex/pull/123",
         now=102,
     ):
         candidate = self.autopilot.find_candidate(state, candidate_id)
-        base_head = "1" * 40
+        base_head = base
         self.record_test_commit(
             state,
             candidate_id,
@@ -10581,6 +10582,7 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         self.assertNotIn("secret-name", str(summary))
 
     def test_pull_request_readback_requires_exact_head(self):
+        repo_root = Path("/repo")
         value = {
             "url": "https://github.com/hack-ink/decodex/pull/123",
             "state": "OPEN",
@@ -10594,6 +10596,7 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         }
 
         self.autopilot.verify_open_pull_request(
+            repo_root,
             value,
             self.policy,
             pr_url=value["url"],
@@ -10606,6 +10609,7 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
             "pull_request_submission_mismatch",
         ):
             self.autopilot.verify_open_pull_request(
+                repo_root,
                 value,
                 self.policy,
                 pr_url=value["url"],
@@ -10619,11 +10623,87 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
             "pull_request_submission_mismatch",
         ):
             self.autopilot.verify_open_pull_request(
+                repo_root,
                 cross_repository,
                 self.policy,
                 pr_url=value["url"],
                 branch=value["headRefName"],
                 base_head=value["baseRefOid"],
+                head_sha=value["headRefOid"],
+            )
+        invalid_base = {**value, "baseRefOid": int("1" * 40)}
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "pull_request_submission_mismatch",
+        ):
+            self.autopilot.verify_open_pull_request(
+                repo_root,
+                invalid_base,
+                self.policy,
+                pr_url=value["url"],
+                branch=value["headRefName"],
+                base_head=value["baseRefOid"],
+                head_sha=value["headRefOid"],
+            )
+
+    def test_pull_request_readback_accepts_only_ancestor_stale_base(self):
+        repo_root = Path("/repo")
+        value = {
+            "url": "https://github.com/hack-ink/decodex/pull/123",
+            "state": "OPEN",
+            "isDraft": False,
+            "isCrossRepository": False,
+            "baseRefName": "main",
+            "baseRefOid": "1" * 40,
+            "headRefName": "xv/codex-upstream-0123456789abcdef",
+            "headRefOid": "2" * 40,
+            "mergeCommit": None,
+        }
+
+        with mock.patch.object(
+            self.autopilot.state_module,
+            "command_succeeds",
+            return_value=True,
+        ) as ancestry:
+            self.autopilot.verify_open_pull_request(
+                repo_root,
+                value,
+                self.policy,
+                pr_url=value["url"],
+                branch=value["headRefName"],
+                base_head="3" * 40,
+                head_sha=value["headRefOid"],
+            )
+        ancestry.assert_called_once_with(
+            [
+                "git",
+                "merge-base",
+                "--is-ancestor",
+                value["baseRefOid"],
+                "3" * 40,
+            ],
+            cwd=repo_root,
+            failure_code="pull_request_submission_mismatch",
+        )
+
+        with (
+            mock.patch.object(
+                self.autopilot.state_module,
+                "command_succeeds",
+                return_value=False,
+            ),
+            self.assertRaisesRegex(
+                self.autopilot.AutopilotError,
+                "pull_request_submission_mismatch",
+            ),
+        ):
+            self.autopilot.verify_open_pull_request(
+                repo_root,
+                value,
+                self.policy,
+                pr_url=value["url"],
+                branch=value["headRefName"],
+                base_head="3" * 40,
                 head_sha=value["headRefOid"],
             )
 
@@ -11051,6 +11131,197 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         self.assertEqual(retire.call_args.kwargs["base_head"], current_base)
         self.assertIsNone(candidate["effect"])
         self.assertIsNone(candidate["pull_request"])
+        self.autopilot.validate_state(state)
+
+    def test_land_cli_routes_ancestor_pr_base_to_stale_refresh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = Path(directory).resolve()
+            subprocess.run(
+                ["git", "init", "--initial-branch=main"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.name", "Automation Test"],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "config",
+                    "user.email",
+                    "automation@example.invalid",
+                ],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+            candidate_base = self.commit_fixture_tree(repo_root, "base")
+            pull_request_base = self.commit_fixture_tree(
+                repo_root,
+                "pull request base",
+                parent=candidate_base,
+            )
+            current_main = self.commit_fixture_tree(
+                repo_root,
+                "current main",
+                parent=pull_request_base,
+            )
+            subprocess.run(
+                [
+                    "git",
+                    "merge-base",
+                    "--is-ancestor",
+                    pull_request_base,
+                    current_main,
+                ],
+                cwd=repo_root,
+                check=True,
+                capture_output=True,
+            )
+
+            state, candidate_id = self.bootstrap()
+            maintainer = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "maintainer",
+                101,
+            )
+            self.submit_pull_request(
+                state,
+                candidate_id,
+                maintainer,
+                base=candidate_base,
+                now=102,
+            )
+            reviewer = self.autopilot.claim_candidate(
+                state,
+                self.policy,
+                "reviewer",
+                110,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            pull_request = candidate["pull_request"]
+            raw_handoff = self.handoff_receipt(
+                reviewer,
+                candidate_id=candidate_id,
+                role="reviewer",
+                action="independent_review",
+                base_head=candidate_base,
+                repository_head=pull_request["head_sha"],
+                repository_tree=pull_request["validation_receipt"][
+                    "repository_tree"
+                ],
+                disposition="accept",
+            )
+            self.complete_handoff_agent_run(
+                state,
+                candidate_id,
+                reviewer,
+                raw_handoff,
+                role="reviewer",
+                base_head=candidate_base,
+                repository_head=pull_request["head_sha"],
+                input_tree=pull_request["validation_receipt"][
+                    "repository_tree"
+                ],
+                now=111,
+            )
+            reviewer_receipt = self.validation_receipt(
+                "reviewer",
+                head=pull_request["head_sha"],
+                tree=pull_request["validation_receipt"]["repository_tree"],
+                base=candidate_base,
+                completed_at=112,
+            )
+            before = {
+                "url": pull_request["url"],
+                "state": "OPEN",
+                "isDraft": False,
+                "isCrossRepository": False,
+                "baseRefName": "main",
+                "baseRefOid": pull_request_base,
+                "headRefName": pull_request["branch"],
+                "headRefOid": pull_request["head_sha"],
+                "mergeCommit": None,
+            }
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            arguments = mock.Mock(
+                command="land",
+                candidate_id=candidate_id,
+                lease_token=reviewer["lease_token"],
+                worktree=worktree,
+                reviewer_receipt=repo_root / "reviewer-receipt.json",
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            prepare_land = mock.Mock()
+            run_land = mock.Mock()
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                cleanup_stale_agent_runs=mock.Mock(),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={"branch": "main", "head": current_main}
+                ),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(),
+                read_handoff_receipt=mock.Mock(return_value=raw_handoff),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=reviewer_receipt["repository_tree"]
+                ),
+                run_validation_profiles=mock.Mock(
+                    return_value=reviewer_receipt
+                ),
+                decodex_identity=mock.Mock(
+                    return_value=(
+                        Path("/usr/local/bin/decodex"),
+                        {
+                            "version": "decodex 0.2.0-test",
+                            "executable_sha256": "9" * 64,
+                        },
+                    )
+                ),
+                pull_request_readback=mock.Mock(return_value=before),
+                refresh_primary_snapshot=mock.Mock(
+                    side_effect=self.autopilot.AutopilotError(
+                        "primary_snapshot_changed"
+                    )
+                ),
+                prepare_effect=prepare_land,
+                run_decodex_land=run_land,
+                utc_now=mock.Mock(return_value=112),
+            ):
+                result = self.autopilot.cli_module.execute(arguments)
+
+        self.assertEqual(result["status"], "repair_requested")
+        self.assertEqual(result["finding_codes"], ["base_stale"])
+        self.assertEqual(candidate["status"], "repair_requested")
+        self.assertEqual(
+            candidate["stale_refresh"]["target_base_head"],
+            pull_request_base,
+        )
+        self.assertIsNone(candidate["effect"])
+        prepare_land.assert_not_called()
+        run_land.assert_not_called()
         self.autopilot.validate_state(state)
 
     def test_landing_requires_the_exact_decodex_commit_record(self):

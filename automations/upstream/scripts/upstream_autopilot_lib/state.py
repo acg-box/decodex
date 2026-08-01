@@ -3852,6 +3852,7 @@ def pull_request_readback(pr_url: str) -> dict[str, Any]:
 
 
 def verify_open_pull_request(
+    repo_root: Path,
     value: dict[str, Any],
     policy: dict[str, Any],
     *,
@@ -3860,15 +3861,24 @@ def verify_open_pull_request(
     base_head: str,
     head_sha: str,
 ) -> None:
+    recorded_base = value.get("baseRefOid")
     if (
         value.get("url") != pr_url
         or value.get("state") != "OPEN"
         or value.get("isDraft") is not False
         or value.get("isCrossRepository") is not False
         or value.get("baseRefName") != policy["target_branch"]
-        or value.get("baseRefOid") != base_head
+        or not isinstance(recorded_base, str)
+        or SHA_PATTERN.fullmatch(recorded_base) is None
+        or SHA_PATTERN.fullmatch(base_head) is None
         or value.get("headRefName") != branch
         or value.get("headRefOid") != head_sha
+    ):
+        raise AutopilotError("pull_request_submission_mismatch")
+    if recorded_base != base_head and not command_succeeds(
+        ["git", "merge-base", "--is-ancestor", recorded_base, base_head],
+        cwd=repo_root,
+        failure_code="pull_request_submission_mismatch",
     ):
         raise AutopilotError("pull_request_submission_mismatch")
 
