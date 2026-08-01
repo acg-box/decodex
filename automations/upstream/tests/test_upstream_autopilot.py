@@ -23,6 +23,7 @@ from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[3]
 SCRIPT = ROOT / "automations/upstream/scripts/upstream_autopilot.py"
+WATCHDOG_SCRIPT = ROOT / "automations/upstream/scripts/agent_watchdog.py"
 X_PRICING_FIXTURE = (
     ROOT / "automations/upstream/tests/fixtures/x-pricing-current.md"
 )
@@ -37,10 +38,22 @@ def load_module():
     return module
 
 
+def load_watchdog_module():
+    spec = importlib.util.spec_from_file_location(
+        "upstream_agent_watchdog",
+        WATCHDOG_SCRIPT,
+    )
+    module = importlib.util.module_from_spec(spec)
+    assert spec.loader is not None
+    spec.loader.exec_module(module)
+    return module
+
+
 class UpstreamAutopilotTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.autopilot = load_module()
+        cls.watchdog = load_watchdog_module()
         cls.policy = cls.autopilot.load_policy(
             ROOT / "automations/upstream/policy.json"
         )
@@ -1870,6 +1883,57 @@ class UpstreamAutopilotTests(unittest.TestCase):
                         pass
                 fcntl.flock(lock_descriptor, fcntl.LOCK_UN)
                 os.close(lock_descriptor)
+
+    def test_agent_watchdog_normalizes_single_digit_process_start(self):
+        started = "Sat Aug 1 08:47:20 2026"
+        completed = mock.Mock(
+            returncode=0,
+            stdout=(
+                f"42 1 {os.getuid()} Sat Aug  1 08:47:20 2026\n"
+            ).encode(),
+        )
+        with mock.patch.object(
+            self.watchdog.subprocess,
+            "run",
+            return_value=completed,
+        ):
+            table = self.watchdog._process_table()
+
+        self.assertEqual(table[42], (1, os.getuid(), started))
+        self.assertEqual(
+            self.watchdog._normalize_process_start(
+                "Sat Aug  1 08:47:20 2026"
+            ),
+            started,
+        )
+
+    def test_agent_watchdog_process_table_failures_are_os_errors(self):
+        invalid_outputs = (
+            b"not-a-pid 1 2 Sat Aug  1 08:47:20 2026\n",
+            b"42 1 2 Sat Aug  1 08:47:20 2026\xff\n",
+        )
+        for output in invalid_outputs:
+            with self.subTest(output=output), mock.patch.object(
+                self.watchdog.subprocess,
+                "run",
+                return_value=mock.Mock(returncode=0, stdout=output),
+            ):
+                with self.assertRaisesRegex(
+                    OSError,
+                    "process table invalid",
+                ):
+                    self.watchdog._process_table()
+
+        with mock.patch.object(
+            self.watchdog.subprocess,
+            "run",
+            side_effect=subprocess.TimeoutExpired(["/bin/ps"], 5),
+        ):
+            with self.assertRaisesRegex(
+                OSError,
+                "process table timed out",
+            ):
+                self.watchdog._process_table()
 
     def test_agent_run_fence_blocks_overlap_until_receipt_phase_closes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -3907,6 +3971,7 @@ os._exit(0)
 
             remote_head = mock.Mock(return_value=None)
             ancestor = mock.Mock(return_value=True)
+            git_command = mock.Mock(side_effect=git_read)
             read_diagnostic = mock.Mock(
                 return_value={"schema": "validation"}
             )
@@ -3923,14 +3988,15 @@ os._exit(0)
                 load_policy=mock.Mock(return_value=self.policy),
                 assert_primary_clean_main=mock.Mock(
                     return_value={
+                        "repo_root": str(repo_root),
+                        "branch": "main",
                         "head": target_base,
-                        "tree": target_tree,
                     }
                 ),
                 locked_state=mock.Mock(side_effect=locked),
                 save_state_guarded=mock.Mock(side_effect=save_state),
                 acquire_agent_run_fence=mock.Mock(return_value=fence),
-                run_command=mock.Mock(side_effect=git_read),
+                run_command=git_command,
                 assert_candidate_worktree=mock.Mock(
                     return_value=receipt["tree_sha"]
                 ),
@@ -4005,6 +4071,17 @@ os._exit(0)
                 cwd=repo_root,
                 failure_code="pre_publish_stale_refresh_base_unavailable",
             )
+            git_command.assert_any_call(
+                [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_base}^{{tree}}",
+                ],
+                cwd=repo_root,
+                failure_code="pre_publish_stale_refresh_tree_unavailable",
+                max_output_bytes=128,
+            )
             self.assertEqual(
                 run_agent.call_args.kwargs["base_head"],
                 target_base,
@@ -4033,6 +4110,97 @@ os._exit(0)
                 candidate["branch_name"],
             )
             fence.close.assert_called_once()
+
+    def test_run_agent_cli_rejects_malformed_advanced_base_tree(self):
+        with tempfile.TemporaryDirectory() as directory:
+            repo_root = (Path(directory) / "repo").resolve()
+            repo_root.mkdir()
+            policy_path = repo_root / "automations/upstream/policy.json"
+            policy_path.parent.mkdir(parents=True)
+            policy_path.write_text("{}\n", encoding="utf-8")
+            worktree = repo_root / ".worktrees/candidate"
+            worktree.mkdir(parents=True)
+            state, candidate_id, retry = self.committed_validation_retry(
+                now=int(time.time()) - 1_000,
+                prepare_retry_run=False,
+            )
+            candidate = self.autopilot.find_candidate(state, candidate_id)
+            before_candidate = deepcopy(candidate)
+            before_commit_receipt = deepcopy(candidate["commit_receipt"])
+            before_attempts = deepcopy(candidate["attempts"])
+            generation = candidate["handoff"]["generation"]
+            target_base = "3" * 40
+            self.autopilot.ensure_handoff_receipt_path(
+                repo_root / ".agent/automations/upstream/cache",
+                candidate_id=candidate_id,
+                role="maintainer",
+                generation=generation,
+            )
+            arguments = mock.Mock(
+                command="run-agent",
+                candidate_id=candidate_id,
+                role="maintainer",
+                lease_token=retry["lease_token"],
+                handoff_challenge=retry["handoff_challenge"],
+                worktree=worktree,
+            )
+
+            def locked(_cache_root):
+                return nullcontext(
+                    (
+                        state,
+                        repo_root
+                        / ".agent/automations/upstream/cache/state-v4.json",
+                    )
+                )
+
+            def git_read(command, **_kwargs):
+                if command == ["git", "rev-parse", "HEAD"]:
+                    return before_commit_receipt["head_sha"]
+                if command == [
+                    "git",
+                    "rev-parse",
+                    "--verify",
+                    f"{target_base}^{{tree}}",
+                ]:
+                    return "not-a-tree"
+                self.fail(f"unexpected git read: {command}")
+
+            run_agent = mock.Mock()
+            with mock.patch.multiple(
+                self.autopilot.cli_module,
+                REPO_ROOT=repo_root,
+                DEFAULT_POLICY_PATH=policy_path,
+                resolve_primary_checkout=mock.Mock(return_value=repo_root),
+                load_policy=mock.Mock(return_value=self.policy),
+                assert_primary_clean_main=mock.Mock(
+                    return_value={
+                        "repo_root": str(repo_root),
+                        "branch": "main",
+                        "head": target_base,
+                    }
+                ),
+                locked_state=mock.Mock(side_effect=locked),
+                save_state_guarded=mock.Mock(),
+                acquire_agent_run_fence=mock.Mock(return_value=mock.Mock()),
+                run_command=mock.Mock(side_effect=git_read),
+                assert_candidate_worktree=mock.Mock(
+                    return_value=before_commit_receipt["tree_sha"]
+                ),
+                remote_branch_head=mock.Mock(return_value=None),
+                command_succeeds=mock.Mock(return_value=True),
+                run_ephemeral_codex_agent=run_agent,
+            ):
+                with self.assertRaisesRegex(
+                    self.autopilot.AutopilotError,
+                    "pre_publish_stale_refresh_tree_invalid",
+                ):
+                    self.autopilot.cli_module.execute(arguments)
+
+            self.assertEqual(candidate, before_candidate)
+            self.assertEqual(candidate["commit_receipt"], before_commit_receipt)
+            self.assertEqual(candidate["attempts"], before_attempts)
+            run_agent.assert_not_called()
 
     def test_run_agent_fence_blocks_before_worktree_inspection(self):
         with tempfile.TemporaryDirectory() as directory:

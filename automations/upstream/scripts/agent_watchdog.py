@@ -185,31 +185,57 @@ def _remove_auth_capsule(path: Path) -> None:
             os.close(directory_descriptor)
 
 
+def _normalize_process_start(value: str) -> str:
+    fields = value.split()
+    if len(fields) != 5:
+        raise OSError("process start time invalid")
+    return " ".join(fields)
+
+
 def _process_table() -> dict[int, tuple[int, int, str]]:
-    completed = subprocess.run(
-        ["/bin/ps", "-axo", "pid=,ppid=,uid=,lstart="],
-        stdin=subprocess.DEVNULL,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        close_fds=True,
-        check=False,
-        timeout=5,
-        env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
-    )
+    try:
+        completed = subprocess.run(
+            ["/bin/ps", "-axo", "pid=,ppid=,uid=,lstart="],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+            check=False,
+            timeout=5,
+            env={"LC_ALL": "C", "PATH": "/usr/bin:/bin"},
+        )
+    except subprocess.TimeoutExpired as error:
+        raise OSError("process table timed out") from error
     if (
         completed.returncode != 0
         or not 1 <= len(completed.stdout) <= MAX_PROCESS_TABLE_BYTES
     ):
         raise OSError("process table unavailable")
     table: dict[int, tuple[int, int, str]] = {}
-    for raw_line in completed.stdout.decode("ascii", errors="strict").splitlines():
+    try:
+        lines = completed.stdout.decode(
+            "ascii",
+            errors="strict",
+        ).splitlines()
+    except UnicodeDecodeError as error:
+        raise OSError("process table invalid") from error
+    for raw_line in lines:
         fields = raw_line.strip().split(maxsplit=3)
         if len(fields) != 4:
             raise OSError("process table invalid")
-        pid, parent_pid, uid = (int(value) for value in fields[:3])
+        try:
+            pid, parent_pid, uid = (
+                int(value) for value in fields[:3]
+            )
+        except ValueError as error:
+            raise OSError("process table invalid") from error
         if pid < 1 or parent_pid < 0 or not fields[3]:
             raise OSError("process table invalid")
-        table[pid] = (parent_pid, uid, fields[3])
+        table[pid] = (
+            parent_pid,
+            uid,
+            _normalize_process_start(fields[3]),
+        )
     return table
 
 
@@ -350,9 +376,11 @@ def _marked_processes(marker: bytes) -> dict[int, str]:
                 raise OSError("process marker scan invalid")
             if pid != os.getpid() and marker in fields[6]:
                 try:
-                    discovered[pid] = b" ".join(fields[1:6]).decode(
-                        "ascii",
-                        errors="strict",
+                    discovered[pid] = _normalize_process_start(
+                        b" ".join(fields[1:6]).decode(
+                            "ascii",
+                            errors="strict",
+                        )
                     )
                 except UnicodeDecodeError as error:
                     raise OSError("process marker scan invalid") from error
