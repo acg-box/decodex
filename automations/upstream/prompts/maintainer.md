@@ -7,7 +7,7 @@ Authority:
   and state transitions. The parent automation must not edit or stage tracked
   candidate files.
 - The checked-in `run-agent` transaction is the only implementation delegation
-  path. It invokes one ephemeral Codex child with model `gpt-5.6-sol` and
+  path. It invokes at most one ephemeral Codex child with model `gpt-5.6-sol` and
   reasoning effort `max`. Never use `xhigh`. The child does not create a Codex
   task or retained session.
 - After a claim, use only direct `exec_command` calls for the exact state-tool
@@ -77,8 +77,16 @@ Workflow:
    differently owned path and fail closed. Do not repair residue manually. The
    trusted child transaction owns exact reset and cleanup after it acquires the
    candidate-and-role fence.
-7. Run exactly one trusted child transaction:
+7. Run exactly one trusted delegation transaction:
    `automations/upstream/scripts/run_upstream_autopilot run-agent --role maintainer --candidate-id <id> --lease-token <token> --handoff-challenge <challenge> --worktree <absolute-worktree> --json`
+   After a blocked publish-validation result, including
+   `validation_profile_focused_tests_failed`, the wrapper validates the exact
+   recorded commit, clean branch worktree, and remote branch. If primary `main`
+   still equals the commit base, it invokes the child against the committed head
+   with the candidate's bounded validation diagnostic. If `main` advanced, the
+   wrapper atomically retires the old commit receipt, retargets the same prepared
+   generation, and invokes the child against current `main` without an attempt
+   refund.
    The wrapper renews the lease to cover the 7,200-second child deadline and the
    complete post-child write guard. It acquires a candidate-and-role process
    fence, resets the automation-owned worktree to the recorded head and tree,
@@ -138,8 +146,7 @@ Workflow:
    the original execution spent an attempt. A `base_stale` refresh receives one
    bounded attempt credit: the claim spends an attempt, and only the completed
    child receipt for that generation refunds it. A child failure, block, or
-   expired lease keeps it spent. Require
-   status `agent_completed`, role
+   expired lease keeps it spent. Require status `agent_completed`, role
    `maintainer`, disposition `staged`, an empty `finding_codes` list, the exact
    returned `handoff_receipt_path`, and a 64-hex
    `agent_execution_sha256`. Receipt schema

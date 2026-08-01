@@ -48,7 +48,10 @@ from . import (
     check_lease_budget,
     classify_commit_entry,
     classify_land_entry,
+    candidate_has_blocked_publish_validation,
+    candidate_has_pre_publish_stale_refresh,
     claim_candidate,
+    command_succeeds,
     collect_observation,
     cleanup_stale_agent_runs,
     commit_execution_receipt,
@@ -70,6 +73,7 @@ from . import (
     observation_session_lock,
     prepare_effect,
     prepare_agent_run,
+    prepare_pre_publish_stale_refresh,
     prepare_stale_pull_request_refresh,
     prepare_observation_plan,
     plan_task_retention,
@@ -1049,6 +1053,94 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
             )
 
         result = candidate.get("result")
+        recorded_commit = candidate.get("commit_receipt")
+        recorded_refresh = candidate.get("stale_refresh")
+        pre_publish_refresh = (
+            recorded_refresh
+            if isinstance(recorded_refresh, dict)
+            and candidate_has_pre_publish_stale_refresh(candidate)
+            else None
+        )
+        if (
+            isinstance(pre_publish_refresh, dict)
+            and preflight["head"]
+            != pre_publish_refresh["target_base_head"]
+        ):
+            raise AutopilotError("pre_publish_stale_refresh_base_changed")
+        if isinstance(pre_publish_refresh, dict) and remote_branch_head(
+            args.worktree,
+            candidate["branch_name"],
+        ) not in {None, pre_publish_refresh["old_base_head"]}:
+            raise AutopilotError("pre_publish_candidate_remote_conflict")
+        if (
+            args.role == "maintainer"
+            and isinstance(recorded_commit, dict)
+            and candidate_has_blocked_publish_validation(candidate)
+            and candidate.get("pull_request") is None
+            and candidate.get("decision") is None
+            and candidate.get("effect") is None
+        ):
+            current_worktree_head = run_command(
+                ["git", "rev-parse", "HEAD"],
+                cwd=args.worktree,
+                failure_code="pre_publish_candidate_worktree_invalid",
+            )
+            if current_worktree_head != recorded_commit["head_sha"]:
+                raise AutopilotError(
+                    "pre_publish_candidate_worktree_invalid"
+                )
+            worktree_tree = assert_candidate_worktree(
+                repo_root,
+                args.worktree,
+                policy,
+                branch=candidate["branch_name"],
+                head_sha=recorded_commit["head_sha"],
+            )
+            if worktree_tree != recorded_commit["tree_sha"]:
+                raise AutopilotError(
+                    "pre_publish_candidate_worktree_invalid"
+                )
+            if remote_branch_head(
+                args.worktree,
+                candidate["branch_name"],
+            ) not in {None, recorded_commit["base_head"]}:
+                raise AutopilotError(
+                    "pre_publish_candidate_remote_conflict"
+                )
+            if preflight["head"] != recorded_commit["base_head"]:
+                if not command_succeeds(
+                    [
+                        "git",
+                        "merge-base",
+                        "--is-ancestor",
+                        recorded_commit["base_head"],
+                        preflight["head"],
+                    ],
+                    cwd=repo_root,
+                    failure_code=(
+                        "pre_publish_stale_refresh_base_unavailable"
+                    ),
+                ):
+                    raise AutopilotError(
+                        "pre_publish_stale_refresh_base_invalid"
+                    )
+                refresh_at = utc_now()
+                with locked_state(cache_root) as (state, state_path):
+                    prepare_pre_publish_stale_refresh(
+                        state,
+                        candidate_id=args.candidate_id,
+                        token=args.lease_token,
+                        challenge_sha256=challenge_sha256,
+                        current_main_head=preflight["head"],
+                        current_main_tree=preflight["tree"],
+                        commit_receipt_sha256=sha256_value(recorded_commit),
+                        now=refresh_at,
+                    )
+                    candidate = deepcopy(
+                        find_candidate(state, args.candidate_id)
+                    )
+                    persist(state, state_path, at=refresh_at)
+
         stale_pull_request = candidate.get("pull_request")
         if (
             args.role == "maintainer"
@@ -1150,6 +1242,12 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 accepted_worktree_heads.add(
                     stale_refresh["target_base_head"]
                 )
+                if (
+                    candidate_has_pre_publish_stale_refresh(candidate)
+                ):
+                    accepted_worktree_heads.add(
+                        stale_refresh["old_head_sha"]
+                    )
             if current_worktree_head not in accepted_worktree_heads:
                 raise AutopilotError(
                     "candidate_worktree_identity_mismatch"
@@ -1237,18 +1335,32 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                     evidence=pricing_audit,
                 )
             )
-        if isinstance(repair_target, dict):
+        diagnostic_candidate = None
+        if candidate_has_blocked_publish_validation(candidate):
+            diagnostic_candidate = candidate
+        elif isinstance(repair_target, dict):
             target_result = repair_target.get("result")
             if (
                 isinstance(target_result, dict)
-                and target_result.get("reason_code") == "validation_failed"
-                and isinstance(target_result.get("error_digest"), str)
+                and (
+                    target_result.get("reason_code") == "validation_failed"
+                    or candidate_has_blocked_publish_validation(
+                        repair_target
+                    )
+                )
+            ):
+                diagnostic_candidate = repair_target
+        if isinstance(diagnostic_candidate, dict):
+            validation_result = diagnostic_candidate.get("result")
+            if (
+                isinstance(validation_result, dict)
+                and isinstance(validation_result.get("error_digest"), str)
             ):
                 try:
                     diagnostics["validation_failure"] = (
                         read_validation_failure_diagnostic(
                             repo_root,
-                            cause_digest=target_result["error_digest"],
+                            cause_digest=validation_result["error_digest"],
                         )
                     )
                 except AutopilotError as error:

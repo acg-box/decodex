@@ -130,13 +130,18 @@ generation only when the original execution spent an attempt. A `base_stale`
 claim spends one attempt from a bounded credit. Only a completed child receipt for
 that generation refunds the attempt; a child failure, block, or expired lease keeps
 it spent.
+After a supported publish-validation failure, `run-agent` passes the candidate's
+bounded diagnostic to the child. If `main` is unchanged, the child repairs the
+committed candidate. If `main` advanced, the same prepared generation is retargeted
+to current `main` before the child runs. This refresh has no attempt credit or refund.
+
 These receipts are non-replayable, state-bound handoffs. They are not cryptographic
 identity signatures. A prepared commit or started land effect keeps its original
 handoff receipt and intent generation across lease recovery; a new owner generation
 can resume only that exact intent and cannot replace its receipt.
 
 Standalone Codex app automations do not receive native multi-agent tools. The
-checked-in `run-agent` transaction therefore invokes one trusted
+checked-in `run-agent` transaction therefore invokes at most one trusted
 `codex exec --ephemeral` child. It fixes model `gpt-5.6-sol` and effort `max`,
 loads neither user configuration nor execution rules, disables network, clears the
 model shell environment, and sets `project_doc_max_bytes=0`. Its single Codex
