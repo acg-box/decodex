@@ -223,12 +223,13 @@ A child failure, block, or lease expiry keeps the attempt spent. The loop does n
 retain a legacy branch or compatibility state.
 
 Publish and pull-request retirement refresh and verify primary `main` before their
-remote effects. Pull-request readback binds `baseRefOid` to that fresh main head, not
-to a candidate's older
-commit base. The candidate validation receipt keeps the original base, so only the
-formal land transaction can classify a later base difference as `base_stale` and
-return it through the existing refresh path. This permits an exact pushed-effect
-recovery without accepting stale validation as landing authority.
+remote effects. Pull-request readback requires `baseRefOid` to equal that fresh main
+head or be a Git-proven ancestor. GitHub can retain an older base object ID on an open
+pull request after `main` advances. The candidate validation receipt keeps the
+original base, so only the formal land transaction can classify a base difference as
+`base_stale` and return it through the existing refresh path. Landing still requires
+exact base equality. This permits an exact pushed-effect recovery without accepting
+stale validation as landing authority.
 If retirement completed before a crash, closed-PR recovery accepts its recorded base
 only when Git proves that base is an ancestor of the freshly verified current main.
 
