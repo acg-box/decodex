@@ -521,7 +521,25 @@ struct AccountPanelView: View {
 			guard accountReorderInteraction?.token == token else {
 				return
 			}
-			accountReorderInteraction = nil
+			let authoritativeOrder = store.accounts.map(\.id)
+			let authoritativeFrames =
+				AccountCardReorderLayout.rebasedFrames(
+					from: interaction.baseOrder,
+					to: authoritativeOrder,
+					frames: interaction.frames,
+					spacing: PanelSpacing.section
+				) ?? [:]
+			if authoritativeOrder == finalOrder {
+				var handoffTransaction = Transaction(animation: nil)
+				handoffTransaction.disablesAnimations = true
+				withTransaction(handoffTransaction) {
+					accountCardFrames = authoritativeFrames
+					accountReorderInteraction = nil
+				}
+			} else {
+				accountCardFrames = authoritativeFrames
+				accountReorderInteraction = nil
+			}
 		}
 	}
 

@@ -179,6 +179,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(panel.contains(".reorderContainer("))
 		XCTAssertTrue(panel.contains(".offset(y: accountReorderOffset"))
 		XCTAssertTrue(panel.contains("interaction.isSettling = true"))
+		XCTAssertTrue(panel.contains("let authoritativeOrder = store.accounts.map(\\.id)"))
+		XCTAssertTrue(panel.contains("AccountCardReorderLayout.rebasedFrames("))
+		XCTAssertTrue(panel.contains("handoffTransaction.disablesAnimations = true"))
+		XCTAssertTrue(panel.contains("withTransaction(handoffTransaction)"))
 		XCTAssertTrue(panel.contains("PanelMotion.accountReorder"))
 		XCTAssertTrue(support.contains("constrainedTranslationY("))
 		XCTAssertTrue(support.contains("reorderedAccountIDs("))
@@ -505,6 +509,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			statusPanel.contains("#selector(applicationDidResignActive(_:))")
 		)
+		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
+		XCTAssertTrue(statusPanel.contains("#selector(panelDidResize(_:))"))
 		XCTAssertEqual(
 			panelControls.components(
 				separatedBy: "isDisabled && isActive == false"
