@@ -1,6 +1,110 @@
 import AppKit
 import SwiftUI
 
+struct AccountCardHoverTrackingView: NSViewRepresentable {
+	let cardFrames: [String: CGRect]
+	let onHoveredAccountChanged: (String?) -> Void
+
+	func makeNSView(context _: Context) -> AccountCardHoverTrackingNSView {
+		let view = AccountCardHoverTrackingNSView(frame: .zero)
+		view.update(
+			cardFrames: cardFrames,
+			onHoveredAccountChanged: onHoveredAccountChanged
+		)
+		return view
+	}
+
+	func updateNSView(
+		_ nsView: AccountCardHoverTrackingNSView,
+		context _: Context
+	) {
+		nsView.update(
+			cardFrames: cardFrames,
+			onHoveredAccountChanged: onHoveredAccountChanged
+		)
+	}
+}
+
+@MainActor
+final class AccountCardHoverTrackingNSView: NSView {
+	private var cardFrames = [String: CGRect]()
+	private var onHoveredAccountChanged: (String?) -> Void = { _ in }
+	private var hoverTrackingArea: NSTrackingArea?
+	private var isPointerInside = false
+	private var hoveredAccountID: String?
+
+	override var isFlipped: Bool {
+		true
+	}
+
+	func update(
+		cardFrames: [String: CGRect],
+		onHoveredAccountChanged: @escaping (String?) -> Void
+	) {
+		self.cardFrames = cardFrames
+		self.onHoveredAccountChanged = onHoveredAccountChanged
+		guard isPointerInside, let window else {
+			return
+		}
+		reportHoveredAccount(
+			at: convert(window.mouseLocationOutsideOfEventStream, from: nil)
+		)
+	}
+
+	override func updateTrackingAreas() {
+		super.updateTrackingAreas()
+		guard hoverTrackingArea == nil else {
+			return
+		}
+		let trackingArea = NSTrackingArea(
+			rect: .zero,
+			options: [
+				.mouseEnteredAndExited,
+				.mouseMoved,
+				.activeAlways,
+				.inVisibleRect,
+			],
+			owner: self,
+			userInfo: nil
+		)
+		addTrackingArea(trackingArea)
+		hoverTrackingArea = trackingArea
+	}
+
+	override func mouseEntered(with event: NSEvent) {
+		isPointerInside = true
+		reportHoveredAccount(at: convert(event.locationInWindow, from: nil))
+	}
+
+	override func mouseExited(with _: NSEvent) {
+		isPointerInside = false
+		setHoveredAccount(nil)
+	}
+
+	override func mouseMoved(with event: NSEvent) {
+		reportHoveredAccount(at: convert(event.locationInWindow, from: nil))
+	}
+
+	override func hitTest(_: NSPoint) -> NSView? {
+		nil
+	}
+
+	private func reportHoveredAccount(at location: NSPoint) {
+		let accountID = cardFrames.first(where: { _, frame in
+			frame.contains(location)
+		})?.key
+		setHoveredAccount(accountID)
+	}
+
+	private func setHoveredAccount(_ accountID: String?) {
+		guard hoveredAccountID != accountID else {
+			return
+		}
+		hoveredAccountID = accountID
+		onHoveredAccountChanged(accountID)
+	}
+}
+
 enum AccountPanelLayout {
 	static let screenVerticalMargin: CGFloat = 44
 	static let panelVerticalPadding: CGFloat = 12

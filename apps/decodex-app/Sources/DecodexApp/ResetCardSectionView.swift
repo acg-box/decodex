@@ -188,6 +188,7 @@ struct ResetCardAccountRow: View {
 	let state: ResetCardAccountState
 	let store: ResetCardStore
 	let showsEmail: Bool
+	let isAccountCardHovered: Bool
 	let isReorderGestureEnabled: Bool
 	let onReorderDragChanged: (CGFloat) -> Void
 	let onReorderDragEnded: () -> Void
@@ -196,7 +197,6 @@ struct ResetCardAccountRow: View {
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var confirmation = ResetCardUseConfirmation()
 	@State private var confirmationSecondsRemaining = 0
-	@State private var isAccountCardHovered = false
 	@State private var isReorderHandleHovered = false
 	@State private var isReorderHandleDragging = false
 
@@ -205,6 +205,7 @@ struct ResetCardAccountRow: View {
 		store: ResetCardStore,
 		showsEmail: Bool = false,
 		detailedAccountID: Binding<String?> = .constant(nil),
+		isAccountCardHovered: Bool = false,
 		isReorderGestureEnabled: Bool = true,
 		onReorderDragChanged: @escaping (CGFloat) -> Void = { _ in },
 		onReorderDragEnded: @escaping () -> Void = {}
@@ -212,6 +213,7 @@ struct ResetCardAccountRow: View {
 		self.state = state
 		self.store = store
 		self.showsEmail = showsEmail
+		self.isAccountCardHovered = isAccountCardHovered
 		self.isReorderGestureEnabled = isReorderGestureEnabled
 		self.onReorderDragChanged = onReorderDragChanged
 		self.onReorderDragEnded = onReorderDragEnded
@@ -255,9 +257,6 @@ struct ResetCardAccountRow: View {
 				.offset(x: -PanelSpacing.micro)
 		}
 		.fixedSize(horizontal: false, vertical: true)
-		.onHover { isHovered in
-			isAccountCardHovered = isHovered
-		}
 		.accessibilityIdentifier("decodex.account.\(state.account.accountID)")
 		.onAppear {
 			confirmation.retainOnly(Set(state.targets))
@@ -340,7 +339,10 @@ struct ResetCardAccountRow: View {
 	private var showsReorderHandle: Bool {
 		store.canReorderAccounts
 			&& (
-				(isAccountCardHovered && isReorderGestureEnabled)
+				(
+					(isAccountCardHovered || isReorderHandleHovered)
+						&& isReorderGestureEnabled
+				)
 					|| isReorderHandleDragging
 			)
 	}
