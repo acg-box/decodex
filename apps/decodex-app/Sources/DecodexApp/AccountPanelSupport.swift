@@ -99,6 +99,91 @@ enum AccountPrivacy {
 	static let visible = "visible"
 }
 
+enum AccountCardReorderLayout {
+	static let coordinateSpaceName = "decodex.account-reorder-list"
+
+	static func constrainedTranslationY(
+		for accountID: String,
+		baseOrder: [String],
+		frames: [String: CGRect],
+		proposed: CGFloat
+	) -> CGFloat {
+		guard proposed.isFinite,
+			let draggedFrame = frames[accountID],
+			let firstID = baseOrder.first,
+			let firstFrame = frames[firstID],
+			let lastID = baseOrder.last,
+			let lastFrame = frames[lastID]
+		else {
+			return 0
+		}
+		return min(
+			max(proposed, firstFrame.minY - draggedFrame.minY),
+			lastFrame.maxY - draggedFrame.maxY
+		)
+	}
+
+	static func reorderedAccountIDs(
+		dragging accountID: String,
+		baseOrder: [String],
+		frames: [String: CGRect],
+		translationY: CGFloat
+	) -> [String] {
+		guard let draggedFrame = frames[accountID],
+			baseOrder.contains(accountID),
+			baseOrder.allSatisfy({ frames[$0] != nil })
+		else {
+			return baseOrder
+		}
+
+		let draggedCenter = draggedFrame.midY + translationY
+		let remaining = baseOrder.filter { $0 != accountID }
+		let insertionIndex = remaining.prefix { otherID in
+			guard let otherFrame = frames[otherID] else {
+				return false
+			}
+			if translationY > 0 {
+				return otherFrame.midY <= draggedCenter
+			}
+			return otherFrame.midY < draggedCenter
+		}.count
+
+		var reordered = remaining
+		reordered.insert(accountID, at: insertionIndex)
+		return reordered
+	}
+
+	static func verticalOffset(
+		for accountID: String,
+		baseOrder: [String],
+		visualOrder: [String],
+		frames: [String: CGRect],
+		spacing: CGFloat
+	) -> CGFloat {
+		guard visualOrder.count == baseOrder.count,
+			Set(visualOrder) == Set(baseOrder),
+			let originalFrame = frames[accountID],
+			let firstID = baseOrder.first,
+			let firstFrame = frames[firstID],
+			baseOrder.allSatisfy({ frames[$0] != nil })
+		else {
+			return 0
+		}
+
+		var projectedMinY = firstFrame.minY
+		for orderedID in visualOrder {
+			guard let frame = frames[orderedID] else {
+				return 0
+			}
+			if orderedID == accountID {
+				return projectedMinY - originalFrame.minY
+			}
+			projectedMinY += frame.height + spacing
+		}
+		return 0
+	}
+}
+
 struct AccountIdentityPresentation: Equatable, Sendable {
 	let text: String
 	let showsEmail: Bool
@@ -124,5 +209,16 @@ struct AccountRowsHeightPreferenceKey: PreferenceKey {
 		if next > 0 {
 			value = next
 		}
+	}
+}
+
+struct AccountCardFramesPreferenceKey: PreferenceKey {
+	static let defaultValue = [String: CGRect]()
+
+	static func reduce(
+		value: inout [String: CGRect],
+		nextValue: () -> [String: CGRect]
+	) {
+		value.merge(nextValue()) { _, newFrame in newFrame }
 	}
 }
