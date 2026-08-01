@@ -21,6 +21,7 @@ from typing import Any, Mapping, Sequence
 from .core import (
     ALLOWED_CANDIDATE_KINDS,
     CODEX_VERSION_PATTERN,
+    KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES,
     MAX_SCHEMA_BYTES,
     REASON_PATTERN,
     SHA_PATTERN,
@@ -155,6 +156,10 @@ AGENT_REPAIR_EVALUATION_EXACT_PATHS = {
     "automations/upstream/scripts/upstream_autopilot_lib/effectiveness.py",
 }
 AGENT_REPAIR_EVALUATION_MAX_BYTES = 64 * 1024
+AGENT_REPAIR_REASON_RETIREMENT_PATH = (
+    "automations/upstream/scripts/upstream_autopilot_lib/core.py"
+)
+AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES = 128 * 1024
 AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS = {
     "apps/decodex/src/accounts.rs",
     "apps/decodex/src/github.rs",
@@ -311,15 +316,26 @@ def _agent_patch_paths_authorized(
         if isinstance(path_summary, Mapping)
         else None
     )
-    if kind == "automation_repair" and reason_code == "x_pricing_contract_drift":
-        return all(path in X_PRICING_PATCH_PATHS for path in paths)
+    pricing_repair = bool(
+        kind == "automation_repair"
+        and reason_code == "x_pricing_contract_drift"
+    )
     for path in paths:
         evaluation_repair = bool(
             kind == "automation_repair"
             and path in AGENT_REPAIR_EVALUATION_EXACT_PATHS
         )
+        reason_retirement = bool(
+            kind == "automation_repair"
+            and path == AGENT_REPAIR_REASON_RETIREMENT_PATH
+        )
+        if pricing_repair:
+            if reason_retirement or path in X_PRICING_PATCH_PATHS:
+                continue
+            return False
         if (
             not evaluation_repair
+            and not reason_retirement
             and (
                 path in AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
                 or any(
@@ -329,7 +345,7 @@ def _agent_patch_paths_authorized(
             )
         ):
             return False
-        if evaluation_repair:
+        if evaluation_repair or reason_retirement:
             continue
         if kind == "automation_repair":
             exact = AGENT_REPAIR_PATCH_ALLOWED_EXACT_PATHS
@@ -710,6 +726,293 @@ def _validate_repair_evaluation_file(path: Path) -> None:
     finally:
         if descriptor is not None:
             os.close(descriptor)
+
+
+def _reason_retirement_assignment(
+    source: bytes,
+) -> tuple[tuple[str, ...], dict[str, int]]:
+    failure_code = "agent_repair_reason_retirement_invalid"
+    if not isinstance(source, bytes) or not 1 <= len(source) <= (
+        AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES
+    ):
+        raise AutopilotError(failure_code)
+    try:
+        text = source.decode("utf-8")
+        tree = ast.parse(text, filename="core.py")
+    except (SyntaxError, UnicodeDecodeError, ValueError) as error:
+        raise AutopilotError(failure_code) from error
+
+    name = "PROACTIVE_IMPROVEMENT_REASON_CODES"
+    stored_names = [
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Name)
+        and isinstance(node.ctx, ast.Store)
+        and node.id == name
+    ]
+    assignments = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == name
+    ]
+    if len(stored_names) != 1 or len(assignments) != 1:
+        raise AutopilotError(failure_code)
+
+    assignment = assignments[0]
+    target = assignment.targets[0]
+    call = assignment.value
+    if (
+        assignment.type_comment is not None
+        or not isinstance(target, ast.Name)
+        or not isinstance(target.ctx, ast.Store)
+        or not isinstance(call, ast.Call)
+        or not isinstance(call.func, ast.Name)
+        or not isinstance(call.func.ctx, ast.Load)
+        or call.func.id != "frozenset"
+        or len(call.args) != 1
+        or call.keywords
+        or not isinstance(call.args[0], ast.Set)
+        or not call.args[0].elts
+    ):
+        raise AutopilotError(failure_code)
+
+    lines = source.splitlines(keepends=True)
+    reasons: list[str] = []
+    reason_lines: dict[str, int] = {}
+    used_lines: set[int] = set()
+    for element in call.args[0].elts:
+        if (
+            not isinstance(element, ast.Constant)
+            or type(element.value) is not str
+            or REASON_PATTERN.fullmatch(element.value) is None
+            or element.lineno != element.end_lineno
+            or element.lineno < 1
+            or element.lineno > len(lines)
+            or element.col_offset < 0
+            or element.end_col_offset is None
+            or element.end_col_offset <= element.col_offset
+        ):
+            raise AutopilotError(failure_code)
+        reason = element.value
+        line_number = element.lineno
+        line = lines[line_number - 1]
+        prefix = line[: element.col_offset]
+        literal = line[element.col_offset : element.end_col_offset]
+        suffix = line[element.end_col_offset :]
+        expected_literal = f'"{reason}"'.encode("ascii")
+        if (
+            prefix.strip(b" \t")
+            or literal != expected_literal
+            or re.fullmatch(rb",[ \t]*(?:\r\n|\n)", suffix) is None
+            or reason in reason_lines
+            or line_number in used_lines
+        ):
+            raise AutopilotError(failure_code)
+        reasons.append(reason)
+        reason_lines[reason] = line_number
+        used_lines.add(line_number)
+    return tuple(reasons), reason_lines
+
+
+def _validate_reason_retirement_sources(
+    baseline: bytes,
+    applied: bytes,
+) -> None:
+    failure_code = "agent_repair_reason_retirement_invalid"
+    baseline_reasons, baseline_lines = _reason_retirement_assignment(baseline)
+    applied_reasons, _applied_lines = _reason_retirement_assignment(applied)
+    baseline_set = set(baseline_reasons)
+    applied_set = set(applied_reasons)
+    removed_reasons = baseline_set - applied_set
+    if (
+        not baseline_set <= KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES
+        or not applied_set
+        or not applied_set < baseline_set
+        or len(removed_reasons) != 1
+    ):
+        raise AutopilotError(failure_code)
+
+    removed_lines = {
+        baseline_lines[reason] for reason in removed_reasons
+    }
+    expected = b"".join(
+        line
+        for line_number, line in enumerate(
+            baseline.splitlines(keepends=True),
+            start=1,
+        )
+        if line_number not in removed_lines
+    )
+    if applied != expected:
+        raise AutopilotError(failure_code)
+
+
+def _expected_reason_retirement_blob(
+    worktree: Path,
+    *,
+    expected_head: str,
+    environment: Mapping[str, str],
+) -> bytes:
+    failure_code = "agent_repair_reason_retirement_invalid"
+    path = AGENT_REPAIR_REASON_RETIREMENT_PATH
+    entry = run_command(
+        ["git", "ls-tree", expected_head, "--", path],
+        cwd=worktree,
+        environment=environment,
+        inherit_environment=False,
+        failure_code=failure_code,
+        max_output_bytes=512,
+    )
+    try:
+        identity, observed_path = entry.split("\t", 1)
+        mode, object_type, object_id = identity.split(" ", 2)
+    except ValueError as error:
+        raise AutopilotError(failure_code) from error
+    if (
+        observed_path != path
+        or mode != "100644"
+        or object_type != "blob"
+        or SHA_PATTERN.fullmatch(object_id) is None
+    ):
+        raise AutopilotError(failure_code)
+
+    request = f"{object_id}\n{object_id}\n".encode("ascii")
+    output = run_command(
+        ["git", "cat-file", "--batch"],
+        cwd=worktree,
+        environment=environment,
+        inherit_environment=False,
+        input_bytes=request,
+        failure_code=failure_code,
+        max_input_bytes=len(request),
+        max_output_bytes=(AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES * 2) + 1024,
+    ).encode("utf-8")
+    header_end = output.find(b"\n")
+    if header_end < 0:
+        raise AutopilotError(failure_code)
+    header = output[:header_end]
+    try:
+        header_object_id, header_type, size_text = header.decode("ascii").split(
+            " ", 2
+        )
+        size = int(size_text)
+    except (UnicodeDecodeError, ValueError) as error:
+        raise AutopilotError(failure_code) from error
+    payload = output[header_end + 1 :]
+    if (
+        header_object_id != object_id
+        or header_type != "blob"
+        or not 1 <= size <= AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES
+        or len(payload) < size + 1
+        or payload[size : size + 1] != b"\n"
+        or not payload[size + 1 :].startswith(header + b"\n")
+    ):
+        raise AutopilotError(failure_code)
+    return payload[:size]
+
+
+def _applied_reason_retirement_source(
+    worktree: Path,
+    *,
+    environment: Mapping[str, str],
+) -> bytes:
+    failure_code = "agent_repair_reason_retirement_invalid"
+    path = AGENT_REPAIR_REASON_RETIREMENT_PATH
+    entry = run_command(
+        ["git", "ls-files", "--stage", "--", path],
+        cwd=worktree,
+        environment=environment,
+        inherit_environment=False,
+        failure_code=failure_code,
+        max_output_bytes=512,
+    )
+    try:
+        identity, observed_path = entry.split("\t", 1)
+        mode, object_id, stage = identity.split(" ", 2)
+    except ValueError as error:
+        raise AutopilotError(failure_code) from error
+    if (
+        observed_path != path
+        or mode != "100644"
+        or SHA_PATTERN.fullmatch(object_id) is None
+        or stage != "0"
+    ):
+        raise AutopilotError(failure_code)
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(worktree / path, os.O_RDONLY | os.O_NOFOLLOW)
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid()
+            or metadata.st_nlink != 1
+            or metadata.st_mode & 0o022
+            or metadata.st_mode & 0o111
+            or not 1 <= metadata.st_size
+            <= AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES
+        ):
+            raise AutopilotError(failure_code)
+        source = bytearray()
+        while len(source) <= AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES:
+            chunk = os.read(
+                descriptor,
+                min(
+                    64 * 1024,
+                    AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES + 1 - len(source),
+                ),
+            )
+            if not chunk:
+                break
+            source.extend(chunk)
+        if len(source) != metadata.st_size:
+            raise AutopilotError(failure_code)
+    except AutopilotError:
+        raise
+    except OSError as error:
+        raise AutopilotError(failure_code) from error
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+    applied = bytes(source)
+    applied_object_id = run_command(
+        ["git", "hash-object", "--stdin"],
+        cwd=worktree,
+        environment=environment,
+        inherit_environment=False,
+        input_bytes=applied,
+        failure_code=failure_code,
+        max_input_bytes=AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES,
+        max_output_bytes=128,
+    )
+    if applied_object_id != object_id:
+        raise AutopilotError(failure_code)
+    return applied
+
+
+def _validate_repair_reason_retirement(
+    worktree: Path,
+    *,
+    candidate: Mapping[str, Any],
+    expected_head: str,
+    environment: Mapping[str, str],
+) -> None:
+    if candidate.get("kind") != "automation_repair":
+        raise AutopilotError("agent_repair_reason_retirement_invalid")
+    baseline = _expected_reason_retirement_blob(
+        worktree,
+        expected_head=expected_head,
+        environment=environment,
+    )
+    applied = _applied_reason_retirement_source(
+        worktree,
+        environment=environment,
+    )
+    _validate_reason_retirement_sources(baseline, applied)
 
 
 def _shell_environment_config(
@@ -2383,6 +2686,13 @@ def apply_agent_patch(
             changed_paths
         ):
             _validate_repair_evaluation_file(worktree / path)
+        if AGENT_REPAIR_REASON_RETIREMENT_PATH in changed_paths:
+            _validate_repair_reason_retirement(
+                worktree,
+                candidate=candidate,
+                expected_head=expected_head,
+                environment=environment,
+            )
         return changed_paths
     except BaseException:
         if applied:

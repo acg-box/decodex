@@ -73,6 +73,18 @@ PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset(
         "x_pricing_contract_drift",
     }
 )
+KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES = frozenset(
+    {
+        "assessment_only_churn",
+        "content_loop_degraded",
+        "lead_time_sla_missed",
+        "live_configuration_drift",
+        "repeated_blocked_attempts",
+        "repeated_review_repairs",
+        "task_retention_contract_drift",
+        "x_pricing_contract_drift",
+    }
+)
 X_PRICING_AUDIT_EVIDENCE_SCHEMA = "decodex/x-pricing-drift-evidence/1"
 X_PRICING_PARSER_VERSION = "x-pricing-markdown-table/1"
 X_PRICING_SOURCE_URL = (
@@ -950,7 +962,7 @@ def validate_path_summary(candidate: dict[str, Any]) -> None:
             or not is_sha256(summary["evidence_sha256"])
             or (
                 candidate.get("repair_of") is None
-                and reason_code not in PROACTIVE_IMPROVEMENT_REASON_CODES
+                and reason_code not in KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES
             )
         ):
             raise AutopilotError("candidate_path_summary_invalid")
