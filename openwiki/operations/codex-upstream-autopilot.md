@@ -61,8 +61,8 @@ no-change/rejected decision.
 After a claim, each parent has a closed command surface. It can use only direct
 read-only commands, the state-tool transaction for its role, and exact
 managed-worktree lifecycle commands. Standalone scheduled tasks do not receive
-native multi-agent tools. The checked-in `run-agent` transaction invokes one
-`codex exec --ephemeral` child with model `gpt-5.6-sol`, effort `max`, no network,
+native multi-agent tools. The checked-in `run-agent` transaction invokes at most
+one `codex exec --ephemeral` child with model `gpt-5.6-sol`, effort `max`, no network,
 no user configuration or execution rules, an empty model shell environment, and
 `project_doc_max_bytes=0`. The child sandbox uses root read access to prevent
 automatic `:minimal` injection, denies every discovered top-level root, then reopens
@@ -108,6 +108,11 @@ from the expected staged receipt head. It can retarget to a new primary `main` w
 the child still reads the prior committed candidate. A receipt that predates that
 retarget is removed only after its generation and old context are verified. The
 parent never repairs code or review evidence.
+
+After a supported publish-validation failure, `run-agent` passes the candidate's
+bounded diagnostic to the child. If `main` is unchanged, the child repairs the
+committed candidate. If `main` advanced, the same prepared generation is retargeted
+to current `main` before the child runs. This refresh has no attempt credit or refund.
 
 The scheduled tasks do not use Decodex server, runtime, MCP, planning, or queue
 surfaces. Only the state wrapper can invoke `decodex commit` or `decodex land` after
