@@ -1220,6 +1220,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                 stale_pull_request["url"]
             )
             verify_open_pull_request(
+                args.worktree,
                 stale_readback,
                 policy,
                 pr_url=stale_pull_request["url"],
@@ -2559,6 +2560,7 @@ def _execute(args: argparse.Namespace) -> dict[str, Any]:
                         ),
                     )
                 verify_open_pull_request(
+                    repo_root,
                     before,
                     policy,
                     pr_url=pull_request["url"],
