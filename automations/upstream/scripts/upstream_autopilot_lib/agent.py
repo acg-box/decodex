@@ -44,6 +44,10 @@ from .observation import mirror_arguments
 
 AGENT_RESULT_SCHEMA = "decodex/codex-upstream-agent-result/2"
 AGENT_EXECUTION_SCHEMA = "decodex/codex-upstream-agent-execution/3"
+AGENT_CONTEXT_SCHEMA = "decodex/codex-upstream-agent-context/5"
+AGENT_PATCH_PATH_POLICY_SCHEMA = (
+    "decodex/codex-upstream-agent-patch-path-policy/2"
+)
 AGENT_RESULT_KEYS = {
     "schema",
     "role",
@@ -84,6 +88,8 @@ AGENT_PATCH_MAX_BYTES = 4 * 1024 * 1024
 # JSON can expand each valid one-byte patch character to a six-byte escape.
 AGENT_RESULT_MAX_BYTES = AGENT_PATCH_MAX_BYTES * 6 + 64 * 1024
 AGENT_CONTEXT_MAX_BYTES = 64 * 1024
+AGENT_PROMPT_MAX_BYTES = AGENT_CONTEXT_MAX_BYTES + 8 * 1024
+AGENT_PATCH_PATH_POLICY_MAX_BYTES = 16 * 1024
 AGENT_AUTH_MAX_BYTES = 64 * 1024
 AGENT_COMMAND_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 AGENT_EVIDENCE_FILE_MAX_BYTES = 8 * 1024 * 1024
@@ -160,6 +166,36 @@ AGENT_REPAIR_REASON_RETIREMENT_PATH = (
     "automations/upstream/scripts/upstream_autopilot_lib/core.py"
 )
 AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES = 128 * 1024
+AGENT_REPAIR_EXACT_EXCEPTION_REQUIRED_MODE = "100644"
+AGENT_REPAIR_REASON_RETIREMENT_ASSIGNMENT = (
+    "PROACTIVE_IMPROVEMENT_REASON_CODES"
+)
+AGENT_REPAIR_REASON_RECOGNITION_ASSIGNMENT = (
+    "KNOWN_PROACTIVE_IMPROVEMENT_REASON_CODES"
+)
+AGENT_REPAIR_EVALUATION_CONTENT_REQUIREMENTS = (
+    "Preserve the fixed import set exactly.",
+    "Remain within the bounded effect-free pure-AST subset.",
+    "Do not execute code at top level.",
+    "Do not use recursive calls.",
+    "Do not mutate inputs.",
+)
+AGENT_REPAIR_REASON_RETIREMENT_CONTENT_REQUIREMENTS = (
+    (
+        "Delete exactly one existing active reason literal from the canonical "
+        f"{AGENT_REPAIR_REASON_RETIREMENT_ASSIGNMENT} assignment."
+    ),
+    "Leave at least one active reason literal.",
+    "Preserve every other byte and the non-executable 100644 mode.",
+    (
+        "Do not change "
+        f"{AGENT_REPAIR_REASON_RECOGNITION_ASSIGNMENT} recognition."
+    ),
+)
+AGENT_EXACT_PATH_CONTENT_REQUIREMENTS = (
+    "Change only this exact repository path; no prefix authority is granted.",
+    "All ordinary parent validation profiles still apply.",
+)
 AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS = {
     "apps/decodex/src/accounts.rs",
     "apps/decodex/src/github.rs",
@@ -303,58 +339,133 @@ def _system_data_alias(path: str | Path) -> str | None:
     return str(Path(AGENT_SYSTEM_DATA_ROOT).joinpath(*parts))
 
 
-def _agent_patch_paths_authorized(
+def _agent_patch_path_rules(
     candidate: Mapping[str, Any],
-    paths: Sequence[str],
-) -> bool:
+) -> tuple[
+    frozenset[str],
+    tuple[str, ...],
+    frozenset[str],
+] | None:
+    """Return the candidate-specific rules shared by guidance and enforcement."""
+
     kind = candidate.get("kind")
-    if kind not in ALLOWED_CANDIDATE_KINDS or not paths:
-        return False
+    if kind not in ALLOWED_CANDIDATE_KINDS:
+        return None
     path_summary = candidate.get("path_summary")
     reason_code = (
         path_summary.get("reason_code")
         if isinstance(path_summary, Mapping)
         else None
     )
-    pricing_repair = bool(
+    if (
         kind == "automation_repair"
         and reason_code == "x_pricing_contract_drift"
+    ):
+        return (
+            frozenset(),
+            (),
+            frozenset(
+                {
+                    *X_PRICING_PATCH_PATHS,
+                    AGENT_REPAIR_REASON_RETIREMENT_PATH,
+                }
+            ),
+        )
+    if kind == "automation_repair":
+        return (
+            frozenset(AGENT_REPAIR_PATCH_ALLOWED_EXACT_PATHS),
+            tuple(AGENT_REPAIR_PATCH_ALLOWED_PREFIXES),
+            frozenset(
+                {
+                    *AGENT_REPAIR_EVALUATION_EXACT_PATHS,
+                    AGENT_REPAIR_REASON_RETIREMENT_PATH,
+                }
+            ),
+        )
+    return (
+        frozenset(AGENT_PATCH_ALLOWED_EXACT_PATHS),
+        tuple(AGENT_PATCH_ALLOWED_PREFIXES),
+        frozenset(),
     )
+
+
+def _agent_patch_path_policy_projection(
+    candidate: Mapping[str, Any],
+) -> dict[str, Any]:
+    rules = _agent_patch_path_rules(candidate)
+    if rules is None:
+        raise AutopilotError("agent_context_invalid")
+    allowed_exact, allowed_prefixes, exact_exceptions = rules
+    projection = {
+        "schema": AGENT_PATCH_PATH_POLICY_SCHEMA,
+        "resolution_order": [
+            "exact_exceptions",
+            "denied_exact_paths_and_prefixes",
+            "allowed_exact_paths_and_prefixes",
+        ],
+        "exact_exceptions": sorted(exact_exceptions),
+        "exact_exception_contracts": {
+            path: _agent_patch_exact_exception_contract(path)
+            for path in sorted(exact_exceptions)
+        },
+        "denied_exact_paths": sorted(
+            AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
+        ),
+        "denied_prefixes": sorted(AGENT_PATCH_ALWAYS_DENIED_PREFIXES),
+        "allowed_exact_paths": sorted(allowed_exact),
+        "allowed_prefixes": sorted(allowed_prefixes),
+    }
+    if len(canonical_json(projection)) > AGENT_PATCH_PATH_POLICY_MAX_BYTES:
+        raise AutopilotError("agent_patch_path_policy_budget_exceeded")
+    return projection
+
+
+def _agent_patch_exact_exception_contract(path: str) -> dict[str, Any]:
+    if path in AGENT_REPAIR_EVALUATION_EXACT_PATHS:
+        return {
+            "kind": "bounded_effect_free_evaluation",
+            "maximum_bytes": AGENT_REPAIR_EVALUATION_MAX_BYTES,
+            "required_mode": AGENT_REPAIR_EXACT_EXCEPTION_REQUIRED_MODE,
+            "requirements": list(
+                AGENT_REPAIR_EVALUATION_CONTENT_REQUIREMENTS
+            ),
+        }
+    if path == AGENT_REPAIR_REASON_RETIREMENT_PATH:
+        return {
+            "kind": "single_active_reason_retirement",
+            "maximum_bytes": AGENT_REPAIR_REASON_RETIREMENT_MAX_BYTES,
+            "required_mode": AGENT_REPAIR_EXACT_EXCEPTION_REQUIRED_MODE,
+            "requirements": list(
+                AGENT_REPAIR_REASON_RETIREMENT_CONTENT_REQUIREMENTS
+            ),
+        }
+    return {
+        "kind": "exact_path_only",
+        "requirements": list(AGENT_EXACT_PATH_CONTENT_REQUIREMENTS),
+    }
+
+
+def _agent_patch_paths_authorized(
+    candidate: Mapping[str, Any],
+    paths: Sequence[str],
+) -> bool:
+    rules = _agent_patch_path_rules(candidate)
+    if rules is None or not paths:
+        return False
+    allowed_exact, allowed_prefixes, exact_exceptions = rules
     for path in paths:
-        evaluation_repair = bool(
-            kind == "automation_repair"
-            and path in AGENT_REPAIR_EVALUATION_EXACT_PATHS
-        )
-        reason_retirement = bool(
-            kind == "automation_repair"
-            and path == AGENT_REPAIR_REASON_RETIREMENT_PATH
-        )
-        if pricing_repair:
-            if reason_retirement or path in X_PRICING_PATCH_PATHS:
-                continue
-            return False
+        if path in exact_exceptions:
+            continue
         if (
-            not evaluation_repair
-            and not reason_retirement
-            and (
-                path in AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
-                or any(
-                    path.startswith(prefix)
-                    for prefix in AGENT_PATCH_ALWAYS_DENIED_PREFIXES
-                )
+            path in AGENT_PATCH_ALWAYS_DENIED_EXACT_PATHS
+            or any(
+                path.startswith(prefix)
+                for prefix in AGENT_PATCH_ALWAYS_DENIED_PREFIXES
             )
         ):
             return False
-        if evaluation_repair or reason_retirement:
-            continue
-        if kind == "automation_repair":
-            exact = AGENT_REPAIR_PATCH_ALLOWED_EXACT_PATHS
-            prefixes = AGENT_REPAIR_PATCH_ALLOWED_PREFIXES
-        else:
-            exact = AGENT_PATCH_ALLOWED_EXACT_PATHS
-            prefixes = AGENT_PATCH_ALLOWED_PREFIXES
-        if path not in exact and not any(
-            path.startswith(prefix) for prefix in prefixes
+        if path not in allowed_exact and not any(
+            path.startswith(prefix) for prefix in allowed_prefixes
         ):
             return False
     return True
@@ -742,7 +853,7 @@ def _reason_retirement_assignment(
     except (SyntaxError, UnicodeDecodeError, ValueError) as error:
         raise AutopilotError(failure_code) from error
 
-    name = "PROACTIVE_IMPROVEMENT_REASON_CODES"
+    name = AGENT_REPAIR_REASON_RETIREMENT_ASSIGNMENT
     stored_names = [
         node
         for node in ast.walk(tree)
@@ -873,7 +984,7 @@ def _expected_reason_retirement_blob(
         raise AutopilotError(failure_code) from error
     if (
         observed_path != path
-        or mode != "100644"
+        or mode != AGENT_REPAIR_EXACT_EXCEPTION_REQUIRED_MODE
         or object_type != "blob"
         or SHA_PATTERN.fullmatch(object_id) is None
     ):
@@ -936,7 +1047,7 @@ def _applied_reason_retirement_source(
         raise AutopilotError(failure_code) from error
     if (
         observed_path != path
-        or mode != "100644"
+        or mode != AGENT_REPAIR_EXACT_EXCEPTION_REQUIRED_MODE
         or SHA_PATTERN.fullmatch(object_id) is None
         or stage != "0"
     ):
@@ -1461,7 +1572,7 @@ def _agent_prompt(
                 start=worktree,
             )
     context = {
-        "schema": "decodex/codex-upstream-agent-context/4",
+        "schema": AGENT_CONTEXT_SCHEMA,
         "role": role,
         "claim_generation": generation,
         "worktree": ".",
@@ -1477,6 +1588,10 @@ def _agent_prompt(
         "evidence": prompt_evidence,
         "diagnostics": diagnostics,
     }
+    if role == "maintainer":
+        context["patch_path_policy"] = (
+            _agent_patch_path_policy_projection(candidate)
+        )
     if len(canonical_json(context)) > AGENT_CONTEXT_MAX_BYTES:
         raise AutopilotError("agent_context_budget_exceeded")
 
@@ -1492,7 +1607,18 @@ contain no prose.
 Inspect the immutable candidate evidence and exact Git objects. Implement the
 smallest complete Decodex compatibility or automation repair as one Git binary
 patch against the read-only workspace. Remove obsolete support instead of
-adding compatibility shims. Update source, tests, schema markers, and
+adding compatibility shims. Follow only the host-generated `patch_path_policy`
+in Context for patch paths. Exact exceptions take precedence; otherwise denied
+paths take precedence over allowed paths. The listed exact exceptions are the
+only permitted files below an otherwise denied prefix. Every matching
+`exact_exception_contracts` entry is also binding; exact-path permission alone
+is insufficient. In particular,
+`automations/upstream/schemas/` and `automations/upstream/scripts/` are denied
+except for listed exact exceptions. Scheduler definitions, credentials and
+authentication, GitHub Actions, and X execution are denied. Repository schema
+marker files can change when needed only if their paths are already allowed
+product paths. Observed and packaged schema evidence is read-only and must not
+appear in the patch. Update source, tests, repository schema markers, and
 documentation together when affected. Do not edit the workspace. Return
 disposition `staged`, an empty finding_codes list, and the complete patch only
 when it applies to the exact workspace identity. Use `diff --git a/... b/...`
@@ -1512,10 +1638,13 @@ codes.
 """.strip()
     else:
         raise AutopilotError("agent_role_invalid")
-    return (
+    prompt = (
         f"{common}\n\n{task}\n\n"
         f"Context:\n{canonical_json(context).decode('utf-8')}"
     )
+    if len(prompt.encode("utf-8")) > AGENT_PROMPT_MAX_BYTES:
+        raise AutopilotError("agent_prompt_budget_exceeded")
+    return prompt
 
 
 def _read_agent_result(
