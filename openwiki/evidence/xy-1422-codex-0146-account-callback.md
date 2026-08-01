@@ -2,7 +2,7 @@
 
 Date: 2026-07-29
 
-This receipt binds the current macOS account-launch profile to one exact Codex image and its
+This receipt binds the 2026-07-29 macOS account-launch profile to one exact Codex image and its
 generated app-server schema. It does not authorize another Codex build.
 
 | Fact | Accepted value |
@@ -27,7 +27,7 @@ codex app-server generate-json-schema --experimental --out ABSOLUTE_PRIVATE_DIRE
 ```
 
 The generated directory contained 347 regular schema files. `GeneratedSchemaEvidence::load`
-reproduced the checked-in schema digests and callback profile for this exact replacement image.
+reproduced the recorded schema digests and callback profile for this exact replacement image.
 The final local-service installation must pass the daemon callback preflight and report the
 credential vault ready.
 

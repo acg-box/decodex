@@ -32,8 +32,8 @@
   ],
   "paginated_history": true,
   "canonical_sha256": {
-    "ClientRequest.json": "ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
-    "ServerNotification.json": "189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
-    "codex_app_server_protocol.v2.schemas.json": "2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d"
+    "ClientRequest.json": "6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4",
+    "ServerNotification.json": "abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02",
+    "codex_app_server_protocol.v2.schemas.json": "e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc"
   }
 }
