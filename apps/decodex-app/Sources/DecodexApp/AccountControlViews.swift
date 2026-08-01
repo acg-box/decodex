@@ -34,7 +34,7 @@ struct AccountPrimaryActionsView: View {
 	let store: ResetCardStore
 
 	var body: some View {
-		HStack(spacing: PanelSpacing.compact) {
+		HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 			CompactAccountActionButton(
 				title: presentation.isCurrent ? "Routed" : "Route",
 				symbol: presentation.isCurrent
@@ -253,7 +253,7 @@ private struct CompactAccountActionButton: View {
 			action()
 		} label: {
 			ZStack {
-				HStack(spacing: PanelSpacing.compact) {
+				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.compact) {
 					Image(systemName: symbol)
 						.contentTransition(.symbolEffect(.replace))
 

@@ -14,6 +14,89 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		XCTAssertEqual(PanelSpacing.popoverInset, 12)
 	}
 
+	func testAccountReorderMovesOnlyAfterCrossingAnAdjacentCardCenter() {
+		let order = ["first", "second", "third"]
+		let frames = accountReorderFrames()
+
+		XCTAssertEqual(
+			AccountCardReorderLayout.reorderedAccountIDs(
+				dragging: "first",
+				baseOrder: order,
+				frames: frames,
+				translationY: 87
+			),
+			order
+		)
+		XCTAssertEqual(
+			AccountCardReorderLayout.reorderedAccountIDs(
+				dragging: "first",
+				baseOrder: order,
+				frames: frames,
+				translationY: 88
+			),
+			["second", "first", "third"]
+		)
+	}
+
+	func testAccountReorderConstrainKeepsTheWholeCardInItsVerticalTrack() {
+		let order = ["first", "second", "third"]
+		let frames = accountReorderFrames()
+
+		XCTAssertEqual(
+			AccountCardReorderLayout.constrainedTranslationY(
+				for: "first",
+				baseOrder: order,
+				frames: frames,
+				proposed: 500
+			),
+			176
+		)
+		XCTAssertEqual(
+			AccountCardReorderLayout.constrainedTranslationY(
+				for: "third",
+				baseOrder: order,
+				frames: frames,
+				proposed: -500
+			),
+			-176
+		)
+	}
+
+	func testAccountReorderOffsetsOpenTheSelectedSlot() {
+		let order = ["first", "second", "third"]
+		let visualOrder = ["second", "first", "third"]
+		let frames = accountReorderFrames()
+
+		XCTAssertEqual(
+			AccountCardReorderLayout.verticalOffset(
+				for: "second",
+				baseOrder: order,
+				visualOrder: visualOrder,
+				frames: frames,
+				spacing: PanelSpacing.section
+			),
+			-88
+		)
+		XCTAssertEqual(
+			AccountCardReorderLayout.verticalOffset(
+				for: "first",
+				baseOrder: order,
+				visualOrder: visualOrder,
+				frames: frames,
+				spacing: PanelSpacing.section
+			),
+			88
+		)
+	}
+
+	private func accountReorderFrames() -> [String: CGRect] {
+		[
+			"first": CGRect(x: 0, y: 0, width: 260, height: 80),
+			"second": CGRect(x: 0, y: 88, width: 260, height: 80),
+			"third": CGRect(x: 0, y: 176, width: 260, height: 80),
+		]
+	}
+
 	@MainActor
 	func testPanelWindowHostStaysTransparentWithoutOverridingSystemAppearance() {
 		let window = NSWindow(

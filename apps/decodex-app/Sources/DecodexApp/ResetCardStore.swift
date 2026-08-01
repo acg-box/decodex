@@ -387,6 +387,20 @@ final class ResetCardStore {
 			&& isAccountControlInProgress == false
 	}
 
+	var canReorderAccounts: Bool {
+		guard let routing else {
+			return false
+		}
+		let accountIDs = accounts.map { $0.account.accountID }
+		return accountControlClient != nil
+			&& accountIDs.count > 1
+			&& accountIDs.count == routing.order.count
+			&& Set(accountIDs) == Set(routing.order)
+			&& canPerformDirectAccountControl
+			&& isAccountControlInProgress == false
+			&& submittingKey == nil
+	}
+
 	func blocksNewAttempt(for target: ResetCardUseTarget) -> Bool {
 		isPendingRecoveryBlocked
 			|| submittingKey != nil
@@ -1179,6 +1193,100 @@ final class ResetCardStore {
 				)
 			}
 		)
+	}
+
+	func moveAccount(_ accountID: String, onto targetAccountID: String) async {
+		guard canReorderAccounts,
+			accountID != targetAccountID,
+			let routing,
+			let accountControlClient,
+			let sourceIndex = routing.order.firstIndex(of: accountID),
+			let targetIndex = routing.order.firstIndex(of: targetAccountID)
+		else {
+			return
+		}
+
+		var order = routing.order
+		order.remove(at: sourceIndex)
+		guard let retainedTargetIndex = order.firstIndex(of: targetAccountID) else {
+			return
+		}
+		let insertionIndex = sourceIndex < targetIndex
+			? retainedTargetIndex + 1
+			: retainedTargetIndex
+		order.insert(accountID, at: insertionIndex)
+		guard reorderAccountStates(to: order) else {
+			return
+		}
+		await persistAccountOrder(
+			order,
+			replacing: routing,
+			using: accountControlClient
+		)
+	}
+
+	func moveAccounts(
+		_ accountIDs: [String],
+		before targetAccountID: String?
+	) async {
+		guard canReorderAccounts,
+			let routing,
+			let accountControlClient,
+			accountIDs.isEmpty == false
+		else {
+			return
+		}
+		let movingIDs = Set(accountIDs)
+		guard movingIDs.count == accountIDs.count,
+			movingIDs.isSubset(of: Set(routing.order)),
+			targetAccountID.map({ movingIDs.contains($0) == false }) ?? true
+		else {
+			return
+		}
+
+		let movingOrder = routing.order.filter(movingIDs.contains)
+		var order = routing.order.filter { movingIDs.contains($0) == false }
+		let insertionIndex: Int
+		if let targetAccountID {
+			guard let targetIndex = order.firstIndex(of: targetAccountID) else {
+				return
+			}
+			insertionIndex = targetIndex
+		} else {
+			insertionIndex = order.endIndex
+		}
+		order.insert(contentsOf: movingOrder, at: insertionIndex)
+		guard order != routing.order,
+			reorderAccountStates(to: order)
+		else {
+			return
+		}
+		await persistAccountOrder(
+			order,
+			replacing: routing,
+			using: accountControlClient
+		)
+	}
+
+	private func persistAccountOrder(
+		_ order: [String],
+		replacing routing: AccountRoutingControl,
+		using accountControlClient: any AccountControlClient
+	) async {
+		await performAccountControl(
+			isRoutingControl: true,
+			allowsDuringRefresh: true,
+			successMessage: nil,
+			operation: {
+				try await accountControlClient.setAccountOrder(
+					authority: establishedAuthority,
+					order: order,
+					expectedRoutingRevision: routing.revision,
+					idempotencyKey: Self.newCanonicalUUID()
+				)
+			}
+		)
+		_ = reorderAccountStates(to: self.routing?.order ?? routing.order)
 	}
 
 	func refreshCredentials(for accountID: String) async {
@@ -2942,6 +3050,7 @@ final class ResetCardStore {
 			return .none
 		case .routingChanged(let routing):
 			self.routing = routing
+			_ = reorderAccountStates(to: routing.order)
 			return .none
 		case .accountLoggedOut(let accountID, _):
 			if case .current(let projectedID, _, _) = codexAuthProjection,
@@ -2992,6 +3101,26 @@ final class ResetCardStore {
 				? .none
 				: .account(account.accountID, refreshInventory: true)
 		}
+	}
+
+	@discardableResult
+	private func reorderAccountStates(to order: [String]) -> Bool {
+		guard order.count == accounts.count else {
+			return false
+		}
+		let statesByID = Dictionary(
+			uniqueKeysWithValues: accounts.map {
+				($0.account.accountID, $0)
+			}
+		)
+		guard statesByID.count == accounts.count,
+			Set(statesByID.keys) == Set(order),
+			Set(order).count == order.count
+		else {
+			return false
+		}
+		accounts = order.compactMap { statesByID[$0] }
+		return true
 	}
 
 	private func scheduleAccountControlFollowUp(

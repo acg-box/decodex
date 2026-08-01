@@ -100,6 +100,12 @@ final class AccountControlNativeClientTests: XCTestCase {
 					mode: #"{"mode":"balanced"}"#,
 					order: [accountID, secondAccountID]
 				)
+			case "set_account_order":
+				payload = controlRoutingAppliedJSON(
+					revision: 10,
+					mode: #"{"mode":"balanced"}"#,
+					order: [secondAccountID, accountID]
+				)
 			default:
 				payload = """
 				{"outcome":"applied","data":{"entity_revision":8,
@@ -163,6 +169,12 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRoutingRevision: 9,
 			idempotencyKey: idempotencyKey
 		)
+		_ = try await client.setAccountOrder(
+			authority: authority,
+			order: [secondAccountID, accountID],
+			expectedRoutingRevision: 9,
+			idempotencyKey: idempotencyKey
+		)
 		_ = try await client.refreshAccountCredentials(
 			authority: authority,
 			operationID: operationID,
@@ -178,7 +190,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				"enroll_account", "get_codex_auth_projection", "use_account_in_codex",
 				"disable_account",
 				"logout_account", "set_fixed_selection",
-				"set_balanced_selection", "refresh_account",
+				"set_balanced_selection", "set_account_order", "refresh_account",
 			]
 		)
 		XCTAssertEqual(
@@ -198,8 +210,44 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(Set(requests[6].keys), [
 			"schema", "operation", "expected_routing_revision", "idempotency_key",
 		])
-		XCTAssertEqual(requests[7]["operation_id"] as? String, operationID)
-		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 8))
+		XCTAssertEqual(
+			requests[7]["order"] as? [String],
+			[secondAccountID, accountID]
+		)
+		XCTAssertEqual(Set(requests[7].keys), [
+			"schema", "operation", "order", "expected_routing_revision", "idempotency_key",
+		])
+		XCTAssertEqual(requests[8]["operation_id"] as? String, operationID)
+		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 9))
+	}
+
+	func testAccountOrderRejectsAContradictoryAppliedOrder() async throws {
+		let authority = authority
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "set_account_order",
+				authority: authority,
+				data: controlRoutingAppliedJSON(
+					revision: 10,
+					mode: #"{"mode":"balanced"}"#,
+					order: [accountID, secondAccountID]
+				)
+			)
+		}
+
+		do {
+			_ = try await client.setAccountOrder(
+				authority: authority,
+				order: [secondAccountID, accountID],
+				expectedRoutingRevision: 9,
+				idempotencyKey: idempotencyKey
+			)
+			XCTFail("A contradictory account order must not appear applied")
+		} catch let error as AccountControlError {
+			XCTAssertEqual(error, .invalidResponse)
+		}
 	}
 
 	func testUseInCodexRejectsNoncanonicalIdentityRevisionAndAuthorityBeforeDispatch() async {

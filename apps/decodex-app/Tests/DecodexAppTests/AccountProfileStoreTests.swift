@@ -1192,6 +1192,15 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 		throw AccountControlError.applicationUnavailable
 	}
 
+	func setAccountOrder(
+		authority _: ResetCardAuthority?,
+		order _: [String],
+		expectedRoutingRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
 	func useAccountInCodex(
 		authority _: ResetCardAuthority?,
 		accountID _: String,

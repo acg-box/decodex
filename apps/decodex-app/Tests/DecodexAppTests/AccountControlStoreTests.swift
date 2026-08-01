@@ -639,6 +639,127 @@ final class AccountControlStoreTests: XCTestCase {
 		await refreshTask.value
 	}
 
+	func testMovingAccountsPersistsEachCompleteRoutingOrder() async throws {
+		let secondAccountID = "22222222-2222-4222-8222-222222222222"
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			secondaryAccount: accountRecord(
+				accountID: secondAccountID,
+				alias: "Account 00000-00002"
+			),
+			authority: authority
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		XCTAssertTrue(store.canReorderAccounts)
+
+		await store.moveAccount(accountID, onto: secondAccountID)
+
+		let order = [secondAccountID, accountID]
+		XCTAssertEqual(store.accounts.map { $0.account.accountID }, order)
+		XCTAssertEqual(store.routing?.order, order)
+		XCTAssertEqual(store.routing?.revision, 10)
+		let request = await client.orderRequest()
+		XCTAssertEqual(
+			request,
+			AccountControlStoreOrderRequest(
+				authority: authority,
+				order: order,
+				expectedRoutingRevision: 9
+			)
+		)
+		XCTAssertNil(store.message)
+
+		await store.moveAccount(accountID, onto: secondAccountID)
+
+		let restoredOrder = [accountID, secondAccountID]
+		XCTAssertEqual(store.accounts.map { $0.account.accountID }, restoredOrder)
+		XCTAssertEqual(store.routing?.order, restoredOrder)
+		XCTAssertEqual(store.routing?.revision, 11)
+		let secondRequest = await client.orderRequest()
+		XCTAssertEqual(
+			secondRequest,
+			AccountControlStoreOrderRequest(
+				authority: authority,
+				order: restoredOrder,
+				expectedRoutingRevision: 10
+			)
+		)
+
+		await store.moveAccounts([accountID], before: nil)
+
+		XCTAssertEqual(
+			store.accounts.map { $0.account.accountID },
+			[secondAccountID, accountID]
+		)
+		let endRequest = await client.orderRequest()
+		XCTAssertEqual(
+			endRequest,
+			AccountControlStoreOrderRequest(
+				authority: authority,
+				order: [secondAccountID, accountID],
+				expectedRoutingRevision: 11
+			)
+		)
+
+		await store.moveAccounts([accountID], before: secondAccountID)
+
+		XCTAssertEqual(
+			store.accounts.map { $0.account.accountID },
+			[accountID, secondAccountID]
+		)
+		let beforeRequest = await client.orderRequest()
+		XCTAssertEqual(
+			beforeRequest,
+			AccountControlStoreOrderRequest(
+				authority: authority,
+				order: [accountID, secondAccountID],
+				expectedRoutingRevision: 12
+			)
+		)
+	}
+
+	func testRejectedAccountOrderRestoresTheAuthoritativeRows() async throws {
+		let secondAccountID = "22222222-2222-4222-8222-222222222222"
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			secondaryAccount: accountRecord(
+				accountID: secondAccountID,
+				alias: "Account 00000-00002"
+			),
+			authority: authority,
+			accountOrderError: .rejected(
+				.staleRoutingControl,
+				actualRevision: 10
+			)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.moveAccount(accountID, onto: secondAccountID)
+
+		let authoritativeOrder = [accountID, secondAccountID]
+		XCTAssertEqual(store.accounts.map { $0.account.accountID }, authoritativeOrder)
+		XCTAssertEqual(store.routing?.order, authoritativeOrder)
+		XCTAssertEqual(store.routing?.revision, 9)
+		XCTAssertNotNil(store.message)
+	}
+
 	func testRouteAccountProjectsThenSelectsFixedRouting() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -1138,6 +1259,12 @@ private struct AccountControlStoreReauthenticationRequest: Equatable, Sendable {
 	let codexBin: String
 }
 
+private struct AccountControlStoreOrderRequest: Equatable, Sendable {
+	let authority: ResetCardAuthority?
+	let order: [String]
+	let expectedRoutingRevision: UInt64
+}
+
 private enum AccountControlStoreOperation: Equatable, Sendable {
 	case codexProjection
 	case fixedRouting
@@ -1163,12 +1290,14 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let allowsEnrollment: Bool
 	private var routing: AccountRoutingControl
 	private var fixedSelectionError: AccountControlError?
+	private let accountOrderError: AccountControlError?
 	private let useAccountError: AccountControlError?
 	private var lastFixedRequest: AccountControlStoreFixedRequest?
 	private var lastUseRequest: AccountControlStoreUseRequest?
 	private var lastRefreshRequest: AccountControlStoreRefreshRequest?
 	private var lastEnabledRequest: AccountControlStoreEnabledRequest?
 	private var lastLogoutRequest: AccountControlStoreLogoutRequest?
+	private var lastOrderRequest: AccountControlStoreOrderRequest?
 	private var controlOperations = [AccountControlStoreOperation]()
 	private var fixedRequestCount = 0
 	private var projectionRequestCount = 0
@@ -1198,6 +1327,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		allowsEnrollment: Bool = false,
 		routing: AccountRoutingControl? = nil,
 		fixedSelectionError: AccountControlError? = nil,
+		accountOrderError: AccountControlError? = nil,
 		useAccountError: AccountControlError? = nil,
 		projection: CodexAuthProjection = .unmanaged,
 		reauthenticationStates: [AccountReauthenticationState] = [],
@@ -1221,6 +1351,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 				order: [account.accountID] + (secondaryAccount.map { [$0.accountID] } ?? [])
 			)
 		self.fixedSelectionError = fixedSelectionError
+		self.accountOrderError = accountOrderError
 		self.useAccountError = useAccountError
 		self.reauthenticationStates = reauthenticationStates
 		self.cancelReauthenticationWithOutcomeUnknown =
@@ -1234,7 +1365,11 @@ private actor AccountControlStoreClient: AccountControlClient {
 			throw ResetCardClientError.invalidResponse
 		}
 		snapshotReadCount += 1
-		let capturedAccounts = [account] + (secondaryAccount.map { [$0] } ?? [])
+		let availableAccounts = [account] + (secondaryAccount.map { [$0] } ?? [])
+		let accountsByID = Dictionary(
+			uniqueKeysWithValues: availableAccounts.map { ($0.accountID, $0) }
+		)
+		let capturedAccounts = routing.order.compactMap { accountsByID[$0] }
 		if snapshotReadCount > 1, let snapshotGate {
 			await snapshotGate.wait()
 		}
@@ -1242,7 +1377,14 @@ private actor AccountControlStoreClient: AccountControlClient {
 			authority: authority,
 			accounts: capturesSnapshotBeforeWait
 				? capturedAccounts
-				: [account] + (secondaryAccount.map { [$0] } ?? []),
+				: routing.order.compactMap { accountID in
+					if account.accountID == accountID {
+						return account
+					}
+					return secondaryAccount?.accountID == accountID
+						? secondaryAccount
+						: nil
+				},
 			routing: routing
 		)
 	}
@@ -1546,6 +1688,39 @@ private actor AccountControlStoreClient: AccountControlClient {
 		idempotencyKey: String
 	) async throws -> AccountControlResult {
 		throw AccountControlError.applicationUnavailable
+	}
+
+	func setAccountOrder(
+		authority: ResetCardAuthority?,
+		order: [String],
+		expectedRoutingRevision: UInt64,
+		idempotencyKey: String
+	) async throws -> AccountControlResult {
+		guard DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			expectedRoutingRevision == routing.revision,
+			order.count == routing.order.count,
+			Set(order) == Set(routing.order)
+		else {
+			throw AccountControlError.invalidInput
+		}
+		lastOrderRequest = AccountControlStoreOrderRequest(
+			authority: authority,
+			order: order,
+			expectedRoutingRevision: expectedRoutingRevision
+		)
+		if let accountOrderError {
+			throw accountOrderError
+		}
+		routing = AccountRoutingControl(
+			revision: routing.revision + 1,
+			mode: routing.mode,
+			order: order
+		)
+		return .routingChanged(routing)
+	}
+
+	func orderRequest() -> AccountControlStoreOrderRequest? {
+		lastOrderRequest
 	}
 
 	func refreshAccountCredentials(

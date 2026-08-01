@@ -128,7 +128,72 @@ final class ResetCardArchitectureTests: XCTestCase {
 
 		XCTAssertFalse(cardSurface.contains(".id(appearanceID)"))
 		XCTAssertFalse(accountPanel.contains("LazyVStack"))
-		XCTAssertTrue(accountPanel.contains("ForEach(store.accounts)"))
+		XCTAssertTrue(accountPanel.contains("ForEach(presentedAccountStates)"))
+	}
+
+	func testAccountCardsUseConstrainedWholeCardReorderingWithAnOverlayGrip() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let rows = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardSectionView.swift"),
+			encoding: .utf8
+		)
+		let panel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let controls = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountControlViews.swift"),
+			encoding: .utf8
+		)
+		let store = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
+			encoding: .utf8
+		)
+		let support = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelSupport.swift"),
+			encoding: .utf8
+		)
+		let motion = try String(
+			contentsOf: sourceURL.appendingPathComponent("PanelSupport.swift"),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(rows.contains(#"Image(systemName: "line.3.horizontal")"#))
+		XCTAssertTrue(rows.contains("isAccountCardHovered"))
+		XCTAssertTrue(rows.contains("isReorderHandleHovered"))
+		XCTAssertTrue(rows.contains("isReorderHandleDragging"))
+		XCTAssertTrue(rows.contains(".opacity(showsReorderHandle ? 1 : 0)"))
+		XCTAssertTrue(rows.contains(".frame(width: 14, height: 18)"))
+		XCTAssertTrue(rows.contains(".font(.system(size: 9, weight: .semibold))"))
+		XCTAssertTrue(rows.contains(".overlay(alignment: .trailing)"))
+		XCTAssertTrue(rows.contains("DragGesture("))
+		XCTAssertTrue(rows.contains("coordinateSpace: .named("))
+		XCTAssertTrue(rows.contains("value.translation.height"))
+		XCTAssertFalse(rows.contains(".draggable("))
+		XCTAssertFalse(rows.contains(".dropDestination("))
+		XCTAssertFalse(panel.contains(".reorderable()"))
+		XCTAssertFalse(panel.contains(".reorderContainer("))
+		XCTAssertTrue(panel.contains(".offset(y: accountReorderOffset"))
+		XCTAssertTrue(panel.contains("interaction.isSettling = true"))
+		XCTAssertTrue(panel.contains("PanelMotion.accountReorder"))
+		XCTAssertTrue(support.contains("constrainedTranslationY("))
+		XCTAssertTrue(support.contains("reorderedAccountIDs("))
+		XCTAssertTrue(support.contains("verticalOffset("))
+		XCTAssertTrue(motion.contains("static let accountReorder"))
+		XCTAssertTrue(
+			[rows, controls].allSatisfy {
+				$0.contains("HStack(alignment: .firstTextBaseline")
+			}
+		)
+		XCTAssertTrue(rows.contains(#"Text("Move up")"#))
+		XCTAssertTrue(rows.contains(#"Text("Move down")"#))
+		XCTAssertTrue(store.contains("func moveAccount("))
+		XCTAssertTrue(store.contains("func moveAccounts("))
+		XCTAssertTrue(store.contains("setAccountOrder("))
 	}
 
 	func testPanelCardsAndPopoversUseSharedSpacingTokens() throws {
@@ -257,7 +322,6 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"Turn Fast mode off",
 			"Turn Fast mode on",
 			"Refresh all",
-			"Use balanced routing",
 			"Disable account",
 			"Enable account",
 			"Log out",
@@ -292,7 +356,39 @@ final class ResetCardArchitectureTests: XCTestCase {
 		}
 	}
 
-	func testPanelUsesSeparatedMaterialCardsWithoutLiquidGlass() throws {
+	func testOverflowMenuKeepsOnlyUsefulGlobalActions() throws {
+		let sourceURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.appendingPathComponent("Sources/DecodexApp", isDirectory: true)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
+		let menuStart = try XCTUnwrap(accountPanel.range(of: "\n\t\t\tMenu {"))
+		let menuEnd = try XCTUnwrap(
+			accountPanel.range(
+				of: "\n\t\t\t} label: {",
+				range: menuStart.lowerBound ..< accountPanel.endIndex
+			)
+		)
+		let menu = accountPanel[menuStart.lowerBound ..< menuEnd.upperBound]
+
+		XCTAssertTrue(menu.contains("Button(\"Refresh all\")"))
+		XCTAssertTrue(menu.contains("store.requestRefresh()"))
+		XCTAssertFalse(menu.contains("await store.refresh()"))
+		XCTAssertFalse(menu.contains("store.isRefreshing"))
+		XCTAssertFalse(menu.contains("store.isRefreshingAccountSkeleton"))
+		XCTAssertTrue(menu.contains("store.isAccountControlInProgress"))
+		XCTAssertTrue(menu.contains("Picker(\"Material\""))
+		XCTAssertFalse(menu.contains("Show email addresses"))
+		XCTAssertFalse(menu.contains("Hide email addresses"))
+		XCTAssertFalse(menu.contains("Turn Fast mode"))
+		XCTAssertFalse(menu.contains("Use balanced routing"))
+	}
+
+	func testPanelOffersThinAndLiquidGlassCardMaterials() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -349,6 +445,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 
 		XCTAssertTrue(cardSurface.contains("shape.fill(.thinMaterial)"))
 		XCTAssertTrue(cardSurface.contains("shape.fill(.regularMaterial)"))
+		XCTAssertTrue(cardSurface.contains("case liquidGlass = \"liquid-glass\""))
+		XCTAssertTrue(cardSurface.contains("static let defaultValue = PanelCardMaterial.thin"))
+		XCTAssertTrue(cardSurface.contains(".glassEffect(.regular, in: shape)"))
 		XCTAssertTrue(cardSurface.contains(".background"))
 		XCTAssertTrue(cardSurface.contains(".shadow"))
 		XCTAssertTrue(cardSurface.contains("radius: 3"))
@@ -358,9 +457,15 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(cardSurface.contains("cardFill"))
 		XCTAssertFalse(cardSurface.contains("cardStroke"))
 		XCTAssertFalse(cardSurface.contains("strokeBorder"))
-		XCTAssertFalse(cardSurface.contains("Glass"))
-		XCTAssertFalse(cardSurface.contains("glassEffect"))
-		XCTAssertFalse(accountPanel.contains("GlassEffectContainer"))
+		XCTAssertTrue(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
+		XCTAssertTrue(
+			accountPanel.contains(".environment(\\.panelCardMaterial, panelCardMaterial)")
+		)
+		XCTAssertTrue(
+			accountPanel.contains(
+				"@AppStorage(PanelCardMaterial.storageKey) private var panelCardMaterialRawValue = PanelCardMaterial.thin.rawValue"
+			)
+		)
 		XCTAssertFalse(addControl.contains("isDisabled:"))
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 16)"))

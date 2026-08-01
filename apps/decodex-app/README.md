@@ -57,15 +57,17 @@ The panel uses compact individual material cards with transparent gaps and
 shows every account when they fit on the active display. On shorter displays,
 the account list remains scrollable without a persistent scroll indicator.
 The header and aggregate overview share one compact appearance-adaptive
-frosted-material surface. Each account row uses its own separate system material
-surface with no opaque custom fill or drawn border.
+surface. The overflow menu stores one panel-wide card material preference. It
+defaults to `Thin`, or the operator can select the system `Liquid Glass` effect.
+Each account row uses its own separate surface with no opaque custom fill or drawn
+border.
 Primary cards use one shared compact spacing rhythm and identical content insets.
 Popovers and floating login recovery use one larger shared inset.
 The host window follows the system Light or Dark appearance and does not draw
 its own full-window shadow or backdrop. Login recovery uses a stronger floating
 material inside that same transparent window, without a window-wide modal dimmer.
 Transparent gaps remain visible; there is no background surface around the
-complete panel and no Liquid Glass effect.
+complete panel.
 
 The app never identifies an account from its alias or vector position. The
 daemon derives a stable credential-negative one-word alias. The row displays
@@ -120,6 +122,22 @@ the fixed Decodex route. The underlying typed commands remain independently
 fenced, and retrying the control completes whichever step is not current. The
 Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
+The overflow menu contains only `Refresh all`, the material selector, and Quit.
+`Refresh all` remains available while an automatic read is in progress because
+the store coalesces that request into the active refresh cycle. Account mutations
+and Reset Card submissions still disable it.
+
+Each account card reveals one compact trailing-edge reorder grip while the pointer
+is over that card. The grip overlays the card padding instead of reserving a layout
+column. Dragging uses the list's stable coordinate space, keeps the complete card
+at its original size and horizontal position, and moves it only on the vertical
+track. When it crosses an adjacent card's center, that card springs into the open
+slot. On release, the dragged card springs into its final slot, then the app sends
+one complete `set_account_order` command with the current routing revision. The
+card order follows the daemon result. A rejected command restores the last
+authoritative order. The grip also provides Move up and Move down accessibility
+actions through the same command path. The app does not save a separate local
+account order.
 
 The app is intentionally menu-bar-only and uses the accessory activation
 policy. It does not own daemon startup or credential persistence.
