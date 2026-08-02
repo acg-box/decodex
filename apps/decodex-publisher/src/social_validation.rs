@@ -2,13 +2,9 @@
 
 mod candidate;
 mod common;
-mod cross_file;
 mod outcome;
 mod post;
 mod reservation;
-mod strategy;
-
-pub(crate) use cross_file::SocialValidationState;
 pub(crate) use post::contains_link_like_text;
 
 use std::path::Path;
@@ -17,7 +13,7 @@ use serde_json::{Map, Value};
 
 use crate::{
 	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_OUTCOME_SCHEMA, SOCIAL_POST_SCHEMA,
-	SOCIAL_PUBLISH_RESERVATION_SCHEMA, SOCIAL_STRATEGY_SCHEMA,
+	SOCIAL_PUBLISH_RESERVATION_SCHEMA,
 };
 
 const SIGNAL_CONFIDENCE: &[&str] = &["confirmed", "likely", "weak"];
@@ -47,11 +43,6 @@ pub(crate) fn validate_social_artifact_for_path(
 ) -> SocialArtifactValidation {
 	let mut validation = validate_social_artifact(payload);
 	if validation.errors.is_empty()
-		&& let Err(error) = crate::social_record::validate_candidate_eligibility(payload)
-	{
-		validation.errors.push(format!("candidate Radar lineage validation failed: {error}"));
-	}
-	if validation.errors.is_empty()
 		&& let Err(error) = crate::social_record::validate_publication_identity(payload)
 	{
 		validation
@@ -74,29 +65,18 @@ pub(crate) fn validate_social_artifact(payload: &Value) -> SocialArtifactValidat
 		Some(SOCIAL_POST_SCHEMA) => post::validate_social_post(entry, &mut errors),
 		Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA) =>
 			reservation::validate_social_publish_reservation(entry, &mut errors),
-		Some(SOCIAL_STRATEGY_SCHEMA) => strategy::validate_social_strategy(entry, &mut errors),
 		Some(_) | None => errors.push(format!(
 			"schema must be one of {}",
 			choices(&[
 				SOCIAL_CANDIDATE_SCHEMA,
 				SOCIAL_OUTCOME_SCHEMA,
 				SOCIAL_POST_SCHEMA,
-				SOCIAL_PUBLISH_RESERVATION_SCHEMA,
-				SOCIAL_STRATEGY_SCHEMA
+				SOCIAL_PUBLISH_RESERVATION_SCHEMA
 			])
 		)),
 	}
 
 	SocialArtifactValidation { errors }
-}
-
-pub(crate) fn validate_social_cross_file_constraints(
-	path: &Path,
-	payload: &Value,
-	state: &mut SocialValidationState,
-	errors: &mut Vec<String>,
-) {
-	cross_file::validate_social_cross_file_constraints(path, payload, state, errors);
 }
 
 fn validate_social_post_text(text: Option<&Value>, errors: &mut Vec<String>) {
@@ -162,6 +142,10 @@ fn is_empty_or_missing_array(value: Option<&Value>) -> bool {
 
 fn is_https_string_array(value: &Value) -> bool {
 	common::is_https_string_array(value)
+}
+
+fn is_https_string(value: Option<&Value>) -> bool {
+	common::is_https_string(value)
 }
 
 fn choices(values: &[&str]) -> String {

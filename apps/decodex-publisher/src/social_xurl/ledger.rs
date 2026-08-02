@@ -9,9 +9,10 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::model::{
 	ATTEMPT_SCHEMA, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
+	IDENTITY_RECOVERY_EXHAUSTED_STATUS, NO_CREATE_RELEASED_STATUS,
 	NORMAL_PUBLICATION_COST_MICROUSD, OBSERVATION_ATTEMPT_SCHEMA,
-	PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD, XurlAttempt, XurlCall,
-	XurlObservationAttempt, XurlReconciliation,
+	PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD, READ_RECOVERY_EXHAUSTED_STATUS,
+	XurlAttempt, XurlCall, XurlObservationAttempt, XurlReconciliation,
 };
 use crate::{
 	SOCIAL_MONTHLY_BUDGET_MICROUSD, SocialXurlCostReport,
@@ -290,7 +291,7 @@ pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<
 		|| attempt.target_account != super::model::TARGET_ACCOUNT
 		|| !lowercase_digest(&attempt.publication_lineage_sha256)
 		|| attempt.idempotency_key
-			!= format!("radar-publication:{}", attempt.publication_lineage_sha256)
+			!= format!("content-publication:{}", attempt.publication_lineage_sha256)
 		|| attempt.pricing_policy_id.as_deref() != Some(super::model::PRICING_POLICY_ID)
 		|| attempt
 			.authorization_contract_sha256
@@ -304,6 +305,8 @@ pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<
 				| "identity_reconcile_inflight"
 				| "identity_reconcile_halted"
 				| "identity_reconciled"
+				| NO_CREATE_RELEASED_STATUS
+				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
 				| "identity_verified"
 				| "create_inflight"
 				| "create_uncertain"
@@ -312,10 +315,17 @@ pub(crate) fn validate_publication_cost_record(attempt: &XurlAttempt) -> Result<
 				| "read_retry_pending"
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
+				| READ_RECOVERY_EXHAUSTED_STATUS
 				| "halted" | "verified"
 				| "published"
 		) || OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
 		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
+		|| matches!(
+			attempt.status.as_str(),
+			NO_CREATE_RELEASED_STATUS
+				| IDENTITY_RECOVERY_EXHAUSTED_STATUS
+				| READ_RECOVERY_EXHAUSTED_STATUS
+		) && attempt.reconciliation.is_none()
 	{
 		return Err(eyre::eyre!("xurl publication usage authority is invalid"));
 	}
@@ -346,9 +356,11 @@ pub(crate) fn validate_observation_cost_record(attempt: &XurlObservationAttempt)
 			"read_inflight"
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
+				| READ_RECOVERY_EXHAUSTED_STATUS
 				| "halted" | "observed"
 		) || OffsetDateTime::parse(&attempt.created_at, &Rfc3339).is_err()
 		|| OffsetDateTime::parse(&attempt.updated_at, &Rfc3339).is_err()
+		|| attempt.status == READ_RECOVERY_EXHAUSTED_STATUS && attempt.reconciliation.is_none()
 	{
 		return Err(eyre::eyre!("xurl observation usage authority is invalid"));
 	}
@@ -524,6 +536,20 @@ fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
 		"identity_reconcile_halted" =>
 			call_state(last, &["identity_read_reconcile"], &["failed", "invalid"]),
 		"identity_reconciled" => call_state(last, &["identity_read_reconcile"], &["succeeded"]),
+		NO_CREATE_RELEASED_STATUS =>
+			(attempt.calls.is_empty()
+				|| call_state(
+					last,
+					&["identity_read", "identity_read_reconcile"],
+					&["succeeded", "failed", "invalid", "uncertain"],
+				)) && attempt.calls.iter().all(|call| {
+				matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
+			}) && attempt.post_id.is_none()
+				&& attempt.published_url.is_none(),
+		IDENTITY_RECOVERY_EXHAUSTED_STATUS =>
+			call_state(last, &["identity_read_reconcile"], &["failed", "invalid", "uncertain"])
+				&& attempt.post_id.is_none()
+				&& attempt.published_url.is_none(),
 		"identity_verified" =>
 			call_state(last, &["identity_read", "identity_read_reconcile"], &["succeeded"]),
 		"create_inflight" => call_state(last, &["content_create"], &["inflight"]),
@@ -539,6 +565,16 @@ fn validate_publication_state(attempt: &XurlAttempt) -> Result<()> {
 			last,
 			&["post_read_initial_reconcile", "post_read_reconcile"],
 			&["failed", "invalid"],
+		),
+		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
+			last,
+			&[
+				"post_read_initial",
+				"post_read_initial_reconcile",
+				"post_read_retry",
+				"post_read_reconcile",
+			],
+			&["failed", "invalid", "uncertain"],
 		),
 		"halted" => last.is_some_and(|call| matches!(call.status.as_str(), "failed" | "invalid")),
 		"verified" | "published" => call_state(
@@ -567,6 +603,11 @@ fn validate_observation_state(attempt: &XurlObservationAttempt) -> Result<()> {
 		"read_reconcile_inflight" => call_state(last, &["outcome_read_reconcile"], &["inflight"]),
 		"read_reconcile_halted" =>
 			call_state(last, &["outcome_read_reconcile"], &["failed", "invalid"]),
+		READ_RECOVERY_EXHAUSTED_STATUS => call_state(
+			last,
+			&["outcome_read", "outcome_read_reconcile"],
+			&["failed", "invalid", "uncertain"],
+		),
 		"halted" =>
 			call_state(last, &["outcome_read", "outcome_read_reconcile"], &["failed", "invalid"]),
 		"observed" => call_state(last, &["outcome_read", "outcome_read_reconcile"], &["succeeded"]),
@@ -595,8 +636,25 @@ fn checked_increment(value: u64) -> Result<u64> {
 }
 
 fn publication_charges(attempt: &XurlAttempt) -> Result<Vec<(String, u64)>> {
-	let mut charges = vec![(attempt.billing_month.clone(), NORMAL_PUBLICATION_COST_MICROUSD)];
-	let mut reserved = NORMAL_PUBLICATION_COST_MICROUSD;
+	let no_create_terminal = attempt.reconciliation.is_some()
+		&& matches!(
+			attempt.status.as_str(),
+			"identity_reconciled" | NO_CREATE_RELEASED_STATUS | IDENTITY_RECOVERY_EXHAUSTED_STATUS
+		);
+	let base_reservation = if no_create_terminal {
+		attempt.calls.iter().filter(|call| call.billing_month.is_none()).try_fold(
+			0_u64,
+			|total, call| {
+				total
+					.checked_add(call.recorded_cost_ceiling_microusd)
+					.ok_or_else(|| eyre::eyre!("xurl publication usage arithmetic overflowed"))
+			},
+		)?
+	} else {
+		NORMAL_PUBLICATION_COST_MICROUSD
+	};
+	let mut charges = vec![(attempt.billing_month.clone(), base_reservation)];
+	let mut reserved = base_reservation;
 	for call in &attempt.calls {
 		let expected_cost = match call.operation.as_str() {
 			"identity_read" | "identity_read_reconcile" => IDENTITY_READ_COST_MICROUSD,
@@ -778,6 +836,15 @@ fn lineage_reserved_cost(attempts_dir: &Path, publication_lineage_sha256: &str) 
 	Ok(reserved)
 }
 
+pub(super) fn remaining_lineage_budget(
+	attempts_dir: &Path,
+	publication_lineage_sha256: &str,
+) -> Result<u64> {
+	PUBLICATION_LINEAGE_BUDGET_MICROUSD
+		.checked_sub(lineage_reserved_cost(attempts_dir, publication_lineage_sha256)?)
+		.ok_or_else(|| eyre::eyre!("publication lineage budget ledger exceeds its hard cap"))
+}
+
 pub(super) fn append_call(
 	path: &Path,
 	attempt: &mut XurlAttempt,
@@ -839,9 +906,36 @@ pub(super) fn reconcile_attempt(
 	reconciliation: XurlReconciliation,
 ) -> Result<()> {
 	let previous = serde_json::to_value(&*attempt)?;
+	if matches!(
+		status,
+		"identity_reconciled" | NO_CREATE_RELEASED_STATUS | IDENTITY_RECOVERY_EXHAUSTED_STATUS
+	) {
+		attempt.reserved_cost_ceiling_microusd =
+			attempt.calls.iter().try_fold(0_u64, |total, call| {
+				if !matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile") {
+					return Err(eyre::eyre!(
+						"identity-only recovery contains a non-identity reservation"
+					));
+				}
+				total
+					.checked_add(call.recorded_cost_ceiling_microusd)
+					.ok_or_else(|| eyre::eyre!("identity-only recovery budget overflowed"))
+			})?;
+	}
+	if matches!(
+		status,
+		NO_CREATE_RELEASED_STATUS
+			| IDENTITY_RECOVERY_EXHAUSTED_STATUS
+			| READ_RECOVERY_EXHAUSTED_STATUS
+	) && let Some(call) = attempt.calls.last_mut()
+		&& call.status == "inflight"
+	{
+		call.status = "uncertain".into();
+	}
 	attempt.status = status.into();
 	attempt.updated_at = updated_at.into();
 	attempt.reconciliation = Some(reconciliation);
+	validate_publication_cost_record(attempt)?;
 	replace(path, &previous, attempt)
 }
 
@@ -882,6 +976,9 @@ pub(super) fn reserve_publication_reconcile_call(
 	updated_at: &str,
 	reserve_additional: bool,
 ) -> Result<()> {
+	if attempt.calls.len() >= 5 {
+		return Err(eyre::eyre!("publication reconciliation paid-call sequence is exhausted"));
+	}
 	if reserve_additional {
 		let billing_month = call
 			.billing_month
@@ -940,6 +1037,9 @@ pub(super) fn reserve_observation_reconcile_call(
 	call: XurlCall,
 	updated_at: &str,
 ) -> Result<()> {
+	if attempt.calls.len() >= 3 {
+		return Err(eyre::eyre!("observation reconciliation paid-call sequence is exhausted"));
+	}
 	let billing_month = call
 		.billing_month
 		.as_deref()
@@ -955,7 +1055,7 @@ pub(super) fn reserve_observation_reconcile_call(
 		.calls
 		.last_mut()
 		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no interrupted call"))?;
-	if !matches!(prior.status.as_str(), "inflight" | "failed") {
+	if !matches!(prior.status.as_str(), "inflight" | "failed" | "invalid" | "uncertain") {
 		return Err(eyre::eyre!("xurl observation attempt has no recoverable read"));
 	}
 	if prior.status == "inflight" {
@@ -1014,6 +1114,28 @@ pub(super) fn reconcile_observation(
 	call.response_sha256 = Some(response_sha256.into());
 	attempt.call = call.clone();
 	attempt.reconciliation = Some(reconciliation);
+	replace_observation(path, &previous, attempt)
+}
+
+pub(super) fn terminalize_observation(
+	path: &Path,
+	attempt: &mut XurlObservationAttempt,
+	updated_at: &str,
+	reconciliation: XurlReconciliation,
+) -> Result<()> {
+	let previous = attempt.clone();
+	let call = attempt
+		.calls
+		.last_mut()
+		.ok_or_else(|| eyre::eyre!("xurl observation attempt has no paid call"))?;
+	if call.status == "inflight" {
+		call.status = "uncertain".into();
+	}
+	attempt.call = call.clone();
+	attempt.status = READ_RECOVERY_EXHAUSTED_STATUS.into();
+	attempt.updated_at = updated_at.into();
+	attempt.reconciliation = Some(reconciliation);
+	validate_observation_cost_record(attempt)?;
 	replace_observation(path, &previous, attempt)
 }
 
@@ -1286,7 +1408,7 @@ mod tests {
 			reservation_ref: "reservation.json".into(),
 			candidate_ref: "candidate.json".into(),
 			candidate_sha256: None,
-			idempotency_key: format!("radar-publication:{publication_lineage_sha256}"),
+			idempotency_key: format!("content-publication:{publication_lineage_sha256}"),
 			publication_lineage_sha256,
 			billing_month: "2026-07".into(),
 			target_account: "decodexspace".into(),

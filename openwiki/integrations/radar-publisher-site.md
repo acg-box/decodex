@@ -1,24 +1,32 @@
 # Radar, Publisher, And Site Contracts
 
-This page covers auxiliary artifact families and public surfaces that surround the Decodex runtime. For the concise handoff contract and stop conditions, read [Radar Publisher contracts](radar-publisher-contracts.md); for why Radar, Publisher, and the static site are separated this way, read [Design rationale](../decisions/design-rationale.md).
+This page covers auxiliary evidence and public surfaces that surround the Decodex
+runtime. For the compact automation contract, read [Radar Publisher
+contracts](radar-publisher-contracts.md). For the design reasons, read [Design
+rationale](../decisions/design-rationale.md).
 
 ## Radar scope
 
-Radar is an auxiliary tool for upstream GitHub/Codex evidence. It owns upstream review queues, upstream impact artifacts, signal entries, release deltas, control-plane upgrade candidates, artifact retention, local ledger operations, validation, and bundle generation.
+Radar is an optional auxiliary tool for GitHub and Codex evidence. It owns change
+bundles, review queues, upstream impact artifacts, signal entries, release deltas,
+bounded local retention, validation, and bundle generation. Radar has no native
+schedule and is not workflow state for the five managed automations.
 
 Radar artifacts live under `.agent/automations/radar/cache` when generated locally. Checked-in source for Radar behavior lives in `apps/radar/`, `automations/radar/`, and related tests.
 
 ## Upstream review and impact
 
-Upstream review artifacts capture release/prerelease checkpoints, AI review notes, promotion boundaries, and evidence. Upstream impact artifacts classify control-plane and publisher relevance with source references and an explicit impact ladder.
+Upstream review artifacts capture release or prerelease checkpoints, review notes,
+and evidence. Upstream impact artifacts classify possible Decodex and editorial
+relevance. They are advisory inputs only.
 
 Required behavior:
 
 - every artifact has stable identity and source references
 - stale actions are rejected
 - AI review output is evidence, not mutation authority
-- promotion requires accepted authority or a follow-up issue
-- direct mutation from upstream review output is not allowed
+- an owning agent independently verifies official sources before code or content work
+- direct mutation or publication from Radar output is not allowed
 
 ## GitHub change bundles
 
@@ -34,7 +42,10 @@ Generated analysis drafts are not final signals until curated and validated.
 
 ## Release deltas
 
-Release deltas compare release objects and summarize material changes. They should preserve release identity, compare target, options, reused signals, and explicit evidence. Release deltas can feed social or site updates only through accepted handoff, not by direct publication.
+Release deltas compare release objects and summarize material changes. They preserve
+release identity, compare targets, reused signals, and explicit evidence. They can
+help discovery, but the Maintainer and Content Manager must verify the official
+sources themselves.
 
 ## Radar ledger and retention
 
@@ -47,19 +58,26 @@ resetting an oversized ledger. Retention covers every current Radar writer
 collection and removes abandoned internal temporary files while the cache-wide lock
 is held.
 
-## Control-plane upgrade candidates
-
-Control-plane upgrade candidates are structured proposals for Decodex control-plane changes. They need source references, target Codex/Decodex surface, impact, validation expectations, and authority guardrails. They do not directly authorize code mutation.
-
 ## Publisher scope
 
-`decodex-publisher` owns social candidate, publication reservation, and social post validation. Publisher artifacts live under `.agent/automations/decodex/cache/social` when generated locally.
+`decodex-publisher` owns content evidence recording, publication reservation, xurl
+effects, exact readback, outcome observation, and social validation. Publisher
+artifacts live under `.agent/automations/decodex/cache/social` when generated
+locally.
 
-Publisher consumes Radar handoff evidence and validates social publication readiness. It must not refresh upstream state, scrape new evidence, or bypass the social reservation model.
+The Content Manager researches official Codex and landed Decodex sources directly.
+CodexRadar can be secondary editorial input, but it cannot be the only factual
+source. Publisher does not research or choose topics. It enforces the deterministic
+write boundary.
 
 ## Social publishing contract
 
-Social candidates require source references, claim rules, mode guidance, a decision object, and publication boundary. Reservations prevent duplicates and preserve idempotency. Published posts should avoid unsupported claims, private details, local paths, credentials, and hidden reasoning.
+One `decodex/content-evidence/1` document records a publish or no-op decision.
+Publisher derives its immutable content identity and allows at most one unresolved
+candidate. The `publish-next` and `observe-due` commands hide reservation, ledger,
+journal, recovery, and readback steps from the X Publisher agent. Published posts
+must contain no URL, unsupported claim, private detail, local path, credential, or
+hidden reasoning.
 
 ## Static site contract
 

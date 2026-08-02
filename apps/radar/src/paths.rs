@@ -14,13 +14,9 @@ pub(crate) const RUN_CODEX_ANALYSIS_SCRIPT: &str =
 	"automations/radar/scripts/github/run_codex_analysis.py";
 pub(crate) const DEFAULT_BUNDLES_DIR: &str = ".agent/automations/radar/cache/github/bundles";
 pub(crate) const DEFAULT_ANALYSIS_DIR: &str = ".agent/automations/radar/cache/generated/analysis";
-pub(crate) const REVIEW_QUEUE_RELATIVE_PATH: &str = "github/review-queue/openai-codex-latest.json";
 pub(crate) const RETAINED_CACHE_COLLECTIONS: &[&str] = &[
 	"github/bundles",
 	"github/review-queue",
-	"github/content-review-pairs",
-	"github/content-review-staging",
-	"github/control-plane-upgrades",
 	"site-content/signals",
 	"site-content/release-deltas",
 	"generated",
@@ -28,8 +24,6 @@ pub(crate) const RETAINED_CACHE_COLLECTIONS: &[&str] = &[
 pub(crate) const DEFAULT_VALIDATION_PATHS: &[&str] = &[
 	".agent/automations/radar/cache/github/bundles",
 	".agent/automations/radar/cache/github/review-queue",
-	".agent/automations/radar/cache/github/content-review-pairs",
-	".agent/automations/radar/cache/github/control-plane-upgrades",
 	".agent/automations/radar/cache/site-content/signals",
 	".agent/automations/radar/cache/site-content/release-deltas",
 	".agent/automations/radar/cache/generated",

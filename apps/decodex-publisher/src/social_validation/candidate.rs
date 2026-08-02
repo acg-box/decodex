@@ -1,32 +1,41 @@
-//! social_candidate/v1 schema validation.
+//! `decodex/content-evidence/1` validation.
 
-use std::{
-	collections::BTreeSet,
-	path::{Component, Path},
-};
+use std::collections::BTreeSet;
 
 use crate::social_validation::{self, Map, SOCIAL_POST_MODES, SOCIAL_POST_PRIORITIES, Value};
 
-const CONNECTIVE_TEXT: &[&str] = &[" "];
-const RADAR_PAIR_PREFIX: &str = ".agent/automations/radar/cache/github/content-review-pairs";
-const RADAR_ELIGIBILITY_FIELDS: &[&str] = &[
-	"commit_shas",
-	"impact_sha256",
-	"lineage_sha256",
-	"queue_sha256",
-	"repo",
-	"review_sha256",
-	"schema",
-	"slug",
-	"subject_id",
-	"subject_kind",
-	"upstream_head",
-];
+const SOURCE_KINDS: &[&str] = &["landed_decodex", "official_codex", "radar_secondary"];
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SourceKind {
+	LandedDecodex,
+	OfficialCodex,
+	RadarSecondary,
+}
+
+impl SourceKind {
+	const fn label(self) -> &'static str {
+		match self {
+			Self::LandedDecodex => "landed_decodex",
+			Self::OfficialCodex => "official_codex",
+			Self::RadarSecondary => "radar_secondary",
+		}
+	}
+
+	const fn is_primary(self) -> bool {
+		matches!(self, Self::LandedDecodex | Self::OfficialCodex)
+	}
+}
+
+struct ExactHttpsUrl<'a> {
+	host: &'a str,
+	path: &'a str,
+}
 
 pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut Vec<String>) {
 	social_validation::validate_exact_keys(
 		entry,
-		"social_candidate",
+		"content_evidence",
 		&[
 			"audience",
 			"candidate_text",
@@ -34,19 +43,15 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 			"channel",
 			"claims",
 			"decision",
-			"evidence_digests",
 			"evidence_notes",
 			"mode",
-			"next_steps",
 			"priority",
-			"radar_eligibility",
-			"radar_source_refs",
 			"repo",
 			"schema",
 			"slug",
+			"source_kinds",
 			"source_refs",
 			"target_account",
-			"text_segments",
 		],
 		errors,
 	);
@@ -56,7 +61,6 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 			errors.push(format!("{field} must be a non-empty string"));
 		}
 	}
-
 	if social_validation::string_field(entry, "repo").is_some_and(|repo| !repo.contains('/')) {
 		errors.push("repo must be owner/name".into());
 	}
@@ -77,10 +81,8 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 		));
 	}
 
-	social_validation::validate_social_post_text(entry.get("candidate_text"), errors);
-
-	validate_social_candidate_source_refs(entry.get("source_refs"), errors);
-
+	validate_candidate_text(entry.get("candidate_text"), errors);
+	validate_sources(entry.get("source_refs"), entry.get("source_kinds"), errors);
 	social_validation::validate_non_empty_string_list(
 		entry.get("evidence_notes"),
 		"evidence_notes",
@@ -89,498 +91,198 @@ pub(super) fn validate_social_candidate(entry: &Map<String, Value>, errors: &mut
 	social_validation::validate_social_post_claims(
 		entry.get("claims"),
 		entry.get("source_refs"),
-		entry.get("evidence_digests"),
+		None,
 		false,
 		errors,
 	);
+	validate_decision(entry.get("decision"), errors);
+	social_validation::validate_optional_string_list(entry.get("caveats"), "caveats", errors);
+}
 
-	validate_social_candidate_decision(entry.get("decision"), errors);
-	let publish = entry
-		.get("decision")
-		.and_then(Value::as_object)
-		.and_then(|decision| social_validation::string_field(decision, "worthiness"))
-		== Some("publish");
-	if publish {
-		if entry.get("candidate_text").and_then(Value::as_array).map(Vec::len) != Some(1) {
-			errors.push("publish candidate_text must contain exactly one item".into());
-		}
-		if entry
-			.get("candidate_text")
-			.and_then(Value::as_array)
-			.and_then(|items| items.first())
-			.and_then(Value::as_str)
-			.is_none_or(|text| text.chars().count() < 80)
-		{
-			errors.push(
-				"publish candidate_text item must contain at least 80 Unicode characters".into(),
-			);
-		}
+fn validate_candidate_text(value: Option<&Value>, errors: &mut Vec<String>) {
+	social_validation::validate_social_post_text(value, errors);
+	let Some(items) = value.and_then(Value::as_array) else {
+		return;
+	};
+	if items.len() != 1 {
+		errors.push("candidate_text must contain exactly one item".into());
 	}
-	validate_radar_eligibility_contract(entry, publish, errors);
-	validate_text_segments(entry, publish, errors);
-
-	for field in ["caveats", "next_steps"] {
-		social_validation::validate_optional_string_list(entry.get(field), field, errors);
+	if items.first().and_then(Value::as_str).is_none_or(|text| text.chars().count() < 80) {
+		errors.push("candidate_text item must contain at least 80 Unicode characters".into());
 	}
 }
 
-fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<String>) {
+fn validate_sources(refs: Option<&Value>, kinds: Option<&Value>, errors: &mut Vec<String>) {
 	let Some(refs) = refs.and_then(Value::as_object) else {
 		errors.push("source_refs must be an object".into());
-
 		return;
 	};
-	social_validation::validate_exact_keys(
-		refs,
-		"source_refs",
-		&["release_deltas", "signals", "upstream_impacts", "upstream_reviews", "urls"],
-		errors,
-	);
-	let has_refs = ["upstream_reviews", "upstream_impacts", "signals", "release_deltas", "urls"]
-		.iter()
-		.any(|field| {
-			refs.get(*field)
-				.is_some_and(|value| !social_validation::is_empty_or_missing_array(Some(value)))
-		});
-
-	if !has_refs {
-		errors.push(
-			"source_refs must include upstream_reviews, upstream_impacts, signals, release_deltas, or urls"
-				.into(),
-		);
-	}
-
-	let uses_radar_inputs = ["upstream_reviews", "release_deltas"]
-		.iter()
-		.any(|field| social_validation::non_empty_array(refs.get(*field)).is_some());
-
-	if uses_radar_inputs
-		&& social_validation::non_empty_array(refs.get("upstream_impacts")).is_none()
-	{
-		errors.push(
-			"source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff for Radar-derived social candidates"
-				.into(),
-		);
-	}
-	if refs.get("urls").is_some_and(|urls| !social_validation::is_https_string_array(urls)) {
-		errors.push("source_refs.urls must be a list of https URLs".into());
-	}
-
-	for field in ["upstream_reviews", "upstream_impacts", "signals", "release_deltas"] {
-		social_validation::validate_optional_string_list(
-			refs.get(field),
-			&format!("source_refs.{field}"),
-			errors,
-		);
-	}
-	validate_upstream_pair_paths(refs, errors);
-}
-
-fn validate_upstream_pair_paths(refs: &Map<String, Value>, errors: &mut Vec<String>) {
-	let reviews = refs.get("upstream_reviews").and_then(Value::as_array);
-	let impacts = refs.get("upstream_impacts").and_then(Value::as_array);
-	let has_pair_ref = reviews.is_some_and(|values| !values.is_empty())
-		|| impacts.is_some_and(|values| !values.is_empty());
-	if !has_pair_ref {
-		return;
-	}
-	let review_pair = reviews
-		.filter(|values| values.len() == 1)
-		.and_then(|values| values[0].as_str())
-		.and_then(|value| normalized_radar_pair_path(value, "review.json"));
-	let impact_pair = impacts
-		.filter(|values| values.len() == 1)
-		.and_then(|values| values[0].as_str())
-		.and_then(|value| normalized_radar_pair_path(value, "impact.json"));
-
-	if review_pair.is_none() {
-		errors.push(
-			"source_refs.upstream_reviews must contain one strict fresh Radar pair review path"
-				.into(),
-		);
-	}
-	if impact_pair.is_none() {
-		errors.push(
-			"source_refs.upstream_impacts must contain one strict fresh Radar pair impact path"
-				.into(),
-		);
-	}
-	if review_pair.is_some() && impact_pair.is_some() && review_pair != impact_pair {
-		errors.push(
-			"source_refs upstream review and impact must share one strict fresh Radar pair directory"
-				.into(),
-		);
-	}
-}
-
-fn validate_radar_eligibility_contract(
-	entry: &Map<String, Value>,
-	publish: bool,
-	errors: &mut Vec<String>,
-) {
-	let eligibility = entry.get("radar_eligibility");
-	let radar_source_refs = entry.get("radar_source_refs");
-	if publish && eligibility.is_none() {
-		errors.push("publish candidate requires radar_eligibility".into());
-	}
-	if publish && radar_source_refs.is_none() {
-		errors.push("publish candidate requires radar_source_refs".into());
-	}
-	let Some(eligibility) = eligibility else {
-		if radar_source_refs.is_some() {
-			errors.push("radar_source_refs requires radar_eligibility".into());
-		}
-
+	social_validation::validate_exact_keys(refs, "source_refs", &["urls"], errors);
+	let Some(urls) = refs.get("urls").and_then(Value::as_array).filter(|urls| !urls.is_empty())
+	else {
+		errors.push("source_refs.urls must be a non-empty list of https URLs".into());
 		return;
 	};
-	let Some(eligibility) = eligibility.as_object() else {
-		errors.push("radar_eligibility must be an object".into());
+	if urls.len() > 8 || !urls.iter().all(|url| social_validation::is_https_string(Some(url))) {
+		errors.push("source_refs.urls must contain at most 8 canonical HTTPS URLs".into());
+	}
+	let url_values = urls.iter().filter_map(Value::as_str).collect::<BTreeSet<_>>();
+	if url_values.len() != urls.len() {
+		errors.push("source_refs.urls must be unique".into());
+	}
 
+	let Some(kinds) = kinds.and_then(Value::as_object) else {
+		errors.push("source_kinds must map every source URL to its evidence class".into());
 		return;
 	};
-	validate_radar_eligibility_fields(entry, eligibility, errors);
-
-	let Some(radar_refs) = radar_source_refs.and_then(Value::as_object) else {
-		if radar_source_refs.is_some() {
-			errors.push("radar_source_refs must be an object".into());
-		}
-
-		return;
-	};
-	validate_radar_source_contract(entry, eligibility, radar_refs, publish, errors);
-}
-
-fn validate_radar_eligibility_fields(
-	entry: &Map<String, Value>,
-	eligibility: &Map<String, Value>,
-	errors: &mut Vec<String>,
-) {
-	social_validation::validate_exact_keys(
-		eligibility,
-		"radar_eligibility",
-		RADAR_ELIGIBILITY_FIELDS,
-		errors,
-	);
-	if social_validation::string_field(eligibility, "schema")
-		!= Some("radar_content_eligibility/v1")
-	{
-		errors.push("radar_eligibility.schema must be radar_content_eligibility/v1".into());
+	if kinds.keys().map(String::as_str).collect::<BTreeSet<_>>() != url_values {
+		errors.push("source_kinds keys must exactly match source_refs.urls".into());
 	}
-	for field in ["repo", "slug", "subject_id"] {
-		if !social_validation::is_non_empty_string(eligibility.get(field)) {
-			errors.push(format!("radar_eligibility.{field} must be a non-empty string"));
-		}
-	}
-	if !social_validation::matches_one_of(eligibility.get("subject_kind"), &["commit", "pr"]) {
-		errors.push("radar_eligibility.subject_kind must be one of ['commit', 'pr']".into());
-	}
-	if !eligibility.get("upstream_head").and_then(Value::as_str).is_some_and(valid_git_oid) {
-		errors.push("radar_eligibility.upstream_head must be a lowercase Git object ID".into());
-	}
-	for field in ["queue_sha256", "review_sha256", "impact_sha256", "lineage_sha256"] {
-		if !eligibility.get(field).and_then(Value::as_str).is_some_and(valid_sha256) {
-			errors.push(format!("radar_eligibility.{field} must be a lowercase SHA-256 digest"));
-		}
-	}
-	let commits = eligibility.get("commit_shas").and_then(Value::as_array);
-	if commits.is_none_or(Vec::is_empty) {
-		errors.push("radar_eligibility.commit_shas must be a non-empty list".into());
-	} else if let Some(commits) = commits {
-		let values = commits.iter().filter_map(Value::as_str).collect::<Vec<_>>();
-		if values.len() != commits.len() || values.iter().any(|value| !valid_git_oid(value)) {
-			errors
-				.push("radar_eligibility.commit_shas must contain lowercase Git object IDs".into());
-		}
-		let mut normalized = values.clone();
-		normalized.sort_unstable();
-		normalized.dedup();
-		if normalized != values {
-			errors.push(
-				"radar_eligibility.commit_shas must be unique and lexicographically sorted".into(),
-			);
-		}
-	}
-	for (candidate_field, eligibility_field) in [("repo", "repo"), ("slug", "slug")] {
-		if entry.get(candidate_field).and_then(Value::as_str)
-			!= eligibility.get(eligibility_field).and_then(Value::as_str)
-		{
+	for (url, kind) in kinds {
+		if !SOURCE_KINDS.contains(&kind.as_str().unwrap_or_default()) {
 			errors.push(format!(
-				"{candidate_field} must exactly match radar_eligibility.{eligibility_field}"
-			));
-		}
-	}
-}
-
-fn validate_radar_source_contract(
-	entry: &Map<String, Value>,
-	eligibility: &Map<String, Value>,
-	radar_refs: &Map<String, Value>,
-	publish: bool,
-	errors: &mut Vec<String>,
-) {
-	social_validation::validate_exact_keys(
-		radar_refs,
-		"radar_source_refs",
-		&["impact", "queue", "review"],
-		errors,
-	);
-	if !radar_refs.get("queue").and_then(Value::as_str).is_some_and(normalized_radar_queue_path) {
-		errors.push(
-			"radar_source_refs.queue must be the exact canonical private Radar queue path".into(),
-		);
-	}
-	let review_pair = radar_refs
-		.get("review")
-		.and_then(Value::as_str)
-		.and_then(|value| normalized_radar_pair_path(value, "review.json"));
-	let impact_pair = radar_refs
-		.get("impact")
-		.and_then(Value::as_str)
-		.and_then(|value| normalized_radar_pair_path(value, "impact.json"));
-	if review_pair.is_none() {
-		errors.push(
-			"radar_source_refs.review must be a canonical private Radar pair review path".into(),
-		);
-	}
-	if impact_pair.is_none() {
-		errors.push(
-			"radar_source_refs.impact must be a canonical private Radar pair impact path".into(),
-		);
-	}
-	if review_pair.is_some() && impact_pair.is_some() && review_pair != impact_pair {
-		errors.push(
-			"radar_source_refs.review and impact must share one canonical Radar pair directory"
-				.into(),
-		);
-	}
-	let Some(source_refs) = entry.get("source_refs").and_then(Value::as_object) else {
-		return;
-	};
-	for (field, radar_field) in [("upstream_reviews", "review"), ("upstream_impacts", "impact")] {
-		let expected = radar_refs.get(radar_field).and_then(Value::as_str);
-		let actual = source_refs.get(field).and_then(Value::as_array);
-		if actual.is_none_or(|values| {
-			values.len() != 1 || values.first().and_then(Value::as_str) != expected
-		}) {
-			errors.push(format!(
-				"source_refs.{field} must contain exactly radar_source_refs.{radar_field}"
-			));
-		}
-	}
-	let Some(digests) = entry.get("evidence_digests").and_then(Value::as_object) else {
-		return;
-	};
-	for (radar_field, digest_field) in [("review", "review_sha256"), ("impact", "impact_sha256")] {
-		let reference = radar_refs.get(radar_field).and_then(Value::as_str);
-		let expected = eligibility.get(digest_field).and_then(Value::as_str);
-		if reference.and_then(|reference| digests.get(reference)).and_then(Value::as_str)
-			!= expected
-		{
-			errors.push(format!(
-				"evidence_digests must bind radar_source_refs.{radar_field} to \
-				 radar_eligibility.{digest_field}"
+				"source_kinds[{url:?}] must be one of {}",
+				social_validation::choices(SOURCE_KINDS)
 			));
 		}
 	}
 
-	let verified_claim_sources = ["review", "impact"]
-		.into_iter()
-		.filter_map(|field| radar_refs.get(field).and_then(Value::as_str))
-		.collect::<BTreeSet<_>>();
-	if publish && let Some(claims) = entry.get("claims").and_then(Value::as_array) {
-		for (index, claim) in claims.iter().enumerate() {
-			if claim
-				.get("evidence")
-				.and_then(Value::as_str)
-				.is_none_or(|evidence| !verified_claim_sources.contains(evidence))
-			{
-				errors.push(format!(
-					"claims[{index}].evidence must bind one verified Radar review or impact"
-				));
-			}
-		}
-	}
-}
-
-fn validate_text_segments(entry: &Map<String, Value>, publish: bool, errors: &mut Vec<String>) {
-	let Some(segments) = entry.get("text_segments") else {
-		if publish {
-			errors.push("publish candidate requires text_segments".into());
-		}
-
-		return;
-	};
-	let Some(segments) = segments.as_array().filter(|segments| !segments.is_empty()) else {
-		errors.push("text_segments must be a non-empty list".into());
-
-		return;
-	};
-	let claims = entry.get("claims").and_then(Value::as_array).cloned().unwrap_or_default();
-	let mut rendered = String::new();
-	let mut expected_claim = 0_u64;
-	let mut expect_claim = true;
-
-	for (index, segment) in segments.iter().enumerate() {
-		let Some(segment) = segment.as_object() else {
-			errors.push(format!("text_segments[{index}] must be an object"));
+	let mut has_primary = false;
+	for url in url_values {
+		let Some(classified) = classify_source_url(url) else {
+			errors.push(format!(
+				"source_refs.urls entry {url:?} must be a canonical HTTPS URL without userinfo, a port, query, fragment, percent escape, or non-normal path"
+			));
 			continue;
 		};
-		let kind = social_validation::string_field(segment, "kind");
-		match kind {
-			Some("claim") => {
-				social_validation::validate_exact_keys(
-					segment,
-					&format!("text_segments[{index}]"),
-					&["claim_index", "kind"],
-					errors,
-				);
-				if !expect_claim {
-					errors
-						.push("text_segments must alternate claim and connective segments".into());
-				}
-				let claim_index = segment.get("claim_index").and_then(Value::as_u64);
-				if claim_index != Some(expected_claim) {
-					errors.push(
-						"text_segments claim_index values must cover claims once in order".into(),
-					);
-				}
-				if let Some(text) = claim_index
-					.and_then(|claim_index| usize::try_from(claim_index).ok())
-					.and_then(|claim_index| claims.get(claim_index))
-					.and_then(|claim| claim.get("text"))
-					.and_then(Value::as_str)
-				{
-					rendered.push_str(text);
-				}
-				expected_claim = expected_claim.saturating_add(1);
-				expect_claim = false;
-			},
-			Some("connective") => {
-				social_validation::validate_exact_keys(
-					segment,
-					&format!("text_segments[{index}]"),
-					&["kind", "text"],
-					errors,
-				);
-				if expect_claim {
-					errors
-						.push("text_segments must alternate claim and connective segments".into());
-				}
-				let connective = segment.get("text").and_then(Value::as_str);
-				if !connective.is_some_and(|value| CONNECTIVE_TEXT.contains(&value)) {
-					errors.push(format!(
-						"text_segments[{index}].text must be an approved non-factual connective"
-					));
-				}
-				if let Some(connective) = connective {
-					rendered.push_str(connective);
-				}
-				expect_claim = true;
-			},
-			Some(_) | None => errors.push(format!(
-				"text_segments[{index}].kind must be one of ['claim', 'connective']"
-			)),
+		let Some(declared) = kinds.get(url).and_then(Value::as_str) else {
+			continue;
+		};
+		if !SOURCE_KINDS.contains(&declared) {
+			continue;
+		}
+		if declared != classified.label() {
+			errors.push(format!(
+				"source_kinds[{url:?}] must be {:?} for that URL",
+				classified.label()
+			));
+			continue;
+		}
+		if classified.is_primary() {
+			has_primary = true;
 		}
 	}
-	if expect_claim {
-		errors.push("text_segments must end with a claim segment".into());
-	}
-	if usize::try_from(expected_claim).ok() != Some(claims.len()) {
-		errors.push("text_segments must include every claim exactly once".into());
-	}
-	if entry
-		.get("candidate_text")
-		.and_then(Value::as_array)
-		.and_then(|items| items.first())
-		.and_then(Value::as_str)
-		!= Some(rendered.as_str())
-	{
-		errors.push(
-			"candidate_text must exactly equal the canonical ordered claim composition".into(),
-		);
+	if !has_primary {
+		errors.push("at least one official_codex or landed_decodex source is required".into());
 	}
 }
 
-fn normalized_radar_queue_path(value: &str) -> bool {
-	let path = Path::new(value);
-	let normalized = !path.is_absolute()
-		&& path.components().all(|component| matches!(component, Component::Normal(_)));
-	if !normalized {
-		return false;
+fn classify_source_url(value: &str) -> Option<SourceKind> {
+	let url = parse_exact_https_url(value)?;
+	if url.host == "github.com" && path_at_or_below(url.path, "openai/codex") {
+		return Some(SourceKind::OfficialCodex);
 	}
-	if path
-		== Path::new(".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json")
+	if url.host == "developers.openai.com" && path_at_or_below(url.path, "codex") {
+		return Some(SourceKind::OfficialCodex);
+	}
+	if url.host == "platform.openai.com" && path_at_or_below(url.path, "docs/codex") {
+		return Some(SourceKind::OfficialCodex);
+	}
+	if url.host == "openai.com"
+		&& (path_at_or_below(url.path, "codex") || is_openai_codex_release_path(url.path))
 	{
+		return Some(SourceKind::OfficialCodex);
+	}
+	if url.host == "github.com" && is_decodex_commit_path(url.path) {
+		return Some(SourceKind::LandedDecodex);
+	}
+
+	Some(SourceKind::RadarSecondary)
+}
+
+fn parse_exact_https_url(value: &str) -> Option<ExactHttpsUrl<'_>> {
+	if !value.is_ascii() {
+		return None;
+	}
+	let remainder = value.strip_prefix("https://")?;
+	if remainder.is_empty()
+		|| remainder
+			.bytes()
+			.any(|byte| matches!(byte, b'%' | b'\\' | b'?' | b'#') || byte.is_ascii_whitespace())
+	{
+		return None;
+	}
+	let (host, path) = remainder.split_once('/').unwrap_or((remainder, ""));
+	if !valid_dns_host(host) || !valid_url_path(path) {
+		return None;
+	}
+
+	Some(ExactHttpsUrl { host, path })
+}
+
+fn valid_dns_host(host: &str) -> bool {
+	host.len() <= 253
+		&& host.contains('.')
+		&& host.bytes().any(|byte| byte.is_ascii_lowercase())
+		&& host.split('.').all(|label| {
+			!label.is_empty()
+				&& label.len() <= 63
+				&& label
+					.bytes()
+					.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+				&& label
+					.bytes()
+					.next()
+					.is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+				&& label
+					.bytes()
+					.next_back()
+					.is_some_and(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit())
+		})
+}
+
+fn valid_url_path(path: &str) -> bool {
+	if path.is_empty() {
 		return true;
 	}
-	#[cfg(test)]
-	{
-		let parts = path.iter().filter_map(|part| part.to_str()).collect::<Vec<_>>();
-		let suffix = ["github", "review-queue", "openai-codex-latest.json"];
-
-		path.starts_with("target") && parts.ends_with(&suffix)
-	}
-	#[cfg(not(test))]
-	false
+	let path = path.strip_suffix('/').unwrap_or(path);
+	!path.is_empty()
+		&& path.split('/').all(|segment| {
+			!segment.is_empty()
+				&& !matches!(segment, "." | "..")
+				&& segment.bytes().all(|byte| {
+					byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
+				})
+		})
 }
 
-fn normalized_radar_pair_path(value: &str, expected_file: &str) -> Option<String> {
-	let path = Path::new(value);
-	if path.is_absolute()
-		|| path.components().any(|component| !matches!(component, Component::Normal(_)))
-		|| path.file_name().and_then(|value| value.to_str()) != Some(expected_file)
-	{
-		return None;
-	}
-	let parts = path.iter().filter_map(|part| part.to_str()).collect::<Vec<_>>();
-	let pair_index = if path.starts_with(RADAR_PAIR_PREFIX) {
-		Path::new(RADAR_PAIR_PREFIX).components().count()
-	} else {
-		#[cfg(test)]
-		{
-			parts
-				.windows(2)
-				.position(|parts| parts == ["github", "content-review-pairs"])
-				.map(|index| index + 2)?
-		}
-		#[cfg(not(test))]
-		{
-			return None;
-		}
+fn path_at_or_below(path: &str, root: &str) -> bool {
+	path == root || path.strip_prefix(root).is_some_and(|suffix| suffix.starts_with('/'))
+}
+
+fn is_openai_codex_release_path(path: &str) -> bool {
+	let path = path.strip_suffix('/').unwrap_or(path);
+	let Some(slug) = path.strip_prefix("index/") else {
+		return false;
 	};
-	if parts.len() != pair_index + 2 {
-		return None;
-	}
-	let pair = parts[pair_index];
-	let mut pair_parts = pair.split("--");
-	let run_id = pair_parts.next().unwrap_or_default();
-	let staging_sha256 = pair_parts.next().unwrap_or_default();
-	let pair_sha256 = pair_parts.next().unwrap_or_default();
-	if pair_parts.next().is_some()
-		|| !crate::social_publish::valid_run_id(run_id)
-		|| !valid_sha256(staging_sha256)
-		|| !valid_sha256(pair_sha256)
-	{
-		return None;
-	}
-
-	Some(parts[..=pair_index].join("/"))
+	!slug.is_empty()
+		&& !slug.contains('/')
+		&& slug.contains("codex")
+		&& slug
+			.bytes()
+			.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
 }
 
-fn valid_git_oid(value: &str) -> bool {
-	matches!(value.len(), 40 | 64)
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+fn is_decodex_commit_path(path: &str) -> bool {
+	let Some(oid) = path.strip_prefix("hack-ink/decodex/commit/") else {
+		return false;
+	};
+	oid.len() == 40 && oid.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
 }
 
-fn valid_sha256(value: &str) -> bool {
-	value.len() == 64
-		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
-}
-
-fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec<String>) {
-	let Some(decision) = decision.and_then(Value::as_object) else {
+fn validate_decision(value: Option<&Value>, errors: &mut Vec<String>) {
+	let Some(decision) = value.and_then(Value::as_object) else {
 		errors.push("decision must be an object".into());
-
 		return;
 	};
 	social_validation::validate_exact_keys(
@@ -589,14 +291,168 @@ fn validate_social_candidate_decision(decision: Option<&Value>, errors: &mut Vec
 		&["idempotency_key", "reason", "worthiness"],
 		errors,
 	);
+	if !social_validation::matches_one_of(decision.get("worthiness"), &["no_op", "publish"]) {
+		errors.push("decision.worthiness must be one of ['no_op', 'publish']".into());
+	}
+	if !social_validation::is_non_empty_string(decision.get("reason")) {
+		errors.push("decision.reason must be a non-empty string".into());
+	}
+	if !decision.get("idempotency_key").and_then(Value::as_str).is_some_and(|value| {
+		value.len() == 84
+			&& value.starts_with("content-publication:")
+			&& value[20..].bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+	}) {
+		errors.push("decision.idempotency_key must be content-publication:<sha256>".into());
+	}
+}
 
-	if !social_validation::matches_one_of(decision.get("worthiness"), &["publish", "skip"]) {
-		errors.push("decision.worthiness must be one of ['publish', 'skip']".into());
+#[cfg(test)]
+mod tests {
+	use serde_json::{Value, json};
+
+	use super::{SourceKind, classify_source_url, validate_sources};
+
+	const DECODEX_COMMIT_URL: &str =
+		"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567";
+	const OFFICIAL_CODEX_URL: &str = "https://github.com/openai/codex/pull/22414";
+
+	#[test]
+	fn accepts_each_supported_primary_source_form() {
+		for (url, kind) in [
+			(OFFICIAL_CODEX_URL, "official_codex"),
+			("https://developers.openai.com/codex/config-reference", "official_codex"),
+			("https://platform.openai.com/docs/codex/overview", "official_codex"),
+			("https://openai.com/codex/", "official_codex"),
+			("https://openai.com/index/introducing-codex/", "official_codex"),
+			(DECODEX_COMMIT_URL, "landed_decodex"),
+		] {
+			let errors = source_errors(url, kind);
+			assert!(errors.is_empty(), "{url}: {errors:?}");
+		}
 	}
 
-	for field in ["reason", "idempotency_key"] {
-		if !social_validation::is_non_empty_string(decision.get(field)) {
-			errors.push(format!("decision.{field} must be a non-empty string"));
+	#[test]
+	fn rejects_malformed_https_urls() {
+		for url in [
+			"http://github.com/openai/codex",
+			"https://github.com@evil.example/openai/codex",
+			"https://evil.example@github.com/openai/codex",
+			"https://github.com:443/openai/codex",
+			"https://github%2ecom/openai/codex",
+			"https://github..com/openai/codex",
+			"https://github.com./openai/codex",
+			"https://github.com/openai/codex?tab=readme",
+			"https://github.com/openai/codex#readme",
+			"https://github.com/openai%2fcodex",
+			"https://github.com/openai/%ZZcodex",
+			"https://github.com/openai/codex/../other",
+			"https://github.com/openai//codex",
+			"https://github.com\\openai/codex",
+		] {
+			assert_eq!(classify_source_url(url), None, "{url}");
 		}
+	}
+
+	#[test]
+	fn caller_labels_cannot_promote_unrelated_or_deceptive_sources() {
+		for (url, kind) in [
+			("https://example.com/codex", "official_codex"),
+			("https://github.com.evil.example/openai/codex", "official_codex"),
+			("https://github.com/openai/codex.evil", "official_codex"),
+			("https://github.com/openai/not-codex", "official_codex"),
+			("https://github.com/other/codex", "official_codex"),
+			(
+				"https://github.com/hack-ink/other/commit/0123456789abcdef0123456789abcdef01234567",
+				"landed_decodex",
+			),
+			("https://github.com/hack-ink/decodex/pull/1", "landed_decodex"),
+			("https://github.com/hack-ink/decodex/commit/0123456", "landed_decodex"),
+			(
+				"https://github.com/hack-ink/decodex/commit/0123456789ABCDEF0123456789ABCDEF01234567",
+				"landed_decodex",
+			),
+			(
+				"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567/extra",
+				"landed_decodex",
+			),
+			(
+				"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567/",
+				"landed_decodex",
+			),
+		] {
+			let errors = source_errors(url, kind);
+			assert!(
+				errors.iter().any(|error| error.contains("must be \"radar_secondary\"")),
+				"{url}: {errors:?}"
+			);
+			assert!(errors.iter().any(|error| error.contains("at least one official_codex")));
+		}
+	}
+
+	#[test]
+	fn labels_must_match_recognized_primary_urls() {
+		for (url, kind, expected) in [
+			(OFFICIAL_CODEX_URL, "radar_secondary", SourceKind::OfficialCodex),
+			(DECODEX_COMMIT_URL, "official_codex", SourceKind::LandedDecodex),
+		] {
+			assert_eq!(classify_source_url(url), Some(expected));
+			let errors = source_errors(url, kind);
+			assert!(errors.iter().any(|error| error.contains("for that URL")));
+			assert!(errors.iter().any(|error| error.contains("at least one official_codex")));
+		}
+	}
+
+	#[test]
+	fn radar_secondary_cannot_satisfy_the_primary_requirement() {
+		let errors = source_errors("https://codexradar.example/reports/22414", "radar_secondary");
+		assert_eq!(errors, ["at least one official_codex or landed_decodex source is required"]);
+	}
+
+	#[test]
+	fn candidate_claims_stay_bound_to_declared_sources() {
+		let mut candidate = candidate_with_source(OFFICIAL_CODEX_URL, "official_codex");
+		let validation = crate::social_validation::validate_social_artifact(&candidate);
+		assert!(validation.errors.is_empty(), "{:?}", validation.errors);
+
+		candidate["claims"][0]["evidence"] = json!("https://example.com/not-declared");
+		let validation = crate::social_validation::validate_social_artifact(&candidate);
+		assert!(validation.errors.iter().any(|error| {
+			error.contains("claims[0].evidence must exactly match one declared source reference")
+		}));
+	}
+
+	fn source_errors(url: &str, kind: &str) -> Vec<String> {
+		let refs = json!({"urls": [url]});
+		let kinds = json!({(url): kind});
+		let mut errors = Vec::new();
+		validate_sources(Some(&refs), Some(&kinds), &mut errors);
+		errors
+	}
+
+	fn candidate_with_source(url: &str, kind: &str) -> Value {
+		json!({
+			"schema": crate::SOCIAL_CANDIDATE_SCHEMA,
+			"slug": "source-classification",
+			"repo": "openai/codex",
+			"channel": "x",
+			"target_account": "decodexspace",
+			"mode": "operator_impact",
+			"priority": "normal",
+			"audience": "Codex operators",
+			"candidate_text": ["Codex operators can now verify this concrete source-backed change before they rely on the documented workflow."],
+			"source_refs": {"urls": [url]},
+			"source_kinds": {(url): kind},
+			"evidence_notes": ["Direct primary source."],
+			"claims": [{
+				"text": "Codex documents this change.",
+				"evidence": url,
+				"confidence": "confirmed"
+			}],
+			"decision": {
+				"worthiness": "publish",
+				"reason": "Concrete operator consequence.",
+				"idempotency_key": format!("content-publication:{}", "a".repeat(64))
+			}
+		})
 	}
 }
