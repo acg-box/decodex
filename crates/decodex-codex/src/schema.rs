@@ -45,11 +45,32 @@ const COLLABORATION_MARKERS: &[&str] =
 	&["collabAgentToolCall", "parentThreadId", "agentNickname", "agentRole", "subAgentActivity"];
 const MAX_SCHEMA_DIRECTORY_DEPTH: usize = 8;
 const ACCEPTED_DIGESTS: &[(&str, &str)] = &[
-	("ClientRequest.json", "ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735"),
-	("ServerNotification.json", "189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166"),
+	("ClientRequest.json", "6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4"),
+	("ServerRequest.json", "6455b23a65fa3d9c7749ecd2ecbc4b829c9039f6cd8f9adc44d86ad4522e37ec"),
+	("ServerNotification.json", "abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02"),
 	(
 		"codex_app_server_protocol.v2.schemas.json",
-		"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
+		"e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc",
+	),
+	(
+		"v2/LoginAccountParams.json",
+		"3bec7003eb85aabbeaf0ba8a22ec54b68ec26d2657d6878a31ca0d01dfe642e0",
+	),
+	(
+		"ChatgptAuthTokensRefreshParams.json",
+		"74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
+	),
+	(
+		"ChatgptAuthTokensRefreshResponse.json",
+		"ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
+	),
+	(
+		"v2/ThreadReadResponse.json",
+		"94689cd705b4936a5c361deaa51fed69101eaba0629899ef8a39b600180de9b3",
+	),
+	(
+		"v2/ThreadStartParams.json",
+		"001c07a58981df5d860335bf8cee4d336df2165db6dc9c645cefed0467ccebbe",
 	),
 ];
 
@@ -828,19 +849,43 @@ mod tests {
 		let marker = SchemaMarker::accepted();
 
 		assert_eq!(marker.receipt, ACCEPTED_SCHEMA_RECEIPT);
-		assert_eq!(marker.canonical_digests().len(), 3);
+		assert_eq!(marker.canonical_digests().len(), 9);
 		for (file, digest) in [
 			(
 				"ClientRequest.json",
-				"ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
+				"6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4",
+			),
+			(
+				"ServerRequest.json",
+				"6455b23a65fa3d9c7749ecd2ecbc4b829c9039f6cd8f9adc44d86ad4522e37ec",
 			),
 			(
 				"ServerNotification.json",
-				"189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
+				"abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02",
 			),
 			(
 				"codex_app_server_protocol.v2.schemas.json",
-				"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
+				"e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc",
+			),
+			(
+				"v2/LoginAccountParams.json",
+				"3bec7003eb85aabbeaf0ba8a22ec54b68ec26d2657d6878a31ca0d01dfe642e0",
+			),
+			(
+				"ChatgptAuthTokensRefreshParams.json",
+				"74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
+			),
+			(
+				"ChatgptAuthTokensRefreshResponse.json",
+				"ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
+			),
+			(
+				"v2/ThreadReadResponse.json",
+				"94689cd705b4936a5c361deaa51fed69101eaba0629899ef8a39b600180de9b3",
+			),
+			(
+				"v2/ThreadStartParams.json",
+				"001c07a58981df5d860335bf8cee4d336df2165db6dc9c645cefed0467ccebbe",
 			),
 		] {
 			assert_eq!(marker.canonical_digests().get(file).map(String::as_str), Some(digest));
@@ -899,6 +944,36 @@ mod tests {
 			(
 				"codex_app_server_protocol.v2.schemas.json",
 				"f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37",
+			),
+		] {
+			marker.canonical_sha256.insert(file.into(), digest.into());
+		}
+
+		assert_eq!(
+			SchemaContract::validate(marker).unwrap_err(),
+			[
+				"digest:ClientRequest.json",
+				"digest:ServerNotification.json",
+				"digest:codex_app_server_protocol.v2.schemas.json",
+			]
+		);
+	}
+
+	#[test]
+	fn marker_validation_rejects_the_previous_supported_build_schema_digest_set() {
+		let mut marker = SchemaMarker::accepted();
+		for (file, digest) in [
+			(
+				"ClientRequest.json",
+				"ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
+			),
+			(
+				"ServerNotification.json",
+				"189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
+			),
+			(
+				"codex_app_server_protocol.v2.schemas.json",
+				"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
 			),
 		] {
 			marker.canonical_sha256.insert(file.into(), digest.into());
