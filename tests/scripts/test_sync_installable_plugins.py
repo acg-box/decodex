@@ -28,8 +28,8 @@ class SyncInstallablePluginsTests(unittest.TestCase):
         module = load_sync_module()
         with tempfile.TemporaryDirectory() as temp_dir:
             codex_home = Path(temp_dir) / ".codex"
-            global_skill = codex_home / "skills/x-post-publisher"
-            shutil.copytree(REPO_ROOT / "automations/decodex/skills/x-post-publisher", global_skill)
+            global_skill = codex_home / "skills/codex-code-analysis"
+            shutil.copytree(REPO_ROOT / "automations/radar/skills/codex-code-analysis", global_skill)
 
             result = module.main(
                 [

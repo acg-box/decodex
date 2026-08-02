@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Decodex source-backed content evidence",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slug",
+    "repo",
+    "channel",
+    "target_account",
+    "mode",
+    "priority",
+    "audience",
+    "candidate_text",
+    "source_refs",
+    "source_kinds",
+    "evidence_notes",
+    "claims",
+    "decision"
+  ],
+  "properties": {
+    "schema": { "const": "decodex/content-evidence/1" },
+    "slug": { "type": "string", "minLength": 1 },
+    "repo": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "channel": { "const": "x" },
+    "target_account": { "const": "decodexspace" },
+    "mode": {
+      "enum": [
+        "release_pulse",
+        "release_rollup",
+        "practical_explainer",
+        "operator_impact",
+        "watch_note"
+      ]
+    },
+    "priority": { "enum": ["critical", "high", "normal", "low"] },
+    "audience": { "type": "string", "minLength": 1 },
+    "candidate_text": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 1,
+      "items": {
+        "type": "string",
+        "minLength": 80,
+        "maxLength": 260,
+        "not": { "pattern": "(https?://|www\\.)" }
+      }
+    },
+    "source_refs": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["urls"],
+      "properties": {
+        "urls": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "uniqueItems": true,
+          "items": {
+            "description": "Canonical HTTPS URL; Publisher rejects userinfo, ports, query, fragments, percent escapes, and non-normal paths.",
+            "type": "string",
+            "pattern": "^https://"
+          }
+        }
+      }
+    },
+    "source_kinds": {
+      "description": "Publisher derives the class from each URL. Radar is secondary; landed_decodex requires an exact hack-ink/decodex commit URL.",
+      "type": "object",
+      "minProperties": 1,
+      "maxProperties": 8,
+      "additionalProperties": {
+        "enum": ["official_codex", "landed_decodex", "radar_secondary"]
+      }
+    },
+    "evidence_notes": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "claims": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["text", "evidence", "confidence"],
+        "properties": {
+          "text": { "type": "string", "minLength": 1 },
+          "evidence": { "type": "string", "pattern": "^https://" },
+          "confidence": { "enum": ["confirmed", "likely", "weak"] }
+        }
+      }
+    },
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["worthiness", "reason"],
+      "properties": {
+        "worthiness": { "enum": ["publish", "no_op"] },
+        "reason": { "type": "string", "minLength": 1 },
+        "idempotency_key": {
+          "description": "Optional in staging; record-candidate derives and inserts the final value.",
+          "type": "string",
+          "pattern": "^content-publication:[0-9a-f]{64}$"
+        }
+      }
+    },
+    "caveats": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 }
+    }
+  }
+}

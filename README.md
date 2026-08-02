@@ -144,21 +144,21 @@ runtime.
 - `apps/decodex/` preserves the frozen v0.2 package outside the active Cargo workspace.
 - `apps/radar/` owns the standalone Radar auxiliary tool for upstream evidence,
   release-delta, signal rendering, validation, and local ledger workflows.
-- `apps/decodex-publisher/` owns the standalone Publisher auxiliary tool for social
-  candidate, reservation, and post validation/workflows.
+- `apps/decodex-publisher/` owns the standalone Publisher boundary for content
+  evidence, xurl publication, exact readback, outcomes, and social validation.
 - `apps/decodex-app/` owns the native macOS app. Its single account surface uses the
   bundled active CLI as a credential-negative client of `decodexd`; it does not bundle
   or start the frozen v0.2 helper or HTTP control plane.
 - `site/` owns the Astro static product site and app download entry.
 - `plugins/decodex/` owns Decodex runtime/operator lifecycle skills.
 - `openwiki/` owns the repo-local project knowledge surface.
-- `automations/upstream/automations.toml` is the current portable Codex App
-  automation source for standalone upstream adaptation. It can update Decodex code,
-  open a pull request, independently review it, and merge it through the narrow
-  `decodex commit` and `decodex land` commands. It does not use Decodex server.
-- `automations/decodex/` retains shared configuration and social-contract tools.
-  `automations/radar/` retains reusable evidence tools. Their obsolete schedules and
-  prompts were removed rather than retained as compatibility inputs.
+- `automations/portfolio.toml` is the only checked-in source for the exact five Codex
+  App automations. Agents own upstream adaptation and content operation. Deterministic
+  boundaries own signed commit, signed landing, and xurl effects. The automations do
+  not use Decodex server.
+- `automations/decodex/` contains compact portfolio validation, content prompts, and
+  social schemas. `automations/radar/` contains optional reusable evidence tools and
+  has no schedule.
 
 No other product-specific mutation service is active beyond Reset Card. The protocol uses
 bounded in-memory replay/idempotency state while the PostgreSQL adapter owns durable product-state

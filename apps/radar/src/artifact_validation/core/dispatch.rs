@@ -3,9 +3,9 @@ use std::path::Path;
 use serde_json::Value;
 
 use crate::artifact_validation::{
-	ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA,
-	CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, RELEASE_DELTA_SCHEMA, SIGNAL_SCHEMA,
-	UPSTREAM_IMPACT_SCHEMA, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA, bundle,
+	ANALYSIS_DRAFT_KIND, BUNDLE_SCHEMA, CONFIG_FEATURE_CATALOG_SCHEMA, RELEASE_DELTA_SCHEMA,
+	SIGNAL_SCHEMA, UPSTREAM_IMPACT_SCHEMA, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
+	bundle,
 	core::{analysis, paths},
 	model::ArtifactValidation,
 	release, signal, support, upstream,
@@ -48,8 +48,6 @@ fn validate_artifact_payload(payload: &Value) -> ArtifactValidation {
 		Some(BUNDLE_SCHEMA) => bundle::validate_bundle(entry, &mut errors),
 		Some(CONFIG_FEATURE_CATALOG_SCHEMA) =>
 			signal::validate_config_feature_catalog(entry, &mut errors),
-		Some(CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA) =>
-			upstream::validate_control_plane_upgrade_candidate(entry, &mut errors),
 		Some(RELEASE_DELTA_SCHEMA) => release::validate_release_delta(entry, &mut errors),
 		Some(SIGNAL_SCHEMA) => signal::validate_signal(entry, &mut errors),
 		Some(UPSTREAM_IMPACT_SCHEMA) => upstream::validate_upstream_impact(entry, &mut errors),

@@ -9,8 +9,6 @@ pub(crate) const BUNDLE_BUILD_RECEIPT_SCHEMA: &str = "radar_bundle_build_receipt
 pub(crate) const CACHE_MAX_AGE_DAYS: u64 = 30;
 pub(crate) const CACHE_MAX_BYTES_PER_COLLECTION: u64 = 64 * 1024 * 1024;
 pub(crate) const CACHE_MAX_FILES_PER_COLLECTION: usize = 256;
-pub(crate) const CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA: &str =
-	"control_plane_upgrade_candidate/v1";
 pub(crate) const DEFAULT_LEDGER_PATH: &str = paths::DEFAULT_LEDGER_PATH;
 pub(crate) const DEFAULT_CACHE_ROOT: &str = paths::DEFAULT_CACHE_ROOT;
 pub(crate) const DEFAULT_MIN_STABLE_TAG: &str = "rust-v0.116.0";
@@ -96,14 +94,8 @@ pub(crate) const SURFACE_RULES: &[(&str, &[&str])] = &[
 ];
 pub(crate) const REVIEW_STATUSES: &[&str] =
 	&["control_plane", "deprecated", "seen", "signal", "skipped", "watch"];
-pub(crate) const ARTIFACT_KINDS: &[&str] = &[
-	"analysis",
-	"bundle",
-	"control_plane_upgrade_candidate",
-	"release_delta",
-	"signal",
-	"upstream_impact",
-];
+pub(crate) const ARTIFACT_KINDS: &[&str] =
+	&["analysis", "bundle", "release_delta", "signal", "upstream_impact"];
 pub(crate) const GITHUB_REQUEST_ATTEMPTS: usize = 4;
 pub(crate) const GITHUB_REQUEST_BACKOFF: Duration = Duration::from_secs(1);
 pub(crate) const GITHUB_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);

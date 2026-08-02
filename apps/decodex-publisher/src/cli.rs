@@ -11,7 +11,7 @@ use crate::{
 /// Root CLI parser for Decodex Publisher.
 #[derive(Debug, Parser)]
 #[command(
-	about = "Auxiliary Decodex publishing handoff tooling.",
+	about = "Hard publication boundaries for Decodex content agents.",
 	version,
 	arg_required_else_help = true,
 	rename_all = "kebab",
@@ -32,7 +32,7 @@ impl Cli {
 
 #[derive(Debug, Subcommand)]
 enum PublisherSubcommand {
-	/// Manage social publication handoff state.
+	/// Record content evidence and run bounded social publication workflows.
 	Social(Box<SocialCommand>),
 	/// Validate Decodex social candidate, reservation, and post artifacts.
 	ValidateSocial(ValidateSocialCommand),
