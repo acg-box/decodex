@@ -89,13 +89,19 @@ not descendant discovery, is the authority boundary and remains active after an
 environment clear or new session. The marker scan is not retained or logged. The
 watchdog then deletes the capsule. Every state-tool command removes unlocked stale run
 directories before other work. The host proves that the real authentication file
-did not change. The child returns one
-schema-constrained `decodex/codex-upstream-agent-result/2` object. Maintainer output
-is one bounded Git binary patch. The trusted parent verifies the snapshot and patch
-digests, applies the patch to the unchanged candidate with Git's indexed binary
-patch path, permits only regular modes, and authorizes each changed path for the
-candidate kind. Scheduler, GitHub Actions, authentication, landing,
-managed-repository, X execution, schema, and automation-control paths are denied.
+did not change. The child returns one strictly schema-constrained
+`decodex/codex-upstream-agent-wire-result/1` object. The host derives a role- and
+candidate-specific effective schema from the checked-in contract before each
+call. Maintainer output can only be `staged` with no findings and one bounded Git
+binary patch. Reviewer output has no patch and can only accept the current pull
+request, confirm the proposed decision, or request repair. The host validates and
+normalizes the wire object into an attested
+`decodex/codex-upstream-agent-result/2` receipt object. The trusted parent verifies
+the snapshot and patch digests, applies the patch to the unchanged candidate with
+Git's indexed binary patch path, permits only regular modes, and authorizes each
+changed path for the candidate kind. Scheduler, GitHub Actions, authentication,
+landing, managed-repository, X execution, schema, and automation-control paths are
+denied.
 An `automation_repair` can change the effect-free outcome evaluation module
 `upstream_autopilot_lib/effectiveness.py`. A separate retirement-only exception can
 remove exactly one existing active reason literal per patch from the single

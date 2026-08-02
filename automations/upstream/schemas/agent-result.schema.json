@@ -2,32 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
-    "disposition": {
-      "enum": [
-        "staged",
-        "accept",
-        "request_repair",
-        "no_change",
-        "rejected"
-      ],
-      "type": "string"
-    },
-    "finding_codes": {
-      "items": {
-        "maxLength": 64,
-        "pattern": "^[a-z0-9][a-z0-9_]{0,63}$",
-        "type": "string"
-      },
-      "maxItems": 16,
-      "type": "array"
-    },
-    "patch": {
-      "maxLength": 4194304,
-      "type": [
-        "string",
-        "null"
-      ]
-    },
     "role": {
       "enum": [
         "maintainer",
@@ -35,17 +9,52 @@
       ],
       "type": "string"
     },
+    "result": {
+      "additionalProperties": false,
+      "properties": {
+        "disposition": {
+          "enum": [
+            "staged",
+            "accept",
+            "request_repair",
+            "no_change",
+            "rejected"
+          ],
+          "type": "string"
+        },
+        "finding_codes": {
+          "items": {
+            "maxLength": 64,
+            "pattern": "^[a-z0-9][a-z0-9_]{0,63}$",
+            "type": "string"
+          },
+          "maxItems": 16,
+          "type": "array"
+        },
+        "patch": {
+          "maxLength": 4194304,
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "disposition",
+        "finding_codes",
+        "patch"
+      ],
+      "type": "object"
+    },
     "schema": {
-      "const": "decodex/codex-upstream-agent-result/2",
+      "const": "decodex/codex-upstream-agent-wire-result/1",
       "type": "string"
     }
   },
   "required": [
     "schema",
     "role",
-    "disposition",
-    "finding_codes",
-    "patch"
+    "result"
   ],
   "type": "object"
 }
