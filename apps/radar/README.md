@@ -98,12 +98,14 @@ The daily Content Manager can select at most one current queue subject for a
 bounded source-reading pass without a model or network call:
 
 ```sh
-radar review-next
+radar review-next --expected-queue-sha256 <QUEUE_SHA256>
 ```
 
-`review-next` reads only the canonical owner-only queue and committed pair cache.
-Under one cache lock, it validates freshness and all handled-pair state. Handled
-identity is repository, subject kind and id, plus the normalized commit set; a queue
+The preceding successful non-dry-run `refresh-upstream-queue` report supplies
+`QUEUE_SHA256` in its `queue_sha256` field. `review-next` requires that receipt,
+hashes the currently locked queue bytes, and rejects a mismatch before parsing or
+selection. Under the same cache lock, it then validates freshness and all handled-pair
+state. Handled identity is repository, subject kind and id, plus the normalized commit set; a queue
 head change alone does not repeat review. It skips an exact handled identity that
 already has one valid committed pair. It then selects the
 first critical, high, or normal merged or commit-only subject with meaningful surface
@@ -123,11 +125,12 @@ only command
 that can prove those artifacts publish eligible. An empty or ineligible queue
 returns `no_eligible_item` bound to the queue generation.
 
-Queue and release-delta refresh commands always report
-`material_changed`, `written`, and `refreshed_at`. A successful freshness-only
-refresh rewrites `generated_at` and reports `material_changed = false` with
-`written = true`. Comparison and replacement use one lock scope. A refresh with an
-older `generated_at` cannot replace a newer observation.
+Queue and release-delta refresh commands always report `material_changed`, `written`,
+and `refreshed_at`. A queue refresh also reports `queue_sha256`, the SHA-256 of the
+exact canonical queue bytes produced by that refresh. A successful freshness-only
+refresh rewrites `generated_at` and reports `material_changed = false` with `written =
+true`. Comparison and replacement use one lock scope. A refresh with an older
+`generated_at` cannot replace a newer observation.
 
 Radar ledger schema 6 is a clean-start cache contract. Radar rejects older local
 ledger schemas instead of migrating them. First initialization is one

@@ -21,13 +21,13 @@ pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarR
 		let out = crate::absolute_repo_path(&root, &request.queue_out);
 		let refresh = crate::inspect_json_refresh(&out, &build.queue, RefreshKind::Queue)?;
 
-		return Ok(crate::queue_report(&build.queue, refresh, build.ledger_enabled));
+		return crate::queue_report(&build.queue, refresh, build.ledger_enabled);
 	}
 
 	let out = crate::absolute_repo_path(&root, &request.queue_out);
 	let refresh = crate::refresh_json(&out, &build.queue, RefreshKind::Queue)?;
 
-	Ok(crate::queue_report(&build.queue, refresh, build.ledger_enabled))
+	crate::queue_report(&build.queue, refresh, build.ledger_enabled)
 }
 
 /// Validate the requested Radar artifact paths.

@@ -39,7 +39,8 @@ Rust CLI entrypoints:
   `.agent/automations/radar/cache/site-content/release-deltas/openai-codex-latest.json`.
 - `radar content-eligibility` validates one current queue/review/impact handoff before
   downstream content consideration.
-- `radar review-next` skips exact subject lineages with one valid committed pair.
+- `radar review-next --expected-queue-sha256 <SHA256>` binds selection to the exact
+  successful queue refresh receipt and skips exact handled subject lineages.
 - `radar content-pair-commit` validates and atomically commits one staged review and
   impact pair.
 - `radar bundle build` builds deterministic bundles for PR-first and
@@ -111,7 +112,9 @@ writes `.agent/automations/radar/cache/github/review-queue/openai-codex-latest.j
 Codex, make AI judgments, render public signals, or publish social posts.
 The JSON report distinguishes material source/content change from an artifact write.
 A successful freshness-only refresh rewrites `generated_at` and reports
-`material_changed = false`, `written = true`, and the new `refreshed_at`.
+`material_changed = false`, `written = true`, the new `refreshed_at`, and
+`queue_sha256` for the exact canonical queue bytes. Pass that digest to the required
+`review-next --expected-queue-sha256` argument.
 
 Release-delta refresh:
 

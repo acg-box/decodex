@@ -4,7 +4,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 use crate::{RadarContentEligibilityRequest, RadarReviewNextRequest, tests::fixtures};
 
 #[test]
-fn selects_the_highest_priority_subject_deterministically() {
+fn matching_expected_queue_digest_selects_the_highest_priority_subject_deterministically() {
 	let (_temp_dir, cache_root) = fresh_cache();
 	let mut queue = fresh_queue();
 	let mut critical = fixtures::valid_queue_subject();
@@ -18,11 +18,11 @@ fn selects_the_highest_priority_subject_deterministically() {
 	queue["subjects"] = serde_json::json!([fixtures::valid_queue_subject(), critical]);
 	set_counts(&mut queue);
 	write_queue(&cache_root, &queue);
+	let request = request(&cache_root);
+	let expected_queue_sha256 = request.expected_queue_sha256.clone();
 
-	let first =
-		crate::review_next(&request(&cache_root)).expect("the critical subject should be selected");
-	let second =
-		crate::review_next(&request(&cache_root)).expect("selection should be deterministic");
+	let first = crate::review_next(&request).expect("the critical subject should be selected");
+	let second = crate::review_next(&request).expect("selection should be deterministic");
 	let output = serde_json::to_string(&first).expect("report should serialize");
 	let selected = first.selected.as_ref().expect("a subject should be selected");
 
@@ -31,10 +31,24 @@ fn selects_the_highest_priority_subject_deterministically() {
 	assert_eq!(first.status, "needs_source_review");
 	assert_eq!(selected.subject_id, "999");
 	assert_eq!(selected.commit_shas, ["cccccccccccccccccccccccccccccccccccccccc"]);
-	assert_eq!(first.queue_generation.sha256, digest_hex(&pretty_bytes(&queue)));
+	assert_eq!(first.queue_generation.sha256, expected_queue_sha256);
 	assert_eq!(first.source_refs[0].url, "https://github.com/openai/codex/pull/999");
 	assert_eq!(first, second);
 	assert!(first.selection_sha256.is_some());
+	assert_no_authoritative_artifacts(&cache_root);
+}
+
+#[test]
+fn mismatching_expected_queue_digest_fails_before_selection() {
+	let (_temp_dir, cache_root) = fresh_cache();
+
+	write_queue(&cache_root, &fresh_queue());
+	let mut request = request(&cache_root);
+
+	request.expected_queue_sha256 = "0".repeat(64);
+	let error = crate::review_next(&request).expect_err("a mismatched refresh receipt must fail");
+
+	assert!(error.to_string().contains("does not match the refresh receipt"));
 	assert_no_authoritative_artifacts(&cache_root);
 }
 
@@ -222,7 +236,14 @@ fn fresh_queue() -> serde_json::Value {
 }
 
 fn request(cache_root: &std::path::Path) -> RadarReviewNextRequest {
-	RadarReviewNextRequest { cache_root: cache_root.to_path_buf(), max_age_hours: 12 }
+	let queue_raw = std::fs::read(cache_root.join(crate::paths::REVIEW_QUEUE_RELATIVE_PATH))
+		.expect("queue should be readable");
+
+	RadarReviewNextRequest {
+		cache_root: cache_root.to_path_buf(),
+		expected_queue_sha256: digest_hex(&queue_raw),
+		max_age_hours: 12,
+	}
 }
 
 fn write_queue(cache_root: &std::path::Path, queue: &serde_json::Value) {
