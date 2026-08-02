@@ -18,7 +18,7 @@ The command uses one private PostgreSQL 18 cluster. It reports three complete st
    principal. The one configured
    post-migration provisioner owns the final runtime ACL.
 2. It parses and prepares all 30 changed V22/V27/V28 embedded PostgreSQL statements in one Rust process.
-3. It verifies the generated schema and configured-authority digests, including the exact 27
+3. It verifies the generated schema and configured-authority digests, including the exact 28
    migration-owned function sources and 201 final function contracts in `authority.rs`.
 
 The command does not execute the prepared statements.
