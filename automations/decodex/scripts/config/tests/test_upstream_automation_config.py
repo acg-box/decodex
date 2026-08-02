@@ -90,6 +90,13 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 	def test_manifest_is_active_high_local_and_primary_checkout_portable(self) -> None:
 		self.assertEqual(validate_manifest_shape(self.manifest), [])
 		defaults = self.manifest["defaults"]
+		self.assertEqual(
+			defaults["allowed_external_cache_prefixes"],
+			[
+				".agent/automations/decodex/cache",
+				".agent/automations/radar/cache",
+			],
+		)
 		self.assertEqual(defaults["status"], "ACTIVE")
 		self.assertNotIn("model", defaults)
 		self.assertEqual(defaults["reasoning_effort"], "high")
@@ -119,6 +126,42 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 				"codex-upstream-maintainer": "max",
 				"codex-upstream-reviewer": "max",
 				"codex-upstream-health": "high",
+			},
+		)
+
+	def test_upstream_repo_only_audit_passes_for_real_manifest(self) -> None:
+		completed = subprocess.run(
+			[
+				sys.executable,
+				"-I",
+				"-S",
+				str(
+					REPO_ROOT
+					/ "automations/decodex/scripts/config/evaluate_automations.py"
+				),
+				"--manifest",
+				str(self.manifest_path),
+				"--json",
+				"--repo-only",
+			],
+			cwd=REPO_ROOT,
+			check=False,
+			capture_output=True,
+			text=True,
+		)
+
+		self.assertEqual(completed.returncode, 0, completed.stderr or completed.stdout)
+		payload = json.loads(completed.stdout)
+		self.assertEqual(payload["status"], "pass")
+		self.assertEqual(
+			{
+				result["automation_id"]: result["status"]
+				for result in payload["results"]
+			},
+			{
+				"codex-upstream-maintainer": "pass",
+				"codex-upstream-reviewer": "pass",
+				"codex-upstream-health": "pass",
 			},
 		)
 
