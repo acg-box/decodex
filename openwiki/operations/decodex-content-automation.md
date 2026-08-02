@@ -142,10 +142,19 @@ editorial improvement and verifies its later effect.
 
 ## Task Cleanup
 
-The Manager archives completed successful Codex tasks through native task tools.
-A task stays visible when it is active, failed, ambiguous, waiting for a user
-decision, or linked to an unresolved external effect. There is no retention
-receipt, archive queue, or local archive state.
+Each content role archives its current Codex task through native
+`set_thread_archived` only after a terminal successful result and all required
+validation, readback, and report evidence are complete. Successful results are a
+validated candidate or no-op, a quality skip, a no-due result, an exact-readback
+publish, or an observed outcome. The current task ID is implicit; the role does
+not supply another task ID.
+
+A task stays visible for failed validation or checks, missing OAuth or authority,
+an ambiguous external effect, damaged safety state, an unresolved user decision,
+or required work not durably handed off. Manager may enforce the policy for one
+known completed task when bounded exact-task readback is available, but cleanup
+does not depend on a global scan. There is no retention receipt, archive queue,
+or local archive state.
 
 ## Stop Conditions
 

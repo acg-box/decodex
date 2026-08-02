@@ -78,7 +78,7 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("--expected-head-oid", reviewer)
         self.assertIn("merge tree equal to the reviewed head tree", reviewer)
         self.assertIn("set_thread_archived", manager)
-        self.assertIn("failed, active, ambiguous", " ".join(manager.casefold().split()))
+        self.assertIn("Keep the current task visible", manager)
         self.assertIn("CodexRadar", content)
         self.assertIn("secondary editorial", content)
         self.assertIn("decodex/content-evidence/1", content)
@@ -87,6 +87,47 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("observe-due", publisher)
         self.assertIn("refresh-pricing", publisher)
         self.assertIn("Never use browser control", publisher)
+
+    def test_each_role_self_archives_terminal_success_and_keeps_failures_visible(self) -> None:
+        prompts = {item["id"]: " ".join(item["prompt"].split()).casefold() for item in portfolio.rendered_automations()}
+        successful_outcomes = {
+            "codex-upstream-maintainer": ("source-backed no-op", "safely created or updated"),
+            "codex-upstream-reviewer": ("completed review with durable feedback", "signed landed pr"),
+            "codex-upstream-health": ("successful manager audit",),
+            "decodex-content-manager": ("validated content candidate", "validated content no-op"),
+            "decodex-xurl-publisher": (
+                "quality skip",
+                "no-due result",
+                "exact-readback publish",
+                "observed outcome",
+            ),
+        }
+        shared_contract = (
+            "successful terminal outcome",
+            "set_thread_archived",
+            "archived = true",
+            "current codex task",
+            "omit the task/thread id",
+            "only after all required validation, readback, and report evidence is complete",
+            "validation, a test, a check, landing, or definition repair failed",
+            "authority or oauth is missing",
+            "external effect is ambiguous or unknown",
+            "safety state is damaged",
+            "user decision is unresolved",
+            "required action is not durably handed off",
+        )
+        for automation_id, prompt in prompts.items():
+            with self.subTest(automation_id=automation_id):
+                for phrase in (*shared_contract, *successful_outcomes[automation_id]):
+                    self.assertIn(phrase, prompt)
+
+        manager = prompts["codex-upstream-health"]
+        self.assertIn("known completed managed task", manager)
+        self.assertIn("bounded native readback", manager)
+        self.assertIn("do not depend on an unbounded global scan", manager)
+        self.assertNotIn("list_threads", manager)
+        self.assertNotIn("sqlite", manager)
+        self.assertNotIn("database", manager)
 
     def test_advisory_memory_contracts(self) -> None:
         rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
