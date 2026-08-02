@@ -66,8 +66,21 @@ Preflight:
    Run every state-tool command through this launcher. Never invoke the state tool
    with bare `python3` or a user-writable bundled Python.
 7. Set `CARGO_TARGET_DIR="$PWD/target"` and run
-   `cargo build --locked -p decodex-publisher`. Bind
-   `$PWD/target/debug/decodex-publisher` as `<publisher>`.
+   `cargo build --locked -p radar -p decodex-publisher`. Require
+   `$PWD/target/debug/radar` and `$PWD/target/debug/decodex-publisher`. Bind these
+   exact binaries as `<radar>` and `<publisher>`.
+8. The first content-v2 activation after this contract lands must run as one
+   explicit unscheduled Health task with these new binaries, not as any of the five
+   managed scheduler runs. Before the first reset, discover the native automation
+   lifecycle and task readback tools. Set exactly all five managed definitions to
+   `PAUSED` and read back `PAUSED` for every ID. Then require a bounded current task
+   readback to prove that no task launched by any of the five managed definitions
+   is queued or active. The explicit unscheduled Health activation task is not a
+   managed scheduler run. Do not run either reset while any managed definition is
+   not `PAUSED`, any managed task is active, or either readback is unavailable.
+   Keep all five definitions `PAUSED` through both resets and the Radar, Publisher,
+   GC, and social validation below. Only workflow step 5 may restore `ACTIVE`, and
+   only after every activation check succeeds.
 
 Workflow:
 1. Run
@@ -86,7 +99,29 @@ Workflow:
    recovery. Recover expired leases and durable interrupted effects. Preserve a
    canonical handoff receipt while a completed unconsumed agent run can reclaim it
    with the same generation. Never report missing evidence as success.
-3. Before the initial full social-state validation, run exactly one
+3. Before any ordinary Radar or social validation or GC, run exactly one
+   `<publisher> social content-v2-reset` and fully validate its receipt before
+   running exactly one `<radar> content-v2-reset`. These are fixed-root clean-start
+   activation commands; do not pass paths and do not inspect retired artifacts
+   first. On first activation, require the complete quiescence gate in preflight
+   step 8. Publisher must run first so its zero-effect safety preflight completes
+   before Radar can delete evidence. With a valid activation marker present, each
+   command performs marker and fixed-root authority readback only, returns
+   `already_active` with zero counters, and preserves current v2 state without
+   inventorying the collections. Require each stdout to be exactly one JSON
+   object. Require the Radar
+   object to have `schema = "radar_content_v2_reset/v1"`, and the Publisher object
+   to have `schema = "decodex_social_content_v2_reset/v1"`. For each object, require
+   `status` to be `reset` or `already_active`, nonnegative integer
+   `collections_cleared`, `files_removed`, `directories_removed`, and
+   `bytes_removed`, no more than 4,096 files, 8,192 total files plus directories,
+   and 67,108,864 bytes. Also require `collections_cleared <= 4` for Radar and
+   `collections_cleared <= 7` for Publisher. `already_active` must report zero for
+   all four counters. Any command or receipt failure blocks Health success and
+   queues a concrete repair. Repeated operational reset failures must stay visible
+   for Health repair or escalation; never activate schedules around them. Then run
+   `<radar> validate` with no path arguments and require success.
+   Then, before the initial full social-state validation, run exactly one
    `<publisher> social gc`. The command's first mandatory phase recovers any
    durable deletion journal under the social mutation lock before it scans or
    plans new deletion. A missing, malformed, conflicting, or incompletely
@@ -195,7 +230,13 @@ Workflow:
    For any detected drift, run
    `automations/upstream/scripts/run_upstream_autopilot queue-improvement --reason-code live_configuration_drift --json`
    before reconciliation. Require the returned candidate ID, then perform the
-   native reconciliation and readback.
+   native reconciliation and readback. During first activation, recheck that all
+   five definitions are still `PAUSED` and no managed task is active immediately
+   before reconciliation. Restore the desired `ACTIVE` status only after the new
+   binary reset receipts, `<radar> validate`, social GC, and
+   `<publisher> validate-social` have all succeeded. This step is the final
+   activation owner; Content Manager and Publisher must never perform the initial
+   transition. Read back `ACTIVE` for all five exact IDs.
 6. Run both audits again with `--scope live`. Require all five managed definitions
    to match source. Do not list, mutate, or report unrelated scheduler definitions.
 7. Run `observe --json`. If step 4 returned `pending_observation`, rerun

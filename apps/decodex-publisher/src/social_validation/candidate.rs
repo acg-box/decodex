@@ -173,6 +173,44 @@ fn validate_social_candidate_source_refs(refs: Option<&Value>, errors: &mut Vec<
 			errors,
 		);
 	}
+	validate_upstream_pair_paths(refs, errors);
+}
+
+fn validate_upstream_pair_paths(refs: &Map<String, Value>, errors: &mut Vec<String>) {
+	let reviews = refs.get("upstream_reviews").and_then(Value::as_array);
+	let impacts = refs.get("upstream_impacts").and_then(Value::as_array);
+	let has_pair_ref = reviews.is_some_and(|values| !values.is_empty())
+		|| impacts.is_some_and(|values| !values.is_empty());
+	if !has_pair_ref {
+		return;
+	}
+	let review_pair = reviews
+		.filter(|values| values.len() == 1)
+		.and_then(|values| values[0].as_str())
+		.and_then(|value| normalized_radar_pair_path(value, "review.json"));
+	let impact_pair = impacts
+		.filter(|values| values.len() == 1)
+		.and_then(|values| values[0].as_str())
+		.and_then(|value| normalized_radar_pair_path(value, "impact.json"));
+
+	if review_pair.is_none() {
+		errors.push(
+			"source_refs.upstream_reviews must contain one strict fresh Radar pair review path"
+				.into(),
+		);
+	}
+	if impact_pair.is_none() {
+		errors.push(
+			"source_refs.upstream_impacts must contain one strict fresh Radar pair impact path"
+				.into(),
+		);
+	}
+	if review_pair.is_some() && impact_pair.is_some() && review_pair != impact_pair {
+		errors.push(
+			"source_refs upstream review and impact must share one strict fresh Radar pair directory"
+				.into(),
+		);
+	}
 }
 
 fn validate_radar_eligibility_contract(
@@ -286,10 +324,10 @@ fn validate_radar_source_contract(
 		&["impact", "queue", "review"],
 		errors,
 	);
-	if !radar_refs.get("queue").and_then(Value::as_str).is_some_and(|value| {
-		normalized_radar_path(value, ".agent/automations/radar/cache/github/review-queue")
-	}) {
-		errors.push("radar_source_refs.queue must be a canonical private Radar JSON path".into());
+	if !radar_refs.get("queue").and_then(Value::as_str).is_some_and(normalized_radar_queue_path) {
+		errors.push(
+			"radar_source_refs.queue must be the exact canonical private Radar queue path".into(),
+		);
 	}
 	let review_pair = radar_refs
 		.get("review")
@@ -463,26 +501,24 @@ fn validate_text_segments(entry: &Map<String, Value>, publish: bool, errors: &mu
 	}
 }
 
-fn normalized_radar_path(value: &str, prefix: &str) -> bool {
+fn normalized_radar_queue_path(value: &str) -> bool {
 	let path = Path::new(value);
 	let normalized = !path.is_absolute()
-		&& path.extension().and_then(|extension| extension.to_str()) == Some("json")
 		&& path.components().all(|component| matches!(component, Component::Normal(_)));
 	if !normalized {
 		return false;
 	}
-	if path.starts_with(prefix) {
+	if path
+		== Path::new(".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json")
+	{
 		return true;
 	}
 	#[cfg(test)]
 	{
-		let expected_collection = Path::new(prefix).file_name().and_then(|value| value.to_str());
 		let parts = path.iter().filter_map(|part| part.to_str()).collect::<Vec<_>>();
+		let suffix = ["github", "review-queue", "openai-codex-latest.json"];
 
-		path.starts_with("target")
-			&& parts.windows(2).any(|parts| {
-				parts.first() == Some(&"github") && parts.get(1).copied() == expected_collection
-			})
+		path.starts_with("target") && parts.ends_with(&suffix)
 	}
 	#[cfg(not(test))]
 	false
@@ -516,12 +552,14 @@ fn normalized_radar_pair_path(value: &str, expected_file: &str) -> Option<String
 		return None;
 	}
 	let pair = parts[pair_index];
-	let (run_id, digest) = pair.rsplit_once("--")?;
-	if run_id.is_empty()
-		|| run_id.chars().count() > 64
-		|| !run_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-		|| digest.len() != 64
-		|| !digest.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+	let mut pair_parts = pair.split("--");
+	let run_id = pair_parts.next().unwrap_or_default();
+	let staging_sha256 = pair_parts.next().unwrap_or_default();
+	let pair_sha256 = pair_parts.next().unwrap_or_default();
+	if pair_parts.next().is_some()
+		|| !crate::social_publish::valid_run_id(run_id)
+		|| !valid_sha256(staging_sha256)
+		|| !valid_sha256(pair_sha256)
 	{
 		return None;
 	}

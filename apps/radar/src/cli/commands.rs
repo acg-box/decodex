@@ -11,7 +11,7 @@ use clap::Subcommand;
 use crate::{
 	cli::commands::{
 		bundle::RadarBundleCommand,
-		cache::RadarCacheGcCommand,
+		cache::{RadarCacheGcCommand, RadarContentV2ResetCommand},
 		content::{
 			RadarContentEligibilityCommand, RadarContentPairCommitCommand, RadarReviewNextCommand,
 		},
@@ -32,6 +32,8 @@ pub(super) enum RadarSubcommand {
 	Validate(RadarValidateCommand),
 	/// Apply deterministic retention to the owner-only local Radar cache.
 	CacheGc(RadarCacheGcCommand),
+	/// Perform the one-time clean-start reset for content-review v2 state.
+	ContentV2Reset(RadarContentV2ResetCommand),
 	/// Prove one reviewed queue subject is eligible for content consideration.
 	ContentEligibility(RadarContentEligibilityCommand),
 	/// Atomically commit one staged source-backed review and impact pair.
@@ -56,6 +58,7 @@ impl RadarSubcommand {
 		match self {
 			Self::Validate(args) => args.run(),
 			Self::CacheGc(args) => args.run(),
+			Self::ContentV2Reset(args) => args.run(),
 			Self::ContentEligibility(args) => args.run(),
 			Self::ContentPairCommit(args) => args.run(),
 			Self::ReviewNext(args) => args.run(),

@@ -1,4 +1,12 @@
-use std::{fs, io::Write as _};
+use std::{
+	ffi::CString,
+	fs::{self, FileTimes},
+	io::Write as _,
+	os::unix::{ffi::OsStrExt as _, fs::MetadataExt as _},
+	sync::mpsc,
+	thread,
+	time::{Duration, SystemTime},
+};
 
 use sha2::{Digest as _, Sha256};
 
@@ -57,6 +65,50 @@ fn proves_production_cache_inputs_share_one_locked_snapshot() {
 
 	assert_eq!(report.repo, "openai/codex");
 	assert_eq!(report.lineage_sha256.len(), 64);
+}
+
+#[test]
+fn rejects_a_replayed_queue_at_an_alternate_private_path() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let (mut request, queue_path, _, _) = write_fresh_private_artifacts(temp_dir.path());
+	let alternate = queue_path.with_file_name("replayed.json");
+	let bytes = fs::read(&queue_path).expect("canonical queue fixture");
+	crate::write_private_file_atomic(&alternate, &bytes).expect("alternate queue fixture");
+	request.queue = alternate;
+
+	let error = crate::content_eligibility(&request)
+		.expect_err("an alternate queue path must not carry eligibility authority");
+	assert!(error.to_string().contains("github/review-queue/openai-codex-latest.json"));
+}
+
+#[test]
+fn private_eligibility_rejects_retired_pair_paths_and_stale_pair_digests() {
+	for case in ["retired-two-part", "stale-pair-digest"] {
+		let temp_dir = crate::test_support::private_tempdir();
+		let (mut request, _, review_path, impact_path) =
+			write_fresh_private_artifacts(temp_dir.path());
+		let pair = review_path.parent().expect("pair directory");
+		let base = pair.parent().expect("pair collection");
+		let run = "019fa400-0000-7000-8000-000000000001";
+		let replacement_name = match case {
+			"retired-two-part" => format!("{run}--{}", "a".repeat(64)),
+			"stale-pair-digest" => format!("{run}--{}--{}", "a".repeat(64), "0".repeat(64)),
+			_ => unreachable!(),
+		};
+		let replacement = base.join(replacement_name);
+
+		fs::rename(pair, &replacement).expect("pair directory should be renamed");
+		request.review = replacement.join("review.json");
+		request.impact = replacement.join("impact.json");
+		let error = crate::content_eligibility(&request)
+			.expect_err("private eligibility must reject a non-authoritative pair path");
+
+		assert!(
+			error.to_string().contains("directory") || error.to_string().contains("digest"),
+			"{case}: {error:?}"
+		);
+		assert!(!impact_path.exists());
+	}
 }
 
 #[test]
@@ -265,7 +317,7 @@ fn regular_content_read_stops_at_the_bound_when_the_file_grows_after_metadata() 
 	fs::write(&path, b"1234").expect("fixture should be written");
 	let append_path = path.clone();
 	let error =
-		crate::content_eligibility::read_regular_file_bounded_after_metadata(&path, 4, move || {
+		crate::read_regular_file_bounded_with(&path, 4, "content eligibility input", move || {
 			let mut file = fs::OpenOptions::new()
 				.append(true)
 				.open(append_path)
@@ -279,6 +331,103 @@ fn regular_content_read_stops_at_the_bound_when_the_file_grows_after_metadata() 
 	assert!(error.to_string().contains("bounded read limit"));
 }
 
+#[test]
+fn regular_content_read_rejects_a_symlink_and_an_initially_oversized_file() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let target = temp_dir.path().join("target.json");
+	let symlink = temp_dir.path().join("symlink.json");
+	let oversized = temp_dir.path().join("oversized.json");
+
+	fs::write(&target, b"1234").expect("target fixture should be written");
+	std::os::unix::fs::symlink(&target, &symlink).expect("symlink fixture should be created");
+	fs::write(&oversized, b"12345").expect("oversized fixture should be written");
+
+	let symlink_error = crate::read_regular_file_bounded(&symlink, 4, "content eligibility input")
+		.expect_err("a symlink must fail no-follow validation");
+	let oversized_error =
+		crate::read_regular_file_bounded(&oversized, 4, "content eligibility input")
+			.expect_err("an initially oversized file must fail before allocation");
+
+	assert!(symlink_error.to_string().contains("regular non-symlink"));
+	assert!(oversized_error.to_string().contains("bounded read limit"));
+}
+
+#[test]
+fn regular_content_read_rejects_a_fifo_without_blocking() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let path = temp_dir.path().join("artifact.fifo");
+	let fifo = CString::new(path.as_os_str().as_bytes()).expect("FIFO path should not contain NUL");
+
+	assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0, "FIFO should be created");
+	let (sender, receiver) = mpsc::channel();
+	let reader = thread::spawn(move || {
+		let result = crate::read_regular_file_bounded(&path, 4, "content eligibility input");
+
+		sender.send(result).expect("FIFO read result should be observed");
+	});
+	let result = receiver
+		.recv_timeout(Duration::from_secs(2))
+		.expect("external FIFO bounded read must not wait for a writer");
+
+	reader.join().expect("FIFO reader thread should finish");
+	let error = result.expect_err("a FIFO must fail regular-file validation");
+
+	assert!(error.to_string().contains("regular non-symlink"));
+}
+
+#[test]
+fn regular_content_read_rejects_path_replacement_during_read() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let path = temp_dir.path().join("artifact.json");
+	let displaced = temp_dir.path().join("displaced.json");
+
+	fs::write(&path, b"1234").expect("fixture should be written");
+	let replacement_path = path.clone();
+	let error =
+		crate::read_regular_file_bounded_with(&path, 4, "content eligibility input", move || {
+			fs::rename(&replacement_path, &displaced).expect("fixture should be displaced");
+			fs::write(&replacement_path, b"1234").expect("replacement should be written");
+		})
+		.expect_err("a pathname replacement must fail identity revalidation");
+
+	assert!(error.to_string().contains("identity changed during read"));
+}
+
+#[test]
+fn regular_content_read_detects_an_mtime_preserving_in_place_rewrite() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let path = temp_dir.path().join("artifact.json");
+	let modified = SystemTime::now() - Duration::from_secs(60);
+
+	fs::write(&path, b"1234").expect("fixture should be written");
+	let file = fs::OpenOptions::new().write(true).open(&path).expect("fixture should reopen");
+
+	file.set_times(FileTimes::new().set_modified(modified)).expect("fixture mtime should be set");
+	let initial = fs::metadata(&path).expect("initial metadata should be readable");
+	let initial_ctime = (initial.ctime(), initial.ctime_nsec());
+	let rewrite_path = path.clone();
+	let error =
+		crate::read_regular_file_bounded_with(&path, 4, "content eligibility input", move || {
+			thread::sleep(Duration::from_millis(10));
+			let mut file = fs::OpenOptions::new()
+				.write(true)
+				.truncate(true)
+				.open(&rewrite_path)
+				.expect("fixture should reopen in place");
+
+			file.write_all(b"5678").expect("replacement bytes should be written");
+			file.sync_all().expect("replacement bytes should be visible");
+			file.set_times(FileTimes::new().set_modified(modified))
+				.expect("fixture mtime should be restored");
+			let changed = file.metadata().expect("changed metadata should be readable");
+
+			assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
+		})
+		.expect_err("ctime must detect same-inode, same-size, mtime-preserving rewrites");
+
+	assert!(error.to_string().contains("identity changed during read"));
+}
+
 fn write_fresh_artifacts(
 	root: &std::path::Path,
 ) -> (RadarContentEligibilityRequest, std::path::PathBuf, std::path::PathBuf, std::path::PathBuf) {
@@ -286,13 +435,15 @@ fn write_fresh_artifacts(
 	let mut queue = fixtures::valid_review_queue();
 	let mut review = fixtures::valid_upstream_review();
 	let mut impact = fixtures::valid_upstream_impact();
-	let queue_path = root.join("queue.json");
+	let queue_path = root.join(crate::paths::REVIEW_QUEUE_RELATIVE_PATH);
 	let review_path = root.join("review.json");
 	let impact_path = root.join("impact.json");
 
 	queue["generated_at"] = serde_json::json!(timestamp);
 	review["reviewed_at"] = serde_json::json!(timestamp);
 	impact["reviewed_at"] = serde_json::json!(timestamp);
+	fs::create_dir_all(queue_path.parent().expect("queue parent"))
+		.expect("queue parent should be created");
 	fs::write(&queue_path, queue.to_string()).expect("queue should be written");
 	let review_raw = review.to_string();
 	let review_digest = digest_hex(review_raw.as_bytes());
@@ -323,20 +474,25 @@ fn write_fresh_private_artifacts(
 	let mut impact = fixtures::valid_upstream_impact();
 	let cache = root.join(crate::DEFAULT_CACHE_ROOT);
 	let queue_path = cache.join("github/review-queue/openai-codex-latest.json");
-	let pair = cache.join(
-		"github/content-review-pairs/fixture--\
-		 aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-	);
-	let review_path = pair.join("review.json");
-	let impact_path = pair.join("impact.json");
 
 	queue["generated_at"] = serde_json::json!(timestamp);
 	review["reviewed_at"] = serde_json::json!(timestamp);
 	impact["reviewed_at"] = serde_json::json!(timestamp);
 	crate::write_json(&queue_path, &queue).expect("private queue should be written");
-	crate::write_json(&review_path, &review).expect("private review should be written");
-	set_review_digest(&mut impact, &review_path);
-	crate::write_json(&impact_path, &impact).expect("private impact should be written");
+	let review_raw = pretty_bytes(&review);
+	impact["review_lineage"]["artifact_sha256"] = serde_json::json!(digest_hex(&review_raw));
+	let impact_raw = pretty_bytes(&impact);
+	let pair_digest = content_pair_digest(&review_raw, &impact_raw);
+	let pair = cache.join(format!(
+		"github/content-review-pairs/019fa400-0000-7000-8000-000000000001--{}--{pair_digest}",
+		"a".repeat(64)
+	));
+	let review_path = pair.join("review.json");
+	let impact_path = pair.join("impact.json");
+	crate::write_private_file_atomic(&review_path, &review_raw)
+		.expect("private review should be written");
+	crate::write_private_file_atomic(&impact_path, &impact_raw)
+		.expect("private impact should be written");
 
 	(
 		RadarContentEligibilityRequest {
@@ -349,6 +505,24 @@ fn write_fresh_private_artifacts(
 		review_path,
 		impact_path,
 	)
+}
+
+fn pretty_bytes(value: &serde_json::Value) -> Vec<u8> {
+	let mut bytes = serde_json::to_vec_pretty(value).expect("fixture should serialize");
+	bytes.push(b'\n');
+	bytes
+}
+
+fn content_pair_digest(review: &[u8], impact: &[u8]) -> String {
+	let mut digest = Sha256::new();
+
+	digest.update(b"radar-content-review-pair-v1");
+	for payload in [review, impact] {
+		digest.update(u64::try_from(payload.len()).expect("fixture length").to_be_bytes());
+		digest.update(payload);
+	}
+
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 fn digest_hex(payload: &[u8]) -> String {

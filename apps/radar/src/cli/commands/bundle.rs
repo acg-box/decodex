@@ -37,7 +37,7 @@ struct RadarBundleBuildCommand {
 }
 impl RadarBundleBuildCommand {
 	fn run(&self) -> Result<()> {
-		let out = crate::build_bundle(&RadarBundleBuildRequest {
+		let receipt = crate::build_bundle(&RadarBundleBuildRequest {
 			repo: self.repo.clone(),
 			pr: self.pr,
 			commit: self.commit.clone(),
@@ -47,7 +47,7 @@ impl RadarBundleBuildCommand {
 			notes: self.notes.clone(),
 		})?;
 
-		println!("{}", out.display());
+		println!("{}", serde_json::to_string_pretty(&receipt)?);
 
 		Ok(())
 	}

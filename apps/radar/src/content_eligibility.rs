@@ -1,9 +1,4 @@
-use std::{
-	fs::OpenOptions,
-	io::Read as _,
-	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _},
-	path::Path,
-};
+use std::path::Path;
 
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -175,6 +170,7 @@ pub(crate) fn validate_content_pair_raw(
 		crate::required_string(impact, "public_signal_decision", "upstream impact decision")?;
 	let publisher_angle =
 		crate::required_string(impact, "publisher_angle", "upstream impact publisher angle")?;
+	validate_decision_angle(public_signal_decision, publisher_angle)?;
 
 	Ok(ValidatedContentPair {
 		repo: repo.to_owned(),
@@ -287,71 +283,52 @@ fn read_content_artifacts(request: &RadarContentEligibilityRequest) -> Result<Ve
 	let private_count = paths.iter().filter(|path| crate::is_radar_cache_path(path)).count();
 
 	if private_count == paths.len() {
-		return crate::read_private_files(&paths);
+		let cache_root = crate::private_fs::private_cache_root_path(paths[0])?;
+		let cache = crate::private_fs::PrivateCache::open_existing(&cache_root)?;
+		let lock = cache.lock()?;
+		let queue = lock.relative_path(paths[0])?;
+		if queue != Path::new(crate::paths::REVIEW_QUEUE_RELATIVE_PATH) {
+			eyre::bail!(
+				"content eligibility queue must be github/review-queue/openai-codex-latest.json"
+			);
+		}
+		let review = lock.relative_path(paths[1])?;
+		let impact = lock.relative_path(paths[2])?;
+		let queue_raw = lock.read(&queue)?;
+		let (review_raw, impact_raw) =
+			crate::content_pair::read_private_eligibility_pair(&lock, &review, &impact)?;
+
+		return Ok(vec![queue_raw, review_raw, impact_raw]);
 	}
 	if private_count != 0 {
 		eyre::bail!(
 			"content eligibility inputs must all share one Radar cache root or all be external"
 		);
 	}
+	if !paths[0].ends_with(crate::paths::REVIEW_QUEUE_RELATIVE_PATH) {
+		eyre::bail!(
+			"content eligibility queue must be github/review-queue/openai-codex-latest.json"
+		);
+	}
 
 	paths.iter().map(|path| read_regular_file(path)).collect()
 }
 
+pub(crate) fn validate_decision_angle(decision: &str, publisher_angle: &str) -> Result<()> {
+	match decision {
+		"publish" if publisher_angle == "none" => {
+			eyre::bail!("publish decision requires publisher_angle other than none")
+		},
+		"defer" | "skip" if publisher_angle != "none" => {
+			eyre::bail!("defer or skip decision requires publisher_angle none")
+		},
+		"publish" | "defer" | "skip" => Ok(()),
+		_ => eyre::bail!("upstream impact public_signal_decision is unsupported"),
+	}
+}
+
 fn read_regular_file(path: &Path) -> Result<Vec<u8>> {
-	read_regular_file_bounded_with(path, MAX_CONTENT_ARTIFACT_BYTES, || {})
-}
-
-fn read_regular_file_bounded_with(
-	path: &Path,
-	max_bytes: u64,
-	after_metadata: impl FnOnce(),
-) -> Result<Vec<u8>> {
-	let mut file = OpenOptions::new()
-		.read(true)
-		.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-		.open(path)?;
-	let initial = file.metadata()?;
-
-	if !initial.is_file() {
-		eyre::bail!("content eligibility input must be a regular non-symlink file");
-	}
-	if initial.len() > max_bytes {
-		eyre::bail!("content eligibility input exceeds the bounded read limit");
-	}
-	after_metadata();
-
-	let mut payload = Vec::with_capacity(initial.len() as usize);
-	let read_limit = max_bytes
-		.checked_add(1)
-		.ok_or_else(|| eyre::eyre!("content eligibility read limit is too large"))?;
-
-	file.by_ref().take(read_limit).read_to_end(&mut payload)?;
-	if u64::try_from(payload.len()).unwrap_or(u64::MAX) > max_bytes {
-		eyre::bail!("content eligibility input exceeds the bounded read limit");
-	}
-	let final_metadata = file.metadata()?;
-	if (initial.dev(), initial.ino(), initial.mtime(), initial.mtime_nsec(), initial.len())
-		!= (
-			final_metadata.dev(),
-			final_metadata.ino(),
-			final_metadata.mtime(),
-			final_metadata.mtime_nsec(),
-			final_metadata.len(),
-		) {
-		eyre::bail!("content eligibility input identity changed during read");
-	}
-
-	Ok(payload)
-}
-
-#[cfg(test)]
-pub(crate) fn read_regular_file_bounded_after_metadata(
-	path: &Path,
-	max_bytes: u64,
-	after_metadata: impl FnOnce(),
-) -> Result<Vec<u8>> {
-	read_regular_file_bounded_with(path, max_bytes, after_metadata)
+	crate::read_regular_file_bounded(path, MAX_CONTENT_ARTIFACT_BYTES, "content eligibility input")
 }
 
 fn parse_artifact(label: &str, payload: &[u8]) -> Result<Value> {
