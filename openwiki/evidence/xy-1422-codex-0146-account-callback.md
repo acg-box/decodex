@@ -12,7 +12,7 @@ observed upstream head is byte-identical to the release.
 | Fact | Accepted value |
 | --- | --- |
 | Upstream repository | `openai/codex` |
-| Observed upstream head | [`9949245d1d2b4a39a6f1841922322f767fa146ad`](https://github.com/openai/codex/commit/9949245d1d2b4a39a6f1841922322f767fa146ad) |
+| Observed upstream head | [`5157493c23713ac12034cf250ffb0a8ce0670277`](https://github.com/openai/codex/commit/5157493c23713ac12034cf250ffb0a8ce0670277) |
 | Release | [`rust-v0.146.0-alpha.9.2`](https://github.com/openai/codex/releases/tag/rust-v0.146.0-alpha.9.2) |
 | Release publication time | `2026-07-29T23:53:10Z` |
 | Platform | macOS arm64 |
@@ -26,6 +26,14 @@ observed upstream head is byte-identical to the release.
 | Unsigned payload SHA-256 | `eca7b04fcad0d9102eae75dc3cb74974c096cc394df65a1bab9a68343ccecfeb` |
 | Code-signing team | `2DC432GLL2` |
 | Installed signing timestamp | 2026-07-31 |
+
+The reviewed range from `9949245d1d2b4a39a6f1841922322f767fa146ad` through the observed head contains
+one protocol change. It adds an optional `onboardingEntrypoint` field to the
+`account/login/completed` notification. Decodex does not consume that notification, and the field
+is not present in the generated schema of the installed image accepted by this receipt. No current
+runtime behavior changes. A future installed image with the upstream field will change the pinned
+`ServerNotification.json` and aggregate schema digests, so the exact-image gate will reject that
+image until a separate adaptation accepts it.
 
 The GitHub release executable and the installed executable have different full-file SHA-256
 values. Both have the same Mach-O UUID. After signatures were removed from private copies, the
