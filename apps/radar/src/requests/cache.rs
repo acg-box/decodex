@@ -49,18 +49,3 @@ pub(crate) struct RadarCacheGcReport {
 	pub(crate) files_removed: usize,
 	pub(crate) ledger_rows_removed: usize,
 }
-
-#[derive(Debug)]
-pub(crate) struct RadarContentV2ResetRequest {
-	pub(crate) cache_root: PathBuf,
-}
-
-#[derive(Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct RadarContentV2ResetReport {
-	pub(crate) schema: String,
-	pub(crate) status: String,
-	pub(crate) collections_cleared: usize,
-	pub(crate) files_removed: usize,
-	pub(crate) directories_removed: usize,
-	pub(crate) bytes_removed: u64,
-}

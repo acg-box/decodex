@@ -7,12 +7,6 @@ from contract_support.basic import validate_analysis_draft, validate_bundle, val
 from contract_support.constants import (
     ANALYSIS_MODES,
     BUNDLE_SCHEMA,
-    CODEX_COMPATIBILITY_STATUSES,
-    CODEX_TARGET_CHANNELS,
-    CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA,
-    CONTROL_PLANE_UPGRADE_IMPACTS,
-    CONTROL_PLANE_UPGRADE_PATHS,
-    CONTROL_PLANE_UPGRADE_STATUSES,
     FLAG_RE,
     GENERIC_COMMIT_TITLES,
     ISSUE_REF_RE,
@@ -30,7 +24,6 @@ from contract_support.constants import (
     UPSTREAM_SOURCE_STATES,
     UPSTREAM_SUBJECT_KINDS,
 )
-from contract_support.control_plane import validate_control_plane_upgrade_candidate
 from contract_support.core import (
     ValidationResult,
     collect_flags,
@@ -47,12 +40,6 @@ from contract_support.upstream import validate_upstream_review, validate_upstrea
 __all__ = [
     "ANALYSIS_MODES",
     "BUNDLE_SCHEMA",
-    "CODEX_COMPATIBILITY_STATUSES",
-    "CODEX_TARGET_CHANNELS",
-    "CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA",
-    "CONTROL_PLANE_UPGRADE_IMPACTS",
-    "CONTROL_PLANE_UPGRADE_PATHS",
-    "CONTROL_PLANE_UPGRADE_STATUSES",
     "FLAG_RE",
     "GENERIC_COMMIT_TITLES",
     "ISSUE_REF_RE",
@@ -79,7 +66,6 @@ __all__ = [
     "utc_now_iso",
     "validate_analysis_draft",
     "validate_bundle",
-    "validate_control_plane_upgrade_candidate",
     "validate_release_delta",
     "validate_signal",
     "validate_upstream_review",

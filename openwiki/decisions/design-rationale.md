@@ -134,47 +134,34 @@ Current shape:
 
 Do not add login, personalized views, live daemon queries, paid/private access, or public runtime mutation to `site/` without a new accepted decision and an explicit backend/security design.
 
-## Radar upstream redesign
+## Agent-led automation
 
-Radar replaced signal-first upstream tracking with an upstream-review pipeline so the same source-backed evidence can support public publishing and Decodex control-plane compatibility work.
-
-Why:
-
-- Sparse release notes and title-score skipping are not enough for compatibility decisions.
-- GitHub Actions can deterministically refresh metadata, queues, release deltas, bundles, validation, and ledgers, but AI editorial judgment belongs in local Codex automation where model access and operator context are managed.
-- Public signals and control-plane upgrades should share the same reviewed upstream impact conclusion instead of independently reinterpreting source material.
-
-Current shape:
-
-- Radar builds `upstream_review_queue/v1` artifacts from recent upstream commits and PRs, records ledger state, and skips subjects already represented by published signals (`apps/radar/src/review_queue.rs`).
-- Artifact validation recognizes bundles, upstream reviews, upstream impacts, release deltas, signal entries, and control-plane upgrade candidates (`apps/radar/src/lib.rs`, `apps/radar/src/artifact_validation/`).
-- Control-plane upgrade candidates must reference the shared `upstream_impact/v1` handoff and include affected surfaces, validation gates, authority, and stop conditions (`apps/radar/src/artifact_validation/upstream/control_plane_upgrade.rs`).
-
-Do not let Radar review output directly mutate Decodex runtime state, create Linear issues, publish social content, or claim shipped behavior. It produces evidence and candidates that downstream authority surfaces must accept.
-
-## Radar, Control Plane, and Publisher handoff
-
-Decodex should be described as one product with three capability areas: Radar for upstream intelligence, Control Plane for repo-native retained orchestration, and Publisher for public/static/social publication surfaces.
+The five Codex tasks use capable agents for research, diagnosis, planning,
+implementation, review, writing, and iteration. Standard GitHub and native Codex task
+state replace repository-owned orchestration state.
 
 Why:
 
-- The old A/B labels were useful during discussion but not durable product language.
-- Radar can detect upstream Codex implications before they are public content or engineering work.
-- Publisher should turn Radar evidence into practical, evidence-backed external angles without coupling the public site to the runtime.
-- Control Plane remains the local execution authority even when Radar evidence suggests a Decodex improvement.
+- Upstream and editorial decisions need current context and engineering judgment.
+- A script that selects work, routes repairs, or decomposes analysis duplicates the
+  agent and creates stale state.
+- Deterministic code remains valuable at irreversible boundaries such as signed Git
+  history, X writes, budget enforcement, and exact readback.
 
 Current shape:
 
-- Radar owns upstream review queues, release deltas, artifact validation, signals, ledgers, bundles, and control-plane upgrade candidates (`apps/radar/src/lib.rs`).
-- Control Plane owns registered projects, app-server integration, tracker writes, local runtime state, operator status, review handoff, landing, closeout, cleanup, and recovery (`apps/decodex/src/cli.rs`, `apps/decodex/src/orchestrator/`).
-- Publisher owns social candidates, reservations, posts, outcomes, strategy validation,
-  xurl usage attempts, and idempotency, cost, or daily-cap checks
-  (`apps/decodex-publisher/src/lib.rs`,
-  `apps/decodex-publisher/src/social_publish.rs`,
-  `apps/decodex-publisher/src/social_validation.rs`).
-- The static site consumes reviewed product content and build assets, not live runtime state (`site/README.md`).
+- Maintainer and Reviewer use GitHub PRs, refs, signed `decodex commit` commits, and
+  exact `decodex land` merge readback.
+- Manager audits the exact-five native portfolio and archives only successful completed
+  tasks through native task tools.
+- Content Manager records one direct source-backed candidate or no-op.
+- Publisher owns xurl identity, daily and monthly limits, uncertain writes, and outcome
+  reads.
+- Radar remains optional research and static-signal tooling. It has no mutation or
+  content-handoff authority.
 
-Do not describe Radar artifacts as execution authority, Publisher content as shipped runtime proof, or the static site as a live control-plane surface.
+Do not add a candidate queue, lease, handoff, repair router, content review ceremony,
+or migration reader around these agents.
 
 ## Radar local cache retention
 

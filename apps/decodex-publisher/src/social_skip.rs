@@ -41,11 +41,16 @@ pub(crate) fn terminalize_social_skip(
 		.get("decision")
 		.and_then(Value::as_object)
 		.ok_or_else(|| eyre::eyre!("candidate decision is required"))?;
-	if decision.get("worthiness").and_then(Value::as_str) != Some("skip") {
-		return Err(eyre::eyre!("candidate decision.worthiness must be skip"));
+	if !matches!(decision.get("worthiness").and_then(Value::as_str), Some("no_op" | "publish")) {
+		return Err(eyre::eyre!("candidate decision.worthiness must be no_op or publish"));
 	}
 	let idempotency_key = required_string(decision.get("idempotency_key"), "idempotency_key")?;
-	let reason = required_string(decision.get("reason"), "reason")?;
+	let reason = request
+		.reason
+		.as_deref()
+		.filter(|reason| !reason.trim().is_empty())
+		.or_else(|| decision.get("reason").and_then(Value::as_str))
+		.ok_or_else(|| eyre::eyre!("reason is required"))?;
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
 	let output_path = posts_dir

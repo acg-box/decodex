@@ -12,8 +12,10 @@ use super::{
 	ledger,
 	model::{
 		ATTEMPT_SCHEMA, AUTOMATION_ID, CREATE_COST_MICROUSD, IDENTITY_READ_COST_MICROUSD,
+		IDENTITY_RECOVERY_EXHAUSTED_STATUS, MAX_IDENTITY_RECOVERY_CALLS, NO_CREATE_RELEASED_STATUS,
 		NORMAL_PUBLICATION_COST_MICROUSD, PUBLICATION_LINEAGE_BUDGET_MICROUSD, READ_COST_MICROUSD,
-		TARGET_ACCOUNT, VerifiedXurlPost, XURL_APP, XurlAttempt, XurlCall,
+		READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, VerifiedXurlPost, XURL_APP, XurlAttempt,
+		XurlCall,
 	},
 	pricing, runtime,
 };
@@ -36,6 +38,7 @@ struct PublishContext {
 	attempt_path: PathBuf,
 	idempotency_key: String,
 	publication_lineage_sha256: String,
+	reservation_day: String,
 	billing_month: String,
 	xurl_version: String,
 	authorization_contract_sha256: String,
@@ -56,6 +59,14 @@ struct PublicationRecovery<'a> {
 	synthetic_request: &'a SocialPublishXurlRequest,
 }
 
+struct PreparedPublicationRecovery {
+	context: PublishContext,
+	reservation: Value,
+	candidate: Value,
+	synthetic_request: SocialPublishXurlRequest,
+	attempt: XurlAttempt,
+}
+
 struct PreparedPostRead<'a> {
 	post_id: String,
 	user_id: String,
@@ -63,6 +74,30 @@ struct PreparedPostRead<'a> {
 	operation: &'static str,
 	billing_month: Option<String>,
 	reserve_additional: bool,
+}
+
+enum IdentityRecoveryPreparation {
+	Retry(String),
+	Exhausted,
+}
+
+enum PostReadPreparation<'a> {
+	Ready(PreparedPostRead<'a>),
+	Exhausted,
+}
+
+const NO_CREATE_RELEASE_REASON: &str = "Publication reservation recovered before any create call.";
+const IDENTITY_RECOVERED_RELEASE_REASON: &str =
+	"Identity recovery completed without a create call.";
+const IDENTITY_EXHAUSTED_RELEASE_REASON: &str =
+	"Identity recovery was exhausted without a create call.";
+const READ_EXHAUSTED_RELEASE_REASON: &str =
+	"Post read recovery was exhausted after one durable create call.";
+
+#[cfg(test)]
+std::thread_local! {
+	static INTERRUPT_IDENTITY_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+	static INTERRUPT_RESERVED_ATTEMPT: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 pub(super) fn run(
@@ -77,17 +112,33 @@ pub(super) fn run_without_pricing_for_test(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &runtime::TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
-	run_with_pricing_check(request, xurl_binary, |_| Ok(()))
+	let posted_at = OffsetDateTime::parse(&request.posted_at, &Rfc3339)
+		.map_err(|_| eyre::eyre!("posted_at must be an RFC3339 timestamp"))?;
+	crate::social_clock::with_default_content_create_now_for_test(posted_at, || {
+		run_with_pricing_check(request, xurl_binary, |_| Ok(()))
+	})
 }
 
 #[cfg(test)]
-pub(super) fn run_with_stale_pricing_for_test(
+pub(super) fn run_with_identity_interruption_for_test(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &runtime::TrustedXurlBinary,
 ) -> Result<SocialPublishXurlReport> {
-	run_with_pricing_check(request, xurl_binary, |_| {
-		Err(eyre::eyre!("X pricing policy is not current: stale"))
-	})
+	INTERRUPT_IDENTITY_READ.with(|interrupt| interrupt.set(true));
+	let result = run_without_pricing_for_test(request, xurl_binary);
+	INTERRUPT_IDENTITY_READ.with(|interrupt| interrupt.set(false));
+	result
+}
+
+#[cfg(test)]
+pub(super) fn run_with_reserved_attempt_interruption_for_test(
+	request: &SocialPublishXurlRequest,
+	xurl_binary: &runtime::TrustedXurlBinary,
+) -> Result<SocialPublishXurlReport> {
+	INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.set(true));
+	let result = run_without_pricing_for_test(request, xurl_binary);
+	INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.set(false));
+	result
 }
 
 fn run_with_pricing_check(
@@ -125,7 +176,7 @@ fn run_with_pricing_check(
 	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_internal_evidence_files(&candidate)
+	crate::social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 	let publication_time =
 		existing_post.as_ref().map(existing_posted_at).transpose()?.unwrap_or(posted_at);
@@ -174,6 +225,7 @@ fn run_with_pricing_check(
 		attempt_path,
 		idempotency_key,
 		publication_lineage_sha256,
+		reservation_day: required_string(&reservation, "day")?.into(),
 		billing_month,
 		xurl_version: APPROVED_XURL_VERSION.into(),
 		authorization_contract_sha256,
@@ -197,11 +249,17 @@ fn run_with_pricing_check(
 	if xurl_version != context.xurl_version {
 		return Err(eyre::eyre!("xurl runtime changed after fixed-version validation"));
 	}
-	let mut attempt = match existing_attempt {
-		Some(attempt) => attempt,
-		None => create_attempt(request, &context)?,
+	let (mut attempt, created_attempt) = match existing_attempt {
+		Some(attempt) => (attempt, false),
+		None => (create_attempt(request, &context)?, true),
 	};
 	validate_attempt(&attempt, request, &context)?;
+	#[cfg(test)]
+	if created_attempt && INTERRUPT_RESERVED_ATTEMPT.with(|interrupt| interrupt.replace(false)) {
+		return Err(eyre::eyre!("simulated interruption after the durable reserved attempt"));
+	}
+	#[cfg(not(test))]
+	let _ = created_attempt;
 	let verified = continue_publication(
 		xurl_binary,
 		&mut authorization_contract,
@@ -237,7 +295,7 @@ pub(super) fn reconcile_local(
 	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_internal_evidence_files(&candidate)
+	crate::social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("candidate evidence failed validation: {error}"))?;
 	let billing_month = reservation_billing_month(&reservation)?.to_owned();
 	let attempt_path = attempts_dir.join(&billing_month).join(format!("{original_run_id}.json"));
@@ -308,6 +366,7 @@ pub(super) fn reconcile_local(
 		idempotency_key: required_string(&reservation, "idempotency_key")?.into(),
 		publication_lineage_sha256: required_string(&reservation, "publication_lineage_sha256")?
 			.into(),
+		reservation_day: required_string(&reservation, "day")?.into(),
 		billing_month,
 		xurl_version: attempt.xurl_version.clone(),
 		authorization_contract_sha256,
@@ -340,13 +399,49 @@ pub(super) fn reconcile_safe_read(
 	attempt_path: &Path,
 	reconciled_at: OffsetDateTime,
 	binary_source: &super::reconcile::BinarySource,
+	require_pricing: bool,
 ) -> Result<SocialReconcileXurlReport> {
+	let mut recovery = prepare_publication_recovery(request, attempt_path, reconciled_at)?;
+	if recovery.context.post_path.exists()
+		|| matches!(recovery.attempt.status.as_str(), "verified" | "published")
+	{
+		return reconcile_local(request, &recovery.context.reservation_path, reconciled_at);
+	}
+	if let Some(report) = finalize_existing_recovery_state(request, &mut recovery)? {
+		return Ok(report);
+	}
+	let identity_recovery = requires_identity_recovery(&recovery.attempt)?;
+	require_recovery_reservation_status(&recovery.reservation)?;
+	if identity_recovery {
+		reconcile_interrupted_identity(
+			request,
+			reconciled_at,
+			binary_source,
+			require_pricing,
+			&mut recovery,
+		)
+	} else {
+		reconcile_interrupted_post_read(
+			request,
+			reconciled_at,
+			binary_source,
+			require_pricing,
+			&mut recovery,
+		)
+	}
+}
+
+fn prepare_publication_recovery(
+	request: &SocialReconcileXurlRequest,
+	attempt_path: &Path,
+	reconciled_at: OffsetDateTime,
+) -> Result<PreparedPublicationRecovery> {
 	let root = crate::repo_root()?;
 	let reservations_dir = crate::resolve_against(&root, &request.reservations_dir);
 	let candidates_dir = crate::resolve_against(&root, &request.candidates_dir);
 	let posts_dir = crate::resolve_against(&root, &request.posts_dir);
 	let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
-	let mut attempt = load_recovery_attempt(attempt_path, &attempts_dir, &request.operation_id)?;
+	let attempt = load_recovery_attempt(attempt_path, &attempts_dir, &request.operation_id)?;
 	let reservation_path = crate::resolve_against(&root, Path::new(&attempt.reservation_ref));
 	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
 		.map_err(|error| eyre::eyre!("recovery reservation is invalid: {error}"))?;
@@ -360,7 +455,7 @@ pub(super) fn reconcile_safe_read(
 	let (candidate, candidate_sha256) = crate::load_json_with_sha256(&candidate_path)?;
 	crate::validate_generated_social_artifact(&candidate)
 		.map_err(|error| eyre::eyre!("recovery candidate failed validation: {error}"))?;
-	crate::social_evidence::validate_internal_evidence_files(&candidate)
+	crate::social_evidence::validate_source_evidence(&candidate)
 		.map_err(|error| eyre::eyre!("recovery candidate evidence failed validation: {error}"))?;
 	let post_path = posts_dir.join(format!("{original_run_id}.json"));
 	let synthetic_request = SocialPublishXurlRequest {
@@ -388,6 +483,7 @@ pub(super) fn reconcile_safe_read(
 		idempotency_key: required_string(&reservation, "idempotency_key")?.into(),
 		publication_lineage_sha256: required_string(&reservation, "publication_lineage_sha256")?
 			.into(),
+		reservation_day: required_string(&reservation, "day")?.into(),
 		billing_month: attempt.billing_month.clone(),
 		xurl_version: APPROVED_XURL_VERSION.into(),
 		authorization_contract_sha256: required_authorization_contract_digest(&attempt)?,
@@ -401,57 +497,267 @@ pub(super) fn reconcile_safe_read(
 		attempt_created_at,
 	)?;
 	validate_attempt(&attempt, &synthetic_request, &context)?;
-	if post_path.exists() || matches!(attempt.status.as_str(), "verified" | "published") {
-		return reconcile_local(request, &reservation_path, reconciled_at);
-	}
-	if attempt.status == "identity_reconciled" {
-		return finalize_identity_recovery(request, &context, &reservation, &mut attempt, 0);
-	}
-	let identity_recovery = requires_identity_recovery(&attempt)?;
-	require_recovery_reservation_status(&reservation)?;
-	if identity_recovery {
-		let billing_month = prepare_identity_recovery(request, &context, &attempt)?;
-		let binary = binary_source.load()?;
-		let mut provenance = verified_recovery_provenance(
-			request,
-			reconciled_at,
-			&binary,
-			&context.authorization_contract_sha256,
-		)?;
-		let report = reconcile_identity_read(
-			request,
-			&context,
-			&reservation,
-			&mut attempt,
-			&binary,
-			&mut provenance,
-			&billing_month,
-		)?;
-		binary.require_command_time_remaining()?;
-		Ok(report)
-	} else {
-		let recovery = PublicationRecovery {
-			request,
-			context: &context,
-			reservation: &reservation,
-			candidate: &candidate,
-			synthetic_request: &synthetic_request,
+	Ok(PreparedPublicationRecovery { context, reservation, candidate, synthetic_request, attempt })
+}
+
+fn finalize_existing_recovery_state(
+	request: &SocialReconcileXurlRequest,
+	recovery: &mut PreparedPublicationRecovery,
+) -> Result<Option<SocialReconcileXurlReport>> {
+	let terminal = match recovery.attempt.status.as_str() {
+		"identity_reconciled" => Some((
+			"identity_reconciled",
+			IDENTITY_RECOVERED_RELEASE_REASON,
+			"identity_recovered_no_create",
+			"identity_read",
+		)),
+		NO_CREATE_RELEASED_STATUS => Some((
+			NO_CREATE_RELEASED_STATUS,
+			NO_CREATE_RELEASE_REASON,
+			"no_create_released",
+			"publication_no_create",
+		)),
+		IDENTITY_RECOVERY_EXHAUSTED_STATUS => Some((
+			IDENTITY_RECOVERY_EXHAUSTED_STATUS,
+			IDENTITY_EXHAUSTED_RELEASE_REASON,
+			"identity_recovery_exhausted_no_create",
+			"identity_read",
+		)),
+		READ_RECOVERY_EXHAUSTED_STATUS => Some((
+			READ_RECOVERY_EXHAUSTED_STATUS,
+			READ_EXHAUSTED_RELEASE_REASON,
+			"publication_read_recovery_exhausted",
+			"publication_read",
+		)),
+		"reserved" | "identity_verified" => Some((
+			NO_CREATE_RELEASED_STATUS,
+			NO_CREATE_RELEASE_REASON,
+			"no_create_released",
+			"publication_no_create",
+		)),
+		_ => None,
+	};
+	let Some((terminal_status, release_reason, report_status, kind)) = terminal else {
+		return Ok(None);
+	};
+	finalize_terminal_recovery(
+		request,
+		&recovery.context,
+		&recovery.reservation,
+		&mut recovery.attempt,
+		terminal_status,
+		release_reason,
+		report_status,
+		kind,
+		0,
+	)
+	.map(Some)
+}
+
+fn reconcile_interrupted_identity(
+	request: &SocialReconcileXurlRequest,
+	reconciled_at: OffsetDateTime,
+	binary_source: &super::reconcile::BinarySource,
+	require_pricing: bool,
+	recovery: &mut PreparedPublicationRecovery,
+) -> Result<SocialReconcileXurlReport> {
+	let billing_month =
+		match prepare_identity_recovery(request, &recovery.context, &recovery.attempt)? {
+			IdentityRecoveryPreparation::Retry(billing_month) => billing_month,
+			IdentityRecoveryPreparation::Exhausted => {
+				return finalize_terminal_recovery(
+					request,
+					&recovery.context,
+					&recovery.reservation,
+					&mut recovery.attempt,
+					IDENTITY_RECOVERY_EXHAUSTED_STATUS,
+					IDENTITY_EXHAUSTED_RELEASE_REASON,
+					"identity_recovery_exhausted_no_create",
+					"identity_read",
+					0,
+				);
+			},
 		};
-		let prepared = prepare_known_post_read(&recovery, &attempt)?;
-		require_prepared_post_read_budget(&context, &prepared)?;
-		let binary = binary_source.load()?;
-		let mut provenance = verified_recovery_provenance(
-			request,
-			reconciled_at,
-			&binary,
-			&context.authorization_contract_sha256,
-		)?;
-		reserve_known_post_read(&recovery, &mut attempt, &prepared)?;
-		let report =
-			execute_known_post_read(&recovery, prepared, &mut attempt, &binary, &mut provenance)?;
-		binary.require_command_time_remaining()?;
-		Ok(report)
+	if require_pricing {
+		pricing::require_current_at(reconciled_at)?;
 	}
+	let binary = binary_source.load()?;
+	let mut provenance = verified_recovery_provenance(
+		request,
+		reconciled_at,
+		&binary,
+		&recovery.context.authorization_contract_sha256,
+	)?;
+	let report = reconcile_identity_read(
+		request,
+		&recovery.context,
+		&recovery.reservation,
+		&mut recovery.attempt,
+		&binary,
+		&mut provenance,
+		&billing_month,
+	)?;
+	binary.require_command_time_remaining()?;
+	Ok(report)
+}
+
+fn reconcile_interrupted_post_read(
+	request: &SocialReconcileXurlRequest,
+	reconciled_at: OffsetDateTime,
+	binary_source: &super::reconcile::BinarySource,
+	require_pricing: bool,
+	recovery: &mut PreparedPublicationRecovery,
+) -> Result<SocialReconcileXurlReport> {
+	let read_recovery = PublicationRecovery {
+		request,
+		context: &recovery.context,
+		reservation: &recovery.reservation,
+		candidate: &recovery.candidate,
+		synthetic_request: &recovery.synthetic_request,
+	};
+	let prepared = match prepare_known_post_read(&read_recovery, &recovery.attempt)? {
+		PostReadPreparation::Ready(prepared) => prepared,
+		PostReadPreparation::Exhausted => {
+			return finalize_terminal_recovery(
+				request,
+				&recovery.context,
+				&recovery.reservation,
+				&mut recovery.attempt,
+				READ_RECOVERY_EXHAUSTED_STATUS,
+				READ_EXHAUSTED_RELEASE_REASON,
+				"publication_read_recovery_exhausted",
+				"publication_read",
+				0,
+			);
+		},
+	};
+	require_prepared_post_read_budget(&recovery.context, &prepared)?;
+	if require_pricing {
+		pricing::require_current_at(reconciled_at)?;
+	}
+	let binary = binary_source.load()?;
+	let mut provenance = verified_recovery_provenance(
+		request,
+		reconciled_at,
+		&binary,
+		&recovery.context.authorization_contract_sha256,
+	)?;
+	reserve_known_post_read(&read_recovery, &mut recovery.attempt, &prepared)?;
+	let report = execute_known_post_read(
+		&read_recovery,
+		prepared,
+		&mut recovery.attempt,
+		&binary,
+		&mut provenance,
+	)?;
+	binary.require_command_time_remaining()?;
+	Ok(report)
+}
+
+pub(super) fn terminal_no_create_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, true)
+}
+
+pub(super) fn terminal_publication_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	terminal_recovery_record(attempt_path, attempts_dir, reservations_dir, false)
+}
+
+fn terminal_recovery_record(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+	no_create_only: bool,
+) -> Result<bool> {
+	let root = crate::repo_root()?;
+	let attempt_path = crate::resolve_against(&root, attempt_path);
+	let attempts_dir = crate::resolve_against(&root, attempts_dir);
+	crate::require_contained_regular_file(&attempt_path, &attempts_dir)
+		.map_err(|error| eyre::eyre!("terminal publication attempt is invalid: {error}"))?;
+	let attempt = ledger::load_attempt(&attempt_path)?;
+	ledger::validate_publication_cost_record(&attempt)?;
+	let (release_reason, no_create) = match attempt.status.as_str() {
+		"identity_reconciled" => (IDENTITY_RECOVERED_RELEASE_REASON, true),
+		NO_CREATE_RELEASED_STATUS => (NO_CREATE_RELEASE_REASON, true),
+		IDENTITY_RECOVERY_EXHAUSTED_STATUS => (IDENTITY_EXHAUSTED_RELEASE_REASON, true),
+		READ_RECOVERY_EXHAUSTED_STATUS if !no_create_only => (READ_EXHAUSTED_RELEASE_REASON, false),
+		_ => return Ok(false),
+	};
+	if attempt.reconciliation.is_none() {
+		return Ok(false);
+	}
+	if attempt_path
+		!= attempts_dir.join(&attempt.billing_month).join(format!("{}.json", attempt.run_id))
+	{
+		return Err(eyre::eyre!("terminal identity attempt path is not canonical"));
+	}
+
+	let reservations_dir = crate::resolve_against(&root, reservations_dir);
+	let reservation_path = crate::resolve_against(&root, Path::new(&attempt.reservation_ref));
+	crate::require_contained_regular_file(&reservation_path, &reservations_dir)
+		.map_err(|error| eyre::eyre!("terminal identity reservation is invalid: {error}"))?;
+	let (reservation, reservation_sha256) = crate::load_json_with_sha256(&reservation_path)?;
+	validate_reservation(&reservation)?;
+	let candidate_ref =
+		reservation.pointer("/candidate_refs/social_candidates/0").and_then(Value::as_str);
+	if reservation.get("status").and_then(Value::as_str) != Some("expired")
+		|| reservation.get("release_reason").and_then(Value::as_str) != Some(release_reason)
+		|| reservation_owner_run_id(&reservation)? != attempt.run_id
+		|| required_string(&reservation, "idempotency_key")? != attempt.idempotency_key
+		|| required_string(&reservation, "publication_lineage_sha256")?
+			!= attempt.publication_lineage_sha256
+		|| candidate_ref != Some(&attempt.candidate_ref)
+	{
+		return Err(eyre::eyre!(
+			"terminal publication recovery does not match its released reservation"
+		));
+	}
+	let create_calls = attempt.calls.iter().filter(|call| call.operation == "content_create");
+	let create_call_count = create_calls.clone().count();
+	let create_succeeded = create_calls
+		.into_iter()
+		.all(|call| call.status == "succeeded" && call.response_sha256.is_some());
+	let identity_is_valid = attempt.verified_user_id.as_deref().is_none_or(numeric_string);
+	if no_create {
+		if create_call_count != 0
+			|| attempt.post_id.is_some()
+			|| attempt.published_url.is_some()
+			|| !identity_is_valid
+			|| attempt.status == "identity_reconciled" && attempt.verified_user_id.is_none()
+		{
+			return Err(eyre::eyre!("terminal no-create recovery contains a create effect"));
+		}
+	} else if create_call_count != 1
+		|| !create_succeeded
+		|| attempt.post_id.as_deref().is_none_or(|value| !numeric_string(value))
+		|| attempt.verified_user_id.as_deref().is_none_or(|value| !numeric_string(value))
+		|| attempt.published_url.is_some()
+	{
+		return Err(eyre::eyre!("terminal read recovery lacks one durable create effect"));
+	}
+
+	let reconciliation = attempt
+		.reconciliation
+		.as_ref()
+		.ok_or_else(|| eyre::eyre!("terminal publication recovery stamp is missing"))?;
+	if reconciliation.reconciled_at != attempt.updated_at {
+		return Err(eyre::eyre!("terminal publication recovery timestamp does not match"));
+	}
+	let reservation_ref = crate::path_arg(&root, &reservation_path);
+	super::reconcile::validate_stamp(
+		reconciliation,
+		&attempt.run_id,
+		&reservation_ref,
+		&reservation_sha256,
+	)?;
+	Ok(true)
 }
 
 fn load_recovery_attempt(
@@ -499,8 +805,10 @@ fn requires_identity_recovery(attempt: &XurlAttempt) -> Result<bool> {
 		| "read_retry_pending"
 		| "read_retry_inflight"
 		| "read_reconcile_inflight"
-		| "read_reconcile_halted"
-		| "halted" => Ok(false),
+		| "read_reconcile_halted" => Ok(false),
+		"halted" => Ok(attempt.calls.last().is_some_and(|call| {
+			matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
+		})),
 		status => Err(eyre::eyre!(
 			"xurl publication attempt is not eligible for safe read recovery from {status}"
 		)),
@@ -520,29 +828,35 @@ fn prepare_identity_recovery(
 	request: &SocialReconcileXurlRequest,
 	context: &PublishContext,
 	attempt: &XurlAttempt,
-) -> Result<String> {
+) -> Result<IdentityRecoveryPreparation> {
 	let recovery_count =
 		attempt.calls.iter().filter(|call| call.operation == "identity_read_reconcile").count();
 	if attempt.post_id.is_some()
 		|| attempt.verified_user_id.is_some()
 		|| attempt.calls.as_slice().last().is_none_or(|call| {
 			!matches!(call.operation.as_str(), "identity_read" | "identity_read_reconcile")
-				|| !matches!(call.status.as_str(), "inflight" | "failed" | "invalid")
-				|| call.response_sha256.is_some()
+				|| !matches!(call.status.as_str(), "inflight" | "failed" | "invalid" | "uncertain")
 		}) || attempt.calls.iter().any(|call| call.operation == "content_create")
-		|| recovery_count >= 2
-		|| attempt
-			.calls
-			.iter()
-			.any(|call| call.operation_id.as_deref() == Some(&request.operation_id))
 	{
 		return Err(eyre::eyre!(
 			"identity recovery requires one interrupted identity read and no create effect"
 		));
 	}
+	if recovery_count >= MAX_IDENTITY_RECOVERY_CALLS
+		|| attempt
+			.calls
+			.iter()
+			.any(|call| call.operation_id.as_deref() == Some(&request.operation_id))
+		|| ledger::remaining_lineage_budget(
+			&context.attempts_dir,
+			&context.publication_lineage_sha256,
+		)? < IDENTITY_READ_COST_MICROUSD
+	{
+		return Ok(IdentityRecoveryPreparation::Exhausted);
+	}
 	let billing_month = billing_month_at(&request.reconciled_at)?;
 	require_recovery_budget(context, &billing_month, IDENTITY_READ_COST_MICROUSD)?;
-	Ok(billing_month)
+	Ok(IdentityRecoveryPreparation::Retry(billing_month))
 }
 
 fn require_recovery_budget(
@@ -604,7 +918,7 @@ fn reconcile_identity_read(
 	)?;
 	let mut output = match runtime::whoami(binary, provenance) {
 		Ok(output) => output,
-		Err(error) => {
+		Err(_) => {
 			ledger::finish_last_call(
 				&context.attempt_path,
 				attempt,
@@ -618,12 +932,22 @@ fn reconcile_identity_read(
 					published_url: None,
 				},
 			)?;
-			return Err(error);
+			return finalize_terminal_recovery(
+				request,
+				context,
+				reservation,
+				attempt,
+				IDENTITY_RECOVERY_EXHAUSTED_STATUS,
+				IDENTITY_EXHAUSTED_RELEASE_REASON,
+				"identity_recovery_exhausted_no_create",
+				"identity_read",
+				1,
+			);
 		},
 	};
 	let identity = match runtime::parse_identity(&mut output, provenance) {
 		Ok(identity) => identity,
-		Err(error) => {
+		Err(_) => {
 			let call_status = if output.status.success() { "invalid" } else { "failed" };
 			ledger::finish_last_call(
 				&context.attempt_path,
@@ -638,7 +962,17 @@ fn reconcile_identity_read(
 					published_url: None,
 				},
 			)?;
-			return Err(error);
+			return finalize_terminal_recovery(
+				request,
+				context,
+				reservation,
+				attempt,
+				IDENTITY_RECOVERY_EXHAUSTED_STATUS,
+				IDENTITY_EXHAUSTED_RELEASE_REASON,
+				"identity_recovery_exhausted_no_create",
+				"identity_read",
+				1,
+			);
 		},
 	};
 	ledger::finish_last_call(
@@ -654,18 +988,33 @@ fn reconcile_identity_read(
 			published_url: None,
 		},
 	)?;
-	finalize_identity_recovery(request, context, reservation, attempt, 1)
+	finalize_terminal_recovery(
+		request,
+		context,
+		reservation,
+		attempt,
+		"identity_reconciled",
+		IDENTITY_RECOVERED_RELEASE_REASON,
+		"identity_recovered_no_create",
+		"identity_read",
+		1,
+	)
 }
 
-fn finalize_identity_recovery(
+#[allow(clippy::too_many_arguments)]
+fn finalize_terminal_recovery(
 	request: &SocialReconcileXurlRequest,
 	context: &PublishContext,
 	reservation: &Value,
 	attempt: &mut XurlAttempt,
+	terminal_status: &str,
+	release_reason: &str,
+	report_status: &str,
+	kind: &str,
 	paid_call_count: u64,
 ) -> Result<SocialReconcileXurlReport> {
 	let reservation_changed =
-		release_identity_only_reservation(&context.reservation_path, reservation)?;
+		release_recovery_reservation(&context.reservation_path, reservation, release_reason)?;
 	let (_, reservation_sha256) = crate::load_json_with_sha256(&context.reservation_path)?;
 	let reservation_ref = crate::path_arg(&context.root, &context.reservation_path);
 	let attempt_changed = if let Some(stamp) = &attempt.reconciliation {
@@ -686,7 +1035,7 @@ fn finalize_identity_recovery(
 		ledger::reconcile_attempt(
 			&context.attempt_path,
 			attempt,
-			"identity_reconciled",
+			terminal_status,
 			&request.reconciled_at,
 			stamp,
 		)?;
@@ -694,11 +1043,11 @@ fn finalize_identity_recovery(
 	};
 	Ok(super::reconcile::report(super::reconcile::ReportInput {
 		status: if reservation_changed || attempt_changed {
-			"identity_recovered_no_create"
+			report_status
 		} else {
-			"already_identity_recovered_no_create"
+			"already_terminal"
 		},
-		kind: "identity_read",
+		kind,
 		request,
 		original_run_id: &attempt.run_id,
 		root: &context.root,
@@ -708,23 +1057,26 @@ fn finalize_identity_recovery(
 	}))
 }
 
-fn release_identity_only_reservation(path: &Path, reservation: &Value) -> Result<bool> {
-	if reservation.get("status").and_then(Value::as_str) == Some("expired") {
+fn release_recovery_reservation(
+	path: &Path,
+	reservation: &Value,
+	release_reason: &str,
+) -> Result<bool> {
+	let status = reservation.get("status").and_then(Value::as_str);
+	if status == Some("expired")
+		&& reservation.get("release_reason").and_then(Value::as_str) == Some(release_reason)
+	{
 		return Ok(false);
 	}
-	if reservation.get("status").and_then(Value::as_str) != Some("active") {
-		return Err(eyre::eyre!(
-			"identity-only recovery requires an active or expired reservation"
-		));
+	if !matches!(status, Some("active" | "expired")) {
+		return Err(eyre::eyre!("recovery requires an active or expired reservation"));
 	}
 	let mut expired = reservation.clone();
 	let object =
 		expired.as_object_mut().ok_or_else(|| eyre::eyre!("reservation must be an object"))?;
 	object.insert("status".into(), Value::String("expired".into()));
-	object.insert(
-		"release_reason".into(),
-		Value::String("Identity recovery completed without a create call.".into()),
-	);
+	object.insert("release_reason".into(), Value::String(release_reason.into()));
+	object.remove("consumed_by_social_post");
 	crate::validate_generated_social_artifact(&expired)?;
 	crate::replace_existing_json(path, reservation, &expired)?;
 	Ok(true)
@@ -733,7 +1085,7 @@ fn release_identity_only_reservation(path: &Path, reservation: &Value) -> Result
 fn prepare_known_post_read<'a>(
 	recovery: &PublicationRecovery<'a>,
 	attempt: &XurlAttempt,
-) -> Result<PreparedPostRead<'a>> {
+) -> Result<PostReadPreparation<'a>> {
 	let post_id =
 		attempt.post_id.clone().filter(|value| numeric_string(value)).ok_or_else(|| {
 			eyre::eyre!("safe publication read recovery requires a known post id")
@@ -763,15 +1115,17 @@ fn prepare_known_post_read<'a>(
 			matches!(call.operation.as_str(), "post_read_initial_reconcile" | "post_read_reconcile")
 		})
 		.count();
-	if recovery_count >= 2
-		|| attempt
-			.calls
-			.iter()
-			.any(|call| call.operation_id.as_deref() == Some(&recovery.request.operation_id))
+	let read_count =
+		attempt.calls.iter().filter(|call| call.operation.starts_with("post_read")).count();
+	if attempt
+		.calls
+		.iter()
+		.any(|call| call.operation_id.as_deref() == Some(&recovery.request.operation_id))
 	{
-		return Err(eyre::eyre!(
-			"publication read recovery is exhausted or reuses an operation owner"
-		));
+		return Err(eyre::eyre!("publication read recovery reuses an operation owner"));
+	}
+	if recovery_count >= 2 || read_count >= 3 || attempt.calls.len() >= 5 {
+		return Ok(PostReadPreparation::Exhausted);
 	}
 	let billing_month = billing_month_at(&recovery.request.reconciled_at)?;
 	let uses_original_read_reservation =
@@ -781,14 +1135,23 @@ fn prepare_known_post_read<'a>(
 	} else {
 		"post_read_reconcile"
 	};
-	Ok(PreparedPostRead {
+	let prepared = PreparedPostRead {
 		post_id,
 		user_id,
 		text,
 		operation,
 		billing_month: (!uses_original_read_reservation).then_some(billing_month),
 		reserve_additional: !uses_original_read_reservation,
-	})
+	};
+	if prepared.reserve_additional
+		&& ledger::remaining_lineage_budget(
+			&recovery.context.attempts_dir,
+			&recovery.context.publication_lineage_sha256,
+		)? < READ_COST_MICROUSD
+	{
+		return Ok(PostReadPreparation::Exhausted);
+	}
+	Ok(PostReadPreparation::Ready(prepared))
 }
 
 fn require_prepared_post_read_budget(
@@ -923,7 +1286,15 @@ fn finalize_publication_reconciliation(
 	let verified = verified_from_attempt(attempt)?;
 	let recovered = attempt.status == "verified";
 	let post = if let Some((post, _)) = existing_post {
-		validate_existing_post(context, &post, candidate, &verified)?;
+		validate_existing_post(
+			context,
+			&post,
+			candidate,
+			&verified,
+			attempt,
+			synthetic_request,
+			reservation,
+		)?;
 		post
 	} else {
 		if attempt.status != "verified"
@@ -982,7 +1353,15 @@ fn finalize_publication_reconciliation(
 			stamp,
 		)?;
 	}
-	validate_existing_post(context, &post, candidate, &verified)?;
+	validate_existing_post(
+		context,
+		&post,
+		candidate,
+		&verified,
+		attempt,
+		synthetic_request,
+		reservation,
+	)?;
 
 	Ok(changed)
 }
@@ -1030,14 +1409,20 @@ fn load_optional_private_json(path: &Path, root: &Path) -> Result<Option<(Value,
 
 fn load_reservation(path: &Path) -> Result<Value> {
 	let reservation = crate::load_json(path)?;
-	crate::validate_generated_social_artifact(&reservation)
+	validate_reservation(&reservation)?;
+
+	Ok(reservation)
+}
+
+fn validate_reservation(reservation: &Value) -> Result<()> {
+	crate::validate_generated_social_artifact(reservation)
 		.map_err(|error| eyre::eyre!("reservation failed validation: {error}"))?;
 	if reservation.get("schema").and_then(Value::as_str) != Some(SOCIAL_PUBLISH_RESERVATION_SCHEMA)
 	{
 		return Err(eyre::eyre!("reservation must use {SOCIAL_PUBLISH_RESERVATION_SCHEMA}"));
 	}
 
-	Ok(reservation)
+	Ok(())
 }
 
 fn existing_posted_at(post: &Value) -> Result<OffsetDateTime> {
@@ -1132,9 +1517,12 @@ fn validate_lineage(
 		return Err(eyre::eyre!("reservation duplicate_keys do not match the candidate"));
 	}
 	let day = required_string(reservation, "day")?;
-	let expected_name =
-		format!("{}.json", crate::social_publish::idempotency_digest(idempotency_key));
-	if reservation_path.file_name().and_then(|value| value.to_str()) != Some(&expected_name)
+	let owner_run_id = reservation_owner_run_id(reservation)?;
+	let idempotency_digest = crate::social_publish::idempotency_digest(idempotency_key);
+	let expected_name = format!("{idempotency_digest}.json");
+	let recovery_name = format!("{idempotency_digest}-{owner_run_id}.json");
+	let actual_name = reservation_path.file_name().and_then(|value| value.to_str());
+	if !matches!(actual_name, Some(name) if name == expected_name || name == recovery_name)
 		|| reservation_path.parent().and_then(Path::file_name).and_then(|value| value.to_str())
 			!= Some(day)
 	{
@@ -1154,14 +1542,7 @@ fn validate_lineage(
 	if day != current_day || required_string(reservation, "timezone")? != "UTC" {
 		return Err(eyre::eyre!("reservation day and timezone must match the current UTC day"));
 	}
-	if request.run_id
-		!= reservation
-			.get("owner")
-			.and_then(Value::as_object)
-			.and_then(|owner| owner.get("run_id"))
-			.and_then(Value::as_str)
-			.unwrap_or_default()
-	{
+	if request.run_id != owner_run_id {
 		return Err(eyre::eyre!("reservation run_id does not match this publisher run"));
 	}
 
@@ -1413,6 +1794,10 @@ fn ensure_identity(
 		"identity_inflight",
 		&request.posted_at,
 	)?;
+	#[cfg(test)]
+	if INTERRUPT_IDENTITY_READ.with(|interrupt| interrupt.replace(false)) {
+		return Err(eyre::eyre!("simulated interruption during the reserved identity read"));
+	}
 	let mut output = match runtime::whoami(binary, provenance) {
 		Ok(output) => output,
 		Err(error) => {
@@ -1489,6 +1874,7 @@ fn ensure_created(
 		},
 		status => return Err(eyre::eyre!("xurl attempt is not ready to create from {status}")),
 	}
+	crate::social_clock::require_current_content_create_window(&context.reservation_day)?;
 	ledger::append_call(
 		&context.attempt_path,
 		attempt,
@@ -1881,6 +2267,8 @@ fn finish_new(
 	crate::validate_generated_social_artifact(&post)
 		.map_err(|error| eyre::eyre!("generated published post failed validation: {error}"))?;
 	crate::write_new_json(&context.post_path, &post)?;
+	#[cfg(test)]
+	interrupt_after_post_write(context)?;
 	let post_ref = crate::path_arg(&context.root, &context.post_path);
 	consume_reservation(&context.reservation_path, reservation, &post_ref, false)?;
 	ledger::update_attempt(&context.attempt_path, attempt, "published", &request.posted_at)?;
@@ -1894,13 +2282,13 @@ fn finish_existing(
 	candidate: &Value,
 	post: &Value,
 ) -> Result<SocialPublishXurlReport> {
-	let verified = verified_post_from_record(post)?;
-	validate_existing_post(context, post, candidate, &verified)?;
 	let mut attempt = ledger::load_attempt(&context.attempt_path)?;
 	validate_attempt(&attempt, request, context)?;
 	if !matches!(attempt.status.as_str(), "verified" | "published") {
 		return Err(eyre::eyre!("existing publication has no verified xurl publication attempt"));
 	}
+	let verified = verified_from_attempt(&attempt)?;
+	validate_existing_post(context, post, candidate, &verified, &attempt, request, reservation)?;
 	let post_ref = crate::path_arg(&context.root, &context.post_path);
 	consume_reservation(&context.reservation_path, reservation, &post_ref, true)?;
 	if attempt.status == "verified" {
@@ -1988,75 +2376,41 @@ fn verified_user_id_from_context(context: &PublishContext) -> Result<String> {
 		.ok_or_else(|| eyre::eyre!("verified user id is missing"))
 }
 
-fn verified_post_from_record(post: &Value) -> Result<VerifiedXurlPost> {
-	let publication = post
-		.get("publication")
-		.and_then(Value::as_object)
-		.ok_or_else(|| eyre::eyre!("existing publication is required"))?;
-	let post_id = required_object_string(publication, "post_id")?.to_owned();
-	let published_url = publication
-		.get("published_urls")
-		.and_then(Value::as_array)
-		.and_then(|urls| urls.first())
-		.and_then(Value::as_str)
-		.ok_or_else(|| eyre::eyre!("existing published URL is required"))?
-		.to_owned();
-	if published_url != runtime::canonical_status_url(&post_id) {
-		return Err(eyre::eyre!("existing published URL does not match its post id"));
-	}
-	Ok(VerifiedXurlPost {
-		post_id,
-		published_url,
-		identity_response_sha256: required_object_string(publication, "identity_response_sha256")?
-			.into(),
-		create_response_sha256: required_object_string(publication, "create_response_sha256")?
-			.into(),
-		read_response_sha256: required_object_string(publication, "read_response_sha256")?.into(),
-		recorded_cost_ceiling_microusd: publication
-			.get("recorded_cost_ceiling_microusd")
-			.and_then(Value::as_u64)
-			.ok_or_else(|| eyre::eyre!("publication cost ceiling is missing"))?,
-	})
-}
-
 fn validate_existing_post(
 	context: &PublishContext,
 	post: &Value,
 	candidate: &Value,
 	verified: &VerifiedXurlPost,
+	attempt: &XurlAttempt,
+	request: &SocialPublishXurlRequest,
+	reservation: &Value,
 ) -> Result<()> {
 	crate::validate_generated_social_artifact(post)
 		.map_err(|error| eyre::eyre!("existing social post failed validation: {error}"))?;
-	if post.get("status").and_then(Value::as_str) != Some("published")
-		|| post.get("slug") != candidate.get("slug")
-		|| post.get("text") != candidate.get("candidate_text")
-		|| post.get("source_refs")
-			!= Some(&crate::social_evidence::source_refs_with_lineage(
-				candidate,
-				crate::path_arg(&context.root, &context.candidate_path),
-				Some(crate::path_arg(&context.root, &context.reservation_path)),
-			)?) || post.get("evidence_digests")
-		!= Some(&crate::social_evidence::evidence_digests_value(candidate))
-	{
-		return Err(eyre::eyre!("existing social post does not match its source artifacts"));
+	if attempt.created_at != request.posted_at {
+		return Err(eyre::eyre!(
+			"existing publication request timestamp does not match its durable xurl attempt"
+		));
 	}
-	let publication = post["publication"]
-		.as_object()
-		.ok_or_else(|| eyre::eyre!("existing publication is required"))?;
-	if post
-		.get("decision")
-		.and_then(Value::as_object)
-		.and_then(|decision| decision.get("idempotency_key"))
-		.and_then(Value::as_str)
-		!= Some(&context.idempotency_key)
-		|| publication.get("post_id").and_then(Value::as_str) != Some(&verified.post_id)
-		|| publication.get("publication_lineage_sha256").and_then(Value::as_str)
-			!= Some(&context.publication_lineage_sha256)
-		|| publication.get("xurl_version").and_then(Value::as_str) != Some(&context.xurl_version)
-	{
-		return Err(eyre::eyre!("existing publication does not match this request"));
+	let expected = published_post_payload(request, context, reservation, candidate, verified, 0)?;
+	if post != &expected {
+		return Err(eyre::eyre!(
+			"existing social post does not match its durable xurl attempt and publication request"
+		));
 	}
 
+	Ok(())
+}
+
+#[cfg(test)]
+fn interrupt_after_post_write(context: &PublishContext) -> Result<()> {
+	let state_root = context
+		.posts_dir
+		.parent()
+		.ok_or_else(|| eyre::eyre!("social posts directory has no state root"))?;
+	if state_root.join("interrupt-after-post-write").exists() {
+		return Err(eyre::eyre!("simulated interruption after the durable social post write"));
+	}
 	Ok(())
 }
 

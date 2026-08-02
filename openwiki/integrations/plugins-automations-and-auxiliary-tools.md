@@ -54,89 +54,48 @@ python3 scripts/config/sync_installable_plugins.py --apply --clean-repo-local-sk
 
 ## Codex App automations
 
-Automation source is checked in under:
-
-- `automations/upstream/`: current standalone upstream maintenance, independent
-  review/landing, health supervision, deterministic cursor/lease state, and policy.
-- `automations/decodex/`: the current Content Manager and xurl Publisher
-  definitions, shared config tooling, Publisher schemas, and skills.
-- `automations/radar/`: reusable Radar evidence tooling and skills.
-
-These are portable sources. Live Codex App configs are machine-local and owned by
-the native automation lifecycle. Source manifests use relative paths and
-`{repo_root}` placeholders. Runtime cwd is always the primary checkout owning
-`main`: the plan renderer rejects linked-worktree runtime roots and the evaluator
-treats any managed `.worktrees` cwd as a P0 failure. The renderer also refuses
-configured private fragments such as absolute user-home paths, auth files, account
-files, or runtime databases (`automations/decodex/README.md`).
+`automations/portfolio.toml` is the one checked-in portfolio authority. It declares
+exactly five native tasks and their model, effort, schedule, status, execution
+environment, prompt, and primary cwd. Live definitions remain machine-local and are
+owned by the native Codex automation lifecycle.
 
 Commands:
 
 ```sh
 python3 automations/decodex/scripts/config/render_automation_plan.py --json
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
-python3 -m unittest automations.upstream.tests.test_upstream_autopilot
+python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
+cargo make test-automations
 ```
 
-The renderer cannot write scheduler state. Apply each planned definition only with
-the Codex native automation lifecycle tool, then read it back. Codex App owns its
-`created_at` and `updated_at` metadata. The current plan has exactly five managed
-definitions and one exact retired ID, `decodex-x-browser-publisher`. Health removes
-that retired definition when present and does not list, change, or delete unrelated
-definitions.
+The renderer and evaluator do not write native state. The Manager applies full-field
+updates only through native automation tools and reads each definition back. Native
+`created_at` and `updated_at` metadata are required.
 
 The upstream operating loop has three explicit owners:
 
-- Upstream Maintainer polls every six hours, preserves a complete first-parent cursor, observes
-  stable and prerelease tags, generates stable and experimental schemas from the exact
-  installed Codex executable, and claims one change. One fenced ephemeral Codex
-  child reads a Git-free snapshot and returns a bounded patch. The child cannot edit
-  the isolated candidate worktree. The checked-in state wrapper alone verifies and
-  stages the patch, runs sandboxed tests, invokes
-  `decodex commit --manual-authority`, pushes, and opens a pull request.
-- Upstream Reviewer runs in a separate task and context. It verifies the exact
-  pull-request head, performs an independent code review, repeats sandboxed tests
-  through the wrapper, requests bounded repairs, or lets the wrapper invoke
-  `decodex land --manual-authority --pr` with the exact validated base and head
-  object IDs. Decodex alone creates and pushes the signed merge, synchronizes
-  `main`, and cleans the exact lane.
-- Upstream Health verifies live config, two-hour observation freshness, cursor
-  continuity, six-hour review SLA, lease expiry, retry budgets, and current schema
-  evidence. It also reconciles the two content definitions and validates existing
-  social artifacts without opening X.
+- Maintainer researches official Codex changes, creates one deterministic branch and
+  PR per upstream head, and uses one ephemeral Sol/max subagent in a temporary task
+  worktree for implementation. It uses `decodex commit` for signed commits.
+- Reviewer independently reviews and tests the exact GitHub PR head. It sends defects
+  back through PR feedback and uses only `decodex land` for signed landing with exact
+  base/head and merge-tree readback.
+- Manager audits all five native definitions, upstream latency, PR outcomes, content
+  and X results, repeated failure causes, and configuration drift. It archives only
+  completed successful tasks through native task tools.
 
 The content loop has two explicit owners:
 
-- Content Manager runs once per day. It uses official sources, internal Radar
-  evidence, landed Decodex evidence, and bounded outcome records to produce one
-  source-backed candidate or one justified quality skip.
-- X Publisher runs three times per day. Each task processes at most one
-  publication, due 24-hour outcome, or due seven-day outcome. It validates and reserves
-  one candidate, delegates all X access to the pinned `decodex-publisher` xurl
-  entrypoint, verifies the exact `decodexspace` identity and created post, and
-  records one due 24-hour or seven-day outcome.
-- The five fixed definitions total 12 scheduled task wakes per day: 4 Maintainer, 2
-  Reviewer, 2 Health, 1 Content Manager, and 3 Publisher. This is 360 wakes in 30
-  days and 372 wakes in 31 days. The three Publisher windows do not change the
-  one-post-per-day limit or the X API ceilings of $1.20 per 30 days, $1.24 per 31
-  days, and $1.25 per calendar month.
-- Upstream Health supervises all five managed definitions and queues a bounded
-  `content_loop_degraded` code-improvement candidate when content validation, strategy,
-  candidate handling, outcome collection, or xurl publication misses its service
-  level.
+- Content Manager researches official Codex sources and landed Decodex changes. It
+  uses CodexRadar only as secondary editorial input and records at most one
+  `decodex/content-evidence/1` candidate or no-op.
+- Xurl Publisher performs the final quality decision and uses only Publisher
+  `publish-next` or `observe-due`. Publisher alone invokes xurl and enforces exact
+  account, daily limit, budget, uncertain-write, and readback boundaries.
 
-None of these tasks uses Decodex server, MCP, Program Intake, Linear, or tracker state.
-The installed Decodex CLI is used only for commit and landing. Scheduled cwds remain
-the primary `main` checkout; temporary implementation and review worktrees are
-per-run resources, not automation bindings. Upstream text is untrusted data and is
-never executed. Candidate code runs only in the wrapper's credential-free,
-external-network-denied macOS sandbox. Generated state is bounded, local-only, and
-excludes prompt text, logs, credentials, private account identifiers, and personal
-data. The xurl ledger stores only bounded operation metadata, response digests,
-verified public post identity, and cost ceilings. Social and strategy records are
-never committed or archived to Git. The managed portfolio contains only the three
-upstream tasks plus `decodex-content-manager` and `decodex-xurl-publisher`.
+None of these tasks uses Decodex server, runtime, queue, planner, or MCP. The Decodex
+CLI is used only for commit and landing. All schedules use the primary checkout;
+temporary worktrees are per-run resources. GitHub PRs, refs, signed commits, merge
+readback, native task state, and Publisher X evidence are sufficient workflow state.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 
@@ -161,27 +120,35 @@ Source entrypoints:
 - `apps/radar/src/cli.rs`: command parser.
 - `apps/radar/src/artifact_validation.rs`: artifact validation.
 - `apps/radar/src/operations.rs`: refresh/build/render/validate operations.
-- `automations/radar/radar.toml`: cache and handoff path contract.
+- `automations/radar/radar.toml`: Radar-owned cache paths.
 
 ## Decodex Publisher
 
-`decodex-publisher` is an auxiliary publishing handoff CLI (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`). It owns:
+`decodex-publisher` is the deterministic X boundary (`apps/decodex-publisher/README.md`, `apps/decodex-publisher/src/lib.rs`). It owns:
 
-- `social_candidate/v1`
+- `decodex/content-evidence/1`
 - `social_publish_reservation/v1`
 - `social_post/v1`
 - `social_outcome/v1`
-- `social_strategy/v1`
-- one serialized xurl publication and observation state machine
+- high-level `publish-next` and `observe-due` workflows
 - one-post-per-day and $1.25-per-month cost-ceiling enforcement
-- social artifact validation and reservation workflows
+- xurl authorization, immutable attempts, budget ledger, and exact readback
 
 Generated Publisher state belongs under `.agent/automations/decodex/cache/social`.
-Publisher consumes Radar handoff evidence, but must not refresh upstream state or
-perform fresh upstream source analysis (`automations/decodex/README.md`). All X reads
-and writes use the fixed xurl entrypoint. Browser control, X MCP, direct HTTP, and
-account switching are outside this workflow. The normal publication ceiling is
-$0.030; a full post plus 24-hour and seven-day observation lifecycle is $0.040.
+Publisher consumes direct source URLs, not private Radar lineage. All X reads and
+writes use xurl. Browser control, X MCP, direct HTTP, and account switching are
+outside this workflow. The normal publication ceiling is $0.030; a full post plus
+24-hour and seven-day observations reserves at most $0.040. The per-lineage ceiling
+is $0.060 so one interrupted identity read, one safe identity reconciliation, one
+normal publication, and both observations can complete without weakening the
+$1.25 monthly cap. Publisher writes an immutable call record before each paid xurl
+operation. Restart recovery releases a reservation with no attempt, or terminalizes
+a durable no-call attempt, even when a new run owns the recovery. Identity recovery
+allows one extra read. Publication readback allows no more than five total calls,
+and outcome observation allows no more than three reads. Exhausted read-only work
+gets a terminal result so unrelated publication lineages and later observation
+windows can continue. An unknown create result remains blocked only in its own
+lineage and is never retried.
 See [Radar Publisher contracts](radar-publisher-contracts.md) for reservation,
 budget, and social artifact boundaries.
 

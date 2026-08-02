@@ -1,6 +1,6 @@
 ---
 name: codex-upstream-triage
-description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, site signal, or Publisher handoff evidence.
+description: Use when scanning latest upstream OpenAI Codex commits, PRs, releases, or changelog entries to decide which items deserve a GitHub bundle, code analysis, upstream-impact classification, or site signal.
 ---
 
 # Decodex Codex Upstream Triage
@@ -78,8 +78,9 @@ Escalate to `codex-release-analysis` when the source is a release, prerelease, a
 update, or public changelog. For Codex releases and prereleases, summarize from prior
 commit/PR analysis whenever possible, then use compare data to find gaps.
 
-Record a Publisher angle only after there is technical source evidence. Style
-references from X must not start a Publisher handoff by themselves.
+Record an editorial angle only after there is technical source evidence. It remains
+advisory. The Content Manager independently verifies official sources before it
+records content evidence.
 
 ## Output
 
@@ -92,8 +93,6 @@ Return a compact triage note with:
 - next skill to use
 - confidence limits
 
-Do not draft `signal_entry/v1` or `control_plane_upgrade_candidate/v1` directly from
-this skill. Do not treat
-deterministic queue hints as technical claims. The durable review layer is
-`upstream_review/v1`; public and Control Plane artifacts are promotions from that
-source-backed review.
+Do not draft `signal_entry/v1` directly from this skill. Do not treat deterministic
+queue hints as technical claims. The owning agent must verify official source evidence
+before it implements a change or records public content.

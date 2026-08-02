@@ -19,12 +19,10 @@ source-backed release checkpoint.
 - Do not perform fresh upstream source analysis here.
 - Do not refresh the upstream review queue here. Treat Radar Review as the shared
   upstream evidence producer.
-- Do not write `social_candidate/v1`, `social_post/v1`, or
+- Do not write Decodex content candidates, social posts, or
   `social_publish_reservation/v1`. Decodex Publisher owns social artifacts.
-- For continuous Radar-derived release and prerelease candidates, consume
-  `upstream_impact/v1` as the shared handoff artifact. Use release deltas, compare
-  metadata, reviews, signals, and URLs as provenance or gap evidence, not as a second
-  source-analysis path.
+- Treat `upstream_impact/v1`, release deltas, reviews, and signals as optional Radar
+  evidence. They do not create a Content Manager candidate or authorize publication.
 - Use compare metadata to identify PR/commit gaps; route behavior claims that need code
   review to `upstream_analysis_required`.
 
@@ -53,10 +51,10 @@ source-backed release checkpoint.
 
 ## Output
 
-Return source/timestamp, chosen mode, release-body quality, compare/PR evidence,
-matching signal slugs, Control Plane impact if any, Publisher angle if any, and
+Return source and timestamp, chosen mode, release-body quality, compare and PR
+evidence, matching signal slugs, Decodex impact if any, editorial angle if any, and
 source gaps.
 
-Promote durable conclusions only through Radar artifacts: shared `upstream_impact/v1`,
-Codex-owned `analysis_draft` plus `radar render-signal`, and refreshed
-`release_delta/v1`.
+Promote durable Radar conclusions only through `upstream_impact/v1`, a reviewed
+`analysis_draft` plus `radar render-signal`, or `release_delta/v1`. The Content
+Manager still verifies official sources independently.
