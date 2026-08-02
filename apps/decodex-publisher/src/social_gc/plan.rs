@@ -509,10 +509,12 @@ fn skipped_component_time(
 		return Ok(None);
 	}
 	let day = post_decision.get("day").and_then(Value::as_str).ok_or(())?;
-	let end_of_day = day_end(day)?;
-	if end_of_day > now + MAX_CLOCK_SKEW {
+	let start_of_day = day_start(day)?;
+	let latest_allowed = now.checked_add(MAX_CLOCK_SKEW).ok_or(())?;
+	if start_of_day > latest_allowed {
 		return Err(());
 	}
+	let end_of_day = start_of_day.checked_add(Duration::days(1)).ok_or(())?;
 
 	Ok(Some(end_of_day))
 }
@@ -587,14 +589,15 @@ fn call_digest<'a>(attempt: &'a XurlAttempt, operation: &str) -> Option<&'a str>
 
 fn parse_time(value: &str, now: OffsetDateTime) -> Result<OffsetDateTime, ()> {
 	let parsed = OffsetDateTime::parse(value, &Rfc3339).map_err(|_| ())?;
-	if parsed > now + MAX_CLOCK_SKEW {
+	let latest_allowed = now.checked_add(MAX_CLOCK_SKEW).ok_or(())?;
+	if parsed > latest_allowed {
 		return Err(());
 	}
 
 	Ok(parsed)
 }
 
-fn day_end(value: &str) -> Result<OffsetDateTime, ()> {
+fn day_start(value: &str) -> Result<OffsetDateTime, ()> {
 	let mut parts = value.split('-');
 	let year = parts.next().and_then(|value| value.parse().ok()).ok_or(())?;
 	let month: u8 = parts.next().and_then(|value| value.parse().ok()).ok_or(())?;
@@ -605,5 +608,5 @@ fn day_end(value: &str) -> Result<OffsetDateTime, ()> {
 	let date = Date::from_calendar_date(year, Month::try_from(month).map_err(|_| ())?, day)
 		.map_err(|_| ())?;
 
-	Ok(date.with_time(Time::MIDNIGHT).assume_utc() + Duration::days(1))
+	Ok(date.with_time(Time::MIDNIGHT).assume_utc())
 }
