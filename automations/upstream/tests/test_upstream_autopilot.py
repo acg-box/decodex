@@ -4,6 +4,7 @@ import hashlib
 import io
 import json
 import os
+import re
 from collections.abc import Mapping
 from contextlib import nullcontext
 from copy import deepcopy
@@ -1609,6 +1610,7 @@ class UpstreamAutopilotTests(unittest.TestCase):
             home = root / "home"
             (home / ".codex").mkdir(parents=True)
             captured = []
+            captured_schemas = []
             fake_keychain_secret = ""
 
             def fake_run(arguments, **_kwargs):
@@ -1642,14 +1644,22 @@ class UpstreamAutopilotTests(unittest.TestCase):
                 output_path = Path(
                     arguments[arguments.index("--output-last-message") + 1]
                 )
+                schema_path = Path(
+                    arguments[arguments.index("--output-schema") + 1]
+                )
+                captured_schemas.append(
+                    json.loads(schema_path.read_text(encoding="utf-8"))
+                )
                 output_path.write_text(
                     json.dumps(
                         {
-                            "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                            "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
                             "role": "reviewer",
-                            "disposition": "accept",
-                            "finding_codes": [],
-                            "patch": None,
+                            "result": {
+                                "disposition": "accept",
+                                "finding_codes": [],
+                                "patch": None,
+                            },
                         }
                     ),
                     encoding="utf-8",
@@ -1732,7 +1742,11 @@ class UpstreamAutopilotTests(unittest.TestCase):
                     repo_root=repo_root,
                     worktree=worktree,
                     cache_root=cache_root,
-                    candidate={"id": "0" * 16, "kind": "bootstrap"},
+                    candidate={
+                        "id": "0" * 16,
+                        "kind": "bootstrap",
+                        "pull_request": {},
+                    },
                     role="reviewer",
                     generation=1,
                     base_head="1" * 40,
@@ -1750,6 +1764,23 @@ class UpstreamAutopilotTests(unittest.TestCase):
             ]
             joined = " ".join(command)
             self.assertEqual(result["result"]["disposition"], "accept")
+            self.assertEqual(len(captured_schemas), 1)
+            self.assertEqual(
+                captured_schemas[0]["properties"]["role"],
+                {"const": "reviewer", "type": "string"},
+            )
+            self.assertEqual(
+                captured_schemas[0]["properties"]["result"]["anyOf"][0][
+                    "properties"
+                ]["patch"],
+                {"type": "null"},
+            )
+            self.assertEqual(
+                captured_schemas[0]["properties"]["result"]["anyOf"][0][
+                    "properties"
+                ]["disposition"]["const"],
+                "accept",
+            )
             self.assertIn("--ephemeral", command)
             self.assertIn("--ignore-user-config", command)
             self.assertIn("--ignore-rules", command)
@@ -3898,11 +3929,13 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
             )
             encoded = self.autopilot.canonical_json(
                 {
-                    "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                    "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
                     "role": "maintainer",
-                    "disposition": "staged",
-                    "finding_codes": [],
-                    "patch": patch,
+                    "result": {
+                        "disposition": "staged",
+                        "finding_codes": [],
+                        "patch": patch,
+                    },
                 }
             )
             self.assertGreater(
@@ -3926,12 +3959,395 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
                 self.autopilot.agent_module._validate_agent_result(
                     loaded,
                     role="maintainer",
+                    candidate={"id": "0" * 16, "kind": "bootstrap"},
                 )
             )
 
             self.assertEqual(
                 len(patch_bytes),
                 self.autopilot.agent_module.AGENT_PATCH_MAX_BYTES,
+            )
+
+    def test_agent_result_schema_is_narrowed_for_each_role(self):
+        agent = self.autopilot.agent_module
+        source = json.loads(
+            (
+                ROOT
+                / "automations/upstream/schemas/agent-result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        original = deepcopy(source)
+
+        maintainer = agent._role_specific_agent_result_schema(
+            source,
+            role="maintainer",
+            candidate={"id": "0" * 16, "kind": "bootstrap"},
+        )
+        reviewer = agent._role_specific_agent_result_schema(
+            source,
+            role="reviewer",
+            candidate={"pull_request": {}, "decision": None},
+        )
+        decision_reviewer = agent._role_specific_agent_result_schema(
+            source,
+            role="reviewer",
+            candidate={
+                "pull_request": None,
+                "decision": {"outcome": "no_change"},
+            },
+        )
+
+        self.assertEqual(source, original)
+        self.assertEqual(
+            maintainer["properties"]["role"],
+            {"const": "maintainer", "type": "string"},
+        )
+        maintainer_result = maintainer["properties"]["result"]["properties"]
+        self.assertEqual(
+            maintainer_result["disposition"],
+            {"const": "staged", "type": "string"},
+        )
+        self.assertEqual(
+            maintainer_result["finding_codes"]["maxItems"],
+            0,
+        )
+        self.assertEqual(
+            maintainer_result["patch"],
+            {
+                "maxLength": agent.AGENT_PATCH_WIRE_MAX_CHARS,
+                "minLength": 1,
+                "pattern": r"^diff --git [^\u0000\uD800-\uDFFF]*\n$",
+                "type": "string",
+            },
+        )
+        self.assertEqual(
+            reviewer["properties"]["role"],
+            {"const": "reviewer", "type": "string"},
+        )
+        success, repair = reviewer["properties"]["result"]["anyOf"]
+        self.assertEqual(
+            success["properties"]["disposition"]["const"],
+            "accept",
+        )
+        self.assertEqual(
+            success["properties"]["finding_codes"]["maxItems"],
+            0,
+        )
+        self.assertEqual(
+            success["properties"]["patch"],
+            {"type": "null"},
+        )
+        self.assertEqual(
+            repair["properties"]["disposition"]["const"],
+            "request_repair",
+        )
+        self.assertEqual(
+            repair["properties"]["finding_codes"]["minItems"],
+            1,
+        )
+        repair_pattern = repair["properties"]["finding_codes"]["items"][
+            "pattern"
+        ]
+        self.assertNotIn("(?", repair_pattern)
+        for finding_code in (
+            "cursor_gap",
+            "base_stald",
+            "case_stale",
+            "base__tale",
+            "base_stale_more",
+            "base",
+            "z",
+        ):
+            self.assertIsNotNone(re.fullmatch(repair_pattern, finding_code))
+        for finding_code in ("base_stale", "Upper", "bad-code", ""):
+            self.assertIsNone(re.fullmatch(repair_pattern, finding_code))
+        decision_success = decision_reviewer["properties"]["result"]["anyOf"][
+            0
+        ]
+        self.assertEqual(
+            decision_success["properties"]["disposition"]["const"],
+            "no_change",
+        )
+        self.assertIn(
+            self.autopilot.sha256_value(source),
+            maintainer["description"],
+        )
+
+    def test_agent_result_schema_preserves_source_constraints(self):
+        agent = self.autopilot.agent_module
+        source = json.loads(
+            (
+                ROOT
+                / "automations/upstream/schemas/agent-result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        tightened = deepcopy(source)
+        tightened["properties"]["result"]["properties"]["patch"][
+            "maxLength"
+        ] = 123
+        effective = agent._role_specific_agent_result_schema(
+            tightened,
+            role="maintainer",
+            candidate={"id": "0" * 16, "kind": "bootstrap"},
+        )
+        self.assertEqual(
+            effective["properties"]["result"]["properties"]["patch"][
+                "maxLength"
+            ],
+            123,
+        )
+
+        missing_role = deepcopy(source)
+        missing_role["properties"]["role"]["enum"] = ["reviewer"]
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_schema_invalid",
+        ):
+            agent._role_specific_agent_result_schema(
+                missing_role,
+                role="maintainer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+
+        missing_disposition = deepcopy(source)
+        missing_disposition["properties"]["result"]["properties"][
+            "disposition"
+        ]["enum"].remove("accept")
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_schema_invalid",
+        ):
+            agent._role_specific_agent_result_schema(
+                missing_disposition,
+                role="reviewer",
+                candidate={"pull_request": {}, "decision": None},
+            )
+
+        patterned_patch = deepcopy(source)
+        patterned_patch["properties"]["result"]["properties"]["patch"][
+            "pattern"
+        ] = "^old$"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_schema_invalid",
+        ):
+            agent._role_specific_agent_result_schema(
+                patterned_patch,
+                role="maintainer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+
+        changed_finding_pattern = deepcopy(source)
+        changed_finding_pattern["properties"]["result"]["properties"][
+            "finding_codes"
+        ]["items"]["pattern"] = "^[a-z]+$"
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_schema_invalid",
+        ):
+            agent._role_specific_agent_result_schema(
+                changed_finding_pattern,
+                role="reviewer",
+                candidate={"pull_request": {}, "decision": None},
+            )
+
+    def test_agent_result_schemas_follow_strict_output_subset(self):
+        agent = self.autopilot.agent_module
+        source = json.loads(
+            (
+                ROOT
+                / "automations/upstream/schemas/agent-result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        schemas = (
+            agent._role_specific_agent_result_schema(
+                source,
+                role="maintainer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            ),
+            agent._role_specific_agent_result_schema(
+                source,
+                role="reviewer",
+                candidate={"pull_request": {}, "decision": None},
+            ),
+            agent._role_specific_agent_result_schema(
+                source,
+                role="reviewer",
+                candidate={
+                    "pull_request": None,
+                    "decision": {"outcome": "rejected"},
+                },
+            ),
+        )
+        unsupported = {
+            "allOf",
+            "not",
+            "dependentRequired",
+            "dependentSchemas",
+            "if",
+            "then",
+            "else",
+        }
+
+        def assert_supported(value, *, root=False):
+            self.assertIsInstance(value, dict)
+            self.assertFalse(unsupported.intersection(value))
+            if root:
+                self.assertEqual(value.get("type"), "object")
+                self.assertNotIn("anyOf", value)
+            if value.get("type") == "object":
+                properties = value.get("properties")
+                required = value.get("required")
+                self.assertIsInstance(properties, dict)
+                self.assertIs(value.get("additionalProperties"), False)
+                self.assertIsInstance(required, list)
+                self.assertEqual(len(required), len(set(required)))
+                self.assertEqual(set(required), set(properties))
+                for child in properties.values():
+                    assert_supported(child)
+            for child in value.get("anyOf", []):
+                assert_supported(child)
+            items = value.get("items")
+            if isinstance(items, dict):
+                assert_supported(items)
+
+        for schema in schemas:
+            assert_supported(schema, root=True)
+
+    def test_maintainer_wire_patch_schema_matches_host_requirements(self):
+        agent = self.autopilot.agent_module
+        source = json.loads(
+            (
+                ROOT
+                / "automations/upstream/schemas/agent-result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        effective = agent._role_specific_agent_result_schema(
+            source,
+            role="maintainer",
+            candidate={"id": "0" * 16, "kind": "bootstrap"},
+        )
+        patch_schema = effective["properties"]["result"]["properties"][
+            "patch"
+        ]
+        pattern = patch_schema["pattern"]
+        self.assertIsNotNone(re.fullmatch(pattern, "diff --git a/a b/a\n"))
+        self.assertIsNone(re.fullmatch(pattern, "diff --git a/a b/a"))
+        self.assertIsNone(re.fullmatch(pattern, "diff --git a/a b/a\0\n"))
+        self.assertIsNone(re.fullmatch(pattern, "diff --git a/a b/a\ud800\n"))
+        self.assertLessEqual(
+            patch_schema["maxLength"] * 4,
+            agent.AGENT_PATCH_MAX_BYTES,
+        )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_invalid",
+        ):
+            agent._validate_agent_result(
+                {
+                    "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
+                    "role": "maintainer",
+                    "result": {
+                        "disposition": "staged",
+                        "finding_codes": [],
+                        "patch": "diff --git a/a b/a\ud800\n",
+                    },
+                },
+                role="maintainer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+
+    def test_agent_result_schema_rejects_malformed_source_and_role(self):
+        source = json.loads(
+            (
+                ROOT
+                / "automations/upstream/schemas/agent-result.schema.json"
+            ).read_text(encoding="utf-8")
+        )
+        malformed = dict(source)
+        malformed["required"] = [*source["required"], ["not-hashable"]]
+
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_schema_invalid",
+        ):
+            self.autopilot.agent_module._role_specific_agent_result_schema(
+                malformed,
+                role="maintainer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_role_invalid",
+        ):
+            self.autopilot.agent_module._role_specific_agent_result_schema(
+                source,
+                role="manager",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "review_evidence_missing",
+        ):
+            self.autopilot.agent_module._role_specific_agent_result_schema(
+                source,
+                role="reviewer",
+                candidate={"id": "0" * 16, "kind": "bootstrap"},
+            )
+
+    def test_reviewer_agent_result_is_candidate_specific_and_normalized(self):
+        agent = self.autopilot.agent_module
+        candidate = {"pull_request": {}, "decision": None}
+        result, patch = agent._validate_agent_result(
+            {
+                "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
+                "role": "reviewer",
+                "result": {
+                    "disposition": "request_repair",
+                    "finding_codes": ["z_gap", "a_gap", "z_gap"],
+                    "patch": None,
+                },
+            },
+            role="reviewer",
+            candidate=candidate,
+        )
+        self.assertEqual(result["finding_codes"], ["a_gap", "z_gap"])
+        self.assertIsNone(patch)
+
+        decision = {
+            "pull_request": None,
+            "decision": {"outcome": "no_change"},
+        }
+        accepted, _patch = agent._validate_agent_result(
+            {
+                "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
+                "role": "reviewer",
+                "result": {
+                    "disposition": "no_change",
+                    "finding_codes": [],
+                    "patch": None,
+                },
+            },
+            role="reviewer",
+            candidate=decision,
+        )
+        self.assertEqual(accepted["disposition"], "no_change")
+        with self.assertRaisesRegex(
+            self.autopilot.AutopilotError,
+            "agent_result_invalid",
+        ):
+            agent._validate_agent_result(
+                {
+                    "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
+                    "role": "reviewer",
+                    "result": {
+                        "disposition": "rejected",
+                        "finding_codes": [],
+                        "patch": None,
+                    },
+                },
+                role="reviewer",
+                candidate=decision,
             )
 
     def test_reviewer_agent_result_cannot_claim_reserved_base_stale(self):
@@ -3941,13 +4357,16 @@ def effectiveness_improvement_reason(state: dict[str, Any], *, now: int) -> str 
         ):
             self.autopilot.agent_module._validate_agent_result(
                 {
-                    "schema": self.autopilot.AGENT_RESULT_SCHEMA,
+                    "schema": self.autopilot.AGENT_WIRE_RESULT_SCHEMA,
                     "role": "reviewer",
-                    "disposition": "request_repair",
-                    "finding_codes": ["base_stale"],
-                    "patch": None,
+                    "result": {
+                        "disposition": "request_repair",
+                        "finding_codes": ["base_stale"],
+                        "patch": None,
+                    },
                 },
                 role="reviewer",
+                candidate={"pull_request": {}, "decision": None},
             )
 
     def test_agent_lease_budget_covers_write_guard(self):

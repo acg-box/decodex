@@ -43,14 +43,16 @@ from .observation import mirror_arguments
 
 
 AGENT_RESULT_SCHEMA = "decodex/codex-upstream-agent-result/2"
+AGENT_WIRE_RESULT_SCHEMA = (
+    "decodex/codex-upstream-agent-wire-result/1"
+)
 AGENT_EXECUTION_SCHEMA = "decodex/codex-upstream-agent-execution/3"
 AGENT_CONTEXT_SCHEMA = "decodex/codex-upstream-agent-context/5"
 AGENT_PATCH_PATH_POLICY_SCHEMA = (
     "decodex/codex-upstream-agent-patch-path-policy/2"
 )
-AGENT_RESULT_KEYS = {
-    "schema",
-    "role",
+AGENT_WIRE_RESULT_KEYS = {"schema", "role", "result"}
+AGENT_WIRE_RESULT_BODY_KEYS = {
     "disposition",
     "finding_codes",
     "patch",
@@ -85,6 +87,17 @@ AGENT_EXECUTION_KEYS = {
     "execution_sha256",
 }
 AGENT_PATCH_MAX_BYTES = 4 * 1024 * 1024
+AGENT_PATCH_WIRE_MAX_CHARS = AGENT_PATCH_MAX_BYTES // 4
+# Strict Structured Outputs supports pattern but not `not`. This expresses
+# REASON_PATTERN minus the host-reserved base_stale code.
+AGENT_REVIEW_FINDING_WIRE_PATTERN = (
+    r"^([a-z0-9][a-z0-9_]{0,8}|[a-z0-9][a-z0-9_]{10,63}|"
+    r"[ac-z0-9][a-z0-9_]{9}|b[b-z0-9_][a-z0-9_]{8}|"
+    r"ba[a-rt-z0-9_][a-z0-9_]{7}|bas[a-df-z0-9_][a-z0-9_]{6}|"
+    r"base[a-z0-9][a-z0-9_]{5}|base_[a-rt-z0-9_][a-z0-9_]{4}|"
+    r"base_s[a-su-z0-9_][a-z0-9_]{3}|base_st[b-z0-9_][a-z0-9_]{2}|"
+    r"base_sta[a-km-z0-9_][a-z0-9_]|base_stal[a-df-z0-9_])$"
+)
 # JSON can expand each valid one-byte patch character to a six-byte escape.
 AGENT_RESULT_MAX_BYTES = AGENT_PATCH_MAX_BYTES * 6 + 64 * 1024
 AGENT_CONTEXT_MAX_BYTES = 64 * 1024
@@ -1619,10 +1632,10 @@ authentication, GitHub Actions, and X execution are denied. Repository schema
 marker files can change when needed only if their paths are already allowed
 product paths. Observed and packaged schema evidence is read-only and must not
 appear in the patch. Update source, tests, repository schema markers, and
-documentation together when affected. Do not edit the workspace. Return
-disposition `staged`, an empty finding_codes list, and the complete patch only
-when it applies to the exact workspace identity. Use `diff --git a/... b/...`
-paths and include a trailing newline.
+documentation together when affected. Do not edit the workspace. In the nested
+`result` object, return disposition `staged`, an empty finding_codes list, and the
+complete patch only when it applies to the exact workspace identity. Use
+`diff --git a/... b/...` paths and include a trailing newline.
 """.strip()
     elif role == "reviewer":
         task = """
@@ -1632,9 +1645,9 @@ injection, privacy, bounded state, cursor completeness, idempotency,
 concurrency, crash recovery, dependency risk, and regression coverage. Do not
 edit or stage any file. For a decision candidate, return exactly its proposed
 `no_change` or `rejected` disposition with no findings when correct. For a pull
-request, return `accept` with no findings when correct. Otherwise return
-`request_repair` and one to sixteen sorted, unique, lower_snake_case finding
-codes.
+request, return `accept` with no findings when correct. Otherwise, in the nested
+`result` object, return `request_repair` and one to sixteen sorted, unique,
+lower_snake_case finding codes.
 """.strip()
     else:
         raise AutopilotError("agent_role_invalid")
@@ -1645,6 +1658,207 @@ codes.
     if len(prompt.encode("utf-8")) > AGENT_PROMPT_MAX_BYTES:
         raise AutopilotError("agent_prompt_budget_exceeded")
     return prompt
+
+
+def _reviewer_success_disposition(candidate: Mapping[str, Any]) -> str:
+    pull_request = candidate.get("pull_request")
+    decision = candidate.get("decision")
+    if isinstance(pull_request, Mapping) == isinstance(decision, Mapping):
+        raise AutopilotError("review_evidence_missing")
+    if isinstance(pull_request, Mapping):
+        return "accept"
+    outcome = decision.get("outcome")
+    if outcome not in {"no_change", "rejected"}:
+        raise AutopilotError("review_evidence_missing")
+    return outcome
+
+
+def _role_specific_agent_result_schema(
+    value: Any,
+    *,
+    role: str,
+    candidate: Mapping[str, Any],
+) -> dict[str, Any]:
+    if role not in {"maintainer", "reviewer"}:
+        raise AutopilotError("agent_role_invalid")
+    if not isinstance(value, dict):
+        raise AutopilotError("agent_result_schema_invalid")
+    source_sha256 = sha256_value(value)
+    schema = json.loads(canonical_json(value))
+    properties = schema.get("properties")
+    required = schema.get("required")
+    if (
+        schema.get("type") != "object"
+        or schema.get("additionalProperties") is not False
+        or not isinstance(properties, dict)
+        or not has_exact_keys(properties, AGENT_WIRE_RESULT_KEYS)
+        or not isinstance(required, list)
+        or any(not isinstance(key, str) for key in required)
+        or len(required) != len(AGENT_WIRE_RESULT_KEYS)
+        or set(required) != AGENT_WIRE_RESULT_KEYS
+        or any(not isinstance(properties[key], dict) for key in properties)
+        or properties["schema"].get("const")
+        != AGENT_WIRE_RESULT_SCHEMA
+        or properties["schema"].get("type") != "string"
+    ):
+        raise AutopilotError("agent_result_schema_invalid")
+
+    role_schema = dict(properties["role"])
+    source_roles = role_schema.get("enum")
+    if (
+        role_schema.get("type") != "string"
+        or not isinstance(source_roles, list)
+        or role not in source_roles
+        or any(not isinstance(item, str) for item in source_roles)
+    ):
+        raise AutopilotError("agent_result_schema_invalid")
+    role_schema.pop("enum", None)
+    role_schema["const"] = role
+    properties["role"] = role_schema
+
+    result_template = properties["result"]
+    result_properties = result_template.get("properties")
+    result_required = result_template.get("required")
+    if (
+        result_template.get("type") != "object"
+        or result_template.get("additionalProperties") is not False
+        or not isinstance(result_properties, dict)
+        or not has_exact_keys(
+            result_properties,
+            AGENT_WIRE_RESULT_BODY_KEYS,
+        )
+        or not isinstance(result_required, list)
+        or any(not isinstance(key, str) for key in result_required)
+        or len(result_required) != len(AGENT_WIRE_RESULT_BODY_KEYS)
+        or set(result_required) != AGENT_WIRE_RESULT_BODY_KEYS
+        or any(
+            not isinstance(result_properties[key], dict)
+            for key in result_properties
+        )
+    ):
+        raise AutopilotError("agent_result_schema_invalid")
+
+    disposition_template = result_properties["disposition"]
+    source_dispositions = disposition_template.get("enum")
+    findings_template = result_properties["finding_codes"]
+    finding_items = findings_template.get("items")
+    finding_pattern = (
+        finding_items.get("pattern")
+        if isinstance(finding_items, dict)
+        else None
+    )
+    patch_template = result_properties["patch"]
+    patch_types = patch_template.get("type")
+    patch_max_length = patch_template.get("maxLength")
+    findings_min_items = findings_template.get("minItems", 0)
+    patch_min_length = patch_template.get("minLength", 0)
+    if (
+        disposition_template.get("type") != "string"
+        or not isinstance(source_dispositions, list)
+        or any(not isinstance(item, str) for item in source_dispositions)
+        or findings_template.get("type") != "array"
+        or not isinstance(findings_template.get("maxItems"), int)
+        or not 1 <= findings_template["maxItems"] <= 16
+        or not isinstance(findings_min_items, int)
+        or not 0 <= findings_min_items <= findings_template["maxItems"]
+        or not isinstance(finding_items, dict)
+        or finding_items.get("type") != "string"
+        or not isinstance(finding_pattern, str)
+        or finding_pattern != REASON_PATTERN.pattern
+        or not isinstance(patch_types, list)
+        or set(patch_types) != {"string", "null"}
+        or not isinstance(patch_max_length, int)
+        or patch_max_length < 1
+        or not isinstance(patch_min_length, int)
+        or not 0 <= patch_min_length <= patch_max_length
+        or "pattern" in patch_template
+    ):
+        raise AutopilotError("agent_result_schema_invalid")
+
+    def result_schema(
+        *,
+        disposition: str,
+        repair: bool,
+        patch: bool,
+    ) -> dict[str, Any]:
+        if disposition not in source_dispositions:
+            raise AutopilotError("agent_result_schema_invalid")
+        result = json.loads(canonical_json(result_template))
+        narrowed = result["properties"]
+
+        disposition_schema = dict(narrowed["disposition"])
+        disposition_schema.pop("enum", None)
+        disposition_schema["const"] = disposition
+        narrowed["disposition"] = disposition_schema
+
+        findings_schema = dict(narrowed["finding_codes"])
+        if repair:
+            findings_schema["minItems"] = max(
+                findings_min_items,
+                1,
+            )
+            finding_item_schema = dict(findings_schema["items"])
+            finding_item_schema["pattern"] = AGENT_REVIEW_FINDING_WIRE_PATTERN
+            findings_schema["items"] = finding_item_schema
+        else:
+            if findings_min_items > 0:
+                raise AutopilotError("agent_result_schema_invalid")
+            findings_schema["maxItems"] = 0
+        narrowed["finding_codes"] = findings_schema
+
+        patch_schema = dict(narrowed["patch"])
+        if patch:
+            patch_schema["type"] = "string"
+            patch_schema["minLength"] = max(
+                patch_min_length,
+                1,
+            )
+            patch_schema["maxLength"] = min(
+                patch_max_length,
+                AGENT_PATCH_WIRE_MAX_CHARS,
+            )
+            patch_schema["pattern"] = (
+                r"^diff --git [^\u0000\uD800-\uDFFF]*\n$"
+            )
+        else:
+            patch_schema["type"] = "null"
+            patch_schema.pop("minLength", None)
+            patch_schema.pop("maxLength", None)
+        narrowed["patch"] = patch_schema
+        return result
+
+    if role == "maintainer":
+        properties["result"] = result_schema(
+            disposition="staged",
+            repair=False,
+            patch=True,
+        )
+    elif role == "reviewer":
+        success_disposition = _reviewer_success_disposition(candidate)
+        properties["result"] = {
+            "anyOf": [
+                result_schema(
+                    disposition=success_disposition,
+                    repair=False,
+                    patch=False,
+                ),
+                result_schema(
+                    disposition="request_repair",
+                    repair=True,
+                    patch=False,
+                ),
+            ]
+        }
+    else:
+        raise AutopilotError("agent_role_invalid")
+    description = schema.get("description")
+    if description is not None and not isinstance(description, str):
+        raise AutopilotError("agent_result_schema_invalid")
+    prefix = "" if description is None else f"{description.rstrip()} "
+    schema["description"] = (
+        f"{prefix}Source schema SHA-256: {source_sha256}."
+    )
+    return schema
 
 
 def _read_agent_result(
@@ -1693,30 +1907,42 @@ def _validate_agent_result(
     value: Any,
     *,
     role: str,
+    candidate: Mapping[str, Any],
 ) -> tuple[dict[str, Any], bytes | None]:
-    if not has_exact_keys(value, AGENT_RESULT_KEYS):
+    if not has_exact_keys(value, AGENT_WIRE_RESULT_KEYS):
         raise AutopilotError("agent_result_invalid")
-    disposition = value.get("disposition")
-    finding_codes = value.get("finding_codes")
-    patch = value.get("patch")
-    allowed = (
-        {"staged"}
-        if role == "maintainer"
-        else {"accept", "request_repair", "no_change", "rejected"}
-    )
+    body = value.get("result")
+    if not has_exact_keys(body, AGENT_WIRE_RESULT_BODY_KEYS):
+        raise AutopilotError("agent_result_invalid")
+    disposition = body.get("disposition")
+    raw_finding_codes = body.get("finding_codes")
+    patch = body.get("patch")
+    patch_bytes = None
+    if isinstance(patch, str):
+        try:
+            patch_bytes = patch.encode("utf-8")
+        except UnicodeEncodeError as error:
+            raise AutopilotError("agent_result_invalid") from error
+    if role == "maintainer":
+        allowed = {"staged"}
+    elif role == "reviewer":
+        allowed = {
+            _reviewer_success_disposition(candidate),
+            "request_repair",
+        }
+    else:
+        raise AutopilotError("agent_result_invalid")
     if (
-        value.get("schema") != AGENT_RESULT_SCHEMA
+        value.get("schema") != AGENT_WIRE_RESULT_SCHEMA
         or value.get("role") != role
         or disposition not in allowed
-        or not isinstance(finding_codes, list)
-        or len(finding_codes) > 16
-        or finding_codes != sorted(set(finding_codes))
+        or not isinstance(raw_finding_codes, list)
+        or len(raw_finding_codes) > 16
         or any(
             not isinstance(code, str) or REASON_PATTERN.fullmatch(code) is None
-            for code in finding_codes
+            for code in raw_finding_codes
         )
-        or (role == "reviewer" and "base_stale" in finding_codes)
-        or (disposition == "request_repair") != bool(finding_codes)
+        or (role == "reviewer" and "base_stale" in raw_finding_codes)
         or (
             role == "maintainer"
             and (
@@ -1724,14 +1950,17 @@ def _validate_agent_result(
                 or not patch.startswith("diff --git ")
                 or not patch.endswith("\n")
                 or "\0" in patch
-                or not 1 <= len(patch.encode("utf-8")) <= AGENT_PATCH_MAX_BYTES
-                or finding_codes
+                or patch_bytes is None
+                or not 1 <= len(patch_bytes) <= AGENT_PATCH_MAX_BYTES
+                or raw_finding_codes
             )
         )
         or (role == "reviewer" and patch is not None)
     ):
         raise AutopilotError("agent_result_invalid")
-    patch_bytes = None if patch is None else patch.encode("utf-8")
+    finding_codes = sorted(set(raw_finding_codes))
+    if (disposition == "request_repair") != bool(finding_codes):
+        raise AutopilotError("agent_result_invalid")
     result = {
         "schema": AGENT_RESULT_SCHEMA,
         "role": role,
@@ -3779,6 +4008,14 @@ def _run_ephemeral_codex_agent_locked(
         schema_value = json.loads(schema_payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
         raise AutopilotError("agent_result_schema_invalid") from error
+    schema_value = _role_specific_agent_result_schema(
+        schema_value,
+        role=role,
+        candidate=candidate,
+    )
+    schema_payload = canonical_json(schema_value) + b"\n"
+    if len(schema_payload) > AGENT_RESULT_MAX_BYTES:
+        raise AutopilotError("agent_result_schema_invalid")
     schema_sha256 = sha256_value(schema_value)
     auth_capsule, real_auth_path, real_auth_identity = (
         _real_codex_auth_capsule()
@@ -4035,7 +4272,11 @@ def _run_ephemeral_codex_agent_locked(
             expected_identity=output_identity,
         )
         try:
-            result, patch = _validate_agent_result(raw_result, role=role)
+            result, patch = _validate_agent_result(
+                raw_result,
+                role=role,
+                candidate=candidate,
+            )
         except AutopilotError as error:
             raise AutopilotError(
                 error.code,
