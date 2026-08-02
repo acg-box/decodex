@@ -377,7 +377,27 @@ for line in sys.stdin:
         reset_card_consumed = True
         result = {"outcome": "reset"}
     elif method == "thread/list":
-        if "searchTerm" in message["params"]:
+        if message["params"].get("searchTerm", "").startswith(
+            "decodex-capability-probe-no-match-"
+        ):
+            assert set(message["params"]) == {"limit", "searchTerm", "useStateDbOnly"}
+            assert message["params"]["useStateDbOnly"] is True
+            assert message["params"]["limit"] <= 100
+            count = 0 if mode == "optional-unsupported" else 1
+            if mode == "oversized-thread-list":
+                count = 101
+            result = {
+                "data": [
+                    {
+                        "id": f"00000000-0000-4000-8000-{index:012d}",
+                        "archived": False,
+                        "parentThreadId": None,
+                    }
+                    for index in range(1, count + 1)
+                ],
+                "nextCursor": None,
+            }
+        elif "searchTerm" in message["params"]:
             assert set(message["params"]) == {"archived", "limit", "searchTerm"}
             assert message["params"]["searchTerm"] == exact_thread["name"]
             assert message["params"]["limit"] <= 100

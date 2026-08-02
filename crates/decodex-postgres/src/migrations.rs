@@ -8,7 +8,7 @@ use deadpool_postgres::Client;
 use crate::{REQUIRED_POSTGRES_MAJOR, StoreError};
 use embedded::migrations;
 
-const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 31;
+const EXPECTED_LATEST_MIGRATION_VERSION: i32 = 32;
 #[cfg(test)]
 const CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION: &str =
 	include_str!("../migrations/V20__constraint_restore_canonicalization.sql");
@@ -27,6 +27,9 @@ const CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION: &str =
 #[cfg(test)]
 const OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
 	include_str!("../migrations/V31__official_codex_release_capability.sql");
+#[cfg(test)]
+const CURRENT_OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
+	include_str!("../migrations/V32__codex_0146_alpha_9_2_capability.sql");
 
 pub(crate) async fn run(client: &mut Client) -> Result<(), StoreError> {
 	migrations::runner().run_async(&mut ***client).await?;
@@ -120,7 +123,7 @@ async fn verify_exact_ledger(
 		&& expected.last().map(|migration| migration.version()) != Some(terminal_version)
 	{
 		return Err(StoreError::Incompatible(
-			"embedded migration inventory does not end at the canonical V31 ledger".into(),
+			"embedded migration inventory does not end at the canonical V32 ledger".into(),
 		));
 	}
 	expected.retain(|migration| migration.version() <= terminal_version);
@@ -172,7 +175,8 @@ mod tests {
 	use super::{
 		ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION, ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
 		CONSTRAINT_RESTORE_CANONICALIZATION_MIGRATION, CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION,
-		MAC_ACCOUNT_LIFECYCLE_MIGRATION, OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION, migrations,
+		CURRENT_OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION, MAC_ACCOUNT_LIFECYCLE_MIGRATION,
+		OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION, migrations,
 	};
 
 	const POSTGRESQL_SYNTAX_CONSTRUCTS: [&str; 7] =
@@ -488,6 +492,42 @@ mod tests {
 		);
 		for forbidden in [
 			"fb2b6b35789e59c885cf4d2aee12475809dd67b2c10df580e638122fd6b3438e",
+			"CREATE TABLE",
+			"CREATE TYPE",
+			"GRANT ",
+			"REVOKE ",
+			"account_migration",
+			"legacy",
+		] {
+			assert!(!migration.contains(forbidden), "{forbidden}");
+		}
+	}
+
+	#[test]
+	fn v32_rebinds_only_the_current_official_codex_release_capability() {
+		let migration = CURRENT_OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION;
+
+		for function in [
+			"read_account_registry_exact",
+			"read_reset_card_account_admission_exact",
+			"attest_codex_account_capability_exact",
+			"prepare_process_generation_exact",
+		] {
+			assert!(
+				migration.contains(&format!("CREATE OR REPLACE FUNCTION decodex.{function}(")),
+				"{function}"
+			);
+		}
+		for exact_value in [
+			"codex-cli 0.146.0-alpha.9.2",
+			"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2",
+			"64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29",
+		] {
+			assert_eq!(migration.matches(exact_value).count(), 4, "{exact_value}");
+		}
+		for forbidden in [
+			"codex-cli 0.146.0-alpha.3.1",
+			"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4",
 			"CREATE TABLE",
 			"CREATE TYPE",
 			"GRANT ",
