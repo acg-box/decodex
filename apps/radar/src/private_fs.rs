@@ -194,6 +194,55 @@ impl PrivateCache {
 			.transpose()
 	}
 
+	pub(crate) fn entry_kind(&self, relative: &Path) -> Result<Option<PrivateEntryKind>> {
+		self.entry_kind_with(relative, || {})
+	}
+
+	fn entry_kind_with(
+		&self,
+		relative: &Path,
+		after_snapshot: impl FnOnce(),
+	) -> Result<Option<PrivateEntryKind>> {
+		let (parent, name) = match self.open_parent(relative, false) {
+			Ok(value) => value,
+			Err(error) if is_not_found(&error) => {
+				self.verify_binding()?;
+
+				return Ok(None);
+			},
+			Err(error) => return Err(error),
+		};
+		let Some(snapshot) = file_snapshot_at(parent.as_raw_fd(), &name)? else {
+			self.verify_binding()?;
+
+			return Ok(None);
+		};
+		after_snapshot();
+		let kind = if snapshot.file_type == u32::from(libc::S_IFREG) {
+			validate_private_file_snapshot(&snapshot, "entry")?;
+
+			PrivateEntryKind::File
+		} else if snapshot.file_type == u32::from(libc::S_IFDIR) {
+			validate_private_directory_snapshot(&snapshot, "entry")?;
+
+			PrivateEntryKind::Directory
+		} else {
+			eyre::bail!("Radar cache entry must be a regular file or non-symlink directory");
+		};
+		let (current_parent, current_name) = self.open_parent(relative, false)?;
+		let current =
+			file_snapshot_at(current_parent.as_raw_fd(), &current_name)?.ok_or_else(|| {
+				eyre::eyre!("Radar cache entry disappeared during metadata inspection")
+			})?;
+
+		if current != snapshot {
+			eyre::bail!("Radar cache entry changed during metadata inspection");
+		}
+		self.verify_binding()?;
+
+		Ok(Some(kind))
+	}
+
 	pub(crate) fn create_directory_all(&self, relative: &Path) -> Result<()> {
 		drop(self.open_directory(relative, true)?);
 		self.verify_binding()
@@ -1182,6 +1231,20 @@ fn validate_private_file_snapshot(snapshot: &FileSnapshot, label: &str) -> Resul
 	)
 }
 
+fn validate_private_directory_snapshot(snapshot: &FileSnapshot, label: &str) -> Result<()> {
+	if snapshot.file_type != u32::from(libc::S_IFDIR) {
+		eyre::bail!("Radar cache {label} must be a non-symlink directory");
+	}
+	validate_owner_mode_link(
+		snapshot.uid,
+		snapshot.mode,
+		snapshot.nlink,
+		PRIVATE_DIR_MODE,
+		label,
+		false,
+	)
+}
+
 fn validate_private_directory(file: &File, label: &str) -> Result<DirectoryIdentity> {
 	let metadata = file.metadata()?;
 
@@ -1643,6 +1706,28 @@ pub(crate) fn private_file_exists(path: &Path) -> Result<bool> {
 	};
 
 	Ok(cache.metadata(&location.relative)?.is_some())
+}
+
+pub(crate) fn private_entry_kind(path: &Path) -> Result<Option<PrivateEntryKind>> {
+	let location = private_file_path(path)?;
+	let cache = match PrivateCache::open_existing(&location.root) {
+		Ok(cache) => cache,
+		Err(error) if is_not_found(&error) => return Ok(None),
+		Err(error) => return Err(error),
+	};
+
+	cache.entry_kind(&location.relative)
+}
+
+#[cfg(test)]
+pub(crate) fn private_entry_kind_after_snapshot(
+	path: &Path,
+	after_snapshot: impl FnOnce(),
+) -> Result<Option<PrivateEntryKind>> {
+	let location = private_file_path(path)?;
+	let cache = PrivateCache::open_existing(&location.root)?;
+
+	cache.entry_kind_with(&location.relative, after_snapshot)
 }
 
 pub(crate) fn private_file_exists_under_lock(lock: &RadarCacheLock, path: &Path) -> Result<bool> {
