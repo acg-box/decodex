@@ -40,9 +40,9 @@ const PROCESS_AUTHORIZATION_DIGEST: &str =
 const PROCESS_CREDENTIAL_FINGERPRINT: &str =
 	"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PROCESS_CALLBACK_PROFILE: &str =
-	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+	"64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29";
 const CURRENT_CODEX_EXECUTABLE_SHA256: &str =
-	"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4";
+	"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2";
 
 #[derive(Clone)]
 pub(super) struct RoutingFixture {
@@ -662,7 +662,7 @@ async fn prepare_routing_process_generations(
 	assert!(
 		store
 			.attest_codex_account_capability(&decodex_postgres::CodexAccountCapabilityAttestation {
-				build_identity: "codex-cli 0.146.0-alpha.3.1".to_owned(),
+				build_identity: "codex-cli 0.146.0-alpha.9.2".to_owned(),
 				executable_sha256: CURRENT_CODEX_EXECUTABLE_SHA256.to_owned(),
 				schema_sha256: SCHEMA_FINGERPRINT.to_owned(),
 				callback_profile_sha256: PROCESS_CALLBACK_PROFILE.to_owned(),

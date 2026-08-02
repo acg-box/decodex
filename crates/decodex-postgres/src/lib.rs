@@ -256,7 +256,7 @@ impl PostgresStore {
 
 	/// Parse and prepare every changed V22/V27/V28 embedded SQL source without executing it.
 	///
-	/// V29 through V31 change only database-owned functions and add no adapter SQL.
+	/// V29 through V32 change only database-owned functions and add no adapter SQL.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
 	pub async fn prepare_changed_sql_fixture(client: &TokioClient) -> Result<usize, StoreError> {

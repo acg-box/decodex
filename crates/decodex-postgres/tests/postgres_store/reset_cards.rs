@@ -1,10 +1,10 @@
 use std::{error::Error, sync::Arc, time::Duration};
 
 use decodex_core::{
-	AccountOperationId, AccountOperationKind, AccountOperationPhase, AccountProvider,
-	AccountQuotaWindow, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
-	CredentialVersion, ProcessGenerationAccountBinding, ProviderIdentity, ResetCardConsumeOutcome,
-	ResetCardDescriptor, ResetCardTimestamp,
+	AccountLifecycleReadiness, AccountOperationId, AccountOperationKind, AccountOperationPhase,
+	AccountProvider, AccountQuotaWindow, CredentialBinding, CredentialFingerprint,
+	CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
+	ProviderIdentity, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
 };
 use decodex_postgres::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim, AccountId,
@@ -47,7 +47,7 @@ const PENDING_OPERATION_KEY: &str = "reset-card-integration-pending-operation";
 const EXACT_PROVIDER_CREDIT_ID: &str = "sk-live-provider-id";
 const CREDENTIAL_FINGERPRINT: &str =
 	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const CALLBACK_PROFILE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const CALLBACK_PROFILE: &str = "64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29";
 const CREDENTIAL_WRITER: &str = "71000000-0000-4000-8000-000000000010";
 const ROTATED_CREDENTIAL_FINGERPRINT: &str =
 	"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
@@ -1482,7 +1482,7 @@ async fn reject_pending_replay_after_account_change(
 		completed_reset_card_receipt(owner, "reset-card-expired-state-rejected").await?;
 	owner
 		.execute(
-			"UPDATE decodex.accounts SET state='available' \
+			"UPDATE decodex.accounts SET state='available',enabled=true \
 				 WHERE account_id=$1::text::uuid AND revision=$2",
 			&[&account_id.as_str(), &FINAL_ACCOUNT_REVISION],
 		)
@@ -1884,9 +1884,9 @@ async fn enroll_v27_account(
 	assert!(
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
-				build_identity: "codex-cli 0.146.0-alpha.3.1".to_owned(),
+				build_identity: "codex-cli 0.146.0-alpha.9.2".to_owned(),
 				executable_sha256:
-					"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4".to_owned(),
+					"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2".to_owned(),
 				schema_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 					.to_owned(),
 				callback_profile_sha256: CALLBACK_PROFILE.to_owned(),
@@ -1895,6 +1895,8 @@ async fn enroll_v27_account(
 			})
 			.await?
 	);
+	let account = &store.read_account_registry(Some(account_id), 1).await?[0];
+	assert_eq!(account.lifecycle_readiness, AccountLifecycleReadiness::Ready);
 	Ok(())
 }
 
