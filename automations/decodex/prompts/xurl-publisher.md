@@ -49,9 +49,16 @@ Workflow:
    update.
 
 Success and stop conditions:
-- End with one observed outcome, one published or skipped candidate, or a proven no-op.
+- A quality skip, a no-due result, an exact-readback publish, an observed outcome, or a validated
+  no-candidate no-op is a successful terminal outcome.
 - Report post/outcome ID, canonical URL when published, exact author/text readback status, pricing
   refresh status, `ordinary_https_get_count` as free, zero X API calls and cost, current-run ceiling,
   monthly reserved and remaining ceilings, and blocker.
+- Only after all required validation, readback, and report evidence is complete, call native
+  `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
+  the native current-task contract cannot archive another task. Never archive before evidence is complete.
+- Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
+  authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
+  user decision is unresolved; or any required action is not durably handed off.
 - Human attention is allowed only for missing OAuth, an unknown create result, or damaged immutable X
   safety state. Candidate quality failure is an autonomous skip.
