@@ -87,8 +87,8 @@ The current accepted profile is intentionally narrow:
 | Field | Accepted value |
 | --- | --- |
 | Platform evidence | macOS arm64 |
-| Version | `codex-cli 0.146.0-alpha.3.1` |
-| Executable SHA-256 | `fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4` |
+| Version | `codex-cli 0.146.0-alpha.9.2` |
+| Executable SHA-256 | `d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2` |
 | Command | canonical Codex path as both executable and argv0, suspended before user code, with fixed `app-server --stdio` arguments |
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` selects `DisabledEphemeral`; no remote-control argument |
 | Protocol boundary | Child stdin and stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
@@ -99,9 +99,9 @@ The current exact image and callback receipt is
 [the Codex 0.146 account-callback receipt](../evidence/xy-1422-codex-0146-account-callback.md).
 For the same exact tag, Codex reads the marker at startup and selects
 `DisabledEphemeral` for stdio without a remote-control argument in the upstream
-[CLI selection](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.3.1/codex-rs/cli/src/main.rs)
+[CLI selection](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.9.2/codex-rs/cli/src/main.rs)
 and
-[remote-control transport module](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.3.1/codex-rs/app-server-transport/src/transport/remote_control/mod.rs).
+[remote-control transport module](https://github.com/openai/codex/blob/rust-v0.146.0-alpha.9.2/codex-rs/app-server-transport/src/transport/remote_control/mod.rs).
 The marker is startup-state evidence only. It is not a permanent denial policy: the
 same exact build can process an alternate-control enable RPC if a protocol writer can
 send one. This pre-dispatch slice therefore returns no raw stdin, raw stdout, generic
@@ -119,7 +119,7 @@ alone cannot mint launch authority.
 
 MacDogfoodReady requires an exact-build account-capability receipt for the callback.
 Version text, generated request types, or upstream implementation presence alone is not
-proof. The current exact `codex-cli 0.146.0-alpha.3.1` profile handles the root refresh
+proof. The current exact `codex-cli 0.146.0-alpha.9.2` profile handles the root refresh
 request and response, but it mints readiness only after the exact-image, generated-schema,
 and live callback preflights pass. An unsupported build or callback shape fails closed
 before account launch. The private-stdio lifetime profile does not independently claim

@@ -50,7 +50,7 @@ plugin, rollout, and thread visibility authority.
 
 The exact protected Codex build must positively prove the
 `account/chatgptAuthTokens/refresh` callback before readiness. The current exact
-`codex-cli 0.146.0-alpha.3.1` profile handles the root refresh request and response through
+`codex-cli 0.146.0-alpha.9.2` profile handles the root refresh request and response through
 the Account Service, subject to exact-image, generated-schema, and live callback
 preflights. The existing V23 ProcessGeneration intent, manifest, fence, and readback bind
 the initial account revision, canonical credential version/fingerprint, provider identity,

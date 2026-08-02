@@ -559,7 +559,7 @@ code, path, session, and process-group verification. After spawn, the supervisor
 boot, PID, process-start, process-group, and session identities.
 
 The current launch profile accepts only the source-attested macOS
-`codex-cli 0.146.0-alpha.3.1` image and forces
+`codex-cli 0.146.0-alpha.9.2` image and forces
 `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`. This is exact-build startup-state
 evidence: it selects disabled-ephemeral remote-control mode, but it is not a permanent denial
 policy. The supervisor retains child stdin and stdout privately for lifetime ownership.
@@ -568,7 +568,7 @@ protocol writer. Every other build, including the current unrecorded Linux image
 before profile-dependent version or schema preflight spawn.
 
 That accepted lifetime profile is not by itself an AccountLifecycle readiness receipt. The
-exact `codex-cli 0.146.0-alpha.3.1` profile recognizes the root
+exact `codex-cli 0.146.0-alpha.9.2` profile recognizes the root
 `account/chatgptAuthTokens/refresh` request and response schemas and services that callback
 through the Account Service. Readiness is issued only after the exact executable, generated
 schema, and live callback preflights pass. The callback path rechecks the account revision,
@@ -1437,14 +1437,15 @@ group, and lifetime guard to the hard-capped fair quarantine rather than relinqu
 authority. Transfer is bounded; background retries are isolated per round and may intentionally
 retain capacity indefinitely when group death cannot be confirmed.
 
-The probe sends `initialize`, `initialized`, read-only `account/read`, bounded
-`thread/list(useStateDbOnly=true)`, exact-ID `thread/read(includeTurns=false)` when a listed
-thread exists, and `thread/search` with a fixed nonmatching term and bounded result count.
-The latter two calls establish method availability only; they do not claim global title
-discovery. Account identity is pseudonymized and re-attested after every authority read;
+The probe sends `initialize`, `initialized`, read-only `account/read`, and bounded
+`thread/list(useStateDbOnly=true)` with a fixed nonmatching search term. It sends exact-ID
+`thread/read(includeTurns=false)` only if that filtered list unexpectedly returns a thread.
+The exact `alpha.9.2` image advertises `thread/search`, but the method did not return during the
+bounded live check. The probe does not call it and records it as `not_probed`; it does not claim
+global title discovery. Account identity is pseudonymized and re-attested after every authority read;
 an identity change discards the in-progress negotiation, and restart retains the expected
-identity for re-attestation. Archive, paginated persisted history, and native collaboration
-remain explicitly `not_probed` while their side-effect/event gates are closed. Paginated
+identity for re-attestation. Search, archive, paginated persisted history, and native collaboration
+remain explicitly `not_probed` while their method or side-effect/event gates are closed. Paginated
 history schema evidence comes from the structural `ThreadStartParams.historyMode` /
 `ThreadHistoryMode` contract, never from a list cursor.
 Current `DispatchGate` has no enabled state and denies thread start/resume, turn
