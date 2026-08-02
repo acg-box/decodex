@@ -37,13 +37,21 @@ class PortfolioTests(unittest.TestCase):
             self.assertNotIn(".worktrees", item["cwds"][0])
             self.assertNotIn("xhigh", json.dumps(item).casefold())
 
-    def test_paused_status_and_allowed_promotion_contract(self) -> None:
+    def test_status_and_allowed_promotion_contract(self) -> None:
         manifest = portfolio.load_manifest()
-        self.assertEqual(manifest["status"], "PAUSED")
-        self.assertEqual({item["status"] for item in portfolio.rendered_automations(manifest)}, {"PAUSED"})
-        active_manifest = {**manifest, "status": "ACTIVE"}
-        self.assertEqual(portfolio.validate_manifest(active_manifest), [])
-        active_rendered = portfolio.rendered_automations(active_manifest)
+        self.assertIn(manifest["status"], {"ACTIVE", "PAUSED"})
+        self.assertEqual(
+            {item["status"] for item in portfolio.rendered_automations(manifest)},
+            {manifest["status"]},
+        )
+        for status in ("PAUSED", "ACTIVE"):
+            candidate_manifest = {**manifest, "status": status}
+            self.assertEqual(portfolio.validate_manifest(candidate_manifest), [])
+            self.assertEqual(
+                {item["status"] for item in portfolio.rendered_automations(candidate_manifest)},
+                {status},
+            )
+        active_rendered = portfolio.rendered_automations({**manifest, "status": "ACTIVE"})
         self.assertEqual({item["status"] for item in active_rendered}, {"ACTIVE"})
         all_prompts = " ".join(" ".join(item["prompt"].split()) for item in active_rendered).casefold()
         for stale_claim in (
@@ -248,7 +256,7 @@ class PortfolioTests(unittest.TestCase):
             errors = next(item["errors"] for item in report["results"] if item["id"] == "codex-upstream-maintainer")
             self.assertIn("native created_at metadata is missing", errors)
 
-    def test_runtime_status_must_match_the_paused_manifest(self) -> None:
+    def test_runtime_status_must_match_the_manifest(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             codex_home = Path(directory)
             for item in portfolio.rendered_automations():
@@ -256,7 +264,7 @@ class PortfolioTests(unittest.TestCase):
                 path.parent.mkdir(parents=True)
                 values = {**item, "created_at": 1, "updated_at": 2}
                 if item["id"] == "codex-upstream-health":
-                    values["status"] = "ACTIVE"
+                    values["status"] = "PAUSED" if item["status"] == "ACTIVE" else "ACTIVE"
                 path.write_text(
                     "\n".join(f"{key} = {json.dumps(value)}" for key, value in values.items()) + "\n",
                     encoding="utf-8",
