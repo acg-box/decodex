@@ -37,10 +37,17 @@ Workflow:
    signature, remote `main`, closed PR, and branch cleanup. Remove the temporary worktree.
 
 Success:
-- End with either actionable repair feedback on the same PR or one signed, exact-head merge.
+- A verified no-eligible-PR no-op, a completed review with durable feedback read back on the same PR,
+  or a signed landed PR with exact-head merge readback is a successful terminal outcome.
 - Re-running after a merge is a no-op because GitHub and Git refs are the workflow state.
+- Only after all required validation, readback, and report evidence is complete, call native
+  `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
+  the native current-task contract cannot archive another task. Never archive before evidence is complete.
 
 Stop conditions:
-- Keep the task visible only for ambiguous external merge state, missing landing authority, or a true
-  product-policy decision. Test failures, stale bases, and code defects return to Maintainer.
+- Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
+  authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
+  user decision is unresolved; or any required action is not durably handed off.
+- A test, check, or code finding becomes a successful completed review only after actionable feedback is
+  durably submitted and read back; otherwise it stays visible. Stale bases and defects return to Maintainer.
 - Report PR URL, reviewed base/head, findings or merge OID, checks, and zero X API spend.
