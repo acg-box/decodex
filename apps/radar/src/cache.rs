@@ -40,11 +40,7 @@ pub(crate) fn cache_gc(request: &RadarCacheGcRequest) -> Result<RadarCacheGcRepo
 
 	recover_stale_temporary_files(&lock, Path::new(""), &mut report)?;
 	for relative in RETAINED_CACHE_COLLECTIONS {
-		if *relative == crate::content_pair::PAIRS_RELATIVE_PATH {
-			prune_pair_collection(&lock, Path::new(relative), request, &mut report)?;
-		} else {
-			prune_collection(&lock, Path::new(relative), request, &mut report)?;
-		}
+		prune_collection(&lock, Path::new(relative), request, &mut report)?;
 	}
 
 	if lock.cache().metadata(Path::new(LEDGER_RELATIVE_PATH))?.is_some() {
@@ -52,73 +48,6 @@ pub(crate) fn cache_gc(request: &RadarCacheGcRequest) -> Result<RadarCacheGcRepo
 	}
 
 	Ok(report)
-}
-
-fn prune_pair_collection(
-	lock: &RadarCacheLock,
-	directory: &Path,
-	request: &RadarCacheGcRequest,
-	report: &mut RadarCacheGcReport,
-) -> Result<()> {
-	lock.cache().create_directory_all(directory)?;
-	let mut pairs = Vec::new();
-
-	for entry in lock.cache().entries(directory)? {
-		if entry.kind != PrivateEntryKind::Directory {
-			eyre::bail!("Radar committed content-review root contains a non-directory entry");
-		}
-		let relative = directory.join(&entry.name);
-		let files = lock.cache().entries(&relative)?;
-		if files.len() != 2
-			|| files.iter().any(|file| file.kind != PrivateEntryKind::File)
-			|| !files.iter().any(|file| file.name == "review.json")
-			|| !files.iter().any(|file| file.name == "impact.json")
-		{
-			eyre::bail!("Radar committed content-review pair must contain exactly two artifacts");
-		}
-		crate::content_pair::validate_committed_pair_directory(lock, &relative)?;
-		let mut newest = std::time::UNIX_EPOCH;
-		let mut bytes = 0_u64;
-
-		for file in files {
-			let identity = file
-				.identity
-				.ok_or_else(|| eyre::eyre!("Radar committed pair file lacks an identity"))?;
-
-			newest = newest.max(identity.modified());
-			bytes = bytes.saturating_add(identity.size());
-		}
-		pairs.push((relative, newest, bytes));
-	}
-	pairs.sort_by_key(|(relative, modified, _)| {
-		(Reverse(*modified), Reverse(relative.as_os_str().to_os_string()))
-	});
-	let max_age = Duration::from_secs(request.policy.max_age_days.saturating_mul(24 * 60 * 60));
-	let mut retained_files = 0_usize;
-	let mut retained_bytes = 0_u64;
-	let mut pruned = false;
-
-	for (relative, modified, bytes) in pairs {
-		let stale = request.now.duration_since(modified).is_ok_and(|age| age > max_age);
-		let exceeds_count =
-			retained_files.saturating_add(2) > request.policy.max_files_per_collection;
-		let exceeds_bytes =
-			retained_bytes.saturating_add(bytes) > request.policy.max_bytes_per_collection;
-
-		if stale || exceeds_count || exceeds_bytes {
-			lock.remove_directory_atomic(&relative)?;
-			report.files_removed += 2;
-			pruned = true;
-		} else {
-			retained_files += 2;
-			retained_bytes = retained_bytes.saturating_add(bytes);
-		}
-	}
-	if pruned {
-		report.collections_pruned += 1;
-	}
-
-	Ok(())
 }
 
 fn validate_policy(request: &RadarCacheGcRequest) -> Result<()> {

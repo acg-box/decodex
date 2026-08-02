@@ -44,11 +44,11 @@ fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
 	let stale = now - Duration::from_secs(20 * 24 * 60 * 60);
 
 	private_file(&root.join("github/bundles/stale.json"), b"1", stale);
-	private_file(&root.join("github/content-review-staging/new.json"), b"12", recent);
-	private_file(&root.join("github/content-review-staging/older.json"), b"34", older);
-	private_file(&root.join("github/content-review-staging/oldest.json"), b"56", oldest);
-	private_file(&root.join("github/control-plane-upgrades/new.json"), b"123456", recent);
-	private_file(&root.join("github/control-plane-upgrades/older.json"), b"123456", older);
+	private_file(&root.join("github/review-queue/new.json"), b"12", recent);
+	private_file(&root.join("github/review-queue/older.json"), b"34", older);
+	private_file(&root.join("github/review-queue/oldest.json"), b"56", oldest);
+	private_file(&root.join("site-content/signals/new.json"), b"123456", recent);
+	private_file(&root.join("site-content/signals/older.json"), b"123456", older);
 	private_file(&root.join("generated/analysis/keep.analysis.json"), b"1234", recent);
 
 	let report =
@@ -57,11 +57,11 @@ fn cache_gc_enforces_age_count_and_byte_limits_across_all_collections() {
 
 	assert_eq!(report.files_removed, 3);
 	assert!(!root.join("github/bundles/stale.json").exists());
-	assert!(root.join("github/content-review-staging/new.json").exists());
-	assert!(root.join("github/content-review-staging/older.json").exists());
-	assert!(!root.join("github/content-review-staging/oldest.json").exists());
-	assert!(root.join("github/control-plane-upgrades/new.json").exists());
-	assert!(!root.join("github/control-plane-upgrades/older.json").exists());
+	assert!(root.join("github/review-queue/new.json").exists());
+	assert!(root.join("github/review-queue/older.json").exists());
+	assert!(!root.join("github/review-queue/oldest.json").exists());
+	assert!(root.join("site-content/signals/new.json").exists());
+	assert!(!root.join("site-content/signals/older.json").exists());
 	assert!(root.join("generated/analysis/keep.analysis.json").exists());
 }
 
@@ -75,8 +75,6 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 	let collections = [
 		"github/bundles",
 		"github/review-queue",
-		"github/content-review-staging",
-		"github/control-plane-upgrades",
 		"site-content/signals",
 		"site-content/release-deltas",
 	];
@@ -90,11 +88,7 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 	private_file(&root.join("generated/new.json"), b"1", recent);
 	private_file(&root.join("generated/analysis/old.json"), b"1", older);
 	private_file(&root.join(".radar-tmp-crashed-root"), b"partial", recent);
-	private_file(
-		&root.join("github/control-plane-upgrades/.radar-tmp-crashed-nested"),
-		b"partial",
-		recent,
-	);
+	private_file(&root.join("github/bundles/.radar-tmp-crashed-nested"), b"partial", recent);
 
 	let report =
 		crate::cache_gc(&RadarCacheGcRequest { cache_root: root.clone(), policy: strict, now })
@@ -108,7 +102,7 @@ fn cache_gc_covers_every_writer_collection_and_recovers_crash_temporary_files() 
 	assert!(root.join("generated/new.json").exists());
 	assert!(!root.join("generated/analysis/old.json").exists());
 	assert!(!root.join(".radar-tmp-crashed-root").exists());
-	assert!(!root.join("github/control-plane-upgrades/.radar-tmp-crashed-nested").exists());
+	assert!(!root.join("github/bundles/.radar-tmp-crashed-nested").exists());
 }
 
 #[test]

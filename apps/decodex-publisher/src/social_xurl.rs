@@ -14,8 +14,8 @@ use std::path::{Path, PathBuf};
 use crate::{
 	SocialObserveXurlReport, SocialObserveXurlRequest, SocialProbeXurlReport,
 	SocialPublishXurlReport, SocialPublishXurlRequest, SocialReconcileXurlReport,
-	SocialReconcileXurlRequest, SocialSealXurlAuthReport, SocialSealXurlAuthRequest,
-	SocialXurlCostReport, prelude::Result,
+	SocialReconcileXurlRequest, SocialRefreshPricingReport, SocialSealXurlAuthReport,
+	SocialSealXurlAuthRequest, SocialXurlCostReport, prelude::Result,
 };
 
 pub(crate) fn seal_auth(request: &SocialSealXurlAuthRequest) -> Result<SocialSealXurlAuthReport> {
@@ -52,6 +52,10 @@ pub(crate) fn probe(now: &str) -> Result<SocialProbeXurlReport> {
 	Ok(report)
 }
 
+pub(crate) fn refresh_pricing(now: &str) -> Result<SocialRefreshPricingReport> {
+	pricing::refresh_at(parse_probe_time(now)?)
+}
+
 pub(crate) fn cost_report(billing_month: &str) -> Result<SocialXurlCostReport> {
 	let root = crate::repo_root()?;
 	ledger::cost_report(
@@ -60,32 +64,8 @@ pub(crate) fn cost_report(billing_month: &str) -> Result<SocialXurlCostReport> {
 	)
 }
 
-#[cfg(test)]
-pub(crate) fn cost_report_for_test(
-	attempts_dir: &Path,
-	billing_month: &str,
-) -> Result<SocialXurlCostReport> {
-	ledger::cost_report(attempts_dir, billing_month)
-}
-
 pub(crate) fn reconcile(request: &SocialReconcileXurlRequest) -> Result<SocialReconcileXurlReport> {
 	reconcile::run(request)
-}
-
-#[cfg(test)]
-pub(crate) fn reconcile_with_test_binary(
-	request: &SocialReconcileXurlRequest,
-	xurl_binary: &Path,
-) -> Result<SocialReconcileXurlReport> {
-	reconcile::run_with_test_binary(request, xurl_binary)
-}
-
-#[cfg(test)]
-pub(crate) fn reconcile_attempt_with_test_binary_without_pricing(
-	request: &SocialReconcileXurlRequest,
-	xurl_binary: &Path,
-) -> Result<SocialReconcileXurlReport> {
-	reconcile::run_attempt_with_test_binary_without_pricing(request, xurl_binary)
 }
 
 pub(crate) fn publication_effect_conflict(
@@ -107,6 +87,30 @@ pub(crate) fn daily_publication_effect_conflict(
 	ledger::daily_publication_effect_conflict(attempts_dir, day)
 }
 
+pub(crate) fn terminal_no_create_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	publish::terminal_no_create_recovery(attempt_path, attempts_dir, reservations_dir)
+}
+
+pub(crate) fn terminal_publication_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	reservations_dir: &Path,
+) -> Result<bool> {
+	publish::terminal_publication_recovery(attempt_path, attempts_dir, reservations_dir)
+}
+
+pub(crate) fn terminal_observation_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	posts_dir: &Path,
+) -> Result<bool> {
+	observe::terminal_recovery(attempt_path, attempts_dir, posts_dir)
+}
+
 #[cfg(test)]
 pub(crate) fn publish_with_test_binary(
 	request: &SocialPublishXurlRequest,
@@ -117,12 +121,21 @@ pub(crate) fn publish_with_test_binary(
 }
 
 #[cfg(test)]
-pub(crate) fn publish_with_test_binary_and_stale_pricing(
+pub(crate) fn publish_with_identity_interruption_for_test(
 	request: &SocialPublishXurlRequest,
 	xurl_binary: &Path,
 ) -> Result<SocialPublishXurlReport> {
 	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
-	publish::run_with_stale_pricing_for_test(request, &binary)
+	publish::run_with_identity_interruption_for_test(request, &binary)
+}
+
+#[cfg(test)]
+pub(crate) fn publish_with_reserved_attempt_interruption_for_test(
+	request: &SocialPublishXurlRequest,
+	xurl_binary: &Path,
+) -> Result<SocialPublishXurlReport> {
+	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
+	publish::run_with_reserved_attempt_interruption_for_test(request, &binary)
 }
 
 #[cfg(test)]
@@ -135,38 +148,11 @@ pub(crate) fn observe_with_test_binary(
 }
 
 #[cfg(test)]
-pub(crate) fn probe_with_test_binary(
-	now: &str,
+pub(crate) fn reconcile_with_test_binary(
+	request: &SocialReconcileXurlRequest,
 	xurl_binary: &Path,
-	auth_contract_path: &Path,
-) -> Result<SocialProbeXurlReport> {
-	let now = parse_probe_time(now)?;
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
-	let contract = auth_contract::load_current_at(auth_contract_path, now, &binary)?;
-	probe_with_verified_and_pricing(now, &binary, &contract, test_pricing_policy)
-}
-
-#[cfg(test)]
-pub(crate) fn probe_with_test_binary_after_bind(
-	now: &str,
-	xurl_binary: &Path,
-	auth_contract_path: &Path,
-	after_bind: impl FnOnce(),
-) -> Result<SocialProbeXurlReport> {
-	let now = parse_probe_time(now)?;
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
-	let contract = auth_contract::load_current_at(auth_contract_path, now, &binary)?;
-	after_bind();
-	probe_with_verified_and_pricing(now, &binary, &contract, test_pricing_policy)
-}
-
-#[cfg(test)]
-pub(crate) fn seal_auth_with_test_binary(
-	request: &SocialSealXurlAuthRequest,
-	xurl_binary: &Path,
-) -> Result<SocialSealXurlAuthReport> {
-	let binary = runtime::TrustedXurlBinary::open_for_test(xurl_binary)?;
-	auth_contract::seal(request, &binary)
+) -> Result<SocialReconcileXurlReport> {
+	reconcile::run_without_pricing_for_test(request, xurl_binary)
 }
 
 fn probe_with_verified(
@@ -195,23 +181,6 @@ fn probe_with_verified_and_pricing(
 		account_label: model::TARGET_ACCOUNT.into(),
 		authorization_contract: contract.report(),
 		pricing_policy,
-	})
-}
-
-#[cfg(test)]
-fn test_pricing_policy(now: time::OffsetDateTime) -> Result<crate::XPricingPolicyReport> {
-	let expires_at = parse_probe_time("2026-07-28T12:00:00Z")?;
-	Ok(crate::XPricingPolicyReport {
-		policy_id: model::PRICING_POLICY_ID.into(),
-		official_source: "https://docs.x.com/x-api/getting-started/pricing.md".into(),
-		reviewed_at: "2026-07-27T00:00:00Z".into(),
-		effective_at: "2026-07-27T00:00:00Z".into(),
-		expires_at: "2026-07-28T12:00:00Z".into(),
-		status: if now <= expires_at { "current".into() } else { "stale".into() },
-		user_read_cost_microusd: model::IDENTITY_READ_COST_MICROUSD,
-		url_free_content_create_cost_microusd: model::CREATE_COST_MICROUSD,
-		post_read_cost_ceiling_microusd: model::READ_COST_MICROUSD,
-		monthly_reservation_cap_microusd: crate::SOCIAL_MONTHLY_BUDGET_MICROUSD,
 	})
 }
 

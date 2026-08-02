@@ -1,4 +1,3 @@
-mod ledger_artifact_link_records_control_plane_upgrade_candidate;
 mod ledger_bootstrap_rejects_obsolete_schema;
 mod ledger_bounds_are_enforced_at_write_time;
 mod ledger_ingests_existing_bundle_analysis_and_signal_artifacts;

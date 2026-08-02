@@ -3,18 +3,6 @@ use std::path::PathBuf;
 use serde::Serialize;
 
 #[derive(Debug)]
-pub(crate) struct SocialGcRequest {
-	pub(crate) candidates_dir: PathBuf,
-	pub(crate) reservations_dir: PathBuf,
-	pub(crate) posts_dir: PathBuf,
-	pub(crate) outcomes_dir: PathBuf,
-	pub(crate) attempts_dir: PathBuf,
-	pub(crate) strategies_dir: PathBuf,
-	pub(crate) locks_dir: PathBuf,
-	pub(crate) now: String,
-}
-
-#[derive(Debug)]
 pub(crate) struct SocialReservePublishRequest {
 	pub(crate) candidate_path: PathBuf,
 	pub(crate) candidates_dir: PathBuf,
@@ -92,6 +80,21 @@ pub(crate) struct SocialTerminalizeSkipRequest {
 	pub(crate) timezone: String,
 	pub(crate) daily_limit: usize,
 	pub(crate) dry_run: bool,
+	pub(crate) reason: Option<String>,
+}
+
+#[derive(Debug)]
+pub(crate) struct SocialPublishNextRequest {
+	pub(crate) run_id: String,
+	pub(crate) decision: String,
+	pub(crate) reason: Option<String>,
+	pub(crate) clock: crate::SocialClock,
+}
+
+#[derive(Debug)]
+pub(crate) struct SocialObserveDueRequest {
+	pub(crate) run_id: String,
+	pub(crate) observed_at: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -144,6 +147,19 @@ pub(crate) struct SocialProbeXurlReport {
 	pub(crate) account_label: String,
 	pub(crate) authorization_contract: XurlAuthorizationContractReport,
 	pub(crate) pricing_policy: XPricingPolicyReport,
+}
+
+#[derive(Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct SocialRefreshPricingReport {
+	pub(crate) status: String,
+	pub(crate) official_source: String,
+	pub(crate) fetched_at: Option<String>,
+	pub(crate) receipt_status: String,
+	pub(crate) rates_microusd: Option<XPricingRatesReport>,
+	pub(crate) error_code: Option<String>,
+	pub(crate) ordinary_https_get_count: u64,
+	pub(crate) x_api_call_count: u64,
+	pub(crate) x_api_cost_microusd: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -200,6 +216,14 @@ pub(crate) struct XPricingPolicyReport {
 	pub(crate) monthly_reservation_cap_microusd: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct XPricingRatesReport {
+	pub(crate) post_create: u64,
+	pub(crate) post_create_with_url: u64,
+	pub(crate) post_read: u64,
+	pub(crate) user_read: u64,
+}
+
 #[derive(Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct SocialReconcileXurlReport {
 	pub(crate) status: String,
@@ -220,16 +244,20 @@ pub(crate) struct SocialTerminalizeSkipReport {
 	pub(crate) published_count: usize,
 }
 
-#[derive(Debug, Eq, PartialEq, Serialize)]
-pub(crate) struct SocialGcReport {
+#[derive(Debug, Serialize)]
+pub(crate) struct SocialPublishNextReport {
 	pub(crate) status: String,
-	pub(crate) reason_codes: Vec<String>,
-	pub(crate) scanned_files: usize,
-	pub(crate) deleted_lineages: usize,
-	pub(crate) deleted_files: usize,
-	pub(crate) deleted_strategies: usize,
-	pub(crate) retained_lineages: usize,
-	pub(crate) retained_strategies: usize,
+	pub(crate) candidate_path: Option<String>,
+	pub(crate) effect_path: Option<String>,
+	pub(crate) published_url: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+pub(crate) struct SocialObserveDueReport {
+	pub(crate) status: String,
+	pub(crate) post_path: Option<String>,
+	pub(crate) outcome_path: Option<String>,
+	pub(crate) window: Option<String>,
 }
 
 #[derive(Debug, Eq, PartialEq)]

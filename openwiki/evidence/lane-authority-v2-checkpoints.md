@@ -64,7 +64,7 @@ Refreshed at: 2026-07-10 (America/New_York).
 - The isolated C0 branch was rebased without conflict and now matches current
   `main`/`origin/main` at `24022558732b57b0bf96fac5bc4d16cd9613c3ad` before its
   uncommitted OpenWiki changes. The root worktree was clean at the same commit.
-- New reviewed surfaces include `automations/decodex/scripts/config/automation_checkout.py`,
+- New reviewed surfaces included the retired automation checkout resolver,
   primary-main-checkout resolution, automation sync/live-config writes, evaluator/
   manager/daily/weekly jobs, effectiveness scorecards, handoff reconciliation, and the
   Publisher terminal-outcome SLA.

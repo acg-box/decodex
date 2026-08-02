@@ -51,7 +51,7 @@ fn receipt_from_installed_bytes(
 	Ok(receipt)
 }
 
-pub(crate) fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<(Value, RadarBundleBuildReceipt)> {
+fn bundle_evidence_from_bytes(bytes: &[u8]) -> Result<(Value, RadarBundleBuildReceipt)> {
 	validate_bundle_size(bytes.len())?;
 	let bundle: Value = serde_json::from_slice(bytes)
 		.map_err(|error| eyre::eyre!("bundle JSON is invalid: {error}"))?;

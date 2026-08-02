@@ -111,7 +111,7 @@ class GateContractTests(unittest.TestCase):
                 )
 
         self.assertEqual(
-            self.tasks["check-upstream-automation-sandboxed"]["dependencies"][-1],
+            self.tasks["check-automations-sandboxed"]["dependencies"][-1],
             "test-headless-sandboxed",
         )
         self.assertEqual(

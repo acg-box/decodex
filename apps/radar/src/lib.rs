@@ -4,10 +4,6 @@ mod artifact_validation;
 mod cache;
 mod cli;
 mod constants;
-mod content_activation;
-mod content_eligibility;
-mod content_pair;
-mod content_review;
 mod core_io;
 mod github_api;
 mod github_bundle_client;
@@ -35,20 +31,17 @@ pub(crate) use self::{
 		ANALYSIS_DRAFT_KIND, ARTIFACT_KINDS, ATTENTION_RULES, BUNDLE_BUILD_RECEIPT_SCHEMA,
 		BUNDLE_SCHEMA, CACHE_MAX_AGE_DAYS, CACHE_MAX_BYTES_PER_COLLECTION,
 		CACHE_MAX_FILES_PER_COLLECTION, CONFIG_FEATURE_CATALOG_PATH, CONFIG_FEATURE_CATALOG_SCHEMA,
-		CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, DEFAULT_CACHE_ROOT, DEFAULT_LEDGER_PATH,
-		DEFAULT_MIN_STABLE_TAG, DEFAULT_PAIR_LIMIT, DEFAULT_PREVIEW_LIMIT, DEFAULT_QUEUE_OUT,
-		DEFAULT_RELEASE_DELTA_OUT, DEFAULT_SEARCH_LIMIT, DEFAULT_SIGNALS_DIR,
-		DEFAULT_SOURCE_MAX_AGE_HOURS, DEFAULT_STABLE_LIMIT, DEFAULT_TAG_PREFIX,
-		DEFAULT_VALIDATION_PATHS, GENERIC_COMMIT_TITLES, GITHUB_REQUEST_ATTEMPTS,
-		GITHUB_REQUEST_BACKOFF, GITHUB_REQUEST_TIMEOUT, HIGH_VALUE_SURFACES, LEDGER_MAX_BYTES,
-		LEDGER_MAX_ROWS_PER_TABLE, RELEASE_DELTA_SCHEMA, RETAINED_CACHE_COLLECTIONS,
-		RETRYABLE_GITHUB_STATUS_CODES, REVIEW_STATUSES, RUN_CODEX_ANALYSIS_SCRIPT, SCHEMA_VERSION,
-		SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, SURFACE_RULES, UPSTREAM_IMPACT_SCHEMA,
-		UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA, UPSTREAM_SUBJECT_KINDS,
+		DEFAULT_CACHE_ROOT, DEFAULT_LEDGER_PATH, DEFAULT_MIN_STABLE_TAG, DEFAULT_PAIR_LIMIT,
+		DEFAULT_PREVIEW_LIMIT, DEFAULT_QUEUE_OUT, DEFAULT_RELEASE_DELTA_OUT, DEFAULT_SEARCH_LIMIT,
+		DEFAULT_SIGNALS_DIR, DEFAULT_SOURCE_MAX_AGE_HOURS, DEFAULT_STABLE_LIMIT,
+		DEFAULT_TAG_PREFIX, DEFAULT_VALIDATION_PATHS, GENERIC_COMMIT_TITLES,
+		GITHUB_REQUEST_ATTEMPTS, GITHUB_REQUEST_BACKOFF, GITHUB_REQUEST_TIMEOUT,
+		HIGH_VALUE_SURFACES, LEDGER_MAX_BYTES, LEDGER_MAX_ROWS_PER_TABLE, RELEASE_DELTA_SCHEMA,
+		RETAINED_CACHE_COLLECTIONS, RETRYABLE_GITHUB_STATUS_CODES, REVIEW_STATUSES,
+		RUN_CODEX_ANALYSIS_SCRIPT, SCHEMA_VERSION, SIGNAL_CONFIDENCE, SIGNAL_SCHEMA, SURFACE_RULES,
+		UPSTREAM_IMPACT_SCHEMA, UPSTREAM_REVIEW_QUEUE_SCHEMA, UPSTREAM_REVIEW_SCHEMA,
+		UPSTREAM_SUBJECT_KINDS,
 	},
-	content_eligibility::content_eligibility,
-	content_pair::commit_content_pair,
-	content_review::review_next,
 	core_io::{
 		RefreshWriteReport, absolute_repo_path, collect_bundle_json_files, inspect_json_refresh,
 		ledger_path, load_known_feature_names, refresh_json, repo_default_branch,
@@ -68,19 +61,16 @@ pub(crate) use self::{
 	requests::{
 		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildReceipt,
 		RadarBundleBuildRequest, RadarBundleValidateRequest, RadarCacheGcReport,
-		RadarCacheGcRequest, RadarContentEligibilityReport, RadarContentEligibilityRequest,
-		RadarContentPairCommitReport, RadarContentPairCommitRequest, RadarContentV2ResetReport,
-		RadarContentV2ResetRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarCacheGcRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
-		RadarQueueGeneration, RadarRefreshQueueReport, RadarRefreshQueueRequest,
-		RadarRefreshReleaseDeltaReport, RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport,
-		RadarRenderSignalRequest, RadarReviewNextReport, RadarReviewNextRequest,
-		RadarSelectedSubject, RadarSourceRef, RadarValidateRequest, RadarValidationReport,
+		RadarRefreshQueueReport, RadarRefreshQueueRequest, RadarRefreshReleaseDeltaReport,
+		RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport, RadarRenderSignalRequest,
+		RadarValidateRequest, RadarValidationReport,
 	},
 	run_identity::current_run_id,
 	text_values::{
 		body_excerpt, extract_commit_sha_from_url, extract_pr_number_from_url,
-		optional_value_string, path_arg, percent_encode, pretty_json, repo_root, repo_root_from,
+		optional_value_string, path_arg, percent_encode, pretty_json, repo_root,
 		required_value_i64, required_value_string, required_value_u64, resolve_against, short_sha,
 		slugify, string_array, string_array_from_value, truncate_patch_excerpt,
 	},
@@ -91,8 +81,6 @@ pub(crate) use self::{
 		write_json,
 	},
 };
-
-pub(crate) use content_activation::reset_content_v2;
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -122,13 +110,11 @@ use ledger::RadarLedger;
 use prelude::Result;
 #[cfg(test)] use private_fs::simulate_wrong_owner_error;
 #[cfg(test)] use private_fs::{create_private_file, ensure_private_directory};
-#[cfg(test)] use regular_file::read_regular_file_bounded_with;
 use review_queue::{RecentCommit, build_review_queue};
 use signal_render::{rendered_config_flags, rendered_signal};
 #[cfg(test)] use source_bundle::install_bundle_after_write;
 use source_bundle::{
-	build_commit_bundle_from_sources, build_pr_bundle_from_sources, bundle_evidence_from_bytes,
-	install_bundle,
+	build_commit_bundle_from_sources, build_pr_bundle_from_sources, install_bundle,
 };
 
 #[derive(Debug)]
