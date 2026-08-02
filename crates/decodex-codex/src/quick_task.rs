@@ -926,6 +926,8 @@ impl QuickTaskThreadResumeResponseWire {
 struct QuickTaskThreadResponseWire {
 	id: String,
 	#[serde(default)]
+	is_pinned: bool,
+	#[serde(default)]
 	extra: Option<QuickTaskThreadExtraWire>,
 	session_id: String,
 	forked_from_id: Option<String>,
@@ -1477,6 +1479,7 @@ const THREAD_RESUME_RESPONSE_REQUIRED_FIELDS: &[&str] =
 	&["thread", "model", "modelProvider", "cwd", "approvalPolicy", "approvalsReviewer", "sandbox"];
 const THREAD_RESPONSE_FIELDS: &[&str] = &[
 	"id",
+	"isPinned",
 	"extra",
 	"sessionId",
 	"forkedFromId",
@@ -1748,6 +1751,7 @@ mod tests {
 		json!({
 			"thread": {
 				"id": thread_id,
+				"isPinned": false,
 				"sessionId": "session-1",
 				"preview": "",
 				"ephemeral": false,
@@ -1874,6 +1878,9 @@ mod tests {
 			.replacen(r#""id":"thread-1""#, r#""id":"thread-1","id":"thread-1""#, 1)
 			.into_bytes();
 
+		let mut malformed_is_pinned = canonical.clone();
+		malformed_is_pinned["thread"]["isPinned"] = json!("false");
+
 		let mut malformed_nested = canonical.clone();
 		malformed_nested["sandbox"] = json!({"type": "readOnly", "access": {"type": "restricted"}});
 
@@ -1886,6 +1893,15 @@ mod tests {
 				)
 				.map(|_| ()),
 				QuickTaskContractError::UnknownResponseField,
+			),
+			(
+				"malformed pin state",
+				decode_quick_task_thread_start_response(
+					&start_request,
+					&serde_json::to_vec(&malformed_is_pinned).unwrap(),
+				)
+				.map(|_| ()),
+				QuickTaskContractError::MalformedResponse,
 			),
 			(
 				"legacy approvals reviewer",

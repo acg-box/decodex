@@ -1370,6 +1370,10 @@ Marker presence is only schema evidence: live method outcomes become explicit `s
 profile into the exact-build cache, which rejects conflicting replacement and has no
 nearest-build or stale fallback.
 
+The strict Quick Task start and resume decoders accept the optional boolean `isPinned`
+only as a typed, non-authoritative wire fact; it is not projected into task identity or
+persisted state.
+
 Each `SupervisedProcess` owns one immutable shared-home account authority. Credential
 environment variables are removed from the child, initialize must report the normal
 `$HOME/.codex`, no credential-switch operation exists, and read-only `account/read` must

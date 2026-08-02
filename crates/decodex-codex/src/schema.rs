@@ -45,11 +45,11 @@ const COLLABORATION_MARKERS: &[&str] =
 	&["collabAgentToolCall", "parentThreadId", "agentNickname", "agentRole", "subAgentActivity"];
 const MAX_SCHEMA_DIRECTORY_DEPTH: usize = 8;
 const ACCEPTED_DIGESTS: &[(&str, &str)] = &[
-	("ClientRequest.json", "ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735"),
-	("ServerNotification.json", "189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166"),
+	("ClientRequest.json", "6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4"),
+	("ServerNotification.json", "abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02"),
 	(
 		"codex_app_server_protocol.v2.schemas.json",
-		"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
+		"e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc",
 	),
 ];
 
@@ -832,15 +832,15 @@ mod tests {
 		for (file, digest) in [
 			(
 				"ClientRequest.json",
-				"ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
+				"6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4",
 			),
 			(
 				"ServerNotification.json",
-				"189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
+				"abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02",
 			),
 			(
 				"codex_app_server_protocol.v2.schemas.json",
-				"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
+				"e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc",
 			),
 		] {
 			assert_eq!(marker.canonical_digests().get(file).map(String::as_str), Some(digest));
@@ -890,15 +890,15 @@ mod tests {
 		for (file, digest) in [
 			(
 				"ClientRequest.json",
-				"3f82e5aec5be786c40d21440dfb6d0667d194d872bfa7041bd81c39b4ba56dc3",
+				"ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735",
 			),
 			(
 				"ServerNotification.json",
-				"16ce6adadf33aa182f98840c5d33f6294c3c37b2866bb05545c24e0dbf2cc2d2",
+				"189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166",
 			),
 			(
 				"codex_app_server_protocol.v2.schemas.json",
-				"f5e8d20f3a8f9bb5e5b23ab0c5aa6bde7b12e7e0713606c5d0132651a4959d37",
+				"2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d",
 			),
 		] {
 			marker.canonical_sha256.insert(file.into(), digest.into());
