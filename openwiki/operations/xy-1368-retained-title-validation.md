@@ -12,9 +12,9 @@ cargo make check-vnext-retained-title-preparation
 
 The command uses one private PostgreSQL 18 cluster. It reports three complete stages:
 
-1. It checks the full V1-V31 migration syntax, applies and canonically provisions a fresh
+1. It checks the full V1-V32 migration syntax, applies and canonically provisions a fresh
    full ledger, and separately verifies the closed migration-only authority delta from V24
-   through V31. V28, V29, V30, and the V31 exact-release repair do not derive or grant a runtime
+   through V32. V28, V29, V30, V31, and the V32 exact-release repair do not derive or grant a runtime
    principal. The one configured
    post-migration provisioner owns the final runtime ACL.
 2. It parses and prepares all 30 changed V22/V27/V28 embedded PostgreSQL statements in one Rust process.

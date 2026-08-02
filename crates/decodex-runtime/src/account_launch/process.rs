@@ -62,7 +62,6 @@ use crate::account_launch::{
 		RetainedTitleNameSetResponse, RetainedTitleThreadStartParams,
 		RetainedTitleThreadStartResponse, ThreadArchiveParams, ThreadArchiveResponse,
 		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
-		ThreadSearchParams, ThreadSearchResponse,
 	},
 };
 use decodex_codex::{
@@ -93,15 +92,14 @@ const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
 const PRIVATE_STDIO_CAPABILITY_ID: &str =
 	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
 const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
-const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.146.0-alpha.3.1";
+const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.146.0-alpha.9.2";
 const STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256: &str =
-	"fa0cb7c5f80e6a192563fcb1d9f98857f4a808a28cb29289400ed7110291bce4";
+	"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
 const THREAD_LIST_LIMIT: usize = 100;
-const THREAD_SEARCH_LIMIT: usize = 10;
+const THREAD_LIST_PROBE_SEARCH_TERM: &str = "decodex-capability-probe-no-match-6f5aa91b28cf4bc6";
 const MAX_VERSION_OUTPUT_BYTES: u64 = 4 * 1_024;
 const MAX_EXECUTABLE_BYTES: u64 = 512 * 1_024 * 1_024;
-const CAPABILITY_SEARCH_TERM: &str = "decodex-capability-probe-7f57a41a";
 const RETAINED_TITLE_DEVELOPER_INSTRUCTIONS: &str =
 	"This is an inert Decodex retained-title experiment. Do not start a turn or perform work.";
 const ACCOUNT_MISMATCH_SHUTDOWN: Duration = Duration::from_secs(1);
@@ -1941,7 +1939,6 @@ impl ReadOnlyProbe {
 		let list = probe_thread_list(&mut process, self.timeout, &mut negotiation)?;
 
 		probe_thread_read(&mut process, &list, self.timeout, &mut negotiation)?;
-		probe_thread_search(&mut process, self.timeout, &mut negotiation)?;
 
 		let profile = negotiation.cache_profile()?;
 		let process_id = process.process_id();
@@ -2471,8 +2468,6 @@ pub enum ReadOnlyMethod {
 	ThreadList,
 	/// Read one exact thread without turns.
 	ThreadRead,
-	/// Exercise bounded `thread/search` method availability.
-	ThreadSearch,
 }
 impl ReadOnlyMethod {
 	fn as_str(self) -> &'static str {
@@ -2482,7 +2477,6 @@ impl ReadOnlyMethod {
 			Self::AccountRead => "account/read",
 			Self::ThreadList => "thread/list",
 			Self::ThreadRead => "thread/read",
-			Self::ThreadSearch => "thread/search",
 		}
 	}
 }
@@ -4167,7 +4161,11 @@ fn probe_thread_list(
 ) -> Result<ThreadListResponse, ProbeError> {
 	let list = match process.request::<_, ThreadListResponse>(
 		ReadOnlyMethod::ThreadList,
-		&ThreadListParams { limit: THREAD_LIST_LIMIT as u32, use_state_db_only: true },
+		&ThreadListParams {
+			search_term: THREAD_LIST_PROBE_SEARCH_TERM,
+			limit: THREAD_LIST_LIMIT as u32,
+			use_state_db_only: true,
+		},
 		timeout,
 	) {
 		Ok(list) => list,
@@ -4218,54 +4216,6 @@ fn probe_thread_read(
 		},
 		Err(error) => {
 			negotiation.observations.push(failed_observation(Capability::ThreadRead, &error));
-
-			(!matches!(&error, ProbeError::MethodRejected { .. })).then_some(error)
-		},
-	};
-
-	negotiation.re_attest_account(process, timeout)?;
-
-	if let Some(error) = terminal_error {
-		negotiation.cache_profile()?;
-
-		return Err(error);
-	}
-
-	Ok(())
-}
-
-fn probe_thread_search(
-	process: &mut SupervisedProcess,
-	timeout: Duration,
-	negotiation: &mut ProbeNegotiation<'_>,
-) -> Result<(), ProbeError> {
-	if !negotiation.generated.contract().advertises_request("thread/search") {
-		return Ok(());
-	}
-
-	let search = process.request::<_, ThreadSearchResponse>(
-		ReadOnlyMethod::ThreadSearch,
-		&ThreadSearchParams {
-			search_term: CAPABILITY_SEARCH_TERM,
-			limit: THREAD_SEARCH_LIMIT as u32,
-		},
-		timeout,
-	);
-	let terminal_error = match search {
-		Ok(response) if response.data.len() <= THREAD_SEARCH_LIMIT => {
-			negotiation.observe(Capability::ThreadSearch, LiveMethodOutcome::Supported);
-
-			None
-		},
-		Ok(_) => {
-			let error = ProbeError::Supervision(SupervisionError::ProtocolLimitExceeded);
-
-			negotiation.observations.push(failed_observation(Capability::ThreadSearch, &error));
-
-			Some(error)
-		},
-		Err(error) => {
-			negotiation.observations.push(failed_observation(Capability::ThreadSearch, &error));
 
 			(!matches!(&error, ProbeError::MethodRejected { .. })).then_some(error)
 		},
@@ -5645,7 +5595,7 @@ mod tests {
 	}
 
 	#[test]
-	fn safe_optional_probes_record_live_contradictions_by_exact_build() {
+	fn unexercised_optional_methods_remain_not_probed() {
 		let temp = TempDir::new().unwrap();
 		let result = ReadOnlyProbe::new_for_test(
 			fake_command("optional-unsupported", temp.path(), None),
@@ -5659,15 +5609,9 @@ mod tests {
 		for capability in [Capability::ThreadRead, Capability::ThreadSearch] {
 			assert_eq!(
 				result.profile.state(capability),
-				&CapabilityState::Unsupported { reason: UnsupportedReason::MethodNotFound }
+				&CapabilityState::Unavailable { reason: UnavailableReason::NotProbed }
 			);
-			assert!(
-				result
-					.profile
-					.contradictions()
-					.iter()
-					.any(|contradiction| contradiction.capability == capability)
-			);
+			assert!(result.profile.contradictions().is_empty());
 		}
 	}
 
