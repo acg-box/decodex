@@ -93,8 +93,8 @@ fn handled_pair_advances_review_next_to_the_next_subject() {
 
 	crate::commit_content_pair(&request(&cache_root, &staging))
 		.expect("the first subject pair should commit");
-	let report = crate::review_next(&RadarReviewNextRequest { cache_root, max_age_hours: 12 })
-		.expect("the selector should advance");
+	let report =
+		crate::review_next(&review_request(&cache_root)).expect("the selector should advance");
 
 	assert_eq!(report.handled_count, 1);
 	assert_eq!(report.handled_state_sha256.len(), 64);
@@ -119,7 +119,7 @@ fn valid_historical_pair_remains_handled_for_its_retention_lifetime() {
 
 	crate::write_json(&pair.join("review.json"), &review).expect("review should be written");
 	crate::write_json(&pair.join("impact.json"), &impact).expect("impact should be written");
-	let report = crate::review_next(&RadarReviewNextRequest { cache_root, max_age_hours: 12 })
+	let report = crate::review_next(&review_request(&cache_root))
 		.expect("historical handled state should remain valid");
 
 	assert_eq!(report.status, "no_eligible_item");
@@ -138,11 +138,8 @@ fn handled_identity_survives_queue_head_changes_but_not_commit_changes() {
 	queue["source"]["upstream_head"] =
 		serde_json::json!("dddddddddddddddddddddddddddddddddddddddd");
 	write_queue(&cache_root, &queue);
-	let handled = crate::review_next(&RadarReviewNextRequest {
-		cache_root: cache_root.clone(),
-		max_age_hours: 12,
-	})
-	.expect("a queue-head-only change must keep the subject handled");
+	let handled = crate::review_next(&review_request(&cache_root))
+		.expect("a queue-head-only change must keep the subject handled");
 
 	assert_eq!(handled.status, "no_eligible_item");
 	assert_eq!(handled.handled_count, 1);
@@ -151,7 +148,7 @@ fn handled_identity_survives_queue_head_changes_but_not_commit_changes() {
 		serde_json::json!(["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"]);
 	set_counts(&mut queue);
 	write_queue(&cache_root, &queue);
-	let changed = crate::review_next(&RadarReviewNextRequest { cache_root, max_age_hours: 12 })
+	let changed = crate::review_next(&review_request(&cache_root))
 		.expect("a changed commit set must be eligible for a fresh source review");
 
 	assert_eq!(changed.status, "needs_source_review");
@@ -173,7 +170,7 @@ fn malformed_or_ambiguous_handled_state_blocks_selection() {
 	write_queue(&cache_root, &current_queue());
 	crate::write_json(&pair.join("review.json"), &fixtures::valid_upstream_review())
 		.expect("malformed pair fixture should be written");
-	let error = crate::review_next(&RadarReviewNextRequest { cache_root, max_age_hours: 12 })
+	let error = crate::review_next(&review_request(&cache_root))
 		.expect_err("a partial committed pair must fail closed");
 
 	assert!(error.to_string().contains("must contain exactly two artifacts"));
@@ -196,7 +193,7 @@ fn duplicate_committed_subject_is_ambiguous_and_blocks_selection() {
 
 	crate::write_json(&duplicate.join("review.json"), &review).unwrap();
 	crate::write_json(&duplicate.join("impact.json"), &impact).unwrap();
-	let error = crate::review_next(&RadarReviewNextRequest { cache_root, max_age_hours: 12 })
+	let error = crate::review_next(&review_request(&cache_root))
 		.expect_err("duplicate handled state must fail closed");
 
 	assert!(error.to_string().contains("subject is duplicated"));
@@ -380,6 +377,17 @@ fn request(cache_root: &Path, staging: &Path) -> RadarContentPairCommitRequest {
 	RadarContentPairCommitRequest {
 		cache_root: cache_root.to_path_buf(),
 		staging: staging.to_path_buf(),
+		max_age_hours: 12,
+	}
+}
+
+fn review_request(cache_root: &Path) -> RadarReviewNextRequest {
+	let queue_raw = fs::read(cache_root.join(crate::paths::REVIEW_QUEUE_RELATIVE_PATH))
+		.expect("queue should be readable");
+
+	RadarReviewNextRequest {
+		cache_root: cache_root.to_path_buf(),
+		expected_queue_sha256: digest_hex(&queue_raw),
 		max_age_hours: 12,
 	}
 }

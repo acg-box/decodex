@@ -60,6 +60,8 @@ pub(crate) struct RadarContentEligibilityReport {
 pub(crate) struct RadarReviewNextRequest {
 	/// Owner-only Radar cache root.
 	pub(crate) cache_root: PathBuf,
+	/// Queue digest returned by the successful refresh that authorizes this selection.
+	pub(crate) expected_queue_sha256: String,
 	/// Maximum age for the queue snapshot.
 	pub(crate) max_age_hours: u64,
 }
