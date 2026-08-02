@@ -1,6 +1,7 @@
 use std::{ffi::CString, fs, os::unix::ffi::OsStrExt as _, sync::mpsc, thread};
 
 use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 
 use crate::{
 	RadarRenderSignalRequest, RadarValidateRequest,
@@ -303,6 +304,25 @@ fn successful_equal_refresh_rewrites_the_observation_timestamp() {
 	assert!(refresh.written);
 	assert_eq!(refresh.refreshed_at, "2026-06-02T00:00:00Z");
 	assert_eq!(stored["generated_at"], "2026-06-02T00:00:00Z");
+}
+
+#[test]
+fn queue_refresh_report_binds_the_exact_written_queue_bytes() {
+	let temp_dir = tempfile::tempdir().expect("temporary directory should be created");
+	let path = temp_dir.path().join("queue.json");
+	let mut queue = fixtures::valid_review_queue();
+
+	queue["generated_at"] = serde_json::json!("2026-06-02T00:00:00Z");
+	let refresh = crate::core_io::refresh_json(&path, &queue, crate::RefreshKind::Queue)
+		.expect("queue refresh should succeed");
+	let report = crate::queue_report(&queue, refresh, true).expect("queue report should build");
+	let stored = fs::read(&path).expect("refreshed queue bytes should be readable");
+	let expected =
+		Sha256::digest(&stored).iter().map(|byte| format!("{byte:02x}")).collect::<String>();
+	let serialized = serde_json::to_value(&report).expect("queue report should serialize");
+
+	assert_eq!(report.queue_sha256, expected);
+	assert_eq!(serialized["queue_sha256"], expected);
 }
 
 #[test]
