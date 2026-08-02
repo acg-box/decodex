@@ -1,4 +1,4 @@
-use std::{fs, sync::mpsc, thread};
+use std::{ffi::CString, fs, os::unix::ffi::OsStrExt as _, sync::mpsc, thread};
 
 use serde_json::Value;
 
@@ -81,6 +81,155 @@ fn validates_json_files_from_directory() {
 	.expect("valid temporary bundle should pass");
 
 	assert_eq!(report.checked_files, 1);
+}
+
+#[test]
+fn validates_explicit_private_cache_files_by_absolute_path() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let pair = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/content-review-pairs/test-pair");
+	let review = pair.join("review.json");
+	let impact = pair.join("impact.json");
+
+	crate::write_json(&review, &fixtures::valid_upstream_review())
+		.expect("private review should be written");
+	crate::write_json(&impact, &fixtures::valid_upstream_impact())
+		.expect("private impact should be written");
+	assert!(review.is_absolute());
+	assert!(impact.is_absolute());
+
+	let report = crate::validate(&RadarValidateRequest {
+		paths: vec![review, impact],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect("exact private review and impact files should pass");
+
+	assert_eq!(report.checked_files, 2);
+}
+
+#[test]
+fn validates_json_files_from_explicit_private_cache_directory() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let directory = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/test-validation-directory.json");
+
+	crate::write_json(&directory.join("bundle.json"), &fixtures::valid_bundle())
+		.expect("private bundle should be written");
+
+	let report = crate::validate(&RadarValidateRequest {
+		paths: vec![directory],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect("an explicit private cache directory should still be traversed");
+
+	assert_eq!(report.checked_files, 1);
+}
+
+#[test]
+fn explicit_private_cache_regular_file_applies_json_extension_filter_after_classification() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let non_json = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/content-review-pairs/test-pair/review.txt");
+
+	crate::write_private_file_atomic(&non_json, b"not a JSON artifact")
+		.expect("private non-JSON file should be written safely");
+
+	let report = crate::validate(&RadarValidateRequest {
+		paths: vec![non_json],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect("an actual non-JSON private file should be filtered out");
+
+	assert_eq!(report.checked_files, 0);
+}
+
+#[test]
+fn explicit_private_cache_file_validation_rejects_symlink_leaf() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let pair = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/content-review-pairs/test-pair");
+	let review = pair.join("review.json");
+	let linked = pair.join("linked-review.json");
+
+	crate::write_json(&review, &fixtures::valid_upstream_review())
+		.expect("private review should be written");
+	std::os::unix::fs::symlink(&review, &linked).expect("symlink fixture should be created");
+
+	let error = crate::validate(&RadarValidateRequest {
+		paths: vec![linked],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect_err("a symlinked private validation file must fail closed");
+
+	assert!(error.to_string().contains("symlink"), "unexpected symlink error: {error:?}");
+}
+
+#[test]
+fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let fifo = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/content-review-pairs/test-pair/review.json");
+
+	crate::ensure_private_directory(fifo.parent().expect("FIFO parent should exist"))
+		.expect("private FIFO parent should be created");
+	let fifo_path =
+		CString::new(fifo.as_os_str().as_bytes()).expect("FIFO path should not contain NUL");
+
+	assert_eq!(
+		unsafe { libc::mkfifo(fifo_path.as_ptr(), 0o600) },
+		0,
+		"FIFO fixture should be created"
+	);
+
+	let error = crate::validate(&RadarValidateRequest {
+		paths: vec![fifo],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect_err("an unexpected private validation entry type must fail closed");
+
+	assert!(
+		error.to_string().contains("regular") || error.to_string().contains("unsupported"),
+		"unexpected entry-type error: {error:?}"
+	);
+}
+
+#[test]
+fn explicit_private_cache_file_validation_rejects_malformed_json() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let malformed = temp_dir
+		.path()
+		.join(crate::DEFAULT_CACHE_ROOT)
+		.join("github/content-review-pairs/test-pair/review.json");
+
+	crate::write_private_file_atomic(&malformed, b"{not-json")
+		.expect("malformed private JSON should be written safely");
+
+	let error = crate::validate(&RadarValidateRequest {
+		paths: vec![malformed],
+		max_age_hours: None,
+		bootstrap: false,
+	})
+	.expect_err("malformed private validation JSON must fail closed");
+
+	assert!(
+		error.to_string().contains("Failed to parse JSON"),
+		"unexpected parse error: {error:?}"
+	);
 }
 
 #[test]
