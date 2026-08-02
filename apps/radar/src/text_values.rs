@@ -40,7 +40,11 @@ pub(crate) fn slugify(value: &str) -> String {
 }
 
 pub(crate) fn repo_root() -> Result<PathBuf> {
-	let mut candidate = env::current_dir()?;
+	repo_root_from(&env::current_dir()?)
+}
+
+pub(crate) fn repo_root_from(start: &Path) -> Result<PathBuf> {
+	let mut candidate = start.to_path_buf();
 
 	loop {
 		if candidate.join(DEFAULT_CONFIG_PATH).is_file()

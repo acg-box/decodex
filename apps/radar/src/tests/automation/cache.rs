@@ -1,7 +1,13 @@
 use std::{
+	ffi::CString,
 	fs::{self, FileTimes},
 	io::Write as _,
-	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	os::unix::{
+		ffi::OsStrExt as _,
+		fs::{MetadataExt as _, PermissionsExt as _},
+	},
+	sync::mpsc,
+	thread,
 	time::{Duration, SystemTime},
 };
 
@@ -375,6 +381,68 @@ fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 	.expect_err("a growing private file must stop at max plus one bytes");
 
 	assert!(error.to_string().contains("bounded read limit"));
+}
+
+#[test]
+fn private_cache_bounded_read_rejects_a_fifo_without_blocking() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
+	let relative = std::path::PathBuf::from("github/test-files/review.json");
+	let path = root.join(&relative);
+
+	crate::ensure_private_directory(path.parent().expect("FIFO parent should exist"))
+		.expect("private FIFO parent should be created");
+	let fifo = CString::new(path.as_os_str().as_bytes()).expect("FIFO path should not contain NUL");
+
+	assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0, "FIFO should be created");
+	let (sender, receiver) = mpsc::channel();
+	let reader = thread::spawn(move || {
+		let result = crate::private_fs::PrivateCache::open_existing(&root)
+			.and_then(crate::private_fs::PrivateCache::lock)
+			.and_then(|lock| lock.read_bounded(&relative, 1024));
+
+		sender.send(result).expect("FIFO read result should be observed");
+	});
+	let result = receiver
+		.recv_timeout(Duration::from_secs(2))
+		.expect("private FIFO bounded read must not wait for a writer");
+
+	reader.join().expect("FIFO reader thread should finish");
+	let error = result.expect_err("a private FIFO must fail regular-file validation");
+
+	assert!(error.to_string().contains("regular"), "unexpected FIFO error: {error:?}");
+}
+
+#[test]
+fn private_cache_read_detects_an_mtime_preserving_in_place_rewrite() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let path =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let modified = SystemTime::now() - Duration::from_secs(60);
+
+	private_file(&path, b"1234", modified);
+	let initial = fs::metadata(&path).expect("initial metadata should be readable");
+	let initial_ctime = (initial.ctime(), initial.ctime_nsec());
+	let rewrite_path = path.clone();
+	let error = crate::private_fs::read_private_file_bounded_after_metadata(&path, 4, move || {
+		thread::sleep(Duration::from_millis(10));
+		let mut file = fs::OpenOptions::new()
+			.write(true)
+			.truncate(true)
+			.open(&rewrite_path)
+			.expect("fixture should reopen in place");
+
+		file.write_all(b"5678").expect("replacement bytes should be written");
+		file.sync_all().expect("replacement bytes should be visible");
+		file.set_times(FileTimes::new().set_modified(modified))
+			.expect("fixture mtime should be restored");
+		let changed = file.metadata().expect("changed metadata should be readable");
+
+		assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
+	})
+	.expect_err("ctime must detect same-inode, same-size, mtime-preserving rewrites");
+
+	assert!(error.to_string().contains("identity changed during read"));
 }
 
 #[test]

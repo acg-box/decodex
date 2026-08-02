@@ -20,6 +20,17 @@ GitHub-backed commands resolve authentication in this order:
 3. `GH_TOKEN`.
 4. `GITHUB_TOKEN`.
 
+`radar bundle build` derives a lowercase UUID from process `CODEX_THREAD_ID`, requires
+the exact private `github/bundles/<uuid>.json` cache path, installs one deterministic
+`github_change_bundle/v1`, and then
+reads back the exact output bytes. It fails before emitting evidence when the bundle
+is invalid, exceeds 64 MiB, or differs from the deterministic serialization. Success
+prints only one bounded `radar_bundle_build_receipt/v1` JSON object with status
+`installed`, the exact bundle SHA-256 and byte count, analysis mode, and exact counts
+for commits, files, non-empty patch excerpts, documentation references, and example
+references. The receipt contains no patch or body text, credentials, source identity,
+or local path.
+
 `radar validate` with no paths is the daily fail-closed health gate. It runs cache
 retention, requires both canonical queue and release-delta snapshots, and rejects
 either snapshot after 12 hours. Its bounded JSON report includes the cache-GC result.
@@ -45,6 +56,18 @@ abandoned `.radar-tmp-*` files and directories while it holds that lock. It remo
 each committed review pair as one directory unit. Atomic writes use a fresh 128-bit
 operating-system random nonce and reserve the lock and temporary-file names.
 
+`radar content-v2-reset` is the one-time clean-start command for the v2 review
+flow. It derives the cache root from the detected repository root. Under the Radar
+cache lock, it uses a bounded private-tree inventory to
+remove only `github/bundles`, `github/content-review-pairs`,
+`github/content-review-staging`, and `github/control-plane-upgrades`. It preserves
+the ledger, review queue, releases, signals, and generated state. Unsafe entries
+or replacement races fail closed. Success writes a private activation marker and
+emits `radar_content_v2_reset/v1`. After the marker exists, later calls validate
+the fixed root, cache lock, and marker authority only. They return
+`already_active` with zero counts without inventorying the collections, and they
+preserve legitimate post-activation v2 state.
+
 Ledger fields and tables are bounded when written. Radar reads the bounded SQLite
 image through the fixed cache descriptor, operates on it in memory, and atomically
 persists it through the same descriptor. Retention removes the oldest rows first and
@@ -61,29 +84,45 @@ radar content-pair-commit \
   --staging .agent/automations/radar/cache/github/content-review-staging/<RUN_ID>.json
 ```
 
-The staging contract is `radar_content_review_pair_staging/v1`. It binds the current
-queue SHA-256 and contains one `upstream_review/v1` plus its matching
-`upstream_impact/v1`. In staging only,
+The clean-start staging contract is `radar_content_review_pair_staging/v2`. Radar
+rejects v1 staging without migration or a dual reader; cache GC may remove stale v1
+files. V2 binds the lowercase UUID derived from process `CODEX_THREAD_ID`, current
+queue SHA-256, exact `review-next` selection SHA-256, exact run-bundle receipt, and one
+`upstream_review/v1` plus its matching `upstream_impact/v1`. Publication requires a structured implementation or
+test anchor cited as exact `<path>: <claim>` evidence. A nonpublishable positive-count
+pair may instead carry the closed precise limitation; a zero count must defer or skip
+and carry the `no_patch_excerpts` limitation. Each limitation requires
+`publisher_angle = "none"` and the single canonical evidence item in both artifacts. Under the cache lock,
+Radar recomputes the current deterministic selection and binds the bundle repo, mode,
+subject, and normalized commit set to that selection and review. It then validates the
+receipt and anchor or limitation. In staging only,
 `impact.review_lineage.artifact_sha256` must be exactly 64 zeroes. This is a required
 non-authoritative sentinel. The caller must not serialize the review or precompute its
 digest. Radar deterministically serializes the final review, replaces the sentinel
 with that review byte SHA-256, and then validates the final impact. The command also
 validates freshness, subject, queue head, commit set, and source URL. It atomically
-renames a private run-owned directory into `github/content-review-pairs/`. A confirmed
+renames a private run-owned `<uuid>--<staging-sha256>--<pair-sha256>` directory into
+`github/content-review-pairs/`. Radar recomputes the pair suffix from the exact final
+review and impact bytes on every scan. A confirmed
 commit removes the staging file. An exact retry returns `recovered`; a changed retry
-or duplicate subject fails closed and keeps staging. The bounded receipt returns the
-exact pair, review, and impact paths and digests.
+including changed receipt or anchor fails closed and keeps staging. This path and
+staging contract are new-only; `radar content-v2-reset` removes the retired content
+stores rather than migrating them. The bounded commit report returns the exact pair,
+review, and impact paths and digests.
 
 One committed queue subject becomes eligible for content consideration only through
 the bounded cross-artifact gate:
 
 ```sh
 radar content-eligibility \
+  --queue .agent/automations/radar/cache/github/review-queue/openai-codex-latest.json \
   --review .agent/automations/radar/cache/github/content-review-pairs/<PAIR>/review.json \
   --impact .agent/automations/radar/cache/github/content-review-pairs/<PAIR>/impact.json
 ```
 
-The command accepts exactly one `upstream_review/v1` and one
+The command accepts only the exact canonical
+`github/review-queue/openai-codex-latest.json` queue plus one
+`upstream_review/v1` and one
 `upstream_impact/v1`. The review subject must carry the exact normalized queue commit
 set and upstream head. The impact must bind the review artifact SHA-256, review
 identity, upstream head, and commit set. URL reuse, slug reuse, or freshness cannot

@@ -10,8 +10,11 @@ mod validation;
 
 #[cfg(test)] pub(crate) use self::cache::CacheRetentionPolicy;
 pub(crate) use self::{
-	bundle::{RadarBundleBuildRequest, RadarBundleValidateRequest},
-	cache::{RadarCacheGcReport, RadarCacheGcRequest},
+	bundle::{RadarBundleBuildReceipt, RadarBundleBuildRequest, RadarBundleValidateRequest},
+	cache::{
+		RadarCacheGcReport, RadarCacheGcRequest, RadarContentV2ResetReport,
+		RadarContentV2ResetRequest,
+	},
 	content::{
 		RadarContentEligibilityReport, RadarContentEligibilityRequest,
 		RadarContentPairCommitReport, RadarContentPairCommitRequest, RadarQueueGeneration,

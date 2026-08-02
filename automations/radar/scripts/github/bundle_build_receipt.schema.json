@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Radar bundle build evidence receipt",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "status",
+    "bundle_sha256",
+    "bundle_bytes",
+    "analysis_mode",
+    "commit_count",
+    "file_count",
+    "patch_excerpt_count",
+    "docs_ref_count",
+    "examples_ref_count"
+  ],
+  "properties": {
+    "schema": {
+      "const": "radar_bundle_build_receipt/v1"
+    },
+    "status": {
+      "const": "installed"
+    },
+    "bundle_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "bundle_bytes": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 67108864
+    },
+    "analysis_mode": {
+      "type": "string",
+      "enum": ["pr_first", "commit_only"]
+    },
+    "commit_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "file_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "patch_excerpt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "docs_ref_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "examples_ref_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    }
+  }
+}
