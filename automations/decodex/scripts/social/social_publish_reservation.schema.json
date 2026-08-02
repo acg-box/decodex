@@ -50,7 +50,7 @@
     },
     "idempotency_key": {
       "type": "string",
-      "pattern": "^radar-publication:[0-9a-f]{64}$"
+      "pattern": "^content-publication:[0-9a-f]{64}$"
     },
     "publication_lineage_sha256": {
       "type": "string",

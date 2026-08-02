@@ -58,12 +58,12 @@ evidence only after that point. It is not a runtime or future-work input.
 - [Lane Authority v2 target contract](specs/lane-authority-v2.md), [effect registry](specs/lane-authority-v2-effects.md), [gate manifest](specs/lane-authority-v2-gates.md), and [checkpoint ledger](evidence/lane-authority-v2-checkpoints.md): superseded provenance only, not active implementation authority.
 - [Commands and validation](operations/commands-and-validation.md): task runner, tests, targeted checks, status publishing, app/site/Radar/Publisher validation.
 - [Operator runbooks](operations/operator-runbooks.md): lane-control recovery, review handoff recovery, release readiness, GitHub operations, and control-plane workflows.
-- [Codex upstream autopilot](operations/codex-upstream-autopilot.md): standalone
-  upstream cursor, code update, independent review/landing, health, privacy, and cost
-  contract without Decodex server.
+- [Codex upstream automation](operations/codex-upstream-autopilot.md): agent-led
+  upstream research, deterministic PR creation, independent review and landing, and
+  portfolio management without the Decodex server.
 - [Plugins, automations, and auxiliary tools](integrations/plugins-automations-and-auxiliary-tools.md): installable plugin lifecycle, hook guardrails, automation sync, Radar, Publisher, native App, and site boundaries.
 - [Radar, Publisher, and site contracts](integrations/radar-publisher-site.md): Radar artifacts, upstream review, release deltas, social publishing, site contract, and retention.
-- [Radar Publisher contracts](integrations/radar-publisher-contracts.md): artifact contracts, upstream handoff, control-plane candidates, Publisher reservations, static-site boundary, retention, and stop conditions.
+- [Radar Publisher contracts](integrations/radar-publisher-contracts.md): evidence separation, Publisher hard boundaries, static-site boundary, retention, and stop conditions.
 
 ## Repository map
 

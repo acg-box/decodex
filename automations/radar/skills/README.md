@@ -18,21 +18,12 @@ copied into global `$CODEX_HOME/skills`.
 4. `github-signal`: turn the reviewed GitHub bundle and analysis result into the
    `analysis_draft` JSON consumed by `radar render-signal`.
 
-## Pipeline Ownership
+## Use
 
-Only the upstream analysis stage should read upstream Codex source for behavior claims:
-
-- `codex-upstream-triage` selects and groups source candidates.
-- `codex-code-analysis` reads upstream PR, commit, file, or patch evidence and produces
-  the source-backed interpretation.
-
-Downstream Radar skills are artifact consumers. `codex-release-analysis` and
-`github-signal` should start from validated `upstream_review/v1`,
-`upstream_impact/v1`, `signal_entry/v1`, `release_delta/v1`, or `analysis_draft`
-evidence. If that evidence is missing or too weak, they must return
-`upstream_analysis_required` instead of doing ad hoc source analysis.
+Agents select only the skills that help the current research question. Direct official
+evidence is valid input; a Radar queue or intermediate artifact is not required. A skill
+does not create workflow authority or require another skill to run first.
 
 Checked-in Radar contracts for this workflow are `upstream_review_queue/v1`,
 `upstream_review/v1`, `github_change_bundle/v1`, `analysis_draft`,
-`signal_entry/v1`, `upstream_impact/v1`, `control_plane_upgrade_candidate/v1`, and
-`release_delta/v1`.
+`signal_entry/v1`, `upstream_impact/v1`, and `release_delta/v1`.

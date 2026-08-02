@@ -6,7 +6,7 @@ fn accepts_valid_upstream_review_upgrade_action_and_rejects_stale_action() {
 
 	assertions::assert_errors(&review, []);
 
-	review["next_actions"][0]["type"] = serde_json::json!("control_plane_upgrade_candidate");
+	review["next_actions"][0]["type"] = serde_json::json!("signal_entry");
 
 	assertions::assert_errors(&review, []);
 
@@ -37,45 +37,4 @@ fn accepts_valid_upstream_impact_and_rejects_bad_angle() {
 	impact["publisher_angle"] = serde_json::json!("viral_thread");
 
 	assertions::assert_errors(&impact, ["publisher_angle must be one of"]);
-}
-
-#[test]
-fn accepts_valid_control_plane_upgrade_candidate_and_rejects_direct_mutation() {
-	let mut candidate = fixtures::valid_control_plane_upgrade_candidate();
-
-	assertions::assert_errors(&candidate, []);
-
-	candidate["authority"]["mutation_allowed"] = serde_json::json!(true);
-
-	assertions::assert_errors(&candidate, ["authority.mutation_allowed must be false"]);
-
-	let mut missing_shared_handoff = fixtures::valid_control_plane_upgrade_candidate();
-
-	missing_shared_handoff["source_refs"]
-		.as_object_mut()
-		.expect("source refs should be an object")
-		.remove("upstream_impacts");
-
-	assertions::assert_errors(
-		&missing_shared_handoff,
-		["source_refs.upstream_impacts must include the shared upstream_impact/v1 handoff"],
-	);
-
-	let mut missing_contract = fixtures::valid_control_plane_upgrade_candidate();
-
-	missing_contract["authority"]["decision_contract_required"] = serde_json::json!(false);
-
-	assertions::assert_errors(
-		&missing_contract,
-		["authority.decision_contract_required must be true"],
-	);
-
-	let mut missing_program = fixtures::valid_control_plane_upgrade_candidate();
-
-	missing_program["authority"]
-		.as_object_mut()
-		.expect("authority should be an object")
-		.remove("program_intake_required");
-
-	assertions::assert_errors(&missing_program, ["authority.program_intake_required must be true"]);
 }

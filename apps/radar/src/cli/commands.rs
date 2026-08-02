@@ -1,6 +1,5 @@
 mod bundle;
 mod cache;
-mod content;
 mod ledger;
 mod refresh;
 mod render;
@@ -11,10 +10,7 @@ use clap::Subcommand;
 use crate::{
 	cli::commands::{
 		bundle::RadarBundleCommand,
-		cache::{RadarCacheGcCommand, RadarContentV2ResetCommand},
-		content::{
-			RadarContentEligibilityCommand, RadarContentPairCommitCommand, RadarReviewNextCommand,
-		},
+		cache::RadarCacheGcCommand,
 		ledger::RadarLedgerCommand,
 		refresh::{
 			RadarBackfillReleaseRangeCommand, RadarRefreshReleaseDeltaCommand,
@@ -32,14 +28,6 @@ pub(super) enum RadarSubcommand {
 	Validate(RadarValidateCommand),
 	/// Apply deterministic retention to the owner-only local Radar cache.
 	CacheGc(RadarCacheGcCommand),
-	/// Perform the one-time clean-start reset for content-review v2 state.
-	ContentV2Reset(RadarContentV2ResetCommand),
-	/// Prove one reviewed queue subject is eligible for content consideration.
-	ContentEligibility(RadarContentEligibilityCommand),
-	/// Atomically commit one staged source-backed review and impact pair.
-	ContentPairCommit(RadarContentPairCommitCommand),
-	/// Select at most one queued subject for a source-review pass.
-	ReviewNext(RadarReviewNextCommand),
 	/// Refresh the upstream Codex review queue artifact.
 	RefreshUpstreamQueue(RadarRefreshUpstreamQueueCommand),
 	/// Refresh the release-delta artifact.
@@ -58,10 +46,6 @@ impl RadarSubcommand {
 		match self {
 			Self::Validate(args) => args.run(),
 			Self::CacheGc(args) => args.run(),
-			Self::ContentV2Reset(args) => args.run(),
-			Self::ContentEligibility(args) => args.run(),
-			Self::ContentPairCommit(args) => args.run(),
-			Self::ReviewNext(args) => args.run(),
 			Self::RefreshUpstreamQueue(args) => args.run(),
 			Self::RefreshReleaseDelta(args) => args.run(),
 			Self::Bundle(args) => args.run(),

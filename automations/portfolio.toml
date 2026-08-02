@@ -1,0 +1,45 @@
+execution_environment = "local"
+kind                  = "cron"
+primary_cwd           = "{primary_worktree}"
+status                = "PAUSED"
+version               = 1
+
+[[automations]]
+id               = "codex-upstream-maintainer"
+model            = "gpt-5.6-sol"
+name             = "Codex Upstream Maintainer"
+prompt_file      = "automations/upstream/prompts/maintainer.md"
+reasoning_effort = "max"
+rrule            = "FREQ=HOURLY;INTERVAL=6;BYMINUTE=5;BYSECOND=0"
+
+[[automations]]
+id               = "codex-upstream-reviewer"
+model            = "gpt-5.6-sol"
+name             = "Codex Upstream Reviewer And Lander"
+prompt_file      = "automations/upstream/prompts/reviewer.md"
+reasoning_effort = "max"
+rrule            = "FREQ=HOURLY;INTERVAL=12;BYMINUTE=35;BYSECOND=0"
+
+[[automations]]
+id               = "codex-upstream-health"
+model            = "gpt-5.6-terra"
+name             = "Decodex Automation Manager"
+prompt_file      = "automations/upstream/prompts/health.md"
+reasoning_effort = "high"
+rrule            = "FREQ=DAILY;BYHOUR=6,18;BYMINUTE=0;BYSECOND=0"
+
+[[automations]]
+id               = "decodex-content-manager"
+model            = "gpt-5.6-terra"
+name             = "Decodex Content Manager"
+prompt_file      = "automations/decodex/prompts/content-manager.md"
+reasoning_effort = "high"
+rrule            = "FREQ=DAILY;BYHOUR=9;BYMINUTE=50;BYSECOND=0"
+
+[[automations]]
+id               = "decodex-xurl-publisher"
+model            = "gpt-5.6-luna"
+name             = "Decodex Xurl Publisher"
+prompt_file      = "automations/decodex/prompts/xurl-publisher.md"
+reasoning_effort = "high"
+rrule            = "FREQ=DAILY;BYHOUR=10,16,22;BYMINUTE=20;BYSECOND=0"

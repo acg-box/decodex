@@ -154,8 +154,7 @@
             "enum": [
               "none",
               "upstream_impact",
-              "signal_entry",
-              "control_plane_upgrade_candidate"
+              "signal_entry"
             ]
           },
           "reason": {

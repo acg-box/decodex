@@ -87,10 +87,7 @@ fn validates_json_files_from_directory() {
 #[test]
 fn validates_explicit_private_cache_files_by_absolute_path() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let pair = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/content-review-pairs/test-pair");
+	let pair = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts");
 	let review = pair.join("review.json");
 	let impact = pair.join("impact.json");
 
@@ -135,10 +132,8 @@ fn validates_json_files_from_explicit_private_cache_directory() {
 #[test]
 fn explicit_private_cache_regular_file_applies_json_extension_filter_after_classification() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let non_json = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/content-review-pairs/test-pair/review.txt");
+	let non_json =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.txt");
 
 	crate::write_private_file_atomic(&non_json, b"not a JSON artifact")
 		.expect("private non-JSON file should be written safely");
@@ -156,10 +151,7 @@ fn explicit_private_cache_regular_file_applies_json_extension_filter_after_class
 #[test]
 fn explicit_private_cache_file_validation_rejects_symlink_leaf() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let pair = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/content-review-pairs/test-pair");
+	let pair = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts");
 	let review = pair.join("review.json");
 	let linked = pair.join("linked-review.json");
 
@@ -180,10 +172,8 @@ fn explicit_private_cache_file_validation_rejects_symlink_leaf() {
 #[test]
 fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let fifo = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/content-review-pairs/test-pair/review.json");
+	let fifo =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
 
 	crate::ensure_private_directory(fifo.parent().expect("FIFO parent should exist"))
 		.expect("private FIFO parent should be created");
@@ -212,10 +202,8 @@ fn explicit_private_cache_file_validation_rejects_unexpected_entry_type() {
 #[test]
 fn explicit_private_cache_file_validation_rejects_malformed_json() {
 	let temp_dir = crate::test_support::private_tempdir();
-	let malformed = temp_dir
-		.path()
-		.join(crate::DEFAULT_CACHE_ROOT)
-		.join("github/content-review-pairs/test-pair/review.json");
+	let malformed =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-artifacts/review.json");
 
 	crate::write_private_file_atomic(&malformed, b"{not-json")
 		.expect("malformed private JSON should be written safely");

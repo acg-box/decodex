@@ -11,7 +11,12 @@ pub(crate) const CREATE_COST_MICROUSD: u64 = 15_000;
 pub(crate) const READ_COST_MICROUSD: u64 = 5_000;
 pub(crate) const NORMAL_PUBLICATION_COST_MICROUSD: u64 =
 	IDENTITY_READ_COST_MICROUSD + CREATE_COST_MICROUSD + READ_COST_MICROUSD;
-pub(crate) const PUBLICATION_LINEAGE_BUDGET_MICROUSD: u64 = 40_000;
+pub(crate) const PUBLICATION_LINEAGE_BUDGET_MICROUSD: u64 = 60_000;
+pub(crate) const MAX_IDENTITY_RECOVERY_CALLS: usize = 1;
+pub(crate) const MAX_OBSERVATION_RECOVERY_CALLS: usize = 2;
+pub(crate) const NO_CREATE_RELEASED_STATUS: &str = "no_create_released";
+pub(crate) const IDENTITY_RECOVERY_EXHAUSTED_STATUS: &str = "identity_recovery_exhausted";
+pub(crate) const READ_RECOVERY_EXHAUSTED_STATUS: &str = "read_recovery_exhausted";
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
