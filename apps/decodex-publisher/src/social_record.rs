@@ -2,14 +2,11 @@
 
 use std::{
 	collections::BTreeSet,
-	ffi::{OsStr, OsString},
-	fs::{self, File},
-	io::Read as _,
-	os::unix::fs::{MetadataExt as _, PermissionsExt as _},
+	ffi::OsStr,
+	fs,
 	path::{Component, Path, PathBuf},
 };
 
-use rustix::fs::{self as unix_fs, AtFlags, Mode, OFlags};
 use serde::Serialize;
 use serde_json::{Map, Value};
 use sha2::{Digest as _, Sha256};
@@ -17,6 +14,7 @@ use time::{Duration, OffsetDateTime, format_description::well_known::Rfc3339};
 
 use crate::{
 	SOCIAL_CANDIDATE_SCHEMA, SOCIAL_POST_SCHEMA, SOCIAL_STRATEGY_SCHEMA,
+	filesystem::PinnedPrivateJsonFile,
 	prelude::{Result, eyre},
 	social_validation::SocialValidationState,
 };
@@ -25,7 +23,8 @@ const MAX_STAGING_BYTES: u64 = 1024 * 1024;
 const MAX_RADAR_AGE: Duration = Duration::hours(12);
 const MAX_FUTURE_SKEW: Duration = Duration::minutes(5);
 const RADAR_CACHE_ROOT: &str = ".agent/automations/radar/cache";
-const RADAR_QUEUE_PREFIX: &str = ".agent/automations/radar/cache/github/review-queue";
+const RADAR_QUEUE_PATH: &str =
+	".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json";
 const RADAR_PAIR_PREFIX: &str = ".agent/automations/radar/cache/github/content-review-pairs";
 const RADAR_ELIGIBILITY_SCHEMA: &str = "radar_content_eligibility/v1";
 const RADAR_QUEUE_SCHEMA: &str = "upstream_review_queue/v1";
@@ -59,24 +58,6 @@ pub(crate) struct SocialRecordManagerReport {
 pub(crate) enum SocialRecordHookPoint {
 	Locked,
 	AuthoritativeWritten,
-}
-
-struct PinnedJsonFile {
-	file: File,
-	identity: FileIdentity,
-	name: OsString,
-	parent: File,
-	path: PathBuf,
-	payload: Value,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct FileIdentity {
-	dev: u64,
-	ino: u64,
-	len: u64,
-	mtime: i64,
-	mtime_nsec: i64,
 }
 
 pub(crate) fn record_social_manager(
@@ -132,7 +113,7 @@ fn record_social_manager_body(
 	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
 	hook(HookPoint::Locked)?;
 
-	let staging = PinnedJsonFile::open(&staging_path)?;
+	let staging = PinnedPrivateJsonFile::open(&staging_path, MAX_STAGING_BYTES)?;
 	let schema = staging
 		.payload
 		.get("schema")
@@ -219,7 +200,8 @@ fn record_social_manager_body(
 		)
 	})();
 	if let Err(error) = postvalidation {
-		let cleanup = PinnedJsonFile::open(&destination).and_then(PinnedJsonFile::unlink);
+		let cleanup = PinnedPrivateJsonFile::open(&destination, MAX_STAGING_BYTES)
+			.and_then(PinnedPrivateJsonFile::unlink);
 		if cleanup.is_err() {
 			return Err(eyre::eyre!(
 				"Content Manager postvalidation failed and rollback was not safe: {error}"
@@ -268,6 +250,7 @@ pub(crate) fn validate_candidate_eligibility(candidate: &Value) -> Result<()> {
 	if candidate.get("schema").and_then(Value::as_str) != Some(SOCIAL_CANDIDATE_SCHEMA) {
 		return Ok(());
 	}
+	validate_optional_candidate_pair_paths(candidate)?;
 	let Some(receipt) = candidate_eligibility_receipt(candidate)? else {
 		return Ok(());
 	};
@@ -280,6 +263,34 @@ pub(crate) fn validate_candidate_eligibility(candidate: &Value) -> Result<()> {
 	validate_impact_lineage(candidate, &sources, &identity)?;
 	validate_candidate_source_bindings(candidate, &sources)?;
 	validate_lineage_digest(receipt, &sources, &identity)
+}
+
+fn validate_optional_candidate_pair_paths(candidate: &Value) -> Result<()> {
+	let Some(source_refs) = candidate.get("source_refs").and_then(Value::as_object) else {
+		return Ok(());
+	};
+	let reviews = source_refs.get("upstream_reviews").and_then(Value::as_array);
+	let impacts = source_refs.get("upstream_impacts").and_then(Value::as_array);
+	let has_pair_ref = reviews.is_some_and(|values| !values.is_empty())
+		|| impacts.is_some_and(|values| !values.is_empty());
+	if !has_pair_ref {
+		return Ok(());
+	}
+	let review = reviews
+		.filter(|values| values.len() == 1)
+		.and_then(|values| values[0].as_str())
+		.ok_or_else(|| {
+		eyre::eyre!("source_refs.upstream_reviews must contain one strict Radar pair path")
+	})?;
+	let impact = impacts
+		.filter(|values| values.len() == 1)
+		.and_then(|values| values[0].as_str())
+		.ok_or_else(|| {
+		eyre::eyre!("source_refs.upstream_impacts must contain one strict Radar pair path")
+	})?;
+	let _ = validate_radar_pair_sources(review, impact)?;
+
+	Ok(())
 }
 
 pub(crate) fn publication_lineage_sha256(candidate: &Value) -> Result<String> {
@@ -377,7 +388,7 @@ fn load_radar_sources(candidate: &Value, receipt: &Map<String, Value>) -> Result
 	let queue_ref = required_string(source_refs, "queue", "radar queue source")?;
 	let review_ref = required_string(source_refs, "review", "radar review source")?;
 	let impact_ref = required_string(source_refs, "impact", "radar impact source")?;
-	let queue_root = validate_radar_source_path(queue_ref, RADAR_QUEUE_PREFIX, "queue")?;
+	let queue_root = validate_radar_queue_source_path(queue_ref)?;
 	let pair = validate_radar_pair_sources(review_ref, impact_ref)?;
 	if queue_root != pair.cache_root {
 		eyre::bail!("Radar queue, review, and impact sources must use one private cache root");
@@ -733,114 +744,32 @@ fn load_optional_json(path: &Path) -> Result<Option<Value>> {
 	}
 }
 
-impl PinnedJsonFile {
-	fn open(path: &Path) -> Result<Self> {
-		let parent_path =
-			path.parent().ok_or_else(|| eyre::eyre!("private JSON path has no parent"))?;
-		let name = path
-			.file_name()
-			.filter(|name| !name.is_empty())
-			.ok_or_else(|| eyre::eyre!("private JSON path has no filename"))?
-			.to_os_string();
-		let parent = crate::filesystem::open_private_directory_descriptor(parent_path, false)?;
-		let fd = unix_fs::openat(
-			&parent,
-			&name,
-			OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
-			Mode::empty(),
-		)
-		.map_err(|error| eyre::eyre!("private staging file is not safe: {error}"))?;
-		let mut file = File::from(fd);
-		let metadata = file.metadata()?;
-		validate_private_file_metadata(&metadata)?;
-		if metadata.len() > MAX_STAGING_BYTES {
-			eyre::bail!("private staging file exceeds {MAX_STAGING_BYTES} bytes");
-		}
-		let identity = FileIdentity::from_metadata(&metadata);
-		let mut bytes = Vec::with_capacity(usize::try_from(metadata.len()).unwrap_or(0));
-		file.by_ref().take(MAX_STAGING_BYTES + 1).read_to_end(&mut bytes)?;
-		if bytes.len() as u64 > MAX_STAGING_BYTES {
-			eyre::bail!("private staging file exceeds {MAX_STAGING_BYTES} bytes");
-		}
-		let after = file.metadata()?;
-		if FileIdentity::from_metadata(&after) != identity || bytes.len() as u64 != identity.len {
-			eyre::bail!("private staging file changed during read");
-		}
-		let payload = serde_json::from_slice(&bytes)
-			.map_err(|error| eyre::eyre!("private staging file is invalid JSON: {error}"))?;
-
-		Ok(Self { file, identity, name, parent, path: path.to_path_buf(), payload })
-	}
-
-	fn unlink(self) -> Result<()> {
-		let current_fd = unix_fs::openat(
-			&self.parent,
-			&self.name,
-			OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
-			Mode::empty(),
-		)
-		.map_err(|error| eyre::eyre!("private JSON changed before cleanup: {error}"))?;
-		let current = File::from(current_fd);
-		if FileIdentity::from_metadata(&current.metadata()?) != self.identity
-			|| FileIdentity::from_metadata(&self.file.metadata()?) != self.identity
-		{
-			eyre::bail!("private JSON changed before cleanup: {}", self.path.display());
-		}
-		unix_fs::unlinkat(&self.parent, &self.name, AtFlags::empty())?;
-		self.parent.sync_all()?;
-
-		Ok(())
-	}
-}
-
-impl FileIdentity {
-	fn from_metadata(metadata: &fs::Metadata) -> Self {
-		Self {
-			dev: metadata.dev(),
-			ino: metadata.ino(),
-			len: metadata.len(),
-			mtime: metadata.mtime(),
-			mtime_nsec: metadata.mtime_nsec(),
-		}
-	}
-}
-
-fn validate_private_file_metadata(metadata: &fs::Metadata) -> Result<()> {
-	if !metadata.is_file()
-		|| metadata.len() == 0
-		|| metadata.uid() != unsafe { libc::geteuid() }
-		|| metadata.nlink() != 1
-		|| metadata.permissions().mode() & 0o777 != 0o600
-	{
-		eyre::bail!("private staging file must be an owned one-link mode-0600 file");
-	}
-
-	Ok(())
-}
-
-fn validate_radar_source_path(reference: &str, prefix: &str, label: &str) -> Result<PathBuf> {
+fn validate_radar_queue_source_path(reference: &str) -> Result<PathBuf> {
 	let path = Path::new(reference);
 	if path.is_absolute()
-		|| path.extension().and_then(OsStr::to_str) != Some("json")
 		|| path.components().any(|component| !matches!(component, Component::Normal(_)))
 	{
-		eyre::bail!("radar {label} source must be a canonical private Radar JSON path");
+		eyre::bail!("radar queue source must be the exact canonical private Radar queue path");
 	}
-	if path.starts_with(RADAR_CACHE_ROOT) && path.starts_with(prefix) {
+	if path == Path::new(RADAR_QUEUE_PATH) {
 		return Ok(PathBuf::from(RADAR_CACHE_ROOT));
 	}
 	#[cfg(test)]
 	{
-		let expected_collection = Path::new(prefix).file_name().and_then(|value| value.to_str());
 		let parts = path.iter().collect::<Vec<_>>();
+		let suffix = [
+			OsStr::new("github"),
+			OsStr::new("review-queue"),
+			OsStr::new("openai-codex-latest.json"),
+		];
 		if path.starts_with("target")
-			&& let Some(index) = parts.iter().position(|part| *part == OsStr::new("github"))
-			&& parts.get(index + 1).and_then(|part| part.to_str()) == expected_collection
+			&& let Some(index) = parts.windows(suffix.len()).position(|parts| parts == suffix)
+			&& index + suffix.len() == parts.len()
 		{
 			return Ok(parts[..index].iter().collect());
 		}
 	}
-	eyre::bail!("radar {label} source must be a canonical private Radar JSON path");
+	eyre::bail!("radar queue source must be the exact canonical private Radar queue path");
 }
 
 fn validate_radar_pair_sources(review_ref: &str, impact_ref: &str) -> Result<RadarPairSource> {
@@ -897,13 +826,14 @@ fn radar_pair_source(
 	let pair = parts[pair_root_index]
 		.to_str()
 		.ok_or_else(|| eyre::eyre!("Radar content-review pair directory is not UTF-8"))?;
-	let (run_id, digest) = pair
-		.rsplit_once("--")
-		.ok_or_else(|| eyre::eyre!("Radar content-review pair directory is malformed"))?;
-	if run_id.is_empty()
-		|| run_id.chars().count() > 64
-		|| !run_id.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-		|| !lowercase_sha256(digest)
+	let mut pair_parts = pair.split("--");
+	let run_id = pair_parts.next().unwrap_or_default();
+	let staging_sha256 = pair_parts.next().unwrap_or_default();
+	let pair_sha256 = pair_parts.next().unwrap_or_default();
+	if pair_parts.next().is_some()
+		|| !crate::social_publish::valid_run_id(run_id)
+		|| !lowercase_sha256(staging_sha256)
+		|| !lowercase_sha256(pair_sha256)
 	{
 		eyre::bail!("Radar content-review pair directory is malformed");
 	}
@@ -913,7 +843,7 @@ fn radar_pair_source(
 		parts[..pair_root_index - 2].iter().collect()
 	};
 
-	Ok((cache_root, pair.to_owned(), digest.to_owned()))
+	Ok((cache_root, pair.to_owned(), pair_sha256.to_owned()))
 }
 
 pub(crate) fn radar_content_pair_sha256(review_raw: &[u8], impact_raw: &[u8]) -> String {

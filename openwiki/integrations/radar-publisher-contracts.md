@@ -4,10 +4,19 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 
 ## Contract owners
 
-- Radar owns upstream evidence and validation for `github_change_bundle/v1`, `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`, `analysis_draft`, `signal_entry/v1`, `release_delta/v1`, `control_plane_upgrade_candidate/v1`, the local Radar ledger, and bundle/signal/release operations (`apps/radar/src/constants.rs`, `apps/radar/src/cli/commands.rs`, `apps/radar/src/artifact_validation/core/dispatch.rs`).
+- Radar owns upstream evidence and validation for `github_change_bundle/v1`,
+  `radar_bundle_build_receipt/v1`, `radar_content_review_pair_staging/v2`,
+  `radar_content_v2_reset/v1`,
+  `upstream_review_queue/v1`, `upstream_review/v1`, `upstream_impact/v1`,
+  `analysis_draft`, `signal_entry/v1`, `release_delta/v1`,
+  `control_plane_upgrade_candidate/v1`, the local Radar ledger, and
+  bundle/signal/release operations (`apps/radar/src/constants.rs`,
+  `apps/radar/src/cli/commands.rs`,
+  `apps/radar/src/artifact_validation/core/dispatch.rs`).
 - Decodex Publisher owns `social_candidate/v1`, `social_publish_reservation/v1`,
   `social_post/v1`, `social_outcome/v1`, `social_strategy/v1`, social validation,
-  xurl execution, paid-call ledgers, and publication reservation workflows
+  `decodex_social_content_v2_reset/v1`, xurl execution, paid-call ledgers, and
+  publication reservation workflows
   (`apps/decodex-publisher/src/lib.rs`,
   `apps/decodex-publisher/src/social_validation.rs`,
   `apps/decodex-publisher/src/social_publish.rs`).
@@ -16,12 +25,21 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 
 ## Radar artifact chain
 
-Radar starts from deterministic GitHub evidence. `radar bundle build` writes `github_change_bundle/v1` for PR-first or commit-only source material; bundle validation requires owner/name repo, analysis mode, default branch, non-empty commit/file lists, and PR fields when `analysis_mode = "pr_first"` (`apps/radar/src/operations.rs`, `apps/radar/src/artifact_validation/bundle.rs`).
+Radar starts from deterministic GitHub evidence. `radar bundle build` writes
+`github_change_bundle/v1` for PR-first or commit-only source material and emits
+`radar_bundle_build_receipt/v1` only after bounded exact-byte readback. The receipt
+binds SHA-256, byte count, analysis mode, and structural counts without source text
+or paths. The command derives its lowercase UUID from process `CODEX_THREAD_ID`,
+accepts only the exact private run-owned bundle path, and holds one Radar cache lock
+through write and readback (`apps/radar/src/source_bundle/evidence.rs`).
 
 `radar refresh-upstream-queue` writes `upstream_review_queue/v1`, reports the exact
 canonical queue-byte `queue_sha256`, and records inspected commits in the local Radar
 ledger unless `--no-ledger` is used. `radar review-next` requires that digest through
 `--expected-queue-sha256` and compares it with the locked queue bytes before selection.
+Content eligibility and Publisher lineage accept only the exact queue path
+`github/review-queue/openai-codex-latest.json`; an identical queue at another path
+has no authority.
 The queue is routing evidence only: it may carry surface hints, attention flags,
 review priority, and `next_step = ai_review_required`, but it must not make final
 public-value or compatibility claims (`apps/radar/src/operations.rs`,
@@ -29,6 +47,48 @@ public-value or compatibility claims (`apps/radar/src/operations.rs`,
 `apps/radar/src/ledger.rs`).
 
 `upstream_review/v1` is the source-backed AI review boundary. It records the subject, source refs, observed change, changed surfaces, confidence, evidence, and next actions. Current validation accepts only current actions such as promotion to upstream impact, signal entry, or control-plane upgrade candidate (`apps/radar/src/artifact_validation/upstream/review.rs`, `apps/radar/src/constants.rs`). AI review output is evidence, not mutation authority.
+
+`radar_content_review_pair_staging/v2` binds the exact `review-next` selection digest,
+bundle receipt, and required lowercase UUID run ID. This is a clean-start contract: v1
+staging is rejected without migration or a dual reader. Under the existing cache lock,
+`radar content-pair-commit` derives the process run ID and run-owned bundle, recomputes
+the current deterministic selection and receipt from bounded exact bytes, and binds
+its repo, mode, PR or commit subject, and normalized commit set to that selection and
+review. Publish requires a structured
+implementation or test anchor with a non-empty excerpt and exact `<path>: <claim>`
+evidence in both artifacts. A positive-count defer or skip may instead record the
+closed no-usable-anchor limitation; a zero count must defer or skip and record the
+`no_patch_excerpts` limitation. Each limitation uses `publisher_angle = "none"` and one
+canonical evidence item in each artifact.
+The receipt and anchor remain ephemeral staging data; committed
+`upstream_review/v1` and `upstream_impact/v1` artifacts do not change. One
+new-only `<run_id>--<staging_sha256>--<pair_sha256>` directory makes changed staging
+effects conflict. Radar recomputes the pair digest from the exact final review and
+impact bytes on every scan. Publisher and social schemas accept only this shape
+(`apps/radar/src/content_pair.rs`).
+
+Clean-start activation uses two fixed-root, lock-protected commands before ordinary
+validation or GC. One explicit unscheduled Health task first pauses all five managed
+scheduler definitions and waits until no managed automation task is active. It runs
+the Publisher reset and validates its safety receipt before it runs the Radar reset,
+then restores schedules only after validation passes. `radar content-v2-reset`
+derives its root from the detected repository
+and removes only `github/bundles`,
+`github/content-review-pairs`, `github/content-review-staging`, and
+`github/control-plane-upgrades`; it preserves the Radar ledger, queue, releases,
+signals, and generated state. `decodex-publisher social content-v2-reset` pins one
+common cache root and permits deletion only when every record is a zero-effect
+quality-skip candidate or post. Any attempt, reservation, outcome, strategy,
+staging, publication, call, or budget authority blocks all deletion. It preserves
+xurl authorization, pricing evidence, the runtime binary, locks, and unrelated
+state. During first activation, both commands inventory bounded private trees, fail
+on unsafe entries or replacement, write a private activation marker, and emit a
+bounded JSON receipt. After a valid marker exists, each command reads back only its
+fixed-root, lock, and marker authority, returns `already_active` with zero counts,
+and preserves current v2 state without collection inventory. They do not parse or
+migrate legacy artifacts
+(`apps/radar/src/content_activation.rs`,
+`apps/decodex-publisher/src/social_activation.rs`).
 
 `upstream_review/v1` must bind its subject to the queue's exact normalized
 `commit_shas` and `upstream_head`. `upstream_impact/v1` is the shared handoff from
@@ -43,7 +103,8 @@ upstream impact instead of independently reinterpreting release notes or raw rev
 
 `radar content-eligibility` emits the machine-verifiable
 `radar_content_eligibility/v1` receipt only after the three artifacts pass one locked
-snapshot check. The receipt binds the queue, review, and impact SHA-256 values, the
+snapshot check at the exact canonical queue path. The receipt binds the queue,
+review, and impact SHA-256 values, the
 exact normalized commit set, review identity, upstream head, and a canonical lineage
 SHA-256. A downstream producer can bind that receipt without repeating Radar's
 lineage reasoning.

@@ -62,12 +62,30 @@ segments can appear outside claims. Reject generic availability notices, vague
 monitoring language, copied source text, hype, unsupported claims, and
 cadence-filling content.
 
+The first content-v2 activation is an explicit unscheduled Health operation. Health
+pauses all five managed scheduler definitions, waits until no managed automation
+task is active, runs the Publisher fixed-root reset before the Radar reset with the
+new binaries, validates both receipts and state, and only then restores the desired
+schedules. Marker-present calls are authority readback only and preserve current v2
+state. Scheduled Content Manager runs require both reset readbacks to be
+`already_active`; a `reset` result stops the run and returns activation repair to
+Health.
+
 `radar review-next` only selects one current subject for investigation. Content
-Manager then builds one source bundle and follows the implementation path. It may
-stage one source-backed review and matching impact only after finding a concrete
-code, test, documentation, or schema anchor and a user or operator path. Radar
-materializes the review digest and atomically commits both artifacts in one
-run-owned pair directory. `review-next` skips an already handled subject with the
+Manager then builds one source bundle, binds Radar's exact-byte
+`radar_bundle_build_receipt/v1`, and follows the implementation path in one source
+read at the exact private path derived from process `CODEX_THREAD_ID`. A nonzero patch-excerpt count requires a concrete patch-backed implementation
+or test anchor in both review and impact evidence for publication; a zero count cannot
+support an invented implementation claim or publish decision. Staging carries the
+exact receipt and `review-next` selection digest plus an anchor or a closed limitation.
+Zero excerpts use `no_patch_excerpts`; each limitation uses `publisher_angle = "none"`
+and exactly one canonical evidence item in both artifacts. Radar recomputes the current
+selection and binds the run-owned bundle to its repo, mode, subject, and commit set before it
+materializes the review digest and atomically commits both artifacts. A valid reviewed
+subject still commits a defer or skip pair when it is not publish-worthy or has no
+usable anchor, then Content Manager records a precise quality skip. Publication still
+requires a concrete source anchor and a user or operator path. `review-next` skips an
+already handled subject with the
 same normalized commit set. Queue titles, paths, hints, and flags cannot become
 publishable evidence.
 
@@ -100,6 +118,9 @@ and do not control social GC. The scan is fail-closed and
 bounded to 8,192 entries, 4,096 files, and 64 MiB. It uses schema timestamps, not
 filesystem modification time. It does not delete Radar or upstream evidence, and
 it does not archive local cache to GitHub.
+Health repairs or escalates repeated bundle-build, receipt, run-binding, or
+subject-binding operational failures that prevent Content Manager from committing a
+handled pair.
 
 ## Validation
 

@@ -1,4 +1,5 @@
 use std::{
+	collections::{BTreeMap, BTreeSet},
 	env,
 	ffi::{OsStr, OsString},
 	fs::{self, File},
@@ -43,6 +44,59 @@ pub(crate) struct PrivateFileIdentity {
 	len: u64,
 	mtime: i64,
 	mtime_nsec: i64,
+	ctime: i64,
+	ctime_nsec: i64,
+}
+
+pub(crate) struct PinnedPrivateJsonFile {
+	file: File,
+	identity: PrivateFileIdentity,
+	name: OsString,
+	parent: PrivateDirectory,
+	path: PathBuf,
+	pub(crate) payload: Value,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum PrivateTreeEntryKind {
+	Directory,
+	File,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PrivateTreeEntrySnapshot {
+	identity: PrivateFileIdentity,
+	kind: PrivateTreeEntryKind,
+	mode: u32,
+	nlink: u64,
+	uid: u32,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PrivateTreeSnapshot {
+	entries: BTreeMap<PathBuf, PrivateTreeEntrySnapshot>,
+	file_count: usize,
+	directory_count: usize,
+	byte_count: u64,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct PrivateTreeJsonRecord {
+	pub(crate) relative_path: PathBuf,
+	pub(crate) payload: Value,
+}
+impl PrivateTreeSnapshot {
+	pub(crate) fn file_count(&self) -> usize {
+		self.file_count
+	}
+
+	pub(crate) fn directory_count(&self) -> usize {
+		self.directory_count
+	}
+
+	pub(crate) fn byte_count(&self) -> u64 {
+		self.byte_count
+	}
 }
 
 #[derive(Default)]
@@ -126,8 +180,7 @@ pub(crate) fn path_arg(root: &Path, path: &Path) -> String {
 }
 
 pub(crate) fn load_json(path: &Path) -> Result<Value> {
-	let mut file = open_private_file(path)?;
-	read_json(&mut file, path)
+	Ok(read_private_json_file(path, MAX_PRIVATE_JSON_BYTES, || {})?.0)
 }
 
 pub(crate) fn load_json_with_sha256(path: &Path) -> Result<(Value, String)> {
@@ -135,8 +188,7 @@ pub(crate) fn load_json_with_sha256(path: &Path) -> Result<(Value, String)> {
 }
 
 pub(crate) fn load_json_bytes_with_sha256(path: &Path) -> Result<(Value, Vec<u8>, String)> {
-	let mut file = open_private_file(path)?;
-	let (value, bytes) = read_json_bytes_bounded(&mut file, path, MAX_PRIVATE_JSON_BYTES)?;
+	let (value, bytes, _) = read_private_json_file(path, MAX_PRIVATE_JSON_BYTES, || {})?;
 	let digest = Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect();
 
 	Ok((value, bytes, digest))
@@ -146,11 +198,22 @@ pub(crate) fn load_json_with_sha256_bounded(
 	path: &Path,
 	max_bytes: u64,
 ) -> Result<(Value, String)> {
-	let mut file = open_private_file(path)?;
-	let (value, bytes) = read_json_bytes_bounded(&mut file, path, max_bytes)?;
+	let (value, bytes, _) = read_private_json_file(path, max_bytes, || {})?;
 	let digest = Sha256::digest(bytes).iter().map(|byte| format!("{byte:02x}")).collect();
 
 	Ok((value, digest))
+}
+
+#[cfg(test)]
+pub(crate) fn load_json_bytes_with_sha256_after_metadata(
+	path: &Path,
+	max_bytes: u64,
+	after_metadata: impl FnOnce(),
+) -> Result<(Value, Vec<u8>, String)> {
+	let (value, bytes, _) = read_private_json_file(path, max_bytes, after_metadata)?;
+	let digest = Sha256::digest(&bytes).iter().map(|byte| format!("{byte:02x}")).collect();
+
+	Ok((value, bytes, digest))
 }
 
 pub(crate) fn write_new_json(path: &Path, payload: &Value) -> Result<()> {
@@ -296,9 +359,22 @@ pub(crate) fn open_existing_exact_private_directory(
 		Err(error) if error.downcast_ref::<Errno>() == Some(&Errno::NOENT) => return Ok(None),
 		Err(error) => return Err(error),
 	};
-	validate_exact_private_directory(&directory.file)?;
+	validate_exact_private_directory(&directory.file).map_err(|error| {
+		eyre::eyre!("private directory is invalid at {}: {error}", directory.path.display())
+	})?;
 
 	Ok(Some(PinnedPrivateDirectory(Arc::new(directory))))
+}
+
+pub(crate) fn open_or_create_exact_private_directory(
+	path: &Path,
+) -> Result<PinnedPrivateDirectory> {
+	let directory = open_private_directory(path, true)?;
+	validate_exact_private_directory(&directory.file).map_err(|error| {
+		eyre::eyre!("private directory is invalid at {}: {error}", directory.path.display())
+	})?;
+
+	Ok(PinnedPrivateDirectory(Arc::new(directory)))
 }
 
 pub(crate) fn open_or_create_private_lock(path: &Path) -> Result<File> {
@@ -334,15 +410,192 @@ impl PinnedPrivateDirectory {
 	}
 
 	pub(crate) fn verify_current_path(&self) -> Result<()> {
-		let current = open_private_directory(&self.0.path, false)?;
-		validate_exact_private_directory(&current.file)?;
-		let expected = self.0.file.metadata()?;
-		let actual = current.file.metadata()?;
-		if actual.dev() != expected.dev() || actual.ino() != expected.ino() {
-			return Err(eyre::eyre!("private directory changed after scan"));
+		verify_private_directory_current_path(&self.0)
+	}
+
+	pub(crate) fn open_descendant_directory(&self, relative: &Path, create: bool) -> Result<Self> {
+		self.verify_current_path()?;
+		let current = clone_private_directory(&self.0)?;
+		let directory = descend_private_relative_directory(current, relative, create)?;
+		validate_exact_private_directory(&directory.file).map_err(|error| {
+			eyre::eyre!("private descendant is invalid at {}: {error}", directory.path.display())
+		})?;
+		self.verify_current_path()?;
+
+		Ok(Self(Arc::new(directory)))
+	}
+
+	pub(crate) fn open_descendant_directory_if_present(
+		&self,
+		relative: &Path,
+	) -> Result<Option<Self>> {
+		match self.open_descendant_directory(relative, false) {
+			Ok(directory) => Ok(Some(directory)),
+			Err(error) if error.downcast_ref::<Errno>() == Some(&Errno::NOENT) => {
+				self.verify_current_path()?;
+				Ok(None)
+			},
+			Err(error) => Err(error),
+		}
+	}
+
+	pub(crate) fn read_optional_json(
+		&self,
+		name: &OsStr,
+		max_bytes: u64,
+	) -> Result<Option<(Value, PrivateFileIdentity, Vec<u8>)>> {
+		validate_child_name(name)?;
+		let path = self.0.path.join(name);
+		if open_named_private_file_optional(&self.0, name, &path)?.is_none() {
+			self.verify_current_path()?;
+			return Ok(None);
+		}
+		let (value, bytes, identity, _) =
+			read_named_private_json_file(&self.0, name, &path, max_bytes, || {})?;
+
+		Ok(Some((value, identity, bytes)))
+	}
+
+	pub(crate) fn write_new_json(&self, name: &OsStr, payload: &Value) -> Result<()> {
+		validate_child_name(name)?;
+		self.verify_current_path()?;
+		write_new_json_in_parent(&self.0, name, &self.0.path.join(name), payload)?;
+		self.verify_current_path()
+	}
+
+	pub(crate) fn open_or_create_lock(&self, name: &OsStr) -> Result<(File, PrivateFileIdentity)> {
+		validate_child_name(name)?;
+		self.verify_current_path()?;
+		let fd = unix_fs::openat(
+			&self.0.file,
+			name,
+			OFlags::RDWR | OFlags::CREATE | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+			Mode::from_bits_retain(PRIVATE_FILE_MODE),
+		)
+		.map_err(|error| eyre::eyre!("private lock path is not safe: {error}"))?;
+		let file = File::from(fd);
+		file.set_permissions(fs::Permissions::from_mode(PRIVATE_FILE_MODE.into()))?;
+		let metadata = file.metadata()?;
+		if !metadata.is_file()
+			|| metadata.uid() != current_uid()
+			|| metadata.nlink() != 1
+			|| metadata.permissions().mode() & 0o777 != u32::from(PRIVATE_FILE_MODE)
+		{
+			return Err(eyre::eyre!("private lock path is not an owned mode-0600 file"));
+		}
+		let identity = PrivateFileIdentity::from_metadata(&metadata);
+		self.verify_lock(name, identity)?;
+
+		Ok((file, identity))
+	}
+
+	pub(crate) fn verify_lock(&self, name: &OsStr, expected: PrivateFileIdentity) -> Result<()> {
+		validate_child_name(name)?;
+		self.verify_current_path()?;
+		let fd = unix_fs::openat(
+			&self.0.file,
+			name,
+			OFlags::RDWR | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+			Mode::empty(),
+		)
+		.map_err(|error| eyre::eyre!("private lock path is not safe: {error}"))?;
+		let file = File::from(fd);
+		let metadata = file.metadata()?;
+		if !metadata.is_file()
+			|| metadata.uid() != current_uid()
+			|| metadata.nlink() != 1
+			|| metadata.permissions().mode() & 0o777 != u32::from(PRIVATE_FILE_MODE)
+			|| PrivateFileIdentity::from_metadata(&metadata) != expected
+		{
+			return Err(eyre::eyre!("private lock path changed after descriptor pin"));
+		}
+		self.verify_current_path()
+	}
+
+	pub(crate) fn inspect_descendant_tree(
+		&self,
+		relative: &Path,
+		max_entries: usize,
+		max_files: usize,
+		max_bytes: u64,
+	) -> Result<Option<PrivateTreeSnapshot>> {
+		let Some(directory) = self.open_descendant_directory_if_present(relative)? else {
+			return Ok(None);
+		};
+		let snapshot =
+			inspect_open_private_directory_tree(&directory, max_entries, max_files, max_bytes)?;
+		let rebound = self.open_descendant_directory(relative, false)?;
+		if rebound.identity()? != directory.identity()? {
+			return Err(eyre::eyre!("private reset collection changed during inventory"));
+		}
+		self.verify_current_path()?;
+
+		Ok(Some(snapshot))
+	}
+
+	pub(crate) fn read_json_tree_if_matches(
+		&self,
+		expected: &PrivateTreeSnapshot,
+	) -> Result<Vec<PrivateTreeJsonRecord>> {
+		let current = inspect_open_private_directory_tree(
+			self,
+			expected.entries.len(),
+			expected.file_count,
+			expected.byte_count,
+		)?;
+		if &current != expected {
+			return Err(eyre::eyre!("private reset collection changed before JSON preflight"));
 		}
 
-		Ok(())
+		let mut records = Vec::with_capacity(expected.file_count);
+		for (relative_path, entry) in &expected.entries {
+			if entry.kind != PrivateTreeEntryKind::File {
+				continue;
+			}
+			let parent_relative = relative_path.parent().unwrap_or_else(|| Path::new(""));
+			let parent = self.open_descendant_directory(parent_relative, false)?;
+			let name = relative_path
+				.file_name()
+				.ok_or_else(|| eyre::eyre!("private reset JSON path has no filename"))?;
+			let (payload, identity, _) = parent.read_json(name, MAX_PRIVATE_JSON_BYTES)?;
+			if identity != entry.identity {
+				return Err(eyre::eyre!("private reset JSON changed during preflight"));
+			}
+			records.push(PrivateTreeJsonRecord { relative_path: relative_path.clone(), payload });
+		}
+		let final_snapshot = inspect_open_private_directory_tree(
+			self,
+			expected.entries.len(),
+			expected.file_count,
+			expected.byte_count,
+		)?;
+		if &final_snapshot != expected {
+			return Err(eyre::eyre!("private reset collection changed during JSON preflight"));
+		}
+
+		Ok(records)
+	}
+
+	pub(crate) fn remove_descendant_tree_if_matches(
+		&self,
+		relative: &Path,
+		expected: &PrivateTreeSnapshot,
+	) -> Result<()> {
+		let current = self
+			.inspect_descendant_tree(
+				relative,
+				expected.entries.len(),
+				expected.file_count,
+				expected.byte_count,
+			)?
+			.ok_or_else(|| eyre::eyre!("private reset directory disappeared before removal"))?;
+		if &current != expected {
+			return Err(eyre::eyre!("private reset directory changed before removal"));
+		}
+		let (parent_relative, name) = relative_parent_and_name(relative)?;
+		let parent = self.open_descendant_directory(&parent_relative, false)?;
+		remove_private_directory_tree_in_parent(&parent.0, &name, expected, || {})?;
+		self.verify_current_path()
 	}
 
 	pub(crate) fn entries_bounded(&self, max_entries: usize) -> Result<Vec<OsString>> {
@@ -371,13 +624,12 @@ impl PinnedPrivateDirectory {
 			Mode::empty(),
 		)?;
 		let file = File::from(fd);
-		validate_exact_private_directory(&file)?;
+		let child_path = self.0.path.join(name);
+		validate_exact_private_directory(&file).map_err(|error| {
+			eyre::eyre!("private descendant is invalid at {}: {error}", child_path.display())
+		})?;
 
-		Ok(Self(Arc::new(PrivateDirectory {
-			file,
-			path: self.0.path.join(name),
-			private_anchor_found: true,
-		})))
+		Ok(Self(Arc::new(PrivateDirectory { file, path: child_path, private_anchor_found: true })))
 	}
 
 	pub(crate) fn read_json(
@@ -387,25 +639,22 @@ impl PinnedPrivateDirectory {
 	) -> Result<(Value, PrivateFileIdentity, Vec<u8>)> {
 		validate_child_name(name)?;
 		let path = self.0.path.join(name);
-		let mut file = open_named_private_file(&self.0, name, &path)?;
-		let metadata = file.metadata()?;
-		if metadata.len() > max_bytes {
-			return Err(eyre::eyre!("private JSON exceeds its bounded read limit"));
-		}
-		let identity = PrivateFileIdentity::from_metadata(&metadata);
-		let (value, bytes) = read_json_bytes_bounded(&mut file, &path, max_bytes)?;
+		let (value, bytes, identity, _) =
+			read_named_private_json_file(&self.0, name, &path, max_bytes, || {})?;
 
 		Ok((value, identity, bytes))
 	}
 
 	pub(crate) fn verify_file(&self, name: &OsStr, expected: PrivateFileIdentity) -> Result<()> {
 		validate_child_name(name)?;
+		self.verify_current_path()?;
 		let path = self.0.path.join(name);
 		let file = open_named_private_file(&self.0, name, &path)?;
 		let metadata = file.metadata()?;
 		if PrivateFileIdentity::from_metadata(&metadata) != expected {
 			return Err(eyre::eyre!("private JSON changed after scan"));
 		}
+		self.verify_current_path()?;
 
 		Ok(())
 	}
@@ -416,7 +665,10 @@ impl PinnedPrivateDirectory {
 		expected: PrivateFileIdentity,
 	) -> Result<()> {
 		self.verify_file(name, expected)?;
+		self.verify_current_path()?;
 		unix_fs::unlinkat(&self.0.file, name, AtFlags::empty())?;
+		self.0.file.sync_all()?;
+		self.verify_current_path()?;
 
 		Ok(())
 	}
@@ -429,13 +681,15 @@ impl PinnedPrivateDirectory {
 }
 
 impl PrivateFileIdentity {
-	fn from_metadata(metadata: &fs::Metadata) -> Self {
+	pub(crate) fn from_metadata(metadata: &fs::Metadata) -> Self {
 		Self {
 			dev: metadata.dev(),
 			ino: metadata.ino(),
 			len: metadata.len(),
 			mtime: metadata.mtime(),
 			mtime_nsec: metadata.mtime_nsec(),
+			ctime: metadata.ctime(),
+			ctime_nsec: metadata.ctime_nsec(),
 		}
 	}
 
@@ -455,7 +709,7 @@ fn open_path(path: &Path) -> Result<OpenedPath> {
 	let fd = unix_fs::openat(
 		&parent.file,
 		&name,
-		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
 		Mode::empty(),
 	)?;
 	let file = File::from(fd);
@@ -523,7 +777,7 @@ fn collect_directory_json_files(
 		let fd = unix_fs::openat(
 			&directory.file,
 			&name,
-			OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+			OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
 			Mode::empty(),
 		)
 		.map_err(|error| {
@@ -595,19 +849,34 @@ fn open_named_private_file(
 	file_name: &OsStr,
 	path: &Path,
 ) -> Result<File> {
-	let fd = unix_fs::openat(
+	open_named_private_file_optional(parent, file_name, path)?
+		.ok_or_else(|| eyre::eyre!("private JSON does not exist: {}", path.display()))
+}
+
+fn open_named_private_file_optional(
+	parent: &PrivateDirectory,
+	file_name: &OsStr,
+	path: &Path,
+) -> Result<Option<File>> {
+	let fd = match unix_fs::openat(
 		&parent.file,
 		file_name,
-		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
 		Mode::empty(),
-	)
-	.map_err(|error| {
-		eyre::eyre!("private JSON must be a regular non-symlink file {}: {error}", path.display())
-	})?;
+	) {
+		Ok(fd) => fd,
+		Err(Errno::NOENT) => return Ok(None),
+		Err(error) => {
+			return Err(eyre::eyre!(
+				"private JSON must be a regular non-symlink file {}: {error}",
+				path.display()
+			));
+		},
+	};
 	let file = File::from(fd);
 	validate_private_json_metadata(path, &file.metadata()?)?;
 
-	Ok(file)
+	Ok(Some(file))
 }
 
 fn create_private_file(parent: &PrivateDirectory, file_name: &OsStr) -> Result<File> {
@@ -664,6 +933,421 @@ fn read_json_bytes_bounded(
 	Ok((value, bytes))
 }
 
+fn read_private_json_file(
+	path: &Path,
+	max_bytes: u64,
+	after_metadata: impl FnOnce(),
+) -> Result<(Value, Vec<u8>, PrivateFileIdentity)> {
+	let (parent_path, name) = parent_and_name(path)?;
+	let parent = open_private_directory(&parent_path, false)?;
+	let (value, bytes, identity, _) =
+		read_named_private_json_file(&parent, &name, path, max_bytes, after_metadata)?;
+
+	Ok((value, bytes, identity))
+}
+
+fn read_named_private_json_file(
+	parent: &PrivateDirectory,
+	name: &OsStr,
+	path: &Path,
+	max_bytes: u64,
+	after_metadata: impl FnOnce(),
+) -> Result<(Value, Vec<u8>, PrivateFileIdentity, File)> {
+	let mut file = open_named_private_file(parent, name, path)?;
+	let initial = PrivateFileIdentity::from_metadata(&file.metadata()?);
+	if initial.len > max_bytes {
+		return Err(eyre::eyre!("private JSON exceeds its bounded read limit"));
+	}
+	after_metadata();
+	let read_limit = max_bytes
+		.checked_add(1)
+		.ok_or_else(|| eyre::eyre!("private JSON bounded read limit is too large"))?;
+	let mut bytes = Vec::with_capacity(usize::try_from(initial.len).unwrap_or(0));
+	std::io::Read::by_ref(&mut file).take(read_limit).read_to_end(&mut bytes)?;
+	if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > max_bytes {
+		return Err(eyre::eyre!("private JSON exceeds its bounded read limit"));
+	}
+	let held = PrivateFileIdentity::from_metadata(&file.metadata()?);
+	let current = open_named_private_file(parent, name, path)?;
+	let current_identity = PrivateFileIdentity::from_metadata(&current.metadata()?);
+	if held != initial
+		|| current_identity != initial
+		|| u64::try_from(bytes.len()).unwrap_or(u64::MAX) != initial.len
+	{
+		return Err(eyre::eyre!("private JSON identity changed during read: {}", path.display()));
+	}
+	verify_private_directory_current_path(parent)?;
+	let payload =
+		std::str::from_utf8(&bytes).map_err(|_| eyre::eyre!("{} is not UTF-8", path.display()))?;
+	let value = serde_json::from_str(payload)
+		.map_err(|error| eyre::eyre!("failed to parse {} as JSON: {error}", path.display()))?;
+	verify_private_directory_current_path(parent)?;
+
+	Ok((value, bytes, initial, file))
+}
+
+impl PinnedPrivateJsonFile {
+	pub(crate) fn open(path: &Path, max_bytes: u64) -> Result<Self> {
+		let (parent_path, name) = parent_and_name(path)?;
+		let parent = open_private_directory(&parent_path, false)?;
+		let (payload, _, identity, file) =
+			read_named_private_json_file(&parent, &name, path, max_bytes, || {})?;
+
+		Ok(Self { file, identity, name, parent, path: path.to_path_buf(), payload })
+	}
+
+	pub(crate) fn unlink(self) -> Result<()> {
+		verify_private_directory_current_path(&self.parent)?;
+		let current = open_named_private_file(&self.parent, &self.name, &self.path)?;
+		if PrivateFileIdentity::from_metadata(&current.metadata()?) != self.identity
+			|| PrivateFileIdentity::from_metadata(&self.file.metadata()?) != self.identity
+		{
+			return Err(eyre::eyre!(
+				"private JSON changed before cleanup: {}",
+				self.path.display()
+			));
+		}
+		verify_private_directory_current_path(&self.parent)?;
+		unix_fs::unlinkat(&self.parent.file, &self.name, AtFlags::empty())?;
+		self.parent.file.sync_all()?;
+		verify_private_directory_current_path(&self.parent)?;
+
+		Ok(())
+	}
+}
+
+enum OpenedPrivateTreeEntry {
+	Directory(PrivateDirectory),
+	File(File),
+}
+
+fn inspect_private_directory_at(
+	directory: &PinnedPrivateDirectory,
+	relative: &Path,
+	snapshot: &mut PrivateTreeSnapshot,
+	max_entries: usize,
+	max_files: usize,
+	max_bytes: u64,
+) -> Result<()> {
+	let initial = private_tree_snapshot(&directory.0.file.metadata()?)?;
+	let remaining = max_entries.saturating_sub(snapshot.entries.len());
+	let names = directory.entries_bounded(remaining)?;
+
+	for name in names {
+		let child_relative = relative.join(&name);
+		let child_path = directory.0.path.join(&name);
+		let opened = open_private_tree_entry(&directory.0, &name, &child_path)?;
+		let child_snapshot = opened_private_tree_snapshot(&opened)?;
+		match child_snapshot.kind {
+			PrivateTreeEntryKind::File => {
+				snapshot.file_count = snapshot
+					.file_count
+					.checked_add(1)
+					.ok_or_else(|| eyre::eyre!("private reset file count overflowed"))?;
+				snapshot.byte_count = snapshot
+					.byte_count
+					.checked_add(child_snapshot.identity.len)
+					.ok_or_else(|| eyre::eyre!("private reset byte count overflowed"))?;
+			},
+			PrivateTreeEntryKind::Directory => {
+				snapshot.directory_count = snapshot
+					.directory_count
+					.checked_add(1)
+					.ok_or_else(|| eyre::eyre!("private reset directory count overflowed"))?;
+			},
+		}
+		snapshot.entries.insert(child_relative.clone(), child_snapshot.clone());
+		validate_private_tree_limits(snapshot, max_entries, max_files, max_bytes)?;
+		if let OpenedPrivateTreeEntry::Directory(child) = opened {
+			let child = PinnedPrivateDirectory(Arc::new(child));
+			inspect_private_directory_at(
+				&child,
+				&child_relative,
+				snapshot,
+				max_entries,
+				max_files,
+				max_bytes,
+			)?;
+		}
+		let current = open_private_tree_entry(&directory.0, &name, &child_path)?;
+		if opened_private_tree_snapshot(&current)? != child_snapshot {
+			return Err(eyre::eyre!("private reset entry changed during inventory"));
+		}
+	}
+	if private_tree_snapshot(&directory.0.file.metadata()?)? != initial {
+		return Err(eyre::eyre!("private reset directory changed during inventory"));
+	}
+
+	Ok(())
+}
+
+fn inspect_open_private_directory_tree(
+	root: &PinnedPrivateDirectory,
+	max_entries: usize,
+	max_files: usize,
+	max_bytes: u64,
+) -> Result<PrivateTreeSnapshot> {
+	root.verify_current_path()?;
+	let root_snapshot = private_tree_snapshot(&root.0.file.metadata()?)?;
+	if root_snapshot.kind != PrivateTreeEntryKind::Directory {
+		return Err(eyre::eyre!("private reset collection is not a directory"));
+	}
+	let mut snapshot = PrivateTreeSnapshot {
+		entries: BTreeMap::from([(PathBuf::new(), root_snapshot.clone())]),
+		file_count: 0,
+		directory_count: 1,
+		byte_count: 0,
+	};
+	validate_private_tree_limits(&snapshot, max_entries, max_files, max_bytes)?;
+	inspect_private_directory_at(
+		root,
+		Path::new(""),
+		&mut snapshot,
+		max_entries,
+		max_files,
+		max_bytes,
+	)?;
+	if private_tree_snapshot(&root.0.file.metadata()?)? != root_snapshot {
+		return Err(eyre::eyre!("private reset collection changed during inventory"));
+	}
+	root.verify_current_path()?;
+
+	Ok(snapshot)
+}
+
+fn validate_private_tree_limits(
+	snapshot: &PrivateTreeSnapshot,
+	max_entries: usize,
+	max_files: usize,
+	max_bytes: u64,
+) -> Result<()> {
+	if snapshot.entries.len() > max_entries
+		|| snapshot.file_count > max_files
+		|| snapshot.byte_count > max_bytes
+	{
+		return Err(eyre::eyre!("private reset tree exceeds its bounded inventory limits"));
+	}
+
+	Ok(())
+}
+
+fn open_private_tree_entry(
+	parent: &PrivateDirectory,
+	name: &OsStr,
+	path: &Path,
+) -> Result<OpenedPrivateTreeEntry> {
+	open_private_tree_entry_optional(parent, name, path)?
+		.ok_or_else(|| eyre::eyre!("private reset entry disappeared: {}", path.display()))
+}
+
+fn open_private_tree_entry_optional(
+	parent: &PrivateDirectory,
+	name: &OsStr,
+	path: &Path,
+) -> Result<Option<OpenedPrivateTreeEntry>> {
+	validate_child_name(name)?;
+	let fd = match unix_fs::openat(
+		&parent.file,
+		name,
+		OFlags::RDONLY | OFlags::CLOEXEC | OFlags::NOFOLLOW | OFlags::NONBLOCK,
+		Mode::empty(),
+	) {
+		Ok(fd) => fd,
+		Err(Errno::NOENT) => return Ok(None),
+		Err(error) => {
+			return Err(eyre::eyre!(
+				"private reset entry is a symlink or unsafe {}: {error}",
+				path.display()
+			));
+		},
+	};
+	let file = File::from(fd);
+	let metadata = file.metadata()?;
+	if metadata.is_dir() {
+		validate_exact_private_directory_metadata(&metadata)?;
+
+		return Ok(Some(OpenedPrivateTreeEntry::Directory(PrivateDirectory {
+			file,
+			path: path.to_path_buf(),
+			private_anchor_found: true,
+		})));
+	}
+	validate_private_reset_file_metadata(path, &metadata)?;
+
+	Ok(Some(OpenedPrivateTreeEntry::File(file)))
+}
+
+fn opened_private_tree_snapshot(
+	entry: &OpenedPrivateTreeEntry,
+) -> Result<PrivateTreeEntrySnapshot> {
+	match entry {
+		OpenedPrivateTreeEntry::Directory(directory) =>
+			private_tree_snapshot(&directory.file.metadata()?),
+		OpenedPrivateTreeEntry::File(file) => private_tree_snapshot(&file.metadata()?),
+	}
+}
+
+fn private_tree_snapshot(metadata: &fs::Metadata) -> Result<PrivateTreeEntrySnapshot> {
+	let kind = if metadata.is_dir() {
+		validate_exact_private_directory_metadata(metadata)?;
+		PrivateTreeEntryKind::Directory
+	} else {
+		validate_private_reset_file_metadata(Path::new("private reset file"), metadata)?;
+		PrivateTreeEntryKind::File
+	};
+
+	Ok(PrivateTreeEntrySnapshot {
+		identity: PrivateFileIdentity::from_metadata(metadata),
+		kind,
+		mode: metadata.permissions().mode() & 0o777,
+		nlink: metadata.nlink(),
+		uid: metadata.uid(),
+	})
+}
+
+fn validate_private_reset_file_metadata(path: &Path, metadata: &fs::Metadata) -> Result<()> {
+	if !metadata.is_file()
+		|| metadata.uid() != current_uid()
+		|| metadata.nlink() != 1
+		|| metadata.permissions().mode() & 0o777 != u32::from(PRIVATE_FILE_MODE)
+	{
+		return Err(eyre::eyre!(
+			"private reset file must be an owned one-link mode-0600 regular file: {}",
+			path.display()
+		));
+	}
+
+	Ok(())
+}
+
+fn remove_private_directory_matching(
+	parent: &PrivateDirectory,
+	name: &OsStr,
+	directory: PrivateDirectory,
+	relative: &Path,
+	expected: &PrivateTreeSnapshot,
+) -> Result<()> {
+	let actual = private_tree_snapshot(&directory.file.metadata()?)?;
+	let expected_directory = expected
+		.entries
+		.get(relative)
+		.ok_or_else(|| eyre::eyre!("private reset snapshot is missing a directory"))?;
+	let matches = if relative.as_os_str().is_empty() {
+		same_private_tree_entry_across_rename(expected_directory, &actual)
+	} else {
+		&actual == expected_directory
+	};
+	if !matches {
+		return Err(eyre::eyre!("private reset directory identity changed before removal"));
+	}
+	let pinned = PinnedPrivateDirectory(Arc::new(directory));
+	let names = pinned.entries_bounded(expected.entries.len())?;
+	let actual_names = names.iter().cloned().collect::<BTreeSet<_>>();
+	let expected_names = expected
+		.entries
+		.keys()
+		.filter_map(|path| {
+			(path.parent() == Some(relative))
+				.then(|| path.file_name().map(OsStr::to_os_string))
+				.flatten()
+		})
+		.collect::<BTreeSet<_>>();
+	if actual_names != expected_names {
+		return Err(eyre::eyre!("private reset directory entries changed before removal"));
+	}
+
+	for child_name in names {
+		let child_relative = relative.join(&child_name);
+		let child_path = pinned.0.path.join(&child_name);
+		let child = open_private_tree_entry(&pinned.0, &child_name, &child_path)?;
+		let child_snapshot = opened_private_tree_snapshot(&child)?;
+		if expected.entries.get(&child_relative) != Some(&child_snapshot) {
+			return Err(eyre::eyre!("private reset entry identity changed before removal"));
+		}
+		match child {
+			OpenedPrivateTreeEntry::Directory(child) => remove_private_directory_matching(
+				&pinned.0,
+				&child_name,
+				child,
+				&child_relative,
+				expected,
+			)?,
+			OpenedPrivateTreeEntry::File(file) => {
+				let current = open_private_tree_entry(&pinned.0, &child_name, &child_path)?;
+				if opened_private_tree_snapshot(&current)? != child_snapshot
+					|| PrivateFileIdentity::from_metadata(&file.metadata()?)
+						!= child_snapshot.identity
+				{
+					return Err(eyre::eyre!("private reset file identity changed before removal"));
+				}
+				unix_fs::unlinkat(&pinned.0.file, &child_name, AtFlags::empty())?;
+			},
+		}
+	}
+	drop(pinned);
+	unix_fs::unlinkat(&parent.file, name, AtFlags::REMOVEDIR)?;
+
+	Ok(())
+}
+
+fn remove_private_directory_tree_in_parent(
+	parent: &PrivateDirectory,
+	name: &OsStr,
+	expected: &PrivateTreeSnapshot,
+	before_rename: impl FnOnce(),
+) -> Result<()> {
+	validate_child_name(name)?;
+	verify_private_directory_current_path(parent)?;
+	let path = parent.path.join(name);
+	let current = open_private_tree_entry(parent, name, &path)?;
+	let current_snapshot = opened_private_tree_snapshot(&current)?;
+	let expected_root = expected
+		.entries
+		.get(Path::new(""))
+		.ok_or_else(|| eyre::eyre!("private reset snapshot has no root identity"))?;
+	if &current_snapshot != expected_root {
+		return Err(eyre::eyre!("private reset directory changed before isolation"));
+	}
+	drop(current);
+
+	let temporary = temporary_name(name)?;
+	before_rename();
+	verify_private_directory_current_path(parent)?;
+	unix_fs::renameat(&parent.file, name, &parent.file, &temporary)?;
+	let moved = open_private_tree_entry(parent, &temporary, &parent.path.join(&temporary))?;
+	let moved_snapshot = opened_private_tree_snapshot(&moved)?;
+	if !same_private_tree_entry_across_rename(expected_root, &moved_snapshot) {
+		if open_private_tree_entry_optional(parent, name, &path)?.is_none() {
+			let _ = unix_fs::renameat(&parent.file, &temporary, &parent.file, name);
+			let _ = parent.file.sync_all();
+		}
+		return Err(eyre::eyre!("private reset directory identity changed during isolation"));
+	}
+	let OpenedPrivateTreeEntry::Directory(directory) = moved else {
+		return Err(eyre::eyre!("private reset collection became a non-directory"));
+	};
+	parent.file.sync_all()?;
+	verify_private_directory_current_path(parent)?;
+	remove_private_directory_matching(parent, &temporary, directory, Path::new(""), expected)?;
+	parent.file.sync_all()?;
+	verify_private_directory_current_path(parent)
+}
+
+fn same_private_tree_entry_across_rename(
+	left: &PrivateTreeEntrySnapshot,
+	right: &PrivateTreeEntrySnapshot,
+) -> bool {
+	left.kind == right.kind
+		&& left.mode == right.mode
+		&& left.nlink == right.nlink
+		&& left.uid == right.uid
+		&& left.identity.dev == right.identity.dev
+		&& left.identity.ino == right.identity.ino
+		&& left.identity.len == right.identity.len
+		&& left.identity.mtime == right.identity.mtime
+		&& left.identity.mtime_nsec == right.identity.mtime_nsec
+}
+
 fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory> {
 	let path = clean_absolute_path(path)?;
 	#[cfg(test)]
@@ -687,6 +1371,28 @@ fn open_private_directory(path: &Path, create: bool) -> Result<PrivateDirectory>
 	current.private_anchor_found = validate_directory_metadata(&current.path, &metadata, false)?;
 
 	descend_private_directory(current, path.components(), create)
+}
+
+fn clone_private_directory(directory: &PrivateDirectory) -> Result<PrivateDirectory> {
+	Ok(PrivateDirectory {
+		file: directory.file.try_clone()?,
+		path: directory.path.clone(),
+		private_anchor_found: directory.private_anchor_found,
+	})
+}
+
+fn verify_private_directory_current_path(directory: &PrivateDirectory) -> Result<()> {
+	let expected = directory.file.metadata()?;
+	let current = open_private_directory(&directory.path, false)?;
+	let actual = current.file.metadata()?;
+	if (expected.dev(), expected.ino()) != (actual.dev(), actual.ino()) {
+		return Err(eyre::eyre!(
+			"private directory path changed after descriptor pin: {}",
+			directory.path.display()
+		));
+	}
+
+	Ok(())
 }
 
 #[cfg(test)]
@@ -833,6 +1539,66 @@ fn descend_private_directory<'a>(
 	Ok(current)
 }
 
+fn descend_private_relative_directory(
+	mut current: PrivateDirectory,
+	relative: &Path,
+	create: bool,
+) -> Result<PrivateDirectory> {
+	if relative.is_absolute() {
+		return Err(eyre::eyre!("private descendant path must be relative"));
+	}
+	for component in relative.components() {
+		let Component::Normal(name) = component else {
+			if matches!(component, Component::CurDir) {
+				continue;
+			}
+			return Err(eyre::eyre!("private descendant path has unsupported components"));
+		};
+		let child_path = current.path.join(name);
+		let (fd, created) = match unix_fs::openat(
+			&current.file,
+			name,
+			OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+			Mode::empty(),
+		) {
+			Ok(fd) => (fd, false),
+			Err(Errno::NOENT) if create => {
+				unix_fs::mkdirat(
+					&current.file,
+					name,
+					Mode::from_bits_retain(PRIVATE_DIRECTORY_MODE),
+				)?;
+				(
+					unix_fs::openat(
+						&current.file,
+						name,
+						OFlags::RDONLY | OFlags::DIRECTORY | OFlags::CLOEXEC | OFlags::NOFOLLOW,
+						Mode::empty(),
+					)?,
+					true,
+				)
+			},
+			Err(Errno::NOENT) => return Err(Errno::NOENT.into()),
+			Err(error) => {
+				return Err(eyre::eyre!(
+					"private descendant must not contain a symlink or unsafe component {}: {error}",
+					child_path.display()
+				));
+			},
+		};
+		let file = File::from(fd);
+		if created {
+			file.set_permissions(fs::Permissions::from_mode(PRIVATE_DIRECTORY_MODE.into()))?;
+		}
+		validate_exact_private_directory(&file).map_err(|error| {
+			eyre::eyre!("private descendant is invalid at {}: {error}", child_path.display())
+		})?;
+		current = PrivateDirectory { file, path: child_path, private_anchor_found: true };
+	}
+
+	Ok(current)
+}
+
 fn validate_directory_metadata(
 	path: &Path,
 	metadata: &fs::Metadata,
@@ -913,6 +1679,30 @@ fn parent_and_name(path: &Path) -> Result<(PathBuf, OsString)> {
 		.to_os_string();
 
 	Ok((parent, file_name))
+}
+
+fn relative_parent_and_name(path: &Path) -> Result<(PathBuf, OsString)> {
+	if path.is_absolute() {
+		return Err(eyre::eyre!("private descendant path must be relative"));
+	}
+	let mut clean = PathBuf::new();
+	for component in path.components() {
+		match component {
+			Component::Normal(name) => clean.push(name),
+			Component::CurDir => {},
+			Component::ParentDir | Component::RootDir | Component::Prefix(_) => {
+				return Err(eyre::eyre!("private descendant path has unsupported components"));
+			},
+		}
+	}
+	let name = clean
+		.file_name()
+		.filter(|value| !value.is_empty())
+		.ok_or_else(|| eyre::eyre!("private descendant path must include a name"))?
+		.to_os_string();
+	let parent = clean.parent().unwrap_or_else(|| Path::new("")).to_path_buf();
+
+	Ok((parent, name))
 }
 
 fn clean_absolute_path(path: &Path) -> Result<PathBuf> {
@@ -996,16 +1786,180 @@ fn current_uid() -> u32 {
 #[cfg(test)]
 mod tests {
 	use std::{
+		ffi::CString,
 		fs,
-		os::unix::fs::{PermissionsExt as _, symlink},
+		fs::FileTimes,
+		io::Write as _,
+		os::unix::{
+			ffi::OsStrExt as _,
+			fs::{MetadataExt as _, PermissionsExt as _, symlink},
+		},
+		sync::mpsc,
+		thread,
+		time::{Duration, SystemTime},
 	};
 
 	use serde_json::json;
 
 	use super::{
+		PinnedPrivateJsonFile, load_json, load_json_bytes_with_sha256_after_metadata,
 		open_pinned_sandbox_private_root, open_pinned_sandbox_read_root, open_private_directory,
-		validate_sandbox_test_output, write_new_json_in_parent,
+		repo_local_test_directory, validate_sandbox_test_output, write_new_json_in_parent,
 	};
+
+	#[test]
+	fn private_json_reads_reject_fifos_without_blocking_for_lineage_and_staging() {
+		let temp = repo_local_test_directory("publisher-private-fifo-");
+		let parent = temp.path().join(".agent/automations/decodex/cache/manager/staging");
+		let placeholder = parent.join("placeholder.json");
+		super::write_new_json(&placeholder, &json!({"ok": true})).expect("private parent fixture");
+		fs::remove_file(placeholder).expect("placeholder removal");
+
+		for (name, staging) in [("lineage.fifo", false), ("staging.fifo", true)] {
+			let path = parent.join(name);
+			let fifo = CString::new(path.as_os_str().as_bytes()).expect("FIFO path");
+			assert_eq!(unsafe { libc::mkfifo(fifo.as_ptr(), 0o600) }, 0);
+			let (sender, receiver) = mpsc::channel();
+			let reader = thread::spawn(move || {
+				let result = if staging {
+					PinnedPrivateJsonFile::open(&path, 1024).map(|_| ())
+				} else {
+					load_json(&path).map(|_| ())
+				};
+				sender.send(result).expect("FIFO result delivery");
+			});
+			let error = receiver
+				.recv_timeout(Duration::from_secs(2))
+				.expect("private FIFO open must not block")
+				.expect_err("FIFO must fail regular-file validation");
+			reader.join().expect("FIFO reader should exit");
+			assert!(!error.to_string().is_empty());
+		}
+	}
+
+	#[test]
+	fn private_json_reads_reject_symlinks_oversize_and_growth_past_max_plus_one() {
+		let temp = repo_local_test_directory("publisher-private-bounds-");
+		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
+		let target = parent.join("target.json");
+		let linked = parent.join("linked.json");
+		super::write_new_json(&target, &json!({"value": 1})).expect("target fixture");
+		symlink(&target, &linked).expect("symlink fixture");
+		assert!(load_json(&linked).is_err());
+		assert!(super::load_json_with_sha256_bounded(&target, 4).is_err());
+
+		let growing = parent.join("growing.json");
+		fs::write(&growing, b"{}\n").expect("growing fixture");
+		fs::set_permissions(&growing, fs::Permissions::from_mode(0o600))
+			.expect("growing fixture mode");
+		let append = growing.clone();
+		let error = load_json_bytes_with_sha256_after_metadata(&growing, 3, move || {
+			let mut file =
+				fs::OpenOptions::new().append(true).open(append).expect("append fixture");
+			file.write_all(b" ").expect("grow fixture");
+			file.sync_all().expect("sync growth");
+		})
+		.expect_err("max-plus-one read must reject growth");
+		assert!(error.to_string().contains("bounded read limit"));
+	}
+
+	#[test]
+	fn private_json_reads_reject_path_replacement_and_mtime_restored_rewrite() {
+		let temp = repo_local_test_directory("publisher-private-identity-");
+		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
+		let path = parent.join("candidate.json");
+		let displaced = parent.join("displaced.json");
+		super::write_new_json(&path, &json!({"value": 1})).expect("candidate fixture");
+		let replacement = path.clone();
+		let error = load_json_bytes_with_sha256_after_metadata(&path, 1024, move || {
+			fs::rename(&replacement, &displaced).expect("displace candidate");
+			super::write_new_json(&replacement, &json!({"value": 1}))
+				.expect("replacement candidate");
+		})
+		.expect_err("path replacement must fail identity revalidation");
+		assert!(error.to_string().contains("identity changed during read"));
+
+		let rewrite = parent.join("rewrite.json");
+		super::write_new_json(&rewrite, &json!({"value": 1})).expect("rewrite fixture");
+		let modified = SystemTime::now() - Duration::from_secs(60);
+		let file = fs::OpenOptions::new().write(true).open(&rewrite).expect("rewrite descriptor");
+		file.set_times(FileTimes::new().set_modified(modified)).expect("fixed mtime");
+		let initial = file.metadata().expect("initial rewrite metadata");
+		let initial_ctime = (initial.ctime(), initial.ctime_nsec());
+		let rewrite_path = rewrite.clone();
+		let error = load_json_bytes_with_sha256_after_metadata(&rewrite, 1024, move || {
+			thread::sleep(Duration::from_millis(10));
+			let mut file = fs::OpenOptions::new()
+				.write(true)
+				.truncate(true)
+				.open(rewrite_path)
+				.expect("rewrite file");
+			file.write_all(b"{\n  \"value\": 2\n}\n").expect("same-size replacement");
+			file.sync_all().expect("sync replacement");
+			file.set_times(FileTimes::new().set_modified(modified)).expect("restore mtime");
+			let changed = file.metadata().expect("changed metadata");
+			assert_ne!((changed.ctime(), changed.ctime_nsec()), initial_ctime);
+		})
+		.expect_err("ctime must detect an mtime-restored rewrite");
+		assert!(error.to_string().contains("identity changed during read"));
+	}
+
+	#[test]
+	fn private_json_reads_reject_parent_rename_and_replacement() {
+		let temp = repo_local_test_directory("publisher-private-parent-identity-");
+		let parent = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
+		let displaced = parent.with_file_name("displaced-candidates");
+		let path = parent.join("candidate.json");
+		super::write_new_json(&path, &json!({"value": 1})).expect("candidate fixture");
+		let parent_for_hook = parent.clone();
+		let displaced_for_hook = displaced.clone();
+		let error = load_json_bytes_with_sha256_after_metadata(&path, 1024, move || {
+			fs::rename(&parent_for_hook, &displaced_for_hook).expect("parent displacement");
+			super::write_new_json(&parent_for_hook.join("candidate.json"), &json!({"value": 1}))
+				.expect("parent replacement");
+		})
+		.expect_err("read must reject a displaced parent tree");
+		assert!(error.to_string().contains("directory path changed"));
+		assert!(displaced.join("candidate.json").exists());
+		assert!(parent.join("candidate.json").exists());
+	}
+
+	#[test]
+	fn staging_unlink_rejects_parent_rename_and_replacement() {
+		let temp = repo_local_test_directory("publisher-staging-parent-identity-");
+		let parent = temp.path().join(".agent/automations/decodex/cache/manager/staging");
+		let displaced = parent.with_file_name("displaced-staging");
+		let path = parent.join("staged.json");
+		super::write_new_json(&path, &json!({"value": 1})).expect("staging fixture");
+		let staged = PinnedPrivateJsonFile::open(&path, 1024).expect("pinned staging fixture");
+		fs::rename(&parent, &displaced).expect("staging parent displacement");
+		super::write_new_json(&path, &json!({"value": 1})).expect("staging parent replacement");
+
+		let error = staged.unlink().expect_err("unlink must reject a displaced parent tree");
+		assert!(error.to_string().contains("directory path changed"));
+		assert!(displaced.join("staged.json").exists());
+		assert!(path.exists());
+	}
+
+	#[test]
+	fn bounded_directory_enumerator_rejects_max_plus_one_entries() {
+		let temp = repo_local_test_directory("publisher-private-entry-bound-");
+		let directory = temp.path().join(".agent/automations/decodex/cache/social/x/candidates");
+		for index in 0..3 {
+			super::write_new_json(
+				&directory.join(format!("candidate-{index}.json")),
+				&json!({"value": index}),
+			)
+			.expect("bounded directory fixture");
+		}
+		let pinned = super::open_existing_exact_private_directory(&directory)
+			.expect("bounded directory open")
+			.expect("bounded directory exists");
+		let error = pinned
+			.entries_bounded(2)
+			.expect_err("shared reset enumerator must reject max-plus-one");
+		assert!(error.to_string().contains("bounded entry limit"));
+	}
 
 	#[test]
 	fn sandbox_test_output_requires_an_exact_private_direct_child() {

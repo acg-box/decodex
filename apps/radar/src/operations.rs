@@ -1,10 +1,10 @@
 //! Top-level Radar command operations.
 
 use crate::{
-	BUNDLE_SCHEMA, GitHubApi, GithubClient, Path, PathBuf, RadarBundleBuildRequest,
+	BUNDLE_SCHEMA, GitHubApi, GithubClient, Path, RadarBundleBuildReceipt, RadarBundleBuildRequest,
 	RadarBundleValidateRequest, RadarRefreshQueueReport, RadarRefreshQueueRequest,
 	RadarRenderSignalReport, RadarRenderSignalRequest, RadarValidateRequest, RadarValidationReport,
-	RefreshKind, SIGNAL_SCHEMA, ValidationState, eyre, prelude::Result,
+	RefreshKind, SIGNAL_SCHEMA, ValidationState, Value, eyre, prelude::Result,
 };
 
 pub(crate) fn refresh_queue(request: &RadarRefreshQueueRequest) -> Result<RadarRefreshQueueReport> {
@@ -155,8 +155,15 @@ pub(crate) fn validate_default_cache_presence(root: &Path, bootstrap: bool) -> R
 	}
 }
 
-/// Build a deterministic GitHub change bundle and write it to disk.
-pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf> {
+/// Build, install, and read back a deterministic GitHub change bundle.
+pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<RadarBundleBuildReceipt> {
+	validate_current_bundle_output_path(&request.out)?;
+	let bundle = build_bundle_payload(request)?;
+
+	crate::install_bundle(&request.out, &bundle)
+}
+
+pub(crate) fn build_bundle_payload(request: &RadarBundleBuildRequest) -> Result<Value> {
 	let token = crate::github_token(request.token_env.as_deref())?;
 	let client = GithubClient::new(token.as_deref())?;
 	let bundle = match (request.pr, request.commit.as_deref()) {
@@ -177,9 +184,19 @@ pub(crate) fn build_bundle(request: &RadarBundleBuildRequest) -> Result<PathBuf>
 		(None, None) => eyre::bail!("one of --pr or --commit is required"),
 	};
 
-	crate::write_json(&request.out, &bundle)?;
+	Ok(bundle)
+}
 
-	Ok(request.out.clone())
+pub(crate) fn validate_current_bundle_output_path(path: &Path) -> Result<()> {
+	let run_id = crate::current_run_id()?;
+	let relative = crate::private_fs::private_cache_relative_path(path)?;
+	let expected = Path::new("github/bundles").join(format!("{run_id}.json"));
+
+	if relative != expected {
+		eyre::bail!("bundle output path must match the current CODEX_THREAD_ID");
+	}
+
+	Ok(())
 }
 
 /// Validate GitHub change bundle artifacts only.

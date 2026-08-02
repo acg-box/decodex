@@ -769,9 +769,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			REPO_ROOT / "automations/decodex/prompts/content-manager.md"
 		).read_text(encoding="utf-8")
 		normalized = " ".join(prompt.split())
-		refresh = normalized.index(
-			"Run `<radar> refresh-upstream-queue` by itself first."
-		)
+		refresh = normalized.index("<radar> refresh-upstream-queue` by itself.")
 		review = normalized.index(
 			"<radar> review-next --cache-root .agent/automations/radar/cache "
 			"--expected-queue-sha256 <refreshed_queue_sha256>"
@@ -803,6 +801,293 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		)
 		self.assertIn("queue SHA-256 values, or absolute local paths", normalized)
 		self.assertNotIn("`queue_sha256` to the exact selected queue digest", prompt)
+
+	def test_content_manager_consumes_exact_bundle_evidence_receipt(self) -> None:
+		prompt = (
+			REPO_ROOT / "automations/decodex/prompts/content-manager.md"
+		).read_text(encoding="utf-8")
+		normalized = " ".join(prompt.split())
+		schema_path = (
+			REPO_ROOT
+			/ "automations/radar/scripts/github/bundle_build_receipt.schema.json"
+		)
+		schema = json.loads(schema_path.read_text(encoding="utf-8"))
+		staging_schema_path = (
+			REPO_ROOT
+			/ "automations/radar/scripts/github/content_review_pair_staging.schema.json"
+		)
+		staging_schema = json.loads(staging_schema_path.read_text(encoding="utf-8"))
+		candidate_schema = json.loads(
+			(
+				REPO_ROOT
+				/ "automations/decodex/scripts/social/social_candidate.schema.json"
+			).read_text(encoding="utf-8")
+		)
+		required = {
+			"schema",
+			"status",
+			"bundle_sha256",
+			"bundle_bytes",
+			"analysis_mode",
+			"commit_count",
+			"file_count",
+			"patch_excerpt_count",
+			"docs_ref_count",
+			"examples_ref_count",
+		}
+
+		self.assertFalse(schema["additionalProperties"])
+		self.assertEqual(set(schema["required"]), required)
+		self.assertEqual(set(schema["properties"]), required)
+		self.assertEqual(
+			schema["properties"]["schema"]["const"],
+			"radar_bundle_build_receipt/v1",
+		)
+		self.assertEqual(schema["properties"]["status"]["const"], "installed")
+		self.assertEqual(
+			schema["properties"]["bundle_sha256"]["pattern"],
+			"^[0-9a-f]{64}$",
+		)
+		self.assertEqual(schema["properties"]["bundle_bytes"]["minimum"], 1)
+		self.assertEqual(schema["properties"]["bundle_bytes"]["maximum"], 67108864)
+		self.assertEqual(
+			schema["properties"]["analysis_mode"]["enum"],
+			["pr_first", "commit_only"],
+		)
+		for field in required - {
+			"schema",
+			"status",
+			"bundle_sha256",
+			"analysis_mode",
+		}:
+			self.assertEqual(schema["properties"][field]["type"], "integer")
+		for field in ("commit_count", "file_count"):
+			self.assertEqual(schema["properties"][field]["minimum"], 1)
+		for field in (
+			"patch_excerpt_count",
+			"docs_ref_count",
+			"examples_ref_count",
+		):
+			self.assertEqual(schema["properties"][field]["minimum"], 0)
+		self.assertIn("bundle_evidence_receipt", staging_schema["required"])
+		self.assertIn("selection_sha256", staging_schema["required"])
+		self.assertEqual(
+			staging_schema["properties"]["schema"]["const"],
+			"radar_content_review_pair_staging/v2",
+		)
+		self.assertEqual(
+			staging_schema["properties"]["run_id"]["pattern"],
+			"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+		)
+		self.assertEqual(
+			staging_schema["properties"]["selection_sha256"]["pattern"],
+			"^[0-9a-f]{64}$",
+		)
+		self.assertEqual(
+			staging_schema["properties"]["bundle_evidence_receipt"]["$ref"],
+			"bundle_build_receipt.schema.json",
+		)
+		self.assertEqual(
+			candidate_schema["properties"]["radar_source_refs"]["properties"][
+				"queue"
+			]["const"],
+			".agent/automations/radar/cache/github/review-queue/"
+			"openai-codex-latest.json",
+		)
+		self.assertEqual(
+			staging_schema["properties"]["patch_anchor"]["properties"]["kind"][
+				"enum"
+			],
+			["implementation", "test"],
+		)
+		self.assertEqual(
+			staging_schema["properties"]["patch_anchor_limitation"]["properties"][
+				"reason"
+			]["enum"],
+			["no_patch_excerpts", "no_usable_implementation_or_test_anchor"],
+		)
+		zero_excerpt, publish, nonpublish = staging_schema["oneOf"]
+		self.assertEqual(
+			zero_excerpt["properties"]["bundle_evidence_receipt"]["properties"][
+				"patch_excerpt_count"
+			]["const"],
+			0,
+		)
+		self.assertEqual(
+			zero_excerpt["properties"]["impact"]["properties"][
+				"public_signal_decision"
+			]["enum"],
+			["defer", "skip"],
+		)
+		self.assertEqual(zero_excerpt["required"], ["patch_anchor_limitation"])
+		self.assertEqual(zero_excerpt["not"]["required"], ["patch_anchor"])
+		self.assertEqual(
+			zero_excerpt["properties"]["patch_anchor_limitation"]["properties"][
+				"reason"
+			]["const"],
+			"no_patch_excerpts",
+		)
+		self.assertEqual(
+			zero_excerpt["properties"]["impact"]["properties"]["publisher_angle"][
+				"const"
+			],
+			"none",
+		)
+		self.assertEqual(
+			zero_excerpt["properties"]["review"]["properties"]["evidence"][
+				"maxItems"
+			],
+			1,
+		)
+		self.assertEqual(
+			publish["properties"]["impact"]["properties"][
+				"public_signal_decision"
+			]["const"],
+			"publish",
+		)
+		self.assertEqual(publish["required"], ["patch_anchor"])
+		self.assertEqual(publish["not"]["required"], ["patch_anchor_limitation"])
+		self.assertEqual(
+			nonpublish["properties"]["impact"]["properties"][
+				"public_signal_decision"
+			]["enum"],
+			["defer", "skip"],
+		)
+		anchored, limited = nonpublish["oneOf"]
+		self.assertEqual(anchored["required"], ["patch_anchor"])
+		self.assertEqual(anchored["not"]["required"], ["patch_anchor_limitation"])
+		self.assertEqual(limited["required"], ["patch_anchor_limitation"])
+		self.assertEqual(limited["not"]["required"], ["patch_anchor"])
+		self.assertEqual(
+			limited["properties"]["patch_anchor_limitation"]["properties"][
+				"reason"
+			]["const"],
+			"no_usable_implementation_or_test_anchor",
+		)
+		self.assertEqual(
+			nonpublish["properties"]["impact"]["properties"]["publisher_angle"][
+				"const"
+			],
+			"none",
+		)
+		self.assertEqual(
+			publish["properties"]["impact"]["properties"]["publisher_angle"][
+				"not"
+			]["const"],
+			"none",
+		)
+
+		build = normalized.index("Build exactly one deterministic source bundle")
+		bind = normalized.index(
+			"Bind this exact unedited command output as `<bundle_evidence_receipt>`"
+		)
+		read = normalized.index("Read that exact bundle once")
+
+		self.assertLess(build, bind)
+		self.assertLess(bind, read)
+		self.assertIn(str(schema_path.relative_to(REPO_ROOT)), prompt)
+		self.assertIn("matching `radar_bundle_build_receipt/v1`", normalized)
+		self.assertIn('`status = "installed"`', normalized)
+		self.assertIn(
+			"byte count and lowercase SHA-256 of those same bytes",
+			normalized,
+		)
+		self.assertIn(
+			"equal `bundle_bytes` and `bundle_sha256` before parsing",
+			normalized,
+		)
+		self.assertIn("Parse and inspect only those same bytes.", normalized)
+		self.assertIn("`patch_excerpt_count > 0`", prompt)
+		self.assertIn("inspect the non-empty excerpts needed", normalized)
+		self.assertIn("exact `<path>: <claim>` syntax", normalized)
+		self.assertIn("An implementation anchor cannot be a test", normalized)
+		self.assertIn(
+			"A test anchor must use both a conservative test path and an allowlisted extension.",
+			normalized,
+		)
+		self.assertIn("any skip reason", normalized)
+		self.assertIn(
+			"may not state or imply that patch excerpts are absent",
+			normalized,
+		)
+		self.assertIn("`patch_excerpt_count == 0`", prompt)
+		self.assertIn(
+			"do not invent patch-backed implementation or test evidence",
+			normalized,
+		)
+		self.assertIn("Do not build or source-read a second bundle.", normalized)
+		self.assertIn("radar_content_review_pair_staging/v2", prompt)
+		self.assertNotIn("--expected-run-id", prompt)
+		self.assertIn("`selection_sha256`", prompt)
+		self.assertIn(
+			"include the exact unchanged `<bundle_evidence_receipt>` as "
+			"`bundle_evidence_receipt`",
+			normalized,
+		)
+		self.assertIn("include `patch_anchor` with the cited exact bundle file", normalized)
+		self.assertIn(
+			"`patch_anchor_limitation.reason = "
+			'"no_usable_implementation_or_test_anchor"`',
+			normalized,
+		)
+		self.assertIn("`bundle patch limitation: <detail>` item", normalized)
+		self.assertIn('`patch_anchor_limitation.reason = "no_patch_excerpts"`', normalized)
+		self.assertIn("Unknown extensions and names are not implementation anchors.", normalized)
+		self.assertIn("Zero-excerpt pairs cannot publish.", normalized)
+		self.assertIn(
+			"A receipt-valid source review must commit its accurate anchor or limitation pair",
+			normalized,
+		)
+		self.assertIn(
+			"weak publication value or no usable anchor is not such a failure",
+			normalized,
+		)
+		self.assertIn(
+			"bundle repo, analysis mode, PR or commit subject, and exact normalized commit set",
+			normalized,
+		)
+		self.assertIn("Health must repair or escalate repeated", normalized)
+		self.assertIn(
+			"<lowercase-uuid>--<staging-sha256>--<pair-sha256>",
+			prompt,
+		)
+		self.assertNotIn("<run>--<effect-digest>", prompt)
+		self.assertNotIn("do not stage a review pair", normalized)
+		self.assertIn(
+			"Titles, filenames, surface hints, and attention flags are never sufficient.",
+			normalized,
+		)
+
+	def test_pair_path_contract_is_new_only_and_three_part(self) -> None:
+		def patterns(value: object) -> list[str]:
+			if isinstance(value, dict):
+				found = [value["pattern"]] if isinstance(value.get("pattern"), str) else []
+				for child in value.values():
+					found.extend(patterns(child))
+				return found
+			if isinstance(value, list):
+				return [pattern for child in value for pattern in patterns(child)]
+			return []
+
+		schema_paths = (
+			REPO_ROOT
+			/ "automations/radar/scripts/github/content_review_pair_commit_report.schema.json",
+			REPO_ROOT / "automations/decodex/scripts/social/social_candidate.schema.json",
+			REPO_ROOT / "automations/decodex/scripts/social/social_post.schema.json",
+		)
+		pair_patterns = [
+			pattern
+			for path in schema_paths
+			for pattern in patterns(json.loads(path.read_text(encoding="utf-8")))
+			if "content-review-pairs" in pattern
+		]
+		uuid = "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+		suffix = f"{uuid}--[0-9a-f]{{64}}--[0-9a-f]{{64}}"
+
+		self.assertTrue(pair_patterns)
+		for pattern in pair_patterns:
+			self.assertIn(suffix, pattern)
+			self.assertNotIn("[A-Za-z0-9-]{1,64}", pattern)
 
 	def test_runtime_memory_is_private_bounded_and_role_scoped(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
@@ -1043,7 +1328,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		):
 			with self.subTest(publisher_bootstrap=name):
 				normalized = " ".join(prompt.split())
-				if name == "manager":
+				if name in {"manager", "health"}:
 					self.assertIn(
 						"cargo build --locked -p radar -p decodex-publisher",
 						normalized,
@@ -1054,7 +1339,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 						normalized,
 					)
 				self.assertIn("$PWD/target/debug/decodex-publisher", normalized)
-				if name == "manager":
+				if name in {"manager", "health"}:
 					self.assertIn("as `<radar>` and `<publisher>`", normalized)
 				else:
 					self.assertIn("as `<publisher>`", normalized)
@@ -1063,6 +1348,18 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		manager_normalized = " ".join(manager.split())
 		self.assertIn("$PWD/target/debug/radar", manager_normalized)
 		self.assertIn("as `<radar>` and `<publisher>`", manager_normalized)
+		manager_radar_reset = manager.index("<radar> content-v2-reset")
+		manager_publisher_reset = manager.index("<publisher> social content-v2-reset")
+		manager_refresh = manager.index("<radar> refresh-upstream-queue")
+		self.assertLess(manager_publisher_reset, manager_radar_reset)
+		self.assertLess(manager_radar_reset, manager_refresh)
+		self.assertIn("fully validate its receipt before running exactly one", manager_normalized)
+		self.assertIn("marker and fixed-root authority readback only", manager_normalized)
+		self.assertIn("preserves legitimate post-activation v2 state", manager_normalized)
+		self.assertIn("radar_content_v2_reset/v1", manager)
+		self.assertIn("decodex_social_content_v2_reset/v1", manager)
+		self.assertIn('`status = "already_active"`', manager)
+		self.assertIn("All four counters must be zero", manager)
 		self.assertIn("<radar> refresh-upstream-queue", manager)
 		self.assertIn("<radar> refresh-release-delta", manager)
 		self.assertIn("<radar> validate", manager)
@@ -1071,10 +1368,13 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("handled-state digest", manager)
 		self.assertIn("<radar> bundle build --repo openai/codex", manager_normalized)
 		self.assertIn("codex-code-analysis/SKILL.md", manager)
-		self.assertIn("Titles, filenames, surface hints", manager)
-		self.assertIn("concrete implementation, test, documentation, or schema anchor", manager)
-		self.assertIn("radar_content_review_pair_staging/v1", manager)
+		self.assertIn("Titles, filenames, surface hints", manager_normalized)
+		self.assertIn("implementation or test anchor", manager_normalized)
+		self.assertIn("radar_content_review_pair_staging/v2", manager)
+		self.assertNotIn("radar_content_review_pair_staging/v1", manager)
 		self.assertIn("<radar> content-pair-commit --cache-root", manager_normalized)
+		self.assertNotIn("--expected-run-id", manager)
+		self.assertIn("selection_sha256", manager)
 		self.assertIn("radar_content_review_pair_commit/v1", manager)
 		self.assertIn("atomically commits the pair", manager_normalized)
 		self.assertIn("exactly 64 zeroes", manager)
@@ -1087,7 +1387,12 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("only for the weekly checkpoint", manager)
 		self.assertIn("evidence-backed strategy change", manager)
 		self.assertIn("$CODEX_THREAD_ID.json", manager)
-		self.assertIn("content-eligibility --queue <exact-queue>", manager_normalized)
+		self.assertIn(
+			"content-eligibility --queue "
+			".agent/automations/radar/cache/github/review-queue/"
+			"openai-codex-latest.json",
+			manager_normalized,
+		)
 		self.assertIn("exactly once", manager)
 		self.assertIn("social record-manager --staging", manager_normalized)
 		self.assertIn("Never write directly to the candidate or strategy", manager_normalized)
@@ -1134,9 +1439,19 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		for radar_path in (
 			"apps/radar/Cargo.toml",
 			"apps/radar/README.md",
+			"apps/radar/src/cli/commands/bundle.rs",
+			"apps/radar/src/cli/commands/cache.rs",
+			"apps/radar/src/content_activation.rs",
 			"apps/radar/src/content_pair.rs",
 			"apps/radar/src/lib.rs",
 			"apps/radar/src/main.rs",
+			"apps/radar/src/operations.rs",
+			"apps/radar/src/regular_file.rs",
+			"apps/radar/src/requests/bundle.rs",
+			"apps/radar/src/requests/cache.rs",
+			"apps/radar/src/run_identity.rs",
+			"apps/radar/src/source_bundle/evidence.rs",
+			"automations/radar/scripts/github/bundle_build_receipt.schema.json",
 			"automations/radar/scripts/github/content_review_pair_commit_report.schema.json",
 			"automations/radar/scripts/github/content_review_pair_staging.schema.json",
 		):
@@ -1198,6 +1513,14 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			"apps/decodex-publisher/src/social_xurl/runtime.rs",
 			"apps/decodex-publisher/src/tests.rs",
 		}
+		self.assertIn(
+			"apps/decodex-publisher/src/social_activation.rs",
+			by_id["decodex-content-manager"],
+		)
+		self.assertIn(
+			"apps/decodex-publisher/src/social_activation.rs",
+			health["required_paths"],
+		)
 		for automation_id in (
 			"decodex-content-manager",
 			"decodex-xurl-publisher",
@@ -1463,7 +1786,7 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		fetch_url = normalized.index("git remote get-url origin")
 		push_urls = normalized.index("git remote get-url --push --all origin")
 		fetch = normalized.index("git fetch --quiet origin main")
-		build = normalized.index("cargo build --locked -p decodex-publisher")
+		build = normalized.index("cargo build --locked -p radar -p decodex-publisher")
 
 		self.assertLess(fetch_url, fetch)
 		self.assertLess(push_urls, fetch)
@@ -1724,10 +2047,41 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			REPO_ROOT / "automations/upstream/prompts/health.md"
 		).read_text(encoding="utf-8")
 		normalized = " ".join(health.split())
+		radar_reset = health.index("<radar> content-v2-reset")
+		publisher_reset = health.index("<publisher> social content-v2-reset")
 		gc = health.index("<publisher> social gc")
 		first_validation = health.index("<publisher> validate-social")
 
+		self.assertLess(publisher_reset, radar_reset)
+		self.assertLess(radar_reset, gc)
 		self.assertLess(gc, first_validation)
+		self.assertIn("fully validate its receipt before running exactly one", normalized)
+		self.assertIn("zero-effect safety preflight completes before Radar", normalized)
+		self.assertIn("preserves current v2 state without inventorying", normalized)
+		self.assertIn("radar_content_v2_reset/v1", health)
+		self.assertIn("decodex_social_content_v2_reset/v1", health)
+		self.assertIn("`already_active` must report zero", health)
+		health_spec = next(
+			automation
+			for automation in self.manifest["automations"]
+			if automation["id"] == "codex-upstream-health"
+		)
+		self.assertTrue(
+			{
+				".agent/automations/decodex/cache",
+				".agent/automations/radar/cache",
+				".agent/automations/upstream/cache",
+			}
+			<= set(health_spec["required_cache_prefixes"])
+		)
+		for reset_source in (
+			"apps/radar/src/cli/commands.rs",
+			"apps/radar/src/cli/commands/cache.rs",
+			"apps/radar/src/content_activation.rs",
+			"apps/radar/src/private_fs.rs",
+			"apps/radar/src/requests/cache.rs",
+		):
+			self.assertIn(reset_source, health_spec["required_paths"])
 		self.assertIn("first mandatory phase recovers", normalized)
 		self.assertIn("durable deletion journal", normalized)
 		self.assertIn("<publisher> social probe-xurl", health)
@@ -1736,6 +2090,41 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		self.assertIn("decodex/automation-memory/1", health)
 		self.assertIn("Do not add another field", normalized)
 		self.assertIn("relative or absolute local paths", normalized)
+
+	def test_content_v2_activation_requires_global_scheduler_quiescence(self) -> None:
+		health = (
+			REPO_ROOT / "automations/upstream/prompts/health.md"
+		).read_text(encoding="utf-8")
+		manager = (
+			REPO_ROOT / "automations/decodex/prompts/content-manager.md"
+		).read_text(encoding="utf-8")
+		health_normalized = " ".join(health.split())
+		manager_normalized = " ".join(manager.split())
+
+		self.assertIn("explicit unscheduled Health task", health_normalized)
+		self.assertIn("Set exactly all five managed definitions to `PAUSED`", health_normalized)
+		self.assertIn("no task launched by any of the five managed definitions", health_normalized)
+		self.assertIn("Keep all five definitions `PAUSED` through both resets", health_normalized)
+		self.assertLess(
+			health.index("Set exactly all five managed definitions to"),
+			health.index("<publisher> social content-v2-reset"),
+		)
+		self.assertIn("Restore the desired `ACTIVE` status only after", health_normalized)
+		self.assertIn("Read back `ACTIVE` for all five exact IDs", health_normalized)
+		for automation_id in (
+			"codex-upstream-maintainer",
+			"codex-upstream-reviewer",
+			"codex-upstream-health",
+			"decodex-content-manager",
+			"decodex-xurl-publisher",
+		):
+			self.assertIn(automation_id, health)
+
+		self.assertIn("Content Manager is not the first-activation owner", manager_normalized)
+		self.assertIn("proved all five managed scheduler definitions `PAUSED`", manager_normalized)
+		self.assertIn("proved that no managed automation task was active", manager_normalized)
+		self.assertIn('require `status = "already_active"`', manager_normalized)
+		self.assertIn("A `reset` result means first activation was incomplete or ran out of order", manager_normalized)
 
 	def test_upstream_launcher_never_executes_an_untrusted_candidate(self) -> None:
 		launcher = REPO_ROOT / "automations/upstream/scripts/run_upstream_autopilot"

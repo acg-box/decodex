@@ -32,6 +32,7 @@ decodex-publisher social reconcile-xurl \
 decodex-publisher social terminalize-skip \
   --candidate <path> \
   --run-id <UUID>
+decodex-publisher social content-v2-reset
 decodex-publisher social gc
 ```
 
@@ -43,6 +44,19 @@ decodex-publisher social gc
   mode-0600 creation, postvalidation, and staging cleanup, and refuses overwrite,
   multiple effects, and candidate backpressure. An exact retry can finish cleanup
   after a crash between the authoritative write and staging unlink.
+- `social content-v2-reset` is the fixed-root, one-time clean-start command for
+  strict Radar pair lineage. It pins one common cache-root descriptor and holds the
+  social mutation lock while it inventories candidates, posts, outcomes,
+  reservations, xurl attempts, strategies, and manager staging. Deletion authority
+  requires every file to be a zero-effect quality-skip candidate or post; any
+  attempt, reservation, outcome, strategy, staging record, publication, call, or
+  budget authority blocks all deletion. It preserves xurl authorization, pricing
+  evidence, the runtime binary, locks, and unrelated state. Unsafe entries and
+  root, parent, or leaf replacement races fail closed. Success writes a private
+  activation marker and emits `decodex_social_content_v2_reset/v1`. After the
+  marker exists, later calls validate the common root, lock, and marker authority
+  only. They return `already_active` with zero counts without inventorying the
+  collections, and they preserve legitimate post-activation v2 state.
 - Resolve the operating-system account home with `getpwuid_r`, never from the
   inherited `HOME` variable. Accept only the fixed `$HOME/.local/bin/xurl`
   entrypoint. The home, `.local`, `bin`, and executable must have a trusted
@@ -66,7 +80,7 @@ decodex-publisher social gc
 - Require each publish candidate to embed the exact
   `radar_content_eligibility/v1` output and exact private queue reference. Review
   and impact must be the exact `review.json` and `impact.json` files in one
-  `.agent/automations/radar/cache/github/content-review-pairs/<run>--<digest>/`
+  `.agent/automations/radar/cache/github/content-review-pairs/<uuid>--<staging-sha256>--<pair-sha256>/`
   directory. Re-read the three files with no-follow access, verify the canonical
   pair-directory digest, raw artifact digests, repo, subject, upstream head,
   exact commit set, review-to-impact binding, and the canonical lineage digest
@@ -227,11 +241,15 @@ uploaded.
 
 ## Social State Retention
 
-Health runs `social gc` first so journal recovery completes before any ordinary
-validation. GC validates the bounded state under the social mutation lock before
-it plans a deletion. Health then runs one full `validate-social` readback. A GC
-validation failure or the final validation failure prevents a successful cleanup
-result.
+Health runs the Publisher content-v2 reset before the Radar content-v2 reset, GC,
+or ordinary validation. An explicit first activation pauses all five managed
+schedules and waits for managed tasks to quiesce before either reset. Publisher
+runs first so its zero-effect safety preflight completes before Radar can delete
+evidence. After activation, marker readback does not inventory the collections and
+preserves current v2 state. Health then runs `social gc`, so journal recovery
+completes before one full
+`validate-social` readback. A reset, GC, or final validation failure prevents a
+successful cleanup result.
 
 GC keeps the 14 most recent valid daily strategies and the 8 most recent valid
 weekly strategies. It can remove an additional strategy when `reviewed_at` is at

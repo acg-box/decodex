@@ -1,8 +1,6 @@
 use std::{
 	collections::BTreeSet,
 	env, fs,
-	io::Read as _,
-	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _},
 	path::{Path, PathBuf},
 };
 
@@ -94,37 +92,7 @@ impl<'a> LedgerArtifactReader<'a> {
 }
 
 fn read_regular_artifact(path: &Path) -> Result<Vec<u8>> {
-	let mut file = fs::OpenOptions::new()
-		.read(true)
-		.custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
-		.open(path)?;
-	let initial = file.metadata()?;
-
-	if !initial.is_file() {
-		eyre::bail!("Artifact path must be a regular non-symlink file");
-	}
-	if initial.len() > MAX_ARTIFACT_BYTES {
-		eyre::bail!("Artifact file exceeds the bounded ledger size");
-	}
-	let mut payload = Vec::with_capacity(initial.len() as usize);
-
-	file.by_ref().take(MAX_ARTIFACT_BYTES + 1).read_to_end(&mut payload)?;
-	if payload.len() as u64 > MAX_ARTIFACT_BYTES {
-		eyre::bail!("Artifact file exceeds the bounded ledger size");
-	}
-	let final_metadata = file.metadata()?;
-	if (initial.dev(), initial.ino(), initial.mtime(), initial.mtime_nsec(), initial.len())
-		!= (
-			final_metadata.dev(),
-			final_metadata.ino(),
-			final_metadata.mtime(),
-			final_metadata.mtime_nsec(),
-			final_metadata.len(),
-		) {
-		eyre::bail!("Artifact identity changed during bounded ledger read");
-	}
-
-	Ok(payload)
+	crate::read_regular_file_bounded(path, MAX_ARTIFACT_BYTES, "Radar artifact")
 }
 
 pub(super) fn path_for_storage(path: &Path) -> crate::prelude::Result<String> {
