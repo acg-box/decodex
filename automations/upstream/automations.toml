@@ -1,6 +1,10 @@
 version = 1
 
 [defaults]
+allowed_external_cache_prefixes = [
+	".agent/automations/decodex/cache",
+	".agent/automations/radar/cache",
+]
 cache_root = ".agent/automations/upstream/cache"
 cwd = "{repo_root}"
 execution_environment = "local"
