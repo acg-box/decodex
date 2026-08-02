@@ -18,7 +18,15 @@ This page is the compact contract guide for Radar-generated upstream evidence, D
 
 Radar starts from deterministic GitHub evidence. `radar bundle build` writes `github_change_bundle/v1` for PR-first or commit-only source material; bundle validation requires owner/name repo, analysis mode, default branch, non-empty commit/file lists, and PR fields when `analysis_mode = "pr_first"` (`apps/radar/src/operations.rs`, `apps/radar/src/artifact_validation/bundle.rs`).
 
-`radar refresh-upstream-queue` writes `upstream_review_queue/v1` and records inspected commits in the local Radar ledger unless `--no-ledger` is used. The queue is routing evidence only: it may carry surface hints, attention flags, review priority, and `next_step = ai_review_required`, but it must not make final public-value or compatibility claims (`apps/radar/src/operations.rs`, `apps/radar/src/artifact_validation/upstream/queue.rs`, `apps/radar/src/ledger.rs`).
+`radar refresh-upstream-queue` writes `upstream_review_queue/v1`, reports the exact
+canonical queue-byte `queue_sha256`, and records inspected commits in the local Radar
+ledger unless `--no-ledger` is used. `radar review-next` requires that digest through
+`--expected-queue-sha256` and compares it with the locked queue bytes before selection.
+The queue is routing evidence only: it may carry surface hints, attention flags,
+review priority, and `next_step = ai_review_required`, but it must not make final
+public-value or compatibility claims (`apps/radar/src/operations.rs`,
+`apps/radar/src/content_review.rs`, `apps/radar/src/artifact_validation/upstream/queue.rs`,
+`apps/radar/src/ledger.rs`).
 
 `upstream_review/v1` is the source-backed AI review boundary. It records the subject, source refs, observed change, changed surfaces, confidence, evidence, and next actions. Current validation accepts only current actions such as promotion to upstream impact, signal entry, or control-plane upgrade candidate (`apps/radar/src/artifact_validation/upstream/review.rs`, `apps/radar/src/constants.rs`). AI review output is evidence, not mutation authority.
 

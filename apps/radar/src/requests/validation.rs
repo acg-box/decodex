@@ -59,6 +59,8 @@ pub(crate) struct RadarRefreshQueueReport {
 	pub(crate) written: bool,
 	/// Timestamp carried by the successful observation.
 	pub(crate) refreshed_at: String,
+	/// SHA-256 of the exact canonical queue bytes produced by this refresh.
+	pub(crate) queue_sha256: String,
 	/// Number of recent commits scanned.
 	pub(crate) recent_commits_scanned: usize,
 	/// Number of scanned subjects already covered by published signals.
