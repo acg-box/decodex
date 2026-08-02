@@ -2260,7 +2260,7 @@ async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error:
 			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
 			  FROM information_schema.columns WHERE table_schema='decodex' \
 			  AND table_name='quota_windows' AND column_name='window_class'), \
-				 (SELECT count(*)=31 FROM public.refinery_schema_history)",
+				 (SELECT count(*)=32 FROM public.refinery_schema_history)",
 			&[],
 		)
 		.await?;
