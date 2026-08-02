@@ -2,6 +2,7 @@ mod analysis;
 mod backfill;
 mod bundles;
 mod cache;
+mod content_activation;
 mod content_eligibility;
 mod content_pair;
 mod content_review;

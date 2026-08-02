@@ -1,6 +1,7 @@
 //! Descriptor-rooted owner-only filesystem access for disposable Radar cache state.
 
 use std::{
+	collections::{BTreeMap, BTreeSet},
 	ffi::{CStr, CString, OsStr, OsString},
 	fs::{File, Metadata},
 	io::{Read as _, Write as _},
@@ -30,6 +31,8 @@ pub(crate) struct PrivateFileIdentity {
 	ino: u64,
 	mtime_seconds: i64,
 	mtime_nanoseconds: i64,
+	ctime_seconds: i64,
+	ctime_nanoseconds: i64,
 	size: u64,
 }
 impl PrivateFileIdentity {
@@ -46,6 +49,14 @@ impl PrivateFileIdentity {
 	pub(crate) fn size(&self) -> u64 {
 		self.size
 	}
+
+	fn same_file_across_rename(&self, other: &Self) -> bool {
+		self.dev == other.dev
+			&& self.ino == other.ino
+			&& self.mtime_seconds == other.mtime_seconds
+			&& self.mtime_nanoseconds == other.mtime_nanoseconds
+			&& self.size == other.size
+	}
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -59,6 +70,27 @@ pub(crate) struct PrivateEntry {
 	pub(crate) name: OsString,
 	pub(crate) kind: PrivateEntryKind,
 	pub(crate) identity: Option<PrivateFileIdentity>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct PrivateTreeSnapshot {
+	entries: BTreeMap<PathBuf, FileSnapshot>,
+	file_count: usize,
+	directory_count: usize,
+	byte_count: u64,
+}
+impl PrivateTreeSnapshot {
+	pub(crate) fn file_count(&self) -> usize {
+		self.file_count
+	}
+
+	pub(crate) fn directory_count(&self) -> usize {
+		self.directory_count
+	}
+
+	pub(crate) fn byte_count(&self) -> u64 {
+		self.byte_count
+	}
 }
 
 #[derive(Debug)]
@@ -574,6 +606,134 @@ impl RadarCacheLock {
 		self.verify_lock()
 	}
 
+	pub(crate) fn inspect_directory_tree(
+		&self,
+		relative: &Path,
+		max_entries: usize,
+		max_files: usize,
+		max_bytes: u64,
+	) -> Result<Option<PrivateTreeSnapshot>> {
+		self.verify_lock()?;
+		let (parent, name) = match self.cache.open_parent(relative, false) {
+			Ok(value) => value,
+			Err(error) if is_not_found(&error) => return Ok(None),
+			Err(error) => return Err(error),
+		};
+		let Some(root_snapshot) = file_snapshot_at(parent.as_raw_fd(), &name)? else {
+			return Ok(None);
+		};
+		validate_private_directory_snapshot(&root_snapshot, "reset collection")?;
+		let root = open_directory_at(parent.as_raw_fd(), &name)?;
+		let opened = snapshot_from_metadata(&root.metadata()?);
+		if opened != root_snapshot {
+			eyre::bail!("Radar reset collection changed during open");
+		}
+		let mut snapshot = PrivateTreeSnapshot {
+			entries: BTreeMap::from([(PathBuf::new(), root_snapshot.clone())]),
+			file_count: 0,
+			directory_count: 1,
+			byte_count: 0,
+		};
+		validate_tree_limits(&snapshot, max_entries, max_files, max_bytes)?;
+		inspect_directory_tree_at(
+			&root,
+			Path::new(""),
+			&mut snapshot,
+			max_entries,
+			max_files,
+			max_bytes,
+		)?;
+		if snapshot_from_metadata(&root.metadata()?) != root_snapshot
+			|| file_snapshot_at(parent.as_raw_fd(), &name)?.as_ref() != Some(&root_snapshot)
+		{
+			eyre::bail!("Radar reset collection changed during inventory");
+		}
+		self.verify_lock()?;
+
+		Ok(Some(snapshot))
+	}
+
+	pub(crate) fn remove_directory_atomic_if_matches(
+		&self,
+		relative: &Path,
+		expected: &PrivateTreeSnapshot,
+	) -> Result<()> {
+		self.remove_directory_atomic_if_matches_with(relative, expected, || {})
+	}
+
+	fn remove_directory_atomic_if_matches_with(
+		&self,
+		relative: &Path,
+		expected: &PrivateTreeSnapshot,
+		before_rename: impl FnOnce(),
+	) -> Result<()> {
+		let current = self
+			.inspect_directory_tree(
+				relative,
+				expected.entries.len(),
+				expected.file_count,
+				expected.byte_count,
+			)?
+			.ok_or_else(|| eyre::eyre!("Radar reset collection disappeared before removal"))?;
+		if &current != expected {
+			eyre::bail!("Radar reset collection changed before removal");
+		}
+		let components = relative_components(relative)?;
+		let (name, directories) = components
+			.split_last()
+			.ok_or_else(|| eyre::eyre!("Radar reset collection path must include a name"))?;
+		let parent = self.cache.open_directory_components(directories, false)?;
+		let name = c_string(name)?;
+		let temp_name = temporary_name()?;
+		before_rename();
+		self.verify_lock()?;
+		if unsafe {
+			libc::renameat(
+				parent.as_raw_fd(),
+				name.as_ptr(),
+				parent.as_raw_fd(),
+				temp_name.as_ptr(),
+			)
+		} == -1
+		{
+			return Err(std::io::Error::last_os_error().into());
+		}
+		let expected_root = expected
+			.entries
+			.get(Path::new(""))
+			.ok_or_else(|| eyre::eyre!("Radar reset snapshot has no root identity"))?;
+		let moved = file_snapshot_at(parent.as_raw_fd(), &temp_name)?
+			.ok_or_else(|| eyre::eyre!("Radar reset collection disappeared after isolation"))?;
+		if !same_snapshot_across_rename(expected_root, &moved) {
+			if file_snapshot_at(parent.as_raw_fd(), &name)?.is_none() {
+				let _ = unsafe {
+					libc::renameat(
+						parent.as_raw_fd(),
+						temp_name.as_ptr(),
+						parent.as_raw_fd(),
+						name.as_ptr(),
+					)
+				};
+				let _ = parent.sync_all();
+			}
+			eyre::bail!("Radar reset collection identity changed during isolation");
+		}
+		parent.sync_all()?;
+		remove_directory_tree_matching_at(parent.as_raw_fd(), &temp_name, Path::new(""), expected)?;
+		parent.sync_all()?;
+		self.verify_lock()
+	}
+
+	#[cfg(test)]
+	pub(crate) fn remove_directory_atomic_if_matches_after_inventory(
+		&self,
+		relative: &Path,
+		expected: &PrivateTreeSnapshot,
+		before_rename: impl FnOnce(),
+	) -> Result<()> {
+		self.remove_directory_atomic_if_matches_with(relative, expected, before_rename)
+	}
+
 	pub(crate) fn bootstrap_cache_is_empty(&self) -> Result<bool> {
 		self.verify_lock()?;
 		let entries = self.cache.entries(Path::new(""))?;
@@ -1048,7 +1208,11 @@ fn verify_test_parent_binding(
 
 fn open_regular_file(parent: RawFd, name: &CStr) -> Result<File> {
 	let fd = unsafe {
-		libc::openat(parent, name.as_ptr(), libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC)
+		libc::openat(
+			parent,
+			name.as_ptr(),
+			libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK,
+		)
 	};
 
 	if fd == -1 {
@@ -1126,7 +1290,7 @@ fn write_and_replace(
 	let installed = file_snapshot_at(parent.as_raw_fd(), name)?
 		.ok_or_else(|| eyre::eyre!("Radar cache replacement was not installed"))?;
 	validate_private_file_snapshot(&installed, "file")?;
-	if installed.identity != temp_identity {
+	if !installed.identity.same_file_across_rename(&temp_identity) {
 		eyre::bail!("Radar cache replacement identity does not match the written file");
 	}
 	parent.sync_all()?;
@@ -1182,6 +1346,8 @@ fn snapshot_from_stat(stat: &libc::stat) -> FileSnapshot {
 			ino: stat.st_ino,
 			mtime_seconds: stat.st_mtime,
 			mtime_nanoseconds: stat_mtime_nanoseconds(stat),
+			ctime_seconds: stat.st_ctime,
+			ctime_nanoseconds: stat_ctime_nanoseconds(stat),
 			size: u64::try_from(stat.st_size).unwrap_or_default(),
 		},
 		mode: u32::from(stat.st_mode & 0o777),
@@ -1191,8 +1357,22 @@ fn snapshot_from_stat(stat: &libc::stat) -> FileSnapshot {
 	}
 }
 
+fn snapshot_from_metadata(metadata: &Metadata) -> FileSnapshot {
+	FileSnapshot {
+		identity: identity_from_metadata(metadata),
+		mode: metadata.mode() & 0o777,
+		uid: metadata.uid(),
+		nlink: metadata.nlink(),
+		file_type: metadata.mode() & u32::from(libc::S_IFMT),
+	}
+}
+
 fn stat_mtime_nanoseconds(stat: &libc::stat) -> i64 {
 	stat.st_mtime_nsec
+}
+
+fn stat_ctime_nanoseconds(stat: &libc::stat) -> i64 {
+	stat.st_ctime_nsec
 }
 
 fn validate_open_file(file: &File, label: &str) -> Result<PrivateFileIdentity> {
@@ -1295,11 +1475,17 @@ fn identity_from_metadata(metadata: &Metadata) -> PrivateFileIdentity {
 		ino: metadata.ino(),
 		mtime_seconds: metadata.mtime(),
 		mtime_nanoseconds: metadata.mtime_nsec(),
+		ctime_seconds: metadata.ctime(),
+		ctime_nanoseconds: metadata.ctime_nsec(),
 		size: metadata.size(),
 	}
 }
 
 fn directory_entries(fd: RawFd) -> Result<Vec<PrivateEntry>> {
+	directory_entries_bounded(fd, usize::MAX)
+}
+
+fn directory_entries_bounded(fd: RawFd, max_entries: usize) -> Result<Vec<PrivateEntry>> {
 	let duplicate = duplicate_fd(fd)?;
 	let stream = unsafe { libc::fdopendir(duplicate) };
 
@@ -1326,6 +1512,9 @@ fn directory_entries(fd: RawFd) -> Result<Vec<PrivateEntry>> {
 		let name = unsafe { CStr::from_ptr((*entry).d_name.as_ptr()) };
 		if name.to_bytes() == b"." || name.to_bytes() == b".." {
 			continue;
+		}
+		if entries.len() >= max_entries {
+			eyre::bail!("Radar cache directory exceeds its bounded entry limit");
 		}
 
 		let snapshot = file_snapshot_at(fd, name)?
@@ -1436,6 +1625,159 @@ fn remove_directory_tree_at(parent: RawFd, name: &CStr) -> Result<()> {
 	}
 
 	Ok(())
+}
+
+fn inspect_directory_tree_at(
+	directory: &File,
+	relative: &Path,
+	snapshot: &mut PrivateTreeSnapshot,
+	max_entries: usize,
+	max_files: usize,
+	max_bytes: u64,
+) -> Result<()> {
+	let initial = snapshot_from_metadata(&directory.metadata()?);
+	let remaining = max_entries
+		.checked_sub(snapshot.entries.len())
+		.ok_or_else(|| eyre::eyre!("Radar reset entry bound was exceeded"))?;
+	let mut entries = directory_entries_bounded(directory.as_raw_fd(), remaining)?;
+	entries.sort_by(|left, right| left.name.cmp(&right.name));
+
+	for entry in entries {
+		let child_relative = relative.join(&entry.name);
+		let child_name = c_string(&entry.name)?;
+		let child_snapshot = file_snapshot_at(directory.as_raw_fd(), &child_name)?
+			.ok_or_else(|| eyre::eyre!("Radar reset entry changed during inventory"))?;
+
+		match entry.kind {
+			PrivateEntryKind::File => {
+				validate_private_file_snapshot(&child_snapshot, "reset file")?;
+				snapshot.file_count = snapshot
+					.file_count
+					.checked_add(1)
+					.ok_or_else(|| eyre::eyre!("Radar reset file count overflowed"))?;
+				snapshot.byte_count = snapshot
+					.byte_count
+					.checked_add(child_snapshot.identity.size)
+					.ok_or_else(|| eyre::eyre!("Radar reset byte count overflowed"))?;
+			},
+			PrivateEntryKind::Directory => {
+				validate_private_directory_snapshot(&child_snapshot, "reset directory")?;
+				snapshot.directory_count = snapshot
+					.directory_count
+					.checked_add(1)
+					.ok_or_else(|| eyre::eyre!("Radar reset directory count overflowed"))?;
+			},
+		}
+		snapshot.entries.insert(child_relative.clone(), child_snapshot.clone());
+		validate_tree_limits(snapshot, max_entries, max_files, max_bytes)?;
+		if entry.kind == PrivateEntryKind::Directory {
+			let child = open_directory_at(directory.as_raw_fd(), &child_name)?;
+			if snapshot_from_metadata(&child.metadata()?) != child_snapshot {
+				eyre::bail!("Radar reset directory changed during inventory");
+			}
+			inspect_directory_tree_at(
+				&child,
+				&child_relative,
+				snapshot,
+				max_entries,
+				max_files,
+				max_bytes,
+			)?;
+		}
+	}
+	if snapshot_from_metadata(&directory.metadata()?) != initial {
+		eyre::bail!("Radar reset directory changed during inventory");
+	}
+
+	Ok(())
+}
+
+fn validate_tree_limits(
+	snapshot: &PrivateTreeSnapshot,
+	max_entries: usize,
+	max_files: usize,
+	max_bytes: u64,
+) -> Result<()> {
+	if snapshot.entries.len() > max_entries
+		|| snapshot.file_count > max_files
+		|| snapshot.byte_count > max_bytes
+	{
+		eyre::bail!("Radar reset collection exceeds its bounded inventory limits");
+	}
+
+	Ok(())
+}
+
+fn remove_directory_tree_matching_at(
+	parent: RawFd,
+	name: &CStr,
+	relative: &Path,
+	expected: &PrivateTreeSnapshot,
+) -> Result<()> {
+	let directory = open_directory_at(parent, name)?;
+	let actual = snapshot_from_metadata(&directory.metadata()?);
+	let expected_directory = expected
+		.entries
+		.get(relative)
+		.ok_or_else(|| eyre::eyre!("Radar reset snapshot is missing a directory"))?;
+	let matches = if relative.as_os_str().is_empty() {
+		same_snapshot_across_rename(expected_directory, &actual)
+	} else {
+		&actual == expected_directory
+	};
+	if !matches {
+		eyre::bail!("Radar reset directory identity changed before removal");
+	}
+	let expected_names = expected
+		.entries
+		.keys()
+		.filter_map(|path| {
+			(path.parent() == Some(relative))
+				.then(|| path.file_name().map(OsStr::to_os_string))
+				.flatten()
+		})
+		.collect::<BTreeSet<_>>();
+	let mut entries = directory_entries_bounded(directory.as_raw_fd(), expected_names.len())?;
+	entries.sort_by(|left, right| left.name.cmp(&right.name));
+	let actual_names = entries.iter().map(|entry| entry.name.clone()).collect::<BTreeSet<_>>();
+	if actual_names != expected_names {
+		eyre::bail!("Radar reset directory entries changed before removal");
+	}
+
+	for entry in entries {
+		let child_relative = relative.join(&entry.name);
+		let child_name = c_string(&entry.name)?;
+		match entry.kind {
+			PrivateEntryKind::Directory => remove_directory_tree_matching_at(
+				directory.as_raw_fd(),
+				&child_name,
+				&child_relative,
+				expected,
+			)?,
+			PrivateEntryKind::File => {
+				let actual = file_snapshot_at(directory.as_raw_fd(), &child_name)?
+					.ok_or_else(|| eyre::eyre!("Radar reset file disappeared before removal"))?;
+				if expected.entries.get(&child_relative) != Some(&actual) {
+					eyre::bail!("Radar reset file identity changed before removal");
+				}
+				unlink_at(directory.as_raw_fd(), &child_name)?;
+			},
+		}
+	}
+	drop(directory);
+	if unsafe { libc::unlinkat(parent, name.as_ptr(), libc::AT_REMOVEDIR) } == -1 {
+		return Err(std::io::Error::last_os_error().into());
+	}
+
+	Ok(())
+}
+
+fn same_snapshot_across_rename(left: &FileSnapshot, right: &FileSnapshot) -> bool {
+	left.mode == right.mode
+		&& left.uid == right.uid
+		&& left.nlink == right.nlink
+		&& left.file_type == right.file_type
+		&& left.identity.same_file_across_rename(&right.identity)
 }
 
 #[cfg(test)]
@@ -1614,6 +1956,22 @@ pub(crate) fn private_cache_file(path: &Path) -> Result<(PrivateCache, PathBuf)>
 	Ok((cache, location.relative))
 }
 
+pub(crate) fn private_cache_relative_path(path: &Path) -> Result<PathBuf> {
+	if !is_radar_cache_path(path) {
+		eyre::bail!("path must be below the private Radar cache root");
+	}
+
+	Ok(private_file_path(path)?.relative)
+}
+
+pub(crate) fn private_cache_root_path(path: &Path) -> Result<PathBuf> {
+	if !is_radar_cache_path(path) {
+		eyre::bail!("path must be below the private Radar cache root");
+	}
+
+	Ok(private_file_path(path)?.root)
+}
+
 pub(crate) fn read_private_file(path: &Path) -> Result<Vec<u8>> {
 	let location = private_file_path(path)?;
 	let cache = PrivateCache::open_existing(&location.root)?;
@@ -1625,24 +1983,6 @@ pub(crate) fn read_private_file_under_lock(lock: &RadarCacheLock, path: &Path) -
 	let relative = lock.relative_path(path)?;
 
 	lock.read(&relative)
-}
-
-pub(crate) fn read_private_files(paths: &[&Path]) -> Result<Vec<Vec<u8>>> {
-	let locations = paths.iter().map(|path| private_file_path(path)).collect::<Result<Vec<_>>>()?;
-	let first =
-		locations.first().ok_or_else(|| eyre::eyre!("Radar cache read set must not be empty"))?;
-	let root = absolute_path_without_traversal(&first.root)?;
-
-	for location in &locations[1..] {
-		if absolute_path_without_traversal(&location.root)? != root {
-			eyre::bail!("Radar cache read set must share one fixed cache root");
-		}
-	}
-
-	let cache = PrivateCache::open_existing(&first.root)?;
-	let lock = cache.lock()?;
-
-	locations.iter().map(|location| lock.read(&location.relative)).collect()
 }
 
 pub(crate) fn write_private_file_atomic(path: &Path, payload: &[u8]) -> Result<()> {

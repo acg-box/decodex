@@ -4,6 +4,7 @@ mod artifact_validation;
 mod cache;
 mod cli;
 mod constants;
+mod content_activation;
 mod content_eligibility;
 mod content_pair;
 mod content_review;
@@ -15,9 +16,11 @@ mod ledger;
 mod operations;
 mod paths;
 mod private_fs;
+mod regular_file;
 mod release_delta;
 mod requests;
 mod review_queue;
+mod run_identity;
 mod signal_render;
 mod source_bundle;
 mod text_values;
@@ -29,9 +32,9 @@ mod prelude {
 pub(crate) use self::{
 	cache::cache_gc,
 	constants::{
-		ANALYSIS_DRAFT_KIND, ARTIFACT_KINDS, ATTENTION_RULES, BUNDLE_SCHEMA, CACHE_MAX_AGE_DAYS,
-		CACHE_MAX_BYTES_PER_COLLECTION, CACHE_MAX_FILES_PER_COLLECTION,
-		CONFIG_FEATURE_CATALOG_PATH, CONFIG_FEATURE_CATALOG_SCHEMA,
+		ANALYSIS_DRAFT_KIND, ARTIFACT_KINDS, ATTENTION_RULES, BUNDLE_BUILD_RECEIPT_SCHEMA,
+		BUNDLE_SCHEMA, CACHE_MAX_AGE_DAYS, CACHE_MAX_BYTES_PER_COLLECTION,
+		CACHE_MAX_FILES_PER_COLLECTION, CONFIG_FEATURE_CATALOG_PATH, CONFIG_FEATURE_CATALOG_SCHEMA,
 		CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA, DEFAULT_CACHE_ROOT, DEFAULT_LEDGER_PATH,
 		DEFAULT_MIN_STABLE_TAG, DEFAULT_PAIR_LIMIT, DEFAULT_PREVIEW_LIMIT, DEFAULT_QUEUE_OUT,
 		DEFAULT_RELEASE_DELTA_OUT, DEFAULT_SEARCH_LIMIT, DEFAULT_SIGNALS_DIR,
@@ -58,24 +61,26 @@ pub(crate) use self::{
 	operations::{build_bundle, refresh_queue, render_signal, validate, validate_bundles},
 	private_fs::{
 		collect_private_json_files, collect_private_json_files_if_present, is_radar_cache_path,
-		private_file_exists, read_private_file, read_private_files, write_private_file_atomic,
+		private_file_exists, read_private_file, write_private_file_atomic,
 	},
+	regular_file::read_regular_file_bounded,
 	release_delta::{backfill_release_range, refresh_release_delta},
 	requests::{
-		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildRequest,
-		RadarBundleValidateRequest, RadarCacheGcReport, RadarCacheGcRequest,
-		RadarContentEligibilityReport, RadarContentEligibilityRequest,
-		RadarContentPairCommitReport, RadarContentPairCommitRequest,
-		RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
+		RadarBackfillReleaseRangeReport, RadarBackfillReleaseRangeRequest, RadarBundleBuildReceipt,
+		RadarBundleBuildRequest, RadarBundleValidateRequest, RadarCacheGcReport,
+		RadarCacheGcRequest, RadarContentEligibilityReport, RadarContentEligibilityRequest,
+		RadarContentPairCommitReport, RadarContentPairCommitRequest, RadarContentV2ResetReport,
+		RadarContentV2ResetRequest, RadarLedgerArtifactLinkRequest, RadarLedgerBootstrapRequest,
 		RadarLedgerIngestExistingRequest, RadarLedgerIngestRequest, RadarLedgerSummaryRequest,
 		RadarQueueGeneration, RadarRefreshQueueReport, RadarRefreshQueueRequest,
 		RadarRefreshReleaseDeltaReport, RadarRefreshReleaseDeltaRequest, RadarRenderSignalReport,
 		RadarRenderSignalRequest, RadarReviewNextReport, RadarReviewNextRequest,
 		RadarSelectedSubject, RadarSourceRef, RadarValidateRequest, RadarValidationReport,
 	},
+	run_identity::current_run_id,
 	text_values::{
 		body_excerpt, extract_commit_sha_from_url, extract_pr_number_from_url,
-		optional_value_string, path_arg, percent_encode, pretty_json, repo_root,
+		optional_value_string, path_arg, percent_encode, pretty_json, repo_root, repo_root_from,
 		required_value_i64, required_value_string, required_value_u64, resolve_against, short_sha,
 		slugify, string_array, string_array_from_value, truncate_patch_excerpt,
 	},
@@ -86,6 +91,8 @@ pub(crate) use self::{
 		write_json,
 	},
 };
+
+pub(crate) use content_activation::reset_content_v2;
 
 use std::{
 	collections::{BTreeMap, BTreeSet, HashSet},
@@ -115,9 +122,14 @@ use ledger::RadarLedger;
 use prelude::Result;
 #[cfg(test)] use private_fs::simulate_wrong_owner_error;
 #[cfg(test)] use private_fs::{create_private_file, ensure_private_directory};
+#[cfg(test)] use regular_file::read_regular_file_bounded_with;
 use review_queue::{RecentCommit, build_review_queue};
 use signal_render::{rendered_config_flags, rendered_signal};
-use source_bundle::{build_commit_bundle_from_sources, build_pr_bundle_from_sources};
+#[cfg(test)] use source_bundle::install_bundle_after_write;
+use source_bundle::{
+	build_commit_bundle_from_sources, build_pr_bundle_from_sources, bundle_evidence_from_bytes,
+	install_bundle,
+};
 
 #[derive(Debug)]
 enum RefreshKind {

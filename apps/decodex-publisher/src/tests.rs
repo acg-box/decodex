@@ -18,8 +18,8 @@ const SECOND_RUN_ID: &str = "019fa400-0000-7000-8000-000000000002";
 const THIRD_RUN_ID: &str = "019fa400-0000-7000-8000-000000000003";
 const FOURTH_RUN_ID: &str = "019fa400-0000-7000-8000-000000000004";
 const POST_TEXT: &str = "Codex app-server now exposes a typed capability check before experimental calls, so operators can detect unsupported protocol surfaces before a workflow starts.";
-const PLACEHOLDER_REVIEW_REF: &str = ".agent/automations/radar/cache/github/content-review-pairs/test--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/review.json";
-const PLACEHOLDER_IMPACT_REF: &str = ".agent/automations/radar/cache/github/content-review-pairs/test--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/impact.json";
+const PLACEHOLDER_REVIEW_REF: &str = ".agent/automations/radar/cache/github/content-review-pairs/019fa400-0000-7000-8000-000000000001--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa--bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/review.json";
+const PLACEHOLDER_IMPACT_REF: &str = ".agent/automations/radar/cache/github/content-review-pairs/019fa400-0000-7000-8000-000000000001--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa--bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/impact.json";
 const TEST_PUBLICATION_LINEAGE: &str =
 	"e9efcaaa0b3eea16244c69fcffc22f97a21c0338f1071ee86d9b59cd9e2c1bd9";
 const TEST_IDEMPOTENCY_KEY: &str =
@@ -523,17 +523,47 @@ fn radar_lineage_rejects_wrong_collection_and_mixed_cache_roots() {
 		.to_string();
 	assert!(error.contains("Radar pair path"), "{error}");
 
+	let mut replayed_queue = first_payload.clone();
+	let queue_ref = replayed_queue["radar_source_refs"]["queue"].as_str().expect("queue ref");
+	replayed_queue["radar_source_refs"]["queue"] =
+		json!(Path::new(queue_ref).with_file_name("replayed.json").to_string_lossy());
+	let error = crate::social_record::validate_candidate_eligibility(&replayed_queue)
+		.expect_err("an alternate queue path must not carry lineage authority")
+		.to_string();
+	assert!(error.contains("exact canonical private Radar queue path"), "{error}");
+	let schema_errors = crate::social_validation::validate_social_artifact(&replayed_queue).errors;
+	assert!(
+		schema_errors
+			.iter()
+			.any(|error| error.contains("exact canonical private Radar queue path")),
+		"{schema_errors:?}"
+	);
+
+	let old_pair = format!("{RUN_ID}--{}", "a".repeat(64));
+	let mut old_shape = first_payload.clone();
+	old_shape["radar_source_refs"]["review"] = json!(format!(
+		".agent/automations/radar/cache/github/content-review-pairs/{old_pair}/review.json"
+	));
+	old_shape["radar_source_refs"]["impact"] = json!(format!(
+		".agent/automations/radar/cache/github/content-review-pairs/{old_pair}/impact.json"
+	));
+	let error = crate::social_record::validate_candidate_eligibility(&old_shape)
+		.expect_err("the retired two-part pair path must fail")
+		.to_string();
+	assert!(error.contains("pair directory is malformed"), "{error}");
+
 	let review_ref = first_payload["radar_source_refs"]["review"].as_str().expect("review ref");
 	let review_path = crate::repo_root().expect("repo root").join(review_ref);
 	let pair_dir = review_path.parent().expect("pair directory");
-	let digest = pair_dir
+	let pair_digest = pair_dir
 		.file_name()
 		.and_then(|name| name.to_str())
-		.and_then(|name| name.rsplit_once("--"))
-		.map(|(_, digest)| digest)
+		.and_then(|name| name.split("--").nth(2))
 		.expect("pair digest");
-	let alternate_pair =
-		pair_dir.parent().expect("pair collection").join(format!("alternate--{digest}"));
+	let alternate_pair = pair_dir
+		.parent()
+		.expect("pair collection")
+		.join(format!("{SECOND_RUN_ID}--{}--{pair_digest}", "c".repeat(64)));
 	crate::ensure_private_directory(&alternate_pair).expect("alternate pair");
 	for file in ["review.json", "impact.json"] {
 		let payload = crate::load_json(&pair_dir.join(file)).expect("paired source");
@@ -743,6 +773,47 @@ fn quality_skip_terminalization_is_idempotent_and_does_not_call_x() {
 	assert_eq!(post["decision"]["daily_limit"], 1);
 	assert!(post.get("browser_touched").is_none());
 	assert!(post.get("publication").is_none());
+}
+
+#[test]
+fn quality_skip_rejects_and_cannot_propagate_retired_radar_pair_paths() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let old_pair = format!("{RUN_ID}--{}", "a".repeat(64));
+	let old_review = format!(
+		".agent/automations/radar/cache/github/content-review-pairs/{old_pair}/review.json"
+	);
+	let old_impact = format!(
+		".agent/automations/radar/cache/github/content-review-pairs/{old_pair}/impact.json"
+	);
+	let mut candidate = valid_social_candidate();
+
+	candidate["decision"]["worthiness"] = json!("skip");
+	candidate["decision"]["reason"] = json!("No material operator consequence.");
+	candidate.as_object_mut().expect("candidate").remove("radar_eligibility");
+	candidate.as_object_mut().expect("candidate").remove("radar_source_refs");
+	candidate["source_refs"] = json!({
+		"upstream_reviews": [old_review.clone()],
+		"upstream_impacts": [old_impact.clone()]
+	});
+	candidate["evidence_digests"] = json!({
+		(old_review.clone()): "1".repeat(64),
+		(old_impact): "2".repeat(64)
+	});
+	candidate["claims"][0]["evidence"] = json!(old_review);
+
+	let errors = crate::social_validation::validate_social_artifact(&candidate).errors;
+	assert!(errors.iter().any(|error| error.contains("strict fresh Radar pair")), "{errors:?}");
+	let runtime_error = crate::social_record::validate_candidate_eligibility(&candidate)
+		.expect_err("skip eligibility must reject old pair paths")
+		.to_string();
+	assert!(runtime_error.contains("Radar pair") || runtime_error.contains("pair directory"));
+
+	let candidate_path = write_candidate(temp.path(), candidate);
+	let error = crate::terminalize_social_skip(&skip_request(temp.path(), &candidate_path))
+		.expect_err("skip terminalization must not propagate an old pair path")
+		.to_string();
+	assert!(error.contains("strict fresh Radar pair"), "{error}");
+	assert!(!temp.path().join("posts").exists());
 }
 
 #[cfg(unix)]
@@ -3055,7 +3126,7 @@ fn attach_test_radar_lineage(candidate: &mut Value) -> Vec<tempfile::TempDir> {
 	let pairs_dir = directory.path().join("github/content-review-pairs");
 	crate::ensure_private_directory(&queue_dir).expect("private Radar queue collection");
 	crate::ensure_private_directory(&pairs_dir).expect("private Radar pair collection");
-	let queue_path = queue_dir.join("queue.json");
+	let queue_path = queue_dir.join("openai-codex-latest.json");
 	let candidate_repo =
 		candidate.get("repo").and_then(Value::as_str).expect("candidate repo").to_owned();
 	let candidate_slug =
@@ -3087,7 +3158,7 @@ fn attach_test_radar_lineage(candidate: &mut Value) -> Vec<tempfile::TempDir> {
 	impact["review_lineage"]["artifact_sha256"] = json!(review_sha256.clone());
 	let impact_raw = pretty_json_bytes(&impact);
 	let pair_digest = crate::social_record::radar_content_pair_sha256(&review_raw, &impact_raw);
-	let pair_dir = pairs_dir.join(format!("test--{pair_digest}"));
+	let pair_dir = pairs_dir.join(format!("{RUN_ID}--{}--{pair_digest}", "a".repeat(64)));
 	crate::ensure_private_directory(&pair_dir).expect("private Radar pair directory");
 	let review_path = pair_dir.join("review.json");
 	let impact_path = pair_dir.join("impact.json");
@@ -3672,7 +3743,7 @@ fi
 	path
 }
 
-fn valid_social_candidate() -> Value {
+pub(crate) fn valid_social_candidate() -> Value {
 	json!({
 		"schema": "social_candidate/v1",
 		"slug": "openai-codex-pr-22414",
@@ -3701,7 +3772,7 @@ fn valid_social_candidate() -> Value {
 			"lineage_sha256": "3333333333333333333333333333333333333333333333333333333333333333"
 		},
 		"radar_source_refs": {
-			"queue": ".agent/automations/radar/cache/github/review-queue/test/openai-codex-latest.json",
+			"queue": ".agent/automations/radar/cache/github/review-queue/openai-codex-latest.json",
 			"review": PLACEHOLDER_REVIEW_REF,
 			"impact": PLACEHOLDER_IMPACT_REF
 		},
@@ -3728,7 +3799,7 @@ fn valid_social_candidate() -> Value {
 	})
 }
 
-fn valid_social_strategy(cycle_key: &str) -> Value {
+pub(crate) fn valid_social_strategy(cycle_key: &str) -> Value {
 	json!({
 		"schema": "social_strategy/v1",
 		"cycle_key": cycle_key,
@@ -3850,7 +3921,7 @@ fn valid_radar_impact() -> Value {
 	})
 }
 
-fn valid_social_publish_reservation() -> Value {
+pub(crate) fn valid_social_publish_reservation() -> Value {
 	json!({
 		"schema": "social_publish_reservation/v1",
 		"slug": "openai-codex-pr-22414",
@@ -3886,7 +3957,7 @@ fn valid_social_publish_reservation_for_path(candidate_path: &Path) -> Value {
 	reservation
 }
 
-fn valid_social_post() -> Value {
+pub(crate) fn valid_social_post() -> Value {
 	json!({
 		"schema": "social_post/v1",
 		"slug": "openai-codex-pr-22414",
@@ -3942,7 +4013,7 @@ fn valid_social_post() -> Value {
 	})
 }
 
-fn valid_social_outcome() -> Value {
+pub(crate) fn valid_social_outcome() -> Value {
 	json!({
 		"schema": "social_outcome/v1",
 		"slug": "openai-codex-pr-22414-24h",

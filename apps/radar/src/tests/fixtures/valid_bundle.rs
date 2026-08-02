@@ -17,9 +17,9 @@ pub(crate) fn valid_bundle() -> Value {
 		},
 		"commits": [
 			{
-				"sha": "abc123",
+				"sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 				"message": "Add Unix socket endpoint support",
-				"url": "https://github.com/openai/codex/commit/abc123"
+				"url": "https://github.com/openai/codex/commit/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			}
 		],
 		"files": [

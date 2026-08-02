@@ -8,10 +8,10 @@ pub(crate) fn valid_control_plane_upgrade_candidate() -> Value {
 		"status": "proposed",
 		"source_refs": {
 			"upstream_reviews": [
-				".agent/automations/radar/cache/github/content-review-pairs/run--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/review.json"
+				".agent/automations/radar/cache/github/content-review-pairs/019fa400-0000-7000-8000-000000000001--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa--bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/review.json"
 			],
 			"upstream_impacts": [
-				".agent/automations/radar/cache/github/content-review-pairs/run--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/impact.json"
+				".agent/automations/radar/cache/github/content-review-pairs/019fa400-0000-7000-8000-000000000001--aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa--bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb/impact.json"
 			],
 			"urls": ["https://github.com/openai/codex/pull/22414"]
 		},

@@ -43,8 +43,8 @@ Rust CLI entrypoints:
   successful queue refresh receipt and skips exact handled subject lineages.
 - `radar content-pair-commit` validates and atomically commits one staged review and
   impact pair.
-- `radar bundle build` builds deterministic bundles for PR-first and
-  commit-only inputs.
+- `radar bundle build` builds deterministic bundles for PR-first and commit-only
+  inputs at the exact private path derived from process `CODEX_THREAD_ID`.
 - `radar bundle validate` validates deterministic bundles.
 - `radar ledger ...` owns bootstrap, ingest, ingest-existing, artifact-link,
   and summary operations.
@@ -56,6 +56,9 @@ Rust CLI entrypoints:
 Current checked contracts:
 
 - `analysis_draft.schema.json` is the Codex AI helper output schema.
+- `bundle_build_receipt.schema.json` validates `radar_bundle_build_receipt/v1`.
+- `content_review_pair_staging.schema.json` validates the clean-start
+  `radar_content_review_pair_staging/v2` input.
 - `upstream_review_queue/v1` artifacts are validated by `radar validate`.
 - `upstream_review/v1` artifacts are validated by `radar validate`.
 - `release_delta/v1` artifacts are validated by `radar validate`.
@@ -82,10 +85,10 @@ Example flow:
 radar bundle build \
   --repo openai/codex \
   --pr 22414 \
-  --out .agent/automations/radar/cache/github/bundles/openai-codex-pr-22414.json
+  --out .agent/automations/radar/cache/github/bundles/$CODEX_THREAD_ID.json
 
 radar render-signal \
-  --bundle .agent/automations/radar/cache/github/bundles/openai-codex-pr-22414.json \
+  --bundle .agent/automations/radar/cache/github/bundles/$CODEX_THREAD_ID.json \
   --analysis .agent/automations/radar/cache/generated/analysis/openai-codex-pr-22414.analysis.json \
   --out .agent/automations/radar/cache/site-content/signals/openai-codex-pr-22414.json
 
@@ -169,12 +172,25 @@ radar content-pair-commit \
   --max-age-hours 12
 ```
 
+The staging schema is the clean-start `radar_content_review_pair_staging/v2` contract.
+Radar derives the run ID from process `CODEX_THREAD_ID` and requires that lowercase
+UUID in the staging path and document. V1 staging is rejected without migration or a dual reader.
 In the staging document, set
 `impact.review_lineage.artifact_sha256` to exactly 64 zeroes. It is a required
-non-authoritative sentinel. Do not serialize the review and do not compute its digest.
-`content-pair-commit` serializes the final review deterministically, replaces the
-sentinel with the final review byte SHA-256, and validates the resulting committed
-impact against the normal `upstream_impact/v1` contract.
+non-authoritative sentinel. Include the exact `review-next` `selection_sha256` and
+`radar_bundle_build_receipt/v1` from the run-owned bundle. Publish requires one structured implementation or test anchor whose
+exact path appears as `<path>: <claim>` in both evidence arrays. A positive-count defer
+or skip may use the closed no-usable-anchor limitation. A zero count must defer or skip
+and use the `no_patch_excerpts` limitation. Limitation pairs use
+`publisher_angle = "none"` and exactly one canonical evidence item in each artifact.
+`content-pair-commit` recomputes the current deterministic selection and receipt, binds
+the bundle repo, mode, subject, and commit set to that selection, and validates the anchor or limitation
+under the cache lock, serializes the final review, replaces the sentinel with the
+final review byte SHA-256, and validates the committed impact. Its run-owned pair
+directory is `<run_id>--<staging_sha256>--<pair_sha256>`. Radar recomputes the pair
+digest from the exact final review and impact bytes on every scan. The staging and pair
+path contracts are new-only; `radar content-v2-reset` removes the retired content
+stores.
 
 Use the returned paths for the bounded eligibility gate:
 

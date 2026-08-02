@@ -85,7 +85,7 @@ impl RadarFixture {
 		let pairs_dir = temp.path().join("github/content-review-pairs");
 		crate::ensure_private_directory(&queue_dir).expect("private Radar queue collection");
 		crate::ensure_private_directory(&pairs_dir).expect("private Radar pair collection");
-		let queue_path = queue_dir.join("queue.json");
+		let queue_path = queue_dir.join("openai-codex-latest.json");
 		let observed_at = OffsetDateTime::now_utc().format(&Rfc3339).expect("current timestamp");
 		write(
 			&queue_path,
@@ -136,7 +136,10 @@ impl RadarFixture {
 		});
 		let impact_raw = pretty_json_bytes(&impact);
 		let pair_digest = crate::social_record::radar_content_pair_sha256(&review_raw, &impact_raw);
-		let pair_dir = pairs_dir.join(format!("gc-test--{pair_digest}"));
+		let pair_dir = pairs_dir.join(format!(
+			"019fa400-0000-7000-8000-000000000001--{}--{pair_digest}",
+			"a".repeat(64)
+		));
 		crate::ensure_private_directory(&pair_dir).expect("private Radar pair directory");
 		let review_path = pair_dir.join("review.json");
 		let impact_path = pair_dir.join("impact.json");
@@ -696,14 +699,15 @@ fn cross_pair_radar_sources_fail_gc_before_deletion() {
 	let review_path = repo_root.join(&fixture.radar.review_ref);
 	let impact_path = repo_root.join(&fixture.radar.impact_ref);
 	let pair_dir = review_path.parent().expect("pair directory");
-	let digest = pair_dir
+	let pair_digest = pair_dir
 		.file_name()
 		.and_then(|name| name.to_str())
-		.and_then(|name| name.rsplit_once("--"))
-		.map(|(_, digest)| digest)
+		.and_then(|name| name.split("--").nth(2))
 		.expect("pair digest");
-	let alternate =
-		pair_dir.parent().expect("pair collection").join(format!("alternate--{digest}"));
+	let alternate = pair_dir
+		.parent()
+		.expect("pair collection")
+		.join(format!("019fa400-0000-7000-8000-000000000002--{}--{pair_digest}", "b".repeat(64)));
 	crate::ensure_private_directory(&alternate).expect("alternate pair directory");
 	write(&alternate.join("review.json"), &load(&review_path));
 	write(&alternate.join("impact.json"), &load(&impact_path));

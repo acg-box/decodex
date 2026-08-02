@@ -20,6 +20,7 @@ Preflight:
    `automations/radar/skills/codex-code-analysis/SKILL.md`,
    `automations/radar/skills/codex-upstream-triage/SKILL.md`,
    `automations/radar/skills/codex-release-analysis/SKILL.md`,
+   `automations/radar/scripts/github/bundle_build_receipt.schema.json`,
    `automations/radar/scripts/github/content_review_pair_staging.schema.json`,
    `automations/radar/scripts/github/content_review_pair_commit_report.schema.json`,
    `automations/radar/scripts/github/upstream_review.schema.json`,
@@ -48,8 +49,36 @@ Preflight:
    exact resulting binaries as `<radar>` and `<publisher>`.
 
 Workflow:
-1. Run `<radar> refresh-upstream-queue` by itself first. Wait for it to exit
-   successfully before running any other Radar command. Require `written = true`
+1. Content Manager is not the first-activation owner. This scheduled task may run
+   only after one explicit unscheduled Health activation used the new binaries,
+   proved all five managed scheduler definitions `PAUSED`, proved that no managed
+   automation task was active, ran the Publisher clean-start reset before the
+   Radar clean-start reset, completed Radar and Publisher validation, and finally
+   restored the five desired schedules to `ACTIVE`. Before any ordinary Radar or
+   social validation, run exactly one
+   `<publisher> social content-v2-reset` and fully validate its receipt before
+   running exactly one `<radar> content-v2-reset` as activation readback. With an
+   activation marker present, each command performs marker and fixed-root authority
+   readback only. It does not inventory or reset current v2 collections, and it
+   preserves legitimate post-activation v2 state. Do not pass paths or inspect
+   retired artifacts directly. Require each stdout to be exactly one JSON object.
+   Require the Radar
+   object to have `schema = "radar_content_v2_reset/v1"`, and the Publisher object
+   to have `schema = "decodex_social_content_v2_reset/v1"`. For each object, require
+   `status = "already_active"`, nonnegative integer
+   `collections_cleared`, `files_removed`, `directories_removed`, and
+   `bytes_removed`, no more than 4,096 files, 8,192 total files plus directories,
+   and 67,108,864 bytes. Also require `collections_cleared <= 4` for Radar and
+   `collections_cleared <= 7` for Publisher. All four counters must be zero. A
+   `reset` result means first activation was incomplete or ran out of order. Stop
+   before refresh or recording; in particular, do not run the Radar reset when the
+   Publisher readback returns `reset`. Keep this task visible, and require Health
+   to pause all five definitions, prove quiescence, rerun Publisher then Radar,
+   validate, and reactivate. Any command or receipt failure is terminal for the
+   run.
+   After both activation commands, run `<radar> refresh-upstream-queue` by itself.
+   Wait for it to exit successfully before running any other ordinary Radar command.
+   Require `written = true`
    and bind only this command's exact `queue_sha256` report value as
    `<refreshed_queue_sha256>`. Never take this value from memory, an older review
    pair, or any other artifact. Then run `<radar> refresh-release-delta` and
@@ -93,16 +122,69 @@ Workflow:
    `<radar> bundle build --repo openai/codex --pr <exact-decimal-subject-id>
    --out <exact-bundle>` for a pull request, or `--commit
    <exact-selected-commit> --force-commit-only --out <exact-bundle>` for a commit.
-   This ordinary GitHub source read must not use X API budget.
-7. Read that bundle once under
+   `bundle build` derives the authoritative lowercase UUID from process
+   `CODEX_THREAD_ID` and rejects every output except that exact private run-owned path.
+   This ordinary GitHub source read must not use X API budget. Require stdout to
+   be exactly one JSON object matching `radar_bundle_build_receipt/v1`, with
+   `status = "installed"`, one 64-character lowercase `bundle_sha256`, a positive
+   `bundle_bytes` value of at most 67108864, `analysis_mode`, and exact
+   `commit_count`, `file_count`, `patch_excerpt_count`, `docs_ref_count`, and
+   `examples_ref_count` values. Require positive commit and file counts,
+   `patch_excerpt_count <= file_count`, `docs_ref_count <= file_count`, and
+   `examples_ref_count <= file_count`. Bind this exact unedited command output as
+   `<bundle_evidence_receipt>`. Do not synthesize, summarize, or reconstruct it.
+   Any missing field, invalid value, impossible count, schema/status mismatch, or
+   command failure is an operational failure and is terminal for this run. It cannot
+   produce review, impact, candidate, strategy, or source-evidence claims. Record only
+   the bounded failure result in memory. Health must repair or escalate repeated
+   bundle-build, receipt, run-binding, or subject-binding operational failures.
+7. Read that exact bundle once under
    `automations/radar/skills/codex-code-analysis/SKILL.md`. Follow the runtime path
-   and identify a concrete implementation, test, documentation, or schema anchor,
-   plus the user-visible or operator path. Titles, filenames, surface hints, and
-   attention flags are never sufficient. Create exactly one mode-`0600`,
-   create-only `radar_content_review_pair_staging/v1` at
+   and consume `<bundle_evidence_receipt>` as the authoritative structural
+   projection of those installed bundle bytes. During this one read, require the
+   byte count and lowercase SHA-256 of those same bytes to equal `bundle_bytes` and
+   `bundle_sha256` before parsing or making source-evidence claims. Parse and inspect
+   only those same bytes. Require the bundle's analysis mode and array counts to
+   equal the receipt exactly. Do not build or source-read a second bundle. If
+   `patch_excerpt_count > 0`, inspect the non-empty excerpts needed to find one usable
+   implementation or test anchor. A usable anchor must cite its exact
+   `files[*].path` in both evidence arrays with exact `<path>: <claim>` syntax. An
+   implementation anchor cannot be a test, documentation, example, `docs_refs`, or
+   `examples_refs` path. It must use a conservative allowlisted source, protocol, or
+   config extension such as `.rs`, `.toml`, `.json`, or `.proto`. Unknown extensions
+   and names are not implementation anchors. Reject `.rst`, `.mdx`, `CHANGELOG`, and
+   paths under website, content, guide, documentation, or example directories. A test
+   anchor must use both a conservative test path and an allowlisted extension. The review,
+   impact, candidate, any skip reason, and memory may not state or imply that patch
+   excerpts are absent. If the anchor is accurate but not publish-worthy, still
+   commit the pair with `public_signal_decision = "defer"` or `"skip"` and then
+   record a precise quality skip. If no usable implementation or test anchor exists,
+   do not stop before handling the subject: set that nonpublishable decision and
+   `publisher_angle = "none"`, omit `patch_anchor`, add
+   `patch_anchor_limitation.reason = "no_usable_implementation_or_test_anchor"` with
+   one precise single-line `detail`, and put the exact
+   `bundle patch limitation: <detail>` item as the only item in both evidence arrays.
+   Unknown or unclassified positive excerpts use this limitation path. A usable anchor
+   that is not publish-worthy still commits an accurately anchored defer or skip pair.
+   If `patch_excerpt_count == 0`, do not invent patch-backed implementation or test
+   evidence from titles, filenames, bodies, docs references, surface hints, or
+   attention flags. Set `public_signal_decision` to `defer` or `skip`, set
+   `publisher_angle = "none"`, omit `patch_anchor`, and set
+   `patch_anchor_limitation.reason = "no_patch_excerpts"` with one precise single-line
+   `detail`. Put the exact `bundle patch limitation: <detail>` string as the only item
+   in both evidence arrays. Zero-excerpt pairs cannot publish. Publication still
+   requires a concrete source anchor plus the user-visible or operator path. Titles,
+   filenames, surface hints, and attention flags are never sufficient. After the
+   receipt-valid source review is accurately represented, create exactly one mode-`0600`,
+   create-only `radar_content_review_pair_staging/v2` at
    `.agent/automations/radar/cache/github/content-review-staging/$CODEX_THREAD_ID.json`.
-   Set `run_id` to the task ID and set staging `queue_sha256` to
-   `<refreshed_queue_sha256>` exactly. Include one source-backed
+   Set `run_id` to the task ID, set staging `queue_sha256` to
+   `<refreshed_queue_sha256>` exactly, set `selection_sha256` to the exact unchanged
+   value from this run's `review-next` report, and include the exact unchanged
+   `<bundle_evidence_receipt>` as `bundle_evidence_receipt`. When
+   `patch_excerpt_count > 0` and a usable anchor exists, include `patch_anchor` with
+   the cited exact bundle file `path` and authoritative `kind = "implementation"` or
+   `"test"`. Otherwise follow the limitation or zero-excerpt branch above. Include one source-backed
    `upstream_review/v1` plus its matching
    `upstream_impact/v1`. In the staged impact use exactly 64 zeroes for
    `review_lineage.artifact_sha256`; this is a non-authoritative sentinel.
@@ -115,10 +197,21 @@ Workflow:
    Require schema `radar_content_review_pair_commit/v1`, status `committed` or
    exact retry `recovered`, removal of the staging file, and two returned paths
    named `review.json` and `impact.json` under the same
-   `github/content-review-pairs/<run>--<digest>` directory. Join each returned
+   `github/content-review-pairs/<lowercase-uuid>--<staging-sha256>--<pair-sha256>`
+   directory. The staging suffix binds exact staging bytes; Radar recomputes the pair
+   suffix from the exact final review and impact bytes on every scan. Join each returned
    relative path to `.agent/automations/radar/cache` and use only those exact
    paths below. Radar materializes the final review digest and atomically commits
    the pair. A conflicting or invalid staging effect cannot produce a candidate.
+   Radar derives the current run ID from process `CODEX_THREAD_ID`; no caller-provided
+   run-ID option exists. It recomputes the current deterministic `review-next` selection
+   and handled-state digest under the same lock and requires the staging selection digest,
+   review, impact, bundle repo, analysis mode, PR or commit subject, and exact normalized
+   commit set to match that selection. A receipt-valid
+   source review must commit its accurate anchor or limitation pair before recording a
+   publication or quality-skip artifact. A receipt, run-bundle, or subject-binding
+   contract failure is terminal without a pair; weak publication value or no usable
+   anchor is not such a failure.
 8. Set `public_signal_decision = "publish"` only when the source anchors support
    the exact observed-change wording and a concrete user or operator consequence.
    Otherwise use `defer` or `skip`, `publisher_angle = "none"`, and create a
@@ -141,7 +234,8 @@ Workflow:
      allowlisted non-factual connective segments in the candidate schema;
    - use a stable idempotency key and one of the supported modes.
 9. For the selected publish-worthy review and impact, run
-   `<radar> content-eligibility --queue <exact-queue> --review
+   `<radar> content-eligibility --queue
+   .agent/automations/radar/cache/github/review-queue/openai-codex-latest.json --review
    <exact-returned-review> --impact <exact-returned-impact> --max-age-hours 12`
    exactly once. Use its bounded JSON output unchanged as `radar_eligibility`;
    do not synthesize or edit the receipt. A skip candidate may omit Radar

@@ -15,6 +15,16 @@ Runtime memory is bounded, mode `0600`, advisory only, and cannot override curre
 repository, artifact, Publisher, or cost-report state. A fresh cutover deletes old
 memory; it does not migrate it.
 
+The Content Manager contract inventory includes `radar_bundle_build_receipt/v1`,
+the clean-start `radar_content_review_pair_staging/v2` input,
+`radar_content_v2_reset/v1`, and `decodex_social_content_v2_reset/v1`, in addition
+to the committed review, impact, eligibility, and social contracts.
+
+The first v2 activation is an explicit unscheduled Health operation. Health uses
+the new binaries, sets all five managed scheduler definitions to `PAUSED`, waits
+until no managed automation task is active, runs both resets, validates Radar and
+Publisher state, and only then restores the desired schedules to `ACTIVE`.
+
 The three Publisher windows are required because one task processes at most one
 operation: one publication, one due 24-hour outcome, or one due seven-day
 outcome. More task windows do not increase public cadence. The Publisher still
@@ -24,38 +34,70 @@ permits at most one post per UTC day.
 
 Content Manager owns product operations and marketing decisions. Each run:
 
-1. Refreshes the Radar upstream queue first, binds the successful report's exact
-   `queue_sha256`, and then refreshes the release delta.
-2. Validates current Radar and social state.
-3. Reads official OpenAI sources, `openai/codex`, landed Decodex evidence, and
+1. Verifies Health activation by running
+   `decodex-publisher social content-v2-reset` before
+   `radar content-v2-reset`, fully validating each receipt before continuing, and
+   requiring `already_active` with zero counts from both. A marker-present call is
+   fixed-root, lock, and marker authority readback only. It preserves current v2
+   state without inventorying the collections. A `reset` result stops Content
+   Manager and returns activation repair to Health.
+2. Refreshes the Radar upstream queue before other ordinary Radar commands, binds
+   the successful report's exact `queue_sha256`, and then refreshes the release
+   delta.
+3. Validates current Radar and social state.
+4. Reads official OpenAI sources, `openai/codex`, landed Decodex evidence, and
    current outcomes.
-4. Uses CodexRadar at most once per business day as a secondary discovery source.
-5. Runs `radar review-next --expected-queue-sha256 <refresh-receipt-sha256>` once.
+5. Uses CodexRadar at most once per business day as a secondary discovery source.
+6. Runs `radar review-next --expected-queue-sha256 <refresh-receipt-sha256>` once.
    The command compares the receipt with the locked queue bytes before selection. It
    selects one current queue subject but cannot make it publish eligible.
-6. For `needs_source_review`, builds one GitHub change bundle and performs one
-   bounded source-reading pass. It follows the runtime path and requires a concrete
-   implementation, test, documentation, or schema anchor plus a user or operator
-   path. Titles and filenames are not evidence.
-7. Writes one create-only, mode-`0600` pair staging record. It then calls
-   `radar content-pair-commit`, which materializes the exact review digest and
-   atomically commits the review and impact in one run-owned directory.
+7. For `needs_source_review`, builds one GitHub change bundle, binds its exact-byte
+   `radar_bundle_build_receipt/v1`, and performs one bounded source-reading pass. A
+   process-derived lowercase UUID fixes the only permitted private bundle path. A
+   publish decision requires one implementation or test file anchor in both review
+   and impact evidence. A zero count cannot support invented patch evidence or
+   publication.
+8. Writes one create-only, mode-`0600` pair staging record with the exact receipt and
+   the exact `review-next` selection SHA-256 and structured patch anchor or closed
+   limitation. The same process `CODEX_THREAD_ID` UUID owns the v2 staging path and document.
+   Under one Radar cache lock,
+   `radar content-pair-commit` recomputes the receipt from the run-owned bundle,
+   recomputes the current deterministic selection and binds the exact repo, mode,
+   subject, and commit set to it. It validates the anchor or limitation and both
+   evidence citations, materializes the exact review digest, and
+   atomically commits the pair. A valid but non-publishable review, including one with
+   no usable anchor or no patch excerpts, still commits with an accurate defer or skip decision before
+   Content Manager records a precise quality skip. Limitation pairs use
+   `publisher_angle = "none"` and exactly one canonical limitation item in both evidence
+   arrays. The pair directory is
+   `<run_id>--<staging_sha256>--<pair_sha256>`; Radar recomputes the pair suffix from
+   exact final artifact bytes on every scan. V1 staging and old pair paths are retired
+   without migration. The Radar reset removes bundles, pairs, staging, and Control
+   Plane candidates. The Publisher reset removes candidates, posts, outcomes,
+   reservations, attempts, strategies, and manager staging only after a bounded
+   preflight proves all records are zero-effect quality skips. Any external-effect,
+   reservation, attempt, post ID, call, spend, or budget authority blocks the full
+   reset. It preserves xurl authorization, pricing evidence, the runtime binary,
+   locks, and unrelated state.
+   Committed review and impact payloads still use their v1 schemas.
    `review-next` skips a handled subject with the same normalized commit set. It
    runs `radar content-eligibility` once only when the committed pair supports a
    public claim. Metadata-only selection, invalid staging, or invalid lineage
    cannot produce a candidate.
-8. Records the daily operations review in bounded memory without any queue SHA-256.
+9. Records the daily operations review in bounded memory without any queue SHA-256.
    It creates one private
    mode-0600 staging artifact only for a weekly strategy checkpoint, an
    evidence-backed strategy change, one `social_candidate/v1`, or one precise
    skip candidate. A no-op creates no artifact.
-9. Calls Publisher `social record-manager`, which derives and atomically creates
+10. Calls Publisher `social record-manager`, which derives and atomically creates
    the run-owned candidate or strategy destination under the shared mutation lock.
    Content Manager never writes an authoritative social store directly.
-10. Runs social validation and updates bounded memory.
+11. Runs social validation and updates bounded memory.
 
 It never calls X endpoints. Ordinary web research can inspect public editorial
 sources without X API cost. Community claims require official confirmation.
+Health repairs or escalates repeated bundle-build, receipt, run-binding, or
+subject-binding operational failures that prevent a handled pair.
 
 ## Quality Gate
 
@@ -67,7 +109,8 @@ A publish-worthy candidate:
 - states one concrete change and operator consequence;
 - uses source-backed Radar review and impact evidence, not queue metadata;
 - embeds the exact `radar_content_eligibility/v1` receipt and exact private queue,
-  review, and impact references;
+  review, and impact references, with the queue fixed to
+  `github/review-queue/openai-codex-latest.json`;
 - binds every factual claim to one verified Radar review or impact;
 - reconstructs public text exactly from ordered claims and fixed non-factual
   connective segments;
@@ -129,11 +172,16 @@ personal data, and public text are excluded from automation memory.
 
 ## Social Artifact Retention
 
-Health is the only scheduled GC owner. Each Health cycle runs one `social gc`
-first, so journal recovery and the GC-owned bounded validation complete before
-ordinary validation. Health then runs one full `validate-social` readback. A GC
-validation failure or the final validation failure prevents a successful cleanup
-result.
+Health is the only scheduled GC owner. Before GC or ordinary validation, each
+Health cycle runs the Publisher content-v2 reset before the Radar content-v2 reset.
+On first activation, Publisher's zero-effect safety preflight therefore completes
+before Radar can delete evidence. After a valid marker exists, each command reads
+back only its fixed-root, lock, and marker authority, returns `already_active` with
+zero counts, and preserves current v2 state without collection inventory. Health
+then runs one
+`social gc`, so journal recovery and the GC-owned bounded validation complete
+before one full `validate-social` readback. A reset, GC, or final validation
+failure prevents a successful cleanup result.
 
 The fixed strategy window keeps the 14 most recent valid evidence-backed daily
 strategy changes and the 8 most recent valid weekly checkpoints. An additional
@@ -170,6 +218,10 @@ never archived to GitHub.
 ## Health Management
 
 `codex-upstream-health` is the manager for all five automations. Daily it checks:
+
+For the one-time v2 activation, Health first pauses all five definitions and proves
+that no managed task is active. It keeps them paused through reset and validation,
+then performs the final activation only after all checks succeed.
 
 - live definition drift and missing app metadata;
 - primary-cwd and `high` reasoning invariants;

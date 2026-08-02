@@ -25,17 +25,30 @@ of redoing the source pass.
 - An `upstream_review_queue/v1` subject, a `github_change_bundle/v1` under
   `.agent/automations/radar/cache/github/bundles/`, or enough GitHub PR or commit evidence to request or
   create one
+- The exact `radar_bundle_build_receipt/v1` emitted for that bundle when Content
+  Manager owns the source-reading pass
 - Optional release or changelog context
 - Optional existing Decodex signal, upstream-impact, or release-delta artifacts
 
 This skill may produce an `upstream_review/v1` and matching `upstream_impact/v1` when
 Codex automation is processing the continuous review queue. Put the pair in one
-`radar_content_review_pair_staging/v1` document. Use `radar content-pair-commit` to
-create the authoritative pair. Do not write authoritative review and impact files
-separately. In staging, set `impact.review_lineage.artifact_sha256` to exactly 64
-zeroes. This is a non-authoritative sentinel. Do not serialize or hash the review;
-Radar inserts the final byte digest. Keep ad hoc manual notes in-session unless they
-are promoted into a committed pair, `analysis_draft`, or
+`radar_content_review_pair_staging/v2` document. Use `radar content-pair-commit` with
+the exact run-owned staging path to create the authoritative pair. Radar derives the
+exact lowercase UUID from process `CODEX_THREAD_ID`; no run-ID option exists. Do not
+write authoritative review and impact files separately. In staging, set
+`impact.review_lineage.artifact_sha256` to exactly 64 zeroes and include the exact
+build receipt unchanged. For a positive patch-excerpt count with a usable anchor,
+include one `patch_anchor` with the exact bundle file path and authoritative kind
+`implementation` or `test`. Cite it in both evidence arrays as `<path>: <claim>`. A
+defer or skip pair with no usable anchor instead uses the closed
+`patch_anchor_limitation` contract and its single exact evidence item. A zero count
+requires defer or skip, `publisher_angle = "none"`, and the structured
+`no_patch_excerpts` limitation with its single exact evidence item. Include the exact
+`review-next` `selection_sha256` in staging. These are non-authoritative staging
+inputs. Radar recomputes that selection and validates the selected subject, run
+bundle, and staging effect before it inserts the final review digest. V1 staging is
+retired without migration or a dual reader. Keep ad hoc manual notes
+in-session unless they are promoted into a committed pair, `analysis_draft`, or
 `control_plane_upgrade_candidate/v1`.
 
 ## Analysis Loop
@@ -49,7 +62,19 @@ are promoted into a committed pair, `analysis_draft`, or
 2. Follow the runtime path.
    - Start from the PR title/body when `analysis_mode = "pr_first"`.
    - Use changed files and patch excerpts to locate the actual behavior boundary.
-   - Use tests and docs as confirmation, not as the only proof.
+   - Require the SHA-256, byte count, analysis mode, and structural counts from the
+     single bundle read to match the exact build receipt before parsing. A nonzero
+     `patch_excerpt_count` requires one concrete patch-backed implementation or test
+     anchor for publication. A zero count cannot publish or support an invented
+     patch-backed implementation claim.
+   - Classify anchors from a conservative allowlist of source, protocol, and config
+     extensions after excluding tests, documentation, examples, website, content, and
+     guide paths. Unknown extensions and names use the nonpublishable limitation path.
+   - Commit a receipt-valid review and impact pair even when its publication decision
+     is defer or skip. When no usable implementation or test anchor exists, record the
+     exact structured limitation instead of leaving the subject unhandled.
+   - A patch-backed test can be the primary anchor when it directly proves the
+     changed behavior. Use documentation only as confirmation.
    - Read enough surrounding code to know whether the change is shipped behavior,
      plumbing, guardrail, or cleanup.
 
