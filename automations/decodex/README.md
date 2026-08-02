@@ -75,7 +75,10 @@ Content Manager records a bounded operations review in memory each day. It write
 a strategy artifact only for the weekly checkpoint or an evidence-backed change,
 so daily review cannot consume the candidate slot. Numeric threshold changes
 require at least three valid 24-hour outcomes. CodexRadar and public release
-content are discovery and editorial inputs, not technical evidence.
+content are discovery and editorial inputs, not technical evidence. Content Manager
+passes the successful queue refresh report's exact `queue_sha256` to
+`review-next --expected-queue-sha256` and uses that same digest for pair staging. It
+never stores a queue SHA-256 in automation memory.
 
 ## Private State
 

@@ -31,13 +31,19 @@ fn review_next_with_hook(
 	if request.max_age_hours == 0 {
 		eyre::bail!("source freshness limit must be at least one hour");
 	}
+	validate_expected_queue_sha256(&request.expected_queue_sha256)?;
 
 	let queue_relative = Path::new(crate::paths::REVIEW_QUEUE_RELATIVE_PATH);
 	let cache = crate::private_fs::PrivateCache::open_existing(&request.cache_root)?;
 	let lock = cache.lock()?;
 	let raw = lock.read(queue_relative)?;
+	let queue_sha256 = sha256_hex(&raw);
+
+	if queue_sha256 != request.expected_queue_sha256 {
+		eyre::bail!("Review queue SHA-256 does not match the refresh receipt");
+	}
 	let queue = parse_current_queue(request, queue_relative, &raw)?;
-	let queue_generation = queue_generation(&queue, queue_relative, &raw)?;
+	let queue_generation = queue_generation(&queue, queue_relative, queue_sha256)?;
 	let handled = crate::content_pair::handled_subjects(&lock, &raw)?;
 	let handled_state_sha256 = crate::content_pair::handled_state_sha256(&handled)?;
 	let candidates = triage_subjects(&queue)?;
@@ -127,7 +133,7 @@ fn validate_generated_artifact(label: &str, schema: &str, payload: &Value) -> Re
 fn queue_generation(
 	queue: &Value,
 	queue_relative: &Path,
-	raw: &[u8],
+	queue_sha256: String,
 ) -> Result<RadarQueueGeneration> {
 	let queue = crate::object_value(queue, "review queue")?;
 	let source = queue
@@ -137,10 +143,21 @@ fn queue_generation(
 
 	Ok(RadarQueueGeneration {
 		queue_ref: relative_ref(queue_relative),
-		sha256: sha256_hex(raw),
+		sha256: queue_sha256,
 		generated_at: bounded_string(queue, "generated_at", "review queue generated_at", 64)?,
 		upstream_head: bounded_string(source, "upstream_head", "review queue upstream head", 64)?,
 	})
+}
+
+fn validate_expected_queue_sha256(value: &str) -> Result<()> {
+	if value.len() != 64
+		|| !value.bytes().all(|byte| byte.is_ascii_hexdigit())
+		|| value.bytes().any(|byte| byte.is_ascii_uppercase())
+	{
+		eyre::bail!("expected queue SHA-256 must be 64 lowercase hexadecimal characters");
+	}
+
+	Ok(())
 }
 
 fn triage_subjects(queue: &Value) -> Result<Vec<Value>> {

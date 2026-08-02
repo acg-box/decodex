@@ -24,13 +24,15 @@ permits at most one post per UTC day.
 
 Content Manager owns product operations and marketing decisions. Each run:
 
-1. Refreshes Radar upstream queue and release delta.
+1. Refreshes the Radar upstream queue first, binds the successful report's exact
+   `queue_sha256`, and then refreshes the release delta.
 2. Validates current Radar and social state.
 3. Reads official OpenAI sources, `openai/codex`, landed Decodex evidence, and
    current outcomes.
 4. Uses CodexRadar at most once per business day as a secondary discovery source.
-5. Runs `radar review-next` once. This deterministic command selects one current
-   queue subject but cannot make it publish eligible.
+5. Runs `radar review-next --expected-queue-sha256 <refresh-receipt-sha256>` once.
+   The command compares the receipt with the locked queue bytes before selection. It
+   selects one current queue subject but cannot make it publish eligible.
 6. For `needs_source_review`, builds one GitHub change bundle and performs one
    bounded source-reading pass. It follows the runtime path and requires a concrete
    implementation, test, documentation, or schema anchor plus a user or operator
@@ -42,7 +44,8 @@ Content Manager owns product operations and marketing decisions. Each run:
    runs `radar content-eligibility` once only when the committed pair supports a
    public claim. Metadata-only selection, invalid staging, or invalid lineage
    cannot produce a candidate.
-8. Records the daily operations review in bounded memory. It creates one private
+8. Records the daily operations review in bounded memory without any queue SHA-256.
+   It creates one private
    mode-0600 staging artifact only for a weekly strategy checkpoint, an
    evidence-backed strategy change, one `social_candidate/v1`, or one precise
    skip candidate. A no-op creates no artifact.

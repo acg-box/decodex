@@ -752,6 +752,58 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 		)
 		self.assertNotIn("their exact role model, and `high`", health)
 
+	def test_content_manager_prompt_defines_runtime_memory_grammar(self) -> None:
+		prompt = (
+			REPO_ROOT / "automations/decodex/prompts/content-manager.md"
+		).read_text(encoding="utf-8")
+		normalized = " ".join(prompt.split())
+
+		self.assertIn(
+			"Write 2 to 32 non-empty lines. Limit each line to 512 "
+			"characters. Do not write blank lines.",
+			normalized,
+		)
+
+	def test_content_manager_binds_review_to_the_refresh_queue_digest(self) -> None:
+		prompt = (
+			REPO_ROOT / "automations/decodex/prompts/content-manager.md"
+		).read_text(encoding="utf-8")
+		normalized = " ".join(prompt.split())
+		refresh = normalized.index(
+			"Run `<radar> refresh-upstream-queue` by itself first."
+		)
+		review = normalized.index(
+			"<radar> review-next --cache-root .agent/automations/radar/cache "
+			"--expected-queue-sha256 <refreshed_queue_sha256>"
+		)
+		staging = normalized.index(
+			"set staging `queue_sha256` to `<refreshed_queue_sha256>` exactly"
+		)
+
+		self.assertLess(refresh, review)
+		self.assertLess(review, staging)
+		self.assertIn("Require `written = true`", normalized)
+		self.assertIn(
+			"bind only this command's exact `queue_sha256` report value as "
+			"`<refreshed_queue_sha256>`",
+			normalized,
+		)
+		self.assertIn(
+			"Never take this value from memory, an older review pair, or any other artifact.",
+			normalized,
+		)
+		self.assertIn(
+			"use a queue SHA-256 value found there as command or artifact input",
+			normalized,
+		)
+		self.assertIn(
+			"Require `queue_generation.sha256` to equal "
+			"`<refreshed_queue_sha256>` exactly.",
+			normalized,
+		)
+		self.assertIn("queue SHA-256 values, or absolute local paths", normalized)
+		self.assertNotIn("`queue_sha256` to the exact selected queue digest", prompt)
+
 	def test_runtime_memory_is_private_bounded_and_role_scoped(self) -> None:
 		with tempfile.TemporaryDirectory() as directory:
 			automation_root = Path(directory)
@@ -791,6 +843,44 @@ class UpstreamAutomationConfigTests(unittest.TestCase):
 			self.assertIn(
 				"runtime memory must be absent for this automation",
 				result.errors,
+			)
+
+	def test_content_manager_runtime_memory_rejects_blank_lines(self) -> None:
+		with tempfile.TemporaryDirectory() as directory:
+			automation_root = Path(directory)
+			memory = automation_root / "memory.md"
+			memory.write_text(
+				"Date: 2026-08-02\n"
+				"Result: quality_skip_recorded\n"
+				"Evidence IDs: radar-review-1\n"
+				"Candidate or skip ID: candidate-1\n"
+				"Repeated quality cause: unsupported_claim\n"
+				"Next review: 2026-08-03\n",
+				encoding="utf-8",
+			)
+			memory.chmod(0o600)
+			result = AutomationResult("decodex-content-manager")
+			validate_runtime_memory(
+				"decodex-content-manager",
+				automation_root,
+				result,
+			)
+			self.assertEqual(result.status, "pass")
+
+			memory.write_text(
+				"Date: 2026-08-02\n\n"
+				"Result: quality_skip_recorded\n",
+				encoding="utf-8",
+			)
+			result = AutomationResult("decodex-content-manager")
+			validate_runtime_memory(
+				"decodex-content-manager",
+				automation_root,
+				result,
+			)
+			self.assertEqual(
+				result.errors,
+				["runtime memory content is not bounded and private"],
 			)
 
 	def test_native_plan_cannot_write_scheduler_runtime(self) -> None:

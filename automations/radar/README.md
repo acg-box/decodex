@@ -79,13 +79,16 @@ rejects mixed private-cache and external input sets. Its
 SHA-256 values, the normalized commit set, upstream head, and canonical lineage
 SHA-256. It does not create social artifacts or publish content.
 
-`radar review-next` validates committed handled state and deterministically skips
-repository, subject, and normalized commit-set identities that already have one valid
-pair. Queue upstream-head changes do not repeat a handled review; commit-set changes
-do. The report binds the handled count and handled-state SHA-256. Malformed,
-duplicate, or ambiguous handled state fails closed.
+`radar review-next` requires `--expected-queue-sha256` from the preceding successful
+queue refresh report. It compares that receipt with the currently locked queue bytes
+before it validates committed handled state or selects a subject. It deterministically
+skips repository, subject, and normalized commit-set identities that already have one
+valid pair. Queue upstream-head changes do not repeat a handled review; commit-set
+changes do. The report binds the handled count and handled-state SHA-256. Malformed,
+duplicate, ambiguous, or refresh-mismatched state fails closed.
 
 Every queue or release-delta refresh reports whether material content changed,
 whether the artifact was written, and the successful refresh time. A
-freshness-only write remains observable. One lock covers comparison and replacement,
-and an older observation cannot overwrite a newer one.
+queue refresh also reports the exact canonical queue-byte SHA-256. A freshness-only
+write remains observable. One lock covers comparison and replacement, and an older
+observation cannot overwrite a newer one.

@@ -42,6 +42,9 @@ pub(in crate::cli) struct RadarReviewNextCommand {
 		default_value = crate::paths::DEFAULT_CACHE_ROOT
 	)]
 	cache_root: PathBuf,
+	/// Queue SHA-256 returned by the successful refresh-upstream-queue command.
+	#[arg(long, value_name = "SHA256")]
+	expected_queue_sha256: String,
 	#[arg(long, value_name = "HOURS", default_value_t = DEFAULT_SOURCE_MAX_AGE_HOURS)]
 	max_age_hours: u64,
 }
@@ -49,6 +52,7 @@ impl RadarReviewNextCommand {
 	pub(in crate::cli::commands) fn run(&self) -> Result<()> {
 		let report = crate::review_next(&RadarReviewNextRequest {
 			cache_root: self.cache_root.clone(),
+			expected_queue_sha256: self.expected_queue_sha256.clone(),
 			max_age_hours: self.max_age_hours,
 		})?;
 
