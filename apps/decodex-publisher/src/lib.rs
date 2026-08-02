@@ -2,6 +2,7 @@
 
 mod cli;
 mod filesystem;
+mod social_activation;
 mod social_clock;
 mod social_contracts;
 mod social_evidence;
@@ -24,6 +25,7 @@ pub(crate) use self::{
 		replace_existing_json, repo_root, require_contained_regular_file, resolve_against,
 		write_new_json,
 	},
+	social_activation::{SocialContentV2ResetRequest, reset_social_content_v2},
 	social_clock::SocialClock,
 	social_contracts::{
 		SocialGcReport, SocialGcRequest, SocialObserveXurlReport, SocialObserveXurlRequest,

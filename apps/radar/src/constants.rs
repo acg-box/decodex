@@ -5,6 +5,7 @@ use reqwest::StatusCode;
 use crate::paths;
 
 pub(crate) const BUNDLE_SCHEMA: &str = "github_change_bundle/v1";
+pub(crate) const BUNDLE_BUILD_RECEIPT_SCHEMA: &str = "radar_bundle_build_receipt/v1";
 pub(crate) const CACHE_MAX_AGE_DAYS: u64 = 30;
 pub(crate) const CACHE_MAX_BYTES_PER_COLLECTION: u64 = 64 * 1024 * 1024;
 pub(crate) const CACHE_MAX_FILES_PER_COLLECTION: usize = 256;

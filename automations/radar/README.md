@@ -21,6 +21,14 @@ Radar owns upstream evidence, `upstream_review/v1`, `upstream_impact/v1`,
 `control_plane_upgrade_candidate/v1` artifacts. It does not own Decodex runtime
 commands or Decodex social publication artifacts.
 
+`radar bundle build` derives the run from process `CODEX_THREAD_ID`, accepts only the
+exact private `github/bundles/<run>.json` cache path, and emits one bounded
+`radar_bundle_build_receipt/v1` only
+after the deterministic bundle is installed, read back byte-for-byte, and validated.
+The receipt carries the exact SHA-256, byte count, analysis mode, and structural
+counts. It carries no source body, patch text, credential, source identity, or local
+path. Content Manager must bind this exact receipt to its one bundle-reading pass.
+
 Decodex Publisher consumes Radar handoff evidence and owns
 `social_candidate/v1`, `social_publish_reservation/v1`, `social_post/v1`, and
 `social_outcome/v1` under `.agent/automations/decodex/cache/social`. Content Manager
@@ -60,17 +68,31 @@ descriptor, operates on it in memory, and atomically replaces it through that
 descriptor while the cache lock remains held.
 
 `radar content-pair-commit` is the only authoritative review-pair writer. It accepts
-one create-only mode-`0600` `radar_content_review_pair_staging/v1` file from the fixed
-staging root. The staged impact must use exactly 64 zeroes for
+one create-only mode-`0600` `radar_content_review_pair_staging/v2` file from the fixed
+staging root and derives the same lowercase UUID from process `CODEX_THREAD_ID`. V2 is
+a clean-start contract: v1 staging is rejected without migration or a dual reader.
+Staging includes the exact `review-next` selection SHA-256 and run-bundle receipt. A publish decision requires one
+structured implementation or test anchor cited as exact `<path>: <claim>` evidence
+by both artifacts. A positive-count defer or skip may instead carry the closed
+no-usable-anchor limitation; a zero count must defer or skip and carry the structured
+`no_patch_excerpts` limitation. Limitation evidence is one canonical item in each
+artifact and `publisher_angle` is `none`. Radar recomputes the current deterministic
+selection and receipt, binds repo, analysis mode, subject, and commit set to that
+selection, and validates the anchor or limitation under the cache lock.
+The staged impact must use exactly 64 zeroes for
 `review_lineage.artifact_sha256`; this required sentinel is not authoritative. The
 caller does not serialize or hash the review. Radar serializes the final review,
 inserts its exact byte SHA-256 into the impact, validates current queue lineage, and
-atomically commits both artifacts in one run-owned directory. Exact retry recovers.
-Conflicting retry and duplicate subject fail closed. Staging is removed only after the
-installed pair is read back and confirmed.
+atomically commits both artifacts in one
+`<run_id>--<staging_sha256>--<pair_sha256>` directory. It recomputes the pair digest
+from the exact final artifact bytes on every scan. Exact retry recovers. Conflicting
+retry and duplicate subject fail closed. The staging and pair path contracts are
+new-only; `radar content-v2-reset` removes the retired content stores instead of
+reading them.
+Staging is removed only after the installed pair is read back and confirmed.
 
 `radar content-eligibility` is the one-subject handoff gate. It requires one current
-queue subject and one committed pair with a matching `upstream_review/v1` and
+subject from exactly `github/review-queue/openai-codex-latest.json` and one committed pair with a matching `upstream_review/v1` and
 `upstream_impact/v1` before it reports that the subject is eligible for downstream
 content consideration. Eligibility requires exact normalized commit sets and
 upstream head plus an impact binding to the review SHA-256 and review identity. It

@@ -155,7 +155,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/impact\\.json$"
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}--[0-9a-f]{64}--[0-9a-f]{64}/impact\\.json$"
           }
         },
         "upstream_reviews": {
@@ -163,7 +163,7 @@
           "minItems": 1,
           "items": {
             "type": "string",
-            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[A-Za-z0-9-]{1,64}--[0-9a-f]{64}/review\\.json$"
+            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}--[0-9a-f]{64}--[0-9a-f]{64}/review\\.json$"
           }
         },
         "urls": {

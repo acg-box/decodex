@@ -13,7 +13,7 @@ pub(in crate::release_delta::backfill) fn run_build_bundle(
 	out: &Path,
 	note: &str,
 ) -> Result<()> {
-	crate::build_bundle(&RadarBundleBuildRequest {
+	let build_request = RadarBundleBuildRequest {
 		repo: request.repo.clone(),
 		pr: Some(pr_number),
 		commit: None,
@@ -21,7 +21,10 @@ pub(in crate::release_delta::backfill) fn run_build_bundle(
 		token_env: request.token_env.clone(),
 		out: out.to_path_buf(),
 		notes: vec![note.to_owned()],
-	})?;
+	};
+	let bundle = crate::operations::build_bundle_payload(&build_request)?;
+
+	crate::write_json(out, &bundle)?;
 
 	Ok(())
 }

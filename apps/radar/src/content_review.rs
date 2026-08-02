@@ -9,6 +9,7 @@ use crate::{
 	RadarQueueGeneration, RadarReviewNextReport, RadarReviewNextRequest, RadarSelectedSubject,
 	RadarSourceRef, UPSTREAM_REVIEW_QUEUE_SCHEMA,
 	prelude::{Result, eyre},
+	private_fs::RadarCacheLock,
 };
 
 const REVIEW_NEXT_SCHEMA: &str = "radar_review_next/v1";
@@ -42,9 +43,33 @@ fn review_next_with_hook(
 	if queue_sha256 != request.expected_queue_sha256 {
 		eyre::bail!("Review queue SHA-256 does not match the refresh receipt");
 	}
-	let queue = parse_current_queue(request, queue_relative, &raw)?;
+	review_next_under_lock_with_hook(&lock, &raw, request.max_age_hours, None, after_selection)
+}
+
+pub(crate) fn review_next_under_lock(
+	lock: &RadarCacheLock,
+	raw: &[u8],
+	max_age_hours: u64,
+	excluded_pair: Option<&Path>,
+) -> Result<RadarReviewNextReport> {
+	review_next_under_lock_with_hook(lock, raw, max_age_hours, excluded_pair, || {})
+}
+
+fn review_next_under_lock_with_hook(
+	lock: &RadarCacheLock,
+	raw: &[u8],
+	max_age_hours: u64,
+	excluded_pair: Option<&Path>,
+	after_selection: impl FnOnce(),
+) -> Result<RadarReviewNextReport> {
+	if max_age_hours == 0 {
+		eyre::bail!("source freshness limit must be at least one hour");
+	}
+	let queue_relative = Path::new(crate::paths::REVIEW_QUEUE_RELATIVE_PATH);
+	let queue_sha256 = sha256_hex(raw);
+	let queue = parse_current_queue(max_age_hours, queue_relative, raw)?;
 	let queue_generation = queue_generation(&queue, queue_relative, queue_sha256)?;
-	let handled = crate::content_pair::handled_subjects(&lock, &raw)?;
+	let handled = crate::content_pair::handled_subjects_excluding(lock, raw, excluded_pair)?;
 	let handled_state_sha256 = crate::content_pair::handled_state_sha256(&handled)?;
 	let candidates = triage_subjects(&queue)?;
 	let selected = candidates
@@ -94,11 +119,7 @@ pub(crate) fn review_next_with_selection_hook(
 	review_next_with_hook(request, after_selection)
 }
 
-fn parse_current_queue(
-	request: &RadarReviewNextRequest,
-	queue_relative: &Path,
-	raw: &[u8],
-) -> Result<Value> {
+fn parse_current_queue(max_age_hours: u64, queue_relative: &Path, raw: &[u8]) -> Result<Value> {
 	let queue: Value = serde_json::from_slice(raw)
 		.map_err(|error| eyre::eyre!("Review queue contains invalid JSON: {error}"))?;
 
@@ -108,7 +129,7 @@ fn parse_current_queue(
 	crate::validate_source_freshness(
 		queue_relative,
 		&queue,
-		request.max_age_hours,
+		max_age_hours,
 		crate::OffsetDateTime::now_utc(),
 		&mut freshness_errors,
 	);
