@@ -577,7 +577,7 @@ V23 before a fresh fence can authorize one spawn. Intent, launch manifest, prepa
 transition, and readback carry the same non-secret binding. No new process or effect ledger is
 added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
-The current lifetime profile accepts only the recorded macOS `codex-cli 0.146.0-alpha.3.1` image. It
+The current lifetime profile accepts only the recorded macOS `codex-cli 0.146.0-alpha.9.2` image. It
 sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
 argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
 raw channels privately for lifetime ownership, and no returned ProcessGeneration capability

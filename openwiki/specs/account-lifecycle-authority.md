@@ -247,7 +247,7 @@ Codex build must prove all of these facts:
   bound to launch authority.
 
 Unsupported, unprobed, contradictory, or changed builds fail closed. The current exact
-`codex-cli 0.146.0-alpha.3.1` adapter services the root refresh request through the Account
+`codex-cli 0.146.0-alpha.9.2` adapter services the root refresh request through the Account
 Service and returns the root refresh response. This source capability can satisfy
 `AccountLifecycle`, `MacDogfoodReady`, and runner readiness only when the exact-image,
 generated-schema, and live callback preflights also pass. Initial token projection alone is
@@ -343,7 +343,7 @@ fields are absent when the provider or current credential does not supply them.
 The product has no legacy-account migration mode. Normal startup and installation do
 not read an old account pool, mapping, helper, environment projection, migration
 manifest, or migration receipt. V27 is the landed clean-break account schema in the
-current V1–V31 migration ledger and accepts only an empty Account Registry. A populated
+current V1–V32 migration ledger and accepts only an empty Account Registry. A populated
 older registry requires a fresh local product database.
 
 An operator can move credentials once by creating owner-private

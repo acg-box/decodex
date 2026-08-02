@@ -904,13 +904,16 @@ conflicts, scripted fake server, structural history/collaboration-schema rejecti
 production command construction, bounded executable/preflight/schema/frame/queue/result
 inputs, timeout and descendant/orphan cleanup, typed or hashed untrusted event strings,
 shared-home/account re-attestation, redacted debug surfaces, and default-disabled dispatch.
-The accepted marker now binds Codex CLI `0.146.0-alpha.3.1` to
+The accepted marker now binds Codex CLI `0.146.0-alpha.9.2` to
 `ClientRequest.json` digest
-`ee9fcbf5c0b3af8526dea54d3c1c7a6ca480f0847b049b9b7d4cde00ddd82735`,
+`6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4`,
 `ServerNotification.json` digest
-`189dc3b9bf8e96a115cf1102e60c379d8e34382ddca2868d1b2b46847d122166`, and
+`abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02`, and
 aggregate v2 schema digest
-`2ad5e818b870a6a26387678bbe276e4c67b3b078f6ac03143fba623b0969605d`.
+`e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc`.
+It also pins `ServerRequest.json`, `v2/LoginAccountParams.json`, both root refresh schemas,
+`v2/ThreadReadResponse.json`, and `v2/ThreadStartParams.json` to the digests in the
+[exact image receipt](../evidence/xy-1422-codex-0146-account-callback.md).
 Codex CLI release `rust-v0.145.0` is rejected as an obsolete exact build. Its
 `ClientRequest.json`, `ServerNotification.json`, and aggregate v2 schema digests are
 `92085c18742dd355e5afa7d570170c74629635082e8e3341a952068735dc28b2`,
@@ -923,12 +926,13 @@ build. Its three digests are
 `5ff4540622e002308ad5e6bac6df49b7ab5d52d79c8f71537b1098951b946b2d`.
 No compatibility shim for either release is retained. The previously accepted
 three-digest set is also rejected as an incompatible build.
-The ignored live test is strictly read-only: `initialize`, `initialized`, `account/read`,
-bounded `thread/list(useStateDbOnly=true)`, optional exact-ID
-`thread/read(includeTurns=false)`, and fixed-nonmatching-term bounded `thread/search`.
-The optional probes prove method availability only and do not establish global title
-discovery. Do not replace the live test with excluded v0.2 `decodex probe stdio://`, which
-starts a proof turn.
+The ignored live test is strictly read-only: `initialize`, `initialized`, `account/read`, and
+bounded `thread/list(useStateDbOnly=true)` with a fixed nonmatching search term. It sends optional
+exact-ID `thread/read(includeTurns=false)` only if the filtered list unexpectedly returns a thread.
+The exact `alpha.9.2` schema advertises `thread/search`, but the method did not return during the
+bounded live check. The test does not invoke it and records it as `not_probed`. These probes do not
+establish global title discovery. Do not replace the live test with excluded v0.2
+`decodex probe stdio://`, which starts a proof turn.
 
 ## Plugin and automation checks
 

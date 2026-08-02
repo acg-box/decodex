@@ -110,6 +110,7 @@ pub struct InitializeResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListParams {
+	pub search_term: &'static str,
 	pub limit: u32,
 	pub use_state_db_only: bool,
 }
@@ -184,21 +185,6 @@ pub struct ThreadArchiveParams<'a> {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ThreadArchiveResponse {}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadSearchParams<'a> {
-	pub search_term: &'a str,
-	pub limit: u32,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ThreadSearchResponse {
-	pub data: Vec<ProtocolThread>,
-	#[serde(rename = "nextCursor")]
-	pub _next_cursor: Option<SensitiveString>,
-}
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
