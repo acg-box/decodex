@@ -96,10 +96,10 @@ class PortfolioTests(unittest.TestCase):
             "codex-upstream-health": ("successful manager audit",),
             "decodex-content-manager": ("validated content candidate", "validated content no-op"),
             "decodex-xurl-publisher": (
-                "quality skip",
-                "no-due result",
-                "exact-readback publish",
-                "observed outcome",
+                "completed observation",
+                "publish with exact readback",
+                "durable quality skip",
+                "validated no-candidate no-op",
             ),
         }
         shared_contract = (
@@ -128,6 +128,12 @@ class PortfolioTests(unittest.TestCase):
         self.assertNotIn("list_threads", manager)
         self.assertNotIn("sqlite", manager)
         self.assertNotIn("database", manager)
+
+        publisher = prompts["decodex-xurl-publisher"]
+        self.assertIn("`no_due_outcome` alone is continuation-only and not terminal", publisher)
+        self.assertIn("never a terminal outcome", publisher)
+        self.assertIn("never sufficient to archive", publisher)
+        self.assertIn("only after `publish-next` completes its candidate path", publisher)
 
     def test_advisory_memory_contracts(self) -> None:
         rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
@@ -207,7 +213,10 @@ class PortfolioTests(unittest.TestCase):
 
         publisher = " ".join(prompts["decodex-xurl-publisher"].split())
         self.assertIn("only if its exact status is `no_due_outcome`", publisher)
-        self.assertIn("Any other successful `observe-due` status ends paid work for the run", publisher)
+        self.assertIn("this status is continuation-only", publisher.casefold())
+        self.assertIn("complete the candidate path through `publish-next`", publisher)
+        self.assertIn("Any other successful `observe-due` status is a completed observation", publisher)
+        self.assertIn("ends paid work for the run", publisher)
         self.assertIn("--decision publish", publisher)
         self.assertIn('--decision skip --reason "$SKIP_REASON"', publisher)
         self.assertIn("bounded, evidence-backed reason", publisher)
