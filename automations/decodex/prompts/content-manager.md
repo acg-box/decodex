@@ -40,8 +40,13 @@ Workflow:
    experiment. Do not store post text or any prohibited memory content.
 
 Success and stop conditions:
-- End with one validated candidate, one validated no-op, or no write when another unconsumed candidate
-  already exists.
+- A validated content candidate, a validated content no-op, or a validated no-write result when another
+  unconsumed candidate exists is a successful terminal outcome.
 - Report sources, selected consequence, decision, validation, API calls `0`, and X spend `$0.000`.
-- Keep the task visible only for invalid hard-boundary evidence or an ambiguous external effect. Research
-  uncertainty is a normal no-op, not a human-attention condition.
+- Only after all required validation, readback, and report evidence is complete, call native
+  `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
+  the native current-task contract cannot archive another task. Never archive before evidence is complete.
+- Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
+  authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
+  user decision is unresolved; or any required action is not durably handed off.
+- Research uncertainty is a normal validated content no-op, not a human-attention condition.
