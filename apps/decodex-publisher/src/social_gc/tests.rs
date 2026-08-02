@@ -287,19 +287,7 @@ fn mismatched_publish_attempt_owner_is_retained_by_gc_plan() {
 #[test]
 fn complete_quality_skip_lineage_is_deleted_as_one_component() {
 	let fixture = Fixture::complete(OLD_TIMELINE);
-	fixture.remove_everything_except(&[&fixture.candidate]);
-	let mut candidate = load(&fixture.candidate);
-	candidate["decision"]["worthiness"] = json!("skip");
-	candidate["decision"]["reason"] = json!("No material operator consequence.");
-	rewrite(&fixture.candidate, &candidate);
-	let skipped_post = fixture
-		.request
-		.posts_dir
-		.join(format!("{}.json", crate::social_publish::idempotency_digest(IDEMPOTENCY_KEY)));
-	write(
-		&skipped_post,
-		&skipped_post_payload(OLD_TIMELINE, &fixture.candidate_key(), &fixture.radar),
-	);
+	let skipped_post = fixture.replace_with_quality_skip(OLD_TIMELINE);
 
 	let report = gc_social_with(&fixture.request, GcPolicy::default(), || {}).expect("social GC");
 
@@ -307,6 +295,102 @@ fn complete_quality_skip_lineage_is_deleted_as_one_component() {
 	assert_eq!(report.deleted_files, 2);
 	assert!(!fixture.candidate.exists());
 	assert!(!skipped_post.exists());
+}
+
+#[test]
+fn current_day_quality_skip_validates_and_is_retained_by_window() {
+	let (fixture, skipped_post) = quality_skip_fixture("2026-08-02", "2026-08-02T12:00:00Z");
+
+	let checked_files = super::validate_default_state(&fixture.request)
+		.expect("current-day quality skip must pass default-state validation");
+	let report = gc_social_with(&fixture.request, GcPolicy::default(), || {})
+		.expect("current-day quality skip GC");
+
+	assert_eq!(checked_files, 2);
+	assert_eq!(report.deleted_lineages, 0);
+	assert_eq!(report.retained_lineages, 1);
+	assert!(report.reason_codes.contains(&"retention_window_retained".into()));
+	assert!(!report.reason_codes.contains(&"nonterminal_lineage_retained".into()));
+	assert!(fixture.candidate.exists());
+	assert!(skipped_post.exists());
+}
+
+#[test]
+fn future_day_quality_skip_fails_default_state_validation() {
+	let (fixture, skipped_post) = quality_skip_fixture("2026-08-03", "2026-08-02T12:00:00Z");
+
+	let error = super::validate_default_state(&fixture.request)
+		.expect_err("future-day quality skip must fail closed");
+
+	assert_eq!(error.to_string(), "social_gc_contract_invalid");
+	assert!(fixture.candidate.exists());
+	assert!(skipped_post.exists());
+}
+
+#[test]
+fn quality_skip_retention_anchor_is_utc_day_end_at_exact_ten_day_boundary() {
+	let (before_boundary, before_boundary_post) =
+		quality_skip_fixture("2026-06-01", "2026-06-11T23:59:59Z");
+	let retained = gc_social_with(&before_boundary.request, GcPolicy::default(), || {})
+		.expect("quality skip just inside retention window");
+
+	assert_eq!(retained.deleted_lineages, 0);
+	assert_eq!(retained.retained_lineages, 1);
+	assert!(retained.reason_codes.contains(&"retention_window_retained".into()));
+	assert!(before_boundary.candidate.exists());
+	assert!(before_boundary_post.exists());
+
+	let (at_boundary, at_boundary_post) =
+		quality_skip_fixture("2026-06-01", "2026-06-12T00:00:00Z");
+	let deleted = gc_social_with(&at_boundary.request, GcPolicy::default(), || {})
+		.expect("quality skip at exact retention boundary");
+
+	assert_eq!(deleted.deleted_lineages, 1);
+	assert_eq!(deleted.deleted_files, 2);
+	assert!(!at_boundary.candidate.exists());
+	assert!(!at_boundary_post.exists());
+}
+
+#[test]
+fn future_day_quality_skip_honors_exact_five_minute_clock_skew() {
+	let (at_boundary, at_boundary_post) =
+		quality_skip_fixture("2026-08-03", "2026-08-02T23:55:00Z");
+	let checked_files = super::validate_default_state(&at_boundary.request)
+		.expect("future day exactly five minutes ahead must be accepted");
+	let retained = gc_social_with(&at_boundary.request, GcPolicy::default(), || {})
+		.expect("future day at the skew boundary must be a complete retained lineage");
+
+	assert_eq!(checked_files, 2);
+	assert_eq!(retained.deleted_lineages, 0);
+	assert_eq!(retained.retained_lineages, 1);
+	assert!(retained.reason_codes.contains(&"retention_window_retained".into()));
+	assert!(!retained.reason_codes.contains(&"nonterminal_lineage_retained".into()));
+	assert!(at_boundary.candidate.exists());
+	assert!(at_boundary_post.exists());
+
+	let (beyond_boundary, beyond_boundary_post) =
+		quality_skip_fixture("2026-08-03", "2026-08-02T23:54:59Z");
+	let error = super::validate_default_state(&beyond_boundary.request)
+		.expect_err("future day more than five minutes ahead must fail closed");
+
+	assert_eq!(error.to_string(), "social_gc_contract_invalid");
+	assert!(beyond_boundary.candidate.exists());
+	assert!(beyond_boundary_post.exists());
+}
+
+#[test]
+fn upper_bound_quality_skip_time_arithmetic_fails_closed_without_panic() {
+	for now in ["9999-12-31T12:00:00Z", "9999-12-31T23:59:59Z"] {
+		let (fixture, skipped_post) = quality_skip_fixture("9999-12-31", now);
+		let result = std::panic::catch_unwind(|| super::validate_default_state(&fixture.request));
+		let error = result
+			.expect("upper-bound quality skip validation must not panic")
+			.expect_err("upper-bound quality skip must fail closed");
+
+		assert_eq!(error.to_string(), "social_gc_contract_invalid");
+		assert!(fixture.candidate.exists());
+		assert!(skipped_post.exists());
+	}
 }
 
 #[test]
@@ -1051,6 +1135,20 @@ impl Fixture {
 		}
 	}
 
+	fn replace_with_quality_skip(&self, timeline: Timeline) -> PathBuf {
+		self.remove_everything_except(&[&self.candidate]);
+		let mut candidate = load(&self.candidate);
+		candidate["decision"]["worthiness"] = json!("skip");
+		candidate["decision"]["reason"] = json!("No material operator consequence.");
+		rewrite(&self.candidate, &candidate);
+		let skipped_post = self
+			.request
+			.posts_dir
+			.join(format!("{}.json", crate::social_publish::idempotency_digest(IDEMPOTENCY_KEY)));
+		write(&skipped_post, &skipped_post_payload(timeline, &self.candidate_key(), &self.radar));
+		skipped_post
+	}
+
 	fn candidate_key(&self) -> String {
 		key(&self.candidate)
 	}
@@ -1095,6 +1193,14 @@ impl Fixture {
 		);
 		path
 	}
+}
+
+fn quality_skip_fixture(day: &'static str, now: &'static str) -> (Fixture, PathBuf) {
+	let timeline = Timeline { day, posted_at: now, outcome_24h_at: now, outcome_7d_at: now, now };
+	let fixture = Fixture::complete(timeline);
+	let skipped_post = fixture.replace_with_quality_skip(timeline);
+
+	(fixture, skipped_post)
 }
 
 fn candidate_payload(radar: &RadarFixture) -> Value {
