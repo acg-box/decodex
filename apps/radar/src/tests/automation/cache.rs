@@ -378,6 +378,77 @@ fn private_cache_read_stops_at_the_bound_when_a_file_grows_after_metadata() {
 }
 
 #[test]
+fn private_entry_kind_rejects_replacement_between_snapshots() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let path =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let displaced = path.with_file_name("original-review.json");
+
+	private_file(&path, b"old", SystemTime::now());
+	let replacement = path.clone();
+	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+		fs::rename(&replacement, displaced).expect("original entry should be displaced");
+		private_file(&replacement, b"new", SystemTime::now());
+	})
+	.expect_err("entry replacement between snapshots must fail closed");
+
+	assert!(
+		error.to_string().contains("changed during metadata inspection"),
+		"unexpected replacement error: {error:?}"
+	);
+	assert_eq!(fs::read(path).expect("replacement entry should remain"), b"new");
+}
+
+#[test]
+fn private_entry_kind_rejects_disappearance_between_snapshots() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let path =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+
+	private_file(&path, b"old", SystemTime::now());
+	let removed = path.clone();
+	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+		fs::remove_file(removed).expect("entry should be removed after its first snapshot");
+	})
+	.expect_err("entry disappearance between snapshots must fail closed");
+
+	assert!(
+		error.to_string().contains("disappeared during metadata inspection"),
+		"unexpected disappearance error: {error:?}"
+	);
+	assert!(!path.exists());
+}
+
+#[test]
+fn private_entry_kind_rejects_symlink_substitution_between_snapshots() {
+	let temp_dir = crate::test_support::private_tempdir();
+	let path =
+		temp_dir.path().join(crate::DEFAULT_CACHE_ROOT).join("github/test-files/review.json");
+	let displaced = path.with_file_name("original-review.json");
+
+	private_file(&path, b"old", SystemTime::now());
+	let substitute = path.clone();
+	let target = displaced.clone();
+	let error = crate::private_fs::private_entry_kind_after_snapshot(&path, move || {
+		fs::rename(&substitute, &target).expect("original entry should be displaced");
+		std::os::unix::fs::symlink(&target, &substitute)
+			.expect("symlink substitute should be installed");
+	})
+	.expect_err("symlink substitution between snapshots must fail closed");
+
+	assert!(
+		error.to_string().contains("changed during metadata inspection"),
+		"unexpected symlink substitution error: {error:?}"
+	);
+	assert!(
+		fs::symlink_metadata(path)
+			.expect("symlink substitute should remain")
+			.file_type()
+			.is_symlink()
+	);
+}
+
+#[test]
 fn cache_lock_serializes_writers_and_gc_deletion_revalidates_identity() {
 	let temp_dir = crate::test_support::private_tempdir();
 	let root = temp_dir.path().join(crate::DEFAULT_CACHE_ROOT);
