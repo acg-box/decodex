@@ -7,9 +7,10 @@ use crate::{
 	DEFAULT_SOCIAL_OUTCOMES_DIR, DEFAULT_SOCIAL_POSTS_DIR, DEFAULT_SOCIAL_RESERVATIONS_DIR,
 	DEFAULT_SOCIAL_STAGING_DIR, DEFAULT_SOCIAL_STRATEGIES_DIR, DEFAULT_XURL_AUTH_CONTRACT_PATH,
 	SOCIAL_DAILY_LIMIT, SOCIAL_MONTHLY_BUDGET_MICROUSD, SOCIAL_TIMEZONE, SocialClock,
-	SocialGcRequest, SocialObserveXurlRequest, SocialPublishXurlRequest,
-	SocialReconcileXurlRequest, SocialRecordManagerRequest, SocialReservePublishRequest,
-	SocialSealXurlAuthRequest, SocialTerminalizeSkipRequest, prelude::Result,
+	SocialContentV2ResetRequest, SocialGcRequest, SocialObserveXurlRequest,
+	SocialPublishXurlRequest, SocialReconcileXurlRequest, SocialRecordManagerRequest,
+	SocialReservePublishRequest, SocialSealXurlAuthRequest, SocialTerminalizeSkipRequest,
+	prelude::Result,
 };
 
 #[derive(Debug, Args)]
@@ -21,6 +22,7 @@ impl SocialCommand {
 	pub(super) fn run(&self) -> Result<()> {
 		match &self.command {
 			SocialSubcommand::CostReport(args) => args.run(),
+			SocialSubcommand::ContentV2Reset(args) => args.run(),
 			SocialSubcommand::Gc(args) => args.run(),
 			SocialSubcommand::ObserveXurl(args) => args.run(),
 			SocialSubcommand::ProbeXurl(args) => args.run(),
@@ -31,6 +33,19 @@ impl SocialCommand {
 			SocialSubcommand::SealXurlAuth(args) => args.run(),
 			SocialSubcommand::TerminalizeSkip(args) => args.run(),
 		}
+	}
+}
+
+#[derive(Debug, Args)]
+struct SocialContentV2ResetCommand {}
+impl SocialContentV2ResetCommand {
+	fn run(&self) -> Result<()> {
+		let report = crate::reset_social_content_v2(&SocialContentV2ResetRequest {
+			root: crate::repo_root()?,
+		})?;
+		println!("{}", serde_json::to_string_pretty(&report)?);
+
+		Ok(())
 	}
 }
 
@@ -297,6 +312,8 @@ impl SocialPublishXurlCommand {
 
 #[derive(Debug, Subcommand)]
 enum SocialSubcommand {
+	/// Perform the one-time clean-start reset for strict content-review lineage.
+	ContentV2Reset(SocialContentV2ResetCommand),
 	/// Report bounded X cost ceilings and call counts for one billing month.
 	CostReport(SocialCostReportCommand),
 	/// Prune expired, complete social lineages and strategies under the state lock.

@@ -553,6 +553,6 @@ fn renders_signal_from_bundle_and_analysis_fixture() {
 	assert_eq!(rendered["slug"], "unix-sockets-for-remote-codex");
 	assert_eq!(rendered["published_at"], "2026-06-01T00:00:00Z");
 	assert_eq!(rendered["source_refs"]["items"][0]["meta"], serde_json::json!("#22414"));
-	assert_eq!(rendered["source_refs"]["items"][1]["meta"], "abc123");
+	assert_eq!(rendered["source_refs"]["items"][1]["meta"], "aaaaaaa");
 	assert!(rendered.get("how_to_try").is_none());
 }
