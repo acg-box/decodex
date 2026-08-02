@@ -30,8 +30,10 @@ Workflow:
    `decodex-publisher social observe-due --run-id "$CODEX_THREAD_ID"`. It may process at most one due
    24-hour or 7-day outcome. It owns deterministic selection, budget reservation, xurl read, exact
    author/text verification, idempotency, and evidence write.
-5. Continue only if its exact status is `no_due_outcome`. Any other successful `observe-due` status ends
-   paid work for the run; continue with validation and cost reporting.
+5. Continue only if its exact status is `no_due_outcome`. This status is continuation-only, never a
+   terminal outcome, and never sufficient to archive; complete the candidate path through `publish-next`.
+   Any other successful `observe-due` status is a completed observation that ends paid work for the run;
+   continue with validation and cost reporting.
 6. Inspect the oldest unconsumed content evidence and perform a final quality check. Publish only when
    every claim is source-backed, the consequence is concrete, the wording is original and useful without
    a link, and the topic is not repetitive.
@@ -49,8 +51,9 @@ Workflow:
    update.
 
 Success and stop conditions:
-- A quality skip, a no-due result, an exact-readback publish, an observed outcome, or a validated
-  no-candidate no-op is a successful terminal outcome.
+- A completed observation, a publish with exact readback, a durable quality skip, or a validated
+  no-candidate no-op reached only after `publish-next` completes its candidate path is a successful
+  terminal outcome. `no_due_outcome` alone is continuation-only and not terminal.
 - Report post/outcome ID, canonical URL when published, exact author/text readback status, pricing
   refresh status, `ordinary_https_get_count` as free, zero X API calls and cost, current-run ceiling,
   monthly reserved and remaining ceilings, and blocker.
