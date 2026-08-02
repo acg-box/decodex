@@ -184,14 +184,20 @@ auth file is unchanged. Provider keys, refresh tokens, GitHub tokens, SSH agents
 X credentials, MCP servers, plugins, browser control, lease authority, and Codex
 task tools are absent.
 
-The child returns one schema-constrained
-`decodex/codex-upstream-agent-result/2` value. Maintainer output is one bounded Git
-binary patch; Reviewer output has no patch. The child never writes state, a
-candidate worktree, or a handoff receipt. The trusted parent verifies the exact
-workspace manifest and patch digest, applies the patch to the unchanged candidate
-with `git apply --check --index --binary`, permits only regular file modes, rejects
-whitespace and unstaged or untracked residue, and authorizes every changed path for
-the candidate kind. It denies scheduler, GitHub Actions, authentication, landing,
+The child returns one strictly schema-constrained
+`decodex/codex-upstream-agent-wire-result/1` value. The host derives a role- and
+candidate-specific effective schema from the checked-in contract before each
+call. Maintainer output can only be `staged` with no findings and one bounded Git
+binary patch. Reviewer output has no patch and can only accept the current pull
+request, confirm the proposed decision, or request repair. The host validates and
+normalizes the wire value into an attested
+`decodex/codex-upstream-agent-result/2` receipt value. The child never writes
+state, a candidate worktree, or a handoff receipt. The trusted parent verifies the
+exact workspace manifest and patch digest, applies the patch to the unchanged
+candidate with `git apply --check --index --binary`, permits only regular file
+modes, rejects whitespace and unstaged or untracked residue, and authorizes every
+changed path for the candidate kind. It denies scheduler, GitHub Actions,
+authentication, landing,
 managed-repository, X execution, schema, and automation-control paths. An
 `automation_repair` can change the effect-free outcome evaluation module
 `upstream_autopilot_lib/effectiveness.py`. A separate retirement-only exception can
