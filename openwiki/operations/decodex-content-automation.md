@@ -83,9 +83,11 @@ decodex-publisher social observe-due --run-id "$CODEX_THREAD_ID"
 ```
 
 Proceed to editorial review only when the exact successful status is
-`no_due_outcome`. Any other successful `observe-due` status ends paid work for
-the run, followed by validation and cost reporting. The review either publishes
-or records a quality skip:
+`no_due_outcome`. This result is continuation-only, is never a terminal outcome,
+and is never sufficient to archive. The Publisher must complete the candidate
+path through `publish-next`. Any other successful `observe-due` status is a
+completed observation that ends paid work for the run, followed by validation
+and cost reporting. The review either publishes or records a quality skip:
 
 ```sh
 decodex-publisher social publish-next \
@@ -144,10 +146,12 @@ editorial improvement and verifies its later effect.
 
 Each content role archives its current Codex task through native
 `set_thread_archived` only after a terminal successful result and all required
-validation, readback, and report evidence are complete. Successful results are a
-validated candidate or no-op, a quality skip, a no-due result, an exact-readback
-publish, or an observed outcome. The current task ID is implicit; the role does
-not supply another task ID.
+validation, readback, and report evidence are complete. Content Manager success
+is a validated candidate or no-op. Publisher success is a completed observation,
+a publish with exact readback, a durable quality skip, or a validated no-candidate
+no-op reached only after `publish-next` completes its candidate path.
+`no_due_outcome` alone is continuation-only and never sufficient to archive. The
+current task ID is implicit; the role does not supply another task ID.
 
 A task stays visible for failed validation or checks, missing OAuth or authority,
 an ambiguous external effect, damaged safety state, an unresolved user decision,
