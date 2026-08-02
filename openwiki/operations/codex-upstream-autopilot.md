@@ -128,10 +128,20 @@ The Manager repairs native-definition drift directly through native automation
 tools and verifies full readback. Repository repairs use one ephemeral Sol/max
 subagent and the normal Maintainer/Reviewer PR path.
 
-The Manager uses native task listing and readback. It archives only a completed
-successful task that has terminal evidence and no unresolved external effect,
-failure, continuation, or decision request. Failed, active, ambiguous, and
-human-decision tasks stay visible.
+Each role is the primary cleanup owner for its current Codex task. After a
+terminal successful outcome, it completes all required validation, readback, and
+report evidence, then calls native `set_thread_archived` for the current task
+without supplying another task ID. It never archives before that evidence is
+complete. Successful outcomes include a source-backed no-op, a safely created or
+updated PR, durable review feedback, a signed landing, and a successful Manager
+audit.
+
+Failed validation, tests, checks, landing, or definition repair stay visible, as
+do missing authority or OAuth, ambiguous external effects, damaged safety state,
+unresolved user decisions, and work not durably handed off. Manager enforces this
+policy. It may inspect and archive one specifically known completed managed task
+only when bounded native readback for that exact task is available. Normal
+cleanup never depends on an unbounded global task scan.
 
 ## Human Stop Conditions
 

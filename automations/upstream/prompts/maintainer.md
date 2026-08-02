@@ -50,11 +50,17 @@ Workflow:
    head branch, exact head OID, body evidence, and checks. Remove the temporary worktree after push.
 
 Success:
-- End with either a source-backed no-change result or one open, tested, signed, deterministic PR.
+- A source-backed no-op or one safely created or updated, tested, signed, deterministic PR is a
+  successful terminal outcome.
 - A Reviewer repair request is normal work. Repair it autonomously on the same PR in the next run.
+- Only after all required validation, readback, and report evidence is complete, call native
+  `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
+  the native current-task contract cannot archive another task. Never archive before evidence is complete.
 
 Stop conditions:
-- Keep the task visible only for missing repository/GitHub authority, ambiguous destructive ownership,
-  or a decision that changes product policy. Ordinary code, test, rebase, or review failures are not
-  human-attention conditions.
+- Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
+  authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
+  user decision is unresolved; or any required action is not durably handed off.
+- Ordinary code, test, rebase, or review failures remain autonomous repair work, not human-attention
+  conditions. Archive only after a later successful terminal outcome satisfies the evidence gate above.
 - Report upstream head, decision, PR URL and head OID when present, tests, and zero X API spend.
