@@ -6,8 +6,8 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use super::{
 	ledger,
 	model::{
-		OBSERVATION_ATTEMPT_SCHEMA, READ_COST_MICROUSD, TARGET_ACCOUNT, XURL_APP, XurlCall,
-		XurlObservationAttempt,
+		MAX_OBSERVATION_RECOVERY_CALLS, OBSERVATION_ATTEMPT_SCHEMA, READ_COST_MICROUSD,
+		READ_RECOVERY_EXHAUSTED_STATUS, TARGET_ACCOUNT, XURL_APP, XurlCall, XurlObservationAttempt,
 	},
 	pricing, runtime,
 };
@@ -57,6 +57,11 @@ struct RecoveryPost {
 	text: String,
 	verified_user_id: String,
 	xurl_version: String,
+}
+
+enum OutcomeRecoveryEligibility {
+	Retry,
+	Exhausted,
 }
 
 pub(super) fn run(
@@ -224,6 +229,7 @@ pub(super) fn reconcile_safe_read(
 	attempt_path: &Path,
 	reconciled_at: OffsetDateTime,
 	binary_source: &super::reconcile::BinarySource,
+	require_pricing: bool,
 ) -> Result<SocialReconcileXurlReport> {
 	let mut recovery = prepare_outcome_recovery(request, attempt_path, reconciled_at)?;
 	if recovery.context.outcome_path.exists() {
@@ -231,8 +237,23 @@ pub(super) fn reconcile_safe_read(
 	}
 	validate_attempt(&recovery.attempt, &recovery.synthetic_request, &recovery.context)?;
 	require_monotonic_recovery_time(&recovery.attempt, reconciled_at)?;
-	require_eligible_outcome_recovery(request, &recovery.attempt)?;
+	if recovery.attempt.status == READ_RECOVERY_EXHAUSTED_STATUS {
+		return finalize_outcome_recovery_exhaustion(request, &mut recovery, 0);
+	}
+	if matches!(
+		require_eligible_outcome_recovery(request, &recovery.attempt)?,
+		OutcomeRecoveryEligibility::Exhausted
+	) || ledger::remaining_lineage_budget(
+		&recovery.context.attempts_dir,
+		&recovery.context.publication_lineage_sha256,
+	)? < READ_COST_MICROUSD
+	{
+		return finalize_outcome_recovery_exhaustion(request, &mut recovery, 0);
+	}
 	require_outcome_recovery_budget(request, &recovery)?;
+	if require_pricing {
+		pricing::require_current_at(reconciled_at)?;
+	}
 	let binary = binary_source.load()?;
 	let mut provenance = super::auth_contract::load_current_at(
 		&request.authorization_contract_path,
@@ -250,6 +271,60 @@ pub(super) fn reconcile_safe_read(
 		execute_outcome_recovery(request, attempt_path, &binary, &mut provenance, &mut recovery)?;
 	binary.require_command_time_remaining()?;
 	Ok(report)
+}
+
+pub(super) fn terminal_recovery(
+	attempt_path: &Path,
+	attempts_dir: &Path,
+	posts_dir: &Path,
+) -> Result<bool> {
+	let root = crate::repo_root()?;
+	let attempt_path = crate::resolve_against(&root, attempt_path);
+	let attempts_dir = crate::resolve_against(&root, attempts_dir);
+	crate::require_contained_regular_file(&attempt_path, &attempts_dir)
+		.map_err(|error| eyre::eyre!("terminal observation attempt is invalid: {error}"))?;
+	let attempt = ledger::load_observation_attempt(&attempt_path)?;
+	ledger::validate_observation_cost_record(&attempt)?;
+	if attempt.status != READ_RECOVERY_EXHAUSTED_STATUS {
+		return Ok(false);
+	}
+	let expected_key =
+		runtime::sha256(format!("{}\0{}", attempt.post_ref, attempt.window).as_bytes());
+	if attempt_path
+		!= attempts_dir.join(&attempt.billing_month).join(format!("observe-{expected_key}.json"))
+	{
+		return Err(eyre::eyre!("terminal observation attempt path is not canonical"));
+	}
+	let posts_dir = crate::resolve_against(&root, posts_dir);
+	let post_path = crate::resolve_against(&root, Path::new(&attempt.post_ref));
+	crate::require_contained_regular_file(&post_path, &posts_dir)
+		.map_err(|error| eyre::eyre!("terminal observation post is invalid: {error}"))?;
+	let (post, post_sha256) = crate::load_json_with_sha256(&post_path)?;
+	load_post(&post_path)?;
+	let publication = post
+		.get("publication")
+		.and_then(Value::as_object)
+		.ok_or_else(|| eyre::eyre!("terminal observation post has no publication"))?;
+	if required_object_string(publication, "post_id")? != attempt.post_id
+		|| required_object_string(publication, "publication_lineage_sha256")?
+			!= attempt.publication_lineage_sha256
+	{
+		return Err(eyre::eyre!("terminal observation attempt does not match its post"));
+	}
+	let reconciliation = attempt
+		.reconciliation
+		.as_ref()
+		.ok_or_else(|| eyre::eyre!("terminal observation recovery stamp is missing"))?;
+	if reconciliation.reconciled_at != attempt.updated_at {
+		return Err(eyre::eyre!("terminal observation recovery timestamp does not match"));
+	}
+	super::reconcile::validate_stamp(
+		reconciliation,
+		&attempt.run_id,
+		&attempt.post_ref,
+		&post_sha256,
+	)?;
+	Ok(true)
 }
 
 fn prepare_outcome_recovery(
@@ -371,7 +446,7 @@ fn load_recovery_post(
 fn require_eligible_outcome_recovery(
 	request: &SocialReconcileXurlRequest,
 	attempt: &XurlObservationAttempt,
-) -> Result<()> {
+) -> Result<OutcomeRecoveryEligibility> {
 	let recovery_count =
 		attempt.calls.iter().filter(|call| call.operation == "outcome_read_reconcile").count();
 	let last = attempt
@@ -380,22 +455,21 @@ fn require_eligible_outcome_recovery(
 		.ok_or_else(|| eyre::eyre!("outcome recovery attempt has no paid read"))?;
 	if !matches!(
 		attempt.status.as_str(),
-		"read_inflight" | "read_reconcile_inflight" | "read_reconcile_halted"
+		"read_inflight" | "read_reconcile_inflight" | "read_reconcile_halted" | "halted"
 	) || !matches!(last.operation.as_str(), "outcome_read" | "outcome_read_reconcile")
-		|| !matches!(last.status.as_str(), "inflight" | "failed")
-		|| last.response_sha256.is_some()
-		|| recovery_count >= 2
-		|| attempt
-			.calls
-			.iter()
-			.any(|call| call.operation_id.as_deref() == Some(&request.operation_id))
+		|| !matches!(last.status.as_str(), "inflight" | "failed" | "invalid" | "uncertain")
 	{
-		return Err(eyre::eyre!(
-			"interrupted outcome read recovery is ineligible, exhausted, or reuses an owner"
-		));
+		return Err(eyre::eyre!("interrupted outcome read recovery is ineligible"));
+	}
+	if recovery_count >= MAX_OBSERVATION_RECOVERY_CALLS {
+		return Ok(OutcomeRecoveryEligibility::Exhausted);
+	}
+	if attempt.calls.iter().any(|call| call.operation_id.as_deref() == Some(&request.operation_id))
+	{
+		return Err(eyre::eyre!("interrupted outcome read recovery reuses an owner"));
 	}
 
-	Ok(())
+	Ok(OutcomeRecoveryEligibility::Retry)
 }
 
 fn require_monotonic_recovery_time(
@@ -472,6 +546,9 @@ fn execute_outcome_recovery(
 					&request.reconciled_at,
 					None,
 				)?;
+				if outcome_recovery_exhausted(&recovery.attempt) {
+					return finalize_outcome_recovery_exhaustion(request, recovery, 1);
+				}
 				return Err(error);
 			},
 		};
@@ -493,6 +570,9 @@ fn execute_outcome_recovery(
 				&request.reconciled_at,
 				Some(runtime::sha256(&output.stdout)),
 			)?;
+			if outcome_recovery_exhausted(&recovery.attempt) {
+				return finalize_outcome_recovery_exhaustion(request, recovery, 1);
+			}
 			return Err(error);
 		},
 	};
@@ -530,6 +610,52 @@ fn execute_outcome_recovery(
 		artifact_path: &recovery.context.outcome_path,
 		attempt_path,
 		paid_call_count: 1,
+	}))
+}
+
+fn outcome_recovery_exhausted(attempt: &XurlObservationAttempt) -> bool {
+	attempt.calls.iter().filter(|call| call.operation == "outcome_read_reconcile").count()
+		>= MAX_OBSERVATION_RECOVERY_CALLS
+}
+
+fn finalize_outcome_recovery_exhaustion(
+	request: &SocialReconcileXurlRequest,
+	recovery: &mut OutcomeRecovery,
+	paid_call_count: u64,
+) -> Result<SocialReconcileXurlReport> {
+	let (post, post_sha256) = crate::load_json_with_sha256(&recovery.context.post_path)?;
+	if post != recovery.post {
+		return Err(eyre::eyre!("outcome recovery post changed before terminalization"));
+	}
+	let post_ref = crate::path_arg(&recovery.context.root, &recovery.context.post_path);
+	let changed = if let Some(stamp) = &recovery.attempt.reconciliation {
+		super::reconcile::validate_stamp(stamp, &recovery.attempt.run_id, &post_ref, &post_sha256)?;
+		false
+	} else {
+		let stamp = super::reconcile::stamp(
+			&request.operation_id,
+			&request.reconciled_at,
+			post_ref,
+			post_sha256,
+		);
+		ledger::terminalize_observation(
+			&recovery.context.attempt_path,
+			&mut recovery.attempt,
+			&request.reconciled_at,
+			stamp,
+		)?;
+		true
+	};
+
+	Ok(super::reconcile::report(super::reconcile::ReportInput {
+		status: if changed { "outcome_read_recovery_exhausted" } else { "already_terminal" },
+		kind: "outcome_read",
+		request,
+		original_run_id: &recovery.attempt.run_id,
+		root: &recovery.context.root,
+		artifact_path: &recovery.context.post_path,
+		attempt_path: &recovery.context.attempt_path,
+		paid_call_count,
 	}))
 }
 
@@ -820,7 +946,7 @@ fn load_post(path: &Path) -> Result<Value> {
 	{
 		return Err(eyre::eyre!("outcome observation requires a published social post"));
 	}
-	crate::social_evidence::validate_internal_evidence_files(&post)
+	crate::social_evidence::validate_source_evidence(&post)
 		.map_err(|error| eyre::eyre!("social post evidence failed validation: {error}"))?;
 
 	Ok(post)
@@ -844,14 +970,14 @@ fn validate_outcome_window(
 	window: &str,
 ) -> Result<()> {
 	let elapsed_hours = (observed_at - posted_at).whole_hours();
-	let allowed = match window {
-		"24h" => 23..=48,
-		"7d" => 167..=192,
+	let minimum_hours = match window {
+		"24h" => 23,
+		"7d" => 167,
 		_ => return Err(eyre::eyre!("window must be 24h or 7d")),
 	};
-	if !allowed.contains(&elapsed_hours) {
+	if elapsed_hours < minimum_hours {
 		return Err(eyre::eyre!(
-			"{window} observation is outside its allowed window: elapsed_hours={elapsed_hours}"
+			"{window} observation is before its earliest window: elapsed_hours={elapsed_hours}"
 		));
 	}
 
@@ -940,6 +1066,7 @@ fn validate_attempt(
 			"read_inflight"
 				| "read_reconcile_inflight"
 				| "read_reconcile_halted"
+				| READ_RECOVERY_EXHAUSTED_STATUS
 				| "halted" | "observed"
 		) || attempt.post_ref != crate::path_arg(&context.root, &context.post_path)
 		|| attempt.post_id != context.post_id

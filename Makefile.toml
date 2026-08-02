@@ -92,8 +92,8 @@ args = [
 # | check-rust        | command   |      |
 # | check-rust-headless | command |      |
 # | check-sandboxed   | composite |      |
-# | check-upstream-automation | composite | |
-# | check-upstream-automation-sandboxed | composite | |
+# | check-automations | composite | |
+# | check-automations-sandboxed | composite | |
 # | check-vnext-retained-title-preparation | command | |
 
 [tasks.check]
@@ -109,7 +109,7 @@ dependencies = [
 	"test",
 ]
 
-[tasks.check-upstream-automation]
+[tasks.check-automations]
 clear = true
 workspace = false
 dependencies = [
@@ -122,7 +122,7 @@ dependencies = [
 	"test-headless",
 ]
 
-[tasks.check-upstream-automation-sandboxed]
+[tasks.check-automations-sandboxed]
 clear = true
 workspace = false
 dependencies = [
@@ -440,10 +440,7 @@ command = "python3"
 args = [
 	"-m",
 	"unittest",
-	"automations.upstream.tests.test_upstream_autopilot",
-	"automations.upstream.tests.test_node_lock_audit",
-	"automations.decodex.scripts.config.tests.test_automation_checkout",
-	"automations.decodex.scripts.config.tests.test_upstream_automation_config",
+	"automations.decodex.scripts.config.tests.test_portfolio",
 ]
 
 [tasks.test-sandboxed]

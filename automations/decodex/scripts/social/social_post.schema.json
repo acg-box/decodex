@@ -99,19 +99,7 @@
           "required": ["reservations"]
         },
         {
-          "required": ["release_deltas"]
-        },
-        {
           "required": ["social_candidates"]
-        },
-        {
-          "required": ["signals"]
-        },
-        {
-          "required": ["upstream_impacts"]
-        },
-        {
-          "required": ["upstream_reviews"]
         },
         {
           "required": ["urls"]
@@ -119,14 +107,6 @@
       ],
       "properties": {
         "reservations": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "release_deltas": {
           "type": "array",
           "minItems": 1,
           "items": {
@@ -142,30 +122,6 @@
             "minLength": 1
           }
         },
-        "signals": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "minLength": 1
-          }
-        },
-        "upstream_impacts": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}--[0-9a-f]{64}--[0-9a-f]{64}/impact\\.json$"
-          }
-        },
-        "upstream_reviews": {
-          "type": "array",
-          "minItems": 1,
-          "items": {
-            "type": "string",
-            "pattern": "^\\.agent/automations/radar/cache/github/content-review-pairs/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}--[0-9a-f]{64}--[0-9a-f]{64}/review\\.json$"
-          }
-        },
         "urls": {
           "type": "array",
           "minItems": 1,
@@ -178,14 +134,7 @@
     },
     "evidence_digests": {
       "type": "object",
-      "maxProperties": 64,
-      "propertyNames": {
-        "pattern": "^[^/](?:.*\\.json)$"
-      },
-      "additionalProperties": {
-        "type": "string",
-        "pattern": "^[0-9a-f]{64}$"
-      }
+      "maxProperties": 0
     },
     "evidence_notes": {
       "type": "array",

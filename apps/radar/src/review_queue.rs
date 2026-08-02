@@ -5,7 +5,7 @@ mod commits;
 mod published;
 mod subjects;
 
-pub(crate) use self::{commits::RecentCommit, subjects::sort_queue_subjects};
+pub(crate) use self::commits::RecentCommit;
 
 use std::{collections::BTreeMap, path::Path};
 

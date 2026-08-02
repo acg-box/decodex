@@ -1,7 +1,7 @@
 [package]
 authors.workspace    = true
 categories           = []
-description          = "Decodex auxiliary publishing handoff tooling."
+description          = "Hard publication boundaries for Decodex content agents."
 edition.workspace    = true
 homepage.workspace   = true
 keywords             = ["decodex", "publisher", "social", "tooling"]

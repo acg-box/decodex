@@ -77,7 +77,6 @@ const SCHEMA_OBJECTS_SQL: &str = "
 	      'analysis',
 	      'signal',
 	      'upstream_impact',
-	      'control_plane_upgrade_candidate',
 	      'release_delta'
 	    )
 	  ),

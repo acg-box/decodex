@@ -20,10 +20,10 @@ formatting, lint, and tests (`Makefile.toml`). Use it before claiming broad read
 For documentation-only or narrow source changes, run the smallest relevant checks
 and state the narrowed scope.
 
-The autonomous Codex upstream loop has a headless gate for hosts without full Xcode:
+The agent automation portfolio has a headless gate for hosts without full Xcode:
 
 ```sh
-cargo make check-upstream-automation
+cargo make check-automations
 ```
 
 It excludes `decodex-gpui` from Rust check, lint, and test work but preserves the
@@ -45,7 +45,7 @@ bind their evidence to the exact commit and tree.
 | Purpose | Command |
 | --- | --- |
 | Broad repo check | `cargo make check` |
-| Autonomous upstream check outside GPUI/Apple build surfaces | `cargo make check-upstream-automation` |
+| Agent automation check outside GPUI/Apple build surfaces | `cargo make check-automations` |
 | Site advisory, provenance, and registry-signature audit | `cargo make audit-node` |
 | Rust type check | `cargo make check-rust` or `cargo check --all-features --all-targets --workspace` |
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
@@ -945,21 +945,18 @@ The Decodex plugin manifest declares runtime package include/exclude patterns.
 installing to `$CODEX_HOME/plugins/cache/hack-ink/decodex/<version>`, so
 source-only plugin tests are not copied into installed packages.
 
-Codex App automation sync and evaluation:
+Codex App automation rendering and evaluation:
 
 ```sh
 python3 automations/decodex/scripts/config/render_automation_plan.py --json
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/upstream/automations.toml
-python3 automations/decodex/scripts/config/evaluate_automations.py --manifest automations/decodex/automations.toml
-python3 -m unittest automations.upstream.tests.test_upstream_autopilot
+python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
+cargo make test-automations
 ```
 
-Automation source should stay portable: `{repo_root}` placeholders and relative paths
-in manifests. The current plan renderer emits three upstream tasks and two content
-tasks. It cannot write scheduler state. Apply the definitions only with the Codex
-native automation lifecycle tool, then read back each mutation. Codex App owns
-machine-local timestamps. Frozen v0.2 Decodex and Radar automation definitions were
-deleted and are not plan inputs.
+`automations/portfolio.toml` declares exactly three upstream roles and two content
+roles. The renderer and evaluator cannot write scheduler state. Apply definitions only
+with the native Codex automation lifecycle tool, then read back every field. Codex App
+owns machine-local timestamps.
 
 ## Static site checks
 

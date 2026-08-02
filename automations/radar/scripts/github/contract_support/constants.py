@@ -7,7 +7,6 @@ SIGNAL_SCHEMA = "signal_entry/v1"
 RELEASE_DELTA_SCHEMA = "release_delta/v1"
 UPSTREAM_REVIEW_QUEUE_SCHEMA = "upstream_review_queue/v1"
 UPSTREAM_REVIEW_SCHEMA = "upstream_review/v1"
-CONTROL_PLANE_UPGRADE_CANDIDATE_SCHEMA = "control_plane_upgrade_candidate/v1"
 ANALYSIS_MODES = {"pr_first", "commit_only"}
 SIGNAL_KINDS = {"capability", "behavior_change", "try_now"}
 SIGNAL_CONFIDENCE = {"confirmed", "likely", "weak"}
@@ -21,19 +20,7 @@ UPSTREAM_REVIEW_ACTION_TYPES = {
     "none",
     "upstream_impact",
     "signal_entry",
-    "control_plane_upgrade_candidate",
 }
-CONTROL_PLANE_UPGRADE_IMPACTS = {"adopt_now", "candidate", "compat_risk"}
-CONTROL_PLANE_UPGRADE_PATHS = {"adopt_now", "compat_risk_mitigation", "discovery"}
-CONTROL_PLANE_UPGRADE_STATUSES = {"blocked", "deferred", "proposed", "superseded"}
-CODEX_COMPATIBILITY_STATUSES = {
-    "compatible",
-    "incompatible",
-    "needs_review",
-    "not_tested",
-    "unknown",
-}
-CODEX_TARGET_CHANNELS = {"main", "preview", "stable"}
 ISSUE_REF_RE = re.compile(r"(?:^|[^\w])((?:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)?#\d+)")
 FLAG_RE = re.compile(
     r"(?<![\w-])(--[a-zA-Z0-9][\w-]*|[A-Z][A-Z0-9_]{2,}(?:=[^\s,`]+)?)"

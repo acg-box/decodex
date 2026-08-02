@@ -10,8 +10,8 @@ mod validation;
 
 use crate::{Value, prelude::Result};
 
+pub(crate) use evidence::install_bundle;
 #[cfg(test)] pub(crate) use evidence::install_bundle_after_write;
-pub(crate) use evidence::{bundle_evidence_from_bytes, install_bundle};
 
 pub(super) fn build_pr_bundle_from_sources(
 	repo: &str,

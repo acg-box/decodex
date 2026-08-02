@@ -11,8 +11,10 @@ use super::{
 	DIAGNOSTIC_SCHEMA, FAILURE_RECEIPT_NAME, FAILURE_RECEIPT_SCHEMA, OFFICIAL_PRICING_SOURCE,
 	PARSER_CONTRACT, PARSER_VERSION, RECEIPT_SCHEMA, XPricingFailureReceipt, XPricingRates,
 	XPricingReceipt, canonical_json_sha256, failure_integrity_sha256, integrity_sha256,
-	report_at_path, require_current_at_path,
+	refresh_at_path_with, report_at_path, require_current_at_path,
 };
+
+const CURRENT_FIXTURE: &str = include_str!("fixtures/current.md");
 
 fn at(value: &str) -> OffsetDateTime {
 	OffsetDateTime::parse(value, &Rfc3339).expect("test timestamp")
@@ -241,4 +243,142 @@ fn older_failure_is_ignored_but_malformed_or_unsafe_markers_fail_closed() {
 		.expect_err("unsafe failure marker")
 		.to_string();
 	assert!(error.contains("failure receipt is unavailable"), "{error}");
+}
+
+#[test]
+fn current_official_fixture_parses_and_refreshes_a_private_receipt_without_x_calls() {
+	let rates = super::parser::parse(CURRENT_FIXTURE.as_bytes()).expect("current fixture");
+	assert_eq!(rates, current_rates());
+
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let path = temp.path().join("private/x-pricing-receipt.json");
+	let report = refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || {
+		Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+	})
+	.expect("pricing refresh");
+	assert_eq!(report.status, "current");
+	assert_eq!(report.receipt_status, "current");
+	assert_eq!(report.ordinary_https_get_count, 1);
+	assert_eq!(report.x_api_call_count, 0);
+	assert_eq!(report.x_api_cost_microusd, 0);
+	assert_eq!(report.rates_microusd.expect("parsed rates").post_create, 15_000);
+	let metadata = fs::symlink_metadata(&path).expect("receipt metadata");
+	assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
+	require_current_at_path(&path, at("2026-08-03T23:59:59Z")).expect("renewed receipt is current");
+}
+
+#[test]
+fn malformed_and_duplicate_pricing_tables_fail_closed_with_a_newer_marker() {
+	let malformed = CURRENT_FIXTURE.replace("| Resource | Unit cost |", "| Resource | Price |");
+	let malformed_error = super::parser::parse(malformed.as_bytes()).expect_err("malformed header");
+	assert_eq!(malformed_error.code(), "x_pricing_operation_table_header_invalid");
+	let duplicate = CURRENT_FIXTURE.replace(
+		"| **Posts: Read** | \\$0.005 per resource |",
+		"| **Posts: Read** | \\$0.005 per resource |\n| **Posts: Read** | \\$0.005 per resource |",
+	);
+	let duplicate_error = super::parser::parse(duplicate.as_bytes()).expect_err("duplicate label");
+	assert_eq!(duplicate_error.code(), "x_pricing_row_duplicate");
+
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let path = temp.path().join("private/x-pricing-receipt.json");
+	refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || {
+		Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+	})
+	.expect("initial success");
+	let report =
+		refresh_at_path_with(&path, at("2026-08-02T12:01:00Z"), || Ok(malformed.into_bytes()))
+			.expect("bounded parse failure report");
+	assert_eq!(report.status, "parse_failed");
+	assert_eq!(report.error_code.as_deref(), Some("x_pricing_operation_table_header_invalid"));
+	assert_eq!(report.x_api_call_count, 0);
+	let failure_path = path.parent().expect("pricing parent").join(FAILURE_RECEIPT_NAME);
+	let failure_metadata = fs::symlink_metadata(&failure_path).expect("failure marker");
+	assert_eq!(failure_metadata.permissions().mode() & 0o777, 0o600);
+	assert!(failure_metadata.len() <= 16 * 1024);
+	let blocked = require_current_at_path(&path, at("2026-08-02T12:01:01Z"))
+		.expect_err("newer parse marker blocks publishing")
+		.to_string();
+	assert!(blocked.contains("not current: parse_failed"), "{blocked}");
+	let success = crate::load_json(&path).expect("preserved success receipt");
+	assert_eq!(success["fetched_at"], "2026-08-02T12:00:00Z");
+}
+
+#[test]
+fn successful_renewal_replaces_the_receipt_and_removes_an_older_failure() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let path = temp.path().join("private/x-pricing-receipt.json");
+	refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || {
+		Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+	})
+	.expect("initial success");
+	let malformed = CURRENT_FIXTURE.replace("### Write operations", "### Writes");
+	refresh_at_path_with(&path, at("2026-08-02T12:01:00Z"), || Ok(malformed.into_bytes()))
+		.expect("parse failure");
+	let failure_path = path.parent().expect("pricing parent").join(FAILURE_RECEIPT_NAME);
+	assert!(failure_path.exists());
+
+	let renewed = refresh_at_path_with(&path, at("2026-08-02T12:02:00Z"), || {
+		Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+	})
+	.expect("renewed success");
+	assert_eq!(renewed.status, "current");
+	assert_eq!(renewed.fetched_at.as_deref(), Some("2026-08-02T12:02:00Z"));
+	assert!(!failure_path.exists(), "successful refresh removes the older marker");
+	let success = crate::load_json(&path).expect("renewed success receipt");
+	assert_eq!(success["fetched_at"], "2026-08-02T12:02:00Z");
+}
+
+#[test]
+fn network_failure_preserves_only_a_real_cached_receipt() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let path = temp.path().join("private/x-pricing-receipt.json");
+	refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || {
+		Ok(CURRENT_FIXTURE.as_bytes().to_vec())
+	})
+	.expect("initial success");
+	let before = fs::read(&path).expect("cached receipt bytes");
+	let deferred = refresh_at_path_with(&path, at("2026-08-02T13:00:00Z"), || {
+		Err(super::fetch::PricingFetchFailure::network_for_test())
+	})
+	.expect("deferred network failure");
+	assert_eq!(deferred.status, "network_deferred");
+	assert_eq!(deferred.receipt_status, "current");
+	assert_eq!(deferred.fetched_at.as_deref(), Some("2026-08-02T12:00:00Z"));
+	assert_eq!(fs::read(&path).expect("preserved receipt bytes"), before);
+
+	let blocked = refresh_at_path_with(&path, at("2026-08-04T00:00:01Z"), || {
+		Err(super::fetch::PricingFetchFailure::network_for_test())
+	})
+	.expect("stale network failure report");
+	assert_eq!(blocked.status, "blocked");
+	assert_eq!(blocked.receipt_status, "stale");
+	assert_eq!(fs::read(&path).expect("still preserved receipt bytes"), before);
+
+	let missing_root = tempfile::tempdir().expect("missing receipt directory");
+	let missing_path = missing_root.path().join("private/x-pricing-receipt.json");
+	let missing = refresh_at_path_with(&missing_path, at("2026-08-02T12:00:00Z"), || {
+		Err(super::fetch::PricingFetchFailure::network_for_test())
+	})
+	.expect("missing cache report");
+	assert_eq!(missing.status, "blocked");
+	assert_eq!(missing.receipt_status, "missing");
+	assert!(missing.rates_microusd.is_none());
+	assert!(!missing_path.exists());
+}
+
+#[test]
+fn changed_official_rates_are_recorded_as_contract_drift() {
+	let temp = tempfile::tempdir().expect("temporary directory");
+	let path = temp.path().join("private/x-pricing-receipt.json");
+	let changed = CURRENT_FIXTURE.replace("\\$0.015 per request", "\\$0.016 per request");
+	let report =
+		refresh_at_path_with(&path, at("2026-08-02T12:00:00Z"), || Ok(changed.into_bytes()))
+			.expect("contract drift report");
+	assert_eq!(report.status, "contract_drift");
+	assert_eq!(report.receipt_status, "contract_drift");
+	assert_eq!(report.rates_microusd.expect("changed rates").post_create, 16_000);
+	let blocked = require_current_at_path(&path, at("2026-08-02T12:01:00Z"))
+		.expect_err("changed rate blocks paid calls")
+		.to_string();
+	assert!(blocked.contains("not current: contract_drift"), "{blocked}");
 }

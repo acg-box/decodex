@@ -9,7 +9,7 @@ use super::{
 		ATTEMPT_SCHEMA, OBSERVATION_ATTEMPT_SCHEMA, XurlAttempt, XurlObservationAttempt,
 		XurlReconciliation,
 	},
-	observe, pricing, publish,
+	observe, publish,
 	runtime::{self, TrustedXurlBinary},
 };
 use crate::{
@@ -22,19 +22,11 @@ pub(super) fn run(request: &SocialReconcileXurlRequest) -> Result<SocialReconcil
 }
 
 #[cfg(test)]
-pub(super) fn run_with_test_binary(
+pub(super) fn run_without_pricing_for_test(
 	request: &SocialReconcileXurlRequest,
-	binary: &Path,
+	xurl_binary: &Path,
 ) -> Result<SocialReconcileXurlReport> {
-	run_inner(request, &BinarySource::Test(binary.to_path_buf()), true)
-}
-
-#[cfg(test)]
-pub(super) fn run_attempt_with_test_binary_without_pricing(
-	request: &SocialReconcileXurlRequest,
-	binary: &Path,
-) -> Result<SocialReconcileXurlReport> {
-	run_inner(request, &BinarySource::Test(binary.to_path_buf()), false)
+	run_inner(request, &BinarySource::Test(xurl_binary.to_path_buf()), false)
 }
 
 fn run_inner(
@@ -46,9 +38,6 @@ fn run_inner(
 	let root = crate::repo_root()?;
 	let _state_lock = crate::social_publish::scan::acquire_social_state_lock(&request.locks_dir)?;
 	if let Some(attempt_path) = &request.attempt_path {
-		if require_pricing {
-			pricing::require_current_at(reconciled_at)?;
-		}
 		let attempt_path = crate::resolve_against(&root, attempt_path);
 		let attempts_dir = crate::resolve_against(&root, &request.attempts_dir);
 		crate::require_contained_regular_file(&attempt_path, &attempts_dir)
@@ -69,10 +58,20 @@ fn run_inner(
 			_ => return Err(eyre::eyre!("reconciliation attempt uses an unsupported schema")),
 		}
 		return match schema {
-			Some(ATTEMPT_SCHEMA) =>
-				publish::reconcile_safe_read(request, &attempt_path, reconciled_at, binary_source),
-			Some(OBSERVATION_ATTEMPT_SCHEMA) =>
-				observe::reconcile_safe_read(request, &attempt_path, reconciled_at, binary_source),
+			Some(ATTEMPT_SCHEMA) => publish::reconcile_safe_read(
+				request,
+				&attempt_path,
+				reconciled_at,
+				binary_source,
+				require_pricing,
+			),
+			Some(OBSERVATION_ATTEMPT_SCHEMA) => observe::reconcile_safe_read(
+				request,
+				&attempt_path,
+				reconciled_at,
+				binary_source,
+				require_pricing,
+			),
 			_ => unreachable!("attempt schema was validated before xurl readiness"),
 		};
 	}
@@ -169,7 +168,7 @@ fn validate_request(request: &SocialReconcileXurlRequest) -> Result<OffsetDateTi
 	let has_evidence = !request.evidence_path.as_os_str().is_empty();
 	if has_evidence == request.attempt_path.is_some() {
 		return Err(eyre::eyre!(
-			"reconcile-xurl requires exactly one local evidence path or interrupted attempt path"
+			"reconciliation requires exactly one local evidence path or interrupted attempt path"
 		));
 	}
 	OffsetDateTime::parse(&request.reconciled_at, &Rfc3339)
