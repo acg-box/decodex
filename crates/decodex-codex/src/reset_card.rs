@@ -137,7 +137,8 @@ impl ResetCardInventory {
 				quota_windows,
 			});
 		};
-		let reported_available_count = u64::try_from(summary.available_count)
+		// Match the upstream Codex UI: a negative count means no available reset credits.
+		let reported_available_count = u64::try_from(summary.available_count.max(0))
 			.map_err(|_| ResetCardProtocolError::InvalidAvailableCount)?;
 		let Some(credits) = summary.credits else {
 			return Ok(Self {
@@ -463,7 +464,9 @@ pub enum ResetCardProtocolError {
 	FrameLimitExceeded,
 	/// JSON, field types, or the strict provider result shape were invalid.
 	MalformedResponse,
-	/// `availableCount` was negative or not representable.
+	/// A provider `availableCount` was invalid.
+	///
+	/// Retained for API compatibility. Inventory reads clamp a negative count to zero.
 	InvalidAvailableCount,
 	/// One exact provider credit identifier was empty, oversized, or not a safe scalar.
 	InvalidCreditId,
@@ -1020,11 +1023,38 @@ mod tests {
 			Err(ResetCardResolutionError::Incomplete)
 		);
 
+		let negative_count = decode_reset_card_inventory(
+			&serde_json::to_vec(&json!({
+				"rateLimits": {
+					"primary": {
+						"usedPercent": 17,
+						"windowDurationMins": 300,
+						"resetsAt": 9_000
+					},
+					"secondary": {
+						"usedPercent": 29,
+						"windowDurationMins": 10_080,
+						"resetsAt": 10_000
+					}
+				},
+				"rateLimitResetCredits": {
+					"availableCount": -1,
+					"credits": []
+				}
+			}))
+			.unwrap(),
+		)
+		.unwrap();
+		assert_eq!(negative_count.reported_available_count(), Some(0));
+		assert!(negative_count.details_complete());
+		assert!(negative_count.available_cards().is_empty());
 		assert_eq!(
-			decode_reset_card_inventory(
-				br#"{"rateLimitResetCredits":{"availableCount":-1,"credits":[]}}"#
-			),
-			Err(ResetCardProtocolError::InvalidAvailableCount)
+			negative_count.quota_windows()[0].result(),
+			Ok(AccountQuotaWindow::new(300, 17, 9_000_000_000).unwrap())
+		);
+		assert_eq!(
+			negative_count.quota_windows()[1].result(),
+			Ok(AccountQuotaWindow::new(10_080, 29, 10_000_000_000).unwrap())
 		);
 
 		let capped = (0..super::MAX_RESET_CARDS_PER_INVENTORY)
