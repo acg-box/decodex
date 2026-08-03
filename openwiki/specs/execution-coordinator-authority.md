@@ -17,16 +17,10 @@ composed authority:
 The XY-1396 and XY-1397 candidates are rejection evidence. They do not supply
 implementation authority.
 
-The XY-1402 candidate was source-only work before the unified core-freeze gate. No
+This candidate is source-only work before the unified core-freeze gate. No
 formatter, build, compiler, lint, static analysis, migration parser, SQL parser,
 test, fixture, generator, service, VM, UI check, live Codex experiment, account
 operation, or provider effect is part of this candidate evidence.
-
-XY-1276 Candidate 5 is approved architecture only. Exact Candidate-4 staged tree
-`f82b866e21f12742648023a2b468cc057afa52a1` is materially rejected and superseded
-source evidence. Candidate-5 implementation and all executable acceptance remain
-pending. The reset is in the
-[authority decision](../decisions/vnext-authority.md#xy-1276-candidate-5-architecture-reset).
 
 ## Owner composition
 
@@ -37,13 +31,10 @@ ProviderAttempt state.
 
 | Owner | Sole authority retained |
 | --- | --- |
-| Conversation owner | Ordinary Conversation and Turn lifecycle, including Candidate-5 atomic initial admission and legal terminalization. Quick Task stays an ordinary multi-turn Conversation. |
+| Conversation owner | Ordinary Conversation and Turn lifecycle. Quick Task stays an ordinary multi-turn Conversation. |
 | ManagedRun owner | ManagedRun lifecycle, execution assignment, wait state, and acceptance. |
-| V14 | Complete account universe, policy, eligibility, capability, and quota facts. It does not select. |
-| V16 | Sole account selection and immutable route decision. |
-| Account Service | Account lifecycle facts and the exact V16-selected credential/store pre-spawn fence. It does not select Quick Task accounts. |
-| V17 | Candidate-5 first-session initial planning, exact same-thread RuntimeSession reuse, atomic Context Pack plus fallback RuntimeSession creation, and PostgreSQL-only explicit-successor evidence. |
-| V34 RuntimeSession owner | Candidate-5 RuntimeSession state/thread fields and exact bounded thread establishment. |
+| V14 and V16 | Complete account universe, eligibility facts, account selection, and immutable route decision. |
+| V17 | Exact same-thread RuntimeSession reuse or atomic Context Pack plus fallback RuntimeSession creation. |
 | ProcessSupervisor | ProcessGeneration intent, live fence, positive death evidence, and account-local quarantine. |
 | ProviderAttemptService | Atomic prepared binding, provider-effect state, positive evidence, restore projection, and reconciliation. |
 | Reviewer | Execution-scoped, read-only review. Missing or ambiguous output grants no approval or completion. |
@@ -60,34 +51,18 @@ root can call this sequence.
 
 V14, V16, and V17 use one closed consumer union:
 
-- `conversation_turn` binds the Conversation identity, revision, and prospective or
-  reserved Turn identity. Existing continuation also binds a source RuntimeSession.
-  Candidate-5 initial routing uses the prospective UUID as intent only, with no Turn
-  foreign key or row, and keeps that source identity absent in immutable L0. V17 later
-  creates the first RuntimeSession in the continuation-plan lineage; and
+- `conversation_turn` binds the Conversation identity and revision, source
+  RuntimeSession identity and revision, and reserved Turn identity; and
 - `managed_run_execution` binds the ManagedRun identity and revision and one
   distinct managed execution identity.
 
-The ordinary variant does not contain a ManagedRun identity. The XY-1402 source shape
-permits the Conversation owner to materialize a reserved Turn after ProviderAttempt
-preparation. Candidate-5 initial Quick Task supersedes that order: it admits the exact
-Turn/history pair before every ProcessGeneration, thread, or ProviderAttempt effect.
+The ordinary variant does not contain a ManagedRun identity. The Conversation
+owner can materialize its reserved Turn after ProviderAttempt preparation.
 ProviderAttempt does not create or rewrite a RuntimeSession or a Turn.
 
 The managed variant does not move ManagedRun lifecycle authority. The ManagedRun
 read model consumes all ProviderAttempt result projections. It does not copy
 provider-effect authority into a second ledger.
-
-Candidate 5 closes the routing lineage union further. L0 has all six RuntimeSession,
-account-snapshot, and profile-snapshot identity/revision fields null. L6 has all six
-present with positive revisions. Conversation Turn routing accepts L0 or L6; ManagedRun
-routing accepts only L6. Only those six columns become nullable, their foreign keys stay,
-and an exact all-null/all-present check rejects half-null lineage and source-less
-ManagedRun. The existing L6 completeness branch and one-sticky rule do not change. The
-new L0 branch alone accepts zero sticky members and exact locked V14 evidence for an open
-exact-revision Conversation with no RuntimeSession or Turn. It rejects source fields,
-sticky L0, existing session or Turn, closed or stale Conversation, and incomplete, mixed,
-extra, duplicate, or reordered evidence.
 
 ## V25 and V26 forward cutover
 
@@ -127,51 +102,6 @@ After the checks pass, V26:
 There is no live, latent, compatibility, or fallback V12 writer after V26.
 Rollback means restore of a pre-V26 database. It does not mean reverse SQL or a
 dual-writer interval.
-
-## XY-1276 candidate-5 boundary
-
-`ExecutionCoordinator` stays zero-sized, crate-private, and stateless. It does not own
-Conversation creation, Turn admission or terminalization, account selection,
-RuntimeSession creation or thread state, ProcessGeneration state, credential access, or
-ProviderAttempt state. Candidate 5 adds no coordinator relation, receipt, retry machine,
-actor, task, channel, module, wrapper, generic transaction framework, or fixed hierarchy.
-
-The initial Quick Task sequence is exact:
-
-1. The Conversation owner creates one Conversation, and the routing fixture supplies only
-   a prospective Turn UUID as intent.
-2. One V16 decision selects the account from the complete locked V14 universe. Initial
-   selection has exact L0 lineage and no sticky member. Competing cross-key initial
-   choices produce one `Fresh`; same-key replay is read-only.
-3. V17 atomically creates the first selected-account/profile snapshots, one revision-1
-   unfenced `starting` RuntimeSession, and one inert initial plan. Any failure rolls back
-   the complete new lineage and related effects.
-4. The conversations owner atomically admits the exact active revision-1 initial user
-   Turn and ordinal-0 completed Message item. No Turn row exists before this transaction.
-5. Before each external or durable effect, the applicable owner locks and rechecks that
-   exact active Turn and its Conversation/RuntimeSession cross-link.
-6. Account Service fences the exact V16-selected account immediately before spawn. Only
-   then can a fresh ProcessGeneration, V34 thread establishment, and ProviderAttempt
-   proceed.
-
-The coordinator cannot call V16 a second time, select or substitute an account, invoke
-fallback or wake, terminalize a Turn, treat replay as fresh, or invoke explicit successor.
-Exact ProcessGeneration replay, rejection, or uncertainty is typed durable readback with
-no spawn, Turn failure, successor, replacement, adoption, or duplicate attempt. The
-existing owner reads provide manual-recovery state; no new ledger is permitted.
-
-V17 explicit successor remains PostgreSQL-only and has no runtime grant. Its transaction
-must lock and require the exact Turn named by the selected routing decision under the
-same Conversation/source RuntimeSession as failed revision 2 before any effect. Candidate
-5 keeps the accepted V17 same-thread and Context-Pack owners separate and keeps XY-1304
-automatic fallback/wake disabled.
-
-V34 owns RuntimeSession state/thread fields. Among trigger-bound functions, it owns only
-the seven constrained roll-forwards listed in the
-[normative contract](vnext-authority.md#v34-trigger-function-roll-forwards). Required
-narrow changes to existing owner commands and effect fences remain with those owners.
-Trigger bindings, ACLs, unrelated active-only writes, and every non-enumerated trigger
-behavior remain unchanged.
 
 ## Route projection
 
@@ -225,9 +155,8 @@ For a ManagedRun, V17 retains the accepted V15/V22 causal experiment path. An
 exact accepted experiment and positive `thread/read` attestation must bind the
 same source RuntimeSession thread.
 
-For an operation with an existing source RuntimeSession, if same-thread evidence is
-absent, stale, negative, incomplete, ambiguous, or cross-linked, V17 uses its atomic
-fallback path. The transaction creates the
+If same-thread evidence is absent, stale, negative, incomplete, ambiguous, or
+cross-linked, V17 uses its atomic fallback path. The transaction creates the
 Context Pack, account snapshot, starting fallback RuntimeSession, continuation
 plan, activity, outbox, and exact receipt as one authority cluster. V17 does not
 write ProviderAttempt state. ProviderAttempt does not write RuntimeSession state.
