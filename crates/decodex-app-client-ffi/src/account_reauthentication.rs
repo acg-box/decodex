@@ -426,8 +426,9 @@ fn collect_login_child(
 			},
 			Err(RecvTimeoutError::Timeout) => {},
 			Err(RecvTimeoutError::Disconnected) => {
-				reader_failed = true;
+				reader_failed |= open_readers != 0;
 				open_readers = 0;
+				thread::sleep(CHILD_POLL_INTERVAL);
 			},
 		}
 		if exit.is_none() {
@@ -441,10 +442,25 @@ fn collect_login_child(
 				},
 			}
 		}
-		if open_readers == 0
-			&& let Some(exit) = exit
-		{
+		if let Some(exit) = exit {
+			// The login leader can exit after it writes auth.json while one of
+			// its descendants still owns an inherited output pipe. Reap that
+			// exact process group so a successful browser callback does not wait
+			// for the full login timeout before credential installation.
+			terminate_child(child);
 			join_readers(stdout_reader, stderr_reader);
+			for event in receiver.try_iter() {
+				match event {
+					PipeEvent::Bytes(bytes) =>
+						if append_output(&mut output, &bytes).is_err() {
+							return Err(Status::failed(
+								session_id.to_owned(),
+								Failure::LoginFailed,
+							));
+						},
+					PipeEvent::Closed { failed } => reader_failed |= failed,
+				}
+			}
 			return Ok(LoginChildOutput { exit, reader_failed });
 		}
 	}
@@ -786,26 +802,40 @@ mod tests {
 	}
 
 	#[test]
-	fn cancel_reaps_a_descendant_that_holds_login_pipes_after_leader_exit() {
+	fn successful_leader_exit_reaps_a_descendant_that_holds_login_pipes() {
+		let session_id = "058f0f9e-7b6e-4a31-8f4c-1d2e3f405160".to_owned();
+		let (manager, shared, _fixture) = pipe_holding_login_manager(&session_id);
+		let started = Instant::now();
+		while !shared.status().is_terminal() && started.elapsed() < Duration::from_secs(2) {
+			thread::sleep(Duration::from_millis(5));
+		}
+
+		assert_eq!(shared.status().state, State::Completed);
+		assert!(started.elapsed() < Duration::from_secs(2));
+		drop(manager);
+	}
+
+	#[test]
+	fn cancel_after_successful_leader_exit_preserves_completed_status() {
 		let session_id = "058f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
 		let (manager, _, _fixture) = pipe_holding_login_manager(&session_id);
 
 		let started = Instant::now();
 		let status = manager.cancel(&session_id);
 
-		assert_eq!(status.state, State::Cancelled);
+		assert_eq!(status.state, State::Completed);
 		assert!(started.elapsed() < Duration::from_secs(2));
 	}
 
 	#[test]
-	fn shutdown_reaps_a_descendant_that_holds_login_pipes_after_leader_exit() {
+	fn shutdown_after_successful_leader_exit_preserves_completed_status() {
 		let session_id = "068f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
 		let (manager, shared, _fixture) = pipe_holding_login_manager(&session_id);
 
 		let started = Instant::now();
 		manager.shutdown();
 
-		assert_eq!(shared.status().state, State::Cancelled);
+		assert_eq!(shared.status().state, State::Completed);
 		assert!(started.elapsed() < Duration::from_secs(2));
 	}
 
