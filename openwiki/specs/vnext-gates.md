@@ -106,7 +106,7 @@ Permission is issue-scoped and does not bypass each issue's own dependencies:
 | XY-1273 | Credential-vault metadata and immutable runner/account binding; no sticky or policy assignment. |
 | XY-1274 | Exact-microsecond quota persistence, `/2` canonical mutation identity, atomic V8 zero-state migration, and durable exclusion transaction tests using synthetic fixtures only; no live exclusion, fallback assignment, or wake scheduling. |
 | XY-1275 | Umbrella for user-owned profile persistence and RuntimeSession snapshots. It closes only through the serial XY-1345 -> XY-1346 -> XY-1337 order. Account-owned plugin, skill, and MCP readiness remains typed `unknown`; XY-1336 neither closes nor blocks this issue. |
-| XY-1276 | Candidate-5 architecture for one Slice-1 ordinary Quick Task. V16 is the sole task-account selector; V17 creates the first starting RuntimeSession; the conversations owner atomically admits the first Turn/history pair; V34 owns bounded thread establishment. Implementation and acceptance are pending. It is not blocked by XY-1304. |
+| XY-1276 | Slice-1 Quick Task creation after the Slice-1 account and exact-build callback gates. It is not blocked by XY-1304. |
 | XY-1300 | Slice-3 representative E2E, restart, UI, packaging, and clean-startup acceptance. It is not globally blocked by XY-1304. |
 | XY-1304 | Later automatic cross-account same-thread fallback and all-depleted wake aggregate acceptance, followed by a separate reviewed enablement amendment. It is not a prerequisite for Quick Task, Project/Lead, ManagedRun, GPUI, or first Mac dogfood. |
 | XY-1345 | Accepted exact-command authority and isolated PostgreSQL 18 prototype only; no production migration or Rust command path. |
@@ -187,68 +187,6 @@ fresh-capability consumption, and positive-only reconciliation,
 Conversation and ManagedRun owner isolation, Reviewer ambiguity, same-UID transport, and reverse
 production isolation. XY-1402 executes none of that matrix and enables no provider effect or
 production dispatch.
-
-### XY-1276 candidate-5 Quick Task acceptance
-
-Candidate 5 is architecture authority only. Candidate-5 implementation and every
-executable acceptance step are pending. Exact Candidate-4 staged tree
-`f82b866e21f12742648023a2b468cc057afa52a1` is materially rejected and superseded source
-evidence. The decision record and five P1 causes are in the
-[authority reset](../decisions/vnext-authority.md#xy-1276-candidate-5-architecture-reset).
-The normative owner and trigger predicates are in
-[vNext Authority](vnext-authority.md#xy-1276-quick-task-thread-establishment).
-
-The gate keeps exactly seven representative rows. This authority reset authors no test
-and runs no executable row.
-
-| Row | Required integrated Candidate-5 proof |
-| --- | --- |
-| 1 | Prove the positive initial `conversation_turn + L0` shape with all six RuntimeSession/account/profile lineage fields null, an open exact-revision Conversation with no RuntimeSession or Turn, zero sticky members, and exact locked V14 member identity/order, account revisions, two quota rows, eight ordered capability rows, and blockers. Drop `NOT NULL` only on those six columns, retain every foreign key, and prove the exact all-null/all-present check. Prove source identity/revision are jointly absent or present in commands, codecs, and readbacks. Preserve unchanged L6 with all six fields present, positive revisions, and exactly one sticky member for existing-session Conversation and ManagedRun routing. Reject every half-null or source-bearing L0, sticky L0, existing session or Turn, closed or stale Conversation, source-less ManagedRun, and mixed, incomplete, missing, extra, duplicate, or reordered evidence. Under competing cross-key initial choices, the Conversation lock permits exactly one V16 `Fresh`; same-key replay is read-only. V16 remains the sole selector and selects in exact policy order. |
-| 2 | Prove V17 consumes only the selected exact L0 and atomically creates the selected account snapshot, copied profile snapshot, first revision-1 unfenced `starting` RuntimeSession, inert `initial_thread` plan, receipt, activity, and outbox. Failure at any predicate or write rolls back all of them. V17 does not select. After that commit, prove one Conversation-owner admission transaction creates the prospective UUID as the exact active-revision-1 sequence-1 user Turn with unknown possible side effects and exactly one ordinal-0 completed Message item; no Turn row exists before admission. Reject nonzero ordinal, non-Message, wrong role, sequence, side-effect state, status, revision, identity, cross-link, and every second item. Under cross-key admission concurrency, commit one `Fresh`; exact-key replay is read-only; every competing key commits no Turn, history, successful receipt, activity, or outbox effect. |
-| 3 | Before each ProcessGeneration, RuntimeSession thread, or ProviderAttempt effect, lock and prove the exact intent-bound Turn active at revision 1 under the same Conversation and V17-created RuntimeSession. Require the applicable `starting` revision through thread bind and the exact post-bind `active` revision plus fence/bind receipts for ProviderAttempt preparation and authorization. At ProcessGeneration fence/ready, thread fence/start/bind, and ProviderAttempt prepared/authorized lost-result or restart cuts, prove no duplicate spawn, Turn failure, successor, replacement, adoption, or duplicate attempt. `Replayed`, `Rejected`, and uncertain ProcessGeneration state use existing readback and keep the Turn active. Make account A positive for the Account Service controls but capability-negative in complete V14 evidence while B is fully eligible. Require one V16 decision selecting B and one V17 transaction creating only B's lineage; create no A snapshot or session. Make B stale before spawn and require refusal without a new decision, account A, fallback, or wake. |
-| 4 | Prove only positive definite pre-effect refusal can move the exact active revision-1 Turn to failed revision 2 under a starting RuntimeSession. Replayed, ambiguous, fenced, thread-started, thread-bound, and ProviderAttempt prepared/authorized/unknown work remains active and returns `Unknown`. Prove explicit successor locks and accepts only the selected Turn as failed revision 2 under the same Conversation/source RuntimeSession; reject active revision 1, completed revision 2, absent, wrong, cross-linked, changed, and racing Turns before any successor effect. Prove normal terminal ProviderAttempt evidence, Conversation-owned Turn finalization, RuntimeSession acknowledgement, durable transcript retention, and publication only after readback. Exercise all seven authorized trigger bodies, including the narrow L0 routing-completeness branch, and preserve the unchanged L6 branch, routing-decision completeness, trigger bindings and ACLs, unrelated active-only writes, account observations, and bounded history cursors. Reject every non-enumerated or broad starting-session trigger behavior. |
-| 5 | Preserve result-before-stream ordering, one existing actor owner, one command-or-registration operation slot, bounded deferred publication, explicit publication-source behavior, non-reserving per-session acceptance, and no starvation across sessions. |
-| 6 | Preserve duplicate/conflicting command order, disconnect and reconnect, exact snapshot-cursor order, receiver-close/`try_send` outcomes, retention of the exact active bounded flush to a typed terminal result, one-shot peer-Close finalization, `JoinSet` wake, and leak-free accounting with real transport behavior. No local write or close proves peer receipt. |
-| 7 | Preserve `Accepting -> DrainingApplication -> DrainingEgress -> Closed`, one absolute deadline, retained command completion, complete ordinal and transport reconciliation, exact 64-session admission including handshakes, service settlement, and cleanup only after closed accounting. |
-
-V34 migration acceptance must enumerate exactly these seven replaced trigger functions:
-`decodex.enforce_routing_completeness()`,
-`decodex.enforce_runtime_session_state()`, `decodex.enforce_turn_state()`,
-`decodex.enforce_history_item_state()`,
-`decodex.enforce_provider_attempt_transition()`,
-`decodex.enforce_provider_attempt_binding()`, and
-`decodex.enforce_continuation_plan_completeness()`. It must prove the exact predicates in
-the normative contract and reject every other starting-session or trigger behavior.
-Trigger bindings, ACLs, and non-enumerated trigger functions remain unchanged. V32 must be
-byte-identical to current alpha.9.2 authority, V33 must be enum-only, and V34 must be the
-only integration migration. V35 and compatibility DDL are forbidden.
-
-The canonical aggregate keeps exactly six sibling stages:
-`xy_1276_row_1`, `xy_1276_rows_2_3`, `xy_1276_row_4`, `xy_1276_row_5`,
-`xy_1276_row_6`, and `xy_1276_row_7`. Each depends only on
-`cluster_preflight`. Final evidence depends on all six. Ordinary failure in one sibling
-does not prevent independent siblings. Harness corruption remains fail-closed. The first
-three stages keep separate databases. Rows 5 through 7 keep existing transport isolation.
-Do not add a focused copy, focused task, new gate, or seventh sibling stage.
-
-Acceptance evidence is non-commutative. First repair behavior, run one formatter, create
-clean commit P, and complete its full exact-tree review. Run Phase A on clean P before any
-preparation or aggregate when authority digests are stale. A direct-child candidate C may
-then change only the `authority.rs` digest arrays that Phase A reports. After bounded
-exact-delta review, fully stage C, run final mechanical preparation exactly once, and
-commit without another byte change so the prepared tree equals C. Run Phase B on clean C,
-binding P, C, the Phase-A receipt, and S0/R1/R2, then run the sole canonical aggregate on
-unchanged clean C. A non-digest post-review change restarts full review and Phase A. Any
-byte after preparation invalidates preparation; any byte after Phase B invalidates Phase B
-and aggregate evidence. Seven trigger bodies still map to the unchanged six aggregate
-stages.
-
-Ordinary Quick Task receives no explicit-successor input, variant, facade, re-export,
-runtime grant, fallback, or wake. Candidate 5 preserves the current account/UI/automation
-behavior, deterministic one-word account alias, and treatment of negative Reset Card
-inventory counts as empty inventory,
-and XY-1304 containment. The exact-tree validation order is in
-[Commands And Validation](../operations/commands-and-validation.md#xy-1276-candidate-5-validation-boundary).
 
 XY-1336 is an upstream-blocked tracking issue outside the M2 critical path. A host file,
 manifest, configuration value, remote catalog entry, process binding, or user declaration
@@ -932,10 +870,8 @@ added. No retained-title evidence gate enables production routing.
 
 ### Account lifecycle and Mac dogfood gate
 
-The current accepted Mac gate starts a fresh V1–V32 PostgreSQL database with an empty
-Account Registry. Candidate 5 does not rewrite that receipt. Candidate-5 implementation
-acceptance must instead start a fresh V1–V34 database after V34 lands, with no V35 or
-compatibility DDL. The gate verifies the signed daemon wrapper
+The accepted Mac gate covers only the latest architecture. It starts a fresh V1–V32
+PostgreSQL database with an empty Account Registry, verifies the signed daemon wrapper
 and same-UID Unix transport, imports test accounts through the ordinary public account
 command, restarts once for exact-build callback attestation, and verifies list, routing,
 quota, Reset Card readback, use, and terminal replay.

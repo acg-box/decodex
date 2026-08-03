@@ -14,15 +14,6 @@ defined in the [retirement decision](specs/private-artifact/decision.md#reposito
 The [private-artifact archive](specs/private-artifact/README.md) is historical
 evidence only after that point. It is not a runtime or future-work input.
 
-XY-1276 Candidate 5 is approved architecture, not implemented or ready behavior. Exact
-Candidate-4 staged tree `f82b866e21f12742648023a2b468cc057afa52a1` is materially
-rejected and superseded source evidence. Current source remains on the V1-V32 ledger with
-Quick Task dispatch unavailable. See the
-[reset decision](decisions/vnext-authority.md#xy-1276-candidate-5-architecture-reset),
-[normative contract](specs/vnext-authority.md#xy-1276-quick-task-thread-establishment),
-[acceptance gate](specs/vnext-gates.md#xy-1276-candidate-5-quick-task-acceptance), and
-[validation boundary](operations/commands-and-validation.md#xy-1276-candidate-5-validation-boundary).
-
 ## Start here
 
 - [Runtime architecture](architecture/runtime-architecture.md): process topology, CLI bootstrap, app-server runs, operator HTTP/MCP, and state ownership.
@@ -130,19 +121,6 @@ Quick Task dispatch unavailable. See the
   scalar RuntimeSession/profile/account snapshot identities are cross-domain provenance, while
   RuntimeSession aggregate/event/kind markers, complete session or snapshot objects, and outbox
   links to activity carrying those ownership shapes remain migration-owner-only.
-  Candidate 5 reserves unlanded enum-only V33 and sole integration V34. V16 will be the
-  sole initial Quick Task account selector. Initial Conversation routing uses exact L0,
-  with all six RuntimeSession/account/profile lineage fields null and zero sticky members;
-  unchanged L6 has all six present, positive revisions, and exactly one sticky member.
-  V17 will atomically create the first selected snapshots, revision-1 unfenced starting
-  RuntimeSession, and inert initial plan before the conversations owner atomically admits
-  the first active revision-1 Turn and ordinal-0 completed Message. Account Service will
-  fence only the selected account immediately before spawn. V34 will own RuntimeSession
-  thread fields and seven exact trigger-function roll-forwards with unchanged bindings and
-  ACLs. Candidate evidence must review clean behavioral commit P, run Phase A on P, review
-  a reported-digest-only child C, prepare fully staged C once, commit without changing its
-  bytes, run Phase B on clean C, and then run the sole six-stage aggregate on unchanged C.
-  None of this target is implemented or accepted in current source.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability profiles, redacted normalized events, fixed and bounded read-only launch/probe behavior, and immutable one-account process supervision. Current dispatch is disabled. Slice 1 can enable only the fenced initial-selection path; XY-1304 remains later automatic fallback/wake acceptance.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner that composes protocol and infrastructure adapters.
 - `apps/decodexd/`, `apps/decodex-cli/`, and `apps/decodex-gpui/` are composition
