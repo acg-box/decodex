@@ -154,6 +154,63 @@ Normal `decodexd` startup resolves only the runtime credential. It runs zero DDL
 performs the same read-only current-catalog/configured-authority checks. It never creates,
 upgrades, repairs, or finalizes a schema and never reads a schema-history relation.
 
+### Runtime composition and readiness
+
+One `decodexd` and one owner-only same-UID endpoint serve all product and diagnostic
+surfaces. Quick Task execution or ManagedRepository unavailability does not make daemon
+startup fail when the transport and control plane can start. Diagnostics, account
+recovery, and each available PostgreSQL-backed read remain reachable.
+
+`ProductStore` has exactly two startup results:
+
+- `Available(PostgresStore)` after exact runtime PostgreSQL and current-authority
+  verification; or
+- `Unavailable(ProductStateReason)` with no retained store.
+
+`ProductStore` means verified PostgreSQL only. Quick Task, repository, Git, path,
+reconciliation, and optional repository-configuration results cannot replace, erase, or
+change it.
+
+All fallible Quick Task dependencies must finish their own validation, I/O, attestation,
+and startup before composition constructs `QuickTaskRuntime`. Construction is infallible
+and performs no I/O. Composition records exactly one immutable process-lifetime
+projection:
+
+- `Ready(QuickTaskRuntime)`; or
+- `Unavailable(QuickTaskUnavailableReason)`, where the reason is closed and redacted.
+
+This projection is not a mutable capability manager, lifecycle, authority, cache,
+receipt, retry owner, or substitute for current evidence. Every execute, start, and resume
+command repeats all accepted owner fences before an effect. The projection never becomes
+ready without daemon restart.
+
+ManagedRepository has one independent optional startup projection: `Ready`, `Disabled`,
+or `Unavailable(ManagedRepositoryUnavailableReason)`. Absence is `Disabled`. Invalid
+repository-only configuration and path, Git, executor, or reconciliation failure are
+`Unavailable`. They disable repository operations only and cannot block endpoint binding,
+PostgreSQL verification, account recovery, or repository-free Quick Task work.
+
+Core runtime configuration contains transport and PostgreSQL runtime inputs. It does not
+require `server_host.repositories`. Repository identity, admission, and persisted path
+policy remain PostgreSQL authority. A host-only repository configuration is permitted
+only when a concrete accepted host policy consumes it. Its parser and validator are
+separate from core configuration, so absent or malformed repository data cannot block
+core parsing or service assembly.
+
+Immediately before a Quick Task process spawn, the runtime host adapter validates the
+selected working directory by no-follow descriptor traversal, exact descriptor identity,
+directory type, ownership by the daemon effective UID, and the applicable accepted path
+policy. A request path, ambient current directory, or repository discovery is not
+authority. One unrelated broken repository cannot disable all Quick Tasks.
+
+Protocol and doctor project ProductStore, Quick Task, and ManagedRepository readiness as
+three independent typed fields. Quick Task execute, start, and resume return
+`QuickTaskUnavailable(reason)` when the Quick Task projection is unavailable. Persisted
+Quick Task list and get retain `ProductStateUnavailable` when PostgreSQL is unavailable.
+No `.ok()` conversion, optional setter, omitted field, or generic integrity error may
+hide the assembly result. `AcceptanceUnknown` and recovery-required results retain their
+existing effect and recovery semantics.
+
 The verifier rejects any extra, missing, changed, unsafe, or unreachable schema,
 relation, column, enum, constraint, index, function, trigger, rule, policy, RLS setting,
 sequence, dependency, owner, or grant. It closes inherited and `SET ROLE` authority,
@@ -309,6 +366,12 @@ Within the trusted single-host first-release boundary:
   cancellation, and repository mutation detection. Deliberately hostile same-UID code is
   outside first-release confinement. Hostile-project or multi-tenant operation requires a separate
   UID or sandbox owner and an independently accepted feasibility and authority gate.
+
+ManagedRepository service assembly is optional. Its `Ready`, `Disabled`, or typed
+`Unavailable` projection does not change ProductStore or Quick Task readiness. A static
+host repository map cannot duplicate PostgreSQL repository identity, admission, or path
+policy. Any accepted host-only policy is parsed separately and affects only repository
+operations.
 
 Every external operation is assigned one complete canonical descriptor. The descriptor
 contains every value capable of changing execution or success evidence, including the
@@ -599,6 +662,10 @@ state, status, revision, ordinal, kind, second item, or cross-link rejects the t
 Before ProcessGeneration prepare/spawn, thread fence/start/bind, and ProviderAttempt
 prepare/authorize, the effect owner locks the selected Turn and requires it to remain
 active revision 1 under the same Conversation and first RuntimeSession.
+
+Immediately before spawn, the runtime also validates the selected working directory under
+the runtime-composition contract. This host check cannot select an account, change the
+route, authorize a repository, or replace the exact Turn and ProcessGeneration fences.
 
 ProcessGeneration and thread establishment through bind require the applicable
 `starting` RuntimeSession revision. ProviderAttempt preparation and authorization require
@@ -1199,6 +1266,14 @@ GPUI, then the bounded Project/Lead/ManagedRun flow and Project-Work-Run GPUI, t
 two-account self-hosting restart E2E and Mac package. The exact gates and the
 MacDogfoodReady-versus-final deferred table are in the
 [gate manifest](vnext-gates.md#delivery-slices).
+
+After the Quick Task source freezes, one integration owner must produce the next runtime
+candidate. The third runtime-bootstrap candidate is donor source only. The owner
+reconciles core configuration; runtime bootstrap, application, library, Quick Task, and
+managed-repository modules; protocol doctor, Quick Task, wire, and library surfaces; root
+Cargo/task-runner/lock files; deleted storage-spike references; and stale
+migration/configuration fixtures. This source cleanup is part of integration acceptance.
+Another runtime-lane-only patch is not an accepted candidate.
 
 Freeze/close PR #1092 and do not cherry-pick its implementation wholesale. Every task
 uses a focused worktree branch and PR directly into `main`; there is no long-lived vNext
