@@ -1297,11 +1297,15 @@ Swift does not stage or read credentials, create a temporary Codex home, launch 
 resolve an opaque credit ID, or call the provider method. It persists only a credential-negative
 pending Reset Card operation handle so it can read durable daemon status after an app restart.
 Provider observation, provider-effect retry, and authoritative reconciliation remain
-daemon-only. The UI starts all independent daemon value reads concurrently. Its 15-second
-cycle and panel-open trigger reload cached values only; they do not start OpenAI or
-app-server work. After successful login replacement, bounded local readback waits for the
-daemon's new revision-scoped observation instead of treating an old unauthorized value as
-the result of the new login.
+daemon-only. The UI starts all independent daemon value reads concurrently. It keeps one
+bounded `WaitForAccountObservation` query open instead of owning a second 15-second clock.
+Each daemon publication advances an opaque generation and wakes one coalesced cached-value
+reload; a 30-second daemon heartbeat and bounded reconnect backoff cover missed delivery and
+restart. Panel-open and manual triggers also reload cached values only; none of these reads
+start OpenAI or app-server work. `Refresh login` is the app's only credential-replacement
+surface; the native app ABI has no separate direct refresh command. After successful login
+replacement, bounded local readback waits for the daemon's new revision-scoped observation
+instead of treating an old unauthorized value as the result of the new login.
 
 After the caller creates and durably records an idempotency key for `use`, every CLI
 result repeats that key and one closed `dispatch_state`: `definitely_not_dispatched`,

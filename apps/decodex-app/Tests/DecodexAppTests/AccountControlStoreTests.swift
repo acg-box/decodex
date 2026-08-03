@@ -101,14 +101,14 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.canPerformDirectAccountControl)
 
 		await store.selectFixedAccount(accountID)
-		await store.refreshCredentials(for: accountID)
+		await store.setAccount(accountID, enabled: false)
 		await store.useAccountInCodex(accountID)
 
 		let blockedFixedRequest = await client.fixedRequest()
-		let blockedRefreshRequest = await client.refreshRequest()
+		let blockedEnabledRequest = await client.enabledRequest()
 		let blockedUseRequest = await client.useRequest()
 		XCTAssertNil(blockedFixedRequest)
-		XCTAssertNil(blockedRefreshRequest)
+		XCTAssertNil(blockedEnabledRequest)
 		XCTAssertNil(blockedUseRequest)
 		XCTAssertEqual(store.routing?.mode, .balanced)
 		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
@@ -208,13 +208,13 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertTrue(store.accounts.first?.isRefreshing == true)
 
 		await store.selectFixedAccount(accountID)
-		await store.refreshCredentials(for: accountID)
+		await store.setAccount(accountID, enabled: false)
 		await store.useAccountInCodex(accountID)
 		let blockedFixedRequest = await client.fixedRequest()
-		let blockedRefreshRequest = await client.refreshRequest()
+		let blockedEnabledRequest = await client.enabledRequest()
 		let blockedUseRequest = await client.useRequest()
 		XCTAssertNil(blockedFixedRequest)
-		XCTAssertNil(blockedRefreshRequest)
+		XCTAssertNil(blockedEnabledRequest)
 		XCTAssertNil(blockedUseRequest)
 
 		let refreshedAccount = accountRecord(
@@ -944,88 +944,6 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
 	}
 
-	func testRefreshLoginCompletesWhileDetailReadIsPending() async throws {
-		let account = accountRecord()
-		let client = AccountControlStoreClient(
-			account: account,
-			authority: authority,
-			suspendsInventory: true
-		)
-		let fixture = pendingFixture()
-		defer { fixture.remove() }
-		let store = ResetCardStore(
-			client: client,
-			pendingStore: fixture.store,
-			startupRetryDelays: []
-		)
-
-		let refreshTask = Task { await store.refresh() }
-		for _ in 0 ..< 200 {
-			if await client.inventoryIsPending() {
-				break
-			}
-			try await Task.sleep(for: .milliseconds(5))
-		}
-		XCTAssertTrue(store.isRefreshing)
-
-		await store.refreshCredentials(for: accountID)
-
-		XCTAssertTrue(store.isRefreshing)
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
-		let refreshRequest = await client.refreshRequest()
-		XCTAssertNotNil(refreshRequest)
-		XCTAssertFalse(store.isControllingAccount(accountID))
-
-		await client.releaseInventory()
-		await refreshTask.value
-		for _ in 0 ..< 200 {
-			if store.accounts.first?.isRefreshing == false {
-				break
-			}
-			try await Task.sleep(for: .milliseconds(5))
-		}
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
-	}
-
-	func testAccountRevisionChangeInvalidatesAndRechecksCodexProjection() async throws {
-		let account = accountRecord()
-		let client = AccountControlStoreClient(
-			account: account,
-			authority: authority,
-			projection: .current(
-				accountID: accountID,
-				accountRevision: 7,
-				projectionDigest: String(repeating: "a", count: 64)
-			)
-		)
-		let fixture = pendingFixture()
-		defer { fixture.remove() }
-		let store = ResetCardStore(
-			client: client,
-			pendingStore: fixture.store,
-			startupRetryDelays: []
-		)
-
-		await store.refresh()
-		XCTAssertTrue(store.isCodexProjection(accountID))
-		let initialProjectionReads = await client.projectionReadCount()
-		XCTAssertEqual(initialProjectionReads, 1)
-
-		await store.refreshCredentials(for: accountID)
-		for _ in 0 ..< 200 {
-			if await client.projectionReadCount() >= 2 {
-				break
-			}
-			try await Task.sleep(for: .milliseconds(5))
-		}
-
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
-		XCTAssertFalse(store.isCodexProjection(accountID))
-		XCTAssertEqual(store.codexAuthProjection, .unmanaged)
-		let finalProjectionReads = await client.projectionReadCount()
-		XCTAssertEqual(finalProjectionReads, 2)
-	}
-
 	func testBrowserLoginCompletesAndRefreshesOnlyTheChangedAccountAuthority() async throws {
 		let account = accountRecord(observedState: .authFailed)
 		let client = AccountControlStoreClient(
@@ -1236,12 +1154,6 @@ private struct AccountControlStoreUseRequest: Equatable, Sendable {
 	let expectedRevision: UInt64
 }
 
-private struct AccountControlStoreRefreshRequest: Equatable, Sendable {
-	let authority: ResetCardAuthority?
-	let accountID: String
-	let expectedRevision: UInt64
-}
-
 private struct AccountControlStoreEnabledRequest: Equatable, Sendable {
 	let authority: ResetCardAuthority?
 	let accountID: String
@@ -1297,7 +1209,6 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let useAccountError: AccountControlError?
 	private var lastFixedRequest: AccountControlStoreFixedRequest?
 	private var lastUseRequest: AccountControlStoreUseRequest?
-	private var lastRefreshRequest: AccountControlStoreRefreshRequest?
 	private var lastEnabledRequest: AccountControlStoreEnabledRequest?
 	private var lastLogoutRequest: AccountControlStoreLogoutRequest?
 	private var lastOrderRequest: AccountControlStoreOrderRequest?
@@ -1731,46 +1642,6 @@ private actor AccountControlStoreClient: AccountControlClient {
 
 	func orderRequest() -> AccountControlStoreOrderRequest? {
 		lastOrderRequest
-	}
-
-	func refreshAccountCredentials(
-		authority: ResetCardAuthority?,
-		operationID: String,
-		accountID: String,
-		expectedRevision: UInt64,
-		idempotencyKey: String
-	) async throws -> AccountControlResult {
-		guard DecodexNativeClient.isCanonicalUUID(operationID),
-			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
-			accountID == account.accountID,
-			expectedRevision == account.accountRevision
-		else {
-			throw AccountControlError.invalidInput
-		}
-		lastRefreshRequest = AccountControlStoreRefreshRequest(
-			authority: authority,
-			accountID: accountID,
-			expectedRevision: expectedRevision
-		)
-		account = ResetCardAccountRecord(
-			authority: account.authority,
-			accountID: account.accountID,
-			alias: account.alias,
-			accountRevision: account.accountRevision + 1,
-			enabled: account.enabled,
-			observedState: .available,
-			lifecycleReadiness: .ready,
-			credentialBinding: account.credentialBinding,
-			unsettledOperation: nil,
-			fiveHourQuota: account.fiveHourQuota,
-			sevenDayQuota: account.sevenDayQuota
-		)
-		projection = .unmanaged
-		return .accountChanged(account)
-	}
-
-	func refreshRequest() -> AccountControlStoreRefreshRequest? {
-		lastRefreshRequest
 	}
 
 	func startAccountReauthentication(

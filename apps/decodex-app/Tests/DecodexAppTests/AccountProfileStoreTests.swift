@@ -390,7 +390,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		let secondProfileIsPending = await client.secondProfileIsPending()
 		XCTAssertTrue(secondProfileIsPending)
 
-		await store.refreshCredentials(for: PerAccountGenerationClient.firstAccountID)
+		await store.setAccount(PerAccountGenerationClient.firstAccountID, enabled: false)
 		for _ in 0 ..< 2_000 {
 			let first = store.accounts.first {
 				$0.account.accountID == PerAccountGenerationClient.firstAccountID
@@ -436,7 +436,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		}
 		try await client.waitForSecondProfile()
 
-		await store.refreshCredentials(for: PerAccountGenerationClient.firstAccountID)
+		await store.setAccount(PerAccountGenerationClient.firstAccountID, enabled: false)
 		for _ in 0 ..< 2_000 {
 			let first = store.accounts.first {
 				$0.account.accountID == PerAccountGenerationClient.firstAccountID
@@ -496,7 +496,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertEqual(progressiveSecond?.profile?.snapshot.lifetimeTokens, 2_000)
 		XCTAssertNil(progressiveSecond?.profile?.email)
 
-		await store.refreshCredentials(for: PerAccountGenerationClient.firstAccountID)
+		await store.setAccount(PerAccountGenerationClient.firstAccountID, enabled: false)
 		for _ in 0 ..< 2_000 {
 			let first = store.accounts.first {
 				$0.account.accountID == PerAccountGenerationClient.firstAccountID
@@ -1116,26 +1116,6 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 		.unmanaged
 	}
 
-	func refreshAccountCredentials(
-		authority _: ResetCardAuthority?,
-		operationID _: String,
-		accountID: String,
-		expectedRevision: UInt64,
-		idempotencyKey _: String
-	) async throws -> AccountControlResult {
-		guard accountID == firstAccount.accountID,
-			expectedRevision == firstAccount.accountRevision
-		else {
-			throw AccountControlError.invalidInput
-		}
-		firstAccount = Self.makeAccount(
-			accountID: firstAccount.accountID,
-			alias: firstAccount.alias,
-			revision: firstAccount.accountRevision + 1
-		)
-		return .accountChanged(firstAccount)
-	}
-
 	func use(_: ResetCardUseAttempt) async throws -> ResetCardOperationState {
 		throw ResetCardClientError.invalidResponse
 	}
@@ -1156,12 +1136,22 @@ private actor PerAccountGenerationClient: AccountControlClient, AccountProfileCl
 
 	func setAccountEnabled(
 		authority _: ResetCardAuthority?,
-		accountID _: String,
+		accountID: String,
 		enabled _: Bool,
-		expectedRevision _: UInt64,
+		expectedRevision: UInt64,
 		idempotencyKey _: String
 	) async throws -> AccountControlResult {
-		throw AccountControlError.applicationUnavailable
+		guard accountID == firstAccount.accountID,
+			expectedRevision == firstAccount.accountRevision
+		else {
+			throw AccountControlError.invalidInput
+		}
+		firstAccount = Self.makeAccount(
+			accountID: firstAccount.accountID,
+			alias: firstAccount.alias,
+			revision: firstAccount.accountRevision + 1
+		)
+		return .accountChanged(firstAccount)
 	}
 
 	func logoutAccount(

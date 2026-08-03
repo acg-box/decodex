@@ -17,15 +17,16 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AccountInitialSelectionResult, AccountInspectResult, AccountProfileEmailDto,
-	AccountProfileResult, AccountSelectionModeDto, AccountsResult, CURRENT_VERSION,
-	ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult, CommandEnvelope,
-	CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport, EntityId,
-	EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
-	QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope, ResetCardDescriptorDto,
-	ResetCardInventoryResult, ResetCardOperationResult, ResultPayload, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal, WorkItemBoardPageSize,
-	WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
+	AccountInitialSelectionResult, AccountInspectResult, AccountObservationSignal,
+	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
+	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
+	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
+	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
+	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
+	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
+	WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId,
+	WorkItemState,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -994,6 +995,27 @@ impl AccountClient {
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
 		match payload {
 			QueryResultPayload::CodexAuthProjection(result) => Ok(result),
+			_ => Err(ClientFailure::ProtocolMalformed),
+		}
+	}
+
+	/// Wait until daemon-owned account observations advance or return one bounded heartbeat.
+	pub async fn wait_for_observation(
+		&self,
+		after_generation: u64,
+	) -> Result<AccountObservationSignal, ClientFailure> {
+		self.transport.require_local_profile()?;
+		let payload = time::timeout(
+			self.transport.timeout,
+			self.transport.query_inner(
+				"decodex-account-observation-wait",
+				QueryPayload::WaitForAccountObservation { after_generation },
+			),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		match payload {
+			QueryResultPayload::AccountObservation(signal) => Ok(signal),
 			_ => Err(ClientFailure::ProtocolMalformed),
 		}
 	}
