@@ -1,260 +1,271 @@
-# XY-1402 stateless execution coordination
+# Stateless Execution Coordination
 
-## Status and authority
+Status: normative current owner composition plus the accepted Candidate-5 Quick Task
+target. Candidate-5 implementation and integrated acceptance remain pending.
 
-This page records the source projection for XY-1402. Linear issue XY-1402 is the
-complete scope and acceptance contract. The following accepted records supply the
-composed authority:
-
-- parent decision XY-1398;
-- product authority comment `099fb36d-9a48-407e-abdd-80dd56d13051`;
-- skeptic authority comment `02d37443-f3cf-4c11-a462-e3da80c40481`;
-- decision memo `134844d5-ad31-484f-9409-4591638c966d`;
-- accepted XY-1399 R2 receipt `4afabdfc-a694-4d16-ba61-6cb016f38fe9`;
-- accepted XY-1400 R2 receipt `e9509cd9-fb60-43ab-a9ab-d235a8e14e7f`; and
-- accepted XY-1401 cycle-2 R2 receipt `8a784c0a-2e2f-4675-adba-d3baaaddb3f1`.
-
-The XY-1396 and XY-1397 candidates are rejection evidence. They do not supply
-implementation authority.
-
-This candidate is source-only work before the unified core-freeze gate. No
-formatter, build, compiler, lint, static analysis, migration parser, SQL parser,
-test, fixture, generator, service, VM, UI check, live Codex experiment, account
-operation, or provider effect is part of this candidate evidence.
+The coordinator is not a schema owner. Its domain records are not schema migration
+records. The one latest schema contains only final current relations and omits the retired
+ManagedRun-local submitted-turn/effect-barrier machinery.
 
 ## Owner composition
 
-`ExecutionCoordinator` is a zero-sized, stateless sequencer. It does not persist
-state. It does not own a lifecycle, retry machine, receipt, effect barrier,
-ambiguity ledger, account decision, RuntimeSession decision, process state, or
-ProviderAttempt state.
+`ExecutionCoordinator` is a zero-sized, stateless sequencer. It does not persist state or
+own a lifecycle, retry machine, receipt, effect barrier, ambiguity ledger, account
+decision, RuntimeSession decision, process state, or ProviderAttempt state.
 
-| Owner | Sole authority retained |
+| Owner | Sole authority |
 | --- | --- |
-| Conversation owner | Ordinary Conversation and Turn lifecycle. Quick Task stays an ordinary multi-turn Conversation. |
-| ManagedRun owner | ManagedRun lifecycle, execution assignment, wait state, and acceptance. |
-| V14 and V16 | Complete account universe, eligibility facts, account selection, and immutable route decision. |
-| V17 | Exact same-thread RuntimeSession reuse or atomic Context Pack plus fallback RuntimeSession creation. |
-| ProcessSupervisor | ProcessGeneration intent, live fence, positive death evidence, and account-local quarantine. |
-| ProviderAttemptService | Atomic prepared binding, provider-effect state, positive evidence, restore projection, and reconciliation. |
-| Reviewer | Execution-scoped, read-only review. Missing or ambiguous output grants no approval or completion. |
-| ExecutionCoordinator | One in-memory sequence across the accepted owners. It grants no dispatch authority. |
+| Conversation authority | Ordinary Conversation and Turn lifecycle, including Candidate-5 atomic first Turn/history admission and legal Turn finalization. |
+| ManagedRun authority | ManagedRun lifecycle, execution assignment, wait state, review, acceptance, and completion. |
+| Routing Snapshot | Complete account universe, policy order, account/evidence revisions, capability/quota facts, and blocker completeness. |
+| Routing Decision | Sole account selection, exact cause projection, and immutable route result. |
+| Continuation Plan | First-session planning, exact same-thread reuse, atomic Context Pack plus fallback RuntimeSession, and PostgreSQL-only explicit-successor evidence. |
+| RuntimeSession Thread Establishment | Exact thread request fence, start binding, activation, and acknowledgement. |
+| ProcessSupervisor | ProcessGeneration intent, live fence, positive-only death evidence, and account-local quarantine. |
+| ProviderAttemptService | Atomic attempt binding, dispatch authorization, provider-effect state, positive evidence, restore projection, and reconciliation. |
+| Reviewer | Execution-scoped read-only review; missing or ambiguous output grants no approval or completion. |
+| ExecutionCoordinator | One in-memory sequence across accepted owners; no independent authority. |
 
-The coordinator first consumes one V16 decision. A selected decision can consume
-one V17 plan. The coordinator then consumes one ProcessSupervisor-owned live
-fence and asks ProviderAttemptService to prepare the exact attempt. The
-coordinator consumes the fresh prepared capability and returns only an inert
-attempt projection. It cannot authorize dispatch. No production composition
-root can call this sequence.
+The coordinator consumes typed results in owner order and returns an inert projection
+unless a separately accepted production dispatch root consumes the complete fence chain.
+It cannot reconstruct a fresh fence from durable readback.
 
 ## Closed execution consumer
 
-V14, V16, and V17 use one closed consumer union:
+Routing, continuation, and ProviderAttempt use one closed consumer union:
 
-- `conversation_turn` binds the Conversation identity and revision, source
-  RuntimeSession identity and revision, and reserved Turn identity; and
-- `managed_run_execution` binds the ManagedRun identity and revision and one
-  distinct managed execution identity.
+- `conversation_turn` binds Conversation identity/revision, optional source
+  RuntimeSession identity/revision, and one prospective or existing Turn identity; and
+- `managed_run_execution` binds ManagedRun identity/revision and one distinct managed
+  execution identity.
 
-The ordinary variant does not contain a ManagedRun identity. The Conversation
-owner can materialize its reserved Turn after ProviderAttempt preparation.
-ProviderAttempt does not create or rewrite a RuntimeSession or a Turn.
+The Conversation variant contains no ManagedRun identity. Quick Task remains an ordinary
+multi-turn Conversation. Conversation authority materializes its reserved Turn only after
+the accepted first-session plan or for an existing-session intent. ProviderAttempt cannot
+create or rewrite a Turn or RuntimeSession.
 
-The managed variant does not move ManagedRun lifecycle authority. The ManagedRun
-read model consumes all ProviderAttempt result projections. It does not copy
-provider-effect authority into a second ledger.
+The ManagedRun variant does not move ManagedRun lifecycle authority. Its read model can
+consume ProviderAttempt projections, but it cannot copy provider-effect authority into a
+second ledger or synthesize acceptance.
 
-## V25 and V26 forward cutover
+## Final latest-schema cut
 
-`V25__execution_route_enum_expansion.sql` adds only the route and wait vocabulary.
-PostgreSQL requires that transaction to commit before a later transaction uses a
-new value from an existing enum.
+The latest schema includes the final closed route and wait vocabulary and the final
+consumer-generic routing, continuation, and ProviderAttempt definitions directly. It does
+not contain the retired ManagedRun-local submitted-turn receipts, safety inputs, effects,
+or barriers. It contains no compatibility or fallback writer for those shapes.
 
-`V26__execution_coordinator_cutover.sql` is the forward-only coordinated cutover.
-It takes exclusive locks on the retired V12 relations and their current
-integration relations before it changes authority.
+There is no data conversion or historical backfill. Current local data is disposable. If
+old local state cannot satisfy the latest schema, the operator replaces the local
+database or directly transforms that one development database under the reviewed local
+action. Product runtime never interprets an old shape.
 
-The migration stops if any V12 effect barrier, effect, submitted-turn receipt,
-safety input, or V12 exact-command receipt remains live. It also stops when
-historical routing or continuation data maps one accepted ManagedRun revision to
-more than one managed execution identity. V24 could represent an ordinary
-ProviderAttempt over its then-ManagedRun-only V17 plan. V26 stops if such a
-historical row exists because it cannot convert that lineage into a direct
-ordinary consumer without inventing authority. These conditions require an
-external cutover decision. The migration does not invent compatibility
-authority.
+The latest schema retains sole writers:
 
-After the checks pass, V26:
-
-- removes the V12 safety command, helper, effect ledger, submitted-turn ledger,
-  and barrier relations;
-- removes V12 runtime grants;
-- makes V14, V16, and V17 consumer-generic;
-- backfills one unambiguous historical managed execution identity;
-- adds exact Conversation and ManagedRun consumer completeness constraints;
-- adds exact route-cause and reconciliation projection;
-- keeps V16 as the only account decision writer;
-- keeps V17 as the only RuntimeSession continuation writer;
-- keeps ProviderAttempt as the only provider-effect writer; and
-- adds least-privilege read functions for immutable execution decisions and
-  ManagedRun execution projections.
-
-There is no live, latent, compatibility, or fallback V12 writer after V26.
-Rollback means restore of a pre-V26 database. It does not mean reverse SQL or a
-dual-writer interval.
+- Routing Decision for account choice and route causes;
+- Continuation Plan for RuntimeSession continuation/creation;
+- ProcessSupervisor for ProcessGeneration;
+- ProviderAttemptService for provider effects; and
+- Conversation or ManagedRun for their own lifecycle.
 
 ## Route projection
 
-V16 loads and locks the complete V14 account universe. The caller supplies no
-account list and cannot select an account.
+Routing Decision loads and locks the complete Routing Snapshot. The caller supplies no
+account list, policy order, eligibility, exclusion, or account choice.
 
-Selection and pure-wait classification use only independently eligible included
-members. Policy-excluded members never become eligible and do not participate in
-quota or reconciliation wait classification. A `no_route` projection instead
-uses the complete persisted policy-member universe. Each excluded member retains
-`excluded_by_policy` and every other persisted blocker, while each included
-member retains its exact blockers. An all-excluded universe therefore produces a
-cause-complete `no_route`. A cause-free `no_route` is invalid.
+Selection and pure-wait classification use only independently eligible included members.
+Policy-excluded members never become eligible and do not participate in quota or
+reconciliation wait classification. A `no_route` projection uses the complete persisted
+policy-member universe. Every excluded member keeps `excluded_by_policy` plus every other
+blocker. Every included member keeps its exact blockers. An all-excluded universe is a
+cause-complete `no_route`; cause-free `no_route` is invalid.
 
-The 300-minute and 10,080-minute quota facts stay independent. Each fact keeps
-its duration, source identity, observation revision, exact raw timestamp,
-microsecond value, confidence, and reset instant. V16 applies sticky affinity
-only after it proves independent eligibility. V16 classifies both duration-typed
-facts again at its own database-authored decision instant. A fact that becomes
-stale or reset-expired after V14 keeps that exact new cause.
+The 300-minute and 10,080-minute quota facts remain independent. Each retains duration,
+source identity, observation revision, exact raw timestamp, exact microsecond value,
+confidence, and reset instant. Routing classifies both again at its database-authored
+decision instant. A fact that ages after snapshot creation keeps the exact stale or
+reset-elapsed cause.
 
-V16 uses these exact projection rules:
+Sticky affinity applies only after independent account, capability, quota, process, and
+attempt eligibility. Route results are:
 
-- `selected` names one independently eligible account.
-- `waiting_usage` is valid only when every otherwise eligible account is blocked
-  only by current positive quota depletion. It contains the complete exact
-  depletion causes and the earliest account-ready instant.
-- `waiting_reconciliation` is valid only when every otherwise eligible path is
-  blocked only by an unresolved ProcessGeneration or ProviderAttempt.
-- `no_route` keeps every exact cause for mixed or non-wake conditions. It grants
-  no quota wake and does not fail the task.
+- `selected`: one independently eligible account;
+- `waiting_usage`: every otherwise eligible account is blocked only by current positive
+  quota depletion; includes complete depletion causes and earliest ready instant;
+- `waiting_reconciliation`: every otherwise eligible path is blocked only by unresolved
+  ProcessGeneration or ProviderAttempt state; and
+- `no_route`: complete mixed or non-wake causes; it grants no wake and does not fail the
+  task by itself.
 
-Authentication, plugin, disabled-account, unknown-capability, dependency,
-approval, user, external, and Reviewer causes do not become quota or
-reconciliation causes. Missing timestamp provenance becomes `usage_unproven`.
-ManagedRun reconciliation without an exact unresolved process or attempt becomes
-`reconciliation_unproven`.
+Authentication, plugin, disabled account, unknown capability, dependency, approval,
+user, external, and Reviewer causes do not become quota or reconciliation causes. Missing
+quota provenance becomes `usage_unproven`. Reconciliation without an exact unresolved
+process or attempt becomes `reconciliation_unproven`.
 
-V16 adds a process cause to a path that is otherwise eligible except for positive
-quota depletion. Therefore, an unresolved process and quota depletion produce a
-mixed `no_route`, not a quota wake.
+An unresolved process plus positive depletion is mixed `no_route`, not a quota wake.
+Separate account quotas are never pooled, merged, summed, averaged, or caller-ranked.
 
-## RuntimeSession and thread continuity
+## Candidate-5 initial operation
 
-For an ordinary Conversation, V17 permits same-thread reuse only when the
-original ProviderAttempt has positive exact-thread readback evidence. The
-evidence must bind the same Conversation, source RuntimeSession, account, and
-Codex thread. The reserved current Turn remains a new Conversation-owned intent.
+Candidate 5 adds no coordinator state or new owner. The exact order is:
 
-For a ManagedRun, V17 retains the accepted V15/V22 causal experiment path. An
-exact accepted experiment and positive `thread/read` attestation must bind the
-same source RuntimeSession thread.
+1. Conversation authority creates the Conversation.
+2. The routing request supplies one prospective Turn UUID as intent only. No Turn row or
+   Turn foreign key exists yet.
+3. Routing Snapshot proves the exact initial zero-source lineage and complete locked
+   account universe.
+4. Routing Decision selects one account exactly once.
+5. Continuation Plan atomically creates selected account/profile snapshots, the first
+   revision-1 unfenced `starting` RuntimeSession, inert `initial_thread` plan, exact
+   receipt, activity, and outbox.
+6. Conversation authority atomically admits the exact active revision-1 sequence-1 user
+   Turn and exactly one ordinal-0 completed Message.
+7. Account Service fences only the selected account immediately before spawn.
+8. ProcessSupervisor can spawn only from a fresh ProcessGeneration outcome.
+9. RuntimeSession Thread Establishment fences, starts, binds, and activates the exact
+   thread.
+10. ProviderAttemptService prepares and authorizes the exact attempt.
 
-If same-thread evidence is absent, stale, negative, incomplete, ambiguous, or
-cross-linked, V17 uses its atomic fallback path. The transaction creates the
-Context Pack, account snapshot, starting fallback RuntimeSession, continuation
-plan, activity, outbox, and exact receipt as one authority cluster. V17 does not
-write ProviderAttempt state. ProviderAttempt does not write RuntimeSession state.
+There is no second route decision, alternate account, initial fallback, wake, or account
+re-selection. Initial planning has no source RuntimeSession and no sticky member. It is
+first-session creation, not same-thread reuse, explicit successor, or Context Pack
+fallback.
 
-The shared Codex home stays visible. Exact thread identity, supported same-thread
-resume, and the accepted Context Pack fallback stay intact.
+### Initial lineage
+
+`L0` has all six RuntimeSession, account-snapshot, and profile-snapshot
+identity/revision fields absent. `L6` has all six present with positive revisions.
+Conversation work permits `L0` or `L6`; ManagedRun work permits only `L6`.
+
+The final schema keeps all foreign keys and one exact all-null/all-present check. `L0`
+requires an open exact-revision Conversation, no RuntimeSession or Turn, zero sticky
+members, and exact complete locked membership/order/account/two-window quota/eight
+capability/blocker facts. Partial lineage, source fields, sticky `L0`, existing session or
+Turn, closed/stale Conversation, source-less ManagedRun, and missing, extra, duplicate,
+cross-linked, or reordered evidence reject.
+
+One Conversation lock permits one cross-key initial decision to be fresh. Exact-key replay
+is read-only. Continuation planning accepts only the selected `L0` result and rolls back
+the complete first-session authority cluster on any failure.
+
+### Initial admission
+
+Conversation authority creates the first Turn and history item in one one-winner
+transaction. Required Turn values are the prospective UUID, sequence 1, `user`,
+`possible_side_effects=unknown`, `active`, revision 1, and the exact Conversation/new
+RuntimeSession cross-link. The only first history item is ordinal 0, Message, `completed`,
+revision 1.
+
+The fresh/replay/refusal result, Turn, history, receipt, activity, and outbox are one
+atomic owner result. A competing key commits none of those effects. Wrong identity,
+sequence, role, status, revision, side-effect state, history ordinal/kind/status, second
+item, or cross-link rejects the complete transaction.
+
+### Exact fences and replay
+
+Every process, thread, and provider-effect owner locks and rechecks the exact selected
+Turn as active revision 1. ProcessGeneration and thread establishment through bind require
+the applicable `starting` RuntimeSession revision. ProviderAttempt preparation and
+authorization require the exact post-bind `active` revision plus exact thread fence/bind
+receipts.
+
+Only a fresh ProcessGeneration outcome can spawn. Replay, rejection, and uncertainty use
+durable ProcessGeneration, RuntimeSession, ProviderAttempt, and Conversation readback.
+They cannot spawn, replace, adopt, create a successor, duplicate an attempt, or
+terminalize the Turn.
+
+Conversation authority can move the Turn to failed revision 2 under a starting session
+only after positive proof of definite pre-effect refusal. The proof excludes every process
+state that may have created a child, thread fence/start/bind, and prepared, authorized, or
+unknown ProviderAttempt. Ambiguous work remains active and returns `Unknown`.
+
+Explicit successor remains PostgreSQL-only non-dispatch evidence. Before any write it
+locks the Turn named by the selected route and requires the same Conversation/source
+RuntimeSession, `failed`, revision 2. It has no protocol field, command, runtime grant,
+facade, fallback, or wake path.
+
+## RuntimeSession continuity
+
+For an existing ordinary Conversation session, same-thread reuse requires positive exact
+thread evidence from the original ProviderAttempt. Evidence must bind the same
+Conversation, source RuntimeSession, account, and Codex thread.
+
+For ManagedRun, same-thread reuse requires the accepted causal experiment and positive
+exact-thread attestation bound to the source RuntimeSession.
+
+When accepted existing-session same-thread evidence is absent, stale, negative,
+incomplete, ambiguous, or cross-linked, Continuation Plan uses its atomic Context Pack
+path. It creates the Context Pack, account snapshot, starting fallback RuntimeSession,
+plan, activity, outbox, and exact receipt as one authority cluster.
+
+Candidate-5 initial planning cannot enter either existing-session branch. Continuation
+Plan never writes ProviderAttempt state, and ProviderAttempt never writes RuntimeSession
+state.
 
 ## Effect ambiguity and isolation
 
-An authorized ProviderAttempt remains `unknown` until positive evidence proves a
-terminal result. Process death, timeout, missing events, EOF, restart, negative
-search, and absent rows do not prove non-submission. These observations do not
-authorize replay.
+An authorized ProviderAttempt remains `unknown` until positive evidence proves a terminal
+result. Process death, timeout, missing events, EOF, restart, negative search, and absent
+rows do not prove non-submission and do not authorize replay.
 
-Late positive evidence stays bound to the original attempt. A replacement
-process can reconcile that attempt. It cannot replay the attempt.
+Late positive evidence remains bound to the original attempt. A replacement process can
+reconcile that attempt but cannot replay it.
 
-An existing exact attempt blocks only its exact Conversation Turn or managed
-execution intent. A process cause blocks only the affected account path. Other
-consumers, accounts, dependencies, and routes remain eligible.
+An attempt blocks only its exact Conversation Turn or managed execution. Process
+uncertainty blocks only the affected account path. Other consumers, accounts,
+dependencies, and routes remain independently eligible.
 
 ## Transport and production isolation
 
-The protocol exposes one read-only immutable execution-decision query. The query
-returns the closed consumer, route kind, exact causes, and independent positive
-quota exclusions. It cannot create a route, RuntimeSession, process,
-ProviderAttempt, wake, retry, receipt, or dispatch fence.
+The exact-current protocol may expose one read-only immutable execution-decision query.
+It returns the closed consumer, route kind, complete exact causes, and independent quota
+exclusions. It cannot create a route, RuntimeSession, process, ProviderAttempt, wake,
+retry, receipt, or dispatch fence.
 
-The service uses the accepted XY-1399 owner-only same-UID local transport. It
-does not restore unauthenticated loopback admission. Remote and cross-UID
-authority remains deferred to XY-1299.
+The service uses the owner-only same-UID Unix transport. It has no TCP or loopback
+fallback. Remote and cross-UID authority remains separately gated.
 
-Live provider dispatch and production routing stay structurally disabled. The
-coordinator method is crate-private. It accepts only a crate-private live
-`FencedProcess`. No protocol, CLI, scheduler, application, Codex adapter,
-credential owner, UI, or daemon composition root can acquire the coordinator
-sequence or a dispatch authorization.
+The coordinator method remains crate-private and accepts only crate-private owner
+capabilities. No protocol, CLI, scheduler, UI, credential owner, Codex adapter, or client
+can construct the sequence or mint dispatch authority. Product dispatch remains disabled
+until the Candidate-5 gate accepts the complete composition.
 
-## Deferred acceptance matrix
+## Acceptance
 
-The later unified core-freeze gate must bind every result to the exact candidate
-tree. It must execute the complete matrix below. This source candidate does not
-execute any row.
+After source freeze, validation must cover:
 
-| Boundary | Representative deferred acceptance cases and required evidence | Residual risk before execution |
-| --- | --- | --- |
-| Rust source quality | Compile all affected crates and run the accepted formatter, lint, static, and documentation checks on the exact tree. | Type, visibility, warning, and formatting defects are not excluded by source inspection. |
-| Migration paths | Prove clean V1-to-V26 and populated V24-to-V25-to-V26 migration. Prove that V25 commits enum vocabulary before V26 uses it. Prove transaction rollback for each V26 cutover checkpoint. | PostgreSQL syntax, lock order, and catalog behavior are not executed. |
-| Cutover drain | Prove that every live V12 row or V12 exact-command receipt stops V26 without partial change. Prove that a drained cutover removes all V12 writers and grants. | A latent historical writer or unexpected production row can still falsify the cutover. |
-| Historical ambiguity | Prove that zero or one accepted managed execution identity backfills exactly. Prove that two identities stop the migration. Prove that every historical ordinary ProviderAttempt over the old ManagedRun-only V17 lineage stops the cutover. | Existing data can contain an unobserved ambiguous or cross-linked lineage. |
-| Authority manifests | Capture S0, R1, and R2 manifests. Verify the V26 migration ledger, relation, function, trigger, enum, ACL, dependency, and security-definer inventories. | The schema and configured-authority digests remain intentionally unfrozen until the aggregate gate. |
-| ACL closure | Prove runtime can execute only the required exact functions and read only the required projections. Prove PUBLIC and runtime cannot use private helpers or relation DML. | A catalog or default-ACL drift can add an authority path. |
-| Ordinary Conversation | Route and plan an ordinary Turn without a ManagedRun, WorkItem, Reviewer, or second effect ledger. Prove Quick Task stays a multi-turn Conversation. | No end-to-end ordinary execution was run. |
-| Conversation Turn owner | Prepare one reserved Turn, then materialize it only through the Conversation owner. Reject a cross-Conversation, cross-session, changed, or duplicate Turn. | Conversation-owner integration is source-inspected only. |
-| ManagedRun | Route one exact managed execution and consume ProviderAttempt results without changing ManagedRun lifecycle ownership. | ManagedRun lifecycle and acceptance integration are not executed. |
-| Account authority | Supply no account list. Prove V16 loads the full persisted V14 universe and rejects policy, member, revision, and evidence drift. | A query or trigger error can weaken full-universe closure. |
-| All-excluded policy | Exclude every persisted policy member. Require one `no_route` containing `excluded_by_policy` for every member and every other persisted member blocker. | Database trigger and Rust-kernel cause completeness are not executed. |
-| Mixed included/excluded policy | Combine excluded members with included members carrying quota, reconciliation, and non-wake blockers. Require pure waits to use only included members; require every excluded and included cause when the result is `no_route`. | Mixed policy-disposition and blocker schedules are not executed. |
-| Cause-free NoRoute | Remove all causes or one required excluded-member cause from a `no_route` projection. Require PostgreSQL integrity, exact-command readback, read-only adapter, runtime projection, and protocol decoding to fail closed. | Cross-layer malformed-projection cases are source-inspected only. |
-| Quota separation | Exercise 300-minute and 10,080-minute facts independently and together. Prove duration, source, revision, raw value, precision, and reset identity stay separate. | SQL and Rust ordering parity are not executed. |
-| V14-to-V16 quota aging | Place each duration just before, at, and after its freshness and reset boundaries between snapshot and decision. Require the exact stale or reset-elapsed cause and never an empty, selected, or pure-depletion projection. | Cross-transaction clock boundaries are not executed. |
-| Sticky affinity | Prove sticky selection only after independent account, capability, quota, process, and attempt eligibility. | A data-dependent ordering defect can select too early. |
-| Pure usage wait | Prove `waiting_usage` only when all otherwise eligible accounts have only positive current depletion. Verify the exact earliest account-ready instant. | Boundary timestamps and provenance comparisons are not executed. |
-| Pure reconciliation wait | Prove `waiting_reconciliation` only when all otherwise eligible paths have only unresolved ProcessGeneration or ProviderAttempt causes. | Process/attempt race schedules are not executed. |
-| Mixed causes | Combine quota with process, authentication, plugin, disabled, unknown-capability, dependency, approval, user, external, and Reviewer causes. Require `no_route`, every exact cause, no wake, and no task failure. | Cross-product cause schedules are not executed. |
-| Missing quota provenance | Remove each duration, source, revision, raw timestamp, precision, confidence, or reset field. Require `usage_unproven` or the exact existing typed cause, never a quota wake. | Malformed and boundary timestamp fixtures are deferred. |
-| RuntimeSession reuse | For Conversation work, require original positive ProviderAttempt thread evidence. For ManagedRun work, require accepted causal experiment evidence. Reject stale, negative, missing, duplicate, or cross-linked evidence. | Same-thread evidence queries are not executed. |
-| Atomic fallback | Inject failures before and after each Context Pack, snapshot, RuntimeSession, plan, activity, outbox, receipt, and commit step. Require zero or one complete authority cluster. | Transaction and blob crash behavior are deferred. |
-| Process fence | Accept only a live ready ProcessGeneration with an unretired execution epoch. Reject dead, starting, stopping, death-unknown, cross-account, stale-revision, and retired-epoch generations. | Host and database races are not executed. |
-| ProviderAttempt preparation | Prove one atomic binding to the exact consumer, V16 decision, V17 plan, RuntimeSession, account, process generation, epoch, request identity, and provider keys. Prove that the coordinator consumes the fresh prepared capability and returns only an inert projection. | V24 replacement-function behavior and capability consumption are not executed. |
-| Exact-intent replay | Prove same-key replay returns stored authority. Prove a new attempt for the same Turn or managed execution cannot change account or replay an effect. | Concurrency and response-loss schedules are deferred. |
-| Lost supervision | Inject process death, timeout, EOF, restart, missing events, negative search, and absent result rows after authorization. Require `unknown`, not `not_submitted`. | Provider and host adapters are not exercised. |
-| Late positive evidence | Reconcile a late positive result to the original attempt after process loss. Reject attribution to a replacement attempt. | Provider evidence adapters are not exercised. |
-| Smallest-scope isolation | Block one attempt, dependency, account, and route in turn. Prove unrelated work remains eligible. | Large concurrent account and consumer schedules are deferred. |
-| ManagedRun projection | Read every exact ProviderAttempt state, positive terminal evidence identity, and unknown reason through the ManagedRun view. Prove it cannot mutate ProviderAttempt or synthesize acceptance. | Read-model completeness is not executed. |
-| Reviewer | Exercise unavailable, failed, missing, ambiguous, and positive output. Require missing or ambiguous output to grant neither approval nor completion. | Reviewer integration remains read-only and unexecuted. |
-| Coordinator statelessness | Inspect object layout and run repeated, concurrent, crash, and restart calls. Prove no coordinator relation, receipt, task, retry state, or durable projection exists. | Runtime memory and concurrency behavior are not executed. |
-| Protocol projection | Query selected, usage-wait, reconciliation-wait, mixed, missing, malformed, and incompatible decisions. Require complete causes without truncation or mutation authority. | V1.2/V1.1 wire compatibility and response-size limits are not executed. |
-| Same-UID transport | Prove fixed owner-only Unix endpoint, client and server peer-UID checks, and no TCP or loopback fallback. | XY-1399 host matrix remains deferred. |
-| Shared Codex home | Prove the exact configured home, account visibility, thread identity, supported resume, and Context Pack fallback across restart. | No live Codex experiment is part of this candidate. |
-| Production isolation | Reverse-scan every composition root. Prove no routing, coordinator, process spawn, provider dispatch, credential, remote transport, UI, packaging, or release path is enabled. | A dependency or feature-flag change can invalidate source isolation. |
-| Replay and concurrency | Run same-key, cross-key, response-loss, rollback, serialization, deadlock, restore, and concurrent-consumer schedules for V16, V17, and V24. | Exact-command convergence is not executed on the integrated tree. |
-| Hostile cross-links | Substitute every Conversation, Turn, ManagedRun, managed execution, RuntimeSession, account, process, attempt, plan, evidence, operation, and idempotency identity. Require fail-closed rejection. | The full hostile matrix is deferred. |
-| Documentation alignment | Compare the final source, Linear authority, manifests, OpenWiki, and accepted parent receipts on the exact tree. | Later changes can cause documentation or authority drift. |
+- fresh PostgreSQL 18 latest-schema bootstrap, second-bootstrap refusal, and runtime-only
+  daemon startup with zero DDL and no schema-owner credential;
+- exact current catalog/authority for all routing, continuation, Conversation,
+  ProcessGeneration, ProviderAttempt, and read-only projection objects;
+- both consumer shapes and rejection of every partial or cross-linked identity;
+- complete route universe, all-excluded and mixed policies, cause-free rejection,
+  independent quota facts, aging, sticky eligibility, and exact pure-wait rules;
+- Candidate-5 `L0`/`L6`, sole account selection, atomic first-session cluster, atomic
+  first Turn/history admission, exact effect fences, fresh/replay/reject/unknown behavior,
+  and definite pre-effect refusal;
+- existing-session same-thread and atomic Context Pack paths;
+- positive-only process/attempt reconciliation, late evidence, smallest-scope isolation,
+  and no replay after lost supervision;
+- ManagedRun and Reviewer authority isolation;
+- stateless coordinator layout and restart behavior;
+- same-UID transport and complete read-only protocol projection; and
+- reverse scans proving no old barrier writer, second ledger, alternate selector,
+  unauthorized dispatch root, or schema upgrade machinery remains.
+
+No historical upgrade, populated cutover, schema-ledger, migration, or restore-digest
+proof is part of acceptance.
 
 ## Architecture falsifiers
 
-Stop integration and return to the authority owner if any of these conditions is
-true:
+Stop and return to the authority owner if:
 
 - ordinary Conversation execution requires a ManagedRun;
-- ProviderAttempt must create or rewrite a RuntimeSession;
-- V17 must write ProviderAttempt state;
-- the coordinator must persist durable authority;
-- V12 cannot be retired without a second live, latent, compatibility, or fallback
-  writer;
-- the accepted parent contracts cannot compose without a change to accepted
-  authority;
-- route projection must collapse a mixed cause into a quota or reconciliation
-  wait; or
-- lost supervision must authorize replay without positive evidence.
+- ProviderAttempt must create or rewrite RuntimeSession state;
+- Continuation Plan must write ProviderAttempt state;
+- ExecutionCoordinator must persist authority;
+- the retired ManagedRun effect path requires a second live or compatibility writer;
+- mixed route causes must collapse into a pure wait;
+- lost supervision must authorize replay without positive evidence; or
+- Candidate-5 requires a second account selector, pre-admission Turn row, generic
+  recovery framework, or alternate dispatch owner.

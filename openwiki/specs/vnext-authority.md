@@ -7,6 +7,21 @@ in the [retirement decision](private-artifact/decision.md#repository-effective-p
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
 
+There are no external or deployed users. The current local PostgreSQL database is
+disposable development state. This contract has no supported schema-upgrade path.
+
+Decodex has exactly one canonical unversioned latest schema source:
+`crates/decodex-postgres/schema.sql`. Numbered SQL, Refinery, schema-history ledgers,
+upgrade prefixes, compatibility DDL, migration receipts/finalizers/fallback, Phase A/B
+schema receipts, schema generators, and second executable schema owners are rejected.
+The former schema labels, including V14, V16, V17, V33, and V34, are superseded
+provenance and are not current owner names.
+
+One explicit operator bootstrap owns clean-target precondition, one transactional schema
+execution, and exact post-execution verification. A second bootstrap against a nonempty
+target fails closed. Normal `decodexd` startup resolves no schema-owner credential,
+executes zero DDL, and verifies only the exact current catalog and configured authority.
+
 ## Product entities
 
 | Entity | Contract |
@@ -27,7 +42,7 @@ Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 | Artifact | Content-addressed large output/evidence with PostgreSQL metadata; `active`, `expired`, or `deleted`. |
 
 There is no Domain Agent, automatic multi-Lead topology, arbitrary durable role, or Goal
-product entity in V1. Task and Reviewer agents are execution-scoped. Codex-native
+product entity in the first release. Task and Reviewer agents are execution-scoped. Codex-native
 subagents are run-local runtime actors normalized into the same activity/message graph;
 durable cross-run and cross-project routing belongs to Decodex.
 
@@ -76,28 +91,17 @@ reviewer, PR, harness, or Goal. A ManagedRun separates:
 - wait reason: `usage`, `auth`, `plugin`, `dependency`, `approval`, `user`, `external`,
   `reconciliation`, `reviewer_unavailable`, `reviewer_failed`, `reviewer_ambiguous`.
 
-Before V26, the inert V12 boundary persisted only `waiting` ManagedRuns that remained blocked.
-Every run was foreign-key bound to its exact Project, canonical WorkItem, and authoritative
-RuntimeSession revision. Task and Reviewer assignments remain exact-run RuntimeSession identities.
-Their closed role type cannot represent Advisor or Lead and contains no durable Agent identity.
-V12 effect lineage was foreign-key bound to one run and one barrier. Barrier states were `guarded`
-or permanently `closed`; both denied effects.
+The latest schema contains no ManagedRun-local submitted-turn receipt, safety-input,
+effect, or barrier authority. Those old shapes have no compatibility writer and no data
+conversion path. Current local data is disposable.
 
-The historical V12 mutation consumed a positively observed unknown exact turn, a Decodex-owned
-exact submitted-turn receipt, or an explicit inconclusive observation. It preserved a blocked
-waiting run and recorded divergence only from positive unknown-turn evidence. Missing, empty,
-exhausted, not-found, scan-exhaustion, no-event, or method-result absence never authorized
-progress.
-
-V26 removes the drained V12 submitted-turn, safety-input, effect, and barrier relations and their
-exact writer. The cutover stops if any live row or V12 exact-command receipt remains. It does not
-create a compatibility or fallback writer. The V3 Turn and HistoryItem invoker-rights repairs that
-V12 introduced remain current and independent of the retired ManagedRun-local effect authority.
-
-V24 cuts external-turn authority over to the generic ProviderAttempt owner. V12 submitted-turn
-receipts, safety inputs, and effect barriers are not inputs to ProviderAttempt submission or
-outcome. V25/V26 adapt V14, V16, and V17 for both consumer paths and retire the old V12 shapes.
-ProviderAttempt remains the sole external-turn attempt, receipt, and ambiguity authority.
+Task and Reviewer assignments remain exact-run RuntimeSession identities. Their closed
+role type cannot represent Advisor or Lead and contains no durable Agent identity.
+ManagedRun owns run lifecycle, wait state, review, acceptance, and completion.
+ProviderAttempt is the sole external-turn attempt, receipt, ambiguity, and positive
+outcome authority for both ordinary Conversation Turns and ManagedRun executions.
+Missing, empty, exhausted, not-found, scan-exhaustion, no-event, or method-result absence
+never authorizes progress or proves non-submission.
 
 Project/Program policy is versioned authority over allowed repositories, tools, paths, merge
 behavior, parallelism, budgets, approvals, and quiet periods. Commands use expected
@@ -117,15 +121,48 @@ replayed.
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
 | Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
 | Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
-| v0.2 state | final vNext runtime and installer read none; an operator can copy local credentials once through ordinary vNext account imports and then delete the frozen account pool |
+| v0.2 state | Final vNext runtime and installer read none. The reviewed local database reset may preserve the complete credential-negative account/routing/binding tuple, including each enabled state and the mode-valid fixed target, and rebind it to unchanged host-vault records. Only the existing HostCredentialStore owner may perform a confined in-process read for typed credential-negative agreement; no token bytes leave that owner. |
 
 PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
 app-server child owner, mutation coordinator, and repository-side-effect owner. GPUI,
 SwiftUI menubar, CLI, and MCP are clients/adapters over common application services; they
-never read PostgreSQL, rollout files, blobs, or repositories directly. V1 is single-host
+never read PostgreSQL, rollout files, blobs, or repositories directly. The first release is single-host
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
+
+### PostgreSQL latest-schema authority
+
+`crates/decodex-postgres/schema.sql` is the only executable schema owner. It contains the
+final accepted enums, relations, constraints, indexes, functions, triggers,
+dependencies, ownership, and ACLs directly. It contains no old-state branch, drain,
+backfill, compatibility operation, or reverse operation.
+
+An allowed Rust `schema` module must own clean-target verification, one transaction that
+executes the complete schema, and post-execution current-authority verification before
+commit. A wrapper around `include_str!` alone is prohibited. There is no schema manager,
+registry, version constant, generator pipeline, bootstrap facade, or cutover coordinator.
+
+The explicit operator bootstrap resolves the schema-owner credential for that invocation
+only. It requires an empty PostgreSQL 18 target with data checksums, runs the complete
+schema once, verifies `pgcrypto`, exact catalog shape, stable dependencies, ownership,
+ACLs, function/trigger bodies and settings, `schema_fingerprint`, and configured runtime
+authority, and commits only after all checks pass. A second bootstrap fails because the
+target is no longer empty.
+
+Normal `decodexd` startup resolves only the runtime credential. It runs zero DDL and
+performs the same read-only current-catalog/configured-authority checks. It never creates,
+upgrades, repairs, or finalizes a schema and never reads a schema-history relation.
+
+The verifier rejects any extra, missing, changed, unsafe, or unreachable schema,
+relation, column, enum, constraint, index, function, trigger, rule, policy, RLS setting,
+sequence, dependency, owner, or grant. It closes inherited and `SET ROLE` authority,
+PUBLIC access, grant options, DDL, `TRUNCATE`, trigger bypass, unsafe function settings,
+hostile `search_path`, overloads, external cascades, and extension-member control.
+
+Exact-command receipts, account operations, ProcessGeneration, ProviderAttempt,
+`schema_fingerprint`, runtime authority, activity, outbox, and repository-effect records
+remain current domain integrity. They are not schema history or bootstrap permission.
 
 The account ownership, refresh, recovery, platform-store, clean-cutover, and readiness
 contract is [Account Lifecycle Authority](account-lifecycle-authority.md). An account's
@@ -248,7 +285,7 @@ infer persistence freshness, COMMIT success, or global operation history. No sna
 caller-supplied projection, generic observation, operation view, or reconstructed state
 can be supplied back as mutation authority.
 
-Within the trusted single-host V1 boundary:
+Within the trusted single-host first-release boundary:
 
 - `decodexd` is the sole owner of repository and worktree effects. No client, provider,
   validation child, second daemon, or distributed worker acquires a parallel mutation
@@ -270,7 +307,7 @@ Within the trusted single-host V1 boundary:
   working directory, and repository discovery never grant authority.
 - Project validation is supervised for process lifecycle, bounded output, timeout and
   cancellation, and repository mutation detection. Deliberately hostile same-UID code is
-  outside V1 confinement. Hostile-project or multi-tenant operation requires a separate
+  outside first-release confinement. Hostile-project or multi-tenant operation requires a separate
   UID or sandbox owner and an independently accepted feasibility and authority gate.
 
 Every external operation is assigned one complete canonical descriptor. The descriptor
@@ -334,24 +371,22 @@ imports external state. Generic observations cannot complete any operation.
 
 Authorized whole-cluster restore is inside the trusted PostgreSQL-administrator boundary
 and may remove or resurrect assignments, checkpoints, and results together, thereby
-redefining current authority. V1 has no external monotonic anchor and no automatic
+redefining current authority. The first release has no external monotonic anchor and no automatic
 full-cluster rollback detection. The accepted trusted single-daemon/same-UID boundary,
 XY-1354 descriptor-assisted symlink-free persisted absolute-path reacquisition, and
 pinned Git 2.54 mechanism remain unchanged.
 
-XY-1349 solely owns V13 physical persistence, transaction mechanics, privileges,
-retention, migration, and frozen database evidence. XY-1350 may proceed in parallel only
-against this accepted contract and owns read-only acquisition plus executor/readback
-mechanics, not persistence, receipt minting, saga, or hidden allocation mutation. XY-1351
-owns the first shared path that composes preparation, fresh receipt consumption, execution,
-readback, and terminal reconciliation. Rejected candidate trees
+Managed Repository Persistence owns the final physical relations, transaction mechanics,
+privileges, retention, and current database evidence. Repository Executor owns read-only
+acquisition plus executor/readback mechanics, not persistence, receipt minting, saga, or
+hidden allocation mutation. Repository Saga owns the shared path that composes preparation,
+fresh receipt consumption, execution, readback, and terminal reconciliation. Rejected candidate trees
 `6e20e9b3cf1415cce9b399da173b0410cc4c80dc`,
 `6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
-`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only. This contract
-creates no compatibility or history migration path.
+`e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only.
 
 Pure PostgreSQL commands use a different, exact in-transaction authority. Each operation has one
-command-complete migration-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
+command-complete schema-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
 request JSONB from the same typed values the function consumes; runtime supplies only a
 protocol-scoped idempotency key and typed operation inputs, never an authoritative
 caller-supplied request hash, claim token, lease, committed pending claim, or split-phase reserve.
@@ -400,12 +435,12 @@ failpoint, and incomplete-row probe present in the candidate, with only command-
 runtime-executable. Effect evidence decodes the stored response bytes and joins their effect envelope
 to the returned domain row and actual canonical activity/outbox identities.
 
-This authority is implemented vertically: XY-1345 records and proves the protocol; XY-1346
-implements the separate relation and RoleProfile bootstrap/update in V9; re-bounded XY-1337 owns authoritative
-RuntimeSession snapshot creation/transition in V10. Candidate 3 is superseded code and may supply
-only independently re-derived invariants and hostile-test ideas.
+XY-1345 records the exact-command protocol. RoleProfile Authority owns the separate
+receipt relation and RoleProfile bootstrap/update. RuntimeSession Authority owns
+authoritative RuntimeSession snapshot creation/transition. Candidate 3 is superseded
+code and may supply only independently re-derived invariants and hostile-test ideas.
 
-V9 persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
+RoleProfile Authority persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
 `role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
 current-revision pointer per role. `bootstrap_role_profiles_exact` accepts four fixed
 advisor/lead/task/reviewer scalar groups and creates all four revision-one profiles atomically.
@@ -445,12 +480,176 @@ and unsupported, oversized, or credential-shaped forms are rejected.
 `thread/read(includeTurns=true)` and paginated/list evidence are lossy reconciliation sources.
 They may support positive observations, but never authorize a negative `Present`, `Complete`, or
 context-free `Absent` conclusion. Missing, truncated, or unobserved evidence remains unknown.
-Experiment intent and the first creation fence belong to XY-1358/V15. XY-1367/V22 binds the exact
-nullable-name start response. It fences the separate name-set effect. It requires exact-ID
-retained-title attestation before positive observations or V17 same-thread authority. Production
+Experiment Authority owns intent and the first creation fence. Retained-title Authority binds the exact
+nullable-name start response, fences the separate name-set effect, and requires exact-ID
+retained-title attestation before positive observations or same-thread authority. Production
 Quick Task creation belongs to XY-1276. External Codex activity may be provenance-imported for ordinary
 Quick/Advisor/Lead conversations; on an active ManagedRun it marks the session `diverged` and blocks
 side effects until tool/repository readback reconciles them.
+
+### Quick Task thread establishment
+
+Status: Candidate 5 is approved target architecture. Implementation and integrated
+acceptance remain pending. Candidate-4 tree
+`f82b866e21f12742648023a2b468cc057afa52a1` is rejected provenance.
+
+Quick Task remains an ordinary multi-turn Conversation. Candidate 5 uses existing owners
+in this exact order:
+
+1. Conversation authority creates the Conversation.
+2. Routing receives a prospective Turn UUID as intent. It creates no Turn, and no routing
+   column has a foreign key to `turns` for that intent.
+3. Routing Snapshot loads and locks the complete account universe without a source
+   RuntimeSession or sticky member.
+4. Routing Decision selects the account exactly once.
+5. Continuation Plan consumes that selected decision and atomically creates the selected
+   account snapshot, copied RoleProfile snapshot, one revision-1 unfenced `starting`
+   RuntimeSession, inert `initial_thread` plan, exact receipt, activity, and outbox.
+6. Conversation authority admits the exact prospective Turn and first history item in one
+   transaction.
+7. Every establishment fence locks and rechecks that Turn as active revision 1 under the
+   same Conversation and new RuntimeSession.
+8. Account Service fences only the selected account immediately before spawn.
+9. Only a fresh ProcessGeneration fence may spawn.
+10. RuntimeSession Thread Establishment owns thread request fencing, exact start binding,
+    activation, and acknowledgement.
+11. ProviderAttemptService owns preparation, authorization, ambiguity, positive evidence,
+    and reconciliation.
+
+There is no second route decision, fallback, wake, alternate account, or account
+re-selection in the initial operation. Initial planning creates the first session. It is
+not explicit successor, same-thread reuse, or Context Pack fallback. Automatic
+cross-account fallback and wake remain disabled under XY-1304.
+
+| Owner | Candidate-5 authority |
+| --- | --- |
+| Account Registry and Routing Snapshot | Complete lifecycle, control, capability, quota, blocker, and routing facts; no selection. |
+| Account Service | Account operations and exact selected-account readiness/credential/provider/HostCredentialStore pre-spawn fence; no selection. |
+| Routing Decision | Sole Quick Task account selector and immutable route-decision writer. |
+| Continuation Plan | Initial snapshots, first starting RuntimeSession, inert initial plan, existing same-thread/Context Pack planning, and PostgreSQL-only explicit-successor evidence. |
+| Conversation authority | Conversation creation, atomic initial Turn/history admission, legal Turn finalization, and exact Turn lock/read proof. |
+| RuntimeSession Thread Establishment | RuntimeSession state/thread fields, exact thread fence and bind, and acknowledgement. |
+| ProcessSupervisor | ProcessGeneration intent, fresh spawn authority, exact readback, positive death evidence, and account-local quarantine. |
+| ProviderAttemptService | Attempt preparation, dispatch authorization, ambiguity, positive evidence, and reconciliation. |
+| ExecutionCoordinator | Crate-private stateless sequencing only. |
+
+Account Service can report and fence facts for the selected account. It cannot preselect,
+substitute, fall back to, or wake another account. If account A passes an Account Service
+subset but fails a complete routing capability while B is fully eligible, Routing
+Decision selects B. Continuation Plan creates only B's snapshots and RuntimeSession.
+Later B drift fails closed before spawn without a second decision or account A.
+
+#### Closed initial lineage
+
+For `routing_snapshots`:
+
+- `L0` means all six source lineage fields are null: `runtime_session_id`,
+  `runtime_session_revision`, `account_snapshot_id`,
+  `account_snapshot_source_revision`, `profile_snapshot_id`, and
+  `profile_snapshot_source_revision`.
+- `L6` means all six fields are present and the three revisions are positive.
+
+The latest schema keeps the existing foreign keys and defines one closed
+all-null/all-present shape check. The only valid combinations are
+`conversation_turn AND (L0 OR L6)` and `managed_run_execution AND L6`. Half-null
+lineage and a source-less ManagedRun reject.
+
+`decodex.enforce_routing_completeness()` has one narrow `L0` branch. It accepts only the
+exact prospective Conversation Turn intent when the locked Conversation is open at the
+expected revision, has no RuntimeSession or Turn, and every candidate member has
+`sticky=false`. Candidate membership, policy positions, account revisions, both quota
+observations, all eight capability observations, and blocker rows must exactly equal the
+locked Routing Snapshot universe. Missing, extra, duplicate, cross-linked, or reordered
+evidence rejects. The existing `L6` branch keeps exactly one sticky member.
+
+The supporting current owners obey these predicates:
+
+- `resolve_routing_snapshot_exact` accepts source RuntimeSession identity/revision only
+  when both are present or both absent. The absent branch proves initial predicates and
+  zero sticky members, then writes exact `L0`.
+- `route_account_exact` applies the same pair rule, selects in policy order, and replays
+  only its stored decision. The Conversation lock permits one competing initial key to be
+  fresh; exact-key replay is read-only.
+- `plan_initial_thread_continuation_exact` consumes only selected `L0` and creates the
+  complete first-session authority cluster in one transaction.
+- Routing codecs/readbacks represent the source pair as jointly optional and permit zero
+  sticky members only for `L0`.
+- Continuation-plan completeness proves selected `L0` and the new account/profile/session
+  lineage.
+- Routing-decision completeness remains unchanged.
+
+#### Atomic initial admission
+
+Conversation authority admits exactly one Turn with:
+
+- the prospective UUID bound by the selected route;
+- sequence 1 and role `user`;
+- `possible_side_effects=unknown`;
+- status `active` and revision 1; and
+- the exact Conversation and new starting RuntimeSession cross-link.
+
+The same transaction inserts exactly one ordinal-0 completed Message history item. The
+fresh/replay/refusal result, Turn, history item, exact receipt, activity, and outbox form
+one atomic owner result. Exact-key replay is read-only. Every competing key commits no
+Turn, history, activity, or outbox effect. Wrong identity, role, sequence, side-effect
+state, status, revision, ordinal, kind, second item, or cross-link rejects the transaction.
+
+#### Process, thread, and effect replay
+
+Before ProcessGeneration prepare/spawn, thread fence/start/bind, and ProviderAttempt
+prepare/authorize, the effect owner locks the selected Turn and requires it to remain
+active revision 1 under the same Conversation and first RuntimeSession.
+
+ProcessGeneration and thread establishment through bind require the applicable
+`starting` RuntimeSession revision. ProviderAttempt preparation and authorization require
+the exact post-bind `active` revision and exact completed thread fence/bind receipts. A
+terminalization race loses before effect execution.
+
+ProcessGeneration has four typed outcomes: `Fresh`, `Replayed`, `Rejected`, and
+`Unknown`. Only `Fresh` returns non-clone spawn authority. All other outcomes use durable
+readback or refusal and cannot spawn, replace, adopt, create a successor, duplicate an
+attempt, or terminalize the Turn. The same rule applies after result loss at every thread
+and ProviderAttempt fence.
+
+Conversation authority may transition the exact Turn to `failed` revision 2 under the
+starting RuntimeSession only when positive readback proves definite pre-effect refusal.
+The proof excludes every process state that may have created a child, every thread
+fence/start/bind, and every prepared, authorized, or unknown ProviderAttempt. Ambiguous
+work remains active and returns `Unknown` for manual recovery.
+
+Explicit successor remains PostgreSQL-only non-dispatch evidence. It has no protocol
+field, product command, runtime execution grant, facade, fallback, or wake path. Before
+any write, it locks the Turn named by the route and requires the same Conversation/source
+RuntimeSession, status `failed`, and revision 2.
+
+#### Final trigger functions
+
+The latest schema creates these seven final trigger-function bodies and bindings directly:
+
+| Trigger function | Exact Candidate-5 predicate |
+| --- | --- |
+| `decodex.enforce_routing_completeness()` | Preserve complete existing policy/evidence/`L6` behavior and add only the exact zero-sticky `L0` branch above. |
+| `decodex.enforce_runtime_session_state()` | Preserve revision-one insert, identity, timestamps, terminal immutability, legal terminal edges, and ended-session active-Turn rules. Permit only: unfenced `starting` to request-fenced `starting` by setting the complete request ID/digest pair; that exact row to `active` by preserving the request, matching response ID, and setting exact response digest/thread ID; and `active` to `active` only for exact last-Turn acknowledgement. Reject generic `starting` to `active`, partial receipts, combined edges, or unrelated drift. |
+| `decodex.enforce_turn_state()` | Preserve active-session behavior. Under `starting`, permit only exact first-Turn insertion and active-revision-1 to failed-revision-2 after positive definite pre-effect refusal. Reject every other starting-session write. |
+| `decodex.enforce_history_item_state()` | Preserve active-session behavior. Under `starting`, permit only the admission transaction's ordinal-0 completed Message for the exact first Turn; reject update, second item, other ordinal/kind/status, wrong Turn, or cross-link. |
+| `decodex.enforce_provider_attempt_transition()` | Keep the accepted state algebra, unknown reasons, positive terminal-evidence rule, and immutable tuple; include immutable RuntimeSession thread-binding protocol/key identities. |
+| `decodex.enforce_provider_attempt_binding()` | For `initial_thread`, require exact selected route/plan/account snapshot, ready ProcessGeneration/live epoch, completed thread fence/bind receipts, active post-bind RuntimeSession revision, and active revision-1 selected Turn. Preserve all non-initial branches. |
+| `decodex.enforce_continuation_plan_completeness()` | For `initial_thread`, require selected `L0`, prospective Turn intent, selected account/profile snapshots, one revision-1 unfenced starting RuntimeSession, and inert plan. Preserve same-thread and Context Pack branches; explicit-successor completeness also requires the exact failed revision-2 Turn. |
+
+The dispatch-authorization command performs its own exact Turn lock. A deferred trigger
+does not replace this pre-write fence. The continuation-rejection helper derives only the
+operation from an already-reserved receipt and adds no transport or idempotency mechanism.
+
+No other trigger function changes. Trigger bindings and ACLs remain closed. Every
+unrelated write keeps existing active-only semantics. The narrow first-session permissions
+are not a generic starting-session bypass.
+
+Candidate 5 adds no module, fixed hierarchy, schema phase, ledger, generic transaction or
+recovery framework, transport/idempotency mechanism, wrapper, runner, scheduler, or
+explicit-successor product surface. It must preserve current-main independent account
+observations, Reset Card-before-profile ordering within an account, concurrent progress
+across accounts, revision-fenced cache publication, and query paths that do not join or
+start refresh work.
 
 Long-term context consists of immutable Project, Advisor, and Program revisions. Project
 context records decisions, constraints, repository facts, active Programs/Objectives,
@@ -458,7 +657,7 @@ unresolved risks, and accepted handoffs. Advisor briefs compact cross-project st
 risk. Program context records metrics/signals, recent decisions, quiet periods, and next
 review. A Context Pack contains the current revision, recent raw window, relevant
 artifacts, and repository instructions/OpenWiki. Summaries never silently replace
-sources; users can inspect pinned memory and provenance. V1 uses structured PostgreSQL
+sources; users can inspect pinned memory and provenance. The first release uses structured PostgreSQL
 queries and full-text search, not vectors.
 
 AgentMessage carries logical endpoints, project, correlation and causal parent, dedupe
@@ -497,7 +696,7 @@ nanoseconds. The product-valid interval is `0..=253402300799999999` Unix microse
 RFC3339 ingress normalizes offsets to UTC and must be exactly microsecond-aligned before it
 constructs that type. Sub-microsecond, pre-Unix, post-year-9999, infinity, overflow or carry,
 leap-second, parser-unsupported, and otherwise unsupported values fail before command-receipt
-reservation. No application, adapter, database, or migration path rounds or truncates a quota
+reservation. No application, adapter, database, or persistence path rounds or truncates a quota
 timestamp. Freshness uses checked integer-microsecond subtraction: an age of exactly 300 seconds
 is accepted, while 300 seconds plus one microsecond is stale.
 
@@ -508,34 +707,20 @@ canonical serialization. The receipt binds the resulting SHA-256 digest and byte
 completed-response replay returns the stored response bytes. Retaining the complete request
 document is not required.
 
-V8 is one atomic zero-state migration. In canonical writer order it takes `ACCESS EXCLUSIVE` locks
-on `command_receipts`, `quota_windows`, `activity`, and `outbox`, then uses closed structural
-classification to reject every pre-V8 quota fact: any `quota_windows` row; every receipt whose
-operation is `mutate_quota_window` or whose scope is `quota_windows`, regardless of lifecycle
-state; activity classified by aggregate kind, event kind, or structured payload; outbox classified
-by aggregate fields or structured activity envelope; every outbox link to classified activity; and
-every malformed or orphaned combination of those facts. Correlation-key or aggregate-ID string
-patterns are not evidence classification. The assertion and all DDL occur in the same transaction.
-Only after zero state is proven may V8 alter `quota_windows` in place, preserving its table identity,
-ACLs, account foreign key, unchanged observation-index identity, and migration atomicity while
-replacing only changed constraints and adding the typed enums, exclusion relation, indexes, and
-authority inventory.
-
-There is no populated V7 conversion or quarantine, hand deletion, retention bypass, table
-drop/recreation, dual schema, compatibility read/write, or hidden fallback. Any classified state
-aborts V8 with a stable incompatibility result. The supported recovery is to stop Decodex and
-recreate the whole disposable pre-release database. XY-1302 owns the final whole-ledger
-squash/reset, production baseline, privileges, recreation runbook, cutover/rollback readback, and
-proof that no pre-release database becomes production state.
+The latest schema defines the final typed quota-window and exclusion enums, relations,
+constraints, indexes, account foreign keys, observation index, receipts, and authority
+directly. There is no old quota shape, conversion, quarantine, drain, backfill, table
+replacement, dual schema, compatibility read/write, or hidden fallback. Local pre-release
+state is disposable and is never converted into production state.
 
 Separate typed 300-minute and 10080-minute observations remain mandatory. This persistence
 boundary enables no account assignment, fallback, `waiting_usage` registration, wake scheduling,
 continuation, replay of external effects, or live dispatch. Ingress retains the exact raw provider
 timestamp value. Construction of UTC Unix microseconds must be exact; any conversion that would
-round or truncate is rejected. V14 through V16 consume only exact values, remain otherwise
-precision-agnostic, and fail closed. XY-1357 owns the one natural precision receipt in the unified
-post-freeze gate. An incompatible receipt leaves production routing disabled and reopens only the
-ingress authority; it does not require a moving-core schema or decision rewrite.
+round or truncate is rejected. Routing Snapshot and Routing Decision consume only exact
+values, remain otherwise precision-agnostic, and fail closed. XY-1357 owns the natural
+precision evidence after source freeze. Incompatible evidence leaves production routing
+disabled and reopens only ingress authority.
 
 The dormant manual account observation path checks an exact PostgreSQL account revision in the
 `available` state before mechanics and checks the same predicate again after cleanup. Each check
@@ -565,15 +750,15 @@ restart launch permission.
 
 ### Durable ProcessGeneration authority
 
-XY-1400 implements the accepted XY-1398 V3 contract in
+XY-1400 implements the accepted ProcessGeneration contract in
 [the ProcessGeneration authority specification](process-generation-authority.md).
 `ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
 protected executable snapshot and derives the durable launch-manifest identity and exact command.
 The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
 sanitized environment, account, initial account revision, canonical credential version and
 fingerprint, provider identity, and exact-build startup/lifetime/account-callback capability. No
-caller can pair an independent digest with a raw command. The supervisor commits this intent in
-V23 before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
+caller can pair an independent digest with a raw command. The supervisor commits this intent
+before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
 transition, and readback carry the same non-secret binding. No new process or effect ledger is
 added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
@@ -613,10 +798,10 @@ Persisted Codex thread identity carries Conversation continuity; process surviva
 or continue a RuntimeSession.
 
 ProcessGeneration proves replacement safety only. It does not prove provider non-submission,
-effect cancellation, or credential revocation. V24 keeps an unproved authorized ProviderAttempt
+effect cancellation, or credential revocation. ProviderAttempt keeps an unproved authorized attempt
 `unknown`; process exit or boot change cannot make it `not_submitted`, a replacement cannot replay
 it, and any successor is a distinct user-authorized effect with duplicate-risk acknowledgement.
-The generic attempt transaction consumes one accepted V16 decision, V17 RuntimeSession, and ready
+The generic attempt transaction consumes one accepted Routing Decision, Continuation Plan, and ready
 ProcessGeneration without creating or changing them. XY-1400 adds no account selection, routing,
 ProviderAttempt storage, remote authentication, UI, packaging, release, or live dispatch.
 A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
@@ -632,9 +817,8 @@ or a preclassified candidate array.
 
 The current `decodex-core::PolicySnapshot` remains a bounded inert value inside one accepted
 Project Policy revision. It neither enumerates the account inventory nor establishes routing
-completeness, eligibility, evidence provenance, or persistence freshness. V14 must introduce the
-distinct database-owned complete routing snapshot rather than widening a Rust wrapper into
-authorization authority.
+completeness, eligibility, evidence provenance, or persistence freshness. Routing Snapshot is the
+distinct database-owned complete value; a Rust wrapper cannot become authorization authority.
 
 One snapshot binds, under the database locks that establish its revision boundary:
 
@@ -660,7 +844,7 @@ blockers. An all-excluded universe is an explicit cause-complete `no_route`; a c
 `no_route` is invalid.
 
 `decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
-does not establish provenance or completeness. PostgreSQL atomically persists the resulting V16
+does not establish provenance or completeness. PostgreSQL atomically persists the resulting Routing
 decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one
 exact persisted decision and sequences effects only; it cannot substitute a decision. Codex is a
 positive-evidence capability adapter and cannot determine membership, policy, or eligibility.
@@ -672,7 +856,7 @@ snapshot. Eligibility requires the independent versioned `enabled=true` fact; ob
 not imply enablement. Every known depleted window excludes its account until reset. Unknown, stale,
 incompatible, disabled, authentication-failed, missing-duration, low-confidence, or precision-
 incompatible evidence blocks eligibility. When every otherwise eligible account is excluded only
-by usage, V16 persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
+by usage, Routing Decision persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
 restart-safe scheduler wake and always re-enters fresh authoritative resolution; routing owns no
 wake lifecycle.
 
@@ -683,12 +867,13 @@ positive readiness evidence and does not change an account to ready. XY-1336 rem
 passive-receipt tracking. Host-owned before/after receipts prove causal no-mutation integrity only
 and cannot establish account-owned readiness.
 
-XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
-authority without changing V15. After an exact V16 decision, V17 owns same-thread continuation
-when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
-Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
-Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
-V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Current production
+Experiment Authority owns the original causal experiment record. Retained-title Authority owns its
+two-effect title bridge. After an exact Routing Decision with an existing source RuntimeSession,
+Continuation Plan owns same-thread continuation when exact positive account/profile/build evidence
+permits it. Otherwise, it owns one atomic Context Pack plus fallback RuntimeSession. These owners
+serve ordinary Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator
+sequences one Routing Decision, one Continuation Plan, one live ProcessGeneration fence, and
+ProviderAttempt preparation. Current production
 dispatch stays structurally disabled until its applicable slice gate passes. Ambiguous-turn
 replay remains blocked by ProviderAttempt. ManagedRun
 consumes the attempt result and keeps only domain lifecycle authority.
@@ -722,7 +907,7 @@ non-routing evidence.
 Users exclusively select the four global RoleProfiles. Runtime cannot alter model,
 reasoning, or service tier. Each RuntimeSession snapshots its profile. Decodex keeps a
 user-owned desired inventory only as intent. Until a stable passive account-owned receipt
-exists, V1 reports plugin readiness as `unknown`; that unknown is blocking only when the exact
+exists, the first release reports plugin readiness as `unknown`; that unknown is blocking only when the exact
 accepted routing policy requires the corresponding capability, and is non-applicable when the
 required-capability set is empty. Host facts never become positive account-readiness evidence or
 guide mutation from such a conclusion.
@@ -976,21 +1161,38 @@ Acceptance is limited to:
 User-visible warm history is not an acceptance claim until the Conversation destination
 consumes `HistoryPager`.
 
-## Clean cutover and delivery
+<a id="clean-cutover-and-delivery"></a>
 
-Cutover has no availability requirement. Stop v0.2 and start vNext with empty PostgreSQL
-execution and control-plane state. Import each local account once through the ordinary
-versioned account-import command from an owner-private temporary file. Verify the
-PostgreSQL account and routing readback, the exact HostCredentialStore binding, and the
-per-account Reset Card readback. Then delete the temporary import files and the retired
-local account source.
+## Local reset and delivery
 
-The product has no account-migration manifest, bulk importer, migration receipt,
-migration state machine, migration finalizer, compatibility fallback, or dual account
-authority. It imports no quota, usage/profile projection, account history, Codex
-sessions, SQLite execution state, Linear lanes, or Codex-created tasks. Normal startup
-reads only vNext PostgreSQL and HostCredentialStore authority. Recreate selected Projects
-explicitly from reviewed inventory.
+The local reset has no availability requirement. One reviewed operator-only action stops
+the daemon and captures, for every retained account, only Account UUID, enabled state,
+account revision, provider binding, credential version/fingerprint, and host-store
+binding. It also captures routing revision, mode, fixed target, and the complete account
+order. It may replace or directly transform the disposable local database. A recreated
+database receives the one empty-target latest-schema bootstrap.
+
+The operator restores or rebinds that exact tuple against unchanged
+`HostCredentialStore` records. `fixed` mode requires one non-null target in the retained
+account set and complete order; `balanced` mode requires a null target. The order is a
+duplicate-free permutation of all retained accounts, including disabled accounts. Exact
+readback proves every Account UUID, enabled value, revision, binding, and the routing
+mode, target, and order together. The daemon starts only after exact current-authority
+and tuple readback pass.
+
+For credential agreement only, the action may invoke the existing
+`HostCredentialStore` owner. The owner performs a confined in-process exact read,
+recomputes and compares the credential fingerprint and binding, and returns only a typed
+credential-negative agreement result. The operator action and result never expose,
+serialize, copy, log, persist, rotate, delete, or return token bytes.
+
+The action is not a product account or migration API, manifest, generic attestation
+framework, metadata sidecar, bulk importer, generic migrator, state machine,
+receipt/finalizer, backup/rollback mechanism, compatibility branch, or fallback. It
+retains no quota, usage/profile projection, account history, Codex session, SQLite
+execution state, Linear lane, or Codex-created task. Normal startup reads only current
+PostgreSQL and `HostCredentialStore` authority. Recreate selected Projects explicitly
+from reviewed inventory.
 
 Delivery has exactly three dependencies: Accounts/Quick Task/Accounts-Conversation-Health
 GPUI, then the bounded Project/Lead/ManagedRun flow and Project-Work-Run GPUI, then the
@@ -1011,14 +1213,14 @@ PR #1092 is closed, unmerged, and frozen at historical head
 SQLite registry, lane/effect ledger, and C1-C7 orchestration are obsolete. The only relevant
 behavior classes are already replaced by vNext owners: explicit Project/repository identity by
 the Project and managed-repository admission contracts, frozen admitted-base and worktree
-continuity by the V13/executor/saga stack, and paginated positive GitHub readback by the sealed
+continuity by the Managed Repository Persistence/Executor/Saga owners, and paginated positive GitHub readback by the sealed
 GitHub effect boundary. It contributes no unique production behavior to the vNext candidate.
 
-## V1 non-goals
+## First-release non-goals
 
 - Pi as a second runtime; per-run/per-agent `CODEX_HOME`; Codex Project sync.
 - Linear import, projection, identity, lane authority, or compatibility.
-- SQLite product authority, dual writes, historical Codex/SQLite execution migration.
+- SQLite product authority, dual writes, or import of historical Codex/SQLite execution state.
 - Domain Agents, automatic multi-Lead, arbitrary durable roles, or Goal as general
   planning/review/development state.
 - Graph/vector databases, event sourcing, CRDT/DeltaDB worktrees, distributed workers.
