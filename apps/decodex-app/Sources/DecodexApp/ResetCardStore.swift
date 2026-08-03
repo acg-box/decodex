@@ -261,7 +261,14 @@ final class ResetCardStore {
 	// These reads return daemon-owned observations and never start provider work.
 	// Fetch every independent account projection concurrently so one row cannot
 	// delay another row's first presentation.
-	private static let defaultAutomaticRefreshInterval: Duration = .seconds(15)
+	private static let defaultObservationSignalReconnectDelays: [Duration] = [
+		.milliseconds(250),
+		.milliseconds(500),
+		.seconds(1),
+		.seconds(2),
+		.seconds(4),
+		.seconds(8),
+	]
 	private static let defaultPostUseRetryDelays: [Duration] = [
 		.seconds(1),
 		.seconds(3),
@@ -308,15 +315,16 @@ final class ResetCardStore {
 	@ObservationIgnored private let inventoryReads: ResetCardInventoryReadCoordinator
 	@ObservationIgnored private let accountControlClient: (any AccountControlClient)?
 	@ObservationIgnored private let accountProfileClient: (any AccountProfileClient)?
+	@ObservationIgnored private let accountObservationClient: (any AccountObservationClient)?
 	@ObservationIgnored private let pendingStore: ResetCardPendingAttemptStore
 	@ObservationIgnored private let startupRetryDelays: [Duration]
 	@ObservationIgnored private let postUseRetryDelays: [Duration]
-	@ObservationIgnored private let automaticRefreshInterval: Duration
+	@ObservationIgnored private let observationSignalReconnectDelays: [Duration]
 	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
 	@ObservationIgnored private let accountObservationRetryDelays: [Duration]
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
-	@ObservationIgnored private var automaticRefreshTask: Task<Void, Never>?
+	@ObservationIgnored private var accountObservationTask: Task<Void, Never>?
 	@ObservationIgnored private var refreshCycleTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
@@ -340,7 +348,8 @@ final class ResetCardStore {
 		pendingStore: ResetCardPendingAttemptStore = ResetCardPendingAttemptStore(),
 		startupRetryDelays: [Duration] = ResetCardStore.defaultStartupRetryDelays,
 		postUseRetryDelays: [Duration] = ResetCardStore.defaultPostUseRetryDelays,
-		automaticRefreshInterval: Duration = ResetCardStore.defaultAutomaticRefreshInterval,
+		observationSignalReconnectDelays: [Duration] = ResetCardStore
+			.defaultObservationSignalReconnectDelays,
 		accountReauthenticationPollInterval: Duration = .seconds(1),
 		accountObservationRetryDelays: [Duration] = ResetCardStore
 			.defaultAccountObservationRetryDelays,
@@ -352,10 +361,11 @@ final class ResetCardStore {
 		inventoryReads = ResetCardInventoryReadCoordinator(client: client)
 		accountControlClient = client as? any AccountControlClient
 		accountProfileClient = client as? any AccountProfileClient
+		accountObservationClient = client as? any AccountObservationClient
 		self.pendingStore = pendingStore
 		self.startupRetryDelays = startupRetryDelays
 		self.postUseRetryDelays = postUseRetryDelays
-		self.automaticRefreshInterval = automaticRefreshInterval
+		self.observationSignalReconnectDelays = observationSignalReconnectDelays
 		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
 		self.accountObservationRetryDelays = accountObservationRetryDelays
 		self.resolveCodexExecutable = resolveCodexExecutable
@@ -374,7 +384,7 @@ final class ResetCardStore {
 
 	deinit {
 		startupTask?.cancel()
-		automaticRefreshTask?.cancel()
+		accountObservationTask?.cancel()
 		refreshCycleTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
@@ -430,13 +440,13 @@ final class ResetCardStore {
 
 	func start() {
 		guard startupTask == nil,
-			automaticRefreshTask == nil,
+			accountObservationTask == nil,
 			pendingRecoveryTask == nil
 		else {
 			return
 		}
 
-		startAutomaticRefresh()
+		startAccountObservationSignals()
 		let retryDelays = startupRetryDelays
 		startupTask = Task { [weak self] in
 			guard var result = await self?.refreshReadState() else {
@@ -491,7 +501,6 @@ final class ResetCardStore {
 		isPreparingForTermination = true
 
 		let inFlightStartupTask = startupTask
-		let inFlightAutomaticRefreshTask = automaticRefreshTask
 		let inFlightRefreshCycleTask = refreshCycleTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		let inFlightAccountReauthenticationTask = accountReauthenticationTask
@@ -501,8 +510,8 @@ final class ResetCardStore {
 
 		startupTask?.cancel()
 		startupTask = nil
-		automaticRefreshTask?.cancel()
-		automaticRefreshTask = nil
+		accountObservationTask?.cancel()
+		accountObservationTask = nil
 		refreshCycleTask?.cancel()
 		refreshCycleTask = nil
 		pendingRecoveryTask?.cancel()
@@ -515,7 +524,9 @@ final class ResetCardStore {
 		postUseReconciliationTasks.removeAll()
 
 		await inFlightStartupTask?.value
-		await inFlightAutomaticRefreshTask?.value
+		// The native wait is a bounded synchronous FFI request. Client destruction
+		// safely releases its in-flight Arc, so termination cancels this owner but
+		// does not wait for a daemon heartbeat before shutting down the shared client.
 		await inFlightRefreshCycleTask?.value
 		await inFlightPendingRecoveryTask?.value
 		await inFlightAccountReauthenticationTask?.value
@@ -525,25 +536,37 @@ final class ResetCardStore {
 		await inventoryReads.cancelAll()
 	}
 
-	private func startAutomaticRefresh() {
-		let clock = ContinuousClock()
-		let interval = automaticRefreshInterval
-		automaticRefreshTask = Task { [weak self] in
-			var nextRefresh = clock.now.advanced(by: interval)
+	private func startAccountObservationSignals() {
+		guard let accountObservationClient else {
+			return
+		}
+		let reconnectDelays = observationSignalReconnectDelays
+		accountObservationTask = Task { [weak self] in
+			var generation: UInt64 = 0
+			var failureCount = 0
 			while Task.isCancelled == false {
 				do {
-					try await clock.sleep(until: nextRefresh)
+					let signal = try await accountObservationClient.waitForAccountObservation(
+						afterGeneration: generation
+					)
+					guard Task.isCancelled == false, let self else {
+						return
+					}
+					generation = signal.generation
+					failureCount = 0
+					self.requestRefresh()
 				} catch {
-					return
+					guard Task.isCancelled == false, reconnectDelays.isEmpty == false else {
+						return
+					}
+					let index = min(failureCount, reconnectDelays.count - 1)
+					failureCount = min(failureCount + 1, reconnectDelays.count - 1)
+					do {
+						try await Task.sleep(for: reconnectDelays[index])
+					} catch {
+						return
+					}
 				}
-
-				guard Task.isCancelled == false, let self else {
-					return
-				}
-				self.requestRefresh()
-				repeat {
-					nextRefresh = nextRefresh.advanced(by: interval)
-				} while nextRefresh <= clock.now
 			}
 		}
 	}
@@ -1298,32 +1321,6 @@ final class ResetCardStore {
 			}
 		)
 		_ = reorderAccountStates(to: self.routing?.order ?? routing.order)
-	}
-
-	func refreshCredentials(for accountID: String) async {
-		guard let account = accountRecord(accountID),
-			let accountControlClient
-		else {
-			presentAccountControlUnavailable()
-			return
-		}
-		let operationID = Self.newCanonicalUUID()
-		let idempotencyKey = Self.newCanonicalUUID()
-		await performAccountControl(
-			accountID: accountID,
-			activity: .loginRefresh,
-			allowsDuringRefresh: true,
-			successMessage: "Account credentials refreshed.",
-			operation: {
-				try await accountControlClient.refreshAccountCredentials(
-					authority: account.authority ?? establishedAuthority,
-					operationID: operationID,
-					accountID: accountID,
-					expectedRevision: account.accountRevision,
-					idempotencyKey: idempotencyKey
-				)
-			}
-		)
 	}
 
 	func beginAccountReauthentication(for accountID: String) {
