@@ -406,6 +406,49 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertFalse(source.contains("Reconnecting…"))
 	}
 
+	func testIncompletePositiveResetCardInventoryKeepsCheckingForExpiryDetails() {
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let account = ResetCardAccountRecord(
+			authority: authority,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Blake",
+			accountRevision: 2,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .ready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+		let inventory = ResetCardInventory(
+			authority: authority,
+			accountID: account.accountID,
+			accountRevision: account.accountRevision,
+			reportedAvailableCount: 1,
+			detailsComplete: false,
+			cards: [],
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080),
+			observationError: nil
+		)
+		let state = ResetCardAccountState(
+			account: account,
+			inventory: inventory,
+			error: nil,
+			isRefreshing: false
+		)
+
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: state,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.checking
+		)
+	}
+
 	func testQuotaRowsPutTheFlexibleBarBeforeTheCompactPercentage() throws {
 		let source = try resetCardSectionSource()
 

@@ -237,6 +237,7 @@ exact_thread = {
 }
 exact_thread_reads = 0
 reset_card_consumed = False
+rate_limit_reads = 0
 for line in sys.stdin:
     message = json.loads(line)
     assert "jsonrpc" not in message
@@ -348,7 +349,12 @@ for line in sys.stdin:
             if mode == "login-missing-type"
             else {"type": "chatgptAuthTokens"}
         )
-    elif method == "account/rateLimits/read" and mode in ("reset-card", "callback-probe"):
+    elif method == "account/rateLimits/read" and mode in (
+        "reset-card",
+        "reset-card-partial-first",
+        "callback-probe",
+    ):
+        rate_limit_reads += 1
         assert "params" in message
         assert message["params"] is None
         if mode == "callback-probe":
@@ -366,7 +372,11 @@ for line in sys.stdin:
             "rateLimits": {},
             "rateLimitResetCredits": {
                 "availableCount": len(credits),
-                "credits": credits,
+                "credits": (
+                    None
+                    if mode == "reset-card-partial-first" and rate_limit_reads == 1
+                    else credits
+                ),
             },
         }
     elif method == "account/rateLimitResetCredit/consume" and mode == "reset-card":
