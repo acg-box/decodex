@@ -6,6 +6,14 @@ boundary and the later complete account lifecycle.
 The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
 requirements. A component-first global gate is not the delivery order.
 
+There are no external or deployed users. The current local database is disposable.
+Account lifecycle has no product account-migration mode. The one local database reset
+may preserve only the complete credential-negative reset tuple defined below, including
+each enabled state, the existing revisions and bindings, and exact routing
+mode/fixed-target/order. Only the existing `HostCredentialStore` owner may read a
+credential in process to recompute agreement. The operator action and its result never
+expose, serialize, copy, log, persist, rotate, delete, or return token bytes.
+
 ## Fixed boundaries
 
 The account system has exactly three owners:
@@ -21,8 +29,9 @@ arguments, logs, or a long-lived daemon or child environment.
 
 This boundary adds no event sourcing, generic distributed transaction coordinator,
 new process or provider-effect ledger, per-account daemon, or permanent per-account
-or per-run Codex home. V13 remains the repository-effect saga. V23 remains the
-ProcessGeneration owner. V24 remains the ProviderAttempt owner.
+or per-run Codex home. Managed-repository effect authority remains separate.
+ProcessSupervisor remains the ProcessGeneration owner. ProviderAttemptService remains
+the ProviderAttempt owner.
 
 One Codex process has one immutable Account UUID and provider binding for its
 complete lifetime. A refresh callback can return a newer credential for that same
@@ -172,8 +181,9 @@ commands and then submits a new task. It does not rebind or replay an existing t
 
 Automatic cross-account same-thread fallback and all-depleted scheduler wake are not
 Slice 1 requirements. An all-depleted result exposes the exact reset evidence and waits
-for an explicit retry. V14 and V16 remain the policy/snapshot and decision authorities;
-their broader automatic-routing behavior is accepted later.
+for an explicit retry. Routing Snapshot remains the complete policy/evidence owner, and
+Routing Decision remains the sole selection owner. Their broader automatic-routing
+behavior is accepted later.
 
 ## Explicit Use in Codex
 
@@ -269,7 +279,7 @@ is safe, and ambiguous store state becomes `RecoveryRequired`.
 ## ProcessGeneration binding
 
 The owning [ProcessGeneration authority](process-generation-authority.md) must extend
-its existing V23 intent, launch-manifest identity, prepare command, and strict readback
+its intent, launch-manifest identity, prepare command, and strict readback
 with the canonical initial account revision, credential version, credential fingerprint,
 provider binding, and exact-build account-capability profile. These fields are immutable
 launch facts. Same-account callback rotation does not rewrite them.
@@ -279,6 +289,13 @@ metadata and compare every field with the ProcessGeneration intent and Account R
 Any mismatch stops before spawn. The existing ProcessGeneration and ProviderAttempt
 state machines own crash and effect ambiguity. No account-specific process or effect
 ledger is added.
+
+For Candidate-5 Quick Task, Account Service receives the account selected by the one
+accepted Routing Decision. It repeats the exact account revision, `enabled` state,
+AccountLifecycle and exact-build capability, provider binding, credential version and
+fingerprint, and HostCredentialStore binding immediately before spawn. It cannot
+preselect, substitute, fall back to, or wake another account. Drift fails closed without
+a second route decision.
 
 ## Reset Card fencing
 
@@ -337,6 +354,11 @@ account value and advances its cache generation before requesting observation. A
 older in-flight generation cannot republish after that invalidation. No credential or
 provider-private Reset Card ID enters this cache.
 
+Query handling is isolated from refresh work. A query does not join, await, register with,
+or inject work into an observation owner. It cannot convert a read into provider access or
+make a slow refresh hold the request path. Candidate-5 Quick Task work must preserve this
+current-main cache-read and observation behavior unchanged.
+
 ```mermaid
 sequenceDiagram
     participant Timer as Daemon timer or wakeup
@@ -369,7 +391,7 @@ quota durability while Reset Card descriptors live only for the daemon lifetime.
 
 ## Bounded account profile
 
-Protocol V2.0 provides one independent `GetAccountProfile` query per Account UUID. It does
+The exact-current protocol provides one independent `GetAccountProfile` query per Account UUID. It does
 not run as part of account listing or Reset Card inventory. The query reads the latest
 persisted projection and the daemon observer's revision-scoped refresh status. One failed
 background profile observation affects only that account row.
@@ -381,11 +403,11 @@ total timeouts, no redirects, and a bounded response body. The daemon sends the 
 token and provider account ID only to that endpoint. It does not log or return the token,
 provider body, or raw error.
 
-V28 stores one latest non-secret profile snapshot and at most 36 unique ascending daily
-usage facts. Persistence uses the exact account revision, provider binding, tombstone
-state, and a monotonic observation time. A response is `current` only after persistence.
-V29 replaces only the profile observation function so PostgreSQL 18 zips the two bounded
-daily arrays through `ROWS FROM`; it adds no relation, authority, or compatibility path.
+The latest schema stores one latest non-secret profile snapshot and at most 36 unique
+ascending daily usage facts. Persistence uses the exact account revision, provider
+binding, tombstone state, and a monotonic observation time. The final PostgreSQL 18
+profile-observation function zips the two bounded daily arrays through `ROWS FROM`. A
+response is `current` only after persistence.
 A previous exact snapshot can return as `cached` with one typed refresh error. Otherwise,
 the row is `unavailable` with one typed error.
 
@@ -407,24 +429,43 @@ fields are absent when the provider or current credential does not supply them.
 
 ## Clean latest-architecture cutover
 
-The product has no legacy-account migration mode. Normal startup and installation do
-not read an old account pool, mapping, helper, environment projection, migration
-manifest, or migration receipt. V27 is the landed clean-break account schema in the
-current V1–V32 migration ledger and accepts only an empty Account Registry. A populated
-older registry requires a fresh local product database.
+The product has no legacy-account or database migration mode. Normal startup and
+installation do not read an old database, account pool, mapping, helper, environment
+projection, migration manifest, or migration receipt. The one latest schema creates an
+empty Account Registry on an empty PostgreSQL target.
 
-An operator can move credentials once by creating owner-private
-`decodex/account-credential-import/1` files and calling the ordinary versioned account
-import command for each account. Each successful command writes the same PostgreSQL
-Account Registry, HostCredentialStore, account-operation journal, and routing order
-used by every later import. The product contains no source parser, bridge, bulk
-importer, finalizer, migration state machine, receipt, or compatibility fallback.
+One reviewed operator-only local action may preserve credential-negative account,
+routing, and binding metadata while replacing or directly transforming the disposable
+development database. It stops the daemon and captures, for every retained account, only
+Account UUID, enabled state, account revision, provider binding, credential
+version/fingerprint, and host-store binding. It also captures the routing revision, mode,
+fixed target, and complete account order. It bootstraps the latest schema when needed and
+restores or rebinds that exact tuple to the unchanged `HostCredentialStore` records.
 
-After every imported account and routing control is verified through the public
-protocol, the operator deletes each temporary import file and the old local account
-pool. That finite local procedure is not an installed product capability. Failure
-before verification leaves the old source untouched; success has no rollback or
-legacy-runtime path.
+For `fixed` mode, the fixed target is non-null and belongs to the retained account set
+and complete order. For `balanced` mode, it is null. The order is one duplicate-free
+permutation of all retained non-tombstoned accounts, including disabled accounts. Exact
+readback proves every retained Account UUID and enabled value, every revision and
+binding, and the routing mode, target, and order together. It rejects an omitted or
+extra account, changed enabled value, invalid target nullability, or order mismatch.
+
+For credential agreement only, the operator action may invoke the existing
+`HostCredentialStore` owner. The owner performs a confined in-process exact record read,
+recomputes the domain-separated fingerprint, compares the Account UUID, provider
+binding, credential version, fingerprint, and host-store binding, and returns only a
+typed credential-negative agreement result. The operator action and result never expose,
+serialize, copy, log, persist, rotate, delete, or return token bytes.
+
+The action must prove exact Account Registry and `HostCredentialStore` agreement for
+every retained account before the daemon starts. It is not a public account or migration
+API, generic attestation framework, metadata sidecar, product importer, source parser,
+bridge, bulk operation, backup/rollback mechanism, state machine, receipt/finalizer,
+compatibility branch, or fallback.
+
+Ordinary enrollment and explicit credential import remain account lifecycle operations
+for credentials that a user deliberately adds. They are not used to move existing host
+vault secrets during this local database reset and do not become a product migration
+surface.
 
 ## Readiness levels
 
