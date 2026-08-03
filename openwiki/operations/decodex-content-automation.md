@@ -9,8 +9,8 @@ measurement loop for `@decodexspace`.
 
 | Role | Model | Effort | Frequency |
 | --- | --- | --- | --- |
-| Content Manager | `gpt-5.6-terra` | `high` | Daily at 09:50 |
-| Xurl Publisher | `gpt-5.6-luna` | `high` | Daily at 10:20, 16:20, and 22:20 |
+| Content Manager | `gpt-5.6-luna` | `max` | Daily at 09:50 |
+| Xurl Publisher | `gpt-5.6-luna` | `max` | Daily at 10:20, 16:20, and 22:20 |
 
 Both use the clean primary checkout as scheduled cwd. They do not use Decodex
 server, runtime, queue, planner, or MCP.

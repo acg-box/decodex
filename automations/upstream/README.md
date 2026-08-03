@@ -7,13 +7,18 @@ automation portfolio. It declares exactly five native Codex tasks:
 | --- | --- | --- | --- | --- |
 | `codex-upstream-maintainer` | Research and implement Codex compatibility work | `gpt-5.6-sol` | `max` | Every 6 hours |
 | `codex-upstream-reviewer` | Independently review, test, and land upstream PRs | `gpt-5.6-sol` | `max` | Every 12 hours |
-| `codex-upstream-health` | Manage portfolio quality and repair drift | `gpt-5.6-terra` | `high` | Twice daily |
-| `decodex-content-manager` | Research and record one content decision | `gpt-5.6-terra` | `high` | Daily |
-| `decodex-xurl-publisher` | Publish or observe through the X safety boundary | `gpt-5.6-luna` | `high` | Three times daily |
+| `codex-upstream-health` | Manage portfolio quality and repair drift | `gpt-5.6-luna` | `max` | Twice daily |
+| `decodex-content-manager` | Research and record one content decision | `gpt-5.6-luna` | `max` | Daily |
+| `decodex-xurl-publisher` | Publish or observe through the X safety boundary | `gpt-5.6-luna` | `max` | Three times daily |
 
 No managed task uses `xhigh`. Every native definition has local execution and
 uses `/Users/x/code/y/hack-ink/decodex` as its scheduled cwd. A scheduled task
 must never use a task worktree as its cwd.
+
+The two Sol roles are difficult protocol and code tasks, so both use `max`.
+Future Sol assignments use `medium` for routine work and `max` only for difficult
+implementation, protocol, or independent review work. Every non-Sol role uses
+Luna with `max`.
 
 ## Operating Model
 
