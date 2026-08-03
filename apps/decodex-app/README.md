@@ -37,16 +37,20 @@ inside the panel theme: accent blue above 50% remaining, warning amber from 21%
 to 50%, and destructive red at 20% or below. The numeric percentage and
 accessibility value remain the primary status.
 
-The app reloads daemon values every 15 seconds. Opening the panel also requests
-one reload. An active reload absorbs either trigger. Independently, the daemon
-starts one observation round immediately, repeats it every 15 seconds, and
-wakes it after account and Reset Card changes. It starts every independent
-account concurrently, keeps at most one active observation per account, and
-coalesces a lifecycle or effect wake for that account as its next round. A
-periodic tick does not hot-loop an already slow account. Within one account,
-Reset Card observation settles before profile observation so a credential
-rotation cannot race the profile read. A slow account does not delay
-publication or later scheduling for another account.
+The app keeps one bounded wait open for the daemon's account-observation
+generation. Each progressive daemon publication wakes that wait and causes one
+coalesced reload of daemon-owned values. A 30-second daemon heartbeat bounds a
+missed notification or daemon restart, and transport failures reconnect with a
+250-millisecond to 8-second bounded backoff. The UI has no 15-second refresh
+clock. Opening the panel and `Refresh all` can still request one cache reload.
+Independently, the daemon starts one observation round immediately, repeats it
+every 15 seconds, and wakes it after account and Reset Card changes. It starts
+every independent account concurrently, keeps at most one active observation
+per account, and coalesces a lifecycle or effect wake for that account as its
+next round. A periodic tick does not hot-loop an already slow account. Within
+one account, Reset Card observation settles before profile observation so a
+credential rotation cannot race the profile read. A slow account does not
+delay publication or later scheduling for another account.
 
 The account plan appears beside the account identity. Each detail popover
 contains only lifetime tokens, peak daily tokens, longest task, current and
@@ -120,7 +124,9 @@ preserved and blocks new use.
 The panel also exposes current daemon-owned account controls: enroll the
 currently signed-in shared Codex login, enable or disable, log out, and select
 fixed or balanced routing. An account with a provider-confirmed unauthorized
-profile shows `Refresh login`; that action presents the official device code
+profile shows `Refresh login`; this official device-login flow is the app's only
+interactive credential-replacement surface. The native app ABI has no direct
+credential-refresh operation. The action presents the official device code
 with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
 account after the daemon completes the exact credential replacement. The app
 then performs bounded short-interval daemon readback until the new background
@@ -133,7 +139,7 @@ Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
 The overflow menu contains only `Refresh all`, the material selector, and Quit.
 `Refresh all` reloads all current daemon values; it does not contact a provider.
-It remains available while an automatic read is in progress because the store
+It remains available while a signal-driven read is in progress because the store
 coalesces that request into the active reload. Account mutations and Reset Card
 submissions still disable it.
 

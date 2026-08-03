@@ -320,7 +320,11 @@ not queue a hot-loop successor for an already slow account.
 One slow account does not delay completion or later scheduling for another account.
 Observation results publish progressively and only against the current Account revision.
 An account change prunes old Reset Card and profile refresh state before a later result
-can become current.
+can become current. Every accepted publication advances one opaque daemon-lifetime
+observation generation. `WaitForAccountObservation` returns when that generation differs
+from the caller's last applied value, or after one 30-second heartbeat. The macOS app keeps
+one such wait open and reloads daemon values after the response. It has no independent
+15-second refresh clock; a disconnected wait reconnects with bounded backoff.
 
 Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
 app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
@@ -341,25 +345,27 @@ sequenceDiagram
     participant Provider as Provider adapters
     participant Store as PostgreSQL
     participant Cache as Daemon Reset Card cache
-    participant Client as UI or protocol client
+	participant Client as UI or protocol client
 
-    Timer->>Observer: Request coalesced observation round
+	Client->>Observer: Wait after last observation generation
+	Timer->>Observer: Request coalesced observation round
     Observer->>Accounts: List lifecycle-ready account revisions
     par Each independent account
         Observer->>Provider: Refresh profile and Reset Card values
         Provider->>Store: Persist profile and quota facts
         Provider-->>Observer: Return public inventory and refresh status
-        Observer->>Cache: Publish only matching revision
-    end
-    Client->>Observer: Read profile or Reset Card value
+		Observer->>Cache: Publish only matching revision
+	end
+	Observer-->>Client: Return advanced generation
+	Client->>Observer: Read profile or Reset Card value
     Observer->>Store: Read persisted profile projection
     Observer->>Cache: Read revision-fenced public inventory
     Observer-->>Client: Return daemon-owned value
 ```
 
 The observation round separates daemon-owned provider refresh from client query readback;
-PostgreSQL retains profile and quota durability while Reset Card descriptors live only for
-the daemon lifetime.
+the generation signal carries no account value or credential. PostgreSQL retains profile and
+quota durability while Reset Card descriptors live only for the daemon lifetime.
 
 ## Bounded account profile
 

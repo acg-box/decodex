@@ -1097,6 +1097,11 @@ impl Application for ServiceApplication {
 				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
 			QueryPayload::GetCodexAuthProjection =>
 				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
+			QueryPayload::WaitForAccountObservation { after_generation } =>
+				QueryResultPayload::AccountObservation(match self.account_observations.as_ref() {
+					Some(observations) => observations.wait_for_change(*after_generation).await,
+					None => AccountObservationService::heartbeat(*after_generation).await,
+				}),
 		}
 	}
 }
