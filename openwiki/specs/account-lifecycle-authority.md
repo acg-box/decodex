@@ -82,13 +82,8 @@ collision table, or mutable reroll. The ChatGPT provider identity
 `Val`.
 
 Wire and native-client boundaries accept only one 2–16-byte ASCII word with one
-initial uppercase letter and lowercase remaining letters. Every other display shape
-rejects, and there is no compatibility branch.
-
-The XY-1276 Candidate-5 reset preserves this deterministic one-word alias exactly. The
-alias contract is complete and unrelated to the Quick Task authority reset. Candidate 5
-also preserves current account UI text, account lifecycle commands, fixed routing
-controls, and user-controlled account order.
+initial uppercase letter and lowercase remaining letters. They reject the v1
+`Account ABCDE-FGHIJ` form rather than retaining a compatibility branch.
 
 ## HostCredentialStore
 
@@ -169,14 +164,11 @@ receipt at the same revision. Any real change increments exactly one owning revi
 No command changes observed health, quota, credentials, ProcessGeneration, or
 ProviderAttempt state as a side effect.
 
-The Account Registry and Account Service own these controls and readiness facts, but
-Account Service does not select a Quick Task account. For a new Quick Task, one V16
-decision is the sole selector over the complete locked V14 universe. In `fixed` mode V16
-considers only the target; an ineligible target returns typed no-route. In `balanced` mode
-V16 selects the first fully eligible account in canonical order after independent
-capability, credential, process, attempt, and two-window quota checks. Manual recovery
-changes enablement, fixed/balanced mode, or order with these commands and then submits a
-new task. It does not rebind or replay an existing thread.
+For a new task, `fixed` considers only its target. An ineligible fixed target returns a
+typed no-route result. `balanced` selects the first fully eligible account in canonical
+order after independent capability, credential, process, attempt, and two-window quota
+checks. Manual recovery changes enablement, fixed/balanced mode, or order with these
+commands and then submits a new task. It does not rebind or replay an existing thread.
 
 Automatic cross-account same-thread fallback and all-depleted scheduler wake are not
 Slice 1 requirements. An all-depleted result exposes the exact reset evidence and waits
@@ -288,14 +280,6 @@ Any mismatch stops before spawn. The existing ProcessGeneration and ProviderAtte
 state machines own crash and effect ambiguity. No account-specific process or effect
 ledger is added.
 
-For Candidate-5 Quick Task, the ProcessGeneration intent must name the exact account from
-the single V16 decision and the exact V17 account snapshot. Account Service repeats the
-complete selected-account revision, enabled state, AccountLifecycle and exact-build
-capability, provider binding, credential version and fingerprint, and actual store-binding
-check immediately before spawn. It cannot choose another account. Drift fails closed
-without a second V16 call, fallback, wake, or alternate account. A replayed, rejected, or
-uncertain ProcessGeneration result also cannot cause re-selection or Turn terminalization.
-
 ## Reset Card fencing
 
 Reset Card keeps its existing exact provider-credit ID, provider key, durable receipt,
@@ -343,7 +327,11 @@ app-server. They read daemon-owned values. PostgreSQL remains the persistence au
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
 observation round, and returns a typed retryable unavailable result until that account is
-warm. No credential or provider-private Reset Card ID enters this cache.
+warm. A Reset Card query reads only that memory value; it does not wait for an account-registry
+or provider read. Every successful account or Reset Card command invalidates the affected
+account value and advances its cache generation before requesting observation. A result from an
+older in-flight generation cannot republish after that invalidation. No credential or
+provider-private Reset Card ID enters this cache.
 
 ```mermaid
 sequenceDiagram
@@ -418,11 +406,6 @@ not read an old account pool, mapping, helper, environment projection, migration
 manifest, or migration receipt. V27 is the landed clean-break account schema in the
 current V1–V32 migration ledger and accepts only an empty Account Registry. A populated
 older registry requires a fresh local product database.
-
-Candidate 5 does not change the current V1-V32 ledger or this cutover. Its V33 and V34
-allocations remain unlanded until implementation and acceptance. It adds no V35,
-compatibility DDL, legacy account input, account alias change, account UI change, or
-account lifecycle command.
 
 An operator can move credentials once by creating owner-private
 `decodex/account-credential-import/1` files and calling the ordinary versioned account

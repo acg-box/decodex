@@ -260,6 +260,16 @@ impl ServiceApplication {
 		}
 	}
 
+	async fn invalidate_account_observation(&self, entity_id: &EntityId) {
+		let Some(observations) = &self.account_observations else {
+			return;
+		};
+		let Ok(account_id) = AccountId::new(entity_id.as_str()) else {
+			return;
+		};
+		observations.invalidate_account(&account_id).await;
+	}
+
 	async fn refreshed_doctor(&self) -> DoctorReport {
 		let previous_database = self
 			.doctor
@@ -990,6 +1000,7 @@ impl Application for ServiceApplication {
 			| CommandPayload::RecoverAccountOperation { .. }
 			| CommandPayload::UseAccountInCodex { .. } => {
 				let publication = self.execute_account_command(command).await?;
+				self.invalidate_account_observation(&publication.entity_id).await;
 				self.request_account_observation_refresh();
 				Ok(publication)
 			},
@@ -1033,6 +1044,7 @@ impl Application for ServiceApplication {
 				);
 				let descriptor = reset_descriptor_dto(prepared.descriptor);
 				let state = ResetCardOperationResult::Prepared;
+				self.invalidate_account_observation(&entity_id).await;
 				self.request_account_observation_refresh();
 
 				Ok(ApplicationPublication {
