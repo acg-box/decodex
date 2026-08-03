@@ -352,6 +352,7 @@ for line in sys.stdin:
     elif method == "account/rateLimits/read" and mode in (
         "reset-card",
         "reset-card-partial-first",
+        "reset-card-missing-first",
         "callback-probe",
     ):
         rate_limit_reads += 1
@@ -370,14 +371,18 @@ for line in sys.stdin:
         }]
         result = {
             "rateLimits": {},
-            "rateLimitResetCredits": {
-                "availableCount": len(credits),
-                "credits": (
-                    None
-                    if mode == "reset-card-partial-first" and rate_limit_reads == 1
-                    else credits
-                ),
-            },
+            "rateLimitResetCredits": (
+                None
+                if mode == "reset-card-missing-first" and rate_limit_reads == 1
+                else {
+                    "availableCount": len(credits),
+                    "credits": (
+                        None
+                        if mode == "reset-card-partial-first" and rate_limit_reads == 1
+                        else credits
+                    ),
+                }
+            ),
         }
     elif method == "account/rateLimitResetCredit/consume" and mode == "reset-card":
         assert message["params"] == {
