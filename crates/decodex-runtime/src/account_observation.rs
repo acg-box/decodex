@@ -8,6 +8,7 @@ use std::{
 };
 
 use decodex_core::{AccountId, AccountLifecycleReadiness};
+use decodex_protocol::AccountObservationSignal;
 use tokio::{
 	sync::{Notify, RwLock, watch},
 	task::{Id as TaskId, JoinSet},
@@ -23,6 +24,7 @@ use crate::{
 };
 
 const OBSERVATION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
+const OBSERVATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone)]
 struct CachedResetCardInventory {
@@ -46,7 +48,10 @@ struct AccountObservationOutcome {
 }
 
 impl AccountObservationState {
-	fn retain_current(&mut self, current: &HashMap<AccountId, i64>) {
+	fn retain_current(&mut self, current: &HashMap<AccountId, i64>) -> bool {
+		let prior_reset_cards = self.reset_cards.len();
+		let prior_profiles = self.profiles.len();
+		let prior_generations = self.cache_generations.len();
 		self.reset_cards.retain(|account_id, cached| {
 			current.get(account_id).is_some_and(|revision| *revision == cached.account_revision)
 		});
@@ -54,6 +59,9 @@ impl AccountObservationState {
 			current.get(account_id).is_some_and(|revision| *revision == status.account_revision)
 		});
 		self.cache_generations.retain(|account_id, _| current.contains_key(account_id));
+		prior_reset_cards != self.reset_cards.len()
+			|| prior_profiles != self.profiles.len()
+			|| prior_generations != self.cache_generations.len()
 	}
 
 	fn invalidate_account(&mut self, account_id: &AccountId) {
@@ -83,10 +91,11 @@ impl AccountObservationState {
 			.result
 	}
 
-	fn insert(&mut self, observation: AccountObservationOutcome) {
+	fn insert(&mut self, observation: AccountObservationOutcome) -> bool {
 		if !self.generation_matches(&observation.account_id, &observation.cache_generation) {
-			return;
+			return false;
 		}
+		let has_value = observation.reset_cards.is_some() || observation.profile.is_some();
 		if let Some(reset_cards) = observation.reset_cards {
 			let inventory_revision = reset_cards
 				.as_ref()
@@ -104,6 +113,7 @@ impl AccountObservationState {
 		if let Some(profile) = observation.profile {
 			self.profiles.insert(observation.account_id, profile);
 		}
+		has_value
 	}
 }
 
@@ -115,6 +125,7 @@ pub(crate) struct AccountObservationService {
 	reset_cards: Option<ResetCardRuntime>,
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
+	observation_generation: watch::Sender<u64>,
 }
 
 impl AccountObservationService {
@@ -123,12 +134,14 @@ impl AccountObservationService {
 		profiles: Option<AccountProfileRuntime>,
 		reset_cards: Option<ResetCardRuntime>,
 	) -> Self {
+		let (observation_generation, _) = watch::channel(0);
 		Self {
 			accounts,
 			profiles,
 			reset_cards,
 			state: Arc::new(RwLock::new(AccountObservationState::default())),
 			refresh_requested: Arc::new(Notify::new()),
+			observation_generation,
 		}
 	}
 
@@ -140,6 +153,23 @@ impl AccountObservationService {
 	/// Invalidate one account before a later in-flight observation can publish its value.
 	pub(crate) async fn invalidate_account(&self, account_id: &AccountId) {
 		self.state.write().await.invalidate_account(account_id);
+		self.advance_observation_generation();
+	}
+
+	/// Wait for daemon-owned values to advance, with one bounded heartbeat fallback.
+	pub(crate) async fn wait_for_change(&self, after_generation: u64) -> AccountObservationSignal {
+		wait_for_generation(
+			self.observation_generation.subscribe(),
+			after_generation,
+			OBSERVATION_WAIT_TIMEOUT,
+		)
+		.await
+	}
+
+	/// Delay an unavailable observer response by the same bounded heartbeat window.
+	pub(crate) async fn heartbeat(generation: u64) -> AccountObservationSignal {
+		time::sleep(OBSERVATION_WAIT_TIMEOUT).await;
+		AccountObservationSignal::new(generation)
 	}
 
 	/// Read one last daemon-owned Reset Card value without contacting the provider.
@@ -255,9 +285,12 @@ impl AccountObservationService {
 			})
 			.map(|inspection| (inspection.account.account_id, inspection.account.revision))
 			.collect::<HashMap<_, _>>();
-		{
+		let cache_pruned = {
 			let mut state = self.state.write().await;
-			state.retain_current(&current);
+			state.retain_current(&current)
+		};
+		if cache_pruned {
+			self.advance_observation_generation();
 		}
 		pending.retain(|account_id| current.contains_key(account_id));
 		*desired = current;
@@ -343,8 +376,13 @@ impl AccountObservationService {
 			&& observation.account_id == account_id
 			&& desired.get(&account_id) == Some(&observation.requested_revision)
 		{
-			let mut state = self.state.write().await;
-			state.insert(observation);
+			let published = {
+				let mut state = self.state.write().await;
+				state.insert(observation)
+			};
+			if published {
+				self.advance_observation_generation();
+			}
 		}
 
 		if pending.remove(&account_id)
@@ -360,6 +398,37 @@ impl AccountObservationService {
 			.await;
 		}
 	}
+
+	fn advance_observation_generation(&self) {
+		self.observation_generation.send_modify(|generation| {
+			*generation = generation.wrapping_add(1);
+		});
+	}
+}
+
+async fn wait_for_generation(
+	mut changes: watch::Receiver<u64>,
+	after_generation: u64,
+	wait_timeout: Duration,
+) -> AccountObservationSignal {
+	let current = *changes.borrow_and_update();
+	if current != after_generation {
+		return AccountObservationSignal::new(current);
+	}
+
+	let _ = time::timeout(wait_timeout, async {
+		loop {
+			if changes.changed().await.is_err() {
+				return;
+			}
+			if *changes.borrow_and_update() != after_generation {
+				return;
+			}
+		}
+	})
+	.await;
+	let generation = *changes.borrow_and_update();
+	AccountObservationSignal::new(generation)
 }
 
 async fn optional_notification(notify: Option<&Arc<Notify>>) {
@@ -399,14 +468,34 @@ const fn inventory_revision(observation: &ResetCardInventoryObservation) -> i64 
 
 #[cfg(test)]
 mod tests {
-	use std::collections::{HashMap, HashSet};
+	use std::{
+		collections::{HashMap, HashSet},
+		time::Duration,
+	};
 
 	use decodex_core::AccountId;
+	use tokio::{sync::watch, time};
 
 	use super::{
 		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
-		ResetCardServiceError, plan_observation_round,
+		ResetCardServiceError, plan_observation_round, wait_for_generation,
 	};
+
+	#[tokio::test]
+	async fn observation_signal_is_immediate_on_change_and_bounded_when_unchanged() {
+		let (generation, initial) = watch::channel(7_u64);
+		let immediate = wait_for_generation(initial, 6, Duration::from_secs(1)).await;
+		assert_eq!(immediate.generation, 7);
+
+		let waiting = wait_for_generation(generation.subscribe(), 7, Duration::from_secs(1));
+		tokio::pin!(waiting);
+		assert!(time::timeout(Duration::from_millis(5), &mut waiting).await.is_err());
+		generation.send_modify(|value| *value = 8);
+		assert_eq!(waiting.await.generation, 8);
+
+		let heartbeat = wait_for_generation(generation.subscribe(), 8, Duration::ZERO).await;
+		assert_eq!(heartbeat.generation, 8);
+	}
 
 	#[test]
 	fn one_round_starts_every_independent_account_without_a_global_cap() {
