@@ -28,6 +28,35 @@ pub(crate) enum AccountProfileRuntimeResult {
 	Unavailable { claims: AccountProfileClaimsView, error: AccountProfileRuntimeError },
 }
 
+/// Daemon-owned refresh state for one exact account revision.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct AccountProfileRefreshStatus {
+	pub(crate) account_revision: i64,
+	pub(crate) refresh_error: Option<AccountProfileRuntimeError>,
+}
+
+impl AccountProfileRuntimeResult {
+	pub(crate) const fn refresh_status(
+		&self,
+		requested_revision: i64,
+	) -> AccountProfileRefreshStatus {
+		match self {
+			Self::Current(profile) => AccountProfileRefreshStatus {
+				account_revision: profile.snapshot.account_revision,
+				refresh_error: None,
+			},
+			Self::Cached { profile, refresh_error } => AccountProfileRefreshStatus {
+				account_revision: profile.snapshot.account_revision,
+				refresh_error: Some(*refresh_error),
+			},
+			Self::Unavailable { error, .. } => AccountProfileRefreshStatus {
+				account_revision: requested_revision,
+				refresh_error: Some(*error),
+			},
+		}
+	}
+}
+
 /// One persisted profile snapshot plus query-selected current credential claims.
 pub(crate) struct AccountProfileView {
 	pub(crate) snapshot: AccountProfileSnapshot,
@@ -132,7 +161,9 @@ impl AccountProfileProvider for OpenAiAccountProfileProvider {
 	}
 }
 
-/// Runtime owner for one independent profile request. It has no poller or retained secret state.
+/// Provider primitive for one independent profile request with no retained secret state.
+///
+/// `AccountObservationService` owns the daemon cadence and calls this primitive.
 #[derive(Clone)]
 pub(crate) struct AccountProfileRuntime {
 	store: PostgresStore,
@@ -148,6 +179,68 @@ impl AccountProfileRuntime {
 			provider: OpenAiAccountProfileProvider::new()
 				.ok()
 				.map(|provider| Arc::new(provider) as Arc<dyn AccountProfileProvider>),
+		}
+	}
+
+	/// Read only the latest daemon-owned profile value and current credential claims.
+	///
+	/// This path never contacts the provider. The background account-observation service owns
+	/// provider refresh and supplies the exact revision-scoped refresh status.
+	pub(crate) async fn read_cached(
+		&self,
+		account_id: &AccountId,
+		include_email: bool,
+		status: Option<AccountProfileRefreshStatus>,
+	) -> AccountProfileRuntimeResult {
+		let account = match self.store.read_account_registry(Some(account_id), 1).await {
+			Ok(accounts) => match accounts.into_iter().next() {
+				Some(account) if !account.tombstoned => account,
+				_ =>
+					return AccountProfileRuntimeResult::Unavailable {
+						claims: ProfileClaims::redacted().into_view(),
+						error: AccountProfileRuntimeError::AccountUnavailable,
+					},
+			},
+			Err(_) =>
+				return AccountProfileRuntimeResult::Unavailable {
+					claims: ProfileClaims::redacted().into_view(),
+					error: AccountProfileRuntimeError::ProductStateUnavailable,
+				},
+		};
+		let refresh_error = match status {
+			Some(status) if status.account_revision == account.revision => status.refresh_error,
+			Some(_) => Some(AccountProfileRuntimeError::AccountChanged),
+			None => Some(AccountProfileRuntimeError::ProviderUnavailable),
+		};
+		let snapshot = match self.store.read_account_profile(account_id).await {
+			Ok(Some(snapshot)) => snapshot,
+			Ok(None) =>
+				return self
+					.unavailable(
+						account_id,
+						include_email,
+						refresh_error.unwrap_or(AccountProfileRuntimeError::ProviderUnavailable),
+					)
+					.await,
+			Err(_) =>
+				return self
+					.unavailable(
+						account_id,
+						include_email,
+						AccountProfileRuntimeError::ProductStateUnavailable,
+					)
+					.await,
+		};
+		if snapshot.account_id != *account_id || snapshot.account_revision != account.revision {
+			return self
+				.unavailable(account_id, include_email, AccountProfileRuntimeError::AccountChanged)
+				.await;
+		}
+
+		let profile = self.profile_view(snapshot, include_email).await;
+		match refresh_error {
+			Some(refresh_error) => AccountProfileRuntimeResult::Cached { profile, refresh_error },
+			None => AccountProfileRuntimeResult::Current(profile),
 		}
 	}
 
