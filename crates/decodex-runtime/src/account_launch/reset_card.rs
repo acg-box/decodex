@@ -60,9 +60,6 @@ const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
 // shutdown add 1.25 seconds, rounded up to two seconds for this lease proof.
 const MAX_BLOCKING_PROCESS_DEADLINE: Duration =
 	Duration::from_secs(PROCESS_TIMEOUT.as_secs() * 8 + 2);
-// A query receives a typed row-scoped refusal before the protocol client's whole-request
-// deadline. The daemon-owned operation continues its already-bounded cleanup.
-const INVENTORY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(25);
 const CLAIM_LEASE: Duration = Duration::from_secs(360);
 const CLAIM_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(30);
 // A detached blocking task must begin early enough that all bounded provider work finishes before
@@ -173,6 +170,7 @@ struct ResetCardRuntimeInner {
 	worker_id: String,
 	worker_lock: Mutex<()>,
 	worker_wakeup: Arc<Notify>,
+	observation_wakeup: Arc<Notify>,
 	provider_work: Arc<ProviderWorkLifecycle>,
 }
 
@@ -349,6 +347,7 @@ impl ResetCardRuntime {
 				worker_id,
 				worker_lock: Mutex::new(()),
 				worker_wakeup: Arc::new(Notify::new()),
+				observation_wakeup: Arc::new(Notify::new()),
 				provider_work: Arc::new(ProviderWorkLifecycle::new()),
 			}),
 		};
@@ -393,6 +392,11 @@ impl ResetCardRuntime {
 
 	pub(crate) fn vault_status(&self) -> ResetCardVaultStatus {
 		ResetCardVaultStatus::Ready
+	}
+
+	/// Share the coalescing wakeup emitted after one durable Reset Card worker claim settles.
+	pub(crate) fn observation_wakeup(&self) -> Arc<Notify> {
+		Arc::clone(&self.inner.observation_wakeup)
 	}
 
 	/// Run one bounded exact-image login, refresh callback, CAS, and provider-readback proof.
@@ -443,8 +447,12 @@ impl ResetCardRuntime {
 			.map_err(map_account_service_error)
 	}
 
-	/// Read one fresh, strict provider inventory under a PostgreSQL revision fence.
-	pub(crate) async fn inventory(
+	/// Observe one fresh, strict provider inventory under a PostgreSQL revision fence.
+	///
+	/// The daemon account observer awaits this owner through its bounded provider cleanup. Client
+	/// queries read the observer cache and therefore never impose a shorter response deadline that
+	/// could overlap two provider owners for the same account.
+	pub(crate) async fn observe_inventory(
 		&self,
 		account_id: &AccountId,
 	) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
@@ -456,11 +464,11 @@ impl ResetCardRuntime {
 		);
 		let inner = Arc::clone(&self.inner);
 		let account_id = account_id.clone();
-		let mut owner =
+		let owner =
 			task::spawn(
 				async move { Self::inventory_once(inner, account_id, provider_permit).await },
 			);
-		await_inventory_owner(&mut owner, INVENTORY_RESPONSE_TIMEOUT).await
+		owner.await.map_err(|_| ResetCardServiceError::ResourceExhausted)?
 	}
 
 	async fn inventory_once(
@@ -697,17 +705,6 @@ impl ResetCardRuntime {
 	}
 }
 
-async fn await_inventory_owner(
-	owner: &mut task::JoinHandle<InventoryResult>,
-	response_timeout: Duration,
-) -> InventoryResult {
-	match time::timeout(response_timeout, owner).await {
-		Ok(Ok(result)) => result,
-		Ok(Err(_)) => Err(ResetCardServiceError::ResourceExhausted),
-		Err(_) => Err(ResetCardServiceError::RequestTimedOut),
-	}
-}
-
 async fn run_worker(inner: Arc<ResetCardRuntimeInner>, mut stop: watch::Receiver<bool>) {
 	loop {
 		if *stop.borrow() {
@@ -746,6 +743,7 @@ async fn drain_worker(inner: Arc<ResetCardRuntimeInner>, stop: &watch::Receiver<
 			};
 
 		process_claim(Arc::clone(&inner), claim).await;
+		inner.observation_wakeup.notify_one();
 	}
 }
 
@@ -1679,11 +1677,7 @@ impl Debug for StoredCredentialVault {
 mod tests {
 	use std::{
 		future::{pending, ready},
-		sync::{
-			Arc,
-			atomic::{AtomicBool, Ordering},
-			mpsc,
-		},
+		sync::{Arc, mpsc},
 		time::Duration,
 	};
 
@@ -1697,9 +1691,9 @@ mod tests {
 	use super::{
 		CLAIM_HEARTBEAT_INTERVAL, CLAIM_LEASE, ClaimWorkGate, MAX_BLOCKING_PROCESS_DEADLINE,
 		MAX_CLAIM_WORK_START_DELAY, ProviderWorkLifecycle, ResetCardConsumeOutcome,
-		ResetCardFailureCode, ResetCardServiceError, await_inventory_owner, finish_guarded_work,
-		maintain_claim_heartbeat, map_prepare_store_error, provider_idempotency_key,
-		readback_confirms_outcome, require_claim_work_start,
+		ResetCardFailureCode, ResetCardServiceError, finish_guarded_work, maintain_claim_heartbeat,
+		map_prepare_store_error, provider_idempotency_key, readback_confirms_outcome,
+		require_claim_work_start,
 	};
 
 	#[test]
@@ -1893,31 +1887,6 @@ mod tests {
 		time::timeout(Duration::from_secs(1), lifecycle.wait_for_settlement())
 			.await
 			.expect("provider lifecycle must settle after its last registered work exits");
-	}
-
-	#[tokio::test]
-	async fn inventory_deadline_returns_typed_error_without_aborting_owned_cleanup() {
-		let cleanup_finished = Arc::new(AtomicBool::new(false));
-		let observed_cleanup = Arc::clone(&cleanup_finished);
-		let mut owner = task::spawn(async move {
-			time::sleep(Duration::from_millis(20)).await;
-			observed_cleanup.store(true, Ordering::Release);
-
-			Err(ResetCardServiceError::ProviderUnavailable)
-		});
-
-		assert_eq!(
-			await_inventory_owner(&mut owner, Duration::from_millis(1)).await,
-			Err(ResetCardServiceError::RequestTimedOut),
-		);
-		drop(owner);
-		time::timeout(Duration::from_secs(1), async {
-			while !cleanup_finished.load(Ordering::Acquire) {
-				task::yield_now().await;
-			}
-		})
-		.await
-		.expect("daemon-owned cleanup must finish after the response deadline");
 	}
 
 	#[test]

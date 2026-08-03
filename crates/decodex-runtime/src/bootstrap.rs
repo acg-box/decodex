@@ -14,6 +14,7 @@ use std::{
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_launch::{AttestedAppServerProfile, ResetCardRuntime, ResetCardVaultStatus},
+	account_observation::AccountObservationService,
 	account_profile::AccountProfileRuntime,
 	account_service::{AccountInspection, AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ServiceApplication},
@@ -163,6 +164,15 @@ impl ServiceBootstrap {
 			daemon_authority,
 		} = self;
 		let listener = daemon_authority.map_err(ServerError::LocalTransport)?;
+		let account_observations = match &accounts {
+			Some(accounts) if account_profiles.is_some() || reset_cards.is_some() =>
+				Some(AccountObservationService::new(
+					Arc::clone(accounts),
+					account_profiles.clone(),
+					reset_cards.clone(),
+				)),
+			_ => None,
+		};
 		let server = ProtocolServer::new(
 			server_id,
 			ServiceApplication::new(
@@ -177,8 +187,8 @@ impl ServiceBootstrap {
 				doctor,
 			)
 			.with_accounts(accounts)
-			.with_account_profiles(account_profiles)
-			.with_reset_cards(reset_cards),
+			.with_reset_cards(reset_cards)
+			.with_account_observations(account_observations),
 			config,
 		);
 		Ok(server.bind_listener(listener))

@@ -168,9 +168,10 @@ decodex-publisher validate-social
   independent cards with transparent gaps, compact quota meters, and single-line
   Reset Card controls. The overflow menu stores one panel-wide appearance choice:
   `Thin` by default, or the system `Liquid Glass` effect. The same menu keeps only
-  `Refresh all`, that material selector, and Quit. A manual refresh remains available
-  during a background read and coalesces into the active refresh cycle; account
-  mutations and Reset Card submissions still disable it.
+  `Refresh all`, that material selector, and Quit. A manual reload remains available
+  during a background read and coalesces into the active reload cycle; it reads
+  daemon-owned values and does not start provider work. Account mutations and Reset
+  Card submissions still disable it.
 - Reveals a compact trailing-edge reorder grip over an account card's padding while
   the pointer is over that card, so the grip does not reserve a layout column. A
   drag uses the stable list coordinate space and keeps the full-size card on a
@@ -185,9 +186,12 @@ decodex-publisher validate-social
   an account control or Reset Card submission is in progress, when routing and
   account membership disagree, or when fewer than two accounts exist. The app does
   not persist a separate local order.
-- Loads quota windows and Reset Cards independently for each row. One slow or failed
-  provider request does not hide the other accounts. A provider-unsupported quota
-  duration stays a muted row-local fact and does not mark the account as failed.
+- Loads daemon-owned quota, Reset Card, and profile values concurrently for every row.
+  One cold or failed account observation does not hide the other accounts. The
+  [daemon account observer](../specs/account-lifecycle-authority.md#daemon-account-observation)
+  starts provider observations for all ready accounts concurrently without a small global
+  fan-out cap. A provider-unsupported quota duration stays a muted row-local fact and does
+  not mark the account as failed.
 - Uses Reset Cards from the common daemon service. The first click starts a
   five-second local confirmation. The second click ends the countdown, shows a busy
   indicator, persists a pending attempt, and submits one in-process Rust request with
@@ -198,8 +202,8 @@ decodex-publisher validate-social
   checking state. During that reconciliation, the app keeps the last quota visible
   but does not expose Reset Cards from the old account revision. It holds an
   advanced inventory until the matching account skeleton arrives and then applies
-  it without a duplicate provider read. One per-account coordinator coalesces
-  same-revision inventory calls. A use gate waits for any older provider read and
+  it without a duplicate daemon read. One per-account coordinator coalesces
+  same-revision inventory calls. A use gate waits for any older daemon read and
   blocks fresh reads until the effect dispatch ends. A terminal use result starts
   bounded background reconciliation without holding the button busy. Internal contention, provider
   cleanup, and other retryable detail failures show `Updating usage…` while the
@@ -213,10 +217,12 @@ decodex-publisher validate-social
   The macOS source-install path provisions that service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
   PostgreSQL and daemon process generations.
-- Retries only the bounded startup account-skeleton transport while the independently
-  supervised service becomes ready. Row-scoped profile or Reset Card failures remain
-  local until explicit refresh. It does not retry consume, replace an idempotency key,
-  or take service lifecycle ownership.
+- Uses one finite startup retry schedule for daemon transport and retryable row-scoped
+  cold-cache results while the independently supervised observer warms. Permanent
+  profile and Reset Card failures remain row-local. It does not retry consume, replace
+  an idempotency key, or take service lifecycle ownership. Successful login replacement
+  also uses bounded short-interval daemon readback so an old unauthorized observation
+  cannot look like the result of the new login.
 - Shows one compact status row for each retained attempt and checks durable status
   automatically. A nonterminal state or temporary read failure updates that row. A
   terminal result removes the row and shows the result message. The UI does not

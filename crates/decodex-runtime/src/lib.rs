@@ -14,6 +14,7 @@
 mod account_import;
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
+mod account_observation;
 mod account_profile;
 mod account_service;
 mod application;

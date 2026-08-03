@@ -135,8 +135,11 @@ deadline receives a stable task identity but its command future is never polled.
 owner harvests `join_next_with_id`; it calls `abort_all` once only if the deadline
 expires, and it continues harvesting through `None`.
 
-The same top-level task also owns daemon service futures. Reset Card has no detached worker
-or heartbeat task. At the start of stopping, the application synchronously closes provider
+The same top-level task also owns daemon service futures. This includes the Reset Card
+worker and the account-observation scheduler. The scheduler starts all independent ready
+accounts concurrently, publishes each completion independently, and retains no more than
+one active observation owner for one Account UUID. Reset Card has no detached worker or
+heartbeat task. At the start of stopping, the application synchronously closes provider
 work registration and receives a cooperative service-stop signal. Queued blocking closures
 cannot start after that gate closes. An already registered provider operation uses its
 existing bounded process deadline and remains included in service settlement even if its
@@ -1293,7 +1296,12 @@ confirmation is presentation state only.
 Swift does not stage or read credentials, create a temporary Codex home, launch a process,
 resolve an opaque credit ID, or call the provider method. It persists only a credential-negative
 pending Reset Card operation handle so it can read durable daemon status after an app restart.
-Provider-effect retry and authoritative reconciliation remain daemon-only.
+Provider observation, provider-effect retry, and authoritative reconciliation remain
+daemon-only. The UI starts all independent daemon value reads concurrently. Its 15-second
+cycle and panel-open trigger reload cached values only; they do not start OpenAI or
+app-server work. After successful login replacement, bounded local readback waits for the
+daemon's new revision-scoped observation instead of treating an old unauthorized value as
+the result of the new login.
 
 After the caller creates and durably records an idempotency key for `use`, every CLI
 result repeats that key and one closed `dispatch_state`: `definitely_not_dispatched`,

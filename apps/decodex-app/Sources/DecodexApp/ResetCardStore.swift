@@ -258,10 +258,9 @@ private enum ResetCardInventoryRefreshResult: Equatable {
 @MainActor
 @Observable
 final class ResetCardStore {
-	// Profile reads are cheap cached projections, while Reset Card reads start an
-	// account-bound provider process. Keep the progressive fan-out below the host
-	// process burst that can make otherwise healthy accounts fail transiently.
-	private static let maximumConcurrentAccountReads = 3
+	// These reads return daemon-owned observations and never start provider work.
+	// Fetch every independent account projection concurrently so one row cannot
+	// delay another row's first presentation.
 	private static let defaultAutomaticRefreshInterval: Duration = .seconds(15)
 	private static let defaultPostUseRetryDelays: [Duration] = [
 		.seconds(1),
@@ -276,6 +275,14 @@ final class ResetCardStore {
 		.seconds(8),
 		.seconds(15),
 		.seconds(30),
+	]
+	private static let defaultAccountObservationRetryDelays: [Duration] = [
+		.milliseconds(250),
+		.milliseconds(500),
+		.seconds(1),
+		.seconds(2),
+		.seconds(4),
+		.seconds(8),
 	]
 
 	private(set) var accounts = [ResetCardAccountState]()
@@ -306,6 +313,7 @@ final class ResetCardStore {
 	@ObservationIgnored private let postUseRetryDelays: [Duration]
 	@ObservationIgnored private let automaticRefreshInterval: Duration
 	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
+	@ObservationIgnored private let accountObservationRetryDelays: [Duration]
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var automaticRefreshTask: Task<Void, Never>?
@@ -334,6 +342,8 @@ final class ResetCardStore {
 		postUseRetryDelays: [Duration] = ResetCardStore.defaultPostUseRetryDelays,
 		automaticRefreshInterval: Duration = ResetCardStore.defaultAutomaticRefreshInterval,
 		accountReauthenticationPollInterval: Duration = .seconds(1),
+		accountObservationRetryDelays: [Duration] = ResetCardStore
+			.defaultAccountObservationRetryDelays,
 		resolveCodexExecutable: @escaping @MainActor @Sendable () throws -> String = {
 			try CodexExecutableResolver.resolve()
 		}
@@ -347,6 +357,7 @@ final class ResetCardStore {
 		self.postUseRetryDelays = postUseRetryDelays
 		self.automaticRefreshInterval = automaticRefreshInterval
 		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
+		self.accountObservationRetryDelays = accountObservationRetryDelays
 		self.resolveCodexExecutable = resolveCodexExecutable
 		let pendingLoad = pendingStore.load()
 		pendingAttempts = pendingLoad.attempts
@@ -806,11 +817,8 @@ final class ResetCardStore {
 				}
 			}
 			await withTaskGroup(of: ResetCardAccountRead.self) { group in
-				var nextRead = 0
-				let initialCount = min(Self.maximumConcurrentAccountReads, reads.count)
-				while nextRead < initialCount {
-					group.addTask(operation: reads[nextRead])
-					nextRead += 1
+				for read in reads {
+					group.addTask(operation: read)
 				}
 
 				while let read = await group.next() {
@@ -847,16 +855,19 @@ final class ResetCardStore {
 							applyProfileFailure(error, accountID: accountID, request: request)
 						}
 					}
-					if nextRead < reads.count {
-						group.addTask(operation: reads[nextRead])
-						nextRead += 1
-					}
 				}
 			}
 			for request in profileRequests {
 				finishProfileRequest(request)
 			}
 			_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
+			shouldRetry = accounts.contains { state in
+				state.error?.isRetryableReadFailure == true
+					|| state.inventory?.observationError?.isRetryableReadFailure == true
+					|| state.profileError?.isRetryableReadFailure == true
+					|| state.profileUnavailable?.error.isRetryableReadFailure == true
+					|| state.profile?.refreshError?.isRetryableReadFailure == true
+			}
 		} catch {
 			let clientError = Self.clientError(error)
 			shouldRetry = clientError.isRetryableReadFailure
@@ -2888,16 +2899,41 @@ final class ResetCardStore {
 			return
 		}
 		accountControlActivities.removeValue(forKey: accountID)
-		accountReauthenticationTask = nil
 		message = ResetCardStoreMessage(
 			tone: .success,
 			text: "Account login refreshed."
 		)
 		accountReauthentication = nil
-		await refreshReauthenticatedAccountAuthority(accountID)
+		await refreshReauthenticatedAccountAuthority(
+			accountID,
+			retryDelays: accountObservationRetryDelays
+		)
+		accountReauthenticationTask = nil
 	}
 
-	private func refreshReauthenticatedAccountAuthority(_ accountID: String) async {
+	private func refreshReauthenticatedAccountAuthority(
+		_ accountID: String,
+		retryDelays: [Duration] = []
+	) async {
+		await refreshReauthenticatedAccountAuthorityOnce(accountID)
+		for delay in retryDelays {
+			guard Task.isCancelled == false,
+				accounts.first(where: {
+					$0.account.accountID == accountID
+				})?.requiresLoginRefresh == true
+			else {
+				return
+			}
+			do {
+				try await Task.sleep(for: delay)
+			} catch {
+				return
+			}
+			await refreshReauthenticatedAccountAuthorityOnce(accountID)
+		}
+	}
+
+	private func refreshReauthenticatedAccountAuthorityOnce(_ accountID: String) async {
 		await refreshAccountSkeleton()
 		await refreshAccountDetails(accountID)
 		await refreshAccountSkeleton()
