@@ -2145,9 +2145,7 @@ fn read_reset_card_inventory(
 	timeout: Duration,
 ) -> Result<ResetCardInventory, ResetCardProcessError> {
 	let inventory = request_reset_card_inventory(process, timeout)?;
-	if !inventory.details_complete()
-		&& inventory.reported_available_count().is_some_and(|count| count > 0)
-	{
+	if !inventory.details_complete() {
 		return request_reset_card_inventory(process, timeout);
 	}
 	Ok(inventory)
@@ -5017,7 +5015,13 @@ mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
-		if matches!(mode, "reset-card" | "reset-card-partial-first" | "callback-probe") {
+		if matches!(
+			mode,
+			"reset-card"
+				| "reset-card-partial-first"
+				| "reset-card-missing-first"
+				| "callback-probe"
+		) {
 			schema_args.push("--reset-card".into());
 		}
 
@@ -5318,6 +5322,25 @@ mod tests {
 		let capacity = TestCapacity::new(1);
 		let runner = ResetCardProcessRunner::new(
 			fake_command("reset-card-partial-first", temp.path(), None),
+			binding(),
+			Duration::from_secs(2),
+		);
+
+		let inventory =
+			runner.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap()).unwrap();
+
+		assert!(inventory.details_complete());
+		assert_eq!(inventory.reported_available_count(), Some(1));
+		assert_eq!(inventory.available_count(), 1);
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn reset_card_runner_retries_an_inventory_with_missing_count_and_details() {
+		let temp = TempDir::new().unwrap();
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("reset-card-missing-first", temp.path(), None),
 			binding(),
 			Duration::from_secs(2),
 		);
