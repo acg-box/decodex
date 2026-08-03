@@ -152,6 +152,57 @@ It does not parse a sequence of SQL sources. Historical relation/function/trigge
 are not authority. The exact current candidate establishes its own reviewed closed
 inventory.
 
+## Runtime composition and readiness
+
+One `decodexd` and one owner-only same-UID endpoint remain authoritative. A Quick Task or
+ManagedRepository startup failure does not terminate the daemon when the transport and
+control plane can start. Diagnostics, account recovery, and available PostgreSQL-backed
+reads remain usable.
+
+Composition records these independent startup projections:
+
+| Surface | Startup projection | Owner boundary |
+| --- | --- | --- |
+| `ProductStore` | `Available(PostgresStore)` or `Unavailable(ProductStateReason)` | Exact runtime PostgreSQL connection and current-authority verification only. |
+| Quick Task | `Ready(QuickTaskRuntime)` or `Unavailable(QuickTaskUnavailableReason)` | Stateless Quick Task sequencing after all fallible dependencies are validated. |
+| ManagedRepository | `Ready`, `Disabled`, or `Unavailable(ManagedRepositoryUnavailableReason)` | Optional repository path, Git, executor, and reconciliation assembly. |
+
+`ProductStore` never contains Quick Task or repository readiness. A repository path,
+Git executor, reconciliation, or configuration failure cannot invalidate a verified
+PostgreSQL store. A Quick Task dependency failure cannot invalidate PostgreSQL or
+ManagedRepository.
+
+All fallible dependency owners finish their I/O, attestation, and startup work before
+Quick Task construction. `QuickTaskRuntime::new` or its final equivalent is infallible and
+performs no I/O. Service composition stores one immutable ready or unavailable projection
+for that daemon process. It does not poll, mutate, promote, or recover that projection.
+Every Quick Task command repeats the current Account Service, routing,
+ProcessGeneration, ProviderAttempt, app-server, and path fences before it can cause an
+effect.
+
+This structure has no capability-manager module. The startup projections own no durable
+state, receipt, task, channel, retry, or lifecycle. They only make the result of service
+assembly explicit. A deletion test must continue to hold: removing the Quick Task owner
+would spread sequencing and its closed error projection into callers; removing a wrapper
+that only forwards these values must remove no required behavior and is not allowed as a
+new module.
+
+Core configuration owns transport and PostgreSQL runtime configuration. It does not
+require a static repository path map. PostgreSQL owns repository identity, admission, and
+persisted path policy. If one concrete accepted host-only repository policy needs local
+configuration, that configuration has its own parser and validator. Missing or invalid
+repository configuration maps only to ManagedRepository `Disabled` or `Unavailable`; it
+cannot prevent core configuration parsing, endpoint binding, PostgreSQL verification, or
+Quick Task composition.
+
+Protocol and doctor return the three readiness projections independently. Quick Task
+execute, start, and resume return `QuickTaskUnavailable` with a closed redacted reason
+when Quick Task is unavailable. Persisted list and get operations return
+`ProductStateUnavailable` when PostgreSQL is unavailable. No optional setter, `.ok()`
+conversion, or omitted field can turn a startup error into silent feature absence.
+`AcceptanceUnknown` and recovery-required responses remain effect and recovery results;
+they are not startup readiness.
+
 ## State ownership
 
 | State or surface | Authority |
@@ -424,6 +475,11 @@ generation/tip, globally immutable operation assignment, append-only authority a
 operation evidence, exact compare-and-swap, transaction completeness, and restart loads.
 Git/filesystem execute admitted effects; GitHub supplies provider readback.
 
+ManagedRepository assembly is optional and independent from `ProductStore` and Quick
+Task. Absence is `Disabled`. A path, Git, executor, reconciliation, or isolated
+configuration failure is typed `Unavailable` and disables repository operations only.
+Neither state changes PostgreSQL readiness or prevents repository-free Quick Task work.
+
 Each external operation has one complete canonical descriptor. Exact equality with an
 existing assignment returns readback with no dispatch. Any difference is a permanent
 operation-ID conflict. A fresh affine execution receipt exists only after successful
@@ -441,6 +497,13 @@ identity, SHA-256 blobs, and disposable cache. Repository paths and PostgreSQL s
 paths reject symbolic links and replacement according to their owner-specific
 descriptor rules. Shared normal `~/.codex` remains Codex configuration, rollout, plugin,
 and thread-visibility authority.
+
+A requested Quick Task working directory is an input, not authority. Immediately before
+spawn, the runtime host adapter opens and validates the selected path by no-follow
+traversal, exact descriptor identity, directory type, ownership by the daemon effective
+UID, and the applicable PostgreSQL or accepted host-only path policy. Ambient current
+directory, repository discovery, and a caller-supplied path string cannot satisfy this
+check. A failure rejects only that Quick Task command.
 
 The exact-current protocol carries bounded command/result/event envelopes, snapshots,
 history pages, account queries, Reset Card operations, and read-only diagnostics.
@@ -493,6 +556,9 @@ path, compatibility mechanism, or executable schema owner.
   `schema` module. Do not add another SQL owner.
 - Runtime database changes must preserve zero-DDL startup and current-authority
   verification.
+- Runtime composition changes must preserve independent ProductStore, Quick Task, and
+  ManagedRepository projections. Do not add a mutable capability manager or silent
+  optional startup path.
 - Candidate-5 changes must preserve sole account selection, atomic first Turn/history
   admission, exact effect fencing, and current-main account cache-read isolation.
 - ProcessGeneration changes must preserve positive-only death and account-local
@@ -500,5 +566,7 @@ path, compatibility mechanism, or executable schema owner.
 - ProviderAttempt changes must preserve positive-only outcome evidence and no replay.
 - Account changes must preserve the Registry/store/service split and secret-negative
   database/protocol boundary.
+- Configuration changes must keep transport/PostgreSQL parsing independent from optional
+  repository configuration and must not restore duplicate repository-path authority.
 - Historical migration evidence is provenance only. No acceptance claim may depend on a
   historical upgrade or ledger proof.

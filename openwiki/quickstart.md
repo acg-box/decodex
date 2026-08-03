@@ -23,7 +23,8 @@ configuration, and accepted contracts remain executable authority.
 - [vNext gate manifest](specs/vnext-gates.md): source-freeze, latest-schema, runtime,
   Candidate-5, account, and local cutover gates.
 - [Runtime architecture](architecture/runtime-architecture.md): process topology,
-  PostgreSQL bootstrap/runtime separation, service ownership, and current-state drift.
+  PostgreSQL bootstrap/runtime separation, independent startup readiness, service
+  ownership, and current-state drift.
 - [Commands and validation](operations/commands-and-validation.md): implementation-owned
   bootstrap and authority command boundaries plus current repository checks.
 - [Account lifecycle authority](specs/account-lifecycle-authority.md): Account Registry,
@@ -87,7 +88,9 @@ remain domain integrity records. They are not schema migration records.
 - `crates/decodex-codex/` owns typed app-server contracts, exact-build capability
   profiles, redaction, and one-account-per-process adapter behavior.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner
-  that composes infrastructure adapters.
+  that composes infrastructure adapters. It records independent immutable startup
+  projections for ProductStore, Quick Task, and ManagedRepository without adding a
+  capability manager.
 - `apps/decodexd/` is the sole server composition root. Its normal serve path is
   runtime-only.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol clients. They do not read
@@ -104,6 +107,11 @@ remain domain integrity records. They are not schema migration records.
 `decodexd` serves the exact-current protocol at the fixed owner-only
 `~/.decodex/server/decodex.sock` endpoint. Both sides verify kernel peer UID and stable
 server identity. Remote and cross-UID control remain disabled until their security gate.
+
+One daemon and one endpoint remain available when Quick Task execution or
+ManagedRepository is unavailable. `ProductStore` means verified PostgreSQL only. Quick
+Task and ManagedRepository startup cannot overwrite it. Protocol and doctor report all
+three readiness results separately.
 
 When PostgreSQL is available, startup verifies the pinned socket, PostgreSQL 18 and data
 checksums, `pgcrypto`, the exact latest catalog, closed dependencies, object ownership,
@@ -133,6 +141,12 @@ timeout, restart, absence, or negative search never proves provider non-submissi
 ExecutionCoordinator is crate-private and stateless. It sequences accepted route,
 continuation, process, and provider-attempt owners. It stores no receipt or lifecycle and
 cannot authorize dispatch by itself.
+
+After fallible owners validate their dependencies, `QuickTaskRuntime` construction is
+infallible and performs no I/O. Composition records one immutable ready or typed
+unavailable result. Quick Task commands repeat all current owner fences. ManagedRepository
+is independently `Ready`, `Disabled`, or typed `Unavailable`; repository failure affects
+repository operations only.
 
 ## Candidate-5 Quick Task
 
@@ -168,6 +182,11 @@ Turn. Only a fresh ProcessGeneration result can spawn. Replayed, rejected, or un
 state cannot spawn, substitute an account, create a successor, duplicate an attempt, or
 terminalize the Turn. Only positive definite pre-effect refusal can let Conversation
 authority move that Turn to failed revision 2.
+
+Immediately before spawn, runtime validates the selected working directory by no-follow
+descriptor traversal, exact identity, directory type, ownership by the daemon effective
+UID, and accepted path policy. Ambient current directory and repository discovery are not
+authority. One broken repository cannot disable unrelated Quick Tasks.
 
 Automatic cross-account same-thread fallback and all-depleted wake remain disabled under
 XY-1304.
@@ -223,6 +242,10 @@ are implementation-owned. See [Commands and validation](operations/commands-and-
 - Do not add numbered SQL, Refinery, a schema ledger, a schema generator, or a second
   executable schema owner.
 - Do not make daemon startup resolve schema-owner credentials or execute DDL.
+- Do not make Quick Task or ManagedRepository startup failure fatal to an otherwise usable
+  daemon. Do not hide it through `.ok()`, an optional setter, or an omitted protocol field.
+- Do not add a mutable capability manager or duplicate PostgreSQL repository path
+  authority in core configuration.
 - Keep current-main account observation and cache-read isolation unchanged while adding
   Candidate-5 behavior.
 - Treat historical migration evidence as superseded provenance, not current authority.
