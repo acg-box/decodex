@@ -6,18 +6,18 @@ from __future__ import annotations
 MODEL_BY_AUTOMATION_ID = {
     "codex-upstream-maintainer": "gpt-5.6-sol",
     "codex-upstream-reviewer": "gpt-5.6-sol",
-    "codex-upstream-health": "gpt-5.6-terra",
-    "decodex-content-manager": "gpt-5.6-terra",
+    "codex-upstream-health": "gpt-5.6-luna",
+    "decodex-content-manager": "gpt-5.6-luna",
     "decodex-xurl-publisher": "gpt-5.6-luna",
 }
 
-DEFAULT_REASONING_EFFORT = "high"
+DEFAULT_REASONING_EFFORT = "max"
 REASONING_EFFORT_BY_AUTOMATION_ID = {
     "codex-upstream-maintainer": "max",
     "codex-upstream-reviewer": "max",
-    "codex-upstream-health": "high",
-    "decodex-content-manager": "high",
-    "decodex-xurl-publisher": "high",
+    "codex-upstream-health": "max",
+    "decodex-content-manager": "max",
+    "decodex-xurl-publisher": "max",
 }
 
 

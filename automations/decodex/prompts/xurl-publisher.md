@@ -5,7 +5,7 @@ Role:
 
 Authority:
 - Run from the clean primary `main` checkout. A scheduled cwd is never a worktree.
-- Use model `gpt-5.6-luna` with reasoning effort `high`.
+- Use model `gpt-5.6-luna` with reasoning effort `max`.
 - The Rust Publisher is the only component that may invoke xurl. Never use browser control, X MCP, or a
   direct X API.
 - Target only `@decodexspace`. Keep one post per day, no URL, a `$1.25` monthly cap, and a `$0.030`
