@@ -19,7 +19,7 @@ pub enum AccountCommand {
 	List,
 	/// Inspect one daemon-owned account row.
 	Inspect(AccountIdentityArgs),
-	/// Read one bounded daemon-observed account profile.
+	/// Refresh and read one bounded account profile.
 	Profile(AccountProfileArgs),
 	/// Read the current normal shared Codex authentication projection.
 	CodexProjection,

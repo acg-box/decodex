@@ -452,6 +452,234 @@ Quick Task creation belongs to XY-1276. External Codex activity may be provenanc
 Quick/Advisor/Lead conversations; on an active ManagedRun it marks the session `diverged` and blocks
 side effects until tool/repository readback reconciles them.
 
+### XY-1276 Quick Task thread establishment
+
+Status: Candidate 5 is approved architecture only. Implementation, behavioral commit and
+exact-tree review, Phase A, digest-only child review, final mechanical preparation, Phase
+B, canonical aggregate validation, landing, installation, and live verification are
+pending. The rejected Candidate-4 evidence and migration allocation are in the
+[authority decision](../decisions/vnext-authority.md#xy-1276-candidate-5-architecture-reset).
+
+Quick Task remains an ordinary multi-turn Conversation. Candidate 5 uses existing owners
+in this exact order:
+
+1. The Conversation owner creates the Conversation.
+2. The routing fixture supplies a prospective Turn UUID as intent identity. It does not
+   create the Turn, and no routing column has a foreign key to `turns`.
+3. V16 runs once for the initial operation. It loads and locks the complete V14 universe
+   and selects the account. The request has no source RuntimeSession and no sticky member.
+4. V17 consumes that exact selected decision. In one transaction it creates the first
+   selected-account snapshot, the first selected RoleProfile snapshot, one `starting`
+   RuntimeSession, one inert `initial_thread` plan, activity, outbox, and exact receipt.
+5. The existing conversations owner admits the exact prospective Turn and its first history
+   item in one transaction.
+6. Every establishment effect fence locks and rechecks that exact Turn as active revision 1
+   under the same Conversation and V17-created RuntimeSession. ProcessGeneration and
+   pre-bind thread effects require the applicable `starting` revision. ProviderAttempt
+   preparation and authorization require the exact post-bind `active` revision and its
+   fence/bind receipts.
+7. Account Service fences the exact V16-selected account immediately before spawn.
+8. Only a fresh ProcessGeneration fence can spawn. V34 then owns exact thread-start fence
+   and bind. ProviderAttempt owns preparation, authorization, and provider-effect state.
+
+There is no second V16 call, fallback, wake, alternate account, or account re-selection in
+this initial operation. V17 consumes the selected V16 decision and does not select an
+account. Its initial planning is first-session creation. It is not explicit successor and
+is not Context-Pack fallback. V17 same-thread and Context-Pack fallback keep their existing
+owners and remain separate from this initial operation. XY-1304 continues to own later
+automatic fallback and wake.
+
+The owner boundary is:
+
+| Owner | Candidate-5 authority |
+| --- | --- |
+| Account Registry and V14 | Complete lifecycle, control, capability, quota, and routing facts. They do not select. |
+| Account Service | Account lifecycle operations and the exact selected-account readiness, credential, provider, and HostCredentialStore pre-spawn fence. It does not select the Quick Task account. |
+| V16 | The sole Quick Task account selector and immutable initial route-decision writer. |
+| V17 | Initial snapshots, first starting RuntimeSession, and inert initial plan; existing same-thread and Context-Pack planning; PostgreSQL-only explicit-successor evidence. |
+| Conversation owner | Conversation creation, atomic initial Turn/history admission, legal Turn finalization, and exact Turn lock/read proof. |
+| V34 RuntimeSession owner | RuntimeSession state/thread fields, exact thread fence and bind, acknowledgement, and the seven constrained trigger-function roll-forwards below. |
+| ProcessSupervisor | ProcessGeneration intent, fresh spawn authority, exact readback, positive death evidence, and account-local quarantine. |
+| ProviderAttemptService | Attempt preparation, dispatch authorization, ambiguity, positive evidence, and reconciliation. |
+| ExecutionCoordinator | A crate-private stateless sequence across these owners. It stores no state and grants no authority. |
+
+User-controlled fixed routing, balanced order, account UI, deterministic account aliases,
+and account lifecycle commands remain unchanged. Account Service can report and fence the
+facts that V16 selected. It cannot preselect, substitute, fall back to, or wake another
+account. In particular, if account A passes an Account Service subset but fails a V14
+capability and account B is fully eligible, V16 must select B. V17 creates only B's
+snapshots and RuntimeSession. Later B drift fails closed before spawn without a second
+decision, account A, or another fallback.
+
+For `routing_snapshots`, the initial-lineage shape is closed and named:
+
+- `L0` means all six lineage fields are null: `runtime_session_id`,
+  `runtime_session_revision`, `account_snapshot_id`,
+  `account_snapshot_source_revision`, `profile_snapshot_id`, and
+  `profile_snapshot_source_revision`.
+- `L6` means all six fields are present and each of
+  `runtime_session_revision`, `account_snapshot_source_revision`, and
+  `profile_snapshot_source_revision` is positive.
+
+V34 may drop `NOT NULL` only from those six columns. It must preserve the existing
+RuntimeSession, account-snapshot, and profile-snapshot foreign keys and add one closed
+all-null/all-present shape check. The only valid combinations are
+`conversation_turn AND (L0 OR L6)` and `managed_run_execution AND L6`. Half-null
+lineage and a source-less ManagedRun reject.
+
+The existing deferred `decodex.enforce_routing_completeness()` trigger function gains
+one narrow L0 branch. It can accept only the exact prospective Conversation Turn intent
+when the locked Conversation exists, is open, and has the exact expected revision; the
+Conversation has no RuntimeSession and no Turn; every candidate member has
+`sticky=false`; and candidate membership, policy positions, account revisions, both
+quota observations, all eight capability observations, and blocker rows exactly equal
+the locked V14 universe. Missing, extra, duplicate, or reordered evidence rejects. Any
+source field in L0, sticky member, existing session or Turn, closed or revision-changed
+Conversation, ManagedRun consumer, mixed lineage, or evidence mismatch rejects. Its
+existing L6 branch stays unchanged, including the requirement for exactly one sticky
+member.
+
+The supporting roll-forwards remain in their existing owners:
+
+- `resolve_routing_snapshot_exact` accepts the source RuntimeSession identity/revision
+  pair only when both values are present or both are absent. The absent branch proves
+  the initial predicates and zero sticky members, then writes exact L0.
+- `route_account_exact` applies the same pair rule. It selects in policy order from the
+  exact L0 snapshot and replays the exact stored decision. The existing Conversation
+  lock makes a conflicting or second cross-key initial decision lose; one decision is
+  `Fresh`, and exact-key replay is read-only.
+- `plan_initial_thread_continuation_exact` consumes that selected L0 decision and, in
+  one transaction, creates the selected account snapshot, copied profile snapshot,
+  first revision-1 unfenced `starting` RuntimeSession, and inert `initial_thread` plan.
+  Any rejected predicate or write rolls back every one of those rows and their receipt,
+  activity, and outbox effects.
+- Routing codecs and strict readbacks represent the source pair as jointly optional.
+  They permit zero sticky members only for L0 and require the unchanged one-sticky L6
+  shape otherwise.
+- `decodex.enforce_continuation_plan_completeness()` proves both the selected L0
+  decision and the newly created selected-account/profile/session lineage.
+- `decodex.enforce_routing_decision_completeness()` is unchanged. V34 does not replace
+  it or introduce another routing-decision trigger.
+
+#### Atomic initial admission
+
+The conversations owner admits exactly one Turn with all of these values:
+
+- the prospective Turn UUID bound as intent in the selected routing decision;
+- sequence 1 and role `user`;
+- `possible_side_effects=unknown`;
+- status `active` and revision 1; and
+- the exact Conversation and V17-created starting RuntimeSession cross-link.
+
+After V17 creates the session, the Conversation owner uses the prospective UUID and, in
+the same transaction, inserts that exact Turn as active revision 1 and exactly one
+ordinal-0 completed Message history item. The `Fresh`, `Replay`, or refusal decision,
+Turn row, history row, exact receipt, activity, and outbox are one owner transaction.
+Exact-key replay is read-only and returns
+the stored result. Every competing key, including concurrent cross-key admission, returns
+refusal and commits no Turn, history, activity, or outbox effect. A nonzero ordinal,
+non-Message kind, second item, wrong Turn identity, wrong role or sequence, wrong side-effect
+state, wrong status or revision, or cross-link rejects the whole transaction.
+
+Before ProcessGeneration preparation or spawn, before a thread fence or start, before
+thread bind, and before ProviderAttempt preparation or authorization, the effect owner must
+lock and require the exact selected Turn to remain active revision 1 under the same
+Conversation and V17-created RuntimeSession. ProcessGeneration and thread establishment
+through bind require the applicable `starting` revision. ProviderAttempt preparation and
+authorization require the exact post-bind `active` revision and exact fence/bind receipts.
+A terminalization race loses that fence and cannot start or complete the effect.
+
+Account Service then reads the exact V16-selected account revision, `enabled` state,
+AccountLifecycle and exact-build capability, provider binding, credential version and
+fingerprint, and actual HostCredentialStore binding. It compares those facts with V14,
+V16, V17, and ProcessGeneration intent immediately before spawn. Drift is a definite
+pre-spawn refusal. It cannot cause re-selection.
+
+#### Process and effect replay
+
+The exact ProcessGeneration create envelope has four typed outcomes for this path:
+
+- `Fresh` alone returns the non-clone spawn authority and may continue;
+- `Replayed` returns durable readback and no spawn authority;
+- `Rejected` returns durable refusal/readback and no spawn authority; and
+- uncertain or locally lost state returns `Unknown` after bounded durable readback.
+
+`Replayed`, `Rejected`, and `Unknown` cannot spawn, replace, adopt, create a successor,
+prepare a duplicate ProviderAttempt, or terminalize the Turn. Recovery uses the existing
+ProcessGeneration, RuntimeSession, ProviderAttempt, and Conversation reads. It adds no
+ledger or recovery framework; no Turn row exists before the Conversation admission
+transaction. The same rule applies after result loss at ProcessGeneration fence or ready,
+RuntimeSession thread fence, start or bind, and
+ProviderAttempt prepared or authorized. Ambiguous work remains bound to the original Turn
+and returns `Unknown` for manual recovery.
+
+The conversations owner may transition the exact active revision-1 user Turn to `failed`
+revision 2 while its RuntimeSession is still starting only when positive readback proves a
+definite pre-effect refusal. The proof must exclude every ProcessGeneration state that
+can have created a child. A fresh result remains definite only after
+existing positive spawn-noncreation evidence proves that it created no child. Ambiguous,
+replayed, rejected, or uncertain ProcessGeneration state is never definite. The proof
+must also exclude a thread fence, thread start or bind, and a prepared, authorized, or
+unknown ProviderAttempt. Fenced, thread-started, thread-bound, or
+attempt-active/unknown work keeps the Turn active. No other owner can terminalize it.
+
+#### Explicit successor
+
+Explicit successor remains PostgreSQL-only, non-dispatch evidence. It has no protocol
+field, product command, runtime `EXECUTE` grant, facade, re-export, fallback, or wake path.
+Before it changes a RuntimeSession, creates a Context Pack or snapshot, writes a plan,
+activity, outbox, or receipt, its transaction locks the exact Turn named by the routing
+decision. The row must belong to the same Conversation and source RuntimeSession, have
+status `failed`, and have revision 2.
+
+An active revision-1 Turn, completed revision-2 Turn, absent Turn, wrong Turn, cross-linked
+Turn, changed revision, or a terminalization race rejects before every successor effect.
+This evidence does not make explicit successor a supported product operation. XY-1304 must
+separately reopen and reconcile the Turn and ProviderAttempt lifecycle before any future
+caller can be proposed.
+
+#### V34 trigger-function roll-forwards
+
+V34 may replace exactly the seven trigger-bound bodies below. This closed list applies
+only to trigger-bound function replacement; it does not prohibit the narrow supporting
+roll-forwards of `resolve_routing_snapshot_exact`, `route_account_exact`,
+`plan_initial_thread_continuation_exact`, routing codecs/readbacks, the existing
+`decodex.authorize_provider_attempt_dispatch_exact(uuid,bigint,uuid,bigint)` command,
+or the existing `decodex.complete_exact_continuation_rejection(text,text,text)` helper.
+Those functions stay with their current owners and acquire no selection or dispatch
+authority beyond the predicates in this section.
+
+| Trigger function | Existing binding, unchanged | Exact authorized Candidate-5 predicate |
+| --- | --- | --- |
+| `decodex.enforce_routing_completeness()` | `routing_policy_revision_complete`, `routing_evidence_complete`, and `routing_snapshot_complete`, deferred after insert | Preserve the complete existing policy, evidence, and L6 snapshot branches unchanged, including exactly one sticky L6 member. Add only the exact L0 snapshot branch defined above: all six lineage fields null; exact prospective Conversation Turn intent; open exact-revision Conversation; no RuntimeSession or Turn; zero sticky members; and member identity/order, account revisions, two quota rows per member, eight ordered capability rows per member, and blocker rows exactly equal to the locked V14 universe. Reject source fields in L0, partial lineage, source-less ManagedRun, closed or changed Conversation, existing session/Turn, sticky L0, and every missing, extra, duplicate, or reordered child. |
+| `decodex.enforce_runtime_session_state()` | `runtime_sessions_state_guard`, before insert or update | Preserve current revision-one insert, identity, timestamp, terminal-immutability, `starting` or `active` to `ended` or `diverged`, and ended-session active-Turn rules. Replace the generic `starting` to `active` edge and add only two other nonterminal edges. An unfenced `starting` row with null thread, last-turn, request, and response fields can advance one revision to `starting` by setting only the complete request ID/digest pair. That exact request-fenced row is the only row that can advance one revision to `active`: it preserves the request pair, sets the response ID equal to the request ID, sets the exact response digest and thread ID, and keeps last-known Turn null. An `active` row can advance one revision to `active` only for an exact last-known-Turn acknowledgement while all thread receipt and binding fields stay unchanged. A generic `starting` to `active`, missing or mismatched receipt halves, response without request, thread binding without response, combined edge, or unrelated field drift rejects. |
+| `decodex.enforce_turn_state()` | `turns_state_guard`, before insert or update | Preserve current active-session behavior. Under `starting`, insert only the prospective Turn UUID bound as intent in the selected routing decision, under the exact V17 session and Conversation as sequence 1, role `user`, `possible_side_effects=unknown`, status `active`, and revision 1. Update only that same row from active revision 1 to failed revision 2 while the session is still `starting` and the owner transaction has positive definite pre-effect refusal proof. A completed transition, another role, sequence, status, revision, side-effect value, identity, cross-link, or starting-session write rejects. |
+| `decodex.enforce_history_item_state()` | `history_items_state_guard`, before insert or update | Preserve current active-session behavior. Under `starting`, insert only in the admission transaction and only when no item already exists for the exact initial Turn: ordinal 0, kind Message, status `completed`, and revision 1 under the same Conversation. An update, streaming or failed item, second item, another ordinal or kind, wrong Turn, or cross-link rejects. |
+| `decodex.enforce_provider_attempt_transition()` | `provider_attempt_transition_guard`, before insert or update | Add only `runtime_session_binding_protocol` and `runtime_session_binding_idempotency_key` to the immutable ProviderAttempt tuple after insert. Keep the current revision-one `prepared` initial state, transition algebra, unknown reason rules, positive terminal-evidence requirement, and every other immutable field unchanged. |
+| `decodex.enforce_provider_attempt_binding()` | `provider_attempt_binding_complete`, deferred after insert | Add one `initial_thread` branch. It requires the exact selected V16 decision and V17 plan, selected-account snapshot, ready ProcessGeneration revision and live epoch, exact completed V34 fence and bind receipts, the exact post-bind active RuntimeSession revision, and an existing selected Turn under that Conversation/session with status `active` and revision 1. The two new binding-receipt fields must identify that exact bind receipt. Every non-initial plan keeps both fields null and retains the existing same-thread, Context-Pack, ManagedRun, predecessor, and positive-lineage predicates. An absent, terminal, changed-revision, wrong, or cross-linked Turn rejects. |
+| `decodex.enforce_continuation_plan_completeness()` | `continuation_plan_complete`, deferred after insert | Add one Conversation `initial_thread` branch for a selected exact-L0 V16 decision. Require its prospective Turn intent and the new selected account snapshot, copied profile snapshot, one revision-1 unfenced `starting` RuntimeSession, and inert initial plan created by the V17 transaction. Reject non-L0 or partial source lineage, sticky L0, fallback, Context Pack, successor, external effect, alternate account, or extra first session. Keep existing same-thread and Context-Pack predicates unchanged. Explicit-successor completeness must also require the exact selected Turn as failed revision 2 under the same Conversation/source RuntimeSession, but this deferred trigger cannot replace the explicit-successor command's lock before its first write. |
+
+The non-trigger dispatch-authorization command must itself lock and require the exact
+initial Turn as active revision 1 under the same Conversation and exact post-bind active
+RuntimeSession before it can authorize the provider effect. The non-trigger continuation
+rejection helper may only derive the operation from the exact already-reserved receipt so
+each existing V17 entrypoint retains its own stable rejection; it adds no transport or
+idempotency mechanism. The trigger-only closed list does not authorize any unrelated
+non-trigger replacement.
+
+V34 does not replace any other trigger function. In particular,
+`decodex.enforce_routing_decision_completeness()` remains unchanged. V34 does not drop,
+create, rebind, enable, disable, or rename a trigger. Trigger ACLs and the runtime/PUBLIC
+prohibition remain unchanged. Existing active-only behavior remains for every
+non-enumerated operation and every unrelated write. The two narrow starting-session
+permissions are not a generic starting-session bypass.
+
+V32 remains byte-for-byte the alpha.9.2 four-function capability replacement. V33 remains
+enum-only. V34 is the sole unlanded integration migration. There is no V35 or
+compatibility DDL. Candidate 5 adds no new module, fixed hierarchy, product or test seam,
+ledger, generic transaction or recovery framework, transport/idempotency mechanism,
+wrapper, runner, scheduler, or explicit-successor product surface.
+
 Long-term context consists of immutable Project, Advisor, and Program revisions. Project
 context records decisions, constraints, repository facts, active Programs/Objectives,
 unresolved risks, and accepted handoffs. Advisor briefs compact cross-project status and
@@ -684,13 +912,15 @@ passive-receipt tracking. Host-owned before/after receipts prove causal no-mutat
 and cannot establish account-owned readiness.
 
 XY-1358 owns the original causal experiment ledger. XY-1367/V22 repairs its two-effect retained-title
-authority without changing V15. After an exact V16 decision, V17 owns same-thread continuation
-when exact positive account/profile/build evidence permits it. Otherwise, V17 owns one atomic
-Context Pack plus fallback RuntimeSession. V25/V26 preserve this authority for ordinary
-Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator sequences V16,
-V17, one live ProcessGeneration fence, and ProviderAttempt preparation. Current production
-dispatch stays structurally disabled until its applicable slice gate passes. Ambiguous-turn
-replay remains blocked by ProviderAttempt. ManagedRun
+authority without changing V15. For an exact V16 decision with an existing source RuntimeSession,
+V17 owns same-thread continuation when exact positive account/profile/build evidence permits it.
+Otherwise, that existing-session operation uses one atomic Context Pack plus fallback
+RuntimeSession. Candidate-5 initial routing has no source RuntimeSession and instead uses the
+first-session `initial_thread` path above; it cannot enter either existing-session branch. V25/V26
+preserve the existing-session authority for ordinary Conversation Turns and ManagedRun executions.
+The stateless ExecutionCoordinator sequences V16, V17, one live ProcessGeneration fence, and
+ProviderAttempt preparation. Current production dispatch stays structurally disabled until its
+applicable slice gate passes. Ambiguous-turn replay remains blocked by ProviderAttempt. ManagedRun
 consumes the attempt result and keeps only domain lifecycle authority.
 Repository/worktree/Git and artifact effects retain their own accepted authorities; routing never
 owns or weakens those boundaries.
