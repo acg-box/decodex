@@ -33,6 +33,9 @@ use decodex_core::{
 };
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
+// Doctor revalidates the complete PostgreSQL authority and migration contract.
+// Keep its bounded read budget separate from ordinary cached UI queries.
+const DOCTOR_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(35);
 const MAX_CLIENT_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_INTERLEAVED_MESSAGES: usize = 64;
@@ -170,7 +173,7 @@ pub struct DoctorClient {
 impl DoctorClient {
 	/// Build a client with the fixed production timeout and bounded wire limits.
 	pub const fn new(profile: ClientProfile) -> Self {
-		Self { profile, timeout: CLIENT_TIMEOUT }
+		Self { profile, timeout: DOCTOR_CLIENT_TIMEOUT }
 	}
 
 	/// Selected client profile.
@@ -1875,6 +1878,20 @@ max_entry_bytes = 0
 		);
 
 		(profile, task, temp)
+	}
+
+	#[test]
+	fn doctor_timeout_is_bounded_and_does_not_widen_ordinary_queries() {
+		let profile = ClientProfile {
+			profile_name: "remote".into(),
+			kind: ProfileKind::Remote,
+			local_transport: None,
+			expected_server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		};
+		let client = DoctorClient::new(profile);
+
+		assert_eq!(client.timeout, Duration::from_secs(15));
+		assert_eq!(super::CLIENT_TIMEOUT, Duration::from_secs(5));
 	}
 
 	#[tokio::test]
