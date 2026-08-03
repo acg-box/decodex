@@ -856,7 +856,7 @@ impl AttestedProcessChild {
 		Ok(())
 	}
 
-	/// Read one complete inventory and re-attest the immutable account before returning it.
+	/// Read one bounded inventory and re-attest the immutable account before returning it.
 	pub(super) fn read_reset_card_inventory(
 		&mut self,
 	) -> Result<ResetCardInventory, ResetCardProcessError> {
@@ -1981,7 +1981,7 @@ impl ResetCardProcessRunner {
 		self.binding.account_id()
 	}
 
-	/// Read one complete strict inventory under an already-reserved runner permit.
+	/// Read one bounded strict inventory under an already-reserved runner permit.
 	pub(super) fn read_inventory(
 		self,
 		vault: &dyn CredentialVault,
@@ -1999,7 +1999,7 @@ impl ResetCardProcessRunner {
 	}
 
 	/// Consume one already-persisted exact credit with its already-persisted key, then read a fresh
-	/// complete inventory before re-attesting the immutable account binding.
+	/// bounded inventory before re-attesting the immutable account binding.
 	pub(super) fn consume_and_readback(
 		self,
 		vault: &dyn CredentialVault,
@@ -2141,6 +2141,19 @@ impl ResetCardProcessError {
 }
 
 fn read_reset_card_inventory(
+	process: &mut SupervisedProcess,
+	timeout: Duration,
+) -> Result<ResetCardInventory, ResetCardProcessError> {
+	let inventory = request_reset_card_inventory(process, timeout)?;
+	if !inventory.details_complete()
+		&& inventory.reported_available_count().is_some_and(|count| count > 0)
+	{
+		return request_reset_card_inventory(process, timeout);
+	}
+	Ok(inventory)
+}
+
+fn request_reset_card_inventory(
 	process: &mut SupervisedProcess,
 	timeout: Duration,
 ) -> Result<ResetCardInventory, ResetCardProcessError> {
@@ -5004,7 +5017,7 @@ mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
-		if matches!(mode, "reset-card" | "callback-probe") {
+		if matches!(mode, "reset-card" | "reset-card-partial-first" | "callback-probe") {
 			schema_args.push("--reset-card".into());
 		}
 
@@ -5296,6 +5309,25 @@ mod tests {
 
 		assert_eq!(readback.outcome, ResetCardConsumeOutcome::Reset);
 		assert_eq!(readback.inventory.available_count(), 0);
+		assert_eq!(capacity.active(), 0);
+	}
+
+	#[test]
+	fn reset_card_runner_retries_an_incomplete_positive_inventory() {
+		let temp = TempDir::new().unwrap();
+		let capacity = TestCapacity::new(1);
+		let runner = ResetCardProcessRunner::new(
+			fake_command("reset-card-partial-first", temp.path(), None),
+			binding(),
+			Duration::from_secs(2),
+		);
+
+		let inventory =
+			runner.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap()).unwrap();
+
+		assert!(inventory.details_complete());
+		assert_eq!(inventory.reported_available_count(), Some(1));
+		assert_eq!(inventory.available_count(), 1);
 		assert_eq!(capacity.active(), 0);
 	}
 

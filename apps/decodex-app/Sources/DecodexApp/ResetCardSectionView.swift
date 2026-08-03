@@ -125,7 +125,6 @@ enum ResetCardInventoryPresentation: Equatable {
 	case updating(detail: String?)
 	case connecting(detail: String)
 	case unavailable(detail: String)
-	case reportedCount(UInt64)
 	case empty
 	case available
 
@@ -171,11 +170,7 @@ enum ResetCardInventoryPresentation: Equatable {
 			return
 		}
 		guard inventory.detailsComplete else {
-			if let count = inventory.reportedAvailableCount {
-				self = .reportedCount(count)
-			} else {
-				self = .checking
-			}
+			self = .checking
 			return
 		}
 		self = state.targets.isEmpty ? .empty : .available
@@ -551,20 +546,6 @@ struct ResetCardAccountRow: View {
 				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 				.lineLimit(1)
 				.help(detail)
-		case .reportedCount(let count):
-			Text(
-				count == 0
-					? "No Reset Cards"
-					: "\(count) Reset \(count == 1 ? "Card" : "Cards")"
-			)
-			.font(PanelFont.tertiary)
-			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-			.lineLimit(1)
-			.help(
-				count == 0
-					? "The provider reported no available Reset Cards."
-					: "The provider reported the count without expiration details."
-			)
 		case .empty:
 			Text("No Reset Cards")
 				.font(PanelFont.tertiary)
