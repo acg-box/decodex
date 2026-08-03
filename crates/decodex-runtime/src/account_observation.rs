@@ -19,7 +19,7 @@ use crate::{
 	account_profile::{
 		AccountProfileRefreshStatus, AccountProfileRuntime, AccountProfileRuntimeResult,
 	},
-	account_service::{AccountLifecycleError, AccountService},
+	account_service::AccountService,
 };
 
 const OBSERVATION_REFRESH_INTERVAL: Duration = Duration::from_secs(15);
@@ -34,11 +34,13 @@ struct CachedResetCardInventory {
 struct AccountObservationState {
 	reset_cards: HashMap<AccountId, CachedResetCardInventory>,
 	profiles: HashMap<AccountId, AccountProfileRefreshStatus>,
+	cache_generations: HashMap<AccountId, Arc<()>>,
 }
 
 struct AccountObservationOutcome {
 	account_id: AccountId,
 	requested_revision: i64,
+	cache_generation: Arc<()>,
 	reset_cards: Option<Result<ResetCardInventoryObservation, ResetCardServiceError>>,
 	profile: Option<AccountProfileRefreshStatus>,
 }
@@ -51,9 +53,40 @@ impl AccountObservationState {
 		self.profiles.retain(|account_id, status| {
 			current.get(account_id).is_some_and(|revision| *revision == status.account_revision)
 		});
+		self.cache_generations.retain(|account_id, _| current.contains_key(account_id));
+	}
+
+	fn invalidate_account(&mut self, account_id: &AccountId) {
+		self.cache_generations.insert(account_id.clone(), Arc::new(()));
+		self.reset_cards.remove(account_id);
+		self.profiles.remove(account_id);
+	}
+
+	fn cache_generation(&mut self, account_id: &AccountId) -> Arc<()> {
+		Arc::clone(self.cache_generations.entry(account_id.clone()).or_insert_with(|| Arc::new(())))
+	}
+
+	fn generation_matches(&self, account_id: &AccountId, generation: &Arc<()>) -> bool {
+		self.cache_generations
+			.get(account_id)
+			.is_some_and(|current| Arc::ptr_eq(current, generation))
+	}
+
+	fn reset_card_inventory(
+		&self,
+		account_id: &AccountId,
+	) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
+		self.reset_cards
+			.get(account_id)
+			.cloned()
+			.ok_or(ResetCardServiceError::ProviderUnavailable)?
+			.result
 	}
 
 	fn insert(&mut self, observation: AccountObservationOutcome) {
+		if !self.generation_matches(&observation.account_id, &observation.cache_generation) {
+			return;
+		}
 		if let Some(reset_cards) = observation.reset_cards {
 			let inventory_revision = reset_cards
 				.as_ref()
@@ -104,6 +137,11 @@ impl AccountObservationService {
 		self.refresh_requested.notify_one();
 	}
 
+	/// Invalidate one account before a later in-flight observation can publish its value.
+	pub(crate) async fn invalidate_account(&self, account_id: &AccountId) {
+		self.state.write().await.invalidate_account(account_id);
+	}
+
 	/// Read one last daemon-owned Reset Card value without contacting the provider.
 	pub(crate) async fn reset_card_inventory(
 		&self,
@@ -112,22 +150,7 @@ impl AccountObservationService {
 		if self.reset_cards.is_none() {
 			return Err(ResetCardServiceError::ProductStateUnavailable);
 		}
-		let cached = self
-			.state
-			.read()
-			.await
-			.reset_cards
-			.get(account_id)
-			.cloned()
-			.ok_or(ResetCardServiceError::ProviderUnavailable)?;
-		let current = self.accounts.inspect(account_id).await.map_err(|error| match error {
-			AccountLifecycleError::AccountMissing => ResetCardServiceError::AccountNotFound,
-			_ => ResetCardServiceError::ProductStateUnavailable,
-		})?;
-		if current.account.revision != cached.account_revision {
-			return Err(ResetCardServiceError::AccountChanged);
-		}
-		cached.result
+		self.state.read().await.reset_card_inventory(account_id)
 	}
 
 	/// Read one persisted profile projection using only daemon-owned refresh status.
@@ -248,11 +271,12 @@ impl AccountObservationService {
 				in_flight,
 				task_accounts,
 				observations,
-			);
+			)
+			.await;
 		}
 	}
 
-	fn spawn_observation(
+	async fn spawn_observation(
 		&self,
 		account_id: AccountId,
 		account_revision: i64,
@@ -260,6 +284,7 @@ impl AccountObservationService {
 		task_accounts: &mut HashMap<TaskId, AccountId>,
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
+		let cache_generation = self.state.write().await.cache_generation(&account_id);
 		let profiles = self.profiles.clone();
 		let reset_cards = self.reset_cards.clone();
 		let task_account_id = account_id.clone();
@@ -283,6 +308,7 @@ impl AccountObservationService {
 			AccountObservationOutcome {
 				account_id: task_account_id,
 				requested_revision: account_revision,
+				cache_generation,
 				reset_cards,
 				profile,
 			}
@@ -330,7 +356,8 @@ impl AccountObservationService {
 				in_flight,
 				task_accounts,
 				observations,
-			);
+			)
+			.await;
 		}
 	}
 }
@@ -413,26 +440,73 @@ mod tests {
 	fn revision_change_prunes_both_daemon_owned_account_values() {
 		let account_id = account(1);
 		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
 		state.insert(AccountObservationOutcome {
 			account_id: account_id.clone(),
 			requested_revision: 7,
-			reset_cards: Some(Err(ResetCardServiceError::ProviderUnavailable)),
+			cache_generation,
+			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
 			profile: Some(AccountProfileRefreshStatus { account_revision: 7, refresh_error: None }),
 		});
 
-		state.retain_current(&HashMap::from([(account_id, 8)]));
+		state.retain_current(&HashMap::from([(account_id.clone(), 8)]));
 
 		assert!(state.reset_cards.is_empty());
 		assert!(state.profiles.is_empty());
+		assert_eq!(
+			state.reset_card_inventory(&account_id),
+			Err(ResetCardServiceError::ProviderUnavailable)
+		);
+	}
+
+	#[test]
+	fn invalidation_fences_a_late_in_flight_observation_without_a_database_read() {
+		let account_id = account(2);
+		let mut state = AccountObservationState::default();
+
+		let stale_generation = state.cache_generation(&account_id);
+		state.invalidate_account(&account_id);
+		state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 9,
+			cache_generation: stale_generation,
+			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
+			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
+		});
+
+		assert!(state.reset_cards.is_empty());
+		assert!(state.profiles.is_empty());
+		assert_eq!(
+			state.reset_card_inventory(&account_id),
+			Err(ResetCardServiceError::ProviderUnavailable)
+		);
+
+		let cache_generation = state.cache_generation(&account_id);
+		state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 9,
+			cache_generation,
+			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
+			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
+		});
+
+		assert!(state.reset_cards.contains_key(&account_id));
+		assert!(state.profiles.contains_key(&account_id));
+		assert_eq!(
+			state.reset_card_inventory(&account_id),
+			Err(ResetCardServiceError::InventoryIncomplete)
+		);
 	}
 
 	#[test]
 	fn profile_observation_does_not_require_reset_card_capability() {
 		let account_id = account(2);
 		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
 		state.insert(AccountObservationOutcome {
 			account_id: account_id.clone(),
 			requested_revision: 9,
+			cache_generation,
 			reset_cards: None,
 			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
 		});

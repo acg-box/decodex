@@ -327,7 +327,11 @@ app-server. They read daemon-owned values. PostgreSQL remains the persistence au
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
 observation round, and returns a typed retryable unavailable result until that account is
-warm. No credential or provider-private Reset Card ID enters this cache.
+warm. A Reset Card query reads only that memory value; it does not wait for an account-registry
+or provider read. Every successful account or Reset Card command invalidates the affected
+account value and advances its cache generation before requesting observation. A result from an
+older in-flight generation cannot republish after that invalidation. No credential or
+provider-private Reset Card ID enters this cache.
 
 ```mermaid
 sequenceDiagram
