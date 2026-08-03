@@ -22,18 +22,18 @@ rrule            = "FREQ=HOURLY;INTERVAL=12;BYMINUTE=35;BYSECOND=0"
 
 [[automations]]
 id               = "codex-upstream-health"
-model            = "gpt-5.6-terra"
+model            = "gpt-5.6-luna"
 name             = "Decodex Automation Manager"
 prompt_file      = "automations/upstream/prompts/health.md"
-reasoning_effort = "high"
+reasoning_effort = "max"
 rrule            = "FREQ=DAILY;BYHOUR=6,18;BYMINUTE=0;BYSECOND=0"
 
 [[automations]]
 id               = "decodex-content-manager"
-model            = "gpt-5.6-terra"
+model            = "gpt-5.6-luna"
 name             = "Decodex Content Manager"
 prompt_file      = "automations/decodex/prompts/content-manager.md"
-reasoning_effort = "high"
+reasoning_effort = "max"
 rrule            = "FREQ=DAILY;BYHOUR=9;BYMINUTE=50;BYSECOND=0"
 
 [[automations]]
@@ -41,5 +41,5 @@ id               = "decodex-xurl-publisher"
 model            = "gpt-5.6-luna"
 name             = "Decodex Xurl Publisher"
 prompt_file      = "automations/decodex/prompts/xurl-publisher.md"
-reasoning_effort = "high"
+reasoning_effort = "max"
 rrule            = "FREQ=DAILY;BYHOUR=10,16,22;BYMINUTE=20;BYSECOND=0"

@@ -6,7 +6,7 @@ Role:
 
 Authority:
 - Run from the clean primary `main` checkout. A scheduled cwd is never a worktree.
-- Use model `gpt-5.6-terra` with reasoning effort `high`.
+- Use model `gpt-5.6-luna` with reasoning effort `max`.
 - Do not call X, xurl, a browser controller, X MCP, or a direct X API.
 - Do not use Decodex server, runtime, queue, planner, or MCP.
 - The Rust Publisher `record-candidate` command is the only content evidence writer.
