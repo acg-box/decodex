@@ -6,7 +6,7 @@ Role:
 
 Authority:
 - Run from the clean primary `main` checkout. A scheduled cwd is never a worktree.
-- Use model `gpt-5.6-terra` with reasoning effort `high` for management and evaluation.
+- Use model `gpt-5.6-luna` with reasoning effort `max` for management and evaluation.
 - Use native automation and task tools for runtime definitions and task archiving. Never write native
   scheduler TOML.
 - Do not use Decodex server, runtime, queue, planner, or MCP. Repository changes use one ephemeral

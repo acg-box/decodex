@@ -26,13 +26,24 @@ class PortfolioTests(unittest.TestCase):
             {
                 "codex-upstream-maintainer": ("gpt-5.6-sol", "max"),
                 "codex-upstream-reviewer": ("gpt-5.6-sol", "max"),
-                "codex-upstream-health": ("gpt-5.6-terra", "high"),
-                "decodex-content-manager": ("gpt-5.6-terra", "high"),
-                "decodex-xurl-publisher": ("gpt-5.6-luna", "high"),
+                "codex-upstream-health": ("gpt-5.6-luna", "max"),
+                "decodex-content-manager": ("gpt-5.6-luna", "max"),
+                "decodex-xurl-publisher": ("gpt-5.6-luna", "max"),
             },
         )
         expected_cwd = str(portfolio.primary_worktree())
         for item in rendered:
+            if item["model"] == "gpt-5.6-sol":
+                self.assertIn(
+                    item["id"],
+                    {"codex-upstream-maintainer", "codex-upstream-reviewer"},
+                )
+                self.assertEqual(item["reasoning_effort"], "max")
+            else:
+                self.assertEqual(
+                    (item["model"], item["reasoning_effort"]),
+                    ("gpt-5.6-luna", "max"),
+                )
             self.assertEqual(item["cwds"], [expected_cwd])
             self.assertNotIn(".worktrees", item["cwds"][0])
             self.assertNotIn("xhigh", json.dumps(item).casefold())

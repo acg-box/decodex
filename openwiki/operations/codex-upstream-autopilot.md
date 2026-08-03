@@ -13,7 +13,7 @@ upstream loop has three roles:
 | --- | --- | --- | --- |
 | Maintainer | `gpt-5.6-sol` | `max` | Every 6 hours |
 | Reviewer | `gpt-5.6-sol` | `max` | Every 12 hours |
-| Manager | `gpt-5.6-terra` | `high` | Twice daily |
+| Manager | `gpt-5.6-luna` | `max` | Twice daily |
 
 ## Activation State
 
