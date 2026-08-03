@@ -23,9 +23,10 @@ provider-private Reset Card identifiers.
 
 The primary panel reads the complete account skeleton, uses the returned
 routing UUID order, and immediately renders every account. It then runs
-independent Reset Card and account-profile requests for each row. A slow or
-failed provider request affects only its account row and does not block another
-row or account action.
+independent Reset Card and account-profile value reads for every row. These
+reads use only daemon-owned observations and all rows start concurrently. They
+do not start provider work. A cold or failed observation affects only its
+account row and does not block another row or account action.
 
 Each row shows the exact current 300-minute and 10,080-minute quota
 observations in a vertical stack, the percentage left and reset time when
@@ -36,10 +37,16 @@ inside the panel theme: accent blue above 50% remaining, warning amber from 21%
 to 50%, and destructive red at 20% or below. The numeric percentage and
 accessibility value remain the primary status.
 
-The app performs one non-overlapping refresh every 15 seconds, matching the
-pre-cutover native cadence. Opening the panel also requests one refresh. An
-already active refresh absorbs either trigger, and one failed account remains
-isolated to its row until the next cycle.
+The app reloads daemon values every 15 seconds. Opening the panel also requests
+one reload. An active reload absorbs either trigger. Independently, the daemon
+starts one observation round immediately, repeats it every 15 seconds, and
+wakes it after account and Reset Card changes. It starts every independent
+account concurrently, keeps at most one active observation per account, and
+coalesces a lifecycle or effect wake for that account as its next round. A
+periodic tick does not hot-loop an already slow account. Within one account,
+Reset Card observation settles before profile observation so a credential
+rotation cannot race the profile read. A slow account does not delay
+publication or later scheduling for another account.
 
 The account plan appears beside the account identity. Each detail popover
 contains only lifetime tokens, peak daily tokens, longest task, current and
@@ -92,10 +99,10 @@ one newer skeleton read so the account row does not remain in its checking
 state. The app keeps the last quota visible while it waits for the new account
 revision, but it does not expose Reset Cards from that old revision. It retains
 an advanced inventory until the matching account skeleton arrives, then applies
-that inventory without a duplicate provider read. This direct old-to-new update
+that inventory without a duplicate daemon read. This direct old-to-new update
 lets the quota bar animate to the restored value. All callers share one
 per-account inventory coordinator: same-revision reads coalesce, a use gate
-waits for an older provider read, and fresh reads wait until the use dispatch
+waits for an older daemon read, and fresh reads wait until the use dispatch
 ends. A terminal use result ends the button activity immediately and starts
 bounded background reconciliation. Internal contention, provider
 cleanup, and other retryable detail failures keep the last quota visible under
@@ -115,7 +122,9 @@ currently signed-in shared Codex login, enable or disable, log out, and select
 fixed or balanced routing. An account with a provider-confirmed unauthorized
 profile shows `Refresh login`; that action presents the official device code
 with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
-account after the daemon completes the exact credential replacement. Each
+account after the daemon completes the exact credential replacement. The app
+then performs bounded short-interval daemon readback until the new background
+observation replaces any old unauthorized value. Each
 account row has one `Route` control. It first projects that exact daemon-owned login to shared
 `~/.codex/auth.json` for future Codex launches, then selects the same account as
 the fixed Decodex route. The underlying typed commands remain independently
@@ -123,9 +132,10 @@ fenced, and retrying the control completes whichever step is not current. The
 Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
 The overflow menu contains only `Refresh all`, the material selector, and Quit.
-`Refresh all` remains available while an automatic read is in progress because
-the store coalesces that request into the active refresh cycle. Account mutations
-and Reset Card submissions still disable it.
+`Refresh all` reloads all current daemon values; it does not contact a provider.
+It remains available while an automatic read is in progress because the store
+coalesces that request into the active reload. Account mutations and Reset Card
+submissions still disable it.
 
 Each account card reveals one compact trailing-edge reorder grip while the pointer
 is over that card. The grip overlays the card padding instead of reserving a layout

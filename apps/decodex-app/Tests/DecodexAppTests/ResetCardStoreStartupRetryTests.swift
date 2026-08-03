@@ -39,7 +39,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		)
 	}
 
-	func testStartupDoesNotLoopOnRowScopedInventoryFailure() async throws {
+	func testStartupRetriesRowScopedDaemonCacheMissUntilInventoryLoads() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
 		let expectedInventory = try Self.inventory
@@ -65,14 +65,11 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		try await Task.sleep(for: .milliseconds(20))
 
 		let counts = await client.callCounts()
-		XCTAssertNil(store.accounts.first?.inventory)
-		XCTAssertEqual(
-			store.accounts.first?.error,
-			.service(.productStateUnavailable)
-		)
+		XCTAssertEqual(store.accounts.first?.inventory, expectedInventory)
+		XCTAssertNil(store.accounts.first?.error)
 		XCTAssertEqual(
 			counts,
-			ClientCallCounts(accounts: 1, inventory: 1, status: 0, use: 0)
+			ClientCallCounts(accounts: 2, inventory: 2, status: 0, use: 0)
 		)
 	}
 
@@ -468,6 +465,66 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertTrue(store.accounts.allSatisfy { $0.isRefreshing == false })
 	}
 
+	func testRefreshStartsEveryDaemonValueReadWithoutAThreeAccountCap() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let aliases = ["Alex", "Avery", "Bailey", "Blake", "Casey", "Clara"]
+		let accounts = aliases.enumerated().map { offset, alias in
+			ResetCardAccountRecord(
+				authority: nil,
+				accountID: String(
+					format: "00000000-0000-4000-8000-%012d",
+					offset + 1
+				),
+				alias: alias,
+				accountRevision: UInt64(offset + 1),
+				enabled: true,
+				observedState: .available,
+				lifecycleReadiness: .ready,
+				fiveHourQuota: .unknown(durationMinutes: 300),
+				sevenDayQuota: .unknown(durationMinutes: 10_080)
+			)
+		}
+		let inventories = Dictionary(
+			uniqueKeysWithValues: accounts.map { account in
+				(
+					account.accountID,
+					ResetCardInventory(
+						authority: Self.authority,
+						accountID: account.accountID,
+						accountRevision: account.accountRevision,
+						cards: [],
+						fiveHourQuota: account.fiveHourQuota,
+						sevenDayQuota: account.sevenDayQuota,
+						observationError: nil
+					)
+				)
+			}
+		)
+		let client = ConcurrentDaemonValueClient(
+			accounts: accounts,
+			inventories: inventories
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refresh = Task {
+			await store.refresh()
+		}
+		try await waitUntil {
+			await client.startedCount() == accounts.count
+		}
+		let startedCount = await client.startedCount()
+		XCTAssertEqual(startedCount, 6)
+
+		await client.releaseAll()
+		await refresh.value
+		XCTAssertTrue(store.accounts.allSatisfy { $0.inventory != nil })
+	}
+
 	func testRefreshPinsTheAccountListToTheEstablishedAuthority() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -692,7 +749,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(
 			useCallsBeforeReadRelease,
 			0,
-			"Use must wait for the older inventory provider process."
+			"Use must wait for the older daemon-value read."
 		)
 
 		await client.releaseInventoryCall(2)
@@ -1157,6 +1214,54 @@ private actor ProgressiveResetCardClient: ResetCardClient {
 	}
 
 	func releaseBlockedAccount() {
+		isReleased = true
+	}
+}
+
+private actor ConcurrentDaemonValueClient: ResetCardClient {
+	private let accountRecords: [ResetCardAccountRecord]
+	private let inventories: [String: ResetCardInventory]
+	private var startedAccountIDs = Set<String>()
+	private var isReleased = false
+
+	init(
+		accounts: [ResetCardAccountRecord],
+		inventories: [String: ResetCardInventory]
+	) {
+		accountRecords = accounts
+		self.inventories = inventories
+	}
+
+	func accounts(
+		authority: ResetCardAuthority?
+	) async throws -> [ResetCardAccountRecord] {
+		accountRecords
+	}
+
+	func inventory(for account: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		startedAccountIDs.insert(account.accountID)
+		while isReleased == false {
+			try await Task.sleep(for: .milliseconds(1))
+		}
+		guard let inventory = inventories[account.accountID] else {
+			throw ResetCardClientError.invalidResponse
+		}
+		return inventory
+	}
+
+	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.notFound
+	}
+
+	func use(_ attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		.prepared
+	}
+
+	func startedCount() -> Int {
+		startedAccountIDs.count
+	}
+
+	func releaseAll() {
 		isReleased = true
 	}
 }

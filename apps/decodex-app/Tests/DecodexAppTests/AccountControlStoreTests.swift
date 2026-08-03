@@ -302,7 +302,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(
 			reads.inventory,
 			2,
-			"The advanced authoritative inventory must replace a duplicate provider read."
+			"The advanced authoritative inventory must replace a duplicate daemon read."
 		)
 	}
 
@@ -1035,7 +1035,8 @@ final class AccountControlStoreTests: XCTestCase {
 				.waitingForBrowser,
 				.installing,
 				.completed,
-			]
+			],
+			reauthenticationObservationDelayReads: 2
 		)
 		let fixture = pendingFixture()
 		defer { fixture.remove() }
@@ -1044,6 +1045,7 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
 			accountReauthenticationPollInterval: .zero,
+			accountObservationRetryDelays: [.zero, .zero],
 			resolveCodexExecutable: {
 				"/Applications/ChatGPT.app/Contents/Resources/codex"
 			}
@@ -1054,7 +1056,8 @@ final class AccountControlStoreTests: XCTestCase {
 		store.beginAccountReauthentication(for: accountID)
 		for _ in 0 ..< 200 {
 			if store.accountReauthentication == nil,
-				store.accounts.first?.account.accountRevision == 8
+				store.accounts.first?.account.accountRevision == 8,
+				store.accounts.first?.account.observedState == .available
 			{
 				break
 			}
@@ -1081,7 +1084,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(cancelCount, 0)
 		let reads = await client.readCounts()
 		XCTAssertGreaterThanOrEqual(reads.snapshot, 3)
-		XCTAssertGreaterThanOrEqual(reads.inventory, 2)
+		XCTAssertGreaterThanOrEqual(reads.inventory, 4)
 	}
 
 	func testBrowserLoginRemainsActiveUntilExplicitCancel() async throws {
@@ -1312,6 +1315,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private var reauthenticationCancels = 0
 	private var reauthenticationSessionID: String?
 	private var reauthenticationCompleted = false
+	private var reauthenticationObservationDelayReads: Int
 	private let cancelReauthenticationWithOutcomeUnknown: Bool
 
 	init(
@@ -1331,6 +1335,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		useAccountError: AccountControlError? = nil,
 		projection: CodexAuthProjection = .unmanaged,
 		reauthenticationStates: [AccountReauthenticationState] = [],
+		reauthenticationObservationDelayReads: Int = 0,
 		cancelReauthenticationWithOutcomeUnknown: Bool = false
 	) {
 		self.account = account
@@ -1354,6 +1359,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		self.accountOrderError = accountOrderError
 		self.useAccountError = useAccountError
 		self.reauthenticationStates = reauthenticationStates
+		self.reauthenticationObservationDelayReads = reauthenticationObservationDelayReads
 		self.cancelReauthenticationWithOutcomeUnknown =
 			cancelReauthenticationWithOutcomeUnknown
 	}
@@ -1406,19 +1412,23 @@ private actor AccountControlStoreClient: AccountControlClient {
 			await inventoryGate.wait()
 		}
 		if reauthenticationCompleted, self.account.observedState == .authFailed {
-			self.account = ResetCardAccountRecord(
-				authority: self.account.authority,
-				accountID: self.account.accountID,
-				alias: self.account.alias,
-				accountRevision: self.account.accountRevision,
-				enabled: self.account.enabled,
-				observedState: .available,
-				lifecycleReadiness: self.account.lifecycleReadiness,
-				credentialBinding: self.account.credentialBinding,
-				unsettledOperation: self.account.unsettledOperation,
-				fiveHourQuota: self.account.fiveHourQuota,
-				sevenDayQuota: self.account.sevenDayQuota
-			)
+			if reauthenticationObservationDelayReads > 0 {
+				reauthenticationObservationDelayReads -= 1
+			} else {
+				self.account = ResetCardAccountRecord(
+					authority: self.account.authority,
+					accountID: self.account.accountID,
+					alias: self.account.alias,
+					accountRevision: self.account.accountRevision,
+					enabled: self.account.enabled,
+					observedState: .available,
+					lifecycleReadiness: self.account.lifecycleReadiness,
+					credentialBinding: self.account.credentialBinding,
+					unsettledOperation: self.account.unsettledOperation,
+					fiveHourQuota: self.account.fiveHourQuota,
+					sevenDayQuota: self.account.sevenDayQuota
+				)
+			}
 		}
 		return ResetCardInventory(
 			authority: authority,
