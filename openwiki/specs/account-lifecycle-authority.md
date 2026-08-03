@@ -302,13 +302,70 @@ before current enabled, readiness, health, operation, store, or revision gates. 
 terminal receipt never calls Codex or the provider again. Nonterminal status and required
 reconciliation also remain readable after a gate changes. They cannot start a new effect.
 
+## Daemon account observation
+
+`decodexd` owns the provider-observation cadence through the lifecycle composition described
+in [Runtime architecture](../architecture/runtime-architecture.md#account-lifecycle-and-credential-authority).
+Its account observer starts immediately, repeats every 15 seconds, and wakes after a
+successful account command or when a durable Reset Card worker claim settles. Each round
+discovers every non-tombstoned AccountLifecycle-ready account, including administratively
+disabled accounts because observation is not new-work admission. It starts one independent
+async owner for every account without a small global fan-out cap. Reset Card and profile
+provider work for different accounts runs concurrently. Within one account, the observer first
+settles the Reset Card owner because it can rotate credentials, then observes the profile with
+that exact successor. At most one observation owner is active for one Account UUID; another
+lifecycle or effect wake becomes that account's pending successor round. A periodic tick does
+not queue a hot-loop successor for an already slow account.
+
+One slow account does not delay completion or later scheduling for another account.
+Observation results publish progressively and only against the current Account revision.
+An account change prunes old Reset Card and profile refresh state before a later result
+can become current.
+
+Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
+app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
+quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
+revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
+observation round, and returns a typed retryable unavailable result until that account is
+warm. No credential or provider-private Reset Card ID enters this cache.
+
+```mermaid
+sequenceDiagram
+    participant Timer as Daemon timer or wakeup
+    participant Observer as Account observation service
+    participant Accounts as Account service
+    participant Provider as Provider adapters
+    participant Store as PostgreSQL
+    participant Cache as Daemon Reset Card cache
+    participant Client as UI or protocol client
+
+    Timer->>Observer: Request coalesced observation round
+    Observer->>Accounts: List lifecycle-ready account revisions
+    par Each independent account
+        Observer->>Provider: Refresh profile and Reset Card values
+        Provider->>Store: Persist profile and quota facts
+        Provider-->>Observer: Return public inventory and refresh status
+        Observer->>Cache: Publish only matching revision
+    end
+    Client->>Observer: Read profile or Reset Card value
+    Observer->>Store: Read persisted profile projection
+    Observer->>Cache: Read revision-fenced public inventory
+    Observer-->>Client: Return daemon-owned value
+```
+
+The observation round separates daemon-owned provider refresh from client query readback;
+PostgreSQL retains profile and quota durability while Reset Card descriptors live only for
+the daemon lifetime.
+
 ## Bounded account profile
 
 Protocol V2.0 provides one independent `GetAccountProfile` query per Account UUID. It does
-not run as part of account listing or Reset Card inventory. One failed profile query
-affects only that account row.
+not run as part of account listing or Reset Card inventory. The query reads the latest
+persisted projection and the daemon observer's revision-scoped refresh status. One failed
+background profile observation affects only that account row.
 
-The daemon reads the exact current HostCredentialStore binding and calls only
+During a background observation, the daemon reads the exact current HostCredentialStore
+binding and calls only
 `https://chatgpt.com/backend-api/wham/profiles/me`. The request has bounded connect and
 total timeouts, no redirects, and a bounded response body. The daemon sends the access
 token and provider account ID only to that endpoint. It does not log or return the token,

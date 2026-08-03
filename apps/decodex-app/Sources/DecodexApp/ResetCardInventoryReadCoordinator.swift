@@ -1,12 +1,12 @@
 import Foundation
 
-/// Owns the per-account provider-read ordering contract.
+/// Owns the per-account daemon-value read ordering contract.
 ///
 /// Reset Card reads can be requested by the periodic refresh, account-control
-/// follow-ups, and terminal use reconciliation. The daemon starts a bounded
-/// provider process for each read or effect, so one account must never overlap
-/// those operations. An effect gate waits for an older read, blocks new reads
-/// through dispatch, and creates a fresh epoch for post-effect reconciliation.
+/// follow-ups, and terminal use reconciliation. Reads return daemon-owned cached
+/// values without starting provider work. An effect gate still waits for an older
+/// read, blocks new reads through dispatch, and creates a fresh epoch so a value
+/// started before the effect cannot publish as post-effect reconciliation.
 actor ResetCardInventoryReadCoordinator {
 	private struct Operation {
 		let id: UInt64

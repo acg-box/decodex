@@ -55,9 +55,10 @@ use tokio::sync::watch;
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError},
+	account_observation::AccountObservationService,
 	account_profile::{
-		AccountProfileClaimsView, AccountProfileRuntime, AccountProfileRuntimeError,
-		AccountProfileRuntimeResult, AccountProfileView,
+		AccountProfileClaimsView, AccountProfileRuntimeError, AccountProfileRuntimeResult,
+		AccountProfileView,
 	},
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
@@ -102,7 +103,9 @@ pub trait Application: Send + Sync + 'static {
 		command: &'a CommandEnvelope,
 	) -> impl Future<Output = Result<ApplicationPublication, CommandError>> + Send + 'a;
 
-	/// Execute one fresh observation without mutation receipts or replay semantics.
+	/// Execute one typed read without mutation receipts or replay semantics.
+	///
+	/// Each payload defines whether its value is freshly computed or daemon-observed.
 	fn query<'a>(
 		&'a self,
 		query: &'a QueryEnvelope,
@@ -191,8 +194,8 @@ pub(crate) struct ServiceApplication {
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
-	account_profiles: Option<AccountProfileRuntime>,
 	reset_cards: Option<ResetCardRuntime>,
+	account_observations: Option<AccountObservationService>,
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
@@ -224,8 +227,8 @@ impl ServiceApplication {
 			_codex: codex,
 			blob_store,
 			accounts: None,
-			account_profiles: None,
 			reset_cards: None,
+			account_observations: None,
 			doctor,
 		}
 	}
@@ -236,19 +239,25 @@ impl ServiceApplication {
 		self
 	}
 
-	pub(crate) fn with_account_profiles(
-		mut self,
-		account_profiles: Option<AccountProfileRuntime>,
-	) -> Self {
-		self.account_profiles = account_profiles;
-
-		self
-	}
-
 	pub(crate) fn with_reset_cards(mut self, reset_cards: Option<ResetCardRuntime>) -> Self {
 		self.reset_cards = reset_cards;
 
 		self
+	}
+
+	pub(crate) fn with_account_observations(
+		mut self,
+		account_observations: Option<AccountObservationService>,
+	) -> Self {
+		self.account_observations = account_observations;
+
+		self
+	}
+
+	fn request_account_observation_refresh(&self) {
+		if let Some(observations) = &self.account_observations {
+			observations.request_refresh();
+		}
 	}
 
 	async fn refreshed_doctor(&self) -> DoctorReport {
@@ -351,10 +360,13 @@ impl ServiceApplication {
 		let Ok(account_id) = AccountId::new(account_id.as_str()) else {
 			return unavailable_account_profile(AccountProfileErrorDto::InvalidRequest);
 		};
-		let Some(runtime) = &self.account_profiles else {
+		let Some(observations) = &self.account_observations else {
 			return unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable);
 		};
-		match runtime.query(&account_id, include_email).await {
+		let Some(profile) = observations.account_profile(&account_id, include_email).await else {
+			return unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable);
+		};
+		match profile {
 			AccountProfileRuntimeResult::Current(profile) => account_profile_dto(profile)
 				.map(Box::new)
 				.map(AccountProfileResult::Current)
@@ -701,7 +713,7 @@ impl ServiceApplication {
 	}
 
 	async fn reset_card_inventory(&self, account_id: &EntityId) -> ResetCardInventoryResult {
-		let Some(runtime) = &self.reset_cards else {
+		let Some(observations) = &self.account_observations else {
 			return ResetCardInventoryResult::Unavailable {
 				error: ResetCardError::ProductStateUnavailable,
 			};
@@ -710,7 +722,7 @@ impl ServiceApplication {
 			return ResetCardInventoryResult::Unavailable { error: ResetCardError::InvalidRequest };
 		};
 
-		match runtime.inventory(&account_id).await {
+		match observations.reset_card_inventory(&account_id).await {
 			Ok(ResetCardInventoryObservation::Available(inventory)) => {
 				let account_id =
 					EntityId::new(inventory.account_id.as_str().to_owned()).map_err(|_| ());
@@ -943,7 +955,10 @@ impl Application for ServiceApplication {
 		}
 
 		if let Some(runtime) = &self.reset_cards {
-			tasks.push(Box::pin(runtime.clone().daemon_service(stop)));
+			tasks.push(Box::pin(runtime.clone().daemon_service(stop.clone())));
+		}
+		if let Some(observations) = &self.account_observations {
+			tasks.push(Box::pin(observations.clone().daemon_service(stop.clone())));
 		}
 
 		tasks
@@ -973,7 +988,11 @@ impl Application for ServiceApplication {
 			| CommandPayload::RefreshAccount { .. }
 			| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 			| CommandPayload::RecoverAccountOperation { .. }
-			| CommandPayload::UseAccountInCodex { .. } => self.execute_account_command(command).await,
+			| CommandPayload::UseAccountInCodex { .. } => {
+				let publication = self.execute_account_command(command).await?;
+				self.request_account_observation_refresh();
+				Ok(publication)
+			},
 			CommandPayload::RefreshSystemObservation { .. } =>
 				Err(CommandError::ApplicationUnavailable {
 					message: WireText::new(
@@ -1014,6 +1033,7 @@ impl Application for ServiceApplication {
 				);
 				let descriptor = reset_descriptor_dto(prepared.descriptor);
 				let state = ResetCardOperationResult::Prepared;
+				self.request_account_observation_refresh();
 
 				Ok(ApplicationPublication {
 					channel: Channel::AccountsHealth,

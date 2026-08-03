@@ -47,7 +47,7 @@ final class ResetCardInventoryReadCoordinatorTests: XCTestCase {
 		XCTAssertEqual(
 			callCountBeforeRelease,
 			1,
-			"A post-effect read must queue behind the older provider process."
+			"A post-effect read must queue behind the older daemon-value read."
 		)
 
 		await client.release(call: 1)
