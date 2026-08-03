@@ -21,6 +21,10 @@ Acceptance proves an empty-target bootstrap and exact current authority. It does
 prove a historical upgrade, populated migration, version prefix, schema-history checksum,
 or source/restore migration receipt.
 
+The third runtime-bootstrap candidate is donor source only. The next candidate must be
+one integrated composition that keeps ProductStore, Quick Task, and ManagedRepository
+readiness independent. It cannot be another runtime-lane-only patch.
+
 ## Delivery slices
 
 | Slice | Usable result | Entry condition |
@@ -40,21 +44,41 @@ XY-1304. They do not block Candidate-5 initial selection or the first Mac dogfoo
 
 After one source candidate is frozen, run gates in this order:
 
-1. reverse scan for all retired schema machinery and duplicate owners;
+1. integrated source-boundary and reverse scan for retired machinery, stale references,
+   and duplicate owners;
 2. fresh PostgreSQL 18 empty-target latest-schema bootstrap;
 3. refusal of a second bootstrap against the same nonempty target;
 4. runtime-only `decodexd` startup with zero DDL and no schema-owner credential;
-5. exact current catalog/configured-authority verification and adversarial negative cases;
-6. changed adapter SQL and domain behavior;
-7. Candidate-5 behavioral boundaries, including current-main account observation/cache
+5. independent ProductStore, Quick Task, and ManagedRepository startup projections;
+6. exact current catalog/configured-authority verification and adversarial negative cases;
+7. changed adapter SQL and domain behavior;
+8. Candidate-5 behavioral boundaries, including current-main account observation/cache
    preservation;
-8. direct local database replacement/rebind and exact credential-negative reset-tuple
+9. direct local database replacement/rebind and exact credential-negative reset-tuple
    readback; and
-9. the applicable Rust, transport, UI, packaging, and slice checks.
+10. the applicable Rust, transport, UI, packaging, and slice checks.
 
 The exact bootstrap, current-authority validation, and local reset command names are
 implementation-owned. No command spelling is authoritative until its implementation and
 task-runner contract land together.
+
+## Integrated source boundary
+
+Freeze Quick Task source before runtime integration. Then use one integration owner for
+core configuration; runtime bootstrap, application, library, Quick Task, and
+managed-repository modules; protocol doctor, Quick Task, wire, and library surfaces; and
+the PostgreSQL latest-schema handoff.
+
+The same owner removes shared acceptance drift from the root Cargo workspace,
+`Cargo.lock`, task-runner definitions, deleted storage-spike references, and stale
+migration/configuration fixtures. The frozen source candidate must load as one workspace
+and must not require a deleted crate, removed command, rejected configuration field,
+numbered schema, or migration-era fixture.
+
+The third runtime-bootstrap candidate can donate reviewed source. It cannot supply
+acceptance identity. Reject a fourth isolated runtime-bootstrap patch, a shared-file
+handoff that is not integrated, or an exact-tree review that excludes root manifests,
+task-runner files, lockfiles, and active fixtures.
 
 ## Latest-schema gate
 
@@ -129,6 +153,43 @@ Prove:
 - missing, extra, changed, unsafe, authentication-failed, or unreachable authority keeps
   product state typed unavailable; and
 - endpoint replacement requires daemon restart and never causes repinning or repair.
+
+### Runtime composition and readiness
+
+Start one daemon and keep the one accepted endpoint. Exercise independent assembly
+outcomes and prove:
+
+- verified PostgreSQL produces `ProductStore::Available` even when Quick Task or
+  ManagedRepository assembly fails;
+- unavailable PostgreSQL produces `ProductStore::Unavailable` and persisted Quick Task
+  reads return `ProductStateUnavailable`;
+- Quick Task construction performs no I/O and cannot fail after validated ready
+  dependencies are supplied;
+- each missing or failed Quick Task dependency produces one immutable closed redacted
+  `QuickTaskUnavailableReason`, and execute/start/resume return the typed unavailable
+  result without hiding it through `.ok()`, an optional setter, or an omitted field;
+- Quick Task unavailability does not remove diagnostics, account recovery, control-plane
+  commands, or available PostgreSQL-backed reads;
+- ManagedRepository absence is `Disabled`; repository-only configuration, path, Git,
+  executor, or reconciliation failure is typed `Unavailable` and affects repository
+  operations only;
+- ProductStore, Quick Task, and ManagedRepository readiness are separate doctor/protocol
+  fields and no result overwrites another;
+- every Quick Task command repeats current owner fences, so startup readiness is not
+  effect authority; and
+- `AcceptanceUnknown` and recovery-required results are unchanged.
+
+Configuration cases must prove that core transport/PostgreSQL parsing does not require a
+static repository map. Missing or malformed isolated repository configuration cannot
+block endpoint binding, PostgreSQL verification, or Quick Task. If a concrete host-only
+repository policy remains, prove that it does not duplicate PostgreSQL identity,
+admission, or persisted path policy.
+
+For Quick Task spawn, prove exact no-follow working-directory traversal, descriptor
+identity, directory type, ownership by the daemon effective UID, and accepted policy.
+Reject ambient current directory, repository discovery, replacement, symlink, wrong
+owner, wrong type, and unauthorized path. One unrelated broken repository must not
+disable another Quick Task with a valid selected path.
 
 ## Current-authority gate
 
@@ -278,6 +339,11 @@ commit-acknowledged affine receipt, no receipt reconstruction, operation-specifi
 restart reconciliation, exact Git/filesystem readback, and no schema/history role for
 repository effect records.
 
+Also prove independent service assembly: `Ready`, `Disabled`, and typed `Unavailable`
+cannot alter ProductStore or Quick Task readiness. Repository configuration parsing is
+isolated from core runtime configuration, and no static path map duplicates PostgreSQL
+repository authority.
+
 ### Same-UID transport
 
 Prove fixed owner-only endpoint publication, descriptor identity, peer UID checks, stale
@@ -355,11 +421,18 @@ Stop the owning gate on:
 - any accepted bootstrap on a nonempty target;
 - any current-authority check that depends on schema history or an upgrade prefix;
 - any secret byte in database/reset metadata, protocol data, logs, or process arguments;
+- daemon-fatal Quick Task or ManagedRepository startup when the control plane can start;
+- a mutable capability manager, silent optional Quick Task disappearance, or readiness
+  state that substitutes for current owner fences;
+- repository configuration that blocks core parsing or duplicates PostgreSQL path
+  authority;
 - a second account selector, provider-effect ledger, process owner, or coordinator state;
 - possible external-effect replay without positive reconciliation;
 - Candidate-5 partial lineage, partial admission, ambiguous terminalization, or account
   observation/cache regression;
 - a second mutation path around `decodexd`;
+- a source candidate that retains deleted workspace/task-runner references or active
+  migration/configuration fixtures;
 - unbounded UI history loading; or
 - remote binding before security acceptance.
 

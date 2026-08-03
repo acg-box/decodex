@@ -118,6 +118,69 @@ generic migrator, an import API, a generic attestation framework, a metadata sid
 backup or rollback mechanism, a receipt/finalizer, or a fallback. Normal installation
 and startup do not read an old database or an old account source.
 
+## Runtime composition reset
+
+Three runtime-bootstrap candidates failed source review because they coupled unrelated
+owners, hid Quick Task startup failure, or left shared integration drift. The third
+candidate is a source donor only. It is not an accepted runtime candidate and it must not
+receive another runtime-lane-only patch.
+
+This reset keeps one `decodexd`, one owner-only same-UID endpoint, and one application
+surface. The daemon can start when Quick Task execution or ManagedRepository is not
+available. PostgreSQL-backed reads, diagnostics, account recovery, and the control plane
+remain available when their own owners are ready.
+
+Runtime composition has three independent startup results:
+
+1. `ProductStore` means verified PostgreSQL only. Its result is
+   `Available(PostgresStore)` or `Unavailable(ProductStateReason)`. Quick Task,
+   repository, Git, path, or reconciliation failure cannot replace or erase this result.
+2. `QuickTaskRuntime` construction is infallible and performs no I/O after all fallible
+   dependency owners return validated ready dependencies. Composition records one
+   immutable startup projection: `Ready(QuickTaskRuntime)` or
+   `Unavailable(QuickTaskUnavailableReason)`. The unavailable reason is closed and
+   redacted.
+3. ManagedRepository is an independent optional capability. Its startup projection is
+   `Ready`, `Disabled`, or `Unavailable` with a closed redacted reason. Repository path,
+   Git, reconciliation, or isolated configuration failure affects repository operations
+   only.
+
+These results are startup projections, not mutable authority. They create no capability
+manager, lifecycle, receipt, cached substitute, or recovery framework. Every command
+repeats the accepted checks of the PostgreSQL, Account Service, ProcessGeneration,
+ProviderAttempt, app-server, path, and repository owners that apply to that command.
+
+Core runtime, transport, and PostgreSQL configuration are independent from optional
+repository configuration. Remove the required static `server_host.repositories` path map
+unless a concrete accepted host-only policy consumes it. PostgreSQL remains authority for
+repository identity, admission, and persisted path policy. If a host-only repository
+policy remains, it has a separate parser and validator. Its absence or invalid content
+cannot block PostgreSQL verification or Quick Task assembly.
+
+Immediately before spawn, the runtime validates the selected Quick Task working directory
+by exact descriptor identity, directory type, ownership by the daemon effective UID,
+no-follow traversal, and the applicable accepted path policy. Ambient current directory
+and repository discovery grant no authority. One unrelated broken repository cannot
+disable all Quick Tasks.
+
+Protocol and doctor project `ProductStore`, Quick Task, and ManagedRepository readiness
+separately. Quick Task execute, start, and resume return typed
+`QuickTaskUnavailable(reason)` when the immutable startup projection is unavailable.
+Persisted Quick Task reads keep `ProductStateUnavailable` when PostgreSQL is unavailable.
+No `.ok()` conversion, optional setter, or absent field may hide a startup failure.
+`AcceptanceUnknown` and recovery-required results keep their existing meanings.
+
+The next source candidate has one integration owner after the Quick Task source freezes.
+That owner reconciles core configuration; runtime bootstrap, application, library,
+Quick Task, and managed-repository owners; protocol doctor, Quick Task, wire, and library
+surfaces; root Cargo/task-runner/lock files; deleted storage-spike references; and stale
+migration/configuration fixtures. This is integration acceptance-source work. It is not a
+fourth runtime-bootstrap patch.
+
+Daemon-fatal Quick Task startup, separate serve profiles, a mutable capability manager,
+duplicate repository-path authority, and another isolated runtime-lane candidate are
+rejected. This reset does not change the one-latest-schema or no-migration authority.
+
 ## Candidate-5 Quick Task
 
 Candidate 5 remains the accepted architecture for one ordinary Quick Task. It is a
@@ -247,6 +310,8 @@ work for an explicit decision.
   Decodex maps only threads that it created.
 - `decodexd` alone owns scheduling, app-server children, product mutations, repository
   side effects, and adapters. GPUI, SwiftUI, CLI, and MCP are clients.
+- `ProductStore` represents verified PostgreSQL only. Quick Task and ManagedRepository
+  startup projections are independent and cannot overwrite product-store readiness.
 - PostgreSQL Account Registry owns credential-negative account state. One
   HostCredentialStore owns secret bundles. Account Service coordinates account
   operations.
@@ -260,6 +325,8 @@ work for an explicit decision.
 - ExecutionCoordinator remains stateless and cannot authorize dispatch by itself.
 - Git/filesystem own repository bytes and worktrees. GitHub owns PR/check/merge
   readback. PostgreSQL owns the admitted repository-effect state and evidence.
+- Quick Task construction is I/O-free and infallible after validated dependencies exist.
+  Its startup projection is immutable, typed, and visible through protocol diagnostics.
 - Local content-addressed storage owns large bytes; PostgreSQL owns their metadata and
   references.
 
