@@ -54,12 +54,12 @@ use super::{
 };
 
 const PROCESS_TIMEOUT: Duration = Duration::from_secs(30);
-// The longest consume path reserves seven sequential process deadlines, including conservative
-// startup headroom plus initialize, credential projection, initial account read, consume,
-// inventory readback, and account re-attestation. Process-group and stdout-pump shutdown add 1.25
-// seconds, rounded up to two seconds for this lease proof.
+// The longest consume path reserves eight sequential process deadlines, including conservative
+// startup headroom plus initialize, credential projection, initial account read, consume, one
+// incomplete-detail inventory retry, and account re-attestation. Process-group and stdout-pump
+// shutdown add 1.25 seconds, rounded up to two seconds for this lease proof.
 const MAX_BLOCKING_PROCESS_DEADLINE: Duration =
-	Duration::from_secs(PROCESS_TIMEOUT.as_secs() * 7 + 2);
+	Duration::from_secs(PROCESS_TIMEOUT.as_secs() * 8 + 2);
 // A query receives a typed row-scoped refusal before the protocol client's whole-request
 // deadline. The daemon-owned operation continues its already-bounded cleanup.
 const INVENTORY_RESPONSE_TIMEOUT: Duration = Duration::from_secs(25);
@@ -1704,8 +1704,8 @@ mod tests {
 
 	#[test]
 	fn queued_and_detached_process_deadlines_are_strictly_inside_the_initial_lease() {
-		assert_eq!(MAX_BLOCKING_PROCESS_DEADLINE, Duration::from_secs(212));
-		assert_eq!(MAX_CLAIM_WORK_START_DELAY, Duration::from_secs(117));
+		assert_eq!(MAX_BLOCKING_PROCESS_DEADLINE, Duration::from_secs(242));
+		assert_eq!(MAX_CLAIM_WORK_START_DELAY, Duration::from_secs(87));
 		assert!(
 			MAX_CLAIM_WORK_START_DELAY + MAX_BLOCKING_PROCESS_DEADLINE + CLAIM_HEARTBEAT_INTERVAL
 				< CLAIM_LEASE
