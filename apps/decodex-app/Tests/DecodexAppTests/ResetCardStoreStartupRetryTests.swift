@@ -237,31 +237,33 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		)
 	}
 
-	func testAutomaticRefreshRepeatsUntilApplicationTermination() async throws {
+	func testDaemonObservationSignalRefreshesUntilApplicationTermination() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
-		let client = ScriptedResetCardClient(
-			accountSteps: [],
-			accountFallback: .value([Self.account]),
-			inventoryFallback: .value(try Self.inventory)
+		let client = ObservationDrivenResetCardClient(
+			account: Self.account,
+			inventory: try Self.inventory
 		)
 		let store = ResetCardStore(
 			client: client,
 			pendingStore: fixture.store,
-			startupRetryDelays: [],
-			automaticRefreshInterval: .milliseconds(5)
+			startupRetryDelays: []
 		)
 
 		store.start()
 		try await waitUntil {
 			let counts = await client.callCounts()
-			return counts.accounts >= 2
-				&& counts.inventory >= 2
-				&& store.isRefreshing == false
+			return counts.accounts == 1 && counts.inventory == 1
+		}
+		await client.publish(generation: 1)
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts >= 2 && counts.inventory >= 2 && store.isRefreshing == false
 		}
 
 		await store.prepareForApplicationTermination()
 		let stoppedCounts = await client.callCounts()
+		await client.publish(generation: 2)
 		try await Task.sleep(for: .milliseconds(20))
 		let finalCounts = await client.callCounts()
 		XCTAssertEqual(finalCounts, stoppedCounts)
@@ -915,6 +917,62 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 				idempotencyKey: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405161"
 			)
 		}
+	}
+}
+
+private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservationClient {
+	private let account: ResetCardAccountRecord
+	private let inventoryValue: ResetCardInventory
+	private var accountCalls = 0
+	private var inventoryCalls = 0
+	private var generations = [UInt64]()
+	private var signalContinuation: CheckedContinuation<AccountObservationSignal, Never>?
+
+	init(account: ResetCardAccountRecord, inventory: ResetCardInventory) {
+		self.account = account
+		inventoryValue = inventory
+	}
+
+	func accounts(authority _: ResetCardAuthority?) async throws -> [ResetCardAccountRecord] {
+		accountCalls += 1
+		return [account]
+	}
+
+	func inventory(for _: ResetCardAccountRecord) async throws -> ResetCardInventory {
+		inventoryCalls += 1
+		return inventoryValue
+	}
+
+	func waitForAccountObservation(
+		afterGeneration _: UInt64
+	) async throws -> AccountObservationSignal {
+		if generations.isEmpty == false {
+			return AccountObservationSignal(generation: generations.removeFirst())
+		}
+		return await withCheckedContinuation { continuation in
+			signalContinuation = continuation
+		}
+	}
+
+	func publish(generation: UInt64) {
+		if let signalContinuation {
+			self.signalContinuation = nil
+			signalContinuation.resume(returning: AccountObservationSignal(generation: generation))
+		} else {
+			generations.append(generation)
+		}
+	}
+
+	func callCounts() -> ClientCallCounts {
+		ClientCallCounts(accounts: accountCalls, inventory: inventoryCalls, status: 0, use: 0)
+	}
+
+	func use(_: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
+	}
+
+	func status(for _: ResetCardUseAttempt) async throws -> ResetCardOperationState {
+		throw ResetCardClientError.invalidResponse
 	}
 }
 

@@ -2223,6 +2223,20 @@ pub enum AccountManualRecoveryOutcomeDto {
 	StillRequiresRecovery,
 }
 
+/// One daemon account-observation change or bounded heartbeat.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct AccountObservationSignal {
+	/// Opaque daemon-lifetime generation of the observation cache.
+	pub generation: u64,
+}
+impl AccountObservationSignal {
+	/// Construct one bounded account-observation signal.
+	pub const fn new(generation: u64) -> Self {
+		Self { generation }
+	}
+}
+
 /// Live queries available through the exact-current V2.0 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
@@ -2285,6 +2299,11 @@ pub enum QueryPayload {
 	GetInitialAccountSelection,
 	/// Read the current shared Codex authentication projection without exposing credentials.
 	GetCodexAuthProjection,
+	/// Wait for daemon-owned account observations to advance or emit one bounded heartbeat.
+	WaitForAccountObservation {
+		/// Last daemon-lifetime generation applied by the caller.
+		after_generation: u64,
+	},
 }
 impl QueryPayload {
 	/// Whether this query is available in the exact-current protocol revision.
@@ -2645,6 +2664,8 @@ pub enum QueryResultPayload {
 	InitialAccountSelection(AccountInitialSelectionResult),
 	/// Current shared Codex authentication projection.
 	CodexAuthProjection(CodexAuthProjectionResult),
+	/// One daemon account-observation change or bounded heartbeat.
+	AccountObservation(AccountObservationSignal),
 }
 
 /// One minimal canonical WorkItem card for a native Project board.
@@ -3864,16 +3885,16 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountProfileDailyUsageDto,
-		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
-		AccountQuotaStateDto, CURRENT_VERSION, CausationId, ClientCommandId,
-		CodexAuthProjectionResult, CommandError, CorrelationId, EntityId, EventPayload,
-		HistoryCursorToken, HistoryText, IdempotencyKey, MAX_HISTORY_INLINE_BYTES,
-		MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
+		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountObservationSignal,
+		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
+		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, CURRENT_VERSION,
+		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError, CorrelationId,
+		EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
+		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
 		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
 		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId,
-		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardPage,
+		QueryResultPayload, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId,
+		ServerInstanceId, Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardPage,
 		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
 		WorkItemBoardWorkItemId, WorkItemState,
 		wire::{
@@ -4190,6 +4211,33 @@ mod tests {
 					"access_token": "must-not-be-accepted",
 				},
 			}))
+			.is_err()
+		);
+	}
+
+	#[test]
+	fn account_observation_wait_is_one_strict_opaque_generation() {
+		let query = QueryPayload::WaitForAccountObservation { after_generation: 17 };
+		let result = QueryResultPayload::AccountObservation(AccountObservationSignal::new(42));
+
+		assert_eq!(
+			serde_json::to_value(query).unwrap(),
+			serde_json::json!({
+				"name": "wait_for_account_observation",
+				"arguments": {"after_generation": 17}
+			}),
+		);
+		assert_eq!(
+			serde_json::to_value(result).unwrap(),
+			serde_json::json!({
+				"name": "account_observation",
+				"data": {"generation": 42}
+			}),
+		);
+		assert!(
+			serde_json::from_value::<AccountObservationSignal>(
+				serde_json::json!({"generation": 42, "extra": true}),
+			)
 			.is_err()
 		);
 	}

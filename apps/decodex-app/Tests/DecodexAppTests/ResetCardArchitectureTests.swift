@@ -770,7 +770,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(native.contains("library.destroy(handle)"))
 	}
 
-	func testAccountDataUsesTheFormerFifteenSecondRefreshCadence() throws {
+	func testAccountDataUsesDaemonObservationSignalsWithoutAUiRefreshClock() throws {
 		let sourceURL = URL(fileURLWithPath: #filePath)
 			.deletingLastPathComponent()
 			.deletingLastPathComponent()
@@ -785,17 +785,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 			encoding: .utf8
 		)
 
-		XCTAssertTrue(
-			store.contains(
-				"defaultAutomaticRefreshInterval: Duration = .seconds(15)"
-			)
-		)
-		XCTAssertTrue(store.contains("private var automaticRefreshTask"))
+		XCTAssertFalse(store.contains("defaultAutomaticRefreshInterval"))
+		XCTAssertTrue(store.contains("private var accountObservationTask"))
 		XCTAssertTrue(store.contains("private var refreshCycleTask"))
-		XCTAssertTrue(store.contains("startAutomaticRefresh()"))
-		XCTAssertTrue(store.contains("automaticRefreshTask?.cancel()"))
-		XCTAssertTrue(store.contains("ContinuousClock()"))
-		XCTAssertTrue(store.contains("clock.sleep(until: nextRefresh)"))
+		XCTAssertTrue(store.contains("startAccountObservationSignals()"))
+		XCTAssertTrue(store.contains("accountObservationTask?.cancel()"))
+		XCTAssertTrue(store.contains("waitForAccountObservation("))
+		XCTAssertFalse(store.contains("ContinuousClock()"))
 		XCTAssertTrue(store.contains("self.requestRefresh()"))
 		XCTAssertTrue(store.contains("await self.performRefreshCycle()"))
 		XCTAssertFalse(store.contains("Timer.publish"))

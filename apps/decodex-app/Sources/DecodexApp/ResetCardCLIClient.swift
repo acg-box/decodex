@@ -396,6 +396,30 @@ protocol ResetCardClient: Sendable {
 	func status(for attempt: ResetCardUseAttempt) async throws -> ResetCardOperationState
 }
 
+struct AccountObservationSignal: Decodable, Equatable, Sendable {
+	let generation: UInt64
+
+	init(generation: UInt64) {
+		self.generation = generation
+	}
+
+	init(from decoder: Decoder) throws {
+		try requireExactFields(in: decoder, expected: ["generation"])
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+		generation = try container.decode(UInt64.self, forKey: .generation)
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case generation
+	}
+}
+
+protocol AccountObservationClient: Sendable {
+	func waitForAccountObservation(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal
+}
+
 extension ResetCardClient {
 	func accounts() async throws -> [ResetCardAccountRecord] {
 		try await accounts(authority: nil)
@@ -521,6 +545,24 @@ extension DecodexNativeClient: ResetCardClient {
 			authority: attempt.target.authority
 		)
 		return response.data.state
+	}
+}
+
+extension DecodexNativeClient: AccountObservationClient {
+	func waitForAccountObservation(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal {
+		let response: (
+			authority: ResetCardAuthority,
+			data: AccountObservationSignal
+		) = try await perform(
+			DecodexNativeRequest(
+				operation: "wait_for_account_observation",
+				afterGeneration: afterGeneration
+			),
+			authority: nil
+		)
+		return response.data
 	}
 }
 struct ResetCardAnyCodingKey: CodingKey {
