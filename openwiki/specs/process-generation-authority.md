@@ -22,6 +22,14 @@ readback with non-secret account credential binding. It does not add a second le
 routing, account selection, RuntimeSession creation, ProviderAttempt storage, remote
 authentication, UI, packaging, release, provider effects, or production dispatch.
 
+Candidate 5 may compose one ready generation and its bounded live `FencedProcess` into
+ordinary Quick Task only through the existing owners. Exact Candidate-4 staged tree
+`f82b866e21f12742648023a2b468cc057afa52a1` is materially rejected and supplies no
+implementation authority. Candidate-5 implementation and acceptance are pending. V23
+does not gain Turn, routing, account-selection, RuntimeSession, or ProviderAttempt
+authority. See the
+[normative owner contract](vnext-authority.md#xy-1276-quick-task-thread-establishment).
+
 ## Owner and durable model
 
 `ProcessSupervisor` is the only product component that writes ProcessGeneration state.
@@ -155,6 +163,23 @@ The launch sequence is:
    includes the immutable initial account revision, credential version/fingerprint,
    provider binding, and account-capability profile.
 
+For the Candidate-5 Quick Task path, the establishment owner must first lock and prove
+the exact prospective Turn bound in the selected V16 decision as active revision 1 under
+the same Conversation and V17-created starting RuntimeSession. Account Service then reads
+and compares the exact
+V16-selected account readiness, revision, provider binding, credential version and
+fingerprint, exact-build capability, and actual HostCredentialStore binding immediately
+before spawn. Account Service cannot select or substitute an account. A mismatch stops
+without another V16 decision, fallback, wake, or alternate account.
+
+The exact ProcessGeneration create envelope is effect authority only when its durable
+classification is `Fresh`. `Replayed`, `Rejected`, and uncertain or locally lost results
+return typed durable readback and no spawn authority. They cannot spawn, replace, adopt,
+create a successor, prepare a duplicate ProviderAttempt, or terminalize the selected Turn.
+Recovery uses existing ProcessGeneration, RuntimeSession, ProviderAttempt, and Conversation
+reads. It adds no ledger or recovery framework. The same no-duplicate rule applies at the
+fence and ready lost-result cuts.
+
 The daemon-local in-flight reservation prevents background reconciliation from
 projecting an active fence, bind, or exact termination as restored authority. It is
 per generation, so it does not serialize unrelated accounts. The opaque child retains
@@ -236,6 +261,9 @@ XY-1401 owns ProviderAttempt persistence. XY-1400 preserves this exact boundary:
 - one pre-dispatch transaction must bind a prepared attempt to its consumer intent,
   accepted RuntimeSession, exact ProcessGeneration, request identity, and correlation
   or idempotency key;
+- Candidate-5 initial-thread preparation must also lock and require its exact selected
+  Turn to remain active revision 1 under the same Conversation and accepted
+  RuntimeSession, after exact V34 thread bind;
 - an unproved `dispatch_authorized` attempt becomes or remains `unknown` after lost
   supervision;
 - process death, kqueue exit, boot change, EOF, timeout, restart, missing events, row
@@ -245,6 +273,10 @@ XY-1401 owns ProviderAttempt persistence. XY-1400 preserves this exact boundary:
 - a replacement may reconcile the attempt but cannot replay it; and
 - a successor is a distinct user-authorized effect with explicit duplicate-risk
   acknowledgement.
+
+For Candidate 5, explicit successor remains PostgreSQL-only and non-dispatch. It cannot
+be used as ProcessGeneration recovery. Replayed, rejected, or ambiguous generation state
+also cannot justify the conversations owner changing the Turn to failed revision 2.
 
 ProcessGeneration quarantine protects replacement integrity. ProviderAttempt protects
 effect integrity. A macOS orphan can retain credentials and finish an in-flight effect;
