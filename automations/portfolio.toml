@@ -1,7 +1,7 @@
 execution_environment = "local"
 kind                  = "cron"
 primary_cwd           = "{primary_worktree}"
-status                = "PAUSED"
+status                = "ACTIVE"
 version               = 1
 
 [[automations]]
