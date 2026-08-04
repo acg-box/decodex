@@ -1835,6 +1835,8 @@ pub(super) struct ReadOnlyProbe {
 	schema_marker: SchemaMarker,
 	enforce_generated_digests: bool,
 	timeout: Duration,
+	#[cfg(test)]
+	attestation_timeout_override: Option<Duration>,
 }
 impl ReadOnlyProbe {
 	/// Configure a probe. Schema validation is deferred to `run` but precedes spawn.
@@ -1845,6 +1847,8 @@ impl ReadOnlyProbe {
 			schema_marker: SchemaMarker::accepted(),
 			enforce_generated_digests: true,
 			timeout,
+			#[cfg(test)]
+			attestation_timeout_override: None,
 		}
 	}
 
@@ -1862,7 +1866,21 @@ impl ReadOnlyProbe {
 		schema_marker: SchemaMarker,
 		timeout: Duration,
 	) -> Self {
-		Self { command, binding, schema_marker, enforce_generated_digests: false, timeout }
+		Self {
+			command,
+			binding,
+			schema_marker,
+			enforce_generated_digests: false,
+			timeout,
+			attestation_timeout_override: None,
+		}
+	}
+
+	#[cfg(test)]
+	fn with_attestation_timeout_for_test(mut self, timeout: Duration) -> Self {
+		self.attestation_timeout_override = Some(timeout);
+
+		self
 	}
 
 	/// Construct a synthetic probe using checked-in schema and process fixtures.
@@ -1875,6 +1893,7 @@ impl ReadOnlyProbe {
 			schema_marker: SchemaMarker::accepted(),
 			enforce_generated_digests: false,
 			timeout,
+			attestation_timeout_override: None,
 		}
 	}
 
@@ -1924,8 +1943,17 @@ impl ReadOnlyProbe {
 
 		let expected_digests =
 			self.enforce_generated_digests.then_some(self.schema_marker.canonical_digests());
-		let (build, generated, guard) =
-			attest_executable(&self.command, &self.binding, expected_digests, self.timeout, guard)?;
+		#[cfg(test)]
+		let attestation_timeout = self.attestation_timeout_override.unwrap_or(self.timeout);
+		#[cfg(not(test))]
+		let attestation_timeout = self.timeout;
+		let (build, generated, guard) = attest_executable(
+			&self.command,
+			&self.binding,
+			expected_digests,
+			attestation_timeout,
+			guard,
+		)?;
 		let mut negotiation = ProbeNegotiation::new(cache, &build, &generated);
 		let account_id = self.binding.account_id.clone();
 		let guard = guard.ok_or(SupervisionError::SpawnFailed)?;
@@ -6821,6 +6849,9 @@ mod tests {
 			.unwrap(),
 			Duration::from_secs(10),
 		)
+		// The debug test profile repeatedly hashes the large canonical executable and its
+		// snapshot. Extend only attestation; keep each live protocol operation at ten seconds.
+		.with_attestation_timeout_for_test(Duration::from_secs(60))
 		.run(&mut CapabilityCache::default())
 		.unwrap();
 
