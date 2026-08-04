@@ -26,8 +26,9 @@ Workflow:
    `openwiki/operations/codex-upstream-autopilot.md`, and
    `openwiki/operations/commands-and-validation.md`.
 2. Verify the cwd is the primary worktree on clean `main`. Fetch and fast-forward `origin/main`.
-3. Inspect open PRs whose branch matches `xv/codex-upstream-*`. Repair an existing PR with unresolved
-   Reviewer feedback before starting a new upstream head.
+3. Inspect every open non-draft managed PR: use `xv/codex-upstream-*` for compatibility PRs and the
+   exact `Decodex-Autonomy: upstream-dependency-repair` marker for directly related gate repairs.
+   Repair an existing PR or its dependency chain before starting a new upstream head.
 4. Fetch official `openai/codex` commits, releases, app-server schemas, and removed-feature evidence.
 5. Use the memory cursor only when its official upstream OID exists in the official mirror, is an ancestor
    of the current official head, is not older than the latest merged `Upstream-Codex-Head: <oid>` trailer,
@@ -43,15 +44,19 @@ Workflow:
 9. Create a temporary worktree for that branch. Delegate the complete source, tests, docs, and obsolete
    support removal to one ephemeral subagent. Give it the exact upstream evidence and Reviewer feedback.
 10. Review the diff yourself. Run focused tests, then the repository-owned gate from
-   `openwiki/operations/commands-and-validation.md`. Do not weaken tests to obtain a pass.
+    `openwiki/operations/commands-and-validation.md`. If the gate exposes an unrelated base defect,
+    create one signed dependency-repair PR with `Decodex-Autonomy: upstream-dependency-repair`,
+    `Decodex-Parent-PR: <url>`, `Decodex-Blocked-By: <url>`, and
+    `Decodex-Repair-Scope: <bounded-scope>` markers; do not leave an unowned blocker or weaken tests.
 11. Use `decodex commit --manual-authority "<summary>"`. Include `Upstream-Codex-Head: <oid>` and official
    source URLs in the commit or PR evidence. Never use raw `git commit`.
-12. Push the deterministic branch. Create or update its one non-draft PR, then read back base `main`,
-   head branch, exact head OID, body evidence, and checks. Remove the temporary worktree after push.
+12. Push the deterministic branch. Create or update its one non-draft PR with
+    `Decodex-Autonomy: upstream-compatibility`, then read back base `main`, head branch, exact head OID,
+    body markers, evidence, and checks. Remove the temporary worktree after push.
 
 Success:
-- A source-backed no-op or one safely created or updated, tested, signed, deterministic PR is a
-  successful terminal outcome.
+- A source-backed no-op is terminal. A tested, signed, deterministic PR is a nonterminal handoff until
+  Reviewer lands it and reads back the signed merge; never archive the Maintainer task at handoff.
 - A Reviewer repair request is normal work. Repair it autonomously on the same PR in the next run.
 - Only after all required validation, readback, and report evidence is complete, call native
   `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
@@ -59,8 +64,9 @@ Success:
 
 Stop conditions:
 - Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
-  authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
-  user decision is unresolved; or any required action is not durably handed off.
+  a PR or dependency is still open; authority or OAuth is missing; an external effect is ambiguous or
+  unknown; safety state is damaged; a user decision is unresolved; or any required action is not durably handed off.
 - Ordinary code, test, rebase, or review failures remain autonomous repair work, not human-attention
   conditions. Archive only after a later successful terminal outcome satisfies the evidence gate above.
-- Report upstream head, decision, PR URL and head OID when present, tests, and zero X API spend.
+- Report upstream head, decision, PR URL and head OID when present, dependency PRs and next owner,
+  tests, and zero X API spend.

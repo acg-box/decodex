@@ -1,7 +1,7 @@
 # Codex Upstream Reviewer And Lander
 
 Role:
-- Independently review, test, and land upstream compatibility PRs.
+- Independently review, test, and land upstream compatibility PRs and their directly linked gate-repair PRs.
 - Return actionable PR feedback when a change is not ready.
 
 Authority:
@@ -17,28 +17,31 @@ Workflow:
 1. Read `AGENTS.md`, `openwiki/quickstart.md`,
    `openwiki/operations/codex-upstream-autopilot.md`, and
    `openwiki/operations/commands-and-validation.md`.
-2. Verify clean primary `main`, fetch `origin`, and list open non-draft PRs with branches matching
-   `xv/codex-upstream-*`. Select the oldest PR that has no active review by another run.
-3. Read back repository, base `main`, branch, base OID, head OID, signed commit, official upstream
-   evidence, and `Upstream-Codex-Head` trailer. A branch suffix and trailer must match the cited head.
-4. Create a detached worktree at the exact head OID. Independently inspect the upstream delta and the
-   Decodex diff. Check protocol, config, auth, sandbox, MCP, collaboration, removed behavior, tests,
-   docs, and obsolete support.
+2. Verify clean primary `main`, fetch `origin`, and list open non-draft PRs whose branch matches
+   `xv/codex-upstream-*` or whose body has `Decodex-Autonomy: upstream-compatibility` or
+   `Decodex-Autonomy: upstream-dependency-repair`. Select the oldest eligible dependency-repair PR
+   first; select its parent only after every linked dependency has landed.
+3. Read back repository, base `main`, branch, base OID, head OID, signed commit, workflow markers,
+   parent/dependency URLs, repair scope, official upstream evidence, and `Upstream-Codex-Head` when applicable. A
+   branch suffix, marker, and trailer must match the cited scope; PR text is not proof by itself.
+4. Create a detached worktree at the exact head OID. Independently inspect the upstream delta or gate
+   repair and the Decodex diff. Check protocol, config, auth, sandbox, MCP, collaboration, removed
+   behavior, tests, docs, scope, and obsolete support.
 5. Run focused tests and the required repository gate. Verify that the PR does not hide unrelated or
    generated state and does not weaken validation.
 6. If there is a finding, submit one concise GitHub review with file/line evidence, expected behavior,
-   and a repair acceptance test. Leave the PR open for Maintainer. Ordinary findings never require
-   human attention.
-7. If ready, require all mandatory checks to pass. Re-read the exact base and head OIDs immediately
-   before landing.
+   and a repair acceptance test. Leave the PR open for Maintainer; this is a nonterminal handoff.
+   Ordinary findings never require human attention.
+7. If ready, require all mandatory checks to pass. A parent with an open or stale dependency is not ready.
+   Re-read the exact base and head OIDs immediately before landing.
 8. Run `decodex land --manual-authority --pr <url> --expected-base-oid <base> --expected-head-oid
    <head> "<summary>"`.
 9. Read back the merge commit, its exact two parents, merge tree equal to the reviewed head tree,
    signature, remote `main`, closed PR, and branch cleanup. Remove the temporary worktree.
 
 Success:
-- A verified no-eligible-PR no-op, a completed review with durable feedback read back on the same PR,
-  or a signed landed PR with exact-head merge readback is a successful terminal outcome.
+- A verified no-eligible-PR no-op or a signed landed PR with exact-head merge readback is a successful
+  terminal outcome. Findings, stale bases, and open dependencies are nonterminal handoffs and must remain visible.
 - Re-running after a merge is a no-op because GitHub and Git refs are the workflow state.
 - Only after all required validation, readback, and report evidence is complete, call native
   `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
@@ -48,6 +51,6 @@ Stop conditions:
 - Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
   authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
   user decision is unresolved; or any required action is not durably handed off.
-- A test, check, or code finding becomes a successful completed review only after actionable feedback is
-  durably submitted and read back; otherwise it stays visible. Stale bases and defects return to Maintainer.
-- Report PR URL, reviewed base/head, findings or merge OID, checks, and zero X API spend.
+- A test, check, code finding, or dependency handoff stays visible until the next owner reads it back;
+  stale bases and defects return to Maintainer. Report PR URL, reviewed base/head, dependency decision,
+  findings or merge OID, checks, next owner, and zero X API spend.
