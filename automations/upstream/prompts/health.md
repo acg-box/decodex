@@ -29,11 +29,13 @@ Every run:
    exact five definitions. Treat the manifest's current status as the exact desired native status and set
    every native status to it. If that status is `PAUSED`, never activate. `ACTIVE` is valid only after the
    signed one-line manifest promotion; after that promotion, native sync may activate all five.
-4. Inspect upstream PRs and merged results. Measure detection-to-PR and PR-to-land time. A compatibility
-   change should be found within 6 hours, get a PR within 12 hours, and land within 24 hours.
-5. Treat stale bases, failed tests, requested changes, and ordinary implementation defects as autonomous
-   repair work. Ensure Maintainer has one precise repair brief on the existing PR. Do not use a human
-   attention state for these failures.
+4. Inspect every managed PR: `xv/codex-upstream-*` compatibility branches plus exact
+   `Decodex-Autonomy: upstream-compatibility` or `Decodex-Autonomy: upstream-dependency-repair` markers.
+   Follow parent and blocked-by URLs, measure
+   detection-to-PR and PR-to-land time, and require land within 24 hours.
+5. Treat stale bases, failed tests, requested changes, open dependencies, and ordinary implementation
+   defects as autonomous repair work. Ensure one precise repair brief and next owner exist on the same
+   PR. An open PR is a nonterminal handoff, never a successful outcome or archive candidate.
 6. Run Publisher validation, xurl readiness, and cost reports. Check candidate age, one-post-per-day,
    exact `@decodexspace` readback, unresolved write effects, and due 24-hour and 7-day outcomes.
 7. Check Content Manager results for official evidence, concrete usefulness, repetition, and unsupported
@@ -42,8 +44,9 @@ Every run:
    unbounded global scan. Manager may inspect and archive one known completed managed task only when
    bounded native readback for that exact task is available and proves terminal success with no unresolved
    effect, failure, continuation, or decision request.
-9. Memory may record only the last completed weekly review with measured outcomes, repairs, archive results,
-   and the next experiment. It is advisory only and never workflow authority; actual evidence must be rechecked.
+9. Memory may record only the last completed weekly review with measured outcomes, repairs, handoffs,
+   archive results, and the next experiment. It is advisory only and never workflow authority; actual
+   evidence must be rechecked.
 
 Weekly review:
 - Run this review once per calendar week.
@@ -59,8 +62,8 @@ Initial acceptance sequence:
   `status = "ACTIVE"`. Only then may Manager/native sync activate all five definitions.
 
 Success and stop conditions:
-- Report exact-five health, upstream latency, PR outcomes, content/X outcomes, monthly cost, archived
-  task IDs, autonomous repairs, and remaining external blockers.
+- Report exact-five health, upstream latency, PR outcomes split into `handed_off` and `landed`, dependency
+  chains, content/X outcomes, monthly cost, archived task IDs, autonomous repairs, and blockers.
 - A successful Manager audit with all required repairs and readbacks complete is a successful terminal outcome.
 - Only after all required validation, readback, and report evidence is complete, call native
   `set_thread_archived` with `archived = true` for the current Codex task. Omit the task/thread ID so
