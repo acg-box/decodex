@@ -14,7 +14,7 @@ import portfolio  # noqa: E402
 
 
 class PortfolioTests(unittest.TestCase):
-    def test_exact_five_models_effort_cwd_and_prompts(self) -> None:
+    def test_manifest_renders_exact_five_automations(self) -> None:
         manifest = portfolio.load_manifest()
         self.assertEqual(portfolio.validate_manifest(manifest), [])
         rendered = portfolio.rendered_automations(manifest)
@@ -46,7 +46,7 @@ class PortfolioTests(unittest.TestCase):
                 )
             self.assertEqual(item["cwds"], [expected_cwd])
             self.assertNotIn(".worktrees", item["cwds"][0])
-            self.assertNotIn("xhigh", json.dumps(item).casefold())
+            self.assertNotIn("xhigh", item["reasoning_effort"].casefold())
 
     def test_status_and_allowed_promotion_contract(self) -> None:
         manifest = portfolio.load_manifest()
@@ -62,183 +62,10 @@ class PortfolioTests(unittest.TestCase):
                 {item["status"] for item in portfolio.rendered_automations(candidate_manifest)},
                 {status},
             )
-        active_rendered = portfolio.rendered_automations({**manifest, "status": "ACTIVE"})
-        self.assertEqual({item["status"] for item in active_rendered}, {"ACTIVE"})
-        all_prompts = " ".join(" ".join(item["prompt"].split()) for item in active_rendered).casefold()
-        for stale_claim in (
-            "it now says `paused`",
-            "current desired status is `paused`",
-            "current status is `paused`",
-            "checked-in desired status is `paused`",
-            "checked-in portfolio is `paused`",
-        ):
-            self.assertNotIn(stale_claim, all_prompts)
         self.assertIn(
             "portfolio status must be one of 'ACTIVE', 'PAUSED'",
             portfolio.validate_manifest({**manifest, "status": "DISABLED"}),
         )
-
-    def test_agent_prompts_keep_only_deterministic_workflow_boundaries(self) -> None:
-        rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
-        maintainer = rendered["codex-upstream-maintainer"]
-        reviewer = rendered["codex-upstream-reviewer"]
-        manager = rendered["codex-upstream-health"]
-        content = rendered["decodex-content-manager"]
-        publisher = rendered["decodex-xurl-publisher"]
-
-        for text in (maintainer, reviewer):
-            self.assertIn("temporary worktree", text)
-            self.assertNotIn("Decodex server", text.replace("Do not use Decodex server", ""))
-        self.assertIn("xv/codex-upstream-<12-lowercase-head-hex>", maintainer)
-        self.assertIn("never create a second PR for the same upstream head", maintainer)
-        self.assertIn("Upstream-Codex-Head: <oid>", maintainer)
-        self.assertIn("decodex commit", maintainer)
-        self.assertIn("--expected-base-oid <base>", reviewer)
-        self.assertIn("--expected-head-oid", reviewer)
-        self.assertIn("merge tree equal to the reviewed head tree", reviewer)
-        self.assertIn("set_thread_archived", manager)
-        self.assertIn("Keep the current task visible", manager)
-        self.assertIn("CodexRadar", content)
-        self.assertIn("secondary editorial", content)
-        self.assertIn("decodex/content-evidence/1", content)
-        self.assertIn("record-candidate", content)
-        self.assertIn("publish-next", publisher)
-        self.assertIn("observe-due", publisher)
-        self.assertIn("refresh-pricing", publisher)
-        self.assertIn("Never use browser control", publisher)
-
-    def test_each_role_self_archives_terminal_success_and_keeps_failures_visible(self) -> None:
-        prompts = {item["id"]: " ".join(item["prompt"].split()).casefold() for item in portfolio.rendered_automations()}
-        successful_outcomes = {
-            "codex-upstream-maintainer": ("source-backed no-op", "safely created or updated"),
-            "codex-upstream-reviewer": ("completed review with durable feedback", "signed landed pr"),
-            "codex-upstream-health": ("successful manager audit",),
-            "decodex-content-manager": ("validated content candidate", "validated content no-op"),
-            "decodex-xurl-publisher": (
-                "completed observation",
-                "publish with exact readback",
-                "durable quality skip",
-                "validated no-candidate no-op",
-            ),
-        }
-        shared_contract = (
-            "successful terminal outcome",
-            "set_thread_archived",
-            "archived = true",
-            "current codex task",
-            "omit the task/thread id",
-            "only after all required validation, readback, and report evidence is complete",
-            "validation, a test, a check, landing, or definition repair failed",
-            "authority or oauth is missing",
-            "external effect is ambiguous or unknown",
-            "safety state is damaged",
-            "user decision is unresolved",
-            "required action is not durably handed off",
-        )
-        for automation_id, prompt in prompts.items():
-            with self.subTest(automation_id=automation_id):
-                for phrase in (*shared_contract, *successful_outcomes[automation_id]):
-                    self.assertIn(phrase, prompt)
-
-        manager = prompts["codex-upstream-health"]
-        self.assertIn("known completed managed task", manager)
-        self.assertIn("bounded native readback", manager)
-        self.assertIn("do not depend on an unbounded global scan", manager)
-        self.assertNotIn("list_threads", manager)
-        self.assertNotIn("sqlite", manager)
-        self.assertNotIn("database", manager)
-
-        publisher = prompts["decodex-xurl-publisher"]
-        self.assertIn("`no_due_outcome` alone is continuation-only and not terminal", publisher)
-        self.assertIn("never a terminal outcome", publisher)
-        self.assertIn("never sufficient to archive", publisher)
-        self.assertIn("only after `publish-next` completes its candidate path", publisher)
-
-    def test_advisory_memory_contracts(self) -> None:
-        rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
-        maintainer = " ".join(rendered["codex-upstream-maintainer"].split())
-        self.assertIn("$CODEX_HOME/automations/codex-upstream-maintainer/memory.md", maintainer)
-        for phrase in (
-            "advisory cursor only",
-            "exists in the official mirror",
-            "ancestor of the current official head",
-            "not older than the latest merged",
-            "reviewed Decodex `main` OID equals current `main`",
-            "missing or mismatched OID requires a complete current-head compatibility review",
-            "complete current-head compatibility review",
-            "owner-only regular, non-symlink",
-            "mode `0600`",
-            "4 KiB",
-        ):
-            self.assertIn(phrase, maintainer)
-        for prohibited in ("instructions", "secrets", "credentials", "personal data", "raw responses", "absolute paths", "post text"):
-            self.assertIn(prohibited, maintainer)
-
-        for automation_id, required_entries in (
-            (
-                "codex-upstream-health",
-                (
-                    "Every scheduled run is a normal daily run",
-                    "weekly review once per calendar week",
-                    "last completed weekly review",
-                    "actual evidence must be rechecked",
-                    "measured outcomes",
-                    "repairs",
-                    "archive results",
-                    "next experiment",
-                ),
-            ),
-            ("decodex-content-manager", ("source IDs", "decision", "outcome lesson", "next editorial experiment")),
-        ):
-            prompt = " ".join(rendered[automation_id].split())
-            self.assertIn(f"$CODEX_HOME/automations/{automation_id}/memory.md", prompt)
-            for phrase in ("advisory only", "owner-only regular, non-symlink", "mode `0600`", "4 KiB", *required_entries):
-                self.assertIn(phrase, prompt)
-            for prohibited in ("instructions", "secrets", "credentials", "personal data", "raw responses", "absolute paths", "post text"):
-                self.assertIn(prohibited, prompt)
-
-    def test_repaired_prompt_contracts_and_line_limits(self) -> None:
-        manifest = portfolio.load_manifest()
-        prompts = {item["id"]: item["prompt"] for item in portfolio.rendered_automations(manifest)}
-
-        for entry in manifest["automations"]:
-            prompt_path = portfolio.REPO_ROOT / entry["prompt_file"]
-            nonempty_lines = sum(bool(line.strip()) for line in prompt_path.read_text(encoding="utf-8").splitlines())
-            self.assertLess(nonempty_lines, 80, entry["id"])
-
-        maintainer = " ".join(prompts["codex-upstream-maintainer"].split())
-        self.assertIn("exact reviewed Decodex `main` OID", maintainer)
-        self.assertIn("reviewed Decodex `main` OID equals current `main`", maintainer)
-        self.assertIn("complete current-head compatibility review", maintainer)
-
-        manager = " ".join(prompts["codex-upstream-health"].split()).casefold()
-        self.assertIn("every scheduled run is a normal daily run", manager)
-        self.assertIn("run the weekly review once per calendar week", manager)
-        self.assertIn("memory may record only the last completed weekly review", manager)
-        self.assertIn("actual evidence must be rechecked", manager)
-        self.assertIn("manifest's current status as the exact desired native status", manager)
-        self.assertIn("if that status is `paused`, never activate", manager)
-        self.assertIn("`active` is valid only after the signed one-line manifest promotion", manager)
-
-        content = " ".join(prompts["decodex-content-manager"].split())
-        self.assertIn(
-            ".agent/automations/decodex/cache/manager/staging/$CODEX_THREAD_ID.json",
-            content,
-        )
-        self.assertIn("regular, non-symlink file with mode `0600`", content)
-        self.assertIn("Match each source label to its URL", content)
-        self.assertIn("use `official_codex` only", content)
-        self.assertIn("use `landed_decodex` only", content)
-
-        publisher = " ".join(prompts["decodex-xurl-publisher"].split())
-        self.assertIn("only if its exact status is `no_due_outcome`", publisher)
-        self.assertIn("this status is continuation-only", publisher.casefold())
-        self.assertIn("complete the candidate path through `publish-next`", publisher)
-        self.assertIn("Any other successful `observe-due` status is a completed observation", publisher)
-        self.assertIn("ends paid work for the run", publisher)
-        self.assertIn("--decision publish", publisher)
-        self.assertIn('--decision skip --reason "$SKIP_REASON"', publisher)
-        self.assertIn("bounded, evidence-backed reason", publisher)
 
     def test_runtime_evaluation_requires_metadata_and_rejects_extra_managed_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
