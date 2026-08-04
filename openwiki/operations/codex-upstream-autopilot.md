@@ -47,9 +47,36 @@ The loop uses standard Git and GitHub state:
 - signed implementation commits;
 - signed merge commit and exact merge-tree readback.
 
-There is no candidate file, cursor database, lease, handoff receipt, effect
-registry, or repair queue. A rerun reconstructs current work from upstream, Git,
-GitHub, and tests.
+There is no candidate file, cursor database, lease, effect registry, repair
+queue, or external orchestrator. A rerun reconstructs current work from upstream,
+Git, GitHub, and tests. GitHub PR bodies carry the bounded handoff metadata needed
+to connect one managed PR to a directly related dependency repair.
+
+## Handoff Contract
+
+Managed PRs use exact body markers:
+
+```text
+Decodex-Autonomy: upstream-compatibility
+```
+
+or:
+
+```text
+Decodex-Autonomy: upstream-dependency-repair
+Decodex-Parent-PR: https://github.com/hack-ink/decodex/pull/<number>
+```
+
+A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is
+open. A dependency repair also states `Decodex-Repair-Scope: <bounded-scope>` and
+must be required by its parent or by a current repository gate. Markers select
+the review queue only; signatures, exact scope, base/head, tests, checks, and
+merge readback remain authoritative.
+
+The Reviewer handles dependency-repair PRs before their parent compatibility PR.
+An open PR, review finding, stale base, or unresolved dependency is a
+nonterminal `handed_off` outcome. Only an exact signed merge readback is
+`landed` and terminal.
 
 ## Maintainer Run
 
@@ -59,8 +86,8 @@ GitHub, and tests.
    documentation since the latest Decodex adaptation.
 4. Compare upstream behavior with current Decodex code and tests. State the
    concrete user or operator consequence.
-5. Search GitHub for the deterministic branch, upstream-head trailer, and an
-   existing matching PR.
+5. Search GitHub for the deterministic branch, upstream-head trailer, workflow
+   markers, and an existing matching PR or directly linked dependency repair.
 6. Return a source-backed no-op when no compatibility or adoption change is
    useful.
 7. For one change, create a temporary task worktree and dispatch one native
@@ -70,17 +97,21 @@ GitHub, and tests.
    the affected surface.
 9. Use `decodex commit` for every implementation commit. Do not use Decodex
    server, runtime, queue, planner, or MCP.
-10. Create or update the one matching PR. Verify its exact remote head and the
-    trailer `Upstream-Codex-Head: <oid>`.
+10. Create or update the one matching PR. Compatibility PRs carry
+    `Decodex-Autonomy: upstream-compatibility`; dependency repairs carry
+    `Decodex-Autonomy: upstream-dependency-repair`, `Decodex-Parent-PR: <url>`,
+    and `Decodex-Repair-Scope: <bounded-scope>`. Verify exact remote head and the
+    trailer `Upstream-Codex-Head: <oid>` when applicable.
 11. Remove the temporary worktree only after the remote PR state is read back.
 
-A failed check, stale base, or Reviewer request is ordinary autonomous work on
-the same PR. The Maintainer updates that PR and does not create a parallel task
-record.
+A failed check, stale base, Reviewer request, or required base repair is ordinary
+autonomous work on the same PR and its one linked dependency repair. The
+Maintainer updates those PRs and does not create a parallel workflow record.
 
 ## Reviewer Run
 
-1. Enumerate open PRs with the upstream trailer and deterministic branch.
+1. Enumerate open PRs with the upstream trailer and deterministic branch, plus
+   directly linked `upstream-dependency-repair` PRs.
 2. Read the complete diff, upstream evidence, review history, and check results.
 3. Record exact base and head OIDs. Create a temporary review worktree at that
    head.
@@ -88,8 +119,9 @@ record.
    security, and test quality.
 5. Run the focused tests and the appropriate repository gate.
 6. When a defect exists, submit precise GitHub review feedback with a required
-   outcome. Leave the PR open for Maintainer repair.
-7. When the head is acceptable, invoke only:
+   outcome. Leave the PR open for Maintainer repair; this is a nonterminal
+   handoff.
+7. When the head is acceptable and every dependency is landed, invoke only:
 
 ```sh
 decodex land --manual-authority --pr <url> \
@@ -114,6 +146,7 @@ Every run checks:
 - duplicate managed definitions and missing native metadata;
 - upstream release or protocol changes not yet investigated;
 - detection-to-PR and PR-to-land latency;
+- managed workflow markers, dependency chains, `handed_off` outcomes, and next owners;
 - stale PRs, failed checks, review feedback, and merged outcomes;
 - content evidence, X results, due observations, and cost;
 - repeated failure causes and whether the previous repair improved the result.
@@ -126,15 +159,17 @@ The target service levels are:
 
 The Manager repairs native-definition drift directly through native automation
 tools and verifies full readback. Repository repairs use one ephemeral Sol/max
-subagent and the normal Maintainer/Reviewer PR path.
+subagent and the normal Maintainer/Reviewer PR path. It treats an open PR or
+dependency handoff as unresolved and keeps its task visible; only a signed merge
+with exact readback is a terminal landing.
 
 Each role is the primary cleanup owner for its current Codex task. After a
 terminal successful outcome, it completes all required validation, readback, and
 report evidence, then calls native `set_thread_archived` for the current task
 without supplying another task ID. It never archives before that evidence is
-complete. Successful outcomes include a source-backed no-op, a safely created or
-updated PR, durable review feedback, a signed landing, and a successful Manager
-audit.
+complete. A source-backed no-op, a signed landing, or a successful Manager audit
+can be terminal; a created PR, review feedback, stale base, or dependency repair
+is only `handed_off` and stays visible.
 
 Failed validation, tests, checks, landing, or definition repair stay visible, as
 do missing authority or OAuth, ambiguous external effects, damaged safety state,
