@@ -36,9 +36,35 @@ Standard external state is sufficient:
 - native Codex task definitions and task status;
 - private Publisher evidence for X writes and reads.
 
-There is no upstream candidate database, lease, handoff, effect journal,
-recursive repair queue, Decodex server, Decodex runtime, planner, or MCP in this
-automation loop.
+There is no upstream candidate database, lease, effect journal, recursive repair
+queue, Decodex server, Decodex runtime, planner, or MCP in this automation loop.
+GitHub PR bodies provide the small durable handoff record required to connect a
+compatibility PR to a directly related gate-repair PR.
+
+## Handoff Contract
+
+Every managed PR carries one exact body marker:
+
+```text
+Decodex-Autonomy: upstream-compatibility
+```
+
+or:
+
+```text
+Decodex-Autonomy: upstream-dependency-repair
+Decodex-Parent-PR: https://github.com/hack-ink/decodex/pull/<number>
+```
+
+A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is
+open. A dependency repair must be directly required by its parent or by a
+current repository gate, and its body must state the exact repair scope. These
+markers select work; the Reviewer still proves signatures, scope, base/head,
+tests, and checks. A marker never authorizes an unrelated PR.
+
+The Reviewer processes dependency repairs first, then a parent whose dependencies
+are landed. An open PR, review finding, stale base, or unresolved dependency is a
+nonterminal handoff. Only a signed merge with exact readback is a terminal landing.
 
 ## Maintainer
 
@@ -59,8 +85,9 @@ For one concrete change, the Maintainer:
    `Upstream-Codex-Head: <oid>` trailer.
 7. Removes the temporary worktree after the remote PR state is verified.
 
-Review feedback, stale bases, and test failures return to this same PR. They do
-not create a second workflow record and do not require routine human attention.
+Review feedback, stale bases, and test failures return to this same PR. A base-gate
+defect gets one directly linked dependency-repair PR. These are nonterminal
+handoffs, not successful Maintainer runs and not archive candidates.
 
 ## Reviewer
 
@@ -68,8 +95,9 @@ The Reviewer independently reads the PR diff and its upstream evidence. It
 checks out the exact remote head in a temporary review worktree, reruns the
 required tests, and verifies the signed commit chain.
 
-Defects become precise GitHub review feedback for the Maintainer. An accepted
-head lands only through:
+Defects become precise GitHub review feedback for the Maintainer; this is a
+nonterminal handoff. An accepted head lands only when every dependency is landed
+and only through:
 
 ```text
 decodex land --manual-authority --pr <url> \
@@ -87,15 +115,16 @@ automation tools. It audits:
 
 - exact-five identity, model, effort, schedule, status, execution environment,
   and primary cwd;
-- detection-to-PR, PR-to-land, failed checks, review cycles, and merged results;
+- detection-to-PR, PR-to-land, failed checks, review cycles, dependency chains, and merged results;
 - upstream adaptation latency and missed official changes;
 - content evidence, X publication, 24-hour and 7-day outcomes, and monthly cost;
 - repeated causes and configuration drift.
 
-The Manager archives only completed successful Codex tasks with terminal
-readback and no unresolved effect or user decision. Failed, active, ambiguous,
-or human-decision tasks stay visible. Archiving uses native task tools directly;
-there is no receipt or retention state machine.
+The Manager treats `handed_off` and `landed` as different outcomes. It archives
+only completed tasks with terminal merge/readback evidence and no unresolved
+dependency, effect, or user decision. Failed, active, ambiguous, open-PR, and
+repair-handoff tasks stay visible. Archiving uses native task tools directly;
+the PR markers are a bounded handoff record, not a new state machine.
 
 ## Validation
 
