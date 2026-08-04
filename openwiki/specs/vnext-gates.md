@@ -309,6 +309,10 @@ or persisted projection without joining or starting provider refresh work.
 
 ## Domain-owner gates
 
+ManagedRun may reach successful terminal completion only from explicit authoritative
+WorkItem acceptance and validation. Objective achievement or evidence and any external
+Codex Goal state cannot establish WorkItem acceptance or ManagedRun success.
+
 ### ProcessGeneration
 
 Prove opaque launch identity, exact selected-account credential-negative binding, fresh
