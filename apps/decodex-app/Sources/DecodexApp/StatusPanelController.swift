@@ -50,6 +50,10 @@ final class StatusPanelController: NSObject {
 		}
 		positionPanel()
 		if NSApp.isActive == false {
+			// This is an explicit status-item click. Accessory apps do not
+			// reliably become active from cooperative activation before the panel
+			// is ordered front, so force activation for this explicit user-initiated
+			// presentation only. The close path never activates the app.
 			NSApp.activate(ignoringOtherApps: true)
 		}
 		panel.makeKeyAndOrderFront(nil)

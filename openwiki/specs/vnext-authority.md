@@ -505,16 +505,12 @@ code and may supply only independently re-derived invariants and hostile-test id
 
 RoleProfile Authority persists exactly the `advisor`, `lead`, `task`, and `reviewer` identities in
 `role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
-current-revision pointer per role. One initial bootstrap seam accepts user-supplied typed server
-configuration containing all four role-implied advisor/lead/task/reviewer scalar groups and invokes
-`bootstrap_role_profiles_exact` to create all four revision-one profiles atomically. PostgreSQL then
-owns every revision and current pointer. Later changes use only `update_role_profile_exact`, which
-accepts one typed role plus an expected revision, appends exactly one immutable revision, and
-advances only that role's pointer. Both functions return and retain PostgreSQL-built response bytes
-whose effects are assembled from the returned profile rows and the actual canonical
-activity/outbox identities. Routing and runtime never derive, select, or override model, reasoning,
-or service tier. Quick Task requires the current `task` RoleProfile; absence is a typed
-`QuickTaskUnavailable` initialization refusal and never authorizes synthesized defaults.
+current-revision pointer per role. `bootstrap_role_profiles_exact` accepts four fixed
+advisor/lead/task/reviewer scalar groups and creates all four revision-one profiles atomically.
+`update_role_profile_exact` accepts one typed role plus an expected revision, appends exactly one
+immutable revision, and advances only that role's pointer. Both functions return and retain
+PostgreSQL-built response bytes whose effects are assembled from the returned profile rows and the
+actual canonical activity/outbox identities.
 
 ## Conversation, context, and communication
 
@@ -559,23 +555,16 @@ side effects until tool/repository readback reconciles them.
 Status: Candidate 5 is approved target architecture. Implementation and integrated
 acceptance remain pending. Candidate-4 tree
 `f82b866e21f12742648023a2b468cc057afa52a1` is rejected provenance.
-This authority amendment changes no schema or product code, creates no migration, records no
-validation evidence, and does not claim live Quick Task success.
 
 Quick Task remains an ordinary multi-turn Conversation. Candidate 5 uses existing owners
-in this exact order. Its ordinary initial account selection is independent of Project and
-accepted Project routing policy. It requires no current Project routing-policy row, accepted
-Project policy, per-account `routing_compatibility_evidence`, or `quota_windows` projection. This
-selection occurs only while establishing the first RuntimeSession:
+in this exact order:
 
 1. Conversation authority creates the Conversation.
 2. Routing receives a prospective Turn UUID as intent. It creates no Turn, and no routing
    column has a foreign key to `turns` for that intent.
-3. The Quick Task routing adapter starts one transaction, locks the Account Registry's complete
-   current authority, and materializes Routing Snapshot without a source RuntimeSession or sticky
-   member.
-4. The existing Routing Decision selects the account exactly once in that transaction and persists
-   the immutable decision.
+3. Routing Snapshot loads and locks the complete account universe without a source
+   RuntimeSession or sticky member.
+4. Routing Decision selects the account exactly once.
 5. Continuation Plan consumes that selected decision and atomically creates the selected
    account snapshot, copied RoleProfile snapshot, one revision-1 unfenced `starting`
    RuntimeSession, inert `initial_thread` plan, exact receipt, activity, and outbox.
@@ -590,37 +579,30 @@ selection occurs only while establishing the first RuntimeSession:
 11. ProviderAttemptService owns preparation, authorization, ambiguity, positive evidence,
     and reconciliation.
 
-There is exactly one selecting Routing Decision for an ordinary Quick Task. Initial planning
-creates the first session; it is not explicit successor, same-thread reuse, or Context Pack
-fallback. Every later Turn uses a non-selecting immutable continuation route binding to the
-current RuntimeSession and its original initial decision, selected account snapshot, and copied
-Task RoleProfile snapshot. Same-thread and Context Pack planning retain that exact account and
-profile. Later routing never calls `read_current_task_routing_authority_exact()`, resolves another
-Account Registry snapshot, or runs selection. Selected-account drift, exhaustion, or readiness
-failure returns typed manual recovery without fallback, wake, alternate account, or re-selection.
+There is no second route decision, fallback, wake, alternate account, or account
+re-selection in the initial operation. Initial planning creates the first session. It is
+not explicit successor, same-thread reuse, or Context Pack fallback. Automatic
+cross-account fallback and wake remain disabled under XY-1304.
 
 | Owner | Candidate-5 authority |
 | --- | --- |
-| Account Registry | Complete non-tombstoned membership, canonical routing control and revision, account revisions, eligibility blockers, and current independent account-quota facts; no selection. |
-| Quick Task routing adapter | One transaction that materializes the only selecting Quick Task Routing Snapshot and Decision from locked Account Registry facts; later Turns receive non-selecting continuation bindings. |
-| Project routing | Accepted Project policy and compatibility evidence for ManagedRun and other policy-bound `L6` work; no ordinary initial Quick Task authority. |
+| Account Registry and Routing Snapshot | Complete lifecycle, control, capability, quota, blocker, and routing facts; no selection. |
 | Account Service | Account operations and exact selected-account readiness/credential/provider/HostCredentialStore pre-spawn fence; no selection. |
-| Routing Decision | Sole Quick Task account selector for first-session establishment and immutable route/continuation-binding writer. |
-| Continuation Plan | Initial snapshots, first starting RuntimeSession, inert initial plan, and same-thread/Context Pack planning that retains the original account/profile binding. |
+| Routing Decision | Sole Quick Task account selector and immutable route-decision writer. |
+| Continuation Plan | Initial snapshots, first starting RuntimeSession, inert initial plan, existing same-thread/Context Pack planning, and PostgreSQL-only explicit-successor evidence. |
 | Conversation authority | Conversation creation, atomic initial Turn/history admission, legal Turn finalization, and exact Turn lock/read proof. |
 | RuntimeSession Thread Establishment | RuntimeSession state/thread fields, exact thread fence and bind, and acknowledgement. |
 | ProcessSupervisor | ProcessGeneration intent, fresh spawn authority, exact readback, positive death evidence, and account-local quarantine. |
 | ProviderAttemptService | Attempt preparation, dispatch authorization, ambiguity, positive evidence, and reconciliation. |
 | ExecutionCoordinator | Crate-private stateless sequencing only. |
-| QuickTaskRuntime and ServiceApplication | Sequence and consume typed owner results only; no account, policy, profile, or capability selection. |
 
 Account Service can report and fence facts for the selected account. It cannot preselect,
-substitute, fall back to, or wake another account. Fixed mode accepts only its exact fixed
-eligible member. Balanced mode selects the first eligible member in canonical Account Registry
-order. Continuation Plan creates only the selected member's snapshots and RuntimeSession. Later
-selected-account drift fails closed before spawn without a second decision or another account.
+substitute, fall back to, or wake another account. If account A passes an Account Service
+subset but fails a complete routing capability while B is fully eligible, Routing
+Decision selects B. Continuation Plan creates only B's snapshots and RuntimeSession.
+Later B drift fails closed before spawn without a second decision or account A.
 
-#### Closed routing lineage
+#### Closed initial lineage
 
 For `routing_snapshots`:
 
@@ -630,90 +612,34 @@ For `routing_snapshots`:
   `profile_snapshot_source_revision`.
 - `L6` means all six fields are present and the three revisions are positive.
 
-Source lineage retains its closed all-null/all-present rule. Conversation initial selection uses
-`L0`; a later Conversation continuation binding uses `L6`; ManagedRun uses `L6`. Half-null lineage
-and a source-less ManagedRun reject.
+The latest schema keeps the existing foreign keys and defines one closed
+all-null/all-present shape check. The only valid combinations are
+`conversation_turn AND (L0 OR L6)` and `managed_run_execution AND L6`. Half-null
+lineage and a source-less ManagedRun reject.
 
-Selecting snapshots in the existing routing relations have exactly two `authority_shape` values:
-
-- `conversation_account_registry` is permitted only for initial Conversation `L0`. It binds the
-  exact Account Registry routing revision/mode/fixed target/order, current Task RoleProfile
-  revision, complete non-tombstoned membership, exact account revisions,
-  enabled/lifecycle/health/credential-binding blockers, and exactly two quota slots per member.
-  Project policy/evidence/build fields are null and no Project capability or compatibility rows
-  are consumed.
-- `managed_run_project_policy` is permitted only for ManagedRun `L6`. It retains the existing
-  accepted Project policy, compatibility evidence, capability, and Project-era quota shape.
-  Account-Registry-specific routing/profile/quota-slot fields are null.
-
-Reverse-shape constraints reject mixed fields, consumers, candidate children, or evidence. Each
-Account Registry quota slot has `duration_minutes` equal to `300` or `10080` and preserves one exact
-`account_quota_facts` source state:
-
-- `missing`: `used_percent`, `observed_at`, `resets_at`, and `error_code` are all null;
-- `current`: `used_percent`, `observed_at`, and `resets_at` are present and `error_code` is null; or
-- `observation_error`: typed `error_code` and `observed_at` are present while `used_percent` and
-  `resets_at` are null.
-
-The snapshot fabricates no quota revision, remaining value, confidence, evidence provenance, or
-legacy `quota_windows` value. The initial decision references that immutable snapshot and persists
-only `selected`, `waiting`, or `no_route`, plus exact exclusion reasons needed for replay. Fixed
-selection accepts only the exact fixed eligible member. Balanced selection follows canonical
-Account Registry order and classifies the two slots independently without a merged quota pool.
-
-The existing decision relation also has a closed `conversation_continuation` decision shape. It is
-non-selecting, has `L6` source lineage, directly references the current RuntimeSession and original
-initial selected decision, and repeats only that decision's account snapshot and copied Task
-RoleProfile snapshot identities. Candidate, policy, quota, exclusion, waiting, and selection fields
-are null. Reverse constraints require exact identity/revision equality with the source lineage.
+`decodex.enforce_routing_completeness()` has one narrow `L0` branch. It accepts only the
+exact prospective Conversation Turn intent when the locked Conversation is open at the
+expected revision, has no RuntimeSession or Turn, and every candidate member has
+`sticky=false`. Candidate membership, policy positions, account revisions, both quota
+observations, all eight capability observations, and blocker rows must exactly equal the
+locked Routing Snapshot universe. Missing, extra, duplicate, cross-linked, or reordered
+evidence rejects. The existing `L6` branch keeps exactly one sticky member.
 
 The supporting current owners obey these predicates:
 
-- The Quick Task routing adapter locks the canonical Account Registry routing row, complete
-  non-tombstoned membership, account revisions, blockers, current Task RoleProfile, and both quota
-  slots, then invokes snapshot resolution and route decision in one transaction. It does not call
-  `read_current_task_routing_authority_exact()` or create a Project-policy compatibility bridge.
-- `resolve_routing_snapshot_exact` accepts source RuntimeSession identity/revision only when both
-  are absent for Quick Task. It is used only for initial selection, consumes the locked Account
-  Registry facts, proves zero sticky members, and writes `conversation_account_registry` `L0`.
-- `route_account_exact` uses canonical Account Registry fixed or balanced control only for initial
-  selection and replays only its stored decision.
-- `bind_quick_task_continuation_exact` creates the immutable non-selecting continued decision from
-  the locked Conversation/source RuntimeSession and original initial decision. It never reads
-  current Project routing, resolves a snapshot, invokes the decision kernel, or changes
-  account/profile identity. Same-key replay returns the stored binding; a competing key for the
-  same prospective Turn creates no second binding.
+- `resolve_routing_snapshot_exact` accepts source RuntimeSession identity/revision only
+  when both are present or both absent. The absent branch proves initial predicates and
+  zero sticky members, then writes exact `L0`.
+- `route_account_exact` applies the same pair rule, selects in policy order, and replays
+  only its stored decision. The Conversation lock permits one competing initial key to be
+  fresh; exact-key replay is read-only.
 - `plan_initial_thread_continuation_exact` consumes only selected `L0` and creates the
   complete first-session authority cluster in one transaction.
-- Same-thread and Context Pack planning consume only `conversation_continuation`, retain the exact
-  original account and Task RoleProfile snapshots, and return typed manual recovery for selected
-  account drift, exhaustion, or readiness failure.
-- Routing codecs/readbacks preserve the closed snapshot and decision discriminators. Decision
-  completeness enforces selecting classification/exclusions or continued lineage, never both.
-
-#### Initial selection concurrency
-
-Initial selection is one top-level `READ COMMITTED` exact command. A completed same-key replay
-returns its stored response without domain work. A fresh execution takes authority locks in this
-order: the Conversation intent first; the
-`account_routing_control` singleton; every complete non-tombstoned account row in canonical UUID
-order; and the current Task RoleProfile row. It then reads and copies `account_routing_order` and
-both duration slots from `account_quota_facts` while retaining those locks through commit.
-
-Every enrollment, tombstone, order, fixed-target, or mode operation that can change membership or
-routing locks `account_routing_control` before the affected or complete account set in the same
-UUID order. Every account-local quota observation locks its account row before it inserts or
-updates the quota row and never takes `account_routing_control` afterward. Therefore selection's
-account locks also serialize an insert for an absent quota slot, and no routing/quota lock cycle is
-possible.
-
-Before commit, the command compares the locked routing revision/control/order, Task RoleProfile
-revision, account membership/revisions/blockers, and both exact quota tri-states with the copied
-snapshot. Any stale expected revision or mismatch rolls back the snapshot, decision, receipt,
-activity, and outbox and returns the typed conflict/refusal. Same-key concurrency waits for and
-replays the completed exact response without another snapshot or selection. Cross-key initial
-commands serialize on the Conversation lock: one may be fresh; every loser returns the persisted
-initial decision conflict/readback and creates no routing rows.
+- Routing codecs/readbacks represent the source pair as jointly optional and permit zero
+  sticky members only for `L0`.
+- Continuation-plan completeness proves selected `L0` and the new account/profile/session
+  lineage.
+- Routing-decision completeness remains unchanged.
 
 #### Atomic initial admission
 
@@ -765,18 +691,17 @@ RuntimeSession, status `failed`, and revision 2.
 
 #### Final trigger functions
 
-The latest schema creates these eight final trigger-function bodies and bindings directly:
+The latest schema creates these seven final trigger-function bodies and bindings directly:
 
 | Trigger function | Exact Candidate-5 predicate |
 | --- | --- |
-| `decodex.enforce_routing_completeness()` | Enforce the two selecting snapshot authority shapes, exact Account Registry quota tri-states, reverse nullability, and retained ManagedRun Project-policy `L6` behavior. |
-| `decodex.enforce_routing_decision_completeness()` | Require either one initial/ManagedRun selection classification with exact replay exclusions or one non-selecting Conversation continuation binding to the source RuntimeSession and original initial decision; reject mixed fields. |
+| `decodex.enforce_routing_completeness()` | Preserve complete existing policy/evidence/`L6` behavior and add only the exact zero-sticky `L0` branch above. |
 | `decodex.enforce_runtime_session_state()` | Preserve revision-one insert, identity, timestamps, terminal immutability, legal terminal edges, and ended-session active-Turn rules. Permit only: unfenced `starting` to request-fenced `starting` by setting the complete request ID/digest pair; that exact row to `active` by preserving the request, matching response ID, and setting exact response digest/thread ID; and `active` to `active` only for exact last-Turn acknowledgement. Reject generic `starting` to `active`, partial receipts, combined edges, or unrelated drift. |
 | `decodex.enforce_turn_state()` | Preserve active-session behavior. Under `starting`, permit only exact first-Turn insertion and active-revision-1 to failed-revision-2 after positive definite pre-effect refusal. Reject every other starting-session write. |
 | `decodex.enforce_history_item_state()` | Preserve active-session behavior. Under `starting`, permit only the admission transaction's ordinal-0 completed Message for the exact first Turn; reject update, second item, other ordinal/kind/status, wrong Turn, or cross-link. |
 | `decodex.enforce_provider_attempt_transition()` | Keep the accepted state algebra, unknown reasons, positive terminal-evidence rule, and immutable tuple; include immutable RuntimeSession thread-binding protocol/key identities. |
-| `decodex.enforce_provider_attempt_binding()` | For `initial_thread`, require the exact selected route lineage; for later Quick Task Turns, require the exact non-selecting continuation account/profile binding. Preserve ManagedRun and other accepted branches. |
-| `decodex.enforce_continuation_plan_completeness()` | For `initial_thread`, require selected `L0` and complete first-session lineage. For same-thread and Context Pack, require the continued decision and unchanged original account/Task RoleProfile snapshots. Explicit-successor completeness still requires the exact failed revision-2 Turn. |
+| `decodex.enforce_provider_attempt_binding()` | For `initial_thread`, require exact selected route/plan/account snapshot, ready ProcessGeneration/live epoch, completed thread fence/bind receipts, active post-bind RuntimeSession revision, and active revision-1 selected Turn. Preserve all non-initial branches. |
+| `decodex.enforce_continuation_plan_completeness()` | For `initial_thread`, require selected `L0`, prospective Turn intent, selected account/profile snapshots, one revision-1 unfenced starting RuntimeSession, and inert plan. Preserve same-thread and Context Pack branches; explicit-successor completeness also requires the exact failed revision-2 Turn. |
 
 The dispatch-authorization command performs its own exact Turn lock. A deferred trigger
 does not replace this pre-write fence. The continuation-rejection helper derives only the
@@ -787,11 +712,11 @@ unrelated write keeps existing active-only semantics. The narrow first-session p
 are not a generic starting-session bypass.
 
 Candidate 5 adds no module, fixed hierarchy, schema phase, ledger, generic transaction or
-recovery framework, transport/idempotency mechanism, wrapper, runner, scheduler, general selector,
-capability manager, compatibility bridge, duplicate Quick Task policy path, or explicit-successor
-product surface. It must preserve current-main independent account observations, Reset
-Card-before-profile ordering within an account, concurrent progress across accounts,
-revision-fenced cache publication, and query paths that do not join or start refresh work.
+recovery framework, transport/idempotency mechanism, wrapper, runner, scheduler, or
+explicit-successor product surface. It must preserve current-main independent account
+observations, Reset Card-before-profile ordering within an account, concurrent progress
+across accounts, revision-fenced cache publication, and query paths that do not join or
+start refresh work.
 
 Long-term context consists of immutable Project, Advisor, and Program revisions. Project
 context records decisions, constraints, repository facts, active Programs/Objectives,
@@ -820,11 +745,9 @@ for the same account, but the account and provider identity never switch under a
 runner. Account
 observed state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`, or
 `plugin_unready`. Administrative `enabled` is a separate versioned boolean; no observed
-state sets or clears it. Only `managed_run_project_policy` `L6` uses the Project-era quota
-representation with class/duration, remaining amount, reset time, observation time, and
-confidence. `conversation_account_registry` does not consume that representation; its exact
-duration-keyed 300-minute and 10080-minute slots preserve only the missing, current, or
-observation-error `account_quota_facts` fields defined above.
+state sets or clears it. Each quota window stores its class/duration, remaining amount,
+reset time, observation time, and confidence; 5-hour and 7-day windows are never inferred
+from positional primary/secondary ordering.
 
 `plugin_unready` is inert reserved state; no first-release passive probe sets it.
 Codex 0.144.2 and 0.144.4 expose no stable passive complete account-owned plugin,
@@ -951,114 +874,70 @@ ProviderAttempt storage, remote authentication, UI, packaging, release, or live 
 A future live-dispatch protocol gateway must be a separate typed authority that source-rejects
 alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
-### Durable routing and candidate-set authority
+### Durable routing-policy and candidate-set authority
 
-PostgreSQL owns revisioned complete Routing Snapshots and immutable Routing Decisions. A selecting
-Routing Decision remains the sole account selector; a continued decision binds lineage and cannot
-select. A routing request supplies identity and idempotency inputs only. Runtime, protocol clients,
-tests, `QuickTaskRuntime`, and
-`ServiceApplication` cannot supply or override candidate membership, routing control, sticky
-identity, eligibility facts, exclusions, or a preclassified candidate array.
-
-Ordinary initial Quick Task routing uses Account Registry authority directly. The Quick Task
-routing adapter is the only transaction owner that may materialize its `L0` Routing Snapshot and
-selecting Routing Decision from locked current facts. No later Quick Task Turn enters that path.
-The adapter does not require or consult Project routing policy, accepted Project policy,
-`routing_compatibility_evidence`, or `quota_windows`. It creates no compatibility bridge or
-duplicate policy synchronization authority.
-
-An initial `L0` snapshot binds, under one Account Registry revision boundary:
-
-- every non-tombstoned member exactly once and its exact account revision;
-- the canonical routing mode, optional fixed Account UUID, complete account order, and routing
-  revision;
-- the current Task RoleProfile revision;
-- current enabled, lifecycle, health, and credential-binding blockers for every member; and
-- exactly one 300-minute and one 10080-minute `account_quota_facts` slot for every member, each
-  copied as the exact missing/current/observation-error shape defined above.
-
-Those candidate facts remain in the existing Routing Snapshot/Decision lineage for exact replay
-and continuation. They do not acquire legacy revision, remaining, confidence, provenance, or
-`quota_windows` values. Project-policy/evidence/build fields are inapplicable and null.
+PostgreSQL owns a revisioned complete routing-authority snapshot and is the only authority that
+may construct the candidate universe. A routing-resolution request supplies identity and
+idempotency inputs only. Runtime, protocol clients, adapters, and tests cannot supply or override
+authoritative policy order, candidate membership, sticky identity, eligibility facts, exclusions,
+or a preclassified candidate array.
 
 The current `decodex-core::PolicySnapshot` remains a bounded inert value inside one accepted
 Project Policy revision. It neither enumerates the account inventory nor establishes routing
-completeness, eligibility, evidence provenance, or persistence freshness. For ManagedRun and other
-Project-policy `L6` work, Routing Snapshot remains the distinct database-owned complete value. A
-Rust wrapper cannot become authorization authority.
+completeness, eligibility, evidence provenance, or persistence freshness. Routing Snapshot is the
+distinct database-owned complete value; a Rust wrapper cannot become authorization authority.
 
-A Project-policy `L6` snapshot continues to bind:
+One snapshot binds, under the database locks that establish its revision boundary:
 
 - the exact accepted routing Policy revision, versioned `fixed` or `balanced` mode,
   optional fixed Account UUID, and canonical user-owned account order;
 - every current account-inventory member exactly once, with an explicit included or excluded
   disposition and an exact account revision;
-- sticky affinity plus the exact source RuntimeSession identity and revision;
+- sticky affinity, when present, plus the exact source RuntimeSession identity and revision;
 - required account, RoleProfile, and Codex-build compatibility facts and their exact revisions;
 - each exact quota, authentication, capability, and administrative evidence revision used;
 - the accepted required-capability set and capability applicability for every member; and
 - explicit blocker facts for every unknown or otherwise unusable member.
 
-The two selecting snapshot shapes use a closed discriminator and reverse nullability:
-`conversation_account_registry` accepts only the `L0` fields above, while
-`managed_run_project_policy` accepts only the retained Project-policy `L6` representation.
-Completeness is fail-closed within each shape. A duplicate, omitted, foreign, newly added,
-concurrently removed, or revision-changed inventory member, or an unknown required fact, blocks
-the snapshot or decision. `managed_run_project_policy` `L6` also rejects an unbound sticky source
-or incomplete Project policy/evidence. Silence never means excluded, eligible, or non-applicable.
+Completeness is fail-closed. A duplicate, omitted, foreign, newly added, concurrently removed, or
+revision-changed inventory member; an unbound sticky source; or an unknown required fact blocks the
+snapshot or decision. Silence never means excluded, eligible, or non-applicable.
 
-For Project-policy `L6`, selection and pure quota or reconciliation waits classify only included
-members after independent eligibility. Excluded members remain ineligible and do not alter those
-wait classifications. `no_route` projects the complete policy-member universe: every excluded
-member retains `excluded_by_policy` and its other persisted blockers, and every included member
-retains its exact blockers. An all-excluded universe is an explicit cause-complete `no_route`; a
-cause-free `no_route` is invalid.
+Selection and pure quota or reconciliation waits classify only included members after independent
+eligibility. Excluded members remain ineligible and do not alter those wait classifications.
+`no_route` instead projects the complete policy-member universe: every excluded member retains
+`excluded_by_policy` and its other persisted blockers, and every included member retains its exact
+blockers. An all-excluded universe is an explicit cause-complete `no_route`; a cause-free
+`no_route` is invalid.
 
-`decodex-core` is a pure deterministic selection kernel over a database-produced selecting
-snapshot. It does not establish provenance or completeness and is never invoked for a continued
-decision. PostgreSQL atomically persists only the resulting classification and exact normalized
-exclusions required for replay. Runtime consumes one exact persisted decision and sequences effects
-only; it cannot substitute a decision. Codex is a
+`decodex-core` is a pure deterministic decision kernel over this database-produced snapshot. It
+does not establish provenance or completeness. PostgreSQL atomically persists the resulting Routing
+decision, its complete normalized exclusions, and every evidence reference. Runtime consumes one
+exact persisted decision and sequences effects only; it cannot substitute a decision. Codex is a
 positive-evidence capability adapter and cannot determine membership, policy, or eligibility.
 One app-server process remains bound to one account, credentials never switch in a live process,
 and the separate 300-minute and 10080-minute quota facts for separate accounts are never merged.
 
-Sticky affinity applies only to selecting `managed_run_project_policy` `L6` and wins only when the
-bound member is independently eligible under the same complete snapshot. Eligibility requires the
-independent versioned `enabled=true` fact; observed health does not imply enablement. Every known
-depleted window excludes its account until reset. Unknown, stale, incompatible, disabled,
-authentication-failed, missing-duration, low-confidence, or precision-incompatible Project-policy
-facts block eligibility.
+Sticky affinity wins only when the bound member is independently eligible under the same complete
+snapshot. Eligibility requires the independent versioned `enabled=true` fact; observed health does
+not imply enablement. Every known depleted window excludes its account until reset. Unknown, stale,
+incompatible, disabled, authentication-failed, missing-duration, low-confidence, or precision-
+incompatible evidence blocks eligibility. When every otherwise eligible account is excluded only
+by usage, Routing Decision persists `waiting_usage` and the exact earliest-ready time. XY-1362 owns one
+restart-safe scheduler wake and always re-enters fresh authoritative resolution; routing owns no
+wake lifecycle.
 
-For initial Quick Task `L0`, fixed mode accepts only the exact fixed eligible member. Balanced mode
-uses canonical Account Registry order. Each 300-minute and 10080-minute quota fact is classified
-independently from its exact missing, current, or observation-error source shape; neither windows
-nor accounts form a merged pool. The persisted result is `selected`, `waiting`, or `no_route`.
-`waiting` is manual-retry state in this slice and registers no wake. There is no fallback,
-scheduler wake, or re-selection. Policy-bound routing may use only its separately accepted wait
-authority; routing itself owns no wake lifecycle.
-
-Account-owned readiness is evaluated only for Project-policy `L6` capabilities explicitly required
-by the accepted routing Policy revision. Unknown never satisfies a required capability. If the
-accepted required-capability set is empty, unknown account-owned plugin inventory is
-non-applicable; it is not positive readiness evidence and does not change an account to ready.
-XY-1336 remains future passive-receipt tracking. Host-owned before/after receipts prove causal
-no-mutation integrity only and cannot establish account-owned readiness. These capability rules do
-not add `routing_compatibility_evidence` to initial Quick Task eligibility.
-
-For a later Quick Task Turn, Routing Authority locks the current RuntimeSession and traces its
-immutable lineage to the original `conversation_account_registry` selected decision. It writes
-only a `conversation_continuation` decision binding for the prospective Turn. Same-thread and
-Context Pack planning consume that binding and retain the exact account and copied Task RoleProfile
-snapshots. A selected-account quota, lifecycle, health, credential, or readiness failure returns
-typed manual recovery. It cannot call current Project routing, resolve a candidate snapshot, invoke
-the selection kernel, fall back, wake, or re-select.
+Account-owned readiness is evaluated only for capabilities explicitly required by the accepted
+routing Policy revision. Unknown never satisfies a required capability. If the accepted required-
+capability set is empty, unknown account-owned plugin inventory is non-applicable; it is not
+positive readiness evidence and does not change an account to ready. XY-1336 remains future
+passive-receipt tracking. Host-owned before/after receipts prove causal no-mutation integrity only
+and cannot establish account-owned readiness.
 
 Experiment Authority owns the original causal experiment record. Retained-title Authority owns its
-two-effect title bridge. After an exact non-selecting continuation binding with an existing source
-RuntimeSession, Continuation Plan owns same-thread continuation when exact positive selected-account
-and retained-profile evidence permits it. Otherwise, it owns one atomic Context Pack plus fallback
-RuntimeSession on that same account and profile. These owners
+two-effect title bridge. After an exact Routing Decision with an existing source RuntimeSession,
+Continuation Plan owns same-thread continuation when exact positive account/profile/build evidence
+permits it. Otherwise, it owns one atomic Context Pack plus fallback RuntimeSession. These owners
 serve ordinary Conversation Turns and ManagedRun executions. The stateless ExecutionCoordinator
 sequences one Routing Decision, one Continuation Plan, one live ProcessGeneration fence, and
 ProviderAttempt preparation. Current production
@@ -1069,9 +948,12 @@ Repository/worktree/Git and artifact effects retain their own accepted authoriti
 owns or weakens those boundaries.
 
 Those paragraphs define retained final routing authority, not current implementation.
-Slice 1 enables only initial Quick Task selection after the Slice-1 subset of
-MacDogfoodReady passes. Recovery is an explicit versioned enable/disable, mode, or order
-command followed by a new task. It does not rebind or replay a thread.
+Slice 1 enables only initial selection after the Slice-1 subset of MacDogfoodReady
+passes: `fixed` considers its exact target, and `balanced` selects the first fully eligible
+account in canonical order.
+Selection evaluates both quota windows and returns a typed no-route or all-depleted
+result. Recovery is an explicit versioned enable/disable, mode, or order command followed
+by a new task. It does not rebind or replay a thread.
 
 [XY-1304](https://linear.app/hack-ink/issue/XY-1304) is the later acceptance owner for
 automatic cross-account same-thread fallback and all-depleted scheduler wake. Until its
@@ -1080,23 +962,20 @@ remain hard disabled. It does not block Quick Task, Project/Lead, ManagedRun, GP
 first Mac dogfood. Replay after an ambiguous outcome remains prohibited independent of
 XY-1304 and is reconciled by ProviderAttempt.
 
-Missing or observation-error quota slots and unknown, stale, auth-failed, or disabled Account
-Registry blockers never imply initial Quick Task eligibility. Capability-unready, incompatible,
-missing-duration, low-confidence, and precision-incompatible facts apply only to
-`managed_run_project_policy` `L6`. An all-depleted Slice-1 result exposes reset evidence and waits
-for explicit retry; it does not schedule a wake.
+Unknown, missing-duration, stale, low-confidence, auth-failed, capability-unready, or
+disabled facts never imply eligibility. An all-depleted Slice-1 result exposes reset
+evidence and waits for explicit retry; it does not schedule a wake.
 
-For Project-policy routing, readiness outside the accepted capability-applicability rule cannot
-authorize eligibility, assignment, reassignment, fallback, scheduling, wakeup, continuation, or
-production routing. A future operator-triggered active diagnostic requires a separate authority
-decision and remains non-routing evidence.
+Readiness outside the accepted capability-applicability rule cannot authorize account eligibility,
+assignment, reassignment, fallback, scheduling, wakeup, continuation, or production routing. A
+future operator-triggered active diagnostic requires a separate authority decision and remains
+non-routing evidence.
 
-Users exclusively select the four global RoleProfiles through their separate PostgreSQL
-authority. Runtime and routing cannot alter or derive model, reasoning, or service tier. Each
-RuntimeSession snapshots the current profile for its role; Quick Task requires `task`. Decodex keeps
-a user-owned desired inventory only as intent. Until a stable passive account-owned receipt exists,
-the first release reports plugin readiness as `unknown`; that unknown is blocking only when a
-Project-policy `L6` route requires the corresponding capability, and is non-applicable when the
+Users exclusively select the four global RoleProfiles. Runtime cannot alter model,
+reasoning, or service tier. Each RuntimeSession snapshots its profile. Decodex keeps a
+user-owned desired inventory only as intent. Until a stable passive account-owned receipt
+exists, the first release reports plugin readiness as `unknown`; that unknown is blocking only when the exact
+accepted routing policy requires the corresponding capability, and is non-applicable when the
 required-capability set is empty. Host facts never become positive account-readiness evidence or
 guide mutation from such a conclusion.
 

@@ -188,10 +188,6 @@ multi-turn Conversation with no WorkItem, ManagedRun, reviewer, PR, harness, or 
 Candidate-4 tree `f82b866e21f12742648023a2b468cc057afa52a1` remains materially
 rejected provenance.
 
-Scoped supersession: the earlier Candidate-5 requirement for Project policy order and
-capability facts does not apply to ordinary Quick Task. Account Registry authority selects once
-when the first RuntimeSession is established. ManagedRun Project-policy authority is unchanged.
-
 Candidate 4 failed because it did not close five authority boundaries:
 
 1. effect and successor fences did not lock the exact selected Turn and revision;
@@ -206,9 +202,8 @@ Candidate 5 uses existing owners in this exact order:
 1. Conversation authority creates the Conversation.
 2. Routing receives one prospective Turn UUID as intent. No Turn row or Turn foreign
    key exists at this point.
-3. The Quick Task routing adapter locks complete Account Registry membership, canonical routing
-   control, exact account facts and blockers, the current Task RoleProfile revision, and two exact
-   Account Registry quota slots per member.
+3. Routing Snapshot authority locks the complete account universe, policy order,
+   account revisions, separate quota facts, capability facts, and blockers.
 4. Routing Decision authority runs once and is the sole Quick Task account selector.
 5. Continuation Plan authority consumes that selected decision and atomically creates
    the selected account snapshot, copied RoleProfile snapshot, first revision-1
@@ -228,26 +223,19 @@ Candidate 5 uses existing owners in this exact order:
 Runtime is a stateless sequencer across these owners. It does not become an account,
 route, session, Turn, process, thread, or provider-effect authority.
 
-Selecting snapshots have two closed authority shapes. `conversation_account_registry` is the
-initial Quick Task `L0` shape and has null Project policy/evidence/build fields.
-`managed_run_project_policy` is the existing ManagedRun `L6` shape and keeps its complete Project
-policy/evidence/quota contract. Reverse-shape constraints reject mixed fields.
+The routing lineage has two closed shapes. `L0` has all six RuntimeSession, account
+snapshot, and profile snapshot identity/revision fields absent. `L6` has all six fields
+present and all three revisions positive. Conversation routing permits `L0` or `L6`.
+ManagedRun routing permits only `L6`. `L0` requires an open exact-revision Conversation,
+no existing RuntimeSession or Turn, zero sticky members, and an exact complete locked
+account universe. Half-present lineage, sticky `L0`, source fields in `L0`, a source-less
+ManagedRun, stale Conversation state, or incomplete, duplicate, extra, cross-linked, or
+reordered evidence fails closed.
 
-The Account Registry shape binds exact routing revision/mode/fixed target/order, current Task
-RoleProfile revision, every non-tombstoned member and blocker, and duration-keyed 300-minute and
-10080-minute quota slots. Each slot exactly preserves `account_quota_facts` as missing, current
-(`used_percent`, `observed_at`, `resets_at`), or observation error (`error_code`, `observed_at`).
-It fabricates no revision, remaining value, confidence, or provenance.
-
-There is exactly one selecting route decision for an ordinary Quick Task. Each later Turn creates
-an immutable non-selecting `conversation_continuation` decision binding to the current
-RuntimeSession, its original
-initial decision, selected account snapshot, and copied Task RoleProfile snapshot. It does not
-call `read_current_task_routing_authority_exact()`, resolve another Account Registry snapshot, or
-run selection.
-Same-thread continuation and Context Pack fallback retain that exact account and profile.
-Selected-account drift, exhaustion, or readiness failure returns typed manual recovery without
-fallback, wake, alternate account, or re-selection. Automatic cross-account fallback and
+There is no second route decision, fallback, wake, alternate account, or account
+re-selection in the initial operation. Initial planning is first-session creation. It
+is not same-thread reuse, explicit successor, or Context Pack fallback. Those existing
+continuation modes keep their own contracts. Automatic cross-account fallback and
 all-depleted wake remain disabled under XY-1304.
 
 Every process, thread, and provider-effect fence locks and rechecks the exact selected
@@ -268,11 +256,10 @@ locks the Turn named by the selected decision and requires that Turn to be in th
 Conversation and source RuntimeSession, `failed`, and revision 2. It has no protocol
 field, product command, runtime grant, facade, fallback, or wake path.
 
-The latest schema defines the final forms of the eight affected trigger functions
+The latest schema defines the final forms of the seven affected trigger functions
 directly:
 
 - `decodex.enforce_routing_completeness()`;
-- `decodex.enforce_routing_decision_completeness()`;
 - `decodex.enforce_runtime_session_state()`;
 - `decodex.enforce_turn_state()`;
 - `decodex.enforce_history_item_state()`;
@@ -330,9 +317,9 @@ work for an explicit decision.
   operations.
 - One app-server process remains bound to one Account UUID and provider identity for its
   lifetime. Credentials do not switch accounts in a live process.
-- PostgreSQL remains the complete routing-fact and decision authority. Runtime and clients cannot
-  supply the account universe, eligibility, Account Registry order, Project-policy order,
-  selection, continuation binding, or exclusions.
+- PostgreSQL remains the complete routing-fact and decision authority. Runtime and
+  clients cannot supply the account universe, eligibility, policy order, selection, or
+  exclusions.
 - ProcessSupervisor and ProviderAttemptService retain separate replacement-safety and
   external-effect-safety authority.
 - ExecutionCoordinator remains stateless and cannot authorize dispatch by itself.
