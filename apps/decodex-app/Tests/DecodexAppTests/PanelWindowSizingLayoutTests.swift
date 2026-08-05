@@ -232,30 +232,44 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testStatusItemPressDefersDeactivateHideForTheToggleAction() {
-		let statusItemRect = NSRect(x: 400, y: 900, width: 28, height: 24)
+	func testStatusPanelPresentationStateDismissalDoesNotReopenThePanel() {
+		var presentation = StatusPanelPresentationState()
 
-		XCTAssertTrue(
-			StatusPanelInteraction.isStatusItemPress(
-				eventType: .leftMouseDown,
-				mouseLocation: NSPoint(x: 414, y: 912),
-				statusItemRect: statusItemRect
-			)
-		)
-		XCTAssertFalse(
-			StatusPanelInteraction.isStatusItemPress(
-				eventType: .leftMouseDown,
-				mouseLocation: NSPoint(x: 300, y: 700),
-				statusItemRect: statusItemRect
-			)
-		)
-		XCTAssertFalse(
-			StatusPanelInteraction.isStatusItemPress(
-				eventType: .leftMouseUp,
-				mouseLocation: NSPoint(x: 414, y: 912),
-				statusItemRect: statusItemRect
-			)
-		)
+		XCTAssertEqual(presentation.toggle(), .present)
+		XCTAssertTrue(presentation.isPresented)
+		let deferredDismissal = presentation.scheduleDeactivateDismissal()
+
+		presentation.dismiss()
+		XCTAssertFalse(presentation.isPresented)
+		presentation.dismiss()
+		XCTAssertFalse(presentation.isPresented)
+		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
+		XCTAssertEqual(presentation.toggle(), .present)
+		XCTAssertTrue(presentation.isPresented)
+		XCTAssertEqual(presentation.toggle(), .dismiss)
+		XCTAssertFalse(presentation.isPresented)
+	}
+
+	func testStatusPanelPresentationStateAppliesTheCurrentDeferredDismissalOnce() {
+		var presentation = StatusPanelPresentationState()
+
+		XCTAssertEqual(presentation.toggle(), .present)
+		let deferredDismissal = presentation.scheduleDeactivateDismissal()
+
+		XCTAssertTrue(presentation.dismissIfCurrent(deferredDismissal))
+		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
+		XCTAssertFalse(presentation.isPresented)
+	}
+
+	func testStatusPanelPresentationStateCancelsAQueuedDismissalWhenTheToggleWins() {
+		var presentation = StatusPanelPresentationState()
+
+		XCTAssertEqual(presentation.toggle(), .present)
+		let deferredDismissal = presentation.scheduleDeactivateDismissal()
+
+		XCTAssertEqual(presentation.toggle(), .dismiss)
+		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
+		XCTAssertFalse(presentation.isPresented)
 	}
 
 	func testRoundedContentSizeCeilsFractionalDimensions() {
