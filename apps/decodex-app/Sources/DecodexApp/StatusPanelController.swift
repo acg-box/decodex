@@ -10,7 +10,6 @@ final class StatusPanelController: NSObject {
 	private let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
-	private var panelPresentation = StatusPanelPresentationState()
 
 	init(store: ResetCardStore) {
 		self.store = store
@@ -27,7 +26,7 @@ final class StatusPanelController: NSObject {
 
 		configureStatusItem()
 		configurePanel()
-		observeApplicationLifecycle()
+		observePanelLifecycle()
 	}
 
 	deinit {
@@ -36,11 +35,10 @@ final class StatusPanelController: NSObject {
 
 	@objc
 	private func togglePanel() {
-		switch panelPresentation.toggle() {
-		case .present:
-			showPanel()
-		case .dismiss:
+		if panel.isVisible {
 			orderPanelOut()
+		} else {
+			showPanel()
 		}
 	}
 
@@ -62,19 +60,6 @@ final class StatusPanelController: NSObject {
 		panel.orderOut(nil)
 	}
 
-	@objc
-	private func applicationDidResignActive(_: Notification) {
-		let generation = panelPresentation.scheduleDeactivateDismissal()
-		DispatchQueue.main.async { [weak self] in
-			guard let self,
-				self.panelPresentation.dismissIfCurrent(generation)
-			else {
-				return
-			}
-			self.orderPanelOut()
-		}
-	}
-
 	private func configureStatusItem() {
 		guard let button = statusItem.button else {
 			return
@@ -84,7 +69,7 @@ final class StatusPanelController: NSObject {
 		button.imagePosition = .imageOnly
 		button.target = self
 		button.action = #selector(togglePanel)
-		button.sendAction(on: [.leftMouseDown])
+		button.sendAction(on: [.leftMouseUp])
 		button.toolTip = "Decodex"
 		button.setAccessibilityLabel("Decodex")
 	}
@@ -96,10 +81,10 @@ final class StatusPanelController: NSObject {
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
 		panel.hasShadow = false
-		// AppKit's automatic deactivate hiding can restore the panel before a
-		// status-item mouse-up action and turn the first click into a close.
-		// Own the deactivate transition explicitly instead.
-		panel.hidesOnDeactivate = false
+		// Let NSPanel own the transient presentation lifecycle. Keeping this true
+		// prevents a panel shown by the status item from surviving app focus
+		// changes and competing with the next status-item click.
+		panel.hidesOnDeactivate = true
 		panel.isMovable = false
 		panel.level = .popUpMenu
 		panel.collectionBehavior = [
@@ -111,13 +96,7 @@ final class StatusPanelController: NSObject {
 		PanelWindowAppearance.apply(to: panel)
 	}
 
-	private func observeApplicationLifecycle() {
-		NotificationCenter.default.addObserver(
-			self,
-			selector: #selector(applicationDidResignActive(_:)),
-			name: NSApplication.didResignActiveNotification,
-			object: NSApp
-		)
+	private func observePanelLifecycle() {
 		NotificationCenter.default.addObserver(
 			self,
 			selector: #selector(panelDidResize(_:)),
@@ -175,44 +154,6 @@ final class StatusPanelController: NSObject {
 		return statusWindow.convertToScreen(
 			button.convert(button.bounds, to: nil)
 		)
-	}
-}
-
-struct StatusPanelPresentationState: Equatable {
-	enum Transition: Equatable {
-		case present
-		case dismiss
-	}
-
-	private(set) var isPresented = false
-	private var eventGeneration: UInt64 = 0
-
-	mutating func toggle() -> Transition {
-		invalidatePendingDismissal()
-		isPresented.toggle()
-		return isPresented ? .present : .dismiss
-	}
-
-	mutating func dismiss() {
-		invalidatePendingDismissal()
-		isPresented = false
-	}
-
-	mutating func scheduleDeactivateDismissal() -> UInt64 {
-		invalidatePendingDismissal()
-		return eventGeneration
-	}
-
-	mutating func dismissIfCurrent(_ generation: UInt64) -> Bool {
-		guard eventGeneration == generation, isPresented else {
-			return false
-		}
-		isPresented = false
-		return true
-	}
-
-	private mutating func invalidatePendingDismissal() {
-		eventGeneration &+= 1
 	}
 }
 
