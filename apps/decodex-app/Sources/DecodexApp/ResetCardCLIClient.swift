@@ -266,7 +266,9 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 		case .operationUnsettled:
 			return "Operation pending"
 		case .callbackCapabilityUnready:
-			return "Update required"
+			// Direct provider API observation does not require the optional Codex
+			// callback capability. Route actions keep their own admission check.
+			break
 		case .tombstoned:
 			return "Logged out"
 		case .ready:

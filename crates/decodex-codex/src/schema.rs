@@ -25,7 +25,6 @@ pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 	"thread/resume",
 	"thread/name/set",
 	"turn/start",
-	"account/rateLimits/read",
 	"collaborationMode/list",
 ];
 /// Notification methods required by the current Decodex adapter.

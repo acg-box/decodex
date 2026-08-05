@@ -58,7 +58,7 @@ use tokio::sync::watch;
 
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl,
-	account_launch::{ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError},
+	account_launch::{ApiResetCardRuntime, ResetCardInventoryObservation, ResetCardServiceError},
 	account_observation::AccountObservationService,
 	account_profile::{
 		AccountProfileClaimsView, AccountProfileRuntimeError, AccountProfileRuntimeResult,
@@ -270,7 +270,7 @@ pub(crate) struct ServiceApplication {
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
-	reset_cards: Option<ResetCardRuntime>,
+	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
 	quick_tasks: QuickTaskCapability,
 	doctor: DoctorReport,
@@ -314,7 +314,7 @@ impl ServiceApplication {
 		self
 	}
 
-	pub(crate) fn with_reset_cards(mut self, reset_cards: Option<ResetCardRuntime>) -> Self {
+	pub(crate) fn with_reset_cards(mut self, reset_cards: Option<ApiResetCardRuntime>) -> Self {
 		self.reset_cards = reset_cards;
 
 		self

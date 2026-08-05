@@ -457,7 +457,10 @@ struct ResetCardAccountRow: View {
 		case .operationUnsettled:
 			return "Account update pending"
 		case .callbackCapabilityUnready:
-			return "Login update unavailable"
+			// Account health and usage come from the direct provider API. The callback
+			// capability only gates Quick Task routing, so it is not an account-data
+			// error here.
+			break
 		case .tombstoned:
 			return "Logged out"
 		case .ready:

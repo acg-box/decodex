@@ -607,22 +607,6 @@ impl ProcessGenerationControl {
 		Ok(ProcessGenerationTermination::DeathUnproved)
 	}
 
-	/// Spawn one opaque attested launch only after a newly committed fence.
-	///
-	/// Callers supply only a new generation identity and external restore authorization. The
-	/// launch authority derives account, runner manifest, observed executable identity and command,
-	/// fixed arguments and environment, and the runtime private-stdio startup capability. Replay and
-	/// restored database state cannot enter this path. The returned receipt contains no protocol
-	/// writer.
-	pub(crate) async fn spawn_fenced(
-		&self,
-		generation_id: ProcessGenerationId,
-		execution_authorization: ProcessExecutionAuthorization,
-		launch: AttestedAppServerLaunch,
-	) -> Result<FencedProcess, ProcessSupervisorError> {
-		self.spawn_fenced_inner(generation_id, execution_authorization, launch, None, None).await
-	}
-
 	/// Spawn only after the durable ProcessGeneration insert re-locks Quick Task Turn authority.
 	pub(crate) async fn spawn_fenced_quick_task(
 		&self,
@@ -635,28 +619,7 @@ impl ProcessGenerationControl {
 			generation_id,
 			execution_authorization,
 			launch,
-			None,
-			Some(admission),
-		)
-		.await
-	}
-
-	/// Spawn only under one live, already-effectful Reset Card reconciliation claim.
-	pub(crate) async fn spawn_fenced_reset_reconciliation(
-		&self,
-		generation_id: ProcessGenerationId,
-		execution_authorization: ProcessExecutionAuthorization,
-		launch: AttestedAppServerLaunch,
-		outbox_id: i64,
-		worker_id: &str,
-		claim_token: &str,
-	) -> Result<FencedProcess, ProcessSupervisorError> {
-		self.spawn_fenced_inner(
-			generation_id,
-			execution_authorization,
-			launch,
-			Some((outbox_id, worker_id, claim_token)),
-			None,
+			admission,
 		)
 		.await
 	}
@@ -666,8 +629,7 @@ impl ProcessGenerationControl {
 		generation_id: ProcessGenerationId,
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
-		reconciliation: Option<(i64, &str, &str)>,
-		quick_task: Option<FreshQuickTaskProcessGeneration>,
+		admission: FreshQuickTaskProcessGeneration,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let intent = launch.derive_intent(
 			generation_id,
@@ -676,31 +638,11 @@ impl ProcessGenerationControl {
 		);
 		let account_binding = launch.account_binding().clone();
 		let mut supervision = self.reserve_supervision(&intent.generation_id)?;
-		let preparation = match (reconciliation, quick_task) {
-			(Some((outbox_id, worker_id, claim_token)), None) =>
-				self.inner
-					.store
-					.prepare_reset_reconciliation_process_generation(
-						&intent,
-						&account_binding,
-						outbox_id,
-						worker_id,
-						claim_token,
-					)
-					.await,
-			(None, Some(admission)) =>
-				self.inner
-					.store
-					.prepare_quick_task_bound_process_generation(
-						&intent,
-						&account_binding,
-						admission,
-					)
-					.await,
-			(None, None) =>
-				self.inner.store.prepare_bound_process_generation(&intent, &account_binding).await,
-			(Some(_), Some(_)) => return Err(ProcessSupervisorError::AuthorityConflict),
-		}
+		let preparation = self
+			.inner
+			.store
+			.prepare_quick_task_bound_process_generation(&intent, &account_binding, admission)
+			.await
 		.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
