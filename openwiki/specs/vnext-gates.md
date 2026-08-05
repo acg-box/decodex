@@ -171,8 +171,6 @@ outcomes and prove:
 - each missing or failed Quick Task dependency produces one immutable closed redacted
   `QuickTaskUnavailableReason`, and execute/start/resume return the typed unavailable
   result without hiding it through `.ok()`, an optional setter, or an omitted field;
-- the initial user-supplied typed RoleProfile configuration bootstraps all four roles atomically,
-  and a missing current `task` profile is a typed Quick Task initialization refusal;
 - Quick Task unavailability does not remove diagnostics, account recovery, control-plane
   commands, or available PostgreSQL-backed reads;
 - ManagedRepository absence is `Disabled`; repository-only configuration, path, Git,
@@ -249,46 +247,34 @@ old/new adapter compatibility matrix.
 Candidate 5 remains target architecture. Candidate-4 tree
 `f82b866e21f12742648023a2b468cc057afa52a1` is rejected provenance and cannot supply
 implementation evidence.
-This documentation amendment is not schema, code, migration, validation, or live-success evidence.
 
 The integrated gate covers seven bounded behavior groups. They are test responsibilities,
 not schema phases or separate authority frameworks.
 
-1. **First and later Turn authority.** On a fresh latest-schema local database, establish six ready
-   non-tombstoned accounts, canonical Account Registry routing, and the separately bootstrapped
-   RoleProfiles. Prove the first RuntimeSession is selected and created with no Project, accepted
-   Project policy, `routing_compatibility_evidence`, or `quota_windows` seed. On later Turns, prove
-   `read_current_task_routing_authority_exact()` and `resolve_routing_snapshot_exact` are never
-   called. The immutable
-   non-selecting continuation decision must reference the current RuntimeSession, original initial
-   decision, selected account, and copied Task RoleProfile. Same-thread and Context Pack retain
-   those identities. Drift, exhaustion, or readiness failure returns typed manual recovery with no
-   fallback, wake, or re-selection. ManagedRun still requires its complete Project-policy `L6`.
-2. **Closed persistence and quota replay.** Prove `conversation_account_registry` initial `L0` and
-   `managed_run_project_policy` `L6` are the only selecting snapshot shapes, and reverse constraints
-   reject mixed consumers, fields, children, or evidence. For every Account Registry member, prove
-   exactly one 300-minute and one 10080-minute slot and exact replay of: missing with all
-   observation fields null; current with `used_percent`/`observed_at`/`resets_at` and no error; and
-   observation error with typed `error_code`/`observed_at` and no usage/reset. Reject fabricated
-   revision, remaining, confidence, provenance, or legacy quota values. Exercise fixed exact-target
-   and balanced canonical-order selection with independent missing/current/error and 5-hour/7-day
-   exhaustion. Replay only `selected`/`waiting`/`no_route` and exact exclusion reasons.
-3. **Selection concurrency.** Prove one top-level `READ COMMITTED` exact command locks Conversation
-   intent, routing control, canonical-UUID account rows, and current Task RoleProfile before it
-   copies order and quota facts. Race it against enrollment, tombstone, order, fixed/mode, account
-   observation, and quota writes. Prove routing writers take control before account rows, quota
-   writers take account before quota and never control afterward, and an absent quota insertion
-   waits on the account fence. Verify stale pre-commit facts roll back every effect. Same-key
-   contenders replay one exact result; cross-key contenders produce one fresh selection and no
-   duplicate snapshot/decision. For a later Turn, same-key contenders replay one continued binding
-   and cross-key contenders create neither a second binding nor any selection work.
-4. **Role, admission, and effect fences.** Prove typed configuration bootstraps all four
-   RoleProfiles atomically, later updates remain in RoleProfile Authority, and missing current
-   `task` returns `QuickTaskUnavailable` without synthesized defaults. Prove initial
-   account/profile/session/plan and first Turn/Message atomicity. At every selected-account,
-   ProcessGeneration, thread, and ProviderAttempt fence, prove drift or lost-result/restart state
-   cannot re-select, spawn from non-fresh authority, duplicate an attempt, or fail the Turn. Only
-   positive definite pre-effect refusal may create failed revision 2; explicit successor remains
+1. **Initial routing lineage.** Prove exact `L0` all-null source lineage, open
+   exact-revision Conversation, no RuntimeSession or Turn, zero sticky members, and exact
+   complete locked member/order/account/two-window quota/eight-capability/blocker facts.
+   Preserve exact `L6` all-present positive lineage and one sticky member. Reject every
+   partial, source-bearing/sticky `L0`, source-less ManagedRun, stale Conversation, or
+   missing/extra/duplicate/reordered/cross-linked fact. Under cross-key concurrency, one
+   initial Routing Decision is fresh; same-key replay is read-only.
+2. **First-session and admission atomicity.** Prove Continuation Plan creates only the
+   selected account/profile snapshots, first revision-1 unfenced starting RuntimeSession,
+   inert initial plan, receipt/activity/outbox in one transaction. Then prove Conversation
+   authority creates the exact active revision-1 sequence-1 user Turn and only ordinal-0
+   completed Message in one transaction. Every failure or competing key leaves no partial
+   domain effect.
+3. **Sole selection and exact fences.** Make one account pass a subset of Account Service
+   checks but fail complete routing capability while another is eligible. Routing Decision
+   must select only the eligible account, and Continuation Plan must create only that
+   account's lineage. Account Service later fences that selected account only. Prove exact
+   Turn locks at ProcessGeneration, thread, and ProviderAttempt boundaries and refusal on
+   drift without re-selection, fallback, or wake.
+4. **Replay, ambiguity, and terminalization.** At every process/thread/attempt lost-result
+   and restart cut, only a fresh ProcessGeneration can spawn. Replayed, rejected, and
+   unknown state cannot spawn, replace, adopt, create a successor, duplicate an attempt,
+   or fail the Turn. Only positive definite pre-effect refusal can move the exact Turn to
+   failed revision 2. Explicit successor locks only that failed revision-2 Turn and stays
    PostgreSQL-only non-dispatch evidence.
 5. **Conversation and stream order.** Preserve result-before-stream order, one actor owner,
    bounded deferred publication, one command/registration slot, explicit publication
@@ -302,11 +288,10 @@ not schema phases or separate authority frameworks.
    reconciliation, exact session admission bounds including handshakes, zero surviving
    work, and cleanup only after closed accounting.
 
-The latest schema must create the final accepted bodies and bindings for exactly these eight
+The latest schema must create the final accepted bodies and bindings for exactly these
 affected trigger functions:
 
 - `decodex.enforce_routing_completeness()`;
-- `decodex.enforce_routing_decision_completeness()`;
 - `decodex.enforce_runtime_session_state()`;
 - `decodex.enforce_turn_state()`;
 - `decodex.enforce_history_item_state()`;
@@ -418,14 +403,11 @@ MacDogfoodReady requires:
 - a fresh latest-schema PostgreSQL 18 database or the accepted local reset result;
 - the signed daemon wrapper, exact Keychain identity/access group, and same-UID transport;
 - Account Registry/HostCredentialStore exact bindings and routing controls;
-- all four global RoleProfiles from the atomic typed configuration bootstrap, including a current
-  `task` profile;
 - exact-build account login/refresh callback proof;
 - independent 300-minute and 10,080-minute quota facts;
 - current-main account observations, Reset Card/profile readback, and terminal Reset Card
   replay;
-- Candidate-5 Account Registry initial routing without a Project/policy/evidence seed, plus
-  process/thread/attempt fences;
+- Candidate-5 initial routing/process/thread/attempt fences;
 - minimal Accounts/Conversation/Health GPUI; and
 - packaged startup with zero DDL, no schema-owner credential, no old watcher,
   environment credential projection, helper, `:8192`, or old database input.
@@ -461,9 +443,6 @@ Stop the owning gate on:
   state that substitutes for current owner fences;
 - repository configuration that blocks core parsing or duplicates PostgreSQL path
   authority;
-- a Quick Task dependency on Project policy, `routing_compatibility_evidence`, or `quota_windows`;
-  a later-Turn snapshot/selection call; or a compatibility bridge that keeps duplicate routing
-  paths;
 - a second account selector, provider-effect ledger, process owner, or coordinator state;
 - possible external-effect replay without positive reconciliation;
 - Candidate-5 partial lineage, partial admission, ambiguous terminalization, or account
