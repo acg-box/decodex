@@ -949,7 +949,19 @@ struct QuickTaskThreadResponseWire {
 	agent_role: Option<String>,
 	git_info: Option<QuickTaskGitInfoWire>,
 	name: Option<String>,
+	#[serde(default)]
+	section: Option<QuickTaskThreadSectionWire>,
+	#[serde(default)]
+	section_entered_at: Option<i64>,
 	turns: Vec<QuickTaskForbiddenValueWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QuickTaskThreadSectionWire {
+	id: String,
+	name: String,
 }
 
 #[allow(dead_code)]
@@ -1499,6 +1511,8 @@ const THREAD_RESPONSE_FIELDS: &[&str] = &[
 	"agentRole",
 	"gitInfo",
 	"name",
+	"section",
+	"sectionEnteredAt",
 	"turns",
 ];
 const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
@@ -1845,6 +1859,98 @@ mod tests {
 		assert_eq!(turn.status(), QuickTaskTurnStatus::InProgress);
 		assert!(decode_quick_task_turn_interrupt_response(b"{}").is_ok());
 		assert!(decode_quick_task_thread_archive_response(b"{}").is_ok());
+	}
+
+	#[test]
+	fn current_null_thread_section_fields_decode() {
+		let mut current = thread_response("thread-1", "gpt-5", "/workspace");
+		current["thread"]["section"] = Value::Null;
+		current["thread"]["sectionEnteredAt"] = Value::Null;
+		let bytes = serde_json::to_vec(&current).expect("fixture response must serialize");
+
+		assert!(decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok());
+		assert!(decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok());
+	}
+
+	#[test]
+	fn populated_thread_section_decodes() {
+		let mut current = thread_response("thread-1", "gpt-5", "/workspace");
+		current["thread"]["section"] = json!({"id": "section-1", "name": "Active"});
+		current["thread"]["sectionEnteredAt"] = json!(2);
+
+		assert!(
+			decode_quick_task_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&current).expect("fixture response must serialize"),
+			)
+			.is_ok()
+		);
+	}
+
+	#[test]
+	fn legacy_omitted_thread_section_fields_decode() {
+		let legacy = thread_response("thread-1", "gpt-5", "/workspace");
+		let thread = legacy["thread"].as_object().expect("fixture thread must be an object");
+
+		assert!(!thread.contains_key("section"));
+		assert!(!thread.contains_key("sectionEnteredAt"));
+		assert!(
+			decode_quick_task_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&legacy).expect("fixture response must serialize"),
+			)
+			.is_ok()
+		);
+	}
+
+	#[test]
+	fn malformed_or_unknown_thread_section_is_rejected() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let cases = [
+			(
+				"missing name",
+				json!({"id": "section-1"}),
+				QuickTaskContractError::MissingResponseField,
+			),
+			(
+				"invalid id type",
+				json!({"id": 1, "name": "Active"}),
+				QuickTaskContractError::MalformedResponse,
+			),
+			(
+				"unknown field",
+				json!({"id": "section-1", "name": "Active", "unexpected": true}),
+				QuickTaskContractError::UnknownResponseField,
+			),
+		];
+
+		for (case, section, expected) in cases {
+			let mut response = canonical.clone();
+			response["thread"]["section"] = section;
+
+			assert_eq!(
+				decode_quick_task_thread_start_response(
+					&start_request(),
+					&serde_json::to_vec(&response).expect("fixture response must serialize"),
+				)
+				.map(|_| ()),
+				Err(expected),
+				"{case}",
+			);
+		}
+
+		let mut invalid_entered_at = canonical;
+		invalid_entered_at["thread"]["sectionEnteredAt"] = json!("2");
+
+		assert_eq!(
+			decode_quick_task_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&invalid_entered_at).expect("fixture response must serialize"),
+			)
+			.map(|_| ()),
+			Err(QuickTaskContractError::MalformedResponse),
+			"invalid section-entered timestamp",
+		);
 	}
 
 	#[test]
