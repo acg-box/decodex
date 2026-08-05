@@ -17,9 +17,9 @@ decision, RuntimeSession decision, process state, or ProviderAttempt state.
 | --- | --- |
 | Conversation authority | Ordinary Conversation and Turn lifecycle, including Candidate-5 atomic first Turn/history admission and legal Turn finalization. |
 | ManagedRun authority | ManagedRun lifecycle, execution assignment, wait state, review, acceptance, and completion. |
-| Routing Snapshot | Complete account universe, policy order, account/evidence revisions, capability/quota facts, and blocker completeness. |
-| Routing Decision | Sole account selection, exact cause projection, and immutable route result. |
-| Continuation Plan | First-session planning, exact same-thread reuse, atomic Context Pack plus fallback RuntimeSession, and PostgreSQL-only explicit-successor evidence. |
+| Routing Snapshot | Closed consumer-specific authority: initial `conversation_account_registry` `L0` facts or `managed_run_project_policy` `L6` policy/evidence facts; never a merged shape. |
+| Routing Decision | Sole selector for selecting snapshots, exact shape-specific cause projection, and immutable non-selecting `conversation_continuation` binding. |
+| Continuation Plan | First-session planning plus same-thread or Context Pack continuation that retains the original Quick Task account/profile binding; PostgreSQL-only explicit-successor evidence. |
 | RuntimeSession Thread Establishment | Exact thread request fence, start binding, activation, and acknowledgement. |
 | ProcessSupervisor | ProcessGeneration intent, live fence, positive-only death evidence, and account-local quarantine. |
 | ProviderAttemptService | Atomic attempt binding, dispatch authorization, provider-effect state, positive evidence, restore projection, and reconciliation. |
@@ -51,7 +51,7 @@ second ledger or synthesize acceptance.
 ## Final latest-schema cut
 
 The latest schema includes the final closed route and wait vocabulary and the final
-consumer-generic routing, continuation, and ProviderAttempt definitions directly. It does
+consumer-specific routing, continuation, and ProviderAttempt definitions directly. It does
 not contain the retired ManagedRun-local submitted-turn receipts, safety inputs, effects,
 or barriers. It contains no compatibility or fallback writer for those shapes.
 
@@ -62,7 +62,8 @@ action. Product runtime never interprets an old shape.
 
 The latest schema retains sole writers:
 
-- Routing Decision for account choice and route causes;
+- Routing Decision for initial Quick Task or ManagedRun account choice, route causes, and
+  non-selecting Quick Task continuation binding;
 - Continuation Plan for RuntimeSession continuation/creation;
 - ProcessSupervisor for ProcessGeneration;
 - ProviderAttemptService for provider effects; and
@@ -70,40 +71,56 @@ The latest schema retains sole writers:
 
 ## Route projection
 
-Routing Decision loads and locks the complete Routing Snapshot. The caller supplies no
-account list, policy order, eligibility, exclusion, or account choice.
+Routing Snapshot and Routing Decision expose closed consumer-specific authority shapes. For a
+selecting shape, Routing Decision locks the complete matching snapshot. The caller supplies no
+account list, order, eligibility, exclusion, evidence, or account choice.
 
-Selection and pure-wait classification use only independently eligible included members.
-Policy-excluded members never become eligible and do not participate in quota or
-reconciliation wait classification. A `no_route` projection uses the complete persisted
-policy-member universe. Every excluded member keeps `excluded_by_policy` plus every other
-blocker. Every included member keeps its exact blockers. An all-excluded universe is a
-cause-complete `no_route`; cause-free `no_route` is invalid.
+### ManagedRun Project-policy `L6`
 
-The 300-minute and 10,080-minute quota facts remain independent. Each retains duration,
-source identity, observation revision, exact raw timestamp, exact microsecond value,
-confidence, and reset instant. Routing classifies both again at its database-authored
-decision instant. A fact that ages after snapshot creation keeps the exact stale or
-reset-elapsed cause.
+Only `managed_run_project_policy` uses the complete policy-member universe, policy-excluded
+members, sticky affinity, capability facts, Project evidence, and Project-era quota provenance.
+Selection and pure-wait classification use independently eligible included members. A `no_route`
+projection retains `excluded_by_policy` and every other exact blocker for each excluded member and
+all exact blockers for included members. An all-excluded universe is cause-complete; cause-free
+`no_route` is invalid.
 
-Sticky affinity applies only after independent account, capability, quota, process, and
-attempt eligibility. Route results are:
+For this shape only, each independent 300-minute and 10080-minute quota window retains source
+identity, observation revision, raw provider timestamp, exact microsecond value, confidence, reset
+instant, and other accepted Project-era provenance. Routing reclassifies both at its
+database-authored decision instant and retains exact stale or reset-elapsed causes.
 
-- `selected`: one independently eligible account;
-- `waiting_usage`: every otherwise eligible account is blocked only by current positive
-  quota depletion; includes complete depletion causes and earliest ready instant;
-- `waiting_reconciliation`: every otherwise eligible path is blocked only by unresolved
-  ProcessGeneration or ProviderAttempt state; and
-- `no_route`: complete mixed or non-wake causes; it grants no wake and does not fail the
-  task by itself.
+Sticky affinity applies only after independent account, capability, quota, process, and attempt
+eligibility. ManagedRun route results are `selected`, `waiting_usage`,
+`waiting_reconciliation`, or `no_route`. `waiting_usage` requires pure positive depletion and an
+earliest-ready instant. `waiting_reconciliation` requires exact unresolved ProcessGeneration or
+ProviderAttempt state. Mixed causes are `no_route`. Missing quota provenance is `usage_unproven`;
+reconciliation without an exact unresolved process or attempt is `reconciliation_unproven`.
 
-Authentication, plugin, disabled account, unknown capability, dependency, approval,
-user, external, and Reviewer causes do not become quota or reconciliation causes. Missing
-quota provenance becomes `usage_unproven`. Reconciliation without an exact unresolved
-process or attempt becomes `reconciliation_unproven`.
+### Initial Quick Task Account Registry `L0`
 
-An unresolved process plus positive depletion is mixed `no_route`, not a quota wake.
-Separate account quotas are never pooled, merged, summed, averaged, or caller-ranked.
+`conversation_account_registry` binds complete non-tombstoned Account Registry membership,
+canonical mode/fixed target/order and routing revision, exact account revisions and blockers, and
+the current Task RoleProfile revision. Every member has exactly two duration-keyed quota slots:
+
+- `missing`: `used_percent`, `resets_at`, `error_code`, and `observed_at` are null;
+- `current`: `used_percent`, `resets_at`, and `observed_at` are present and `error_code` is null;
+  or
+- `observation_error`: typed `error_code` and `observed_at` are present while `used_percent` and
+  `resets_at` are null.
+
+The slot durations are exactly `300` and `10080`. This shape has no policy member/exclusion,
+sticky, capability, Project evidence, quota source identity, observation revision, remaining,
+confidence, or provenance fields. Fixed mode accepts only its exact eligible target. Balanced mode
+uses canonical Account Registry order. The independent slots and separate accounts are never
+pooled. The immutable result persists only `selected`, `waiting`, or `no_route` plus exact replay
+exclusions. `waiting` is manual-retry state and grants no wake.
+
+### Later Quick Task continuation `L6`
+
+`conversation_continuation` is an immutable non-selecting decision bound to the current
+RuntimeSession and its original initial decision, selected account snapshot, and copied Task
+RoleProfile snapshot. It has no candidate projection and never invokes Routing Snapshot resolution
+or the selector. Same-thread and Context Pack planning retain that exact account and profile.
 
 ## Candidate-5 initial operation
 
@@ -112,9 +129,9 @@ Candidate 5 adds no coordinator state or new owner. The exact order is:
 1. Conversation authority creates the Conversation.
 2. The routing request supplies one prospective Turn UUID as intent only. No Turn row or
    Turn foreign key exists yet.
-3. Routing Snapshot proves the exact initial zero-source lineage and complete locked
-   account universe.
-4. Routing Decision selects one account exactly once.
+3. Routing Snapshot proves exact `conversation_account_registry` zero-source lineage and the
+   complete locked Account Registry facts defined above.
+4. Routing Decision selects one account exactly once for the Quick Task lifetime.
 5. Continuation Plan atomically creates selected account/profile snapshots, the first
    revision-1 unfenced `starting` RuntimeSession, inert `initial_thread` plan, exact
    receipt, activity, and outbox.
@@ -126,27 +143,30 @@ Candidate 5 adds no coordinator state or new owner. The exact order is:
    thread.
 10. ProviderAttemptService prepares and authorizes the exact attempt.
 
-There is no second route decision, alternate account, initial fallback, wake, or account
-re-selection. Initial planning has no source RuntimeSession and no sticky member. It is
-first-session creation, not same-thread reuse, explicit successor, or Context Pack
-fallback.
+There is no second selection, alternate account, fallback, wake, or account re-selection. Initial
+planning has no source RuntimeSession and no sticky member. Later Turns use only
+`conversation_continuation`; selected-account drift, exhaustion, or readiness failure returns typed
+manual recovery without invoking the selector.
 
 ### Initial lineage
 
-`L0` has all six RuntimeSession, account-snapshot, and profile-snapshot
-identity/revision fields absent. `L6` has all six present with positive revisions.
-Conversation work permits `L0` or `L6`; ManagedRun work permits only `L6`.
+`L0` has all six RuntimeSession, account-snapshot, and profile-snapshot identity/revision fields
+absent. `L6` has all six present with positive revisions. Initial Quick Task selection is
+`conversation_account_registry` `L0`; later Quick Task binding is non-selecting
+`conversation_continuation` `L6`; ManagedRun selection is `managed_run_project_policy` `L6`.
 
-The final schema keeps all foreign keys and one exact all-null/all-present check. `L0`
-requires an open exact-revision Conversation, no RuntimeSession or Turn, zero sticky
-members, and exact complete locked membership/order/account/two-window quota/eight
-capability/blocker facts. Partial lineage, source fields, sticky `L0`, existing session or
-Turn, closed/stale Conversation, source-less ManagedRun, and missing, extra, duplicate,
-cross-linked, or reordered evidence reject.
+The final schema keeps all foreign keys and the exact all-null/all-present check. Initial `L0`
+requires an open exact-revision Conversation, no RuntimeSession or Turn, zero sticky members, and
+complete Account Registry membership/order/routing/account/blocker/Task RoleProfile facts with
+exactly the two tri-state quota slots above. Its policy/capability/Project evidence and Project-era
+quota fields are null. ManagedRun `L6` retains the complete Project-policy representation. Reverse
+constraints reject partial lineage, mixed shapes, wrong consumers, missing or duplicate members or
+slots, cross-links, and reordered facts.
 
-One Conversation lock permits one cross-key initial decision to be fresh. Exact-key replay
-is read-only. Continuation planning accepts only the selected `L0` result and rolls back
-the complete first-session authority cluster on any failure.
+One Conversation lock permits one cross-key initial decision to be fresh. Exact-key replay is
+read-only. Initial planning accepts only selected `conversation_account_registry` `L0` and rolls
+back the complete first-session authority cluster on failure. Later planning accepts only the
+non-selecting binding and preserves the original account/profile identities.
 
 ### Initial admission
 
@@ -218,9 +238,11 @@ dependencies, and routes remain independently eligible.
 ## Transport and production isolation
 
 The exact-current protocol may expose one read-only immutable execution-decision query.
-It returns the closed consumer, route kind, complete exact causes, and independent quota
-exclusions. It cannot create a route, RuntimeSession, process, ProviderAttempt, wake,
-retry, receipt, or dispatch fence.
+It returns the closed consumer and authority shape. A ManagedRun result includes complete
+Project-policy causes and quota exclusions; an initial Quick Task result includes only its exact
+Account Registry tri-state causes; a later Quick Task result includes only the non-selecting source
+binding. The query cannot create a route, RuntimeSession, process, ProviderAttempt, wake, retry,
+receipt, or dispatch fence.
 
 The service uses the owner-only same-UID Unix transport. It has no TCP or loopback
 fallback. Remote and cross-UID authority remains separately gated.
@@ -238,13 +260,16 @@ After source freeze, validation must cover:
   daemon startup with zero DDL and no schema-owner credential;
 - exact current catalog/authority for all routing, continuation, Conversation,
   ProcessGeneration, ProviderAttempt, and read-only projection objects;
-- both consumer shapes and rejection of every partial or cross-linked identity;
-- complete route universe, all-excluded and mixed policies, cause-free rejection,
-  independent quota facts, aging, sticky eligibility, and exact pure-wait rules;
-- Candidate-5 `L0`/`L6`, sole account selection, atomic first-session cluster, atomic
-  first Turn/history admission, exact effect fences, fresh/replay/reject/unknown behavior,
-  and definite pre-effect refusal;
-- existing-session same-thread and atomic Context Pack paths;
+- `conversation_account_registry` `L0`, `managed_run_project_policy` `L6`, and non-selecting
+  `conversation_continuation` `L6`, including reverse-shape and cross-link rejection;
+- exact Account Registry missing/current/observation-error slots, fixed/balanced selection, and no
+  Project-era fields in initial Quick Task;
+- ManagedRun policy-member/exclusion, capability, sticky, provenance/confidence, aging, mixed-cause,
+  and pure-wait behavior without leaking those fields into Conversation routing;
+- sole first-session Quick Task selection, atomic first-session cluster and Turn/history admission,
+  exact effect fences, fresh/replay/reject/unknown behavior, and definite pre-effect refusal;
+- existing-session same-thread and atomic Context Pack paths bound to the original account/profile
+  without selector invocation;
 - positive-only process/attempt reconciliation, late evidence, smallest-scope isolation,
   and no replay after lost supervision;
 - ManagedRun and Reviewer authority isolation;
