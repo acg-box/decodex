@@ -325,7 +325,8 @@ final class ResetCardStore {
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var accountObservationTask: Task<Void, Never>?
-	@ObservationIgnored private var refreshCycleTask: Task<Void, Never>?
+	@ObservationIgnored private var refreshCoordinatorTask: Task<Void, Never>?
+	@ObservationIgnored private var refreshRequests = ResetCardRefreshRequests()
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
 	@ObservationIgnored private var postUseReconciliationTasks = [
@@ -385,7 +386,7 @@ final class ResetCardStore {
 	deinit {
 		startupTask?.cancel()
 		accountObservationTask?.cancel()
-		refreshCycleTask?.cancel()
+		refreshCoordinatorTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
 		for task in postUseReconciliationTasks.values {
@@ -501,7 +502,7 @@ final class ResetCardStore {
 		isPreparingForTermination = true
 
 		let inFlightStartupTask = startupTask
-		let inFlightRefreshCycleTask = refreshCycleTask
+		let inFlightRefreshCoordinatorTask = refreshCoordinatorTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		let inFlightAccountReauthenticationTask = accountReauthenticationTask
 		let inFlightPostUseReconciliationTasks = Array(
@@ -512,8 +513,9 @@ final class ResetCardStore {
 		startupTask = nil
 		accountObservationTask?.cancel()
 		accountObservationTask = nil
-		refreshCycleTask?.cancel()
-		refreshCycleTask = nil
+		refreshCoordinatorTask?.cancel()
+		refreshCoordinatorTask = nil
+		refreshRequests.reset()
 		pendingRecoveryTask?.cancel()
 		pendingRecoveryTask = nil
 		accountReauthenticationTask?.cancel()
@@ -527,7 +529,7 @@ final class ResetCardStore {
 		// The native wait is a bounded synchronous FFI request. Client destruction
 		// safely releases its in-flight Arc, so termination cancels this owner but
 		// does not wait for a daemon heartbeat before shutting down the shared client.
-		await inFlightRefreshCycleTask?.value
+		await inFlightRefreshCoordinatorTask?.value
 		await inFlightPendingRecoveryTask?.value
 		await inFlightAccountReauthenticationTask?.value
 		for task in inFlightPostUseReconciliationTasks {
@@ -554,7 +556,7 @@ final class ResetCardStore {
 					}
 					generation = signal.generation
 					failureCount = 0
-					self.requestRefresh()
+					self.requestObservationRefresh()
 				} catch {
 					guard Task.isCancelled == false, reconnectDelays.isEmpty == false else {
 						return
@@ -573,32 +575,99 @@ final class ResetCardStore {
 
 	func requestRefresh() {
 		guard isPreparingForTermination == false,
-			refreshCycleTask == nil
-		else {
-			return
-		}
-
-		refreshCycleTask = Task { [weak self] in
-			guard let self else {
-				return
-			}
-			await self.performRefreshCycle()
-			self.refreshCycleTask = nil
-		}
-	}
-
-	func refresh() async {
-		requestRefresh()
-		await refreshCycleTask?.value
-	}
-
-	private func performRefreshCycle() async {
-		guard isRefreshing == false,
+			refreshCoordinatorTask == nil,
+			isRefreshing == false,
 			isRefreshingAccountSkeleton == false,
 			isAccountControlInProgress == false
 		else {
 			return
 		}
+		refreshRequests.requestManualRefresh()
+		scheduleRefreshCoordinator()
+	}
+
+	private func requestObservationRefresh() {
+		guard isPreparingForTermination == false else {
+			return
+		}
+		refreshRequests.requestObservationRefresh()
+		scheduleRefreshCoordinator()
+	}
+
+	private func requestSkeletonRefresh() {
+		guard isPreparingForTermination == false else {
+			return
+		}
+		refreshRequests.requestSkeletonRefresh()
+		scheduleRefreshCoordinator()
+	}
+
+	private func waitForAccountSkeletonRefresh() async {
+		let requestedGeneration = refreshRequests.requestSkeletonRefresh()
+		scheduleRefreshCoordinator()
+
+		while Task.isCancelled == false,
+			isPreparingForTermination == false,
+			refreshRequests.didConsumeSkeletonRefresh(upTo: requestedGeneration) == false
+		{
+			if let task = refreshCoordinatorTask {
+				await task.value
+			} else {
+				scheduleRefreshCoordinator()
+				await Task.yield()
+			}
+		}
+	}
+
+	private var canStartCoordinatedRead: Bool {
+		isRefreshing == false
+			&& isRefreshingAccountSkeleton == false
+			&& isAccountControlInProgress == false
+	}
+
+	private func scheduleRefreshCoordinator() {
+		guard isPreparingForTermination == false,
+			refreshCoordinatorTask == nil,
+			refreshRequests.hasWork
+		else {
+			return
+		}
+
+		refreshCoordinatorTask = Task { [weak self] in
+			await self?.runRefreshCoordinator()
+		}
+	}
+
+	private func runRefreshCoordinator() async {
+		defer {
+			refreshCoordinatorTask = nil
+			if canStartCoordinatedRead {
+				scheduleRefreshCoordinator()
+			}
+		}
+
+		guard Task.isCancelled == false,
+			canStartCoordinatedRead,
+			let work = refreshRequests.takeNext()
+		else {
+			return
+		}
+
+		switch work {
+		case .full:
+			await performRefreshCycle()
+		case .skeleton:
+			await performAccountSkeletonRead()
+		}
+	}
+
+	func refresh() async {
+		let inFlightCoordinatorTask = refreshCoordinatorTask
+		requestRefresh()
+		await (refreshCoordinatorTask ?? inFlightCoordinatorTask)?.value
+	}
+
+	private func performRefreshCycle() async {
 		let inFlightStartupTask = startupTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		startupTask?.cancel()
@@ -667,6 +736,7 @@ final class ResetCardStore {
 			isRefreshing = false
 			refreshSkeletonIsPublished = false
 			hasLoaded = true
+			scheduleRefreshCoordinator()
 		}
 
 		var shouldRetry = false
@@ -1057,6 +1127,7 @@ final class ResetCardStore {
 		isEnrollingAccount = true
 		defer {
 			isEnrollingAccount = false
+			scheduleRefreshCoordinator()
 		}
 		let accountID = Self.newCanonicalUUID()
 		let operationID = Self.newCanonicalUUID()
@@ -1785,7 +1856,7 @@ final class ResetCardStore {
 		case .current, .failed, .missing:
 			return true
 		case .awaitingSkeleton:
-			await refreshAccountSkeleton()
+			await waitForAccountSkeletonRefresh()
 			if canCompletePostUseReconciliation(accountID) {
 				completePostUseReconciliation(accountID)
 				return true
@@ -1793,7 +1864,7 @@ final class ResetCardStore {
 			return postUseReconciliationAccountIDs.contains(accountID) == false
 		case .retryNeeded:
 			if isAwaitingFreshAccountSkeleton(accountID) {
-				await refreshAccountSkeleton()
+				await waitForAccountSkeletonRefresh()
 			}
 			return postUseReconciliationAccountIDs.contains(accountID) == false
 		}
@@ -1971,11 +2042,8 @@ final class ResetCardStore {
 		}
 	}
 
-	private func refreshAccountSkeleton() async {
-		guard let accountControlClient,
-			isRefreshingAccountSkeleton == false,
-			isAccountControlInProgress == false
-		else {
+	private func performAccountSkeletonRead() async {
+		guard let accountControlClient else {
 			return
 		}
 		let refreshGeneration = accountSkeletonRefreshGeneration
@@ -1985,6 +2053,7 @@ final class ResetCardStore {
 			if refreshGeneration != accountSkeletonRefreshGeneration {
 				scheduleFreshAccountSkeletonRead()
 			}
+			scheduleRefreshCoordinator()
 		}
 		do {
 			let projectionGeneration = beginCodexProjectionRequest()
@@ -2231,12 +2300,7 @@ final class ResetCardStore {
 			return
 		}
 		accountSkeletonRefreshGeneration &+= 1
-		guard isAccountControlInProgress == false else {
-			return
-		}
-		Task { [weak self] in
-			await self?.refreshAccountSkeleton()
-		}
+		requestSkeletonRefresh()
 	}
 
 	private func reconcileAccountSkeletonRevisionTargets() {
@@ -2906,6 +2970,7 @@ final class ResetCardStore {
 			retryDelays: accountObservationRetryDelays
 		)
 		accountReauthenticationTask = nil
+		scheduleRefreshCoordinator()
 	}
 
 	private func refreshReauthenticatedAccountAuthority(
@@ -2931,9 +2996,9 @@ final class ResetCardStore {
 	}
 
 	private func refreshReauthenticatedAccountAuthorityOnce(_ accountID: String) async {
-		await refreshAccountSkeleton()
+		await waitForAccountSkeletonRefresh()
 		await refreshAccountDetails(accountID)
-		await refreshAccountSkeleton()
+		await waitForAccountSkeletonRefresh()
 	}
 
 	private func failAccountReauthentication(
@@ -2954,6 +3019,7 @@ final class ResetCardStore {
 		if failure == .outcomeUnknown {
 			await refreshReauthenticatedAccountAuthority(accountID)
 		}
+		scheduleRefreshCoordinator()
 	}
 
 	private func finishAccountReauthentication(
@@ -2967,6 +3033,7 @@ final class ResetCardStore {
 		accountReauthenticationTask = nil
 		accountControlActivities.removeValue(forKey: accountID)
 		accountReauthentication = nil
+		scheduleRefreshCoordinator()
 	}
 
 	nonisolated private static func accountControlMessage(_ error: Error) -> String {
@@ -3036,6 +3103,7 @@ final class ResetCardStore {
 				isRoutingAccountControl = false
 			}
 			scheduleFreshAccountSkeletonRead()
+			scheduleRefreshCoordinator()
 		}
 
 		do {
@@ -3170,9 +3238,7 @@ final class ResetCardStore {
 				)
 			}
 		case .skeleton:
-			Task { [weak self] in
-				await self?.refreshAccountSkeleton()
-			}
+			requestSkeletonRefresh()
 		}
 	}
 
