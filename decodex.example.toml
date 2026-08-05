@@ -38,24 +38,13 @@ host                     = "decodex-server.example.test"
 kind                     = "remote"
 port                     = 49152
 
-# Repository paths are absolute paths on the decodexd host. They are structurally
-# separate from client profiles and must never be interpreted as client-local paths.
-[server_host.repositories.decodex]
-host_path = "/absolute/path/on/server/to/decodex"
-
-# Explicit PostgreSQL endpoint data for the server host. decodexd uses the migration
-# identity only for forward migration and verification, then retains a separately
-# configured least-privilege runtime identity. It does not install, initialize, start,
-# or provision a general PostgreSQL service. The macOS source-install helper provisions
-# one private same-UID PostgreSQL 18 cluster for its local LaunchAgent. Store no password
-# here: only named environment variables are
-# resolved at daemon bootstrap, and their values are never reported. Runtime readiness
-# also requires a closed exact-signature function inventory whose metadata and bodies match the
-# immutable migration, an exact trigger/rule/policy execution-path inventory, dependency-based
-# extension-control closure, intact enabled safety triggers, no forbidden authority through any
-# SET-reachable role, exactly read-only
-# access to public.refinery_schema_history, and USAGE-only access to identity sequences. Pin the
-# PostgreSQL server's host UID explicitly; socket ownership is evidence, never its own trust root.
+# Explicit PostgreSQL endpoint data for the server host. Normal decodexd serve resolves only
+# the least-privilege runtime identity, executes no DDL, and verifies the exact latest catalog
+# and authority. The schema-owner identity is supplied only to the explicit empty-target
+# `bootstrap-latest-schema` operator command and is never stored here. Store no password here:
+# only the named runtime environment variable is resolved at daemon bootstrap, and its value is
+# never reported. Pin the PostgreSQL server's host UID explicitly; socket ownership is evidence,
+# never its own trust root.
 # Use a dedicated directory owned by that UID with no group/other write bits; a conventional shared
 # PostgreSQL socket directory is unsuitable when it is group- or world-writable.
 [postgres]
@@ -63,10 +52,6 @@ database          = "decodex"
 expected_peer_uid = 70                                    # `id -u postgres` on this server host; do not infer from the socket.
 port              = 5432
 socket_directory  = "/absolute/private/postgresql-socket"
-
-[postgres.migration]
-credential_env_var = "DECODEX_POSTGRES_MIGRATION_PASSWORD"
-user               = "decodex_migration"
 
 [postgres.runtime]
 credential_env_var = "DECODEX_POSTGRES_RUNTIME_PASSWORD"

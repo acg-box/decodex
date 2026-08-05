@@ -43,7 +43,7 @@ MAX_TEMPORARY_POSTGRES_OUTPUT_BYTES = 8 * 1024 * 1024
 LAUNCHCTL_PRINT_NOT_FOUND_STATUS = 113
 POSTGRES_PORT = 55_432
 POSTGRES_DATABASE = "decodex"
-POSTGRES_SCHEMA_ROLE = "decodex_migration"
+POSTGRES_SCHEMA_ROLE = "decodex_schema_owner"
 POSTGRES_RUNTIME_ROLE = "decodex_runtime"
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
@@ -481,17 +481,11 @@ def render_config(paths: InstallPaths, uid: int) -> bytes:
         'policy = "same_uid"',
         f"service_owner_uid = {uid}",
         "",
-        "[server_host.repositories.decodex]",
-        f"host_path = {toml_string(paths.repository)}",
-        "",
         "[postgres]",
         f"socket_directory = {toml_string(paths.socket_directory)}",
         f"expected_peer_uid = {uid}",
         f"port = {POSTGRES_PORT}",
         f'database = "{POSTGRES_DATABASE}"',
-        "",
-        "[postgres.migration]",
-        f'user = "{POSTGRES_SCHEMA_ROLE}"',
         "",
         "[postgres.runtime]",
         f'user = "{POSTGRES_RUNTIME_ROLE}"',
@@ -1267,7 +1261,15 @@ def psql_scalar(paths: InstallPaths, database: str, sql: str, env: dict[str, str
     return completed.stdout.strip()
 
 
-def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
+def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> bool:
+    database_exists = psql_scalar(
+        paths,
+        "postgres",
+        "SELECT 1 FROM pg_catalog.pg_database "
+        f"WHERE datname='{POSTGRES_DATABASE}'",
+        env,
+    )
+    database_created = database_exists != "1"
     for role in (POSTGRES_SCHEMA_ROLE, POSTGRES_RUNTIME_ROLE):
         exists = psql_scalar(
             paths,
@@ -1276,6 +1278,8 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
             env,
         )
         if exists != "1":
+            if not database_created:
+                raise InstallError("existing PostgreSQL role authority is incomplete")
             psql_scalar(
                 paths,
                 "postgres",
@@ -1301,14 +1305,7 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
         )
         if safe != "1":
             raise InstallError("existing PostgreSQL role authority is unsafe")
-    database_exists = psql_scalar(
-        paths,
-        "postgres",
-        "SELECT 1 FROM pg_catalog.pg_database "
-        f"WHERE datname='{POSTGRES_DATABASE}'",
-        env,
-    )
-    if database_exists != "1":
+    if database_created:
         psql_scalar(
             paths,
             "postgres",
@@ -1326,21 +1323,23 @@ def ensure_roles_and_database(paths: InstallPaths, env: dict[str, str]) -> None:
     )
     if owner != POSTGRES_SCHEMA_ROLE:
         raise InstallError("existing Decodex database has an unexpected owner")
-    psql_scalar(
-        paths,
-        POSTGRES_DATABASE,
-        f"GRANT USAGE, CREATE ON SCHEMA public TO {POSTGRES_SCHEMA_ROLE}",
-        env,
-    )
-    psql_scalar(
-        paths,
-        "postgres",
-        f"REVOKE CREATE ON DATABASE {POSTGRES_DATABASE} FROM PUBLIC; "
-        f"GRANT CONNECT, CREATE ON DATABASE {POSTGRES_DATABASE} "
-        f"TO {POSTGRES_SCHEMA_ROLE}; "
-        f"GRANT CONNECT ON DATABASE {POSTGRES_DATABASE} TO {POSTGRES_RUNTIME_ROLE}",
-        env,
-    )
+    if database_created:
+        psql_scalar(
+            paths,
+            POSTGRES_DATABASE,
+            f"GRANT USAGE, CREATE ON SCHEMA public TO {POSTGRES_SCHEMA_ROLE}",
+            env,
+        )
+        psql_scalar(
+            paths,
+            "postgres",
+            f"REVOKE CREATE ON DATABASE {POSTGRES_DATABASE} FROM PUBLIC; "
+            f"GRANT CONNECT, CREATE ON DATABASE {POSTGRES_DATABASE} "
+            f"TO {POSTGRES_SCHEMA_ROLE}; "
+            f"GRANT CONNECT ON DATABASE {POSTGRES_DATABASE} TO {POSTGRES_RUNTIME_ROLE}",
+            env,
+        )
+    return database_created
 
 
 def parse_launch_agent_pid(output: str) -> Optional[int]:
@@ -1617,7 +1616,7 @@ def query_accounts(paths: InstallPaths) -> Optional[dict[str, Any]]:
     return document
 
 
-def critical_doctor_is_ready(document: Any) -> bool:
+def service_foundation_is_ready(document: Any) -> bool:
     if (
         not isinstance(document, dict)
         or document.get("schema") != "decodex/cli-diagnostics/1"
@@ -1631,12 +1630,10 @@ def critical_doctor_is_ready(document: Any) -> bool:
         return False
     required = {
         "configuration",
-        "database",
+        "product_store",
         "protocol",
         "protocol_version",
         "server_identity",
-        "server_repositories",
-        "credential_vault",
     }
     observed: set[str] = set()
     for check in checks:
@@ -1676,7 +1673,7 @@ def query_doctor(paths: InstallPaths) -> bool:
         document = json.loads(completed.stdout)
     except json.JSONDecodeError:
         return False
-    return critical_doctor_is_ready(document)
+    return service_foundation_is_ready(document)
 
 
 def account_ids_from_result(document: dict[str, Any]) -> Optional[list[str]]:
@@ -1825,8 +1822,11 @@ def install_under_namespace_lock(
     postgres = start_temporary_postgres(paths)
     try:
         environment = psql_environment(paths)
-        ensure_roles_and_database(paths, environment)
-        provision_local_product_state(paths)
+        database_created = ensure_roles_and_database(paths, environment)
+        if database_created:
+            bootstrap_latest_schema(paths)
+        else:
+            validate_current_authority(paths)
     finally:
         stop_temporary_postgres(postgres)
 
@@ -1835,12 +1835,30 @@ def install_under_namespace_lock(
     verify_signed_cli(paths.decodex_cli, team_identifier)
 
 
-def provision_local_product_state(paths: InstallPaths) -> None:
+def bootstrap_latest_schema(paths: InstallPaths) -> None:
     try:
         run(
             [
                 str(paths.decodexd),
-                "provision-local",
+                "bootstrap-latest-schema",
+                "--root",
+                str(paths.root),
+                "--schema-owner-user",
+                POSTGRES_SCHEMA_ROLE,
+            ],
+            cwd=paths.repository,
+            capture=True,
+        )
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        raise InstallError("latest-schema bootstrap failed") from error
+
+
+def validate_current_authority(paths: InstallPaths) -> None:
+    try:
+        run(
+            [
+                str(paths.decodexd),
+                "validate-current-authority",
                 "--root",
                 str(paths.root),
             ],
@@ -1848,7 +1866,7 @@ def provision_local_product_state(paths: InstallPaths) -> None:
             capture=True,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
-        raise InstallError("local product-state provisioning failed") from error
+        raise InstallError("current PostgreSQL authority validation failed") from error
 
 
 def main(argv: Optional[list[str]] = None) -> int:

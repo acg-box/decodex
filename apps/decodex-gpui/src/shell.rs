@@ -3,24 +3,34 @@
 use std::{future::Future, pin::Pin, sync::mpsc::Receiver, time::Duration};
 
 use gpui::{
-	AnyElement, App, Context, Entity, FocusHandle, Global, KeyBinding, Render, Role, SharedString,
-	Subscription, Task, WeakEntity, Window, WindowHandle, WindowId, actions, div, prelude::*, px,
-	rgb,
+	AnyElement, App, Context, Entity, FocusHandle, Focusable, Global, KeyBinding, Render, Role,
+	SharedString, Subscription, Task, WeakEntity, Window, WindowHandle, WindowId, actions, div,
+	prelude::*, px, rgb,
 };
 
-use decodex_protocol::{AppServerCapability, ClientFailure, DoctorComponent, DoctorStatus};
+use decodex_protocol::{
+	AppServerCapability, ClientFailure, DoctorComponent, DoctorStatus, EntityId, HistoryPayloadDto,
+	HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState,
+};
 
 use crate::{
 	client_lifecycle::{
 		ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation,
 		QuarantineReason, QuarantineRecovery,
 	},
+	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
+	history_pager::{HistoryLoadState, HistoryPager, HistorySnapshot},
+	quick_tasks::{
+		QuickTaskCommandState, QuickTaskInputError, QuickTasks, QuickTasksLoadState,
+		QuickTasksSnapshot,
+	},
 };
 
 const SIDEBAR_WIDTH: f32 = 224.0;
 const HEADER_HEIGHT: f32 = 64.0;
 const STATUS_HEIGHT: f32 = 72.0;
+const TASK_LIST_WIDTH: f32 = 216.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
 
 actions!(decodex_shell, [FocusNext, FocusPrevious, ActivateDestination, RefreshHealth]);
@@ -58,10 +68,6 @@ impl Destination {
 			Self::Accounts => "Accounts",
 			Self::Health => "Health",
 		}
-	}
-
-	const fn is_live(self) -> bool {
-		matches!(self, Self::Health)
 	}
 
 	const fn description(self) -> &'static str {
@@ -208,6 +214,7 @@ const fn recovery_label(recovery: QuarantineRecovery) -> &'static str {
 
 /// Bind the shell's complete keyboard path once at application startup.
 pub(crate) fn bind_keys(cx: &mut App) {
+	composer_input::bind_keys(cx);
 	cx.bind_keys([
 		KeyBinding::new("tab", FocusNext, None),
 		KeyBinding::new("shift-tab", FocusPrevious, None),
@@ -225,8 +232,16 @@ pub(crate) struct Shell {
 	root_focus: FocusHandle,
 	destination_focus: Vec<FocusHandle>,
 	refresh_focus: FocusHandle,
+	composer: Entity<ComposerInput>,
 	health_query: HealthQuery,
 	health: HealthSnapshot,
+	quick_tasks: QuickTasks,
+	quick: QuickTasksSnapshot,
+	history_pager: Option<HistoryPager>,
+	history: Option<HistorySnapshot>,
+	opened_history: Option<EntityId>,
+	creating_new: bool,
+	input_status: Option<SharedString>,
 }
 
 impl Shell {
@@ -242,27 +257,46 @@ impl Shell {
 			.collect::<Vec<_>>();
 		let refresh_focus =
 			cx.focus_handle().tab_index(Destination::ALL.len() as isize).tab_stop(true);
+		let composer = cx.new(|cx| ComposerInput::new(Destination::ALL.len() as isize + 1, cx));
+		cx.subscribe(&composer, |shell, _, _: &ComposerEvent, cx| {
+			shell.input_status = None;
+			cx.notify();
+		})
+		.detach();
 		let health_query = HealthQuery::production();
 		let health = health_query.snapshot();
-		window.focus(&destination_focus[0], cx);
+		let quick_tasks = QuickTasks::production();
+		quick_tasks.activate();
+		let quick = quick_tasks.snapshot();
+		window.focus(&composer.focus_handle(cx), cx);
 
 		Self {
-			selected: Destination::Advisor,
+			selected: Destination::QuickTasks,
 			connection,
 			root_focus: cx.focus_handle(),
 			destination_focus,
 			refresh_focus,
+			composer,
 			health_query,
 			health,
+			quick_tasks,
+			quick,
+			history_pager: None,
+			history: None,
+			opened_history: None,
+			creating_new: true,
+			input_status: None,
 		}
 	}
 
 	fn focus_next(&mut self, _: &FocusNext, window: &mut Window, cx: &mut Context<Self>) {
 		window.focus_next(cx);
+		cx.stop_propagation();
 	}
 
 	fn focus_previous(&mut self, _: &FocusPrevious, window: &mut Window, cx: &mut Context<Self>) {
 		window.focus_prev(cx);
+		cx.stop_propagation();
 	}
 
 	fn activate_destination(
@@ -285,10 +319,16 @@ impl Shell {
 		if self.selected == Destination::Health {
 			self.health_query.deactivate();
 		}
+		if self.selected == Destination::QuickTasks {
+			self.quick_tasks.deactivate();
+		}
 
 		self.selected = destination;
 		if destination == Destination::Health {
 			self.health_query.activate();
+		}
+		if destination == Destination::QuickTasks {
+			self.quick_tasks.activate();
 		}
 		self.health = self.health_query.snapshot();
 		cx.notify();
@@ -312,6 +352,141 @@ impl Shell {
 		}
 		self.health = self.health_query.snapshot();
 		cx.notify();
+	}
+
+	fn bind_quick_tasks(
+		&mut self,
+		quick_tasks: QuickTasks,
+		history_pager: HistoryPager,
+		cx: &mut Context<Self>,
+	) {
+		self.quick_tasks.deactivate();
+		self.quick_tasks = quick_tasks;
+		self.history_pager = Some(history_pager);
+		if self.selected == Destination::QuickTasks {
+			self.quick_tasks.activate();
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn synchronize_quick_tasks(&mut self) {
+		let snapshot = self.quick_tasks.snapshot();
+		let selected = snapshot.selected.clone();
+		let should_open = selected
+			.as_ref()
+			.is_some_and(|conversation_id| self.opened_history.as_ref() != Some(conversation_id));
+		if should_open
+			&& let (Some(pager), Some(conversation_id)) =
+				(self.history_pager.as_ref(), selected.clone())
+			&& pager.open(conversation_id.clone()).is_ok()
+		{
+			self.opened_history = Some(conversation_id);
+		}
+		if self.creating_new && snapshot.selected.is_some() {
+			self.creating_new = false;
+		}
+		self.quick = snapshot;
+		self.history = self.history_pager.as_ref().map(HistoryPager::snapshot);
+	}
+
+	fn start_new_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		self.quick_tasks.begin_new();
+		if let Some(pager) = self.history_pager.as_ref() {
+			pager.cancel();
+		}
+		self.opened_history = None;
+		self.creating_new = true;
+		self.input_status = None;
+		self.synchronize_quick_tasks();
+		window.focus(&self.composer.focus_handle(cx), cx);
+		cx.notify();
+	}
+
+	fn choose_quick_task(
+		&mut self,
+		conversation_id: EntityId,
+		window: &mut Window,
+		cx: &mut Context<Self>,
+	) {
+		if self.quick_tasks.select(conversation_id.clone()) {
+			self.creating_new = false;
+			self.opened_history = None;
+			self.synchronize_quick_tasks();
+			window.focus(&self.composer.focus_handle(cx), cx);
+			cx.notify();
+		}
+	}
+
+	fn submit_composer(&mut self, _: &SubmitComposer, window: &mut Window, cx: &mut Context<Self>) {
+		self.submit_quick_task(window, cx);
+		cx.stop_propagation();
+	}
+
+	fn submit_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		let creating = self.creating_new || self.quick.selected.is_none();
+		let message = self.composer.read(cx).content().to_owned();
+		let result = if creating {
+			self.quick_tasks.create(&message)
+		} else {
+			self.quick_tasks.submit(&message)
+		};
+		match result {
+			Ok(()) => {
+				self.composer.update(cx, |composer, cx| composer.clear(cx));
+				self.creating_new = creating;
+				self.input_status = None;
+			},
+			Err(error) => self.input_status = Some(input_error_label(error).into()),
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn interrupt_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		if let Err(error) = self.quick_tasks.interrupt() {
+			self.input_status = Some(input_error_label(error).into());
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn show_previous_history(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		if let Some(pager) = self.history_pager.as_ref() {
+			let _ = pager.show_previous();
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn show_next_history(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		if let Some(pager) = self.history_pager.as_ref() {
+			let _ = pager.show_next();
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn retry_history(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		if let Some(pager) = self.history_pager.as_ref() {
+			let _ = pager.retry();
+		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+}
+
+const fn input_error_label(error: QuickTaskInputError) -> &'static str {
+	match error {
+		QuickTaskInputError::Offline => "Quick Tasks are offline.",
+		QuickTaskInputError::Busy => "Wait for the current command result.",
+		QuickTaskInputError::InvalidMessage => "Enter a message within the supported limit.",
+		QuickTaskInputError::NoSelection => "Select a Quick Task first.",
+		QuickTaskInputError::NotReady => "The selected Quick Task is not ready for this command.",
+		QuickTaskInputError::NotInterruptible => "The selected turn is not running.",
+		QuickTaskInputError::IdentityUnavailable => "A command identity could not be created.",
+		QuickTaskInputError::WorkingDirectoryUnavailable =>
+			"The local Quick Task working directory is unavailable.",
 	}
 }
 
@@ -403,7 +578,12 @@ pub(crate) fn retain_lifecycle(
 	let initial_view = lifecycle.view();
 	let shell = window.entity(cx).expect("the production shell window remains open");
 	let health_query = lifecycle.health_query();
-	shell.update(cx, |shell, cx| shell.bind_health_query(health_query, cx));
+	let quick_tasks = lifecycle.quick_tasks();
+	let history_pager = lifecycle.history_pager();
+	shell.update(cx, |shell, cx| {
+		shell.bind_health_query(health_query, cx);
+		shell.bind_quick_tasks(quick_tasks, history_pager, cx);
+	});
 	let shell = shell.downgrade();
 	let background = cx.background_executor().spawn(async move {
 		let runtime = tokio::runtime::Builder::new_current_thread()
@@ -470,9 +650,15 @@ fn publish_views(
 	}
 	let _ = shell.update(cx, |shell, cx| {
 		let health = shell.health_query.snapshot();
+		let quick = shell.quick_tasks.snapshot();
+		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
 		if health != shell.health {
 			shell.health = health;
+			cx.notify();
+		}
+		if quick != shell.quick || history != shell.history {
+			shell.synchronize_quick_tasks();
 			cx.notify();
 		}
 	});
@@ -484,7 +670,7 @@ fn navigation_item(
 	is_selected: bool,
 	focus: FocusHandle,
 	window: &Window,
-	cx: &mut Context<Shell>,
+	cx: &Context<Shell>,
 ) -> AnyElement {
 	div()
 		.id(("destination", index))
@@ -525,6 +711,21 @@ impl Render for RefreshTooltip {
 			.text_sm()
 			.text_color(rgb(0xffffff))
 			.child("Refresh health")
+	}
+}
+
+struct ControlTooltip(&'static str);
+
+impl Render for ControlTooltip {
+	fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
+		div()
+			.px_2()
+			.py_1()
+			.rounded_sm()
+			.bg(rgb(0x25324a))
+			.text_sm()
+			.text_color(rgb(0xffffff))
+			.child(self.0)
 	}
 }
 
@@ -577,7 +778,8 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 fn component_label(component: DoctorComponent) -> &'static str {
 	match component {
 		DoctorComponent::Configuration => "Configuration",
-		DoctorComponent::Database => "Product database",
+		DoctorComponent::ProductStore => "Product store",
+		DoctorComponent::QuickTask => "Quick Task",
 		DoctorComponent::Protocol => "Protocol",
 		DoctorComponent::ProtocolVersion => "Protocol version",
 		DoctorComponent::ServerIdentity => "Server identity",
@@ -592,7 +794,7 @@ fn component_label(component: DoctorComponent) -> &'static str {
 			AppServerCapability::NativeCollaboration => "App server: native collaboration",
 			AppServerCapability::ThreadSearch => "App server: thread search",
 		},
-		DoctorComponent::ServerRepositories => "Server repositories",
+		DoctorComponent::ManagedRepository => "Managed repository",
 		DoctorComponent::BlobIntegrity => "Blob integrity",
 		DoctorComponent::CredentialVault => "Credential vault",
 		DoctorComponent::PluginReadiness => "Plugin readiness",
@@ -696,16 +898,22 @@ fn destination_header(
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let title = if selected == Destination::Health {
-		div()
+	let title = match selected {
+		Destination::QuickTasks => div()
+			.id("quick-tasks-heading")
+			.role(Role::Heading)
+			.aria_level(1)
+			.aria_label("Quick Tasks workspace")
+			.child(selected.label())
+			.into_any_element(),
+		Destination::Health => div()
 			.id("health-heading")
 			.role(Role::Heading)
 			.aria_level(1)
 			.aria_label("Health workspace")
 			.child(selected.label())
-			.into_any_element()
-	} else {
-		div().child(selected.label()).into_any_element()
+			.into_any_element(),
+		_ => div().child(selected.label()).into_any_element(),
 	};
 	let header = div()
 		.h(px(HEADER_HEIGHT))
@@ -748,6 +956,502 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 		.child(selected.description())
 		.child(
 			"This operational destination is intentionally bounded until its owning feature gate lands.",
+		)
+		.into_any_element()
+}
+
+fn quick_task_state_label(state: QuickTaskState) -> &'static str {
+	match state {
+		QuickTaskState::RoutingPending => "Routing pending",
+		QuickTaskState::QuotaExhausted => "Quota exhausted",
+		QuickTaskState::WaitingReconciliation => "Waiting for reconciliation",
+		QuickTaskState::NoRoute => "No route",
+		QuickTaskState::Establishing => "Establishing",
+		QuickTaskState::Ready => "Ready",
+		QuickTaskState::Running => "Running",
+		QuickTaskState::ManualRecovery => "Action required",
+		QuickTaskState::OutcomeUnknown => "Outcome unknown",
+	}
+}
+
+fn quick_task_state_color(state: QuickTaskState) -> u32 {
+	match state {
+		QuickTaskState::Ready => 0x22c55e,
+		QuickTaskState::Running | QuickTaskState::Establishing => 0x60a5fa,
+		QuickTaskState::RoutingPending
+		| QuickTaskState::QuotaExhausted
+		| QuickTaskState::WaitingReconciliation
+		| QuickTaskState::NoRoute => 0xf59e0b,
+		QuickTaskState::ManualRecovery | QuickTaskState::OutcomeUnknown => 0xef4444,
+	}
+}
+
+fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
+	match command {
+		QuickTaskCommandState::Idle => None,
+		QuickTaskCommandState::Sending => Some("Sending command"),
+		QuickTaskCommandState::AwaitingResult => Some("Waiting for durable result"),
+		QuickTaskCommandState::Accepted => Some("Command accepted"),
+		QuickTaskCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
+		QuickTaskCommandState::OutcomeUnknown =>
+			Some("Outcome unknown. Readback will resume after reconnect; do not resend."),
+		QuickTaskCommandState::Refused => Some("The command was refused."),
+	}
+}
+
+fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
+	match action {
+		QuickTaskRecoveryAction::RetryRouting =>
+			"Review the message and retry account routing explicitly.",
+		QuickTaskRecoveryAction::ConfigureAccount => "Configure an account before continuing.",
+		QuickTaskRecoveryAction::EnableAccount => "Enable the selected account before continuing.",
+		QuickTaskRecoveryAction::EnrollCredentials =>
+			"Enroll account credentials before continuing.",
+		QuickTaskRecoveryAction::ResolveAccountOperation =>
+			"Resolve the unsettled account operation before continuing.",
+		QuickTaskRecoveryAction::RepairCredentialStore =>
+			"Repair the protected credential store before continuing.",
+		QuickTaskRecoveryAction::RestoreProviderAgreement =>
+			"Restore provider account agreement before continuing.",
+		QuickTaskRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
+		QuickTaskRecoveryAction::UpgradeCodex => "Install the accepted Codex build.",
+		QuickTaskRecoveryAction::SelectWorkingDirectory =>
+			"Select an owned local working directory before continuing.",
+		QuickTaskRecoveryAction::StartNewConversation =>
+			"This thread cannot resume. Start a new conversation.",
+		QuickTaskRecoveryAction::ResolvePriorActiveTurn =>
+			"Resolve the prior active turn before continuing.",
+		QuickTaskRecoveryAction::ResolvePriorAttempt =>
+			"Resolve the prior provider attempt before continuing.",
+		QuickTaskRecoveryAction::RestoreProcessReadiness =>
+			"Restore process readiness before continuing.",
+		QuickTaskRecoveryAction::WaitForCurrentCommand =>
+			"Wait for the current command or turn to settle.",
+		QuickTaskRecoveryAction::RefreshConversation =>
+			"Refresh this conversation before continuing.",
+	}
+}
+
+fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
+	match load {
+		QuickTasksLoadState::NeverRequested => "Quick Tasks have not loaded.",
+		QuickTasksLoadState::Loading => "Loading Quick Tasks",
+		QuickTasksLoadState::Ready => "Quick Tasks are current.",
+		QuickTasksLoadState::Offline => "Offline. Retained conversation state remains visible.",
+		QuickTasksLoadState::Unavailable => "Quick Task state is temporarily unavailable.",
+		QuickTasksLoadState::Refused => "Quick Task readback was refused.",
+	}
+}
+
+fn quick_task_sidebar(snapshot: &QuickTasksSnapshot, cx: &mut Context<Shell>) -> AnyElement {
+	let selected = snapshot.selected.clone();
+	let rows = snapshot.tasks.iter().enumerate().map(|(index, task)| {
+		let conversation_id = task.conversation_id.clone();
+		let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
+		let is_selected = selected.as_ref() == Some(&task.conversation_id);
+		let state = task.state;
+		div()
+			.id(("quick-task-row", index))
+			.role(Role::ListItem)
+			.aria_label(format!("Conversation {short_id}, {}", quick_task_state_label(state)))
+			.h(px(54.0))
+			.min_h(px(54.0))
+			.px_3()
+			.flex()
+			.flex_col()
+			.justify_center()
+			.gap_1()
+			.border_b_1()
+			.border_color(rgb(0x263249))
+			.bg(if is_selected { rgb(0x1b263b) } else { rgb(0x101827) })
+			.hover(|element| element.bg(rgb(0x202d44)))
+			.cursor_pointer()
+			.on_click(cx.listener(move |shell, _, window, cx| {
+				shell.choose_quick_task(conversation_id.clone(), window, cx);
+			}))
+			.child(div().text_sm().child(format!("Conversation {short_id}")))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.gap_2()
+					.text_xs()
+					.text_color(rgb(0x94a3b8))
+					.child(
+						div().size(px(7.0)).rounded_full().bg(rgb(quick_task_state_color(state))),
+					)
+					.child(quick_task_state_label(state)),
+			)
+	});
+
+	div()
+		.w(px(TASK_LIST_WIDTH))
+		.min_w(px(TASK_LIST_WIDTH))
+		.h_full()
+		.flex()
+		.flex_col()
+		.border_r_1()
+		.border_color(rgb(0x263249))
+		.bg(rgb(0x101827))
+		.child(
+			div()
+				.h(px(48.0))
+				.min_h(px(48.0))
+				.px_3()
+				.flex()
+				.items_center()
+				.justify_between()
+				.border_b_1()
+				.border_color(rgb(0x263249))
+				.child(div().text_sm().child("Conversations"))
+				.child(
+					div()
+						.id("new-quick-task")
+						.role(Role::Button)
+						.aria_label("New conversation")
+						.tooltip(|_, cx| cx.new(|_| ControlTooltip("New conversation")).into())
+						.size(px(30.0))
+						.flex()
+						.items_center()
+						.justify_center()
+						.rounded_sm()
+						.hover(|element| element.bg(rgb(0x25324a)))
+						.cursor_pointer()
+						.on_click(cx.listener(|shell, _, window, cx| {
+							shell.start_new_quick_task(window, cx);
+						}))
+						.text_xl()
+						.child("+"),
+				),
+		)
+		.child(
+			div()
+				.id("quick-task-list")
+				.role(Role::List)
+				.aria_label("Quick Task conversations")
+				.flex_1()
+				.min_h_0()
+				.overflow_y_scroll()
+				.children(rows),
+		)
+		.into_any_element()
+}
+
+fn history_role_label(role: HistoryTurnRole) -> &'static str {
+	match role {
+		HistoryTurnRole::User => "You",
+		HistoryTurnRole::Assistant => "Codex",
+		HistoryTurnRole::System => "System",
+		HistoryTurnRole::Tool => "Tool",
+	}
+}
+
+fn quick_task_transcript(
+	snapshot: &QuickTasksSnapshot,
+	history: Option<&HistorySnapshot>,
+) -> AnyElement {
+	let selected = snapshot.selected.as_ref();
+	let persisted_inline_ids = history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+		.filter(|item| item.payload.inline_text().is_some())
+		.map(|item| &item.history_item_id)
+		.collect::<Vec<_>>();
+	let history_rows = history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+		.map(|item| {
+			let text = match &item.payload {
+				HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
+				HistoryPayloadDto::Blob(reference) => format!(
+					"Stored content: {} bytes; SHA-256 {}...",
+					reference.byte_length.get(),
+					&reference.sha256.as_str()[..12],
+				),
+			};
+			div()
+				.w_full()
+				.py_3()
+				.border_b_1()
+				.border_color(rgb(0x202b3f))
+				.child(
+					div()
+						.text_xs()
+						.text_color(rgb(0x94a3b8))
+						.child(history_role_label(item.turn_role)),
+				)
+				.child(div().mt_1().whitespace_normal().child(text))
+		});
+	let live_rows = snapshot
+		.live_deltas
+		.iter()
+		.filter(|delta| {
+			selected == Some(&delta.conversation_id)
+				&& !persisted_inline_ids.contains(&&delta.history_item_id)
+		})
+		.map(|delta| {
+			div()
+				.w_full()
+				.py_3()
+				.border_b_1()
+				.border_color(rgb(0x202b3f))
+				.child(div().text_xs().text_color(rgb(0x60a5fa)).child("Codex"))
+				.child(div().mt_1().whitespace_normal().child(delta.text.as_str().to_owned()))
+		});
+	let history_status =
+		history.map_or("Conversation history is not connected.", |history| match history.load {
+			HistoryLoadState::Inactive => "Select a conversation or start a new conversation.",
+			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
+				"Loading conversation history",
+			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => "",
+			HistoryLoadState::RetryableUnavailable(_) =>
+				"History is temporarily unavailable. Reconnect or retry.",
+			HistoryLoadState::ClosedUnavailable(_) => "History readback was refused.",
+		});
+
+	div()
+		.id("quick-task-transcript")
+		.role(Role::Log)
+		.aria_label("Quick Task conversation")
+		.flex_1()
+		.min_h_0()
+		.overflow_y_scroll()
+		.px_6()
+		.py_3()
+		.when(!history_status.is_empty(), |element| {
+			element.child(div().py_3().text_sm().text_color(rgb(0x94a3b8)).child(history_status))
+		})
+		.children(history_rows)
+		.children(live_rows)
+		.into_any_element()
+}
+
+fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let can_previous = shell.history.as_ref().is_some_and(|history| history.can_show_previous);
+	let can_next = shell.history.as_ref().is_some_and(|history| history.can_show_next);
+	let can_retry = shell.history.as_ref().is_some_and(|history| history.can_retry);
+	let previous = div()
+		.id("quick-task-history-previous")
+		.role(Role::Button)
+		.aria_label("Show less conversation history")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Show less history")).into())
+		.size(px(28.0))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_sm()
+		.text_color(if can_previous { rgb(0xe5e7eb) } else { rgb(0x64748b) })
+		.when(can_previous, |element| {
+			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
+				cx.listener(|shell, _, window, cx| {
+					shell.show_previous_history(window, cx);
+				}),
+			)
+		})
+		.child("<");
+	let retry = div()
+		.id("quick-task-history-retry")
+		.role(Role::Button)
+		.aria_label("Retry conversation history")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Retry conversation history")).into())
+		.size(px(28.0))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_sm()
+		.text_color(if can_retry { rgb(0xe5e7eb) } else { rgb(0x64748b) })
+		.when(can_retry, |element| {
+			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
+				cx.listener(|shell, _, window, cx| {
+					shell.retry_history(window, cx);
+				}),
+			)
+		})
+		.child("↻");
+	let next = div()
+		.id("quick-task-history-next")
+		.role(Role::Button)
+		.aria_label("Load more conversation history")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Load more history")).into())
+		.size(px(28.0))
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_sm()
+		.text_color(if can_next { rgb(0xe5e7eb) } else { rgb(0x64748b) })
+		.when(can_next, |element| {
+			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
+				cx.listener(|shell, _, window, cx| {
+					shell.show_next_history(window, cx);
+				}),
+			)
+		})
+		.child(">");
+
+	div()
+		.w(px(92.0))
+		.min_w(px(92.0))
+		.flex()
+		.items_center()
+		.justify_between()
+		.child(previous)
+		.child(retry)
+		.child(next)
+		.into_any_element()
+}
+
+fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let task = shell.quick.selected_task();
+	let can_continue = shell.creating_new
+		|| task.is_none()
+		|| task.is_some_and(|task| {
+			task.state == QuickTaskState::Ready
+				|| task.recovery_action == Some(QuickTaskRecoveryAction::RetryRouting)
+		});
+	let composer = shell.composer.read(cx);
+	let composer_len = composer.len();
+	let has_message = !composer.content().trim().is_empty();
+	let can_send = shell.quick.can_submit && can_continue && has_message;
+	let can_interrupt =
+		shell.quick.can_submit && task.is_some_and(|task| task.state == QuickTaskState::Running);
+
+	let send = div()
+		.id("quick-task-send")
+		.role(Role::Button)
+		.aria_label("Send message")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Send message")).into())
+		.h(px(34.0))
+		.min_h(px(34.0))
+		.px_4()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_sm()
+		.bg(if can_send { rgb(0x2563eb) } else { rgb(0x25324a) })
+		.text_color(if can_send { rgb(0xffffff) } else { rgb(0x64748b) })
+		.when(can_send, |element| {
+			element.cursor_pointer().hover(|element| element.bg(rgb(0x1d4ed8))).on_click(
+				cx.listener(|shell, _, window, cx| {
+					shell.submit_quick_task(window, cx);
+				}),
+			)
+		})
+		.child("Send");
+	let interrupt = div()
+		.id("quick-task-interrupt")
+		.role(Role::Button)
+		.aria_label("Interrupt active turn")
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Interrupt active turn")).into())
+		.h(px(34.0))
+		.min_h(px(34.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded_sm()
+		.border_1()
+		.border_color(rgb(0x3b4962))
+		.text_color(if can_interrupt { rgb(0xf8fafc) } else { rgb(0x64748b) })
+		.when(can_interrupt, |element| {
+			element.cursor_pointer().hover(|element| element.bg(rgb(0x25324a))).on_click(
+				cx.listener(|shell, _, window, cx| {
+					shell.interrupt_quick_task(window, cx);
+				}),
+			)
+		})
+		.child("Stop");
+	div()
+		.min_h(px(142.0))
+		.px_4()
+		.py_3()
+		.flex()
+		.flex_col()
+		.gap_2()
+		.border_t_1()
+		.border_color(rgb(0x263249))
+		.bg(rgb(0x0e1524))
+		.child(div().h(px(64.0)).min_h(px(64.0)).child(shell.composer.clone()))
+		.child(
+			div()
+				.h(px(34.0))
+				.min_h(px(34.0))
+				.flex()
+				.items_center()
+				.justify_between()
+				.child(
+					div()
+						.min_w_0()
+						.text_xs()
+						.text_color(rgb(0x94a3b8))
+						.child(format!("{composer_len} / {MAX_COMPOSER_BYTES} bytes")),
+				)
+				.child(div().flex().gap_2().child(interrupt).child(send)),
+		)
+		.into_any_element()
+}
+
+fn quick_tasks_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let selected_task = shell.quick.selected_task();
+	let state_label = if shell.creating_new {
+		"New conversation"
+	} else {
+		selected_task.map_or("No conversation selected", |task| quick_task_state_label(task.state))
+	};
+	let state_color = selected_task.map_or(0x60a5fa, |task| quick_task_state_color(task.state));
+	let detail = shell
+		.input_status
+		.as_ref()
+		.map(SharedString::to_string)
+		.or_else(|| command_status(shell.quick.command).map(str::to_owned))
+		.or_else(|| {
+			selected_task
+				.and_then(|task| task.recovery_action)
+				.map(recovery_action_label)
+				.map(str::to_owned)
+		})
+		.unwrap_or_else(|| quick_task_load_status(shell.quick.load).to_owned());
+
+	div()
+		.flex_1()
+		.min_h_0()
+		.flex()
+		.child(quick_task_sidebar(&shell.quick, cx))
+		.child(
+			div()
+				.flex_1()
+				.min_w_0()
+				.min_h_0()
+				.flex()
+				.flex_col()
+				.child(
+					div()
+						.h(px(44.0))
+						.min_h(px(44.0))
+						.px_6()
+						.flex()
+						.items_center()
+						.gap_3()
+						.border_b_1()
+						.border_color(rgb(0x263249))
+						.child(div().size(px(8.0)).rounded_full().bg(rgb(state_color)))
+						.child(div().w(px(132.0)).min_w(px(132.0)).text_sm().child(state_label))
+						.child(
+							div()
+								.flex_1()
+								.min_w_0()
+								.overflow_hidden()
+								.whitespace_nowrap()
+								.text_ellipsis()
+								.text_sm()
+								.text_color(rgb(0x94a3b8))
+								.child(detail),
+						)
+						.child(history_page_controls(shell, cx)),
+				)
+				.child(quick_task_transcript(&shell.quick, shell.history.as_ref()))
+				.child(quick_task_composer(shell, cx)),
 		)
 		.into_any_element()
 }
@@ -819,15 +1523,18 @@ fn connection_status(presentation: ConnectionPresentation) -> AnyElement {
 }
 
 fn destination_content(
-	selected: Destination,
+	shell: &Shell,
 	presentation: ConnectionPresentation,
-	health: &HealthSnapshot,
 	refresh_focus: FocusHandle,
 	window: &Window,
 	cx: &mut Context<Shell>,
 ) -> AnyElement {
-	let content =
-		if selected.is_live() { health_content(health) } else { placeholder_content(selected) };
+	let selected = shell.selected;
+	let content = match selected {
+		Destination::QuickTasks => quick_tasks_content(shell, cx),
+		Destination::Health => health_content(&shell.health),
+		_ => placeholder_content(selected),
+	};
 
 	div()
 		.id("destination-content")
@@ -838,7 +1545,7 @@ fn destination_content(
 		.h_full()
 		.flex()
 		.flex_col()
-		.child(destination_header(selected, health, refresh_focus, window, cx))
+		.child(destination_header(selected, &shell.health, refresh_focus, window, cx))
 		.child(content)
 		.child(connection_status(presentation))
 		.into_any_element()
@@ -864,9 +1571,12 @@ impl Render for Shell {
 			.role(Role::Application)
 			.aria_label("Decodex operational shell")
 			.track_focus(&self.root_focus)
+			.on_action(cx.listener(Self::focus_next))
+			.on_action(cx.listener(Self::focus_previous))
+			.on_action(cx.listener(Self::submit_composer))
 			.size_full()
-			.min_w(px(760.0))
-			.min_h(px(520.0))
+			.min_w(px(1024.0))
+			.min_h(px(620.0))
 			.flex()
 			.bg(rgb(0x0b1020))
 			.text_color(rgb(0xe5e7eb))
@@ -890,14 +1600,7 @@ impl Render for Shell {
 					)
 					.children(navigation),
 			)
-			.child(destination_content(
-				selected,
-				presentation,
-				&self.health,
-				self.refresh_focus.clone(),
-				window,
-				cx,
-			))
+			.child(destination_content(self, presentation, self.refresh_focus.clone(), window, cx))
 	}
 }
 
@@ -916,11 +1619,14 @@ mod tests {
 	#[test]
 	fn destinations_have_exact_labels_and_live_classification() {
 		assert_eq!(
-			Destination::ALL.map(|destination| (destination.label(), destination.is_live())),
+			Destination::ALL.map(|destination| (
+				destination.label(),
+				matches!(destination, Destination::QuickTasks | Destination::Health),
+			)),
 			[
 				("Advisor", false),
 				("Projects", false),
-				("Quick Tasks", false),
+				("Quick Tasks", true),
 				("Runs", false),
 				("Automations", false),
 				("Accounts", false),
@@ -997,6 +1703,7 @@ mod tests {
 	#[gpui::test]
 	fn keyboard_focus_and_activation_cover_all_destinations(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
+		visual.simulate_keystrokes("tab");
 		for expected in Destination::ALL {
 			let focused = shell.read_with(visual, |shell, _| {
 				let index = Destination::ALL

@@ -11,7 +11,59 @@ use decodex_core::{
 	ProviderRequestKey, ProviderRequestKeys, RuntimeSessionId, TurnId,
 };
 
-use crate::{PostgresStore, StoreError};
+use crate::{
+	PostgresStore, RuntimeSessionThreadBindingReadback, StoreError,
+	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
+};
+
+const PREPARE_PROVIDER_ATTEMPT_SQL: &str = "SELECT result_code,revision,state::text,created_at_micros,updated_at_micros \
+	 FROM decodex.prepare_provider_attempt_exact(\
+	 $1::text::uuid,$2::text::decodex.provider_attempt_consumer_kind,\
+	 $3::text::uuid,$4::text::uuid,$5::text::uuid,$6,$7::text::uuid,\
+	 $8::text::uuid,$9::text::uuid,$10,$11::text::uuid,\
+	 $12::text::uuid,$13,$14,$15,$16::text::uuid,$17,$18,$19,$20,$21)";
+const AUTHORIZE_PROVIDER_ATTEMPT_DISPATCH_SQL: &str = "SELECT \
+	 result_code,revision,state::text,updated_at_micros \
+	 FROM decodex.authorize_provider_attempt_dispatch_exact(\
+	 $1::text::uuid,$2,$3::text::uuid,$4,$5::text::uuid,$6,$7::text::uuid,$8)";
+
+#[cfg(all(test, feature = "test-support"))]
+pub(crate) async fn prepare_provider_attempt_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	client.prepare(PREPARE_PROVIDER_ATTEMPT_SQL).await?;
+	client.prepare(AUTHORIZE_PROVIDER_ATTEMPT_DISPATCH_SQL).await?;
+	Ok(2)
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ConversationTurnFence {
+	conversation_id: ConversationId,
+	conversation_revision: i64,
+	turn_id: TurnId,
+	turn_revision: i64,
+}
+
+/// Exact completed RuntimeSession bind receipt admitted by initial-thread preparation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSessionBindingReceipt {
+	idempotency_key: String,
+}
+
+impl RuntimeSessionBindingReceipt {
+	/// Derive the receipt identity from a strict RuntimeSession binding readback.
+	pub fn from_binding(binding: &RuntimeSessionThreadBindingReadback) -> Self {
+		Self { idempotency_key: binding.binding_idempotency_key.clone() }
+	}
+
+	const fn protocol_version(&self) -> &'static str {
+		EXACT_COMMAND_PROTOCOL
+	}
+
+	fn idempotency_key(&self) -> &str {
+		&self.idempotency_key
+	}
+}
 
 /// Newly committed prepared authority. Durable replay cannot construct this value.
 #[derive(Debug, Eq, PartialEq)]
@@ -19,6 +71,7 @@ pub struct FreshPreparedProviderAttempt {
 	attempt_id: ProviderAttemptId,
 	revision: i64,
 	prepared_at_micros: i64,
+	conversation_turn_fence: Option<ConversationTurnFence>,
 }
 impl FreshPreparedProviderAttempt {
 	/// Return the exact newly prepared attempt.
@@ -91,7 +144,7 @@ pub struct ProviderAttemptMutation {
 pub enum ProviderAttemptRejection {
 	/// Attempt identity, request identity, plan, consumer, or provider key was already assigned.
 	IdentityConflict,
-	/// V16, V17, RuntimeSession, or restore authority was unavailable.
+	/// Routing Decision, Continuation Plan, RuntimeSession, or restore authority was unavailable.
 	AuthorityUnavailable,
 	/// The bound ProcessGeneration was absent, stale, or no longer ready.
 	GenerationUnavailable,
@@ -160,37 +213,74 @@ pub enum ProviderAttemptMutationOutcome {
 }
 
 impl PostgresStore {
-	/// Atomically bind one prepared attempt to one consumer, V16/V17, and live generation.
+	/// Atomically bind one prepared attempt to one consumer, Routing Decision/Continuation Plan,
+	/// and live generation.
 	pub async fn prepare_provider_attempt(
 		&self,
 		preparation: &ProviderAttemptPreparation,
 		process_generation_id: &ProcessGenerationId,
 		process_generation_revision: i64,
+		process_execution_epoch_id: &ProcessExecutionEpochId,
+		binding_receipt: Option<&RuntimeSessionBindingReceipt>,
+		expected_conversation_turn_revisions: (Option<i64>, Option<i64>),
 	) -> Result<PrepareProviderAttemptOutcome, StoreError> {
 		if process_generation_revision <= 0 {
 			return Err(StoreError::InvalidInput(
 				"ProviderAttempt ProcessGeneration revision must be positive",
 			));
 		}
+		let (expected_conversation_revision, expected_turn_revision) =
+			expected_conversation_turn_revisions;
 		let (conversation_id, turn_id, managed_run_id, managed_run_revision, managed_execution_id) =
 			consumer_parameters(&preparation.consumer);
+		let conversation_turn_fence = match &preparation.consumer {
+			ProviderAttemptConsumer::ConversationTurn { conversation_id, turn_id } => {
+				let conversation_revision =
+					expected_conversation_revision.ok_or(StoreError::InvalidInput(
+						"Conversation ProviderAttempt requires an exact Conversation revision",
+					))?;
+				let turn_revision = expected_turn_revision.ok_or(StoreError::InvalidInput(
+					"Conversation ProviderAttempt requires an exact Turn revision",
+				))?;
+				if conversation_revision <= 0 || turn_revision != 1 {
+					return Err(StoreError::InvalidInput(
+						"Conversation ProviderAttempt requires active Turn revision 1",
+					));
+				}
+				Some(ConversationTurnFence {
+					conversation_id: conversation_id.clone(),
+					conversation_revision,
+					turn_id: turn_id.clone(),
+					turn_revision,
+				})
+			},
+			ProviderAttemptConsumer::ManagedRunExecution { .. } => {
+				if expected_conversation_revision.is_some() || expected_turn_revision.is_some() {
+					return Err(StoreError::InvalidInput(
+						"ManagedRun ProviderAttempt cannot carry Conversation Turn authority",
+					));
+				}
+				None
+			},
+		};
 		let provider_idempotency_key =
 			preparation.provider_keys.idempotency().map(ProviderRequestKey::as_str);
 		let provider_correlation_key =
 			preparation.provider_keys.correlation().map(ProviderRequestKey::as_str);
 		let (predecessor_attempt_id, duplicate_risk_ack_digest) =
 			duplicate_risk_parameters(&preparation.duplicate_risk);
+		if let Some(receipt) = binding_receipt {
+			validate_exact_key(receipt.idempotency_key())?;
+		}
+		let binding_protocol = binding_receipt.map(RuntimeSessionBindingReceipt::protocol_version);
+		let binding_idempotency_key =
+			binding_receipt.map(RuntimeSessionBindingReceipt::idempotency_key);
 		let row = self
 			.pool()
 			.get()
 			.await?
 			.query_one(
-				"SELECT result_code,revision,state::text,created_at_micros,updated_at_micros \
-				 FROM decodex.prepare_provider_attempt_exact(\
-				 $1::text::uuid,$2::text::decodex.provider_attempt_consumer_kind,\
-				 $3::text::uuid,$4::text::uuid,$5::text::uuid,$6,$7::text::uuid,\
-				 $8::text::uuid,$9::text::uuid,$10,$11::text::uuid,$12,$13,$14,\
-				 $15::text::uuid,$16)",
+				PREPARE_PROVIDER_ATTEMPT_SQL,
 				&[
 					&preparation.attempt_id.as_str(),
 					&preparation.consumer.as_sql(),
@@ -202,12 +292,17 @@ impl PostgresStore {
 					&preparation.continuation_plan_id,
 					&process_generation_id.as_str(),
 					&process_generation_revision,
+					&process_execution_epoch_id.as_str(),
 					&preparation.request_id.as_str(),
 					&preparation.request_digest,
 					&provider_idempotency_key,
 					&provider_correlation_key,
 					&predecessor_attempt_id,
 					&duplicate_risk_ack_digest,
+					&binding_protocol,
+					&binding_idempotency_key,
+					&expected_conversation_revision,
+					&expected_turn_revision,
 				],
 			)
 			.await?;
@@ -218,6 +313,7 @@ impl PostgresStore {
 				attempt_id: preparation.attempt_id.clone(),
 				revision: mutation.revision,
 				prepared_at_micros: row.get(3),
+				conversation_turn_fence,
 			})),
 			"replayed" => Ok(PrepareProviderAttemptOutcome::Replayed(mutation)),
 			code => Ok(PrepareProviderAttemptOutcome::Rejected {
@@ -239,19 +335,33 @@ impl PostgresStore {
 				"ProviderAttempt ProcessGeneration revision must be positive",
 			));
 		}
+		let (conversation_id, conversation_revision, turn_id, turn_revision) = prepared
+			.conversation_turn_fence
+			.as_ref()
+			.map(|fence| {
+				(
+					Some(fence.conversation_id.as_str()),
+					Some(fence.conversation_revision),
+					Some(fence.turn_id.as_str()),
+					Some(fence.turn_revision),
+				)
+			})
+			.unwrap_or((None, None, None, None));
 		let row = self
 			.pool()
 			.get()
 			.await?
 			.query_one(
-				"SELECT result_code,revision,state::text,updated_at_micros \
-				 FROM decodex.authorize_provider_attempt_dispatch_exact(\
-				 $1::text::uuid,$2,$3::text::uuid,$4)",
+				AUTHORIZE_PROVIDER_ATTEMPT_DISPATCH_SQL,
 				&[
 					&prepared.attempt_id.as_str(),
 					&prepared.revision,
 					&process_generation_id.as_str(),
 					&process_generation_revision,
+					&conversation_id,
+					&conversation_revision,
+					&turn_id,
+					&turn_revision,
 				],
 			)
 			.await?;
@@ -537,7 +647,9 @@ fn parse_attempt(row: tokio_postgres::Row) -> Result<ProviderAttempt, StoreError
 	let continuation_plan_id = row.get::<_, String>(7);
 	let routing_decision_id = row.get::<_, String>(8);
 	if !is_canonical_uuid(&continuation_plan_id) || !is_canonical_uuid(&routing_decision_id) {
-		return Err(incompatible_value("ProviderAttempt V16/V17 identity"));
+		return Err(incompatible_value(
+			"ProviderAttempt Routing Decision/Continuation Plan identity",
+		));
 	}
 	let runtime_session_id = RuntimeSessionId::new(row.get::<_, String>(9))
 		.map_err(|_| incompatible_value("accepted RuntimeSession identity"))?;

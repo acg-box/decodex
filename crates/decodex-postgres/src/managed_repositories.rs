@@ -165,6 +165,15 @@ pub enum RepositoryReconciliationOutcome {
 }
 
 impl PostgresStore {
+	/// Whether PostgreSQL currently owns any admitted managed-repository authority.
+	pub async fn has_managed_repository_authority(&self) -> Result<bool, StoreError> {
+		let client = self.pool().get().await?;
+		Ok(client
+			.query_one("SELECT EXISTS (SELECT 1 FROM decodex.repository_admissions)", &[])
+			.await?
+			.get(0))
+	}
+
 	/// Insert one immutable repository admission, or accept only an exact repeat.
 	pub async fn admit_repository(
 		&self,

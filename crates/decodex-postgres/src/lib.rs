@@ -1,21 +1,9 @@
-//! PostgreSQL product-state authority for Decodex vNext.
+//! Canonical PostgreSQL product-state authority for Decodex vNext.
 //!
-//! This crate owns the XY-1267 persistence foundation and XY-1271 Conversation history:
-//! immutable migrations, idempotent optimistic transactions, expiring leases, transactional
-//! activity/outbox evidence, inert account/quota-window metadata, normalized history, blob
-//! references, Context Packs, inert transition proposals, exact in-transaction receipts, and
-//! immutable global RoleProfiles, inert ManagedRuns, and current-row
-//! managed-repository authority with append-only operations/evidence, plus revisioned routing
-//! policies, ordinary capability evidence, immutable routing fact snapshots, and uncomposed causal
-//! Codex experiment intent, two one-shot fences, exact start receipts, retained-title
-//! attestations, and positive observations, plus atomic routing decisions and
-//! inert exactly-once continuation plans with atomic Context-Pack fallback, plus durable inert
-//! ledger-first waiting-usage wake transitions, a derived scheduler head, fixed leases,
-//! cancellation, supersession, and fresh-routing requests, plus durable fenced ProcessGenerations,
-//! exact process identities, append-only positive death evidence, generic ProviderAttempts
-//! with positive-only outcome evidence, and read-only execution-decision projection. It does not
-//! compose a scheduler, dispatch work, switch
-//! credentials, advance runs, replay turns or effects, or expose protocol/client behavior.
+//! This crate owns the direct latest schema, explicit empty-database bootstrap, strict runtime
+//! catalog and authority verification, and typed persistence operations. Runtime connections run
+//! no DDL. Higher layers own capability composition, scheduling, process dispatch, and protocol
+//! behavior.
 
 mod account_lifecycle;
 mod account_profiles;
@@ -30,7 +18,6 @@ mod experiments;
 mod leases;
 mod managed_repositories;
 mod managed_runs;
-mod migrations;
 mod outbox;
 mod policies;
 mod process_generations;
@@ -43,6 +30,7 @@ mod role_profiles;
 mod routing;
 mod routing_decisions;
 mod runtime_sessions;
+mod schema;
 #[cfg(unix)] mod socket;
 mod types;
 mod wakes;
@@ -53,17 +41,21 @@ pub use self::{
 		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 		AccountCommandReceiptLease, AccountLifecycleMutation, AccountLifecycleMutationOutcome,
 		AccountLifecycleRejection, AccountOperationPreparation, AccountStoreObservation,
-		CodexAccountCapabilityAttestation, RoutingControlOutcome,
+		CodexAccountCapabilityAttestation, LocalAccountAuthorityAccount,
+		LocalAccountAuthorityRestore, LocalAccountAuthorityRestoreFailure, RoutingControlOutcome,
 	},
 	account_profiles::{
 		AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
 		AccountProfileSnapshot,
 	},
-	continuations::{ContinuationPlanEffect, PlanContinuation},
+	continuations::{ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation},
 	conversations::{
 		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
-		HistoryEntry, HistoryPage, PersistContextPack, ProposeTransition, RecordHistoryItem,
-		StoredArtifact, StoredConversation,
+		HistoryEntry, HistoryPage, OrdinaryTaskConversationCursor,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, PersistContextPack,
+		ProposeTransition, QuickTaskTerminalizationOutcome, RecordHistoryItem, StoredArtifact,
+		StoredConversation, TerminalizeQuickTaskTurn, TurnReservationOutcome,
+		TurnReservationReadback,
 	},
 	error::{BootstrapFailure, StoreError},
 	execution_decisions::{ExecutionDecisionReadback, ExecutionQuotaExclusion},
@@ -88,7 +80,7 @@ pub use self::{
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
 		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
-		ProviderAttemptRejection,
+		ProviderAttemptRejection, RuntimeSessionBindingReceipt,
 	},
 	reset_cards::{
 		ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus, ResetCardPreparation,
@@ -100,10 +92,18 @@ pub use self::{
 	routing::{PublishRoutingEvidence, ReplaceRoutingPolicy, RoutingPolicyMemberInput},
 	routing_decisions::{PersistedRoutingDecision, RouteAccount},
 	runtime_sessions::{
-		CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, RuntimeSessionAccountSnapshot,
-		RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome, RuntimeSessionProfileSnapshot,
-		RuntimeSessionRejection, StoredRuntimeSession,
+		BindRuntimeSessionThread, BindRuntimeSessionThreadOutcome, CreateRuntimeSession,
+		CreateRuntimeSessionAccountSnapshot, FenceRuntimeSessionThreadStart,
+		FenceRuntimeSessionThreadStartOutcome, FreshQuickTaskProcessGeneration,
+		FreshRuntimeSessionThreadStart, OrdinaryRuntimeSessionResumeReadback,
+		PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
+		QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment,
+		RuntimeSessionAccountSnapshot, RuntimeSessionCommandEffect, RuntimeSessionCommandOutcome,
+		RuntimeSessionProfileSnapshot, RuntimeSessionRejection,
+		RuntimeSessionThreadBindingReadback, StoredRuntimeSession,
+		SuccessfulRuntimeSessionThreadStart,
 	},
+	schema::{BOOTSTRAP_AUTHORITY_REPORT_PREFIX, LatestSchemaBootstrapFailure},
 	types::{
 		AccountMetadata, ActivityRecord, CommandIdentity, CreateProject, HypotheticalFallbackFact,
 		LeaseClaim, OutboxClaim, OutboxReconciliation, OutboxState, QuotaExclusionMutation,
@@ -175,7 +175,6 @@ use std::{sync::Arc, time::Duration};
 use deadpool_postgres::{Client, Manager, ManagerConfig, Pool, RecyclingMethod};
 use serde_json::Value;
 #[cfg(test)] use tokio as _;
-#[cfg(feature = "test-support")] use tokio_postgres::Client as TokioClient;
 use tokio_postgres::{Config, config::Host};
 
 #[cfg(unix)] use self::socket::VerifiedSocketConnect;
@@ -183,8 +182,6 @@ use decodex_core::{Availability, PostgresConnectionConfig, PostgresIdentityConfi
 
 /// PostgreSQL major accepted by the vNext storage authority.
 pub const REQUIRED_POSTGRES_MAJOR: u32 = 18;
-/// Stable reason returned by the composition seam before explicit verified configuration.
-pub const NOT_CONFIGURED: &str = "PostgreSQL store requires explicit verified configuration";
 /// Stable reason returned after the bounded connection pool is explicitly closed.
 pub const CLOSED: &str = "PostgreSQL store connection pool is closed";
 /// Maximum lease, retry, and retention duration accepted by the product-state adapter.
@@ -195,41 +192,18 @@ pub const MAX_OPERATION_DURATION_MILLISECONDS: u64 = 365 * 24 * 60 * 60 * 1_000;
 const INVALID_DURATION: &str =
 	"duration must be a positive whole number of milliseconds no greater than 365 days";
 const INVALID_EVIDENCE: &str = "outbox evidence must contain a non-empty JSON value";
-// Omitting pg_catalog makes PostgreSQL search it implicitly before the explicitly configured
-// public ledger namespace, while leaving unqualified migration DDL targeted at public.
-const TRUSTED_SESSION_OPTIONS: &str = "-csearch_path=public";
+const TRUSTED_SESSION_STARTUP_OPTIONS: &str = "-csearch_path=pg_catalog -cTimeZone=+05:00";
 
-/// Product-state authority selected by this infrastructure owner.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProductStateAuthority {
-	/// PostgreSQL domain tables and their transactional mechanisms.
-	Postgres,
-}
-
-/// Connected and migration-verified PostgreSQL product-state store.
+/// Connected and exact-current-authority-verified PostgreSQL product-state store.
 #[derive(Clone)]
 pub struct PostgresStore {
 	pool: Arc<Pool>,
 	#[cfg(unix)]
 	connector: VerifiedSocketConnect,
-	configured_migration_role: Arc<str>,
+	configured_schema_owner_role: Arc<str>,
 	configured_runtime_role: Arc<str>,
 }
 impl PostgresStore {
-	/// Return the exact schema-manifest query for isolated dump/restore fixtures.
-	#[cfg(feature = "test-support")]
-	#[doc(hidden)]
-	pub const fn schema_contract_sql_fixture() -> &'static str {
-		authority::schema_contract_sql_fixture()
-	}
-
-	/// Return the configured-principal and ACL manifest query for isolated restore fixtures.
-	#[cfg(feature = "test-support")]
-	#[doc(hidden)]
-	pub const fn configured_authority_sql_fixture() -> &'static str {
-		authority::configured_authority_sql_fixture()
-	}
-
 	/// Return the closed execution-path query and allowed function identities for fixtures.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
@@ -237,134 +211,93 @@ impl PostgresStore {
 		authority::execution_path_contract_fixture()
 	}
 
-	/// Evaluate the production runtime-routine authority query without exporting catalog values.
+	/// Apply the production trusted-session invariants to an isolated raw fixture.
 	#[cfg(feature = "test-support")]
 	#[doc(hidden)]
-	pub async fn runtime_routine_authority_fixture(client: &TokioClient) -> Result<(), StoreError> {
-		authority::runtime_routine_authority_fixture(client).await
+	pub fn apply_trusted_session_invariants_fixture(config: &mut Config) {
+		apply_trusted_session_invariants(config);
 	}
 
-	/// Evaluate and serialize the finalized production semantic-authority contract.
-	#[cfg(feature = "test-support")]
-	#[doc(hidden)]
-	pub async fn semantic_authority_fixture(
-		client: &TokioClient,
-		runtime_role: &str,
-	) -> Result<serde_json::Value, StoreError> {
-		authority::semantic_authority_fixture(client, runtime_role).await
-	}
-
-	/// Parse and prepare every changed V22/V27/V28 embedded SQL source without executing it.
-	///
-	/// V29 through V32 change only database-owned functions and add no adapter SQL.
-	#[cfg(feature = "test-support")]
-	#[doc(hidden)]
-	pub async fn prepare_changed_sql_fixture(client: &TokioClient) -> Result<usize, StoreError> {
-		let retained_title = experiments::prepare_retained_title_sql(client).await?;
-		let account_lifecycle = account_lifecycle::prepare_account_lifecycle_sql(client).await?;
-		let account_profiles = account_profiles::prepare_account_profile_sql(client).await?;
-		let process_generation =
-			process_generations::prepare_account_bound_process_generation_sql(client).await?;
-		let reset_card = reset_cards::prepare_account_bound_reset_card_sql(client).await?;
-
-		Ok(retained_title + account_lifecycle + account_profiles + process_generation + reset_card)
-	}
-
-	/// Apply the production connection-startup invariant to an isolated raw fixture.
-	#[cfg(feature = "test-support")]
-	#[doc(hidden)]
-	pub fn pin_session_search_path_fixture(config: &mut Config) {
-		pin_session_search_path(config);
-	}
-
-	/// Run migration/verification through the migration identity, close it, then retain
-	/// only a separately verified least-privilege runtime pool.
-	pub async fn connect_explicit(
+	/// Connect only the configured least-privilege runtime identity and verify the exact
+	/// current catalog and authority. This path executes no DDL.
+	pub async fn connect_runtime_explicit(
 		config: &PostgresConnectionConfig,
-		migration_password: Option<&str>,
 		runtime_password: Option<&str>,
 	) -> Result<Self, StoreError> {
-		let migration = connection_config(config, config.migration(), migration_password);
 		let runtime = connection_config(config, config.runtime(), runtime_password);
 
-		Self::connect(migration, runtime, config.expected_peer_uid()).await
+		Self::connect_runtime(runtime, config.expected_peer_uid()).await
 	}
 
-	/// Apply embedded migrations and install the exact steady-state runtime authority through one
-	/// single-use migration connection. No migration credential enters the retained runtime pool.
+	/// Create the one latest schema on an empty target through an explicit schema-owner
+	/// identity. The schema transaction also records the initial process execution epoch and
+	/// verifies the exact resulting catalog and configured runtime authority before commit.
 	#[cfg(unix)]
-	pub async fn migrate_and_provision_explicit(
+	pub async fn bootstrap_latest_schema_explicit(
 		config: &PostgresConnectionConfig,
-		migration_password: Option<&str>,
-	) -> Result<(), StoreError> {
-		let mut migration = connection_config(config, config.migration(), migration_password);
-		validate_connection(&migration)?;
-		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
-		pin_session_search_path(&mut migration);
-		let manager = Manager::from_connect(
-			migration,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = async {
-			migrations::run(&mut client).await?;
-			authority::provision_runtime(&client, config.database(), config.runtime().user())
-				.await?;
-			migrations::verify(&client).await
+		schema_owner: &PostgresIdentityConfig,
+		schema_owner_password: Option<&str>,
+		authorization: &ProcessExecutionAuthorization,
+	) -> Result<(), LatestSchemaBootstrapFailure> {
+		if schema_owner.user() == config.runtime().user() {
+			return Err(LatestSchemaBootstrapFailure::from(StoreError::UnsafeAuthority(
+				"schema-owner and runtime PostgreSQL identities must be distinct",
+			)));
 		}
-		.await;
-		drop(client);
-		pool.close();
 
-		result
+		let owner = connection_config(config, schema_owner, schema_owner_password);
+		schema::bootstrap_latest_schema(
+			owner,
+			config.expected_peer_uid(),
+			schema_owner.user(),
+			config.runtime().user(),
+			authorization,
+		)
+		.await
 	}
 
-	/// Connect two explicit identities to one Unix-socket endpoint. The migration
-	/// connection is never placed in or retained by the runtime pool.
+	#[cfg(not(unix))]
+	pub async fn bootstrap_latest_schema_explicit(
+		_config: &PostgresConnectionConfig,
+		_schema_owner: &PostgresIdentityConfig,
+		_schema_owner_password: Option<&str>,
+		_authorization: &ProcessExecutionAuthorization,
+	) -> Result<(), LatestSchemaBootstrapFailure> {
+		Err(LatestSchemaBootstrapFailure::from(StoreError::Incompatible(
+			"PostgreSQL Unix sockets require a Unix host".into(),
+		)))
+	}
+
+	/// Connect one explicit runtime identity to one verified Unix-socket endpoint and
+	/// execute no schema mutation.
 	#[cfg(unix)]
-	pub async fn connect(
-		migration: Config,
-		runtime: Config,
-		expected_peer_uid: u32,
-	) -> Result<Self, StoreError> {
-		Self::connect_with_pool_size(migration, runtime, expected_peer_uid, 32).await
+	async fn connect_runtime(runtime: Config, expected_peer_uid: u32) -> Result<Self, StoreError> {
+		Self::connect_runtime_with_pool_size(runtime, expected_peer_uid, 32).await
 	}
 
 	/// Construct a single-connection runtime pool for cross-adapter contention fixtures.
 	#[cfg(all(unix, feature = "test-support"))]
 	#[doc(hidden)]
-	pub async fn connect_fixture(
-		migration: Config,
+	pub async fn connect_runtime_fixture(
 		runtime: Config,
 		expected_peer_uid: u32,
 	) -> Result<Self, StoreError> {
-		Self::connect_with_pool_size(migration, runtime, expected_peer_uid, 1).await
+		Self::connect_runtime_with_pool_size(runtime, expected_peer_uid, 1).await
 	}
 
 	#[cfg(unix)]
-	async fn connect_with_pool_size(
-		migration: Config,
+	async fn connect_runtime_with_pool_size(
 		mut runtime: Config,
 		expected_peer_uid: u32,
 		pool_size: usize,
 	) -> Result<Self, StoreError> {
-		validate_connection(&migration)?;
 		validate_connection(&runtime)?;
-		validate_separation(&migration, &runtime)?;
-
-		let configured_migration_role = Arc::<str>::from(
-			migration.get_user().ok_or(StoreError::InvalidInput("migration role is absent"))?,
-		);
 		let configured_runtime_role = Arc::<str>::from(
 			runtime.get_user().ok_or(StoreError::InvalidInput("runtime role is absent"))?,
 		);
-		let connector = verified_socket_connect(&migration, expected_peer_uid)?;
+		let connector = verified_socket_connect(&runtime, expected_peer_uid)?;
 
-		Self::migrate_with_connector(migration, connector.clone()).await?;
-
-		pin_session_search_path(&mut runtime);
+		apply_trusted_session_invariants(&mut runtime);
 
 		let manager = Manager::from_connect(
 			runtime,
@@ -373,10 +306,15 @@ impl PostgresStore {
 		);
 		let pool = Pool::builder(manager).max_size(pool_size).build()?;
 		let client = checkout(&pool, &connector).await?;
+		schema::verify_platform(&**client).await?;
+		let configured_schema_owner_role = current_schema_owner(&client).await?;
 
-		authority::verify_runtime(&client, &configured_migration_role, &configured_runtime_role)
-			.await?;
-		migrations::verify(&client).await?;
+		authority::verify_runtime(
+			&**client,
+			&configured_schema_owner_role,
+			&configured_runtime_role,
+		)
+		.await?;
 
 		drop(client);
 
@@ -390,264 +328,17 @@ impl PostgresStore {
 		Ok(Self {
 			pool: Arc::new(pool),
 			connector,
-			configured_migration_role,
+			configured_schema_owner_role,
 			configured_runtime_role,
 		})
 	}
 
 	#[cfg(not(unix))]
-	pub async fn connect(
-		_migration: Config,
+	async fn connect_runtime(
 		_runtime: Config,
 		_expected_peer_uid: u32,
 	) -> Result<Self, StoreError> {
 		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))
-	}
-
-	/// Run embedded forward migrations and migration-state verification through one
-	/// single-use connection. This connection is closed before a live store is returned.
-	#[cfg(unix)]
-	pub async fn migrate(config: Config, expected_peer_uid: u32) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		Self::migrate_with_connector(config, connector).await
-	}
-
-	/// Install or verify one external ProcessGeneration execution epoch through a single-use
-	/// migration connection. The runtime pool never receives table authority or this method's
-	/// external digest from PostgreSQL.
-	#[cfg(unix)]
-	pub async fn provision_process_execution_authorization_explicit(
-		config: &PostgresConnectionConfig,
-		migration_password: Option<&str>,
-		authorization: &ProcessExecutionAuthorization,
-	) -> Result<(), StoreError> {
-		let mut migration = connection_config(config, config.migration(), migration_password);
-		validate_connection(&migration)?;
-		let connector = verified_socket_connect(&migration, config.expected_peer_uid())?;
-		pin_session_search_path(&mut migration);
-		let manager = Manager::from_connect(
-			migration,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let transaction = client.transaction().await?;
-		transaction
-			.execute(
-				"INSERT INTO decodex.process_generation_execution_epochs(\
-				 execution_epoch_id,authorization_digest,authorized_at,retired_at) \
-				 VALUES($1::text::uuid,$2,pg_catalog.clock_timestamp(),NULL) \
-				 ON CONFLICT (execution_epoch_id) DO NOTHING",
-				&[&authorization.epoch_id.as_str(), &authorization.authorization_digest],
-			)
-			.await?;
-		let active = transaction
-			.query(
-				"SELECT execution_epoch_id::text,authorization_digest \
-				 FROM decodex.process_generation_execution_epochs \
-				 WHERE retired_at IS NULL FOR UPDATE",
-				&[],
-			)
-			.await?;
-		if active.len() != 1
-			|| active[0].get::<_, &str>(0) != authorization.epoch_id.as_str()
-			|| active[0].get::<_, &str>(1) != authorization.authorization_digest.as_str()
-		{
-			return Err(StoreError::InvalidInput(
-				"active ProcessGeneration execution authorization conflicts",
-			));
-		}
-		transaction.commit().await?;
-		drop(client);
-		pool.close();
-		Ok(())
-	}
-
-	/// Apply the immutable migration ledger only through V7 for V8 boundary fixtures.
-	#[cfg(all(unix, feature = "test-support"))]
-	#[doc(hidden)]
-	pub async fn migrate_fixture_through_v7(
-		mut config: Config,
-		expected_peer_uid: u32,
-	) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = migrations::run_through_v7(&mut client).await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	/// Apply the immutable migration ledger only through V8 for the V9 upgrade proof.
-	#[cfg(all(unix, feature = "test-support"))]
-	#[doc(hidden)]
-	pub async fn migrate_fixture_through_v8(
-		mut config: Config,
-		expected_peer_uid: u32,
-	) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = migrations::run_through_v8(&mut client).await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	/// Apply the immutable migration ledger only through V9 for the V10 upgrade proof.
-	#[cfg(all(unix, feature = "test-support"))]
-	#[doc(hidden)]
-	pub async fn migrate_fixture_through_v9(
-		mut config: Config,
-		expected_peer_uid: u32,
-	) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = migrations::run_through_v9(&mut client).await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	/// Apply the immutable migration ledger only through V10 for isolated acceptance fixtures.
-	#[cfg(all(unix, feature = "test-support"))]
-	#[doc(hidden)]
-	pub async fn migrate_fixture_through_v10(
-		mut config: Config,
-		expected_peer_uid: u32,
-	) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = migrations::run_through_v10(&mut client).await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	/// Apply the immutable migration ledger only through V13 for the V14 authority upgrade proof.
-	#[cfg(all(unix, feature = "test-support"))]
-	#[doc(hidden)]
-	pub async fn migrate_fixture_through_v13(
-		mut config: Config,
-		expected_peer_uid: u32,
-	) -> Result<(), StoreError> {
-		validate_connection(&config)?;
-
-		let connector = verified_socket_connect(&config, expected_peer_uid)?;
-
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = migrations::run_through_v13(&mut client).await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	#[cfg(not(unix))]
-	pub async fn migrate(_config: Config, _expected_peer_uid: u32) -> Result<(), StoreError> {
-		Err(StoreError::Incompatible("PostgreSQL Unix sockets require a Unix host".into()))
-	}
-
-	#[cfg(unix)]
-	async fn migrate_with_connector(
-		mut config: Config,
-		connector: VerifiedSocketConnect,
-	) -> Result<(), StoreError> {
-		pin_session_search_path(&mut config);
-
-		let manager = Manager::from_connect(
-			config,
-			connector.clone(),
-			ManagerConfig { recycling_method: RecyclingMethod::Fast },
-		);
-		let pool = Pool::builder(manager).max_size(1).build()?;
-		let mut client = checkout(&pool, &connector).await?;
-		let result = async {
-			migrations::run(&mut client).await?;
-
-			migrations::verify(&client).await
-		}
-		.await;
-
-		drop(client);
-
-		pool.close();
-
-		result
-	}
-
-	/// Report the concrete authority owned by this adapter.
-	pub const fn authority(&self) -> ProductStateAuthority {
-		ProductStateAuthority::Postgres
 	}
 
 	/// Close the bounded pool. Existing checked-out connections finish before closure.
@@ -655,21 +346,21 @@ impl PostgresStore {
 		self.pool.close();
 	}
 
-	/// Revalidate the retained endpoint, live runtime session, immutable migrations, and
-	/// least-privilege authority without reconnecting migration credentials or running DDL.
+	/// Revalidate the retained endpoint, live runtime session, exact current catalog, and
+	/// least-privilege authority without resolving schema-owner credentials or running DDL.
 	#[cfg(unix)]
 	pub async fn revalidate(&self) -> Result<(), StoreError> {
 		let client = checkout(&self.pool, &self.connector).await?;
 
 		client.simple_query("SELECT 1").await?;
+		schema::verify_platform(&**client).await?;
 
 		authority::verify_runtime(
-			&client,
-			&self.configured_migration_role,
+			&**client,
+			&self.configured_schema_owner_role,
 			&self.configured_runtime_role,
 		)
 		.await?;
-		migrations::verify(&client).await?;
 
 		self.connector.verify()?;
 
@@ -695,28 +386,6 @@ impl ProductState for PostgresStore {
 			// Individual operations remain authoritative for live PostgreSQL connectivity.
 			Availability::Available
 		}
-	}
-}
-
-/// Unconfigured composition seam used until the path/bootstrap owner supplies explicit
-/// connection configuration. It never opens a default or ambient PostgreSQL service.
-#[derive(Clone, Copy, Debug, Default)]
-pub struct UnavailablePostgresStore;
-impl UnavailablePostgresStore {
-	/// Construct the fail-closed, unconfigured adapter seam.
-	pub const fn new() -> Self {
-		Self
-	}
-
-	/// Report the concrete authority selected by the seam.
-	pub const fn authority(self) -> ProductStateAuthority {
-		ProductStateAuthority::Postgres
-	}
-}
-
-impl ProductState for UnavailablePostgresStore {
-	fn availability(&self) -> Availability {
-		Availability::Unavailable { reason: NOT_CONFIGURED }
 	}
 }
 
@@ -776,11 +445,11 @@ pub(crate) fn ensure_credential_negative_json(value: &Value) -> Result<(), Store
 	Ok(())
 }
 
-fn pin_session_search_path(config: &mut Config) {
+fn apply_trusted_session_invariants(config: &mut Config) {
 	// Startup-packet options are applied by PostgreSQL before it parses the first query.
 	// Replacing caller-provided options prevents role/database defaults from influencing
-	// migration, identity, schema, or configured-authority verification.
-	config.options(TRUSTED_SESSION_OPTIONS);
+	// identity, schema, time-zone rendering, or configured-authority verification.
+	config.options(TRUSTED_SESSION_STARTUP_OPTIONS);
 }
 
 #[cfg(unix)]
@@ -826,30 +495,32 @@ fn validate_connection(config: &Config) -> Result<(), StoreError> {
 	}
 }
 
-fn validate_separation(migration: &Config, runtime: &Config) -> Result<(), StoreError> {
-	let same_endpoint = migration.get_hosts() == runtime.get_hosts()
-		&& migration.get_ports() == runtime.get_ports()
-		&& migration.get_dbname() == runtime.get_dbname();
-	let distinct_identity = migration.get_user().is_some()
-		&& runtime.get_user().is_some()
-		&& migration.get_user() != runtime.get_user();
-
-	if !same_endpoint {
-		return Err(StoreError::Incompatible(
-			"migration and runtime identities must use one PostgreSQL endpoint".into(),
-		));
-	}
-	if !distinct_identity {
-		Err(StoreError::UnsafeAuthority(
-			"migration and runtime PostgreSQL identities must be distinct",
-		))
-	} else {
-		Ok(())
-	}
-}
-
 fn is_meaningful_evidence(value: &Value) -> bool {
 	ensure_meaningful_evidence(value).is_ok()
+}
+
+#[cfg(unix)]
+async fn current_schema_owner(client: &Client) -> Result<Arc<str>, StoreError> {
+	let owner = client
+		.query_opt(
+			"SELECT owner.rolname::text \
+			 FROM pg_catalog.pg_namespace AS namespace \
+			 JOIN pg_catalog.pg_roles AS owner ON owner.oid=namespace.nspowner \
+			 WHERE namespace.nspname='decodex'",
+			&[],
+		)
+		.await?
+		.ok_or_else(|| StoreError::Incompatible("PostgreSQL Decodex schema is absent".into()))?
+		.get::<_, String>(0);
+	let runtime = client.query_one("SELECT current_user::text", &[]).await?.get::<_, String>(0);
+
+	if owner == runtime {
+		return Err(StoreError::UnsafeAuthority(
+			"runtime PostgreSQL identity owns the Decodex schema",
+		));
+	}
+
+	Ok(Arc::from(owner))
 }
 
 #[cfg(unix)]
@@ -857,4 +528,48 @@ async fn checkout(pool: &Pool, connector: &VerifiedSocketConnect) -> Result<Clie
 	connector.verify()?;
 
 	pool.get().await.map_err(StoreError::Pool)
+}
+
+#[cfg(all(test, feature = "test-support"))]
+mod launch_gate_tests {
+	use std::env;
+
+	use tokio_postgres::{Config, NoTls};
+
+	use super::{
+		account_lifecycle, account_profiles, apply_trusted_session_invariants, continuations,
+		conversations, process_generations, provider_attempts, reset_cards, routing,
+		runtime_sessions,
+	};
+
+	#[tokio::test]
+	async fn changed_adapter_sql_prepares_against_current_authority()
+	-> Result<(), Box<dyn std::error::Error>> {
+		let database_url = match env::var("DECODEX_TEST_RUNTIME_DATABASE_URL") {
+			Ok(database_url) => database_url,
+			Err(env::VarError::NotPresent) => return Ok(()),
+			Err(error) => return Err(error.into()),
+		};
+		let mut config: Config = database_url.parse()?;
+		apply_trusted_session_invariants(&mut config);
+		let (client, connection) = config.connect(NoTls).await?;
+		let connection_task = tokio::spawn(connection);
+
+		let prepared = [
+			account_lifecycle::prepare_account_lifecycle_sql(&client).await?,
+			account_profiles::prepare_account_profile_sql(&client).await?,
+			process_generations::prepare_account_bound_process_generation_sql(&client).await?,
+			reset_cards::prepare_account_bound_reset_card_sql(&client).await?,
+			conversations::prepare_conversation_admission_sql(&client).await?,
+			routing::prepare_routing_decision_sql(&client).await?,
+			continuations::prepare_continuation_plan_sql(&client).await?,
+			provider_attempts::prepare_provider_attempt_sql(&client).await?,
+			runtime_sessions::prepare_runtime_session_thread_establishment_sql(&client).await?,
+		];
+		assert!(prepared.iter().all(|count| *count > 0));
+
+		drop(client);
+		connection_task.await??;
+		Ok(())
+	}
 }

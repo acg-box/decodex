@@ -84,7 +84,7 @@ pub enum RoutingCapabilityState {
 	DegradedLegacyHistoryOnly,
 }
 
-/// Deterministic candidate-quality blocker persisted by V14.
+/// Deterministic candidate-quality blocker persisted by Routing Snapshot.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum RoutingBlocker {
 	/// The persisted policy explicitly excludes this complete-inventory member.
@@ -423,7 +423,8 @@ pub struct RoutingSnapshotCapabilityFact {
 	pub evidence_state: Option<RoutingCapabilityState>,
 }
 
-/// Complete immutable PostgreSQL classification readback for the later V16 pure kernel.
+/// Complete immutable PostgreSQL classification readback for the later Routing Decision pure
+/// kernel.
 ///
 /// The public value is mechanism-neutral; only the adapter and transaction establish provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -446,18 +447,18 @@ pub struct RoutingSnapshot {
 	pub required_build_id: String,
 	/// Exact ordinary or managed execution consumer for which the snapshot was resolved.
 	pub consumer: ExecutionConsumer,
-	/// RuntimeSession identity supplying the sticky-affinity source.
-	pub runtime_session_id: RuntimeSessionId,
-	/// Positive RuntimeSession revision bound by the snapshot.
-	pub runtime_session_revision: i64,
-	/// Immutable account-snapshot identity referenced by the RuntimeSession.
-	pub account_snapshot_id: String,
-	/// Positive account source revision retained by the account snapshot.
-	pub account_snapshot_source_revision: i64,
-	/// Immutable profile-snapshot identity referenced by the RuntimeSession.
-	pub profile_snapshot_id: String,
-	/// Positive profile source revision retained by the profile snapshot.
-	pub profile_snapshot_source_revision: i64,
+	/// RuntimeSession identity supplying L6 affinity, absent only for initial L0 routing.
+	pub runtime_session_id: Option<RuntimeSessionId>,
+	/// Positive RuntimeSession revision, jointly absent only for initial L0 routing.
+	pub runtime_session_revision: Option<i64>,
+	/// Immutable account-snapshot identity, jointly absent only for initial L0 routing.
+	pub account_snapshot_id: Option<String>,
+	/// Positive account source revision, jointly absent only for initial L0 routing.
+	pub account_snapshot_source_revision: Option<i64>,
+	/// Immutable profile-snapshot identity, jointly absent only for initial L0 routing.
+	pub profile_snapshot_id: Option<String>,
+	/// Positive profile source revision, jointly absent only for initial L0 routing.
+	pub profile_snapshot_source_revision: Option<i64>,
 	/// PostgreSQL resolution instant in UTC Unix microseconds.
 	pub resolved_at_micros: i64,
 	/// Complete account inventory in canonical policy order.
@@ -486,7 +487,7 @@ pub enum RoutingCommandOutcome<T> {
 	Rejected(RoutingRejection),
 }
 
-/// Exact source precision accepted by the V16 decision boundary.
+/// Exact source precision accepted by the Routing Decision boundary.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RoutingTimestampPrecision {
 	/// The raw source value is exactly representable as UTC Unix microseconds.
@@ -508,10 +509,10 @@ pub struct RoutingTimestampProvenance {
 	pub evidence_revision: i64,
 }
 
-/// V16 quota evidence presented to the pure kernel by PostgreSQL.
+/// Routing Decision quota evidence presented to the pure kernel by PostgreSQL.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecisionQuotaFact {
-	/// Account identity to which this V16 quota fact belongs.
+	/// Account identity to which this Routing Decision quota fact belongs.
 	pub account_id: AccountId,
 	/// Closed duration-typed quota-window class.
 	pub window: QuotaWindowClass,
@@ -534,7 +535,7 @@ pub struct RoutingDecisionQuotaFact {
 	pub resets_at_provenance: Option<RoutingTimestampProvenance>,
 }
 
-/// Closed input shape consumed by the V16 pure routing kernel.
+/// Closed input shape consumed by the Routing Decision pure routing kernel.
 ///
 /// PostgreSQL supplies the authoritative production value; arbitrary Rust construction does not
 /// establish completeness, persistence, or routing authority.
@@ -552,7 +553,7 @@ pub struct RoutingDecisionSnapshot {
 	pub capability_facts: Vec<RoutingSnapshotCapabilityFact>,
 }
 
-/// One candidate shape in the complete V16 universe.
+/// One candidate shape in the complete Routing Decision universe.
 ///
 /// The enclosing validated snapshot, not public construction, establishes database authorship.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -569,7 +570,7 @@ pub struct RoutingDecisionCandidate {
 	pub blockers: Vec<RoutingBlocker>,
 }
 
-/// Stable semantic outcome shape persisted by V16 after transactional validation.
+/// Stable semantic outcome shape persisted by Routing Decision after transactional validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RoutingDecisionKind {
 	/// One independently eligible account was deterministically chosen.
@@ -625,7 +626,7 @@ pub struct RoutingDecisionCause {
 	pub blocker: RoutingBlocker,
 }
 
-/// Inert deterministic V16 result shape.
+/// Inert deterministic Routing Decision result shape.
 ///
 /// Construction does not prove persistence and carries no routing, dispatch, or execution
 /// authority.

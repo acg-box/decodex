@@ -152,32 +152,6 @@ pub struct ThreadReadResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RetainedTitleThreadStartParams<'a> {
-	pub cwd: &'a str,
-	pub ephemeral: bool,
-	pub history_mode: &'static str,
-	pub developer_instructions: &'static str,
-	pub thread_source: &'a str,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct RetainedTitleThreadStartResponse {
-	pub thread: ProtocolThread,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RetainedTitleNameSetParams<'a> {
-	pub thread_id: &'a str,
-	pub name: &'a str,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct RetainedTitleNameSetResponse {}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ThreadArchiveParams<'a> {
 	pub thread_id: &'a ExactThreadId,
 }

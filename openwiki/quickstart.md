@@ -25,8 +25,8 @@ configuration, and accepted contracts remain executable authority.
 - [Runtime architecture](architecture/runtime-architecture.md): process topology,
   PostgreSQL bootstrap/runtime separation, independent startup readiness, service
   ownership, and current-state drift.
-- [Commands and validation](operations/commands-and-validation.md): implementation-owned
-  bootstrap and authority command boundaries plus current repository checks.
+- [Commands and validation](operations/commands-and-validation.md): exact hidden bootstrap,
+  current-authority validation, and local account restore commands plus repository checks.
 - [Account lifecycle authority](specs/account-lifecycle-authority.md): Account Registry,
   HostCredentialStore, Account Service, current account observations, and the local
   credential-negative rebind.
@@ -58,9 +58,9 @@ One explicit operator bootstrap runs only against an empty PostgreSQL 18 target.
 4. verifies the exact resulting catalog and configured authority; and
 5. commits only after every check passes.
 
-A second bootstrap against that nonempty target fails closed. Bootstrap is not
-`decodexd` startup. Exact command spelling is implementation-owned and is not yet
-authoritative.
+A second bootstrap against that nonempty target fails closed. The exact hidden command
+is `decodexd bootstrap-latest-schema`; it is not `decodexd` startup. The exact read-only
+validation command is `decodexd validate-current-authority`.
 
 Normal `decodexd` startup resolves only the runtime database credential. It executes zero
 DDL and verifies the exact current catalog and authority. It never resolves a schema-owner
@@ -193,13 +193,14 @@ XY-1304.
 
 ## Local database reset
 
-One reviewed operator-only local action may stop the daemon and capture the complete
-credential-negative reset tuple. For every retained account, the tuple contains Account
-UUID, enabled state, account revision, provider binding, credential version/fingerprint,
-and host-store binding. It also contains the routing revision, mode, fixed target, and
-complete account order. The action may then replace or directly transform the disposable
-local database, bootstrap the latest schema when needed, restore or rebind that exact
-tuple against unchanged host-vault records, prove exact readback, and start the daemon.
+After the operator stops the daemon and bootstraps the replacement database, the exact
+hidden `decodexd restore-local-account-authority --root ROOT --schema-owner-user USER
+[--schema-owner-credential-env-var ENV]` command reads one strict
+`decodex/local-account-authority-restore/1` JSON document from stdin. It acquires and
+retains the existing same-UID local transport namespace, proves every exact Keychain
+binding before PostgreSQL mutation and again before commit, and accepts only a fresh
+latest-schema target. It restores only current account rows, account order, and routing
+control, then proves the complete tuple by exact readback.
 
 For `fixed` mode, the fixed target is non-null and belongs to the retained account set
 and order. For `balanced` mode, it is null. The order remains a complete duplicate-free
@@ -229,9 +230,11 @@ cargo make test-vnext-architecture
 cargo make check
 ```
 
-Do not use current schema-provisioning or migration commands as acceptance for this
-reset. The future latest-schema bootstrap and current-authority validation command names
-are implementation-owned. See [Commands and validation](operations/commands-and-validation.md).
+Do not use historical schema-provisioning or migration commands as acceptance for this
+reset. The implemented hidden commands are `decodexd bootstrap-latest-schema`,
+`decodexd validate-current-authority`, and
+`decodexd restore-local-account-authority`. See
+[Commands and validation](operations/commands-and-validation.md).
 
 ## Safety rules
 

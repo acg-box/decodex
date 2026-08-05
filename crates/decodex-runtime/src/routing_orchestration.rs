@@ -1,234 +1,210 @@
 //! Stateless execution sequencing over accepted durable owners.
 //!
-//! `ExecutionCoordinator` retains no services or lifecycle state. It consumes one persisted V16
-//! decision, one V17 RuntimeSession result, one ProcessSupervisor-owned live fence, and the sole
-//! ProviderAttempt writer. No production root calls this boundary, and no dispatch authorization
-//! or provider gateway is reachable from it.
+//! `ExecutionCoordinator` retains no services or lifecycle state. Pre-process commits only Routing
+//! Decision routing and Continuation Planning. Post-process consumes a ready generation plus exact
+//! establishment or affine resume authority into ProviderAttempt preparation. No dispatch
+//! authorization or provider gateway is reachable from either boundary.
 
 use decodex_core::{
 	BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlanKind,
 	ContinuationRejection, ExecutionConsumer, ProviderAttemptConsumer, ProviderAttemptId,
 	ProviderAttemptPreparation, ProviderAttemptState, RoutingBlocker, RoutingCommandOutcome,
-	RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind, RoutingNoRouteReason,
+	RoutingDecisionKind,
 };
 use decodex_postgres::{
-	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation, PostgresStore,
-	PrepareProviderAttemptOutcome, ProviderAttemptRejection, RouteAccount, StoreError,
+	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation,
+	PlanInitialThreadContinuation, PostgresStore, PrepareProviderAttemptOutcome, RouteAccount,
 };
 
 use crate::{
 	process_supervisor::FencedProcess,
-	provider_attempt_service::{ProviderAttemptControl, ProviderAttemptServiceError},
+	provider_attempt_service::{
+		ProviderAttemptControl, ProviderAttemptRuntimeAuthority, ProviderAttemptServiceError,
+	},
 };
 
-/// Caller-owned identities for V17 fallback allocation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ContinuationCoordinates {
-	/// Domain operation identity, distinct from the exact-command idempotency key.
-	pub operation_id: String,
-	/// Caller-allocated identity for one immutable continuation plan.
-	pub plan_id: String,
-	/// Preallocated RuntimeSession identity used only when V17 selects fallback.
-	pub fallback_runtime_session_id: String,
-	/// Preallocated selected-account snapshot identity used only for fallback.
-	pub fallback_account_snapshot_id: String,
-	/// Preallocated Context Pack identity used only for the atomic fallback shape.
-	pub fallback_context_pack_id: String,
+/// Closed Continuation Planning input selected before any process operation exists.
+pub(crate) enum ContinuationPlanning {
+	/// Bind the exact existing starting/unfenced RuntimeSession without creating a successor.
+	InitialThread { operation_id: String, plan_id: String },
+	/// Atomically preserve same-thread evidence or allocate one Context-Pack successor.
+	ExistingSession {
+		operation_id: String,
+		plan_id: String,
+		fallback_runtime_session_id: String,
+		fallback_account_snapshot_id: String,
+		fallback_context_pack_id: String,
+		fallback_context_pack: Box<ContextPack>,
+	},
 }
 
-/// Complete input for one stateless, dispatch-disabled sequencing call.
-pub struct ExecutionCommand {
-	/// Exact-command idempotency key for V16.
+/// Complete input for one stateless pre-process route-and-plan call.
+pub(crate) struct ExecutionCommand {
+	/// Exact-command idempotency key for Routing Decision.
 	pub routing_idempotency_key: String,
-	/// V16 operation, policy, and exact consumer coordinates.
+	/// Routing Decision operation, policy, and exact consumer coordinates.
 	pub routing: RouteAccount,
-	/// Exact-command idempotency key for V17.
+	/// Exact-command idempotency key for Continuation Plan.
 	pub continuation_idempotency_key: String,
-	/// V17 operation and fallback identities.
-	pub continuation: ContinuationCoordinates,
-	/// Caller-compiled fallback input for V17 canonical validation.
-	pub fallback_context_pack: ContextPack,
-	/// Complete ProviderAttempt input. V24 derives account, RuntimeSession, and process lineage.
-	pub provider_attempt: ProviderAttemptPreparation,
+	/// Closed initial-thread or existing-session Continuation Planning input.
+	continuation: ContinuationPlanning,
 }
 
-/// Immutable V16 identity and exact consumer provenance.
+impl ExecutionCommand {
+	/// Construct first-Turn pre-process input without exposing a process operation.
+	pub(crate) fn initial_thread(
+		routing_idempotency_key: String,
+		routing: RouteAccount,
+		continuation_idempotency_key: String,
+		operation_id: String,
+		plan_id: String,
+	) -> Self {
+		Self {
+			routing_idempotency_key,
+			routing,
+			continuation_idempotency_key,
+			continuation: ContinuationPlanning::InitialThread { operation_id, plan_id },
+		}
+	}
+
+	/// Construct existing-session pre-process input with one bounded fallback candidate.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn existing_session(
+		routing_idempotency_key: String,
+		routing: RouteAccount,
+		continuation_idempotency_key: String,
+		operation_id: String,
+		plan_id: String,
+		fallback_runtime_session_id: String,
+		fallback_account_snapshot_id: String,
+		fallback_context_pack_id: String,
+		fallback_context_pack: ContextPack,
+	) -> Self {
+		Self {
+			routing_idempotency_key,
+			routing,
+			continuation_idempotency_key,
+			continuation: ContinuationPlanning::ExistingSession {
+				operation_id,
+				plan_id,
+				fallback_runtime_session_id,
+				fallback_account_snapshot_id,
+				fallback_context_pack_id,
+				fallback_context_pack: Box::new(fallback_context_pack),
+			},
+		}
+	}
+}
+
+/// Complete post-process input after one ready generation and positive establish/resume result.
+pub(crate) struct PostProcessCommand {
+	/// Exact accepted Routing Decision provenance.
+	pub decision: PersistedDecisionProvenance,
+	/// Exact accepted inert Continuation Plan.
+	pub plan: ContinuationPlanEffect,
+	/// Complete generic ProviderAttempt request identity and provider keys.
+	pub provider_attempt: ProviderAttemptPreparation,
+	/// Durable initial binding or affine same-thread resume authority.
+	pub runtime_authority: ProviderAttemptRuntimeAuthority,
+}
+
+/// Immutable Routing Decision identity and exact consumer provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PersistedDecisionProvenance {
-	/// Identity of the immutable V16 decision.
+pub(crate) struct PersistedDecisionProvenance {
+	/// Identity of the immutable Routing Decision.
 	pub decision_id: String,
 	/// Exact ordinary or managed consumer committed with the decision.
 	pub consumer: ExecutionConsumer,
 }
 
-/// Pure usage wait projection. It grants no scheduler or wake mutation capability.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WaitingUsageHandoff {
-	/// Identity of the persisted V16 decision.
-	pub decision_id: String,
-	/// Exact consumer blocked by positive current quota depletion.
-	pub consumer: ExecutionConsumer,
-	/// PostgreSQL-authored earliest ready instant, in Unix microseconds.
-	pub earliest_ready_at_micros: i64,
-	/// Complete independent 300-minute and 10,080-minute causes and provenance.
-	pub causes: Vec<RoutingDecisionCause>,
-	/// Complete independent positive depletion facts with exact source and timestamp lineage.
-	pub quota_exclusions: Vec<RoutingDecisionExclusion>,
-}
-
-/// Pure reconciliation wait projection. It grants no retry, replay, or wake capability.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct WaitingReconciliationHandoff {
-	/// Persisted V16 decision that retained the unresolved authority, when available.
-	pub decision_id: String,
-	/// Exact affected consumer.
-	pub consumer: ExecutionConsumer,
-	/// Complete exact account-scoped process or attempt causes.
-	pub causes: Vec<RoutingDecisionCause>,
-}
-
 /// Inert prepared-attempt projection. It cannot authorize dispatch.
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct PreparedAttemptHandoff {
+pub(crate) struct PreparedAttemptHandoff {
 	/// Exact ProviderAttempt identity.
 	pub attempt_id: ProviderAttemptId,
 	/// Current durable prepared revision.
 	pub revision: i64,
-	/// PostgreSQL-authored preparation or readback time, in Unix microseconds.
-	pub recorded_at_micros: i64,
 	/// True only when this coordinator call committed the prepared row.
 	pub newly_prepared: bool,
 }
 
-/// Stable V16 rejection classifications admitted by the strict adapter.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum RoutingAuthorityRejection {
-	/// Exact-command coordinates or input were malformed.
-	MalformedInput,
-	/// Routing-policy authority changed.
-	StaleRoutingPolicy,
-	/// Conversation or ManagedRun authority changed.
-	StaleConsumer,
-	/// No immutable V14 snapshot matched the exact consumer.
-	SnapshotMissing,
-	/// A locked account, policy, quota, or RuntimeSession authority changed.
-	ConcurrentAuthorityChange,
-}
-
 /// Closed fail-closed classification without database or provider detail.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ExecutionFailureKind {
-	/// V16 returned a recognized stable rejection.
-	RoutingRejected(RoutingAuthorityRejection),
-	/// V17 returned a recognized stable rejection.
+pub(crate) enum ExecutionFailureKind {
+	/// Continuation Plan returned the rejection inspected by the production caller.
 	ContinuationRejected(ContinuationRejection),
-	/// A successful V16 readback violated its closed decision shape.
-	InvalidPersistedDecision,
-	/// A successful V17 readback violated consumer, account, or inertness lineage.
-	InvalidPersistedPlan,
-	/// ProviderAttempt input did not name the same exact consumer as V16 and V17.
-	ConsumerCrossLink,
-	/// ProviderAttempt rejected an exact identity or immutable consumer binding.
-	ProviderAttemptRejected(ProviderAttemptRejection),
-	/// Store input or credential-shaped content was rejected.
-	InvalidCommand,
-	/// Optimistic authority changed.
-	StaleAuthority,
-	/// An exact-command or semantic identity conflicted.
-	ExactCommandConflict,
-	/// Persisted authority or host integrity was incompatible.
-	PersistedAuthorityIncompatible,
-	/// Persisted authority was unavailable.
-	PersistedAuthorityUnavailable,
+	/// Every other fail-closed routing, persistence, or validation result.
+	Other,
 }
 
-/// Typed failure with the most exact persisted decision provenance available.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ExecutionFailure {
-	/// Exact affected consumer.
-	pub consumer: ExecutionConsumer,
-	/// Persisted V16 identity when it was safely read before the failure.
-	pub decision: Option<PersistedDecisionProvenance>,
-	/// Closed failure classification.
-	pub kind: ExecutionFailureKind,
-}
-
-/// One dispatch-disabled result from the stateless coordinator.
+/// One dispatch-disabled result from stateless pre-process routing and planning.
 #[allow(clippy::large_enum_variant)] // The closed handoff remains one typed by-value authority result.
-pub enum ExecutionOutcome {
-	/// ProviderAttempt binding is durable. No variant grants dispatch authority.
-	Prepared {
-		/// Exact V16 decision provenance.
+pub(crate) enum PreProcessOutcome {
+	/// Routing Decision and Continuation Plan are committed; no process or ProviderAttempt
+	/// operation has occurred.
+	Planned {
+		/// Exact Routing Decision provenance.
 		decision: PersistedDecisionProvenance,
-		/// Exact V17 result and verified fallback pack, when fallback was selected.
+		/// Exact Continuation Plan result.
 		plan: ContinuationPlanEffect,
-		/// Fresh or replayed prepared projection with the dispatch-capable token consumed.
-		attempt: PreparedAttemptHandoff,
 	},
 	/// Pure positive quota depletion. No wake is registered here.
-	WaitingUsage(WaitingUsageHandoff),
+	WaitingUsage,
 	/// Pure unresolved ProcessGeneration or ProviderAttempt authority.
-	WaitingReconciliation(WaitingReconciliationHandoff),
-	/// Typed unavailable state with every exact persisted cause.
-	NoRoute {
-		/// Exact V16 decision provenance.
-		decision: PersistedDecisionProvenance,
-		/// Stable persisted no-route reason.
-		reason: RoutingNoRouteReason,
-		/// Complete exact causes. Mixed causes remain in this variant.
-		causes: Vec<RoutingDecisionCause>,
-	},
+	WaitingReconciliation,
+	/// Typed unavailable state whose complete causes remain in the persisted decision.
+	NoRoute,
 	/// Missing, stale, rejected, mismatched, or unavailable authority.
-	FailedClosed(ExecutionFailure),
+	FailedClosed(ExecutionFailureKind),
+}
+
+/// Definite post-process refusal that proves no new provider dispatch authority escaped.
+pub(crate) enum DefinitePostProcessRefusal {
+	/// Input or authority was rejected and PostgreSQL returned no ProviderAttempt row.
+	NoAttempt,
+	/// A non-dispatchable existing attempt prevents this logical Turn from being finalized here.
+	ExistingAttempt,
+}
+
+/// Closed dispatch disposition after post-process ProviderAttempt preparation.
+pub(crate) enum PostProcessOutcome {
+	/// This call freshly prepared the attempt and retains one-use authorization input.
+	FreshPrepared {
+		attempt: PreparedAttemptHandoff,
+		fresh_preparation: decodex_postgres::FreshPreparedProviderAttempt,
+	},
+	/// The exact preparation already exists at the supplied prepared revision.
+	PreparedReplay { attempt: PreparedAttemptHandoff },
+	/// A known pre-effect refusal. The caller may exact-finalize a Turn only after checking that
+	/// no prepared attempt exists for this disposition.
+	DefiniteRejection(DefinitePostProcessRefusal),
+	/// Existing effect authority or preparation persistence is unresolved.
+	EffectOrPersistenceAmbiguity,
 }
 
 /// Zero-sized coordinator. All durable state belongs to the sequenced owners.
 #[derive(Clone, Copy, Debug, Default)]
-pub struct ExecutionCoordinator;
+pub(crate) struct ExecutionCoordinator;
 
 impl ExecutionCoordinator {
-	/// Sequence accepted owners without retaining state or authorizing provider dispatch.
-	///
-	/// This method is crate-private until the aggregate gate and a separate enablement amendment.
-	#[allow(clippy::too_many_lines)] // Keep the closed routing and continuation authority sequence together.
-	pub(crate) async fn coordinate(
+	/// Persist only one Routing Decision and one inert Continuation Plan.
+	#[allow(clippy::too_many_lines)]
+	pub(crate) async fn pre_process(
 		&self,
 		store: &PostgresStore,
 		blob_store: &BlobStore,
-		attempts: &ProviderAttemptControl,
-		process: &FencedProcess,
 		command: &ExecutionCommand,
-	) -> ExecutionOutcome {
+	) -> PreProcessOutcome {
 		let consumer = command.routing.consumer.clone();
-		if !same_consumer(&consumer, &command.provider_attempt.consumer) {
-			return failed(consumer, None, ExecutionFailureKind::ConsumerCrossLink);
-		}
-
 		let persisted =
 			match store.route_account(&command.routing_idempotency_key, &command.routing).await {
 				Ok(RoutingCommandOutcome::Success(persisted)) => persisted,
-				Ok(RoutingCommandOutcome::Rejected(rejection)) => {
-					let kind = match rejection.code.as_str() {
-						"malformed_input" => RoutingAuthorityRejection::MalformedInput,
-						"stale_routing_policy" => RoutingAuthorityRejection::StaleRoutingPolicy,
-						"stale_consumer" => RoutingAuthorityRejection::StaleConsumer,
-						"snapshot_missing" => RoutingAuthorityRejection::SnapshotMissing,
-						"concurrent_authority_change" =>
-							RoutingAuthorityRejection::ConcurrentAuthorityChange,
-						_ => {
-							return failed(
-								consumer,
-								None,
-								ExecutionFailureKind::PersistedAuthorityIncompatible,
-							);
-						},
-					};
-					return failed(consumer, None, ExecutionFailureKind::RoutingRejected(kind));
+				Ok(RoutingCommandOutcome::Rejected(_)) | Err(_) => {
+					return failed(ExecutionFailureKind::Other);
 				},
-				Err(error) => return failed(consumer, None, classify_store_error(&error)),
 			};
 		if persisted.consumer != consumer {
-			return failed(consumer, None, ExecutionFailureKind::InvalidPersistedDecision);
+			return failed(ExecutionFailureKind::Other);
 		}
 		let decision = PersistedDecisionProvenance {
 			decision_id: persisted.decision_id.clone(),
@@ -237,17 +213,10 @@ impl ExecutionCoordinator {
 
 		match persisted.decision.kind {
 			RoutingDecisionKind::Selected =>
-				self.plan_and_prepare(
-					store, blob_store, attempts, process, command, consumer, decision, &persisted,
-				)
-				.await,
+				self.plan_selected(store, blob_store, command, consumer, decision, &persisted).await,
 			RoutingDecisionKind::WaitingUsage => {
 				let Some(earliest_ready_at_micros) = persisted.decision.ready_at_micros else {
-					return failed(
-						consumer,
-						Some(decision),
-						ExecutionFailureKind::InvalidPersistedDecision,
-					);
+					return failed(ExecutionFailureKind::Other);
 				};
 				if persisted.decision.selected_account_id.is_some()
 					|| persisted.decision.no_route_reason.is_some()
@@ -262,19 +231,9 @@ impl ExecutionCoordinator {
 								| RoutingBlocker::QuotaSevenDayDepleted
 						)
 					}) {
-					return failed(
-						consumer,
-						Some(decision),
-						ExecutionFailureKind::InvalidPersistedDecision,
-					);
+					return failed(ExecutionFailureKind::Other);
 				}
-				ExecutionOutcome::WaitingUsage(WaitingUsageHandoff {
-					decision_id: decision.decision_id,
-					consumer,
-					earliest_ready_at_micros,
-					causes: persisted.decision.causes,
-					quota_exclusions: persisted.decision.exclusions,
-				})
+				PreProcessOutcome::WaitingUsage
 			},
 			RoutingDecisionKind::WaitingReconciliation => {
 				if persisted.decision.selected_account_id.is_some()
@@ -289,98 +248,90 @@ impl ExecutionCoordinator {
 								| RoutingBlocker::ProviderAttemptUnresolved
 						)
 					}) {
-					return failed(
-						consumer,
-						Some(decision),
-						ExecutionFailureKind::InvalidPersistedDecision,
-					);
+					return failed(ExecutionFailureKind::Other);
 				}
-				ExecutionOutcome::WaitingReconciliation(WaitingReconciliationHandoff {
-					decision_id: decision.decision_id,
-					consumer,
-					causes: persisted.decision.causes,
-				})
+				PreProcessOutcome::WaitingReconciliation
 			},
 			RoutingDecisionKind::NoRoute => {
-				let Some(reason) = persisted.decision.no_route_reason else {
-					return failed(
-						consumer,
-						Some(decision),
-						ExecutionFailureKind::InvalidPersistedDecision,
-					);
-				};
-				if persisted.decision.selected_account_id.is_some()
+				if persisted.decision.no_route_reason.is_none()
+					|| persisted.decision.selected_account_id.is_some()
 					|| persisted.decision.ready_at_micros.is_some()
 					|| !persisted.decision.exclusions.is_empty()
 					|| persisted.decision.causes.is_empty()
 				{
-					return failed(
-						consumer,
-						Some(decision),
-						ExecutionFailureKind::InvalidPersistedDecision,
-					);
+					return failed(ExecutionFailureKind::Other);
 				}
-				ExecutionOutcome::NoRoute { decision, reason, causes: persisted.decision.causes }
+				PreProcessOutcome::NoRoute
 			},
 		}
 	}
 
-	#[allow(clippy::too_many_arguments)]
-	async fn plan_and_prepare(
+	async fn plan_selected(
 		&self,
 		store: &PostgresStore,
 		blob_store: &BlobStore,
-		attempts: &ProviderAttemptControl,
-		process: &FencedProcess,
 		command: &ExecutionCommand,
 		consumer: ExecutionConsumer,
 		decision: PersistedDecisionProvenance,
 		persisted: &PersistedRoutingDecision,
-	) -> ExecutionOutcome {
+	) -> PreProcessOutcome {
 		let Some(selected_account_id) = persisted.decision.selected_account_id.clone() else {
-			return failed(
-				consumer,
-				Some(decision),
-				ExecutionFailureKind::InvalidPersistedDecision,
-			);
+			return failed(ExecutionFailureKind::Other);
 		};
 		if persisted.decision.ready_at_micros.is_some()
 			|| persisted.decision.no_route_reason.is_some()
 			|| !persisted.decision.causes.is_empty()
 		{
-			return failed(
-				consumer,
-				Some(decision),
-				ExecutionFailureKind::InvalidPersistedDecision,
-			);
+			return failed(ExecutionFailureKind::Other);
 		}
-		let request = PlanContinuation {
-			operation_id: command.continuation.operation_id.clone(),
-			routing_decision_id: persisted.decision_id.clone(),
-			expected_consumer_revision: consumer.domain_revision(),
-			plan_id: command.continuation.plan_id.clone(),
-			fallback_runtime_session_id: command.continuation.fallback_runtime_session_id.clone(),
-			fallback_account_snapshot_id: command.continuation.fallback_account_snapshot_id.clone(),
-			fallback_context_pack_id: command.continuation.fallback_context_pack_id.clone(),
+		let planned = match &command.continuation {
+			ContinuationPlanning::InitialThread { operation_id, plan_id } => {
+				let request = PlanInitialThreadContinuation {
+					operation_id: operation_id.clone(),
+					routing_decision_id: persisted.decision_id.clone(),
+					expected_conversation_revision: consumer.domain_revision(),
+					plan_id: plan_id.clone(),
+				};
+				store
+					.plan_initial_thread_continuation(
+						&command.continuation_idempotency_key,
+						&request,
+					)
+					.await
+			},
+			ContinuationPlanning::ExistingSession {
+				operation_id,
+				plan_id,
+				fallback_runtime_session_id,
+				fallback_account_snapshot_id,
+				fallback_context_pack_id,
+				fallback_context_pack,
+			} => {
+				let request = PlanContinuation {
+					operation_id: operation_id.clone(),
+					routing_decision_id: persisted.decision_id.clone(),
+					expected_consumer_revision: consumer.domain_revision(),
+					plan_id: plan_id.clone(),
+					fallback_runtime_session_id: fallback_runtime_session_id.clone(),
+					fallback_account_snapshot_id: fallback_account_snapshot_id.clone(),
+					fallback_context_pack_id: fallback_context_pack_id.clone(),
+				};
+				store
+					.plan_continuation(
+						blob_store,
+						&command.continuation_idempotency_key,
+						&request,
+						fallback_context_pack,
+					)
+					.await
+			},
 		};
-		let plan = match store
-			.plan_continuation(
-				blob_store,
-				&command.continuation_idempotency_key,
-				&request,
-				&command.fallback_context_pack,
-			)
-			.await
-		{
+		let plan = match planned {
 			Ok(ContinuationCommandOutcome::Success(effect)) => effect,
 			Ok(ContinuationCommandOutcome::Rejected(rejection)) => {
-				return failed(
-					consumer,
-					Some(decision),
-					ExecutionFailureKind::ContinuationRejected(rejection),
-				);
+				return failed(ExecutionFailureKind::ContinuationRejected(rejection));
 			},
-			Err(error) => return failed(consumer, Some(decision), classify_store_error(&error)),
+			Err(_) => return failed(ExecutionFailureKind::Other),
 		};
 		if plan.plan.routing_decision_id != persisted.decision_id
 			|| plan.plan.consumer != consumer
@@ -389,35 +340,60 @@ impl ExecutionCoordinator {
 			|| plan.plan.dispatch_enabled
 			|| !valid_plan_shape(&plan)
 		{
-			return failed(consumer, Some(decision), ExecutionFailureKind::InvalidPersistedPlan);
+			return failed(ExecutionFailureKind::Other);
 		}
 
-		let attempt = match attempts.prepare(&plan, process, &command.provider_attempt).await {
+		PreProcessOutcome::Planned { decision, plan }
+	}
+
+	/// Consume one ready generation plus exact establish/resume authority into preparation only.
+	pub(crate) async fn post_process(
+		&self,
+		attempts: &ProviderAttemptControl,
+		process: &FencedProcess,
+		command: PostProcessCommand,
+	) -> PostProcessOutcome {
+		let PostProcessCommand { decision, plan, provider_attempt, runtime_authority } = command;
+		let consumer = decision.consumer.clone();
+		if !same_consumer(&consumer, &provider_attempt.consumer)
+			|| plan.plan.consumer != consumer
+			|| plan.plan.routing_decision_id != decision.decision_id
+			|| plan.plan.replay_permitted
+			|| plan.plan.dispatch_enabled
+			|| !valid_plan_shape(&plan)
+		{
+			return PostProcessOutcome::DefiniteRejection(DefinitePostProcessRefusal::NoAttempt);
+		}
+		let attempt = match attempts
+			.prepare(&plan, process, &provider_attempt, runtime_authority)
+			.await
+		{
 			Ok(attempt) => attempt,
 			Err(error) => {
-				return failed(consumer, Some(decision), classify_attempt_service_error(error));
+				return match error {
+					ProviderAttemptServiceError::AuthorityConflict =>
+						PostProcessOutcome::DefiniteRejection(DefinitePostProcessRefusal::NoAttempt),
+					ProviderAttemptServiceError::ProductState
+					| ProviderAttemptServiceError::EvidenceUnavailable =>
+						PostProcessOutcome::EffectOrPersistenceAmbiguity,
+				};
 			},
 		};
 		match attempt {
-			PrepareProviderAttemptOutcome::Fresh(fresh) => ExecutionOutcome::Prepared {
-				decision,
-				plan,
-				attempt: PreparedAttemptHandoff {
+			PrepareProviderAttemptOutcome::Fresh(fresh) => {
+				let attempt = PreparedAttemptHandoff {
 					attempt_id: fresh.attempt_id().clone(),
 					revision: fresh.revision(),
-					recorded_at_micros: fresh.prepared_at_micros(),
 					newly_prepared: true,
-				},
+				};
+				PostProcessOutcome::FreshPrepared { attempt, fresh_preparation: fresh }
 			},
 			PrepareProviderAttemptOutcome::Replayed(actual)
 				if actual.state == ProviderAttemptState::Prepared =>
-				ExecutionOutcome::Prepared {
-					decision,
-					plan,
+				PostProcessOutcome::PreparedReplay {
 					attempt: PreparedAttemptHandoff {
-						attempt_id: command.provider_attempt.attempt_id.clone(),
+						attempt_id: provider_attempt.attempt_id.clone(),
 						revision: actual.revision,
-						recorded_at_micros: actual.recorded_at_micros,
 						newly_prepared: false,
 					},
 				},
@@ -426,39 +402,22 @@ impl ExecutionCoordinator {
 					actual.state,
 					ProviderAttemptState::DispatchAuthorized | ProviderAttemptState::Unknown
 				) =>
-				ExecutionOutcome::WaitingReconciliation(WaitingReconciliationHandoff {
-					decision_id: decision.decision_id,
-					consumer,
-					causes: vec![RoutingDecisionCause {
-						account_id: selected_account_id,
-						blocker: RoutingBlocker::ProviderAttemptUnresolved,
-					}],
-				}),
-			PrepareProviderAttemptOutcome::Replayed(actual) if actual.state.is_terminal() =>
-				ExecutionOutcome::NoRoute {
-					decision,
-					reason: RoutingNoRouteReason::BlockedEvidence,
-					causes: vec![RoutingDecisionCause {
-						account_id: selected_account_id,
-						blocker: RoutingBlocker::ProviderAttemptCompleted,
-					}],
-				},
-			PrepareProviderAttemptOutcome::Replayed(_) => failed(
-				consumer,
-				Some(decision),
-				ExecutionFailureKind::PersistedAuthorityIncompatible,
-			),
-			PrepareProviderAttemptOutcome::Rejected { rejection, .. } => {
-				// A generation race after V16 selected one account does not prove that every
-				// otherwise eligible route is blocked only by reconciliation. A rejected
+				PostProcessOutcome::EffectOrPersistenceAmbiguity,
+			PrepareProviderAttemptOutcome::Replayed(_) =>
+				PostProcessOutcome::DefiniteRejection(DefinitePostProcessRefusal::ExistingAttempt),
+			PrepareProviderAttemptOutcome::Rejected { actual, .. } => {
+				// A generation race after Routing Decision selected one account does not prove that
+				// every otherwise eligible route is blocked only by reconciliation. A rejected
 				// attempt can also describe a cross-linked identity whose projection is not
-				// attributable to this consumer. Only exact replay or a persisted V16 decision
+				// attributable to this consumer. Only exact replay or a persisted Routing Decision
 				// can project an unresolved or completed attempt.
-				failed(
-					consumer,
-					Some(decision),
-					ExecutionFailureKind::ProviderAttemptRejected(rejection),
-				)
+				if actual.revision == 0 {
+					PostProcessOutcome::DefiniteRejection(DefinitePostProcessRefusal::NoAttempt)
+				} else {
+					PostProcessOutcome::DefiniteRejection(
+						DefinitePostProcessRefusal::ExistingAttempt,
+					)
+				}
 			},
 		}
 	}
@@ -494,50 +453,32 @@ fn same_consumer(execution: &ExecutionConsumer, attempt: &ProviderAttemptConsume
 
 fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {
 	match effect.plan.kind {
+		ContinuationPlanKind::InitialThread =>
+			effect.plan.codex_thread_id.is_none()
+				&& effect.plan.fallback_context_pack_id.is_none()
+				&& effect.plan.fallback_runtime_session_id.is_none()
+				&& effect.plan.same_thread_evidence.is_none()
+				&& effect.runtime_session.is_some()
+				&& effect.fallback_context_pack.is_none(),
 		ContinuationPlanKind::SameThread =>
 			effect.plan.codex_thread_id.is_some()
 				&& effect.plan.fallback_context_pack_id.is_none()
 				&& effect.plan.fallback_runtime_session_id.is_none()
 				&& effect.plan.same_thread_evidence.is_some()
+				&& effect.runtime_session.is_none()
 				&& effect.fallback_context_pack.is_none(),
 		ContinuationPlanKind::ContextPackFallback =>
 			effect.plan.codex_thread_id.is_none()
 				&& effect.plan.fallback_context_pack_id.is_some()
 				&& effect.plan.fallback_runtime_session_id.is_some()
 				&& effect.plan.same_thread_evidence.is_none()
-				&& effect.fallback_context_pack.is_some(),
+				&& effect.runtime_session.as_ref().is_some_and(|session| {
+					effect.plan.fallback_runtime_session_id.as_ref()
+						== Some(&session.runtime_session_id)
+				}) && effect.fallback_context_pack.is_some(),
 	}
 }
 
-fn classify_attempt_service_error(error: ProviderAttemptServiceError) -> ExecutionFailureKind {
-	match error {
-		ProviderAttemptServiceError::AuthorityConflict =>
-			ExecutionFailureKind::PersistedAuthorityIncompatible,
-		ProviderAttemptServiceError::ProductState
-		| ProviderAttemptServiceError::EvidenceUnavailable =>
-			ExecutionFailureKind::PersistedAuthorityUnavailable,
-	}
-}
-
-fn classify_store_error(error: &StoreError) -> ExecutionFailureKind {
-	match error {
-		StoreError::InvalidInput(_) | StoreError::CredentialRejected =>
-			ExecutionFailureKind::InvalidCommand,
-		StoreError::RevisionConflict { .. } => ExecutionFailureKind::StaleAuthority,
-		StoreError::IdempotencyConflict | StoreError::OperationIdConflict =>
-			ExecutionFailureKind::ExactCommandConflict,
-		StoreError::Incompatible(_)
-		| StoreError::UnsafeAuthority(_)
-		| StoreError::UnsafeHostPath
-		| StoreError::Blob(_) => ExecutionFailureKind::PersistedAuthorityIncompatible,
-		_ => ExecutionFailureKind::PersistedAuthorityUnavailable,
-	}
-}
-
-fn failed(
-	consumer: ExecutionConsumer,
-	decision: Option<PersistedDecisionProvenance>,
-	kind: ExecutionFailureKind,
-) -> ExecutionOutcome {
-	ExecutionOutcome::FailedClosed(ExecutionFailure { consumer, decision, kind })
+fn failed(kind: ExecutionFailureKind) -> PreProcessOutcome {
+	PreProcessOutcome::FailedClosed(kind)
 }

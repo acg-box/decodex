@@ -128,12 +128,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
     def doctor_document(self) -> dict[str, object]:
         required = (
             "configuration",
-            "database",
+            "product_store",
             "protocol",
             "protocol_version",
             "server_identity",
-            "server_repositories",
-            "credential_vault",
         )
         return {
             "schema": "decodex/cli-diagnostics/1",
@@ -230,10 +228,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
 
         self.assertEqual(config_document["active_profile"], "local")
         self.assertEqual(config_document["profiles"]["local"]["policy"], "same_uid")
-        self.assertEqual(
-            config_document["postgres"]["migration"]["user"],
-            self.module.POSTGRES_SCHEMA_ROLE,
-        )
+        self.assertNotIn("migration", config_document["postgres"])
+        self.assertNotIn(self.module.POSTGRES_SCHEMA_ROLE, config.decode("utf-8"))
         self.assertEqual(
             config_document["postgres"]["runtime"]["user"],
             self.module.POSTGRES_RUNTIME_ROLE,
@@ -479,11 +475,16 @@ class LocalServiceInstallerTests(unittest.TestCase):
             ):
                 self.assertEqual(self.module.wait_for_service(paths), [])
 
-    def test_doctor_requires_all_critical_ready_components(self) -> None:
+    def test_doctor_requires_the_service_foundation_to_be_ready(self) -> None:
         document = self.doctor_document()
-        self.assertTrue(self.module.critical_doctor_is_ready(document))
-        document["report"]["checks"][0]["status"] = {"state": "unavailable"}
-        self.assertFalse(self.module.critical_doctor_is_ready(document))
+        self.assertTrue(self.module.service_foundation_is_ready(document))
+        product_store = next(
+            check
+            for check in document["report"]["checks"]
+            if check["component"]["kind"] == "product_store"
+        )
+        product_store["status"] = {"state": "unavailable"}
+        self.assertFalse(self.module.service_foundation_is_ready(document))
 
     def test_query_accounts_uses_explicit_root(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -582,7 +583,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         drain.assert_called_once()
         wait.assert_called_once()
 
-    def test_current_install_writes_config_and_plist_then_provisions_database(self) -> None:
+    def test_install_bootstraps_fresh_and_validates_existing_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths, namespace_lock = self.namespace_lock(Path(temp))
             wrapper = self.daemon_wrapper(paths)
@@ -603,7 +604,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         self.module,
                         "start_temporary_postgres",
                         return_value=process,
-                    ),
+                    ) as start,
                     mock.patch.object(
                         self.module,
                         "stop_temporary_postgres",
@@ -612,41 +613,72 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         self.module,
                         "psql_environment",
                         return_value={"PGUSER": "owner"},
-                    ),
+                    ) as environment,
                     mock.patch.object(
                         self.module,
                         "ensure_roles_and_database",
-                    ) as provision,
+                        side_effect=[True, False],
+                    ) as ensure_database,
                     mock.patch.object(
                         self.module,
-                        "provision_local_product_state",
-                    ) as provision_product_state,
+                        "bootstrap_latest_schema",
+                    ) as bootstrap_schema,
+                    mock.patch.object(
+                        self.module,
+                        "validate_current_authority",
+                    ) as validate_authority,
                 ):
-                    self.module.install_under_namespace_lock(
-                        paths,
-                        os.geteuid(),
-                        namespace_lock,
-                        wrapper,
+                    ordered = mock.Mock()
+                    ordered.attach_mock(initialize, "initialize_cluster")
+                    ordered.attach_mock(start, "start_temporary_postgres")
+                    ordered.attach_mock(environment, "psql_environment")
+                    ordered.attach_mock(
+                        ensure_database,
+                        "ensure_roles_and_database",
                     )
+                    ordered.attach_mock(bootstrap_schema, "bootstrap_latest_schema")
+                    ordered.attach_mock(validate_authority, "validate_current_authority")
+                    ordered.attach_mock(stop, "stop_temporary_postgres")
+                    for _ in range(2):
+                        self.module.install_under_namespace_lock(
+                            paths,
+                            os.geteuid(),
+                            namespace_lock,
+                            wrapper,
+                        )
             finally:
                 namespace_lock.close()
 
             config = paths.config.read_text(encoding="utf-8")
             launch_agent = plistlib.loads(paths.launch_agent.read_bytes())
+
         self.assertIn("[postgres.runtime]", config)
         self.assertNotIn("accounts.jsonl", config)
         self.assertEqual(
             launch_agent["ProgramArguments"][0:2],
             [str(paths.decodexd), "supervise-local"],
         )
-        self.assertEqual(verify_wrapper.call_count, 2)
-        self.assertEqual(verify_cli.call_count, 2)
-        initialize.assert_called_once_with(paths, os.geteuid())
-        provision.assert_called_once_with(paths, {"PGUSER": "owner"})
-        provision_product_state.assert_called_once_with(paths)
-        stop.assert_called_once_with(process)
+        self.assertEqual(verify_wrapper.call_count, 4)
+        self.assertEqual(verify_cli.call_count, 4)
+        self.assertEqual(
+            ordered.mock_calls,
+            [
+                mock.call.initialize_cluster(paths, os.geteuid()),
+                mock.call.start_temporary_postgres(paths),
+                mock.call.psql_environment(paths),
+                mock.call.ensure_roles_and_database(paths, {"PGUSER": "owner"}),
+                mock.call.bootstrap_latest_schema(paths),
+                mock.call.stop_temporary_postgres(process),
+                mock.call.initialize_cluster(paths, os.geteuid()),
+                mock.call.start_temporary_postgres(paths),
+                mock.call.psql_environment(paths),
+                mock.call.ensure_roles_and_database(paths, {"PGUSER": "owner"}),
+                mock.call.validate_current_authority(paths),
+                mock.call.stop_temporary_postgres(process),
+            ],
+        )
 
-    def test_product_state_provision_uses_only_the_installed_daemon(self) -> None:
+    def test_latest_schema_bootstrap_uses_only_the_installed_daemon(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             with mock.patch.object(
@@ -654,12 +686,35 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "run",
                 return_value=subprocess.CompletedProcess([], 0, "", ""),
             ) as run:
-                self.module.provision_local_product_state(paths)
+                self.module.bootstrap_latest_schema(paths)
 
         run.assert_called_once_with(
             [
                 str(paths.decodexd),
-                "provision-local",
+                "bootstrap-latest-schema",
+                "--root",
+                str(paths.root),
+                "--schema-owner-user",
+                self.module.POSTGRES_SCHEMA_ROLE,
+            ],
+            cwd=paths.repository,
+            capture=True,
+        )
+
+    def test_current_authority_validation_uses_only_the_installed_daemon(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            with mock.patch.object(
+                self.module,
+                "run",
+                return_value=subprocess.CompletedProcess([], 0, "", ""),
+            ) as run:
+                self.module.validate_current_authority(paths)
+
+        run.assert_called_once_with(
+            [
+                str(paths.decodexd),
+                "validate-current-authority",
                 "--root",
                 str(paths.root),
             ],
@@ -687,6 +742,10 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     return_value=b"different",
                 ),
                 mock.patch.object(self.module, "initialize_cluster") as initialize,
+                mock.patch.object(
+                    self.module,
+                    "start_temporary_postgres",
+                ) as start,
             ):
                 with self.assertRaisesRegex(
                     self.module.InstallError,
@@ -699,6 +758,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         wrapper,
                     )
             initialize.assert_not_called()
+            start.assert_not_called()
 
     def test_main_reports_success_for_empty_latest_registry(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

@@ -22,23 +22,25 @@ accepts only exact-current protocol V2.0,
 publishes bounded snapshots and resumable ordered events, deduplicates commands for one
 server lifetime in a fixed-capacity ledger, and disconnects clients whose bounded
 outbound queue fills. It loads the typed `~/.decodex/config.toml`, retains the stable
-server-host identity, and makes PostgreSQL product state available only after a dedicated
-migration identity completes PostgreSQL 18 forward migration/verification and a distinct,
-least-privilege runtime identity passes the adapter authority boundary. The live pool never
-retains migration credentials; runtime readiness also requires safe trigger/function ownership,
-an effective `origin` replication role, a closed exact-signature inventory with canonical metadata
-and source for every runtime-callable function, intact
-retention triggers with no additional trigger/rule/policy execution path, dependency-based
-extension control closure, read-only migration history, and USAGE-only identity sequences across the
+server-host identity, and makes PostgreSQL product state available only after the
+least-privilege runtime identity verifies the exact PostgreSQL 18 catalog and configured
+authority without running DDL. A separate explicit operator command can install the one
+canonical `schema.sql` transactionally on an empty target through a schema-owner identity;
+normal serve never resolves or retains that identity. Runtime verification requires safe
+trigger and function ownership, an effective `origin` replication role, a closed exact-signature
+inventory with canonical metadata and source for every runtime-callable function, intact
+retention triggers with no additional trigger, rule, or policy execution path,
+dependency-based extension-control closure, and USAGE-only identity sequences across the
 login role and every SET-reachable role. The operator must also pin the expected PostgreSQL
 Unix-peer UID; descriptor-pinned socket metadata and kernel peer credentials are verified before
-either identity authenticates. Missing, malformed, unsafe, unreachable, authentication-failed,
-or incompatible configuration remains typed unavailable with no fallback. Protocol V2.0
+the runtime identity authenticates. Missing, malformed, unsafe, unreachable,
+authentication-failed, or incompatible configuration remains typed unavailable with no fallback.
+ProductStore, Quick Task, and ManagedRepository readiness are independent. Protocol V2.0
 retains bounded read-only doctor/status, Conversation-history, and immutable execution-decision
 queries outside mutation receipts and adds account lifecycle, the shared Reset Card service,
 and an independent bounded account-profile query. V1.x and other V2 minor revisions are
 refused before application payload handling. Doctor reads live-revalidate the retained
-PostgreSQL endpoint and authority without migration or repinning.
+PostgreSQL endpoint and exact current authority without DDL or repinning.
 The active `decodex status` and `decodex doctor` commands are API-only clients of that
 V2.0 query. They select the active or `--profile NAME` typed profile without echoing its
 name, pin the stable server identity before accepting a snapshot or report, and emit human text or

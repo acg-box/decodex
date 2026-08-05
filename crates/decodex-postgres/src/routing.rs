@@ -14,6 +14,17 @@ use crate::{
 	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
 };
 
+const READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL: &str = "SELECT routing_policy_id::text,routing_policy_revision \
+	 FROM decodex.read_current_task_routing_authority_exact()";
+
+#[cfg(all(test, feature = "test-support"))]
+pub(crate) async fn prepare_routing_decision_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	client.prepare(READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL).await?;
+	Ok(1)
+}
+
 /// One explicit member supplied for complete policy replacement.
 ///
 /// Constructing this input does not establish PostgreSQL provenance or routing authority.
@@ -88,8 +99,42 @@ pub struct PublishRoutingEvidence {
 	pub capabilities: Vec<(CodexCapability, RoutingCapabilityState)>,
 }
 
+/// Exact current Task-role routing policy selected by database-owned routing authority.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CurrentTaskRoutingAuthority {
+	/// Stable current routing policy identity.
+	pub routing_policy_id: String,
+	/// Exact positive current routing policy revision.
+	pub routing_policy_revision: i64,
+}
+
 impl PostgresStore {
-	/// Replace the complete routing policy through the V14 command owner.
+	/// Read the sole current Task-role routing authority through the RuntimeSession Thread
+	/// Establishment read seam.
+	pub async fn read_current_task_routing_authority(
+		&self,
+	) -> Result<Option<CurrentTaskRoutingAuthority>, StoreError> {
+		let rows =
+			self.pool().get().await?.query(READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL, &[]).await?;
+		if rows.len() > 1 {
+			return incompatible("current Task routing authority is not unique");
+		}
+		let Some(row) = rows.first() else {
+			return Ok(None);
+		};
+		let routing_policy_id: String = row.get(0);
+		let routing_policy_revision: i64 = row.get(1);
+		validate_uuid(&routing_policy_id, "current Task routing policy identity").map_err(
+			|_| StoreError::Incompatible("current Task routing policy identity is invalid".into()),
+		)?;
+		if routing_policy_revision <= 0 {
+			return incompatible("current Task routing policy revision is invalid");
+		}
+
+		Ok(Some(CurrentTaskRoutingAuthority { routing_policy_id, routing_policy_revision }))
+	}
+
+	/// Replace the complete routing policy through the Routing Snapshot command owner.
 	pub async fn replace_routing_policy(
 		&self,
 		idempotency_key: &str,
@@ -203,9 +248,12 @@ impl PostgresStore {
 			return Err(StoreError::InvalidInput("routing source revisions must be positive"));
 		}
 		let parts = ExecutionConsumerParts::from(consumer);
-		if parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0) {
+		if parts.source_runtime_session_id.is_some()
+			!= parts.source_runtime_session_revision.is_some()
+			|| parts.source_runtime_session_revision.is_some_and(|revision| revision <= 0)
+		{
 			return Err(StoreError::InvalidInput(
-				"source RuntimeSession revision must be positive",
+				"source RuntimeSession identity and positive revision must be jointly present",
 			));
 		}
 		let response = self
@@ -264,8 +312,10 @@ impl<'a> From<&'a ExecutionConsumer> for ExecutionConsumerParts<'a> {
 				kind: value.as_sql(),
 				conversation_id: Some(conversation_id.as_str()),
 				conversation_revision: Some(*conversation_revision),
-				source_runtime_session_id: Some(source_runtime_session_id.as_str()),
-				source_runtime_session_revision: Some(*source_runtime_session_revision),
+				source_runtime_session_id: source_runtime_session_id
+					.as_ref()
+					.map(decodex_core::RuntimeSessionId::as_str),
+				source_runtime_session_revision: *source_runtime_session_revision,
 				turn_id: Some(turn_id.as_str()),
 				managed_run_id: None,
 				managed_run_revision: None,
@@ -525,6 +575,48 @@ fn parse_policy_members(
 		.collect()
 }
 
+const ROUTING_SNAPSHOT_EFFECT_KEYS: &[&str] = &[
+	"accepted_policy_id",
+	"accepted_policy_revision",
+	"account_snapshot_id",
+	"account_snapshot_source_revision",
+	"blockers",
+	"capability_facts",
+	"effect_digest",
+	"effect_digest_source",
+	"consumer_kind",
+	"conversation_id",
+	"conversation_revision",
+	"turn_id",
+	"managed_run_id",
+	"managed_run_revision",
+	"managed_execution_id",
+	"members",
+	"operation",
+	"profile_snapshot_id",
+	"profile_snapshot_source_revision",
+	"quota_facts",
+	"required_build_id",
+	"required_role",
+	"required_role_profile_revision",
+	"resolved_at_micros",
+	"routing_policy_id",
+	"routing_policy_revision",
+	"runtime_session_id",
+	"runtime_session_revision",
+	"snapshot_id",
+];
+
+struct RoutingSnapshotLineage {
+	runtime_session_id: Option<decodex_core::RuntimeSessionId>,
+	runtime_session_revision: Option<i64>,
+	account_snapshot_id: Option<String>,
+	account_snapshot_source_revision: Option<i64>,
+	profile_snapshot_id: Option<String>,
+	profile_snapshot_source_revision: Option<i64>,
+	lineage_is_l0: bool,
+}
+
 fn parse_snapshot_response(
 	response: &[u8],
 	routing_policy_id: &str,
@@ -535,40 +627,7 @@ fn parse_snapshot_response(
 	if classification == "stable_domain_rejection" {
 		return parse_rejection(&effect).map(RoutingCommandOutcome::Rejected);
 	}
-	require_keys(
-		&effect,
-		&[
-			"accepted_policy_id",
-			"accepted_policy_revision",
-			"account_snapshot_id",
-			"account_snapshot_source_revision",
-			"blockers",
-			"capability_facts",
-			"effect_digest",
-			"effect_digest_source",
-			"consumer_kind",
-			"conversation_id",
-			"conversation_revision",
-			"turn_id",
-			"managed_run_id",
-			"managed_run_revision",
-			"managed_execution_id",
-			"members",
-			"operation",
-			"profile_snapshot_id",
-			"profile_snapshot_source_revision",
-			"quota_facts",
-			"required_build_id",
-			"required_role",
-			"required_role_profile_revision",
-			"resolved_at_micros",
-			"routing_policy_id",
-			"routing_policy_revision",
-			"runtime_session_id",
-			"runtime_session_revision",
-			"snapshot_id",
-		],
-	)?;
+	require_keys(&effect, ROUTING_SNAPSHOT_EFFECT_KEYS)?;
 	if required_str(&effect, "routing_policy_id")? != routing_policy_id
 		|| positive_i64(&effect, "routing_policy_revision")? != routing_revision
 		|| !effect_matches_consumer(&effect, consumer)?
@@ -581,21 +640,10 @@ fn parse_snapshot_response(
 	let required_role = required_role(&effect, "required_role")?.to_owned();
 	let required_role_profile_revision = positive_i64(&effect, "required_role_profile_revision")?;
 	let required_build_id = required_build_id(&effect, "required_build_id")?.to_owned();
-	let account_snapshot_source_revision =
-		positive_i64(&effect, "account_snapshot_source_revision")?;
-	let profile_snapshot_source_revision =
-		positive_i64(&effect, "profile_snapshot_source_revision")?;
+	let lineage = RoutingSnapshotLineage::parse(&effect)?;
 	let resolved_at_micros = required_timestamp_micros(&effect, "resolved_at_micros")?;
 	let members = parse_members(required_array(&effect, "members")?, &snapshot_id)?;
-	let sticky = members
-		.iter()
-		.find(|member| member.sticky)
-		.ok_or_else(|| StoreError::Incompatible("routing snapshot has no sticky member".into()))?;
-	if sticky.account_revision != account_snapshot_source_revision
-		|| profile_snapshot_source_revision != required_role_profile_revision
-	{
-		return incompatible("routing sticky snapshot revisions are cross-linked");
-	}
+	lineage.validate(consumer, &members, required_role_profile_revision)?;
 	validate_member_facts(
 		&members,
 		&required_role,
@@ -624,23 +672,89 @@ fn parse_snapshot_response(
 		required_role_profile_revision,
 		required_build_id,
 		consumer: consumer.clone(),
-		runtime_session_id: decodex_core::RuntimeSessionId::new(required_str(
-			&effect,
-			"runtime_session_id",
-		)?)
-		.map_err(|_| {
-			StoreError::Incompatible("stored RuntimeSession identity is invalid".into())
-		})?,
-		runtime_session_revision: positive_i64(&effect, "runtime_session_revision")?,
-		account_snapshot_id: required_uuid(&effect, "account_snapshot_id")?,
-		account_snapshot_source_revision,
-		profile_snapshot_id: required_uuid(&effect, "profile_snapshot_id")?,
-		profile_snapshot_source_revision,
+		runtime_session_id: lineage.runtime_session_id,
+		runtime_session_revision: lineage.runtime_session_revision,
+		account_snapshot_id: lineage.account_snapshot_id,
+		account_snapshot_source_revision: lineage.account_snapshot_source_revision,
+		profile_snapshot_id: lineage.profile_snapshot_id,
+		profile_snapshot_source_revision: lineage.profile_snapshot_source_revision,
 		resolved_at_micros,
 		members,
 		quota_facts,
 		capability_facts,
 	}))
+}
+
+impl RoutingSnapshotLineage {
+	fn parse(effect: &Value) -> Result<Self, StoreError> {
+		let runtime_session_id = optional_uuid(effect, "runtime_session_id")?
+			.map(decodex_core::RuntimeSessionId::new)
+			.transpose()
+			.map_err(|_| {
+				StoreError::Incompatible("stored RuntimeSession identity is invalid".into())
+			})?;
+		let runtime_session_revision = optional_positive_i64(effect, "runtime_session_revision")?;
+		let account_snapshot_id = optional_uuid(effect, "account_snapshot_id")?;
+		let account_snapshot_source_revision =
+			optional_positive_i64(effect, "account_snapshot_source_revision")?;
+		let profile_snapshot_id = optional_uuid(effect, "profile_snapshot_id")?;
+		let profile_snapshot_source_revision =
+			optional_positive_i64(effect, "profile_snapshot_source_revision")?;
+		let lineage_presence = [
+			runtime_session_id.is_some(),
+			runtime_session_revision.is_some(),
+			account_snapshot_id.is_some(),
+			account_snapshot_source_revision.is_some(),
+			profile_snapshot_id.is_some(),
+			profile_snapshot_source_revision.is_some(),
+		];
+		let lineage_is_l0 = lineage_presence.iter().all(|present| !*present);
+		let lineage_is_l6 = lineage_presence.iter().all(|present| *present);
+		if !lineage_is_l0 && !lineage_is_l6 {
+			return incompatible("routing snapshot source lineage is partial");
+		}
+		Ok(Self {
+			runtime_session_id,
+			runtime_session_revision,
+			account_snapshot_id,
+			account_snapshot_source_revision,
+			profile_snapshot_id,
+			profile_snapshot_source_revision,
+			lineage_is_l0,
+		})
+	}
+
+	fn validate(
+		&self,
+		consumer: &ExecutionConsumer,
+		members: &[RoutingSnapshotMember],
+		required_role_profile_revision: i64,
+	) -> Result<(), StoreError> {
+		let sticky_members = members.iter().filter(|member| member.sticky).collect::<Vec<_>>();
+		match (consumer, self.lineage_is_l0) {
+			(
+				ExecutionConsumer::ConversationTurn {
+					source_runtime_session_id,
+					source_runtime_session_revision,
+					..
+				},
+				true,
+			) if source_runtime_session_id.is_none()
+				&& source_runtime_session_revision.is_none()
+				&& sticky_members.is_empty() =>
+				Ok(()),
+			(_, false) if sticky_members.len() == 1 => {
+				let sticky = sticky_members[0];
+				if Some(sticky.account_revision) != self.account_snapshot_source_revision
+					|| self.profile_snapshot_source_revision != Some(required_role_profile_revision)
+				{
+					return incompatible("routing sticky snapshot revisions are cross-linked");
+				}
+				Ok(())
+			},
+			_ => incompatible("routing snapshot lineage and sticky shape disagree"),
+		}
+	}
 }
 
 fn effect_matches_consumer(
@@ -661,8 +775,9 @@ fn effect_matches_consumer(
 			== Some(conversation_id.as_str())
 			&& optional_positive_i64(effect, "conversation_revision")?
 				== Some(*conversation_revision)
-			&& required_str(effect, "runtime_session_id")? == source_runtime_session_id.as_str()
-			&& positive_i64(effect, "runtime_session_revision")?
+			&& optional_uuid(effect, "runtime_session_id")?.as_deref()
+				== source_runtime_session_id.as_ref().map(decodex_core::RuntimeSessionId::as_str)
+			&& optional_positive_i64(effect, "runtime_session_revision")?
 				== *source_runtime_session_revision
 			&& optional_uuid(effect, "turn_id")?.as_deref() == Some(turn_id.as_str())
 			&& optional_uuid(effect, "managed_run_id")?.is_none()
@@ -685,17 +800,18 @@ fn effect_matches_consumer(
 }
 
 fn parse_envelope(bytes: &[u8], expected_operation: &str) -> Result<(String, Value), StoreError> {
-	let document: Value = serde_json::from_slice(bytes)
-		.map_err(|_| StoreError::Incompatible("stored V14 response bytes are malformed".into()))?;
+	let document: Value = serde_json::from_slice(bytes).map_err(|_| {
+		StoreError::Incompatible("stored Routing Snapshot response bytes are malformed".into())
+	})?;
 	require_keys(&document, &["classification", "effect"])?;
 	let classification = required_str(&document, "classification")?;
 	if !matches!(classification, "success" | "stable_domain_rejection") {
-		return incompatible("stored V14 response classification is unknown");
+		return incompatible("stored Routing Snapshot response classification is unknown");
 	}
 	let effect = required_object_value(&document, "effect")?;
 	verify_effect_digest(effect)?;
 	if required_str(effect, "operation")? != expected_operation {
-		return incompatible("stored V14 response operation is cross-linked");
+		return incompatible("stored Routing Snapshot response operation is cross-linked");
 	}
 	Ok((classification.to_owned(), effect.clone()))
 }
@@ -704,18 +820,25 @@ fn verify_effect_digest(effect: &Value) -> Result<(), StoreError> {
 	let source = required_str(effect, "effect_digest_source")?;
 	let digest = required_str(effect, "effect_digest")?;
 	if !is_hex_digest(digest) || hex_sha256(source.as_bytes()) != digest {
-		return incompatible("stored V14 effect digest does not match its exact source bytes");
+		return incompatible(
+			"stored Routing Snapshot effect digest does not match its exact source bytes",
+		);
 	}
-	let source_value: Value = serde_json::from_str(source)
-		.map_err(|_| StoreError::Incompatible("stored V14 digest source is malformed".into()))?;
+	let source_value: Value = serde_json::from_str(source).map_err(|_| {
+		StoreError::Incompatible("stored Routing Snapshot digest source is malformed".into())
+	})?;
 	let mut projected = effect
 		.as_object()
-		.ok_or_else(|| StoreError::Incompatible("stored V14 effect is not an object".into()))?
+		.ok_or_else(|| {
+			StoreError::Incompatible("stored Routing Snapshot effect is not an object".into())
+		})?
 		.clone();
 	projected.remove("effect_digest");
 	projected.remove("effect_digest_source");
 	if source_value != Value::Object(projected) {
-		return incompatible("stored V14 digest source differs from the closed effect projection");
+		return incompatible(
+			"stored Routing Snapshot digest source differs from the closed effect projection",
+		);
 	}
 	Ok(())
 }
@@ -754,7 +877,7 @@ fn parse_rejection(effect: &Value) -> Result<RoutingRejection, StoreError> {
 		_ => false,
 	};
 	if !known {
-		return incompatible("stored V14 rejection code is unknown");
+		return incompatible("stored Routing Snapshot rejection code is unknown");
 	}
 	Ok(RoutingRejection { operation: operation.to_owned(), code: code.to_owned() })
 }
@@ -854,9 +977,6 @@ fn parse_members(
 			sticky: required_bool(value, "sticky")?,
 			blockers,
 		});
-	}
-	if result.iter().filter(|member| member.sticky).count() != 1 {
-		return incompatible("routing snapshot sticky provenance is not singular");
 	}
 	Ok(result)
 }
@@ -1135,35 +1255,37 @@ fn validate_blocker_projection(
 }
 
 fn require_keys(value: &Value, expected: &[&str]) -> Result<(), StoreError> {
-	let object = value
-		.as_object()
-		.ok_or_else(|| StoreError::Incompatible("stored V14 object is malformed".into()))?;
+	let object = value.as_object().ok_or_else(|| {
+		StoreError::Incompatible("stored Routing Snapshot object is malformed".into())
+	})?;
 	let actual = object.keys().map(String::as_str).collect::<BTreeSet<_>>();
 	let expected = expected.iter().copied().collect::<BTreeSet<_>>();
 	if actual == expected {
 		Ok(())
 	} else {
-		incompatible("stored V14 object has missing or unknown keys")
+		incompatible("stored Routing Snapshot object has missing or unknown keys")
 	}
 }
 fn required_object_value<'a>(value: &'a Value, key: &str) -> Result<&'a Value, StoreError> {
-	let value = value
-		.get(key)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 field is missing".into()))?;
-	if value.is_object() { Ok(value) } else { incompatible("stored V14 object field is malformed") }
+	let value = value.get(key).ok_or_else(|| {
+		StoreError::Incompatible("stored Routing Snapshot field is missing".into())
+	})?;
+	if value.is_object() {
+		Ok(value)
+	} else {
+		incompatible("stored Routing Snapshot object field is malformed")
+	}
 }
 fn required_array<'a>(value: &'a Value, key: &str) -> Result<&'a [Value], StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_array)
-		.map(Vec::as_slice)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 array is malformed".into()))
+	value.get(key).and_then(Value::as_array).map(Vec::as_slice).ok_or_else(|| {
+		StoreError::Incompatible("stored Routing Snapshot array is malformed".into())
+	})
 }
 fn required_str<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> {
 	value
 		.get(key)
 		.and_then(Value::as_str)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 text is malformed".into()))
+		.ok_or_else(|| StoreError::Incompatible("stored Routing Snapshot text is malformed".into()))
 }
 fn required_utc_microsecond<'a>(value: &'a Value, key: &str) -> Result<&'a str, StoreError> {
 	let value = required_str(value, key)?;
@@ -1178,35 +1300,32 @@ fn required_utc_microsecond<'a>(value: &'a Value, key: &str) -> Result<&'a str, 
 		}) {
 		Ok(value)
 	} else {
-		incompatible("stored V14 UTC microsecond timestamp is malformed")
+		incompatible("stored Routing Snapshot UTC microsecond timestamp is malformed")
 	}
 }
 fn required_bool(value: &Value, key: &str) -> Result<bool, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_bool)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 boolean is malformed".into()))
+	value.get(key).and_then(Value::as_bool).ok_or_else(|| {
+		StoreError::Incompatible("stored Routing Snapshot boolean is malformed".into())
+	})
 }
 fn positive_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	let value = value
-		.get(key)
-		.and_then(Value::as_i64)
-		.filter(|value| *value > 0)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 revision is malformed".into()))?;
+	let value =
+		value.get(key).and_then(Value::as_i64).filter(|value| *value > 0).ok_or_else(|| {
+			StoreError::Incompatible("stored Routing Snapshot revision is malformed".into())
+		})?;
 	Ok(value)
 }
 fn required_i64(value: &Value, key: &str) -> Result<i64, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_i64)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 integer is malformed".into()))
+	value.get(key).and_then(Value::as_i64).ok_or_else(|| {
+		StoreError::Incompatible("stored Routing Snapshot integer is malformed".into())
+	})
 }
 fn required_timestamp_micros(value: &Value, key: &str) -> Result<i64, StoreError> {
 	required_i64(value, key).and_then(|value| {
 		if (0..=253_402_300_799_999_999).contains(&value) {
 			Ok(value)
 		} else {
-			incompatible("stored V14 timestamp is outside the exact product range")
+			incompatible("stored Routing Snapshot timestamp is outside the exact product range")
 		}
 	})
 }
@@ -1216,35 +1335,35 @@ fn required_usize(value: &Value, key: &str) -> Result<usize, StoreError> {
 		.and_then(Value::as_u64)
 		.and_then(|value| usize::try_from(value).ok())
 		.filter(|value| *value > 0)
-		.ok_or_else(|| StoreError::Incompatible("stored V14 position is malformed".into()))
+		.ok_or_else(|| {
+			StoreError::Incompatible("stored Routing Snapshot position is malformed".into())
+		})
 }
 fn required_u16(value: &Value, key: &str) -> Result<u16, StoreError> {
-	value
-		.get(key)
-		.and_then(Value::as_u64)
-		.and_then(|value| u16::try_from(value).ok())
-		.ok_or_else(|| StoreError::Incompatible("stored V14 duration is malformed".into()))
+	value.get(key).and_then(Value::as_u64).and_then(|value| u16::try_from(value).ok()).ok_or_else(
+		|| StoreError::Incompatible("stored Routing Snapshot duration is malformed".into()),
+	)
 }
 fn optional_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match value.get(key) {
 		Some(Value::Null) => Ok(None),
 		Some(value) => value.as_i64().map(Some).ok_or_else(|| {
-			StoreError::Incompatible("stored V14 optional integer is malformed".into())
+			StoreError::Incompatible("stored Routing Snapshot optional integer is malformed".into())
 		}),
-		None => incompatible("stored V14 optional integer is missing"),
+		None => incompatible("stored Routing Snapshot optional integer is missing"),
 	}
 }
 fn optional_nonnegative_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match optional_i64(value, key)? {
 		Some(value) if (0..=253_402_300_799_999_999).contains(&value) => Ok(Some(value)),
-		Some(_) => incompatible("stored V14 optional timestamp is malformed"),
+		Some(_) => incompatible("stored Routing Snapshot optional timestamp is malformed"),
 		None => Ok(None),
 	}
 }
 fn optional_positive_i64(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
 	match optional_i64(value, key)? {
 		Some(value) if value > 0 => Ok(Some(value)),
-		Some(_) => incompatible("stored V14 optional revision is malformed"),
+		Some(_) => incompatible("stored Routing Snapshot optional revision is malformed"),
 		None => Ok(None),
 	}
 }

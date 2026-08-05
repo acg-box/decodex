@@ -766,6 +766,8 @@ const fn command_error_name(error: &CommandError) -> &'static str {
 		CommandError::IdempotencyConflict => "idempotency_conflict",
 		CommandError::IdempotencyCapacityExceeded { .. } => "idempotency_capacity_exceeded",
 		CommandError::ApplicationUnavailable { .. } => "application_unavailable",
+		CommandError::QuickTaskUnavailable { .. } => "quick_task_unavailable",
+		CommandError::QuickTaskRecoveryRequired { .. } => "quick_task_recovery_required",
 		CommandError::AcceptanceUnknown => "acceptance_unknown",
 		CommandError::AccountCommandRejected { .. } => "account_command_rejected",
 	}
@@ -848,7 +850,6 @@ expected_server_identity = "{SERVER_ID}""#
 		let config = format!(
 			r#"version = 1
 active_profile = "selected"
-server_host = {{}}
 postgres = {{}}
 cache = {{}}
 
