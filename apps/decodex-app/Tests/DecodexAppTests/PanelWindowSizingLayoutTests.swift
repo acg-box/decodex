@@ -352,7 +352,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testFrameKeepsTopEdgeAndCenterWhenContentShrinks() {
+	func testFrameKeepsTopEdgeAndHorizontalOriginWhenContentShrinks() {
 		let currentFrame = NSRect(x: 120, y: 200, width: 360, height: 700)
 		let frame = PanelWindowSizingLayout.frame(
 			forContentSize: NSSize(width: AccountPanelLayout.panelWidth, height: 520),
@@ -365,7 +365,7 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 
 		XCTAssertEqual(frame.width, 294)
 		XCTAssertEqual(frame.height, 538)
-		XCTAssertEqual(frame.midX, currentFrame.midX)
+		XCTAssertEqual(frame.minX, currentFrame.minX)
 		XCTAssertEqual(frame.maxY, currentFrame.maxY)
 	}
 

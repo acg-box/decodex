@@ -390,6 +390,60 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		}
 	}
 
+	func testBackgroundRetryDoesNotSurfaceUpdatingForACompletedReadFailure() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let inventory = try Self.inventory
+		let client = ObservationDrivenResetCardClient(
+			account: Self.account,
+			inventory: inventory,
+			inventorySteps: [
+				.value(inventory),
+				.failure(.service(.providerUnavailable)),
+			]
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		store.start()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts == 1
+				&& counts.inventory == 1
+				&& store.isRefreshing == false
+		}
+
+		await client.publish(generation: 1)
+		try await waitUntil {
+			store.accounts.first?.error == .service(.providerUnavailable)
+				&& store.accounts.first?.isRefreshing == false
+		}
+
+		await client.blockInventoryReads()
+		await client.publish(generation: 1)
+		try await waitUntil { await client.isInventoryReadBlocked() }
+
+		let state = try XCTUnwrap(store.accounts.first)
+		XCTAssertFalse(state.isRefreshing)
+		XCTAssertEqual(
+			ResetCardInventoryPresentation(
+				state: state,
+				isAwaitingFreshAccountSkeleton: false
+			),
+			.unavailable(detail: ResetCardServiceError.providerUnavailable.presentation)
+		)
+
+		await client.releaseInventoryRead()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.inventory == 3 && store.isRefreshing == false
+		}
+		await store.prepareForApplicationTermination()
+	}
+
 	func testTerminationRejectsRefreshWhileDrainingTheActiveCycle() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -735,7 +789,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 				state: state,
 				isAwaitingFreshAccountSkeleton: false
 			),
-			.updating(detail: ResetCardServiceError.providerUnavailable.presentation)
+			.unavailable(detail: ResetCardServiceError.providerUnavailable.presentation)
 		)
 	}
 
@@ -1044,6 +1098,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservationClient {
 	private let account: ResetCardAccountRecord
 	private let inventoryValue: ResetCardInventory
+	private var inventorySteps: [ClientStep<ResetCardInventory>]
 	private var accountCalls = 0
 	private var inventoryCalls = 0
 	private var inventoryReadsBlocked = false
@@ -1052,9 +1107,14 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 	private var signalContinuation: CheckedContinuation<AccountObservationSignal, Never>?
 	private var priorityRefreshRequests = 0
 
-	init(account: ResetCardAccountRecord, inventory: ResetCardInventory) {
+	init(
+		account: ResetCardAccountRecord,
+		inventory: ResetCardInventory,
+		inventorySteps: [ClientStep<ResetCardInventory>] = []
+	) {
 		self.account = account
 		inventoryValue = inventory
+		self.inventorySteps = inventorySteps
 	}
 
 	func accounts(authority _: ResetCardAuthority?) async throws -> [ResetCardAccountRecord] {
@@ -1069,7 +1129,10 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 				inventoryReadContinuation = continuation
 			}
 		}
-		return inventoryValue
+		let step = inventorySteps.isEmpty
+			? .value(inventoryValue)
+			: inventorySteps.removeFirst()
+		return try Self.resolve(step)
 	}
 
 	func blockInventoryReads() {
@@ -1102,7 +1165,7 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 		afterGeneration _: UInt64
 	) async throws -> AccountObservationSignal {
 		priorityRefreshRequests += 1
-		return AccountObservationSignal(generation: 0)
+		return AccountObservationSignal(generation: 1)
 	}
 
 	func priorityRefreshRequestCount() -> Int {
@@ -1132,6 +1195,15 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 
 	func status(for _: ResetCardUseAttempt) async throws -> ResetCardOperationState {
 		throw ResetCardClientError.invalidResponse
+	}
+
+	private static func resolve<Value: Sendable>(_ step: ClientStep<Value>) throws -> Value {
+		switch step {
+		case .value(let value):
+			return value
+		case .failure(let error):
+			throw error
+		}
 	}
 }
 

@@ -1014,7 +1014,8 @@ fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
 		QuickTaskRecoveryAction::RestoreProviderAgreement =>
 			"Restore provider account agreement before continuing.",
 		QuickTaskRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
-		QuickTaskRecoveryAction::UpgradeCodex => "Install the accepted Codex build.",
+		QuickTaskRecoveryAction::UpgradeCodex =>
+			"Use a Codex build with the required app-server methods.",
 		QuickTaskRecoveryAction::SelectWorkingDirectory =>
 			"Select an owned local working directory before continuing.",
 		QuickTaskRecoveryAction::StartNewConversation =>

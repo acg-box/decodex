@@ -409,8 +409,8 @@ impl AccountService {
 		}
 	}
 
-	/// Persist and activate generated exact-build callback evidence. Unsupported builds stay
-	/// closed.
+	/// Persist and activate callback evidence generated from the user's current Codex executable.
+	/// Incompatible runtime capabilities stay closed.
 	pub async fn attest_callback_capability(
 		&self,
 		attestation: CodexAccountCapabilityAttestation,
