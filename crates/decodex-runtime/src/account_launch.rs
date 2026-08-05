@@ -6,6 +6,7 @@ mod protocol;
 mod reset_card;
 
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
+#[cfg(test)] pub(crate) use reset_card::ResetCardInventoryView;
 pub(crate) use reset_card::{
 	ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus,
 };

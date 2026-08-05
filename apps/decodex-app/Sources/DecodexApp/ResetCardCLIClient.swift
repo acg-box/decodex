@@ -418,6 +418,17 @@ protocol AccountObservationClient: Sendable {
 	func waitForAccountObservation(
 		afterGeneration: UInt64
 	) async throws -> AccountObservationSignal
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal
+}
+
+extension AccountObservationClient {
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(afterGeneration: afterGeneration)
+	}
 }
 
 extension ResetCardClient {
@@ -552,13 +563,33 @@ extension DecodexNativeClient: AccountObservationClient {
 	func waitForAccountObservation(
 		afterGeneration: UInt64
 	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(
+			afterGeneration: afterGeneration,
+			requestRefresh: false
+		)
+	}
+
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(
+			afterGeneration: afterGeneration,
+			requestRefresh: true
+		)
+	}
+
+	private func waitForAccountObservation(
+		afterGeneration: UInt64,
+		requestRefresh: Bool
+	) async throws -> AccountObservationSignal {
 		let response: (
 			authority: ResetCardAuthority,
 			data: AccountObservationSignal
 		) = try await perform(
 			DecodexNativeRequest(
 				operation: "wait_for_account_observation",
-				afterGeneration: afterGeneration
+				afterGeneration: afterGeneration,
+				requestRefresh: requestRefresh ? true : nil
 			),
 			authority: nil
 		)

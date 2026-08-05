@@ -337,11 +337,16 @@ not queue a hot-loop successor for an already slow account.
 One slow account does not delay completion or later scheduling for another account.
 Observation results publish progressively and only against the current Account revision.
 An account change prunes old Reset Card and profile refresh state before a later result
-can become current. Every accepted publication advances one opaque daemon-lifetime
-observation generation. `WaitForAccountObservation` returns when that generation differs
-from the caller's last applied value, or after one 30-second heartbeat. The macOS app keeps
-one such wait open and reloads daemon values after the response. It has no independent
-15-second refresh clock; a disconnected wait reconnects with bounded backoff.
+can become current. Every accepted observation updates its per-account freshness metadata
+and daemon-owned cache. The opaque daemon-lifetime observation generation advances only
+when the semantic public cache value or its typed result changes; timestamp-only refreshes
+do not invalidate the UI. `WaitForAccountObservation` returns when that generation differs
+from the caller's last applied value, or after one 30-second heartbeat. Its optional
+`request_refresh` flag asks the daemon to schedule one coalesced observation before waiting;
+it does not make the query perform or await provider work directly. The macOS app keeps
+one standing wait plus at most one bounded priority wait, and synchronizes the cache in
+the background without entering the global loading gate. It has no independent 15-second
+refresh clock; a disconnected wait reconnects with bounded backoff.
 
 Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
 app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
@@ -354,10 +359,12 @@ account value and advances its cache generation before requesting observation. A
 older in-flight generation cannot republish after that invalidation. No credential or
 provider-private Reset Card ID enters this cache.
 
-Query handling is isolated from refresh work. A query does not join, await, register with,
-or inject work into an observation owner. It cannot convert a read into provider access or
-make a slow refresh hold the request path. Candidate-5 Quick Task work must preserve this
-current-main cache-read and observation behavior unchanged.
+Normal value-query handling is isolated from refresh work. `GetResetCards` and
+`GetAccountProfile` do not join, await, register with, or inject work into an observation
+owner. The explicit priority form of `WaitForAccountObservation` is the only client
+revalidation hook; it only signals the daemon scheduler and waits on the semantic
+generation. Candidate-5 Quick Task work must preserve this cache-read and observation
+boundary.
 
 ```mermaid
 sequenceDiagram
@@ -366,10 +373,11 @@ sequenceDiagram
     participant Accounts as Account service
     participant Provider as Provider adapters
     participant Store as PostgreSQL
-    participant Cache as Daemon Reset Card cache
+	participant Cache as Daemon Reset Card cache
 	participant Client as UI or protocol client
 
 	Client->>Observer: Wait after last observation generation
+	Client->>Observer: Optional priority wait requests one coalesced round
 	Timer->>Observer: Request coalesced observation round
     Observer->>Accounts: List lifecycle-ready account revisions
     par Each independent account
