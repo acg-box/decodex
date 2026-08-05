@@ -18,6 +18,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var expectedAccountRevision: UInt64? = nil
 	var expectedRoutingRevision: UInt64? = nil
 	var afterGeneration: UInt64? = nil
+	var requestRefresh: Bool? = nil
 	var order: [String]? = nil
 	var idempotencyKey: String? = nil
 	var operationID: String? = nil
@@ -36,6 +37,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case expectedAccountRevision = "expected_account_revision"
 		case expectedRoutingRevision = "expected_routing_revision"
 		case afterGeneration = "after_generation"
+		case requestRefresh = "request_refresh"
 		case order
 		case idempotencyKey = "idempotency_key"
 		case operationID = "operation_id"

@@ -2,6 +2,7 @@ import Foundation
 
 enum ResetCardRefreshWork: Equatable {
 	case full
+	case observation
 	case skeleton
 }
 
@@ -9,6 +10,8 @@ enum ResetCardRefreshWork: Equatable {
 /// while another account operation is active.
 struct ResetCardRefreshRequests: Equatable {
 	private(set) var manualRefreshRequested = false
+	private(set) var manualRefreshGeneration: UInt64 = 0
+	private(set) var completedManualRefreshGeneration: UInt64 = 0
 	private(set) var observationGeneration: UInt64 = 0
 	private var consumedObservationGeneration: UInt64 = 0
 	private(set) var skeletonGeneration: UInt64 = 0
@@ -16,7 +19,10 @@ struct ResetCardRefreshRequests: Equatable {
 
 	var hasFullRefreshRequest: Bool {
 		manualRefreshRequested
-			|| observationGeneration != consumedObservationGeneration
+	}
+
+	var hasObservationRefreshRequest: Bool {
+		observationGeneration != consumedObservationGeneration
 	}
 
 	var hasSkeletonRefreshRequest: Bool {
@@ -27,12 +33,25 @@ struct ResetCardRefreshRequests: Equatable {
 		consumedSkeletonGeneration >= generation
 	}
 
-	var hasWork: Bool {
-		hasFullRefreshRequest || hasSkeletonRefreshRequest
+	func didCompleteManualRefresh(upTo generation: UInt64) -> Bool {
+		completedManualRefreshGeneration >= generation
 	}
 
-	mutating func requestManualRefresh() {
+	var hasWork: Bool {
+		hasFullRefreshRequest
+			|| hasObservationRefreshRequest
+			|| hasSkeletonRefreshRequest
+	}
+
+	@discardableResult
+	mutating func requestManualRefresh() -> UInt64 {
+		manualRefreshGeneration &+= 1
 		manualRefreshRequested = true
+		return manualRefreshGeneration
+	}
+
+	mutating func completeManualRefresh() {
+		completedManualRefreshGeneration = manualRefreshGeneration
 	}
 
 	mutating func requestObservationRefresh() {
@@ -50,6 +69,10 @@ struct ResetCardRefreshRequests: Equatable {
 			manualRefreshRequested = false
 			consumedObservationGeneration = observationGeneration
 			return .full
+		}
+		if hasObservationRefreshRequest {
+			consumedObservationGeneration = observationGeneration
+			return .observation
 		}
 		if hasSkeletonRefreshRequest {
 			consumedSkeletonGeneration = skeletonGeneration

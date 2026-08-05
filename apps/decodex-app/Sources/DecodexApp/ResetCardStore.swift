@@ -325,8 +325,12 @@ final class ResetCardStore {
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var accountObservationTask: Task<Void, Never>?
+	@ObservationIgnored private var priorityObservationTask: Task<Void, Never>?
 	@ObservationIgnored private var refreshCoordinatorTask: Task<Void, Never>?
 	@ObservationIgnored private var refreshRequests = ResetCardRefreshRequests()
+	@ObservationIgnored private var observationSyncNeedsRetry = false
+	@ObservationIgnored private var accountObservationGeneration: UInt64 = 0
+	@ObservationIgnored private var lastPriorityObservationRequestAt: Date?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
 	@ObservationIgnored private var postUseReconciliationTasks = [
@@ -339,6 +343,7 @@ final class ResetCardStore {
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
+	@ObservationIgnored private var accountSnapshotRequestGeneration: UInt64 = 0
 	@ObservationIgnored private var accountSkeletonRefreshGeneration: UInt64 = 0
 	@ObservationIgnored private var advancedInventoriesAwaitingSkeleton = [
 		String: ResetCardInventory
@@ -386,6 +391,7 @@ final class ResetCardStore {
 	deinit {
 		startupTask?.cancel()
 		accountObservationTask?.cancel()
+		priorityObservationTask?.cancel()
 		refreshCoordinatorTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
@@ -503,6 +509,7 @@ final class ResetCardStore {
 
 		let inFlightStartupTask = startupTask
 		let inFlightRefreshCoordinatorTask = refreshCoordinatorTask
+		let inFlightPriorityObservationTask = priorityObservationTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		let inFlightAccountReauthenticationTask = accountReauthenticationTask
 		let inFlightPostUseReconciliationTasks = Array(
@@ -513,6 +520,8 @@ final class ResetCardStore {
 		startupTask = nil
 		accountObservationTask?.cancel()
 		accountObservationTask = nil
+		priorityObservationTask?.cancel()
+		priorityObservationTask = nil
 		refreshCoordinatorTask?.cancel()
 		refreshCoordinatorTask = nil
 		refreshRequests.reset()
@@ -526,6 +535,7 @@ final class ResetCardStore {
 		postUseReconciliationTasks.removeAll()
 
 		await inFlightStartupTask?.value
+		await inFlightPriorityObservationTask?.value
 		// The native wait is a bounded synchronous FFI request. Client destruction
 		// safely releases its in-flight Arc, so termination cancels this owner but
 		// does not wait for a daemon heartbeat before shutting down the shared client.
@@ -554,9 +564,13 @@ final class ResetCardStore {
 					guard Task.isCancelled == false, let self else {
 						return
 					}
+					let advanced = signal.generation != generation
 					generation = signal.generation
+					self.accountObservationGeneration = signal.generation
 					failureCount = 0
-					self.requestObservationRefresh()
+					if self.hasLoaded && (advanced || self.observationSyncNeedsRetry) {
+						self.requestObservationRefresh()
+					}
 				} catch {
 					guard Task.isCancelled == false, reconnectDelays.isEmpty == false else {
 						return
@@ -573,11 +587,55 @@ final class ResetCardStore {
 		}
 	}
 
+	/// Keep the panel immediate while asking the daemon for the freshest available cache.
+	/// The request is coalesced by the daemon and never enters the visible full-refresh lane.
+	func ensureFresh() {
+		guard hasLoaded,
+			isPreparingForTermination == false,
+			let accountObservationClient
+		else {
+			return
+		}
+		let now = Date()
+		if let lastPriorityObservationRequestAt,
+			now.timeIntervalSince(lastPriorityObservationRequestAt) < 5
+		{
+			return
+		}
+		guard priorityObservationTask == nil else {
+			return
+		}
+		lastPriorityObservationRequestAt = now
+		let generation = accountObservationGeneration
+		requestObservationRefresh()
+		priorityObservationTask = Task { [weak self, accountObservationClient] in
+			do {
+				let signal = try await accountObservationClient.requestAccountObservationRefresh(
+					afterGeneration: generation
+				)
+				guard Task.isCancelled == false, let self else {
+					self?.priorityObservationTask = nil
+					return
+				}
+				defer {
+					self.priorityObservationTask = nil
+				}
+				if signal.generation != self.accountObservationGeneration {
+					self.accountObservationGeneration = signal.generation
+					self.requestObservationRefresh()
+				} else if self.observationSyncNeedsRetry {
+					self.requestObservationRefresh()
+				}
+			} catch {
+				self?.priorityObservationTask = nil
+				// The standing observation wait will reconnect. Panel presentation must
+				// remain usable when a priority request cannot reach the daemon.
+			}
+		}
+	}
+
 	func requestRefresh() {
 		guard isPreparingForTermination == false,
-			refreshCoordinatorTask == nil,
-			isRefreshing == false,
-			isRefreshingAccountSkeleton == false,
 			isAccountControlInProgress == false
 		else {
 			return
@@ -656,15 +714,34 @@ final class ResetCardStore {
 		switch work {
 		case .full:
 			await performRefreshCycle()
+			if Task.isCancelled == false {
+				refreshRequests.completeManualRefresh()
+			}
+		case .observation:
+			await performObservationRefresh()
 		case .skeleton:
 			await performAccountSkeletonRead()
 		}
 	}
 
 	func refresh() async {
-		let inFlightCoordinatorTask = refreshCoordinatorTask
+		let previousManualRefreshGeneration = refreshRequests.manualRefreshGeneration
 		requestRefresh()
-		await (refreshCoordinatorTask ?? inFlightCoordinatorTask)?.value
+		guard refreshRequests.manualRefreshGeneration != previousManualRefreshGeneration else {
+			return
+		}
+		let requestedManualRefreshGeneration = refreshRequests.manualRefreshGeneration
+		while Task.isCancelled == false,
+			isPreparingForTermination == false,
+			refreshRequests.didCompleteManualRefresh(upTo: requestedManualRefreshGeneration) == false
+		{
+			if let task = refreshCoordinatorTask {
+				await task.value
+			} else {
+				scheduleRefreshCoordinator()
+				await Task.yield()
+			}
+		}
 	}
 
 	private func performRefreshCycle() async {
@@ -681,11 +758,20 @@ final class ResetCardStore {
 			return
 		}
 		clearStaleControlError()
-		_ = await refreshReadState()
+		let result = await refreshReadState()
+		observationSyncNeedsRetry = result == .retryNeeded
 		guard Task.isCancelled == false else {
 			return
 		}
 		_ = await recoverPendingAttempts()
+	}
+
+	private func performObservationRefresh() async {
+		guard Task.isCancelled == false else {
+			return
+		}
+		let result = await refreshReadState(backgroundObservation: true)
+		observationSyncNeedsRetry = result == .retryNeeded
 	}
 
 	func setProfileEmailVisibility(_ isVisible: Bool) async {
@@ -725,16 +811,22 @@ final class ResetCardStore {
 		_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
 	}
 
-	private func refreshReadState() async -> ResetCardRefreshResult {
-		guard isRefreshing == false else {
+	private func refreshReadState(
+		backgroundObservation: Bool = false
+	) async -> ResetCardRefreshResult {
+		guard backgroundObservation || isRefreshing == false else {
 			return .skipped
 		}
 
-		isRefreshing = true
-		refreshSkeletonIsPublished = false
-		defer {
-			isRefreshing = false
+		if backgroundObservation == false {
+			isRefreshing = true
 			refreshSkeletonIsPublished = false
+		}
+		defer {
+			if backgroundObservation == false {
+				isRefreshing = false
+				refreshSkeletonIsPublished = false
+			}
 			hasLoaded = true
 			scheduleRefreshCoordinator()
 		}
@@ -751,9 +843,10 @@ final class ResetCardStore {
 			let discovered: [ResetCardAccountRecord]
 			var projectionReadback: (
 				generation: UInt64,
-				projection: CodexAuthProjection
+				projection: CodexAuthProjection?
 			)?
 			if let accountControlClient {
+				let snapshotGeneration = beginAccountSnapshotRequest()
 				let projectionGeneration = beginCodexProjectionRequest()
 				async let snapshotRead = accountControlClient.accountSnapshot(
 					authority: retainedAuthority
@@ -762,9 +855,16 @@ final class ResetCardStore {
 					authority: retainedAuthority
 				)
 				let snapshot = try await snapshotRead
-				let projection = await projectionRead ?? .unavailable
+				let projection = await projectionRead
+				// A local account-control result may have superseded this snapshot while
+				// either read was suspended. Never publish that older routing/account view.
+				guard snapshotGeneration == accountSnapshotRequestGeneration else {
+					return .complete
+				}
 				projectionReadback = (projectionGeneration, projection)
-				routing = snapshot.routing
+				if routing != snapshot.routing {
+					routing = snapshot.routing
+				}
 				discovered = snapshot.accounts
 			} else {
 				discovered = try await client.accounts(authority: retainedAuthority)
@@ -772,7 +872,7 @@ final class ResetCardStore {
 			let previousByID = Dictionary(
 				uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
 			)
-			accounts = discovered.map { account in
+			let nextAccounts = discovered.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = retainedAuthority
 					?? account.authority
@@ -833,20 +933,29 @@ final class ResetCardStore {
 					&& retainedProfileError == nil
 				)
 			}
+			if accounts != nextAccounts {
+				accounts = nextAccounts
+			}
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			if let projectionReadback,
+				let projection = projectionReadback.projection,
 				applyCodexAuthProjection(
-					projectionReadback.projection,
+					projection,
 					generation: projectionReadback.generation
 				) {
 				scheduleCodexProjectionRefresh()
 			}
-			if message?.tone == .error, isPendingRecoveryBlocked == false {
+			if backgroundObservation == false,
+				message?.tone == .error,
+				isPendingRecoveryBlocked == false
+			{
 				message = nil
 			}
-			refreshSkeletonIsPublished = true
+			if backgroundObservation == false {
+				refreshSkeletonIsPublished = true
+			}
 
 			let inventoryReads = self.inventoryReads
 			let accountProfileClient = self.accountProfileClient
@@ -964,22 +1073,24 @@ final class ResetCardStore {
 		} catch {
 			let clientError = Self.clientError(error)
 			shouldRetry = clientError.isRetryableReadFailure
-			accounts = accounts.map {
-				ResetCardAccountState(
-					account: $0.account,
-					inventory: $0.inventory,
-					error: $0.error,
-					isRefreshing: false,
-					profile: $0.profile,
-					profileUnavailable: $0.profileUnavailable,
-					profileError: $0.profileError,
-					isProfileRefreshing: false
+			if backgroundObservation == false {
+				accounts = accounts.map {
+					ResetCardAccountState(
+						account: $0.account,
+						inventory: $0.inventory,
+						error: $0.error,
+						isRefreshing: false,
+						profile: $0.profile,
+						profileUnavailable: $0.profileUnavailable,
+						profileError: $0.profileError,
+						isProfileRefreshing: false
+					)
+				}
+				message = ResetCardStoreMessage(
+					tone: .error,
+					text: clientError.localizedDescription
 				)
 			}
-			message = ResetCardStoreMessage(
-				tone: .error,
-				text: clientError.localizedDescription
-			)
 		}
 
 		if isPendingRecoveryBlocked {
@@ -2056,6 +2167,7 @@ final class ResetCardStore {
 			scheduleRefreshCoordinator()
 		}
 		do {
+			let snapshotGeneration = beginAccountSnapshotRequest()
 			let projectionGeneration = beginCodexProjectionRequest()
 			async let snapshotRead = accountControlClient.accountSnapshot(
 				authority: establishedAuthority
@@ -2064,6 +2176,9 @@ final class ResetCardStore {
 				authority: establishedAuthority
 			)
 			let snapshot = try await snapshotRead
+			guard snapshotGeneration == accountSnapshotRequestGeneration else {
+				return
+			}
 			let previousByID = Dictionary(
 				uniqueKeysWithValues: accounts.map {
 					($0.account.accountID, $0)
@@ -2151,10 +2266,11 @@ final class ResetCardStore {
 					)
 				)
 			}
-			if applyCodexAuthProjection(
-				await projectionRead ?? .unavailable,
-				generation: projectionGeneration
-			) {
+			if let projection = await projectionRead,
+				applyCodexAuthProjection(
+					projection,
+					generation: projectionGeneration
+				) {
 				scheduleCodexProjectionRefresh()
 			}
 		} catch {
@@ -2234,7 +2350,7 @@ final class ResetCardStore {
 		let retainsProfileState = accounts[index].account.accountRevision
 			== inventory.accountRevision
 		let revisionChanged = retainsProfileState == false
-		accounts[index] = ResetCardAccountState(
+		let updatedState = ResetCardAccountState(
 			account: account,
 			inventory: inventory,
 			error: nil,
@@ -2247,6 +2363,9 @@ final class ResetCardStore {
 			profileError: retainsProfileState ? accounts[index].profileError : nil,
 			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
+		if accounts[index] != updatedState {
+			accounts[index] = updatedState
+		}
 		if completesPostUseReconciliation
 			|| postUseReconciliationTasks[accountID] == nil
 		{
@@ -3087,6 +3206,7 @@ final class ResetCardStore {
 				return
 			}
 		}
+		invalidateAccountSnapshotRequest()
 
 		if let accountID, let activity {
 			accountControlActivities[accountID] = activity
@@ -3261,6 +3381,16 @@ final class ResetCardStore {
 		return codexProjectionRequestGeneration
 	}
 
+	private func beginAccountSnapshotRequest() -> UInt64 {
+		accountSnapshotRequestGeneration &+= 1
+		return accountSnapshotRequestGeneration
+	}
+
+	private func invalidateAccountSnapshotRequest() {
+		// Fence every snapshot already in flight before a local account mutation.
+		accountSnapshotRequestGeneration &+= 1
+	}
+
 	@discardableResult
 	private func applyCodexAuthProjection(
 		_ projection: CodexAuthProjection,
@@ -3277,6 +3407,9 @@ final class ResetCardStore {
 				codexAuthProjection = nil
 				return true
 			}
+		}
+		guard codexAuthProjection != projection else {
+			return false
 		}
 		codexAuthProjection = projection
 		return false
@@ -3307,9 +3440,11 @@ final class ResetCardStore {
 			return
 		}
 		let generation = beginCodexProjectionRequest()
-		let projection = (try? await accountControlClient.codexAuthProjection(
+		guard let projection = try? await accountControlClient.codexAuthProjection(
 			authority: establishedAuthority
-		)) ?? .unavailable
+		) else {
+			return
+		}
 		_ = applyCodexAuthProjection(projection, generation: generation)
 	}
 

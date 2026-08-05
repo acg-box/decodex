@@ -171,7 +171,11 @@ decodex-publisher validate-social
   `Refresh all`, that material selector, and Quit. A manual reload remains available
   during a background read and coalesces into the active reload cycle; it reads
   daemon-owned values and does not start provider work. Account mutations and Reset
-  Card submissions still disable it.
+  Card submissions still disable it. Observation synchronization keeps the last
+  published values usable while a new cache read is in flight. Opening the panel
+  presents the latest published values immediately and may ask the daemon for one
+  coalesced priority observation; only the explicit `Refresh all` action enters the
+  full-read lane.
 - Reveals a compact trailing-edge reorder grip over an account card's padding while
   the pointer is over that card, so the grip does not reserve a layout column. A
   drag uses the stable list coordinate space and keeps the full-size card on a

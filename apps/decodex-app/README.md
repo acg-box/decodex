@@ -38,11 +38,16 @@ to 50%, and destructive red at 20% or below. The numeric percentage and
 accessibility value remain the primary status.
 
 The app keeps one bounded wait open for the daemon's account-observation
-generation. Each progressive daemon publication wakes that wait and causes one
-coalesced reload of daemon-owned values. A 30-second daemon heartbeat bounds a
-missed notification or daemon restart, and transport failures reconnect with a
-250-millisecond to 8-second bounded backoff. The UI has no 15-second refresh
-clock. Opening the panel and `Refresh all` can still request one cache reload.
+generation. A daemon observation always updates its per-account freshness
+metadata, but the opaque generation advances only when the public cached value
+or its typed result changes. Only a newly observed generation wakes the wait and
+causes one coalesced background synchronization of daemon-owned values. A
+same-generation 30-second daemon heartbeat only retries a previously failed
+synchronization; it does not start a normal reload. Transport failures reconnect
+with a 250-millisecond to 8-second bounded backoff. The UI has no 15-second
+refresh clock or background loading gate. Opening the panel renders the latest
+published values immediately, then asks the daemon for one coalesced priority
+observation; `Refresh all` remains the explicit full-read action.
 Independently, the daemon starts one observation round immediately, repeats it
 every 15 seconds, and wakes it after account and Reset Card changes. It starts
 every independent account concurrently, keeps at most one active observation

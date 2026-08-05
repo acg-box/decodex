@@ -269,6 +269,127 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(finalCounts, stoppedCounts)
 	}
 
+	func testDaemonHeartbeatDoesNotRequestAnotherRefreshForTheSameGeneration() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ObservationDrivenResetCardClient(
+			account: Self.account,
+			inventory: try Self.inventory
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		store.start()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts == 1
+				&& counts.inventory == 1
+				&& store.isRefreshing == false
+		}
+
+		await client.publish(generation: 1)
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts == 2
+				&& counts.inventory == 2
+				&& store.isRefreshing == false
+		}
+		try await waitUntil { await client.observationIsPending() }
+		let synchronizedCounts = await client.callCounts()
+
+		// The daemon uses a same-generation heartbeat to bound a missed wake. It
+		// must not turn an unchanged heartbeat into another full UI refresh.
+		await client.publish(generation: 1)
+		try await waitUntil { await client.observationIsPending() }
+		try await Task.sleep(for: .milliseconds(50))
+
+		let finalCounts = await client.callCounts()
+		XCTAssertEqual(finalCounts, synchronizedCounts)
+	}
+
+	func testBackgroundObservationKeepsThePublishedStateUsableWhileReading() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ObservationDrivenResetCardClient(
+			account: Self.account,
+			inventory: try Self.inventory
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		store.start()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts == 1
+				&& counts.inventory == 1
+				&& store.isRefreshing == false
+		}
+		await client.blockInventoryReads()
+		await client.publish(generation: 1)
+		try await waitUntil { await client.isInventoryReadBlocked() }
+
+		XCTAssertFalse(store.isRefreshing)
+		XCTAssertTrue(store.canPerformDirectAccountControl)
+		XCTAssertFalse(store.accounts.first?.isRefreshing ?? true)
+
+		await client.releaseInventoryRead()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return store.isRefreshing == false && counts.inventory == 2
+		}
+	}
+
+	func testPanelPriorityObservationKeepsThePublishedStateUsableWhileReading() async throws {
+		let fixture = try makePendingFixture()
+		defer { fixture.remove() }
+		let client = ObservationDrivenResetCardClient(
+			account: Self.account,
+			inventory: try Self.inventory
+		)
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		store.start()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return counts.accounts == 1
+				&& counts.inventory == 1
+				&& store.isRefreshing == false
+		}
+
+		await client.blockInventoryReads()
+		store.ensureFresh()
+		try await waitUntil {
+			let priorityRefreshRequestCount = await client.priorityRefreshRequestCount()
+			let inventoryReadBlocked = await client.isInventoryReadBlocked()
+			return priorityRefreshRequestCount == 1 && inventoryReadBlocked
+		}
+
+		XCTAssertFalse(store.isRefreshing)
+		XCTAssertTrue(store.canPerformDirectAccountControl)
+		XCTAssertFalse(store.accounts.first?.isRefreshing ?? true)
+
+		store.ensureFresh()
+		try await Task.sleep(for: .milliseconds(50))
+		let priorityRefreshRequestCount = await client.priorityRefreshRequestCount()
+		XCTAssertEqual(priorityRefreshRequestCount, 1)
+
+		await client.releaseInventoryRead()
+		try await waitUntil {
+			let counts = await client.callCounts()
+			return store.isRefreshing == false && counts.inventory == 2
+		}
+	}
+
 	func testTerminationRejectsRefreshWhileDrainingTheActiveCycle() async throws {
 		let fixture = try makePendingFixture()
 		defer { fixture.remove() }
@@ -925,8 +1046,11 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 	private let inventoryValue: ResetCardInventory
 	private var accountCalls = 0
 	private var inventoryCalls = 0
+	private var inventoryReadsBlocked = false
+	private var inventoryReadContinuation: CheckedContinuation<Void, Never>?
 	private var generations = [UInt64]()
 	private var signalContinuation: CheckedContinuation<AccountObservationSignal, Never>?
+	private var priorityRefreshRequests = 0
 
 	init(account: ResetCardAccountRecord, inventory: ResetCardInventory) {
 		self.account = account
@@ -940,7 +1064,27 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 
 	func inventory(for _: ResetCardAccountRecord) async throws -> ResetCardInventory {
 		inventoryCalls += 1
+		if inventoryReadsBlocked {
+			await withCheckedContinuation { continuation in
+				inventoryReadContinuation = continuation
+			}
+		}
 		return inventoryValue
+	}
+
+	func blockInventoryReads() {
+		inventoryReadsBlocked = true
+	}
+
+	func isInventoryReadBlocked() -> Bool {
+		inventoryReadContinuation != nil
+	}
+
+	func releaseInventoryRead() {
+		inventoryReadsBlocked = false
+		let continuation = inventoryReadContinuation
+		inventoryReadContinuation = nil
+		continuation?.resume()
 	}
 
 	func waitForAccountObservation(
@@ -954,6 +1098,17 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 		}
 	}
 
+	func requestAccountObservationRefresh(
+		afterGeneration _: UInt64
+	) async throws -> AccountObservationSignal {
+		priorityRefreshRequests += 1
+		return AccountObservationSignal(generation: 0)
+	}
+
+	func priorityRefreshRequestCount() -> Int {
+		priorityRefreshRequests
+	}
+
 	func publish(generation: UInt64) {
 		if let signalContinuation {
 			self.signalContinuation = nil
@@ -965,6 +1120,10 @@ private actor ObservationDrivenResetCardClient: ResetCardClient, AccountObservat
 
 	func callCounts() -> ClientCallCounts {
 		ClientCallCounts(accounts: accountCalls, inventory: inventoryCalls, status: 0, use: 0)
+	}
+
+	func observationIsPending() -> Bool {
+		signalContinuation != nil
 	}
 
 	func use(_: ResetCardUseAttempt) async throws -> ResetCardOperationState {
