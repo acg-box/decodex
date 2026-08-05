@@ -240,11 +240,11 @@ one exact store version through the same journal. Metadata deletion is allowed o
 after logout and creates a tombstone. Historical UUIDs, receipts, and execution
 references remain.
 
-## Exact-build account capability
+## Runtime-negotiated account capability
 
-`AccountLifecycle` readiness for a build is positive evidence, not a schema assumption.
-Before account-backed runner launch or a new Reset Card effect, the exact protected
-Codex build must prove all of these facts:
+`AccountLifecycle` readiness is positive runtime evidence, not a release allowlist or a
+schema assumption. Before account-backed runner launch or a new Reset Card effect, the
+currently installed protected Codex executable must prove all of these facts:
 
 - generated schema supports process-scoped `account/login/start` with
   `chatgptAuthTokens`;
@@ -253,15 +253,15 @@ Codex build must prove all of these facts:
   `account/chatgptAuthTokens/refresh`;
 - the Account Service can bind that callback to the exact ProcessGeneration, serialize
   refresh, complete credential compare-and-swap, and reply for the same provider binding;
-- the exact build, schema fingerprint, and callback capability profile are cached and
-  bound to launch authority.
+- the observed executable identity, generated-schema fingerprint, and callback capability
+  profile are cached and bound to launch authority for that process lifetime.
 
-Unsupported, unprobed, contradictory, or changed builds fail closed. The current exact
-`codex-cli 0.146.0-alpha.9.2` adapter services the root refresh request through the Account
-Service and returns the root refresh response. This source capability can satisfy
-`AccountLifecycle`, `MacDogfoodReady`, and runner readiness only when the exact-image,
-generated-schema, and live callback preflights also pass. Initial token projection alone is
-insufficient.
+The daemon does not pin or compare a Codex release/version or a pre-recorded executable
+digest. It uses the user's installed executable and rejects only incompatible process
+shapes, missing generated methods, malformed callback schemas, failed live probes, or
+contradictory runtime evidence. This source capability can satisfy `AccountLifecycle`,
+`MacDogfoodReady`, and runner readiness only when the runtime executable, generated schema,
+and live callback preflights pass. Initial token projection alone is insufficient.
 
 The supported macOS bridge can launch one explicit official Codex device-login in an
 owner-private temporary home without changing ambient `~/.codex`. It publishes only the
@@ -281,7 +281,7 @@ is safe, and ambiguous store state becomes `RecoveryRequired`.
 The owning [ProcessGeneration authority](process-generation-authority.md) must extend
 its intent, launch-manifest identity, prepare command, and strict readback
 with the canonical initial account revision, credential version, credential fingerprint,
-provider binding, and exact-build account-capability profile. These fields are immutable
+provider binding, and runtime-negotiated account-capability profile. These fields are immutable
 launch facts. Same-account callback rotation does not rewrite them.
 
 Immediately before spawn, the Account Service must read the exact HostCredentialStore

@@ -273,7 +273,7 @@ leaves the daemon stopped.
   implementation choice; its ownership contract is fixed.
 - `crates/decodex-postgres/`: current PostgreSQL adapters and read-only authority
   verification.
-- `crates/decodex-codex/`: typed app-server adapter and exact-build capability profiles.
+- `crates/decodex-codex/`: typed app-server adapter and runtime-negotiated capability profiles.
 - `crates/decodex-runtime/`: daemon service assembly, Account Service,
   ProcessSupervisor, ProviderAttemptService, account observations, and stateless execution
   coordination.
@@ -360,8 +360,9 @@ cargo test -p decodex-runtime macos_attested_spawn --lib
 cargo test -p decodex-runtime live_read_only_probe_negotiates_without_dispatch -- --ignored
 ```
 
-The exact-build supervisor verifies executable identity and generated schema before
-spawn. Raw protocol handles do not leave ProcessSupervisor. The live probe remains
+The runtime supervisor verifies the user's executable identity and generated schema before
+spawn, without a fixed Codex release/version allowlist. Raw protocol handles do not leave
+ProcessSupervisor. The live probe remains
 read-only and does not establish global title discovery or product dispatch.
 
 ## Plugin and automation checks

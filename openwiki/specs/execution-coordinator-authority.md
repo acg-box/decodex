@@ -9,39 +9,26 @@ ManagedRun-local submitted-turn/effect-barrier machinery.
 
 ## Owner composition
 
-Execution coordination is stateless. Runtime `routing_orchestration.rs` owns only the
-owner-order sequences from routing Conversation successor to initial route, route to
-initial plan, `resume_establishment`, and continuation binding to plan. Runtime
-`quick_task.rs` owns the remaining Quick Task lifecycle and process, thread, and provider
-execution. Neither module persists routing authority or owns a receipt, retry machine,
-effect barrier, ambiguity ledger, account decision, RuntimeSession decision, process
-state, or ProviderAttempt state.
+`ExecutionCoordinator` is a zero-sized, stateless sequencer. It does not persist state or
+own a lifecycle, retry machine, receipt, effect barrier, ambiguity ledger, account
+decision, RuntimeSession decision, process state, or ProviderAttempt state.
 
 | Owner | Sole authority |
 | --- | --- |
-| PostgreSQL Conversation authority | Ordinary Conversation and Turn lifecycle, one-winner routing Conversation successor creation/archive/readback, Candidate-5 atomic first Turn/history admission, legal Turn finalization, and Conversation/Turn/history readback. |
+| Conversation authority | Ordinary Conversation and Turn lifecycle, including Candidate-5 atomic first Turn/history admission and legal Turn finalization. |
 | ManagedRun authority | ManagedRun lifecycle, execution assignment, wait state, review, acceptance, and completion. |
-| PostgreSQL `quick_task_routing` | One atomic initial Quick Task snapshot/decision operation with exact receipt, codecs/readback, and one immutable non-selecting continuation binding; no independently committable half-command. |
-| ManagedRun routing | Closed `managed_run_project_policy` `L6` facts and the sole ManagedRun selector; unchanged by the Quick Task reset. |
-| `decodex-core` routing | Bounded I/O-free pure selection kernel only; no lock, persistence, provenance, receipt, completeness, retry, or lifecycle authority. |
-| Continuation Plan | First-session planning from an already selected decision plus ordinary Quick Task same-thread or Context Pack planning from an already persisted continuation binding; PostgreSQL-only Explicit successor evidence. |
+| Routing Snapshot | Closed consumer-specific authority: initial `conversation_account_registry` `L0` facts or `managed_run_project_policy` `L6` policy/evidence facts; never a merged shape. |
+| Routing Decision | Sole selector for selecting snapshots, exact shape-specific cause projection, and immutable non-selecting `conversation_continuation` binding. |
+| Continuation Plan | First-session planning plus same-thread or Context Pack continuation that retains the original Quick Task account/profile binding; PostgreSQL-only explicit-successor evidence. |
 | RuntimeSession Thread Establishment | Exact thread request fence, start binding, activation, and acknowledgement. |
 | ProcessSupervisor | ProcessGeneration intent, live fence, positive-only death evidence, and account-local quarantine. |
 | ProviderAttemptService | Atomic attempt binding, dispatch authorization, provider-effect state, positive evidence, restore projection, and reconciliation. |
 | Reviewer | Execution-scoped read-only review; missing or ambiguous output grants no approval or completion. |
-| Runtime `routing_orchestration.rs` | Owner-order routing and planning sequences; no independent authority. |
-| Runtime `quick_task.rs` | Quick Task lifecycle plus process/thread/provider execution; no routing persistence. |
-| PostgreSQL `exact_commands.rs` | Exact receipt and error primitives only; no generic transaction or workflow framework. |
+| ExecutionCoordinator | One in-memory sequence across accepted owners; no independent authority. |
 
-The runtime modules consume typed results in owner order and return an inert projection
+The coordinator consumes typed results in owner order and returns an inert projection
 unless a separately accepted production dispatch root consumes the complete fence chain.
-They cannot reconstruct a fresh fence from durable readback.
-
-The deletion test is normative. Deleting PostgreSQL `quick_task_routing` must spread its
-atomic route transaction, codecs/readback, and continuation-binding invariants into
-callers. Deleting runtime `routing_orchestration.rs` must spread its owner-order recovery
-sequencing into `quick_task.rs` or other callers. A file whose deletion requires only
-forwarding changes is wrapper plumbing, not an accepted owner.
+It cannot reconstruct a fresh fence from durable readback.
 
 ## Closed execution consumer
 
@@ -73,25 +60,19 @@ old local state cannot satisfy the latest schema, the operator replaces the loca
 database or directly transforms that one development database under the reviewed local
 action. Product runtime never interprets an old shape.
 
-The target retains sole writers:
+The latest schema retains sole writers:
 
-- PostgreSQL `quick_task_routing` for the indivisible initial Quick Task snapshot and
-  decision, exact route readback, and non-selecting Quick Task continuation binding;
-- ManagedRun routing for its retained Project-policy selection;
-- PostgreSQL Conversation authority for the routing Conversation successor, archive, and
-  redirect/list readback;
-- Continuation Plan for RuntimeSession continuation/creation from committed routing
-  authority;
+- Routing Decision for initial Quick Task or ManagedRun account choice, route causes, and
+  non-selecting Quick Task continuation binding;
+- Continuation Plan for RuntimeSession continuation/creation;
 - ProcessSupervisor for ProcessGeneration;
 - ProviderAttemptService for provider effects; and
 - Conversation or ManagedRun for their own lifecycle.
 
 ## Route projection
 
-Routing Snapshot and Routing Decision expose closed consumer-specific authority shapes.
-For ordinary Quick Task, PostgreSQL `quick_task_routing` locks current authority,
-materializes the complete snapshot, runs selection, and persists the snapshot and decision
-in one transaction. ManagedRun keeps its separate selection owner. The caller supplies no
+Routing Snapshot and Routing Decision expose closed consumer-specific authority shapes. For a
+selecting shape, Routing Decision locks the complete matching snapshot. The caller supplies no
 account list, order, eligibility, exclusion, evidence, or account choice.
 
 ### ManagedRun Project-policy `L6`
@@ -132,60 +113,40 @@ sticky, capability, Project evidence, quota source identity, observation revisio
 confidence, or provenance fields. Fixed mode accepts only its exact eligible target. Balanced mode
 uses canonical Account Registry order. The independent slots and separate accounts are never
 pooled. The immutable result persists only `selected`, `waiting`, or `no_route` plus exact replay
-exclusions. `waiting` and `no_route` grant no wake or same-Conversation re-selection.
-Explicit retry uses the separate Conversation-owner routing Conversation successor
-command.
+exclusions. `waiting` is manual-retry state and grants no wake.
 
 ### Later Quick Task continuation `L6`
 
-`conversation_continuation` is an immutable non-selecting routing binding bound to the
-current RuntimeSession and its original initial decision, selected account snapshot, and
-copied Task RoleProfile snapshot. It has no candidate projection and never invokes Routing
-Snapshot resolution or the selector. Ordinary Quick Task same-thread and Context Pack
-planning retain that exact RuntimeSession, account, and profile lineage.
+`conversation_continuation` is an immutable non-selecting decision bound to the current
+RuntimeSession and its original initial decision, selected account snapshot, and copied Task
+RoleProfile snapshot. It has no candidate projection and never invokes Routing Snapshot resolution
+or the selector. Same-thread and Context Pack planning retain that exact account and profile.
 
 ## Candidate-5 initial operation
 
-Candidate 5 adds no coordinator state. The exact order is:
+Candidate 5 adds no coordinator state or new owner. The exact order is:
 
-1. PostgreSQL Conversation authority creates the revision-1 Conversation and retains its
-   durable initial request coordinates. Before a decision commits, readback is
-   `routing_pending`.
-2. Runtime `routing_orchestration.rs` invokes the one command-complete
-   `quick_task_routing` operation. Runtime supplies typed inputs and a protocol-scoped
-   idempotency key, but no generated identity.
-3. The operation locks the Conversation, Account Routing Control, all complete
-   non-tombstoned accounts in UUID order, current Task RoleProfile, complete routing order,
-   and exact quota facts in one top-level `READ COMMITTED` transaction.
-4. With those locks retained, it materializes the complete
-   `conversation_account_registry` `L0` snapshot, runs the bounded I/O-free core kernel,
-   persists and validates the snapshot, one initial decision, references, exact receipt,
-   activity, and outbox, and commits them together.
-5. If the result is `selected`, Continuation Plan atomically creates selected
-   account/profile snapshots, the first revision-1 unfenced `starting` RuntimeSession,
-   inert `initial_thread` plan, exact receipt, activity, and outbox.
-6. Conversation authority atomically admits the database-generated prospective Turn as
-   the exact active revision-1 sequence-1 user Turn and creates exactly one ordinal-0
-   completed Message.
+1. Conversation authority creates the Conversation.
+2. The routing request supplies one prospective Turn UUID as intent only. No Turn row or
+   Turn foreign key exists yet.
+3. Routing Snapshot proves exact `conversation_account_registry` zero-source lineage and the
+   complete locked Account Registry facts defined above.
+4. Routing Decision selects one account exactly once for the Quick Task lifetime.
+5. Continuation Plan atomically creates selected account/profile snapshots, the first
+   revision-1 unfenced `starting` RuntimeSession, inert `initial_thread` plan, exact
+   receipt, activity, and outbox.
+6. Conversation authority atomically admits the exact active revision-1 sequence-1 user
+   Turn and exactly one ordinal-0 completed Message.
 7. Account Service fences only the selected account immediately before spawn.
-   ProcessSupervisor can spawn only from a fresh ProcessGeneration outcome. RuntimeSession
-   Thread Establishment and ProviderAttemptService retain their exact thread and effect
-   authority.
+8. ProcessSupervisor can spawn only from a fresh ProcessGeneration outcome.
+9. RuntimeSession Thread Establishment fences, starts, binds, and activates the exact
+   thread.
+10. ProviderAttemptService prepares and authorizes the exact attempt.
 
-Any authority drift, kernel error, insert error, reference error, or completeness failure
-rolls back the complete initial route transaction. No snapshot, decision, reference,
-receipt, activity, or outbox subset can commit. PostgreSQL allocates generated route and
-prospective-Turn identities as transaction effects. Exact identity equality is required
-only when a committed exact receipt replays its stored response. If the transaction rolled
-back, no generated identity remains authoritative and a resumed operation may allocate
-replacement identities; runtime never has to reproduce an uncommitted random value.
-Different keys serialize on the Conversation and have one winner.
-
-There is no second initial selection on the same Conversation, alternate account, wake,
-or account re-selection. Initial planning has no source RuntimeSession and no sticky
-member. Later Turns use only `conversation_continuation`; selected-account drift,
-exhaustion, or readiness failure returns typed manual recovery without invoking the
-selector or switching accounts.
+There is no second selection, alternate account, fallback, wake, or account re-selection. Initial
+planning has no source RuntimeSession and no sticky member. Later Turns use only
+`conversation_continuation`; selected-account drift, exhaustion, or readiness failure returns typed
+manual recovery without invoking the selector.
 
 ### Initial lineage
 
@@ -202,53 +163,15 @@ quota fields are null. ManagedRun `L6` retains the complete Project-policy repre
 constraints reject partial lineage, mixed shapes, wrong consumers, missing or duplicate members or
 slots, cross-links, and reordered facts.
 
-One Conversation lock permits one cross-key initial operation to be fresh. A committed
-exact-key replay is read-only and returns its stored identities and response bytes. Initial
-planning accepts only selected `conversation_account_registry` `L0` and rolls back the
-complete first-session authority cluster on failure. Later planning accepts only the
-non-selecting binding and preserves the original RuntimeSession, account, and profile
-lineage.
-
-### Routing recovery and readback
-
-`routing_pending` means no initial decision or downstream RuntimeSession, Turn, Message,
-plan, process, thread, or provider effect exists. `resume_routing` invokes the same
-Conversation's one initial route operation from its durable request coordinates. It does
-not create an attempt ordinal, attempt head, second snapshot, second decision, or routing
-Conversation successor.
-
-A committed `waiting` or `no_route` decision remains immutable. Explicit retry invokes a
-separate PostgreSQL Conversation-owner exact command with the expected source revision.
-Under one lock, that command requires no selected result or downstream authority, creates
-exactly one fresh revision-1 Conversation, records the exact one-to-one relation, archives
-the source, writes one receipt/activity/outbox result, and commits. This new Conversation
-is the **routing Conversation successor**. Same-key replay returns the committed stored
-response. A competing key returns the existing successor or a typed stale result and
-cannot create another.
-
-Routing Conversation successor creation and initial routing are separate owner commands.
-A crash between them leaves the successor open and `routing_pending`; restart may resume
-its one initial route.
-Routing never creates or archives a Conversation.
-
-Exact ordinary readback follows the one-to-one relation. Get-by-Conversation-ID for an
-archived source returns a typed `routing_successor` redirect containing its direct
-successor Conversation identity and revision, not an archived-source summary. Ordinary
-lists apply the archived-source filter before ordering, cursoring, and limiting: archived
-sources are absent, and each open routing Conversation successor appears exactly once.
-
-`establishment_pending` means one `selected` decision committed without a RuntimeSession
-or initial plan. `resume_establishment` consumes only that selected decision and may replay
-or complete initial planning; it cannot invoke selection. After `selected`, or once any
-RuntimeSession, Turn, Message, plan, process, thread, or provider effect exists, routing
-Conversation successor creation, route retry, wake, account re-selection, account switch,
-and any other automatic cross-account fallback are rejected.
+One Conversation lock permits one cross-key initial decision to be fresh. Exact-key replay is
+read-only. Initial planning accepts only selected `conversation_account_registry` `L0` and rolls
+back the complete first-session authority cluster on failure. Later planning accepts only the
+non-selecting binding and preserves the original account/profile identities.
 
 ### Initial admission
 
 Conversation authority creates the first Turn and history item in one one-winner
-transaction. Required Turn values are the database-generated prospective UUID returned by
-the committed selected route, sequence 1, `user`,
+transaction. Required Turn values are the prospective UUID, sequence 1, `user`,
 `possible_side_effects=unknown`, `active`, revision 1, and the exact Conversation/new
 RuntimeSession cross-link. The only first history item is ordinal 0, Message, `completed`,
 revision 1.
@@ -268,8 +191,8 @@ receipts.
 
 Only a fresh ProcessGeneration outcome can spawn. Replay, rejection, and uncertainty use
 durable ProcessGeneration, RuntimeSession, ProviderAttempt, and Conversation readback.
-They cannot spawn, replace, adopt, create a routing Conversation successor, duplicate an
-attempt, or terminalize the Turn.
+They cannot spawn, replace, adopt, create a successor, duplicate an attempt, or
+terminalize the Turn.
 
 Conversation authority can move the Turn to failed revision 2 under a starting session
 only after positive proof of definite pre-effect refusal. The proof excludes every process
@@ -281,9 +204,6 @@ locks the Turn named by the selected route and requires the same Conversation/so
 RuntimeSession, `failed`, revision 2. It has no protocol field, command, runtime grant,
 facade, fallback, or wake path.
 
-This failed-Turn Explicit successor is distinct from the routing Conversation successor
-used only after a committed initial `waiting` or `no_route` decision.
-
 ## RuntimeSession continuity
 
 For an existing ordinary Conversation session, same-thread reuse requires positive exact
@@ -294,13 +214,9 @@ For ManagedRun, same-thread reuse requires the accepted causal experiment and po
 exact-thread attestation bound to the source RuntimeSession.
 
 When accepted existing-session same-thread evidence is absent, stale, negative,
-incomplete, ambiguous, or cross-linked, ordinary Quick Task Continuation Plan uses its
-atomic Context Pack path. It creates the Context Pack, account snapshot, new starting
-RuntimeSession, plan, activity, outbox, and exact receipt as one authority cluster while
-preserving the immutable source RuntimeSession and original account/profile lineage.
-
-XY-1304 disables automatic cross-account same-thread substitution and all-depleted wake.
-It does not disable this ordinary same-account Quick Task Context Pack path.
+incomplete, ambiguous, or cross-linked, Continuation Plan uses its atomic Context Pack
+path. It creates the Context Pack, account snapshot, starting fallback RuntimeSession,
+plan, activity, outbox, and exact receipt as one authority cluster.
 
 Candidate-5 initial planning cannot enter either existing-session branch. Continuation
 Plan never writes ProviderAttempt state, and ProviderAttempt never writes RuntimeSession
@@ -331,11 +247,10 @@ receipt, or dispatch fence.
 The service uses the owner-only same-UID Unix transport. It has no TCP or loopback
 fallback. Remote and cross-UID authority remains separately gated.
 
-The `routing_orchestration.rs` methods remain crate-private and accept only typed owner
-results. `quick_task.rs` consumes them without persisting routing. No protocol, CLI,
-scheduler, UI, credential owner, Codex adapter, or client can construct the sequence or
-mint dispatch authority. Product dispatch remains disabled until the Candidate-5 gate
-accepts the complete composition.
+The coordinator method remains crate-private and accepts only crate-private owner
+capabilities. No protocol, CLI, scheduler, UI, credential owner, Codex adapter, or client
+can construct the sequence or mint dispatch authority. Product dispatch remains disabled
+until the Candidate-5 gate accepts the complete composition.
 
 ## Acceptance
 
@@ -345,39 +260,23 @@ After source freeze, validation must cover:
   daemon startup with zero DDL and no schema-owner credential;
 - exact current catalog/authority for all routing, continuation, Conversation,
   ProcessGeneration, ProviderAttempt, and read-only projection objects;
-- exactly one `conversation_account_registry` `L0` snapshot and initial decision per
-  ordinary Conversation, retained `managed_run_project_policy` `L6`, and a distinct
-  non-selecting `conversation_continuation` `L6` binding, including reverse-shape and
-  cross-link rejection;
+- `conversation_account_registry` `L0`, `managed_run_project_policy` `L6`, and non-selecting
+  `conversation_continuation` `L6`, including reverse-shape and cross-link rejection;
 - exact Account Registry missing/current/observation-error slots, fixed/balanced selection, and no
   Project-era fields in initial Quick Task;
 - ManagedRun policy-member/exclusion, capability, sticky, provenance/confidence, aging, mixed-cause,
   and pure-wait behavior without leaking those fields into Conversation routing;
-- one atomic Quick Task route transaction with rollback on authority, kernel, insert,
-  reference, or completeness failure; no orphan snapshot/decision; committed-receipt
-  identity replay without runtime replay of rolled-back generated IDs; and one-winner
-  different-key concurrency;
-- no-decision `routing_pending` restart and `resume_routing`; committed waiting/no-route
-  routing Conversation successor concurrency, typed archived-source redirect, list
-  filtering, and crash-before-route recovery; and selected-without-session
-  `establishment_pending`/`resume_establishment` without selection;
-- atomic first-session cluster and Turn/history admission, exact effect fences,
-  fresh/replay/reject/unknown behavior, and definite pre-effect refusal while preserving
-  the distinct failed-Turn Explicit successor evidence;
-- existing-session ordinary Quick Task same-thread and atomic Context Pack paths bound to
-  the original RuntimeSession/account/profile lineage without selector invocation;
+- sole first-session Quick Task selection, atomic first-session cluster and Turn/history admission,
+  exact effect fences, fresh/replay/reject/unknown behavior, and definite pre-effect refusal;
+- existing-session same-thread and atomic Context Pack paths bound to the original account/profile
+  without selector invocation;
 - positive-only process/attempt reconciliation, late evidence, smallest-scope isolation,
   and no replay after lost supervision;
 - ManagedRun and Reviewer authority isolation;
-- module reverse scans and the deletion test: one substantive PostgreSQL
-  `quick_task_routing` owner, runtime `routing_orchestration.rs` sequencing, runtime
-  `quick_task.rs` lifecycle/effects, pure-core kernel only, and primitive-only
-  `exact_commands.rs`;
-- stateless runtime sequencing and restart behavior;
+- stateless coordinator layout and restart behavior;
 - same-UID transport and complete read-only protocol projection; and
-- reverse scans proving no same-Conversation `RetryRouting`/`RetryQuickTaskRouting`, split
-  snapshot/decision command, route-attempt ledger, old barrier writer, second ledger,
-  alternate selector, or unauthorized dispatch root remains.
+- reverse scans proving no old barrier writer, second ledger, alternate selector,
+  unauthorized dispatch root, or schema upgrade machinery remains.
 
 No historical upgrade, populated cutover, schema-ledger, migration, or restore-digest
 proof is part of acceptance.
@@ -389,15 +288,9 @@ Stop and return to the authority owner if:
 - ordinary Conversation execution requires a ManagedRun;
 - ProviderAttempt must create or rewrite RuntimeSession state;
 - Continuation Plan must write ProviderAttempt state;
-- runtime routing sequencing must persist authority;
-- the initial Quick Task snapshot and decision cannot share one transaction and receipt;
-- a committed initial decision requires same-Conversation re-selection;
-- selected-without-session recovery must invoke the selector;
-- ordinary Quick Task Context Pack planning cannot preserve the original
-  RuntimeSession/account/profile lineage;
+- ExecutionCoordinator must persist authority;
 - the retired ManagedRun effect path requires a second live or compatibility writer;
 - mixed route causes must collapse into a pure wait;
 - lost supervision must authorize replay without positive evidence; or
-- Candidate-5 requires a route-attempt ledger, second account selector, pre-admission Turn
-  row, generic recovery or transaction framework, wrapper-only routing module, or
-  alternate dispatch owner.
+- Candidate-5 requires a second account selector, pre-admission Turn row, generic
+  recovery framework, or alternate dispatch owner.

@@ -10,6 +10,8 @@ final class StatusPanelController: NSObject {
 	private let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
+	private var isPositioningPanel = false
+	private var anchorRetryTask: Task<Void, Never>?
 
 	init(store: ResetCardStore) {
 		self.store = store
@@ -23,6 +25,9 @@ final class StatusPanelController: NSObject {
 		hostingView = TransparentHostingView(rootView: StatusPanelRootView(store: store))
 
 		super.init()
+		panel.onFrameChange = { [weak self] in
+			self?.positionPanel()
+		}
 
 		configureStatusItem()
 		configurePanel()
@@ -30,6 +35,7 @@ final class StatusPanelController: NSObject {
 	}
 
 	deinit {
+		anchorRetryTask?.cancel()
 		NotificationCenter.default.removeObserver(self)
 	}
 
@@ -57,13 +63,36 @@ final class StatusPanelController: NSObject {
 			NSApp.activate(ignoringOtherApps: true)
 		}
 		panel.makeKeyAndOrderFront(nil)
+		// The status-item window can attach one run-loop turn after the panel is
+		// created. Retry only during this presentation so a missed first anchor
+		// cannot leave the panel at AppKit's default screen edge.
+		scheduleAnchorRetry()
 		// Presentation remains immediate. The store asks the daemon for one
 		// coalesced priority observation without entering the visible full-refresh lane.
 		store.ensureFresh()
 	}
 
 	private func orderPanelOut() {
+		anchorRetryTask?.cancel()
+		anchorRetryTask = nil
 		panel.orderOut(nil)
+	}
+
+	private func scheduleAnchorRetry() {
+		anchorRetryTask?.cancel()
+		anchorRetryTask = Task { @MainActor [weak self] in
+			for _ in 0..<12 {
+				guard let self, Task.isCancelled == false else {
+					return
+				}
+				if self.positionPanel() {
+					self.anchorRetryTask = nil
+					return
+				}
+				try? await Task.sleep(nanoseconds: 16_000_000)
+			}
+			self?.anchorRetryTask = nil
+		}
 	}
 
 	private func configureStatusItem() {
@@ -113,17 +142,21 @@ final class StatusPanelController: NSObject {
 
 	@objc
 	private func panelDidResize(_: Notification) {
-		guard panel.isVisible else {
-			return
-		}
+		// SwiftUI can resize the hidden panel after its content tree settles. The
+		// status-item anchor must win that resize as well, otherwise the generic
+		// content-sizing frame becomes the next presentation origin.
 		positionPanel()
 	}
 
-	private func positionPanel() {
+	@discardableResult
+	private func positionPanel() -> Bool {
+		guard isPositioningPanel == false else {
+			return false
+		}
 		guard let anchorRect = statusItemScreenRect(),
 			let statusWindow = statusItem.button?.window
 		else {
-			return
+			return false
 		}
 
 		let screens = NSScreen.screens
@@ -136,10 +169,12 @@ final class StatusPanelController: NSObject {
 			screenFrames: screens.map(\.frame),
 			fallbackIndex: fallbackIndex
 		) else {
-			return
+			return false
 		}
 		let screen = screens[screenIndex]
 
+		isPositioningPanel = true
+		defer { isPositioningPanel = false }
 		panel.setFrameOrigin(
 			StatusPanelLayout.origin(
 				anchorRect: anchorRect,
@@ -149,6 +184,7 @@ final class StatusPanelController: NSObject {
 				menuBarGap: Self.menuBarGap
 			)
 		)
+		return true
 	}
 
 	private func statusItemScreenRect() -> NSRect? {
@@ -231,12 +267,24 @@ enum StatusPanelLayout {
 
 @MainActor
 final class TransparentStatusPanel: NSPanel {
+	var onFrameChange: (() -> Void)?
+
 	override var canBecomeKey: Bool {
 		true
 	}
 
 	override var canBecomeMain: Bool {
 		false
+	}
+
+	override func setFrame(_ frameRect: NSRect, display flag: Bool) {
+		super.setFrame(frameRect, display: flag)
+		onFrameChange?()
+	}
+
+	override func setContentSize(_ size: NSSize) {
+		super.setContentSize(size)
+		onFrameChange?()
 	}
 }
 

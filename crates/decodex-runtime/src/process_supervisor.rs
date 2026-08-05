@@ -610,8 +610,8 @@ impl ProcessGenerationControl {
 	/// Spawn one opaque attested launch only after a newly committed fence.
 	///
 	/// Callers supply only a new generation identity and external restore authorization. The
-	/// launch authority derives account, runner manifest, exact image and command, fixed
-	/// arguments and environment, and the exact-build private-stdio startup capability. Replay and
+	/// launch authority derives account, runner manifest, observed executable identity and command,
+	/// fixed arguments and environment, and the runtime private-stdio startup capability. Replay and
 	/// restored database state cannot enter this path. The returned receipt contains no protocol
 	/// writer.
 	pub(crate) async fn spawn_fenced(
