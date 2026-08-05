@@ -1,8 +1,8 @@
 //! Sole runtime writer and positive-only reconciler for durable ProviderAttempt authority.
 //!
-//! This service consumes an accepted V17 plan and one live fenced ProcessGeneration. It has no
-//! account selector, RuntimeSession constructor, provider request gateway, automatic retry, or
-//! negative-evidence operation. A replacement service can reconcile an original attempt but
+//! This service consumes an accepted Continuation Plan and one live fenced ProcessGeneration. It
+//! has no account selector, RuntimeSession constructor, provider request gateway, automatic retry,
+//! or negative-evidence operation. A replacement service can reconcile an original attempt but
 //! cannot replay it.
 
 use std::{
@@ -14,14 +14,15 @@ use std::{
 };
 
 use decodex_core::{
-	AccountId, ProcessExecutionEpochId, ProviderAttempt, ProviderAttemptConsumer,
-	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
-	ProviderAttemptUnknownReason, ProviderEvidenceId, ProviderPositiveEvidence, ProviderRequestId,
-	RuntimeSessionId,
+	AccountId, ContinuationPlanKind, ExecutionConsumer, ProcessExecutionEpochId,
+	ProcessGenerationId, ProviderAttempt, ProviderAttemptConsumer, ProviderAttemptId,
+	ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
+	ProviderEvidenceId, ProviderPositiveEvidence, ProviderRequestId, RuntimeSessionId,
 };
 use decodex_postgres::{
 	AuthorizeProviderDispatchOutcome, ContinuationPlanEffect, FreshPreparedProviderAttempt,
 	PostgresStore, PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome,
+	RuntimeSessionBindingReceipt, RuntimeSessionThreadBindingReadback,
 };
 
 use crate::process_supervisor::FencedProcess;
@@ -31,6 +32,7 @@ const RECONCILIATION_INTERVAL: Duration = Duration::from_secs(5);
 const EVIDENCE_LOOKUP_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Authority-bound diagnostic and positive-reconciliation port.
+#[derive(Clone)]
 pub struct ProviderAttemptControl {
 	inner: Arc<ProviderAttemptService>,
 }
@@ -55,11 +57,11 @@ pub struct ProviderAttemptDiagnostic {
 	pub attempt_id: ProviderAttemptId,
 	/// Exact immutable consumer.
 	pub consumer: ProviderAttemptConsumer,
-	/// Exact V17 continuation plan consumed by this attempt.
+	/// Exact Continuation Plan consumed by this attempt.
 	pub continuation_plan_id: String,
-	/// Exact V16 routing decision consumed by the plan.
+	/// Exact Routing Decision consumed by the plan.
 	pub routing_decision_id: String,
-	/// Accepted RuntimeSession supplied by V17.
+	/// Accepted RuntimeSession supplied by Continuation Plan.
 	pub runtime_session_id: RuntimeSessionId,
 	/// Exact accepted RuntimeSession revision.
 	pub runtime_session_revision: i64,
@@ -170,6 +172,89 @@ impl Display for ProviderAttemptServiceError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		write!(formatter, "{self:?}")
 	}
+}
+
+/// Exact credential-negative request facts for one in-memory thread resume.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RuntimeSessionResumeRequest {
+	/// Positive JSON-RPC request identity.
+	pub request_id: i64,
+	/// Lowercase SHA-256 of the exact resume request bytes.
+	pub request_sha256: String,
+}
+
+/// Exact typed successful response facts for one in-memory thread resume.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SuccessfulRuntimeSessionResume {
+	/// Positive response identity matching the request identity.
+	pub response_id: i64,
+	/// Lowercase SHA-256 of the exact typed response bytes.
+	pub response_sha256: String,
+	/// Exact thread returned by the successful response.
+	pub codex_thread_id: String,
+}
+
+/// One-time positive resume proof for the exact current ready generation.
+///
+/// This type is intentionally not `Clone`; ProviderAttempt preparation consumes it.
+#[derive(Debug, Eq, PartialEq)]
+pub struct FreshRuntimeSessionResume {
+	runtime_session_id: RuntimeSessionId,
+	runtime_session_revision: i64,
+	process_generation_id: ProcessGenerationId,
+	process_generation_revision: i64,
+	process_execution_epoch_id: ProcessExecutionEpochId,
+	request: RuntimeSessionResumeRequest,
+	response: SuccessfulRuntimeSessionResume,
+}
+
+impl FreshRuntimeSessionResume {
+	/// Construct one typed positive resume result at the future process-operation boundary.
+	#[allow(clippy::too_many_arguments)]
+	pub(crate) fn new(
+		runtime_session_id: RuntimeSessionId,
+		runtime_session_revision: i64,
+		process: &FencedProcess,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+		request: RuntimeSessionResumeRequest,
+		response: SuccessfulRuntimeSessionResume,
+	) -> Result<Self, ProviderAttemptServiceError> {
+		if runtime_session_revision <= 0
+			|| process.revision() <= 0
+			|| request.request_id <= 0
+			|| response.response_id != request.request_id
+			|| !is_lower_sha256(&request.request_sha256)
+			|| !is_lower_sha256(&response.response_sha256)
+			|| !is_canonical_uuid(&response.codex_thread_id)
+		{
+			return Err(ProviderAttemptServiceError::AuthorityConflict);
+		}
+		Ok(Self {
+			runtime_session_id,
+			runtime_session_revision,
+			process_generation_id: process.generation_id().clone(),
+			process_generation_revision: process.revision(),
+			process_execution_epoch_id,
+			request,
+			response,
+		})
+	}
+}
+
+/// Closed post-process RuntimeSession authority consumed by ProviderAttempt preparation.
+pub(crate) enum ProviderAttemptRuntimeAuthority {
+	/// Exact durable two-transition binding and current ready epoch.
+	InitialSessionBinding {
+		binding: RuntimeSessionThreadBindingReadback,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+	},
+	/// Exact Context-Pack successor binding and current ready epoch.
+	FallbackSessionBinding {
+		binding: RuntimeSessionThreadBindingReadback,
+		process_execution_epoch_id: ProcessExecutionEpochId,
+	},
+	/// One-time positive in-memory resume proof.
+	ExistingSessionResume(FreshRuntimeSessionResume),
 }
 
 struct NoPositiveProviderEvidence;
@@ -309,14 +394,47 @@ impl ProviderAttemptControl {
 	///
 	/// Only the stateless coordinator can call this crate-private seam. The result carries no
 	/// dispatch authorization.
-	#[expect(dead_code, reason = "sealed until live-routing authority enables the coordinator")]
 	pub(crate) async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,
 		process: &FencedProcess,
 		preparation: &ProviderAttemptPreparation,
+		authority: ProviderAttemptRuntimeAuthority,
 	) -> Result<PrepareProviderAttemptOutcome, ProviderAttemptServiceError> {
-		self.inner.prepare(plan, process, preparation).await
+		self.inner.prepare(plan, process, preparation, authority).await
+	}
+
+	/// Authorize one freshly prepared attempt immediately before provider I/O.
+	pub(crate) async fn authorize_dispatch(
+		&self,
+		prepared: FreshPreparedProviderAttempt,
+		process: &FencedProcess,
+	) -> Result<AuthorizeProviderDispatchOutcome, ProviderAttemptServiceError> {
+		self.inner.authorize_dispatch(prepared, process).await
+	}
+
+	/// Cancel one attempt that provably did not receive dispatch authorization.
+	pub(crate) async fn cancel_prepared(
+		&self,
+		attempt_id: &ProviderAttemptId,
+		expected_revision: i64,
+	) -> Result<ProviderAttemptMutationOutcome, ProviderAttemptServiceError> {
+		self.inner.cancel_prepared(attempt_id, expected_revision).await
+	}
+
+	/// Preserve one authorized attempt as unknown after transport ambiguity.
+	pub(crate) async fn mark_unknown(
+		&self,
+		attempt_id: &ProviderAttemptId,
+		expected_revision: i64,
+	) -> Result<ProviderAttemptMutationOutcome, ProviderAttemptServiceError> {
+		self.inner
+			.mark_unknown(
+				attempt_id,
+				expected_revision,
+				ProviderAttemptUnknownReason::DispatchOutcomeUnavailable,
+			)
+			.await
 	}
 
 	async fn reconcile_loaded(
@@ -402,6 +520,11 @@ impl ProviderAttemptControl {
 				}
 			}
 		}
+		self.inner
+			.store
+			.reconcile_quick_task_terminalizations(RECONCILIATION_PAGE_SIZE)
+			.await
+			.map_err(|_| ProviderAttemptServiceError::ProductState)?;
 		Ok(())
 	}
 }
@@ -425,25 +548,116 @@ impl ProviderAttemptReconciliationCursor {
 }
 
 impl ProviderAttemptService {
-	/// Prepare one attempt from an accepted V17 effect and exact live process fence.
-	#[expect(dead_code, reason = "sealed behind ProviderAttemptControl::prepare")]
+	/// Prepare one attempt from an accepted Continuation Plan effect and exact live process fence.
 	async fn prepare(
 		&self,
 		plan: &ContinuationPlanEffect,
 		process: &FencedProcess,
 		preparation: &ProviderAttemptPreparation,
+		authority: ProviderAttemptRuntimeAuthority,
 	) -> Result<PrepareProviderAttemptOutcome, ProviderAttemptServiceError> {
 		if plan.plan.plan_id != preparation.continuation_plan_id {
 			return Err(ProviderAttemptServiceError::AuthorityConflict);
 		}
+		let (expected_conversation_revision, expected_turn_revision) = match &plan.plan.consumer {
+			ExecutionConsumer::ConversationTurn {
+				conversation_id,
+				conversation_revision,
+				turn_id,
+				..
+			} if matches!(
+				&preparation.consumer,
+				ProviderAttemptConsumer::ConversationTurn {
+					conversation_id: attempt_conversation_id,
+					turn_id: attempt_turn_id,
+				} if attempt_conversation_id == conversation_id && attempt_turn_id == turn_id
+			) =>
+				(Some(*conversation_revision), Some(1)),
+			ExecutionConsumer::ManagedRunExecution { .. }
+				if matches!(
+					&preparation.consumer,
+					ProviderAttemptConsumer::ManagedRunExecution { .. }
+				) =>
+				(None, None),
+			_ => return Err(ProviderAttemptServiceError::AuthorityConflict),
+		};
+		let (process_execution_epoch_id, binding_receipt) = match authority {
+			ProviderAttemptRuntimeAuthority::InitialSessionBinding {
+				binding,
+				process_execution_epoch_id,
+			} if plan.plan.kind == ContinuationPlanKind::InitialThread
+				&& binding.continuation_plan_id == plan.plan.plan_id
+				&& matches!(
+					&plan.plan.consumer,
+					ExecutionConsumer::ConversationTurn {
+						conversation_id,
+						conversation_revision,
+						turn_id,
+						..
+					} if &binding.conversation_id == conversation_id
+						&& binding.conversation_revision == *conversation_revision
+						&& &binding.turn_id == turn_id
+						&& binding.turn_revision == 1
+				) && binding.runtime_session_id == plan.plan.source_runtime_session_id
+				&& plan.plan.source_runtime_session_revision.checked_add(2)
+					== Some(binding.revision)
+				&& binding.fence_prior_revision == plan.plan.source_runtime_session_revision
+				&& binding.fence_revision.checked_add(1) == Some(binding.revision) =>
+				(
+					process_execution_epoch_id,
+					Some(RuntimeSessionBindingReceipt::from_binding(&binding)),
+				),
+			ProviderAttemptRuntimeAuthority::FallbackSessionBinding {
+				binding,
+				process_execution_epoch_id,
+			} if plan.plan.kind == ContinuationPlanKind::ContextPackFallback
+				&& binding.continuation_plan_id == plan.plan.plan_id
+				&& matches!(
+					&plan.plan.consumer,
+					ExecutionConsumer::ConversationTurn {
+						conversation_id,
+						conversation_revision,
+						turn_id,
+						..
+					} if &binding.conversation_id == conversation_id
+						&& binding.conversation_revision == *conversation_revision
+						&& &binding.turn_id == turn_id
+						&& binding.turn_revision == 1
+				) && plan.plan.fallback_runtime_session_id.as_ref()
+				== Some(&binding.runtime_session_id)
+				&& binding.fence_prior_revision == 1
+				&& binding.fence_revision == 2
+				&& binding.revision == 3 =>
+				(
+					process_execution_epoch_id,
+					Some(RuntimeSessionBindingReceipt::from_binding(&binding)),
+				),
+			ProviderAttemptRuntimeAuthority::ExistingSessionResume(resume)
+				if plan.plan.kind == ContinuationPlanKind::SameThread
+					&& resume.runtime_session_id == plan.plan.source_runtime_session_id
+					&& resume.runtime_session_revision
+						== plan.plan.source_runtime_session_revision
+					&& plan.plan.codex_thread_id.as_deref()
+						== Some(resume.response.codex_thread_id.as_str())
+					&& resume.process_generation_id == *process.generation_id()
+					&& resume.process_generation_revision == process.revision() =>
+				(resume.process_execution_epoch_id, None),
+			_ => return Err(ProviderAttemptServiceError::AuthorityConflict),
+		};
 		self.store
-			.prepare_provider_attempt(preparation, process.generation_id(), process.revision())
+			.prepare_provider_attempt(
+				preparation,
+				process.generation_id(),
+				process.revision(),
+				&process_execution_epoch_id,
+				binding_receipt.as_ref(),
+				(expected_conversation_revision, expected_turn_revision),
+			)
 			.await
 			.map_err(|_| ProviderAttemptServiceError::ProductState)
 	}
 
-	/// Commit one fresh dispatch authorization. No live gateway can consume the result yet.
-	#[expect(dead_code, reason = "live provider dispatch remains structurally disabled")]
+	/// Commit one fresh dispatch authorization for immediate in-process fence consumption.
 	async fn authorize_dispatch(
 		&self,
 		prepared: FreshPreparedProviderAttempt,
@@ -460,7 +674,6 @@ impl ProviderAttemptService {
 	}
 
 	/// Cancel a prepared request. This operation cannot consume a dispatch fence.
-	#[expect(dead_code, reason = "sealed until accepted Conversation/ManagedRun integration")]
 	async fn cancel_prepared(
 		&self,
 		attempt_id: &ProviderAttemptId,
@@ -473,7 +686,6 @@ impl ProviderAttemptService {
 	}
 
 	/// Preserve a live authorized request as unknown after supervision is lost.
-	#[expect(dead_code, reason = "live provider dispatch remains structurally disabled")]
 	async fn mark_unknown(
 		&self,
 		attempt_id: &ProviderAttemptId,
@@ -508,4 +720,17 @@ fn diagnostic(attempt: ProviderAttempt) -> ProviderAttemptDiagnostic {
 		revision: attempt.revision,
 		updated_at_micros: attempt.updated_at_micros,
 	}
+}
+
+fn is_lower_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte),
+		})
 }

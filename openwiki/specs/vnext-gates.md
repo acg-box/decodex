@@ -58,9 +58,12 @@ After one source candidate is frozen, run gates in this order:
    readback; and
 10. the applicable Rust, transport, UI, packaging, and slice checks.
 
-The exact bootstrap, current-authority validation, and local reset command names are
-implementation-owned. No command spelling is authoritative until its implementation and
-task-runner contract land together.
+The exact hidden product commands are `decodexd bootstrap-latest-schema`,
+`decodexd validate-current-authority`, and
+`decodexd restore-local-account-authority`. The restore command has required `--root`
+and `--schema-owner-user` options and the optional existing
+`--schema-owner-credential-env-var` option. It reads its one transient document from
+stdin.
 
 ## Integrated source boundary
 
@@ -358,13 +361,16 @@ zero survivors before cleanup, and no TCP/loopback fallback.
 
 One reviewed operator-only action may:
 
-1. stop the daemon;
-2. capture only credential-negative Account UUID, enabled state, account revision,
+1. stop the daemon and acquire the existing same-UID local transport namespace;
+2. supply only credential-negative Account UUID, enabled state, account revision,
    provider binding, credential version/fingerprint, and host-store binding for every
    retained account, plus routing revision, mode, fixed target, and complete order;
-3. replace or directly transform the disposable local database;
-4. run empty-target latest-schema bootstrap when the database is recreated;
-5. restore or rebind the exact captured tuple against unchanged host-vault records;
+3. run empty-target latest-schema bootstrap on the replacement database;
+4. run `decodexd restore-local-account-authority --root ROOT
+   --schema-owner-user USER [--schema-owner-credential-env-var ENV]` with the one strict
+   `decodex/local-account-authority-restore/1` JSON document on stdin;
+5. prove every exact host-vault binding before PostgreSQL mutation and again before
+   commit;
 6. prove every retained account, enabled value, revision, binding, and the exact routing
    revision/mode/fixed-target/order tuple; and
 7. start the daemon after current-authority verification passes.
@@ -382,6 +388,13 @@ delete, or return token bytes. The action creates no public product or migration
 generic attestation framework, metadata sidecar, generic importer/migrator, backup,
 rollback, receipt/finalizer, compatibility path, or fallback. Failure before exact
 readback leaves the daemon stopped.
+
+The command refuses a non-fresh target. Apart from the initial routing singleton and the
+one active bootstrap execution epoch, all ordinary tables are empty and all identity
+sequences are untouched. The command writes only current account rows, account order,
+and routing control. The stdin document is bounded to 512 KiB and 512 accounts, rejects
+unknown or duplicate fields, has no display labels, and is never persisted. Output has
+only a closed `classification` and `account_count`.
 
 ## Mac dogfood gate
 

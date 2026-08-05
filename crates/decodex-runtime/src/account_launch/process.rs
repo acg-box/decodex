@@ -51,35 +51,44 @@ use {
 #[cfg(target_os = "macos")]
 use crate::account_launch::macos_attested_spawn::{
 	AttestedChild, AttestedCodeIdentity, PRIVATE_STDIO_STARTUP_ENV, PRIVATE_STDIO_STARTUP_VALUE,
-	spawn_private_stdio_suspended, spawn_suspended,
+	spawn_private_stdio_suspended, spawn_private_stdio_suspended_at, spawn_suspended,
 };
 use crate::account_launch::{
 	RunnerPermit,
 	protocol::{
 		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
 		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
-		MAX_APP_SERVER_FRAME_BYTES, ProtocolThread, RetainedTitleNameSetParams,
-		RetainedTitleNameSetResponse, RetainedTitleThreadStartParams,
-		RetainedTitleThreadStartResponse, ThreadArchiveParams, ThreadArchiveResponse,
-		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
+		ThreadListResponse, ThreadReadParams, ThreadReadResponse,
 	},
 };
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
 	CapabilityProfile, ExactResetCreditId, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
 	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
-	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, RESET_CARD_CONSUME_METHOD,
+	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, NormalizedEvent, QuickTaskMessageDelta,
+	QuickTaskThreadResumeRequest, QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest,
+	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest, RESET_CARD_CONSUME_METHOD,
 	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
 	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
-	ThreadSummary, UnavailableReason,
+	ThreadSummary, TurnStatus, UnavailableReason, decode_quick_task_thread_resume_response,
+	decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
+	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
 };
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessIsolationKind, ProcessRunnerIdentity, ResetCardConsumeOutcome,
+	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, ResetCardConsumeOutcome,
 };
-use decodex_postgres::CodexAccountCapabilityAttestation;
+use decodex_postgres::{
+	BindRuntimeSessionThread, CodexAccountCapabilityAttestation, FreshProviderDispatchFence,
+	FreshQuickTaskProcessGeneration, FreshRuntimeSessionThreadStart,
+	SuccessfulRuntimeSessionThreadStart,
+};
+use decodex_protocol::MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES;
+
+use crate::process_supervisor::{FencedProcess, ProcessGenerationControl, ProcessSupervisorError};
 
 /// Hard mechanical bound for process groups awaiting confirmed cleanup.
 pub const MAX_PROCESS_QUARANTINE: usize = 64;
@@ -96,12 +105,11 @@ const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.146.0-alpha.9.2";
 const STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256: &str =
 	"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
+const MAX_QUICK_TASK_BUFFERED_EVENTS: usize = PROTOCOL_QUEUE_CAPACITY;
 const THREAD_LIST_LIMIT: usize = 100;
 const THREAD_LIST_PROBE_SEARCH_TERM: &str = "decodex-capability-probe-no-match-6f5aa91b28cf4bc6";
 const MAX_VERSION_OUTPUT_BYTES: u64 = 4 * 1_024;
 const MAX_EXECUTABLE_BYTES: u64 = 512 * 1_024 * 1_024;
-const RETAINED_TITLE_DEVELOPER_INSTRUCTIONS: &str =
-	"This is an inert Decodex retained-title experiment. Do not start a turn or perform work.";
 const ACCOUNT_MISMATCH_SHUTDOWN: Duration = Duration::from_secs(1);
 const INBOUND_BLOCK_BYTES: usize = 8 * 1_024;
 const OUTBOUND_BLOCK_BYTES: usize = 8 * 1_024;
@@ -121,7 +129,7 @@ static ZEROIZED_OUTBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 
 /// Host credential-vault port. Credential material stays inside this call and the
 /// process projection sink; it is never returned to the caller.
-pub(super) trait CredentialVault: Send + Sync {
+pub(crate) trait CredentialVault: Send + Sync {
 	/// Project exactly the caller-selected account into one not-yet-bound child.
 	fn project(
 		&self,
@@ -131,7 +139,7 @@ pub(super) trait CredentialVault: Send + Sync {
 }
 
 /// Process-bound service for the exact Codex ChatGPT refresh server request.
-pub(super) trait AccountRefreshCallback: Send + Sync {
+pub(crate) trait AccountRefreshCallback: Send + Sync {
 	/// Serialize one callback through the daemon Account Service and return only response fields.
 	fn refresh(
 		&self,
@@ -143,13 +151,13 @@ pub(super) trait AccountRefreshCallback: Send + Sync {
 }
 
 /// Secret-bearing callback response retained only through one zeroizing JSON write.
-pub(super) struct ChatgptRefreshProjection {
+pub(crate) struct ChatgptRefreshProjection {
 	access_token: Zeroizing<String>,
 	provider_account_id: String,
 	plan_type: Option<String>,
 }
 impl ChatgptRefreshProjection {
-	pub(super) fn new(
+	pub(crate) fn new(
 		access_token: String,
 		provider_account_id: String,
 		plan_type: Option<String>,
@@ -188,7 +196,7 @@ impl Debug for ChatgptRefreshProjection {
 /// # Ok::<(), Box<dyn std::error::Error>>(())
 /// ```
 #[derive(Clone)]
-pub(super) struct AccountBinding {
+pub(crate) struct AccountBinding {
 	account_id: AccountId,
 	expected_codex_home: PathBuf,
 	process_binding: Option<ProcessGenerationAccountBinding>,
@@ -210,7 +218,7 @@ impl AccountBinding {
 	}
 
 	/// Bind an account-ready launch to exact registry/store/provider/callback facts.
-	pub(super) fn shared_home_bound(
+	pub(crate) fn shared_home_bound(
 		account_id: AccountId,
 		process_binding: ProcessGenerationAccountBinding,
 		refresh_callback: Arc<dyn AccountRefreshCallback>,
@@ -523,6 +531,7 @@ impl AttestedAppServerProfile {
 		timeout: Duration,
 	) -> Result<Self, ProbeError> {
 		let command = AppServerCommand::new(working_directory)?;
+		validated_working_directory(&command)?;
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
 		let marker = SchemaMarker::accepted();
 		SchemaContract::validate(marker.clone())
@@ -564,6 +573,7 @@ impl AttestedAppServerProfile {
 		expected_codex_home: &Path,
 		timeout: Duration,
 	) -> Result<Self, ProbeError> {
+		validated_working_directory(&command)?;
 		let (build, generated, guard) =
 			attest_executable_for_home(&command, expected_codex_home, None, timeout, None)?;
 		if guard.is_some() {
@@ -580,7 +590,8 @@ impl AttestedAppServerProfile {
 
 	/// Bind one account and capacity permit without repeating immutable build preflights.
 	fn bind(
-		self,
+		mut self,
+		working_directory: PathBuf,
 		binding: AccountBinding,
 		timeout: Duration,
 		guard: RunnerPermit,
@@ -588,6 +599,8 @@ impl AttestedAppServerProfile {
 		if guard.account_id.as_str() != binding.account_id.as_str() || guard.account_revision < 1 {
 			return Err(SupervisionError::InvalidBinding.into());
 		}
+		self.command.working_directory = working_directory;
+		validated_working_directory(&self.command)?;
 		let process_binding = binding.process_binding()?;
 		if self.generated.account_callback_profile_sha256()
 			!= process_binding.refresh_callback_profile_sha256
@@ -606,8 +619,24 @@ impl AttestedAppServerProfile {
 			capability: self.capability,
 			timeout,
 			guard,
+			quick_task_pre_spawn_check: None,
 		})
 	}
+}
+
+fn validated_working_directory(command: &AppServerCommand) -> Result<String, ProbeError> {
+	command
+		.working_directory
+		.to_str()
+		.filter(|value| {
+			value.starts_with('/')
+				&& !value.is_empty()
+				&& value.len() <= MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES
+				&& !value.chars().any(char::is_control)
+				&& !decodex_core::contains_credential_material(value)
+		})
+		.map(str::to_owned)
+		.ok_or_else(|| SupervisionError::InvalidBinding.into())
 }
 
 impl Debug for AttestedAppServerProfile {
@@ -719,16 +748,36 @@ pub(crate) struct AttestedAppServerLaunch {
 	capability: ExactBuildLaunchCapability,
 	timeout: Duration,
 	guard: RunnerPermit,
+	quick_task_pre_spawn_check: Option<Arc<dyn QuickTaskPreSpawnCheck>>,
 }
+
+/// Final synchronous check owned by Quick Task and executed at the child creation boundary.
+pub(crate) trait QuickTaskPreSpawnCheck: Send + Sync {
+	fn validate_at_spawn_boundary(&self) -> Result<(), ()>;
+	fn working_directory_descriptor(&self) -> i32;
+}
+
 impl AttestedAppServerLaunch {
 	/// Bind one account launch to the daemon's already-attested immutable build profile.
-	pub(super) fn bind(
+	pub(crate) fn bind(
 		profile: AttestedAppServerProfile,
 		binding: AccountBinding,
 		timeout: Duration,
 		guard: RunnerPermit,
 	) -> Result<Self, ProbeError> {
-		profile.bind(binding, timeout, guard)
+		let working_directory = profile.command.working_directory.clone();
+		profile.bind(working_directory, binding, timeout, guard)
+	}
+
+	/// Bind one Quick Task launch to its command-selected working directory.
+	pub(crate) fn bind_selected_working_directory(
+		profile: AttestedAppServerProfile,
+		working_directory: PathBuf,
+		binding: AccountBinding,
+		timeout: Duration,
+		guard: RunnerPermit,
+	) -> Result<Self, ProbeError> {
+		profile.bind(working_directory, binding, timeout, guard)
 	}
 
 	/// Derive all durable pre-spawn facts that belong to the opaque launch authority.
@@ -761,25 +810,43 @@ impl AttestedAppServerLaunch {
 	///
 	/// This method returns an error only before a child exists.
 	pub(crate) fn spawn(self) -> Result<AttestedProcessChild, SupervisionError> {
-		if ExactBuildLaunchCapability::attest_profile(&self.command)? != self.capability {
+		let Self {
+			command,
+			binding,
+			build,
+			generated,
+			runner_identity: _,
+			capability,
+			timeout,
+			guard,
+			quick_task_pre_spawn_check,
+		} = self;
+		if ExactBuildLaunchCapability::attest_profile(&command)? != capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
-		self.capability.attest_build(&self.command, &self.build)?;
-		let process = SupervisedProcess::spawn_attested(
-			self.command,
-			self.binding,
-			self.guard,
-			self.capability,
+		capability.attest_build(&command, &build)?;
+		let process = SupervisedProcess::spawn_attested_with_pre_spawn_check(
+			command,
+			binding,
+			guard,
+			capability,
+			quick_task_pre_spawn_check.as_deref(),
 		)?;
 
-		Ok(AttestedProcessChild {
-			process,
-			build: self.build,
-			generated: self.generated,
-			timeout: self.timeout,
-			initialized: false,
-		})
+		Ok(AttestedProcessChild { process, build, generated, timeout, initialized: false })
 	}
+}
+
+/// Consume one fresh exact Quick Task admission before the ordinary supervisor may spawn.
+pub(crate) async fn spawn_admitted_quick_task_process(
+	control: &ProcessGenerationControl,
+	admission: FreshQuickTaskProcessGeneration,
+	execution_authorization: ProcessExecutionAuthorization,
+	mut launch: AttestedAppServerLaunch,
+	pre_spawn_check: Arc<dyn QuickTaskPreSpawnCheck>,
+) -> Result<FencedProcess, ProcessSupervisorError> {
+	launch.quick_task_pre_spawn_check = Some(pre_spawn_check);
+	control.spawn_fenced_quick_task(admission, execution_authorization, launch).await
 }
 
 /// Exact newly spawned protocol child plus immutable build evidence and capacity authority.
@@ -830,6 +897,151 @@ impl AttestedProcessChild {
 			.map_err(ResetCardProcessError::from_probe)?;
 		self.initialized = true;
 		Ok(())
+	}
+
+	/// Initialize one exact account-bound child for ordinary Conversation I/O.
+	pub(crate) fn initialize_ordinary_turns(
+		&mut self,
+		vault: &dyn CredentialVault,
+	) -> Result<(), QuickTaskProcessError> {
+		if self.initialized {
+			return Err(QuickTaskProcessError::Unavailable);
+		}
+		self.generated
+			.contract()
+			.check_quick_task_contract()
+			.map_err(|_| QuickTaskProcessError::Incompatible)?;
+		let mut cache = CapabilityCache::default();
+		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
+		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
+			.map_err(|_| QuickTaskProcessError::Unavailable)?;
+		self.initialized = true;
+		Ok(())
+	}
+
+	/// Reserve the exact `thread/start` frame before its PostgreSQL fence is committed.
+	pub(crate) fn prepare_ordinary_thread_start(
+		&mut self,
+		request: &QuickTaskThreadStartRequest,
+	) -> Result<PreparedThreadStart, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		Ok(PreparedThreadStart {
+			request: request.clone(),
+			wire: self.process.prepare_quick_task_request("thread/start", request)?,
+		})
+	}
+
+	/// Consume the only fresh RuntimeSession fence and send its exact `thread/start` once.
+	pub(crate) fn start_ordinary_thread(
+		&mut self,
+		prepared: PreparedThreadStart,
+		authority: FreshRuntimeSessionThreadStart,
+	) -> Result<EstablishedOrdinaryThread, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		let PreparedThreadStart { request, wire } = prepared;
+		let readback = authority.readback();
+		if readback.thread_start_request_id != wire.request_id
+			|| readback.thread_start_request_sha256.as_str() != wire.request_sha256.as_str()
+		{
+			return Err(QuickTaskProcessError::Incompatible);
+		}
+		let request_id = wire.request_id;
+		let request_sha256 = wire.request_sha256.clone();
+		let success = self.process.quick_task_request(wire, self.timeout, true, |bytes| {
+			decode_quick_task_thread_start_response(&request, bytes)
+		})?;
+		let codex_thread_id = success.value.thread_id().as_str().to_owned();
+		let binding = authority.into_binding(SuccessfulRuntimeSessionThreadStart {
+			response_id: success.wire.response_id,
+			response_sha256: success.wire.response_sha256,
+			codex_thread_id: codex_thread_id.clone(),
+		});
+		debug_assert_eq!(request_id, binding.thread_start_request_id);
+		debug_assert_eq!(request_sha256, binding.thread_start_request_sha256);
+		Ok(EstablishedOrdinaryThread { codex_thread_id, binding, events: success.events })
+	}
+
+	/// Resume one exact normal Codex thread and return exact positive wire facts.
+	pub(crate) fn resume_ordinary_thread(
+		&mut self,
+		request: &QuickTaskThreadResumeRequest,
+	) -> Result<ResumedOrdinaryThread, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		let wire = self.process.prepare_quick_task_request("thread/resume", request)?;
+		let success = self.process.quick_task_request(wire, self.timeout, false, |bytes| {
+			decode_quick_task_thread_resume_response(request, bytes)
+		})?;
+		Ok(ResumedOrdinaryThread {
+			codex_thread_id: success.value.thread_id().as_str().to_owned(),
+			request_id: success.wire.request_id,
+			request_sha256: success.wire.request_sha256,
+			response_id: success.wire.response_id,
+			response_sha256: success.wire.response_sha256,
+			events: success.events,
+		})
+	}
+
+	/// Reserve the exact `turn/start` frame before ProviderAttempt preparation.
+	pub(crate) fn prepare_ordinary_turn_start(
+		&mut self,
+		attempt_id: ProviderAttemptId,
+		request: &QuickTaskTurnStartRequest,
+	) -> Result<PreparedTurnStart, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		Ok(PreparedTurnStart {
+			attempt_id,
+			wire: self.process.prepare_quick_task_request("turn/start", request)?,
+		})
+	}
+
+	/// Consume one fresh generic dispatch fence and send its exact `turn/start` once.
+	pub(crate) fn start_ordinary_turn(
+		&mut self,
+		prepared: PreparedTurnStart,
+		authority: FreshProviderDispatchFence,
+	) -> Result<StartedOrdinaryTurn, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		let PreparedTurnStart { attempt_id, wire } = prepared;
+		if authority.attempt_id() != &attempt_id {
+			return Err(QuickTaskProcessError::Incompatible);
+		}
+		let success = self.process.quick_task_request(
+			wire,
+			self.timeout,
+			true,
+			decode_quick_task_turn_start_response,
+		)?;
+		Ok(StartedOrdinaryTurn {
+			turn_id: success.value.turn_id().as_str().to_owned(),
+			status: success.value.status(),
+			response_sha256: success.wire.response_sha256,
+			events: success.events,
+		})
+	}
+
+	/// Poll one bounded ordinary notification while retaining exact child ownership.
+	pub(crate) fn next_ordinary_turn_event(
+		&mut self,
+		wait: Duration,
+	) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		self.process.next_quick_task_event(wait)
+	}
+
+	/// Interrupt one exact active turn. Terminal state still comes from a typed notification.
+	pub(crate) fn interrupt_ordinary_turn(
+		&mut self,
+		request: &QuickTaskTurnInterruptRequest,
+	) -> Result<Vec<QuickTaskProcessEvent>, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		let wire = self.process.prepare_quick_task_request("turn/interrupt", request)?;
+		self.process
+			.quick_task_request(wire, self.timeout, true, decode_quick_task_turn_interrupt_response)
+			.map(|success: QuickTaskProcessSuccess<QuickTaskTurnInterruptResponse>| success.events)
+	}
+
+	fn require_ordinary_turns_initialized(&self) -> Result<(), QuickTaskProcessError> {
+		self.initialized.then_some(()).ok_or(QuickTaskProcessError::Unavailable)
 	}
 
 	/// Initialize one fresh callback-capability child with the synthetic probe credential.
@@ -894,6 +1106,110 @@ impl AttestedProcessChild {
 	}
 }
 
+/// Exact request facts reserved before a RuntimeSession thread-start fence.
+pub(crate) struct PreparedThreadStart {
+	request: QuickTaskThreadStartRequest,
+	wire: PreparedQuickTaskRequest,
+}
+impl PreparedThreadStart {
+	pub(crate) const fn request_id(&self) -> i64 {
+		self.wire.request_id
+	}
+
+	pub(crate) fn request_sha256(&self) -> &str {
+		&self.wire.request_sha256
+	}
+}
+
+/// Successful durable thread establishment ready for the exact bind command.
+pub(crate) struct EstablishedOrdinaryThread {
+	pub(crate) codex_thread_id: String,
+	pub(crate) binding: BindRuntimeSessionThread,
+	pub(crate) events: Vec<QuickTaskProcessEvent>,
+}
+
+/// Successful exact-thread resume facts ready for one affine runtime proof.
+pub(crate) struct ResumedOrdinaryThread {
+	pub(crate) codex_thread_id: String,
+	pub(crate) request_id: i64,
+	pub(crate) request_sha256: String,
+	pub(crate) response_id: i64,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<QuickTaskProcessEvent>,
+}
+
+/// Exact `turn/start` request reserved before generic ProviderAttempt preparation.
+pub(crate) struct PreparedTurnStart {
+	attempt_id: ProviderAttemptId,
+	wire: PreparedQuickTaskRequest,
+}
+impl PreparedTurnStart {
+	pub(crate) const fn request_id(&self) -> i64 {
+		self.wire.request_id
+	}
+
+	pub(crate) fn request_sha256(&self) -> &str {
+		&self.wire.request_sha256
+	}
+}
+
+/// Successful `turn/start` response plus notifications observed before that response.
+pub(crate) struct StartedOrdinaryTurn {
+	pub(crate) turn_id: String,
+	pub(crate) status: decodex_codex::QuickTaskTurnStatus,
+	pub(crate) response_sha256: String,
+	pub(crate) events: Vec<QuickTaskProcessEvent>,
+}
+
+/// Closed user-visible event set emitted by the private ordinary-turn child gateway.
+pub(crate) enum QuickTaskProcessEvent {
+	/// One bounded assistant-message delta.
+	MessageDelta(QuickTaskMessageDelta),
+	/// One exact turn reached a terminal app-server notification.
+	TurnCompleted {
+		/// Opaque exact provider turn identity.
+		turn_id: String,
+		/// Closed terminal provider state.
+		status: TurnStatus,
+		/// SHA-256 witness of the accepted notification frame.
+		witness_digest: String,
+	},
+}
+
+/// Closed private-gateway failure that never embeds provider or credential text.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum QuickTaskProcessError {
+	/// No method bytes were admitted because initialization or local authority was unavailable.
+	Unavailable,
+	/// The exact app-server method rejected the request with a bounded response witness.
+	Rejected { witness_digest: String },
+	/// App-server bytes contradicted the accepted typed contract.
+	Incompatible,
+	/// Local supervision was lost while a blocking operation may already have crossed send.
+	ControlLost,
+	/// Request bytes may have reached app-server and no usable exact response was retained.
+	Ambiguous { request_id: i64, request_sha256: String },
+}
+
+struct PreparedQuickTaskRequest {
+	request_id: i64,
+	request_sha256: String,
+	frame: ZeroizingOutboundFrame,
+}
+
+struct QuickTaskWireReceipt {
+	request_id: i64,
+	request_sha256: String,
+	response_id: i64,
+	response_sha256: String,
+}
+
+struct QuickTaskProcessSuccess<T> {
+	value: T,
+	wire: QuickTaskWireReceipt,
+	events: Vec<QuickTaskProcessEvent>,
+}
+
 fn callback_probe_access_token(
 	provider_account_id: &str,
 ) -> Result<Zeroizing<String>, ResetCardProcessError> {
@@ -921,13 +1237,13 @@ fn callback_probe_access_token(
 
 /// Exact active-account identity retained only in zeroizing, redacted process memory.
 #[derive(Clone, Eq, PartialEq)]
-pub(super) struct AccountIdentity {
+pub(crate) struct AccountIdentity {
 	kind: Zeroizing<String>,
 	email: Option<Zeroizing<String>>,
 	requires_openai_auth: bool,
 }
 impl AccountIdentity {
-	pub(super) fn from_observation(
+	pub(crate) fn from_observation(
 		kind: &str,
 		email: Option<&str>,
 		requires_openai_auth: bool,
@@ -960,7 +1276,7 @@ impl CredentialVault for UnavailableCredentialVault {
 }
 
 /// Single-use process-scoped credential sink owned by the Codex adapter.
-pub(super) struct CredentialProjection<'a> {
+pub(crate) struct CredentialProjection<'a> {
 	process: &'a mut SupervisedProcess,
 	timeout: Duration,
 	used: bool,
@@ -1144,11 +1460,22 @@ impl SupervisedProcess {
 		Self::spawn_inner(command, binding, Some(guard))
 	}
 
+	#[cfg(test)]
 	fn spawn_attested(
 		command: AppServerCommand,
 		binding: AccountBinding,
 		guard: RunnerPermit,
 		capability: ExactBuildLaunchCapability,
+	) -> Result<Self, SupervisionError> {
+		Self::spawn_attested_with_pre_spawn_check(command, binding, guard, capability, None)
+	}
+
+	fn spawn_attested_with_pre_spawn_check(
+		command: AppServerCommand,
+		binding: AccountBinding,
+		guard: RunnerPermit,
+		capability: ExactBuildLaunchCapability,
+		pre_spawn_check: Option<&dyn QuickTaskPreSpawnCheck>,
 	) -> Result<Self, SupervisionError> {
 		verify_canonical_executable_identity(&command)?;
 		run_before_spawn_test(&command);
@@ -1162,6 +1489,7 @@ impl SupervisedProcess {
 			&binding,
 			guard,
 			capability,
+			pre_spawn_check,
 			sender,
 			reader_limit_exceeded,
 		)?;
@@ -1370,6 +1698,160 @@ impl SupervisedProcess {
 		}
 	}
 
+	fn prepare_quick_task_request<P>(
+		&mut self,
+		method: &'static str,
+		params: &P,
+	) -> Result<PreparedQuickTaskRequest, QuickTaskProcessError>
+	where
+		P: Serialize,
+	{
+		let request_id = self.next_request_id;
+		if self.abandoned_request_ids.contains(&request_id) {
+			return Err(QuickTaskProcessError::Incompatible);
+		}
+		self.next_request_id =
+			request_id.checked_add(1).ok_or(QuickTaskProcessError::Incompatible)?;
+		let frame = exact_request_frame(request_id, method, params)
+			.map_err(|_| QuickTaskProcessError::Incompatible)?;
+		let request_id =
+			i64::try_from(request_id).map_err(|_| QuickTaskProcessError::Incompatible)?;
+		let request_sha256 = frame.sha256();
+		Ok(PreparedQuickTaskRequest { request_id, request_sha256, frame })
+	}
+
+	fn quick_task_request<R>(
+		&mut self,
+		prepared: PreparedQuickTaskRequest,
+		timeout: Duration,
+		invalid_response_is_ambiguous: bool,
+		decode: impl FnOnce(&[u8]) -> Result<R, decodex_codex::QuickTaskContractError>,
+	) -> Result<QuickTaskProcessSuccess<R>, QuickTaskProcessError> {
+		let PreparedQuickTaskRequest { request_id, request_sha256, frame } = prepared;
+		let request_id_u64 =
+			u64::try_from(request_id).map_err(|_| QuickTaskProcessError::Incompatible)?;
+		let invalid_response = || {
+			if invalid_response_is_ambiguous {
+				QuickTaskProcessError::Ambiguous {
+					request_id,
+					request_sha256: request_sha256.clone(),
+				}
+			} else {
+				QuickTaskProcessError::Incompatible
+			}
+		};
+		let ambiguous = || QuickTaskProcessError::Ambiguous {
+			request_id,
+			request_sha256: request_sha256.clone(),
+		};
+		frame.write_to(&mut self.stdin).map_err(|_| ambiguous())?;
+		self.stdin.flush().map_err(|_| ambiguous())?;
+
+		let deadline = Instant::now() + timeout;
+		let mut events = Vec::new();
+		loop {
+			let remaining = deadline.saturating_duration_since(Instant::now());
+			if remaining.is_zero() {
+				let _ = self.abandon_request(request_id_u64);
+				return Err(ambiguous());
+			}
+			let line = match self.receive_quick_task_frame(remaining) {
+				Ok(Some(line)) => line,
+				Ok(None) | Err(_) => {
+					let _ = self.abandon_request(request_id_u64);
+					return Err(ambiguous());
+				},
+			};
+			let header: InboundHeader =
+				serde_json::from_slice(&line).map_err(|_| invalid_response())?;
+			if let (Some(id), Some(inbound_method)) = (header.id, header.method.as_deref()) {
+				self.service_inbound_request(id, inbound_method, &line).map_err(|_| ambiguous())?;
+				continue;
+			}
+			if header.id == Some(request_id_u64) {
+				let witness_digest = hex_digest(&Sha256::digest(&line));
+				let response: JsonRpcResponse<serde_json::Value> =
+					serde_json::from_slice(&line).map_err(|_| invalid_response())?;
+				if response.id != request_id_u64 || !response.has_compatible_version() {
+					return Err(invalid_response());
+				}
+				return match (response.result, response.error) {
+					(Some(result), None) => {
+						let bytes = serde_json::to_vec(&result).map_err(|_| invalid_response())?;
+						let value = decode(&bytes).map_err(|_| invalid_response())?;
+						Ok(QuickTaskProcessSuccess {
+							value,
+							wire: QuickTaskWireReceipt {
+								request_id,
+								request_sha256: request_sha256.clone(),
+								response_id: i64::try_from(response.id)
+									.map_err(|_| invalid_response())?,
+								response_sha256: witness_digest,
+							},
+							events,
+						})
+					},
+					(None, Some(_)) => Err(QuickTaskProcessError::Rejected { witness_digest }),
+					_ => Err(invalid_response()),
+				};
+			}
+			if header.id.is_none() {
+				let event =
+					decode_quick_task_process_event(&line).map_err(|_| invalid_response())?;
+				let Some(event) = event else {
+					continue;
+				};
+				if events.len() >= MAX_QUICK_TASK_BUFFERED_EVENTS {
+					return Err(invalid_response());
+				}
+				events.push(event);
+				continue;
+			}
+			if let Some(id) = header.id {
+				if self.abandoned_request_ids.remove(&id) {
+					continue;
+				}
+				return Err(invalid_response());
+			}
+		}
+	}
+
+	fn next_quick_task_event(
+		&mut self,
+		wait: Duration,
+	) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
+		let line = match self.stdout.recv_timeout(wait) {
+			Ok(line) => line.into_contiguous(),
+			Err(RecvTimeoutError::Timeout) => return Ok(None),
+			Err(RecvTimeoutError::Disconnected) => return Err(QuickTaskProcessError::Unavailable),
+		};
+		// Quick Task message notifications can contain ordinary JSON escapes. The frame remains
+		// zeroizing and mechanically bounded; the landed typed contract validates its projection.
+		let header: InboundHeader =
+			serde_json::from_slice(&line).map_err(|_| QuickTaskProcessError::Incompatible)?;
+		if let (Some(id), Some(method)) = (header.id, header.method.as_deref()) {
+			self.service_inbound_request(id, method, &line)
+				.map_err(|_| QuickTaskProcessError::Unavailable)?;
+			return Ok(None);
+		}
+		if header.id.is_some() {
+			return Err(QuickTaskProcessError::Incompatible);
+		}
+		decode_quick_task_process_event(&line)
+	}
+
+	fn receive_quick_task_frame(
+		&mut self,
+		wait: Duration,
+	) -> Result<Option<Zeroizing<Vec<u8>>>, QuickTaskProcessError> {
+		let line = match self.stdout.recv_timeout(wait) {
+			Ok(line) => line.into_contiguous(),
+			Err(RecvTimeoutError::Timeout) => return Ok(None),
+			Err(RecvTimeoutError::Disconnected) => return Err(QuickTaskProcessError::Unavailable),
+		};
+		Ok(Some(line))
+	}
+
 	fn service_inbound_request(
 		&mut self,
 		id: u64,
@@ -1431,63 +1913,6 @@ impl SupervisedProcess {
 				chatgpt_plan_type: projection.plan_type.as_deref(),
 			},
 		})
-	}
-
-	pub(super) fn start_retained_title_thread(
-		&mut self,
-		request_id: i64,
-		cwd: &str,
-		marker: &str,
-		timeout: Duration,
-	) -> Result<RetainedTitleStartFact, RpcError> {
-		let request_id = exact_rpc_id(request_id)?;
-		let success = self.request_rpc_with_id::<_, RetainedTitleThreadStartResponse>(
-			request_id,
-			"thread/start",
-			&RetainedTitleThreadStartParams {
-				cwd,
-				ephemeral: false,
-				history_mode: "legacy",
-				developer_instructions: RETAINED_TITLE_DEVELOPER_INSTRUCTIONS,
-				thread_source: marker,
-			},
-			timeout,
-		)?;
-
-		Ok(RetainedTitleStartFact { wire: success.wire, thread: success.value.thread })
-	}
-
-	pub(super) fn set_retained_title(
-		&mut self,
-		request_id: i64,
-		thread_id: &str,
-		title: &str,
-		timeout: Duration,
-	) -> Result<RpcWireReceipt, RpcError> {
-		let success = self.request_rpc_with_id::<_, RetainedTitleNameSetResponse>(
-			exact_rpc_id(request_id)?,
-			"thread/name/set",
-			&RetainedTitleNameSetParams { thread_id, name: title },
-			timeout,
-		)?;
-
-		Ok(success.wire)
-	}
-
-	pub(super) fn read_retained_title_thread(
-		&mut self,
-		request_id: i64,
-		thread_id: &str,
-		timeout: Duration,
-	) -> Result<RetainedTitleReadFact, RpcError> {
-		let success = self.request_rpc_with_id::<_, ThreadReadResponse>(
-			exact_rpc_id(request_id)?,
-			"thread/read",
-			&ThreadReadParams { thread_id, include_turns: false },
-			timeout,
-		)?;
-
-		Ok(RetainedTitleReadFact { wire: success.wire, thread: success.value.thread })
 	}
 
 	fn abandon_request(&mut self, request_id: u64) -> Result<(), RpcError> {
@@ -1681,6 +2106,25 @@ impl SupervisedProcess {
 	}
 }
 
+fn decode_quick_task_process_event(
+	bytes: &[u8],
+) -> Result<Option<QuickTaskProcessEvent>, QuickTaskProcessError> {
+	if let Some(delta) =
+		project_quick_task_message_delta(bytes).map_err(|_| QuickTaskProcessError::Incompatible)?
+	{
+		return Ok(Some(QuickTaskProcessEvent::MessageDelta(delta)));
+	}
+	match normalize_event(bytes).map_err(|_| QuickTaskProcessError::Incompatible)? {
+		NormalizedEvent::TurnCompleted { turn_id, status, .. } =>
+			Ok(Some(QuickTaskProcessEvent::TurnCompleted {
+				turn_id: turn_id.as_str().to_owned(),
+				status,
+				witness_digest: hex_digest(&Sha256::digest(bytes)),
+			})),
+		_ => Ok(None),
+	}
+}
+
 impl Debug for SupervisedProcess {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		formatter.debug_struct("SupervisedProcess").field("pid", &self.owner.process_id()).finish()
@@ -1758,6 +2202,7 @@ fn spawn_attested_protocol_process(
 	binding: &AccountBinding,
 	guard: RunnerPermit,
 	capability: ExactBuildLaunchCapability,
+	pre_spawn_check: Option<&dyn QuickTaskPreSpawnCheck>,
 	sender: SyncSender<InboundFrame>,
 	protocol_limit_exceeded: Arc<AtomicBool>,
 ) -> Result<(ProcessGroupOwner, Box<dyn Write + Send>), SupervisionError> {
@@ -1768,8 +2213,18 @@ fn spawn_attested_protocol_process(
 			.as_ref()
 			.ok_or(SupervisionError::LaunchCapabilityUnavailable)?;
 		let home = binding.expected_codex_home.parent().ok_or(SupervisionError::InvalidBinding)?;
-		let suspended = match capability {
-			ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1 =>
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
+		let suspended = match (capability, pre_spawn_check) {
+			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, Some(check)) =>
+				spawn_private_stdio_suspended_at(
+					identity,
+					&command.app_server_args,
+					check.working_directory_descriptor(),
+					home,
+				),
+			(ExactBuildLaunchCapability::PrivateStdioDisabledEphemeralStartupV1, None) =>
 				spawn_private_stdio_suspended(
 					identity,
 					&command.app_server_args,
@@ -1778,6 +2233,9 @@ fn spawn_attested_protocol_process(
 				),
 		}
 		.map_err(|_| SupervisionError::SpawnFailed)?;
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
 
 		// Startup already hashed and statically validated the immutable snapshot and canonical
 		// image. Keep the canonical object identity stable here; exact dynamic CDHash and path
@@ -1796,6 +2254,9 @@ fn spawn_attested_protocol_process(
 	#[cfg(not(target_os = "macos"))]
 	{
 		let mut process = configured_attested_app_server_process(command, binding, capability)?;
+		if let Some(check) = pre_spawn_check {
+			check.validate_at_spawn_boundary().map_err(|()| SupervisionError::InvalidBinding)?;
+		}
 		let child = process.spawn().map_err(|_| SupervisionError::SpawnFailed)?;
 		let mut owner = ProcessGroupOwner::new(child, Some(guard));
 		let (stdin, stdout) = match owner.child_mut() {
@@ -2530,13 +2991,6 @@ where
 	params: &'a P,
 }
 
-fn exact_rpc_id(value: i64) -> Result<u64, RpcError> {
-	u64::try_from(value)
-		.ok()
-		.filter(|value| *value > 0)
-		.ok_or(RpcError::Supervision(SupervisionError::InvalidProtocol))
-}
-
 fn exact_request_frame<P>(
 	request_id: u64,
 	method: &'static str,
@@ -2546,54 +3000,6 @@ where
 	P: Serialize,
 {
 	ZeroizingOutboundFrame::serialize(&OutboundRequest { id: request_id, method, params })
-}
-
-pub(super) fn retained_title_name_set_request_digest(
-	request_id: i64,
-	thread_id: &str,
-	title: &str,
-) -> Result<String, SupervisionError> {
-	let request_id = exact_rpc_id(request_id).map_err(|error| match error {
-		RpcError::Supervision(error) => error,
-		RpcError::MethodRejected(_) => SupervisionError::InvalidProtocol,
-	})?;
-	exact_request_frame(
-		request_id,
-		"thread/name/set",
-		&RetainedTitleNameSetParams { thread_id, name: title },
-	)
-	.map(|frame| frame.sha256())
-	.map_err(|error| match error {
-		ProbeError::Supervision(error) => error,
-		_ => SupervisionError::InvalidProtocol,
-	})
-}
-
-pub(super) fn retained_title_start_request_digest(
-	request_id: i64,
-	cwd: &str,
-	marker: &str,
-) -> Result<String, SupervisionError> {
-	let request_id = exact_rpc_id(request_id).map_err(|error| match error {
-		RpcError::Supervision(error) => error,
-		RpcError::MethodRejected(_) => SupervisionError::InvalidProtocol,
-	})?;
-	exact_request_frame(
-		request_id,
-		"thread/start",
-		&RetainedTitleThreadStartParams {
-			cwd,
-			ephemeral: false,
-			history_mode: "legacy",
-			developer_instructions: RETAINED_TITLE_DEVELOPER_INSTRUCTIONS,
-			thread_source: marker,
-		},
-	)
-	.map(|frame| frame.sha256())
-	.map_err(|error| match error {
-		ProbeError::Supervision(error) => error,
-		_ => SupervisionError::InvalidProtocol,
-	})
 }
 
 fn hex_digest(bytes: &[u8]) -> String {
@@ -3222,31 +3628,21 @@ impl Drop for ProcessQuarantine {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) enum RpcError {
+enum RpcError {
 	Supervision(SupervisionError),
 	MethodRejected(i64),
 }
 
-pub(super) struct RpcWireReceipt {
-	pub request_id: i64,
-	pub request_digest: String,
-	pub response_id: i64,
-	pub response_digest: String,
+struct RpcWireReceipt {
+	request_id: i64,
+	request_digest: String,
+	response_id: i64,
+	response_digest: String,
 }
 
 struct RpcSuccess<T> {
 	value: T,
 	wire: RpcWireReceipt,
-}
-
-pub(super) struct RetainedTitleStartFact {
-	pub wire: RpcWireReceipt,
-	pub thread: ProtocolThread,
-}
-
-pub(super) struct RetainedTitleReadFact {
-	pub wire: RpcWireReceipt,
-	pub thread: ProtocolThread,
 }
 
 struct ProcessQuarantineState {
@@ -4155,42 +4551,6 @@ fn initialize_probe_connection(
 	}
 
 	Ok(())
-}
-
-pub(super) fn launch_retained_title_process(
-	command: AppServerCommand,
-	binding: AccountBinding,
-	guard: RunnerPermit,
-	timeout: Duration,
-) -> Result<(BuildId, SupervisedProcess), ProbeError> {
-	let marker = SchemaMarker::accepted();
-
-	SchemaContract::validate(marker.clone())
-		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
-	let (build, generated, guard) = attest_executable(
-		&command,
-		&binding,
-		Some(marker.canonical_digests()),
-		timeout,
-		Some(guard),
-	)?;
-	let missing = ["thread/start", "thread/name/set", "thread/read"]
-		.into_iter()
-		.filter(|method| !generated.contract().advertises_request(method))
-		.map(|method| format!("request:{method}"))
-		.collect::<Vec<_>>();
-
-	if !missing.is_empty() {
-		return Err(ProbeError::SchemaMissing { markers: missing });
-	}
-	let guard = guard.ok_or(SupervisionError::SpawnFailed)?;
-	let mut process = SupervisedProcess::spawn_bound(command, binding, guard)?;
-	let mut cache = CapabilityCache::default();
-	let mut negotiation = ProbeNegotiation::new(&mut cache, &build, &generated);
-
-	initialize_probe(&mut process, None, timeout, &mut negotiation)?;
-
-	Ok((build, process))
 }
 
 fn probe_thread_list(

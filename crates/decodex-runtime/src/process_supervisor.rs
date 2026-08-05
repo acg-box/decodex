@@ -22,8 +22,8 @@ use decodex_core::{
 	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
 };
 use decodex_postgres::{
-	PostgresStore, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
-	ProcessGenerationMutationOutcome,
+	FreshQuickTaskProcessGeneration, PostgresStore, PrepareProcessGenerationOutcome,
+	ProcessGenerationMutation, ProcessGenerationMutationOutcome,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -620,7 +620,25 @@ impl ProcessGenerationControl {
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
-		self.spawn_fenced_inner(generation_id, execution_authorization, launch, None).await
+		self.spawn_fenced_inner(generation_id, execution_authorization, launch, None, None).await
+	}
+
+	/// Spawn only after the durable ProcessGeneration insert re-locks Quick Task Turn authority.
+	pub(crate) async fn spawn_fenced_quick_task(
+		&self,
+		admission: FreshQuickTaskProcessGeneration,
+		execution_authorization: ProcessExecutionAuthorization,
+		launch: AttestedAppServerLaunch,
+	) -> Result<FencedProcess, ProcessSupervisorError> {
+		let generation_id = admission.generation_id().clone();
+		self.spawn_fenced_inner(
+			generation_id,
+			execution_authorization,
+			launch,
+			None,
+			Some(admission),
+		)
+		.await
 	}
 
 	/// Spawn only under one live, already-effectful Reset Card reconciliation claim.
@@ -638,6 +656,7 @@ impl ProcessGenerationControl {
 			execution_authorization,
 			launch,
 			Some((outbox_id, worker_id, claim_token)),
+			None,
 		)
 		.await
 	}
@@ -648,6 +667,7 @@ impl ProcessGenerationControl {
 		execution_authorization: ProcessExecutionAuthorization,
 		launch: AttestedAppServerLaunch,
 		reconciliation: Option<(i64, &str, &str)>,
+		quick_task: Option<FreshQuickTaskProcessGeneration>,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let intent = launch.derive_intent(
 			generation_id,
@@ -656,8 +676,8 @@ impl ProcessGenerationControl {
 		);
 		let account_binding = launch.account_binding().clone();
 		let mut supervision = self.reserve_supervision(&intent.generation_id)?;
-		let preparation = match reconciliation {
-			Some((outbox_id, worker_id, claim_token)) =>
+		let preparation = match (reconciliation, quick_task) {
+			(Some((outbox_id, worker_id, claim_token)), None) =>
 				self.inner
 					.store
 					.prepare_reset_reconciliation_process_generation(
@@ -668,8 +688,18 @@ impl ProcessGenerationControl {
 						claim_token,
 					)
 					.await,
-			None =>
+			(None, Some(admission)) =>
+				self.inner
+					.store
+					.prepare_quick_task_bound_process_generation(
+						&intent,
+						&account_binding,
+						admission,
+					)
+					.await,
+			(None, None) =>
 				self.inner.store.prepare_bound_process_generation(&intent, &account_binding).await,
+			(Some(_), Some(_)) => return Err(ProcessSupervisorError::AuthorityConflict),
 		}
 		.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let fence = match preparation {

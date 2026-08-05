@@ -30,19 +30,23 @@ const MAX_RESTART_WORK: i64 = 256;
 pub enum ManagedRepositoryReadiness {
 	/// PostgreSQL, the pinned executor, and bounded restart reconciliation are ready.
 	Ready,
-	/// PostgreSQL product state was unavailable before repository composition.
-	ProductStateUnavailable,
+	/// Managed-repository operations are intentionally not assembled.
+	Disabled,
+	/// Managed-repository operations are closed for one redacted reason.
+	Unavailable(ManagedRepositoryUnavailableReason),
+}
+
+/// Redacted reason retained by an unavailable managed-repository capability.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ManagedRepositoryUnavailableReason {
+	/// Verified PostgreSQL product state was unavailable.
+	ProductStore,
 	/// The exact pinned executor could not be opened and verified.
-	ExecutorUnavailable,
+	Executor,
 	/// Restart work could not be loaded, read back, or reconciled coherently.
-	ReconciliationUnavailable,
-	/// Eligible restart work remained after the explicit startup observation bound.
-	RestartWorkResidual {
-		/// Operations observed by the bounded reconciliation pass.
-		processed: usize,
-		/// Maximum operations admitted to that pass.
-		limit: usize,
-	},
+	Reconciliation,
+	/// Eligible restart work remained after the bounded startup pass.
+	RestartWorkResidual,
 }
 
 /// Exact startup failure retained inside the runtime composition.
@@ -55,15 +59,42 @@ pub(crate) enum ManagedRepositoryStartupError {
 }
 
 impl ManagedRepositoryStartupError {
-	pub(crate) fn readiness(&self) -> ManagedRepositoryReadiness {
+	pub(crate) fn unavailable_reason(&self) -> ManagedRepositoryUnavailableReason {
 		match self {
-			Self::ExecutorOpen(_) => ManagedRepositoryReadiness::ExecutorUnavailable,
-			Self::Reconciliation(_) => ManagedRepositoryReadiness::ReconciliationUnavailable,
-			Self::ResidualWork { processed, limit } =>
-				ManagedRepositoryReadiness::RestartWorkResidual {
-					processed: *processed,
-					limit: *limit,
-				},
+			Self::ExecutorOpen(_) => ManagedRepositoryUnavailableReason::Executor,
+			Self::Reconciliation(_) => ManagedRepositoryUnavailableReason::Reconciliation,
+			Self::ResidualWork { .. } => ManagedRepositoryUnavailableReason::RestartWorkResidual,
+		}
+	}
+}
+
+/// Immutable daemon-lifetime managed-repository capability.
+pub(crate) enum ManagedRepositoryCapability {
+	/// PostgreSQL, the executor, and bounded restart reconciliation are ready.
+	Ready { _runtime: ManagedRepositoryRuntime },
+	/// Managed-repository operations are intentionally not assembled.
+	Disabled,
+	/// Managed-repository operations are closed for one redacted reason.
+	Unavailable {
+		reason: ManagedRepositoryUnavailableReason,
+		_error: Option<Arc<ManagedRepositoryStartupError>>,
+	},
+}
+
+impl ManagedRepositoryCapability {
+	pub(crate) fn unavailable(reason: ManagedRepositoryUnavailableReason) -> Self {
+		Self::Unavailable { reason, _error: None }
+	}
+
+	pub(crate) fn startup_failed(error: ManagedRepositoryStartupError) -> Self {
+		Self::Unavailable { reason: error.unavailable_reason(), _error: Some(Arc::new(error)) }
+	}
+
+	pub(crate) const fn readiness(&self) -> ManagedRepositoryReadiness {
+		match self {
+			Self::Ready { .. } => ManagedRepositoryReadiness::Ready,
+			Self::Disabled => ManagedRepositoryReadiness::Disabled,
+			Self::Unavailable { reason, .. } => ManagedRepositoryReadiness::Unavailable(*reason),
 		}
 	}
 }
@@ -91,7 +122,16 @@ pub(crate) struct ManagedRepositoryRuntime {
 
 impl ManagedRepositoryRuntime {
 	/// Open the exact accepted executor and bind it to the bootstrapped PostgreSQL authority.
-	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ManagedRepositoryStartupError> {
+	pub(crate) async fn start(
+		store: PostgresStore,
+	) -> Result<Option<Self>, ManagedRepositoryStartupError> {
+		if !store
+			.has_managed_repository_authority()
+			.await
+			.map_err(ManagedRepositoryStartupError::Reconciliation)?
+		{
+			return Ok(None);
+		}
 		let executor = ManagedRepositoryExecutor::open()
 			.map_err(ManagedRepositoryStartupError::ExecutorOpen)?;
 		let saga = ManagedRepositoryEffectSaga::new(store.clone(), executor);
@@ -111,7 +151,7 @@ impl ManagedRepositoryRuntime {
 				limit: MAX_RESTART_WORK as usize,
 			});
 		}
-		Ok(runtime)
+		Ok(Some(runtime))
 	}
 
 	/// Persist one immutable admission through PostgreSQL only.

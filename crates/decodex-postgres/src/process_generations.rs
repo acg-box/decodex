@@ -13,7 +13,7 @@ use decodex_core::{
 	ProcessStartIdentity, ProviderIdentity,
 };
 
-use crate::{PostgresStore, StoreError};
+use crate::{FreshQuickTaskProcessGeneration, PostgresStore, StoreError};
 
 const PREPARE_BOUND_PROCESS_GENERATION_SQL: &str = "SELECT result_code,revision,state::text,created_at_micros,updated_at_micros \
 	 FROM decodex.prepare_process_generation_exact(\
@@ -21,7 +21,8 @@ const PREPARE_BOUND_PROCESS_GENERATION_SQL: &str = "SELECT result_code,revision,
 	 $7::text::decodex.process_generation_control_kind,\
 	 $8::text::decodex.process_generation_isolation_kind,$9,$10,$11,$12,\
 	 $13::text::uuid,$14::text::decodex.account_provider_kind,$15,$16,\
-	 $17,$18::text::uuid,$19::text::uuid)";
+	 $17,$18::text::uuid,$19::text::uuid,$20,$21,$22::text::uuid,$23,\
+	 $24::text::uuid,$25,$26::text::uuid,$27,$28::text::uuid,$29::text::uuid)";
 const READ_BOUND_PROCESS_GENERATIONS_SQL: &str = "SELECT generation_id::text,account_id::text,execution_epoch_id::text,\
 	 runner_identity,intended_boot_id,control_kind::text,isolation_kind::text,\
 	 bound_boot_id,process_id,process_start_id,process_group_id,session_id,\
@@ -73,6 +74,8 @@ pub struct ProcessGenerationMutation {
 pub enum ProcessGenerationRejection {
 	/// The generation identity was already assigned to different immutable intent.
 	IdentityConflict,
+	/// The exact Quick Task receipt, lineage, or active revision-1 Turn is unavailable.
+	QuickTaskAuthorityUnavailable,
 	/// The external execution epoch or its authorization digest is not active.
 	RestoreAuthorityUnavailable,
 	/// The requested account does not exist.
@@ -148,7 +151,22 @@ impl PostgresStore {
 		intent: &ProcessGenerationIntent,
 		binding: &ProcessGenerationAccountBinding,
 	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
-		self.prepare_bound_process_generation_inner(intent, binding, None).await
+		self.prepare_bound_process_generation_inner(intent, binding, None, None).await
+	}
+
+	/// Persist one Quick Task generation while re-locking its exact active revision-1 Turn.
+	pub async fn prepare_quick_task_bound_process_generation(
+		&self,
+		intent: &ProcessGenerationIntent,
+		binding: &ProcessGenerationAccountBinding,
+		admission: FreshQuickTaskProcessGeneration,
+	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
+		if admission.generation_id() != &intent.generation_id {
+			return Err(StoreError::InvalidInput(
+				"Quick Task admission and ProcessGeneration identity differ",
+			));
+		}
+		self.prepare_bound_process_generation_inner(intent, binding, None, Some(&admission)).await
 	}
 
 	/// Persist one generation authorized only by an already-started Reset Card claim.
@@ -167,6 +185,7 @@ impl PostgresStore {
 			intent,
 			binding,
 			Some((outbox_id, worker_id, claim_token)),
+			None,
 		)
 		.await
 	}
@@ -176,6 +195,7 @@ impl PostgresStore {
 		intent: &ProcessGenerationIntent,
 		binding: &ProcessGenerationAccountBinding,
 		reconciliation: Option<(i64, &str, &str)>,
+		quick_task: Option<&FreshQuickTaskProcessGeneration>,
 	) -> Result<PrepareProcessGenerationOutcome, StoreError> {
 		let client = self.pool().get().await?;
 		let credential_version = i64::try_from(binding.credential.version.get()).map_err(|_| {
@@ -186,6 +206,35 @@ impl PostgresStore {
 			reconciliation.map_or((None, None, None), |(outbox_id, worker_id, claim_token)| {
 				(Some(outbox_id), Some(worker_id), Some(claim_token))
 			});
+		let (
+			quick_task_protocol,
+			quick_task_key,
+			quick_task_conversation_id,
+			quick_task_conversation_revision,
+			quick_task_runtime_session_id,
+			quick_task_runtime_session_revision,
+			quick_task_turn_id,
+			quick_task_turn_revision,
+			quick_task_continuation_plan_id,
+			quick_task_routing_decision_id,
+		) = quick_task.map_or(
+			(None, None, None, None, None, None, None, None, None, None),
+			|admission| {
+				let request = &admission.readback().request;
+				(
+					Some(admission.protocol_version()),
+					Some(admission.idempotency_key()),
+					Some(request.conversation_id.as_str()),
+					Some(request.expected_conversation_revision),
+					Some(request.runtime_session_id.as_str()),
+					Some(request.expected_runtime_session_revision),
+					Some(request.turn_id.as_str()),
+					Some(request.expected_turn_revision),
+					Some(request.continuation_plan_id.as_str()),
+					Some(request.routing_decision_id.as_str()),
+				)
+			},
+		);
 		let row = client
 			.query_one(
 				PREPARE_BOUND_PROCESS_GENERATION_SQL,
@@ -209,6 +258,16 @@ impl PostgresStore {
 					&outbox_id,
 					&worker_id,
 					&claim_token,
+					&quick_task_protocol,
+					&quick_task_key,
+					&quick_task_conversation_id,
+					&quick_task_conversation_revision,
+					&quick_task_runtime_session_id,
+					&quick_task_runtime_session_revision,
+					&quick_task_turn_id,
+					&quick_task_turn_revision,
+					&quick_task_continuation_plan_id,
+					&quick_task_routing_decision_id,
 				],
 			)
 			.await?;
@@ -485,7 +544,7 @@ impl PostgresStore {
 	}
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(all(test, feature = "test-support"))]
 pub(crate) async fn prepare_account_bound_process_generation_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
@@ -712,6 +771,8 @@ fn parse_loss_reason(value: &str) -> Result<ProcessAuthorityLossReason, StoreErr
 fn parse_rejection(value: &str) -> Result<ProcessGenerationRejection, StoreError> {
 	match value {
 		"identity_conflict" => Ok(ProcessGenerationRejection::IdentityConflict),
+		"quick_task_authority_unavailable" =>
+			Ok(ProcessGenerationRejection::QuickTaskAuthorityUnavailable),
 		"restore_authority_unavailable" =>
 			Ok(ProcessGenerationRejection::RestoreAuthorityUnavailable),
 		"account_missing" => Ok(ProcessGenerationRejection::AccountMissing),

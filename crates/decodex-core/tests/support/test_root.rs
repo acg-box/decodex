@@ -50,18 +50,11 @@ host = "server.example.test"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[server_host.repositories.decodex]
-host_path = "/srv/repos/decodex"
-
 [postgres]
 socket_directory = "/var/run/postgresql"
 expected_peer_uid = 70
 port = 5432
 database = "decodex"
-
-[postgres.migration]
-user = "decodex_migration"
-credential_env_var = "DECODEX_POSTGRES_MIGRATION_PASSWORD"
 
 [postgres.runtime]
 user = "decodex_runtime"

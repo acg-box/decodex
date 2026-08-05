@@ -28,10 +28,9 @@ cargo make check-automations
 dependencies, or Apple GPU/build integration. Those surfaces require the broad gate on a
 host with full Xcode and Metal tools.
 
-The current task runner still contains migration-era PostgreSQL checks. Until source and
-task-runner alignment lands, a passing broad command does not prove the new latest-schema
-contract. The implementation change must retire old tasks or change their behavior under
-the same reviewed source change.
+The broad checks do not start a live PostgreSQL fixture. Use the product-native gate for
+latest-schema and current-authority acceptance; the migration-era PostgreSQL tasks are
+retired.
 
 ## Current repository checks
 
@@ -44,6 +43,7 @@ the same reviewed source change.
 | Rust tests | `cargo make test` or `cargo nextest run --workspace --all-targets --all-features` |
 | vNext dependency architecture | `cargo make test-vnext-architecture` |
 | CLI diagnostic/process matrix | `cargo make test-vnext-cli-diagnostics` |
+| Product-native latest-schema and current-authority gate | `cargo make test-vnext-latest-schema` |
 | Rust formatting check | `cargo make fmt-rust-check` |
 | TOML formatting check | `cargo make fmt-toml-check` |
 | Rust lint | `cargo make lint-rust` |
@@ -51,38 +51,53 @@ the same reviewed source change.
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
 
-These commands are current source checks. They do not replace the new database gates
-below. Do not cite a migration-era PostgreSQL subcommand, numbered-ledger result, or
-historical restore receipt as latest-schema evidence.
+The product-native task is the sole canonical latest-schema and current-authority gate.
+The other commands are current source checks and do not replace it. Do not cite a
+migration-era PostgreSQL subcommand, numbered-ledger result, or historical restore
+receipt as latest-schema evidence.
 
 ## Latest-schema command boundary
 
-The exact command names for empty-target bootstrap, current-authority validation, and the
-operator-only local reset are implementation-owned. They are not yet authoritative.
-Implementers must add or rename commands and task-runner entries together with their
-source and contract tests. Do not invent aliases in documentation or preserve old names
-for compatibility.
+`decodexd bootstrap-latest-schema` owns empty-target bootstrap, and
+`decodexd validate-current-authority` owns read-only current-authority validation. The
+sole canonical repository gate is `cargo make test-vnext-latest-schema`; it orchestrates
+both product commands against one private PostgreSQL 18 target. Do not invent aliases or
+split bootstrap and current-authority validation into separate repository gates.
 
 There are three separate operations:
 
 1. **Empty-target bootstrap** resolves the schema-owner credential, proves a clean
    target, executes `crates/decodex-postgres/schema.sql` once in one transaction, verifies
-   the result, and commits.
+   the result, and commits. If post-schema verification fails, the hidden command emits
+   one bounded credential-negative `decodex/bootstrap-authority-report/1` JSON line from
+   that transaction. A complete report includes the closed platform checks, all semantic
+   authority predicates, and both expected and actual authority digests. If a query stops
+   collection, the report retains each completed component in collection order and gives
+   the closed failing operation and category. The current and later unavailable components
+   are empty or null. The command does not add a second validator or digest-harvest command.
 2. **Current-authority validation** is read-only and verifies the live catalog and
    configured runtime authority. It resolves no schema-owner credential and executes no
    DDL.
-3. **Local database reset** is one reviewed operator-only action that stops the daemon,
-   preserves the complete credential-negative account and routing tuple, including each
-   enabled state and the mode-valid fixed target, replaces or directly transforms the
-   local database, bootstraps when needed, rebinds the exact tuple to unchanged
-   host-vault records, proves exact readback, and starts the daemon.
+3. **Local account authority restore** is the hidden
+   `decodexd restore-local-account-authority --root ROOT --schema-owner-user USER
+   [--schema-owner-credential-env-var ENV]` command. It reads one strict
+   `decodex/local-account-authority-restore/1` JSON document from stdin after the daemon
+   is stopped and the replacement database has the fresh latest schema. It retains the
+   existing same-UID local transport namespace, proves every exact host-vault binding
+   before PostgreSQL mutation and again before commit, restores only current account and
+   routing rows, and proves exact readback.
+
+The restore stdin is at most 512 KiB and contains at most 512 accounts. Every object
+rejects unknown, omitted, and duplicate fields. The command accepts no display label,
+token data, SQL, legacy path, or manifest directory. It persists no input document or
+receipt. Its only output is one JSON object with `classification` and `account_count`.
 
 Normal `decodexd` serve is not any of these commands. It uses only the runtime credential,
 executes zero DDL, and invokes current-authority validation before it retains the store.
 
-The current hidden `provision-local` behavior and any daemon path that applies numbered
-SQL are superseded implementation. They do not define the future command spelling or
-contract.
+No daemon path applies numbered SQL or performs schema administration. The three hidden
+commands above are the complete operator surface for latest-schema bootstrap,
+current-authority validation, and local account authority restore.
 
 ## Source-freeze validation order
 
@@ -95,7 +110,7 @@ After the implementation source is frozen, use this order:
 5. run exact current catalog/configured-authority and adversarial negative checks;
 6. parse and execute every changed adapter SQL path against the fresh database;
 7. run Candidate-5 domain, transport, and account-observation checks;
-8. run the direct local reset/rebind/readback scenario; and
+8. run the hidden local account authority restore and exact readback scenario; and
 9. run the applicable repository aggregate, UI, package, and live exact-build checks.
 
 Do not add Phase A/B, a preparation pass, a digest-only child, a schema receipt, or a
@@ -211,13 +226,16 @@ refresh work.
 Use disposable local state and a test HostCredentialStore. The reviewed operator action
 must:
 
-1. stop the daemon;
-2. capture only credential-negative Account UUID, enabled state, account revision,
+1. stop the daemon and prove the stopped state with the existing local transport
+   namespace;
+2. supply only credential-negative Account UUID, enabled state, account revision,
    provider binding, credential version/fingerprint, and store binding for every retained
    account, plus routing revision, mode, fixed target, and complete order;
-3. replace or directly transform the database;
-4. bootstrap the latest schema when the target was recreated;
-5. restore or rebind the exact captured tuple against unchanged host-vault records;
+3. bootstrap the latest schema on the replacement database;
+4. run `decodexd restore-local-account-authority` with the bounded transient document on
+   stdin;
+5. prove every `HostCredentialStore::read_exact` binding before PostgreSQL mutation and
+   again before commit;
 6. prove exact Account Registry and `HostCredentialStore` agreement, every retained
    account's enabled state, revision, and binding, and the routing
    revision/mode/fixed-target/order tuple; and
@@ -228,6 +246,12 @@ and complete order. For `balanced` mode, require a null target. Require the orde
 duplicate-free permutation of all retained accounts, including disabled accounts.
 Readback must compare each enabled value and the exact mode, target, order, revision, and
 membership as one tuple.
+
+Refuse any target other than the fresh canonical latest schema with zero accounts, the
+initial empty routing authority, one active bootstrap execution epoch, empty unrelated
+tables, and untouched identity sequences. A refused Keychain fence or readback rolls
+back. Do not restore profiles, quotas, operations, conversations, sessions, process
+generations, attempts, usage, or historical rows.
 
 Instrument the existing `HostCredentialStore` owner boundary. For credential agreement
 only, that owner may perform a confined in-process exact read, recompute and compare the
@@ -253,7 +277,7 @@ leaves the daemon stopped.
 - `crates/decodex-runtime/`: daemon service assembly, Account Service,
   ProcessSupervisor, ProviderAttemptService, account observations, and stateless execution
   coordination.
-- `apps/decodexd/`: server composition and implementation-owned operator command surface.
+- `apps/decodexd/`: server composition and exact hidden operator command surface.
 - `apps/decodex-cli/` and `apps/decodex-gpui/`: protocol clients.
 - `apps/decodex-app/`: credential-negative native account client.
 - `apps/decodex/`: frozen v0.2 provenance only.
@@ -274,10 +298,26 @@ cargo test -p decodex-core --all-targets --all-features
 cargo test -p decodex-core -p decodex-protocol -p decodex-postgres -p decodex-codex -p decodex-runtime
 ```
 
-After implementation, the task runner must expose one canonical latest-schema/bootstrap
-gate and one canonical current-authority/runtime gate. Their names remain
-implementation-owned. A test that still initializes through numbered SQL is not evidence
-for this reset.
+The task runner exposes one canonical product-native gate for latest-schema bootstrap and
+current-authority validation:
+
+```sh
+cargo make test-vnext-latest-schema
+```
+
+It resolves PostgreSQL 18 through `DECODEX_POSTGRES_18_BINDIR` or `pg_config` on `PATH`,
+builds the real `decodexd` binary, and uses only a disposable private target. A test that
+still initializes through numbered SQL is not evidence for this reset. On bootstrap
+failure, the gate requires the command's one canonical authority report, validates its
+closed schema, and retains it with the fixed private gate logs. Query or transport
+failure can stop collection only with a closed operation and category. The gate does not
+run a second bootstrap to collect diagnostics.
+
+The existing `account-contract` stage first runs the bounded ignored runtime test
+`local_account_authority::tests::local_account_restore_command_proves_two_exact_credential_fences_and_readback`,
+then runs `postgres_account_routing_contract` against the same private target and
+environment. The runtime test uses a module-private read-exact-only credential-store
+double; it does not use the live Keychain.
 
 ## CLI discovery
 
@@ -382,8 +422,8 @@ schema owner.
 ## Practical checklist
 
 - Schema change: edit only the one latest schema and substantive schema/verification
-  owner; run fresh bootstrap, second refusal, runtime-only startup, and current-authority
-  gates.
+  owner; run the one product-native gate for fresh bootstrap, second refusal, and both
+  runtime-only current-authority validations.
 - Adapter SQL change: parse and execute against a fresh latest-schema database; add no
   compatibility branch.
 - Candidate-5 change: prove sole selection, atomic admission, exact fences, ambiguity,

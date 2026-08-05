@@ -7,9 +7,11 @@ use crate::{
 	RuntimeSessionId,
 };
 
-/// The two mutually exclusive continuation effects.
+/// The mutually exclusive continuation effects available to runtime callers.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ContinuationPlanKind {
+	/// Establish the thread on the exact existing unfenced RuntimeSession.
+	InitialThread,
 	/// Continue the exact persisted Codex thread under exact positive compatibility evidence.
 	SameThread,
 	/// Start a new inert RuntimeSession from one atomically linked Context Pack.
@@ -47,7 +49,7 @@ pub enum SameThreadContinuationEvidence {
 	},
 }
 
-/// One immutable, inert, exactly-once plan produced from one selected V16 decision.
+/// One immutable, inert, exactly-once plan produced from one selected Routing Decision.
 ///
 /// Construction of this mechanism-neutral value proves neither persistence nor production
 /// authority.
@@ -57,11 +59,11 @@ pub struct ContinuationPlan {
 	pub plan_id: String,
 	/// Domain operation identity; the protocol-scoped exact-command idempotency key is separate.
 	pub operation_id: String,
-	/// Identity of the one persisted V16 routing decision consumed by the plan.
+	/// Identity of the one persisted Routing Decision consumed by the plan.
 	pub routing_decision_id: String,
-	/// Exact ordinary or managed consumer preserved from the V16 decision.
+	/// Exact ordinary or managed consumer preserved from the Routing Decision.
 	pub consumer: ExecutionConsumer,
-	/// Conversation whose identity is preserved across either continuation shape.
+	/// Conversation whose identity is preserved by the continuation.
 	pub conversation_id: ConversationId,
 	/// RuntimeSession from which the continuation was planned.
 	pub source_runtime_session_id: RuntimeSessionId,
@@ -70,15 +72,15 @@ pub struct ContinuationPlan {
 	/// Account selected by the consumed routing decision; this field grants no selection
 	/// authority.
 	pub selected_account_id: AccountId,
-	/// Mutually exclusive same-thread or Context-Pack fallback shape of the plan.
+	/// Mutually exclusive initial-thread, same-thread, or Context-Pack fallback shape.
 	pub kind: ContinuationPlanKind,
-	/// Exact persisted thread identity for a same-thread plan; absent for fallback.
+	/// Exact persisted thread identity for a same-thread plan; absent otherwise.
 	pub codex_thread_id: Option<String>,
-	/// Atomically linked Context Pack identity for fallback; absent for same-thread continuation.
+	/// Atomically linked Context Pack identity for fallback; absent otherwise.
 	pub fallback_context_pack_id: Option<String>,
-	/// Atomically linked fallback RuntimeSession identity; absent for same-thread continuation.
+	/// Atomically linked fallback RuntimeSession identity; absent otherwise.
 	pub fallback_runtime_session_id: Option<RuntimeSessionId>,
-	/// Exact positive compatibility evidence for same-thread continuation; absent for fallback.
+	/// Exact positive compatibility evidence for same-thread continuation; absent otherwise.
 	pub same_thread_evidence: Option<SameThreadContinuationEvidence>,
 	/// Required to remain `false`; the plan never authorizes replay of a submitted turn.
 	pub replay_permitted: bool,
@@ -101,6 +103,8 @@ pub enum ContinuationRejection {
 	StaleConsumerRevision,
 	/// The decision was already consumed by a different exact command or plan identity.
 	DecisionAlreadyConsumed,
+	/// Exact same-thread proof is absent or incompatible. The receipt is stable and replayable.
+	SameThreadUnavailable,
 	/// The fallback Context Pack failed the authority's canonical content or lineage checks.
 	InvalidContextPack,
 	/// A fallback Context Pack or RuntimeSession identity conflicts with persisted lineage.

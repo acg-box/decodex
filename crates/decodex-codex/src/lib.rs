@@ -20,7 +20,6 @@
 mod capability;
 mod dispatch;
 mod event;
-mod experiment;
 mod quick_task;
 mod reset_card;
 
@@ -40,11 +39,6 @@ pub use self::{
 		NormalizedEvent, NormalizedItemKind, OpaqueId, QuickTaskMessageDelta,
 		QuickTaskMessageDeltaError, RunLocalActor, ThreadStatus, TurnStatus, normalize_event,
 		project_quick_task_message_delta,
-	},
-	experiment::{
-		ExactRpcRequestFact, ExactRpcResponseFact, PositiveExperimentFact,
-		PositiveExperimentFactKind, TypedRetainedTitleReadResponse, TypedThreadNameSetRequest,
-		TypedThreadStartResponse,
 	},
 	protocol::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,

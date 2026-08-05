@@ -5,9 +5,7 @@ pub enum StoreError {
 	Pool(deadpool_postgres::PoolError),
 	/// PostgreSQL rejected or could not execute the request.
 	Database(tokio_postgres::Error),
-	/// An embedded migration failed or its immutable history was incompatible.
-	Migration(refinery::Error),
-	/// The server or migration state is incompatible with this store.
+	/// The server or exact current schema is incompatible with this store.
 	Incompatible(String),
 	/// The steady-state identity retains authority forbidden to the runtime adapter.
 	UnsafeAuthority(&'static str),
@@ -59,23 +57,13 @@ impl StoreError {
 	/// Classify bootstrap without exporting database, socket, role, or credential text.
 	pub fn bootstrap_failure(&self) -> BootstrapFailure {
 		match self {
-			#[cfg(unix)]
 			Self::Pool(deadpool_postgres::PoolError::Backend(error)) =>
-				match crate::socket::rejected_endpoint_failure(error) {
-					Some(crate::socket::SocketConnectFailure::UnsafeAuthority) =>
-						BootstrapFailure::UnsafeHostPath,
-					Some(crate::socket::SocketConnectFailure::Unreachable) | None
-						if is_authentication_error(error) =>
-						BootstrapFailure::Authentication,
-					Some(crate::socket::SocketConnectFailure::Unreachable) | None =>
-						BootstrapFailure::Unreachable,
-				},
-			Self::Database(error) if is_authentication_error(error) =>
-				BootstrapFailure::Authentication,
+				classify_pool_backend(error),
+			Self::Database(error) => classify_database_error(error),
 			Self::UnsafeAuthority(_) => BootstrapFailure::UnsafeAuthority,
 			Self::UnsafeHostPath => BootstrapFailure::UnsafeHostPath,
 			Self::SocketUnavailable => BootstrapFailure::Unreachable,
-			Self::Incompatible(_) | Self::Migration(_) => BootstrapFailure::Incompatible,
+			Self::Incompatible(_) => BootstrapFailure::Incompatible,
 			Self::RepositoryCommitOutcomeUnknown(error) if is_authentication_error(error) =>
 				BootstrapFailure::Authentication,
 			Self::RepositoryCommitOutcomeUnknown(_)
@@ -90,6 +78,18 @@ impl StoreError {
 			_ => BootstrapFailure::Unreachable,
 		}
 	}
+
+	pub(crate) fn bootstrap_query_failure_category(&self) -> &'static str {
+		match self {
+			Self::Database(error) | Self::Pool(deadpool_postgres::PoolError::Backend(error)) =>
+				query_failure_category(error),
+			Self::UnsafeAuthority(_) => "authority",
+			Self::Incompatible(_) => "evidence",
+			Self::UnsafeHostPath => "host_path",
+			Self::SocketUnavailable => "transport",
+			_ => "internal",
+		}
+	}
 }
 
 impl std::error::Error for StoreError {}
@@ -99,7 +99,6 @@ impl std::fmt::Display for StoreError {
 		match self {
 			Self::Pool(error) => write!(formatter, "PostgreSQL pool error: {error}"),
 			Self::Database(error) => write!(formatter, "PostgreSQL error: {error}"),
-			Self::Migration(error) => write!(formatter, "PostgreSQL migration error: {error}"),
 			Self::Incompatible(reason) => {
 				write!(formatter, "incompatible PostgreSQL state: {reason}")
 			},
@@ -164,12 +163,6 @@ impl From<deadpool_postgres::BuildError> for StoreError {
 	}
 }
 
-impl From<refinery::Error> for StoreError {
-	fn from(error: refinery::Error) -> Self {
-		Self::Migration(error)
-	}
-}
-
 impl From<tokio_postgres::Error> for StoreError {
 	fn from(error: tokio_postgres::Error) -> Self {
 		if error.code().is_some_and(|code| code.code() == "DX001") {
@@ -204,7 +197,7 @@ pub enum BootstrapFailure {
 	Authentication,
 	/// The configured endpoint could not establish a usable connection.
 	Unreachable,
-	/// Server, extension, checksum, or migration state is incompatible.
+	/// Server, extension, checksum, or exact current schema is incompatible.
 	Incompatible,
 	/// The configured runtime identity retains forbidden database authority.
 	UnsafeAuthority,
@@ -220,4 +213,43 @@ fn is_authentication_error(error: &tokio_postgres::Error) -> bool {
 				| &tokio_postgres::error::SqlState::INVALID_PASSWORD
 		)
 	})
+}
+
+fn classify_database_error(error: &tokio_postgres::Error) -> BootstrapFailure {
+	if is_authentication_error(error) {
+		BootstrapFailure::Authentication
+	} else if error.as_db_error().is_some() {
+		BootstrapFailure::Incompatible
+	} else {
+		BootstrapFailure::Unreachable
+	}
+}
+
+fn query_failure_category(error: &tokio_postgres::Error) -> &'static str {
+	let Some(database) = error.as_db_error() else {
+		return "transport";
+	};
+	let code = database.code().code();
+	match code.get(..2).unwrap_or_default() {
+		"08" => "transport",
+		"23" => "constraint",
+		"25" | "40" => "transaction",
+		"28" => "authentication",
+		"3D" => "catalog",
+		"42" if code == "42501" => "authorization",
+		"42" => "catalog",
+		"53" | "54" | "55" | "57" | "58" | "XX" => "server",
+		_ => "server",
+	}
+}
+
+fn classify_pool_backend(error: &tokio_postgres::Error) -> BootstrapFailure {
+	#[cfg(unix)]
+	if crate::socket::rejected_endpoint_failure(error)
+		== Some(crate::socket::SocketConnectFailure::UnsafeAuthority)
+	{
+		return BootstrapFailure::UnsafeHostPath;
+	}
+
+	classify_database_error(error)
 }

@@ -23,7 +23,7 @@ use decodex_postgres::{
 	RepositoryReadbackWork, RepositoryReconciliationOutcome, StoreError,
 };
 
-use super::{expected_peer_uid, project_request, separated_configs};
+use super::{expected_peer_uid, owner_runtime_configs, project_request};
 
 const PROJECT_ID: &str = "41000000-0000-4000-8000-000000000001";
 const LEAD_ID: &str = "42000000-0000-4000-8000-000000000001";
@@ -256,8 +256,9 @@ async fn admit_and_allocate(
 #[allow(clippy::too_many_lines)] // One representative durable authority lifecycle.
 async fn postgres_managed_repository_authority_contract() -> Result<(), Box<dyn std::error::Error>>
 {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime.clone(), expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	ensure_project(&store).await?;
 	let descriptor = descriptor(1);
 	let admission = RepositoryAdmissionFacts::new(descriptor.clone());
@@ -491,8 +492,9 @@ async fn postgres_managed_repository_authority_contract() -> Result<(), Box<dyn 
 #[ignore = "requires the isolated PostgreSQL 18 frozen-tree restart-bound harness"]
 async fn postgres_managed_repository_restart_backlog_bound()
 -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	ensure_project(&store).await?;
 	assert!(store.load_repository_restart_work(256).await?.is_empty());
 	for value in 10..267 {
@@ -543,8 +545,9 @@ async fn postgres_managed_repository_restart_backlog_bound()
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 populated restore harness"]
 async fn postgres_managed_repository_restored_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let repository = store
 		.read_managed_repository(&ManagedRepositoryId::new(uuid(0x43, 1))?)
 		.await?

@@ -11,7 +11,6 @@ use decodex_postgres::{ContinuationPlanEffect, PlanContinuation, PostgresStore, 
 pub(super) async fn assert_continuation_contract(
 	store: &PostgresStore,
 	owner: &Client,
-	migration: &Config,
 	runtime: &Config,
 	routing: &RoutingFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -25,7 +24,7 @@ pub(super) async fn assert_continuation_contract(
 	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_lineage_and_restart_contract(
 		owner,
-		(migration, runtime),
+		runtime,
 		&blob_store,
 		&fallback_pack,
 		&fallback_request,
@@ -251,7 +250,7 @@ async fn assert_stale_revision_contract(
 
 async fn assert_lineage_and_restart_contract(
 	owner: &Client,
-	configs: (&Config, &Config),
+	runtime: &Config,
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
 	fallback_request: &PlanContinuation,
@@ -278,9 +277,8 @@ async fn assert_lineage_and_restart_contract(
 	for index in 0..6 {
 		assert!(lineage.get::<_, bool>(index), "V17 lineage assertion {index}");
 	}
-	let (migration, runtime) = configs;
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted
 			.plan_continuation(blob_store, "v17-missing-fallback", fallback_request, fallback_pack,)

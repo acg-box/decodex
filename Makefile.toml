@@ -94,7 +94,6 @@ args = [
 # | check-sandboxed   | composite |      |
 # | check-automations | composite | |
 # | check-automations-sandboxed | composite | |
-# | check-vnext-retained-title-preparation | command | |
 
 [tasks.check]
 clear = true
@@ -182,14 +181,6 @@ args = [
 	"--workspace",
 	"--exclude",
 	"decodex-gpui",
-]
-
-[tasks.check-vnext-retained-title-preparation]
-workspace = false
-command = "python3"
-args = [
-	"scripts/vnext/postgres_store_test.py",
-	"--prepare-retained-title-core",
 ]
 
 # Build
@@ -417,10 +408,7 @@ args = [
 # | test-sandboxed                     | composite |     |
 # | test-vnext-architecture            | command   |     |
 # | test-vnext-cli-diagnostics         | command   |     |
-# | test-vnext-postgres-managed-runs   | command   |     |
-# | test-vnext-postgres-store          | command   |     |
-# | test-vnext-retained-title-core      | command   |     |
-# | test-vnext-storage-proof           | command   |     |
+# | test-vnext-latest-schema           | command   |     |
 
 [tasks.test]
 clear = true
@@ -431,7 +419,6 @@ dependencies = [
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
-	"test-vnext-postgres-store",
 ]
 
 [tasks.test-automations]
@@ -463,7 +450,6 @@ dependencies = [
 	"test-rust-headless",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
-	"test-vnext-postgres-store",
 ]
 
 [tasks.test-headless-sandboxed]
@@ -485,7 +471,6 @@ args = [
 	"unittest",
 	"tests/scripts/test_cli_diagnostics_runner.py",
 	"tests/scripts/test_gate_contract.py",
-	"tests/scripts/test_postgres_authority_capture.py",
 	"tests/scripts/test_vstyle_audit.py",
 ]
 
@@ -529,30 +514,9 @@ args = [
 	"scripts/vnext/cli_diagnostics_test.py",
 ]
 
-[tasks.test-vnext-postgres-managed-runs]
+[tasks.test-vnext-latest-schema]
 workspace = false
 command = "python3"
 args = [
-	"scripts/vnext/postgres_store_test.py",
-	"--focus-managed-runs",
-]
-
-[tasks.test-vnext-postgres-store]
-workspace = false
-command = "python3"
-args = [
-	"scripts/vnext/postgres_store_test.py",
-]
-
-[tasks.test-vnext-retained-title-core]
-workspace = false
-description = "Run the frozen V14-V22 retained-title PostgreSQL boundary"
-command = "python3"
-args = ["scripts/vnext/postgres_store_test.py", "--focus-retained-title-core"]
-
-[tasks.test-vnext-storage-proof]
-workspace = false
-command = "python3"
-args = [
-	"spikes/vnext-storage/proof.py",
+	"scripts/vnext/latest_schema_gate.py",
 ]

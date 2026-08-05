@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use tokio_postgres::{Client, Config, NoTls, error::SqlState};
 
-use super::{continuation, expected_peer_uid, routing_decision, separated_configs};
+use super::{continuation, expected_peer_uid, owner_runtime_configs, routing_decision};
 use decodex_core::{
 	ConversationId, ExecutionAssignmentRole, ManagedRunId, ManagedRunPhase, ManagedRunState,
 	ManagedRunWaitReason, ProjectId, RuntimeSessionId, RuntimeSessionState,
@@ -346,20 +346,18 @@ async fn assert_readback(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an isolated PostgreSQL 18 V26 ManagedRun database"]
 async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
-	let (owner, connection) = migration.connect(NoTls).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (owner, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	assert!(matches!(
 		store.bootstrap_role_profiles("xy-1416-role-profiles", &profiles()).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
 	let routing =
-		routing_decision::assert_routing_decision_contract(&store, &owner, &migration, &runtime)
-			.await?;
-	continuation::assert_continuation_contract(&store, &owner, &migration, &runtime, &routing)
-		.await?;
+		routing_decision::assert_routing_decision_contract(&store, &owner, &runtime).await?;
+	continuation::assert_continuation_contract(&store, &owner, &runtime, &routing).await?;
 	let selected_managed_run_id = ManagedRunId::new(SELECTED_MANAGED_RUN_ID)?;
 	let lead_session = create_lead_session(&store, &routing.selected_account_id).await?;
 	assert_assignment_scope(&owner, &selected_managed_run_id, &lead_session).await?;
@@ -380,7 +378,7 @@ async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::E
 		Err(StoreError::InvalidInput("ManagedRun revision must be positive"))
 	));
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		assert_readback(
 			&restarted,
@@ -398,8 +396,9 @@ async fn postgres_managed_run_v26_contract() -> Result<(), Box<dyn std::error::E
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires a restored PostgreSQL 18 V26 ManagedRun database"]
 async fn postgres_managed_run_v26_restore() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let readback = store
 		.read_managed_run_exact(
 			&ProjectId::new(PROJECT_ID)?,
