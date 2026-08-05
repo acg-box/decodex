@@ -2,7 +2,7 @@
 #[cfg(test)] use std::sync::atomic::AtomicU32;
 use std::{
 	cell::UnsafeCell,
-	collections::{BTreeMap, BTreeSet},
+	collections::BTreeSet,
 	env,
 	ffi::{OsStr, OsString},
 	fmt::{Debug, Display, Formatter},
@@ -74,8 +74,9 @@ use decodex_codex::{
 	ThreadSummary, TurnStatus, UnavailableReason, decode_quick_task_thread_resume_response,
 	decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
 	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
-	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES, SchemaContract, SchemaMarker},
+	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
+#[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
@@ -101,9 +102,6 @@ const PRIVATE_STDIO_STARTUP_VALUE: &str = "1";
 const PRIVATE_STDIO_CAPABILITY_ID: &str =
 	"codex-app-server-private-stdio-disabled-ephemeral-startup-v1";
 const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
-const STDIO_ONLY_ATTESTED_VERSION: &str = "codex-cli 0.146.0-alpha.9.2";
-const STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256: &str =
-	"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
 const MAX_QUICK_TASK_BUFFERED_EVENTS: usize = PROTOCOL_QUEUE_CAPACITY;
 const THREAD_LIST_LIMIT: usize = 100;
@@ -511,7 +509,7 @@ impl Debug for AppServerCommand {
 	}
 }
 
-/// Daemon-lifetime exact-build evidence shared by account-scoped launches.
+/// Daemon-lifetime observed Codex capability evidence shared by account-scoped launches.
 ///
 /// Startup constructs this profile once from one immutable executable snapshot and one generated
 /// schema preflight. Each account launch still verifies the canonical executable, binds the exact
@@ -525,7 +523,7 @@ pub(crate) struct AttestedAppServerProfile {
 	capability: ExactBuildLaunchCapability,
 }
 impl AttestedAppServerProfile {
-	/// Prove the exact supported Codex image and generated account callback contract at startup.
+	/// Prove the current Codex executable and generated account callback contract at startup.
 	pub(crate) fn attest(
 		working_directory: impl Into<PathBuf>,
 		timeout: Duration,
@@ -533,9 +531,6 @@ impl AttestedAppServerProfile {
 		let command = AppServerCommand::new(working_directory)?;
 		validated_working_directory(&command)?;
 		let capability = ExactBuildLaunchCapability::attest_profile(&command)?;
-		let marker = SchemaMarker::accepted();
-		SchemaContract::validate(marker.clone())
-			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
 		let home = env::var_os("HOME")
 			.filter(|home| !home.is_empty())
 			.ok_or(SupervisionError::InvalidBinding)?;
@@ -543,22 +538,19 @@ impl AttestedAppServerProfile {
 		let (build, generated, guard) = attest_executable_for_home(
 			&command,
 			&expected_codex_home,
-			Some(marker.canonical_digests()),
 			timeout,
 			None,
 		)?;
 		if guard.is_some() {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
-		capability.attest_build(&command, &build)?;
-
 		Ok(Self { command, build, generated, capability })
 	}
 
 	/// Return the credential-negative callback evidence persisted by Account Service.
 	pub(crate) fn account_callback_attestation(&self) -> CodexAccountCapabilityAttestation {
 		CodexAccountCapabilityAttestation {
-			build_identity: STDIO_ONLY_ATTESTED_VERSION.to_owned(),
+			build_identity: self.build.as_str().to_owned(),
 			executable_sha256: hex_digest(&self.command.executable_digest),
 			schema_sha256: self.generated.fingerprint.clone(),
 			callback_profile_sha256: self.generated.account_callback_profile_sha256().to_owned(),
@@ -575,7 +567,7 @@ impl AttestedAppServerProfile {
 	) -> Result<Self, ProbeError> {
 		validated_working_directory(&command)?;
 		let (build, generated, guard) =
-			attest_executable_for_home(&command, expected_codex_home, None, timeout, None)?;
+			attest_executable_for_home(&command, expected_codex_home, timeout, None)?;
 		if guard.is_some() {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
@@ -645,21 +637,21 @@ impl Debug for AttestedAppServerProfile {
 	}
 }
 
-/// Exact-build source-attested launch capability.
+/// Runtime launch capability derived from the current executable and protocol preflight.
 ///
-/// This type has no public constructor. A version string alone is insufficient: the exact
-/// protected executable digest and the fixed app-server command must match the accepted source
-/// contract. For the accepted image, Codex consumes
+/// This type has no public constructor. The fixed app-server command must match the process
+/// contract. Codex consumes
 /// `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` at process startup and selects
 /// `DisabledEphemeral` when `app-server --stdio` has no remote-control argument. This marker is
 /// startup-state evidence, not a permanent in-process policy. ProcessGeneration therefore keeps
-/// the raw channels private and returns no protocol writer. Unsupported builds fail closed.
+/// the raw channels private and returns no protocol writer. Unsupported protocol shapes still
+/// fail closed after runtime schema validation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ExactBuildLaunchCapability {
 	PrivateStdioDisabledEphemeralStartupV1,
 }
 impl ExactBuildLaunchCapability {
-	/// Reject unsupported platforms and image profiles before a profile-dependent preflight can
+	/// Reject unsupported platforms and process shapes before a profile-dependent preflight can
 	/// spawn a child.
 	fn attest_profile(command: &AppServerCommand) -> Result<Self, SupervisionError> {
 		if !cfg!(all(target_os = "macos", target_arch = "aarch64")) {
@@ -668,29 +660,11 @@ impl ExactBuildLaunchCapability {
 		let exact_args = command.app_server_args.len() == 2
 			&& command.app_server_args[0].as_os_str() == OsStr::new("app-server")
 			&& command.app_server_args[1].as_os_str() == OsStr::new("--stdio");
-		let exact_digest =
-			hex_digest(&command.executable_digest) == STDIO_ONLY_ATTESTED_EXECUTABLE_SHA256;
-		if !exact_args || !exact_digest {
+		if !exact_args {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
 
 		Ok(Self::PrivateStdioDisabledEphemeralStartupV1)
-	}
-
-	fn attest_build(
-		self,
-		command: &AppServerCommand,
-		build: &BuildId,
-	) -> Result<(), SupervisionError> {
-		let expected_build =
-			BuildId::from_attestation(STDIO_ONLY_ATTESTED_VERSION, &command.executable_digest)
-				.map_err(|_| SupervisionError::LaunchCapabilityUnavailable)?;
-
-		if &expected_build != build {
-			return Err(SupervisionError::LaunchCapabilityUnavailable);
-		}
-
-		Ok(())
 	}
 
 	const fn identity(self) -> &'static str {
@@ -736,8 +710,8 @@ impl ExactProcessGenerationLifetimeCapability {
 /// One non-forgeable account-bound app-server launch.
 ///
 /// It retains the protected executable snapshot and derives the durable launch-manifest identity
-/// from the same exact image, command, arguments, working directory, environment, account, and
-/// exact-build capability that it later spawns. No mutable [`Command`] or caller-supplied runner
+/// from the same verified executable, command, arguments, working directory, environment, account,
+/// and runtime capability that it later spawns. No mutable [`Command`] or caller-supplied runner
 /// digest crosses the ProcessSupervisor boundary.
 pub(crate) struct AttestedAppServerLaunch {
 	command: AppServerCommand,
@@ -824,7 +798,6 @@ impl AttestedAppServerLaunch {
 		if ExactBuildLaunchCapability::attest_profile(&command)? != capability {
 			return Err(SupervisionError::LaunchCapabilityUnavailable);
 		}
-		capability.attest_build(&command, &build)?;
 		let process = SupervisedProcess::spawn_attested_with_pre_spawn_check(
 			command,
 			binding,
@@ -1213,7 +1186,7 @@ struct QuickTaskProcessSuccess<T> {
 fn callback_probe_access_token(
 	provider_account_id: &str,
 ) -> Result<Zeroizing<String>, ResetCardProcessError> {
-	// This exact build refreshes external auth after a read-only cloud-config 401, but not after
+	// This observed executable refreshes external auth after a read-only cloud-config 401, but not after
 	// `account/rateLimits/read`. A business-shaped, invalidly signed JWT reaches that path without
 	// creating a thread or turn. The separate RPC account ID and this claim stay bound to the
 	// immutable ProcessGeneration provider; the Account Service supplies the real successor token.
@@ -2293,8 +2266,6 @@ pub(super) struct ReadOnlyProbeResult {
 pub(super) struct ReadOnlyProbe {
 	command: AppServerCommand,
 	binding: AccountBinding,
-	schema_marker: SchemaMarker,
-	enforce_generated_digests: bool,
 	timeout: Duration,
 	#[cfg(test)]
 	attestation_timeout_override: Option<Duration>,
@@ -2305,8 +2276,6 @@ impl ReadOnlyProbe {
 		Self {
 			command,
 			binding,
-			schema_marker: SchemaMarker::accepted(),
-			enforce_generated_digests: true,
 			timeout,
 			#[cfg(test)]
 			attestation_timeout_override: None,
@@ -2324,14 +2293,12 @@ impl ReadOnlyProbe {
 	fn new_for_test(
 		command: AppServerCommand,
 		binding: AccountBinding,
-		schema_marker: SchemaMarker,
+		_schema_marker: SchemaMarker,
 		timeout: Duration,
 	) -> Self {
 		Self {
 			command,
 			binding,
-			schema_marker,
-			enforce_generated_digests: false,
 			timeout,
 			attestation_timeout_override: None,
 		}
@@ -2351,8 +2318,6 @@ impl ReadOnlyProbe {
 		Self {
 			command,
 			binding,
-			schema_marker: SchemaMarker::accepted(),
-			enforce_generated_digests: false,
 			timeout,
 			attestation_timeout_override: None,
 		}
@@ -2399,11 +2364,6 @@ impl ReadOnlyProbe {
 		guard: Option<RunnerPermit>,
 		cache: &mut CapabilityCache,
 	) -> Result<ReadOnlyProbeResult, ProbeError> {
-		SchemaContract::validate(self.schema_marker.clone())
-			.map_err(|markers| ProbeError::SchemaMissing { markers })?;
-
-		let expected_digests =
-			self.enforce_generated_digests.then_some(self.schema_marker.canonical_digests());
 		#[cfg(test)]
 		let attestation_timeout = self.attestation_timeout_override.unwrap_or(self.timeout);
 		#[cfg(not(test))]
@@ -2411,7 +2371,6 @@ impl ReadOnlyProbe {
 		let (build, generated, guard) = attest_executable(
 			&self.command,
 			&self.binding,
-			expected_digests,
 			attestation_timeout,
 			guard,
 		)?;
@@ -2520,7 +2479,7 @@ impl ResetCardProcessRunner {
 		}
 
 		let (build, generated, guard) =
-			attest_executable(&self.command, &self.binding, None, self.timeout, Some(guard))
+			attest_executable(&self.command, &self.binding, self.timeout, Some(guard))
 				.map_err(ResetCardProcessError::from_probe)?;
 		let reset_profile = ResetCardCapabilityProfile::from_schema(generated.contract());
 
@@ -2690,8 +2649,6 @@ fn finish_reset_card_process<T>(
 pub(super) struct ExactThreadReconciler {
 	command: AppServerCommand,
 	binding: AccountBinding,
-	schema_marker: SchemaMarker,
-	enforce_generated_digests: bool,
 	timeout: Duration,
 }
 impl ExactThreadReconciler {
@@ -2703,8 +2660,6 @@ impl ExactThreadReconciler {
 		Self {
 			command,
 			binding,
-			schema_marker: SchemaMarker::accepted(),
-			enforce_generated_digests: true,
 			timeout,
 		}
 	}
@@ -2718,8 +2673,6 @@ impl ExactThreadReconciler {
 		Self {
 			command,
 			binding,
-			schema_marker: SchemaMarker::accepted(),
-			enforce_generated_digests: false,
 			timeout,
 		}
 	}
@@ -2731,16 +2684,9 @@ impl ExactThreadReconciler {
 		guard: RunnerPermit,
 		operation: ExactThreadReconciliation,
 	) -> Result<ExactThreadReconciliationResult, ExactThreadReconciliationFailure> {
-		SchemaContract::validate(self.schema_marker.clone()).map_err(|markers| {
-			ExactThreadReconciliationFailure::Probe(ProbeError::SchemaMissing { markers })
-		})?;
-
-		let expected_digests =
-			self.enforce_generated_digests.then_some(self.schema_marker.canonical_digests());
 		let (build, generated, guard) = attest_executable(
 			&self.command,
 			&self.binding,
-			expected_digests,
 			self.timeout,
 			Some(guard),
 		)
@@ -2936,7 +2882,7 @@ pub enum ProbeError {
 		/// Numeric JSON-RPC code; raw messages are discarded.
 		code: i64,
 	},
-	/// A different profile already occupied this exact-build cache key.
+	/// A different profile already occupied this observed-executable cache key.
 	CapabilityConflict,
 	/// The selected host-vault credential could not be projected into this child.
 	CredentialVault(CredentialVaultError),
@@ -4725,14 +4671,12 @@ fn pump_stdout(
 fn attest_executable(
 	command: &AppServerCommand,
 	binding: &AccountBinding,
-	expected_digests: Option<&BTreeMap<String, String>>,
 	timeout: Duration,
 	guard: Option<RunnerPermit>,
 ) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
 	attest_executable_for_home(
 		command,
 		&binding.expected_codex_home,
-		expected_digests,
 		timeout,
 		guard,
 	)
@@ -4741,7 +4685,6 @@ fn attest_executable(
 fn attest_executable_for_home(
 	command: &AppServerCommand,
 	expected_codex_home: &Path,
-	expected_digests: Option<&BTreeMap<String, String>>,
 	timeout: Duration,
 	guard: Option<RunnerPermit>,
 ) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
@@ -4792,7 +4735,7 @@ fn attest_executable_for_home(
 		return Err(SupervisionError::PreflightFailed.into());
 	}
 
-	let generated = GeneratedSchemaEvidence::load(schema_directory.path(), expected_digests)
+	let generated = GeneratedSchemaEvidence::load(schema_directory.path())
 		.map_err(|markers| ProbeError::SchemaMissing { markers })?;
 
 	Ok((build, generated, guard))
@@ -5754,7 +5697,6 @@ mod tests {
 		let (build, generated, guard) = process::attest_executable(
 			&command,
 			&process_binding,
-			None,
 			timeout,
 			Some(capacity.reserve().unwrap()),
 		)
@@ -6126,19 +6068,19 @@ mod tests {
 	}
 
 	#[test]
-	fn generated_schema_digest_mismatch_occurs_before_app_server_spawn() {
+	fn generated_schema_fingerprint_is_observed_without_a_release_pin() {
 		let temp = TempDir::new().unwrap();
 		let marker_path = temp.path().join("spawned");
-		let error = ReadOnlyProbe::new(
+		let result = ReadOnlyProbe::new(
 			fake_command("mark-spawn", temp.path(), Some(&marker_path)),
 			binding(),
 			Duration::from_secs(5),
 		)
 		.run(&mut CapabilityCache::default())
-		.unwrap_err();
+		.unwrap();
 
-		assert!(matches!(error, ProbeError::SchemaMissing { .. }));
-		assert!(!marker_path.exists());
+		assert_eq!(result.profile.schema_fingerprint().len(), 64);
+		assert!(marker_path.exists());
 	}
 
 	#[test]
