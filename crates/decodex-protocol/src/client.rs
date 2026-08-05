@@ -12,7 +12,7 @@ use futures_util::{Sink, SinkExt as _, Stream, StreamExt as _};
 use serde::{Deserialize, Serialize};
 use tokio::time;
 use tokio_tungstenite::{
-	self,
+	self, WebSocketStream,
 	tungstenite::{Message, protocol::WebSocketConfig},
 };
 
@@ -38,11 +38,49 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
 // Keep its bounded read budget separate from ordinary cached UI queries.
 const DOCTOR_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(35);
+const ONE_SHOT_CLOSE_TIMEOUT: Duration = Duration::from_secs(1);
 const MAX_CLIENT_MESSAGE_BYTES: usize = 256 * 1_024;
 const MAX_INTERLEAVED_MESSAGES: usize = 64;
 // This URI is WebSocket handshake metadata only. The client passes an already
 // admitted Unix stream, so this value cannot resolve or dial a TCP endpoint.
 const LOCAL_WEBSOCKET_URI: &str = "ws://localhost/v1/ws";
+
+type OneShotSocket = WebSocketStream<LocalTransportStream>;
+
+struct CompletedOneShot<T> {
+	value: T,
+	socket: OneShotSocket,
+}
+
+impl<T> CompletedOneShot<T> {
+	const fn new(value: T, socket: OneShotSocket) -> Self {
+		Self { value, socket }
+	}
+}
+
+async fn close_one_shot_socket(mut socket: OneShotSocket) {
+	let close = async {
+		if socket.send(Message::Close(None)).await.is_err() {
+			return;
+		}
+
+		while let Some(message) = socket.next().await {
+			match message {
+				Ok(Message::Close(_)) | Err(_) => return,
+				Ok(Message::Ping(payload)) => {
+					if socket.send(Message::Pong(payload)).await.is_err() {
+						return;
+					}
+				},
+				Ok(Message::Pong(_)) => {},
+				Ok(Message::Text(_) | Message::Binary(_) | Message::Frame(_)) => return,
+			}
+		}
+	};
+
+	// A completed application response remains authoritative if bounded cleanup fails.
+	let _ = time::timeout(ONE_SHOT_CLOSE_TIMEOUT, close).await;
+}
 
 /// Whether one selected client profile targets the same host or a different host.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -185,12 +223,14 @@ impl DoctorClient {
 	/// Negotiate the current protocol, verify the stable server identity, and
 	/// return one fresh authoritative doctor report.
 	pub async fn query(&self) -> Result<DoctorReport, ClientFailure> {
-		time::timeout(self.timeout, self.query_inner())
+		let completed = time::timeout(self.timeout, self.query_inner())
 			.await
-			.map_err(|_| ClientFailure::ProtocolTimeout)?
+			.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		Ok(completed.value)
 	}
 
-	async fn query_inner(&self) -> Result<DoctorReport, ClientFailure> {
+	async fn query_inner(&self) -> Result<CompletedOneShot<DoctorReport>, ClientFailure> {
 		let local_transport =
 			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
@@ -281,7 +321,7 @@ impl DoctorClient {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
 
-					return Ok(report);
+					return Ok(CompletedOneShot::new(report, socket));
 				},
 				ServerMessage::Event(event) => {
 					if event.version != CURRENT_VERSION {
@@ -404,12 +444,14 @@ impl ResetCardClient {
 	) -> Result<ResetCardInventoryResult, ClientFailure> {
 		self.require_local_profile()?;
 		let expected_account_id = account_id.clone();
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.timeout,
 			self.query_inner("decodex-reset-card-list", QueryPayload::GetResetCards { account_id }),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 
 		match payload {
 			QueryResultPayload::ResetCards(result) => {
@@ -431,7 +473,7 @@ impl ResetCardClient {
 		idempotency_key: IdempotencyKey,
 	) -> Result<ResetCardOperationResult, ClientFailure> {
 		self.require_local_profile()?;
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.timeout,
 			self.query_inner(
 				"decodex-reset-card-status",
@@ -440,6 +482,8 @@ impl ResetCardClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 
 		match payload {
 			QueryResultPayload::ResetCardOperation(result) => Ok(result),
@@ -474,7 +518,11 @@ impl ResetCardClient {
 		)
 		.await;
 		let result = match result {
-			Ok(result) => result,
+			Ok(Ok(completed)) => {
+				close_one_shot_socket(completed.socket).await;
+				Ok(completed.value)
+			},
+			Ok(Err(failure)) => Err(failure),
 			Err(_) => Err(ClientFailure::ProtocolTimeout),
 		};
 
@@ -498,7 +546,7 @@ impl ResetCardClient {
 		&self,
 		query_identity: &'static str,
 		payload: QueryPayload,
-	) -> Result<QueryResultPayload, ClientFailure> {
+	) -> Result<CompletedOneShot<QueryResultPayload>, ClientFailure> {
 		let mut socket = self.connect().await?;
 		let query_id =
 			QueryId::new(query_identity).expect("fixed query identity is bounded and nonempty");
@@ -521,8 +569,7 @@ impl ResetCardClient {
 					if result.query_id != query_id {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
-
-					return Ok(result.payload);
+					return Ok(CompletedOneShot::new(result.payload, socket));
 				},
 				ServerMessage::Event(event) =>
 					self.verify_version_and_server(event.version, &event.server_id)?,
@@ -541,7 +588,7 @@ impl ResetCardClient {
 		expected_revision: EntityRevision,
 		idempotency_key: IdempotencyKey,
 		dispatch_attempted: &AtomicBool,
-	) -> Result<ResetCardConsumeResponse, ClientFailure> {
+	) -> Result<CompletedOneShot<ResetCardConsumeResponse>, ClientFailure> {
 		let mut socket = self.connect().await?;
 		let command_identity = format!("reset-card-use:{}", idempotency_key.as_str());
 		let client_command_id = ClientCommandId::new(command_identity.clone())
@@ -601,7 +648,7 @@ impl ResetCardClient {
 						return Err(ClientFailure::ProtocolMalformed);
 					}
 
-					return match (
+					let response = match (
 						result.outcome,
 						result.entity_revision,
 						result.payload,
@@ -656,6 +703,8 @@ impl ResetCardClient {
 						}),
 						_ => Err(ClientFailure::ProtocolMalformed),
 					};
+
+					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
 				ServerMessage::Event(event) =>
 					self.verify_version_and_server(event.version, &event.server_id)?,
@@ -667,9 +716,7 @@ impl ResetCardClient {
 		Err(ClientFailure::ProtocolBackpressure)
 	}
 
-	async fn connect(
-		&self,
-	) -> Result<tokio_tungstenite::WebSocketStream<LocalTransportStream>, ClientFailure> {
+	async fn connect(&self) -> Result<OneShotSocket, ClientFailure> {
 		let local_transport =
 			self.profile.local_transport.as_ref().ok_or(ClientFailure::RemoteTransportDisabled)?;
 		let config = WebSocketConfig::default()
@@ -822,7 +869,7 @@ impl WorkItemBoardClient {
 	) -> Result<WorkItemBoardResult, ClientFailure> {
 		let expected_project_id = project_id.clone();
 		let expected_after = after.clone();
-		let payload = time::timeout(
+		let completed = time::timeout(
 			CLIENT_TIMEOUT,
 			self.transport.query_inner(
 				"decodex-work-item-board-page",
@@ -831,6 +878,8 @@ impl WorkItemBoardClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 
 		match payload {
 			QueryResultPayload::WorkItemBoard(result) => {
@@ -890,12 +939,14 @@ impl AccountClient {
 	/// Read the canonical fast PostgreSQL-only account skeleton and routing controls.
 	pub async fn list(&self) -> Result<AccountsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner("decodex-accounts-list", QueryPayload::ListAccounts),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::Accounts(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -909,7 +960,7 @@ impl AccountClient {
 	) -> Result<AccountInspectResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let expected = account_id.clone();
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
 				"decodex-account-inspect",
@@ -918,6 +969,8 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::Account(result) => {
 				if matches!(&result, AccountInspectResult::Available(account) if account.account_id != expected)
@@ -939,7 +992,7 @@ impl AccountClient {
 	) -> Result<AccountProfileResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let expected = account_id.clone();
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
 				"decodex-account-profile",
@@ -948,6 +1001,8 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::AccountProfile(result) => {
 				let matches = match &result {
@@ -968,7 +1023,7 @@ impl AccountClient {
 	/// Evaluate fixed or balanced initial selection without creating work.
 	pub async fn initial_selection(&self) -> Result<AccountInitialSelectionResult, ClientFailure> {
 		self.transport.require_local_profile()?;
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
 				"decodex-account-initial-selection",
@@ -977,6 +1032,8 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::InitialAccountSelection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -986,13 +1043,15 @@ impl AccountClient {
 	/// Read the normal shared Codex auth projection without exposing credentials.
 	pub async fn codex_auth_projection(&self) -> Result<CodexAuthProjectionResult, ClientFailure> {
 		self.transport.require_local_profile()?;
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport
 				.query_inner("decodex-codex-auth-projection", QueryPayload::GetCodexAuthProjection),
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::CodexAuthProjection(result) => Ok(result),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1005,7 +1064,7 @@ impl AccountClient {
 		after_generation: u64,
 	) -> Result<AccountObservationSignal, ClientFailure> {
 		self.transport.require_local_profile()?;
-		let payload = time::timeout(
+		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
 				"decodex-account-observation-wait",
@@ -1014,6 +1073,8 @@ impl AccountClient {
 		)
 		.await
 		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let payload = completed.value;
 		match payload {
 			QueryResultPayload::AccountObservation(signal) => Ok(signal),
 			_ => Err(ClientFailure::ProtocolMalformed),
@@ -1111,7 +1172,11 @@ impl AccountClient {
 		)
 		.await;
 		let result = match result {
-			Ok(result) => result,
+			Ok(Ok(completed)) => {
+				close_one_shot_socket(completed.socket).await;
+				Ok(completed.value)
+			},
+			Ok(Err(failure)) => Err(failure),
 			Err(_) => Err(ClientFailure::ProtocolTimeout),
 		};
 		match result {
@@ -1128,7 +1193,7 @@ impl AccountClient {
 		expected_revision: Option<EntityRevision>,
 		idempotency_key: IdempotencyKey,
 		dispatch_attempted: &AtomicBool,
-	) -> Result<AccountCommandResponse, ClientFailure> {
+	) -> Result<CompletedOneShot<AccountCommandResponse>, ClientFailure> {
 		let mut socket = self.transport.connect().await?;
 		let client_command_id = ClientCommandId::new(idempotency_key.as_str().to_owned())
 			.map_err(|_| ClientFailure::ProtocolMalformed)?;
@@ -1173,7 +1238,7 @@ impl AccountClient {
 					{
 						return Err(ClientFailure::ProtocolMalformed);
 					}
-					return match (
+					let response = match (
 						result.outcome,
 						result.entity_revision,
 						result.payload,
@@ -1198,6 +1263,8 @@ impl AccountClient {
 						}),
 						_ => Err(ClientFailure::ProtocolMalformed),
 					};
+
+					return response.map(|value| CompletedOneShot::new(value, socket));
 				},
 				ServerMessage::Event(event) =>
 					self.transport.verify_version_and_server(event.version, &event.server_id)?,
@@ -1919,6 +1986,141 @@ max_entry_bytes = 0
 		assert_eq!(actual, expected);
 
 		task.await.expect("test operation must succeed");
+	}
+
+	#[tokio::test]
+	async fn one_shot_client_closes_after_a_complete_response() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
+		let expected = report();
+		let response = expected.clone();
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
+
+			socket.next().await.expect("hello must arrive").expect("hello must decode");
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.expect("initial response must send");
+			}
+			socket.next().await.expect("query must arrive").expect("query must decode");
+			socket.send(result(response)).await.expect("query response must send");
+
+			let close = time::timeout(Duration::from_secs(1), socket.next())
+				.await
+				.expect("client close must be bounded")
+				.expect("client close must arrive")
+				.expect("client close must decode");
+
+			assert!(matches!(close, Message::Close(_)));
+
+			socket.flush().await.expect("close response must flush");
+			listener.cleanup().expect("test operation must succeed");
+		});
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
+
+		assert_eq!(
+			DoctorClient::new(profile).query().await.expect("test operation must succeed"),
+			expected
+		);
+
+		task.await.expect("client lifecycle must settle before runtime shutdown");
+	}
+
+	#[tokio::test]
+	async fn completed_command_survives_close_acknowledgement_past_operation_deadline() {
+		let (temp, authority) = local_transport();
+		let mut listener = authority.bind().await.expect("test operation must succeed");
+		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001")
+			.expect("test operation must succeed");
+		let descriptor =
+			ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600)
+				.expect("test operation must succeed");
+		let expected_account_id = account_id.clone();
+		let task = tokio::spawn(async move {
+			let _temp = temp;
+			let stream = listener.accept().await.expect("test operation must succeed");
+			let mut socket =
+				tokio_tungstenite::accept_async(stream).await.expect("test operation must succeed");
+
+			socket.next().await.expect("hello must arrive").expect("hello must decode");
+			for message in initial(SERVER_ID) {
+				socket.send(message).await.expect("initial response must send");
+			}
+			let request =
+				socket.next().await.expect("command must arrive").expect("command must decode");
+			let Message::Text(request) = request else { panic!("expected text command") };
+			let ClientMessage::Command(command) =
+				serde_json::from_str::<ClientMessage>(&request).expect("command must be typed")
+			else {
+				panic!("expected typed command")
+			};
+
+			socket
+				.send(typed(ServerMessage::CommandReceipt(CommandReceipt {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+					client_command_id: command.client_command_id.clone(),
+					idempotency_key: command.idempotency_key.clone(),
+					disposition: ReceiptDisposition::Executed,
+					original_client_command_id: command.client_command_id.clone(),
+				})))
+				.await
+				.expect("command receipt must send");
+			socket
+				.send(typed(ServerMessage::CommandResult(CommandResultEnvelope {
+					version: CURRENT_VERSION,
+					server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+					client_command_id: command.client_command_id,
+					idempotency_key: command.idempotency_key,
+					outcome: CommandOutcome::Succeeded,
+					entity_revision: Some(EntityRevision(7)),
+					payload: Some(ResultPayload::ResetCardOperationAccepted {
+						account_id: expected_account_id,
+						descriptor,
+						state: ResetCardOperationResult::Prepared,
+					}),
+					error: None,
+				})))
+				.await
+				.expect("command result must send");
+
+			let close = socket.next().await.expect("close must arrive").expect("close must decode");
+			assert!(matches!(close, Message::Close(_)));
+			time::sleep(Duration::from_millis(300)).await;
+			socket.flush().await.expect("delayed close acknowledgement must flush");
+			listener.cleanup().expect("test operation must succeed");
+		});
+		let profile = ClientProfile::fixture(
+			authority,
+			ServerId::new(SERVER_ID).expect("test operation must succeed"),
+		);
+		let client = ResetCardClient { profile, timeout: Duration::from_millis(200) };
+
+		assert_eq!(
+			client
+				.consume(
+					account_id.clone(),
+					descriptor,
+					EntityRevision(7),
+					IdempotencyKey::new("delayed-close-key")
+						.expect("test operation must succeed"),
+				)
+				.await
+				.expect("completed response must remain authoritative"),
+			ResetCardConsumeResponse::Accepted {
+				account_id,
+				descriptor,
+				state: ResetCardOperationResult::Prepared,
+				entity_revision: EntityRevision(7),
+			}
+		);
+
+		task.await.expect("client lifecycle must settle before runtime shutdown");
 	}
 
 	#[tokio::test]
