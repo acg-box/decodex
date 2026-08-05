@@ -539,6 +539,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
 		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
 		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseUp])"))
+		XCTAssertTrue(statusPanel.contains("NSApp.activate(ignoringOtherApps: true)"))
 		XCTAssertFalse(
 			statusPanel.contains("NSApplication.didResignActiveNotification")
 		)
