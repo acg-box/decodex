@@ -128,10 +128,7 @@ async fn connect_local(
 	socket
 }
 
-fn config(repository: &Path, socket: &Path, database: &str, credential: Option<&str>) -> String {
-	let migration_credential = credential
-		.map(|name| format!("credential_env_var = \"{name}_MIGRATION\"\n"))
-		.unwrap_or_default();
+fn config(socket: &Path, database: &str, credential: Option<&str>) -> String {
 	let runtime_credential = credential
 		.map(|name| format!("credential_env_var = \"{name}_RUNTIME\"\n"))
 		.unwrap_or_default();
@@ -146,18 +143,12 @@ kind = "local"
 policy = "same_uid"
 service_owner_uid = {}
 
-[server_host.repositories.fixture]
-host_path = "{}"
-
 [postgres]
 socket_directory = "{}"
 expected_peer_uid = {}
 port = 5432
 database = "{}"
 
-[postgres.migration]
-user = "{}_migration"
-{}
 [postgres.runtime]
 user = "{}_runtime"
 {}
@@ -168,7 +159,6 @@ max_entry_bytes = 4096
 "#,
 		// SAFETY: `geteuid` has no arguments or failure return.
 		unsafe { libc::geteuid() },
-		repository.display(),
 		socket.display(),
 		env::current_dir()
 			.expect("fixture current directory")
@@ -176,8 +166,6 @@ max_entry_bytes = 4096
 			.expect("fixture owner metadata")
 			.uid(),
 		database,
-		fixture_user,
-		migration_credential,
 		fixture_user,
 		runtime_credential,
 	)
@@ -246,8 +234,8 @@ fn exhaust_isolated_history_cursor_capacity() {
 }
 
 fn run_isolated_sql(statement: &str) {
-	let database_url =
-		env::var("DECODEX_TEST_MIGRATION_DATABASE_URL").expect("isolated migration URL is present");
+	let database_url = env::var("DECODEX_TEST_SCHEMA_OWNER_DATABASE_URL")
+		.expect("isolated schema-owner URL is present");
 	let output = Command::new("psql")
 		.arg(database_url)
 		.args(["-v", "ON_ERROR_STOP=1", "-Atqc", statement])
@@ -305,7 +293,7 @@ async fn missing_malformed_and_redacted_bootstrap_are_typed() {
 		DoctorStatus::Unavailable(DoctorIssue::ConfigurationMissing)
 	);
 	assert_eq!(
-		status(&missing, DoctorComponent::Database),
+		status(&missing, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
 	);
 	assert_eq!(
@@ -327,7 +315,7 @@ async fn missing_malformed_and_redacted_bootstrap_are_typed() {
 		DoctorStatus::Unavailable(DoctorIssue::ConfigurationMalformed)
 	);
 	assert_eq!(
-		status(&malformed, DoctorComponent::Database),
+		status(&malformed, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::DatabaseMalformedConfig)
 	);
 	assert!(!encoded.contains(secret));
@@ -341,7 +329,7 @@ async fn singleton_authority_precedes_identity_and_product_bootstrap() {
 
 	write_config(
 		&decodex_root,
-		&config(temp.path(), &temp.path().join("missing-postgres-socket"), "decodex", None),
+		&config(&temp.path().join("missing-postgres-socket"), "decodex", None),
 	);
 
 	let paths = decodex_root.paths();
@@ -368,23 +356,18 @@ async fn singleton_authority_precedes_identity_and_product_bootstrap() {
 async fn unsafe_and_malformed_host_configuration_fail_closed() {
 	let unsafe_temp = TempDir::new().expect("unsafe-path temp");
 	let unsafe_root = root(&unsafe_temp);
-	let unsafe_config = config(
-		Path::new("/tmp/../operator-private-repository"),
-		unsafe_temp.path(),
-		"decodex",
-		None,
-	);
+	let unsafe_config = config(Path::new("/tmp/../operator-private-postgres"), "decodex", None);
 
 	write_config(&unsafe_root, &unsafe_config);
 
 	let unsafe_bootstrap = ServiceComposition::bootstrap(unsafe_root).await;
 
 	assert_eq!(
-		status(&unsafe_bootstrap, DoctorComponent::ServerRepositories),
-		DoctorStatus::Unknown(DoctorIssue::NotProbed)
+		status(&unsafe_bootstrap, DoctorComponent::ManagedRepository),
+		DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
 	);
 	assert_eq!(
-		status(&unsafe_bootstrap, DoctorComponent::Database),
+		status(&unsafe_bootstrap, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 	);
 	assert!(matches!(
@@ -396,26 +379,22 @@ async fn unsafe_and_malformed_host_configuration_fail_closed() {
 	{
 		let symlink_temp = TempDir::new().expect("symlink-path temp");
 		let symlink_root = root(&symlink_temp);
-		let repository_target = symlink_temp.path().join("repository-target");
-		let repository_link = symlink_temp.path().join("repository-link");
+		let socket_target = symlink_temp.path().join("socket-target");
+		let socket_link = symlink_temp.path().join("socket-link");
 
-		fs::create_dir(&repository_target).expect("repository target");
-		std::os::unix::fs::symlink(&repository_target, &repository_link)
-			.expect("repository symlink");
+		fs::create_dir(&socket_target).expect("socket target");
+		std::os::unix::fs::symlink(&socket_target, &socket_link).expect("socket symlink");
 
-		write_config(
-			&symlink_root,
-			&config(&repository_link, symlink_temp.path(), "decodex", None),
-		);
+		write_config(&symlink_root, &config(&socket_link, "decodex", None));
 
 		let symlink_bootstrap = ServiceComposition::bootstrap(symlink_root).await;
 
 		assert_eq!(
-			status(&symlink_bootstrap, DoctorComponent::ServerRepositories),
-			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
+			status(&symlink_bootstrap, DoctorComponent::ManagedRepository),
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
 		);
 		assert_eq!(
-			status(&symlink_bootstrap, DoctorComponent::Database),
+			status(&symlink_bootstrap, DoctorComponent::ProductStore),
 			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 		);
 		assert!(matches!(
@@ -427,26 +406,23 @@ async fn unsafe_and_malformed_host_configuration_fail_closed() {
 		let ancestor_root = root(&ancestor_temp);
 		let ancestor_target = ancestor_temp.path().join("ancestor-target");
 		let ancestor_link = ancestor_temp.path().join("ancestor-link");
-		let nested_repository = ancestor_link.join("repository");
+		let nested_socket = ancestor_link.join("socket");
 
 		fs::create_dir(&ancestor_target).expect("ancestor target");
-		fs::create_dir(ancestor_target.join("repository")).expect("nested repository");
+		fs::create_dir(ancestor_target.join("socket")).expect("nested socket");
 		std::os::unix::fs::symlink(&ancestor_target, &ancestor_link)
 			.expect("ancestor directory symlink");
 
-		write_config(
-			&ancestor_root,
-			&config(&nested_repository, ancestor_temp.path(), "decodex", None),
-		);
+		write_config(&ancestor_root, &config(&nested_socket, "decodex", None));
 
 		let ancestor_bootstrap = ServiceComposition::bootstrap(ancestor_root).await;
 
 		assert_eq!(
-			status(&ancestor_bootstrap, DoctorComponent::ServerRepositories),
-			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
+			status(&ancestor_bootstrap, DoctorComponent::ManagedRepository),
+			DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
 		);
 		assert_eq!(
-			status(&ancestor_bootstrap, DoctorComponent::Database),
+			status(&ancestor_bootstrap, DoctorComponent::ProductStore),
 			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 		);
 	}
@@ -454,8 +430,7 @@ async fn unsafe_and_malformed_host_configuration_fail_closed() {
 	let invalid_postgres_temp = TempDir::new().expect("invalid-postgres temp");
 	let invalid_postgres_root = root(&invalid_postgres_temp);
 	let invalid_postgres =
-		config(invalid_postgres_temp.path(), invalid_postgres_temp.path(), "decodex", None)
-			.replace("port = 5432", "port = 0");
+		config(invalid_postgres_temp.path(), "decodex", None).replace("port = 5432", "port = 0");
 
 	write_config(&invalid_postgres_root, &invalid_postgres);
 
@@ -466,7 +441,7 @@ async fn unsafe_and_malformed_host_configuration_fail_closed() {
 		DoctorStatus::Unavailable(DoctorIssue::ConfigurationMalformed)
 	);
 	assert_eq!(
-		status(&invalid_postgres_bootstrap, DoctorComponent::Database),
+		status(&invalid_postgres_bootstrap, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::DatabaseMalformedConfig)
 	);
 }
@@ -491,7 +466,7 @@ async fn symlinked_owned_config_is_unsafe_not_malformed() {
 		DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 	);
 	assert_eq!(
-		status(&bootstrap, DoctorComponent::Database),
+		status(&bootstrap, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 	);
 }
@@ -504,18 +479,21 @@ async fn unreachable_authentication_and_unprobed_states_are_typed() {
 		unreachable_temp.path().canonicalize().expect("canonical unreachable host");
 	let missing_socket = unreachable_host.join("missing-socket");
 
-	write_config(&unreachable_root, &config(&unreachable_host, &missing_socket, "decodex", None));
+	write_config(&unreachable_root, &config(&missing_socket, "decodex", None));
 
 	let unreachable = ServiceComposition::bootstrap(unreachable_root).await;
 
 	assert_eq!(
-		status(&unreachable, DoctorComponent::Database),
+		status(&unreachable, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
 	);
 	assert_eq!(status(&unreachable, DoctorComponent::Protocol), DoctorStatus::Ready);
 	assert_eq!(status(&unreachable, DoctorComponent::ProtocolVersion), DoctorStatus::Ready);
 	assert_eq!(status(&unreachable, DoctorComponent::ServerIdentity), DoctorStatus::Ready);
-	assert_eq!(status(&unreachable, DoctorComponent::ServerRepositories), DoctorStatus::Ready);
+	assert_eq!(
+		status(&unreachable, DoctorComponent::ManagedRepository),
+		DoctorStatus::Unavailable(DoctorIssue::DatabaseNotConfigured)
+	);
 	assert_eq!(
 		status(&unreachable, DoctorComponent::BlobIntegrity),
 		DoctorStatus::Unknown(DoctorIssue::NotProbed)
@@ -545,7 +523,6 @@ async fn unreachable_authentication_and_unprobed_states_are_typed() {
 		&authentication_root,
 		&config(
 			&authentication_host,
-			&authentication_host,
 			"decodex",
 			Some("DECODEX_XY_1307_DETERMINISTICALLY_MISSING_CREDENTIAL"),
 		),
@@ -554,7 +531,7 @@ async fn unreachable_authentication_and_unprobed_states_are_typed() {
 	let authentication = ServiceComposition::bootstrap(authentication_root).await;
 
 	assert_eq!(
-		status(&authentication, DoctorComponent::Database),
+		status(&authentication, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::Authentication)
 	);
 	assert_eq!(
@@ -574,15 +551,12 @@ async fn unreachable_authentication_and_unprobed_states_are_typed() {
 		fs::create_dir(socket_target.join("socket")).expect("nested socket directory");
 		std::os::unix::fs::symlink(&socket_target, &socket_link).expect("socket ancestor symlink");
 
-		write_config(
-			&ancestor_root,
-			&config(ancestor_temp.path(), &nested_socket, "decodex", None),
-		);
+		write_config(&ancestor_root, &config(&nested_socket, "decodex", None));
 
 		let ancestor = ServiceComposition::bootstrap(ancestor_root).await;
 
 		assert_eq!(
-			status(&ancestor, DoctorComponent::Database),
+			status(&ancestor, DoctorComponent::ProductStore),
 			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 		);
 	}
@@ -595,7 +569,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 
 	write_config(
 		&decodex_root,
-		&config(temp.path(), &temp.path().join("missing-postgres-socket"), "decodex", None),
+		&config(&temp.path().join("missing-postgres-socket"), "decodex", None),
 	);
 
 	let transport = local_transport(&decodex_root);
@@ -792,7 +766,7 @@ async fn isolated_postgres_bootstrap_is_available_through_the_daemon() {
 
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
-	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
+	assert_eq!(status(&bootstrap, DoctorComponent::ProductStore), DoctorStatus::Ready);
 	assert_eq!(
 		status(&bootstrap, DoctorComponent::CredentialVault),
 		DoctorStatus::Unavailable(DoctorIssue::Integrity)
@@ -992,7 +966,7 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 	let transport = local_transport(&decodex_root);
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
-	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
+	assert_eq!(status(&bootstrap, DoctorComponent::ProductStore), DoctorStatus::Ready);
 
 	let server_id = bootstrap.server_id().clone();
 	let mut bound =
@@ -1023,7 +997,10 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 	};
 
 	assert_eq!(
-		ready_report.check(DoctorComponent::Database).expect("database check is present").status,
+		ready_report
+			.check(DoctorComponent::ProductStore)
+			.expect("database check is present")
+			.status,
 		DoctorStatus::Ready
 	);
 
@@ -1041,7 +1018,7 @@ async fn isolated_postgres_live_doctor_rejects_replaced_endpoint() {
 		};
 
 		assert_eq!(
-			report.check(DoctorComponent::Database).expect("database check is present").status,
+			report.check(DoctorComponent::ProductStore).expect("database check is present").status,
 			DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath)
 		);
 	}
@@ -1066,7 +1043,7 @@ async fn isolated_postgres_live_doctor_detects_database_drift() {
 	let transport = local_transport(&decodex_root);
 	let bootstrap = ServiceComposition::bootstrap(decodex_root).await;
 
-	assert_eq!(status(&bootstrap, DoctorComponent::Database), DoctorStatus::Ready);
+	assert_eq!(status(&bootstrap, DoctorComponent::ProductStore), DoctorStatus::Ready);
 
 	let server_id = bootstrap.server_id().clone();
 	let mut bound = bootstrap
@@ -1098,7 +1075,7 @@ async fn isolated_postgres_live_doctor_detects_database_drift() {
 	};
 
 	assert_eq!(
-		ready.check(DoctorComponent::Database).expect("database check").status,
+		ready.check(DoctorComponent::ProductStore).expect("database check").status,
 		DoctorStatus::Ready
 	);
 
@@ -1121,7 +1098,7 @@ async fn isolated_postgres_live_doctor_detects_database_drift() {
 	};
 
 	assert_eq!(
-		changed.check(DoctorComponent::Database).expect("database check").status,
+		changed.check(DoctorComponent::ProductStore).expect("database check").status,
 		DoctorStatus::Unavailable(if env::var_os("DECODEX_TEST_LIVE_EXPECTED_UNSAFE").is_some() {
 			DoctorIssue::UnsafeDatabaseAuthority
 		} else {
@@ -1147,7 +1124,7 @@ async fn isolated_postgres_rejected_role_is_authentication() {
 	.await;
 
 	assert_eq!(
-		status(&bootstrap, DoctorComponent::Database),
+		status(&bootstrap, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::Authentication)
 	);
 }
@@ -1164,7 +1141,7 @@ async fn isolated_postgres_overprivileged_runtime_is_unavailable() {
 		DecodexRoot::new(root_path).expect("representative unsafe-authority root is safe"),
 	)
 	.await;
-	let actual_status = status(&bootstrap, DoctorComponent::Database);
+	let actual_status = status(&bootstrap, DoctorComponent::ProductStore);
 	let actual_availability = bootstrap.product_state_availability();
 	let expected_status = DoctorStatus::Unavailable(DoctorIssue::UnsafeDatabaseAuthority);
 	let expected_availability =
@@ -1194,7 +1171,7 @@ async fn isolated_postgres_incompatible_runtime_is_unavailable() {
 		DecodexRoot::new(root_path).expect("representative incompatible-authority root is safe"),
 	)
 	.await;
-	let actual_status = status(&bootstrap, DoctorComponent::Database);
+	let actual_status = status(&bootstrap, DoctorComponent::ProductStore);
 	let actual_availability = bootstrap.product_state_availability();
 	let expected_status = DoctorStatus::Unavailable(DoctorIssue::DatabaseIncompatible);
 	let expected_availability =
@@ -1225,7 +1202,7 @@ async fn isolated_postgres_hostile_search_path_is_unavailable() {
 	.await;
 
 	assert_eq!(
-		status(&bootstrap, DoctorComponent::Database),
+		status(&bootstrap, DoctorComponent::ProductStore),
 		DoctorStatus::Unavailable(DoctorIssue::UnsafeDatabaseAuthority)
 	);
 	assert_eq!(

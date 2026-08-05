@@ -30,7 +30,7 @@ fn checked_in_example_matches_the_bounded_vnext_schema() {
 }
 
 #[test]
-fn valid_configuration_keeps_profiles_and_server_host_paths_explicit() {
+fn valid_configuration_keeps_profiles_and_runtime_postgres_explicit() {
 	let config =
 		DecodexConfig::parse(support::valid_config().as_bytes()).expect("valid configuration");
 
@@ -58,24 +58,10 @@ fn valid_configuration_keeps_profiles_and_server_host_paths_explicit() {
 	assert_eq!(remote.port(), 49_152);
 	assert_eq!(remote.expected_server_identity().as_str(), SERVER_ID);
 
-	let repository = config
-		.server_host()
-		.repositories()
-		.iter()
-		.find(|(name, _)| name.as_str() == "decodex")
-		.map(|(_, path)| path)
-		.expect("server-host repository");
-
-	assert_eq!(repository.as_server_path().to_str(), Some("/srv/repos/decodex"));
 	assert_eq!(config.postgres().socket_directory().to_str(), Some("/var/run/postgresql"));
 	assert_eq!(config.postgres().expected_peer_uid(), 70);
 	assert_eq!(config.postgres().port(), 5_432);
 	assert_eq!(config.postgres().database(), "decodex");
-	assert_eq!(config.postgres().migration().user(), "decodex_migration");
-	assert_eq!(
-		config.postgres().migration().credential_env_var(),
-		Some("DECODEX_POSTGRES_MIGRATION_PASSWORD")
-	);
 	assert_eq!(config.postgres().runtime().user(), "decodex_runtime");
 	assert_eq!(
 		config.postgres().runtime().credential_env_var(),
@@ -93,25 +79,6 @@ fn landed_portless_postgres_config_keeps_the_standard_typed_default() {
 }
 
 #[test]
-fn migration_and_runtime_postgres_identities_must_be_distinct() {
-	let same_role = support::valid_config()
-		.replace("user = \"decodex_runtime\"", "user = \"decodex_migration\"");
-
-	assert_eq!(
-		DecodexConfig::parse(same_role.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgres
-	);
-
-	let same_credential = support::valid_config()
-		.replace("DECODEX_POSTGRES_RUNTIME_PASSWORD", "DECODEX_POSTGRES_MIGRATION_PASSWORD");
-
-	assert_eq!(
-		DecodexConfig::parse(same_credential.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgres
-	);
-}
-
-#[test]
 fn remote_profiles_have_no_client_local_repository_path_field() {
 	let input = support::valid_config().replace(
 		"expected_server_identity = \"018f0f9e-7b6e-4a31-8f4c-1d2e3f405162\"",
@@ -122,10 +89,9 @@ fn remote_profiles_have_no_client_local_repository_path_field() {
 }
 
 #[test]
-fn remote_client_projection_never_validates_server_host_paths() {
+fn remote_client_projection_never_validates_postgres_host_paths() {
 	let input = support::valid_config()
 		.replace("active_profile = \"local\"", "active_profile = \"remote\"")
-		.replace("host_path = \"/srv/repos/decodex\"", "host_path = \"../server-only\"")
 		.replace(
 			"socket_directory = \"/var/run/postgresql\"",
 			"socket_directory = \"../server-only\"",
@@ -137,7 +103,7 @@ fn remote_client_projection_never_validates_server_host_paths() {
 	assert!(matches!(profile, ServerProfile::Remote(_)));
 	assert_eq!(
 		DecodexConfig::parse(input.as_bytes()).unwrap_err(),
-		ConfigError::InvalidServerHostPath,
+		ConfigError::InvalidPostgresHostPath,
 	);
 }
 
@@ -196,15 +162,7 @@ fn local_and_remote_profile_boundaries_fail_closed() {
 }
 
 #[test]
-fn relative_or_escaping_server_host_paths_are_rejected() {
-	let relative_repository = support::valid_config()
-		.replace("host_path = \"/srv/repos/decodex\"", "host_path = \"../repos/decodex\"");
-
-	assert_eq!(
-		DecodexConfig::parse(relative_repository.as_bytes()).unwrap_err(),
-		ConfigError::InvalidServerHostPath,
-	);
-
+fn relative_or_oversized_postgres_host_paths_are_rejected() {
 	let relative_socket = support::valid_config().replace(
 		"socket_directory = \"/var/run/postgresql\"",
 		"socket_directory = \"../postgresql\"",
@@ -213,14 +171,6 @@ fn relative_or_escaping_server_host_paths_are_rejected() {
 	assert_eq!(
 		DecodexConfig::parse(relative_socket.as_bytes()).unwrap_err(),
 		ConfigError::InvalidPostgresHostPath,
-	);
-
-	let oversized_repository = support::valid_config()
-		.replace("/srv/repos/decodex", &format!("/srv/{}", "x".repeat(4 * 1_024)));
-
-	assert_eq!(
-		DecodexConfig::parse(oversized_repository.as_bytes()).unwrap_err(),
-		ConfigError::InvalidServerHostPath,
 	);
 
 	let oversized_socket = support::valid_config()
@@ -250,15 +200,9 @@ fn malformed_postgres_fields_are_distinct_from_unsafe_host_paths() {
 }
 
 #[test]
-fn accepted_server_host_paths_are_stored_in_one_lexically_normalized_form() {
-	let input = support::valid_config()
-		.replace("/srv/repos/decodex", "/srv//repos/./decodex")
-		.replace("/var/run/postgresql", "/var//run/./postgresql");
+fn accepted_postgres_host_paths_are_stored_in_one_lexically_normalized_form() {
+	let input = support::valid_config().replace("/var/run/postgresql", "/var//run/./postgresql");
 	let config = DecodexConfig::parse(input.as_bytes()).expect("normalizable host paths");
-	let repository =
-		config.server_host().repositories().values().next().expect("server-host repository");
-
-	assert_eq!(repository.as_server_path(), std::path::Path::new("/srv/repos/decodex"));
 	assert_eq!(config.postgres().socket_directory(), std::path::Path::new("/var/run/postgresql"),);
 }
 
@@ -284,7 +228,6 @@ fn malformed_unknown_and_oversized_configuration_are_bounded_and_redacted() {
 fn successful_config_debug_redacts_operator_strings() {
 	let input = support::valid_config()
 		.replace("server.example.test", "xy1306-secret-marker.example")
-		.replace("/srv/repos/decodex", "/srv/xy1306-secret-marker")
 		.replace("database = \"decodex\"", "database = \"xy1306_secret_marker\"")
 		.replace("user = \"decodex\"", "user = \"xy1306_secret_user\"");
 	let config = DecodexConfig::parse(input.as_bytes()).expect("valid marked configuration");

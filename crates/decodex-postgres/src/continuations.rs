@@ -1,4 +1,4 @@
-//! Inert, exactly-once continuation plans over persisted V16 decisions.
+//! Inert, exactly-once continuation plans over persisted Routing Decisions.
 
 use decodex_core::{
 	AccountId, BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlan,
@@ -16,34 +16,72 @@ use crate::{
 		publish_verified_blob, side_effect_sql, validate_context_pack,
 	},
 	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
+	runtime_sessions::{
+		RuntimeSessionAccountSnapshot, RuntimeSessionProfileSnapshot, StoredRuntimeSession,
+		account_from_value, profile_from_value, session_state_from_sql,
+	},
 };
 
-/// Caller identities and optimistic coordinate for one V16 decision consumption.
-/// No field can supply routing policy, candidates, evidence, exclusions, or selection.
+const PLAN_INITIAL_THREAD_CONTINUATION_SQL: &str = "SELECT decodex.plan_initial_thread_continuation_exact(\
+	 $1,$2,$3::text::uuid,$4::text::uuid,$5,$6::text::uuid)";
+const PLAN_EXISTING_SESSION_CONTINUATION_SQL: &str = "SELECT decodex.plan_continuation_exact(\
+	 $1,$2,$3::text::uuid,$4::text::uuid,$5,$6::text::uuid,$7::text::uuid,\
+	 $8::text::uuid,$9::text::uuid,$10,$11,$12,$13,$14,$15,$16,$17,\
+	 $18::text[],$19::text[],$20::bigint[],$21::text[],$22::bigint[],\
+	 $23::bigint[],$24::text[],$25::text[],$26::text[],$27::bigint[])";
+
+#[cfg(all(test, feature = "test-support"))]
+pub(crate) async fn prepare_continuation_plan_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	const SOURCES: [&str; 2] =
+		[PLAN_INITIAL_THREAD_CONTINUATION_SQL, PLAN_EXISTING_SESSION_CONTINUATION_SQL];
+	for source in SOURCES {
+		client.prepare(source).await?;
+	}
+	Ok(SOURCES.len())
+}
+
+/// Exact coordinates for existing-session continuation planning.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PlanContinuation {
 	/// Domain operation identity; the protocol-scoped exact-command idempotency key is separate.
 	pub operation_id: String,
-	/// Exact persisted selected V16 routing decision to consume.
+	/// Exact persisted selected Routing Decision to consume.
 	pub routing_decision_id: String,
 	/// Positive Conversation or ManagedRun revision that must match persisted decision lineage.
 	pub expected_consumer_revision: i64,
 	/// Caller-allocated identity for the one immutable continuation plan.
 	pub plan_id: String,
-	/// Preallocated RuntimeSession identity used only when the authority selects fallback.
+	/// Preallocated RuntimeSession identity used only when fallback is selected.
 	pub fallback_runtime_session_id: String,
 	/// Preallocated selected-account snapshot identity used only for fallback.
 	pub fallback_account_snapshot_id: String,
-	/// Preallocated Context Pack identity used only for the atomic fallback shape.
+	/// Preallocated Context Pack identity used only for fallback.
 	pub fallback_context_pack_id: String,
 }
 
-/// Strict committed readback. A fallback includes the fully byte- and manifest-verified pack.
+/// Exact coordinates for creating the first unfenced RuntimeSession and inert plan.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PlanInitialThreadContinuation {
+	/// Domain operation identity; the protocol-scoped exact-command key is separate.
+	pub operation_id: String,
+	/// Exact persisted selected Routing Decision to consume.
+	pub routing_decision_id: String,
+	/// Positive Conversation revision that must match the Routing Decision consumer lineage.
+	pub expected_conversation_revision: i64,
+	/// Caller-allocated identity for the immutable initial-thread plan.
+	pub plan_id: String,
+}
+
+/// Strict committed continuation-plan readback.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ContinuationPlanEffect {
-	/// Exact inert continuation plan parsed from the committed V17 effect.
+	/// Exact inert continuation plan parsed from the committed Continuation Plan effect.
 	pub plan: ContinuationPlan,
-	/// Fully verified Context Pack for fallback, or `None` for same-thread continuation.
+	/// First RuntimeSession and copied snapshots, present only for an initial-thread plan.
+	pub runtime_session: Option<StoredRuntimeSession>,
+	/// Fully verified Context Pack, present only for a Context-Pack fallback plan.
 	pub fallback_context_pack: Option<ContextPackRecord>,
 }
 
@@ -70,101 +108,133 @@ struct ContinuationPackParameters {
 
 impl ContinuationPackParameters {
 	fn new(fallback_pack: &ContextPack) -> Self {
-		let source_kinds = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| context_source_sql(source.kind()).to_owned())
-			.collect::<Vec<_>>();
-		let source_ids = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| source.source_id().to_owned())
-			.collect::<Vec<_>>();
-		let source_revisions = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| i64::try_from(source.revision()).unwrap_or(i64::MAX))
-			.collect::<Vec<_>>();
-		let content_digests = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| source.content_digest().to_hex())
-			.collect::<Vec<_>>();
-		let original_lengths = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| i64::try_from(source.original_byte_length()).unwrap_or(i64::MAX))
-			.collect::<Vec<_>>();
-		let included_lengths = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| i64::try_from(source.included_byte_length()).unwrap_or(i64::MAX))
-			.collect::<Vec<_>>();
-		let included_digests = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| source.included_digest().to_hex())
-			.collect::<Vec<_>>();
-		let dispositions = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| context_disposition_sql(source.disposition()).to_owned())
-			.collect::<Vec<_>>();
-		let artifact_ids = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| {
-				source
-					.artifact_reference()
-					.map_or_else(String::new, |(id, _)| id.as_str().to_owned())
-			})
-			.collect::<Vec<_>>();
-		let artifact_revisions = fallback_pack
-			.source_manifest()
-			.iter()
-			.map(|source| {
-				source
-					.artifact_reference()
-					.and_then(|(_, revision)| i64::try_from(revision).ok())
-					.unwrap_or(0)
-			})
-			.collect::<Vec<_>>();
-		let compiled_bytes = fallback_pack.bytes().to_vec();
-		let max_bytes = i32::try_from(fallback_pack.policy().max_bytes()).unwrap_or(i32::MAX);
-		let recent_item_limit =
-			i32::try_from(fallback_pack.policy().recent_item_limit()).unwrap_or(i32::MAX);
-		let omitted_source_count =
-			i32::try_from(fallback_pack.omitted_source_count()).unwrap_or(i32::MAX);
-		let possible_side_effects = side_effect_sql(fallback_pack.possible_side_effects());
-		let compiled_digest = fallback_pack.digest().to_hex();
-		let manifest_digest = fallback_pack.manifest_digest().to_hex();
-		let truncated = fallback_pack.truncated();
-
+		let sources = fallback_pack.source_manifest();
 		Self {
-			compiled_bytes,
-			compiled_digest,
-			manifest_digest,
-			max_bytes,
-			recent_item_limit,
-			possible_side_effects,
-			truncated,
-			omitted_source_count,
-			source_kinds,
-			source_ids,
-			source_revisions,
-			content_digests,
-			original_lengths,
-			included_lengths,
-			included_digests,
-			dispositions,
-			artifact_ids,
-			artifact_revisions,
+			compiled_bytes: fallback_pack.bytes().to_vec(),
+			compiled_digest: fallback_pack.digest().to_hex(),
+			manifest_digest: fallback_pack.manifest_digest().to_hex(),
+			max_bytes: i32::try_from(fallback_pack.policy().max_bytes()).unwrap_or(i32::MAX),
+			recent_item_limit: i32::try_from(fallback_pack.policy().recent_item_limit())
+				.unwrap_or(i32::MAX),
+			possible_side_effects: side_effect_sql(fallback_pack.possible_side_effects()),
+			truncated: fallback_pack.truncated(),
+			omitted_source_count: i32::try_from(fallback_pack.omitted_source_count())
+				.unwrap_or(i32::MAX),
+			source_kinds: sources
+				.iter()
+				.map(|source| context_source_sql(source.kind()).to_owned())
+				.collect(),
+			source_ids: sources.iter().map(|source| source.source_id().to_owned()).collect(),
+			source_revisions: sources
+				.iter()
+				.map(|source| i64::try_from(source.revision()).unwrap_or(i64::MAX))
+				.collect(),
+			content_digests: sources
+				.iter()
+				.map(|source| source.content_digest().to_hex())
+				.collect(),
+			original_lengths: sources
+				.iter()
+				.map(|source| i64::try_from(source.original_byte_length()).unwrap_or(i64::MAX))
+				.collect(),
+			included_lengths: sources
+				.iter()
+				.map(|source| i64::try_from(source.included_byte_length()).unwrap_or(i64::MAX))
+				.collect(),
+			included_digests: sources
+				.iter()
+				.map(|source| source.included_digest().to_hex())
+				.collect(),
+			dispositions: sources
+				.iter()
+				.map(|source| context_disposition_sql(source.disposition()).to_owned())
+				.collect(),
+			artifact_ids: sources
+				.iter()
+				.map(|source| {
+					source
+						.artifact_reference()
+						.map_or_else(String::new, |(id, _)| id.as_str().to_owned())
+				})
+				.collect(),
+			artifact_revisions: sources
+				.iter()
+				.map(|source| {
+					source
+						.artifact_reference()
+						.and_then(|(_, revision)| i64::try_from(revision).ok())
+						.unwrap_or(0)
+				})
+				.collect(),
 		}
 	}
 }
 
 impl PostgresStore {
-	/// Consume one exact selected V16 decision into one inert continuation plan.
+	/// Consume one selected L0 decision and atomically create the first RuntimeSession and plan.
+	pub async fn plan_initial_thread_continuation(
+		&self,
+		idempotency_key: &str,
+		request: &PlanInitialThreadContinuation,
+	) -> Result<ContinuationCommandOutcome<ContinuationPlanEffect>, StoreError> {
+		validate_exact_key(idempotency_key)?;
+		for (value, label) in [
+			(&request.operation_id, "continuation operation identity"),
+			(&request.routing_decision_id, "routing decision identity"),
+			(&request.plan_id, "continuation plan identity"),
+		] {
+			validate_uuid(value, label)?;
+		}
+		if request.expected_conversation_revision <= 0 {
+			return Err(StoreError::InvalidInput("Conversation revision must be positive"));
+		}
+
+		let response = self
+			.execute_exact_with_retry(
+				PLAN_INITIAL_THREAD_CONTINUATION_SQL,
+				&[
+					&EXACT_COMMAND_PROTOCOL,
+					&idempotency_key,
+					&request.operation_id,
+					&request.routing_decision_id,
+					&request.expected_conversation_revision,
+					&request.plan_id,
+				],
+			)
+			.await?;
+		let (classification, effect) =
+			parse_envelope(&response, "plan_initial_thread_continuation")?;
+		if classification == "stable_domain_rejection" {
+			return Ok(ContinuationCommandOutcome::Rejected(parse_rejection(&effect)?));
+		}
+		let plan = parse_plan(&effect)?;
+		if plan.kind != ContinuationPlanKind::InitialThread
+			|| plan.plan_id != request.plan_id
+			|| plan.operation_id != request.operation_id
+			|| plan.routing_decision_id != request.routing_decision_id
+			|| plan.consumer.domain_revision() != request.expected_conversation_revision
+		{
+			return incompatible("stored initial-thread continuation is cross-linked");
+		}
+		if plan.source_runtime_session_revision != 1 {
+			return incompatible("initial RuntimeSession revision is not fresh");
+		}
+		let runtime_session = Some(parse_created_runtime_session(
+			&effect,
+			&plan,
+			&plan.source_runtime_session_id,
+			"initial",
+		)?);
+		verify_effect_rows(&effect, &plan)?;
+		self.verify_plan_readback(&response, &effect, &plan).await?;
+		Ok(ContinuationCommandOutcome::Success(ContinuationPlanEffect {
+			plan,
+			runtime_session,
+			fallback_context_pack: None,
+		}))
+	}
+
+	/// Atomically choose same-thread continuation or one Context-Pack fallback successor.
 	pub async fn plan_continuation(
 		&self,
 		blob_store: &BlobStore,
@@ -208,11 +278,11 @@ impl PostgresStore {
 			}
 			Some(publication)
 		};
-
 		let parameters = ContinuationPackParameters::new(fallback_pack);
+
 		let response =
-			self.execute_continuation_command(idempotency_key, request, &parameters).await?;
-		let (classification, effect) = parse_envelope(&response)?;
+			self.execute_existing_session_plan(idempotency_key, request, &parameters).await?;
+		let (classification, effect) = parse_envelope(&response, "plan_continuation")?;
 		if classification == "stable_domain_rejection" {
 			return Ok(ContinuationCommandOutcome::Rejected(parse_rejection(&effect)?));
 		}
@@ -222,12 +292,20 @@ impl PostgresStore {
 			|| plan.routing_decision_id != request.routing_decision_id
 			|| plan.consumer.domain_revision() != request.expected_consumer_revision
 		{
-			return incompatible("stored continuation response is cross-linked");
+			return incompatible("stored existing-session continuation is cross-linked");
 		}
 		verify_effect_rows(&effect, &plan)?;
 		self.verify_plan_readback(&response, &effect, &plan).await?;
-		let fallback_context_pack = match plan.kind {
-			ContinuationPlanKind::SameThread => None,
+		let (runtime_session, fallback_context_pack) = match plan.kind {
+			ContinuationPlanKind::SameThread => {
+				if !matches!(effect.get("runtime_session_snapshot"), Some(Value::Null))
+					|| !matches!(effect.get("profile_snapshot"), Some(Value::Null))
+					|| !matches!(effect.get("account_snapshot"), Some(Value::Null))
+				{
+					return incompatible("same-thread continuation created successor state");
+				}
+				(None, None)
+			},
 			ContinuationPlanKind::ContextPackFallback => {
 				let context_pack_id =
 					plan.fallback_context_pack_id.as_deref().ok_or_else(|| {
@@ -241,27 +319,39 @@ impl PostgresStore {
 				{
 					return incompatible("fallback Context Pack readback is cross-linked");
 				}
-				Some(record)
+				let runtime_session_id =
+					plan.fallback_runtime_session_id.as_ref().ok_or_else(|| {
+						StoreError::Incompatible("fallback plan lost RuntimeSession".into())
+					})?;
+				(
+					Some(parse_created_runtime_session(
+						&effect,
+						&plan,
+						runtime_session_id,
+						"fallback",
+					)?),
+					Some(record),
+				)
+			},
+			ContinuationPlanKind::InitialThread => {
+				return incompatible("existing-session continuation returned initial-thread state");
 			},
 		};
 		Ok(ContinuationCommandOutcome::Success(ContinuationPlanEffect {
 			plan,
+			runtime_session,
 			fallback_context_pack,
 		}))
 	}
 
-	async fn execute_continuation_command(
+	async fn execute_existing_session_plan(
 		&self,
 		idempotency_key: &str,
 		request: &PlanContinuation,
 		parameters: &ContinuationPackParameters,
 	) -> Result<Vec<u8>, StoreError> {
 		self.execute_exact_with_retry(
-			"SELECT decodex.plan_continuation_exact(\
-			 $1,$2,$3::text::uuid,$4::text::uuid,$5,$6::text::uuid,$7::text::uuid,\
-			 $8::text::uuid,$9::text::uuid,$10,$11,$12,$13,$14,$15,$16,$17,\
-			 $18::text[],$19::text[],$20::bigint[],$21::text[],$22::bigint[],\
-			 $23::bigint[],$24::text[],$25::text[],$26::text[],$27::bigint[])",
+			PLAN_EXISTING_SESSION_CONTINUATION_SQL,
 			&[
 				&EXACT_COMMAND_PROTOCOL,
 				&idempotency_key,
@@ -332,7 +422,7 @@ impl PostgresStore {
 	}
 }
 
-fn parse_envelope(bytes: &[u8]) -> Result<(String, Value), StoreError> {
+fn parse_envelope(bytes: &[u8], expected_operation: &str) -> Result<(String, Value), StoreError> {
 	let document: Value = serde_json::from_slice(bytes).map_err(|_| {
 		StoreError::Incompatible("stored continuation response is malformed".into())
 	})?;
@@ -345,7 +435,7 @@ fn parse_envelope(bytes: &[u8]) -> Result<(String, Value), StoreError> {
 		StoreError::Incompatible("stored continuation effect is malformed".into())
 	})?;
 	verify_digest(effect)?;
-	if text(effect, "operation")? != "plan_continuation" {
+	if text(effect, "operation")? != expected_operation {
 		return incompatible("stored continuation operation is cross-linked");
 	}
 	Ok((classification.to_owned(), effect.clone()))
@@ -359,6 +449,7 @@ fn parse_rejection(effect: &Value) -> Result<ContinuationRejection, StoreError> 
 		"decision_not_selected" => Ok(ContinuationRejection::DecisionNotSelected),
 		"stale_consumer_revision" => Ok(ContinuationRejection::StaleConsumerRevision),
 		"decision_already_consumed" => Ok(ContinuationRejection::DecisionAlreadyConsumed),
+		"same_thread_unavailable" => Ok(ContinuationRejection::SameThreadUnavailable),
 		"invalid_context_pack" => Ok(ContinuationRejection::InvalidContextPack),
 		"fallback_identity_conflict" => Ok(ContinuationRejection::FallbackIdentityConflict),
 		_ => incompatible("stored continuation rejection is unknown"),
@@ -371,89 +462,32 @@ fn parse_same_thread_evidence(
 	consumer: &ExecutionConsumer,
 ) -> Result<Option<SameThreadContinuationEvidence>, StoreError> {
 	match kind {
-		ContinuationPlanKind::SameThread => match consumer {
-			ExecutionConsumer::ManagedRunExecution { .. } =>
-				Ok(Some(SameThreadContinuationEvidence::CausalExperiment {
-					routing_evidence_id: optional_text(effect, "routing_evidence_id")?
-						.ok_or_else(|| {
-							StoreError::Incompatible(
-								"same-thread routing evidence is absent".into(),
-							)
-						})?
-						.to_owned(),
-					routing_evidence_revision: optional_positive_i64(
-						effect,
-						"routing_evidence_revision",
-					)?
-					.ok_or_else(|| {
-						StoreError::Incompatible(
-							"same-thread routing evidence revision is absent".into(),
-						)
-					})?,
-					schema_fingerprint: optional_text(effect, "schema_fingerprint")?
-						.ok_or_else(|| {
-							StoreError::Incompatible("same-thread schema is absent".into())
-						})?
-						.to_owned(),
-					experiment_id: optional_text(effect, "codex_experiment_id")?
-						.ok_or_else(|| {
-							StoreError::Incompatible("same-thread experiment is absent".into())
-						})?
-						.to_owned(),
-					experiment_revision: optional_positive_i64(
-						effect,
-						"codex_experiment_revision",
-					)?
-					.ok_or_else(|| {
-						StoreError::Incompatible("same-thread experiment revision is absent".into())
-					})?,
-					observation_id: optional_text(effect, "codex_observation_id")?
-						.ok_or_else(|| {
-							StoreError::Incompatible("same-thread observation is absent".into())
-						})?
-						.to_owned(),
-				})),
-			ExecutionConsumer::ConversationTurn { .. } =>
-				Ok(Some(SameThreadContinuationEvidence::ProviderAttempt {
-					attempt_id: ProviderAttemptId::new(
-						optional_text(effect, "same_thread_provider_attempt_id")?
-							.ok_or_else(|| {
-								StoreError::Incompatible(
-									"same-thread ProviderAttempt is absent".into(),
-								)
-							})?
-							.to_owned(),
-					)
-					.map_err(|_| {
-						StoreError::Incompatible(
-							"same-thread ProviderAttempt identity is invalid".into(),
-						)
-					})?,
-					attempt_revision: optional_positive_i64(
-						effect,
-						"same_thread_provider_attempt_revision",
-					)?
-					.ok_or_else(|| {
-						StoreError::Incompatible(
-							"same-thread ProviderAttempt revision is absent".into(),
-						)
-					})?,
-					evidence_id: ProviderEvidenceId::new(
-						optional_text(effect, "same_thread_provider_evidence_id")?
-							.ok_or_else(|| {
-								StoreError::Incompatible(
-									"same-thread provider evidence is absent".into(),
-								)
-							})?
-							.to_owned(),
-					)
-					.map_err(|_| {
-						StoreError::Incompatible(
-							"same-thread provider evidence identity is invalid".into(),
-						)
-					})?,
-				})),
+		ContinuationPlanKind::InitialThread => {
+			if !matches!(consumer, ExecutionConsumer::ConversationTurn { .. }) {
+				return incompatible("initial-thread plan has a non-Conversation consumer");
+			}
+			for key in [
+				"routing_evidence_id",
+				"schema_fingerprint",
+				"codex_experiment_id",
+				"codex_observation_id",
+				"same_thread_provider_attempt_id",
+				"same_thread_provider_evidence_id",
+			] {
+				if optional_text(effect, key)?.is_some() {
+					return incompatible("initial-thread plan carries continuation evidence");
+				}
+			}
+			if optional_positive_i64(effect, "routing_evidence_revision")?.is_some()
+				|| optional_positive_i64(effect, "codex_experiment_revision")?.is_some()
+				|| optional_positive_i64(effect, "same_thread_provider_attempt_revision")?.is_some()
+			{
+				return incompatible("initial-thread plan carries an evidence revision");
+			}
+			Ok(None)
 		},
+		ContinuationPlanKind::SameThread =>
+			parse_selected_same_thread_evidence(effect, consumer).map(Some),
 		ContinuationPlanKind::ContextPackFallback => {
 			for key in [
 				"routing_evidence_id",
@@ -478,29 +512,122 @@ fn parse_same_thread_evidence(
 	}
 }
 
-fn parse_consumer(effect: &Value) -> Result<ExecutionConsumer, StoreError> {
+fn parse_selected_same_thread_evidence(
+	effect: &Value,
+	consumer: &ExecutionConsumer,
+) -> Result<SameThreadContinuationEvidence, StoreError> {
+	match consumer {
+		ExecutionConsumer::ManagedRunExecution { .. } =>
+			Ok(SameThreadContinuationEvidence::CausalExperiment {
+				routing_evidence_id: optional_text(effect, "routing_evidence_id")?
+					.ok_or_else(|| {
+						StoreError::Incompatible("same-thread routing evidence is absent".into())
+					})?
+					.to_owned(),
+				routing_evidence_revision: optional_positive_i64(
+					effect,
+					"routing_evidence_revision",
+				)?
+				.ok_or_else(|| {
+					StoreError::Incompatible(
+						"same-thread routing evidence revision is absent".into(),
+					)
+				})?,
+				schema_fingerprint: optional_text(effect, "schema_fingerprint")?
+					.ok_or_else(|| StoreError::Incompatible("same-thread schema is absent".into()))?
+					.to_owned(),
+				experiment_id: optional_text(effect, "codex_experiment_id")?
+					.ok_or_else(|| {
+						StoreError::Incompatible("same-thread experiment is absent".into())
+					})?
+					.to_owned(),
+				experiment_revision: optional_positive_i64(effect, "codex_experiment_revision")?
+					.ok_or_else(|| {
+						StoreError::Incompatible("same-thread experiment revision is absent".into())
+					})?,
+				observation_id: optional_text(effect, "codex_observation_id")?
+					.ok_or_else(|| {
+						StoreError::Incompatible("same-thread observation is absent".into())
+					})?
+					.to_owned(),
+			}),
+		ExecutionConsumer::ConversationTurn { .. } =>
+			Ok(SameThreadContinuationEvidence::ProviderAttempt {
+				attempt_id: ProviderAttemptId::new(
+					optional_text(effect, "same_thread_provider_attempt_id")?
+						.ok_or_else(|| {
+							StoreError::Incompatible("same-thread ProviderAttempt is absent".into())
+						})?
+						.to_owned(),
+				)
+				.map_err(|_| {
+					StoreError::Incompatible(
+						"same-thread ProviderAttempt identity is invalid".into(),
+					)
+				})?,
+				attempt_revision: optional_positive_i64(
+					effect,
+					"same_thread_provider_attempt_revision",
+				)?
+				.ok_or_else(|| {
+					StoreError::Incompatible(
+						"same-thread ProviderAttempt revision is absent".into(),
+					)
+				})?,
+				evidence_id: ProviderEvidenceId::new(
+					optional_text(effect, "same_thread_provider_evidence_id")?
+						.ok_or_else(|| {
+							StoreError::Incompatible(
+								"same-thread provider evidence is absent".into(),
+							)
+						})?
+						.to_owned(),
+				)
+				.map_err(|_| {
+					StoreError::Incompatible(
+						"same-thread provider evidence identity is invalid".into(),
+					)
+				})?,
+			}),
+	}
+}
+
+fn parse_consumer(
+	effect: &Value,
+	kind: ContinuationPlanKind,
+) -> Result<ExecutionConsumer, StoreError> {
 	match text(effect, "consumer_kind")? {
-		"conversation_turn" => Ok(ExecutionConsumer::ConversationTurn {
-			conversation_id: ConversationId::new(uuid_text(effect, "consumer_conversation_id")?)
+		"conversation_turn" => {
+			let (source_runtime_session_id, source_runtime_session_revision) = match kind {
+				ContinuationPlanKind::InitialThread => (None, None),
+				ContinuationPlanKind::SameThread | ContinuationPlanKind::ContextPackFallback => (
+					Some(
+						RuntimeSessionId::new(uuid_text(effect, "source_runtime_session_id")?)
+							.map_err(|_| {
+								StoreError::Incompatible(
+									"source RuntimeSession identity is invalid".into(),
+								)
+							})?,
+					),
+					Some(positive_i64(effect, "source_runtime_session_revision")?),
+				),
+			};
+			Ok(ExecutionConsumer::ConversationTurn {
+				conversation_id: ConversationId::new(uuid_text(
+					effect,
+					"consumer_conversation_id",
+				)?)
 				.map_err(|_| {
 					StoreError::Incompatible("consumer Conversation identity is invalid".into())
 				})?,
-			conversation_revision: positive_i64(effect, "conversation_revision")?,
-			source_runtime_session_id: RuntimeSessionId::new(uuid_text(
-				effect,
-				"source_runtime_session_id",
-			)?)
-			.map_err(|_| {
-				StoreError::Incompatible("source RuntimeSession identity is invalid".into())
-			})?,
-			source_runtime_session_revision: positive_i64(
-				effect,
-				"source_runtime_session_revision",
-			)?,
-			turn_id: TurnId::new(uuid_text(effect, "turn_id")?).map_err(|_| {
-				StoreError::Incompatible("consumer Turn identity is invalid".into())
-			})?,
-		}),
+				conversation_revision: positive_i64(effect, "conversation_revision")?,
+				source_runtime_session_id,
+				source_runtime_session_revision,
+				turn_id: TurnId::new(uuid_text(effect, "turn_id")?).map_err(|_| {
+					StoreError::Incompatible("consumer Turn identity is invalid".into())
+				})?,
+			})
+		},
 		"managed_run_execution" => Ok(ExecutionConsumer::ManagedRunExecution {
 			managed_run_id: ManagedRunId::new(uuid_text(effect, "managed_run_id")?)
 				.map_err(|_| StoreError::Incompatible("ManagedRun identity is invalid".into()))?,
@@ -514,54 +641,57 @@ fn parse_consumer(effect: &Value) -> Result<ExecutionConsumer, StoreError> {
 	}
 }
 
+const CONTINUATION_PLAN_EFFECT_KEYS: &[&str] = &[
+	"activity_effects",
+	"account_snapshot",
+	"codex_experiment_id",
+	"codex_experiment_revision",
+	"codex_observation_id",
+	"codex_thread_id",
+	"conversation_id",
+	"consumer_conversation_id",
+	"consumer_kind",
+	"conversation_revision",
+	"dispatch_enabled",
+	"effect_digest",
+	"effect_digest_source",
+	"fallback_context_pack_id",
+	"fallback_context_pack_revision",
+	"fallback_runtime_session_id",
+	"kind",
+	"managed_run_id",
+	"managed_run_revision",
+	"managed_execution_id",
+	"operation",
+	"operation_id",
+	"outbox_effects",
+	"plan_id",
+	"planned_at_micros",
+	"profile_snapshot",
+	"replay_permitted",
+	"routing_decision_id",
+	"routing_evidence_id",
+	"routing_evidence_revision",
+	"runtime_session_snapshot",
+	"schema_fingerprint",
+	"same_thread_provider_attempt_id",
+	"same_thread_provider_attempt_revision",
+	"same_thread_provider_evidence_id",
+	"selected_account_id",
+	"source_runtime_session_id",
+	"source_runtime_session_revision",
+	"turn_id",
+];
+
 fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
-	require_keys(
-		effect,
-		&[
-			"activity_effects",
-			"codex_experiment_id",
-			"codex_experiment_revision",
-			"codex_observation_id",
-			"codex_thread_id",
-			"conversation_id",
-			"consumer_conversation_id",
-			"consumer_kind",
-			"conversation_revision",
-			"dispatch_enabled",
-			"effect_digest",
-			"effect_digest_source",
-			"fallback_context_pack_id",
-			"fallback_context_pack_revision",
-			"fallback_runtime_session_id",
-			"kind",
-			"managed_run_id",
-			"managed_run_revision",
-			"managed_execution_id",
-			"operation",
-			"operation_id",
-			"outbox_effects",
-			"plan_id",
-			"planned_at_micros",
-			"replay_permitted",
-			"routing_decision_id",
-			"routing_evidence_id",
-			"routing_evidence_revision",
-			"schema_fingerprint",
-			"same_thread_provider_attempt_id",
-			"same_thread_provider_attempt_revision",
-			"same_thread_provider_evidence_id",
-			"selected_account_id",
-			"source_runtime_session_id",
-			"source_runtime_session_revision",
-			"turn_id",
-		],
-	)?;
+	require_keys(effect, CONTINUATION_PLAN_EFFECT_KEYS)?;
 	let kind = match text(effect, "kind")? {
+		"initial_thread" => ContinuationPlanKind::InitialThread,
 		"same_thread" => ContinuationPlanKind::SameThread,
 		"context_pack_fallback" => ContinuationPlanKind::ContextPackFallback,
-		_ => return incompatible("stored continuation kind is unknown"),
+		_ => return incompatible("stored continuation kind is not available to runtime callers"),
 	};
-	let consumer = parse_consumer(effect)?;
+	let consumer = parse_consumer(effect, kind)?;
 	let same_thread_evidence = parse_same_thread_evidence(effect, kind, &consumer)?;
 	let codex_thread_id = optional_text(effect, "codex_thread_id")?.map(str::to_owned);
 	let fallback_context_pack_id =
@@ -572,20 +702,30 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 		.map_err(|_| {
 			StoreError::Incompatible("fallback RuntimeSession identity is invalid".into())
 		})?;
+	let fallback_context_pack_revision =
+		optional_positive_i64(effect, "fallback_context_pack_revision")?;
 	match kind {
+		ContinuationPlanKind::InitialThread
+			if codex_thread_id.is_some()
+				|| fallback_context_pack_id.is_some()
+				|| fallback_runtime_session_id.is_some()
+				|| fallback_context_pack_revision.is_some() =>
+		{
+			return incompatible("initial-thread plan has thread or successor fields");
+		},
 		ContinuationPlanKind::SameThread
 			if codex_thread_id.is_none()
 				|| fallback_context_pack_id.is_some()
 				|| fallback_runtime_session_id.is_some()
-				|| optional_positive_i64(effect, "fallback_context_pack_revision")?.is_some() =>
+				|| fallback_context_pack_revision.is_some() =>
 		{
-			return incompatible("same-thread plan has fallback fields");
+			return incompatible("same-thread plan has successor fields");
 		},
 		ContinuationPlanKind::ContextPackFallback
 			if codex_thread_id.is_some()
 				|| fallback_context_pack_id.is_none()
 				|| fallback_runtime_session_id.is_none()
-				|| optional_positive_i64(effect, "fallback_context_pack_revision")?.is_none() =>
+				|| fallback_context_pack_revision.is_none() =>
 		{
 			return incompatible("fallback plan is incomplete");
 		},
@@ -632,20 +772,118 @@ fn parse_plan(effect: &Value) -> Result<ContinuationPlan, StoreError> {
 	})
 }
 
+fn parse_created_runtime_session(
+	effect: &Value,
+	plan: &ContinuationPlan,
+	expected_runtime_session_id: &RuntimeSessionId,
+	shape: &str,
+) -> Result<StoredRuntimeSession, StoreError> {
+	let session = effect
+		.get("runtime_session_snapshot")
+		.filter(|value| value.is_object())
+		.ok_or_else(|| StoreError::Incompatible(format!("{shape} RuntimeSession is absent")))?;
+	let profile_value = effect
+		.get("profile_snapshot")
+		.filter(|value| value.is_object())
+		.ok_or_else(|| StoreError::Incompatible(format!("{shape} profile snapshot is absent")))?;
+	let account_value = effect
+		.get("account_snapshot")
+		.filter(|value| value.is_object())
+		.ok_or_else(|| StoreError::Incompatible(format!("{shape} account snapshot is absent")))?;
+	require_keys(
+		session,
+		&[
+			"account_snapshot_id",
+			"codex_thread_id",
+			"conversation_id",
+			"created_at",
+			"ended_at",
+			"last_known_turn_id",
+			"profile_snapshot_id",
+			"revision",
+			"runtime_session_id",
+			"state",
+			"updated_at",
+		],
+	)?;
+	require_keys(
+		profile_value,
+		&[
+			"created_at",
+			"instructions",
+			"instructions_digest",
+			"model",
+			"profile_snapshot_id",
+			"provenance",
+			"reasoning_effort",
+			"role",
+			"service_tier",
+			"source_profile_id",
+			"source_revision",
+		],
+	)?;
+	require_keys(
+		account_value,
+		&[
+			"account_snapshot_id",
+			"created_at",
+			"display_label",
+			"observed_state",
+			"source_account_id",
+			"source_revision",
+		],
+	)?;
+	let profile: RuntimeSessionProfileSnapshot = profile_from_value(profile_value)?;
+	let account: RuntimeSessionAccountSnapshot = account_from_value(account_value)?;
+	let runtime_session_id = RuntimeSessionId::new(uuid_text(session, "runtime_session_id")?)
+		.map_err(|_| {
+			StoreError::Incompatible("initial RuntimeSession identity is invalid".into())
+		})?;
+	let conversation_id = ConversationId::new(uuid_text(session, "conversation_id")?)
+		.map_err(|_| StoreError::Incompatible("initial Conversation identity is invalid".into()))?;
+	let state = session_state_from_sql(text(session, "state")?)?;
+	let revision = positive_i64(session, "revision")?;
+	if runtime_session_id != *expected_runtime_session_id
+		|| conversation_id != plan.conversation_id
+		|| revision != 1
+		|| state != decodex_core::RuntimeSessionState::Starting
+		|| optional_text(session, "codex_thread_id")?.is_some()
+		|| optional_text(session, "last_known_turn_id")?.is_some()
+		|| optional_text(session, "ended_at")?.is_some()
+		|| text(session, "profile_snapshot_id")? != profile.profile_snapshot_id
+		|| text(session, "account_snapshot_id")? != account.account_snapshot_id
+		|| account.source_account_id != plan.selected_account_id
+	{
+		return incompatible("created RuntimeSession readback is cross-linked");
+	}
+	Ok(StoredRuntimeSession {
+		runtime_session_id,
+		conversation_id,
+		profile_snapshot: profile,
+		account_snapshot: account,
+		codex_thread_id: None,
+		last_known_turn_id: None,
+		state,
+		revision,
+		created_at: text(session, "created_at")?.to_owned(),
+		updated_at: text(session, "updated_at")?.to_owned(),
+		ended_at: None,
+	})
+}
+
 fn verify_effect_rows(effect: &Value, plan: &ContinuationPlan) -> Result<(), StoreError> {
 	let activity = array(effect, "activity_effects")?;
 	let outbox = array(effect, "outbox_effects")?;
 	let expected = match plan.kind {
-		ContinuationPlanKind::SameThread => 1,
+		ContinuationPlanKind::InitialThread | ContinuationPlanKind::SameThread => 1,
 		ContinuationPlanKind::ContextPackFallback => 3,
 	};
 	if activity.len() != expected || outbox.len() != expected {
 		return incompatible("continuation audit/outbox effect count is incomplete");
 	}
 	let expected_kinds = match plan.kind {
-		ContinuationPlanKind::SameThread => {
-			vec![("continuation_plan", plan.plan_id.clone(), 1, "continuation_plan_created")]
-		},
+		ContinuationPlanKind::InitialThread | ContinuationPlanKind::SameThread =>
+			vec![("continuation_plan", plan.plan_id.clone(), 1, "continuation_plan_created")],
 		ContinuationPlanKind::ContextPackFallback => vec![
 			("continuation_plan", plan.plan_id.clone(), 1, "continuation_plan_created"),
 			(
@@ -812,6 +1050,7 @@ fn hex_sha256(bytes: &[u8]) -> String {
 }
 const fn plan_kind_sql(kind: ContinuationPlanKind) -> &'static str {
 	match kind {
+		ContinuationPlanKind::InitialThread => "initial_thread",
 		ContinuationPlanKind::SameThread => "same_thread",
 		ContinuationPlanKind::ContextPackFallback => "context_pack_fallback",
 	}

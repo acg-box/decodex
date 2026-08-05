@@ -384,6 +384,25 @@ fn enforce_exact(
 	Ok(())
 }
 
+/// Seal one exact host-store read after canonical reconstruction and typed comparison.
+pub(crate) fn seal_exact_read(
+	account_id: &AccountId,
+	actual: &CredentialBinding,
+	expected: &CredentialBinding,
+	bundle: CredentialSecretBundle,
+) -> Result<StoredCredential, CredentialStoreError> {
+	let recomputed = bundle.binding_for(
+		account_id,
+		&actual.writer_operation_id,
+		actual.version,
+		&actual.provider,
+	)?;
+	enforce_exact(&recomputed, actual)?;
+	enforce_exact(actual, expected)?;
+
+	Ok(StoredCredential { binding: actual.clone(), bundle })
+}
+
 #[cfg(target_os = "macos")]
 mod macos {
 	use std::{
@@ -409,7 +428,7 @@ mod macos {
 	use super::{
 		AccountId, CredentialBinding, CredentialSecretBundle, CredentialStoreError,
 		CredentialVersion, HostCredentialStore, PersistedCredentialV1, StoredCredential, decode,
-		encode, enforce_exact, fingerprint,
+		encode, enforce_exact, fingerprint, seal_exact_read,
 	};
 
 	const APPLICATION_IDENTITY: &str = "box.acg.decodex";
@@ -586,10 +605,9 @@ mod macos {
 			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
 			let _process_guard = self.lock_process()?;
 			let (persisted, binding) = self.read_unlocked(account_id)?;
-			enforce_exact(&binding, expected)?;
 			let bundle = persisted.into_bundle()?;
 
-			Ok(StoredCredential { binding, bundle })
+			seal_exact_read(account_id, &binding, expected, bundle)
 		}
 
 		fn compare_and_swap_rotate(

@@ -11,7 +11,7 @@ const PROTOCOL: &str = "decodex/exact-command/1";
 pub(super) async fn assert_waiting_wake_contract(
 	store: &PostgresStore,
 	owner: &Client,
-	migration: &Config,
+	schema_owner: &Config,
 	runtime: &Config,
 	routing: &RoutingFixture,
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -44,7 +44,7 @@ pub(super) async fn assert_waiting_wake_contract(
 	let claimed =
 		assert_initial_claims(owner, &registered, registration_at, ready_at, equal_ready_at)
 			.await?;
-	assert_supersession_and_cancellation(store, migration, owner, &registered, equal_ready_at)
+	assert_supersession_and_cancellation(store, schema_owner, owner, &registered, equal_ready_at)
 		.await?;
 	let reclaimed = reclaim_waiting_wake(owner, &claimed).await?;
 	assert_fire_contract(
@@ -56,7 +56,7 @@ pub(super) async fn assert_waiting_wake_contract(
 		&reclaimed,
 	)
 	.await?;
-	assert_restart_replay(migration, runtime, routing, registration_operation, &registered).await?;
+	assert_restart_replay(runtime, routing, registration_operation, &registered).await?;
 	assert_exact_chain(owner).await?;
 	Ok(())
 }
@@ -300,7 +300,7 @@ async fn assert_initial_claims(
 
 async fn assert_supersession_and_cancellation(
 	store: &PostgresStore,
-	migration: &Config,
+	schema_owner: &Config,
 	owner: &Client,
 	registered: &RegisteredWakes,
 	equal_ready_at: i64,
@@ -333,7 +333,8 @@ async fn assert_supersession_and_cancellation(
 	assert_transition_readback(owner, &superseded_bytes).await?;
 
 	let cancelled_bytes =
-		assert_cancellation_race(migration, owner, cancel_registered_bytes, equal_ready_at).await?;
+		assert_cancellation_race(schema_owner, owner, cancel_registered_bytes, equal_ready_at)
+			.await?;
 	assert_transition_readback(owner, &cancelled_bytes).await?;
 	let superseded_terminal = internal_cancel(
 		owner,
@@ -492,15 +493,13 @@ async fn assert_fire_contract(
 }
 
 async fn assert_restart_replay(
-	migration: &Config,
 	runtime: &Config,
 	routing: &RoutingFixture,
 	registration_operation: String,
 	registered: &RegisteredWakes,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), super::expected_peer_uid())
-			.await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), super::expected_peer_uid()).await?;
 	let restart_replay = restarted
 		.register_waiting_usage_wake(
 			"v19-register",
@@ -518,7 +517,7 @@ async fn assert_restart_replay(
 }
 
 async fn assert_cancellation_race(
-	migration: &Config,
+	schema_owner: &Config,
 	owner: &Client,
 	registered_bytes: &[u8],
 	ready_at: i64,
@@ -528,8 +527,8 @@ async fn assert_cancellation_race(
 	let revision = integer(&registered, "revision");
 	let transition_id = text(&registered, "transition_id").to_owned();
 
-	let (client_a, connection_a) = migration.clone().connect(NoTls).await?;
-	let (client_b, connection_b) = migration.clone().connect(NoTls).await?;
+	let (client_a, connection_a) = schema_owner.clone().connect(NoTls).await?;
+	let (client_b, connection_b) = schema_owner.clone().connect(NoTls).await?;
 	let connection_a = tokio::spawn(connection_a);
 	let connection_b = tokio::spawn(connection_b);
 	let mut racers = JoinSet::new();
@@ -622,9 +621,7 @@ async fn assert_v19_catalog_authority(
 				"WHEN 'fire_waiting_usage_wake_exact' THEN 8 ",
 				"WHEN 'cancel_waiting_usage_wake_exact' THEN 6 END) FROM wrappers),",
 				"(SELECT count(*)=4 AND bool_and(pg_catalog.has_function_privilege(",
-				"$1,oid,'EXECUTE')) FROM wrappers),",
-				"(SELECT count(*)=2 AND min(version)=18 AND max(version)=19 ",
-				"FROM public.refinery_schema_history WHERE version IN (18,19))",
+				"$1,oid,'EXECUTE')) FROM wrappers)",
 			),
 			&[&runtime_role],
 		)
@@ -635,7 +632,6 @@ async fn assert_v19_catalog_authority(
 		"internal function ACLs grant EXECUTE only to each owner",
 		"four wrappers retain exact security and arity metadata",
 		"runtime role can execute all four wrappers",
-		"V18 and V19 ledger entries are exact",
 	];
 	for (index, invariant) in invariants.iter().enumerate() {
 		assert!(row.get::<_, bool>(index), "V19 catalog authority invariant failed: {invariant}",);

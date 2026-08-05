@@ -3,7 +3,7 @@ use std::time::Duration;
 use tokio::task::JoinSet;
 use tokio_postgres::{NoTls, error::SqlState};
 
-use super::{expected_peer_uid, separated_configs};
+use super::{expected_peer_uid, owner_runtime_configs};
 use decodex_core::{
 	AgentId, ProjectId, WorkItemCorrelationId, WorkItemId, WorkItemPriority, WorkItemProvenance,
 	WorkItemState,
@@ -73,9 +73,9 @@ fn update(
 }
 
 async fn create_project(
-	migration: &tokio_postgres::Config,
+	schema_owner: &tokio_postgres::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let task = tokio::spawn(connection);
 	client
 		.query_one(
@@ -370,10 +370,10 @@ async fn assert_work_item_outbox_authority_cases(
 
 async fn assert_work_item_outbox_delivery_and_authority(
 	store: &PostgresStore,
-	migration: &tokio_postgres::Config,
+	schema_owner: &tokio_postgres::Config,
 	runtime: &tokio_postgres::Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let (owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_task = tokio::spawn(owner_connection);
 	let delivered_id = deliver_work_item_outbox(store, &owner).await?;
 	let (authority_id, generic_id) =
@@ -611,10 +611,10 @@ async fn assert_lead_acceptance(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the focused isolated PostgreSQL 18 V11 harness"]
 async fn postgres_exact_work_item_commands() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	create_project(&migration).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	create_project(&schema_owner).await?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let project_id = ProjectId::new(PROJECT_ID)?;
 	let dependency = assert_create_and_concurrent_replay(&store).await?;
 	assert_dependency_readiness_blocked(&store, &project_id, &dependency).await?;
@@ -626,7 +626,7 @@ async fn postgres_exact_work_item_commands() -> Result<(), Box<dyn std::error::E
 	assert_eq!(page.len(), 7);
 	assert!(page.windows(2).all(|pair| pair[0].work_item.id() < pair[1].work_item.id()));
 	assert!(page.iter().all(|item| item.work_item.state() != WorkItemState::Done));
-	assert_work_item_outbox_delivery_and_authority(&store, &migration, &runtime).await?;
+	assert_work_item_outbox_delivery_and_authority(&store, &schema_owner, &runtime).await?;
 	store.close();
 	Ok(())
 }
@@ -634,8 +634,9 @@ async fn postgres_exact_work_item_commands() -> Result<(), Box<dyn std::error::E
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the focused isolated PostgreSQL 18 V11 restore harness"]
 async fn postgres_exact_work_item_restore() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let project_id = ProjectId::new(PROJECT_ID)?;
 	let page = store.query_work_items(&project_id, None, None, 16).await?;
 	assert_eq!(page.len(), 7);
@@ -646,7 +647,7 @@ async fn postgres_exact_work_item_restore() -> Result<(), Box<dyn std::error::Er
 	assert_eq!(accepted.work_item.state(), WorkItemState::Review);
 	assert_eq!(accepted.work_item.revision(), 4);
 	assert_eq!(accepted.accepted_revision, Some(4));
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let task = tokio::spawn(connection);
 	let counts = client
 		.query_one(

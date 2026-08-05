@@ -458,13 +458,14 @@ const fn profile_kind_name(kind: ProfileKind) -> &'static str {
 fn component_name(component: DoctorComponent) -> &'static str {
 	match component {
 		DoctorComponent::Configuration => "configuration",
-		DoctorComponent::Database => "database",
+		DoctorComponent::ProductStore => "product_store",
+		DoctorComponent::QuickTask => "quick_task",
 		DoctorComponent::Protocol => "protocol",
 		DoctorComponent::ProtocolVersion => "protocol_version",
 		DoctorComponent::ServerIdentity => "server_identity",
 		DoctorComponent::SharedCodexHome => "shared_codex_home",
 		DoctorComponent::AppServerCapability(capability) => capability_name(capability),
-		DoctorComponent::ServerRepositories => "server_repositories",
+		DoctorComponent::ManagedRepository => "managed_repository",
 		DoctorComponent::BlobIntegrity => "blob_integrity",
 		DoctorComponent::CredentialVault => "credential_vault",
 		DoctorComponent::PluginReadiness => "plugin_readiness",
@@ -628,7 +629,10 @@ mod tests {
 
 	#[test]
 	fn doctor_human_and_json_preserve_every_component_status_and_issue() {
-		let statuses = DoctorIssue::ALL.map(DoctorStatus::Unavailable);
+		let statuses = DoctorIssue::ALL
+			.into_iter()
+			.chain([DoctorIssue::NotProbed])
+			.map(DoctorStatus::Unavailable);
 		let report = report(statuses);
 		let human = crate::render_report(
 			DiagnosticCommand::Doctor,
@@ -662,10 +666,12 @@ mod tests {
 
 	#[test]
 	fn status_retains_ready_unavailable_and_unknown_states() {
-		let mut statuses = vec![DoctorStatus::Ready; DoctorComponent::ALL.len()];
-
-		statuses[1] = DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable);
-		statuses[2] = DoctorStatus::Unknown(DoctorIssue::NotProbed);
+		let statuses = DoctorComponent::ALL.map(|component| match component {
+			DoctorComponent::ProductStore =>
+				DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable),
+			DoctorComponent::QuickTask => DoctorStatus::Unknown(DoctorIssue::NotProbed),
+			_ => DoctorStatus::Ready,
+		});
 
 		let report = report(statuses);
 		let output = crate::render_report(
@@ -675,9 +681,9 @@ mod tests {
 			&report,
 		);
 
-		assert!(output.text().contains("16 ready, 1 unavailable, 1 unknown"));
-		assert!(output.text().contains("database=unavailable(database_unreachable)"));
-		assert!(output.text().contains("protocol=unknown(not_probed)"));
+		assert!(output.text().contains("17 ready, 1 unavailable, 1 unknown"));
+		assert!(output.text().contains("product_store=unavailable(database_unreachable)"));
+		assert!(output.text().contains("quick_task=unknown(not_probed)"));
 	}
 
 	#[test]

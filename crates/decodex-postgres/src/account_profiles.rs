@@ -204,7 +204,7 @@ impl PostgresStore {
 	}
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(all(test, feature = "test-support"))]
 pub(crate) async fn prepare_account_profile_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {

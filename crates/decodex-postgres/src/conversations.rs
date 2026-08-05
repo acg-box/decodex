@@ -20,7 +20,7 @@ use decodex_core::{
 	ContextPackPolicy, ContextSourceDisposition, ContextSourceKind, ConversationId, HistoryItemId,
 	HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES,
 	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProposedTransitionKind, RuntimeSessionId,
-	TurnId, TurnRole,
+	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 
 const MAX_PAGE_SIZE: u16 = 100;
@@ -28,6 +28,46 @@ const HIERARCHY_COORDINATION_LOCK: i64 = 1_271;
 const CURSOR_COORDINATION_LOCK: i64 = 1_272;
 const BLOB_LOCK_NAMESPACE: i32 = 1_273;
 const BLOB_SHARD_LOCK_NAMESPACE: i32 = 1_274;
+const READ_ORDINARY_TASK_CONVERSATIONS_SQL: &str = "SELECT conversation_id::text,conversation_revision,\
+	 runtime_session_id::text,runtime_session_revision,runtime_session_state::text,\
+	 codex_thread_id::text,thread_start_request_id,thread_start_request_sha256,\
+	 thread_start_response_id,thread_start_response_sha256,has_acknowledged_turn,\
+		 active_user_turn_id::text,\
+		 active_user_turn_count,has_active_provider_attempt,has_unknown_provider_attempt,\
+		 pre_session_state::text,routing_decision_id::text,updated_at_micros \
+	 FROM decodex.read_ordinary_task_conversations_exact(\
+	 $1::text::uuid,$2,$3::text::uuid,$4)";
+const READ_TURN_ADMISSION_SQL: &str = "SELECT conversation_id::text,runtime_session_id::text,turn_id::text,sequence,\
+	 role::text,possible_side_effects::text,status::text,revision \
+	 FROM decodex.read_turn_admission_exact(\
+	 $1::text::uuid,$2::text::uuid,$3::text::uuid)";
+const TERMINALIZE_QUICK_TASK_TURN_SQL: &str = "SELECT result_code,conversation_id::text,\
+	 conversation_revision,runtime_session_id::text,prior_runtime_session_revision,\
+	 runtime_session_revision,user_turn_id::text,user_turn_revision,assistant_turn_id::text,\
+	 assistant_turn_revision,provider_attempt_id::text,provider_attempt_revision,\
+	 provider_evidence_id::text \
+	 FROM decodex.terminalize_quick_task_turn_exact(\
+	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6,$7::text::uuid,$8,\
+	 $9::text::uuid,$10,$11::text::uuid,$12,$13::text::uuid,\
+	 $14::text::decodex.provider_attempt_terminal_outcome,$15::text::uuid,$16)";
+const RECONCILE_QUICK_TASK_TERMINALIZATIONS_SQL: &str =
+	"SELECT terminalized_count FROM decodex.reconcile_quick_task_terminalizations_exact($1)";
+
+#[cfg(all(test, feature = "test-support"))]
+pub(crate) async fn prepare_conversation_admission_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	const SOURCES: [&str; 4] = [
+		READ_ORDINARY_TASK_CONVERSATIONS_SQL,
+		READ_TURN_ADMISSION_SQL,
+		TERMINALIZE_QUICK_TASK_TURN_SQL,
+		RECONCILE_QUICK_TASK_TERMINALIZATIONS_SQL,
+	];
+	for source in SOURCES {
+		client.prepare(source).await?;
+	}
+	Ok(SOURCES.len())
+}
 
 /// Create a logical Conversation without any account or Codex-thread identity.
 #[derive(Clone, Debug)]
@@ -47,6 +87,164 @@ pub struct StoredConversation {
 	pub title: String,
 	/// Persisted optimistic revision.
 	pub revision: i64,
+}
+
+/// Exact current authority for one logical user Turn reservation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TurnReservationReadback {
+	/// Stable logical Turn identity.
+	pub turn_id: TurnId,
+	/// Exact persisted sequence within the Conversation.
+	pub sequence: i64,
+	/// Current durable Turn lifecycle.
+	pub status: TurnStatus,
+	/// Exact current Turn revision.
+	pub revision: i64,
+}
+
+/// Whether this call created the Turn or read back the exact completed reservation command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum TurnReservationOutcome {
+	/// The history item and active revision-1 Turn committed in this call.
+	Fresh(TurnReservationReadback),
+	/// The exact history command was already complete; current Turn authority is read back only.
+	Replayed(TurnReservationReadback),
+}
+
+/// Exact positive-evidence coordinates for one crash-convergent ordinary Turn terminalization.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct TerminalizeQuickTaskTurn {
+	/// Owning ordinary Conversation.
+	pub conversation_id: ConversationId,
+	/// Exact current Conversation revision.
+	pub expected_conversation_revision: i64,
+	/// Current bound RuntimeSession.
+	pub runtime_session_id: RuntimeSessionId,
+	/// Exact pre-acknowledgement RuntimeSession revision.
+	pub expected_runtime_session_revision: i64,
+	/// Active user Turn supported by positive provider evidence.
+	pub user_turn_id: TurnId,
+	/// Exact active user Turn revision.
+	pub expected_user_turn_revision: i64,
+	/// Optional assistant Turn and exact active revision.
+	pub assistant_turn: Option<(TurnId, i64)>,
+	/// Exact terminal ProviderAttempt.
+	pub provider_attempt_id: decodex_core::ProviderAttemptId,
+	/// Exact terminal ProviderAttempt revision.
+	pub expected_provider_attempt_revision: i64,
+	/// Exact positive provider evidence.
+	pub provider_evidence_id: decodex_core::ProviderEvidenceId,
+	/// Positive terminal outcome shared by the attempt and Turns.
+	pub provider_outcome: decodex_core::ProviderTerminalOutcome,
+	/// Exact provider thread bound to the RuntimeSession.
+	pub provider_thread_id: String,
+	/// Exact positive provider Turn identity.
+	pub provider_turn_id: String,
+}
+
+/// Atomic terminal user/assistant Turn and RuntimeSession acknowledgement readback.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuickTaskTerminalizationReadback {
+	/// RuntimeSession revision after terminal acknowledgement.
+	pub runtime_session_revision: i64,
+	/// Terminal user Turn revision.
+	pub user_turn_revision: i64,
+	/// Optional terminal assistant Turn revision.
+	pub assistant_turn_revision: Option<i64>,
+	/// Exact terminal ProviderAttempt revision consumed by the transaction.
+	pub provider_attempt_revision: i64,
+}
+
+/// Closed result of one bounded idempotent terminalization transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum QuickTaskTerminalizationOutcome {
+	/// The complete terminalization committed now.
+	Applied(QuickTaskTerminalizationReadback),
+	/// The exact complete terminalization was already durable.
+	Replayed(QuickTaskTerminalizationReadback),
+	/// Positive stable authority rejected the transaction without partial completion.
+	Rejected,
+	/// Exact receipts cannot prove whether terminalization committed.
+	Unknown,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HistoryCommandDisposition {
+	Fresh,
+	Replayed,
+}
+
+/// Exact keyset position for ordinary Task-conversation listing.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OrdinaryTaskConversationCursor {
+	/// Last-seen effective activity timestamp in Unix microseconds.
+	pub updated_at_micros: i64,
+	/// Last-seen ordinary Conversation identity at that timestamp.
+	pub conversation_id: ConversationId,
+}
+
+/// Strict credential-negative ordinary Conversation and sole-current-session projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OrdinaryTaskConversationReadback {
+	/// Stable ordinary Conversation identity.
+	pub conversation_id: ConversationId,
+	/// Exact ordinary Conversation revision.
+	pub conversation_revision: i64,
+	/// Sole current RuntimeSession identity, absent before first-session planning succeeds.
+	pub runtime_session_id: Option<RuntimeSessionId>,
+	/// Exact current RuntimeSession revision, jointly absent before first-session planning
+	/// succeeds.
+	pub runtime_session_revision: Option<i64>,
+	/// Current generic RuntimeSession lifecycle, jointly absent before first-session planning.
+	pub runtime_session_state: Option<RuntimeSessionState>,
+	/// The RuntimeSession owner acknowledged at least one positive terminal provider Turn.
+	pub has_acknowledged_turn: bool,
+	/// Exact active logical user Turn, when durable state requires reconciliation.
+	pub active_turn_id: Option<TurnId>,
+	/// A prepared or dispatch-authorized ProviderAttempt remains unresolved.
+	pub has_active_provider_attempt: bool,
+	/// A ProviderAttempt has terminally unknown submission outcome.
+	pub has_unknown_provider_attempt: bool,
+	/// Durable pre-session routing projection, absent once a current RuntimeSession exists.
+	pub pre_session_state: Option<OrdinaryTaskPreSessionState>,
+	/// Latest immutable L0 Routing Decision, absent only before the first decision commits.
+	pub routing_decision_id: Option<String>,
+	/// Effective activity position used by deterministic pagination.
+	pub updated_at_micros: i64,
+}
+
+/// Credential-negative state derived from the latest immutable L0 Routing Decision.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OrdinaryTaskPreSessionState {
+	/// The Conversation committed before a corresponding Routing Decision was available.
+	RoutingPending,
+	/// Positive current quota facts exhausted every eligible route.
+	QuotaExhausted,
+	/// Exact execution authority remains unresolved and no retry is automatic.
+	WaitingReconciliation,
+	/// The latest explicit decision found no eligible route.
+	NoRoute,
+}
+
+struct OrdinaryTaskConversationRow {
+	conversation_id: ConversationId,
+	conversation_revision: i64,
+	runtime_session_id: Option<RuntimeSessionId>,
+	runtime_session_revision: Option<i64>,
+	runtime_session_state: Option<RuntimeSessionState>,
+	codex_thread_id: Option<String>,
+	thread_start_request_id: Option<i64>,
+	thread_start_request_sha256: Option<String>,
+	thread_start_response_id: Option<i64>,
+	thread_start_response_sha256: Option<String>,
+	has_acknowledged_turn: bool,
+	active_turn_id: Option<TurnId>,
+	active_turn_count: i64,
+	has_active_provider_attempt: bool,
+	has_unknown_provider_attempt: bool,
+	pre_session_state: Option<OrdinaryTaskPreSessionState>,
+	routing_decision_id: Option<String>,
+	updated_at_micros: i64,
 }
 
 /// Create one immutable-content Artifact scoped to a logical Conversation.
@@ -256,6 +454,154 @@ pub(crate) struct BlobSession {
 	client: ClientWrapper,
 }
 
+fn parse_ordinary_task_conversation_row(
+	row: Row,
+) -> Result<OrdinaryTaskConversationRow, StoreError> {
+	let conversation_id = ConversationId::new(row.get::<_, String>(0)).map_err(|_| {
+		StoreError::Incompatible("ordinary Task Conversation identity is invalid".into())
+	})?;
+	let runtime_session_id =
+		row.get::<_, Option<String>>(2).map(RuntimeSessionId::new).transpose().map_err(|_| {
+			StoreError::Incompatible("ordinary Task RuntimeSession identity is invalid".into())
+		})?;
+	let runtime_session_state = row
+		.get::<_, Option<String>>(4)
+		.map(|state| match state.as_str() {
+			"starting" => Ok(RuntimeSessionState::Starting),
+			"active" => Ok(RuntimeSessionState::Active),
+			"ended" => Ok(RuntimeSessionState::Ended),
+			"diverged" => Ok(RuntimeSessionState::Diverged),
+			_ => Err(StoreError::Incompatible(
+				"ordinary Task RuntimeSession lifecycle is invalid".into(),
+			)),
+		})
+		.transpose()?;
+	let active_turn_id =
+		row.get::<_, Option<String>>(11).map(TurnId::new).transpose().map_err(|_| {
+			StoreError::Incompatible("ordinary Task active Turn identity is invalid".into())
+		})?;
+	let pre_session_state = row
+		.get::<_, Option<String>>(15)
+		.map(|state| match state.as_str() {
+			"routing_pending" => Ok(OrdinaryTaskPreSessionState::RoutingPending),
+			"quota_exhausted" => Ok(OrdinaryTaskPreSessionState::QuotaExhausted),
+			"waiting_reconciliation" => Ok(OrdinaryTaskPreSessionState::WaitingReconciliation),
+			"no_route" => Ok(OrdinaryTaskPreSessionState::NoRoute),
+			_ => Err(StoreError::Incompatible("ordinary Task pre-session state is invalid".into())),
+		})
+		.transpose()?;
+	Ok(OrdinaryTaskConversationRow {
+		conversation_id,
+		conversation_revision: row.get(1),
+		runtime_session_id,
+		runtime_session_revision: row.get(3),
+		runtime_session_state,
+		codex_thread_id: row.get(5),
+		thread_start_request_id: row.get(6),
+		thread_start_request_sha256: row.get(7),
+		thread_start_response_id: row.get(8),
+		thread_start_response_sha256: row.get(9),
+		has_acknowledged_turn: row.get(10),
+		active_turn_id,
+		active_turn_count: row.get(12),
+		has_active_provider_attempt: row.get(13),
+		has_unknown_provider_attempt: row.get(14),
+		pre_session_state,
+		routing_decision_id: row.get(16),
+		updated_at_micros: row.get(17),
+	})
+}
+
+impl OrdinaryTaskConversationRow {
+	fn into_readback(self) -> Result<OrdinaryTaskConversationReadback, StoreError> {
+		let lifecycle_valid = match self.runtime_session_state.as_ref() {
+			Some(RuntimeSessionState::Starting) =>
+				!self.has_acknowledged_turn
+					&& self.codex_thread_id.is_none()
+					&& self.thread_start_response_id.is_none()
+					&& self.thread_start_response_sha256.is_none()
+					&& match (
+						self.thread_start_request_id,
+						self.thread_start_request_sha256.as_deref(),
+					) {
+						(None, None) => true,
+						(Some(id), Some(digest)) => id > 0 && is_lower_sha256(digest),
+						_ => false,
+					},
+			Some(RuntimeSessionState::Active) =>
+				self.codex_thread_id.as_ref().is_some_and(|id| is_canonical_uuid(id))
+					&& self.thread_start_request_id.is_some_and(|id| id > 0)
+					&& self.thread_start_response_id.is_some_and(|id| id > 0)
+					&& self.thread_start_response_id == self.thread_start_request_id
+					&& self
+						.thread_start_request_sha256
+						.as_ref()
+						.is_some_and(|digest| is_lower_sha256(digest))
+					&& self
+						.thread_start_response_sha256
+						.as_ref()
+						.is_some_and(|digest| is_lower_sha256(digest)),
+			Some(RuntimeSessionState::Ended | RuntimeSessionState::Diverged) => false,
+			None =>
+				!self.has_acknowledged_turn
+					&& self.codex_thread_id.is_none()
+					&& self.thread_start_request_id.is_none()
+					&& self.thread_start_request_sha256.is_none()
+					&& self.thread_start_response_id.is_none()
+					&& self.thread_start_response_sha256.is_none(),
+		};
+		let has_runtime_session = self.runtime_session_id.is_some()
+			&& self.runtime_session_revision.is_some()
+			&& self.runtime_session_state.is_some();
+		let routing_shape_valid = match self.pre_session_state.as_ref() {
+			Some(OrdinaryTaskPreSessionState::RoutingPending) =>
+				self.routing_decision_id.as_deref().is_none_or(is_canonical_uuid),
+			Some(
+				OrdinaryTaskPreSessionState::QuotaExhausted
+				| OrdinaryTaskPreSessionState::WaitingReconciliation
+				| OrdinaryTaskPreSessionState::NoRoute,
+			) => self.routing_decision_id.as_deref().is_some_and(is_canonical_uuid),
+			None =>
+				has_runtime_session
+					&& self.routing_decision_id.as_deref().is_some_and(is_canonical_uuid),
+		};
+		if self.conversation_revision <= 0
+			|| self.runtime_session_revision.is_some_and(|revision| revision <= 0)
+			|| self.updated_at_micros <= 0
+			|| self.runtime_session_id.is_some() != self.runtime_session_revision.is_some()
+			|| self.runtime_session_id.is_some() != self.runtime_session_state.is_some()
+			|| has_runtime_session == self.pre_session_state.is_some()
+			|| !(0..=1).contains(&self.active_turn_count)
+			|| (self.active_turn_count == 1) != self.active_turn_id.is_some()
+			|| self.has_active_provider_attempt && self.has_unknown_provider_attempt
+			|| !has_runtime_session
+				&& (self.active_turn_id.is_some()
+					|| self.has_active_provider_attempt
+					|| self.has_unknown_provider_attempt)
+			|| !routing_shape_valid
+			|| !lifecycle_valid
+		{
+			return Err(StoreError::Incompatible(
+				"ordinary Task Conversation projection is inconsistent".into(),
+			));
+		}
+		Ok(OrdinaryTaskConversationReadback {
+			conversation_id: self.conversation_id,
+			conversation_revision: self.conversation_revision,
+			runtime_session_id: self.runtime_session_id,
+			runtime_session_revision: self.runtime_session_revision,
+			runtime_session_state: self.runtime_session_state,
+			has_acknowledged_turn: self.has_acknowledged_turn,
+			active_turn_id: self.active_turn_id,
+			has_active_provider_attempt: self.has_active_provider_attempt,
+			has_unknown_provider_attempt: self.has_unknown_provider_attempt,
+			pre_session_state: self.pre_session_state,
+			routing_decision_id: self.routing_decision_id,
+			updated_at_micros: self.updated_at_micros,
+		})
+	}
+}
+
 impl PostgresStore {
 	async fn dedicated_session(&self) -> Result<BlobSession, StoreError> {
 		let client = self.pool().get().await?;
@@ -405,6 +751,185 @@ impl PostgresStore {
 		transaction.commit().await?;
 
 		conversation_from_response(&response)
+	}
+
+	/// Read one bounded function-only page of ordinary Task-role Conversations.
+	pub async fn read_ordinary_task_conversations(
+		&self,
+		conversation_id: Option<&ConversationId>,
+		after: Option<&OrdinaryTaskConversationCursor>,
+		limit: usize,
+	) -> Result<Vec<OrdinaryTaskConversationReadback>, StoreError> {
+		if limit == 0 || limit > 65 || conversation_id.is_some() && after.is_some() {
+			return Err(StoreError::InvalidInput(
+				"ordinary Task Conversation read bound is invalid",
+			));
+		}
+		if after.is_some_and(|cursor| cursor.updated_at_micros <= 0) {
+			return Err(StoreError::InvalidInput("ordinary Task Conversation cursor is invalid"));
+		}
+		let conversation_id = conversation_id.map(ConversationId::as_str);
+		let after_updated_at_micros = after.map(|cursor| cursor.updated_at_micros);
+		let after_conversation_id = after.map(|cursor| cursor.conversation_id.as_str());
+		let limit = i64::try_from(limit)
+			.map_err(|_| StoreError::InvalidInput("ordinary Task Conversation limit is invalid"))?;
+		let rows = self
+			.pool()
+			.get()
+			.await?
+			.query(
+				READ_ORDINARY_TASK_CONVERSATIONS_SQL,
+				&[&conversation_id, &after_updated_at_micros, &after_conversation_id, &limit],
+			)
+			.await?;
+		if rows.len() > usize::try_from(limit).unwrap_or(usize::MAX) {
+			return Err(StoreError::Incompatible(
+				"ordinary Task Conversation function exceeded its bound".into(),
+			));
+		}
+
+		let readbacks = rows
+			.into_iter()
+			.map(|row| parse_ordinary_task_conversation_row(row)?.into_readback())
+			.collect::<Result<Vec<_>, StoreError>>()?;
+
+		if readbacks.windows(2).any(|pair| {
+			pair[0].updated_at_micros < pair[1].updated_at_micros
+				|| pair[0].updated_at_micros == pair[1].updated_at_micros
+					&& pair[0].conversation_id.as_str() <= pair[1].conversation_id.as_str()
+		}) || after.is_some_and(|cursor| {
+			readbacks.first().is_some_and(|first| {
+				first.updated_at_micros > cursor.updated_at_micros
+					|| first.updated_at_micros == cursor.updated_at_micros
+						&& first.conversation_id.as_str() >= cursor.conversation_id.as_str()
+			})
+		}) {
+			return Err(StoreError::Incompatible(
+				"ordinary Task Conversation ordering is invalid".into(),
+			));
+		}
+
+		Ok(readbacks)
+	}
+
+	/// Atomically terminalize positive ProviderAttempt evidence, both logical Turns, and session
+	/// ack.
+	pub async fn terminalize_quick_task_turn(
+		&self,
+		idempotency_key: &str,
+		request: &TerminalizeQuickTaskTurn,
+	) -> Result<QuickTaskTerminalizationOutcome, StoreError> {
+		crate::exact_commands::validate_exact_key(idempotency_key)?;
+		let assistant_turn_id = request.assistant_turn.as_ref().map(|(id, _)| id.as_str());
+		let assistant_turn_revision =
+			request.assistant_turn.as_ref().map(|(_, revision)| *revision);
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision <= 0
+			|| request.expected_user_turn_revision <= 0
+			|| request.expected_provider_attempt_revision <= 0
+			|| assistant_turn_revision.is_some_and(|revision| revision <= 0)
+			|| !is_canonical_uuid(&request.provider_thread_id)
+			|| !is_canonical_uuid(&request.provider_turn_id)
+		{
+			return Err(StoreError::InvalidInput(
+				"Quick Task terminalization coordinates are invalid",
+			));
+		}
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_one(
+				TERMINALIZE_QUICK_TASK_TURN_SQL,
+				&[
+					&crate::exact_commands::EXACT_COMMAND_PROTOCOL,
+					&idempotency_key,
+					&request.conversation_id.as_str(),
+					&request.expected_conversation_revision,
+					&request.runtime_session_id.as_str(),
+					&request.expected_runtime_session_revision,
+					&request.user_turn_id.as_str(),
+					&request.expected_user_turn_revision,
+					&assistant_turn_id,
+					&assistant_turn_revision,
+					&request.provider_attempt_id.as_str(),
+					&request.expected_provider_attempt_revision,
+					&request.provider_evidence_id.as_str(),
+					&quick_task_terminal_outcome_sql(request.provider_outcome),
+					&request.provider_thread_id,
+					&request.provider_turn_id,
+				],
+			)
+			.await?;
+		let result_code: &str = row.get(0);
+		if result_code == "rejected" {
+			return Ok(QuickTaskTerminalizationOutcome::Rejected);
+		}
+		if result_code == "unknown" {
+			return Ok(QuickTaskTerminalizationOutcome::Unknown);
+		}
+		if !matches!(result_code, "applied" | "replayed") {
+			return Err(StoreError::Incompatible(
+				"Quick Task terminalization result is unknown".into(),
+			));
+		}
+		let assistant_id: Option<String> = row.get(8);
+		let assistant_revision: Option<i64> = row.get(9);
+		if row.get::<_, String>(1) != request.conversation_id.as_str()
+			|| row.get::<_, i64>(2) != request.expected_conversation_revision
+			|| row.get::<_, String>(3) != request.runtime_session_id.as_str()
+			|| row.get::<_, i64>(4) != request.expected_runtime_session_revision
+			|| row.get::<_, String>(6) != request.user_turn_id.as_str()
+			|| row.get::<_, i64>(7) != request.expected_user_turn_revision.saturating_add(1)
+			|| assistant_id.as_deref() != assistant_turn_id
+			|| assistant_revision
+				!= assistant_turn_revision.map(|revision| revision.saturating_add(1))
+			|| row.get::<_, String>(10) != request.provider_attempt_id.as_str()
+			|| row.get::<_, i64>(11) != request.expected_provider_attempt_revision
+			|| row.get::<_, String>(12) != request.provider_evidence_id.as_str()
+		{
+			return Err(StoreError::Incompatible(
+				"Quick Task terminalization readback is cross-linked".into(),
+			));
+		}
+		let readback = QuickTaskTerminalizationReadback {
+			runtime_session_revision: row.get(5),
+			user_turn_revision: row.get(7),
+			assistant_turn_revision: assistant_revision,
+			provider_attempt_revision: row.get(11),
+		};
+		if readback.runtime_session_revision
+			!= request.expected_runtime_session_revision.saturating_add(1)
+		{
+			return Err(StoreError::Incompatible(
+				"Quick Task terminalization session revision is invalid".into(),
+			));
+		}
+		Ok(if result_code == "applied" {
+			QuickTaskTerminalizationOutcome::Applied(readback)
+		} else {
+			QuickTaskTerminalizationOutcome::Replayed(readback)
+		})
+	}
+
+	/// Converge a bounded page whose positive terminal evidence already has exact receipts.
+	pub async fn reconcile_quick_task_terminalizations(
+		&self,
+		limit: u16,
+	) -> Result<u16, StoreError> {
+		if !(1..=256).contains(&limit) {
+			return Err(StoreError::InvalidInput("Quick Task terminalization bound is invalid"));
+		}
+		let count: i64 = self
+			.pool()
+			.get()
+			.await?
+			.query_one(RECONCILE_QUICK_TASK_TERMINALIZATIONS_SQL, &[&i32::from(limit)])
+			.await?
+			.get(0);
+		u16::try_from(count).ok().filter(|count| *count <= limit).ok_or_else(|| {
+			StoreError::Incompatible("Quick Task terminalization exceeded its bound".into())
+		})
 	}
 
 	/// Complete or fail one active normalized Turn after its items are terminal.
@@ -651,6 +1176,111 @@ impl PostgresStore {
 		command: &CommandIdentity,
 		mutation: &RecordHistoryItem,
 	) -> Result<HistoryEntry, StoreError> {
+		self.record_history_item_command(blob_store, command, mutation)
+			.await
+			.map(|(entry, _)| entry)
+	}
+
+	/// Reserve one user Turn through its first completed history item and return exact admission.
+	///
+	/// A receipt replay reads the current Turn status and revision. It never recreates or
+	/// reactivates a terminal Turn.
+	pub async fn reserve_user_turn_with_history_item(
+		&self,
+		blob_store: &BlobStore,
+		command: &CommandIdentity,
+		mutation: &RecordHistoryItem,
+	) -> Result<TurnReservationOutcome, StoreError> {
+		if mutation.turn_role != TurnRole::User
+			|| mutation.possible_side_effects != PossibleSideEffects::Unknown
+			|| mutation.expected_revision.is_some()
+			|| mutation.status != ItemStatus::Completed
+		{
+			return Err(StoreError::InvalidInput("user Turn reservation history item is invalid"));
+		}
+
+		let existing = self.read_turn_reservation(mutation).await?;
+		let mut exact_mutation = mutation.clone();
+		if let Some(existing) = existing.as_ref() {
+			exact_mutation.turn_sequence = existing.sequence;
+		}
+		let (_, disposition) =
+			self.record_history_item_command(blob_store, command, &exact_mutation).await?;
+		let readback = self.read_turn_reservation(&exact_mutation).await?.ok_or_else(|| {
+			StoreError::Incompatible("reserved user Turn readback is missing".into())
+		})?;
+
+		match disposition {
+			HistoryCommandDisposition::Fresh => {
+				if existing.is_some()
+					|| readback.sequence != mutation.turn_sequence
+					|| readback.status != TurnStatus::Active
+					|| readback.revision != 1
+				{
+					return Err(StoreError::Incompatible(
+						"fresh user Turn reservation is not active revision 1".into(),
+					));
+				}
+				Ok(TurnReservationOutcome::Fresh(readback))
+			},
+			HistoryCommandDisposition::Replayed => Ok(TurnReservationOutcome::Replayed(readback)),
+		}
+	}
+
+	async fn read_turn_reservation(
+		&self,
+		mutation: &RecordHistoryItem,
+	) -> Result<Option<TurnReservationReadback>, StoreError> {
+		let row = self
+			.pool()
+			.get()
+			.await?
+			.query_opt(
+				READ_TURN_ADMISSION_SQL,
+				&[
+					&mutation.conversation_id.as_str(),
+					&mutation.runtime_session_id.as_str(),
+					&mutation.turn_id.as_str(),
+				],
+			)
+			.await?;
+		let Some(row) = row else {
+			return Ok(None);
+		};
+		let conversation_id: String = row.get(0);
+		let runtime_session_id: String = row.get(1);
+		let turn_id = TurnId::new(row.get::<_, String>(2))
+			.map_err(|_| StoreError::Incompatible("Turn admission identity is invalid".into()))?;
+		let sequence: i64 = row.get(3);
+		let role = turn_role_from_sql(row.get(4))?;
+		let side_effects = side_effect_from_sql(row.get(5))?;
+		let status = match row.get::<_, String>(6).as_str() {
+			"active" => TurnStatus::Active,
+			"completed" => TurnStatus::Completed,
+			"failed" => TurnStatus::Failed,
+			_ => return Err(StoreError::Incompatible("Turn admission status is invalid".into())),
+		};
+		let revision: i64 = row.get(7);
+		if conversation_id != mutation.conversation_id.as_str()
+			|| runtime_session_id != mutation.runtime_session_id.as_str()
+			|| turn_id != mutation.turn_id
+			|| sequence <= 0
+			|| role != TurnRole::User
+			|| side_effects != PossibleSideEffects::Unknown
+			|| revision <= 0
+		{
+			return Err(StoreError::Incompatible("Turn admission readback is cross-linked".into()));
+		}
+
+		Ok(Some(TurnReservationReadback { turn_id, sequence, status, revision }))
+	}
+
+	async fn record_history_item_command(
+		&self,
+		blob_store: &BlobStore,
+		command: &CommandIdentity,
+		mutation: &RecordHistoryItem,
+	) -> Result<(HistoryEntry, HistoryCommandDisposition), StoreError> {
 		validate_history_item(mutation)?;
 
 		let blob = prepare_payload(&mutation.text)?;
@@ -670,7 +1300,7 @@ impl PostgresStore {
 
 				self.verify_history_entry(blob_store, &entry).await?;
 
-				return Ok(entry);
+				return Ok((entry, HistoryCommandDisposition::Replayed));
 			},
 			accounts::CommandClaim::Owned(reservation) => reservation,
 		};
@@ -734,13 +1364,11 @@ impl PostgresStore {
 
 		transaction.commit().await?;
 
-		post_commit_test_barrier("history_item").await?;
-
 		let entry = history_entry_from_response(&response)?;
 
 		self.verify_history_entry(blob_store, &entry).await?;
 
-		Ok(entry)
+		Ok((entry, HistoryCommandDisposition::Fresh))
 	}
 
 	/// Remove a bounded inventory of grace-aged filesystem blobs that PostgreSQL proves have
@@ -937,6 +1565,62 @@ impl PostgresStore {
 		}
 
 		Ok(HistoryPage { entries, next_cursor })
+	}
+
+	/// Read the newest bounded history window for deterministic Context-Pack compilation.
+	pub async fn recent_conversation_history(
+		&self,
+		blob_store: &BlobStore,
+		conversation_id: &ConversationId,
+		limit: u16,
+	) -> Result<Vec<HistoryEntry>, StoreError> {
+		if limit == 0 || usize::from(limit) > decodex_core::MAX_CONTEXT_RECENT_ITEMS {
+			return Err(StoreError::InvalidInput("recent history bound is invalid"));
+		}
+		let mut client = self.pool().get().await?;
+		let transaction = client.transaction().await?;
+		transaction
+			.query_one(
+				"SELECT pg_catalog.pg_advisory_xact_lock($1)",
+				&[&HIERARCHY_COORDINATION_LOCK],
+			)
+			.await?;
+		transaction
+			.query_one("SELECT pg_catalog.pg_advisory_xact_lock($1)", &[&CURSOR_COORDINATION_LOCK])
+			.await?;
+		if transaction
+			.query_opt(
+				"SELECT 1 FROM decodex.conversations \
+					 WHERE conversation_id=$1::text::uuid FOR UPDATE",
+				&[&conversation_id.as_str()],
+			)
+			.await?
+			.is_none()
+		{
+			return Err(StoreError::InvalidInput("Conversation does not exist"));
+		}
+		let rows = transaction
+			.query(
+				"SELECT hi.history_position,hi.history_item_id::text,t.turn_id::text,\
+					 t.runtime_session_id::text,t.role::text,t.possible_side_effects::text,\
+					 hi.kind::text,hi.status::text,hi.inline_text,hi.blob_hash,bo.byte_length,\
+					 hi.media_type,hi.metadata,hi.artifact_id::text,hi.artifact_revision,hi.revision \
+					 FROM decodex.history_items hi \
+					 JOIN decodex.turns t ON t.turn_id=hi.turn_id \
+					 LEFT JOIN decodex.blob_objects bo ON bo.blob_hash=hi.blob_hash \
+					 WHERE hi.conversation_id=$1::text::uuid \
+					 ORDER BY hi.history_position DESC LIMIT $2",
+				&[&conversation_id.as_str(), &i64::from(limit)],
+			)
+			.await?;
+		transaction.commit().await?;
+
+		let entries =
+			rows.into_iter().rev().map(history_entry_from_row).collect::<Result<Vec<_>, _>>()?;
+		for entry in &entries {
+			self.verify_history_entry(blob_store, entry).await?;
+		}
+		Ok(entries)
 	}
 
 	/// Persist an immutable compiled Context Pack and its exact provenance revisions.
@@ -1697,6 +2381,21 @@ fn is_canonical_uuid(value: &str) -> bool {
 		})
 }
 
+const fn quick_task_terminal_outcome_sql(
+	value: decodex_core::ProviderTerminalOutcome,
+) -> &'static str {
+	match value {
+		decodex_core::ProviderTerminalOutcome::Succeeded => "succeeded",
+		decodex_core::ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
+		decodex_core::ProviderTerminalOutcome::NotSubmitted => "not_submitted",
+	}
+}
+
+fn is_lower_sha256(value: &str) -> bool {
+	value.len() == 64
+		&& value.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+}
+
 pub(crate) fn publish_verified_blob(
 	blob_store: &BlobStore,
 	hash: BlobHash,
@@ -1864,34 +2563,6 @@ fn conversation_from_response(response: &Value) -> Result<StoredConversation, St
 		title: title.to_owned(),
 		revision: response_revision(response, "conversation")?,
 	})
-}
-
-#[cfg(debug_assertions)]
-async fn post_commit_test_barrier(operation: &str) -> Result<(), StoreError> {
-	let Ok(root) = env::var("DECODEX_TEST_POST_COMMIT_SYNC") else {
-		return Ok(());
-	};
-	let root = PathBuf::from(root);
-	let committed = root.join(format!("{operation}.committed"));
-	let release = root.join(format!("{operation}.continue"));
-
-	fs::write(&committed, b"committed")
-		.map_err(|_| StoreError::Incompatible("test post-commit barrier failed".into()))?;
-
-	for _ in 0..3_000 {
-		if release.exists() {
-			return Ok(());
-		}
-
-		time::sleep(Duration::from_millis(10)).await;
-	}
-
-	Err(StoreError::Incompatible("test post-commit barrier timed out".into()))
-}
-
-#[cfg(not(debug_assertions))]
-async fn post_commit_test_barrier(_operation: &str) -> Result<(), StoreError> {
-	Ok(())
 }
 
 #[cfg(debug_assertions)]

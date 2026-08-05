@@ -28,19 +28,6 @@ const RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL: &str = "SELECT decodex.r
 	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6::text::uuid,\
 	 $7::text::decodex.codex_experiment_observation_kind,$8,$9,$10,$11)";
 
-#[cfg(feature = "test-support")]
-pub(crate) async fn prepare_retained_title_sql(
-	client: &tokio_postgres::Client,
-) -> Result<usize, StoreError> {
-	client.prepare(BIND_CODEX_EXPERIMENT_START_SQL).await?;
-	client.prepare(READ_CODEX_EXPERIMENT_START_SQL).await?;
-	client.prepare(MARK_CODEX_EXPERIMENT_TITLE_SET_POSSIBLE_SQL).await?;
-	client.prepare(ATTEST_CODEX_EXPERIMENT_RETAINED_TITLE_SQL).await?;
-	client.prepare(RECORD_ATTESTED_CODEX_EXPERIMENT_OBSERVATION_SQL).await?;
-
-	Ok(5)
-}
-
 /// Preparation input. PostgreSQL rechecks the complete V14 lineage and owns the clock.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PrepareCodexExperiment {
