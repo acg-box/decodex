@@ -170,6 +170,181 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(finalReads.snapshot, 1)
 	}
 
+	func testObservationRefreshIsQueuedWhileRoutingControlIsInProgress() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsFixedSelection: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+		func stopObservation() async {
+			await store.prepareForApplicationTermination()
+			await client.publishObservation(generation: 2)
+		}
+		store.start()
+
+		for _ in 0 ..< 200 {
+			if store.hasLoaded,
+				store.isRefreshing == false,
+				store.accounts.first?.inventoryIsCurrent == true
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.hasLoaded)
+		XCTAssertFalse(store.isRefreshing)
+		XCTAssertTrue(store.accounts.first?.inventoryIsCurrent == true)
+
+		let routingTask = Task {
+			await store.selectFixedAccount(accountID)
+		}
+		for _ in 0 ..< 200 {
+			if await client.fixedSelectionIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.fixedSelectionIsPending() else {
+			await client.releaseFixedSelection()
+			await routingTask.value
+			await stopObservation()
+			return XCTFail("Routing control did not enter the pending state.")
+		}
+
+		await client.replaceAccount(accountRecord(revision: 8))
+		await client.setInventoryRevision(8, accountID: accountID)
+		for _ in 0 ..< 200 {
+			if await client.observationIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.observationIsPending() else {
+			await client.releaseFixedSelection()
+			await routingTask.value
+			await stopObservation()
+			return XCTFail("Account observation signal did not enter the pending state.")
+		}
+		await client.publishObservation(generation: 1)
+		for _ in 0 ..< 200 {
+			if await client.deliveredObservationGeneration() == 1 {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		await client.releaseFixedSelection()
+		await routingTask.value
+
+		for _ in 0 ..< 200 {
+			if store.accounts.first?.account.accountRevision == 8,
+				store.accounts.first?.inventory?.accountRevision == 8,
+				store.accounts.first?.isRefreshing == false
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let finalState = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(finalState.account.accountRevision, 8)
+		XCTAssertEqual(finalState.inventory?.accountRevision, 8)
+		XCTAssertFalse(finalState.isRefreshing)
+		let readsAfterObservation = await client.readCounts()
+		XCTAssertGreaterThanOrEqual(readsAfterObservation.snapshot, 2)
+		XCTAssertGreaterThanOrEqual(readsAfterObservation.inventory, 2)
+		await stopObservation()
+	}
+
+	func testObservationRefreshIsQueuedUntilEnrollmentCompletes() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsEnrollment: true,
+			allowsEnrollment: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+		func stopObservation() async {
+			await store.prepareForApplicationTermination()
+			await client.publishObservation(generation: 2)
+		}
+		store.start()
+
+		for _ in 0 ..< 200 {
+			if store.hasLoaded,
+				store.isRefreshing == false,
+				store.accounts.first?.inventoryIsCurrent == true
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let enrollmentTask = Task {
+			await store.enrollFromSharedCodex()
+		}
+		for _ in 0 ..< 200 {
+			if await client.enrollmentIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.enrollmentIsPending() else {
+			await client.releaseEnrollment()
+			await enrollmentTask.value
+			await stopObservation()
+			return XCTFail("Enrollment did not enter the pending state.")
+		}
+
+		await client.replaceAccount(accountRecord(revision: 8))
+		await client.setInventoryRevision(8, accountID: accountID)
+		for _ in 0 ..< 200 {
+			if await client.observationIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.observationIsPending() else {
+			await client.releaseEnrollment()
+			await enrollmentTask.value
+			await stopObservation()
+			return XCTFail("Account observation signal did not enter the pending state.")
+		}
+		await client.publishObservation(generation: 1)
+		await client.releaseEnrollment()
+		await enrollmentTask.value
+
+		for _ in 0 ..< 200 {
+			if store.accounts.first?.account.accountRevision == 8,
+				store.accounts.first?.inventory?.accountRevision == 8,
+				store.accounts.first?.isRefreshing == false
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
+		XCTAssertFalse(store.accounts.first?.isRefreshing == true)
+		await stopObservation()
+	}
+
 	func testAdvancedInventoryWaitsForFreshSkeletonBeforeControls() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -1190,7 +1365,7 @@ private struct AccountControlStoreCounts: Equatable, Sendable {
 	let projection: Int
 }
 
-private actor AccountControlStoreClient: AccountControlClient {
+private actor AccountControlStoreClient: AccountControlClient, AccountObservationClient {
 	private var account: ResetCardAccountRecord
 	private var secondaryAccount: ResetCardAccountRecord?
 	private let authority: ResetCardAuthority
@@ -1198,6 +1373,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private let snapshotGate: AccountControlReadGate?
 	private let capturesSnapshotBeforeWait: Bool
 	private let fixedSelectionGate: AccountControlReadGate?
+	private let enrollmentGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
 	private let maxSuccessfulInventoryReads: Int?
 	private var inventoryRevisionsByAccountID = [String: UInt64]()
@@ -1219,6 +1395,12 @@ private actor AccountControlStoreClient: AccountControlClient {
 	private var projectionReads = 0
 	private var snapshotReadCount = 0
 	private var inventoryReadCount = 0
+	private var observationGenerations = [UInt64]()
+	private var observationContinuation: CheckedContinuation<
+		AccountObservationSignal,
+		Never
+	>?
+	private var deliveredObservationGenerationValue: UInt64?
 	private var enrollmentRequests = 0
 	private var reauthenticationStates: [AccountReauthenticationState]
 	private var lastReauthenticationStartRequest: AccountControlStoreReauthenticationRequest?
@@ -1237,6 +1419,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		suspendsSnapshotAfterFirstRead: Bool = false,
 		capturesSnapshotBeforeWait: Bool = false,
 		suspendsFixedSelection: Bool = false,
+		suspendsEnrollment: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
 		maxSuccessfulInventoryReads: Int? = nil,
 		allowsEnrollment: Bool = false,
@@ -1257,6 +1440,7 @@ private actor AccountControlStoreClient: AccountControlClient {
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
 		self.capturesSnapshotBeforeWait = capturesSnapshotBeforeWait
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
+		enrollmentGate = suspendsEnrollment ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
 		self.maxSuccessfulInventoryReads = maxSuccessfulInventoryReads
 		self.allowsEnrollment = allowsEnrollment
@@ -1423,6 +1607,40 @@ private actor AccountControlStoreClient: AccountControlClient {
 		(snapshotReadCount, inventoryReadCount)
 	}
 
+	func waitForAccountObservation(
+		afterGeneration _: UInt64
+	) async throws -> AccountObservationSignal {
+		if observationGenerations.isEmpty == false {
+			let signal = AccountObservationSignal(
+				generation: observationGenerations.removeFirst()
+			)
+			deliveredObservationGenerationValue = signal.generation
+			return signal
+		}
+		return await withCheckedContinuation { continuation in
+			observationContinuation = continuation
+		}
+	}
+
+	func observationIsPending() -> Bool {
+		observationContinuation != nil
+	}
+
+	func deliveredObservationGeneration() -> UInt64? {
+		deliveredObservationGenerationValue
+	}
+
+	func publishObservation(generation: UInt64) {
+		let signal = AccountObservationSignal(generation: generation)
+		if let observationContinuation {
+			self.observationContinuation = nil
+			deliveredObservationGenerationValue = generation
+			observationContinuation.resume(returning: signal)
+		} else {
+			observationGenerations.append(generation)
+		}
+	}
+
 	func inventoryIsPending() async -> Bool {
 		guard let inventoryGate else {
 			return false
@@ -1480,11 +1698,23 @@ private actor AccountControlStoreClient: AccountControlClient {
 			throw AccountControlError.applicationUnavailable
 		}
 		enrollmentRequests += 1
+		await enrollmentGate?.wait()
 		return .accountChanged(account)
 	}
 
 	func enrollmentRequestCount() -> Int {
 		enrollmentRequests
+	}
+
+	func enrollmentIsPending() async -> Bool {
+		guard let enrollmentGate else {
+			return false
+		}
+		return await enrollmentGate.isPending()
+	}
+
+	func releaseEnrollment() async {
+		await enrollmentGate?.release()
 	}
 
 	func codexAuthProjection(
