@@ -545,6 +545,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			statusPanel.contains("#selector(applicationDidResignActive(_:))")
 		)
+		XCTAssertTrue(statusPanel.contains("private var panelPresentation"))
+		XCTAssertTrue(statusPanel.contains("DispatchQueue.main.async"))
+		XCTAssertFalse(statusPanel.contains("NSApp.currentEvent"))
+		XCTAssertFalse(statusPanel.contains("StatusPanelInteraction.isStatusItemPress"))
 		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
 		XCTAssertTrue(statusPanel.contains("#selector(panelDidResize(_:))"))
 		XCTAssertEqual(
