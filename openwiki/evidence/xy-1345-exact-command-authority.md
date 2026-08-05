@@ -1,6 +1,8 @@
 # XY-1345 Exact PostgreSQL Command-Authority Proof
 
-Status: accepted architecture evidence for XY-1345; non-production prototype only.
+Status: superseded historical provenance for XY-1345. The deleted non-production
+prototype path, digests, invocation, and results below are historical facts only and are
+not current authority.
 
 As-of repository revision: `39fda2f3d526b4d811a10dfe73fe786d207ca5ae` plus the
 unstaged XY-1345 candidate described here. The proof ran on 2026-07-16 in the assigned

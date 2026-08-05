@@ -84,6 +84,10 @@ unsafe extern "C" {
 		actions: *mut posix_spawn_file_actions_t,
 		path: *const c_char,
 	) -> libc::c_int;
+	fn posix_spawn_file_actions_addfchdir_np(
+		actions: *mut posix_spawn_file_actions_t,
+		descriptor: libc::c_int,
+	) -> libc::c_int;
 }
 
 /// Statically validated identity rooted in a reference snapshot for one execution path.
@@ -225,7 +229,7 @@ pub(super) fn spawn_suspended(
 	spawn_suspended_with_environment(
 		identity,
 		args,
-		working_directory,
+		SuspendedWorkingDirectory::Path(working_directory),
 		home,
 		SuspendedEnvironment::HomeAndSystemPath,
 	)
@@ -243,7 +247,23 @@ pub(super) fn spawn_private_stdio_suspended(
 	spawn_suspended_with_environment(
 		identity,
 		args,
-		working_directory,
+		SuspendedWorkingDirectory::Path(working_directory),
+		home,
+		SuspendedEnvironment::PrivateStdioDisabledEphemeral,
+	)
+}
+
+/// Spawn the private-stdio profile with cwd bound to one caller-retained directory descriptor.
+pub(super) fn spawn_private_stdio_suspended_at(
+	identity: &AttestedCodeIdentity,
+	args: &[OsString],
+	working_directory_descriptor: libc::c_int,
+	home: &Path,
+) -> io::Result<SuspendedAttestedSpawn> {
+	spawn_suspended_with_environment(
+		identity,
+		args,
+		SuspendedWorkingDirectory::Descriptor(working_directory_descriptor),
 		home,
 		SuspendedEnvironment::PrivateStdioDisabledEphemeral,
 	)
@@ -255,16 +275,27 @@ enum SuspendedEnvironment {
 	PrivateStdioDisabledEphemeral,
 }
 
+#[derive(Clone, Copy)]
+enum SuspendedWorkingDirectory<'a> {
+	Path(&'a Path),
+	Descriptor(libc::c_int),
+}
+
 fn spawn_suspended_with_environment(
 	identity: &AttestedCodeIdentity,
 	args: &[OsString],
-	working_directory: &Path,
+	working_directory: SuspendedWorkingDirectory<'_>,
 	home: &Path,
 	environment: SuspendedEnvironment,
 ) -> io::Result<SuspendedAttestedSpawn> {
 	let spawned_execution_path = identity.execution_path.clone();
 	let executable = os_string(identity.execution_path.as_os_str())?;
-	let working_directory = os_string(working_directory.as_os_str())?;
+	let working_directory_path = match working_directory {
+		SuspendedWorkingDirectory::Path(path) => Some(os_string(path.as_os_str())?),
+		SuspendedWorkingDirectory::Descriptor(descriptor) if descriptor >= 0 => None,
+		SuspendedWorkingDirectory::Descriptor(_) =>
+			return Err(invalid_input("working-directory descriptor is invalid")),
+	};
 	let mut argv = Vec::with_capacity(args.len() + 1);
 
 	argv.push(os_string(identity.execution_path.as_os_str())?);
@@ -299,7 +330,11 @@ fn spawn_suspended_with_environment(
 	actions.open(libc::STDIN_FILENO, protocol.stdin_path(), O_RDONLY | O_NOFOLLOW, 0)?;
 	actions.open(libc::STDOUT_FILENO, protocol.stdout_path(), O_WRONLY | O_NOFOLLOW, 0)?;
 	actions.open(libc::STDERR_FILENO, c"/dev/null", O_WRONLY, 0)?;
-	actions.chdir(&working_directory)?;
+	match (working_directory, working_directory_path.as_ref()) {
+		(SuspendedWorkingDirectory::Path(_), Some(path)) => actions.chdir(path)?,
+		(SuspendedWorkingDirectory::Descriptor(descriptor), None) => actions.fchdir(descriptor)?,
+		_ => return Err(invalid_input("working-directory action is incomplete")),
+	}
 
 	let mut attributes = SpawnAttributes::new()?;
 	attributes.set_attested_flags()?;
@@ -797,6 +832,14 @@ impl SpawnFileActions {
 	fn chdir(&mut self, path: &CString) -> io::Result<()> {
 		// SAFETY: the actions object is initialized and `path` is NUL-terminated.
 		let result = unsafe { posix_spawn_file_actions_addchdir_np(&mut self.0, path.as_ptr()) };
+
+		spawn_configuration_result(result)
+	}
+
+	fn fchdir(&mut self, descriptor: libc::c_int) -> io::Result<()> {
+		// SAFETY: the actions object is initialized and the caller retains the live descriptor
+		// through the complete posix_spawn call.
+		let result = unsafe { posix_spawn_file_actions_addfchdir_np(&mut self.0, descriptor) };
 
 		spawn_configuration_result(result)
 	}

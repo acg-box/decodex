@@ -1,95 +1,12 @@
 //! Steady-state PostgreSQL authority verification for the retained runtime pool.
 
-use deadpool_postgres::Client;
 use sha2::{Digest as _, Sha256};
-use tokio_postgres::Client as TokioClient;
+use tokio_postgres::GenericClient;
 
-use crate::StoreError;
-
-const FOUNDATION_MIGRATION: &str = include_str!("../migrations/V1__persistence_foundation.sql");
-const CONVERSATION_MIGRATION: &str = include_str!("../migrations/V3__conversation_history.sql");
-const PROJECT_AGENT_MIGRATION: &str = include_str!("../migrations/V5__project_agent_authority.sql");
-const POLICY_MIGRATION: &str = include_str!("../migrations/V6__project_policy_authority.sql");
-const PROGRAM_OBJECTIVE_MIGRATION: &str =
-	include_str!("../migrations/V7__program_objective_authority.sql");
-const QUOTA_MIGRATION: &str = include_str!("../migrations/V8__quota_exclusions.sql");
-const ROLE_PROFILE_MIGRATION: &str = include_str!("../migrations/V9__exact_role_profiles.sql");
-const RUNTIME_SESSION_MIGRATION: &str =
-	include_str!("../migrations/V10__runtime_session_snapshots.sql");
-const WORK_ITEM_MIGRATION: &str = include_str!("../migrations/V11__work_item_authority.sql");
-const MANAGED_RUN_MIGRATION: &str = include_str!("../migrations/V12__managed_run_safety.sql");
-const MANAGED_REPOSITORY_MIGRATION: &str =
-	include_str!("../migrations/V13__managed_repository_authority.sql");
-const ROUTING_MIGRATION: &str = include_str!("../migrations/V14__routing_authority.sql");
-const CODEX_EXPERIMENT_MIGRATION: &str =
-	include_str!("../migrations/V15__causal_codex_experiments.sql");
-const ROUTING_DECISION_MIGRATION: &str =
-	include_str!("../migrations/V16__atomic_routing_decisions.sql");
-const CONTINUATION_MIGRATION: &str = include_str!("../migrations/V17__continuation_authority.sql");
-const WAITING_USAGE_WAKE_MIGRATION: &str =
-	include_str!("../migrations/V18__waiting_usage_wakes.sql");
-const WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION: &str =
-	include_str!("../migrations/V19__waiting_usage_wake_time_authority.sql");
-const RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION: &str =
-	include_str!("../migrations/V21__runtime_session_event_reference_authority.sql");
-const RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION: &str =
-	include_str!("../migrations/V22__retained_title_experiment_bridge.sql");
-const PROCESS_GENERATION_MIGRATION: &str =
-	include_str!("../migrations/V23__process_generation_authority.sql");
-const PROVIDER_ATTEMPT_MIGRATION: &str =
-	include_str!("../migrations/V24__provider_attempt_authority.sql");
-const EXECUTION_COORDINATOR_MIGRATION: &str =
-	include_str!("../migrations/V26__execution_coordinator_cutover.sql");
-const MAC_ACCOUNT_LIFECYCLE_MIGRATION: &str =
-	include_str!("../migrations/V27__mac_account_lifecycle.sql");
-const ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION: &str =
-	include_str!("../migrations/V28__account_profile_observations.sql");
-const ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION: &str =
-	include_str!("../migrations/V29__account_profile_array_zip.sql");
-const CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION: &str =
-	include_str!("../migrations/V30__current_codex_account_capability.sql");
-const OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
-	include_str!("../migrations/V31__official_codex_release_capability.sql");
-const CURRENT_OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION: &str =
-	include_str!("../migrations/V32__codex_0146_alpha_9_2_capability.sql");
-const CANONICAL_FUNCTION_MIGRATIONS: [&str; 28] = [
-	FOUNDATION_MIGRATION,
-	CONVERSATION_MIGRATION,
-	PROJECT_AGENT_MIGRATION,
-	POLICY_MIGRATION,
-	PROGRAM_OBJECTIVE_MIGRATION,
-	QUOTA_MIGRATION,
-	ROLE_PROFILE_MIGRATION,
-	RUNTIME_SESSION_MIGRATION,
-	WORK_ITEM_MIGRATION,
-	MANAGED_RUN_MIGRATION,
-	MANAGED_REPOSITORY_MIGRATION,
-	ROUTING_MIGRATION,
-	CODEX_EXPERIMENT_MIGRATION,
-	ROUTING_DECISION_MIGRATION,
-	CONTINUATION_MIGRATION,
-	WAITING_USAGE_WAKE_MIGRATION,
-	WAITING_USAGE_WAKE_TIME_AUTHORITY_MIGRATION,
-	RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
-	RETAINED_TITLE_EXPERIMENT_BRIDGE_MIGRATION,
-	PROCESS_GENERATION_MIGRATION,
-	PROVIDER_ATTEMPT_MIGRATION,
-	EXECUTION_COORDINATOR_MIGRATION,
-	MAC_ACCOUNT_LIFECYCLE_MIGRATION,
-	ACCOUNT_PROFILE_OBSERVATIONS_MIGRATION,
-	ACCOUNT_PROFILE_ARRAY_ZIP_MIGRATION,
-	CURRENT_CODEX_ACCOUNT_CAPABILITY_MIGRATION,
-	OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION,
-	CURRENT_OFFICIAL_CODEX_RELEASE_CAPABILITY_MIGRATION,
-];
+use crate::{StoreError, schema::LATEST_SCHEMA_SQL};
 const ALLOWED_EXECUTION_DEPENDENCIES: [&str; 1] =
 	["public.digest(pg_catalog.bytea,pg_catalog.text)"];
-const SEMANTIC_AUTHORITY_SCHEMA: &str = "decodex/postgres-semantic-authority/2";
-const SEMANTIC_AUTHORITY_DEFINITION_SCHEMA: &str =
-	"decodex/postgres-semantic-authority-definition/1";
-const SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN: &[u8] =
-	b"decodex/postgres-semantic-authority-fingerprint/1\0";
-const SEMANTIC_AUTHORITY_PREDICATE_COUNT: usize = 40;
+pub(crate) const SEMANTIC_AUTHORITY_PREDICATE_COUNT: usize = 37;
 
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[repr(usize)]
@@ -106,9 +23,6 @@ enum SemanticAuthorityPredicate {
 	NoMembershipAdmin,
 	ExactTableAuthority,
 	NoUnsafeTableAuthority,
-	MigrationHistoryExists,
-	MigrationHistorySelect,
-	NoUnsafeMigrationHistoryAuthority,
 	ExactSequenceContract,
 	SequenceUsage,
 	NoUnsafeSequenceAuthority,
@@ -143,6 +57,143 @@ enum SemanticAuthorityFailureClass {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BootstrapAuthorityFailureClass {
+	Unsafe,
+	Incompatible,
+}
+
+impl BootstrapAuthorityFailureClass {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Unsafe => "unsafe",
+			Self::Incompatible => "incompatible",
+		}
+	}
+}
+
+impl From<SemanticAuthorityFailureClass> for BootstrapAuthorityFailureClass {
+	fn from(value: SemanticAuthorityFailureClass) -> Self {
+		match value {
+			SemanticAuthorityFailureClass::Unsafe => Self::Unsafe,
+			SemanticAuthorityFailureClass::Incompatible => Self::Incompatible,
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BootstrapAuthorityObservation {
+	pub(crate) name: &'static str,
+	pub(crate) failure_class: BootstrapAuthorityFailureClass,
+	pub(crate) passed: bool,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct BootstrapDigestEvidence {
+	pub(crate) complete: bool,
+	pub(crate) expected_sha256: [u8; 32],
+	pub(crate) actual_sha256: Option<[u8; 32]>,
+	pub(crate) incomplete_failure_class: BootstrapAuthorityFailureClass,
+	pub(crate) mismatch_failure_class: BootstrapAuthorityFailureClass,
+}
+
+impl BootstrapDigestEvidence {
+	pub(crate) fn passed(&self) -> bool {
+		self.complete && self.actual_sha256 == Some(self.expected_sha256)
+	}
+
+	pub(crate) fn failure_class(&self) -> BootstrapAuthorityFailureClass {
+		if self.complete { self.mismatch_failure_class } else { self.incomplete_failure_class }
+	}
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct BootstrapAuthorityEvidence {
+	pub(crate) namespace: [BootstrapAuthorityObservation; 2],
+	pub(crate) semantic: Vec<BootstrapAuthorityObservation>,
+	pub(crate) configured_authority: BootstrapDigestEvidence,
+	pub(crate) schema_contract: BootstrapDigestEvidence,
+}
+
+#[derive(Debug, Default, Eq, PartialEq)]
+pub(crate) struct BootstrapAuthorityProgress {
+	pub(crate) namespace: Option<[BootstrapAuthorityObservation; 2]>,
+	pub(crate) semantic: Option<Vec<BootstrapAuthorityObservation>>,
+	pub(crate) configured_authority: Option<BootstrapDigestEvidence>,
+	pub(crate) schema_contract: Option<BootstrapDigestEvidence>,
+}
+
+impl BootstrapAuthorityProgress {
+	pub(crate) fn completed_components(&self) -> usize {
+		let present = [
+			self.namespace.is_some(),
+			self.semantic.is_some(),
+			self.configured_authority.is_some(),
+			self.schema_contract.is_some(),
+		];
+		assert!(present.windows(2).all(|pair| pair[0] || !pair[1]));
+		present.iter().filter(|present| **present).count()
+	}
+
+	fn into_complete(self) -> BootstrapAuthorityEvidence {
+		assert_eq!(self.completed_components(), 4);
+		BootstrapAuthorityEvidence {
+			namespace: self.namespace.expect("namespace authority evidence is complete"),
+			semantic: self.semantic.expect("semantic authority evidence is complete"),
+			configured_authority: self
+				.configured_authority
+				.expect("configured authority evidence is complete"),
+			schema_contract: self.schema_contract.expect("schema contract evidence is complete"),
+		}
+	}
+}
+
+impl From<BootstrapAuthorityEvidence> for BootstrapAuthorityProgress {
+	fn from(evidence: BootstrapAuthorityEvidence) -> Self {
+		Self {
+			namespace: Some(evidence.namespace),
+			semantic: Some(evidence.semantic),
+			configured_authority: Some(evidence.configured_authority),
+			schema_contract: Some(evidence.schema_contract),
+		}
+	}
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum BootstrapAuthorityOperation {
+	Namespace,
+	Semantic,
+	ConfiguredAuthority,
+	SchemaContract,
+}
+
+impl BootstrapAuthorityOperation {
+	pub(crate) const fn as_str(self) -> &'static str {
+		match self {
+			Self::Namespace => "namespace",
+			Self::Semantic => "semantic",
+			Self::ConfiguredAuthority => "configured_authority",
+			Self::SchemaContract => "schema_contract",
+		}
+	}
+
+	pub(crate) const fn completed_components_before(self) -> usize {
+		match self {
+			Self::Namespace => 0,
+			Self::Semantic => 1,
+			Self::ConfiguredAuthority => 2,
+			Self::SchemaContract => 3,
+		}
+	}
+}
+
+#[derive(Debug)]
+pub(crate) struct BootstrapAuthorityCollectionFailure {
+	pub(crate) progress: BootstrapAuthorityProgress,
+	pub(crate) operation: BootstrapAuthorityOperation,
+	pub(crate) error: StoreError,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum SemanticAuthorityFailurePolicy {
 	Unsafe,
 	Incompatible,
@@ -150,14 +201,6 @@ enum SemanticAuthorityFailurePolicy {
 }
 
 impl SemanticAuthorityFailurePolicy {
-	const fn name(self) -> &'static str {
-		match self {
-			Self::Unsafe => "unsafe",
-			Self::Incompatible => "incompatible",
-			Self::UnsafeIfExcessOtherwiseIncompatible => "unsafe_if_excess_otherwise_incompatible",
-		}
-	}
-
 	const fn permits(self, class: SemanticAuthorityFailureClass) -> bool {
 		match self {
 			Self::Unsafe => matches!(class, SemanticAuthorityFailureClass::Unsafe),
@@ -242,21 +285,6 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 	semantic_authority_descriptor(
 		SemanticAuthorityPredicate::NoUnsafeTableAuthority,
 		"no_unsafe_table_authority",
-		SemanticAuthorityFailurePolicy::Unsafe,
-	),
-	semantic_authority_descriptor(
-		SemanticAuthorityPredicate::MigrationHistoryExists,
-		"migration_history_exists",
-		SemanticAuthorityFailurePolicy::Incompatible,
-	),
-	semantic_authority_descriptor(
-		SemanticAuthorityPredicate::MigrationHistorySelect,
-		"migration_history_select",
-		SemanticAuthorityFailurePolicy::Incompatible,
-	),
-	semantic_authority_descriptor(
-		SemanticAuthorityPredicate::NoUnsafeMigrationHistoryAuthority,
-		"no_unsafe_migration_history_authority",
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 	semantic_authority_descriptor(
@@ -385,11 +413,11 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
-		migration_signature: "is_canonical_media_type(value text)",
+		declaration_signature: "is_canonical_media_type(value text)",
 		arguments: "value text",
 		result: "boolean",
 		language: "sql",
@@ -401,7 +429,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_history_metadata_projection",
 		lookup_signature: "decodex.is_history_metadata_projection(pg_catalog.jsonb)",
-		migration_signature: "is_history_metadata_projection(document jsonb)",
+		declaration_signature: "is_history_metadata_projection(document jsonb)",
 		arguments: "document jsonb",
 		result: "boolean",
 		language: "plpgsql",
@@ -413,7 +441,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "normalize_unicode_whitespace",
 		lookup_signature: "decodex.normalize_unicode_whitespace(pg_catalog.text)",
-		migration_signature: "normalize_unicode_whitespace(value text)",
+		declaration_signature: "normalize_unicode_whitespace(value text)",
 		arguments: "value text",
 		result: "text",
 		language: "sql",
@@ -425,7 +453,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "ascii_lower",
 		lookup_signature: "decodex.ascii_lower(pg_catalog.text)",
-		migration_signature: "ascii_lower(value text)",
+		declaration_signature: "ascii_lower(value text)",
 		arguments: "value text",
 		result: "text",
 		language: "sql",
@@ -437,7 +465,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "has_credential_material",
 		lookup_signature: "decodex.has_credential_material(pg_catalog.text)",
-		migration_signature: "has_credential_material(value text)",
+		declaration_signature: "has_credential_material(value text)",
 		arguments: "value text",
 		result: "boolean",
 		language: "sql",
@@ -449,7 +477,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "has_credential_material",
 		lookup_signature: "decodex.has_credential_material(pg_catalog.jsonb)",
-		migration_signature: "has_credential_material(document jsonb)",
+		declaration_signature: "has_credential_material(document jsonb)",
 		arguments: "document jsonb",
 		result: "boolean",
 		language: "plpgsql",
@@ -461,7 +489,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_meaningful_evidence",
 		lookup_signature: "decodex.is_meaningful_evidence(pg_catalog.jsonb)",
-		migration_signature: "is_meaningful_evidence(document jsonb)",
+		declaration_signature: "is_meaningful_evidence(document jsonb)",
 		arguments: "document jsonb",
 		result: "boolean",
 		language: "plpgsql",
@@ -473,7 +501,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "rfc3339_utc",
 		lookup_signature: "decodex.rfc3339_utc(pg_catalog.timestamptz)",
-		migration_signature: "rfc3339_utc(value timestamptz)",
+		declaration_signature: "rfc3339_utc(value timestamp with time zone)",
 		arguments: "value timestamp with time zone",
 		result: "text",
 		language: "sql",
@@ -485,7 +513,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_valid_operation_duration",
 		lookup_signature: "decodex.is_valid_operation_duration(pg_catalog.interval)",
-		migration_signature: "is_valid_operation_duration(value interval)",
+		declaration_signature: "is_valid_operation_duration(value interval)",
 		arguments: "value interval",
 		result: "boolean",
 		language: "sql",
@@ -497,7 +525,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "enforce_lease_operation_time",
 		lookup_signature: "decodex.enforce_lease_operation_time()",
-		migration_signature: "enforce_lease_operation_time()",
+		declaration_signature: "enforce_lease_operation_time()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -509,7 +537,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "enforce_outbox_operation_time",
 		lookup_signature: "decodex.enforce_outbox_operation_time()",
-		migration_signature: "enforce_outbox_operation_time()",
+		declaration_signature: "enforce_outbox_operation_time()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -521,7 +549,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "enforce_quota_observation_monotonicity",
 		lookup_signature: "decodex.enforce_quota_observation_monotonicity()",
-		migration_signature: "enforce_quota_observation_monotonicity()",
+		declaration_signature: "enforce_quota_observation_monotonicity()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -533,7 +561,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "forbid_mutation_of_activity",
 		lookup_signature: "decodex.forbid_mutation_of_activity()",
-		migration_signature: "forbid_mutation_of_activity()",
+		declaration_signature: "forbid_mutation_of_activity()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -545,7 +573,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "enforce_outbox_terminal_retention",
 		lookup_signature: "decodex.enforce_outbox_terminal_retention()",
-		migration_signature: "enforce_outbox_terminal_retention()",
+		declaration_signature: "enforce_outbox_terminal_retention()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -557,7 +585,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "forbid_outbox_truncate",
 		lookup_signature: "decodex.forbid_outbox_truncate()",
-		migration_signature: "forbid_outbox_truncate()",
+		declaration_signature: "forbid_outbox_truncate()",
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -569,7 +597,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "lease_ttl_milliseconds",
 		lookup_signature: "decodex.lease_ttl_milliseconds(pg_catalog.interval)",
-		migration_signature: "lease_ttl_milliseconds(value interval)",
+		declaration_signature: "lease_ttl_milliseconds(value interval)",
 		arguments: "value interval",
 		result: "bigint",
 		language: "plpgsql",
@@ -581,7 +609,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "try_acquire_lease",
 		lookup_signature: "decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
-		migration_signature: "try_acquire_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_ttl interval\n)",
+		declaration_signature: "try_acquire_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_ttl interval\n)",
 		arguments: "p_resource_key text, p_holder_id uuid, p_ttl interval",
 		result: "TABLE(acquired boolean, lease_token uuid, revision bigint)",
 		language: "plpgsql",
@@ -593,7 +621,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "renew_lease",
 		lookup_signature: "decodex.renew_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.interval)",
-		migration_signature: "renew_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_lease_token uuid,\n\tp_ttl interval\n)",
+		declaration_signature: "renew_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_lease_token uuid,\n\tp_ttl interval\n)",
 		arguments: "p_resource_key text, p_holder_id uuid, p_lease_token uuid, p_ttl interval",
 		result: "boolean",
 		language: "plpgsql",
@@ -605,7 +633,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "release_lease",
 		lookup_signature: "decodex.release_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid)",
-		migration_signature: "release_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_lease_token uuid\n)",
+		declaration_signature: "release_lease(\n\tp_resource_key text,\n\tp_holder_id uuid,\n\tp_lease_token uuid\n)",
 		arguments: "p_resource_key text, p_holder_id uuid, p_lease_token uuid",
 		result: "boolean",
 		language: "sql",
@@ -617,7 +645,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "prune_history_snapshots",
 		lookup_signature: "decodex.prune_history_snapshots()",
-		migration_signature: "prune_history_snapshots()",
+		declaration_signature: "prune_history_snapshots()",
 		arguments: "",
 		result: "bigint",
 		language: "plpgsql",
@@ -629,7 +657,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "issue_history_cursor",
 		lookup_signature: "decodex.issue_history_cursor(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int4)",
-		migration_signature: "issue_history_cursor(\n\tp_conversation_id uuid,\n\tp_parent_cursor_id uuid,\n\tp_page_size integer\n)",
+		declaration_signature: "issue_history_cursor(\n\tp_conversation_id uuid,\n\tp_parent_cursor_id uuid,\n\tp_page_size integer\n)",
 		arguments: "p_conversation_id uuid, p_parent_cursor_id uuid, p_page_size integer",
 		result: "uuid",
 		language: "plpgsql",
@@ -707,7 +735,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_project_metadata",
 		lookup_signature: "decodex.is_project_metadata(pg_catalog.jsonb)",
-		migration_signature: "is_project_metadata(document jsonb)",
+		declaration_signature: "is_project_metadata(document jsonb)",
 		arguments: "document jsonb",
 		result: "boolean",
 		language: "plpgsql",
@@ -719,7 +747,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "bootstrap_advisor",
 		lookup_signature: "decodex.bootstrap_advisor(decodex.canonical_uuid_v4_text)",
-		migration_signature: "bootstrap_advisor(p_agent_id decodex.canonical_uuid_v4_text)",
+		declaration_signature: "bootstrap_advisor(p_agent_id decodex.canonical_uuid_v4_text)",
 		arguments: "p_agent_id decodex.canonical_uuid_v4_text",
 		result: "TABLE(agent_id uuid, role decodex.agent_role, project_id uuid, status decodex.agent_status, revision bigint)",
 		language: "plpgsql",
@@ -731,7 +759,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "create_project",
 		lookup_signature: "decodex.create_project(decodex.canonical_uuid_v4_text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text)",
-		migration_signature: "create_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_repository_identity text,\n\tp_repository_root text,\n\tp_default_cwd text,\n\tp_metadata jsonb,\n\tp_lead_id decodex.canonical_uuid_v4_text\n)",
+		declaration_signature: "create_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_repository_identity text,\n\tp_repository_root text,\n\tp_default_cwd text,\n\tp_metadata jsonb,\n\tp_lead_id decodex.canonical_uuid_v4_text\n)",
 		arguments: "p_project_id decodex.canonical_uuid_v4_text, p_repository_identity text, p_repository_root text, p_default_cwd text, p_metadata jsonb, p_lead_id decodex.canonical_uuid_v4_text",
 		result: "TABLE(project_id uuid, repository_identity text, repository_root text, default_cwd text, project_status decodex.project_status, metadata jsonb, project_revision bigint, agent_id uuid, agent_role decodex.agent_role, agent_status decodex.agent_status, agent_revision bigint)",
 		language: "plpgsql",
@@ -743,7 +771,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "transition_project",
 		lookup_signature: "decodex.transition_project(decodex.canonical_uuid_v4_text,pg_catalog.int8,decodex.project_status)",
-		migration_signature: "transition_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_status decodex.project_status\n)",
+		declaration_signature: "transition_project(\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_expected_revision bigint,\n\tp_status decodex.project_status\n)",
 		arguments: "p_project_id decodex.canonical_uuid_v4_text, p_expected_revision bigint, p_status decodex.project_status",
 		result: "TABLE(project_id uuid, repository_identity text, repository_root text, default_cwd text, project_status decodex.project_status, metadata jsonb, project_revision bigint, agent_id uuid, agent_role decodex.agent_role, agent_status decodex.agent_status, agent_revision bigint)",
 		language: "plpgsql",
@@ -755,7 +783,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_policy_snapshot",
 		lookup_signature: "decodex.is_policy_snapshot(pg_catalog.jsonb)",
-		migration_signature: "is_policy_snapshot(document jsonb)",
+		declaration_signature: "is_policy_snapshot(document jsonb)",
 		arguments: "document jsonb",
 		result: "boolean",
 		language: "plpgsql",
@@ -777,7 +805,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "create_policy",
 		lookup_signature: "decodex.create_policy(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text)",
-		migration_signature: "create_policy(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text\n)",
+		declaration_signature: "create_policy(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text\n)",
 		arguments: "p_policy_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text",
 		result: "TABLE(policy_id uuid, project_id uuid, created_at timestamp with time zone, current_revision bigint)",
 		language: "plpgsql",
@@ -789,7 +817,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "accept_policy_revision",
 		lookup_signature: "decodex.accept_policy_revision(decodex.canonical_uuid_v4_text,decodex.canonical_uuid_v4_text,pg_catalog.int8,pg_catalog.text,pg_catalog.jsonb,decodex.canonical_uuid_v4_text,pg_catalog.int8)",
-		migration_signature: "accept_policy_revision(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_revision bigint,\n\tp_provenance text,\n\tp_snapshot jsonb,\n\tp_accepted_by decodex.canonical_uuid_v4_text,\n\tp_supersedes_revision bigint\n)",
+		declaration_signature: "accept_policy_revision(\n\tp_policy_id decodex.canonical_uuid_v4_text,\n\tp_project_id decodex.canonical_uuid_v4_text,\n\tp_revision bigint,\n\tp_provenance text,\n\tp_snapshot jsonb,\n\tp_accepted_by decodex.canonical_uuid_v4_text,\n\tp_supersedes_revision bigint\n)",
 		arguments: "p_policy_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_revision bigint, p_provenance text, p_snapshot jsonb, p_accepted_by decodex.canonical_uuid_v4_text, p_supersedes_revision bigint",
 		result: "TABLE(policy_id uuid, project_id uuid, revision bigint, provenance text, snapshot jsonb, accepted_by uuid, policy_created_at timestamp with time zone, accepted_at timestamp with time zone, supersedes_revision bigint, revision_accepted boolean, actual_revision bigint)",
 		language: "plpgsql",
@@ -1333,7 +1361,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "mark_codex_experiment_creation_possible_exact",
 		lookup_signature: "decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-		migration_signature: "mark_codex_experiment_creation_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attempt_id uuid\n)",
+		declaration_signature: "mark_codex_experiment_creation_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_attempt_id uuid\n)",
 		arguments: "p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid",
 		result: "TABLE(response_bytes bytea, replayed boolean)",
 		language: "plpgsql",
@@ -1372,7 +1400,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_codex_experiment_start_exact",
 		lookup_signature: "decodex.read_codex_experiment_start_exact(pg_catalog.uuid,pg_catalog.uuid)",
-		migration_signature: "read_codex_experiment_start_exact(\n\tp_experiment_id uuid, p_attempt_id uuid\n)",
+		declaration_signature: "read_codex_experiment_start_exact(\n\tp_experiment_id uuid, p_attempt_id uuid\n)",
 		arguments: "p_experiment_id uuid, p_attempt_id uuid",
 		result: "TABLE(experiment_id uuid, attempt_id uuid, experiment_revision bigint, thread_id text, start_request_id bigint, start_request_digest text, request_cwd text, request_marker text, request_ephemeral boolean, start_response_id bigint, start_response_digest text, response_cwd text, response_marker text, response_ephemeral boolean, returned_name text, bound_at_micros bigint)",
 		language: "sql",
@@ -1384,7 +1412,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "mark_codex_experiment_title_set_possible_exact",
 		lookup_signature: "decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
-		migration_signature: "mark_codex_experiment_title_set_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_title_attempt_id uuid, p_thread_id text,\n\tp_request_id bigint, p_request_digest text, p_requested_title text\n)",
+		declaration_signature: "mark_codex_experiment_title_set_possible_exact(\n\tp_protocol text, p_idempotency_key text, p_experiment_id uuid,\n\tp_expected_revision bigint, p_title_attempt_id uuid, p_thread_id text,\n\tp_request_id bigint, p_request_digest text, p_requested_title text\n)",
 		arguments: "p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_title_attempt_id uuid, p_thread_id text, p_request_id bigint, p_request_digest text, p_requested_title text",
 		result: "TABLE(response_bytes bytea, replayed boolean)",
 		language: "plpgsql",
@@ -1448,7 +1476,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "is_canonical_continuation_pack",
 		lookup_signature: "decodex.is_canonical_continuation_pack(pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
-		migration_signature: "is_canonical_continuation_pack(\n\tp_conversation_id uuid, p_compiled_bytes bytea, p_compiled_digest text,\n\tp_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer,\n\tp_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer,\n\tp_source_kinds text[], p_source_ids text[], p_source_revisions bigint[],\n\tp_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[],\n\tp_included_digests text[], p_dispositions text[], p_artifact_ids text[],\n\tp_artifact_revisions bigint[]\n)",
+		declaration_signature: "is_canonical_continuation_pack(\n\tp_conversation_id uuid, p_compiled_bytes bytea, p_compiled_digest text,\n\tp_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer,\n\tp_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer,\n\tp_source_kinds text[], p_source_ids text[], p_source_revisions bigint[],\n\tp_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[],\n\tp_included_digests text[], p_dispositions text[], p_artifact_ids text[],\n\tp_artifact_revisions bigint[]\n)",
 		arguments: "p_conversation_id uuid, p_compiled_bytes bytea, p_compiled_digest text, p_manifest_digest text, p_max_bytes integer, p_recent_item_limit integer, p_possible_side_effects text, p_truncated boolean, p_omitted_source_count integer, p_source_kinds text[], p_source_ids text[], p_source_revisions bigint[], p_content_digests text[], p_original_lengths bigint[], p_included_lengths bigint[], p_included_digests text[], p_dispositions text[], p_artifact_ids text[], p_artifact_revisions bigint[]",
 		result: "boolean",
 		language: "plpgsql",
@@ -1478,7 +1506,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_continuation_plan_exact",
 		lookup_signature: "decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
-		migration_signature: "read_continuation_plan_exact(\n\tp_plan_id uuid, p_expected_revision bigint\n)",
+		declaration_signature: "read_continuation_plan_exact(\n\tp_plan_id uuid, p_expected_revision bigint\n)",
 		arguments: "p_plan_id uuid, p_expected_revision bigint",
 		result: "TABLE(response_bytes bytea, effect_envelope jsonb, kind text, codex_thread_id text, fallback_context_pack_id text, fallback_runtime_session_id text, replay_permitted boolean, dispatch_enabled boolean)",
 		language: "sql",
@@ -1569,7 +1597,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_waiting_usage_wake_transition_exact",
 		lookup_signature: "decodex.read_waiting_usage_wake_transition_exact(pg_catalog.uuid,pg_catalog.uuid)",
-		migration_signature: "read_waiting_usage_wake_transition_exact(\n\tp_transition_id uuid, p_operation_id uuid\n)",
+		declaration_signature: "read_waiting_usage_wake_transition_exact(\n\tp_transition_id uuid, p_operation_id uuid\n)",
 		arguments: "p_transition_id uuid, p_operation_id uuid",
 		result: "TABLE(transition_id text, wake_id text, revision bigint, predecessor_revision bigint, predecessor_transition_id text, operation_id text, transition_kind text, registration_operation_id text, routing_decision_id text, routing_decision_revision bigint, routing_policy_id text, routing_policy_revision bigint, managed_run_id text, managed_run_revision bigint, earliest_ready_at_micros bigint, state text, claim_id text, lease_holder text, lease_fence_id text, lease_acquired_at_micros bigint, lease_expires_at_micros bigint, registered_at_micros bigint, transitioned_at_micros bigint, terminal_reason text, routing_resolution_request_id text, fresh_routing_resolution_only boolean, prior_decision_reusable boolean, production_enabled boolean, effect_envelope jsonb, response_bytes bytea)",
 		language: "sql",
@@ -1617,7 +1645,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	exact_function_contract(
 		"register_waiting_usage_wake_exact_internal",
 		"decodex.register_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.timestamptz)",
-		"register_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_decision_id uuid, p_expected_managed_run_revision bigint,\n\tp_authority_now timestamptz\n)",
+		"register_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_decision_id uuid, p_expected_managed_run_revision bigint,\n\tp_authority_now timestamp with time zone\n)",
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_managed_run_revision bigint, p_authority_now timestamp with time zone",
 		"bytea",
 		"plpgsql",
@@ -1626,7 +1654,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	exact_function_contract(
 		"claim_due_waiting_usage_wake_exact_internal",
 		"decodex.claim_due_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
-		"claim_due_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_claim_id uuid, p_holder_id uuid,\n\tp_authority_now timestamptz\n)",
+		"claim_due_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid,\n\tp_claim_id uuid, p_holder_id uuid,\n\tp_authority_now timestamp with time zone\n)",
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_claim_id uuid, p_holder_id uuid, p_authority_now timestamp with time zone",
 		"bytea",
 		"plpgsql",
@@ -1635,7 +1663,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	exact_function_contract(
 		"fire_waiting_usage_wake_exact_internal",
 		"decodex.fire_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.timestamptz)",
-		"fire_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_holder_id uuid, p_lease_fence_id uuid,\n\tp_authority_now timestamptz\n)",
+		"fire_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_holder_id uuid, p_lease_fence_id uuid,\n\tp_authority_now timestamp with time zone\n)",
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid, p_holder_id uuid, p_lease_fence_id uuid, p_authority_now timestamp with time zone",
 		"bytea",
 		"plpgsql",
@@ -1644,7 +1672,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	exact_function_contract(
 		"cancel_waiting_usage_wake_exact_internal",
 		"decodex.cancel_waiting_usage_wake_exact_internal(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.timestamptz)",
-		"cancel_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_authority_now timestamptz\n)",
+		"cancel_waiting_usage_wake_exact_internal(\n\tp_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid,\n\tp_expected_revision bigint, p_expected_transition_id uuid,\n\tp_authority_now timestamp with time zone\n)",
 		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid, p_authority_now timestamp with time zone",
 		"bytea",
 		"plpgsql",
@@ -1701,7 +1729,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_account_operation_exact",
 		lookup_signature: "decodex.read_account_operation_exact(pg_catalog.uuid)",
-		migration_signature: "read_account_operation_exact(p_operation_id uuid)",
+		declaration_signature: "read_account_operation_exact(p_operation_id uuid)",
 		arguments: "p_operation_id uuid",
 		result: "SETOF decodex.account_operations",
 		language: "sql",
@@ -1754,7 +1782,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_account_routing_control_exact",
 		lookup_signature: "decodex.read_account_routing_control_exact()",
-		migration_signature: "read_account_routing_control_exact()",
+		declaration_signature: "read_account_routing_control_exact()",
 		arguments: "",
 		result: "TABLE(mode decodex.account_selection_mode, fixed_account_id uuid, revision bigint, account_order uuid[])",
 		language: "plpgsql",
@@ -1799,6 +1827,143 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		"plpgsql",
 		"v",
 	),
+	exact_function_contract(
+		"plan_initial_thread_continuation_exact",
+		"decodex.plan_initial_thread_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"plan_initial_thread_continuation_exact(\n\tp_protocol text,p_idempotency_key text,p_operation_id uuid,\n\tp_decision_id uuid,p_expected_conversation_revision bigint,p_plan_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_decision_id uuid, p_expected_conversation_revision bigint, p_plan_id uuid",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"claim_runtime_session_thread_command",
+		"decodex.claim_runtime_session_thread_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"claim_runtime_session_thread_command(\n\tp_protocol text,p_idempotency_key text,p_request jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_request jsonb",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	exact_function_contract(
+		"complete_runtime_session_thread_command",
+		"decodex.complete_runtime_session_thread_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"complete_runtime_session_thread_command(\n\tp_protocol text,p_idempotency_key text,p_effect jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_effect jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"complete_runtime_session_thread_rejection",
+		"decodex.complete_runtime_session_thread_rejection(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb,pg_catalog.text)",
+		"complete_runtime_session_thread_rejection(\n\tp_protocol text,p_idempotency_key text,p_operation text,\n\tp_request jsonb,p_rejection text\n)",
+		"p_protocol text, p_idempotency_key text, p_operation text, p_request jsonb, p_rejection text",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"append_runtime_session_thread_effect",
+		"decodex.append_runtime_session_thread_effect(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"append_runtime_session_thread_effect(\n\tp_runtime_session_id uuid,p_revision bigint,p_event_kind text,\n\tp_correlation_key text,p_payload jsonb\n)",
+		"p_runtime_session_id uuid, p_revision bigint, p_event_kind text, p_correlation_key text, p_payload jsonb",
+		"jsonb",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"acknowledge_runtime_session_turn_exact",
+		"decodex.acknowledge_runtime_session_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+		"acknowledge_runtime_session_turn_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_user_turn_id uuid,p_expected_user_turn_revision bigint,\n\tp_assistant_turn_id uuid,p_expected_assistant_turn_revision bigint,\n\tp_provider_attempt_id uuid,p_expected_provider_attempt_revision bigint,\n\tp_provider_evidence_id uuid,\n\tp_provider_outcome decodex.provider_attempt_terminal_outcome,\n\tp_provider_thread_id uuid,p_provider_turn_id text\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_user_turn_id uuid, p_expected_user_turn_revision bigint, p_assistant_turn_id uuid, p_expected_assistant_turn_revision bigint, p_provider_attempt_id uuid, p_expected_provider_attempt_revision bigint, p_provider_evidence_id uuid, p_provider_outcome decodex.provider_attempt_terminal_outcome, p_provider_thread_id uuid, p_provider_turn_id text",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	FunctionContract {
+		name: "read_ordinary_runtime_session_for_resume_exact",
+		lookup_signature: "decodex.read_ordinary_runtime_session_for_resume_exact(pg_catalog.uuid)",
+		declaration_signature: "read_ordinary_runtime_session_for_resume_exact(\n\tp_conversation_id uuid\n)",
+		arguments: "p_conversation_id uuid",
+		result: "TABLE(conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, codex_thread_id uuid, model text, reasoning_effort text, instructions text, source_account_id uuid, source_account_revision bigint, next_turn_sequence bigint, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, has_active_turn boolean, has_unresolved_provider_attempt boolean, conversation_status text, profile_role text)",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	table_function_contract(
+		"read_ordinary_task_conversations_exact",
+		"decodex.read_ordinary_task_conversations_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+		"read_ordinary_task_conversations_exact(\n\tp_conversation_id uuid,p_after_updated_at_micros bigint,\n\tp_after_conversation_id uuid,p_limit bigint\n)",
+		"p_conversation_id uuid, p_after_updated_at_micros bigint, p_after_conversation_id uuid, p_limit bigint",
+		"TABLE(conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, runtime_session_state decodex.runtime_session_state, codex_thread_id uuid, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, active_user_turn_id uuid, active_user_turn_count bigint, has_active_provider_attempt boolean, has_unknown_provider_attempt boolean, pre_session_state text, routing_decision_id uuid, updated_at_micros bigint)",
+		"s",
+	),
+	table_function_contract(
+		"read_turn_admission_exact",
+		"decodex.read_turn_admission_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"read_turn_admission_exact(\n\tp_conversation_id uuid,p_runtime_session_id uuid,p_turn_id uuid\n)",
+		"p_conversation_id uuid, p_runtime_session_id uuid, p_turn_id uuid",
+		"TABLE(conversation_id uuid, runtime_session_id uuid, turn_id uuid, sequence bigint, role decodex.turn_role, possible_side_effects decodex.side_effect_state, status decodex.turn_status, revision bigint)",
+		"s",
+	),
+	table_function_contract(
+		"read_current_task_routing_authority_exact",
+		"decodex.read_current_task_routing_authority_exact()",
+		"read_current_task_routing_authority_exact()",
+		"",
+		"TABLE(routing_policy_id uuid, routing_policy_revision bigint)",
+		"s",
+	),
+	table_function_contract(
+		"prepare_quick_task_process_generation_exact",
+		"decodex.prepare_quick_task_process_generation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"prepare_quick_task_process_generation_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint,\n\tp_continuation_plan_id uuid,p_routing_decision_id uuid,\n\tp_selected_account_id uuid,p_process_generation_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_routing_decision_id uuid, p_selected_account_id uuid, p_process_generation_id uuid",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	table_function_contract(
+		"fence_runtime_session_thread_start_exact",
+		"decodex.fence_runtime_session_thread_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.text)",
+		"fence_runtime_session_thread_start_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint,p_continuation_plan_id uuid,\n\tp_process_generation_id uuid,p_process_generation_revision bigint,\n\tp_process_execution_epoch_id uuid,p_thread_start_request_id bigint,\n\tp_thread_start_request_sha256 text\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_process_generation_id uuid, p_process_generation_revision bigint, p_process_execution_epoch_id uuid, p_thread_start_request_id bigint, p_thread_start_request_sha256 text",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	table_function_contract(
+		"bind_runtime_session_thread_exact",
+		"decodex.bind_runtime_session_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+		"bind_runtime_session_thread_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint,p_continuation_plan_id uuid,\n\tp_fence_protocol text,p_fence_idempotency_key text,\n\tp_thread_start_request_id bigint,p_thread_start_request_sha256 text,\n\tp_thread_start_response_id bigint,p_thread_start_response_sha256 text,\n\tp_codex_thread_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_fence_protocol text, p_fence_idempotency_key text, p_thread_start_request_id bigint, p_thread_start_request_sha256 text, p_thread_start_response_id bigint, p_thread_start_response_sha256 text, p_codex_thread_id uuid",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	exact_function_contract(
+		"read_quick_task_thread_establishment_exact",
+		"decodex.read_quick_task_thread_establishment_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"read_quick_task_thread_establishment_exact(\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint,\n\tp_continuation_plan_id uuid,p_routing_decision_id uuid,\n\tp_selected_account_id uuid,p_process_generation_id uuid\n)",
+		"p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_routing_decision_id uuid, p_selected_account_id uuid, p_process_generation_id uuid",
+		"jsonb",
+		"plpgsql",
+		"s",
+	),
+	table_function_contract(
+		"terminalize_quick_task_turn_exact",
+		"decodex.terminalize_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+		"terminalize_quick_task_turn_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_user_turn_id uuid,p_expected_user_turn_revision bigint,\n\tp_assistant_turn_id uuid,p_expected_assistant_turn_revision bigint,\n\tp_provider_attempt_id uuid,p_expected_provider_attempt_revision bigint,\n\tp_provider_evidence_id uuid,\n\tp_provider_outcome decodex.provider_attempt_terminal_outcome,\n\tp_provider_thread_id uuid,p_provider_turn_id text\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_user_turn_id uuid, p_expected_user_turn_revision bigint, p_assistant_turn_id uuid, p_expected_assistant_turn_revision bigint, p_provider_attempt_id uuid, p_expected_provider_attempt_revision bigint, p_provider_evidence_id uuid, p_provider_outcome decodex.provider_attempt_terminal_outcome, p_provider_thread_id uuid, p_provider_turn_id text",
+		"TABLE(result_code text, conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, prior_runtime_session_revision bigint, runtime_session_revision bigint, user_turn_id uuid, user_turn_revision bigint, assistant_turn_id uuid, assistant_turn_revision bigint, provider_attempt_id uuid, provider_attempt_revision bigint, provider_evidence_id uuid)",
+		"v",
+	),
+	table_function_contract(
+		"reconcile_quick_task_terminalizations_exact",
+		"decodex.reconcile_quick_task_terminalizations_exact(pg_catalog.int4)",
+		"reconcile_quick_task_terminalizations_exact(p_limit integer)",
+		"p_limit integer",
+		"TABLE(terminalized_count bigint)",
+		"v",
+	),
 	trigger_contract(
 		"enforce_process_generation_transition",
 		"decodex.enforce_process_generation_transition()",
@@ -1816,9 +1981,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	),
 	table_function_contract(
 		"prepare_process_generation_exact",
-		"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
-		"prepare_process_generation_exact(\n\tp_generation_id uuid,p_account_id uuid,p_execution_epoch_id uuid,\n\tp_authorization_digest text,p_runner_identity text,p_intended_boot_id text,\n\tp_control_kind decodex.process_generation_control_kind,\n\tp_isolation_kind decodex.process_generation_isolation_kind,\n\tp_initial_account_revision bigint,p_credential_store_schema_version integer,\n\tp_credential_version bigint,p_credential_fingerprint text,\n\tp_credential_writer_operation_id uuid,\n\tp_provider_kind decodex.account_provider_kind,p_provider_account_id text,\n\tp_refresh_callback_profile_sha256 text,\n\tp_reset_card_outbox_id bigint,p_reset_card_worker_id uuid,p_reset_card_claim_token uuid\n)",
-		"p_generation_id uuid, p_account_id uuid, p_execution_epoch_id uuid, p_authorization_digest text, p_runner_identity text, p_intended_boot_id text, p_control_kind decodex.process_generation_control_kind, p_isolation_kind decodex.process_generation_isolation_kind, p_initial_account_revision bigint, p_credential_store_schema_version integer, p_credential_version bigint, p_credential_fingerprint text, p_credential_writer_operation_id uuid, p_provider_kind decodex.account_provider_kind, p_provider_account_id text, p_refresh_callback_profile_sha256 text, p_reset_card_outbox_id bigint, p_reset_card_worker_id uuid, p_reset_card_claim_token uuid",
+		"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+		"prepare_process_generation_exact(\n\tp_generation_id uuid,p_account_id uuid,p_execution_epoch_id uuid,\n\tp_authorization_digest text,p_runner_identity text,p_intended_boot_id text,\n\tp_control_kind decodex.process_generation_control_kind,\n\tp_isolation_kind decodex.process_generation_isolation_kind,\n\tp_initial_account_revision bigint,p_credential_store_schema_version integer,\n\tp_credential_version bigint,p_credential_fingerprint text,\n\tp_credential_writer_operation_id uuid,\n\tp_provider_kind decodex.account_provider_kind,p_provider_account_id text,\n\tp_refresh_callback_profile_sha256 text,\n\tp_reset_card_outbox_id bigint,p_reset_card_worker_id uuid,p_reset_card_claim_token uuid,\n\tp_quick_task_protocol text,p_quick_task_idempotency_key text,\n\tp_quick_task_conversation_id uuid,p_quick_task_conversation_revision bigint,\n\tp_quick_task_runtime_session_id uuid,p_quick_task_runtime_session_revision bigint,\n\tp_quick_task_turn_id uuid,p_quick_task_turn_revision bigint,\n\tp_quick_task_continuation_plan_id uuid,p_quick_task_routing_decision_id uuid\n)",
+		"p_generation_id uuid, p_account_id uuid, p_execution_epoch_id uuid, p_authorization_digest text, p_runner_identity text, p_intended_boot_id text, p_control_kind decodex.process_generation_control_kind, p_isolation_kind decodex.process_generation_isolation_kind, p_initial_account_revision bigint, p_credential_store_schema_version integer, p_credential_version bigint, p_credential_fingerprint text, p_credential_writer_operation_id uuid, p_provider_kind decodex.account_provider_kind, p_provider_account_id text, p_refresh_callback_profile_sha256 text, p_reset_card_outbox_id bigint, p_reset_card_worker_id uuid, p_reset_card_claim_token uuid, p_quick_task_protocol text, p_quick_task_idempotency_key text, p_quick_task_conversation_id uuid, p_quick_task_conversation_revision bigint, p_quick_task_runtime_session_id uuid, p_quick_task_runtime_session_revision bigint, p_quick_task_turn_id uuid, p_quick_task_turn_revision bigint, p_quick_task_continuation_plan_id uuid, p_quick_task_routing_decision_id uuid",
 		"TABLE(result_code text, revision bigint, state decodex.process_generation_state, created_at_micros bigint, updated_at_micros bigint)",
 		"v",
 	),
@@ -1906,17 +2071,17 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	),
 	table_function_contract(
 		"prepare_provider_attempt_exact",
-		"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
-		"prepare_provider_attempt_exact(\n\tp_attempt_id uuid,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_managed_run_revision bigint,\n\tp_managed_execution_id uuid,\n\tp_continuation_plan_id uuid,\n\tp_process_generation_id uuid,\n\tp_process_generation_revision bigint,\n\tp_request_id uuid,\n\tp_request_digest text,\n\tp_provider_idempotency_key text,\n\tp_provider_correlation_key text,\n\tp_predecessor_attempt_id uuid,\n\tp_duplicate_risk_ack_digest text\n)",
-		"p_attempt_id uuid, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_turn_id uuid, p_managed_run_id uuid, p_managed_run_revision bigint, p_managed_execution_id uuid, p_continuation_plan_id uuid, p_process_generation_id uuid, p_process_generation_revision bigint, p_request_id uuid, p_request_digest text, p_provider_idempotency_key text, p_provider_correlation_key text, p_predecessor_attempt_id uuid, p_duplicate_risk_ack_digest text",
+		"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+		"prepare_provider_attempt_exact(\n\tp_attempt_id uuid,p_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,p_turn_id uuid,p_managed_run_id uuid,\n\tp_managed_run_revision bigint,p_managed_execution_id uuid,\n\tp_continuation_plan_id uuid,p_process_generation_id uuid,\n\tp_process_generation_revision bigint,p_process_execution_epoch_id uuid,\n\tp_request_id uuid,p_request_digest text,\n\tp_provider_idempotency_key text,p_provider_correlation_key text,\n\tp_predecessor_attempt_id uuid,p_duplicate_risk_ack_digest text,\n\tp_runtime_session_binding_protocol text,\n\tp_runtime_session_binding_idempotency_key text,\n\tp_expected_conversation_revision bigint,p_expected_turn_revision bigint\n)",
+		"p_attempt_id uuid, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_turn_id uuid, p_managed_run_id uuid, p_managed_run_revision bigint, p_managed_execution_id uuid, p_continuation_plan_id uuid, p_process_generation_id uuid, p_process_generation_revision bigint, p_process_execution_epoch_id uuid, p_request_id uuid, p_request_digest text, p_provider_idempotency_key text, p_provider_correlation_key text, p_predecessor_attempt_id uuid, p_duplicate_risk_ack_digest text, p_runtime_session_binding_protocol text, p_runtime_session_binding_idempotency_key text, p_expected_conversation_revision bigint, p_expected_turn_revision bigint",
 		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, created_at_micros bigint, updated_at_micros bigint)",
 		"v",
 	),
 	table_function_contract(
 		"authorize_provider_attempt_dispatch_exact",
-		"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
-		"authorize_provider_attempt_dispatch_exact(\n\tp_attempt_id uuid,\n\tp_expected_revision bigint,\n\tp_process_generation_id uuid,\n\tp_process_generation_revision bigint\n)",
-		"p_attempt_id uuid, p_expected_revision bigint, p_process_generation_id uuid, p_process_generation_revision bigint",
+		"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+		"authorize_provider_attempt_dispatch_exact(\n\tp_attempt_id uuid,p_expected_revision bigint,\n\tp_process_generation_id uuid,p_process_generation_revision bigint,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint\n)",
+		"p_attempt_id uuid, p_expected_revision bigint, p_process_generation_id uuid, p_process_generation_revision bigint, p_conversation_id uuid, p_expected_conversation_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint",
 		"TABLE(result_code text, revision bigint, state decodex.provider_attempt_state, updated_at_micros bigint)",
 		"v",
 	),
@@ -1973,7 +2138,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 	FunctionContract {
 		name: "read_account_profile_exact",
 		lookup_signature: "decodex.read_account_profile_exact(pg_catalog.uuid)",
-		migration_signature: "read_account_profile_exact(\n\tp_account_id uuid\n)",
+		declaration_signature: "read_account_profile_exact(\n\tp_account_id uuid\n)",
 		arguments: "p_account_id uuid",
 		result: "TABLE(account_id uuid, account_revision bigint, provider_kind decodex.account_provider_kind, provider_account_id text, observed_at_micros bigint, display_name text, username text, lifetime_tokens bigint, peak_daily_tokens bigint, longest_task_seconds bigint, current_streak_days integer, longest_streak_days integer, daily_start_dates text[], daily_tokens bigint[])",
 		language: "sql",
@@ -1983,7 +2148,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 201] = [
 		rows: 1_000.0,
 	},
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -2031,6 +2196,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.plan_initial_thread_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
 	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
@@ -2055,7 +2221,18 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.observe_account_quota_error_exact(pg_catalog.uuid,pg_catalog.int4,decodex.account_quota_observation_error,pg_catalog.int8)",
 	"decodex.observe_account_store_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,decodex.account_store_observation)",
 	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
-	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.acknowledge_runtime_session_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.read_ordinary_runtime_session_for_resume_exact(pg_catalog.uuid)",
+	"decodex.read_ordinary_task_conversations_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_turn_admission_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.read_current_task_routing_authority_exact()",
+	"decodex.prepare_quick_task_process_generation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fence_runtime_session_thread_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.text)",
+	"decodex.bind_runtime_session_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.read_quick_task_thread_establishment_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.terminalize_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.reconcile_quick_task_terminalizations_exact(pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -2063,8 +2240,8 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
 	"decodex.project_process_generations_after_supervisor_loss_exact()",
 	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
-	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
-	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.cancel_provider_attempt_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_provider_attempt_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_unknown_reason)",
 	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
@@ -2073,164 +2250,6 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 88] = [
 	"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_account_profile_exact(pg_catalog.uuid)",
 ];
-const RUNTIME_TYPE_NAMES: &[&str] = &[
-	"decodex.account_state",
-	"decodex.outbox_state",
-	"decodex.effect_state",
-	"decodex.conversation_status",
-	"decodex.runtime_session_state",
-	"decodex.turn_role",
-	"decodex.side_effect_state",
-	"decodex.history_item_kind",
-	"decodex.history_item_status",
-	"decodex.turn_status",
-	"decodex.artifact_status",
-	"decodex.context_source_kind",
-	"decodex.transition_kind",
-	"decodex.context_source_disposition",
-	"decodex.command_receipt_state",
-	"decodex.canonical_uuid_v4_text",
-	"decodex.project_status",
-	"decodex.agent_role",
-	"decodex.agent_status",
-	"decodex.program_state",
-	"decodex.objective_state",
-	"decodex.quota_window_class",
-	"decodex.observation_confidence",
-	"decodex.role_profile_role",
-	"decodex.work_item_priority",
-	"decodex.work_item_state",
-	"decodex.work_item_edge_kind",
-	"decodex.work_item_blocker_kind",
-	"decodex.managed_run_lifecycle",
-	"decodex.managed_run_phase",
-	"decodex.managed_run_wait_reason",
-	"decodex.execution_assignment_role",
-	"decodex.managed_repository_phase",
-	"decodex.repository_operation_kind",
-	"decodex.repository_operation_state",
-	"decodex.repository_ambiguity",
-	"decodex.repository_authority_transition_kind",
-	"decodex.repository_evidence_kind",
-	"decodex.routing_member_disposition",
-	"decodex.codex_capability",
-	"decodex.capability_evidence_state",
-	"decodex.routing_blocker",
-	"decodex.codex_experiment_observation_kind",
-	"decodex.process_generation_state",
-	"decodex.process_generation_control_kind",
-	"decodex.process_generation_isolation_kind",
-	"decodex.process_generation_loss_reason",
-	"decodex.process_generation_death_evidence_kind",
-	"decodex.provider_attempt_state",
-	"decodex.provider_attempt_consumer_kind",
-	"decodex.provider_attempt_unknown_reason",
-	"decodex.provider_attempt_evidence_source",
-	"decodex.provider_attempt_terminal_outcome",
-	"decodex.account_provider_kind",
-	"decodex.account_operation_kind",
-	"decodex.account_operation_phase",
-	"decodex.account_selection_mode",
-	"decodex.account_store_observation",
-	"decodex.account_quota_observation_error",
-];
-
-pub(crate) async fn provision_runtime(
-	client: &Client,
-	database: &str,
-	runtime_role: &str,
-) -> Result<(), StoreError> {
-	let identifiers = client
-		.query_one(
-			"SELECT pg_catalog.quote_ident($1), pg_catalog.quote_ident($2), \
-			 pg_catalog.current_database()",
-			&[&database, &runtime_role],
-		)
-		.await?;
-	let database_identifier: String = identifiers.try_get(0)?;
-	let runtime_identifier: String = identifiers.try_get(1)?;
-	let connected_database: String = identifiers.try_get(2)?;
-	if connected_database != database {
-		return Err(StoreError::InvalidInput(
-			"runtime authority provisioning database differs from the connected database",
-		));
-	}
-
-	let runtime_types = RUNTIME_TYPE_NAMES.join(", ");
-	let runtime_functions = RUNTIME_EXECUTE_FUNCTIONS.join(", ");
-	let sql = format!(
-		r#"
-REVOKE ALL PRIVILEGES ON DATABASE {database_identifier} FROM {runtime_identifier};
-GRANT CONNECT ON DATABASE {database_identifier} TO {runtime_identifier};
-REVOKE ALL PRIVILEGES ON SCHEMA public, decodex FROM {runtime_identifier};
-GRANT USAGE ON SCHEMA public, decodex TO {runtime_identifier};
-REVOKE ALL PRIVILEGES ON TABLE public.refinery_schema_history FROM {runtime_identifier};
-GRANT SELECT ON TABLE public.refinery_schema_history TO {runtime_identifier};
-REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA decodex FROM {runtime_identifier};
-REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA decodex FROM {runtime_identifier};
-REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA decodex FROM {runtime_identifier};
-REVOKE ALL PRIVILEGES ON TYPE {runtime_types} FROM {runtime_identifier};
-GRANT SELECT ON TABLE decodex.accounts TO {runtime_identifier};
-GRANT SELECT, INSERT, UPDATE ON TABLE
-  decodex.quota_windows,
-  decodex.command_receipts,
-  decodex.leases,
-  decodex.conversations,
-  decodex.artifacts,
-  decodex.turns,
-  decodex.history_items,
-  decodex.managed_repositories
-TO {runtime_identifier};
-GRANT SELECT, INSERT ON TABLE
-  decodex.quota_exclusions,
-  decodex.blob_objects,
-  decodex.artifact_revisions,
-  decodex.context_packs,
-  decodex.context_pack_sources,
-  decodex.transition_proposals,
-  decodex.activity,
-  decodex.repository_admissions,
-  decodex.repository_authority_transitions,
-  decodex.repository_operations,
-  decodex.repository_operation_events,
-  decodex.repository_operation_evidence,
-  decodex.repository_operation_results
-TO {runtime_identifier};
-GRANT SELECT ON TABLE
-  decodex.profile_snapshots,
-  decodex.account_snapshots,
-  decodex.runtime_sessions,
-  decodex.history_item_versions,
-  decodex.history_cursors,
-  decodex.projects,
-  decodex.agents,
-  decodex.policies,
-  decodex.policy_revisions,
-  decodex.programs,
-  decodex.objectives,
-  decodex.objective_completion_evidence,
-  decodex.work_items,
-  decodex.work_item_objectives,
-  decodex.work_item_edges,
-  decodex.work_item_readiness_blockers,
-  decodex.work_item_acceptances,
-  decodex.managed_runs,
-  decodex.managed_run_assignments
-TO {runtime_identifier};
-GRANT DELETE ON TABLE decodex.blob_objects TO {runtime_identifier};
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE decodex.outbox TO {runtime_identifier};
-GRANT USAGE ON SEQUENCE
-  decodex.activity_sequence_seq,
-  decodex.outbox_id_seq
-TO {runtime_identifier};
-GRANT USAGE ON TYPE {runtime_types} TO {runtime_identifier};
-GRANT EXECUTE ON FUNCTION {runtime_functions} TO {runtime_identifier};
-"#,
-	);
-	client.batch_execute(&sql).await?;
-
-	Ok(())
-}
 const SAFETY_FUNCTIONS: [&str; 74] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
@@ -2308,30 +2327,12 @@ const SAFETY_FUNCTIONS: [&str; 74] = [
 	"forbid_provider_attempt_history_mutation",
 ];
 const SAFETY_TRIGGER_COUNT: usize = 146;
-// PostgreSQL 18 catalogs with an owner and a containing namespace, plus the namespace
-// itself. Namespace-scoped catalogs without an independent owner (constraints, triggers,
-// text-search parsers/templates, and dependent rows) inherit authority from one of these.
-#[cfg(test)]
-const OWNED_OBJECT_CATALOGS: [(&str, &str); 12] = [
-	("pg_namespace", "SELECT 'schema', namespace.nspowner"),
-	("pg_class", "FROM pg_catalog.pg_class AS class"),
-	("pg_proc", "SELECT 'function', proc.proowner FROM decodex_functions AS proc"),
-	("pg_type", "FROM pg_catalog.pg_type AS owned_type"),
-	("pg_collation", "FROM pg_catalog.pg_collation AS owned_collation"),
-	("pg_conversion", "FROM pg_catalog.pg_conversion AS owned_conversion"),
-	("pg_operator", "FROM pg_catalog.pg_operator AS owned_operator"),
-	("pg_opclass", "FROM pg_catalog.pg_opclass AS operator_class"),
-	("pg_opfamily", "FROM pg_catalog.pg_opfamily AS operator_family"),
-	("pg_statistic_ext", "FROM pg_catalog.pg_statistic_ext AS statistics"),
-	("pg_ts_config", "FROM pg_catalog.pg_ts_config AS configuration"),
-	("pg_ts_dict", "FROM pg_catalog.pg_ts_dict AS dictionary"),
-];
 const ROLE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.*
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), effective_roles AS (
   SELECT DISTINCT inherited.oid
   FROM set_roles AS active
@@ -2456,8 +2457,8 @@ const TABLE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), expected(table_name, can_select, can_insert, can_update, can_delete) AS (VALUES
   ('accounts', true, false, false, false),
   ('quota_windows', true, true, true, false),
@@ -2551,14 +2552,6 @@ WITH set_roles AS (
   schema_name, table_name, can_select, can_insert, can_update, can_delete
 ) AS (
   SELECT 'decodex'::pg_catalog.name, expected.* FROM expected
-  UNION ALL
-  SELECT
-    'public'::pg_catalog.name,
-    'refinery_schema_history'::pg_catalog.name,
-    true,
-    false,
-    false,
-    false
 ), tables AS (
   SELECT class.oid, class.relname, expected.*
   FROM pg_catalog.pg_class AS class
@@ -2597,10 +2590,10 @@ SELECT
     )
     AND COALESCE((
       SELECT pg_catalog.bool_and(
-        pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select
-        AND pg_catalog.has_table_privilege(session_user, oid, 'INSERT') = can_insert
-        AND pg_catalog.has_table_privilege(session_user, oid, 'UPDATE') = can_update
-        AND pg_catalog.has_table_privilege(session_user, oid, 'DELETE') = can_delete
+		pg_catalog.has_table_privilege($1::pg_catalog.name, oid, 'SELECT') = can_select
+		AND pg_catalog.has_table_privilege($1::pg_catalog.name, oid, 'INSERT') = can_insert
+		AND pg_catalog.has_table_privilege($1::pg_catalog.name, oid, 'UPDATE') = can_update
+		AND pg_catalog.has_table_privilege($1::pg_catalog.name, oid, 'DELETE') = can_delete
       )
       FROM tables WHERE table_name IS NOT NULL
     ), false),
@@ -2649,59 +2642,12 @@ SELECT
       )
   )
 "#;
-const MIGRATION_HISTORY_AUTHORITY_SQL: &str = r#"
-WITH set_roles AS (
-  SELECT role.oid
-  FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
-), effective_roles AS (
-  SELECT DISTINCT inherited.oid
-  FROM set_roles AS active
-  JOIN pg_catalog.pg_roles AS inherited
-    ON inherited.oid = active.oid
-    OR pg_catalog.pg_has_role(active.oid, inherited.oid, 'USAGE')
-), history AS (
-  SELECT class.oid, class.relowner
-  FROM pg_catalog.pg_class AS class
-  JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid = class.relnamespace
-  WHERE namespace.nspname = 'public'
-    AND class.relname = 'refinery_schema_history'
-    AND class.relkind IN ('r', 'p')
-)
-SELECT
-  (SELECT count(*) FROM history) = 1,
-  COALESCE((
-    SELECT pg_catalog.has_table_privilege(session_user, oid, 'SELECT') FROM history
-  ), false),
-  EXISTS (
-    SELECT 1
-    FROM set_roles AS role
-    CROSS JOIN history
-    WHERE
-      pg_catalog.has_table_privilege(role.oid, history.oid, 'SELECT WITH GRANT OPTION')
-      OR pg_catalog.has_table_privilege(role.oid, history.oid, 'INSERT, UPDATE, DELETE')
-      OR pg_catalog.has_table_privilege(role.oid, history.oid, 'TRUNCATE')
-      OR pg_catalog.has_table_privilege(role.oid, history.oid, 'REFERENCES')
-      OR pg_catalog.has_table_privilege(role.oid, history.oid, 'TRIGGER')
-      OR pg_catalog.has_table_privilege(role.oid, history.oid, 'MAINTAIN')
-      OR pg_catalog.has_any_column_privilege(
-        role.oid,
-        history.oid,
-        'SELECT WITH GRANT OPTION, INSERT, UPDATE, REFERENCES'
-      )
-  ) OR EXISTS (
-    SELECT 1
-    FROM effective_roles AS role
-    JOIN history ON history.relowner = role.oid
-  )
-"#;
 const SEQUENCE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), expected(table_name, column_name, required_usage) AS (VALUES
   ('activity', 'sequence', true),
   ('outbox', 'id', true),
@@ -2729,7 +2675,7 @@ SELECT
     ),
   COALESCE((
     SELECT pg_catalog.bool_and(
-      pg_catalog.has_sequence_privilege(session_user, oid, 'USAGE') = required_usage
+	  pg_catalog.has_sequence_privilege($1::pg_catalog.name, oid, 'USAGE') = required_usage
     ) FROM expected_sequences
   ), false),
   EXISTS (
@@ -2760,8 +2706,8 @@ const PROCESS_GENERATION_TYPE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), expected(type_name) AS (VALUES
   ('process_generation_state'),
   ('process_generation_control_kind'),
@@ -2779,7 +2725,7 @@ SELECT
   (SELECT count(*) FROM actual) = 5
     AND COALESCE((
       SELECT pg_catalog.bool_and(
-        pg_catalog.has_type_privilege(session_user, actual.oid, 'USAGE')
+		pg_catalog.has_type_privilege($1::pg_catalog.name, actual.oid, 'USAGE')
       ) FROM actual
     ), false),
   EXISTS (
@@ -2802,8 +2748,8 @@ const PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), expected(type_name) AS (VALUES
   ('provider_attempt_state'),
   ('provider_attempt_consumer_kind'),
@@ -2821,7 +2767,7 @@ SELECT
   (SELECT count(*) FROM actual) = 5
     AND COALESCE((
       SELECT pg_catalog.bool_and(
-        pg_catalog.has_type_privilege(session_user, actual.oid, 'USAGE')
+		pg_catalog.has_type_privilege($1::pg_catalog.name, actual.oid, 'USAGE')
       ) FROM actual
     ), false),
   EXISTS (
@@ -3073,7 +3019,7 @@ SELECT
   proc.prosecdef,
 	proc.proconfig,
 	proc.prosrc,
-	pg_catalog.has_function_privilege(session_user, proc.oid, 'EXECUTE'),
+	pg_catalog.has_function_privilege($2::pg_catalog.name, proc.oid, 'EXECUTE'),
 	EXISTS (
 	  SELECT 1
 	  FROM pg_catalog.aclexplode(
@@ -3091,8 +3037,8 @@ const RUNTIME_ROUTINE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $2::pg_catalog.name
+     OR pg_catalog.pg_has_role($2::pg_catalog.name, role.oid, 'SET')
 ), expected_runtime_routines(oid) AS (
   SELECT pg_catalog.to_regprocedure(identity)
   FROM pg_catalog.unnest($1::pg_catalog.text[]) AS identity
@@ -3626,7 +3572,7 @@ WITH catalog_context AS MATERIALIZED (
 ), runtime_role AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
+  WHERE role.rolname = $1::pg_catalog.name
 ), authority_dependency_targets(kind, identity, classid, objid, objsubid, resolved) AS (
   SELECT
     'function_dependency',
@@ -4233,7 +4179,7 @@ WITH catalog_context AS MATERIALIZED (
       collation_namespace.nspname,
       coll.collname,
       CASE
-        WHEN type.typowner = namespace.nspowner THEN 'migration'
+        WHEN type.typowner = namespace.nspowner THEN 'schema_owner'
         WHEN type.typowner = (SELECT oid FROM runtime_role) THEN 'runtime'
         ELSE 'role:' || pg_catalog.pg_get_userbyid(type.typowner)
       END,
@@ -4242,7 +4188,7 @@ WITH catalog_context AS MATERIALIZED (
           pg_catalog.jsonb_build_array(
             CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = namespace.nspowner THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END,
@@ -4251,7 +4197,7 @@ WITH catalog_context AS MATERIALIZED (
           ) ORDER BY
             pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = namespace.nspowner THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END)::pg_catalog.text, 'UTF8'),
@@ -4298,7 +4244,7 @@ WITH catalog_context AS MATERIALIZED (
       proc.proconfig,
       proc.prosrc,
       CASE
-        WHEN proc.proowner = namespace.nspowner THEN 'migration'
+        WHEN proc.proowner = namespace.nspowner THEN 'schema_owner'
         WHEN proc.proowner = (SELECT oid FROM runtime_role) THEN 'runtime'
         ELSE 'role:' || pg_catalog.pg_get_userbyid(proc.proowner)
       END,
@@ -4307,7 +4253,7 @@ WITH catalog_context AS MATERIALIZED (
           pg_catalog.jsonb_build_array(
             CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = namespace.nspowner THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END,
@@ -4316,7 +4262,7 @@ WITH catalog_context AS MATERIALIZED (
           ) ORDER BY
             pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = namespace.nspowner THEN 'migration'
+              WHEN privilege.grantee = namespace.nspowner THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
               ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
             END)::pg_catalog.text, 'UTF8'),
@@ -4353,19 +4299,19 @@ WITH catalog_context AS MATERIALIZED (
         ELSE 'decodex'
       END,
       default_acl.defaclobjtype,
-      'migration'
+      'schema_owner'
     ),
     COALESCE((
       SELECT pg_catalog.jsonb_agg(
         pg_catalog.jsonb_build_array(
           CASE
-            WHEN privilege.grantor = namespace.nspowner THEN 'migration'
+            WHEN privilege.grantor = namespace.nspowner THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END,
           CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = default_acl.defaclrole THEN 'migration'
+            WHEN privilege.grantee = default_acl.defaclrole THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
           END,
@@ -4373,13 +4319,13 @@ WITH catalog_context AS MATERIALIZED (
           privilege.is_grantable
         ) ORDER BY
           pg_catalog.convert_to((CASE
-            WHEN privilege.grantor = namespace.nspowner THEN 'migration'
+            WHEN privilege.grantor = namespace.nspowner THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END)::pg_catalog.text, 'UTF8'),
           pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = default_acl.defaclrole THEN 'migration'
+            WHEN privilege.grantee = default_acl.defaclrole THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM runtime_role) THEN 'runtime'
             ELSE 'role:' || pg_catalog.pg_get_userbyid(privilege.grantee)
           END)::pg_catalog.text, 'UTF8'),
@@ -4419,7 +4365,7 @@ SELECT
   (
     SELECT pg_catalog.jsonb_agg(
       pg_catalog.jsonb_build_array(kind, identity, contract)
-      -- Identity text byte order is canonical; digest changes require Phase A/B refreeze.
+	  -- Identity text byte order is canonical; accepted catalog changes require a refreeze.
       ORDER BY
         pg_catalog.convert_to(kind, 'UTF8'),
         pg_catalog.convert_to(identity::pg_catalog.text, 'UTF8'),
@@ -4432,14 +4378,14 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x02, 0xb6, 0x4d, 0xf1, 0xc7, 0x0e, 0xc4, 0xda, 0x16, 0x15, 0xea, 0x25, 0x31, 0x50, 0x6b, 0x03,
-	0x98, 0x8d, 0x74, 0x89, 0xdd, 0x82, 0xd8, 0xda, 0xa8, 0x83, 0x87, 0xc2, 0x95, 0x1c, 0x33, 0xbd,
+	0x9a, 0x56, 0xe7, 0xd8, 0x65, 0xeb, 0x09, 0xee, 0x78, 0x68, 0x84, 0x4d, 0x8d, 0x4f, 0x92, 0x8a,
+	0xac, 0xea, 0x94, 0xe6, 0xce, 0xdd, 0xf0, 0x98, 0x95, 0xb9, 0x66, 0x4a, 0x67, 0x17, 0xb3, 0xe2,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
 const CONFIGURED_AUTHORITY_SQL: &str = r#"
 WITH RECURSIVE configured_principals(label, role_name) AS (
-  VALUES ('migration'::pg_catalog.text, $1::pg_catalog.name),
+  VALUES ('schema_owner'::pg_catalog.text, $1::pg_catalog.name),
          ('runtime'::pg_catalog.text, $2::pg_catalog.name)
 ), configured_roles AS (
   SELECT
@@ -4500,16 +4446,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
   FROM pg_catalog.pg_class AS class
   JOIN relevant_namespaces AS namespace
     ON namespace.oid = class.relnamespace AND namespace.nspname = 'decodex'
-), ledger_class AS (
-  SELECT class.*, namespace.nspname
-  FROM pg_catalog.pg_class AS class
-  JOIN relevant_namespaces AS namespace
-    ON namespace.oid = class.relnamespace AND namespace.nspname = 'public'
-  WHERE class.relname = 'refinery_schema_history' AND class.relkind IN ('r', 'p')
 ), authority_classes AS (
-  SELECT * FROM decodex_classes
-  UNION ALL
-  SELECT * FROM ledger_class
+	SELECT * FROM decodex_classes
 ), authority_objects(kind, identity, owner_oid, acl) AS (
   SELECT
     'database', 'configured_database', database.datdba,
@@ -4533,12 +4471,7 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     )
   FROM decodex_classes AS class
   WHERE class.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')
-  UNION ALL
-  SELECT
-    'migration_ledger', pg_catalog.format('%I.%I', class.nspname, class.relname),
-    class.relowner, COALESCE(class.relacl, pg_catalog.acldefault('r', class.relowner))
-  FROM ledger_class AS class
-  UNION ALL
+	UNION ALL
   SELECT
     'type', pg_catalog.format('%I.%I', namespace.nspname, type.typname), type.typowner,
     COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))
@@ -4601,15 +4534,15 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     pg_catalog.format(
       '%s->%s',
       CASE
-        WHEN membership.roleid = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN membership.roleid = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN membership.roleid = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.roleid)
       END,
       CASE
-        WHEN membership.member = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN membership.member = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN membership.member = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.member)
@@ -4617,8 +4550,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     ),
     pg_catalog.jsonb_build_array(
       CASE
-        WHEN membership.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN membership.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN membership.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(membership.grantor)
@@ -4637,8 +4570,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
       '%s:%s',
       CASE
         WHEN setting.setrole = 0 THEN 'ALL'
-        WHEN setting.setrole = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN setting.setrole = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN setting.setrole = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(setting.setrole)
@@ -4661,8 +4594,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     object.identity,
     pg_catalog.jsonb_build_array(
       CASE
-        WHEN object.owner_oid = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN object.owner_oid = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN object.owner_oid = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(object.owner_oid)
@@ -4671,16 +4604,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
         SELECT pg_catalog.jsonb_agg(
           pg_catalog.jsonb_build_array(
             CASE
-              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-                THEN 'migration'
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+                THEN 'schema_owner'
               WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
             END,
             CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-                THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+                THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4689,16 +4622,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
             privilege.is_grantable
           ) ORDER BY
             pg_catalog.convert_to((CASE
-              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-                THEN 'migration'
+              WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+                THEN 'schema_owner'
               WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
             END)::pg_catalog.text, 'UTF8'),
             pg_catalog.convert_to((CASE
               WHEN privilege.grantee = 0 THEN 'PUBLIC'
-              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-                THEN 'migration'
+              WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+                THEN 'schema_owner'
               WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
                 THEN 'runtime'
               ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4728,16 +4661,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
       SELECT pg_catalog.jsonb_agg(
         pg_catalog.jsonb_build_array(
           CASE
-            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END,
           CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4746,16 +4679,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
           privilege.is_grantable
         ) ORDER BY
           pg_catalog.convert_to((CASE
-            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END)::pg_catalog.text, 'UTF8'),
           pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4778,16 +4711,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
       pg_catalog.pg_get_triggerdef(trigger.oid, false),
       trigger.tgenabled,
       CASE
-        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
       END,
       function_key.key,
       CASE
-        WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN proc.proowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(proc.proowner)
@@ -4798,8 +4731,7 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
   JOIN pg_catalog.pg_proc AS proc ON proc.oid = trigger.tgfoid
   JOIN function_keys AS function_key ON function_key.oid = proc.oid
   JOIN pg_catalog.pg_namespace AS function_namespace ON function_namespace.oid = proc.pronamespace
-  WHERE NOT trigger.tgisinternal
-     OR trigger.tgrelid IN (SELECT oid FROM ledger_class)
+	WHERE NOT trigger.tgisinternal
   UNION ALL
   SELECT
     'rule_definition',
@@ -4807,8 +4739,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     pg_catalog.jsonb_build_array(
       pg_catalog.pg_get_ruledef(rewrite.oid, false),
       CASE
-        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
@@ -4827,16 +4759,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
         SELECT pg_catalog.jsonb_agg(
           CASE
             WHEN policy_role = 0 THEN 'PUBLIC'
-            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
           END ORDER BY
           pg_catalog.convert_to((CASE
             WHEN policy_role = 0 THEN 'PUBLIC'
-            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN policy_role = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(policy_role)
@@ -4847,8 +4779,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
       pg_catalog.pg_get_expr(policy.polqual, policy.polrelid),
       pg_catalog.pg_get_expr(policy.polwithcheck, policy.polrelid),
       CASE
-        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN class.relowner = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(class.relowner)
@@ -4862,8 +4794,8 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
     pg_catalog.format(
       '%s:%s:%s',
       CASE
-        WHEN default_acl.defaclrole = (SELECT oid FROM configured_roles WHERE label = 'migration')
-          THEN 'migration'
+        WHEN default_acl.defaclrole = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+          THEN 'schema_owner'
         WHEN default_acl.defaclrole = (SELECT oid FROM configured_roles WHERE label = 'runtime')
           THEN 'runtime'
         ELSE 'other:' || pg_catalog.pg_get_userbyid(default_acl.defaclrole)
@@ -4878,16 +4810,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
       SELECT pg_catalog.jsonb_agg(
         pg_catalog.jsonb_build_array(
           CASE
-            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END,
           CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4896,16 +4828,16 @@ WITH RECURSIVE configured_principals(label, role_name) AS (
           privilege.is_grantable
         ) ORDER BY
           pg_catalog.convert_to((CASE
-            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantor = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantor)
           END)::pg_catalog.text, 'UTF8'),
           pg_catalog.convert_to((CASE
             WHEN privilege.grantee = 0 THEN 'PUBLIC'
-            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'migration')
-              THEN 'migration'
+            WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'schema_owner')
+              THEN 'schema_owner'
             WHEN privilege.grantee = (SELECT oid FROM configured_roles WHERE label = 'runtime')
               THEN 'runtime'
             ELSE 'other:' || pg_catalog.pg_get_userbyid(privilege.grantee)
@@ -4932,15 +4864,15 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x50, 0x94, 0x98, 0xb6, 0x85, 0x5e, 0x8d, 0x33, 0xc5, 0xc5, 0x5e, 0xcf, 0x2b, 0x78, 0x3a, 0x33,
-	0x50, 0x63, 0xa5, 0x2f, 0x64, 0x51, 0x47, 0x18, 0x80, 0x35, 0xc1, 0x8a, 0xac, 0xa3, 0xca, 0xf8,
+	0x1d, 0x56, 0x72, 0x1b, 0x9b, 0x31, 0xc3, 0x6a, 0x59, 0xba, 0xb7, 0xe5, 0x2b, 0x45, 0x4c, 0xa6,
+	0x3e, 0x6c, 0x3b, 0x35, 0x0d, 0xfe, 0x7a, 0xbd, 0xe5, 0x5a, 0x17, 0x57, 0x4c, 0x7d, 0x1d, 0x88,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.oid
   FROM pg_catalog.pg_roles AS role
-  WHERE role.rolname = session_user
-     OR pg_catalog.pg_has_role(session_user, role.oid, 'SET')
+  WHERE role.rolname = $1::pg_catalog.name
+     OR pg_catalog.pg_has_role($1::pg_catalog.name, role.oid, 'SET')
 ), effective_roles AS (
   SELECT DISTINCT inherited.oid
   FROM set_roles AS active
@@ -5060,7 +4992,7 @@ SELECT EXISTS (
 struct FunctionContract {
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 	arguments: &'static str,
 	result: &'static str,
 	language: &'static str,
@@ -5068,44 +5000,6 @@ struct FunctionContract {
 	strict: bool,
 	returns_set: bool,
 	rows: f32,
-}
-
-#[cfg(feature = "test-support")]
-pub(crate) const fn schema_contract_sql_fixture() -> &'static str {
-	SCHEMA_CONTRACT_SQL
-}
-
-#[cfg(feature = "test-support")]
-pub(crate) const fn configured_authority_sql_fixture() -> &'static str {
-	CONFIGURED_AUTHORITY_SQL
-}
-
-#[cfg(feature = "test-support")]
-pub(crate) async fn runtime_routine_authority_fixture(
-	client: &TokioClient,
-) -> Result<(), StoreError> {
-	let runtime_routines = RUNTIME_EXECUTE_FUNCTIONS.to_vec();
-	let runtime_entry = client
-		.query_one(RUNTIME_ROUTINE_AUTHORITY_SQL, &[&runtime_routines])
-		.await
-		.map_err(StoreError::Database)?;
-	let unexpected_runtime_security_definer: bool =
-		runtime_entry.try_get(0).map_err(StoreError::Database)?;
-	let required_digest_exists: bool = runtime_entry.try_get(1).map_err(StoreError::Database)?;
-	let required_digest_exact: bool = runtime_entry.try_get(2).map_err(StoreError::Database)?;
-
-	if unexpected_runtime_security_definer {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL runtime routine authority contains an unexpected security-definer entry",
-		));
-	}
-	if !required_digest_exists || !required_digest_exact {
-		return Err(StoreError::Incompatible(
-			"PostgreSQL runtime routine dependency differs from the shipped contract".into(),
-		));
-	}
-
-	Ok(())
 }
 
 #[cfg(feature = "test-support")]
@@ -5135,42 +5029,6 @@ struct SemanticAuthorityEvidence {
 #[derive(Debug)]
 struct FinalizedSemanticAuthority {
 	observations: Vec<SemanticAuthorityObservation>,
-	#[cfg_attr(
-		not(any(test, feature = "test-support")),
-		expect(dead_code, reason = "serialized only by test-support authority evidence")
-	)]
-	fingerprint: String,
-}
-
-fn semantic_authority_encoding_field(
-	canonical: &mut Vec<u8>,
-	value: &str,
-) -> Result<(), StoreError> {
-	let length = u32::try_from(value.len()).map_err(|_| {
-		StoreError::Incompatible(
-			"PostgreSQL semantic authority definition field is too large".into(),
-		)
-	})?;
-	canonical.extend_from_slice(&length.to_be_bytes());
-	canonical.extend_from_slice(value.as_bytes());
-	Ok(())
-}
-
-fn semantic_authority_fingerprint() -> Result<String, StoreError> {
-	let mut canonical = Vec::new();
-	canonical.extend_from_slice(SEMANTIC_AUTHORITY_FINGERPRINT_DOMAIN);
-	semantic_authority_encoding_field(&mut canonical, SEMANTIC_AUTHORITY_SCHEMA)?;
-	semantic_authority_encoding_field(&mut canonical, SEMANTIC_AUTHORITY_DEFINITION_SCHEMA)?;
-	let count = u32::try_from(SEMANTIC_AUTHORITY_DEFINITION.len()).map_err(|_| {
-		StoreError::Incompatible("PostgreSQL semantic authority definition is too large".into())
-	})?;
-	canonical.extend_from_slice(&count.to_be_bytes());
-	for descriptor in SEMANTIC_AUTHORITY_DEFINITION {
-		semantic_authority_encoding_field(&mut canonical, descriptor.name)?;
-		semantic_authority_encoding_field(&mut canonical, descriptor.failure_policy.name())?;
-	}
-	let digest = Sha256::digest(canonical);
-	Ok(digest.iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 impl SemanticAuthorityEvidence {
@@ -5237,10 +5095,7 @@ impl SemanticAuthorityEvidence {
 			));
 		}
 
-		Ok(FinalizedSemanticAuthority {
-			observations: self.observations,
-			fingerprint: semantic_authority_fingerprint()?,
-		})
+		Ok(FinalizedSemanticAuthority { observations: self.observations })
 	}
 }
 
@@ -5259,62 +5114,159 @@ impl FinalizedSemanticAuthority {
 		})
 	}
 
-	#[cfg_attr(
-		not(any(test, feature = "test-support")),
-		expect(dead_code, reason = "serialized only by test-support authority evidence")
-	)]
-	fn to_json(&self) -> serde_json::Value {
-		serde_json::json!({
-			"schema": SEMANTIC_AUTHORITY_SCHEMA,
-			"definition": {
-				"schema": SEMANTIC_AUTHORITY_DEFINITION_SCHEMA,
-				"predicates": SEMANTIC_AUTHORITY_DEFINITION.iter().map(|descriptor| {
-					serde_json::json!({
-						"name": descriptor.name,
-						"classification": descriptor.failure_policy.name(),
-					})
-				}).collect::<Vec<_>>(),
-			},
-			"fingerprint": self.fingerprint.as_str(),
-			"observations": self.observations.iter().map(|observation| {
-				let descriptor = &SEMANTIC_AUTHORITY_DEFINITION[observation.predicate as usize];
-				serde_json::json!({
-					"name": descriptor.name,
-					"passed": observation.passed,
-				})
-			}).collect::<Vec<_>>(),
-		})
+	fn bootstrap_observations(&self) -> Vec<BootstrapAuthorityObservation> {
+		self.observations
+			.iter()
+			.zip(SEMANTIC_AUTHORITY_DEFINITION.iter())
+			.map(|(observation, descriptor)| BootstrapAuthorityObservation {
+				name: descriptor.name,
+				failure_class: observation.failure_class.into(),
+				passed: observation.passed,
+			})
+			.collect()
 	}
 }
 
-#[cfg(feature = "test-support")]
-pub(crate) async fn semantic_authority_fixture(
-	client: &TokioClient,
+pub(crate) async fn verify_runtime<C>(
+	client: &C,
+	schema_owner_role: &str,
 	runtime_role: &str,
-) -> Result<serde_json::Value, StoreError> {
-	Ok(semantic_authority_evidence(client, runtime_role).await?.to_json())
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	verify_namespace_owner_authority(client, schema_owner_role).await?;
+	verify_semantic_authority(client, runtime_role, true).await?;
+	verify_configured_authority(client, schema_owner_role, runtime_role).await?;
+	verify_schema_contract(client, runtime_role).await
 }
 
-pub(crate) async fn verify_runtime(
-	client: &Client,
-	migration_role: &str,
+pub(crate) async fn bootstrap_authority_evidence<C>(
+	client: &C,
+	schema_owner_role: &str,
 	runtime_role: &str,
+) -> Result<BootstrapAuthorityEvidence, StoreError>
+where
+	C: GenericClient + Sync,
+{
+	collect_bootstrap_authority_evidence(client, schema_owner_role, runtime_role)
+		.await
+		.map_err(|failure| failure.error)
+}
+
+pub(crate) async fn collect_bootstrap_authority_evidence<C>(
+	client: &C,
+	schema_owner_role: &str,
+	runtime_role: &str,
+) -> Result<BootstrapAuthorityEvidence, BootstrapAuthorityCollectionFailure>
+where
+	C: GenericClient + Sync,
+{
+	let mut progress = BootstrapAuthorityProgress::default();
+	let namespace = match namespace_owner_authority_evidence(client, schema_owner_role).await {
+		Ok(evidence) => evidence,
+		Err(error) =>
+			return Err(BootstrapAuthorityCollectionFailure {
+				progress,
+				operation: BootstrapAuthorityOperation::Namespace,
+				error,
+			}),
+	};
+	progress.namespace = Some(namespace);
+	let semantic = match semantic_authority_evidence(client, runtime_role, false).await {
+		Ok(evidence) => evidence,
+		Err(error) =>
+			return Err(BootstrapAuthorityCollectionFailure {
+				progress,
+				operation: BootstrapAuthorityOperation::Semantic,
+				error,
+			}),
+	};
+	progress.semantic = Some(semantic.bootstrap_observations());
+	let configured_authority =
+		match configured_authority_evidence(client, schema_owner_role, runtime_role).await {
+			Ok(evidence) => evidence,
+			Err(error) =>
+				return Err(BootstrapAuthorityCollectionFailure {
+					progress,
+					operation: BootstrapAuthorityOperation::ConfiguredAuthority,
+					error,
+				}),
+		};
+	progress.configured_authority = Some(configured_authority);
+	let schema_contract = match schema_contract_evidence(client, runtime_role).await {
+		Ok(evidence) => evidence,
+		Err(error) =>
+			return Err(BootstrapAuthorityCollectionFailure {
+				progress,
+				operation: BootstrapAuthorityOperation::SchemaContract,
+				error,
+			}),
+	};
+	progress.schema_contract = Some(schema_contract);
+
+	Ok(progress.into_complete())
+}
+
+pub(crate) fn enforce_bootstrap_authority(
+	evidence: &BootstrapAuthorityEvidence,
 ) -> Result<(), StoreError> {
-	verify_namespace_owner_authority(client, migration_role).await?;
-	verify_semantic_authority(client, runtime_role).await?;
-	verify_configured_authority(client, migration_role, runtime_role).await?;
-	verify_schema_contract(client).await
+	if !evidence.namespace[0].passed {
+		return Err(StoreError::Incompatible("PostgreSQL Decodex schema is absent".into()));
+	}
+	if !evidence.namespace[1].passed {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL Decodex schema owner differs from the configured schema-owner role",
+		));
+	}
+	if evidence.semantic.iter().any(|observation| {
+		!observation.passed && observation.failure_class == BootstrapAuthorityFailureClass::Unsafe
+	}) {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL semantic runtime authority differs from the shipped contract",
+		));
+	}
+	if evidence.semantic.iter().any(|observation| {
+		!observation.passed
+			&& observation.failure_class == BootstrapAuthorityFailureClass::Incompatible
+	}) {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL semantic runtime contract differs from the shipped contract".into(),
+		));
+	}
+	if !evidence.configured_authority.complete {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL configured authority inventory is empty".into(),
+		));
+	}
+	if !evidence.configured_authority.passed() {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
+		));
+	}
+	if !evidence.schema_contract.complete {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL Decodex schema dependency inventory is incomplete".into(),
+		));
+	}
+	if !evidence.schema_contract.passed() {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory".into(),
+		));
+	}
+
+	Ok(())
 }
 
 const fn trigger_contract(
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 ) -> FunctionContract {
 	FunctionContract {
 		name,
 		lookup_signature,
-		migration_signature,
+		declaration_signature,
 		arguments: "",
 		result: "trigger",
 		language: "plpgsql",
@@ -5328,7 +5280,7 @@ const fn trigger_contract(
 const fn immutable_function_contract(
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 	arguments: &'static str,
 	result: &'static str,
 	language: &'static str,
@@ -5336,7 +5288,7 @@ const fn immutable_function_contract(
 	FunctionContract {
 		name,
 		lookup_signature,
-		migration_signature,
+		declaration_signature,
 		arguments,
 		result,
 		language,
@@ -5350,13 +5302,13 @@ const fn immutable_function_contract(
 const fn mutator_contract(
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 	arguments: &'static str,
 ) -> FunctionContract {
 	FunctionContract {
 		name,
 		lookup_signature,
-		migration_signature,
+		declaration_signature,
 		arguments,
 		result: "TABLE(result_code text, actual_revision bigint, changed boolean)",
 		language: "plpgsql",
@@ -5370,7 +5322,7 @@ const fn mutator_contract(
 const fn exact_function_contract(
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 	arguments: &'static str,
 	result: &'static str,
 	language: &'static str,
@@ -5379,7 +5331,7 @@ const fn exact_function_contract(
 	FunctionContract {
 		name,
 		lookup_signature,
-		migration_signature,
+		declaration_signature,
 		arguments,
 		result,
 		language,
@@ -5393,7 +5345,7 @@ const fn exact_function_contract(
 const fn table_function_contract(
 	name: &'static str,
 	lookup_signature: &'static str,
-	migration_signature: &'static str,
+	declaration_signature: &'static str,
 	arguments: &'static str,
 	result: &'static str,
 	volatility: &'static str,
@@ -5401,7 +5353,7 @@ const fn table_function_contract(
 	FunctionContract {
 		name,
 		lookup_signature,
-		migration_signature,
+		declaration_signature,
 		arguments,
 		result,
 		language: "plpgsql",
@@ -5423,81 +5375,177 @@ fn canonical_safety_function_source(function_name: &str) -> Option<&'static str>
 }
 
 fn canonical_function_source(contract: &FunctionContract) -> Option<&'static str> {
-	CANONICAL_FUNCTION_MIGRATIONS
-		.into_iter()
-		.rev()
-		.find_map(|migration| canonical_function_source_in_migration(migration, contract))
+	canonical_function_source_in_schema(LATEST_SCHEMA_SQL, contract)
 }
 
-fn canonical_function_source_in_migration<'a>(
-	migration: &'a str,
+fn canonical_function_source_in_schema<'a>(
+	schema: &'a str,
 	contract: &FunctionContract,
 ) -> Option<&'a str> {
-	let declarations = [
-		format!("CREATE FUNCTION decodex.{}", contract.migration_signature),
-		format!("CREATE OR REPLACE FUNCTION decodex.{}", contract.migration_signature),
-	];
-	let (declaration_index, declaration_length) = declarations
-		.iter()
-		.filter_map(|declaration| {
-			migration.rfind(declaration.as_str()).map(|index| (index, declaration.len()))
-		})
-		.max_by_key(|(index, _)| *index)?;
-	let declaration_and_tail = &migration[declaration_index + declaration_length..];
-	let declaration_end = ["CREATE FUNCTION decodex.", "CREATE OR REPLACE FUNCTION decodex."]
-		.into_iter()
-		.filter_map(|next_declaration| declaration_and_tail.find(next_declaration))
-		.min()
-		.unwrap_or(declaration_and_tail.len());
-	let declaration = &declaration_and_tail[..declaration_end];
-	let (source_index, delimiter_length) = ["\nAS $$", " AS $$"]
-		.into_iter()
-		.filter_map(|delimiter| declaration.find(delimiter).map(|index| (index, delimiter.len())))
-		.min_by_key(|(index, _)| *index)?;
-	let source_and_tail = &declaration[source_index + delimiter_length..];
-	let (source, _) = source_and_tail.split_once("$$;")?;
+	if !declaration_signature_matches_contract(contract) {
+		return None;
+	}
 
-	Some(source)
+	canonical_function_source_with_dump_layout(schema, contract)
 }
 
-async fn verify_schema_contract(client: &Client) -> Result<(), StoreError> {
-	let inventory = client.query_one(SCHEMA_CONTRACT_SQL, &[]).await?;
-	let manifest: Option<String> = inventory.get(0);
-	let complete: bool = inventory.get(1);
-	if !complete {
+fn declaration_signature_matches_contract(contract: &FunctionContract) -> bool {
+	let Some(arguments_start) = contract.declaration_signature.find('(') else {
+		return false;
+	};
+	let Some(arguments_end) =
+		matching_parenthesis(contract.declaration_signature, arguments_start + 1)
+	else {
+		return false;
+	};
+
+	contract.declaration_signature[..arguments_start].trim() == contract.name
+		&& contract.declaration_signature[arguments_end + 1..].trim().is_empty()
+		&& equivalent_sql_spacing(
+			&contract.declaration_signature[arguments_start + 1..arguments_end],
+			contract.arguments,
+		)
+}
+
+fn canonical_function_source_with_dump_layout<'a>(
+	schema: &'a str,
+	contract: &FunctionContract,
+) -> Option<&'a str> {
+	for prefix in [
+		format!("CREATE FUNCTION decodex.{}(", contract.name),
+		format!("CREATE OR REPLACE FUNCTION decodex.{}(", contract.name),
+	] {
+		let mut offset = 0;
+		while let Some(relative) = schema[offset..].find(&prefix) {
+			let declaration = offset + relative;
+			let arguments_start = declaration + prefix.len();
+			let arguments_end = matching_parenthesis(schema, arguments_start)?;
+			if equivalent_sql_spacing(&schema[arguments_start..arguments_end], contract.arguments) {
+				let declaration_tail = &schema[arguments_end + 1..];
+				let next_declaration =
+					["CREATE FUNCTION decodex.", "CREATE OR REPLACE FUNCTION decodex."]
+						.into_iter()
+						.filter_map(|marker| declaration_tail.find(marker))
+						.min()
+						.unwrap_or(declaration_tail.len());
+				return dollar_quoted_function_source(&declaration_tail[..next_declaration]);
+			}
+			offset = arguments_end + 1;
+		}
+	}
+
+	None
+}
+
+fn matching_parenthesis(value: &str, content_start: usize) -> Option<usize> {
+	let mut depth = 1_usize;
+	let mut quoted = None;
+	let mut escaped = false;
+	for (relative, character) in value[content_start..].char_indices() {
+		if let Some(quote) = quoted {
+			if escaped {
+				escaped = false;
+				continue;
+			}
+			if character == '\\' && quote == '\'' {
+				escaped = true;
+			} else if character == quote {
+				quoted = None;
+			}
+			continue;
+		}
+		match character {
+			'\'' | '"' => quoted = Some(character),
+			'(' => depth += 1,
+			')' => {
+				depth -= 1;
+				if depth == 0 {
+					return Some(content_start + relative);
+				}
+			},
+			_ => {},
+		}
+	}
+	None
+}
+
+fn equivalent_sql_spacing(left: &str, right: &str) -> bool {
+	left.chars()
+		.filter(|character| !character.is_whitespace())
+		.eq(right.chars().filter(|character| !character.is_whitespace()))
+}
+
+fn dollar_quoted_function_source(declaration: &str) -> Option<&str> {
+	let delimiter_start = declaration.find("AS $")? + "AS ".len();
+	let delimiter_tail = &declaration[delimiter_start + 1..];
+	let tag_end = delimiter_tail.find('$')?;
+	let tag = &delimiter_tail[..tag_end];
+	if !tag.bytes().all(|byte| byte == b'_' || byte.is_ascii_alphanumeric()) {
+		return None;
+	}
+	let delimiter_end = delimiter_start + tag_end + 2;
+	let delimiter = &declaration[delimiter_start..delimiter_end];
+	let source_and_tail = &declaration[delimiter_end..];
+	let closing = source_and_tail.find(&format!("{delimiter};"))?;
+	Some(&source_and_tail[..closing])
+}
+
+async fn verify_schema_contract<C>(client: &C, runtime_role: &str) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let evidence = schema_contract_evidence(client, runtime_role).await?;
+	if !evidence.complete {
 		return Err(StoreError::Incompatible(
 			"PostgreSQL Decodex schema dependency inventory is incomplete".into(),
 		));
 	}
-	let manifest = manifest.ok_or_else(|| {
-		StoreError::Incompatible("PostgreSQL Decodex schema inventory is empty".into())
-	})?;
-	let digest = Sha256::digest(manifest.as_bytes());
-
-	if digest.as_slice() != SCHEMA_CONTRACT_SHA256 {
-		let actual = digest.iter().map(|byte| format!("{byte:02x}")).collect::<String>();
-
-		return Err(StoreError::Incompatible(format!(
-			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory ({actual})"
-		)));
+	if !evidence.passed() {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL Decodex schema contract differs from the shipped PG18 inventory".into(),
+		));
 	}
 
 	Ok(())
 }
 
-async fn verify_configured_authority(
-	client: &Client,
-	migration_role: &str,
+async fn schema_contract_evidence<C>(
+	client: &C,
 	runtime_role: &str,
-) -> Result<(), StoreError> {
-	let manifest: Option<String> =
-		client.query_one(CONFIGURED_AUTHORITY_SQL, &[&migration_role, &runtime_role]).await?.get(0);
-	let manifest = manifest.ok_or_else(|| {
-		StoreError::Incompatible("PostgreSQL configured authority inventory is empty".into())
-	})?;
-	let digest = Sha256::digest(manifest.as_bytes());
+) -> Result<BootstrapDigestEvidence, StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let inventory = client.query_one(SCHEMA_CONTRACT_SQL, &[&runtime_role]).await?;
+	let manifest: Option<String> = inventory.get(0);
+	let dependencies_complete: bool = inventory.get(1);
+	let actual_sha256 =
+		manifest.as_ref().map(|manifest| <[u8; 32]>::from(Sha256::digest(manifest.as_bytes())));
 
-	if digest.as_slice() != CONFIGURED_AUTHORITY_SHA256 {
+	Ok(BootstrapDigestEvidence {
+		complete: dependencies_complete && manifest.is_some(),
+		expected_sha256: SCHEMA_CONTRACT_SHA256,
+		actual_sha256,
+		incomplete_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+		mismatch_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+	})
+}
+
+async fn verify_configured_authority<C>(
+	client: &C,
+	schema_owner_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let evidence = configured_authority_evidence(client, schema_owner_role, runtime_role).await?;
+	if !evidence.complete {
+		return Err(StoreError::Incompatible(
+			"PostgreSQL configured authority inventory is empty".into(),
+		));
+	}
+	if !evidence.passed() {
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL configured principal or ACL authority differs from the shipped PG18 inventory",
 		));
@@ -5506,26 +5554,79 @@ async fn verify_configured_authority(
 	Ok(())
 }
 
-async fn verify_namespace_owner_authority(
-	client: &Client,
-	migration_role: &str,
-) -> Result<(), StoreError> {
+async fn configured_authority_evidence<C>(
+	client: &C,
+	schema_owner_role: &str,
+	runtime_role: &str,
+) -> Result<BootstrapDigestEvidence, StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let manifest: Option<String> = client
+		.query_one(CONFIGURED_AUTHORITY_SQL, &[&schema_owner_role, &runtime_role])
+		.await?
+		.get(0);
+	let actual_sha256 =
+		manifest.as_ref().map(|manifest| <[u8; 32]>::from(Sha256::digest(manifest.as_bytes())));
+
+	Ok(BootstrapDigestEvidence {
+		complete: manifest.is_some(),
+		expected_sha256: CONFIGURED_AUTHORITY_SHA256,
+		actual_sha256,
+		incomplete_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+		mismatch_failure_class: BootstrapAuthorityFailureClass::Unsafe,
+	})
+}
+
+async fn verify_namespace_owner_authority<C>(
+	client: &C,
+	schema_owner_role: &str,
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let evidence = namespace_owner_authority_evidence(client, schema_owner_role).await?;
+	if !evidence[0].passed {
+		return Err(StoreError::Incompatible("PostgreSQL Decodex schema is absent".into()));
+	}
+	if !evidence[1].passed {
+		return Err(StoreError::UnsafeAuthority(
+			"PostgreSQL Decodex schema owner differs from the configured schema-owner role",
+		));
+	}
+	Ok(())
+}
+
+async fn namespace_owner_authority_evidence<C>(
+	client: &C,
+	schema_owner_role: &str,
+) -> Result<[BootstrapAuthorityObservation; 2], StoreError>
+where
+	C: GenericClient + Sync,
+{
 	let owner_matches = client
 		.query_opt(
 			"SELECT owner.rolname=$1 \
 			 FROM pg_catalog.pg_namespace AS namespace \
 			 JOIN pg_catalog.pg_roles AS owner ON owner.oid=namespace.nspowner \
 			 WHERE namespace.nspname='decodex'",
-			&[&migration_role],
+			&[&schema_owner_role],
 		)
 		.await?
 		.map(|row| row.get::<_, bool>(0));
-	if owner_matches == Some(false) {
-		return Err(StoreError::UnsafeAuthority(
-			"PostgreSQL Decodex schema owner differs from the configured migration role",
-		));
-	}
-	Ok(())
+
+	Ok([
+		BootstrapAuthorityObservation {
+			name: "namespace_present",
+			failure_class: BootstrapAuthorityFailureClass::Incompatible,
+			passed: owner_matches.is_some(),
+		},
+		BootstrapAuthorityObservation {
+			name: "namespace_owner",
+			failure_class: BootstrapAuthorityFailureClass::Unsafe,
+			passed: owner_matches == Some(true),
+		},
+	])
 }
 
 fn function_is_security_definer(function_name: &str) -> bool {
@@ -5568,6 +5669,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "record_attested_codex_experiment_observation_exact"
 			| "route_account_exact"
 			| "plan_continuation_exact"
+			| "plan_initial_thread_continuation_exact"
 			| "read_continuation_plan_exact"
 			| "read_execution_decision_exact"
 			| "read_managed_run_execution_exact"
@@ -5594,6 +5696,17 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "attest_codex_account_capability_exact"
 			| "observe_account_profile_exact"
 			| "read_account_profile_exact"
+			| "acknowledge_runtime_session_turn_exact"
+			| "read_ordinary_runtime_session_for_resume_exact"
+			| "read_ordinary_task_conversations_exact"
+			| "read_turn_admission_exact"
+			| "read_current_task_routing_authority_exact"
+			| "prepare_quick_task_process_generation_exact"
+			| "fence_runtime_session_thread_start_exact"
+			| "bind_runtime_session_thread_exact"
+			| "read_quick_task_thread_establishment_exact"
+			| "terminalize_quick_task_turn_exact"
+			| "reconcile_quick_task_terminalizations_exact"
 			| "prepare_process_generation_exact"
 			| "bind_process_generation_identity_exact"
 			| "mark_process_generation_ready_exact"
@@ -5613,10 +5726,14 @@ fn function_is_security_definer(function_name: &str) -> bool {
 	)
 }
 
-async fn inspect_function_contract(
-	client: &TokioClient,
+async fn inspect_function_contract<C>(
+	client: &C,
+	runtime_role: &str,
 	evidence: &mut SemanticAuthorityEvidence,
-) -> Result<bool, StoreError> {
+) -> Result<bool, StoreError>
+where
+	C: GenericClient + Sync,
+{
 	let actual_count: i64 = client
 		.query_one(
 			r#"SELECT count(*)
@@ -5636,8 +5753,13 @@ async fn inspect_function_contract(
 	let mut execute_authority_matches = true;
 
 	for contract in &FUNCTION_CONTRACTS {
-		let Some(row) =
-			client.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature]).await?
+		let expected_source = canonical_function_source(contract);
+		if expected_source.is_none() {
+			semantics_match = false;
+		}
+		let Some(row) = client
+			.query_opt(FUNCTION_CONTRACT_SQL, &[&contract.lookup_signature, &runtime_role])
+			.await?
 		else {
 			exact_inventory = false;
 			continue;
@@ -5674,14 +5796,9 @@ async fn inspect_function_contract(
 			|| cost != 100.0
 			|| rows != contract.rows);
 
-		let expected_source = canonical_function_source(contract).ok_or_else(|| {
-			StoreError::Incompatible(format!(
-				"unknown canonical PostgreSQL function contract: {}",
-				contract.lookup_signature
-			))
-		})?;
-
-		semantics_match &= installed_source == expected_source;
+		if let Some(expected_source) = expected_source {
+			semantics_match &= installed_source == expected_source;
+		}
 		execute_authority_matches &= executable == expected_executable && !public_executable;
 	}
 
@@ -5697,8 +5814,9 @@ async fn inspect_function_contract(
 	evidence.record_incompatible(SemanticAuthorityPredicate::FunctionSemantics, semantics_match);
 
 	let runtime_routines = RUNTIME_EXECUTE_FUNCTIONS.to_vec();
-	let runtime_entry =
-		client.query_one(RUNTIME_ROUTINE_AUTHORITY_SQL, &[&runtime_routines]).await?;
+	let runtime_entry = client
+		.query_one(RUNTIME_ROUTINE_AUTHORITY_SQL, &[&runtime_routines, &runtime_role])
+		.await?;
 	let unexpected_runtime_security_definer: bool = runtime_entry.get(0);
 	let required_digest_exists: bool = runtime_entry.get(1);
 	let required_digest_exact: bool = runtime_entry.get(2);
@@ -5712,10 +5830,13 @@ async fn inspect_function_contract(
 	Ok(!unexpected_runtime_security_definer)
 }
 
-async fn inspect_retention_contract(
-	client: &TokioClient,
+async fn inspect_retention_contract<C>(
+	client: &C,
 	evidence: &mut SemanticAuthorityEvidence,
-) -> Result<(), StoreError> {
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
 	let rows = client.query(TRIGGER_CONTRACT_SQL, &[]).await?;
 	let inventory_matches = rows.len() == SAFETY_TRIGGER_COUNT;
 	let mut trigger_bindings_match = true;
@@ -5748,22 +5869,31 @@ async fn inspect_retention_contract(
 	Ok(())
 }
 
-async fn semantic_authority_evidence(
-	client: &TokioClient,
+async fn semantic_authority_evidence<C>(
+	client: &C,
 	runtime_role: &str,
-) -> Result<FinalizedSemanticAuthority, StoreError> {
+	require_runtime_session: bool,
+) -> Result<FinalizedSemanticAuthority, StoreError>
+where
+	C: GenericClient + Sync,
+{
 	let mut evidence = SemanticAuthorityEvidence::new();
-	let session_is_runtime: bool = client
-		.query_one(
-			"SELECT session_user = $1::pg_catalog.name AND current_user = $1::pg_catalog.name",
-			&[&runtime_role],
-		)
-		.await?
-		.get(0);
+	let session_is_runtime: bool = if require_runtime_session {
+		client
+			.query_one(
+				"SELECT session_user = $1::pg_catalog.name \
+				 AND current_user = $1::pg_catalog.name",
+				&[&runtime_role],
+			)
+			.await?
+			.get(0)
+	} else {
+		true
+	};
 	evidence
 		.record_unsafe(SemanticAuthorityPredicate::ConfiguredRuntimeSession, session_is_runtime);
 
-	let role = client.query_one(ROLE_AUTHORITY_SQL, &[]).await?;
+	let role = client.query_one(ROLE_AUTHORITY_SQL, &[&runtime_role]).await?;
 	for (predicate, index) in [
 		(SemanticAuthorityPredicate::NoForbiddenRoleAttributes, 0),
 		(SemanticAuthorityPredicate::NoDatabaseCreate, 1),
@@ -5778,24 +5908,14 @@ async fn semantic_authority_evidence(
 		evidence.record_unsafe(predicate, !role.get::<_, bool>(index));
 	}
 
-	let table = client.query_one(TABLE_AUTHORITY_SQL, &[]).await?;
+	let table = client.query_one(TABLE_AUTHORITY_SQL, &[&runtime_role]).await?;
 	evidence.record_incompatible(SemanticAuthorityPredicate::ExactTableAuthority, table.get(0));
 	evidence.record_unsafe(
 		SemanticAuthorityPredicate::NoUnsafeTableAuthority,
 		!table.get::<_, bool>(1),
 	);
 
-	let history = client.query_one(MIGRATION_HISTORY_AUTHORITY_SQL, &[]).await?;
-	evidence
-		.record_incompatible(SemanticAuthorityPredicate::MigrationHistoryExists, history.get(0));
-	evidence
-		.record_incompatible(SemanticAuthorityPredicate::MigrationHistorySelect, history.get(1));
-	evidence.record_unsafe(
-		SemanticAuthorityPredicate::NoUnsafeMigrationHistoryAuthority,
-		!history.get::<_, bool>(2),
-	);
-
-	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[]).await?;
+	let sequence = client.query_one(SEQUENCE_AUTHORITY_SQL, &[&runtime_role]).await?;
 	evidence
 		.record_incompatible(SemanticAuthorityPredicate::ExactSequenceContract, sequence.get(0));
 	evidence.record_incompatible(SemanticAuthorityPredicate::SequenceUsage, sequence.get(1));
@@ -5804,7 +5924,8 @@ async fn semantic_authority_evidence(
 		!sequence.get::<_, bool>(2),
 	);
 
-	let generation_types = client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[]).await?;
+	let generation_types =
+		client.query_one(PROCESS_GENERATION_TYPE_AUTHORITY_SQL, &[&runtime_role]).await?;
 	evidence.record_incompatible(
 		SemanticAuthorityPredicate::ProcessGenerationTypeUsage,
 		generation_types.get(0),
@@ -5818,7 +5939,8 @@ async fn semantic_authority_evidence(
 		!generation_types.get::<_, bool>(2),
 	);
 
-	let attempt_types = client.query_one(PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL, &[]).await?;
+	let attempt_types =
+		client.query_one(PROVIDER_ATTEMPT_TYPE_AUTHORITY_SQL, &[&runtime_role]).await?;
 	evidence.record_incompatible(
 		SemanticAuthorityPredicate::ProviderAttemptTypeUsage,
 		attempt_types.get(0),
@@ -5832,15 +5954,17 @@ async fn semantic_authority_evidence(
 		!attempt_types.get::<_, bool>(2),
 	);
 
-	let extension_control: bool = client.query_one(EXTENSION_AUTHORITY_SQL, &[]).await?.get(0);
+	let extension_control: bool =
+		client.query_one(EXTENSION_AUTHORITY_SQL, &[&runtime_role]).await?.get(0);
 	evidence.record_unsafe(SemanticAuthorityPredicate::NoExtensionControl, !extension_control);
 
 	let schema_usage: bool = client
 		.query_one(
 			"SELECT COALESCE((SELECT pg_catalog.has_schema_privilege(\
-			 session_user, namespace.oid, 'USAGE') FROM pg_catalog.pg_namespace AS namespace \
+			 $1::pg_catalog.name, namespace.oid, 'USAGE') \
+			 FROM pg_catalog.pg_namespace AS namespace \
 			 WHERE namespace.nspname = 'decodex'), false)",
-			&[],
+			&[&runtime_role],
 		)
 		.await?
 		.get(0);
@@ -5866,7 +5990,7 @@ async fn semantic_authority_evidence(
 	}
 
 	let no_unexpected_runtime_security_definer =
-		inspect_function_contract(client, &mut evidence).await?;
+		inspect_function_contract(client, runtime_role, &mut evidence).await?;
 	inspect_retention_contract(client, &mut evidence).await?;
 	evidence.record_unsafe(
 		SemanticAuthorityPredicate::NoUnexpectedRuntimeSecurityDefinerAuthority,
@@ -5876,11 +6000,16 @@ async fn semantic_authority_evidence(
 	evidence.finalize()
 }
 
-async fn verify_semantic_authority(
-	client: &TokioClient,
+async fn verify_semantic_authority<C>(
+	client: &C,
 	runtime_role: &str,
-) -> Result<(), StoreError> {
-	let evidence = semantic_authority_evidence(client, runtime_role).await?;
+	require_runtime_session: bool,
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let evidence =
+		semantic_authority_evidence(client, runtime_role, require_runtime_session).await?;
 	if evidence.has_unsafe_failure() {
 		return Err(StoreError::UnsafeAuthority(
 			"PostgreSQL semantic runtime authority differs from the shipped contract",
@@ -5894,666 +6023,128 @@ async fn verify_semantic_authority(
 
 	Ok(())
 }
+
+#[cfg(test)]
+pub(crate) fn passing_bootstrap_authority_evidence_fixture() -> BootstrapAuthorityEvidence {
+	let semantic = SEMANTIC_AUTHORITY_DEFINITION
+		.iter()
+		.map(|descriptor| BootstrapAuthorityObservation {
+			name: descriptor.name,
+			failure_class: match descriptor.failure_policy {
+				SemanticAuthorityFailurePolicy::Unsafe => BootstrapAuthorityFailureClass::Unsafe,
+				SemanticAuthorityFailurePolicy::Incompatible
+				| SemanticAuthorityFailurePolicy::UnsafeIfExcessOtherwiseIncompatible =>
+					BootstrapAuthorityFailureClass::Incompatible,
+			},
+			passed: true,
+		})
+		.collect();
+	BootstrapAuthorityEvidence {
+		namespace: [
+			BootstrapAuthorityObservation {
+				name: "namespace_present",
+				failure_class: BootstrapAuthorityFailureClass::Incompatible,
+				passed: true,
+			},
+			BootstrapAuthorityObservation {
+				name: "namespace_owner",
+				failure_class: BootstrapAuthorityFailureClass::Unsafe,
+				passed: true,
+			},
+		],
+		semantic,
+		configured_authority: BootstrapDigestEvidence {
+			complete: true,
+			expected_sha256: CONFIGURED_AUTHORITY_SHA256,
+			actual_sha256: Some(CONFIGURED_AUTHORITY_SHA256),
+			incomplete_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+			mismatch_failure_class: BootstrapAuthorityFailureClass::Unsafe,
+		},
+		schema_contract: BootstrapDigestEvidence {
+			complete: true,
+			expected_sha256: SCHEMA_CONTRACT_SHA256,
+			actual_sha256: Some(SCHEMA_CONTRACT_SHA256),
+			incomplete_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+			mismatch_failure_class: BootstrapAuthorityFailureClass::Incompatible,
+		},
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use std::collections::HashSet;
 
-	use crate::authority::{
-		CANONICAL_FUNCTION_MIGRATIONS, CONFIGURED_AUTHORITY_SHA256, CONFIGURED_AUTHORITY_SQL,
-		FUNCTION_CONTRACTS, IDENTITY_CAST_AUTHORITY_SQL, OWNED_OBJECT_CATALOGS, ROLE_AUTHORITY_SQL,
-		RUNTIME_ROUTINE_AUTHORITY_SQL, RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION,
-		SAFETY_FUNCTIONS, SCHEMA_CONTRACT_SHA256, SCHEMA_CONTRACT_SQL,
-		SEMANTIC_AUTHORITY_DEFINITION, SEMANTIC_AUTHORITY_PREDICATE_COUNT,
-		SemanticAuthorityEvidence, SemanticAuthorityFailureClass, SemanticAuthorityFailurePolicy,
-		TABLE_AUTHORITY_SQL,
+	use super::{
+		FUNCTION_CONTRACTS, FunctionContract, LATEST_SCHEMA_SQL, SEMANTIC_AUTHORITY_DEFINITION,
+		SEMANTIC_AUTHORITY_PREDICATE_COUNT, canonical_function_source,
+		declaration_signature_matches_contract, equivalent_sql_spacing, matching_parenthesis,
 	};
 
-	fn complete_semantic_authority_evidence() -> SemanticAuthorityEvidence {
-		let mut evidence = SemanticAuthorityEvidence::new();
-		for descriptor in SEMANTIC_AUTHORITY_DEFINITION {
-			match descriptor.failure_policy {
-				SemanticAuthorityFailurePolicy::Unsafe =>
-					evidence.record_unsafe(descriptor.identity, true),
-				SemanticAuthorityFailurePolicy::Incompatible
-				| SemanticAuthorityFailurePolicy::UnsafeIfExcessOtherwiseIncompatible =>
-					evidence.record_incompatible(descriptor.identity, true),
+	fn matching_schema_declaration_count(contract: &FunctionContract) -> usize {
+		let mut matches = 0;
+		for prefix in [
+			format!("CREATE FUNCTION decodex.{}(", contract.name),
+			format!("CREATE OR REPLACE FUNCTION decodex.{}(", contract.name),
+		] {
+			let mut offset = 0;
+			while let Some(relative) = LATEST_SCHEMA_SQL[offset..].find(&prefix) {
+				let declaration = offset + relative;
+				let arguments_start = declaration + prefix.len();
+				let arguments_end = matching_parenthesis(LATEST_SCHEMA_SQL, arguments_start)
+					.expect("function declaration has balanced arguments");
+				if equivalent_sql_spacing(
+					&LATEST_SCHEMA_SQL[arguments_start..arguments_end],
+					contract.arguments,
+				) {
+					matches += 1;
+				}
+				offset = arguments_end + 1;
 			}
 		}
-		evidence
+		matches
 	}
 
 	#[test]
-	fn semantic_authority_finalization_is_closed_typed_and_ordered() {
-		for (index, descriptor) in SEMANTIC_AUTHORITY_DEFINITION.iter().enumerate() {
-			assert_eq!(descriptor.identity as usize, index);
-		}
-		let finalized =
-			complete_semantic_authority_evidence().finalize().expect("closed evidence finalizes");
-		assert!(!finalized.has_unsafe_failure());
-		assert!(!finalized.has_incompatible_failure());
-		let artifact = finalized.to_json();
-		assert_eq!(
-			artifact["definition"]["predicates"].as_array().unwrap().len(),
-			SEMANTIC_AUTHORITY_PREDICATE_COUNT
-		);
-		assert_eq!(
-			artifact["observations"].as_array().unwrap().len(),
-			SEMANTIC_AUTHORITY_PREDICATE_COUNT
-		);
-		assert_eq!(artifact["fingerprint"].as_str().unwrap().len(), 64);
-	}
-
-	#[test]
-	fn semantic_authority_finalization_rejects_missing_duplicate_and_reordered_identities() {
-		let mut missing = complete_semantic_authority_evidence();
-		missing.observations.pop();
-		assert!(missing.finalize().is_err());
-
-		let mut duplicate = complete_semantic_authority_evidence();
-		let first = duplicate.observations[0].predicate;
-		duplicate.observations[1].predicate = first;
-		assert!(duplicate.finalize().is_err());
-
-		let mut reordered = complete_semantic_authority_evidence();
-		reordered.observations.swap(0, 1);
-		assert!(reordered.finalize().is_err());
-	}
-
-	#[test]
-	fn semantic_authority_finalization_rejects_invalid_failure_classification() {
-		let mut evidence = complete_semantic_authority_evidence();
-		evidence.observations[0].failure_class = SemanticAuthorityFailureClass::Incompatible;
-		assert!(evidence.finalize().is_err());
-	}
-
-	#[test]
-	fn semantic_authority_closes_relation_and_security_definer_entry_surfaces() {
-		for required in [
-			"namespace.nspname NOT IN ('pg_catalog', 'information_schema', 'pg_toast')",
-			"namespace.nspname !~ '^pg_(toast_)?temp_[0-9]+$'",
-			"class.relkind IN ('r', 'p', 'v', 'm', 'f')",
-			"'refinery_schema_history'::pg_catalog.name",
-			"pg_catalog.has_any_column_privilege",
-			"entry.allowed_table_name IS NULL",
-		] {
-			assert!(TABLE_AUTHORITY_SQL.contains(required), "{required}");
-		}
-		for required in [
-			"pg_catalog.pg_has_role(session_user, role.oid, 'SET')",
-			"proc.prokind IN ('f', 'p', 'w')",
-			"proc.prosecdef",
-			"expected_runtime_routines",
-			"extension.extname = 'pgcrypto'",
-			"required_digest.extversion = '1.4'",
-			"required_digest.proowner <> required_digest.extowner",
-			"owner.rolsuper",
-			"required_digest.pronargs = 2",
-			"pg_catalog.array_ndims(\n        required_digest.proargtypes::pg_catalog.oid[]\n      ) = 1",
-			"pg_catalog.array_lower(\n        required_digest.proargtypes::pg_catalog.oid[], 1\n      ) = 0",
-			"pg_catalog.array_upper(\n        required_digest.proargtypes::pg_catalog.oid[], 1\n      ) = 1",
-			"required_digest.proargtypes[0] =\n        'pg_catalog.bytea'::pg_catalog.regtype::pg_catalog.oid",
-			"required_digest.proargtypes[1] =\n        'pg_catalog.text'::pg_catalog.regtype::pg_catalog.oid",
-			"required_digest.proacl IS NULL",
-			"dependency.deptype = 'e'",
-			"'EXECUTE WITH GRANT OPTION'",
-		] {
-			assert!(RUNTIME_ROUTINE_AUTHORITY_SQL.contains(required), "{required}");
-		}
-		assert!(
-			!RUNTIME_ROUTINE_AUTHORITY_SQL
-				.contains("required_digest.proargtypes::pg_catalog.oid[] = ARRAY[")
-		);
+	fn bootstrap_semantic_report_contract_is_closed_ordered_unique_and_bounded() {
 		assert_eq!(SEMANTIC_AUTHORITY_DEFINITION.len(), SEMANTIC_AUTHORITY_PREDICATE_COUNT);
-	}
-
-	#[test]
-	fn table_authority_uses_exact_relation_set_equality_without_cardinality_literals() {
-		for required in [
-			"SELECT expected.table_name FROM expected\n    EXCEPT\n    SELECT tables.relname FROM tables",
-			"SELECT tables.relname FROM tables\n      EXCEPT\n      SELECT expected.table_name FROM expected",
-			"pg_catalog.has_table_privilege(session_user, oid, 'SELECT') = can_select",
-		] {
-			assert!(TABLE_AUTHORITY_SQL.contains(required), "{required}");
-		}
-		assert!(!TABLE_AUTHORITY_SQL.contains("count(*) FROM tables WHERE table_name IS NOT NULL"));
-		assert!(!TABLE_AUTHORITY_SQL.contains("= 73"));
-	}
-
-	#[test]
-	fn configured_authority_manifest_closes_postgres_18_principals_and_memberships() {
-		for required in [
-			"$1::pg_catalog.name",
-			"$2::pg_catalog.name",
-			"configured.rolsuper",
-			"configured.rolinherit",
-			"configured.rolcreaterole",
-			"configured.rolcreatedb",
-			"configured.rolcanlogin",
-			"configured.rolreplication",
-			"configured.rolconnlimit",
-			"configured.rolvaliduntil",
-			"configured.rolbypassrls",
-			"configured.rolconfig",
-			"membership.grantor",
-			"membership.admin_option",
-			"membership.inherit_option",
-			"membership.set_option",
-			"pg_catalog.pg_db_role_setting",
-		] {
-			assert!(CONFIGURED_AUTHORITY_SQL.contains(required), "{required}");
-		}
-
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("rolpassword"));
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("pg_authid"));
-		assert_ne!(CONFIGURED_AUTHORITY_SHA256, [0; 32]);
-	}
-
-	#[test]
-	fn configured_authority_never_serializes_role_setting_values() {
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(configured.rolconfig)"));
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(role.rolconfig)"));
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("unnest(setting.setconfig)"));
-		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(configured.rolconfig)"));
-		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(role.rolconfig)"));
-		assert!(CONFIGURED_AUTHORITY_SQL.contains("cardinality(setting.setconfig)"));
-	}
-
-	#[test]
-	fn configured_authority_manifest_closes_owned_objects_and_acl_grantors() {
-		for required in [
-			"'database', 'configured_database'",
-			"'namespace', namespace.nspname",
-			"'migration_ledger'",
-			"authority_classes AS (",
-			"JOIN authority_classes AS class ON class.oid = attribute.attrelid",
-			"JOIN authority_classes AS class ON class.oid = trigger.tgrelid",
-			"trigger.tgrelid IN (SELECT oid FROM ledger_class)",
-			"JOIN authority_classes AS class ON class.oid = rewrite.ev_class",
-			"JOIN authority_classes AS class ON class.oid = policy.polrelid",
-			"'relation_mode'",
-			"'column_acl'",
-			"'trigger_definition'",
-			"'rule_definition'",
-			"'policy_definition'",
-			"'default_acl'",
-			"class.relkind IN ('r', 'p', 'v', 'm', 'f', 'S')",
-			"COALESCE(type.typacl, pg_catalog.acldefault('T', type.typowner))",
-			"COALESCE(proc.proacl, pg_catalog.acldefault('f', proc.proowner))",
-			"privilege.grantor",
-			"privilege.grantee",
-			"privilege.is_grantable",
-			"NOT trigger.tgisinternal",
-			"default_acl.defaclobjtype",
-		] {
-			assert!(CONFIGURED_AUTHORITY_SQL.contains(required), "{required}");
+		let mut names = HashSet::new();
+		for (position, descriptor) in SEMANTIC_AUTHORITY_DEFINITION.iter().enumerate() {
+			assert_eq!(descriptor.identity as usize, position);
+			assert!(names.insert(descriptor.name));
+			assert!(!descriptor.name.is_empty());
+			assert!(descriptor.name.len() <= 64);
+			assert!(descriptor.name.bytes().all(|byte| byte == b'_' || byte.is_ascii_lowercase()));
 		}
 	}
 
 	#[test]
-	fn configured_authority_semantic_labels_are_closed_to_configured_roles_and_public() {
-		assert_eq!(CONFIGURED_AUTHORITY_SQL.matches("VALUES ('migration'").count(), 1);
-		assert_eq!(CONFIGURED_AUTHORITY_SQL.matches("('runtime'").count(), 1);
-		assert!(CONFIGURED_AUTHORITY_SQL.contains("THEN 'PUBLIC'"));
-		assert!(CONFIGURED_AUTHORITY_SQL.contains("ELSE 'other:' ||"));
-		assert!(!CONFIGURED_AUTHORITY_SQL.contains("password"));
-	}
-
-	#[test]
-	fn postgres_18_owned_object_inventory_is_closed_in_one_authority_query() {
-		let inventory = ROLE_AUTHORITY_SQL
-			.split_once("), decodex_owned_objects(object_class, owner_oid) AS (")
-			.expect("owned-object inventory starts")
-			.1
-			.split_once("\n)\nSELECT\n")
-			.expect("owned-object inventory ends")
-			.0;
-
-		for (catalog, ownership_branch) in OWNED_OBJECT_CATALOGS {
-			assert_eq!(inventory.matches(ownership_branch).count(), 1, "{catalog}");
-		}
-	}
-
-	#[test]
-	fn postgres_18_schema_manifest_closes_both_foreign_key_sides_and_internal_triggers() {
-		for required in [
-			"con.conrelid IN (SELECT oid FROM decodex_relations)",
-			"con.confrelid IN (SELECT oid FROM decodex_relations)",
-			"trigger.tgisinternal",
-			"trigger.tgconstraint IN (SELECT oid FROM touching_constraints)",
-			"pg_catalog.pg_get_constraintdef",
-			"pg_catalog.pg_get_indexdef",
-			"pg_catalog.pg_get_expr(attrdef.adbin",
-			"function_keys AS MATERIALIZED",
-			"type_keys AS MATERIALIZED",
-			"dependency_rows(kind, identity, dependency_type, reference_class, reference_key, resolved)",
-			"JOIN pg_catalog.pg_sequence AS sequence",
-			"ownership.deptype IN ('a', 'i')",
-		] {
-			assert!(SCHEMA_CONTRACT_SQL.contains(required), "{required}");
-		}
-		assert!(!SCHEMA_CONTRACT_SQL.contains("indcheckxmin"));
-		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.pg_describe_object"));
-		assert!(!SCHEMA_CONTRACT_SQL.contains("pg_catalog.regprocedure"));
-		assert!(!SCHEMA_CONTRACT_SQL.contains("ORDER BY privilege.grantee"));
-
-		assert_ne!(SCHEMA_CONTRACT_SHA256, [0; 32]);
-	}
-
-	#[test]
-	fn schema_manifest_maps_trigger_references_through_disjoint_semantic_keys() {
-		let trigger_keys = SCHEMA_CONTRACT_SQL
-			.split_once("), trigger_keys AS MATERIALIZED (")
-			.expect("trigger key inventory starts")
-			.1
-			.split_once("\n), decodex_functions AS (")
-			.expect("trigger key inventory ends")
-			.0;
-		assert_eq!(trigger_keys.matches("FROM relevant_triggers AS trigger").count(), 1);
-
-		let identities = trigger_keys
-			.split_once("CASE\n      WHEN trigger.tgisinternal THEN ")
-			.expect("trigger identity case starts")
-			.1
-			.split_once("\n    END AS key")
-			.expect("trigger identity case ends")
-			.0;
-		let (internal_identity, user_identity) =
-			identities.split_once("\n      ELSE ").expect("trigger identities are disjoint");
-		assert!(internal_identity.contains(
-			"pg_catalog.jsonb_build_array(\n        relation_namespace.nspname,\n        relation.relname,\n        constraint_key.key,\n        function_key.key\n      )"
-		));
-		assert!(!internal_identity.contains("tgname"));
-		assert!(!internal_identity.contains("oid"));
-		assert_eq!(
-			user_identity,
-			"pg_catalog.jsonb_build_array(\n        'user_trigger', relation_key.key, trigger.tgname\n      )"
-		);
-		assert!(!user_identity.contains("oid"));
-		assert!(!trigger_keys.contains("pg_catalog.pg_get_triggerdef"));
-
-		let mapper = SCHEMA_CONTRACT_SQL
-			.split_once("), mapped_dependency_references AS MATERIALIZED (")
-			.expect("dependency mapper starts")
-			.1
-			.split_once("\n), dependency_rows(")
-			.expect("dependency mapper ends")
-			.0;
-		assert_eq!(
-			mapper
-				.matches("dependency.refclassid = 'pg_catalog.pg_trigger'::pg_catalog.regclass")
-				.count(),
-			3
-		);
-		assert_eq!(mapper.matches("FROM trigger_keys AS trigger_key").count(), 2);
-		assert!(mapper.contains(
-			"WHERE trigger_key.oid = dependency.refobjid\n            AND dependency.refobjsubid = 0"
-		));
-		assert!(mapper.contains(
-			"dependency.target_classid <> 'pg_catalog.pg_constraint'::pg_catalog.regclass\n              OR dependency.target_objsubid = 0\n                AND referenced_trigger.tgconstraint = dependency.target_objid"
-		));
-
-		let raw_dependencies = SCHEMA_CONTRACT_SQL
-			.split_once("), raw_dependency_rows(")
-			.expect("raw dependency inventory starts")
-			.1
-			.split_once("\n), mapped_dependency_references AS MATERIALIZED (")
-			.expect("raw dependency inventory ends")
-			.0;
-		assert!(raw_dependencies.contains(
-			"target.classid,\n    target.objid,\n    target.objsubid,\n    dependency.dependency_type"
-		));
-
-		let dependency_output = SCHEMA_CONTRACT_SQL
-			.split_once("), dependency_rows(")
-			.expect("dependency output starts")
-			.1
-			.split_once("\n), contract_rows(")
-			.expect("dependency output ends")
-			.0;
-		assert!(!dependency_output.contains("target_classid"));
-		assert!(!dependency_output.contains("target_objid"));
-		assert!(!dependency_output.contains("target_objsubid"));
-
-		let targets = SCHEMA_CONTRACT_SQL
-			.split_once("), dependency_targets(")
-			.expect("dependency targets start")
-			.1
-			.split_once("\n), raw_dependency_rows(")
-			.expect("dependency targets end")
-			.0;
-		assert_eq!(targets.matches("FROM relevant_internal_triggers AS trigger").count(), 1);
-		assert!(!targets.contains("FROM relevant_triggers AS trigger"));
-	}
-
-	#[test]
-	fn schema_manifest_canonicalizes_stable_semantic_dependency_edges() {
-		let physical_edges = SCHEMA_CONTRACT_SQL
-			.split_once("), raw_dependency_edges(")
-			.expect("physical dependency normalization starts")
-			.1
-			.split_once("\n), raw_dependency_rows(")
-			.expect("physical dependency normalization ends")
-			.0;
-		let distinct_columns = physical_edges
-			.split_once("SELECT DISTINCT\n")
-			.expect("physical dependencies are distinct")
-			.1
-			.split_once("\n  FROM all_dependency_targets")
-			.expect("physical dependency columns end")
-			.0;
-		for column in [
-			"target.classid",
-			"target.objid",
-			"target.objsubid",
-			"dependency.deptype",
-			"dependency.refclassid",
-			"dependency.refobjid",
-			"dependency.refobjsubid",
-		] {
-			assert_eq!(distinct_columns.matches(column).count(), 1, "{column}");
-		}
-		assert!(!distinct_columns.contains("identity"));
-		assert!(!distinct_columns.contains("resolved"));
-
-		let semantic_edges = SCHEMA_CONTRACT_SQL
-			.split_once("), dependency_rows(")
-			.expect("semantic dependency set starts")
-			.1
-			.split_once("\n), contract_rows(")
-			.expect("semantic dependency set ends")
-			.0;
-		assert!(semantic_edges.contains(
-			"COALESCE(pg_catalog.bool_and(dependency.resolved), false)\n      AND pg_catalog.count(*) = 1"
-		));
-		assert!(semantic_edges.contains(
-			"GROUP BY\n    dependency.kind,\n    dependency.identity,\n    dependency.dependency_type,\n    dependency.reference_class,\n    dependency.reference_key"
-		));
-
-		let contracts = SCHEMA_CONTRACT_SQL
-			.split_once("), contract_rows(kind, identity, contract) AS (")
-			.expect("schema contract rows start")
-			.1;
-		assert!(contracts.contains(
-			"dependency.identity,\n      dependency.dependency_type,\n      dependency.reference_class,\n      dependency.reference_key"
-		));
-		assert!(contracts.contains(
-			"dependency.kind,\n      dependency.identity,\n      dependency.dependency_type,\n      dependency.reference_class,\n      dependency.reference_key"
-		));
-		assert_eq!(
-			contracts.matches("pg_catalog.jsonb_build_array(dependency.resolved)").count(),
-			2
-		);
-	}
-
-	#[test]
-	fn schema_manifest_attests_global_and_decodex_scoped_owner_default_acls() {
-		assert!(SCHEMA_CONTRACT_SQL.contains(
-			"default_acl.defaclnamespace IN (0, namespace.oid)\n    AND default_acl.defaclobjtype IN ('f', 'T')"
-		));
-		assert!(SCHEMA_CONTRACT_SQL.contains("WHEN default_acl.defaclnamespace = 0 THEN 'global'"));
-		assert!(
-			!SCHEMA_CONTRACT_SQL.contains("pg_catalog.format('%s:%s', default_acl.defaclnamespace")
-		);
-	}
-
-	#[test]
-	fn canonical_inventory_covers_every_shipped_decodex_function_once() {
-		assert_eq!(CANONICAL_FUNCTION_MIGRATIONS.len(), 28);
-		assert_eq!(FUNCTION_CONTRACTS.len(), 201);
-		let created_function_count = CANONICAL_FUNCTION_MIGRATIONS
-			.into_iter()
-			.map(|migration| migration.matches("CREATE FUNCTION decodex.").count())
-			.sum::<usize>();
-		let dropped_function_count = CANONICAL_FUNCTION_MIGRATIONS
-			.into_iter()
-			.map(|migration| migration.matches("DROP FUNCTION decodex.").count())
-			.sum::<usize>();
-		// V26 drops seven superseded functions. V27 drops two process-generation
-		// signatures before creating their account-bound replacements.
-		assert_eq!(dropped_function_count, 9);
-		assert_eq!(created_function_count - dropped_function_count, FUNCTION_CONTRACTS.len());
-
+	fn every_function_contract_has_one_canonical_schema_declaration_and_body() {
 		let mut lookup_signatures = HashSet::new();
-
 		for contract in &FUNCTION_CONTRACTS {
 			assert!(
 				lookup_signatures.insert(contract.lookup_signature),
-				"duplicate lookup signature: {}",
+				"duplicate function lookup identity: {}",
+				contract.lookup_signature
+			);
+			assert!(
+				declaration_signature_matches_contract(contract),
+				"function declaration and arguments differ: {}",
 				contract.lookup_signature
 			);
 			assert_eq!(
-				CANONICAL_FUNCTION_MIGRATIONS
-					.into_iter()
-					.map(|migration| migration
-						.matches(&format!(
-							"CREATE FUNCTION decodex.{}",
-							contract.migration_signature
-						))
-						.count())
-					.sum::<usize>(),
+				matching_schema_declaration_count(contract),
 				1,
-				"{}",
+				"function does not have one matching schema declaration: {}",
 				contract.lookup_signature
 			);
-
-			let source = super::canonical_function_source(contract).unwrap_or_else(|| {
-				panic!(
-					"shipped function has no canonical migration body: {}",
-					contract.lookup_signature
-				)
+			let source = canonical_function_source(contract).unwrap_or_else(|| {
+				panic!("function has no canonical source: {}", contract.lookup_signature)
 			});
-
-			assert!(source.starts_with('\n'), "{}", contract.lookup_signature);
-			assert!(source.ends_with('\n'), "{}", contract.lookup_signature);
-			assert!(!source.trim().is_empty(), "{}", contract.lookup_signature);
-		}
-	}
-
-	#[test]
-	fn runtime_session_event_authority_distinguishes_references_from_ownership() {
-		assert_eq!(
-			RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION
-				.matches(
-					"CREATE OR REPLACE FUNCTION decodex.enforce_runtime_session_event_namespace()"
-				)
-				.count(),
-			1
-		);
-		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("CREATE TRIGGER"));
-		assert!(!RUNTIME_SESSION_EVENT_REFERENCE_AUTHORITY_MIGRATION.contains("DROP TRIGGER"));
-		let source =
-			super::canonical_safety_function_source("enforce_runtime_session_event_namespace")
-				.expect("RuntimeSession event authority has canonical migration source");
-		assert!(source.contains("ownership_path CONSTANT pg_catalog.jsonpath := '$.** ? ("));
-
-		for ownership_marker in [
-			"NEW.aggregate_kind = 'runtime_session'",
-			"NEW.event_kind IN ('runtime_session_recorded'",
-			"@.aggregate_kind == \"runtime_session\"",
-			"@.kind == \"runtime_session\"",
-			"@.event_kind == \"runtime_session_transitioned\"",
-			"NEW.payload, '$.**.activity_sequence'",
-			"OLD.payload, '$.**.activity_sequence'",
-		] {
-			assert!(source.contains(ownership_marker), "{ownership_marker}");
-		}
-		for complete_shape in [
-			"exists(@.runtime_session_id) && exists(@.conversation_id)",
-			"exists(@.profile_snapshot_id) && exists(@.source_profile_id)",
-			"exists(@.account_snapshot_id) && exists(@.source_account_id)",
-		] {
-			assert!(source.contains(complete_shape), "{complete_shape}");
-		}
-		assert_eq!(
-			source.matches("@.type() == \"object\"").count(),
-			3,
-			"each complete shape must be object-local"
-		);
-		assert_eq!(source.matches("exists(@.runtime_session_id)").count(), 1);
-		assert_eq!(source.matches("exists(@.profile_snapshot_id)").count(), 2);
-		assert_eq!(source.matches("exists(@.account_snapshot_id)").count(), 2);
-		assert_eq!(source.matches("jsonb_path_exists(NEW.payload, ownership_path)").count(), 2);
-		assert_eq!(source.matches("jsonb_path_exists(OLD.payload, ownership_path)").count(), 2);
-		assert_eq!(
-			source.matches("jsonb_path_exists(activity.payload, ownership_path)").count(),
-			2
-		);
-		for non_owning_named_wrapper in [
-			"exists(@.runtime_session)",
-			"exists(@.runtime_session_snapshot)",
-			"exists(@.profile_snapshot)",
-			"exists(@.account_snapshot)",
-		] {
-			assert!(!source.contains(non_owning_named_wrapper), "{non_owning_named_wrapper}");
-		}
-		assert!(
-			source.contains("WHEN invalid_text_representation OR numeric_value_out_of_range THEN")
-		);
-		assert!(source.contains("RuntimeSession event namespace has unexpected trigger relation"));
-		assert!(source.contains("NEW.payload IS DISTINCT FROM OLD.payload"));
-	}
-
-	#[test]
-	fn canonical_body_extraction_is_bounded_to_one_declaration() {
-		let contract = FUNCTION_CONTRACTS
-			.iter()
-			.find(|contract| contract.name == "forbid_routing_history_mutation")
-			.expect("routing safety contract is inventoried");
-		let adjacent_declarations = "CREATE FUNCTION decodex.forbid_routing_history_mutation()\nRETURNS trigger\nCREATE FUNCTION decodex.adjacent()\nRETURNS trigger\nAS $$\nBEGIN\nEND\n$$;\n";
-
-		assert_eq!(
-			super::canonical_function_source_in_migration(adjacent_declarations, contract),
-			None
-		);
-	}
-
-	#[test]
-	fn compact_v14_through_v16_safety_declarations_preserve_canonical_bodies() {
-		for function_name in [
-			"forbid_routing_history_mutation",
-			"enforce_routing_completeness",
-			"enforce_routing_command_owner",
-			"forbid_codex_experiment_history_mutation",
-			"enforce_codex_experiment_command_owner",
-			"forbid_routing_decision_mutation",
-			"enforce_routing_decision_completeness",
-		] {
-			let source = super::canonical_safety_function_source(function_name)
-				.unwrap_or_else(|| panic!("compact safety body is unresolved: {function_name}"));
-
 			assert!(
-				source.starts_with("\nBEGIN\n") || source.starts_with("\nDECLARE "),
-				"{function_name}"
-			);
-			assert!(source.ends_with("END\n"), "{function_name}");
-		}
-	}
-
-	#[test]
-	fn event_namespace_safety_functions_branch_before_relation_specific_fields() {
-		for function_name in
-			["enforce_continuation_event_namespace", "enforce_waiting_usage_wake_event_namespace"]
-		{
-			let source = super::canonical_safety_function_source(function_name)
-				.unwrap_or_else(|| panic!("event namespace body is unresolved: {function_name}"));
-			let activity = source
-				.find("IF TG_TABLE_NAME='activity' THEN")
-				.expect("activity relation branch is explicit");
-			let outbox = source
-				.find("ELSIF TG_TABLE_NAME='outbox' THEN")
-				.expect("outbox relation branch is explicit");
-			let unexpected = source
-				.find("\tELSE\n\t\tRAISE EXCEPTION")
-				.expect("unexpected relation branch fails closed");
-
-			assert!(activity < outbox && outbox < unexpected, "{function_name}");
-			assert!(source[unexpected..].contains("unexpected trigger relation"));
-			assert!(source[activity..outbox].contains("NEW.event_kind"), "{function_name}");
-			assert!(source[activity..outbox].contains("OLD.event_kind"), "{function_name}");
-			assert!(!source[outbox..unexpected].contains("event_kind"), "{function_name}");
-			assert!(!source.contains("TG_TABLE_NAME='activity' AND"), "{function_name}");
-		}
-	}
-
-	#[test]
-	fn canonical_lookup_uses_newest_replacement_body() {
-		for function_name in [
-			"register_waiting_usage_wake_exact",
-			"claim_due_waiting_usage_wake_exact",
-			"fire_waiting_usage_wake_exact",
-			"cancel_waiting_usage_wake_exact",
-		] {
-			let contract = FUNCTION_CONTRACTS
-				.iter()
-				.find(|contract| contract.name == function_name)
-				.unwrap_or_else(|| panic!("replacement contract is unresolved: {function_name}"));
-			let source = super::canonical_function_source(contract).unwrap_or_else(|| {
-				panic!("replacement body is unresolved: {}", contract.lookup_signature)
-			});
-
-			assert!(
-				source.contains(&format!("decodex.{function_name}_internal(")),
-				"{}",
+				!source.trim().is_empty(),
+				"function has an empty canonical body: {}",
 				contract.lookup_signature
 			);
-			assert!(
-				source.contains("NULL::pg_catalog.timestamptz);"),
-				"{}",
-				contract.lookup_signature
-			);
-			assert!(
-				!source.contains("pg_catalog.clock_timestamp()"),
-				"{}",
-				contract.lookup_signature
-			);
-		}
-	}
-
-	#[test]
-	fn identity_mutators_share_one_first_statement_null_guard_and_cast_audit() {
-		for name in [
-			"bootstrap_advisor",
-			"create_project",
-			"transition_project",
-			"create_policy",
-			"accept_policy_revision",
-			"create_program",
-			"update_program_context",
-			"transition_program",
-			"create_objective",
-			"transition_objective",
-			"achieve_objective",
-		] {
-			let contract = FUNCTION_CONTRACTS
-				.iter()
-				.find(|contract| contract.name == name)
-				.expect("identity mutator is in the closed function inventory");
-			let source = super::canonical_function_source(contract)
-				.expect("identity mutator has canonical migration source");
-			let first_statement =
-				source.split_once("BEGIN\n").expect("PL/pgSQL body begins").1.trim_start();
-
-			assert!(first_statement.starts_with("IF p_"), "{name}");
-			assert!(first_statement.contains("identity ingress requires canonical UUID-v4 text"));
-			assert!(first_statement.contains("CONSTRAINT = 'canonical_uuid_v4_text_ingress'"));
-		}
-
-		assert!(IDENTITY_CAST_AUTHORITY_SQL.contains("pg_catalog.pg_cast"));
-		assert!(IDENTITY_CAST_AUTHORITY_SQL.contains("conversion.castcontext = 'i'"));
-	}
-
-	#[test]
-	fn every_safety_function_has_one_nonempty_canonical_migration_body() {
-		assert_eq!(SAFETY_FUNCTIONS.len(), 74);
-		for function_name in SAFETY_FUNCTIONS {
-			let source =
-				super::canonical_safety_function_source(function_name).unwrap_or_else(|| {
-					panic!("shipped safety function is unresolved: {function_name}")
-				});
-
-			assert!(source.starts_with('\n'), "{function_name}");
-			assert!(source.ends_with("END\n") || source.ends_with("END;\n"), "{function_name}");
-			assert!(!source.trim().is_empty(), "{function_name}");
 		}
 	}
 }

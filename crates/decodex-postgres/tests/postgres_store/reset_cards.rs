@@ -17,7 +17,7 @@ use serde_json::{Value, json};
 use tokio::time;
 use tokio_postgres::NoTls;
 
-use super::{expected_peer_uid, separated_configs};
+use super::{expected_peer_uid, owner_runtime_configs};
 
 const ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000001";
 const DISABLE_ACCOUNT_ID: &str = "71000000-0000-4000-8000-000000000002";
@@ -65,8 +65,9 @@ const FINAL_ACCOUNT_REVISION: i64 = 5;
 #[allow(clippy::too_many_lines)] // One complete mutation/receipt rollback and replay proof.
 async fn account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly()
 -> Result<(), Box<dyn Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let account_id = AccountId::new(ATOMIC_ACCOUNT_ID)?;
 	let operation_id = AccountOperationId::new(ATOMIC_OPERATION_ID)?;
 	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "atomic-provider-account")?;
@@ -254,9 +255,10 @@ async fn account_terminal_mutation_and_receipt_are_atomic_and_replay_exactly()
 #[ignore = "requires a fresh isolated PostgreSQL 18 V27 database"]
 async fn duplicate_provider_enrollment_rejects_without_effects_and_replays_exactly()
 -> Result<(), Box<dyn Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_connection_task = tokio::spawn(owner_connection);
 
 	assert_sequential_duplicate_provider_rejection(&store, &owner).await?;
@@ -524,9 +526,10 @@ struct InitialResetCardOperation {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires a fresh isolated PostgreSQL 18 reset-card database"]
 async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_connection_task = tokio::spawn(owner_connection);
 	let account_id = AccountId::new(ACCOUNT_ID)?;
 	enroll_v27_account(
@@ -568,7 +571,7 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 	reject_pending_replay_after_account_change(
 		&store,
 		&owner,
-		&migration,
+		&schema_owner,
 		&account_id,
 		reusable_descriptor,
 	)
@@ -585,9 +588,10 @@ async fn reset_card_private_claim_and_reclaim_contract() -> Result<(), Box<dyn E
 #[ignore = "requires a fresh isolated PostgreSQL 18 reset-card database"]
 async fn accepted_reset_card_effect_survives_administrative_disable() -> Result<(), Box<dyn Error>>
 {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_connection_task = tokio::spawn(owner_connection);
 	let account_id = AccountId::new(DISABLE_ACCOUNT_ID)?;
 	enroll_v27_account(
@@ -643,9 +647,10 @@ async fn accepted_reset_card_effect_survives_administrative_disable() -> Result<
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires a fresh isolated PostgreSQL 18 reset-card database"]
 async fn accepted_reset_card_effect_survives_credential_rotation() -> Result<(), Box<dyn Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (owner, owner_connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_connection_task = tokio::spawn(owner_connection);
 	let account_id = AccountId::new(ROTATION_ACCOUNT_ID)?;
 	enroll_v27_account(
@@ -1313,7 +1318,7 @@ async fn start_reusable_operation_and_assert_replays(
 async fn reject_pending_replay_after_account_change(
 	store: &PostgresStore,
 	owner: &tokio_postgres::Client,
-	migration: &tokio_postgres::Config,
+	schema_owner: &tokio_postgres::Config,
 	account_id: &AccountId,
 	reusable_descriptor: ResetCardDescriptor,
 ) -> Result<(), Box<dyn Error>> {
@@ -1622,7 +1627,7 @@ async fn reject_pending_replay_after_account_change(
 
 	let drift_before =
 		pending_reset_card_receipt_fence(owner, "reset-card-expired-drift-after-reclaim").await?;
-	let (mut receipt_blocker, receipt_blocker_connection) = migration.connect(NoTls).await?;
+	let (mut receipt_blocker, receipt_blocker_connection) = schema_owner.connect(NoTls).await?;
 	let receipt_blocker_connection_task = tokio::spawn(receipt_blocker_connection);
 	let receipt_blocker_transaction = receipt_blocker.transaction().await?;
 	receipt_blocker_transaction
@@ -1647,7 +1652,7 @@ async fn reject_pending_replay_after_account_change(
 	});
 	time::sleep(Duration::from_millis(50)).await;
 
-	let (mut lifecycle_owner, lifecycle_owner_connection) = migration.connect(NoTls).await?;
+	let (mut lifecycle_owner, lifecycle_owner_connection) = schema_owner.connect(NoTls).await?;
 	let lifecycle_owner_connection_task = tokio::spawn(lifecycle_owner_connection);
 	let lifecycle_transaction = lifecycle_owner.transaction().await?;
 	let lifecycle_lock = time::timeout(

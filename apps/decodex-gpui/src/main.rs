@@ -9,6 +9,7 @@
 )]
 mod client_cache;
 mod client_lifecycle;
+mod composer_input;
 mod health_query;
 #[cfg_attr(
 	not(test),
@@ -18,6 +19,7 @@ mod health_query;
 	)
 )]
 mod history_pager;
+mod quick_tasks;
 mod shell;
 
 use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
@@ -45,6 +47,7 @@ fn main() {
 						..Default::default()
 					}),
 					window_bounds: Some(WindowBounds::Windowed(bounds)),
+					window_min_size: Some(size(px(1024.0), px(620.0))),
 					focus: false,
 					show: false,
 					..Default::default()

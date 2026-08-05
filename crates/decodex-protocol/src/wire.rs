@@ -18,7 +18,11 @@ use decodex_core::{
 use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as _};
 use serde_json::Error;
 
-use crate::{DoctorReport, ProtocolVersion, SupportedVersions, VersionRefusal};
+use crate::{
+	DoctorReport, ProtocolVersion, QuickTaskListCursor, QuickTaskListResult, QuickTaskListSize,
+	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary, QuickTaskTurnOutcome,
+	QuickTaskWorkingDirectory, SupportedVersions, VersionRefusal,
+};
 
 /// Maximum UTF-8 size of any human-readable text carried by V2.0.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
@@ -467,6 +471,11 @@ impl CorrelationId {
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		WireText::new(value).map(|value| Self(value.0))
 	}
+
+	/// Borrow the bounded correlation identity.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
 }
 
 impl<'de> Deserialize<'de> for CorrelationId {
@@ -486,6 +495,11 @@ impl CausationId {
 	/// Validate and construct a bounded causation identity.
 	pub fn new(value: impl Into<String>) -> Result<Self, WireScalarTooLong> {
 		WireText::new(value).map(|value| Self(value.0))
+	}
+
+	/// Borrow the bounded direct-cause identity.
+	pub fn as_str(&self) -> &str {
+		&self.0
 	}
 }
 
@@ -2241,11 +2255,25 @@ impl AccountObservationSignal {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// List one bounded deterministic page of ordinary Task conversations.
+	ListQuickTasks {
+		/// Last fully applied most-recent-first keyset position.
+		#[serde(skip_serializing_if = "Option::is_none")]
+		after: Option<QuickTaskListCursor>,
+		/// Positive requested Conversation count inside the public bound.
+		page_size: QuickTaskListSize,
+	},
+	/// Read one exact ordinary Quick Task.
+	GetQuickTask {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+	},
 	/// Revalidate and return the bounded authoritative doctor/status report.
 	GetDoctorStatus,
-	/// Read one immutable V16 execution-route decision without acquiring execution authority.
+	/// Read one immutable Routing Decision execution-route decision without acquiring execution
+	/// authority.
 	GetExecutionDecision {
-		/// Stable V16 decision identity.
+		/// Stable Routing Decision identity.
 		decision_id: EntityId,
 	},
 	/// Read one bounded deterministic logical-conversation history page.
@@ -2317,6 +2345,46 @@ impl QueryPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
+	/// Create one ordinary conversation and submit its first turn.
+	CreateQuickTask {
+		/// Caller-generated stable logical Conversation identity.
+		conversation_id: EntityId,
+		/// Caller-generated stable first logical Turn identity.
+		turn_id: EntityId,
+		/// Bounded user-authored message.
+		message: HistoryText,
+		/// Untrusted server-host working directory selected for this process lineage.
+		working_directory: QuickTaskWorkingDirectory,
+	},
+	/// Explicitly retry L0 routing for one durable pre-session Quick Task Conversation.
+	RetryQuickTaskRouting {
+		/// Stable logical Conversation identity with no current RuntimeSession.
+		conversation_id: EntityId,
+		/// Caller-generated stable first logical Turn identity for this retry.
+		turn_id: EntityId,
+		/// Bounded user-authored message admitted only after first-session planning succeeds.
+		message: HistoryText,
+		/// Untrusted server-host working directory selected for this process lineage.
+		working_directory: QuickTaskWorkingDirectory,
+	},
+	/// Submit one subsequent turn on the exact existing Codex thread.
+	SubmitQuickTaskTurn {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+		/// Caller-generated stable logical Turn identity.
+		turn_id: EntityId,
+		/// Bounded user-authored message.
+		message: HistoryText,
+		/// Untrusted server-host working directory used if the thread must be re-established.
+		working_directory: QuickTaskWorkingDirectory,
+	},
+	/// Interrupt one exact active Quick Task turn.
+	InterruptQuickTask {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+		/// Exact active logical Turn identity.
+		turn_id: EntityId,
+	},
 	/// Refresh a bounded system-health observation through the common application boundary.
 	RefreshSystemObservation {
 		/// Foundation entity to observe.
@@ -2487,6 +2555,29 @@ pub enum Channel {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
+	/// The bounded presentation projection of one ordinary Task conversation changed.
+	QuickTaskConversationChanged {
+		/// Complete credential-negative ordinary projection plus local overlay.
+		conversation: QuickTaskSummary,
+	},
+	/// One bounded user-visible assistant-message delta arrived for an active turn.
+	QuickTaskMessageDelta {
+		/// Exact logical Conversation identity.
+		conversation_id: EntityId,
+		/// Exact logical Turn identity.
+		turn_id: EntityId,
+		/// Bounded normalized assistant text delta.
+		delta: HistoryText,
+	},
+	/// One ordinary Turn reached a definite evidence-backed terminal outcome.
+	QuickTaskTurnFinished {
+		/// Complete ordinary Conversation projection after the Turn settled.
+		conversation: QuickTaskSummary,
+		/// Exact logical Turn that settled.
+		turn_id: EntityId,
+		/// Definite positive or failed outcome.
+		outcome: QuickTaskTurnOutcome,
+	},
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
 		/// Small human-readable foundation status.
@@ -2580,6 +2671,16 @@ pub enum CommandOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
+	/// An ordinary Conversation create or later-Turn command reached a closed accepted state.
+	QuickTaskConversationAccepted {
+		/// Complete current ordinary projection after acceptance.
+		conversation: QuickTaskSummary,
+	},
+	/// An interrupt request reached the exact daemon-local active Turn handle.
+	QuickTaskInterruptAccepted {
+		/// Complete current ordinary projection; completion later returns it to `ready`.
+		conversation: QuickTaskSummary,
+	},
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
 		/// Small human-readable foundation status.
@@ -2642,6 +2743,10 @@ pub enum ResultPayload {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Bounded current Quick Task destination projection.
+	QuickTasks(QuickTaskListResult),
+	/// One exact ordinary Quick Task readback.
+	QuickTask(QuickTaskResult),
 	/// Bounded authoritative doctor/status readback.
 	DoctorStatus(DoctorReport),
 	/// Immutable execution-consumer and exact route-cause projection.
@@ -2985,7 +3090,7 @@ fn strictly_sorted<T: Ord>(values: &[T]) -> bool {
 	values.windows(2).all(|pair| pair[0] < pair[1])
 }
 
-/// Result of an immutable V16 route-decision observation.
+/// Result of an immutable Routing Decision route-decision observation.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
 pub enum ExecutionDecisionResult {
@@ -3010,7 +3115,7 @@ pub enum ExecutionDecisionQueryError {
 	IntegrityUnavailable,
 }
 
-/// Immutable V16 decision plus its exact ordinary or managed consumer.
+/// Immutable Routing Decision plus its exact ordinary or managed consumer.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ExecutionDecisionDto {
 	/// Stable immutable decision identity.
@@ -3025,16 +3130,16 @@ pub struct ExecutionDecisionDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "identity", rename_all = "snake_case")]
 pub enum ExecutionConsumerDto {
-	/// One ordinary Conversation Turn with exact source RuntimeSession lineage.
+	/// One ordinary Conversation Turn with optional initial source RuntimeSession lineage.
 	ConversationTurn {
 		/// Conversation identity.
 		conversation_id: EntityId,
 		/// Positive Conversation revision.
 		conversation_revision: i64,
-		/// Source RuntimeSession identity.
-		source_runtime_session_id: EntityId,
-		/// Positive source RuntimeSession revision.
-		source_runtime_session_revision: i64,
+		/// Source RuntimeSession identity, absent only for an initial Turn intent.
+		source_runtime_session_id: Option<EntityId>,
+		/// Positive source revision, jointly absent only for an initial Turn intent.
+		source_runtime_session_revision: Option<i64>,
 		/// Conversation-owned Turn identity.
 		turn_id: EntityId,
 	},
@@ -3049,7 +3154,7 @@ pub enum ExecutionConsumerDto {
 	},
 }
 
-/// Cause-preserving V16 route projection.
+/// Cause-preserving Routing Decision route projection.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "kind", content = "data", rename_all = "snake_case")]
 pub enum ExecutionRouteDto {
@@ -3105,7 +3210,7 @@ pub struct ExecutionRouteCauseDto {
 	pub blocker: ExecutionRouteBlockerDto,
 }
 
-/// Exact typed blockers that V16 can persist.
+/// Exact typed blockers that Routing Decision can persist.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionRouteBlockerDto {
@@ -3261,6 +3366,15 @@ pub enum HistoryPayloadDto {
 	/// Large content-addressed bytes, accessed through a future authenticated artifact route.
 	Blob(HistoryBlobReference),
 }
+impl HistoryPayloadDto {
+	/// Borrow inline normalized text when this payload is not a blob reference.
+	pub fn inline_text(&self) -> Option<&HistoryText> {
+		match self {
+			Self::Inline { text } => Some(text),
+			Self::Blob(_) => None,
+		}
+	}
+}
 
 /// Wire projection of a normalized turn role.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -3341,8 +3455,18 @@ pub enum CommandError {
 		/// Bounded operator-facing explanation.
 		message: WireText,
 	},
+	/// Quick Task execution was unavailable when this daemon process assembled its owners.
+	QuickTaskUnavailable {
+		/// Closed startup reason. No credential, path, account, or provider text is representable.
+		unavailable_reason: crate::QuickTaskUnavailableReason,
+	},
 	/// The application could not establish whether durable acceptance committed.
 	AcceptanceUnknown,
+	/// Account selection or immutable account affinity requires an explicit user action.
+	QuickTaskRecoveryRequired {
+		/// Closed recovery action safe for direct presentation.
+		action: QuickTaskRecoveryAction,
+	},
 	/// A stable account-domain guard rejected the logical command before a new effect.
 	AccountCommandRejected {
 		/// Stable account-domain rejection.
@@ -3432,6 +3556,14 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::ListQuickTasks { after, .. }
+				if after.as_ref().is_some_and(|cursor| {
+					!is_canonical_uuid(cursor.conversation_id().as_str())
+				}) =>
+				Err("Quick Task list cursor identity is not canonical"),
+			QueryPayload::GetQuickTask { conversation_id }
+				if !is_canonical_uuid(conversation_id.as_str()) =>
+				Err("Quick Task conversation identity is not canonical"),
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
 			| QueryPayload::GetAccountProfile { account_id, .. }
@@ -3446,6 +3578,10 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
+		CommandPayload::CreateQuickTask { .. }
+		| CommandPayload::RetryQuickTaskRouting { .. }
+		| CommandPayload::SubmitQuickTaskTurn { .. }
+		| CommandPayload::InterruptQuickTask { .. } => validate_quick_task_command(command),
 		CommandPayload::RefreshSystemObservation { .. } => Ok(()),
 		CommandPayload::ConsumeResetCard { account_id, .. } => {
 			if is_canonical_uuid(account_id.as_str()) && positive_expected {
@@ -3535,6 +3671,54 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_operation(operation_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
+	}
+}
+
+fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static str> {
+	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
+	match &command.payload {
+		CommandPayload::CreateQuickTask { conversation_id, turn_id, message, .. } => {
+			if command.expected_revision.is_some()
+				|| !is_canonical_uuid(conversation_id.as_str())
+				|| !is_canonical_uuid(turn_id.as_str())
+				|| message.as_str().trim().is_empty()
+			{
+				Err("Quick Task create identity, revision, or message is invalid")
+			} else {
+				Ok(())
+			}
+		},
+		CommandPayload::RetryQuickTaskRouting { conversation_id, turn_id, message, .. } =>
+			if positive_expected
+				&& is_canonical_uuid(conversation_id.as_str())
+				&& is_canonical_uuid(turn_id.as_str())
+				&& !message.as_str().trim().is_empty()
+			{
+				Ok(())
+			} else {
+				Err("Quick Task routing retry identity, revision, or message is invalid")
+			},
+		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } =>
+			if positive_expected
+				&& is_canonical_uuid(conversation_id.as_str())
+				&& is_canonical_uuid(turn_id.as_str())
+				&& !message.as_str().trim().is_empty()
+			{
+				Ok(())
+			} else {
+				Err("Quick Task turn identity, revision, or message is invalid")
+			},
+		CommandPayload::InterruptQuickTask { conversation_id, turn_id } => {
+			if positive_expected
+				&& is_canonical_uuid(conversation_id.as_str())
+				&& is_canonical_uuid(turn_id.as_str())
+			{
+				Ok(())
+			} else {
+				Err("Quick Task interrupt identity or revision is invalid")
+			}
+		},
+		_ => unreachable!("Quick Task validation requires a Quick Task command"),
 	}
 }
 

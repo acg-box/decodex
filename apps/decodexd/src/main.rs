@@ -5,7 +5,9 @@ mod service_supervisor;
 use std::{error::Error, path::PathBuf};
 
 use clap::{Parser, Subcommand};
-use decodex_runtime::{DecodexRoot, ServerConfig, ServiceComposition};
+use decodex_runtime::{
+	DecodexRoot, LocalAccountAuthorityRestoreReport, ServerConfig, ServiceComposition,
+};
 #[cfg(test)] use {libc as _, tempfile as _};
 
 #[derive(Parser)]
@@ -19,9 +21,29 @@ struct Cli {
 enum Command {
 	/// Serve the same-UID Decodex vNext protocol.
 	Serve,
-	/// Provision the local PostgreSQL schema and steady-state runtime authority.
+	/// Create the latest PostgreSQL schema once on an empty target.
 	#[command(hide = true)]
-	ProvisionLocal {
+	BootstrapLatestSchema {
+		#[arg(long)]
+		root: PathBuf,
+		#[arg(long)]
+		schema_owner_user: String,
+		#[arg(long)]
+		schema_owner_credential_env_var: Option<String>,
+	},
+	/// Restore credential-negative local account authority into a fresh latest schema.
+	#[command(hide = true)]
+	RestoreLocalAccountAuthority {
+		#[arg(long)]
+		root: PathBuf,
+		#[arg(long)]
+		schema_owner_user: String,
+		#[arg(long)]
+		schema_owner_credential_env_var: Option<String>,
+	},
+	/// Verify the latest catalog and authority through the runtime identity only.
+	#[command(hide = true)]
+	ValidateCurrentAuthority {
 		#[arg(long)]
 		root: PathBuf,
 	},
@@ -46,8 +68,67 @@ enum Command {
 async fn main() -> Result<(), Box<dyn Error>> {
 	match Cli::parse().command {
 		None | Some(Command::Serve) => serve().await,
-		Some(Command::ProvisionLocal { root }) =>
-			ServiceComposition::provision_local(DecodexRoot::new(root)?).await.map_err(Into::into),
+		Some(Command::BootstrapLatestSchema {
+			root,
+			schema_owner_user,
+			schema_owner_credential_env_var,
+		}) => {
+			let result = ServiceComposition::bootstrap_latest_schema(
+				DecodexRoot::new(root)?,
+				schema_owner_user,
+				schema_owner_credential_env_var,
+			)
+			.await;
+			match result {
+				Ok(()) => Ok(()),
+				Err(error) => {
+					if let Some(report) = error.authority_report_line() {
+						eprintln!("{report}");
+					}
+					Err(Box::<dyn Error>::from(error))
+				},
+			}
+		},
+		Some(Command::RestoreLocalAccountAuthority {
+			root,
+			schema_owner_user,
+			schema_owner_credential_env_var,
+		}) => {
+			let report = {
+				#[cfg(target_os = "macos")]
+				{
+					match DecodexRoot::new(root) {
+						Ok(root) =>
+							ServiceComposition::restore_local_account_authority(
+								root,
+								schema_owner_user,
+								schema_owner_credential_env_var,
+								std::io::stdin().lock(),
+							)
+							.await,
+						Err(_) => LocalAccountAuthorityRestoreReport::configuration_refused(),
+					}
+				}
+				#[cfg(not(target_os = "macos"))]
+				{
+					drop((root, schema_owner_user, schema_owner_credential_env_var));
+					LocalAccountAuthorityRestoreReport::host_refused()
+				}
+			};
+			{
+				use std::io::Write as _;
+
+				let stdout = std::io::stdout();
+				let mut output = stdout.lock();
+				let _ = writeln!(output, "{report}");
+				let _ = output.flush();
+			}
+			if report.succeeded() { Ok(()) } else { std::process::exit(1) }
+		},
+		Some(Command::ValidateCurrentAuthority { root }) =>
+			ServiceComposition::validate_current_authority(DecodexRoot::new(root)?)
+				.await
+				.map_err(Into::into),
 		Some(Command::SuperviseLocal {
 			postgres,
 			pg_isready,
@@ -143,16 +224,62 @@ mod tests {
 		let explicit = Cli::try_parse_from(["decodexd", "serve"]).expect("parse explicit serve");
 		assert!(matches!(explicit.command, Some(Command::Serve)));
 
-		let provision = Cli::try_parse_from([
+		let bootstrap = Cli::try_parse_from([
 			"decodexd",
-			"provision-local",
+			"bootstrap-latest-schema",
+			"--root",
+			"/private/tmp/decodex-root",
+			"--schema-owner-user",
+			"decodex_owner",
+			"--schema-owner-credential-env-var",
+			"DECODEX_SCHEMA_OWNER_PASSWORD",
+		])
+		.expect("parse latest-schema bootstrap");
+		assert!(matches!(
+			bootstrap.command,
+			Some(Command::BootstrapLatestSchema {
+				root,
+				schema_owner_user,
+				schema_owner_credential_env_var,
+			}) if root.as_path() == std::path::Path::new("/private/tmp/decodex-root")
+				&& schema_owner_user == "decodex_owner"
+				&& schema_owner_credential_env_var.as_deref()
+					== Some("DECODEX_SCHEMA_OWNER_PASSWORD")
+		));
+
+		let restore = Cli::try_parse_from([
+			"decodexd",
+			"restore-local-account-authority",
+			"--root",
+			"/private/tmp/decodex-root",
+			"--schema-owner-user",
+			"decodex_owner",
+			"--schema-owner-credential-env-var",
+			"DECODEX_SCHEMA_OWNER_PASSWORD",
+		])
+		.expect("parse local account authority restore");
+		assert!(matches!(
+			restore.command,
+			Some(Command::RestoreLocalAccountAuthority {
+				root,
+				schema_owner_user,
+				schema_owner_credential_env_var,
+			}) if root.as_path() == std::path::Path::new("/private/tmp/decodex-root")
+				&& schema_owner_user == "decodex_owner"
+				&& schema_owner_credential_env_var.as_deref()
+					== Some("DECODEX_SCHEMA_OWNER_PASSWORD")
+		));
+
+		let validate = Cli::try_parse_from([
+			"decodexd",
+			"validate-current-authority",
 			"--root",
 			"/private/tmp/decodex-root",
 		])
-		.expect("parse local provision");
+		.expect("parse current-authority validation");
 		assert!(matches!(
-			provision.command,
-			Some(Command::ProvisionLocal { root })
+			validate.command,
+			Some(Command::ValidateCurrentAuthority { root })
 				if root.as_path() == std::path::Path::new("/private/tmp/decodex-root")
 		));
 
