@@ -180,6 +180,12 @@ Every Quick Task command repeats the current Account Service, routing,
 ProcessGeneration, ProviderAttempt, app-server, and path fences before it can cause an
 effect.
 
+RoleProfile remains a separate global PostgreSQL authority. One initial bootstrap seam accepts
+user-supplied typed server configuration for all four advisor/lead/task/reviewer groups and creates
+them atomically. PostgreSQL owns all later revisions and updates. Quick Task requires the current
+`task` profile; if it is missing, initialization returns typed `QuickTaskUnavailable` and does not
+synthesize model, reasoning, or service-tier defaults.
+
 This structure has no capability-manager module. The startup projections own no durable
 state, receipt, task, channel, retry, or lifecycle. They only make the result of service
 assembly explicit. A deletion test must continue to hold: removing the Quick Task owner
@@ -207,7 +213,8 @@ they are not startup readiness.
 
 | State or surface | Authority |
 | --- | --- |
-| Projects, Agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, profiles, context, messages, mappings, and UI-visible activity | PostgreSQL domain relations with optimistic revisions, leases, append-only activity, and transactional outbox |
+| Projects, Agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, context, messages, mappings, and UI-visible activity | PostgreSQL domain relations with optimistic revisions, leases, append-only activity, and transactional outbox |
+| Global advisor/lead/task/reviewer RoleProfiles | PostgreSQL RoleProfile Authority with immutable revisions and one current pointer per role |
 | Conversations, Turns, RuntimeSessions, history, Context Packs, and routing | PostgreSQL current domain authority |
 | Account product state | PostgreSQL Account Registry |
 | Credentials | one versioned HostCredentialStore |
@@ -246,15 +253,19 @@ schema upgrade, or schema-history records.
 
 Candidate 5 is the accepted target for one ordinary multi-turn Quick Task. It is not a
 ManagedRun and has no WorkItem, reviewer, PR, harness, or Goal. Current source must be
-aligned to this target while preserving current-main account observation behavior.
+aligned to this target while preserving current-main account observation behavior. Its initial
+selection is independent of Project routing: no current or accepted Project policy,
+`routing_compatibility_evidence`, or `quota_windows` row is required. Selection occurs only while
+establishing the first RuntimeSession.
 
 ### Owner order
 
-The exact initial order is:
+The exact first-session order is:
 
 ```text
 Conversation create
 -> prospective Turn UUID intent
+-> Quick Task routing adapter locks Account Registry authority
 -> Routing Snapshot
 -> Routing Decision
 -> first account/profile snapshots + starting RuntimeSession + inert initial plan
@@ -265,17 +276,43 @@ Conversation create
 -> ProviderAttempt
 ```
 
-Routing Snapshot locks the complete policy member universe, canonical order, account
-revisions, two separate quota facts per member, required capability facts, and blockers.
-Routing Decision is the sole account selector. Account Service owns lifecycle facts and
-rechecks only the selected account's current readiness, credential version/fingerprint,
-provider binding, and HostCredentialStore binding immediately before spawn. It cannot
-preselect, replace, fall back to, or wake another account.
+The Quick Task routing adapter owns one transaction that locks complete non-tombstoned Account
+Registry membership, canonical routing mode/fixed target/order and routing revision, exact account
+revisions, enabled/lifecycle/health/credential-binding blockers, the current Task RoleProfile
+revision, and exactly one 300-minute and one 10080-minute `account_quota_facts` slot per member. It
+materializes the only selecting Quick Task Routing Snapshot and immutable Decision directly from
+those facts. Project-policy/evidence/build fields are null.
+
+Each quota slot exactly copies one source state: missing has all observation fields null; current
+has `used_percent`, `observed_at`, and `resets_at` with no error; observation error has typed
+`error_code` and `observed_at` with no usage or reset. Routing invents no quota revision, remaining
+value, confidence, provenance, or legacy `quota_windows` value.
+
+Routing Decision remains the sole account selector. Fixed mode accepts only its exact fixed
+eligible member. Balanced mode follows canonical Account Registry order and classifies exhausted,
+unknown, and error state for each quota window independently; it never forms a merged quota pool.
+Account Service rechecks only the selected account's current readiness, credential
+version/fingerprint, provider binding, and HostCredentialStore binding immediately before spawn.
+It cannot preselect, replace, fall back to, or wake another account.
+
+Account Registry owns current account, quota, blocker, and routing facts. The Quick Task routing
+adapter owns only first-session materialization. Every later Turn receives an immutable
+non-selecting continuation decision bound to the current RuntimeSession, original initial
+decision, selected account snapshot, and copied Task RoleProfile snapshot. Same-thread and Context
+Pack planning retain that account and profile; they do not call current Project routing, resolve
+another Account Registry snapshot, or select. Specifically, they never call
+`read_current_task_routing_authority_exact()` or `resolve_routing_snapshot_exact`. Drift,
+exhaustion, or readiness failure returns
+typed manual recovery without fallback, wake, or re-selection. `QuickTaskRuntime` and
+`ServiceApplication` only sequence and consume typed results. Project routing retains accepted
+policy/evidence authority for ManagedRun. There is no general selector, capability manager,
+compatibility bridge, or duplicate Quick Task policy path.
 
 Continuation Plan consumes the selected initial decision. In one transaction it creates
 the selected account snapshot, copied RoleProfile snapshot, first revision-1 unfenced
 `starting` RuntimeSession, inert `initial_thread` plan, exact receipt, activity, and
-outbox. Failure rolls back the complete cluster.
+outbox. It uses the current `task` RoleProfile from the separate PostgreSQL authority; routing and
+runtime do not choose or derive it. Failure rolls back the complete cluster.
 
 Conversation authority then admits exactly one Turn with the prospective UUID, sequence
 1, role `user`, `possible_side_effects=unknown`, status `active`, and revision 1 under the
@@ -291,19 +328,36 @@ The latest schema defines two routing lineage shapes:
   fields are null; and
 - `L6`: all six are present and the three revisions are positive.
 
-Conversation routing permits `L0` or `L6`. ManagedRun routing permits only `L6`. All
-existing foreign keys remain. One exact all-null/all-present constraint rejects partial
-lineage.
+Source lineage and routing authority are closed independently. Selecting snapshots have two
+`authority_shape` values. `conversation_account_registry` permits only initial Conversation `L0`
+with the Account Registry fields above and null Project policy/evidence/build fields.
+`managed_run_project_policy` permits only ManagedRun `L6` and retains its existing complete
+Project policy/evidence/capability/quota representation. Reverse constraints reject mixed fields,
+children, or consumers.
 
-`L0` requires one open exact-revision Conversation, no existing RuntimeSession or Turn,
-zero sticky members, and exact equality with the complete locked routing universe.
-Source fields, sticky members, closed or stale Conversation state, a source-less
-ManagedRun, or missing, extra, duplicate, cross-linked, or reordered evidence fails
-closed. `L6` retains the existing exact one-sticky-member rule.
+A later Quick Task Turn uses `L6` only in a non-selecting `conversation_continuation` decision. It
+directly references the source RuntimeSession and original initial selected decision, repeats only
+their exact account/profile snapshot identities, and has no candidate, policy, quota, exclusion,
+waiting, or selection fields. Same-thread and Context Pack planning consume this binding.
 
-There is one initial route decision. Same-key replay is read-only. A competing cross-key
-initial decision loses under the Conversation lock. Initial planning is first-session
-creation and cannot enter same-thread reuse, explicit successor, or Context Pack fallback.
+There is one initial selecting decision. Same-key replay is read-only. A competing cross-key
+initial command loses under the Conversation lock and creates no routing rows. Initial planning is
+first-session creation. Later selected-account drift fails closed before spawn as typed manual
+recovery without fallback, wake, or re-selection.
+
+### Initial selection transaction
+
+Initial selection is one top-level `READ COMMITTED` exact command. A fresh command locks the
+Conversation intent first, then the `account_routing_control` singleton, all complete
+non-tombstoned account rows in canonical UUID order, and the current Task RoleProfile row. It then
+copies `account_routing_order` and both quota slots while retaining every lock through commit.
+
+Membership/routing writers lock routing control before affected or all account rows in the same
+UUID order. A quota writer locks its account row before quota insert/update and never takes routing
+control afterward. Selection's account lock therefore serializes even an absent quota insertion
+without a lock cycle. Before commit, selection compares every locked revision and exact source fact
+with the immutable copy. Mismatch rolls back all effects. Same-key contenders replay the stored
+exact response; cross-key contenders serialize at the Conversation and only one is fresh.
 
 ### Thread and effect fences
 
@@ -332,23 +386,22 @@ status `failed`, and revision 2. It has no product or runtime mutation surface.
 
 ### Final trigger definitions
 
-The latest schema creates the final bodies and unchanged bindings for these seven affected
+The latest schema creates the final bodies and unchanged bindings for these eight affected
 trigger functions:
 
 | Function | Final Candidate-5 responsibility |
 | --- | --- |
-| `decodex.enforce_routing_completeness()` | Preserve complete existing `L6` policy/evidence rules and add only the exact zero-sticky `L0` branch. |
+| `decodex.enforce_routing_completeness()` | Enforce both selecting snapshot authority shapes, exact Account Registry quota tri-states, reverse nullability, and retained ManagedRun `L6`. |
+| `decodex.enforce_routing_decision_completeness()` | Enforce selecting classification/exclusions or the exact non-selecting Conversation continuation binding, never both. |
 | `decodex.enforce_runtime_session_state()` | Permit only request fencing, exact start-response/thread binding, and last-Turn acknowledgement as the narrow nonterminal edges; reject generic `starting` to `active`. |
 | `decodex.enforce_turn_state()` | Under `starting`, permit only exact first-Turn admission and positive definite pre-effect failure; preserve all existing active-session behavior. |
 | `decodex.enforce_history_item_state()` | Under `starting`, permit only the admission transaction's exact ordinal-0 completed Message; preserve existing active-session behavior. |
 | `decodex.enforce_provider_attempt_transition()` | Keep the accepted state algebra and add the immutable RuntimeSession thread-binding receipt identities. |
-| `decodex.enforce_provider_attempt_binding()` | Require the exact initial route/plan/account/session/process/thread receipts and active revision-1 Turn for `initial_thread`; preserve other continuation branches. |
-| `decodex.enforce_continuation_plan_completeness()` | Require the selected `L0` decision and complete first account/profile/session lineage for `initial_thread`; preserve same-thread and Context Pack branches. |
+| `decodex.enforce_provider_attempt_binding()` | Require exact initial selected lineage or exact later non-selecting account/profile lineage, plus the accepted session/process/thread fences. |
+| `decodex.enforce_continuation_plan_completeness()` | Require selected `L0` for `initial_thread`; require the non-selecting continued decision and unchanged original account/profile snapshots for same-thread and Context Pack. |
 
-The latest schema does not roll an old body forward. It creates each final body once.
-`decodex.enforce_routing_decision_completeness()` remains a separate unchanged semantic
-boundary. No trigger is dropped, rebound, disabled, renamed, or used as a broad
-starting-session bypass.
+The latest schema does not roll an old body forward. It creates each final body once. No trigger
+is dropped, rebound, disabled, renamed, or used as a broad starting-session bypass.
 
 <a id="account-lifecycle-and-credential-authority"></a>
 
