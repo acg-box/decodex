@@ -607,7 +607,6 @@ final class ResetCardStore {
 		}
 		lastPriorityObservationRequestAt = now
 		let generation = accountObservationGeneration
-		requestObservationRefresh()
 		priorityObservationTask = Task { [weak self, accountObservationClient] in
 			do {
 				let signal = try await accountObservationClient.requestAccountObservationRefresh(
@@ -915,7 +914,7 @@ final class ResetCardStore {
 					error: retainedError,
 					isRefreshing: awaitsNewerSkeleton
 						|| inventoryIsStale
-						|| retriesInventory
+						|| (backgroundObservation == false && retriesInventory)
 						|| postUseReconciliationAccountIDs.contains(
 							account.accountID
 						)
