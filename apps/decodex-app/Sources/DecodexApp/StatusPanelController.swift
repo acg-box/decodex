@@ -10,6 +10,7 @@ final class StatusPanelController: NSObject {
 	private let panel: TransparentStatusPanel
 	private let hostingView: TransparentHostingView<StatusPanelRootView>
 	private let store: ResetCardStore
+	private var panelPresentation = StatusPanelPresentationState()
 
 	init(store: ResetCardStore) {
 		self.store = store
@@ -35,12 +36,12 @@ final class StatusPanelController: NSObject {
 
 	@objc
 	private func togglePanel() {
-		if panel.isVisible {
-			hidePanel()
-			return
+		switch panelPresentation.toggle() {
+		case .present:
+			showPanel()
+		case .dismiss:
+			orderPanelOut()
 		}
-
-		showPanel()
 	}
 
 	private func showPanel() {
@@ -50,28 +51,28 @@ final class StatusPanelController: NSObject {
 			panel.setContentSize(fittingSize)
 		}
 		positionPanel()
-		NSApp.activate(ignoringOtherApps: true)
+		if NSApp.isActive == false {
+			NSApp.activate(ignoringOtherApps: true)
+		}
 		panel.makeKeyAndOrderFront(nil)
 		store.requestRefresh()
 	}
 
-	private func hidePanel() {
+	private func orderPanelOut() {
 		panel.orderOut(nil)
 	}
 
 	@objc
 	private func applicationDidResignActive(_: Notification) {
-		if let eventType = NSApp.currentEvent?.type,
-			let statusItemRect = statusItemScreenRect(),
-			StatusPanelInteraction.isStatusItemPress(
-				eventType: eventType,
-				mouseLocation: NSEvent.mouseLocation,
-				statusItemRect: statusItemRect
-			)
-		{
-			return
+		let generation = panelPresentation.scheduleDeactivateDismissal()
+		DispatchQueue.main.async { [weak self] in
+			guard let self,
+				self.panelPresentation.dismissIfCurrent(generation)
+			else {
+				return
+			}
+			self.orderPanelOut()
 		}
-		hidePanel()
 	}
 
 	private func configureStatusItem() {
@@ -177,6 +178,44 @@ final class StatusPanelController: NSObject {
 	}
 }
 
+struct StatusPanelPresentationState: Equatable {
+	enum Transition: Equatable {
+		case present
+		case dismiss
+	}
+
+	private(set) var isPresented = false
+	private var eventGeneration: UInt64 = 0
+
+	mutating func toggle() -> Transition {
+		invalidatePendingDismissal()
+		isPresented.toggle()
+		return isPresented ? .present : .dismiss
+	}
+
+	mutating func dismiss() {
+		invalidatePendingDismissal()
+		isPresented = false
+	}
+
+	mutating func scheduleDeactivateDismissal() -> UInt64 {
+		invalidatePendingDismissal()
+		return eventGeneration
+	}
+
+	mutating func dismissIfCurrent(_ generation: UInt64) -> Bool {
+		guard eventGeneration == generation, isPresented else {
+			return false
+		}
+		isPresented = false
+		return true
+	}
+
+	private mutating func invalidatePendingDismissal() {
+		eventGeneration &+= 1
+	}
+}
+
 @MainActor
 final class TransparentHostingView<Content: View>: NSHostingView<Content> {
 	override var isOpaque: Bool {
@@ -240,16 +279,6 @@ enum StatusPanelLayout {
 			return minimum
 		}
 		return min(max(value, minimum), maximum)
-	}
-}
-
-enum StatusPanelInteraction {
-	static func isStatusItemPress(
-		eventType: NSEvent.EventType,
-		mouseLocation: NSPoint,
-		statusItemRect: NSRect
-	) -> Bool {
-		eventType == .leftMouseDown && statusItemRect.contains(mouseLocation)
 	}
 }
 
