@@ -537,16 +537,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(statusPanel.contains("TransparentHostingView(rootView: StatusPanelRootView"))
 		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
 		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
-		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = false"))
-		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseDown])"))
-		XCTAssertTrue(
+		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
+		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseUp])"))
+		XCTAssertFalse(
 			statusPanel.contains("NSApplication.didResignActiveNotification")
 		)
-		XCTAssertTrue(
-			statusPanel.contains("#selector(applicationDidResignActive(_:))")
-		)
-		XCTAssertTrue(statusPanel.contains("private var panelPresentation"))
-		XCTAssertTrue(statusPanel.contains("DispatchQueue.main.async"))
+		XCTAssertFalse(statusPanel.contains("private var panelPresentation"))
+		XCTAssertFalse(statusPanel.contains("DispatchQueue.main.async"))
 		XCTAssertFalse(statusPanel.contains("NSApp.currentEvent"))
 		XCTAssertFalse(statusPanel.contains("StatusPanelInteraction.isStatusItemPress"))
 		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
