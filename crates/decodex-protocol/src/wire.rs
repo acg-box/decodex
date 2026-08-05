@@ -2331,6 +2331,9 @@ pub enum QueryPayload {
 	WaitForAccountObservation {
 		/// Last daemon-lifetime generation applied by the caller.
 		after_generation: u64,
+		/// Optionally ask the daemon to schedule one coalesced observation before waiting.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		request_refresh: Option<bool>,
 	},
 }
 impl QueryPayload {
@@ -4401,7 +4404,8 @@ mod tests {
 
 	#[test]
 	fn account_observation_wait_is_one_strict_opaque_generation() {
-		let query = QueryPayload::WaitForAccountObservation { after_generation: 17 };
+		let query =
+			QueryPayload::WaitForAccountObservation { after_generation: 17, request_refresh: None };
 		let result = QueryResultPayload::AccountObservation(AccountObservationSignal::new(42));
 
 		assert_eq!(
@@ -4409,6 +4413,17 @@ mod tests {
 			serde_json::json!({
 				"name": "wait_for_account_observation",
 				"arguments": {"after_generation": 17}
+			}),
+		);
+		assert_eq!(
+			serde_json::to_value(QueryPayload::WaitForAccountObservation {
+				after_generation: 17,
+				request_refresh: Some(true),
+			})
+			.unwrap(),
+			serde_json::json!({
+				"name": "wait_for_account_observation",
+				"arguments": {"after_generation": 17, "request_refresh": true}
 			}),
 		);
 		assert_eq!(

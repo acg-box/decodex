@@ -7,20 +7,43 @@ final class ResetCardRefreshCoordinatorTests: XCTestCase {
 		requests.requestObservationRefresh()
 		requests.requestObservationRefresh()
 
-		XCTAssertTrue(requests.hasFullRefreshRequest)
-		XCTAssertEqual(requests.takeNext(), .full)
-		XCTAssertFalse(requests.hasFullRefreshRequest)
+		XCTAssertTrue(requests.hasObservationRefreshRequest)
+		XCTAssertEqual(requests.takeNext(), .observation)
+		XCTAssertFalse(requests.hasObservationRefreshRequest)
 		XCTAssertFalse(requests.hasWork)
 	}
 
-	func testSkeletonWorkWaitsBehindAFullRefresh() {
+	func testSkeletonWorkWaitsBehindAnObservationRefresh() {
 		var requests = ResetCardRefreshRequests()
 		requests.requestSkeletonRefresh()
 		requests.requestObservationRefresh()
 
-		XCTAssertEqual(requests.takeNext(), .full)
+		XCTAssertEqual(requests.takeNext(), .observation)
 		XCTAssertEqual(requests.takeNext(), .skeleton)
 		XCTAssertNil(requests.takeNext())
+	}
+
+	func testManualRefreshSubsumesPendingObservation() {
+		var requests = ResetCardRefreshRequests()
+		requests.requestObservationRefresh()
+		requests.requestManualRefresh()
+
+		XCTAssertEqual(requests.takeNext(), .full)
+		XCTAssertFalse(requests.hasWork)
+	}
+
+	func testManualRefreshCompletionDoesNotWaitForFollowUpWork() {
+		var requests = ResetCardRefreshRequests()
+		let firstGeneration = requests.requestManualRefresh()
+		let secondGeneration = requests.requestManualRefresh()
+
+		XCTAssertFalse(requests.didCompleteManualRefresh(upTo: firstGeneration))
+		XCTAssertEqual(requests.takeNext(), .full)
+		requests.completeManualRefresh()
+
+		XCTAssertTrue(requests.didCompleteManualRefresh(upTo: firstGeneration))
+		XCTAssertTrue(requests.didCompleteManualRefresh(upTo: secondGeneration))
+		XCTAssertFalse(requests.hasWork)
 	}
 
 	func testResetDiscardsAllPendingWork() {

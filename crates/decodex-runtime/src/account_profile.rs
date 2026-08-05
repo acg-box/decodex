@@ -29,29 +29,30 @@ pub(crate) enum AccountProfileRuntimeResult {
 }
 
 /// Daemon-owned refresh state for one exact account revision.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) struct AccountProfileRefreshStatus {
 	pub(crate) account_revision: i64,
 	pub(crate) refresh_error: Option<AccountProfileRuntimeError>,
+	pub(crate) snapshot: Option<AccountProfileSnapshot>,
 }
 
 impl AccountProfileRuntimeResult {
-	pub(crate) const fn refresh_status(
-		&self,
-		requested_revision: i64,
-	) -> AccountProfileRefreshStatus {
+	pub(crate) fn refresh_status(&self, requested_revision: i64) -> AccountProfileRefreshStatus {
 		match self {
 			Self::Current(profile) => AccountProfileRefreshStatus {
 				account_revision: profile.snapshot.account_revision,
 				refresh_error: None,
+				snapshot: Some(profile.snapshot.clone()),
 			},
 			Self::Cached { profile, refresh_error } => AccountProfileRefreshStatus {
 				account_revision: profile.snapshot.account_revision,
 				refresh_error: Some(*refresh_error),
+				snapshot: Some(profile.snapshot.clone()),
 			},
 			Self::Unavailable { error, .. } => AccountProfileRefreshStatus {
 				account_revision: requested_revision,
 				refresh_error: Some(*error),
+				snapshot: None,
 			},
 		}
 	}
