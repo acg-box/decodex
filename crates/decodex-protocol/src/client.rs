@@ -2037,9 +2037,8 @@ max_entry_bytes = 0
 		let mut listener = authority.bind().await.expect("test operation must succeed");
 		let account_id = EntityId::new("40000000-0000-4000-8000-000000000001")
 			.expect("test operation must succeed");
-		let descriptor =
-			ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600)
-				.expect("test operation must succeed");
+		let descriptor = ResetCardDescriptorDto::new(1_700_000_000, 1_700_003_600)
+			.expect("test operation must succeed");
 		let expected_account_id = account_id.clone();
 		let task = tokio::spawn(async move {
 			let _temp = temp;
@@ -2107,8 +2106,7 @@ max_entry_bytes = 0
 					account_id.clone(),
 					descriptor,
 					EntityRevision(7),
-					IdempotencyKey::new("delayed-close-key")
-						.expect("test operation must succeed"),
+					IdempotencyKey::new("delayed-close-key").expect("test operation must succeed"),
 				)
 				.await
 				.expect("completed response must remain authoritative"),
