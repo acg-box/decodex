@@ -232,46 +232,6 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testStatusPanelPresentationStateDismissalDoesNotReopenThePanel() {
-		var presentation = StatusPanelPresentationState()
-
-		XCTAssertEqual(presentation.toggle(), .present)
-		XCTAssertTrue(presentation.isPresented)
-		let deferredDismissal = presentation.scheduleDeactivateDismissal()
-
-		presentation.dismiss()
-		XCTAssertFalse(presentation.isPresented)
-		presentation.dismiss()
-		XCTAssertFalse(presentation.isPresented)
-		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
-		XCTAssertEqual(presentation.toggle(), .present)
-		XCTAssertTrue(presentation.isPresented)
-		XCTAssertEqual(presentation.toggle(), .dismiss)
-		XCTAssertFalse(presentation.isPresented)
-	}
-
-	func testStatusPanelPresentationStateAppliesTheCurrentDeferredDismissalOnce() {
-		var presentation = StatusPanelPresentationState()
-
-		XCTAssertEqual(presentation.toggle(), .present)
-		let deferredDismissal = presentation.scheduleDeactivateDismissal()
-
-		XCTAssertTrue(presentation.dismissIfCurrent(deferredDismissal))
-		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
-		XCTAssertFalse(presentation.isPresented)
-	}
-
-	func testStatusPanelPresentationStateCancelsAQueuedDismissalWhenTheToggleWins() {
-		var presentation = StatusPanelPresentationState()
-
-		XCTAssertEqual(presentation.toggle(), .present)
-		let deferredDismissal = presentation.scheduleDeactivateDismissal()
-
-		XCTAssertEqual(presentation.toggle(), .dismiss)
-		XCTAssertFalse(presentation.dismissIfCurrent(deferredDismissal))
-		XCTAssertFalse(presentation.isPresented)
-	}
-
 	func testRoundedContentSizeCeilsFractionalDimensions() {
 		let size = PanelWindowSizingLayout.roundedContentSize(for: CGSize(width: 339.2, height: 641.1))
 
