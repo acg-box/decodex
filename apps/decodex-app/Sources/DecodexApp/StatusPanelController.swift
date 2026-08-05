@@ -57,7 +57,9 @@ final class StatusPanelController: NSObject {
 			NSApp.activate(ignoringOtherApps: true)
 		}
 		panel.makeKeyAndOrderFront(nil)
-		store.requestRefresh()
+		// Presentation remains immediate. The store asks the daemon for one
+		// coalesced priority observation without entering the visible full-refresh lane.
+		store.ensureFresh()
 	}
 
 	private func orderPanelOut() {
