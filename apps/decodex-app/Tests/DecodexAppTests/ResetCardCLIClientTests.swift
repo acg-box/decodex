@@ -89,6 +89,34 @@ final class ResetCardNativeClientTests: XCTestCase {
 		)
 	}
 
+	func testNativePriorityObservationWaitRequestsOneCoalescedRefresh() async throws {
+		let authority = authority
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "wait_for_account_observation",
+				authority: authority,
+				data: #"{"generation":43}"#
+			)
+		}
+
+		let signal = try await client.requestAccountObservationRefresh(afterGeneration: 17)
+
+		XCTAssertEqual(signal, AccountObservationSignal(generation: 43))
+		let request = try XCTUnwrap(recorder.requests.first)
+		XCTAssertNil(request.authority)
+		XCTAssertEqual(
+			try nativeJSONObject(request.data),
+			[
+				"schema": decodexNativeClientSchema,
+				"operation": "wait_for_account_observation",
+				"after_generation": 17,
+				"request_refresh": true,
+			]
+		)
+	}
+
 	func testNativeInventoryAndStatusUsePinnedAuthority() async throws {
 		let accountID = accountID
 		let idempotencyKey = idempotencyKey

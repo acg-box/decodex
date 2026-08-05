@@ -73,6 +73,8 @@ enum Request {
 	WaitForAccountObservation {
 		schema: String,
 		after_generation: u64,
+		#[serde(default)]
+		request_refresh: bool,
 	},
 	ResetCardStatus {
 		schema: String,
@@ -641,8 +643,8 @@ async fn execute_request(
 		Request::GetAccountProfile { account_id, include_email, .. } =>
 			get_account_profile(profile, account_id, include_email).await,
 		Request::GetCodexAuthProjection { .. } => get_codex_auth_projection(profile).await,
-		Request::WaitForAccountObservation { after_generation, .. } =>
-			wait_for_account_observation(profile, after_generation).await,
+		Request::WaitForAccountObservation { after_generation, request_refresh, .. } =>
+			wait_for_account_observation(profile, after_generation, request_refresh).await,
 		Request::ResetCardStatus { idempotency_key, .. } =>
 			get_reset_card_status(profile, idempotency_key).await,
 		Request::UseResetCard {
@@ -758,13 +760,16 @@ async fn get_codex_auth_projection(profile: ClientProfile) -> Result<Value, Requ
 async fn wait_for_account_observation(
 	profile: ClientProfile,
 	after_generation: u64,
+	request_refresh: bool,
 ) -> Result<Value, RequestFailure> {
-	to_value(
-		AccountClient::new(profile)
-			.wait_for_observation(after_generation)
-			.await
-			.map_err(RequestFailure::Client)?,
-	)
+	let client = AccountClient::new(profile);
+	let signal = if request_refresh {
+		client.request_observation_refresh(after_generation).await
+	} else {
+		client.wait_for_observation(after_generation).await
+	}
+	.map_err(RequestFailure::Client)?;
+	to_value(signal)
 }
 
 async fn get_reset_card_status(
@@ -1136,12 +1141,24 @@ mod tests {
 	}
 
 	#[test]
-	fn observation_wait_is_exact_and_direct_refresh_is_not_an_app_operation() {
+	fn observation_wait_is_exact_and_priority_refresh_is_not_a_separate_app_operation() {
 		let request = serde_json::from_str::<Request>(&format!(
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"wait_for_account_observation","after_generation":17}}"#
 		))
 		.expect("observation wait must decode");
 		assert_eq!(request.operation(), "wait_for_account_observation");
+		assert!(matches!(
+			request,
+			Request::WaitForAccountObservation { request_refresh: false, .. }
+		));
+		let priority_request = serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"wait_for_account_observation","after_generation":17,"request_refresh":true}}"#
+		))
+		.expect("priority observation wait must decode");
+		assert!(matches!(
+			priority_request,
+			Request::WaitForAccountObservation { request_refresh: true, .. }
+		));
 		assert!(
 			serde_json::from_str::<Request>(&format!(
 				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"wait_for_account_observation"}}"#
