@@ -47,8 +47,7 @@ const PENDING_OPERATION_KEY: &str = "reset-card-integration-pending-operation";
 const EXACT_PROVIDER_CREDIT_ID: &str = "sk-live-provider-id";
 const CREDENTIAL_FINGERPRINT: &str =
 	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const CALLBACK_PROFILE: &str =
-	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+const CALLBACK_PROFILE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const CREDENTIAL_WRITER: &str = "71000000-0000-4000-8000-000000000010";
 const ROTATED_CREDENTIAL_FINGERPRINT: &str =
 	"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
