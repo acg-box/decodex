@@ -3,7 +3,7 @@ use std::{env, path::PathBuf, time::Duration};
 use tokio::{task::JoinSet, time};
 use tokio_postgres::{Client, Config, NoTls};
 
-use super::{expected_peer_uid, separated_configs};
+use super::{expected_peer_uid, owner_runtime_configs};
 use decodex_postgres::{
 	BootstrapRoleProfiles, PostgresStore, RoleProfileCommandOutcome, RoleProfileConfiguration,
 	RoleProfileRejection, RoleProfileRevision, RoleProfileRole, StoreError,
@@ -178,15 +178,15 @@ async fn assert_runtime_role_profile_restrictions(
 	Ok(())
 }
 
-async fn assert_migration_role_profile_invariants(
-	migration: &Config,
+async fn assert_schema_owner_role_profile_invariants(
+	schema_owner: &Config,
 	store: &PostgresStore,
 	profiles: &BootstrapRoleProfiles,
 	created: Vec<RoleProfileRevision>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
-	let migration_task = tokio::spawn(migration_connection);
-	let response_before: Vec<u8> = migration_client
+	let (schema_owner_client, schema_owner_connection) = schema_owner.connect(NoTls).await?;
+	let schema_owner_task = tokio::spawn(schema_owner_connection);
+	let response_before: Vec<u8> = schema_owner_client
 		.query_one(
 			"SELECT response_bytes FROM decodex.exact_command_receipts \
 			 WHERE protocol_version='decodex/exact-command/1' AND idempotency_key='role-bootstrap'",
@@ -198,7 +198,7 @@ async fn assert_migration_role_profile_invariants(
 		store.bootstrap_role_profiles("role-bootstrap", profiles).await?,
 		RoleProfileCommandOutcome::Success(created),
 	);
-	let response_after: Vec<u8> = migration_client
+	let response_after: Vec<u8> = schema_owner_client
 		.query_one(
 			"SELECT response_bytes FROM decodex.exact_command_receipts \
 			 WHERE protocol_version='decodex/exact-command/1' AND idempotency_key='role-bootstrap'",
@@ -245,10 +245,10 @@ async fn assert_migration_role_profile_invariants(
 		("UPDATE decodex.role_profile_revisions SET model='forged' WHERE role='advisor'", "23514"),
 		("TRUNCATE decodex.role_profiles, decodex.role_profile_revisions CASCADE", "23514"),
 	] {
-		let error = migration_client.batch_execute(statement).await.expect_err(statement);
+		let error = schema_owner_client.batch_execute(statement).await.expect_err(statement);
 		assert_eq!(error.code().map(|state| state.code()), Some(code), "{statement}");
 	}
-	let counts = migration_client
+	let counts = schema_owner_client
 		.query_one(
 			"SELECT (SELECT count(*) FROM decodex.role_profiles), \
 			 (SELECT count(*) FROM decodex.role_profile_revisions), \
@@ -264,7 +264,7 @@ async fn assert_migration_role_profile_invariants(
 	assert_eq!(counts.get::<_, i64>(3), 5);
 	assert_eq!(counts.get::<_, i64>(4), 5);
 	assert_eq!(
-		migration_client
+		schema_owner_client
 			.query_one(
 				"SELECT count(*) FROM decodex.exact_command_receipts \
 				 WHERE idempotency_key='credential-profile'",
@@ -275,8 +275,8 @@ async fn assert_migration_role_profile_invariants(
 		0,
 		"credential-shaped requests never become receipt rows",
 	);
-	drop(migration_client);
-	migration_task.await??;
+	drop(schema_owner_client);
+	schema_owner_task.await??;
 
 	Ok(())
 }
@@ -284,14 +284,14 @@ async fn assert_migration_role_profile_invariants(
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile database"]
 async fn postgres_exact_role_profile_commands() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	assert_execution_path_contract(&runtime).await?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let profiles = bootstrap();
 	let created = exercise_role_profile_commands(&store, &profiles).await?;
 	assert_runtime_role_profile_restrictions(&runtime).await?;
-	assert_migration_role_profile_invariants(&migration, &store, &profiles, created).await?;
+	assert_schema_owner_role_profile_invariants(&schema_owner, &store, &profiles, created).await?;
 
 	Ok(())
 }
@@ -299,8 +299,9 @@ async fn postgres_exact_role_profile_commands() -> Result<(), Box<dyn std::error
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile concurrency database"]
 async fn postgres_exact_role_profile_concurrency() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let first = bootstrap();
 	let mut second = first.clone();
 	second.advisor.model = "gpt-5.6-advisor-alternate".into();
@@ -327,7 +328,7 @@ async fn postgres_exact_role_profile_concurrency() -> Result<(), Box<dyn std::er
 	}
 	assert!(successes > 0);
 	assert!(conflicts > 0);
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let winning_model: String = client
 		.query_one(
@@ -415,13 +416,14 @@ async fn postgres_exact_role_profile_concurrency() -> Result<(), Box<dyn std::er
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile rollback database"]
 async fn postgres_exact_role_profile_atomic_rollback() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("rollback-bootstrap", &bootstrap()).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
-	let (admin, admin_connection) = migration.connect(NoTls).await?;
+	let (admin, admin_connection) = schema_owner.connect(NoTls).await?;
 	let admin_task = tokio::spawn(admin_connection);
 	admin
 		.batch_execute(
@@ -498,13 +500,14 @@ async fn postgres_exact_role_profile_atomic_rollback() -> Result<(), Box<dyn std
 #[tokio::test(flavor = "multi_thread", worker_threads = 6)]
 #[ignore = "requires an isolated PostgreSQL 18 V9 RoleProfile retry database"]
 async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("retry-bootstrap", &bootstrap()).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
-	let (admin, admin_connection) = migration.connect(NoTls).await?;
+	let (admin, admin_connection) = schema_owner.connect(NoTls).await?;
 	let admin_task = tokio::spawn(admin_connection);
 	admin
 		.batch_execute(
@@ -568,7 +571,7 @@ async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn s
 			)
 			.await
 	});
-	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.connect(NoTls).await?;
 	let observer_task = tokio::spawn(observer_connection);
 	assert!(super::wait_for_any_blocked_by(&observer, blocker_pid).await?);
 	drop(observer);
@@ -595,7 +598,7 @@ async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn s
 	time::timeout(Duration::from_secs(20), antagonist).await???;
 	admin_task.await??;
 
-	let (check, check_connection) = migration.connect(NoTls).await?;
+	let (check, check_connection) = schema_owner.connect(NoTls).await?;
 	let check_task = tokio::spawn(check_connection);
 	assert!(
 		check
@@ -623,55 +626,18 @@ async fn postgres_exact_role_profile_retry_convergence() -> Result<(), Box<dyn s
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires the isolated PostgreSQL 18 V8 to V9 upgrade database"]
-async fn postgres_v8_to_v9_role_profile_upgrade() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::migrate_fixture_through_v8(migration.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let before: i32 = client
-		.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-		.await?
-		.get(0);
-	assert_eq!(before, 8);
-	assert!(
-		client
-			.query_one("SELECT to_regclass('decodex.exact_command_receipts') IS NULL", &[])
-			.await?
-			.get::<_, bool>(0)
-	);
-	drop(client);
-	connection_task.await??;
-	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let after: i32 = client
-		.query_one("SELECT max(version) FROM public.refinery_schema_history", &[])
-		.await?
-		.get(0);
-	assert_eq!(after, 9);
-	assert_eq!(
-		client.query_one("SELECT count(*) FROM decodex.role_profiles", &[]).await?.get::<_, i64>(0),
-		0,
-	);
-	drop(client);
-	connection_task.await??;
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the isolated PostgreSQL 18 RoleProfile crash/recovery database"]
 async fn postgres_exact_role_profile_crash_recovery() -> Result<(), Box<dyn std::error::Error>> {
 	let sync = PathBuf::from(env::var("DECODEX_ROLE_PROFILE_RESTART_SYNC")?);
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let profiles = bootstrap();
 	assert!(matches!(
 		store.bootstrap_role_profiles("crash-bootstrap", &profiles).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
-	let (blocker, blocker_connection) = migration.clone().connect(NoTls).await?;
+	let (blocker, blocker_connection) = schema_owner.clone().connect(NoTls).await?;
 	let blocker_task = tokio::spawn(blocker_connection);
 	blocker
 		.batch_execute("BEGIN; LOCK TABLE decodex.role_profiles IN ACCESS EXCLUSIVE MODE")
@@ -682,7 +648,7 @@ async fn postgres_exact_role_profile_crash_recovery() -> Result<(), Box<dyn std:
 		task_store.update_role_profile("crash-update", RoleProfileRole::Lead, 1, &update).await
 	});
 	let blocker_pid: i32 = blocker.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
-	let (observer, observer_connection) = migration.clone().connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.clone().connect(NoTls).await?;
 	let observer_task = tokio::spawn(observer_connection);
 	assert!(super::wait_for_any_blocked_by(&observer, blocker_pid).await?);
 	std::fs::write(sync.join("ready"), b"ready")?;
@@ -702,7 +668,8 @@ async fn postgres_exact_role_profile_crash_recovery() -> Result<(), Box<dyn std:
 	let _ = blocker_task.await;
 	drop(store);
 
-	let recovered = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let recovered =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		recovered
 			.update_role_profile(
@@ -714,7 +681,7 @@ async fn postgres_exact_role_profile_crash_recovery() -> Result<(), Box<dyn std:
 			.await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let state = client
 		.query_one(
@@ -743,13 +710,14 @@ async fn postgres_exact_role_profile_crash_recovery() -> Result<(), Box<dyn std:
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the populated PostgreSQL 18 V9 RoleProfile restore database"]
 async fn postgres_exact_role_profile_restore() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("role-bootstrap", &bootstrap()).await?,
 		RoleProfileCommandOutcome::Success(_)
 	));
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let valid: bool = client
 		.query_one(

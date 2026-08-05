@@ -49,11 +49,9 @@ fn fixture() -> (TempDir, PathBuf, PathBuf) {
 	let server = root.join("server");
 	let config_file = root.join("config.toml");
 	let socket = server.join("decodex.sock");
-	let repository = canonical_home.join("repository");
 
 	fs::create_dir(&root).expect("create daemon test root");
 	fs::create_dir(&server).expect("create daemon server directory");
-	fs::create_dir(&repository).expect("create daemon test repository");
 	fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("scope daemon test root");
 	fs::set_permissions(&server, fs::Permissions::from_mode(0o700))
 		.expect("scope daemon server directory");
@@ -68,18 +66,11 @@ kind = "local"
 policy = "same_uid"
 service_owner_uid = {}
 
-[server_host.repositories.fixture]
-host_path = "{}"
-
 [postgres]
 socket_directory = "/var/run/postgresql"
 expected_peer_uid = 70
 port = 5432
 database = "decodex"
-
-[postgres.migration]
-user = "decodex_migration"
-credential_env_var = "DECODEX_SIGNAL_TEST_MIGRATION_PASSWORD"
 
 [postgres.runtime]
 user = "decodex_runtime"
@@ -91,7 +82,6 @@ max_bytes = 1048576
 max_entry_bytes = 65536
 "#,
 			fs::metadata(&root).expect("read daemon root metadata").uid(),
-			repository.display(),
 		),
 	)
 	.expect("write daemon test config");
@@ -129,7 +119,6 @@ impl RunningDaemon {
 	fn start(home: &Path) -> Self {
 		let mut child = Command::new(env!("CARGO_BIN_EXE_decodexd"))
 			.env("HOME", home)
-			.env_remove("DECODEX_SIGNAL_TEST_MIGRATION_PASSWORD")
 			.env_remove("DECODEX_SIGNAL_TEST_RUNTIME_PASSWORD")
 			.stdout(Stdio::piped())
 			.spawn()

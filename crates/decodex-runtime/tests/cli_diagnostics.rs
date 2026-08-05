@@ -21,35 +21,29 @@ use decodex_runtime::{ServerConfig, ServiceComposition};
 const SERVER_ID: &str = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const WRONG_SERVER_ID: &str = "128f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
 const SECRET_MARKER: &str = "xy1308-secret-must-never-appear";
-const SERVER_PATH_MARKER: &str = "xy1308-server-path-must-never-appear";
 
 struct Fixture {
 	_temp: TempDir,
 	root: PathBuf,
-	repository: PathBuf,
 }
 impl Fixture {
 	fn new() -> Self {
 		let temp = TempDir::new().expect("fixture temp");
 		let canonical = temp.path().canonicalize().expect("canonical fixture temp");
 		let root = canonical.join(".decodex");
-		let repository = canonical.join(SERVER_PATH_MARKER);
 
 		fs::create_dir(&root).expect("fixture root");
-		fs::create_dir(&repository).expect("fixture repository");
 		fs::set_permissions(&root, Permissions::from_mode(0o700)).expect("private fixture root");
-		fs::set_permissions(&repository, Permissions::from_mode(0o700))
-			.expect("private fixture repository");
 		fs::create_dir(root.join("server")).expect("server directory");
 		fs::set_permissions(root.join("server"), Permissions::from_mode(0o700))
 			.expect("private server directory");
 
 		write_private(&root.join("server/identity"), format!("{SERVER_ID}\n").as_bytes());
 
-		Self { _temp: temp, root, repository }
+		Self { _temp: temp, root }
 	}
 
-	fn config(&self, repository: &str, pin: Option<&str>) -> String {
+	fn config(&self, pin: Option<&str>) -> String {
 		let pin =
 			pin.map(|pin| format!("expected_server_identity = \"{pin}\"\n")).unwrap_or_default();
 		let uid = fs::metadata(&self.root).expect("root metadata").uid();
@@ -69,17 +63,11 @@ host = "192.0.2.1"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[server_host.repositories.fixture]
-host_path = "{repository}"
-
 [postgres]
 socket_directory = "{}"
 expected_peer_uid = {uid}
 port = 5432
 database = "decodex"
-
-[postgres.migration]
-user = "decodex_migration"
 
 [postgres.runtime]
 user = "decodex_runtime"
@@ -151,7 +139,6 @@ fn assert_redacted(fixture: &Fixture, output: &Output) {
 	);
 
 	assert!(!combined.contains(SECRET_MARKER));
-	assert!(!combined.contains(SERVER_PATH_MARKER));
 	assert!(!combined.contains(
 		fixture.root.parent().expect("fixture root has a parent").to_string_lossy().as_ref(),
 	));
@@ -190,12 +177,7 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 
 	assert_redacted(&fixture, &malformed);
 
-	fixture.write_config(
-		&fixture.config(
-			fixture.repository.to_str().expect("UTF-8 fixture repository"),
-			Some(SERVER_ID),
-		),
-	);
+	fixture.write_config(&fixture.config(Some(SERVER_ID)));
 
 	let missing = fixture.run("doctor", &["--profile", "missing"]);
 
@@ -210,12 +192,7 @@ fn malformed_config_and_missing_profile_process_failures_are_redacted() {
 async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_states() {
 	let fixture = Fixture::new();
 
-	fixture.write_config(
-		&fixture.config(
-			fixture.repository.to_str().expect("UTF-8 fixture repository"),
-			Some(SERVER_ID),
-		),
-	);
+	fixture.write_config(&fixture.config(Some(SERVER_ID)));
 
 	let bootstrap =
 		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
@@ -239,7 +216,7 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 			}),
 		);
 		assert_eq!(
-			status(&document, "database"),
+			status(&document, "product_store"),
 			&serde_json::json!({"state": "unavailable", "issue": "database_unreachable"}),
 		);
 		assert_eq!(
@@ -258,10 +235,7 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 		assert_redacted(&fixture, &output);
 	}
 
-	fixture.write_config(&fixture.config(
-		fixture.repository.to_str().expect("UTF-8 fixture repository"),
-		Some(WRONG_SERVER_ID),
-	));
+	fixture.write_config(&fixture.config(Some(WRONG_SERVER_ID)));
 
 	let wrong_server = fixture.run("doctor", &[]);
 
@@ -272,12 +246,7 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 
 	bound.shutdown().await.expect("shutdown isolated runtime");
 
-	fixture.write_config(
-		&fixture.config(
-			fixture.repository.to_str().expect("UTF-8 fixture repository"),
-			Some(SERVER_ID),
-		),
-	);
+	fixture.write_config(&fixture.config(Some(SERVER_ID)));
 
 	let disconnected = fixture.run("status", &[]);
 
@@ -285,39 +254,4 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 	assert_eq!(document(&disconnected)["failure"], "protocol_disconnected");
 
 	assert_redacted(&fixture, &disconnected);
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "run through cargo make test-vnext-cli-diagnostics with the real CLI binary"]
-async fn server_paths_are_not_reinterpreted_or_disclosed_by_the_client() {
-	let fixture = Fixture::new();
-	let unsafe_path = fixture
-		.root
-		.parent()
-		.expect("fixture root has a parent")
-		.join(format!("{SERVER_PATH_MARKER}-link"));
-
-	std::os::unix::fs::symlink(&fixture.repository, &unsafe_path)
-		.expect("unsafe server-host path fixture");
-	fixture.write_config(
-		&fixture.config(unsafe_path.to_str().expect("UTF-8 unsafe fixture path"), Some(SERVER_ID)),
-	);
-
-	let bootstrap =
-		ServiceComposition::bootstrap(DecodexRoot::new(&fixture.root).expect("safe fixture root"))
-			.await;
-	let mut bound = bootstrap.bind(ServerConfig::default()).await.expect("bind isolated runtime");
-
-	let output = fixture.run("doctor", &[]);
-	let document = document(&output);
-
-	assert_eq!(output.status.code(), Some(1), "{document}");
-	assert_eq!(
-		status(&document, "server_repositories"),
-		&serde_json::json!({"state": "unavailable", "issue": "unsafe_host_path"}),
-	);
-
-	assert_redacted(&fixture, &output);
-
-	bound.shutdown().await.expect("shutdown isolated runtime");
 }

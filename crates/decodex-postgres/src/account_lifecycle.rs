@@ -1,23 +1,33 @@
 //! Credential-negative PostgreSQL account lifecycle authority.
 
-use std::collections::BTreeSet;
+use std::{
+	collections::BTreeSet,
+	fmt::{Display, Formatter},
+};
 
+#[cfg(unix)] use deadpool_postgres::{Manager, ManagerConfig, Pool, RecyclingMethod};
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperation, AccountOperationId,
 	AccountOperationKind, AccountOperationPhase, AccountOperationStatus, AccountProvider,
 	AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountState, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
-	CredentialVersion, ProviderIdentity,
+	CredentialVersion, PostgresConnectionConfig, PostgresIdentityConfig, ProviderIdentity,
 };
 use serde_json::Value;
 use tokio_postgres::IsolationLevel;
+#[cfg(unix)] use tokio_postgres::{GenericClient, Transaction};
 
 use crate::{
-	CommandIdentity, PostgresStore, StoreError,
+	BootstrapFailure, CommandIdentity, PostgresStore, StoreError,
 	accounts::{
 		CommandClaim, CommandDescriptor, CommandReservation, finish_command, reserve_command,
 	},
+};
+#[cfg(unix)]
+use crate::{
+	apply_trusted_session_invariants, authority, checkout, connection_config, schema,
+	validate_connection, verified_socket_connect,
 };
 
 const ACCOUNT_COMMAND_PROTOCOL: &str = "decodex/account-command/1";
@@ -97,6 +107,78 @@ const OBSERVE_ACCOUNT_STORE_SQL: &str = "SELECT decodex.observe_account_store_ex
 	 $9::text::decodex.account_store_observation)";
 const ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL: &str =
 	"SELECT decodex.attest_codex_account_capability_exact($1,$2,$3,$4,$5,$6)";
+const RESTORE_LOCAL_ACCOUNT_SQL: &str = "INSERT INTO decodex.accounts(\
+	 account_id,display_label,state,metadata,revision,enabled,provider_kind,provider_account_id,\
+	 credential_store_schema_version,credential_version,credential_fingerprint,\
+	 credential_writer_operation_id,credential_store_observation,credential_store_observed_at\
+	 ) VALUES (\
+	 $1::text::uuid,$2,'unknown','{}'::jsonb,$3,$4,$5::text::decodex.account_provider_kind,$6,\
+	 $7,$8,$9,$10::text::uuid,'exact',pg_catalog.clock_timestamp())";
+const READ_RESTORED_LOCAL_ACCOUNTS_SQL: &str = "SELECT account.account_id::text,\
+	 account.display_label,account.enabled,account.revision,account.provider_kind::text,\
+	 account.provider_account_id,account.credential_store_schema_version,\
+	 account.credential_version,account.credential_fingerprint,\
+	 account.credential_writer_operation_id::text,account.credential_store_observation::text,\
+	 account.credential_store_observed_at IS NOT NULL,account.tombstoned_at IS NOT NULL,\
+	 account.state::text,account.metadata FROM decodex.accounts AS account \
+	 JOIN decodex.account_routing_order AS ordering USING(account_id) ORDER BY ordering.position";
+const LOCAL_ACCOUNT_AUTHORITY_MAX_ACCOUNTS: usize = 512;
+
+/// One credential-negative account row accepted by the bounded local restore transaction.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalAccountAuthorityAccount {
+	pub account_id: AccountId,
+	pub display_label: String,
+	pub enabled: bool,
+	pub revision: i64,
+	pub credential: CredentialBinding,
+}
+
+/// Complete account and routing tuple accepted by the bounded local restore transaction.
+#[doc(hidden)]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalAccountAuthorityRestore {
+	pub accounts: Vec<LocalAccountAuthorityAccount>,
+	pub routing: AccountRoutingControl,
+}
+
+/// Credential-negative refusal from the schema-owner local account restore transaction.
+#[doc(hidden)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalAccountAuthorityRestoreFailure {
+	/// The internal credential-negative tuple was not complete and canonical.
+	InvalidInput,
+	/// The target contains state beyond a fresh latest-schema bootstrap.
+	TargetNotFresh,
+	/// The runtime-owned pre-commit host-store or stopped-daemon fence failed.
+	PrecommitFence,
+	/// PostgreSQL did not read back the complete accepted tuple exactly.
+	ReadbackMismatch,
+	/// Connection, catalog, or configured authority failed closed.
+	Database(BootstrapFailure),
+}
+impl Display for LocalAccountAuthorityRestoreFailure {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter.write_str(match self {
+			Self::InvalidInput => "local account authority input refused",
+			Self::TargetNotFresh => "local account authority target is not fresh",
+			Self::PrecommitFence => "local account authority pre-commit fence refused",
+			Self::ReadbackMismatch => "local account authority readback refused",
+			Self::Database(BootstrapFailure::Authentication) =>
+				"local account authority authentication refused",
+			Self::Database(BootstrapFailure::Unreachable) =>
+				"local account authority database is unreachable",
+			Self::Database(BootstrapFailure::Incompatible) =>
+				"local account authority database is incompatible",
+			Self::Database(BootstrapFailure::UnsafeAuthority) =>
+				"local account authority database authority is unsafe",
+			Self::Database(BootstrapFailure::UnsafeHostPath) =>
+				"local account authority database path is unsafe",
+		})
+	}
+}
+impl std::error::Error for LocalAccountAuthorityRestoreFailure {}
 
 /// Exact input persisted before the Account Service performs a Keychain effect.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -298,6 +380,90 @@ pub enum AccountCommandReceiptClaim {
 }
 
 impl PostgresStore {
+	/// Restore one complete credential-negative local account authority into a fresh latest schema.
+	///
+	/// This hidden schema-owner path never becomes part of the connected runtime store. The
+	/// caller-owned fence runs after all rows are written but before readback and commit.
+	#[cfg(unix)]
+	#[doc(hidden)]
+	pub async fn restore_local_account_authority_explicit<F>(
+		config: &PostgresConnectionConfig,
+		schema_owner: &PostgresIdentityConfig,
+		schema_owner_password: Option<&str>,
+		restore: &LocalAccountAuthorityRestore,
+		precommit_fence: F,
+	) -> Result<(), LocalAccountAuthorityRestoreFailure>
+	where
+		F: FnOnce() -> bool,
+	{
+		validate_local_account_authority_restore(restore)?;
+		if schema_owner.user() == config.runtime().user() {
+			return Err(local_restore_database(StoreError::UnsafeAuthority(
+				"schema-owner and runtime PostgreSQL identities must be distinct",
+			)));
+		}
+
+		let mut owner = connection_config(config, schema_owner, schema_owner_password);
+		validate_connection(&owner).map_err(local_restore_database)?;
+		let connector = verified_socket_connect(&owner, config.expected_peer_uid())
+			.map_err(local_restore_database)?;
+		apply_trusted_session_invariants(&mut owner);
+		let manager = Manager::from_connect(
+			owner,
+			connector.clone(),
+			ManagerConfig { recycling_method: RecyclingMethod::Fast },
+		);
+		let pool = Pool::builder(manager)
+			.max_size(1)
+			.build()
+			.map_err(StoreError::from)
+			.map_err(local_restore_database)?;
+		let mut client = checkout(&pool, &connector).await.map_err(local_restore_database)?;
+		let transaction = client
+			.build_transaction()
+			.isolation_level(IsolationLevel::Serializable)
+			.start()
+			.await
+			.map_err(StoreError::from)
+			.map_err(local_restore_database)?;
+		let restore_result = restore_local_account_authority_transaction(
+			&transaction,
+			schema_owner.user(),
+			config.runtime().user(),
+			restore,
+			precommit_fence,
+		)
+		.await;
+		let result = match restore_result {
+			Ok(()) =>
+				transaction.commit().await.map_err(StoreError::from).map_err(local_restore_database),
+			Err(error) => match transaction.rollback().await {
+				Ok(()) => Err(error),
+				Err(rollback_error) =>
+					Err(local_restore_database(StoreError::from(rollback_error))),
+			},
+		};
+		drop(client);
+		pool.close();
+		result
+	}
+
+	/// Reject the host-specific schema-owner restore on platforms without Unix sockets.
+	#[cfg(not(unix))]
+	#[doc(hidden)]
+	pub async fn restore_local_account_authority_explicit<F>(
+		_config: &PostgresConnectionConfig,
+		_schema_owner: &PostgresIdentityConfig,
+		_schema_owner_password: Option<&str>,
+		_restore: &LocalAccountAuthorityRestore,
+		_precommit_fence: F,
+	) -> Result<(), LocalAccountAuthorityRestoreFailure>
+	where
+		F: FnOnce() -> bool,
+	{
+		Err(LocalAccountAuthorityRestoreFailure::Database(BootstrapFailure::Incompatible))
+	}
+
 	/// Read the complete non-tombstoned account skeleton and routing control in one snapshot.
 	pub async fn read_account_registry_snapshot(
 		&self,
@@ -964,11 +1130,407 @@ impl PostgresStore {
 	}
 }
 
-#[cfg(feature = "test-support")]
+fn validate_local_account_authority_restore(
+	restore: &LocalAccountAuthorityRestore,
+) -> Result<(), LocalAccountAuthorityRestoreFailure> {
+	let accounts = &restore.accounts;
+	if accounts.len() > LOCAL_ACCOUNT_AUTHORITY_MAX_ACCOUNTS || restore.routing.revision < 1 {
+		return Err(LocalAccountAuthorityRestoreFailure::InvalidInput);
+	}
+	let account_ids =
+		accounts.iter().map(|account| account.account_id.clone()).collect::<BTreeSet<_>>();
+	let provider_ids = accounts
+		.iter()
+		.map(|account| {
+			(
+				provider_text(account.credential.provider.provider()),
+				account.credential.provider.account_id().to_owned(),
+			)
+		})
+		.collect::<BTreeSet<_>>();
+	let writer_ids = accounts
+		.iter()
+		.map(|account| account.credential.writer_operation_id.clone())
+		.collect::<BTreeSet<_>>();
+	if account_ids.len() != accounts.len()
+		|| provider_ids.len() != accounts.len()
+		|| writer_ids.len() != accounts.len()
+		|| accounts.iter().map(|account| &account.account_id).ne(restore.routing.order.iter())
+		|| accounts.iter().any(|account| {
+			account.revision < 1
+				|| account.display_label.is_empty()
+				|| account.display_label.len() > 128
+				|| account
+					.display_label
+					.chars()
+					.any(|character| character.is_control() || character.is_whitespace())
+				|| account.credential.schema_version != CredentialStoreSchemaVersion::V1
+				|| account.credential.version.get() > i64::MAX as u64
+		}) {
+		return Err(LocalAccountAuthorityRestoreFailure::InvalidInput);
+	}
+	if let AccountSelectionMode::Fixed(account_id) = &restore.routing.mode
+		&& !account_ids.contains(account_id)
+	{
+		return Err(LocalAccountAuthorityRestoreFailure::InvalidInput);
+	}
+
+	Ok(())
+}
+
+fn local_restore_database(error: StoreError) -> LocalAccountAuthorityRestoreFailure {
+	LocalAccountAuthorityRestoreFailure::Database(error.bootstrap_failure())
+}
+
+#[cfg(unix)]
+async fn restore_local_account_authority_transaction<F>(
+	transaction: &Transaction<'_>,
+	schema_owner_role: &str,
+	runtime_role: &str,
+	restore: &LocalAccountAuthorityRestore,
+	precommit_fence: F,
+) -> Result<(), LocalAccountAuthorityRestoreFailure>
+where
+	F: FnOnce() -> bool,
+{
+	verify_local_restore_authority(transaction, schema_owner_role, runtime_role)
+		.await
+		.map_err(local_restore_database)?;
+	let relations =
+		local_restore_relation_inventory(transaction).await.map_err(local_restore_database)?;
+	lock_local_restore_relations(transaction, &relations).await.map_err(local_restore_database)?;
+	if !local_restore_target_is_fresh(transaction, &relations)
+		.await
+		.map_err(local_restore_database)?
+	{
+		return Err(LocalAccountAuthorityRestoreFailure::TargetNotFresh);
+	}
+
+	for account in &restore.accounts {
+		let credential_version = i64::try_from(account.credential.version.get())
+			.map_err(|_| LocalAccountAuthorityRestoreFailure::InvalidInput)?;
+		let credential_store_schema_version = i32::from(account.credential.schema_version.get());
+		transaction
+			.execute(
+				RESTORE_LOCAL_ACCOUNT_SQL,
+				&[
+					&account.account_id.as_str(),
+					&account.display_label,
+					&account.revision,
+					&account.enabled,
+					&provider_text(account.credential.provider.provider()),
+					&account.credential.provider.account_id(),
+					&credential_store_schema_version,
+					&credential_version,
+					&account.credential.fingerprint.as_str(),
+					&account.credential.writer_operation_id.as_str(),
+				],
+			)
+			.await
+			.map_err(StoreError::from)
+			.map_err(local_restore_database)?;
+	}
+	for (position, account_id) in restore.routing.order.iter().enumerate() {
+		let position = i32::try_from(position)
+			.map_err(|_| LocalAccountAuthorityRestoreFailure::InvalidInput)?;
+		transaction
+			.execute(
+				"INSERT INTO decodex.account_routing_order(account_id,position) \
+				 VALUES($1::text::uuid,$2)",
+				&[&account_id.as_str(), &position],
+			)
+			.await
+			.map_err(StoreError::from)
+			.map_err(local_restore_database)?;
+	}
+	let (mode, fixed_account_id) = match &restore.routing.mode {
+		AccountSelectionMode::Fixed(account_id) => ("fixed", Some(account_id.as_str())),
+		AccountSelectionMode::Balanced => ("balanced", None),
+	};
+	transaction
+		.execute(
+			"UPDATE decodex.account_routing_control SET mode=$1::text::decodex.account_selection_mode,\
+			 fixed_account_id=$2::text::uuid,revision=$3,updated_at=pg_catalog.clock_timestamp() \
+			 WHERE singleton",
+			&[&mode, &fixed_account_id, &restore.routing.revision],
+		)
+		.await
+		.map_err(StoreError::from)
+		.map_err(local_restore_database)?;
+	transaction
+		.query_one("SELECT decodex.lock_account_routing_universe_exact()", &[])
+		.await
+		.map_err(StoreError::from)
+		.map_err(local_restore_database)?;
+
+	if !precommit_fence() {
+		return Err(LocalAccountAuthorityRestoreFailure::PrecommitFence);
+	}
+	transaction
+		.execute(
+			"UPDATE decodex.accounts SET \
+			 credential_store_observed_at=pg_catalog.clock_timestamp()",
+			&[],
+		)
+		.await
+		.map_err(StoreError::from)
+		.map_err(local_restore_database)?;
+	if !local_restore_readback_matches(transaction, restore)
+		.await
+		.map_err(local_restore_database)?
+		|| !local_restore_unrelated_state_is_empty(transaction, &relations, restore.accounts.len())
+			.await
+			.map_err(local_restore_database)?
+	{
+		return Err(LocalAccountAuthorityRestoreFailure::ReadbackMismatch);
+	}
+	verify_local_restore_authority(transaction, schema_owner_role, runtime_role)
+		.await
+		.map_err(local_restore_database)?;
+
+	Ok(())
+}
+
+#[cfg(unix)]
+async fn verify_local_restore_authority<C>(
+	client: &C,
+	schema_owner_role: &str,
+	runtime_role: &str,
+) -> Result<(), StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let exact_owner: bool = client
+		.query_one(
+			"SELECT session_user=$1::pg_catalog.name AND current_user=$1::pg_catalog.name \
+			 AND database_owner.rolname=$1::pg_catalog.name FROM pg_catalog.pg_database AS database \
+			 JOIN pg_catalog.pg_roles AS database_owner ON database_owner.oid=database.datdba \
+			 WHERE database.datname=pg_catalog.current_database()",
+			&[&schema_owner_role],
+		)
+		.await?
+		.get(0);
+	if !exact_owner {
+		return Err(StoreError::UnsafeAuthority(
+			"local account restore identity is not the database schema owner",
+		));
+	}
+	schema::verify_platform(client).await?;
+	let evidence =
+		authority::bootstrap_authority_evidence(client, schema_owner_role, runtime_role).await?;
+	authority::enforce_bootstrap_authority(&evidence)
+}
+
+#[cfg(unix)]
+async fn local_restore_relation_inventory<C>(client: &C) -> Result<Vec<String>, StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let relations = client
+		.query(
+			"SELECT relation.relname::text FROM pg_catalog.pg_class AS relation \
+			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=relation.relnamespace \
+			 WHERE namespace.nspname='decodex' AND relation.relkind IN ('r','p') \
+			 ORDER BY relation.relname",
+			&[],
+		)
+		.await?
+		.into_iter()
+		.map(|row| row.get::<_, String>(0))
+		.collect::<Vec<_>>();
+	if relations.is_empty()
+		|| relations.len() > 256
+		|| relations.iter().any(|relation| !is_local_restore_identifier(relation))
+	{
+		return Err(incompatible("local account restore relation inventory"));
+	}
+	Ok(relations)
+}
+
+#[cfg(unix)]
+async fn lock_local_restore_relations(
+	transaction: &Transaction<'_>,
+	relations: &[String],
+) -> Result<(), StoreError> {
+	for relation in relations {
+		transaction
+			.batch_execute(&format!("LOCK TABLE decodex.{relation} IN ACCESS EXCLUSIVE MODE"))
+			.await?;
+	}
+	Ok(())
+}
+
+#[cfg(unix)]
+async fn local_restore_target_is_fresh(
+	transaction: &Transaction<'_>,
+	relations: &[String],
+) -> Result<bool, StoreError> {
+	let routing_is_initial: bool = transaction
+		.query_one(
+			"SELECT pg_catalog.count(*)=1 AND pg_catalog.bool_and(singleton AND mode='balanced' \
+			 AND fixed_account_id IS NULL AND revision=1) \
+			 FROM decodex.account_routing_control",
+			&[],
+		)
+		.await?
+		.get(0);
+	let execution_epoch_is_initial: bool = transaction
+		.query_one(
+			"SELECT pg_catalog.count(*)=1 AND pg_catalog.bool_and(retired_at IS NULL) \
+			 FROM decodex.process_generation_execution_epochs",
+			&[],
+		)
+		.await?
+		.get(0);
+	if !routing_is_initial || !execution_epoch_is_initial {
+		return Ok(false);
+	}
+	for relation in relations {
+		if matches!(
+			relation.as_str(),
+			"account_routing_control" | "process_generation_execution_epochs"
+		) {
+			continue;
+		}
+		let empty: bool = transaction
+			.query_one(&format!("SELECT NOT EXISTS (SELECT 1 FROM decodex.{relation})"), &[])
+			.await?
+			.get(0);
+		if !empty {
+			return Ok(false);
+		}
+	}
+	local_restore_sequences_are_initial(transaction).await
+}
+
+#[cfg(unix)]
+async fn local_restore_sequences_are_initial<C>(client: &C) -> Result<bool, StoreError>
+where
+	C: GenericClient + Sync,
+{
+	let sequences = client
+		.query(
+			"SELECT relation.relname::text FROM pg_catalog.pg_class AS relation \
+			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=relation.relnamespace \
+			 WHERE namespace.nspname='decodex' AND relation.relkind='S' \
+			 ORDER BY relation.relname",
+			&[],
+		)
+		.await?
+		.into_iter()
+		.map(|row| row.get::<_, String>(0))
+		.collect::<Vec<_>>();
+	if sequences.is_empty()
+		|| sequences.len() > 16
+		|| sequences.iter().any(|sequence| !is_local_restore_identifier(sequence))
+	{
+		return Err(incompatible("local account restore sequence inventory"));
+	}
+	for sequence in sequences {
+		let initial: bool = client
+			.query_one(
+				&format!("SELECT last_value=1 AND NOT is_called FROM decodex.{sequence}"),
+				&[],
+			)
+			.await?
+			.get(0);
+		if !initial {
+			return Ok(false);
+		}
+	}
+	Ok(true)
+}
+
+#[cfg(unix)]
+async fn local_restore_readback_matches(
+	transaction: &Transaction<'_>,
+	restore: &LocalAccountAuthorityRestore,
+) -> Result<bool, StoreError> {
+	let rows = transaction.query(READ_RESTORED_LOCAL_ACCOUNTS_SQL, &[]).await?;
+	if rows.len() != restore.accounts.len() {
+		return Ok(false);
+	}
+	for (row, account) in rows.iter().zip(&restore.accounts) {
+		let credential_version = i64::try_from(account.credential.version.get()).map_err(|_| {
+			StoreError::InvalidInput("credential version overflows PostgreSQL bigint")
+		})?;
+		if row.get::<_, &str>(0) != account.account_id.as_str()
+			|| row.get::<_, &str>(1) != account.display_label.as_str()
+			|| row.get::<_, bool>(2) != account.enabled
+			|| row.get::<_, i64>(3) != account.revision
+			|| row.get::<_, &str>(4) != provider_text(account.credential.provider.provider())
+			|| row.get::<_, &str>(5) != account.credential.provider.account_id()
+			|| row.get::<_, i32>(6) != i32::from(account.credential.schema_version.get())
+			|| row.get::<_, i64>(7) != credential_version
+			|| row.get::<_, &str>(8) != account.credential.fingerprint.as_str()
+			|| row.get::<_, &str>(9) != account.credential.writer_operation_id.as_str()
+			|| row.get::<_, &str>(10) != "exact"
+			|| !row.get::<_, bool>(11)
+			|| row.get::<_, bool>(12)
+			|| row.get::<_, &str>(13) != "unknown"
+			|| row.get::<_, Value>(14) != Value::Object(Default::default())
+		{
+			return Ok(false);
+		}
+	}
+	let routing =
+		parse_routing_control(&transaction.query_one(READ_ACCOUNT_ROUTING_SQL, &[]).await?)?;
+	Ok(routing == restore.routing)
+}
+
+#[cfg(unix)]
+async fn local_restore_unrelated_state_is_empty(
+	transaction: &Transaction<'_>,
+	relations: &[String],
+	expected_account_count: usize,
+) -> Result<bool, StoreError> {
+	let expected_account_count = i64::try_from(expected_account_count)
+		.map_err(|_| StoreError::InvalidInput("local account restore count is invalid"))?;
+	let account_shape: bool = transaction
+		.query_one(
+			"SELECT (SELECT pg_catalog.count(*) FROM decodex.accounts)=$1 \
+			 AND (SELECT pg_catalog.count(*) FROM decodex.account_routing_order)=$1 \
+			 AND NOT EXISTS (SELECT 1 FROM decodex.accounts WHERE tombstoned_at IS NOT NULL)",
+			&[&expected_account_count],
+		)
+		.await?
+		.get(0);
+	if !account_shape {
+		return Ok(false);
+	}
+	for relation in relations {
+		if matches!(
+			relation.as_str(),
+			"accounts"
+				| "account_routing_control"
+				| "account_routing_order"
+				| "process_generation_execution_epochs"
+		) {
+			continue;
+		}
+		let empty: bool = transaction
+			.query_one(&format!("SELECT NOT EXISTS (SELECT 1 FROM decodex.{relation})"), &[])
+			.await?
+			.get(0);
+		if !empty {
+			return Ok(false);
+		}
+	}
+	local_restore_sequences_are_initial(transaction).await
+}
+
+#[cfg(unix)]
+fn is_local_restore_identifier(value: &str) -> bool {
+	let mut bytes = value.bytes();
+	bytes.next().is_some_and(|byte| byte.is_ascii_lowercase())
+		&& bytes.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'_')
+}
+
+#[cfg(all(test, feature = "test-support"))]
 pub(crate) async fn prepare_account_lifecycle_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
-	const SOURCES: [&str; 17] = [
+	const SOURCES: [&str; 19] = [
 		READ_ACCOUNT_REGISTRY_ALL_SQL,
 		READ_ACCOUNT_REGISTRY_SQL,
 		READ_ACCOUNT_EXACT_SQL,
@@ -986,6 +1548,8 @@ pub(crate) async fn prepare_account_lifecycle_sql(
 		OBSERVE_ACCOUNT_QUOTA_ERROR_SQL,
 		OBSERVE_ACCOUNT_STORE_SQL,
 		ATTEST_CODEX_ACCOUNT_CAPABILITY_SQL,
+		RESTORE_LOCAL_ACCOUNT_SQL,
+		READ_RESTORED_LOCAL_ACCOUNTS_SQL,
 	];
 	for source in SOURCES {
 		client.prepare(source).await?;

@@ -1,4 +1,6 @@
-//! Real PostgreSQL contract coverage for the XY-1267 persistence foundation.
+//! Real PostgreSQL contract coverage for the latest Decodex schema.
+
+#![cfg(feature = "test-support")]
 
 #[path = "postgres_store/continuation.rs"] mod continuation;
 #[cfg(feature = "test-support")]
@@ -21,61 +23,53 @@ mod runtime_sessions;
 #[path = "postgres_store/work_items.rs"]
 mod work_items;
 
-#[cfg(feature = "test-support")]
-mod v24_migrations {
-	refinery::embed_migrations!("migrations");
-}
-
 use std::{
 	collections::{BTreeMap, HashSet},
 	env,
 	fs::{self, Permissions},
 	os::unix::fs::PermissionsExt,
 	path::{Path, PathBuf},
-	str::FromStr as _,
+	str::{self, FromStr as _},
 	time::Duration,
 };
 
 use ::time as _;
 use deadpool_postgres as _;
-use refinery as _;
 use serde_json::Value;
 use sha2::{self as _, Digest as _, Sha256};
 use tokio::{
 	task::{self, JoinSet},
 	time,
 };
-use tokio_postgres::{Client, Config, NoTls, Row, types::ToSql};
+use tokio_postgres::{Client, Config, NoTls, Row, config::Host, types::ToSql};
 
 use decodex_core::{
 	self, AcceptedPolicyRevision, ArtifactId, ArtifactStatus, Availability, BlobHash, BlobStore,
 	ContextPack, ContextPackInput, ContextPackPolicy, ContextPackSource, ContextSourceKind,
-	ConversationId, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
-	HistoryMetadataValue, ItemStatus, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId,
-	ObjectiveId, ObjectiveState, PinnedContextSource, PolicyId, PolicyProvenance, PolicyRevision,
-	PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot, PolicySnapshotValue,
-	PossibleSideEffects, ProductState as _, Program, ProgramContextInput, ProgramCorrelationId,
-	ProgramId, ProgramMetric, ProgramObservationId, ProgramObservationProvenance,
-	ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp, Project, ProjectId,
-	ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding, ProjectStatus,
-	ProposedTransitionKind, RepositoryIdentity, ReviewCadence, RuntimeSessionId,
+	ConversationId, DecodexConfig, DecodexRoot, HistoryItemId, HistoryItemKind, HistoryMediaType,
+	HistoryMetadata, HistoryMetadataValue, ItemStatus, Objective, ObjectiveCompletionEvidence,
+	ObjectiveEvidenceId, ObjectiveId, ObjectiveState, PinnedContextSource, PolicyId,
+	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
+	PolicySnapshotValue, PossibleSideEffects, PostgresConnectionConfig, PostgresIdentityConfig,
+	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProductState as _, Program,
+	ProgramContextInput, ProgramCorrelationId, ProgramId, ProgramMetric, ProgramObservationId,
+	ProgramObservationProvenance, ProgramProvenance, ProgramSignal, ProgramState, ProgramTimestamp,
+	Project, ProjectId, ProjectMetadata, ProjectMetadataValue, ProjectRepositoryBinding,
+	ProjectStatus, ProposedTransitionKind, RepositoryIdentity, ReviewCadence, RuntimeSessionId,
 	RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use decodex_postgres::{
-	AccountId, AccountState, Agent, AgentId, AgentRole, AgentStatus, BootstrapFailure,
-	BootstrapRoleProfiles, CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact,
-	CreateConversation, CreateProject, CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot,
-	HistoryCursor, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim, OutboxReconciliation,
-	PersistContextPack, PostgresStore, ProposeTransition, ReconciliationOutcome, RecordHistoryItem,
-	RoleProfileCommandOutcome, RoleProfileConfiguration, RoleProfileRole,
-	RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
+	AccountId, AccountOperationId, AccountProvider, AccountRoutingControl, AccountSelectionMode,
+	AccountState, Agent, AgentId, AgentRole, AgentStatus, BootstrapFailure, BootstrapRoleProfiles,
+	CLOSED, CommandIdentity, ContextPackRecord, CreateArtifact, CreateConversation, CreateProject,
+	CreateRuntimeSession, CreateRuntimeSessionAccountSnapshot, CredentialBinding,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, HistoryCursor,
+	LocalAccountAuthorityAccount, LocalAccountAuthorityRestore,
+	LocalAccountAuthorityRestoreFailure, MAX_OPERATION_DURATION_MILLISECONDS, OutboxClaim,
+	OutboxReconciliation, PersistContextPack, PostgresStore, ProposeTransition, ProviderIdentity,
+	ReconciliationOutcome, RecordHistoryItem, RoleProfileCommandOutcome, RoleProfileConfiguration,
+	RoleProfileRole, RuntimeSessionCommandOutcome, StoreError, UpdateProgramContext,
 };
-
-#[cfg(feature = "test-support")]
-const MANIFEST_QUERY_ERROR_TEXT_LIMIT: usize = 512;
-#[cfg(feature = "test-support")]
-const MANIFEST_CLIENT_ERROR_MESSAGE: &str =
-	"manifest query failed without PostgreSQL database error";
 
 const ACCOUNT_ID: &str = "10000000-0000-0000-0000-000000000001";
 const HOLDER_A: &str = "20000000-0000-0000-0000-000000000001";
@@ -380,11 +374,62 @@ fn expected_peer_uid() -> u32 {
 	unsafe { libc::geteuid() }
 }
 
-fn separated_configs(prefix: &str) -> Result<(Config, Config), Box<dyn std::error::Error>> {
-	let migration = Config::from_str(&env::var(format!("{prefix}_MIGRATION_DATABASE_URL"))?)?;
+fn owner_runtime_configs(prefix: &str) -> Result<(Config, Config), Box<dyn std::error::Error>> {
+	let schema_owner = Config::from_str(&env::var(format!("{prefix}_SCHEMA_OWNER_DATABASE_URL"))?)?;
 	let runtime = Config::from_str(&env::var(format!("{prefix}_RUNTIME_DATABASE_URL"))?)?;
 
-	Ok((migration, runtime))
+	Ok((schema_owner, runtime))
+}
+
+fn latest_schema_connection_config(
+	runtime: &Config,
+) -> Result<PostgresConnectionConfig, Box<dyn std::error::Error>> {
+	let socket_directory = match runtime.get_hosts() {
+		[Host::Unix(path)] => path.to_str().ok_or("runtime socket path is not UTF-8")?,
+		_ => return Err("runtime fixture requires exactly one Unix socket host".into()),
+	};
+	let port = match runtime.get_ports() {
+		[] => 5_432,
+		[port] => *port,
+		_ => return Err("runtime fixture requires exactly one PostgreSQL port".into()),
+	};
+	let database = runtime.get_dbname().ok_or("runtime database is absent")?;
+	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?;
+	let socket_directory = serde_json::to_string(socket_directory)?;
+	let database = serde_json::to_string(database)?;
+	let runtime_role = serde_json::to_string(runtime_role)?;
+	let source = format!(
+		r#"version = 1
+active_profile = "local"
+
+[profiles.local]
+kind = "local"
+policy = "same_uid"
+service_owner_uid = {service_owner_uid}
+
+[postgres]
+socket_directory = {socket_directory}
+expected_peer_uid = {postgres_uid}
+port = {port}
+database = {database}
+
+[postgres.runtime]
+user = {runtime_role}
+
+[cache]
+max_entries = 1
+max_bytes = 1
+max_entry_bytes = 1
+"#,
+		service_owner_uid = expected_peer_uid(),
+		postgres_uid = expected_peer_uid(),
+	);
+
+	Ok(DecodexConfig::parse(source.as_bytes())?.postgres().clone())
+}
+
+fn config_password(config: &Config) -> Result<Option<&str>, Box<dyn std::error::Error>> {
+	config.get_password().map(str::from_utf8).transpose().map_err(Into::into)
 }
 
 #[cfg(feature = "test-support")]
@@ -489,11 +534,152 @@ fn policy_acceptance(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 migration harness"]
-async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
+#[ignore = "requires a fresh isolated PostgreSQL 18 latest-schema target"]
+async fn postgres_latest_schema_bootstrap_contract() -> Result<(), Box<dyn std::error::Error>> {
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	if schema_owner.get_hosts() != runtime.get_hosts()
+		|| schema_owner.get_ports() != runtime.get_ports()
+		|| schema_owner.get_dbname() != runtime.get_dbname()
+	{
+		return Err("schema-owner and runtime fixtures must select one database endpoint".into());
+	}
+	let config = latest_schema_connection_config(&runtime)?;
+	let schema_owner_identity = PostgresIdentityConfig::new(
+		schema_owner.get_user().ok_or("schema-owner role is absent")?.to_owned(),
+		None,
+	)?;
+	let authorization = ProcessExecutionAuthorization::new(
+		ProcessExecutionEpochId::new("d1000000-0000-4000-8000-000000001276")?,
+		"f".repeat(64),
+	)?;
 
-	PostgresStore::migrate(migration, expected_peer_uid()).await?;
+	PostgresStore::bootstrap_latest_schema_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&authorization,
+	)
+	.await?;
+	let store =
+		PostgresStore::connect_runtime_explicit(&config, config_password(&runtime)?).await?;
+	assert_eq!(store.availability(), Availability::Available);
+	assert!(matches!(
+		PostgresStore::bootstrap_latest_schema_explicit(
+			&config,
+			&schema_owner_identity,
+			config_password(&schema_owner)?,
+			&authorization,
+		)
+		.await,
+		Err(error) if error.bootstrap_failure() == BootstrapFailure::Incompatible
+			&& error.report_json().is_none()
+	));
+	store.close();
+
+	Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+#[ignore = "requires a fresh isolated PostgreSQL 18 local account restore target"]
+async fn postgres_local_account_authority_restore_is_atomic_and_exact()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let config = latest_schema_connection_config(&runtime)?;
+	let schema_owner_identity = PostgresIdentityConfig::new(
+		schema_owner.get_user().ok_or("schema-owner role is absent")?.to_owned(),
+		None,
+	)?;
+	let authorization = ProcessExecutionAuthorization::new(
+		ProcessExecutionEpochId::new("d2000000-0000-4000-8000-000000001276")?,
+		"e".repeat(64),
+	)?;
+	PostgresStore::bootstrap_latest_schema_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&authorization,
+	)
+	.await?;
+
+	let account_id = AccountId::new("72000000-0000-4000-8000-000000001276")?;
+	let provider =
+		ProviderIdentity::new(AccountProvider::Chatgpt, "restore-contract@example.invalid")?;
+	let credential = CredentialBinding {
+		schema_version: CredentialStoreSchemaVersion::V1,
+		version: CredentialVersion::new(7)?,
+		fingerprint: CredentialFingerprint::new("a".repeat(64))?,
+		provider,
+		writer_operation_id: AccountOperationId::new("73000000-0000-4000-8000-000000001276")?,
+	};
+	let restore = LocalAccountAuthorityRestore {
+		accounts: vec![LocalAccountAuthorityAccount {
+			account_id: account_id.clone(),
+			display_label: "Alex".into(),
+			enabled: false,
+			revision: 11,
+			credential: credential.clone(),
+		}],
+		routing: AccountRoutingControl {
+			revision: 9,
+			mode: AccountSelectionMode::Fixed(account_id.clone()),
+			order: vec![account_id.clone()],
+		},
+	};
+
+	let mismatch = PostgresStore::restore_local_account_authority_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&restore,
+		|| false,
+	)
+	.await;
+	assert_eq!(mismatch, Err(LocalAccountAuthorityRestoreFailure::PrecommitFence));
+	let (rollback_client, rollback_connection) = schema_owner.clone().connect(NoTls).await?;
+	let rollback_task = tokio::spawn(rollback_connection);
+	let rolled_back: bool = rollback_client
+		.query_one(
+			"SELECT NOT EXISTS (SELECT 1 FROM decodex.accounts)\
+			 AND NOT EXISTS (SELECT 1 FROM decodex.account_routing_order)\
+			 AND EXISTS (SELECT 1 FROM decodex.account_routing_control\
+			 WHERE singleton AND mode='balanced' AND fixed_account_id IS NULL AND revision=1)",
+			&[],
+		)
+		.await?
+		.get(0);
+	assert!(rolled_back, "a failed exact host-store fence must roll back every row");
+	drop(rollback_client);
+	rollback_task.await??;
+
+	PostgresStore::restore_local_account_authority_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&restore,
+		|| true,
+	)
+	.await?;
+	let store =
+		PostgresStore::connect_runtime_explicit(&config, config_password(&runtime)?).await?;
+	let (accounts, routing) = store.read_account_registry_snapshot(512).await?;
+	assert_eq!(accounts.len(), 1);
+	assert_eq!(accounts[0].account_id, account_id);
+	assert_eq!(accounts[0].label, "Alex");
+	assert!(!accounts[0].enabled);
+	assert_eq!(accounts[0].revision, 11);
+	assert_eq!(accounts[0].credential.as_ref(), Some(&credential));
+	assert_eq!(routing, restore.routing);
+	store.close();
+
+	let second = PostgresStore::restore_local_account_authority_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&restore,
+		|| true,
+	)
+	.await;
+	assert_eq!(second, Err(LocalAccountAuthorityRestoreFailure::TargetNotFresh));
 
 	Ok(())
 }
@@ -503,9 +689,9 @@ async fn postgres_migration_contract() -> Result<(), Box<dyn std::error::Error>>
 #[cfg(feature = "test-support")]
 #[allow(clippy::too_many_lines)] // One complete routing CAS and invariant contract.
 async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::pin_session_search_path_fixture(&mut migration);
-	let (mut client, connection) = migration.connect(NoTls).await?;
+	let (mut schema_owner, _) = owner_runtime_configs("DECODEX_TEST")?;
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut schema_owner);
+	let (mut client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let transaction = client.transaction().await?;
 	let first_account = "72000000-0000-4000-8000-000000000001";
@@ -781,9 +967,9 @@ async fn postgres_account_routing_contract() -> Result<(), Box<dyn std::error::E
 #[allow(clippy::too_many_lines)] // One complete routing/logout concurrency proof.
 async fn postgres_account_routing_and_logout_share_one_lock_order()
 -> Result<(), Box<dyn std::error::Error>> {
-	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::pin_session_search_path_fixture(&mut migration);
-	let (mut owner, owner_connection) = migration.connect(NoTls).await?;
+	let (mut schema_owner, _) = owner_runtime_configs("DECODEX_TEST")?;
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut schema_owner);
+	let (mut owner, owner_connection) = schema_owner.connect(NoTls).await?;
 	let owner_connection_task = tokio::spawn(owner_connection);
 	let setup = owner.transaction().await?;
 	let logout_account = "72100000-0000-4000-8000-000000000001";
@@ -883,8 +1069,8 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 		.await?;
 	setup.commit().await?;
 
-	let mut logout_client_config = migration.clone();
-	PostgresStore::pin_session_search_path_fixture(&mut logout_client_config);
+	let mut logout_client_config = schema_owner.clone();
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut logout_client_config);
 	let logout_task = tokio::spawn(async move {
 		let (mut client, connection) =
 			logout_client_config.connect(NoTls).await.expect("logout connection");
@@ -905,8 +1091,8 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 		code
 	});
 	time::sleep(Duration::from_millis(50)).await;
-	let mut fixed_config = migration.clone();
-	PostgresStore::pin_session_search_path_fixture(&mut fixed_config);
+	let mut fixed_config = schema_owner.clone();
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut fixed_config);
 	let fixed_task = tokio::spawn(async move {
 		let (mut client, connection) = fixed_config.connect(NoTls).await.expect("fixed connection");
 		let connection_task = tokio::spawn(connection);
@@ -926,8 +1112,8 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 		code
 	});
 	time::sleep(Duration::from_millis(20)).await;
-	let mut order_config = migration.clone();
-	PostgresStore::pin_session_search_path_fixture(&mut order_config);
+	let mut order_config = schema_owner.clone();
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut order_config);
 	let order_task = tokio::spawn(async move {
 		let (mut client, connection) = order_config.connect(NoTls).await.expect("order connection");
 		let connection_task = tokio::spawn(connection);
@@ -984,1531 +1170,70 @@ async fn postgres_account_routing_and_logout_share_one_lock_order()
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V32 preparation harness"]
-#[cfg(feature = "test-support")]
-async fn postgres_changed_sql_preparation_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::pin_session_search_path_fixture(&mut runtime);
-
-	let (client, connection) = runtime.connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let source_count = PostgresStore::prepare_changed_sql_fixture(&client).await?;
-	assert_eq!(source_count, 30);
-	println!("decodex_changed_sql_prepared={source_count}");
-
-	drop(client);
-	connection_task.await??;
-
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V13 migration harness"]
-#[cfg(feature = "test-support")]
-async fn postgres_migration_through_v13_fixture() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-
-	PostgresStore::migrate_fixture_through_v13(migration, expected_peer_uid()).await?;
-
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 V24 migration harness"]
-#[cfg(feature = "test-support")]
-async fn postgres_migration_through_v24_fixture() -> Result<(), Box<dyn std::error::Error>> {
-	let (mut migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::pin_session_search_path_fixture(&mut migration);
-	let (mut client, connection) = migration.connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-
-	v24_migrations::migrations::runner()
-		.set_target(refinery::Target::Version(24))
-		.run_async(&mut client)
-		.await?;
-
-	drop(client);
-	connection_task.await??;
-
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 hostile-search-path harness"]
 #[cfg(feature = "test-support")]
-async fn postgres_session_search_path_startup_fixture() -> Result<(), Box<dyn std::error::Error>> {
-	let (_, mut runtime) = separated_configs("DECODEX_TEST")?;
+async fn postgres_trusted_session_invariants_startup_fixture()
+-> Result<(), Box<dyn std::error::Error>> {
+	let (_, mut runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	runtime.options("-csearch_path=public -cTimeZone=UTC");
 
-	PostgresStore::pin_session_search_path_fixture(&mut runtime);
+	PostgresStore::apply_trusted_session_invariants_fixture(&mut runtime);
+	assert_eq!(runtime.get_options(), Some("-csearch_path=pg_catalog -cTimeZone=+05:00"));
 
 	let (client, connection) = runtime.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
-	let path = client
+	let settings = client
 		.query_one(
 			"SELECT pg_catalog.current_setting('search_path'), \
-			 pg_catalog.current_schemas(true) = ARRAY['pg_catalog','public']::pg_catalog.name[]",
+			 pg_catalog.current_setting('TimeZone'), \
+			 EXTRACT(timezone FROM CURRENT_TIMESTAMP)::pg_catalog.int8",
 			&[],
 		)
 		.await?;
-	let search_path: String = path.get(0);
-	let catalogs_first: bool = path.get(1);
+	let search_path: String = settings.get(0);
+	let time_zone: String = settings.get(1);
+	let time_zone_offset_seconds: i64 = settings.get(2);
 
-	assert_eq!(search_path, "public");
-	assert!(catalogs_first);
+	assert_eq!(search_path, "pg_catalog");
+	assert_eq!(time_zone, "+05:00");
+	assert_eq!(time_zone_offset_seconds, -18_000);
 
 	drop(client);
 
 	connection_task.await??;
 
 	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires an isolated PostgreSQL 18 schema-manifest database"]
-#[cfg(feature = "test-support")]
-async fn postgres_schema_manifest_dump_fixture() -> Result<(), Box<dyn std::error::Error>> {
-	let path = env::var("DECODEX_SCHEMA_MANIFEST_PATH")?;
-	let expected_database = env::var("DECODEX_EXPECTED_MANIFEST_DATABASE")?;
-	let structured_errors = match env::var("DECODEX_SCHEMA_MANIFEST_STRUCTURED_ERRORS") {
-		Ok(value) if value == "1" => true,
-		Ok(_) => return Err("structured manifest errors must equal 1 when configured".into()),
-		Err(env::VarError::NotPresent) => false,
-		Err(error) => return Err(error.into()),
-	};
-	let (mut migration, mut runtime) = separated_configs("DECODEX_TEST")?;
-	let migration_role = migration.get_user().ok_or("migration role is absent")?.to_owned();
-	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?.to_owned();
-	if runtime_role == "decodex_runtime" {
-		return Err("configured-authority fixture requires a non-default runtime role".into());
-	}
-	let migration_database =
-		migration.get_dbname().ok_or("migration database is absent")?.to_owned();
-	let runtime_database = runtime.get_dbname().ok_or("runtime database is absent")?.to_owned();
-	if migration_database != expected_database || runtime_database != expected_database {
-		return Err(format!(
-			"manifest database binding mismatch: requested={expected_database}, migration={migration_database}, runtime={runtime_database}"
-		)
-		.into());
-	}
-
-	PostgresStore::pin_session_search_path_fixture(&mut migration);
-	PostgresStore::pin_session_search_path_fixture(&mut runtime);
-
-	let (client, connection) = runtime.connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let observed_runtime_database: String =
-		client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
-	if observed_runtime_database != expected_database {
-		return Err(format!(
-			"runtime manifest connection selected {observed_runtime_database}, expected {expected_database}"
-		)
-		.into());
-	}
-	let (schema, schema_complete, schema_error) = match client
-		.query_one(PostgresStore::schema_contract_sql_fixture(), &[])
-		.await
-	{
-		Ok(row) => (row.get::<_, Option<String>>(0), row.get::<_, bool>(1), None),
-		Err(error) => (
-			None,
-			false,
-			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
-		),
-	};
-	let (authority, authority_error) = match client
-		.query_one(
-			PostgresStore::configured_authority_sql_fixture(),
-			&[&migration_role, &runtime_role],
-		)
-		.await
-	{
-		Ok(row) => (row.get::<_, Option<String>>(0), None),
-		Err(error) => (
-			None,
-			Some(if structured_errors { manifest_query_error(&error) } else { error.to_string() }),
-		),
-	};
-	let semantic_authority = if structured_errors {
-		Some(PostgresStore::semantic_authority_fixture(&client, &runtime_role).await?)
-	} else {
-		None
-	};
-	let has_structured_component_failure =
-		structured_errors && (schema_error.is_some() || authority_error.is_some());
-	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
-	let migration_connection_task = tokio::spawn(migration_connection);
-	let observed_migration_database: String =
-		migration_client.query_one("SELECT pg_catalog.current_database()", &[]).await?.get(0);
-	if observed_migration_database != expected_database {
-		return Err(format!(
-			"migration manifest connection selected {observed_migration_database}, expected {expected_database}"
-		)
-		.into());
-	}
-	let sequence_state = manifest_sequence_state(&migration_client).await?;
-	let mut manifest = serde_json::json!({
-		"authority": {
-			"available": authority.is_some(),
-			"complete": authority.is_some(),
-			"error": authority_error,
-			"manifest": authority,
-		},
-		"binding": {
-			"requested": expected_database,
-			"migration_url": migration_database,
-			"runtime_url": runtime_database,
-			"observed_migration": observed_migration_database,
-			"observed_runtime": observed_runtime_database,
-		},
-		"schema": {
-			"available": schema.is_some(),
-			"complete": schema.is_some() && schema_complete,
-			"error": schema_error,
-			"manifest": schema,
-		},
-		"sequence_state": sequence_state,
-	});
-	if let Some(semantic_authority) = semantic_authority {
-		manifest
-			.as_object_mut()
-			.ok_or("manifest envelope is not an object")?
-			.insert("semantic_authority".into(), semantic_authority);
-	}
-	let manifest = serde_json::to_string(&manifest)?;
-
-	fs::write(path, manifest)?;
-
-	drop(client);
-	drop(migration_client);
-
-	let runtime_connection_result = connection_task.await?;
-	if !has_structured_component_failure {
-		runtime_connection_result?;
-	}
-	migration_connection_task.await??;
-
-	Ok(())
-}
-
-#[cfg(feature = "test-support")]
-fn manifest_query_error(error: &tokio_postgres::Error) -> String {
-	fn bounded(value: &str) -> (String, bool) {
-		let mut characters = value.chars();
-		let text = characters.by_ref().take(MANIFEST_QUERY_ERROR_TEXT_LIMIT).collect();
-		(text, characters.next().is_some())
-	}
-
-	if let Some(database) = error.as_db_error() {
-		let (message, truncated) = bounded(database.message());
-		serde_json::json!({
-			"classification": "database_error",
-			"message": message,
-			"message_truncated": truncated,
-			"schema": "decodex/postgres-manifest-query-error/1",
-			"sqlstate": database.code().code(),
-		})
-		.to_string()
-	} else {
-		serde_json::json!({
-			"classification": "client_error",
-			"message": MANIFEST_CLIENT_ERROR_MESSAGE,
-			"message_truncated": false,
-			"schema": "decodex/postgres-manifest-query-error/1",
-			"sqlstate": null,
-		})
-		.to_string()
-	}
-}
-
-#[cfg(feature = "test-support")]
-async fn manifest_sequence_state(
-	client: &Client,
-) -> Result<Vec<serde_json::Value>, Box<dyn std::error::Error>> {
-	let mut state_rows = Vec::new();
-	let sequences = client
-		.query(
-			"SELECT sequence.schemaname, sequence.sequencename, \
-			 pg_catalog.format('SELECT last_value::bigint, is_called FROM %I.%I', \
-			 sequence.schemaname, sequence.sequencename) \
-			 FROM pg_catalog.pg_sequences AS sequence \
-			 WHERE sequence.schemaname = 'decodex' \
-			 ORDER BY sequence.schemaname, sequence.sequencename",
-			&[],
-		)
-		.await?;
-	for row in sequences {
-		let schema_name = row.get::<_, String>(0);
-		let sequence_name = row.get::<_, String>(1);
-		let query = row.get::<_, String>(2);
-		let state = client.query_one(&query, &[]).await?;
-		state_rows.push(serde_json::json!([
-			schema_name,
-			sequence_name,
-			state.get::<_, i64>(0),
-			state.get::<_, bool>(1),
-		]));
-	}
-
-	Ok(state_rows)
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AuthorityClassification {
-	UnsafeDatabaseAuthority,
-	DatabaseIncompatible,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum AuthorityStoreError {
-	UnsafeAuthority,
-	Incompatible,
-	Migration,
-	Database,
-	Pool,
-	UnsafeHostPath,
-	SocketUnavailable,
-	Other,
-}
-
-#[derive(Debug)]
-struct AuthorityScenario {
-	admin_url: String,
-	baseline_migration_url: String,
-	baseline_runtime_url: String,
-	case_id: String,
-	case_migration_url: String,
-	case_runtime_url: String,
-	expected: AuthorityClassification,
-	expected_store_error: AuthorityStoreError,
-	invariant_sql: Option<String>,
-	mutation_sql: String,
-	post_runtime_rejected_sql: Option<String>,
-	post_runtime_rejected_sqlstate: Option<String>,
-	postcondition_sql: String,
-	pre_runtime_rejected_sql: Option<String>,
-	pre_runtime_rejected_sqlstate: Option<String>,
-	precondition_sql: String,
-	restore_postcondition_sql: Option<String>,
-	restore_sql: Option<String>,
-	runtime_effect_sql: Option<String>,
-}
-
-fn authority_scenarios() -> Vec<AuthorityScenario> {
-	let payload: Value = serde_json::from_str(
-		&env::var("DECODEX_TEST_POSTGRES_AUTHORITY_SCENARIOS")
-			.expect("isolated PostgreSQL authority scenario environment is present"),
-	)
-	.expect("isolated PostgreSQL authority scenarios are JSON");
-	let scenarios = payload.as_array().expect("authority scenario payload is an array");
-	let required = |scenario: &Value, key: &str| {
-		let value = scenario
-			.as_object()
-			.unwrap_or_else(|| panic!("authority scenario is an object"))
-			.get(key)
-			.unwrap_or_else(|| panic!("authority scenario {key} is required"));
-		match value {
-			Value::String(value) if !value.is_empty() => value.clone(),
-			_ => panic!("authority scenario {key} is a nonempty string"),
-		}
-	};
-	let optional = |scenario: &Value, key: &str| match scenario
-		.as_object()
-		.unwrap_or_else(|| panic!("authority scenario is an object"))
-		.get(key)
-	{
-		None | Some(Value::Null) => None,
-		Some(Value::String(value)) if !value.is_empty() => Some(value.clone()),
-		Some(_) => panic!("authority scenario {key} is a nonempty string or null"),
-	};
-
-	scenarios
-		.iter()
-		.map(|scenario| {
-			let object = scenario.as_object().expect("authority scenario is an object");
-			let case_id = required(scenario, "case_id");
-			const FIELDS: [&str; 19] = [
-				"admin_url",
-				"baseline_migration_url",
-				"baseline_runtime_url",
-				"case_id",
-				"case_migration_url",
-				"case_runtime_url",
-				"expected",
-				"expected_store_error",
-				"invariant_sql",
-				"mutation_sql",
-				"post_runtime_rejected_sql",
-				"post_runtime_rejected_sqlstate",
-				"postcondition_sql",
-				"pre_runtime_rejected_sql",
-				"pre_runtime_rejected_sqlstate",
-				"precondition_sql",
-				"restore_postcondition_sql",
-				"restore_sql",
-				"runtime_effect_sql",
-			];
-			assert_eq!(object.len(), FIELDS.len(), "{case_id}: authority scenario field count");
-			assert!(
-				object.keys().all(|key| FIELDS.contains(&key.as_str())),
-				"{case_id}: authority scenario has no unknown fields"
-			);
-			let expected = match required(scenario, "expected").as_str() {
-				"unsafe_database_authority" => AuthorityClassification::UnsafeDatabaseAuthority,
-				"database_incompatible" => AuthorityClassification::DatabaseIncompatible,
-				other => panic!("unsupported authority classification {other}"),
-			};
-			let expected_store_error = match required(scenario, "expected_store_error").as_str() {
-				"unsafe_authority" => AuthorityStoreError::UnsafeAuthority,
-				"incompatible" => AuthorityStoreError::Incompatible,
-				"migration" => AuthorityStoreError::Migration,
-				other => panic!("unsupported expected StoreError {other}"),
-			};
-			let authority_scenario = AuthorityScenario {
-				admin_url: required(scenario, "admin_url"),
-				baseline_migration_url: required(scenario, "baseline_migration_url"),
-				baseline_runtime_url: required(scenario, "baseline_runtime_url"),
-				case_id,
-				case_migration_url: required(scenario, "case_migration_url"),
-				case_runtime_url: required(scenario, "case_runtime_url"),
-				expected,
-				expected_store_error,
-				invariant_sql: optional(scenario, "invariant_sql"),
-				mutation_sql: required(scenario, "mutation_sql"),
-				post_runtime_rejected_sql: optional(scenario, "post_runtime_rejected_sql"),
-				post_runtime_rejected_sqlstate: optional(
-					scenario,
-					"post_runtime_rejected_sqlstate",
-				),
-				postcondition_sql: required(scenario, "postcondition_sql"),
-				pre_runtime_rejected_sql: optional(scenario, "pre_runtime_rejected_sql"),
-				pre_runtime_rejected_sqlstate: optional(scenario, "pre_runtime_rejected_sqlstate"),
-				precondition_sql: required(scenario, "precondition_sql"),
-				restore_postcondition_sql: optional(scenario, "restore_postcondition_sql"),
-				restore_sql: optional(scenario, "restore_sql"),
-				runtime_effect_sql: optional(scenario, "runtime_effect_sql"),
-			};
-			validate_authority_scenario(&authority_scenario);
-			authority_scenario
-		})
-		.collect()
-}
-
-fn authority_config(url: &str, field: &str) -> Config {
-	Config::from_str(url)
-		.unwrap_or_else(|_| panic!("authority scenario {field} is a PostgreSQL URL"))
-}
-
-fn same_authority_endpoint(left: &Config, right: &Config) -> bool {
-	left.get_hosts() == right.get_hosts()
-		&& left.get_ports() == right.get_ports()
-		&& left.get_dbname() == right.get_dbname()
-}
-
-fn validate_authority_scenario(scenario: &AuthorityScenario) {
-	assert_eq!(
-		scenario.baseline_migration_url, scenario.case_migration_url,
-		"{}: baseline and case migration endpoint/identity differ",
-		scenario.case_id
-	);
-	assert_eq!(
-		scenario.baseline_runtime_url, scenario.case_runtime_url,
-		"{}: baseline and case runtime endpoint/identity differ",
-		scenario.case_id
-	);
-	let migration = authority_config(&scenario.case_migration_url, "case_migration_url");
-	let runtime = authority_config(&scenario.case_runtime_url, "case_runtime_url");
-	let admin = authority_config(&scenario.admin_url, "admin_url");
-	assert!(
-		same_authority_endpoint(&migration, &runtime)
-			&& same_authority_endpoint(&migration, &admin),
-		"{}: causal connections do not share one database endpoint",
-		scenario.case_id
-	);
-	assert!(
-		migration.get_user().is_some()
-			&& runtime.get_user().is_some()
-			&& migration.get_user() != runtime.get_user(),
-		"{}: migration and runtime identities are not distinct",
-		scenario.case_id
-	);
-
-	for (name, sql, sqlstate) in [
-		(
-			"pre-mutation rejection",
-			scenario.pre_runtime_rejected_sql.as_ref(),
-			scenario.pre_runtime_rejected_sqlstate.as_ref(),
-		),
-		(
-			"post-mutation rejection",
-			scenario.post_runtime_rejected_sql.as_ref(),
-			scenario.post_runtime_rejected_sqlstate.as_ref(),
-		),
-	] {
-		assert_eq!(
-			sql.is_some(),
-			sqlstate.is_some(),
-			"{}: {name} SQL and SQLSTATE must be paired",
-			scenario.case_id
-		);
-		if let Some(sqlstate) = sqlstate {
-			assert!(
-				sqlstate.len() == 5
-					&& sqlstate
-						.bytes()
-						.all(|byte| byte.is_ascii_digit() || byte.is_ascii_uppercase()),
-				"{}: {name} SQLSTATE is invalid",
-				scenario.case_id
-			);
-		}
-	}
-	assert_eq!(
-		scenario.restore_sql.is_some(),
-		scenario.restore_postcondition_sql.is_some(),
-		"{}: restoration SQL and postcondition must be paired",
-		scenario.case_id
-	);
-	let expected_projection = match scenario.expected_store_error {
-		AuthorityStoreError::UnsafeAuthority => AuthorityClassification::UnsafeDatabaseAuthority,
-		AuthorityStoreError::Incompatible | AuthorityStoreError::Migration =>
-			AuthorityClassification::DatabaseIncompatible,
-		_ => panic!("{}: unsupported expected StoreError", scenario.case_id),
-	};
-	assert_eq!(
-		scenario.expected, expected_projection,
-		"{}: concrete StoreError and bootstrap projection disagree",
-		scenario.case_id
-	);
-}
-
-fn postgres_error_code(error: &tokio_postgres::Error) -> &str {
-	error.code().map_or("client", |code| code.code())
-}
-
-async fn authority_batch(url: &str, sql: &str) -> Result<(), String> {
-	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
-	let (client, connection) = config
-		.connect(NoTls)
-		.await
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
-	let connection_task = tokio::spawn(connection);
-	let result = client
-		.batch_execute(sql)
-		.await
-		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)));
-
-	drop(client);
-	let connection_result = connection_task
-		.await
-		.map_err(|_| "connection task failed".to_owned())?
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
-
-	connection_result.and(result)
-}
-
-async fn authority_rejected_batch(
-	url: &str,
-	sql: &str,
-	expected_sqlstate: Option<&str>,
-) -> Result<(), String> {
-	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
-	let (client, connection) = config
-		.connect(NoTls)
-		.await
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
-	let connection_task = tokio::spawn(connection);
-	let result = match client.batch_execute(sql).await {
-		Ok(()) => Err("SQL unexpectedly succeeded".to_owned()),
-		Err(error) => {
-			let actual = postgres_error_code(&error);
-			if expected_sqlstate.is_none_or(|expected| expected == actual) {
-				Ok(())
-			} else {
-				Err(format!(
-					"SQL rejected with {actual}, expected {}",
-					expected_sqlstate.expect("checked expected SQLSTATE")
-				))
-			}
-		},
-	};
-
-	drop(client);
-	let connection_result = connection_task
-		.await
-		.map_err(|_| "connection task failed".to_owned())?
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
-
-	connection_result.and(result)
-}
-
-async fn authority_boolean(url: &str, sql: &str) -> Result<bool, String> {
-	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
-	let (client, connection) = config
-		.connect(NoTls)
-		.await
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
-	let connection_task = tokio::spawn(connection);
-	let result = client
-		.query_one(sql, &[])
-		.await
-		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
-		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one boolean".to_owned()));
-
-	drop(client);
-	let connection_result = connection_task
-		.await
-		.map_err(|_| "connection task failed".to_owned())?
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
-
-	connection_result.and(result)
-}
-
-async fn authority_text(url: &str, sql: &str) -> Result<String, String> {
-	let config = Config::from_str(url).map_err(|_| "configuration parse failed".to_owned())?;
-	let (client, connection) = config
-		.connect(NoTls)
-		.await
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)))?;
-	let connection_task = tokio::spawn(connection);
-	let result = client
-		.query_one(sql, &[])
-		.await
-		.map_err(|error| format!("SQL failed ({})", postgres_error_code(&error)))
-		.and_then(|row| row.try_get(0).map_err(|_| "SQL did not return one text value".to_owned()));
-
-	drop(client);
-	let connection_result = connection_task
-		.await
-		.map_err(|_| "connection task failed".to_owned())?
-		.map_err(|error| format!("connection failed ({})", postgres_error_code(&error)));
-
-	connection_result.and(result)
-}
-
-fn authority_store_error(error: &StoreError) -> (AuthorityStoreError, BootstrapFailure) {
-	let variant = match error {
-		StoreError::UnsafeAuthority(_) => AuthorityStoreError::UnsafeAuthority,
-		StoreError::Incompatible(_) => AuthorityStoreError::Incompatible,
-		StoreError::Migration(_) => AuthorityStoreError::Migration,
-		StoreError::Database(_) => AuthorityStoreError::Database,
-		StoreError::Pool(_) => AuthorityStoreError::Pool,
-		StoreError::UnsafeHostPath => AuthorityStoreError::UnsafeHostPath,
-		StoreError::SocketUnavailable => AuthorityStoreError::SocketUnavailable,
-		_ => AuthorityStoreError::Other,
-	};
-	(variant, error.bootstrap_failure())
-}
-
-async fn authority_store_result(migration_url: &str, runtime_url: &str) -> Result<(), StoreError> {
-	let migration = Config::from_str(migration_url)
-		.map_err(|error| StoreError::Incompatible(format!("invalid migration fixture: {error}")))?;
-	let runtime = Config::from_str(runtime_url)
-		.map_err(|error| StoreError::Incompatible(format!("invalid runtime fixture: {error}")))?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
-	store.close();
-	Ok(())
-}
-
-#[cfg(feature = "test-support")]
-#[derive(Clone, Copy)]
-enum FocusedAuthorityCheckpoint {
-	RuntimeRoutineAuthority,
-	SemanticAuthority,
-	ConfiguredAuthority,
-	SchemaAuthority,
-	StoreConnect,
-}
-
-#[cfg(feature = "test-support")]
-impl FocusedAuthorityCheckpoint {
-	const fn name(self) -> &'static str {
-		match self {
-			Self::RuntimeRoutineAuthority => "runtime_routine_authority",
-			Self::SemanticAuthority => "semantic_authority",
-			Self::ConfiguredAuthority => "configured_authority",
-			Self::SchemaAuthority => "schema_authority",
-			Self::StoreConnect => "store_connect",
-		}
-	}
-}
-
-#[cfg(feature = "test-support")]
-#[derive(Clone, Copy)]
-enum FocusedAuthorityClassification {
-	Ready,
-	ContractRejected,
-	StoreError,
-	HarnessError,
-}
-
-#[cfg(feature = "test-support")]
-impl FocusedAuthorityClassification {
-	const fn name(self) -> &'static str {
-		match self {
-			Self::Ready => "ready",
-			Self::ContractRejected => "contract_rejected",
-			Self::StoreError => "store_error",
-			Self::HarnessError => "harness_error",
-		}
-	}
-}
-
-#[cfg(feature = "test-support")]
-impl AuthorityStoreError {
-	const fn checkpoint_name(self) -> &'static str {
-		match self {
-			Self::UnsafeAuthority => "UnsafeAuthority",
-			Self::Incompatible => "Incompatible",
-			Self::Migration => "Migration",
-			Self::Database => "Database",
-			Self::Pool => "Pool",
-			Self::UnsafeHostPath => "UnsafeHostPath",
-			Self::SocketUnavailable => "SocketUnavailable",
-			Self::Other => "Other",
-		}
-	}
-}
-
-#[cfg(feature = "test-support")]
-const fn focused_bootstrap_name(failure: BootstrapFailure) -> &'static str {
-	match failure {
-		BootstrapFailure::Authentication => "Authentication",
-		BootstrapFailure::Unreachable => "Unreachable",
-		BootstrapFailure::Incompatible => "Incompatible",
-		BootstrapFailure::UnsafeAuthority => "UnsafeAuthority",
-		BootstrapFailure::UnsafeHostPath => "UnsafeHostPath",
-	}
-}
-
-#[cfg(feature = "test-support")]
-fn focused_authority_record(
-	checkpoint: FocusedAuthorityCheckpoint,
-	classification: FocusedAuthorityClassification,
-) -> serde_json::Map<String, Value> {
-	let mut record = serde_json::Map::new();
-	record.insert(
-		"schema".into(),
-		Value::String("decodex/postgres-focused-authority-checkpoint/1".into()),
-	);
-	record.insert("checkpoint".into(), Value::String(checkpoint.name().into()));
-	record.insert("classification".into(), Value::String(classification.name().into()));
-	record
-}
-
-#[cfg(feature = "test-support")]
-fn emit_focused_authority_record(
-	checkpoint: FocusedAuthorityCheckpoint,
-	classification: FocusedAuthorityClassification,
-) {
-	println!("{}", Value::Object(focused_authority_record(checkpoint, classification)));
-}
-
-#[cfg(feature = "test-support")]
-fn focused_authority_database_error(error: &StoreError) -> Option<&tokio_postgres::Error> {
-	match error {
-		StoreError::Database(error)
-		| StoreError::Pool(deadpool_postgres::PoolError::Backend(error)) => Some(error),
-		_ => None,
-	}
-}
-
-#[cfg(feature = "test-support")]
-fn emit_focused_authority_store_error(
-	checkpoint: FocusedAuthorityCheckpoint,
-	error: &StoreError,
-	force_client_or_connection: bool,
-) {
-	let (store_error, bootstrap) = authority_store_error(error);
-	let mut record =
-		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
-	record.insert("store_error".into(), Value::String(store_error.checkpoint_name().into()));
-	record.insert("bootstrap".into(), Value::String(focused_bootstrap_name(bootstrap).into()));
-	if let Some(database) = focused_authority_database_error(error) {
-		if force_client_or_connection {
-			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
-		} else if let Some(sqlstate) = database.code() {
-			record.insert("database_origin".into(), Value::String("server".into()));
-			record.insert("sqlstate".into(), Value::String(sqlstate.code().into()));
-		} else {
-			record.insert("database_origin".into(), Value::String("client_or_connection".into()));
-		}
-	}
-	println!("{}", Value::Object(record));
-}
-
-#[cfg(feature = "test-support")]
-fn emit_focused_authority_client_task_error(checkpoint: FocusedAuthorityCheckpoint) {
-	let mut record =
-		focused_authority_record(checkpoint, FocusedAuthorityClassification::StoreError);
-	record.insert("store_error".into(), Value::String("Database".into()));
-	record.insert("bootstrap".into(), Value::String("Unreachable".into()));
-	record.insert("database_origin".into(), Value::String("client_or_connection".into()));
-	println!("{}", Value::Object(record));
-}
-
-#[cfg(feature = "test-support")]
-async fn close_focused_authority_client(
-	client: Client,
-	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
-) -> Result<(), Option<tokio_postgres::Error>> {
-	drop(client);
-	match connection_task.await {
-		Ok(Ok(())) => Ok(()),
-		Ok(Err(error)) => Err(Some(error)),
-		Err(_) => Err(None),
-	}
-}
-
-#[cfg(feature = "test-support")]
-async fn stop_focused_authority_gate(
-	client: Client,
-	connection_task: tokio::task::JoinHandle<Result<(), tokio_postgres::Error>>,
-) -> bool {
-	let _ = close_focused_authority_client(client, connection_task).await;
-	false
-}
-
-#[cfg(feature = "test-support")]
-fn focused_semantic_authority_state(artifact: &Value) -> Option<bool> {
-	let observations = artifact.get("observations")?.as_array()?;
-	if observations.is_empty() {
-		return None;
-	}
-	let mut ready = true;
-	for observation in observations {
-		ready &= observation.get("passed")?.as_bool()?;
-	}
-	Some(ready)
-}
-
-#[cfg(feature = "test-support")]
-#[allow(clippy::too_many_lines)] // One complete focused authority-checkpoint matrix.
-async fn focused_authority_checkpoint_gate(scenario: &AuthorityScenario) -> bool {
-	let runtime_checkpoint = FocusedAuthorityCheckpoint::RuntimeRoutineAuthority;
-	let migration = match Config::from_str(&scenario.baseline_migration_url) {
-		Ok(config) => config,
-		Err(_) => {
-			emit_focused_authority_record(
-				runtime_checkpoint,
-				FocusedAuthorityClassification::HarnessError,
-			);
-			return false;
-		},
-	};
-	let mut runtime = match Config::from_str(&scenario.baseline_runtime_url) {
-		Ok(config) => config,
-		Err(_) => {
-			emit_focused_authority_record(
-				runtime_checkpoint,
-				FocusedAuthorityClassification::HarnessError,
-			);
-			return false;
-		},
-	};
-	let migration_role = match migration.get_user() {
-		Some(role) => role.to_owned(),
-		None => {
-			emit_focused_authority_record(
-				runtime_checkpoint,
-				FocusedAuthorityClassification::HarnessError,
-			);
-			return false;
-		},
-	};
-	let runtime_role = match runtime.get_user() {
-		Some(role) => role.to_owned(),
-		None => {
-			emit_focused_authority_record(
-				runtime_checkpoint,
-				FocusedAuthorityClassification::HarnessError,
-			);
-			return false;
-		},
-	};
-	PostgresStore::pin_session_search_path_fixture(&mut runtime);
-	let (client, connection) = match runtime.connect(NoTls).await {
-		Ok(connection) => connection,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(runtime_checkpoint, &error, true);
-			return false;
-		},
-	};
-	let connection_task = tokio::spawn(connection);
-
-	match PostgresStore::runtime_routine_authority_fixture(&client).await {
-		Ok(()) =>
-			emit_focused_authority_record(runtime_checkpoint, FocusedAuthorityClassification::Ready),
-		Err(error) => {
-			emit_focused_authority_store_error(runtime_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	}
-
-	let semantic_checkpoint = FocusedAuthorityCheckpoint::SemanticAuthority;
-	match PostgresStore::semantic_authority_fixture(&client, &runtime_role).await {
-		Ok(artifact) => match focused_semantic_authority_state(&artifact) {
-			Some(true) => emit_focused_authority_record(
-				semantic_checkpoint,
-				FocusedAuthorityClassification::Ready,
-			),
-			Some(false) => {
-				emit_focused_authority_record(
-					semantic_checkpoint,
-					FocusedAuthorityClassification::ContractRejected,
-				);
-				return stop_focused_authority_gate(client, connection_task).await;
-			},
-			None => {
-				emit_focused_authority_record(
-					semantic_checkpoint,
-					FocusedAuthorityClassification::HarnessError,
-				);
-				return stop_focused_authority_gate(client, connection_task).await;
-			},
-		},
-		Err(error) => {
-			emit_focused_authority_store_error(semantic_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	}
-
-	let configured_checkpoint = FocusedAuthorityCheckpoint::ConfiguredAuthority;
-	let configured_row = match client
-		.query_one(
-			PostgresStore::configured_authority_sql_fixture(),
-			&[&migration_role, &runtime_role],
-		)
-		.await
-	{
-		Ok(row) => row,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(configured_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	};
-	let configured_manifest: Option<String> = match configured_row.try_get(0) {
-		Ok(manifest) => manifest,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(configured_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	};
-	if configured_manifest.is_none() {
-		emit_focused_authority_record(
-			configured_checkpoint,
-			FocusedAuthorityClassification::ContractRejected,
-		);
-		return stop_focused_authority_gate(client, connection_task).await;
-	}
-	emit_focused_authority_record(configured_checkpoint, FocusedAuthorityClassification::Ready);
-
-	let schema_checkpoint = FocusedAuthorityCheckpoint::SchemaAuthority;
-	let schema_row = match client.query_one(PostgresStore::schema_contract_sql_fixture(), &[]).await
-	{
-		Ok(row) => row,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(schema_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	};
-	let schema_manifest: Option<String> = match schema_row.try_get(0) {
-		Ok(manifest) => manifest,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(schema_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	};
-	let schema_complete: bool = match schema_row.try_get(1) {
-		Ok(complete) => complete,
-		Err(error) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(schema_checkpoint, &error, false);
-			return stop_focused_authority_gate(client, connection_task).await;
-		},
-	};
-	if schema_manifest.is_none() || !schema_complete {
-		emit_focused_authority_record(
-			schema_checkpoint,
-			FocusedAuthorityClassification::ContractRejected,
-		);
-		return stop_focused_authority_gate(client, connection_task).await;
-	}
-	match close_focused_authority_client(client, connection_task).await {
-		Ok(()) =>
-			emit_focused_authority_record(schema_checkpoint, FocusedAuthorityClassification::Ready),
-		Err(Some(error)) => {
-			let error = StoreError::Database(error);
-			emit_focused_authority_store_error(schema_checkpoint, &error, true);
-			return false;
-		},
-		Err(None) => {
-			emit_focused_authority_client_task_error(schema_checkpoint);
-			return false;
-		},
-	}
-
-	let store_checkpoint = FocusedAuthorityCheckpoint::StoreConnect;
-	match authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
-		.await
-	{
-		Ok(()) => {
-			emit_focused_authority_record(store_checkpoint, FocusedAuthorityClassification::Ready);
-			true
-		},
-		Err(error) => {
-			emit_focused_authority_store_error(store_checkpoint, &error, false);
-			false
-		},
-	}
-}
-
-struct AuthorityCausalEvidence {
-	failures: Vec<String>,
-	complete: bool,
-	mutation_applied: bool,
-	invariant_before: Option<String>,
-}
-
-async fn collect_pre_mutation_authority_evidence(
-	scenario: &AuthorityScenario,
-) -> AuthorityCausalEvidence {
-	let mut evidence = AuthorityCausalEvidence {
-		failures: Vec::new(),
-		complete: true,
-		mutation_applied: false,
-		invariant_before: None,
-	};
-	if let Err(error) =
-		authority_store_result(&scenario.baseline_migration_url, &scenario.baseline_runtime_url)
-			.await
-	{
-		let (variant, class) = authority_store_error(&error);
-		evidence.failures.push(format!("baseline expected Ready, actual {variant:?}/{class:?}"));
-		evidence.complete = false;
-	}
-
-	match authority_boolean(&scenario.admin_url, &scenario.precondition_sql).await {
-		Ok(true) => {},
-		Ok(false) => {
-			evidence.failures.push("precondition expected true, actual false".into());
-			evidence.complete = false;
-		},
-		Err(error) => {
-			evidence.failures.push(format!("precondition {error}"));
-			evidence.complete = false;
-		},
-	}
-	if let Some(sql) = scenario.invariant_sql.as_deref() {
-		match authority_text(&scenario.admin_url, sql).await {
-			Ok(value) => evidence.invariant_before = Some(value),
-			Err(error) => {
-				evidence.failures.push(format!("pre-mutation invariant {error}"));
-				evidence.complete = false;
-			},
-		}
-	}
-	if let Some(sql) = scenario.pre_runtime_rejected_sql.as_deref()
-		&& let Err(error) = authority_rejected_batch(
-			&scenario.case_runtime_url,
-			sql,
-			scenario.pre_runtime_rejected_sqlstate.as_deref(),
-		)
-		.await
-	{
-		evidence.failures.push(format!("pre-mutation runtime rejection {error}"));
-		evidence.complete = false;
-	}
-	if evidence.complete {
-		match authority_batch(&scenario.admin_url, &scenario.mutation_sql).await {
-			Ok(()) => evidence.mutation_applied = true,
-			Err(error) => {
-				evidence.failures.push(format!("mutation {error}"));
-				evidence.complete = false;
-			},
-		}
-	}
-	evidence
-}
-
-async fn collect_post_mutation_authority_evidence(
-	scenario: &AuthorityScenario,
-	evidence: &mut AuthorityCausalEvidence,
-) {
-	if !evidence.mutation_applied {
-		return;
-	}
-	if let Some(sql) = scenario.post_runtime_rejected_sql.as_deref()
-		&& let Err(error) = authority_rejected_batch(
-			&scenario.case_runtime_url,
-			sql,
-			scenario.post_runtime_rejected_sqlstate.as_deref(),
-		)
-		.await
-	{
-		evidence.failures.push(format!("post-mutation runtime rejection {error}"));
-		evidence.complete = false;
-	}
-	if let Some(sql) = scenario.runtime_effect_sql.as_deref()
-		&& let Err(error) = authority_batch(&scenario.case_runtime_url, sql).await
-	{
-		evidence.failures.push(format!("runtime effect {error}"));
-		evidence.complete = false;
-	}
-	match authority_boolean(&scenario.admin_url, &scenario.postcondition_sql).await {
-		Ok(true) => {},
-		Ok(false) => {
-			evidence.failures.push("postcondition expected true, actual false".into());
-			evidence.complete = false;
-		},
-		Err(error) => {
-			evidence.failures.push(format!("postcondition {error}"));
-			evidence.complete = false;
-		},
-	}
-	let invariant_before = evidence.invariant_before.clone();
-	if let (Some(before), Some(sql)) =
-		(invariant_before.as_deref(), scenario.invariant_sql.as_deref())
-	{
-		match authority_text(&scenario.admin_url, sql).await {
-			Ok(after) if after == before => {},
-			Ok(_) => {
-				evidence.failures.push("non-body invariant changed".into());
-				evidence.complete = false;
-			},
-			Err(error) => {
-				evidence.failures.push(format!("post-mutation invariant {error}"));
-				evidence.complete = false;
-			},
-		}
-	}
-}
-
-async fn run_authority_classification_phase(
-	scenario: &AuthorityScenario,
-	evidence: &mut AuthorityCausalEvidence,
-) {
-	if !evidence.complete {
-		evidence
-			.failures
-			.push("classification not evaluated because causal evidence is incomplete".into());
-		return;
-	}
-	let expected_bootstrap = match scenario.expected {
-		AuthorityClassification::UnsafeDatabaseAuthority => BootstrapFailure::UnsafeAuthority,
-		AuthorityClassification::DatabaseIncompatible => BootstrapFailure::Incompatible,
-	};
-	match authority_store_result(&scenario.case_migration_url, &scenario.case_runtime_url).await {
-		Ok(()) => evidence.failures.push(format!(
-			"classification expected {:?}/{expected_bootstrap:?}, actual Ready",
-			scenario.expected_store_error
-		)),
-		Err(error) => {
-			let (actual_store_error, actual_bootstrap) = authority_store_error(&error);
-			if actual_store_error != scenario.expected_store_error
-				|| actual_bootstrap != expected_bootstrap
-			{
-				evidence.failures.push(format!(
-					"classification expected {:?}/{expected_bootstrap:?}, actual \
-					 {actual_store_error:?}/{actual_bootstrap:?}",
-					scenario.expected_store_error
-				));
-			}
-		},
-	}
-}
-
-async fn run_authority_restoration_phase(
-	scenario: &AuthorityScenario,
-	evidence: &mut AuthorityCausalEvidence,
-) {
-	if !evidence.mutation_applied {
-		return;
-	}
-	let (Some(restore_sql), Some(restored_sql)) =
-		(scenario.restore_sql.as_deref(), scenario.restore_postcondition_sql.as_deref())
-	else {
-		return;
-	};
-	if let Err(error) = authority_batch(&scenario.admin_url, restore_sql).await {
-		evidence.failures.push(format!("post-classification cleanup {error}"));
-	}
-	match authority_boolean(&scenario.admin_url, restored_sql).await {
-		Ok(true) => {},
-		Ok(false) => evidence
-			.failures
-			.push("post-classification cleanup expected restored, actual unrestored".into()),
-		Err(error) =>
-			evidence.failures.push(format!("post-classification cleanup predicate {error}")),
-	}
-}
-
-async fn evaluate_authority_scenario(scenario: &AuthorityScenario) -> Vec<String> {
-	let mut evidence = collect_pre_mutation_authority_evidence(scenario).await;
-	collect_post_mutation_authority_evidence(scenario, &mut evidence).await;
-	run_authority_classification_phase(scenario, &mut evidence).await;
-	run_authority_restoration_phase(scenario, &mut evidence).await;
-	evidence.failures
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires the isolated PostgreSQL 18 authority classification harness"]
-async fn postgres_authority_classification_matrix() -> std::process::ExitCode {
-	let scenarios = authority_scenarios();
-	let unsafe_count = scenarios
-		.iter()
-		.filter(|scenario| scenario.expected == AuthorityClassification::UnsafeDatabaseAuthority)
-		.count();
-	let incompatible_count = scenarios
-		.iter()
-		.filter(|scenario| scenario.expected == AuthorityClassification::DatabaseIncompatible)
-		.count();
-	let unsafe_store_count = scenarios
-		.iter()
-		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::UnsafeAuthority)
-		.count();
-	let incompatible_store_count = scenarios
-		.iter()
-		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Incompatible)
-		.count();
-	let migration_store_count = scenarios
-		.iter()
-		.filter(|scenario| scenario.expected_store_error == AuthorityStoreError::Migration)
-		.count();
-	let identities =
-		scenarios.iter().map(|scenario| scenario.case_id.as_str()).collect::<HashSet<_>>();
-
-	assert_eq!(unsafe_count, 28, "unsafe authority scenario count");
-	assert_eq!(incompatible_count, 6, "incompatible authority scenario count");
-	assert_eq!(unsafe_store_count, 28, "StoreError::UnsafeAuthority scenario count");
-	assert_eq!(incompatible_store_count, 5, "StoreError::Incompatible scenario count");
-	assert_eq!(migration_store_count, 1, "StoreError::Migration scenario count");
-	assert_eq!(identities.len(), scenarios.len(), "authority scenario identities are unique");
-	assert!(
-		scenarios.iter().any(|scenario| {
-			scenario.case_id == "missing-ledger-select"
-				&& scenario.expected_store_error == AuthorityStoreError::Incompatible
-				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
-		}),
-		"missing-ledger-select is exclusively incompatible"
-	);
-	assert!(
-		scenarios.iter().any(|scenario| {
-			scenario.case_id == "ledger-tamper"
-				&& scenario.expected_store_error == AuthorityStoreError::Migration
-				&& scenario.expected == AuthorityClassification::DatabaseIncompatible
-		}),
-		"ledger-tamper is migration failure projected as incompatible"
-	);
-
-	#[cfg(feature = "test-support")]
-	if !focused_authority_checkpoint_gate(
-		scenarios.first().expect("authority scenario inventory is nonempty"),
-	)
-	.await
-	{
-		return std::process::ExitCode::FAILURE;
-	}
-
-	let mut failures = Vec::new();
-	for scenario in &scenarios {
-		for failure in evaluate_authority_scenario(scenario).await {
-			failures.push(format!("{}: {failure}", scenario.case_id));
-		}
-	}
-
-	assert!(
-		failures.is_empty(),
-		"PostgreSQL authority classification matrix failures:\n{}",
-		failures.join("\n")
-	);
-	std::process::ExitCode::SUCCESS
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires an isolated PostgreSQL 18 configured-authority database"]
 async fn postgres_manifest_readiness_fixture() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	store.close();
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires a fresh isolated PostgreSQL 18 V8 migration database"]
-#[cfg(feature = "test-support")]
-async fn postgres_v8_empty_boundary_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-
-	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
-
-	let (client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let before = quota_v7_identity(&client).await?;
-
-	PostgresStore::migrate(migration, expected_peer_uid()).await?;
-
-	assert_eq!(quota_v7_identity(&client).await?, before);
-
-	let row = client
-		.query_one(
-			"SELECT (SELECT count(*)=0 FROM decodex.quota_windows), \
-			 (SELECT count(*)=0 FROM decodex.quota_exclusions), \
-			 (SELECT data_type='USER-DEFINED' AND udt_name='quota_window_class' \
-			  FROM information_schema.columns WHERE table_schema='decodex' \
-			  AND table_name='quota_windows' AND column_name='window_class'), \
-				 (SELECT count(*)=32 FROM public.refinery_schema_history)",
-			&[],
-		)
-		.await?;
-
-	for index in 0..4 {
-		assert!(row.get::<_, bool>(index), "V8 empty-state assertion {index}");
-	}
-
-	drop(client);
-
-	connection_task.await??;
-
-	Ok(())
-}
-
-#[cfg(feature = "test-support")]
-async fn quota_v7_identity(
-	client: &Client,
-) -> Result<(u32, u32, u32, Option<String>), tokio_postgres::Error> {
-	let row = client
-		.query_one(
-			"SELECT 'decodex.quota_windows'::regclass::oid, \
-			 'decodex.quota_windows_observation_idx'::regclass::oid, \
-			 (SELECT oid FROM pg_constraint WHERE conrelid='decodex.quota_windows'::regclass \
-			  AND contype='f' AND confrelid='decodex.accounts'::regclass), \
-			 (SELECT relacl::text FROM pg_class WHERE oid='decodex.quota_windows'::regclass)",
-			&[],
-		)
-		.await?;
-
-	Ok((row.get(0), row.get(1), row.get(2), row.get(3)))
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires a fresh isolated PostgreSQL 18 V8 rejection database"]
-#[cfg(feature = "test-support")]
-async fn postgres_v8_rejects_classified_prior_state() -> Result<(), Box<dyn std::error::Error>> {
-	let variant = env::var("DECODEX_V8_PRIOR_STATE")?;
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-
-	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
-
-	let (client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-
-	insert_v7_prior_state(&client, &variant).await?;
-
-	let error = PostgresStore::migrate(migration, expected_peer_uid())
-		.await
-		.expect_err("classified V7 state must reject V8 atomically");
-	let state = client
-		.query_one(
-			"SELECT (SELECT count(*)=7 FROM public.refinery_schema_history), \
-			 to_regclass('decodex.quota_exclusions') IS NULL, \
-			 (SELECT data_type='text' FROM information_schema.columns \
-			  WHERE table_schema='decodex' AND table_name='quota_windows' \
-			  AND column_name='window_class')",
-			&[],
-		)
-		.await?;
-
-	assert!(format!("{error:?}").contains("V8 requires empty pre-release quota state"));
-
-	for index in 0..3 {
-		assert!(state.get::<_, bool>(index), "variant {variant}, field {index}");
-	}
-
-	drop(client);
-
-	connection_task.await??;
-
-	Ok(())
-}
-
-#[cfg(feature = "test-support")]
-async fn insert_v7_prior_state(
-	client: &Client,
-	variant: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let statement = match variant {
-		"quota_row" =>
-			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
-			 ('10000000-0000-0000-0000-000000000091','V7 quota fixture'); \
-			 INSERT INTO decodex.quota_windows \
-			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
-			 ('10000000-0000-0000-0000-000000000091','five_hour',18000, \
-			  '2026-07-16T10:00:00Z',1)",
-		"receipt_operation" =>
-			"INSERT INTO decodex.command_receipts \
-			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
-			 ('v7-operation',repeat('a',64),'mutate_quota_window',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_scope" =>
-			"INSERT INTO decodex.command_receipts \
-			 (idempotency_key,request_hash,scope_id,claim_token,claim_expires_at) VALUES \
-			 ('v7-scope',repeat('b',64),'quota_windows',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes')",
-		"receipt_completed" =>
-			"INSERT INTO decodex.command_receipts \
-			 (idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES \
-			 ('v7-completed',repeat('c',64),'mutate_quota_window',gen_random_uuid(), \
-			  clock_timestamp()+interval '4 minutes'); \
-			 UPDATE decodex.command_receipts SET receipt_state='completed',response='{}', \
-			 response_bytes=convert_to('{}','UTF8'),completion_claim_token=claim_token, \
-			 completed_at=clock_timestamp(),claim_token=NULL,claim_expires_at=NULL \
-			 WHERE idempotency_key='v7-completed'",
-		"activity_aggregate" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('quota_window','v7',1,'observed','v7-activity-aggregate','{}')",
-		"activity_event" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'quota_window_updated','v7-activity-event','{}')",
-		"activity_payload_window" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-payload', \
-			  '{\"nested\":true,\"window_class\":\"five_hour\"}')",
-		"activity_payload_kind" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-kind','{\"kind\":\"quota_exclusion\"}')",
-		"activity_payload_seconds" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-seconds','{\"duration_seconds\":18000}')",
-		"activity_payload_minutes" =>
-			"INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('account','v7',1,'observed','v7-activity-minutes','{\"duration_minutes\":300}')",
-		"outbox_aggregate" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-aggregate','quota_window','v7',1,'{}')",
-		"outbox_envelope" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope','account','v7',1, \
-			  '{\"payload\":{\"duration_minutes\":300}}')",
-		"outbox_envelope_aggregate" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope-aggregate','account','v7',1, \
-			  '{\"aggregate_kind\":\"quota_window\"}')",
-		"outbox_envelope_event" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope-event','account','v7',1, \
-			  '{\"event_kind\":\"quota_window_excluded\"}')",
-		"outbox_envelope_kind" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope-kind','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_window\"}}')",
-		"outbox_envelope_window" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope-window','account','v7',1, \
-			  '{\"payload\":{\"window_class\":\"five_hour\"}}')",
-		"outbox_envelope_seconds" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-envelope-seconds','account','v7',1, \
-			  '{\"payload\":{\"duration_seconds\":18000}}')",
-		"outbox_link" =>
-			"WITH event AS (INSERT INTO decodex.activity \
-			 (aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES \
-			 ('quota_window','v7-link',1,'observed','v7-link','{}') RETURNING sequence) \
-			 INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) \
-			 SELECT 'v7-outbox-link','account','v7-link',1, \
-			 jsonb_build_object('activity_sequence',sequence) FROM event",
-		"outbox_orphan" =>
-			"INSERT INTO decodex.outbox \
-			 (effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES \
-			 ('v7-outbox-orphan','account','v7',1, \
-			  '{\"payload\":{\"kind\":\"quota_exclusion\"},\"activity_sequence\":9223372036854775807}')",
-		_ => return Err(format!("unknown V8 prior-state fixture {variant}").into()),
-	};
-
-	client.batch_execute(statement).await?;
-
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires a fresh isolated PostgreSQL 18 V8 lock-fencing database"]
-#[cfg(feature = "test-support")]
-async fn postgres_v8_fences_concurrent_prior_writer() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-
-	PostgresStore::migrate_fixture_through_v7(migration.clone(), expected_peer_uid()).await?;
-
-	let (mut client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let transaction = client.transaction().await?;
-
-	transaction
-		.batch_execute(
-			"INSERT INTO decodex.accounts (account_id,display_label) VALUES \
-			 ('10000000-0000-0000-0000-000000000092','V7 concurrent fixture'); \
-			 INSERT INTO decodex.quota_windows \
-			 (account_id,window_class,duration_seconds,observed_at,confidence) VALUES \
-			 ('10000000-0000-0000-0000-000000000092','seven_day',604800, \
-			  '2026-07-16T10:00:00Z',1)",
-		)
-		.await?;
-
-	let migration_task =
-		tokio::spawn(async move { PostgresStore::migrate(migration, expected_peer_uid()).await });
-
-	time::sleep(Duration::from_millis(200)).await;
-
-	assert!(!migration_task.is_finished(), "V8 must wait behind the prior writer");
-
-	transaction.commit().await?;
-
-	let error = migration_task.await?.expect_err("committed prior quota state rejects V8");
-
-	assert!(format!("{error:?}").contains("V8 requires empty pre-release quota state"));
-
-	drop(client);
-
-	connection_task.await??;
-
 	Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires the isolated PostgreSQL 18 harness"]
 async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.clone().connect(NoTls).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (client, connection) = schema_owner.clone().connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let (runtime_client, runtime_connection) = runtime.connect(NoTls).await?;
 	let runtime_connection_task = tokio::spawn(runtime_connection);
 
 	assert_eq!(store.availability(), Availability::Available);
 
-	assert_bootstrap_and_history(&client).await?;
+	assert_latest_schema_baseline(&client).await?;
 	assert_runtime_is_least_privilege(&runtime_client).await?;
 	seed_account_read_fixture(&store, &client).await?;
-	assert_project_agent_authority(&store, &client, &migration, &runtime).await?;
-	assert_policy_authority(&store, &client, &migration, &runtime).await?;
-	assert_program_objective_authority(&store, &client, &migration, &runtime).await?;
+	assert_project_agent_authority(&store, &client, &runtime).await?;
+	assert_policy_authority(&store, &client, &runtime).await?;
+	assert_program_objective_authority(&store, &client, &schema_owner, &runtime).await?;
 	assert_receipt_first_saga(&store, &client).await?;
 	assert_concurrent_shard_capacity(&store, &client).await?;
 
@@ -2520,19 +1245,16 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 	assert_lease_contention_and_reclaim(&store).await?;
 
 	let routing =
-		routing_decision::assert_routing_decision_contract(&store, &client, &migration, &runtime)
-			.await?;
-	continuation::assert_continuation_contract(&store, &client, &migration, &runtime, &routing)
+		routing_decision::assert_routing_decision_contract(&store, &client, &runtime).await?;
+	continuation::assert_continuation_contract(&store, &client, &runtime, &routing).await?;
+	waiting_wake::assert_waiting_wake_contract(&store, &client, &schema_owner, &runtime, &routing)
 		.await?;
-	waiting_wake::assert_waiting_wake_contract(&store, &client, &migration, &runtime, &routing)
-		.await?;
-	assert_outbox_concurrency_retry_and_restart(&store, &client, &migration, &runtime).await?;
+	assert_outbox_concurrency_retry_and_restart(&store, &client, &runtime).await?;
 
 	assert_eq!(store.availability(), Availability::Unavailable { reason: CLOSED });
 
 	assert_closed_pool_behavior(&store).await?;
 	assert_primary_indexes_are_plan_eligible(&client).await?;
-	assert_incompatible_history_fails_closed(&client, &migration, &runtime).await?;
 	drop(client);
 	drop(runtime_client);
 
@@ -2547,9 +1269,9 @@ async fn postgres_store_contract() -> Result<(), Box<dyn std::error::Error>> {
 #[ignore = "requires the isolated PostgreSQL 18 missing-extension harness"]
 async fn postgres_store_missing_pgcrypto_is_incompatible() -> Result<(), Box<dyn std::error::Error>>
 {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let live = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let live = PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 
 	client.batch_execute("DROP EXTENSION pgcrypto CASCADE").await?;
@@ -2578,9 +1300,9 @@ async fn postgres_store_missing_pgcrypto_is_incompatible() -> Result<(), Box<dyn
 #[ignore = "requires the isolated PostgreSQL 18 restart harness"]
 async fn postgres_blob_session_restart_contract() -> Result<(), Box<dyn std::error::Error>> {
 	let sync = PathBuf::from(env::var("DECODEX_TEST_BLOB_RESTART_SYNC")?);
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let blob_store = isolated_blob_store()?;
 	let conversation_id = ConversationId::new("4b000000-0000-4000-8000-000000000001")?;
 
@@ -2613,7 +1335,7 @@ async fn postgres_blob_session_restart_contract() -> Result<(), Box<dyn std::err
 
 	wait_for_path(&sync.join("published")).await?;
 
-	let (observer, observer_connection) = migration.clone().connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.clone().connect(NoTls).await?;
 	let observer_task = tokio::spawn(observer_connection);
 	let pending = observer
 		.query_one(
@@ -2647,12 +1369,12 @@ async fn postgres_blob_session_restart_contract() -> Result<(), Box<dyn std::err
 	assert!(worker.await?.is_err(), "the pre-restart BlobSession cannot complete transaction B");
 
 	let retry_store =
-		PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let completed = retry_store.create_artifact(&blob_store, &command, &create).await?;
 
 	assert_eq!(completed.artifact_id, artifact_id);
 
-	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.connect(NoTls).await?;
 	let observer_task = tokio::spawn(observer_connection);
 	let receipt = observer
 		.query_one(
@@ -3981,11 +2703,10 @@ async fn assert_runtime_is_least_privilege(
 	assert!(!owned);
 
 	for statement in [
-		"CREATE TABLE decodex.runtime_must_not_migrate (id bigint)",
+		"CREATE TABLE decodex.runtime_must_not_create (id bigint)",
 		"ALTER TABLE decodex.outbox ADD COLUMN runtime_must_not_own bigint",
 		"TRUNCATE decodex.outbox",
 		"SET session_replication_role = replica",
-		"UPDATE public.refinery_schema_history SET name = name WHERE version = 1",
 		"SELECT pg_catalog.setval('decodex.activity_sequence_seq', 1, false)",
 		"INSERT INTO decodex.history_cursors \
 		 (conversation_id,snapshot_high_water,page_size,last_position,history_item_id) VALUES \
@@ -4019,14 +2740,15 @@ async fn assert_runtime_is_least_privilege(
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 restore harness"]
 async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 
 	assert_eq!(store.availability(), Availability::Available);
 
-	assert_bootstrap_and_history(&client).await?;
+	assert_latest_schema_baseline(&client).await?;
 
 	assert!(store.account(&AccountId::new(ACCOUNT_ID)?).await?.is_some());
 	routing_decision::assert_restored_routing_contract(&client).await?;
@@ -4180,9 +2902,9 @@ async fn assert_restored_program_objective_authority(
 #[ignore = "requires the isolated PostgreSQL 18 populated restore harness"]
 async fn postgres_store_rejects_schema_scoped_default_acl_restore()
 -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 
-	match PostgresStore::connect(migration, runtime, expected_peer_uid()).await {
+	match PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await {
 		Err(StoreError::UnsafeAuthority(_)) => Ok(()),
 		Err(error) => panic!("unexpected schema-scoped default-ACL restore error: {error:?}"),
 		Ok(_) => panic!("schema-scoped default-ACL restore was accepted"),
@@ -4193,9 +2915,9 @@ async fn postgres_store_rejects_schema_scoped_default_acl_restore()
 #[ignore = "requires the isolated PostgreSQL 18 authority harness"]
 async fn postgres_store_rejects_implicit_uuid_to_text_cast()
 -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 
-	match PostgresStore::connect(migration, runtime, expected_peer_uid()).await {
+	match PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await {
 		Err(StoreError::UnsafeAuthority(_)) => Ok(()),
 		Err(error) => panic!("unexpected implicit UUID-to-text cast error: {error:?}"),
 		Ok(_) => panic!("implicit UUID-to-text cast authority was accepted"),
@@ -4205,8 +2927,8 @@ async fn postgres_store_rejects_implicit_uuid_to_text_cast()
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "requires the isolated PostgreSQL 18 Turkish ICU collation harness"]
 async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST_COLLATION")?;
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST_COLLATION")?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let locale = client
 		.query_one(
@@ -4226,7 +2948,8 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::
 			.is_some_and(|language| language.eq_ignore_ascii_case("tr"))
 	);
 
-	let store = PostgresStore::connect(migration, runtime, expected_peer_uid()).await?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 
 	for (index, response) in [
 		serde_json::json!({"AUTHORIZATION": "forbidden"}),
@@ -4268,89 +2991,36 @@ async fn postgres_store_turkish_collation_contract() -> Result<(), Box<dyn std::
 	Ok(())
 }
 
-async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
+async fn assert_latest_schema_baseline(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
 	let version: i32 = client
 		.query_one("SELECT current_setting('server_version_num')::integer / 10000", &[])
 		.await?
 		.get(0);
 	let checksums: String =
 		client.query_one("SELECT current_setting('data_checksums')", &[]).await?.get(0);
-	let rows = client
-		.query(
-			"SELECT version, name, checksum \
-			 FROM public.refinery_schema_history ORDER BY version",
-			&[],
-		)
-		.await?;
-	let history: Vec<(i32, String, String)> =
-		rows.into_iter().map(|row| (row.get(0), row.get(1), row.get(2))).collect();
 
 	assert_eq!(version, 18);
 	assert_eq!(checksums, "on");
-	let expected_history = [
-		"persistence_foundation",
-		"claim_indexes",
-		"conversation_history",
-		"account_readiness",
-		"project_agent_authority",
-		"project_policy_authority",
-		"program_objective_authority",
-		"quota_exclusions",
-		"exact_role_profiles",
-		"runtime_session_snapshots",
-		"work_item_authority",
-		"managed_run_safety",
-		"managed_repository_authority",
-		"routing_authority",
-		"causal_codex_experiments",
-		"atomic_routing_decisions",
-		"continuation_authority",
-		"waiting_usage_wakes",
-		"waiting_usage_wake_time_authority",
-		"constraint_restore_canonicalization",
-		"runtime_session_event_reference_authority",
-		"retained_title_experiment_bridge",
-		"process_generation_authority",
-		"provider_attempt_authority",
-		"execution_route_enum_expansion",
-		"execution_coordinator_cutover",
-		"mac_account_lifecycle",
-		"account_profile_observations",
-		"account_profile_array_zip",
-		"current_codex_account_capability",
-		"official_codex_release_capability",
-		"codex_0146_alpha_9_2_capability",
-	];
-	assert_eq!(history.len(), expected_history.len());
-	for (index, ((version, name, checksum), expected_name)) in
-		history.iter().zip(expected_history).enumerate()
-	{
-		assert_eq!(*version, i32::try_from(index + 1)?);
-		assert_eq!(name, expected_name);
-		assert!(!checksum.is_empty());
-	}
 
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (_, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 
-	PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+	PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 
 	let mut tcp = Config::new();
 
 	tcp.host("127.0.0.1");
 
 	assert!(matches!(
-		PostgresStore::connect(tcp.clone(), tcp, expected_peer_uid()).await,
+		PostgresStore::connect_runtime_fixture(tcp, expected_peer_uid()).await,
 		Err(StoreError::Incompatible(reason)) if reason.contains("Unix socket")
 	));
 
-	let mut missing_migration = migration;
 	let mut missing_runtime = runtime;
 
-	missing_migration.dbname("decodex_xy1267_missing");
 	missing_runtime.dbname("decodex_xy1267_missing");
 
 	assert!(matches!(
-		PostgresStore::connect(missing_migration, missing_runtime, expected_peer_uid()).await,
+		PostgresStore::connect_runtime_fixture(missing_runtime, expected_peer_uid()).await,
 		Err(StoreError::Pool(_))
 	));
 
@@ -4360,7 +3030,6 @@ async fn assert_bootstrap_and_history(client: &Client) -> Result<(), Box<dyn std
 async fn assert_project_agent_authority(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let advisor_ids =
@@ -4464,7 +3133,7 @@ async fn assert_project_agent_authority(
 		.expect_err("global Advisor uniqueness is durable");
 
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 
 	assert_eq!(restarted.project(paused.project.id()).await?, Some(paused));
 	assert_eq!(restarted.advisor().await?, store.advisor().await?);
@@ -4475,7 +3144,6 @@ async fn assert_project_agent_authority(
 async fn assert_policy_authority(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let primary = project_request(
@@ -4585,7 +3253,7 @@ async fn assert_policy_authority(
 	assert_policy_database_guards(store, client, &project_id, &policy_id, &lead_id).await?;
 
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 
 	assert_eq!(restarted.policy_revision(winner_revision.id()).await?, Some(winner_revision));
 
@@ -4595,7 +3263,7 @@ async fn assert_policy_authority(
 async fn assert_program_objective_authority(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
+	schema_owner: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let authority = store
@@ -4648,7 +3316,7 @@ async fn assert_program_objective_authority(
 	assert_program_objective_creation_races(
 		store,
 		client,
-		migration,
+		schema_owner,
 		&project_id,
 		&lead_id,
 		accepted_policy.id(),
@@ -4695,16 +3363,8 @@ async fn assert_program_objective_authority(
 	);
 
 	assert_program_context_compilation_is_pure(client, &updated.program, &program_id).await?;
-	assert_program_transition_replay(
-		store,
-		client,
-		migration,
-		runtime,
-		&project_id,
-		&program_id,
-		&lead_id,
-	)
-	.await?;
+	assert_program_transition_replay(store, client, runtime, &project_id, &program_id, &lead_id)
+		.await?;
 	assert_hostile_program_objective_sql(client, &project_id, &lead_id, &policy_id).await?;
 	assert_objective_lifecycle(store, client, &project_id, &lead_id, &program_id).await?;
 
@@ -4714,7 +3374,7 @@ async fn assert_program_objective_authority(
 async fn assert_program_objective_creation_races(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
+	schema_owner: &Config,
 	project_id: &ProjectId,
 	lead_id: &AgentId,
 	policy_revision_id: &PolicyRevisionId,
@@ -4724,7 +3384,12 @@ async fn assert_program_objective_creation_races(
 	assert_objective_create_race(store, client, project_id, lead_id, program_id).await?;
 	assert_objective_evidence_race(store, client, project_id, lead_id, program_id).await?;
 	assert_cross_objective_evidence_identity_race(
-		store, client, migration, project_id, lead_id, program_id,
+		store,
+		client,
+		schema_owner,
+		project_id,
+		lead_id,
+		program_id,
 	)
 	.await?;
 
@@ -5161,7 +3826,7 @@ async fn assert_objective_evidence_race(
 async fn assert_cross_objective_evidence_identity_race(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
+	schema_owner: &Config,
 	project_id: &ProjectId,
 	lead_id: &AgentId,
 	program_id: &ProgramId,
@@ -5221,7 +3886,7 @@ async fn assert_cross_objective_evidence_identity_race(
 		),
 	];
 
-	let (mut blocker, blocker_connection) = migration.clone().connect(NoTls).await?;
+	let (mut blocker, blocker_connection) = schema_owner.clone().connect(NoTls).await?;
 	let blocker_task = task::spawn(blocker_connection);
 	let blocker_transaction = blocker.transaction().await?;
 
@@ -5493,7 +4158,6 @@ async fn assert_program_context_compilation_is_pure(
 async fn assert_program_transition_replay(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 	project_id: &ProjectId,
 	program_id: &ProgramId,
@@ -5561,7 +4225,7 @@ async fn assert_program_transition_replay(
 	assert_eq!(pending, 0);
 
 	let reopened =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 
 	assert_eq!(reopened.program(program_id).await?, store.program(program_id).await?);
 	assert!(matches!(
@@ -9531,7 +8195,6 @@ async fn assert_closed_pool_behavior(
 async fn assert_outbox_concurrency_retry_and_restart(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	seed_outbox_fixtures(client).await?;
@@ -9570,7 +8233,7 @@ async fn assert_outbox_concurrency_retry_and_restart(
 		)
 		.await?;
 
-	assert_outbox_retry_and_restart(store, client, migration, runtime).await
+	assert_outbox_retry_and_restart(store, client, runtime).await
 }
 
 async fn seed_outbox_fixtures(client: &Client) -> Result<(), Box<dyn std::error::Error>> {
@@ -9593,7 +8256,6 @@ async fn seed_outbox_fixtures(client: &Client) -> Result<(), Box<dyn std::error:
 async fn assert_outbox_retry_and_restart(
 	store: &PostgresStore,
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	let retry = store.claim_outbox(WORKER_A, 1, Duration::from_secs(1)).await?.remove(0);
@@ -9646,19 +8308,18 @@ async fn assert_outbox_retry_and_restart(
 	store.begin_outbox_effect(ambiguous.id, WORKER_A, &ambiguous.claim_token).await?;
 	store.close();
 
-	assert_restart_reconciliation(client, migration, runtime, &ambiguous).await
+	assert_restart_reconciliation(client, runtime, &ambiguous).await
 }
 
 async fn assert_restart_reconciliation(
 	client: &Client,
-	migration: &Config,
 	runtime: &Config,
 	ambiguous: &OutboxClaim,
 ) -> Result<(), Box<dyn std::error::Error>> {
 	time::sleep(Duration::from_millis(60)).await;
 
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let recovered = restarted.claim_outbox(WORKER_A, 1, Duration::from_secs(1)).await?.remove(0);
 
 	assert_eq!(recovered.id, ambiguous.id);
@@ -9998,37 +8659,6 @@ async fn assert_effect_absent_dead_letter(
 		.get(0);
 
 	assert_eq!(state, "dead_letter");
-
-	Ok(())
-}
-
-async fn assert_incompatible_history_fails_closed(
-	client: &Client,
-	migration: &Config,
-	runtime: &Config,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let live =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
-
-	client
-		.execute(
-			"UPDATE public.refinery_schema_history SET name = name || '_tampered' \
-			 WHERE version = 1",
-			&[],
-		)
-		.await?;
-
-	assert!(matches!(live.revalidate().await, Err(StoreError::Incompatible(_))));
-
-	client
-		.execute(
-			"UPDATE public.refinery_schema_history SET name = \
-			 regexp_replace(name, '_tampered$', '') WHERE version = 1",
-			&[],
-		)
-		.await?;
-	live.revalidate().await?;
-	live.close();
 
 	Ok(())
 }

@@ -532,6 +532,8 @@ fn map_command_error(error: &CommandError) -> Failure {
 		CommandError::IdempotencyConflict
 		| CommandError::IdempotencyCapacityExceeded { .. }
 		| CommandError::ApplicationUnavailable { .. }
+		| CommandError::QuickTaskUnavailable { .. }
+		| CommandError::QuickTaskRecoveryRequired { .. }
 		| CommandError::AcceptanceUnknown => Failure::ServiceUnavailable,
 	}
 }

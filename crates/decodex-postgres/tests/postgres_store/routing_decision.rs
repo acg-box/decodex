@@ -76,7 +76,6 @@ struct RoutingContractSetup {
 pub(super) async fn assert_routing_decision_contract(
 	store: &PostgresStore,
 	owner: &Client,
-	migration: &Config,
 	runtime: &Config,
 ) -> Result<RoutingFixture, Box<dyn std::error::Error>> {
 	let setup = prepare_routing_contract(store, owner).await?;
@@ -93,7 +92,7 @@ pub(super) async fn assert_routing_decision_contract(
 	assert_concurrent_routing_replay(store, owner, &setup.selected_request).await?;
 
 	let restarted =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert_eq!(
 		restarted.route_account("v16-selected", &setup.selected_request).await?,
 		RoutingCommandOutcome::Success(selected.clone()),
@@ -143,8 +142,8 @@ async fn prepare_routing_contract(
 	let selected_consumer = ExecutionConsumer::ConversationTurn {
 		conversation_id: selected_run.conversation_id.clone(),
 		conversation_revision: 1,
-		source_runtime_session_id: selected_run.runtime_session_id.clone(),
-		source_runtime_session_revision: 1,
+		source_runtime_session_id: Some(selected_run.runtime_session_id.clone()),
+		source_runtime_session_revision: Some(1),
 		turn_id: selected_run.turn_id.clone(),
 	};
 	let selected_request = create_policy_snapshot_and_request(
@@ -280,7 +279,10 @@ async fn assert_rolled_back_routing_decision(
 				&SELECTED_POLICY_ID,
 				&conversation_id.as_str(),
 				conversation_revision,
-				&source_runtime_session_id.as_str(),
+				&source_runtime_session_id
+					.as_ref()
+					.expect("selected source runtime session is present")
+					.as_str(),
 				source_runtime_session_revision,
 				&turn_id.as_str(),
 			],

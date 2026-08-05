@@ -15,7 +15,6 @@ test-support = []
 deadpool-postgres = "=0.14.1"
 decodex-core      = { workspace = true }
 libc              = { workspace = true }
-refinery          = { version = "=0.9.2", default-features = false, features = ["tokio-postgres"] }
 serde_json        = { workspace = true }
 sha2              = { workspace = true }
 time              = { workspace = true, features = ["parsing"] }

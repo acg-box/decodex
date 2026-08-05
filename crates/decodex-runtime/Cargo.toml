@@ -9,13 +9,7 @@ repository.workspace = true
 version.workspace    = true
 
 [features]
-account-binding-fixtures  = ["decodex-postgres/test-support"]
-retained-title-experiment = []
-
-[[bin]]
-name              = "decodex-retained-title-experiment"
-path              = "src/bin/decodex-retained-title-experiment.rs"
-required-features = ["retained-title-experiment"]
+account-binding-fixtures = ["decodex-postgres/test-support"]
 
 [dependencies]
 base64            = { workspace = true }

@@ -434,13 +434,21 @@ installation do not read an old database, account pool, mapping, helper, environ
 projection, migration manifest, or migration receipt. The one latest schema creates an
 empty Account Registry on an empty PostgreSQL target.
 
-One reviewed operator-only local action may preserve credential-negative account,
-routing, and binding metadata while replacing or directly transforming the disposable
-development database. It stops the daemon and captures, for every retained account, only
-Account UUID, enabled state, account revision, provider binding, credential
-version/fingerprint, and host-store binding. It also captures the routing revision, mode,
-fixed target, and complete account order. It bootstraps the latest schema when needed and
-restores or rebinds that exact tuple to the unchanged `HostCredentialStore` records.
+The hidden `decodexd restore-local-account-authority` operator command is the only local
+restore path. It has required `--root` and `--schema-owner-user` options and the optional
+existing `--schema-owner-credential-env-var` option. It reads one document from stdin. It
+does not accept token data, SQL, an old database path, or a reusable manifest directory.
+
+The stdin document has schema identifier
+`decodex/local-account-authority-restore/1`. It has only `schema`, `accounts`, and
+`routing` at the top level. Each account has `account_id`, `enabled`, `revision`,
+`provider_kind`, `provider_account_id`, `credential_store_schema_version`,
+`credential_version`, `credential_fingerprint`, and
+`credential_writer_operation_id`. Routing has `revision`, `mode`,
+`fixed_account_id`, and `account_order`. All objects reject unknown, omitted, and
+duplicate fields. The command accepts at most 512 accounts and 512 KiB. It derives the
+stable one-word display alias from the provider binding. The account array is in the
+same complete order as `account_order`.
 
 For `fixed` mode, the fixed target is non-null and belongs to the retained account set
 and complete order. For `balanced` mode, it is null. The order is one duplicate-free
@@ -456,10 +464,23 @@ binding, credential version, fingerprint, and host-store binding, and returns on
 typed credential-negative agreement result. The operator action and result never expose,
 serialize, copy, log, persist, rotate, delete, or return token bytes.
 
-The action must prove exact Account Registry and `HostCredentialStore` agreement for
-every retained account before the daemon starts. It is not a public account or migration
-API, generic attestation framework, metadata sidecar, product importer, source parser,
-bridge, bulk operation, backup/rollback mechanism, state machine, receipt/finalizer,
+The command binds and retains the existing same-UID local transport namespace. It refuses
+an active daemon or a namespace that it cannot prove and retain. Before any PostgreSQL
+account mutation, it calls `HostCredentialStore::read_exact` for every account. In the
+schema-owner transaction, it accepts only the exact latest schema with zero accounts,
+the initial empty routing authority, one initial active process execution epoch, empty
+ordinary tables, and untouched identity sequences. It writes only current account rows,
+account order, and routing control. It calls `HostCredentialStore::read_exact` again and
+revalidates the retained local namespace before readback and commit. Any refusal rolls
+back the transaction.
+
+The command does not restore profiles, quotas, operations, conversations, sessions,
+process generations, attempts, usage, or history. The stdin bytes and accepted tuple are
+transient and are not persisted as a document, receipt, or log. Output is one bounded
+JSON object with only `classification` and `account_count`. It does not include database,
+Keychain, input, provider, account, or credential text. The command is not a public
+account API, generic attestation framework, metadata sidecar, product importer, source
+parser, bridge, bulk operation, backup/rollback mechanism, receipt/finalizer,
 compatibility branch, or fallback.
 
 Ordinary enrollment and explicit credential import remain account lifecycle operations

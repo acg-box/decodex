@@ -110,7 +110,9 @@ pub enum DoctorComponent {
 	/// Typed operator configuration.
 	Configuration,
 	/// PostgreSQL product-state authority.
-	Database,
+	ProductStore,
+	/// Ordinary Quick Task execution composition.
+	QuickTask,
 	/// Versioned WebSocket application protocol.
 	Protocol,
 	/// Negotiated protocol compatibility window and current report schema.
@@ -121,8 +123,8 @@ pub enum DoctorComponent {
 	SharedCodexHome,
 	/// One exact typed app-server capability.
 	AppServerCapability(AppServerCapability),
-	/// Aggregate server-host repository readiness. Paths and names are intentionally absent.
-	ServerRepositories,
+	/// Optional managed-repository effect composition.
+	ManagedRepository,
 	/// Content-addressed blob-store integrity.
 	BlobIntegrity,
 	/// Host credential-vault boundary.
@@ -132,9 +134,10 @@ pub enum DoctorComponent {
 }
 impl DoctorComponent {
 	/// Complete closed component set in stable diagnostic order.
-	pub const ALL: [Self; 18] = [
+	pub const ALL: [Self; 19] = [
 		Self::Configuration,
-		Self::Database,
+		Self::ProductStore,
+		Self::QuickTask,
 		Self::Protocol,
 		Self::ProtocolVersion,
 		Self::ServerIdentity,
@@ -147,7 +150,7 @@ impl DoctorComponent {
 		Self::AppServerCapability(AppServerCapability::PaginatedHistory),
 		Self::AppServerCapability(AppServerCapability::NativeCollaboration),
 		Self::AppServerCapability(AppServerCapability::ThreadSearch),
-		Self::ServerRepositories,
+		Self::ManagedRepository,
 		Self::BlobIntegrity,
 		Self::CredentialVault,
 		Self::PluginReadiness,
@@ -221,7 +224,7 @@ pub enum DoctorIssue {
 	DatabaseMalformedConfig,
 	/// The explicit PostgreSQL endpoint could not be reached.
 	DatabaseUnreachable,
-	/// PostgreSQL verification or migration found an incompatible state.
+	/// PostgreSQL exact-current verification found an incompatible state.
 	DatabaseIncompatible,
 	/// The steady-state PostgreSQL identity retains forbidden authority.
 	UnsafeDatabaseAuthority,
@@ -298,9 +301,9 @@ mod tests {
 			ServerId::new("018f0f9e-7b6e-4a31-8f4c-1d2e3f405162").unwrap(),
 			CURRENT_VERSION,
 			vec![
-				DoctorCheck::new(DoctorComponent::Database, DoctorStatus::Ready),
+				DoctorCheck::new(DoctorComponent::ProductStore, DoctorStatus::Ready),
 				DoctorCheck::new(
-					DoctorComponent::ServerRepositories,
+					DoctorComponent::ManagedRepository,
 					DoctorStatus::Unavailable(DoctorIssue::UnsafeHostPath),
 				),
 			],

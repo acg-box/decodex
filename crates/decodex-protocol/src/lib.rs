@@ -4,6 +4,7 @@
 mod client;
 mod doctor;
 mod local_transport;
+mod quick_task;
 mod retained_session;
 mod wire;
 
@@ -19,6 +20,13 @@ pub use self::{
 	local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
 		LocalTransportStream,
+	},
+	quick_task::{
+		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError,
+		QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskListSize,
+		QuickTaskReadError, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState,
+		QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskUnavailableReason,
+		QuickTaskWorkingDirectory,
 	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,

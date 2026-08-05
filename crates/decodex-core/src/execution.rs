@@ -6,7 +6,8 @@
 
 use crate::{ConversationId, ManagedExecutionId, ManagedRunId, RuntimeSessionId, TurnId};
 
-/// One exact consumer intent that V16 and V17 preserve without changing its domain owner.
+/// One exact consumer intent that Routing Decision and Continuation Plan preserve without changing
+/// its domain owner.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum ExecutionConsumer {
 	/// One ordinary Conversation turn. Quick Task uses this variant.
@@ -15,11 +16,11 @@ pub enum ExecutionConsumer {
 		conversation_id: ConversationId,
 		/// Positive Conversation revision accepted before routing.
 		conversation_revision: i64,
-		/// Exact existing RuntimeSession that supplies continuity and sticky affinity.
-		source_runtime_session_id: RuntimeSessionId,
-		/// Positive source RuntimeSession revision.
-		source_runtime_session_revision: i64,
-		/// Reserved ordinary Turn identity. Only the Conversation owner can materialize it.
+		/// Existing RuntimeSession for continuation routing, absent for an initial Turn intent.
+		source_runtime_session_id: Option<RuntimeSessionId>,
+		/// Positive source RuntimeSession revision, jointly absent for an initial Turn intent.
+		source_runtime_session_revision: Option<i64>,
+		/// Prospective ordinary Turn identity. Only the Conversation owner can materialize it.
 		turn_id: TurnId,
 	},
 	/// One execution-scoped intent within a ManagedRun.

@@ -17,7 +17,7 @@ const CONFIG_VERSION: u32 = 1;
 const MAX_NAME_BYTES: usize = 64;
 const MAX_HOST_BYTES: usize = 253;
 const MAX_DATABASE_FIELD_BYTES: usize = 128;
-const MAX_SERVER_HOST_PATH_BYTES: usize = 4 * 1_024;
+const MAX_HOST_PATH_BYTES: usize = 4 * 1_024;
 
 /// Fully validated Decodex vNext configuration.
 #[derive(Clone)]
@@ -25,7 +25,6 @@ pub struct DecodexConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, ServerProfile>,
-	server_host: ServerHostConfig,
 	postgres: PostgresConnectionConfig,
 	cache: CacheConfig,
 }
@@ -54,7 +53,6 @@ impl DecodexConfig {
 			version: raw.version,
 			active_profile: raw.active_profile,
 			profiles,
-			server_host: raw.server_host.validate()?,
 			postgres: raw.postgres.validate()?,
 			cache: raw.cache.validate()?,
 		})
@@ -88,11 +86,6 @@ impl DecodexConfig {
 		&self.profiles
 	}
 
-	/// Server-host-only repository configuration.
-	pub fn server_host(&self) -> &ServerHostConfig {
-		&self.server_host
-	}
-
 	/// Explicit PostgreSQL connection configuration as inert data.
 	pub fn postgres(&self) -> &PostgresConnectionConfig {
 		&self.postgres
@@ -111,7 +104,6 @@ impl Debug for DecodexConfig {
 			.field("version", &self.version)
 			.field("active_profile", &self.active_profile)
 			.field("profile_count", &self.profiles.len())
-			.field("server_host", &self.server_host)
 			.field("postgres", &self.postgres)
 			.field("cache", &self.cache)
 			.finish()
@@ -120,9 +112,8 @@ impl Debug for DecodexConfig {
 
 /// Client-visible projection of the global configuration.
 ///
-/// Server-host repositories, PostgreSQL data, and cache policy are consumed as
-/// opaque TOML values. A client therefore validates only profile authority and
-/// cannot reinterpret a server path on its own host.
+/// PostgreSQL data and cache policy are consumed as opaque TOML values. A client
+/// validates only profile authority and cannot reinterpret server-owned state.
 #[derive(Clone)]
 pub struct DecodexClientConfig {
 	version: u32,
@@ -323,73 +314,6 @@ impl Debug for RemoteProfile {
 	}
 }
 
-/// Validated server-host repository name.
-#[derive(Clone, Eq, Ord, PartialEq, PartialOrd)]
-pub struct RepositoryName(String);
-impl RepositoryName {
-	/// Repository key text.
-	pub fn as_str(&self) -> &str {
-		&self.0
-	}
-}
-
-impl Debug for RepositoryName {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("RepositoryName(<redacted>)")
-	}
-}
-
-impl<'de> Deserialize<'de> for RepositoryName {
-	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-	where
-		D: Deserializer<'de>,
-	{
-		let value = String::deserialize(deserializer)?;
-
-		validate_name(&value).map_err(serde::de::Error::custom)?;
-
-		Ok(Self(value))
-	}
-}
-
-/// Absolute repository path meaningful only on the server host.
-#[derive(Clone, Eq, PartialEq)]
-pub struct ServerRepositoryPath(PathBuf);
-impl ServerRepositoryPath {
-	/// Access the path explicitly as a server-host path.
-	pub fn as_server_path(&self) -> &Path {
-		&self.0
-	}
-}
-
-impl Debug for ServerRepositoryPath {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.write_str("ServerRepositoryPath(<server-host-only>)")
-	}
-}
-
-/// Repository roots owned by the server host, structurally separate from client
-/// profiles so a remote client cannot interpret them as local paths.
-#[derive(Clone, Eq, PartialEq)]
-pub struct ServerHostConfig {
-	repositories: BTreeMap<RepositoryName, ServerRepositoryPath>,
-}
-impl ServerHostConfig {
-	/// Server-host repository roots.
-	pub fn repositories(&self) -> &BTreeMap<RepositoryName, ServerRepositoryPath> {
-		&self.repositories
-	}
-}
-
-impl Debug for ServerHostConfig {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("ServerHostConfig")
-			.field("repository_count", &self.repositories.len())
-			.finish()
-	}
-}
-
 /// Explicit PostgreSQL Unix-socket connection configuration as data only.
 #[derive(Clone, Eq, PartialEq)]
 pub struct PostgresConnectionConfig {
@@ -397,7 +321,6 @@ pub struct PostgresConnectionConfig {
 	expected_peer_uid: u32,
 	port: u16,
 	database: String,
-	migration: PostgresIdentityConfig,
 	runtime: PostgresIdentityConfig,
 }
 impl PostgresConnectionConfig {
@@ -421,11 +344,6 @@ impl PostgresConnectionConfig {
 		&self.database
 	}
 
-	/// Migration/DDL identity used only during forward migration and verification.
-	pub const fn migration(&self) -> &PostgresIdentityConfig {
-		&self.migration
-	}
-
 	/// Least-privilege identity retained by the live adapter.
 	pub const fn runtime(&self) -> &PostgresIdentityConfig {
 		&self.runtime
@@ -440,7 +358,6 @@ impl Debug for PostgresConnectionConfig {
 			.field("expected_peer_uid", &self.expected_peer_uid)
 			.field("port", &self.port)
 			.field("database", &"<redacted>")
-			.field("migration", &self.migration)
 			.field("runtime", &self.runtime)
 			.finish()
 	}
@@ -453,6 +370,11 @@ pub struct PostgresIdentityConfig {
 	credential_env_var: Option<String>,
 }
 impl PostgresIdentityConfig {
+	/// Build one validated identity from explicit operator or configuration input.
+	pub fn new(user: String, credential_env_var: Option<String>) -> Result<Self, ConfigError> {
+		RawPostgresIdentityConfig { user, credential_env_var }.validate()
+	}
+
 	/// Explicit database role name.
 	pub fn user(&self) -> &str {
 		&self.user
@@ -492,7 +414,6 @@ struct RawConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	server_host: RawServerHostConfig,
 	postgres: RawPostgresConnectionConfig,
 	cache: RawCacheConfig,
 }
@@ -503,43 +424,10 @@ struct RawClientConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	#[serde(rename = "server_host")]
-	_server_host: IgnoredAny,
 	#[serde(rename = "postgres")]
 	_postgres: IgnoredAny,
 	#[serde(rename = "cache")]
 	_cache: IgnoredAny,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawServerHostConfig {
-	repositories: BTreeMap<RepositoryName, RawServerRepository>,
-}
-impl RawServerHostConfig {
-	fn validate(self) -> Result<ServerHostConfig, ConfigError> {
-		let repositories = self
-			.repositories
-			.into_iter()
-			.map(|(name, repository)| {
-				let host_path = normalize_absolute_host_path(repository.host_path)?;
-
-				Ok((name, ServerRepositoryPath(host_path)))
-			})
-			.collect::<Result<BTreeMap<_, _>, ConfigError>>()?;
-
-		if repositories.is_empty() {
-			return Err(ConfigError::InvalidServerHostPath);
-		}
-
-		Ok(ServerHostConfig { repositories })
-	}
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawServerRepository {
-	host_path: PathBuf,
 }
 
 #[derive(Deserialize)]
@@ -550,7 +438,6 @@ struct RawPostgresConnectionConfig {
 	#[serde(default = "RawPostgresConnectionConfig::default_port")]
 	port: u16,
 	database: String,
-	migration: RawPostgresIdentityConfig,
 	runtime: RawPostgresIdentityConfig,
 }
 impl RawPostgresConnectionConfig {
@@ -559,29 +446,19 @@ impl RawPostgresConnectionConfig {
 	}
 
 	fn validate(self) -> Result<PostgresConnectionConfig, ConfigError> {
-		let socket_directory = normalize_absolute_host_path(self.socket_directory)
-			.map_err(|_| ConfigError::InvalidPostgresHostPath)?;
+		let socket_directory = normalize_absolute_postgres_path(self.socket_directory)?;
 
 		if self.port == 0 || !valid_database_field(&self.database) {
 			return Err(ConfigError::InvalidPostgres);
 		}
 
-		let migration = self.migration.validate()?;
 		let runtime = self.runtime.validate()?;
-
-		if migration.user == runtime.user
-			|| migration.credential_env_var.is_some()
-				&& migration.credential_env_var == runtime.credential_env_var
-		{
-			return Err(ConfigError::InvalidPostgres);
-		}
 
 		Ok(PostgresConnectionConfig {
 			socket_directory,
 			expected_peer_uid: self.expected_peer_uid,
 			port: self.port,
 			database: self.database,
-			migration,
 			runtime,
 		})
 	}
@@ -624,8 +501,7 @@ impl RawCacheConfig {
 	}
 }
 
-/// Explicit local or remote server selection. Neither variant carries a repository
-/// path; repository paths are server-host-only data owned by `ServerHostConfig`.
+/// Explicit local or remote server selection.
 #[derive(Clone)]
 pub enum ServerProfile {
 	/// Owner-only client and server live under one effective UID on the same host.
@@ -662,8 +538,6 @@ pub enum ConfigError {
 	InvalidProfile,
 	/// A server identity was not canonical UUID version 4 text.
 	InvalidServerIdentity,
-	/// A server-host repository path was unsafe or relative.
-	InvalidServerHostPath,
 	/// The PostgreSQL Unix-socket directory was unsafe or relative.
 	InvalidPostgresHostPath,
 	/// PostgreSQL connection data was missing, malformed, or unbounded.
@@ -685,7 +559,6 @@ impl Display for ConfigError {
 			Self::MissingProfile => formatter.write_str("selected profile is not declared"),
 			Self::InvalidProfile => formatter.write_str("server profile is invalid"),
 			Self::InvalidServerIdentity => formatter.write_str("server identity is invalid"),
-			Self::InvalidServerHostPath => formatter.write_str("server-host path is invalid"),
 			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
 			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
 			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
@@ -766,22 +639,22 @@ fn validate_name(value: &str) -> Result<(), ConfigError> {
 	Ok(())
 }
 
-fn normalize_absolute_host_path(path: PathBuf) -> Result<PathBuf, ConfigError> {
+fn normalize_absolute_postgres_path(path: PathBuf) -> Result<PathBuf, ConfigError> {
 	let encoded = path.as_os_str().as_encoded_bytes();
 
-	if encoded.len() > MAX_SERVER_HOST_PATH_BYTES
+	if encoded.len() > MAX_HOST_PATH_BYTES
 		|| encoded.contains(&0)
 		|| !path.is_absolute()
 		|| path.parent().is_none()
 	{
-		return Err(ConfigError::InvalidServerHostPath);
+		return Err(ConfigError::InvalidPostgresHostPath);
 	}
 
 	let mut normalized = PathBuf::new();
 
 	for component in path.components() {
 		match component {
-			Component::ParentDir => return Err(ConfigError::InvalidServerHostPath),
+			Component::ParentDir => return Err(ConfigError::InvalidPostgresHostPath),
 			Component::CurDir => {},
 			Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
 				normalized.push(component.as_os_str());
@@ -790,7 +663,7 @@ fn normalize_absolute_host_path(path: PathBuf) -> Result<PathBuf, ConfigError> {
 	}
 
 	if normalized.parent().is_none() {
-		return Err(ConfigError::InvalidServerHostPath);
+		return Err(ConfigError::InvalidPostgresHostPath);
 	}
 
 	Ok(normalized)

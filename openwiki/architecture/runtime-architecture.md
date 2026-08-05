@@ -1,8 +1,8 @@
 # Runtime Architecture
 
-Status: accepted vNext target architecture. Current source still contains superseded
-numbered schema and startup-provisioning machinery. This document defines the replacement
-target; it does not claim that current source has completed the reset.
+Status: accepted and implemented vNext architecture. Current source has the sole
+unversioned latest schema and explicit hidden operator commands. Canonical validation and
+landing remain pending.
 
 There are no external or deployed Decodex users. Local PostgreSQL state is disposable
 development state. The architecture supports an empty-target latest-schema bootstrap,
@@ -92,9 +92,9 @@ The implementation-owned command must:
 The operation fails closed on a nonempty target. The schema it creates makes a second
 invocation fail. There is no idempotent "ensure schema" mode.
 
-The exact command name is implementation-owned and is not yet specified. Installer code
-may invoke the accepted operator bootstrap for a newly created local target, but it must
-not move schema creation into normal daemon startup.
+The hidden `decodexd bootstrap-latest-schema` command owns this boundary. Installer code
+may invoke it for a newly created local target, but it must not move schema creation into
+normal daemon startup.
 
 ### Runtime startup
 
@@ -516,14 +516,13 @@ does not attest external bytes. Clients never receive local blob paths.
 
 ## Local development replacement
 
-One reviewed operator-only action can stop the daemon and capture the complete
-credential-negative reset tuple. For every retained account, the tuple contains Account
-UUID, enabled state, account revision, provider binding, credential version/fingerprint,
-and host-store binding. It also contains routing revision, mode, fixed target, and the
-complete account order. The action can replace or directly transform the disposable
-local database, run empty-target bootstrap when needed, restore or rebind that exact
-tuple against unchanged host-vault credentials, prove exact readback, and restart the
-daemon.
+The hidden `decodexd restore-local-account-authority` command is a one-time,
+credential-negative stopped-daemon operation. Its bounded transient input contains each
+retained Account UUID, enabled state, account revision, provider binding, credential
+version/fingerprint, and host-store binding. It also contains routing revision, mode,
+fixed target, and the complete account order. After empty-target bootstrap, the command
+restores only that tuple against unchanged host-vault credentials and proves exact
+readback.
 
 `fixed` mode requires one non-null target in the retained account set and order;
 `balanced` mode requires a null target. The order is a complete duplicate-free
