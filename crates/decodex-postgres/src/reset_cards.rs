@@ -777,7 +777,7 @@ impl PostgresStore {
 	}
 }
 
-#[cfg(feature = "test-support")]
+#[cfg(all(test, feature = "test-support"))]
 pub(crate) async fn prepare_account_bound_reset_card_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {

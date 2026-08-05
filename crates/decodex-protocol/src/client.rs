@@ -34,7 +34,7 @@ use decodex_core::{
 };
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
-// Doctor revalidates the complete PostgreSQL authority and migration contract.
+// Doctor revalidates the complete PostgreSQL latest-schema and runtime-authority contract.
 // Keep its bounded read budget separate from ordinary cached UI queries.
 const DOCTOR_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(35);
@@ -1506,9 +1506,8 @@ mod tests {
 			CURRENT_VERSION,
 			DoctorComponent::ALL
 				.into_iter()
-				.zip(DoctorIssue::ALL)
-				.map(|(component, issue)| {
-					DoctorCheck::new(component, DoctorStatus::Unavailable(issue))
+				.map(|component| {
+					DoctorCheck::new(component, DoctorStatus::Unavailable(DoctorIssue::NotProbed))
 				})
 				.collect(),
 		)
@@ -1665,16 +1664,10 @@ host = "server.example.test"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[server_host.repositories.fixture]
-host_path = "../must-not-be-client-validated"
-
 [postgres]
 socket_directory = "../must-not-be-client-validated"
 expected_peer_uid = 70
 database = "ignored"
-
-[postgres.migration]
-user = "ignored_migration"
 
 [postgres.runtime]
 user = "ignored_runtime"

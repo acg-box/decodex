@@ -15,11 +15,11 @@ use std::{
 use tempfile::TempDir;
 
 use decodex_protocol::{
-	CURRENT_VERSION, Channel, ClientProfile, ConversationHistoryPage, ConversationHistoryResult,
-	CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision, EventEnvelope, EventPayload,
-	HistoryCursorToken, QueryEnvelope, QueryPayload, QueryResultEnvelope, QueryResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint,
-	SnapshotEnvelope, SnapshotItem, WireText,
+	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
+	ConversationHistoryResult, CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision,
+	EventEnvelope, EventPayload, HistoryCursorToken, QueryEnvelope, QueryPayload,
+	QueryResultEnvelope, QueryResultPayload, RetainedSessionConfig, RetainedSessionFailure,
+	ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 use crate::{
@@ -207,6 +207,10 @@ impl FakeSession {
 	}
 
 	async fn next(&mut self) -> Result<Delivery<FakeConfirmation>, RetainedSessionFailure> {
+		if matches!(self.actions.front(), Some(SessionAction::AwaitCancellation)) {
+			self.cancellation.cancelled().await;
+		}
+
 		let query = if matches!(
 			self.actions.front(),
 			Some(
@@ -257,11 +261,7 @@ impl FakeSession {
 
 				Err(failure)
 			},
-			SessionAction::AwaitCancellation => {
-				self.cancellation.cancelled().await;
-
-				Err(RetainedSessionFailure::Cancelled)
-			},
+			SessionAction::AwaitCancellation => Err(RetainedSessionFailure::Cancelled),
 			SessionAction::Cancel => {
 				self.cancellation.cancel();
 
@@ -476,6 +476,34 @@ impl LifecycleIo for FakeIo {
 		self.session.as_mut().expect("fake session is connected").next().await
 	}
 
+	async fn send_command(
+		&mut self,
+		command: CommandEnvelope,
+	) -> Result<(), RetainedSessionFailure> {
+		assert_eq!(command.version, CURRENT_VERSION);
+		if let Some(control) = self.pending_send.as_ref() {
+			let attempt = control.attempts.fetch_add(1, Ordering::SeqCst) + 1;
+
+			if attempt == 1 {
+				control.entered.add_permits(1);
+				control
+					.release
+					.acquire()
+					.await
+					.expect("pending-send release remains open")
+					.forget();
+			}
+		}
+		if let Some(failure) = self.send_failures.pop_front() {
+			return Err(failure);
+		}
+		if let Some(control) = self.pending_send.as_ref() {
+			control.completed.fetch_add(1, Ordering::SeqCst);
+		}
+
+		Ok(())
+	}
+
 	async fn send_query(&mut self, query: QueryEnvelope) -> Result<(), RetainedSessionFailure> {
 		assert_eq!(query.version, CURRENT_VERSION);
 		if let Some(control) = self.pending_send.as_ref() {
@@ -541,6 +569,36 @@ fn connected(actions: Vec<SessionAction>, checkpoint: Option<SessionCheckpoint>)
 		server_id: SERVER,
 		instance_id: INSTANCE,
 	}
+}
+
+#[tokio::test]
+async fn fake_session_await_cancellation_survives_a_dropped_receive() {
+	let temporary = TempDir::new().expect("temporary directory is available");
+	let root = cache_parent(&temporary);
+	let config = retained_config(&root, SERVER);
+	let cancellation = LifecycleCancellation::new();
+	let mut io = FakeIo::new(root, vec![connected(vec![SessionAction::AwaitCancellation], None)]);
+
+	io.connect(&config, None, &cancellation).await.expect("fake session connects");
+	let mut receive = Box::pin(io.next());
+	let poll = std::future::poll_fn(|context| {
+		std::task::Poll::Ready(std::future::Future::poll(receive.as_mut(), context))
+	})
+	.await;
+
+	assert!(matches!(poll, std::task::Poll::Pending));
+	drop(receive);
+	assert!(matches!(
+		io.session.as_ref().expect("fake session remains connected").actions.front(),
+		Some(SessionAction::AwaitCancellation)
+	));
+
+	cancellation.cancel();
+	assert!(matches!(io.next().await, Err(RetainedSessionFailure::Cancelled)));
+	assert!(
+		io.session.as_ref().expect("fake session remains connected").actions.is_empty(),
+		"the cancellation sentinel is consumed exactly once"
+	);
 }
 
 fn server(value: &str) -> ServerId {
@@ -670,7 +728,6 @@ fn retained_config(cache_parent: &Path, server_id: &str) -> RetainedSessionConfi
 	let config = format!(
 		r#"version = 1
 active_profile = "local"
-server_host = {{}}
 postgres = {{}}
 cache = {{}}
 

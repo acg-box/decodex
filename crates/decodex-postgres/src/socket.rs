@@ -632,15 +632,11 @@ mod tests {
 
 		drop(listener);
 
-		let mut migration = Config::new();
-
-		migration.host_path(&base).port(PORT).dbname("fixture").user("fixture_migration");
-
 		let mut runtime = Config::new();
 
 		runtime.host_path(&base).port(PORT).dbname("fixture").user("fixture_runtime");
 
-		let error = match PostgresStore::connect(migration, runtime, effective_uid()).await {
+		let error = match PostgresStore::connect_runtime(runtime, effective_uid()).await {
 			Err(error) => error,
 			Ok(_) => panic!("stale socket cannot bootstrap a PostgreSQL store"),
 		};

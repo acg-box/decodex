@@ -1,10 +1,9 @@
 //! Runtime-owned PostgreSQL authorization and bounded process-capacity composition.
 
 #[cfg(target_os = "macos")] mod macos_attested_spawn;
-mod process;
+pub(crate) mod process;
 mod protocol;
 mod reset_card;
-#[cfg(feature = "retained-title-experiment")] pub mod retained_title_experiment;
 
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
 pub(crate) use reset_card::{
@@ -277,11 +276,11 @@ impl Display for ManualAccountLaunchError {
 }
 impl Error for ManualAccountLaunchError {}
 
-struct RunnerCapacity {
+pub(crate) struct RunnerCapacity {
 	inner: Arc<CapacityInner>,
 }
 impl RunnerCapacity {
-	fn daemon() -> Result<Arc<Self>, CapacityExhausted> {
+	pub(crate) fn daemon() -> Result<Arc<Self>, CapacityExhausted> {
 		static DAEMON: OnceLock<Mutex<Weak<RunnerCapacity>>> = OnceLock::new();
 
 		let mut daemon = DAEMON
@@ -312,7 +311,7 @@ impl RunnerCapacity {
 		})
 	}
 
-	fn reserve(
+	pub(crate) fn reserve(
 		&self,
 		account_id: AccountId,
 		account_revision: i64,
@@ -366,7 +365,7 @@ struct CapacityInner {
 	quarantine: Arc<process::ProcessQuarantine>,
 }
 
-struct RunnerPermit {
+pub(crate) struct RunnerPermit {
 	capacity: Arc<CapacityInner>,
 	account_id: AccountId,
 	account_revision: i64,
@@ -404,7 +403,7 @@ impl Drop for RunnerPermit {
 }
 
 #[derive(Debug)]
-struct CapacityExhausted;
+pub(crate) struct CapacityExhausted;
 
 #[cfg(test)]
 mod tests {
@@ -478,10 +477,8 @@ mod tests {
 #[cfg(all(unix, feature = "account-binding-fixtures"))]
 mod postgres_composition_tests {
 	use std::{
-		env, fs,
-		os::unix::fs::MetadataExt as _,
+		fs,
 		path::Path,
-		str::FromStr as _,
 		sync::{
 			Arc, Mutex,
 			mpsc::{self, Receiver, SyncSender},
@@ -491,7 +488,7 @@ mod postgres_composition_tests {
 
 	use tempfile::TempDir;
 	use tokio::{runtime::Handle, task, time};
-	use tokio_postgres::{Client, Config, NoTls};
+	use tokio_postgres::Client;
 
 	use crate::account_launch::{
 		ManualAccountLaunchError, ManualAccountLaunchRequest, ManualAccountLauncher,
@@ -876,43 +873,5 @@ mod postgres_composition_tests {
 			)))
 		));
 		assert_eq!(launcher.active_capacity(), 0);
-	}
-
-	#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-	#[ignore = "requires the isolated PostgreSQL 18 harness"]
-	async fn postgres_private_capacity_and_codex_composition_is_fail_closed() {
-		let migration = Config::from_str(
-			&env::var("DECODEX_TEST_MIGRATION_DATABASE_URL").expect("migration fixture URL"),
-		)
-		.unwrap();
-		let runtime = Config::from_str(
-			&env::var("DECODEX_TEST_RUNTIME_DATABASE_URL").expect("runtime fixture URL"),
-		)
-		.unwrap();
-		let socket = env::var("DECODEX_TEST_SOCKET_DIRECTORY").expect("fixture socket directory");
-		let expected_peer_uid = fs::metadata(socket).unwrap().uid();
-		let mut owner_config = migration.clone();
-		PostgresStore::pin_session_search_path_fixture(&mut owner_config);
-		let store =
-			PostgresStore::connect_fixture(migration, runtime, expected_peer_uid).await.unwrap();
-		let (mut owner, owner_connection) = owner_config.connect(NoTls).await.unwrap();
-		let owner_connection_task = tokio::spawn(owner_connection);
-		let launcher = ManualAccountLauncher::with_capacity(&store, 1);
-		let account_id = AccountId::new("10000000-0000-4000-8000-000000001273").unwrap();
-		let available =
-			assert_readiness_rejections_and_success(&mut owner, &store, &launcher, &account_id)
-				.await;
-		let available = assert_blocking_vault_releases_postgres(
-			&owner,
-			&store,
-			&launcher,
-			&account_id,
-			&available,
-		)
-		.await;
-
-		assert_capacity_and_mismatch(&launcher, &account_id, &available).await;
-		drop(owner);
-		owner_connection_task.await.unwrap().unwrap();
 	}
 }

@@ -15,14 +15,16 @@ use decodex_core::{
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
 	ExecutionConsumer, HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProjectId,
 	QuotaWindowClass, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
-	RoutingBlocker, RoutingDecisionKind, TurnRole, WorkItemEdgeKind, WorkItemId, WorkItemState,
+	RoutingBlocker, RoutingDecisionKind, RuntimeSessionState, TurnId, TurnRole, WorkItemEdgeKind,
+	WorkItemId, WorkItemState,
 };
 use decodex_postgres::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 	AccountCommandReceiptLease, AccountLifecycleRejection, BootstrapFailure, CommandIdentity,
-	ExecutionDecisionReadback, ExecutionQuotaExclusion, HistoryCursor, HistoryEntry, PostgresStore,
-	ResetCardFailureCode, ResetCardOperationStatus, RoutingControlOutcome, StoreError,
-	StoredWorkItem,
+	ExecutionDecisionReadback, ExecutionQuotaExclusion, HistoryCursor, HistoryEntry,
+	OrdinaryTaskConversationCursor, OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
+	PostgresStore, ResetCardFailureCode, ResetCardOperationStatus, RoutingControlOutcome,
+	StoreError, StoredWorkItem,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -32,19 +34,21 @@ use decodex_protocol::{
 	AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
 	AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
 	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
-	AccountUnsettledOperationDto, AccountsResult, Channel, CodexAuthProjectionResult,
+	AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, CodexAuthProjectionResult,
 	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
-	ConversationHistoryResult, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
-	DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
+	ConversationHistoryResult, CorrelationId, DoctorCheck, DoctorComponent, DoctorIssue,
+	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
 	ExecutionDecisionDto, ExecutionDecisionQueryError, ExecutionDecisionResult,
 	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
 	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
 	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
 	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
 	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
-	QueryPayload, QueryResultPayload, ResetCardDescriptorDto, ResetCardError,
-	ResetCardInventoryResult, ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome,
-	ResultPayload, Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard, WorkItemBoardLeadId,
+	QueryPayload, QueryResultPayload, QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult,
+	QuickTaskReadError, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState, QuickTaskSummary,
+	QuickTaskTurnOutcome, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
+	ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome, ResultPayload,
+	Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard, WorkItemBoardLeadId,
 	WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProgramId,
 	WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardTitle,
 	WorkItemBoardWorkItemId,
@@ -64,8 +68,11 @@ use crate::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
 		AccountService, CodexAuthProjectionInspection, stable_account_alias,
 	},
-	managed_repository_runtime::{
-		ManagedRepositoryReadiness, ManagedRepositoryRuntime, ManagedRepositoryStartupError,
+	managed_repository_runtime::ManagedRepositoryCapability,
+	quick_task::{
+		CreateQuickTask, QuickTaskCapability, QuickTaskLocalState, QuickTaskManualRecovery,
+		QuickTaskOutcome, QuickTaskProjection, QuickTaskReadback, QuickTaskRoutingAuthority,
+		QuickTaskRuntime, QuickTaskTerminalState, SubmitQuickTaskTurn,
 	},
 	work_item_board::WorkItemBoardQuery,
 };
@@ -75,6 +82,9 @@ use crate::{
 /// PostgreSQL-backed services can implement this async owner in XY-1267 without moving
 /// command execution into the transport.
 pub trait Application: Send + Sync + 'static {
+	/// Maximum application publications that the transport may defer behind one command result.
+	const EVENT_CAPACITY: usize = 64;
+
 	/// Synchronously close application work admission at the start of server shutdown.
 	fn begin_shutdown(&self) {}
 
@@ -94,7 +104,15 @@ pub trait Application: Send + Sync + 'static {
 		Vec::new()
 	}
 
-	/// Return a bounded small-state snapshot. Artifact bytes are not representable.
+	/// Report whether this application owns one lifetime-stable publication source.
+	fn has_publication_source(&self) -> bool {
+		false
+	}
+
+	/// Return a bounded, read-only small-state snapshot. Artifact bytes are not representable.
+	///
+	/// The future performs no mutation and is cancellation-safe before the transport commits the
+	/// returned snapshot to a session.
 	fn snapshot(&self) -> impl Future<Output = Vec<SnapshotItem>> + Send;
 
 	/// Execute one typed command under the application's revision policy.
@@ -103,13 +121,23 @@ pub trait Application: Send + Sync + 'static {
 		command: &'a CommandEnvelope,
 	) -> impl Future<Output = Result<ApplicationPublication, CommandError>> + Send + 'a;
 
-	/// Execute one typed read without mutation receipts or replay semantics.
+	/// Execute one Query capability under the explicit authority of its owning domain.
 	///
-	/// Each payload defines whether its value is freshly computed or daemon-observed.
+	/// Generic transport grants no Query effect authority, retry, receipt, replay, event, or
+	/// command promotion. Each payload defines whether its value is freshly computed or
+	/// daemon-observed, follows its explicit owning-domain authority, and must tolerate session
+	/// cancellation or response loss under that authority.
+	/// `GetConversationHistory` may leave its bounded authorized cursor residue.
+	/// `GetAccountProfile` and `GetResetCards` may leave authorized provider observations.
 	fn query<'a>(
 		&'a self,
 		query: &'a QueryEnvelope,
 	) -> impl Future<Output = QueryResultPayload> + Send + 'a;
+
+	/// Wait for one application-owned publication that completes after its initiating command.
+	fn next_publication(&self) -> impl Future<Output = Option<ApplicationEventPublication>> + Send {
+		future::ready(None)
+	}
 }
 
 /// A successful application execution ready for result and event publication.
@@ -127,6 +155,33 @@ pub struct ApplicationPublication {
 	pub event: EventPayload,
 }
 
+impl ApplicationPublication {
+	/// Whether this successful command also produces an asynchronous publication.
+	pub(crate) fn publishes_event(&self) -> bool {
+		!matches!(
+			&self.result,
+			ResultPayload::QuickTaskConversationAccepted { .. }
+				| ResultPayload::QuickTaskInterruptAccepted { .. }
+		)
+	}
+}
+
+/// One asynchronous application event ready for ordered WebSocket publication.
+pub struct ApplicationEventPublication {
+	/// Correlation identity retained from the initiating command.
+	pub correlation_id: decodex_protocol::CorrelationId,
+	/// Optional direct cause retained from the initiating command.
+	pub causation_id: Option<decodex_protocol::CausationId>,
+	/// Logical channel for this event.
+	pub channel: Channel,
+	/// Stable identity of the changed or appended entity.
+	pub entity_id: EntityId,
+	/// Positive entity revision after persistence.
+	pub entity_revision: EntityRevision,
+	/// Typed event payload.
+	pub event: EventPayload,
+}
+
 const ACCOUNT_COMMAND_RECEIPT_SCHEMA: &str = "decodex/account-command-result/1";
 
 #[derive(Deserialize, Serialize)]
@@ -137,7 +192,7 @@ enum StoredAccountCommandOutcome {
 		entity_id: EntityId,
 		entity_revision: EntityRevision,
 		result: ResultPayload,
-		event: EventPayload,
+		event: Box<EventPayload>,
 	},
 	Rejected {
 		schema: String,
@@ -147,13 +202,36 @@ enum StoredAccountCommandOutcome {
 
 enum ReservedAccountCommand {
 	Owned(AccountCommandReceiptLease),
-	Replayed(Result<ApplicationPublication, CommandError>),
+	Replayed(Box<Result<ApplicationPublication, CommandError>>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ProductStoreUnavailableReason {
+	Configuration,
+	Authentication,
+	Unreachable,
+	Incompatible,
+	UnsafeAuthority,
+	UnsafeHostPath,
+}
+
+impl ProductStoreUnavailableReason {
+	const fn description(self) -> &'static str {
+		match self {
+			Self::Configuration => "typed PostgreSQL configuration is unavailable",
+			Self::Authentication => "PostgreSQL authentication is unavailable",
+			Self::Unreachable => "configured PostgreSQL is unreachable",
+			Self::Incompatible => "configured PostgreSQL latest schema is incompatible",
+			Self::UnsafeAuthority => "configured PostgreSQL runtime authority is unsafe",
+			Self::UnsafeHostPath => "configured PostgreSQL path is unsafe",
+		}
+	}
 }
 
 #[derive(Clone)]
 pub(crate) enum ProductStore {
 	Available(PostgresStore),
-	Unavailable { reason: &'static str },
+	Unavailable(ProductStoreUnavailableReason),
 }
 impl ProductStore {
 	async fn database_status(&self, unavailable: DoctorStatus) -> DoctorStatus {
@@ -177,7 +255,7 @@ impl ProductState for ProductStore {
 	fn availability(&self) -> Availability {
 		match self {
 			Self::Available(store) => store.availability(),
-			Self::Unavailable { reason } => Availability::Unavailable { reason },
+			Self::Unavailable(reason) => Availability::Unavailable { reason: reason.description() },
 		}
 	}
 }
@@ -186,9 +264,7 @@ impl ProductState for ProductStore {
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
 	work_item_board: Option<WorkItemBoardQuery>,
-	_managed_repositories: Option<ManagedRepositoryRuntime>,
-	_managed_repository_readiness: ManagedRepositoryReadiness,
-	_managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+	_managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
 	_codex: CodexAdapter,
@@ -196,32 +272,30 @@ pub(crate) struct ServiceApplication {
 	accounts: Option<Arc<AccountService>>,
 	reset_cards: Option<ResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
+	quick_tasks: QuickTaskCapability,
 	doctor: DoctorReport,
 }
 impl ServiceApplication {
 	#[allow(clippy::too_many_arguments)] // Composition keeps each independently owned runtime capability explicit.
 	pub(crate) fn new(
 		store: ProductStore,
-		managed_repositories: Option<ManagedRepositoryRuntime>,
-		managed_repository_readiness: ManagedRepositoryReadiness,
-		managed_repository_startup_error: Option<Arc<ManagedRepositoryStartupError>>,
+		managed_repositories: ManagedRepositoryCapability,
 		process_generations: Option<ProcessGenerationControl>,
 		provider_attempts: Option<ProviderAttemptControl>,
 		codex: CodexAdapter,
 		blob_store: Option<BlobStore>,
+		quick_tasks: QuickTaskCapability,
 		doctor: DoctorReport,
 	) -> Self {
 		let work_item_board = match &store {
 			ProductStore::Available(store) => Some(WorkItemBoardQuery::new(store.clone())),
-			ProductStore::Unavailable { .. } => None,
+			ProductStore::Unavailable(_) => None,
 		};
 
 		Self {
 			store,
 			work_item_board,
 			_managed_repositories: managed_repositories,
-			_managed_repository_readiness: managed_repository_readiness,
-			_managed_repository_startup_error: managed_repository_startup_error,
 			process_generations,
 			provider_attempts,
 			_codex: codex,
@@ -229,6 +303,7 @@ impl ServiceApplication {
 			accounts: None,
 			reset_cards: None,
 			account_observations: None,
+			quick_tasks,
 			doctor,
 		}
 	}
@@ -273,7 +348,7 @@ impl ServiceApplication {
 	async fn refreshed_doctor(&self) -> DoctorReport {
 		let previous_database = self
 			.doctor
-			.check(DoctorComponent::Database)
+			.check(DoctorComponent::ProductStore)
 			.expect("the closed doctor report includes PostgreSQL")
 			.status;
 		let database = self.store.database_status(previous_database).await;
@@ -282,8 +357,8 @@ impl ServiceApplication {
 			.checks()
 			.iter()
 			.map(|check| {
-				if check.component == DoctorComponent::Database {
-					DoctorCheck::new(DoctorComponent::Database, database)
+				if check.component == DoctorComponent::ProductStore {
+					DoctorCheck::new(DoctorComponent::ProductStore, database)
 				} else {
 					*check
 				}
@@ -453,14 +528,15 @@ impl ServiceApplication {
 			.map_err(map_account_store_command_error)?
 		{
 			AccountCommandReceiptClaim::Owned(lease) => ReservedAccountCommand::Owned(lease),
-			AccountCommandReceiptClaim::Replayed(value) =>
-				ReservedAccountCommand::Replayed(decode_account_command_receipt(value).map_err(
-					|_| application_unavailable("account command receipt is incompatible"),
-				)?),
+			AccountCommandReceiptClaim::Replayed(value) => ReservedAccountCommand::Replayed(
+				Box::new(decode_account_command_receipt(value).map_err(|_| {
+					application_unavailable("account command receipt is incompatible")
+				})?),
+			),
 		};
 		let lease = match reserved {
 			ReservedAccountCommand::Owned(lease) => lease,
-			ReservedAccountCommand::Replayed(result) => return result,
+			ReservedAccountCommand::Replayed(result) => return *result,
 		};
 		self.execute_atomic_account_command(command, lease).await
 	}
@@ -937,16 +1013,340 @@ impl ServiceApplication {
 			},
 		}
 	}
+
+	async fn current_task_routing(&self) -> Result<QuickTaskRoutingAuthority, CommandError> {
+		let ProductStore::Available(store) = &self.store else {
+			return Err(application_unavailable("Task routing authority is unavailable"));
+		};
+		let authority = store
+			.read_current_task_routing_authority()
+			.await
+			.map_err(|_| application_unavailable("Task routing authority is unavailable"))?
+			.ok_or_else(|| application_unavailable("Task routing is not configured"))?;
+
+		Ok(QuickTaskRoutingAuthority {
+			routing_policy_id: authority.routing_policy_id,
+			routing_policy_revision: authority.routing_policy_revision,
+		})
+	}
+
+	async fn quick_task_row(
+		&self,
+		conversation_id: &ConversationId,
+	) -> Result<Option<OrdinaryTaskConversationReadback>, QuickTaskReadError> {
+		let ProductStore::Available(store) = &self.store else {
+			return Err(QuickTaskReadError::ProductStateUnavailable);
+		};
+		let mut rows = store
+			.read_ordinary_task_conversations(Some(conversation_id), None, 2)
+			.await
+			.map_err(|error| quick_task_read_error(&error))?;
+		if rows.len() > 1 {
+			return Err(QuickTaskReadError::IntegrityUnavailable);
+		}
+		Ok(rows.pop())
+	}
+
+	async fn quick_task_list(
+		&self,
+		after: Option<&QuickTaskListCursor>,
+		page_size: u16,
+	) -> QuickTaskListResult {
+		let ProductStore::Available(store) = &self.store else {
+			return QuickTaskListResult::Unavailable {
+				error: QuickTaskReadError::ProductStateUnavailable,
+			};
+		};
+		let after = match after
+			.map(|cursor| {
+				Ok(OrdinaryTaskConversationCursor {
+					updated_at_micros: cursor.updated_at_micros(),
+					conversation_id: ConversationId::new(cursor.conversation_id().as_str())
+						.map_err(|_| ())?,
+				})
+			})
+			.transpose()
+		{
+			Ok(after) => after,
+			Err(()) => {
+				return QuickTaskListResult::Unavailable {
+					error: QuickTaskReadError::InvalidRequest,
+				};
+			},
+		};
+		let requested = usize::from(page_size);
+		let Some(limit) = requested.checked_add(1) else {
+			return QuickTaskListResult::Unavailable { error: QuickTaskReadError::InvalidRequest };
+		};
+		let mut rows = match store
+			.read_ordinary_task_conversations(None, after.as_ref(), limit)
+			.await
+		{
+			Ok(rows) => rows,
+			Err(error) => {
+				return QuickTaskListResult::Unavailable { error: quick_task_read_error(&error) };
+			},
+		};
+		let has_more = rows.len() > requested;
+		if has_more {
+			rows.pop();
+		}
+		let next_cursor = if has_more {
+			rows.last().and_then(|row| {
+				QuickTaskListCursor::new(
+					row.updated_at_micros,
+					EntityId::new(row.conversation_id.as_str()).ok()?,
+				)
+				.ok()
+			})
+		} else {
+			None
+		};
+		if has_more && next_cursor.is_none() {
+			return QuickTaskListResult::Unavailable {
+				error: QuickTaskReadError::IntegrityUnavailable,
+			};
+		}
+		let conversations = rows
+			.into_iter()
+			.map(|row| {
+				let projection = self
+					.quick_tasks
+					.runtime()
+					.and_then(|runtime| runtime.projection(&row.conversation_id));
+				quick_task_summary_from_row(row, projection)
+			})
+			.collect::<Result<Vec<_>, _>>();
+		match conversations.and_then(|conversations| {
+			QuickTaskListPage::new(conversations, next_cursor).map_err(|_| ())
+		}) {
+			Ok(page) => QuickTaskListResult::Available(page),
+			Err(()) =>
+				QuickTaskListResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable },
+		}
+	}
+
+	async fn quick_task_get(&self, conversation_id: &EntityId) -> QuickTaskResult {
+		let Ok(conversation_id) = ConversationId::new(conversation_id.as_str()) else {
+			return QuickTaskResult::Unavailable { error: QuickTaskReadError::InvalidRequest };
+		};
+		let row = match self.quick_task_row(&conversation_id).await {
+			Ok(Some(row)) => row,
+			Ok(None) => return QuickTaskResult::NotFound,
+			Err(error) => return QuickTaskResult::Unavailable { error },
+		};
+		let projection =
+			self.quick_tasks.runtime().and_then(|runtime| runtime.projection(&conversation_id));
+		match quick_task_summary_from_row(row, projection) {
+			Ok(summary) => QuickTaskResult::Available(summary),
+			Err(()) =>
+				QuickTaskResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable },
+		}
+	}
+
+	async fn quick_task_command_row(
+		&self,
+		conversation_id: &ConversationId,
+		expected: Option<EntityRevision>,
+	) -> Result<OrdinaryTaskConversationReadback, CommandError> {
+		let row = self
+			.quick_task_row(conversation_id)
+			.await
+			.map_err(|_| application_unavailable("Quick Task readback is unavailable"))?
+			.ok_or_else(quick_task_conflict)?;
+		let actual = EntityRevision(
+			u64::try_from(row.conversation_revision).map_err(|_| quick_task_conflict())?,
+		);
+		let expected = expected.ok_or_else(quick_task_conflict)?;
+		if expected != actual {
+			return Err(CommandError::ExpectedRevisionMismatch { expected, actual });
+		}
+		Ok(row)
+	}
+
+	async fn execute_create_quick_task(
+		&self,
+		runtime: &QuickTaskRuntime,
+		command: &CommandEnvelope,
+	) -> Result<QuickTaskOutcome, CommandError> {
+		let CommandPayload::CreateQuickTask {
+			conversation_id,
+			turn_id,
+			message,
+			working_directory,
+		} = &command.payload
+		else {
+			return Err(quick_task_conflict());
+		};
+		if command.expected_revision.is_some() || message.as_str().trim().is_empty() {
+			return Err(quick_task_conflict());
+		}
+		let conversation_id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let routing = self.current_task_routing().await?;
+		Ok(runtime
+			.create(CreateQuickTask {
+				operation_key: command.idempotency_key.as_str().to_owned(),
+				correlation_id: command.correlation_id.as_str().to_owned(),
+				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
+				conversation_id,
+				turn_id,
+				message: message.as_str().to_owned(),
+				working_directory: working_directory.as_str().to_owned(),
+				routing,
+			})
+			.await)
+	}
+
+	async fn execute_retry_quick_task_routing(
+		&self,
+		runtime: &QuickTaskRuntime,
+		command: &CommandEnvelope,
+	) -> Result<QuickTaskOutcome, CommandError> {
+		let CommandPayload::RetryQuickTaskRouting {
+			conversation_id,
+			turn_id,
+			message,
+			working_directory,
+		} = &command.payload
+		else {
+			return Err(quick_task_conflict());
+		};
+		if message.as_str().trim().is_empty() {
+			return Err(quick_task_conflict());
+		}
+		let conversation_id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let row = self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+		if row.runtime_session_id.is_some() || row.pre_session_state.is_none() {
+			return Err(quick_task_conflict());
+		}
+		let routing = self.current_task_routing().await?;
+		Ok(runtime
+			.retry_routing(
+				CreateQuickTask {
+					operation_key: command.idempotency_key.as_str().to_owned(),
+					correlation_id: command.correlation_id.as_str().to_owned(),
+					causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
+					conversation_id,
+					turn_id,
+					message: message.as_str().to_owned(),
+					working_directory: working_directory.as_str().to_owned(),
+					routing,
+				},
+				row.conversation_revision,
+			)
+			.await)
+	}
+
+	async fn execute_submit_quick_task_turn(
+		&self,
+		runtime: &QuickTaskRuntime,
+		command: &CommandEnvelope,
+	) -> Result<QuickTaskOutcome, CommandError> {
+		let CommandPayload::SubmitQuickTaskTurn {
+			conversation_id,
+			turn_id,
+			message,
+			working_directory,
+		} = &command.payload
+		else {
+			return Err(quick_task_conflict());
+		};
+		if message.as_str().trim().is_empty() {
+			return Err(quick_task_conflict());
+		}
+		let conversation_id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
+		self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+		let routing = self.current_task_routing().await?;
+		Ok(runtime
+			.submit_turn(SubmitQuickTaskTurn {
+				operation_key: command.idempotency_key.as_str().to_owned(),
+				correlation_id: command.correlation_id.as_str().to_owned(),
+				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
+				conversation_id,
+				turn_id,
+				message: message.as_str().to_owned(),
+				working_directory: working_directory.as_str().to_owned(),
+				routing,
+			})
+			.await)
+	}
+
+	async fn execute_interrupt_quick_task(
+		&self,
+		runtime: &QuickTaskRuntime,
+		command: &CommandEnvelope,
+	) -> Result<QuickTaskOutcome, CommandError> {
+		let CommandPayload::InterruptQuickTask { conversation_id, turn_id } = &command.payload
+		else {
+			return Err(quick_task_conflict());
+		};
+		let conversation_id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let turn_id = TurnId::new(turn_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let row = self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
+		let Some(projection) = runtime.projection(&conversation_id) else {
+			return Err(CommandError::QuickTaskRecoveryRequired {
+				action: if row.active_turn_id.as_ref() == Some(&turn_id) {
+					QuickTaskRecoveryAction::ResolvePriorActiveTurn
+				} else {
+					QuickTaskRecoveryAction::StartNewConversation
+				},
+			});
+		};
+		if projection.readback.active_turn_id.as_ref() != Some(&turn_id) {
+			return Err(quick_task_conflict());
+		}
+		Ok(runtime.interrupt(&conversation_id))
+	}
+
+	async fn execute_quick_task(
+		&self,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
+		let runtime = match &self.quick_tasks {
+			QuickTaskCapability::Ready(runtime) => runtime,
+			QuickTaskCapability::Unavailable(reason) =>
+				return Err(CommandError::QuickTaskUnavailable { unavailable_reason: *reason }),
+		};
+		let outcome = match &command.payload {
+			CommandPayload::CreateQuickTask { .. } =>
+				self.execute_create_quick_task(runtime, command).await?,
+			CommandPayload::RetryQuickTaskRouting { .. } =>
+				self.execute_retry_quick_task_routing(runtime, command).await?,
+			CommandPayload::SubmitQuickTaskTurn { .. } =>
+				self.execute_submit_quick_task_turn(runtime, command).await?,
+			CommandPayload::InterruptQuickTask { .. } =>
+				self.execute_interrupt_quick_task(runtime, command).await?,
+			_ => return Err(quick_task_conflict()),
+		};
+		quick_task_command_publication(outcome)
+	}
 }
 
 impl Application for ServiceApplication {
+	fn has_publication_source(&self) -> bool {
+		self.quick_tasks.runtime().is_some()
+	}
+
 	fn begin_shutdown(&self) {
+		if let Some(runtime) = self.quick_tasks.runtime() {
+			runtime.begin_shutdown();
+		}
 		if let Some(runtime) = &self.reset_cards {
 			runtime.begin_shutdown();
 		}
 	}
 
 	async fn wait_for_shutdown(&self) {
+		if let Some(runtime) = self.quick_tasks.runtime() {
+			runtime.wait_for_shutdown().await;
+		}
 		if let Some(runtime) = &self.reset_cards {
 			runtime.wait_for_shutdown().await;
 		}
@@ -988,6 +1388,10 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::CreateQuickTask { .. }
+			| CommandPayload::RetryQuickTaskRouting { .. }
+			| CommandPayload::SubmitQuickTaskTurn { .. }
+			| CommandPayload::InterruptQuickTask { .. } => self.execute_quick_task(command).await,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
 			| CommandPayload::SetAccountEnabled { .. }
@@ -1068,6 +1472,11 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
+				self.quick_task_list(after.as_ref(), page_size.get()).await,
+			),
+			QueryPayload::GetQuickTask { conversation_id } =>
+				QueryResultPayload::QuickTask(self.quick_task_get(conversation_id).await),
 			QueryPayload::GetDoctorStatus =>
 				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
 			QueryPayload::GetExecutionDecision { decision_id } =>
@@ -1104,6 +1513,308 @@ impl Application for ServiceApplication {
 				}),
 		}
 	}
+
+	async fn next_publication(&self) -> Option<ApplicationEventPublication> {
+		let runtime = self.quick_tasks.runtime()?;
+		loop {
+			let outcome = runtime.next_event().await?;
+			if let Some(publication) = quick_task_event_publication(outcome) {
+				return Some(publication);
+			}
+		}
+	}
+}
+
+fn quick_task_read_error(error: &StoreError) -> QuickTaskReadError {
+	match error {
+		StoreError::InvalidInput(_) => QuickTaskReadError::InvalidRequest,
+		StoreError::Incompatible(_) | StoreError::CredentialRejected =>
+			QuickTaskReadError::IntegrityUnavailable,
+		_ => QuickTaskReadError::ProductStateUnavailable,
+	}
+}
+
+fn quick_task_summary_from_row(
+	row: OrdinaryTaskConversationReadback,
+	projection: Option<QuickTaskProjection>,
+) -> Result<QuickTaskSummary, ()> {
+	if let Some(projection) = projection {
+		let readback = &projection.readback;
+		if readback.conversation_id != row.conversation_id
+			|| readback.conversation_revision != Some(row.conversation_revision)
+			|| readback.runtime_session_id.as_ref() != row.runtime_session_id.as_ref()
+			|| readback.runtime_session_revision != row.runtime_session_revision
+		{
+			return Err(());
+		}
+		return quick_task_summary_from_readback(projection.readback, projection.recovery);
+	}
+	if let Some(pre_session_state) = row.pre_session_state {
+		let state = match pre_session_state {
+			OrdinaryTaskPreSessionState::RoutingPending => QuickTaskState::RoutingPending,
+			OrdinaryTaskPreSessionState::QuotaExhausted => QuickTaskState::QuotaExhausted,
+			OrdinaryTaskPreSessionState::WaitingReconciliation =>
+				QuickTaskState::WaitingReconciliation,
+			OrdinaryTaskPreSessionState::NoRoute => QuickTaskState::NoRoute,
+		};
+		return QuickTaskSummary::new(
+			EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+			EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
+			None,
+			None,
+			state,
+			None,
+			Some(QuickTaskRecoveryAction::RetryRouting),
+		)
+		.map_err(|_| ());
+	}
+	let runtime_session_id = row.runtime_session_id.ok_or(())?;
+	let runtime_session_revision = row.runtime_session_revision.ok_or(())?;
+	let runtime_session_state = row.runtime_session_state.ok_or(())?;
+
+	let (state, active_turn_id, recovery_action) = if row.has_unknown_provider_attempt {
+		(QuickTaskState::OutcomeUnknown, row.active_turn_id, None)
+	} else if row.has_active_provider_attempt {
+		(
+			QuickTaskState::ManualRecovery,
+			row.active_turn_id,
+			Some(QuickTaskRecoveryAction::ResolvePriorAttempt),
+		)
+	} else if row.active_turn_id.is_some() {
+		(
+			QuickTaskState::ManualRecovery,
+			row.active_turn_id,
+			Some(QuickTaskRecoveryAction::ResolvePriorActiveTurn),
+		)
+	} else {
+		match runtime_session_state {
+			RuntimeSessionState::Starting => (QuickTaskState::Establishing, None, None),
+			RuntimeSessionState::Active if row.has_acknowledged_turn =>
+				(QuickTaskState::Ready, None, None),
+			RuntimeSessionState::Active => (
+				QuickTaskState::ManualRecovery,
+				None,
+				Some(QuickTaskRecoveryAction::StartNewConversation),
+			),
+			RuntimeSessionState::Ended | RuntimeSessionState::Diverged => return Err(()),
+		}
+	};
+	QuickTaskSummary::new(
+		EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		EntityRevision(u64::try_from(row.conversation_revision).map_err(|_| ())?),
+		Some(EntityId::new(runtime_session_id.as_str().to_owned()).map_err(|_| ())?),
+		Some(EntityRevision(u64::try_from(runtime_session_revision).map_err(|_| ())?)),
+		state,
+		active_turn_id
+			.map(|turn_id| EntityId::new(turn_id.as_str().to_owned()))
+			.transpose()
+			.map_err(|_| ())?,
+		recovery_action,
+	)
+	.map_err(|_| ())
+}
+
+fn quick_task_summary_from_readback(
+	readback: QuickTaskReadback,
+	recovery: Option<QuickTaskManualRecovery>,
+) -> Result<QuickTaskSummary, ()> {
+	let conversation_revision = readback.conversation_revision.ok_or(())?;
+	let runtime_session_id = readback
+		.runtime_session_id
+		.map(|id| EntityId::new(id.as_str().to_owned()))
+		.transpose()
+		.map_err(|_| ())?;
+	let runtime_session_revision = readback
+		.runtime_session_revision
+		.map(|revision| u64::try_from(revision).map(EntityRevision))
+		.transpose()
+		.map_err(|_| ())?;
+	let state = match readback.state {
+		QuickTaskLocalState::RoutingPending => QuickTaskState::RoutingPending,
+		QuickTaskLocalState::QuotaExhausted => QuickTaskState::QuotaExhausted,
+		QuickTaskLocalState::WaitingReconciliation => QuickTaskState::WaitingReconciliation,
+		QuickTaskLocalState::NoRoute => QuickTaskState::NoRoute,
+		QuickTaskLocalState::Establishing => QuickTaskState::Establishing,
+		QuickTaskLocalState::Ready => QuickTaskState::Ready,
+		QuickTaskLocalState::Running => QuickTaskState::Running,
+		QuickTaskLocalState::ManualRecovery => QuickTaskState::ManualRecovery,
+		QuickTaskLocalState::OutcomeUnknown => QuickTaskState::OutcomeUnknown,
+	};
+	QuickTaskSummary::new(
+		EntityId::new(readback.conversation_id.as_str().to_owned()).map_err(|_| ())?,
+		EntityRevision(u64::try_from(conversation_revision).map_err(|_| ())?),
+		runtime_session_id,
+		runtime_session_revision,
+		state,
+		readback
+			.active_turn_id
+			.map(|turn_id| EntityId::new(turn_id.as_str().to_owned()))
+			.transpose()
+			.map_err(|_| ())?,
+		if matches!(
+			state,
+			QuickTaskState::RoutingPending
+				| QuickTaskState::QuotaExhausted
+				| QuickTaskState::WaitingReconciliation
+				| QuickTaskState::NoRoute
+		) {
+			Some(QuickTaskRecoveryAction::RetryRouting)
+		} else {
+			recovery.map(quick_task_recovery_action)
+		},
+	)
+	.map_err(|_| ())
+}
+
+const fn quick_task_recovery_action(action: QuickTaskManualRecovery) -> QuickTaskRecoveryAction {
+	match action {
+		QuickTaskManualRecovery::EnableAccount => QuickTaskRecoveryAction::EnableAccount,
+		QuickTaskManualRecovery::EnrollCredentials => QuickTaskRecoveryAction::EnrollCredentials,
+		QuickTaskManualRecovery::ResolveAccountOperation =>
+			QuickTaskRecoveryAction::ResolveAccountOperation,
+		QuickTaskManualRecovery::RepairCredentialStore =>
+			QuickTaskRecoveryAction::RepairCredentialStore,
+		QuickTaskManualRecovery::RestoreProviderAgreement =>
+			QuickTaskRecoveryAction::RestoreProviderAgreement,
+		QuickTaskManualRecovery::RefreshQuota => QuickTaskRecoveryAction::RefreshQuota,
+		QuickTaskManualRecovery::UpgradeCodex => QuickTaskRecoveryAction::UpgradeCodex,
+		QuickTaskManualRecovery::SelectWorkingDirectory =>
+			QuickTaskRecoveryAction::SelectWorkingDirectory,
+		QuickTaskManualRecovery::PriorActiveTurn => QuickTaskRecoveryAction::ResolvePriorActiveTurn,
+		QuickTaskManualRecovery::PriorAttemptUnresolved =>
+			QuickTaskRecoveryAction::ResolvePriorAttempt,
+		QuickTaskManualRecovery::ProcessUnavailable =>
+			QuickTaskRecoveryAction::RestoreProcessReadiness,
+		QuickTaskManualRecovery::MissingLocalProcess
+		| QuickTaskManualRecovery::MissingThread
+		| QuickTaskManualRecovery::IncompatibleThread => QuickTaskRecoveryAction::StartNewConversation,
+	}
+}
+
+const fn quick_task_conflict() -> CommandError {
+	CommandError::QuickTaskRecoveryRequired { action: QuickTaskRecoveryAction::RefreshConversation }
+}
+
+const fn quick_task_busy() -> CommandError {
+	CommandError::QuickTaskRecoveryRequired {
+		action: QuickTaskRecoveryAction::WaitForCurrentCommand,
+	}
+}
+
+fn quick_task_command_publication(
+	outcome: QuickTaskOutcome,
+) -> Result<ApplicationPublication, CommandError> {
+	let (readback, interrupt) = match outcome {
+		QuickTaskOutcome::PreSession(readback)
+		| QuickTaskOutcome::Started { readback, .. }
+		| QuickTaskOutcome::Terminal { readback, .. } => (readback, false),
+		QuickTaskOutcome::InterruptRequested(readback) => (readback, true),
+		QuickTaskOutcome::ManualRecovery { action, .. } => {
+			return Err(CommandError::QuickTaskRecoveryRequired {
+				action: quick_task_recovery_action(action),
+			});
+		},
+		QuickTaskOutcome::Unknown { .. } => return Err(CommandError::AcceptanceUnknown),
+		QuickTaskOutcome::Busy(_) => return Err(quick_task_busy()),
+		QuickTaskOutcome::Conflict => return Err(quick_task_conflict()),
+		QuickTaskOutcome::Streaming { .. } | QuickTaskOutcome::Unavailable =>
+			return Err(application_unavailable("Quick Task execution is unavailable")),
+	};
+	let conversation = quick_task_summary_from_readback(readback, None)
+		.map_err(|_| application_unavailable("Quick Task projection is unavailable"))?;
+	let entity_id = conversation.conversation_id.clone();
+	let entity_revision = conversation.conversation_revision;
+	let result = if interrupt {
+		ResultPayload::QuickTaskInterruptAccepted { conversation: conversation.clone() }
+	} else {
+		ResultPayload::QuickTaskConversationAccepted { conversation: conversation.clone() }
+	};
+	Ok(ApplicationPublication {
+		channel: Channel::ConversationStream,
+		entity_id,
+		entity_revision,
+		result,
+		event: EventPayload::QuickTaskConversationChanged { conversation },
+	})
+}
+
+fn quick_task_event_publication(outcome: QuickTaskOutcome) -> Option<ApplicationEventPublication> {
+	match outcome {
+		QuickTaskOutcome::Streaming { readback, history_item_id, text } => {
+			let correlation_id = CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;
+			let causation_id =
+				readback.causation_id.as_deref().map(CausationId::new).transpose().ok()?;
+			let conversation_id =
+				EntityId::new(readback.conversation_id.as_str().to_owned()).ok()?;
+			let turn_id = EntityId::new(readback.active_turn_id?.as_str().to_owned()).ok()?;
+			let entity_id = EntityId::new(history_item_id.as_str().to_owned()).ok()?;
+			Some(ApplicationEventPublication {
+				correlation_id,
+				causation_id,
+				channel: Channel::ConversationStream,
+				entity_id,
+				entity_revision: EntityRevision(1),
+				event: EventPayload::QuickTaskMessageDelta {
+					conversation_id,
+					turn_id,
+					delta: text,
+				},
+			})
+		},
+		QuickTaskOutcome::Terminal { readback, turn_id, state, .. } =>
+			quick_task_terminal_publication(readback, turn_id, state),
+		QuickTaskOutcome::Unknown { readback, .. } =>
+			quick_task_summary_publication(readback, None, "unknown"),
+		QuickTaskOutcome::ManualRecovery { readback, action } =>
+			quick_task_summary_publication(readback, Some(action), "recovery"),
+		QuickTaskOutcome::PreSession(_)
+		| QuickTaskOutcome::Started { .. }
+		| QuickTaskOutcome::Busy(_)
+		| QuickTaskOutcome::Conflict
+		| QuickTaskOutcome::InterruptRequested(_)
+		| QuickTaskOutcome::Unavailable => None,
+	}
+}
+
+fn quick_task_terminal_publication(
+	readback: QuickTaskReadback,
+	turn_id: TurnId,
+	state: QuickTaskTerminalState,
+) -> Option<ApplicationEventPublication> {
+	let mut publication = quick_task_summary_publication(readback, None, "terminal")?;
+	let EventPayload::QuickTaskConversationChanged { conversation } = publication.event else {
+		return None;
+	};
+	publication.event = EventPayload::QuickTaskTurnFinished {
+		conversation,
+		turn_id: EntityId::new(turn_id.as_str().to_owned()).ok()?,
+		outcome: match state {
+			QuickTaskTerminalState::Succeeded => QuickTaskTurnOutcome::Succeeded,
+			QuickTaskTerminalState::Failed => QuickTaskTurnOutcome::Failed,
+		},
+	};
+	Some(publication)
+}
+
+fn quick_task_summary_publication(
+	readback: QuickTaskReadback,
+	recovery: Option<QuickTaskManualRecovery>,
+	phase: &'static str,
+) -> Option<ApplicationEventPublication> {
+	let correlation_id = CorrelationId::new(readback.correlation_id.as_deref()?).ok()?;
+	let entity_id =
+		EntityId::new(format!("conversation-event/{}/{phase}", readback.operation_key.as_deref()?))
+			.ok()?;
+	let causation_id = readback.causation_id.as_deref().map(CausationId::new).transpose().ok()?;
+	let conversation = quick_task_summary_from_readback(readback, recovery).ok()?;
+	Some(ApplicationEventPublication {
+		correlation_id,
+		causation_id,
+		channel: Channel::ConversationStream,
+		entity_id,
+		entity_revision: EntityRevision(1),
+		event: EventPayload::QuickTaskConversationChanged { conversation },
+	})
 }
 
 fn work_item_board_page_dto(
@@ -1202,7 +1913,10 @@ fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<Executi
 		} => ExecutionConsumerDto::ConversationTurn {
 			conversation_id: entity(conversation_id.as_str())?,
 			conversation_revision,
-			source_runtime_session_id: entity(source_runtime_session_id.as_str())?,
+			source_runtime_session_id: source_runtime_session_id
+				.as_ref()
+				.map(|id| entity(id.as_str()))
+				.transpose()?,
 			source_runtime_session_revision,
 			turn_id: entity(turn_id.as_str())?,
 		},
@@ -1915,7 +2629,7 @@ fn stored_account_command_outcome(
 			entity_id: publication.entity_id.clone(),
 			entity_revision: publication.entity_revision,
 			result: publication.result.clone(),
-			event: publication.event.clone(),
+			event: Box::new(publication.event.clone()),
 		},
 		Err(error) => StoredAccountCommandOutcome::Rejected {
 			schema: ACCOUNT_COMMAND_RECEIPT_SCHEMA.to_owned(),
@@ -1947,7 +2661,7 @@ fn decode_account_command_receipt(
 				entity_id,
 				entity_revision,
 				result,
-				event,
+				event: *event,
 			})),
 		StoredAccountCommandOutcome::Rejected { schema, error }
 			if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA =>

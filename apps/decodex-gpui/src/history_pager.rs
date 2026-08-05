@@ -55,11 +55,15 @@ pub(crate) struct HistorySnapshot {
 	pub(crate) load: HistoryLoadState,
 	pub(crate) visible: Option<ConversationHistoryPage>,
 	pub(crate) visible_source: Option<HistoryPageSource>,
+	pub(crate) next_cursor: Option<HistoryCursorToken>,
 	pub(crate) cursor: HistoryCursorObservation,
 	pub(crate) cache_diagnostic: Option<HistoryCacheDiagnostic>,
 	pub(crate) retained_pages: usize,
 	pub(crate) retained_items: usize,
 	pub(crate) retained_bytes: usize,
+	pub(crate) can_show_previous: bool,
+	pub(crate) can_show_next: bool,
+	pub(crate) can_retry: bool,
 	pub(crate) last_stale_cancellation: Option<HistoryStaleCancellation>,
 }
 
@@ -392,6 +396,29 @@ impl HistoryPager {
 		self.inner.notify.notify_one();
 
 		Ok(())
+	}
+
+	/// Reload the first bounded page only when the terminal event belongs to the open view.
+	pub(crate) fn reload_if_open(
+		&self,
+		conversation_id: &EntityId,
+	) -> Result<bool, HistoryClosedReason> {
+		let _commit_gate = self.lock_cache_publication_commit_gate();
+		let mut state = self.lock();
+		if !state.active.as_ref().is_some_and(|active| &active.conversation_id == conversation_id) {
+			return Ok(false);
+		}
+		let generation =
+			state.next_view_generation().ok_or(HistoryClosedReason::RequestIdentityExhausted)?;
+		state.cancel_in_flight(HistoryStaleReason::ConversationChanged);
+		state
+			.active
+			.as_mut()
+			.expect("open Conversation was just observed")
+			.refresh_initial(generation);
+		drop(state);
+		self.inner.notify.notify_one();
+		Ok(true)
 	}
 
 	/// Move to the next retained page or request the exact observed continuation.
@@ -1230,15 +1257,19 @@ impl PagerState {
 				load: HistoryLoadState::Inactive,
 				visible: None,
 				visible_source: None,
+				next_cursor: None,
 				cursor: HistoryCursorObservation::Unknown,
 				cache_diagnostic: None,
 				retained_pages: 0,
 				retained_items: 0,
 				retained_bytes: 0,
+				can_show_previous: false,
+				can_show_next: false,
+				can_retry: false,
 				last_stale_cancellation: self.last_stale_cancellation,
 			};
 		};
-		let fresh_visible = active.visible_index.and_then(|index| active.pages.get(index));
+		let fresh_visible = active.merged_visible_page();
 		let provisional = active
 			.provisional
 			.as_ref()
@@ -1251,9 +1282,9 @@ impl PagerState {
 			)
 		} else if let Some(page) = fresh_visible {
 			(
-				Some(page.page.clone()),
+				Some(page.clone()),
 				Some(HistoryPageSource::FreshServer),
-				if page.page.next_cursor.is_some() {
+				if page.next_cursor.is_some() {
 					HistoryCursorObservation::ContinuationAvailable
 				} else {
 					HistoryCursorObservation::NoContinuationObserved
@@ -1285,6 +1316,12 @@ impl PagerState {
 			+ active.provisional.as_ref().map_or(0, |page| page.page.items.len());
 		let retained_bytes = active.pages.iter().map(|page| page.byte_length).sum::<usize>()
 			+ active.provisional.as_ref().map_or(0, |page| page.byte_length);
+		let can_show_previous = active.visible_index.is_some_and(|index| index > 0);
+		let can_show_next = active.visible_index.is_some_and(|index| {
+			index.checked_add(1).is_some_and(|next| next < active.pages.len())
+				|| active.pages[index].page.next_cursor.is_some()
+		});
+		let next_cursor = visible.as_ref().and_then(|page| page.next_cursor.clone());
 
 		HistorySnapshot {
 			conversation_id: Some(active.conversation_id.clone()),
@@ -1292,11 +1329,15 @@ impl PagerState {
 			load,
 			visible,
 			visible_source,
+			next_cursor,
 			cursor,
 			cache_diagnostic: active.cache_diagnostic,
 			retained_pages,
 			retained_items,
 			retained_bytes,
+			can_show_previous,
+			can_show_next,
+			can_retry: active.retry_request.is_some(),
 			last_stale_cancellation: self.last_stale_cancellation,
 		}
 	}
@@ -1345,6 +1386,21 @@ impl ActiveView {
 			provisional: None,
 			cache_diagnostic: None,
 		}
+	}
+
+	fn refresh_initial(&mut self, generation: u64) {
+		self.generation = generation;
+		self.clear_cache_presentation();
+		self.pending = Some(PageRequest::new(
+			generation,
+			PageKey::initial(self.conversation_id.clone()),
+			RequestPurpose::Visible,
+		));
+		self.in_flight = None;
+		self.retry_request = None;
+		self.unavailable = None;
+		self.cache_lookup_armed = None;
+		self.cache_publication_fence = None;
 	}
 
 	fn invalidate_session_authority(&mut self, unavailable: Option<HistoryAvailability>) {
@@ -1408,7 +1464,7 @@ impl ActiveView {
 	fn admit_live_page(
 		&mut self,
 		request: PageRequest,
-		page: ConversationHistoryPage,
+		mut page: ConversationHistoryPage,
 		limits: HistoryPagerLimits,
 	) -> Result<(), HistoryClosedReason> {
 		if let Some(next_cursor) = page.next_cursor.as_ref()
@@ -1420,6 +1476,7 @@ impl ActiveView {
 		{
 			return Err(HistoryClosedReason::MalformedContinuation);
 		}
+		self.deduplicate_page(&request.key, &mut page)?;
 
 		let byte_length = validated_page_byte_length(&page, limits)?;
 
@@ -1438,6 +1495,52 @@ impl ActiveView {
 		self.evict_to_limits(limits);
 
 		Ok(())
+	}
+
+	fn deduplicate_page(
+		&self,
+		key: &PageKey,
+		page: &mut ConversationHistoryPage,
+	) -> Result<(), HistoryClosedReason> {
+		let mut accepted = Vec::with_capacity(page.items.len());
+		for item in page.items.drain(..) {
+			let retained = self
+				.pages
+				.iter()
+				.filter(|retained| &retained.key != key)
+				.flat_map(|retained| retained.page.items.iter())
+				.find(|retained| retained.history_item_id == item.history_item_id);
+			let duplicate = retained.or_else(|| {
+				accepted.iter().find(|retained: &&decodex_protocol::HistoryItemDto| {
+					retained.history_item_id == item.history_item_id
+				})
+			});
+			if let Some(duplicate) = duplicate {
+				if duplicate != &item {
+					return Err(HistoryClosedReason::MalformedContinuation);
+				}
+				continue;
+			}
+			accepted.push(item);
+		}
+		page.items = accepted;
+		Ok(())
+	}
+
+	fn merged_visible_page(&self) -> Option<ConversationHistoryPage> {
+		let visible_index = self.visible_index?;
+		let visible = self.pages.get(visible_index)?;
+		let mut items = Vec::new();
+		for retained in self.pages.iter().take(visible_index.saturating_add(1)) {
+			for item in &retained.page.items {
+				if !items.iter().any(|existing: &decodex_protocol::HistoryItemDto| {
+					existing.history_item_id == item.history_item_id
+				}) {
+					items.push(item.clone());
+				}
+			}
+		}
+		Some(ConversationHistoryPage { items, next_cursor: visible.page.next_cursor.clone() })
 	}
 
 	fn enqueue_adjacent_prefetch(&mut self) {

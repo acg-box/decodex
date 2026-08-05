@@ -16,7 +16,6 @@ members = [
 	"crates/decodex-postgres",
 	"crates/decodex-protocol",
 	"crates/decodex-runtime",
-	"spikes/vnext-storage",
 ]
 resolver = "3"
 

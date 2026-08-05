@@ -137,17 +137,11 @@ kind = "local"
 policy = "same_uid"
 service_owner_uid = {}
 
-[server_host.repositories.fixture]
-host_path = "{}"
-
 [postgres]
 socket_directory = "{}"
 expected_peer_uid = {}
 port = {}
 database = "decodex"
-
-[postgres.migration]
-user = "decodex_migration"
 
 [postgres.runtime]
 user = "decodex_runtime"
@@ -158,7 +152,6 @@ max_bytes = 1048576
 max_entry_bytes = 65536
 "#,
 				fs::metadata(&decodex_root).expect("inspect root").uid(),
-				working_directory.display(),
 				socket_directory.display(),
 				fs::metadata(&decodex_root).expect("inspect root").uid(),
 				PORT,

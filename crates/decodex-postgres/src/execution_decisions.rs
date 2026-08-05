@@ -1,4 +1,4 @@
-//! Read-only, non-authorizing projection of one immutable V16 execution decision.
+//! Read-only, non-authorizing projection of one immutable Routing Decision execution decision.
 
 use decodex_core::{
 	AccountId, ConversationId, ExecutionConsumer, ManagedExecutionId, ManagedRunId,
@@ -9,7 +9,7 @@ use serde_json::Value;
 
 use crate::{PostgresStore, StoreError};
 
-/// One independent positive quota-depletion fact retained by V16.
+/// One independent positive quota-depletion fact retained by Routing Decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionQuotaExclusion {
 	/// Account path excluded by the fact.
@@ -24,13 +24,13 @@ pub struct ExecutionQuotaExclusion {
 	pub resets_at_micros: i64,
 }
 
-/// Read-only immutable V16 decision projection.
+/// Read-only immutable Routing Decision projection.
 ///
 /// This value grants no account selection, ProcessGeneration, ProviderAttempt, dispatch, retry,
 /// receipt, wake, or coordinator authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExecutionDecisionReadback {
-	/// Immutable V16 decision identity.
+	/// Immutable Routing Decision identity.
 	pub decision_id: String,
 	/// Exact ordinary or managed execution consumer.
 	pub consumer: ExecutionConsumer,
@@ -71,29 +71,7 @@ impl PostgresStore {
 
 fn parse_readback(value: Value) -> Result<ExecutionDecisionReadback, StoreError> {
 	let decision_id = uuid(&value, "decision_id")?;
-	let consumer = match text(&value, "consumer_kind")? {
-		"conversation_turn" => ExecutionConsumer::ConversationTurn {
-			conversation_id: ConversationId::new(uuid(&value, "conversation_id")?)
-				.map_err(|_| incompatible_error("execution Conversation identity is malformed"))?,
-			conversation_revision: positive(&value, "conversation_revision")?,
-			source_runtime_session_id: RuntimeSessionId::new(uuid(
-				&value,
-				"source_runtime_session_id",
-			)?)
-			.map_err(|_| incompatible_error("source RuntimeSession identity is malformed"))?,
-			source_runtime_session_revision: positive(&value, "source_runtime_session_revision")?,
-			turn_id: TurnId::new(uuid(&value, "turn_id")?)
-				.map_err(|_| incompatible_error("execution Turn identity is malformed"))?,
-		},
-		"managed_run_execution" => ExecutionConsumer::ManagedRunExecution {
-			managed_run_id: ManagedRunId::new(uuid(&value, "managed_run_id")?)
-				.map_err(|_| incompatible_error("ManagedRun identity is malformed"))?,
-			managed_run_revision: positive(&value, "managed_run_revision")?,
-			execution_id: ManagedExecutionId::new(uuid(&value, "managed_execution_id")?)
-				.map_err(|_| incompatible_error("managed execution identity is malformed"))?,
-		},
-		_ => return incompatible("execution consumer kind is unknown"),
-	};
+	let consumer = parse_consumer(&value)?;
 	let kind = match text(&value, "kind")? {
 		"selected" => RoutingDecisionKind::Selected,
 		"waiting_usage" => RoutingDecisionKind::WaitingUsage,
@@ -188,6 +166,40 @@ fn parse_readback(value: Value) -> Result<ExecutionDecisionReadback, StoreError>
 	})
 }
 
+fn parse_consumer(value: &Value) -> Result<ExecutionConsumer, StoreError> {
+	match text(value, "consumer_kind")? {
+		"conversation_turn" => {
+			let source_runtime_session_id = optional_text(value, "source_runtime_session_id")?
+				.map(|value| RuntimeSessionId::new(value.to_owned()))
+				.transpose()
+				.map_err(|_| incompatible_error("source RuntimeSession identity is malformed"))?;
+			let source_runtime_session_revision =
+				optional_positive(value, "source_runtime_session_revision")?;
+			if source_runtime_session_id.is_some() != source_runtime_session_revision.is_some() {
+				return incompatible("execution decision source lineage is partial");
+			}
+			Ok(ExecutionConsumer::ConversationTurn {
+				conversation_id: ConversationId::new(uuid(value, "conversation_id")?).map_err(
+					|_| incompatible_error("execution Conversation identity is malformed"),
+				)?,
+				conversation_revision: positive(value, "conversation_revision")?,
+				source_runtime_session_id,
+				source_runtime_session_revision,
+				turn_id: TurnId::new(uuid(value, "turn_id")?)
+					.map_err(|_| incompatible_error("execution Turn identity is malformed"))?,
+			})
+		},
+		"managed_run_execution" => Ok(ExecutionConsumer::ManagedRunExecution {
+			managed_run_id: ManagedRunId::new(uuid(value, "managed_run_id")?)
+				.map_err(|_| incompatible_error("ManagedRun identity is malformed"))?,
+			managed_run_revision: positive(value, "managed_run_revision")?,
+			execution_id: ManagedExecutionId::new(uuid(value, "managed_execution_id")?)
+				.map_err(|_| incompatible_error("managed execution identity is malformed"))?,
+		}),
+		_ => incompatible("execution consumer kind is unknown"),
+	}
+}
+
 const fn is_depletion(blocker: RoutingBlocker) -> bool {
 	matches!(blocker, RoutingBlocker::QuotaFiveHourDepleted | RoutingBlocker::QuotaSevenDayDepleted)
 }
@@ -228,6 +240,17 @@ fn positive(value: &Value, key: &str) -> Result<i64, StoreError> {
 		.and_then(Value::as_i64)
 		.filter(|value| *value > 0)
 		.ok_or_else(|| incompatible_error("execution decision positive integer is malformed"))
+}
+
+fn optional_positive(value: &Value, key: &str) -> Result<Option<i64>, StoreError> {
+	match value.get(key) {
+		Some(Value::Null) => Ok(None),
+		Some(Value::Number(number)) =>
+			number.as_i64().filter(|value| *value > 0).map(Some).ok_or_else(|| {
+				incompatible_error("execution decision optional revision is malformed")
+			}),
+		_ => incompatible("execution decision optional revision is malformed"),
+	}
 }
 
 fn nonnegative(value: &Value, key: &str) -> Result<i64, StoreError> {

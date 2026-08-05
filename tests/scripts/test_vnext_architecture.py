@@ -10,7 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 VNEXT_CONTRACT_ROOTS = (
     ROOT / "crates/decodex-core/src",
     ROOT / "crates/decodex-postgres/src",
-    ROOT / "crates/decodex-postgres/migrations",
     ROOT / "crates/decodex-protocol/src",
     ROOT / "crates/decodex-runtime/src",
     ROOT / "crates/decodex-app-client-ffi/src",
@@ -40,20 +39,6 @@ def _strip_sql_prose(source):
     source = re.sub(r"--[^\n]*", " ", source)
     source = re.sub(r"/\*.*?\*/", " ", source, flags=re.DOTALL)
     return re.sub(r"'(?:''|[^'])*'", "''", source, flags=re.DOTALL)
-
-
-def _rust_braced_body_after(source, marker):
-    start = source.index(marker) + len(marker)
-    opening = source.index("{", start)
-    depth = 0
-    for index in range(opening, len(source)):
-        if source[index] == "{":
-            depth += 1
-        elif source[index] == "}":
-            depth -= 1
-            if depth == 0:
-                return source[opening + 1 : index]
-    raise AssertionError(f"unclosed Rust body after {marker}")
 
 
 def forbidden_goal_contracts(source, suffix, ownership="active_vnext"):
@@ -90,7 +75,6 @@ EXPECTED_OWNER_DEPENDENCIES = {
 EXPECTED_POSTGRES_EXTERNAL_DEPENDENCIES = {
     "deadpool-postgres",
     "libc",
-    "refinery",
     "serde_json",
     "sha2",
     "time",
@@ -151,7 +135,6 @@ EXPECTED_WORKSPACE_MANIFESTS = {
     "crates/decodex-postgres/Cargo.toml",
     "crates/decodex-protocol/Cargo.toml",
     "crates/decodex-runtime/Cargo.toml",
-    "spikes/vnext-storage/Cargo.toml",
 }
 
 
@@ -428,20 +411,17 @@ class VnextArchitectureTests(unittest.TestCase):
         project = (ROOT / "crates/decodex-core/src/project.rs").read_text()
         agent = (ROOT / "crates/decodex-core/src/agent.rs").read_text()
         postgres = (ROOT / "crates/decodex-postgres/src/project_agents.rs").read_text()
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V5__project_agent_authority.sql"
-        ).read_text()
+        schema = (ROOT / "crates/decodex-postgres/schema.sql").read_text()
 
         self.assertIn("ProjectId", core_lib)
         self.assertIn("AgentId", core_lib)
         self.assertIn("use decodex_core", postgres)
         self.assertNotIn("pub struct ProjectId", postgres)
         self.assertNotIn("pub struct AgentId", postgres)
-        self.assertIn("CREATE TABLE decodex.projects", migration)
-        self.assertIn("CREATE TABLE decodex.agents", migration)
-        self.assertIn("agents_one_global_advisor_idx", migration)
-        self.assertIn("agents_one_lead_per_project_idx", migration)
+        self.assertIn("CREATE TABLE decodex.projects", schema)
+        self.assertIn("CREATE TABLE decodex.agents", schema)
+        self.assertIn("agents_one_global_advisor_idx", schema)
+        self.assertIn("agents_one_lead_per_project_idx", schema)
         self.assertEqual(
             postgres.count(
                 "::pg_catalog.text::decodex.canonical_uuid_v4_text"
@@ -450,13 +430,13 @@ class VnextArchitectureTests(unittest.TestCase):
         )
         self.assertNotIn("::text::decodex.canonical_uuid_v4_text", postgres)
         self.assertEqual(
-            migration.count("CREATE FUNCTION decodex.bootstrap_advisor("), 1
+            schema.count("CREATE FUNCTION decodex.bootstrap_advisor("), 1
         )
         self.assertEqual(
-            migration.count("CREATE FUNCTION decodex.create_project("), 1
+            schema.count("CREATE FUNCTION decodex.create_project("), 1
         )
         self.assertEqual(
-            migration.count("CREATE FUNCTION decodex.transition_project("), 1
+            schema.count("CREATE FUNCTION decodex.transition_project("), 1
         )
 
         production = project.split("#[cfg(test)]", 1)[0] + agent.split("#[cfg(test)]", 1)[0]
@@ -467,7 +447,7 @@ class VnextArchitectureTests(unittest.TestCase):
             "00000000-0000-0000-0000-000000000000",
         ):
             self.assertNotIn(placeholder, production)
-            self.assertNotIn(placeholder, migration)
+            self.assertNotIn(placeholder, schema)
 
     def test_project_and_agent_slice_enables_no_live_behavior(self):
         live_roots = [
@@ -493,34 +473,11 @@ class VnextArchitectureTests(unittest.TestCase):
 
         self.assertEqual({token for token in forbidden if token in source}, set())
 
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V5__project_agent_authority.sql"
-        ).read_text().lower()
-        for live_token in (
-            "prompt",
-            "model",
-            "delegate",
-            "schedule",
-            "wakeup",
-            "message",
-        ):
-            self.assertNotIn(live_token, migration)
-        for conversation_surface in (
-            "create table decodex.conversations",
-            "insert into decodex.conversations",
-            "conversation_id",
-        ):
-            self.assertNotIn(conversation_surface, migration)
-
     def test_project_policy_identity_and_exact_revision_have_one_inert_owner(self):
         core_lib = (ROOT / "crates/decodex-core/src/lib.rs").read_text()
         policy = (ROOT / "crates/decodex-core/src/policy.rs").read_text()
         postgres = (ROOT / "crates/decodex-postgres/src/policies.rs").read_text()
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V6__project_policy_authority.sql"
-        ).read_text()
+        schema = (ROOT / "crates/decodex-postgres/schema.sql").read_text()
 
         self.assertIn("PolicyId", core_lib)
         self.assertIn("PolicyRevisionId", core_lib)
@@ -529,15 +486,15 @@ class VnextArchitectureTests(unittest.TestCase):
         self.assertIn("use decodex_core", postgres)
         self.assertNotIn("pub struct PolicyId", postgres)
         self.assertNotIn("pub struct PolicyRevisionId", postgres)
-        self.assertIn("CREATE TABLE decodex.policies", migration)
-        self.assertIn("CREATE TABLE decodex.policy_revisions", migration)
-        self.assertIn("policy_revisions_policy_project_fk", migration)
-        self.assertIn("policy_revisions_accepting_agent_project_fk", migration)
-        self.assertIn("policy_revisions_supersedes_fk", migration)
-        self.assertIn("policy_revisions_immutable", migration)
-        self.assertEqual(migration.count("CREATE FUNCTION decodex.create_policy("), 1)
+        self.assertIn("CREATE TABLE decodex.policies", schema)
+        self.assertIn("CREATE TABLE decodex.policy_revisions", schema)
+        self.assertIn("policy_revisions_policy_project_fk", schema)
+        self.assertIn("policy_revisions_accepting_agent_project_fk", schema)
+        self.assertIn("policy_revisions_supersedes_fk", schema)
+        self.assertIn("policy_revisions_immutable", schema)
+        self.assertEqual(schema.count("CREATE FUNCTION decodex.create_policy("), 1)
         self.assertEqual(
-            migration.count("CREATE FUNCTION decodex.accept_policy_revision("), 1
+            schema.count("CREATE FUNCTION decodex.accept_policy_revision("), 1
         )
 
         for path in (ROOT / "crates").rglob("*.rs"):
@@ -568,24 +525,7 @@ class VnextArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(token, source)
 
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V6__project_policy_authority.sql"
-        ).read_text().lower()
-        for live_token in (
-            "approval routing",
-            "budget enforcement",
-            "quiet period",
-            "tool enforcement",
-            "path enforcement",
-            "network enforcement",
-            "dispatch",
-            "wakeup",
-            "codex process",
-        ):
-            self.assertNotIn(live_token, migration)
-
-    def test_v16_decision_and_v17_handoff_have_one_stateless_dispatch_disabled_path(
+    def test_stateless_execution_coordinator_is_crate_private(
         self,
     ):
         core_routing = _strip_rust_prose(
@@ -596,6 +536,9 @@ class VnextArchitectureTests(unittest.TestCase):
         )
         orchestration = _strip_rust_prose(
             (ROOT / "crates/decodex-runtime/src/routing_orchestration.rs").read_text()
+        )
+        runtime_root = _strip_rust_prose(
+            (ROOT / "crates/decodex-runtime/src/lib.rs").read_text()
         )
 
         self.assertEqual(core_routing.count("fn decide_routing"), 1)
@@ -609,32 +552,20 @@ class VnextArchitectureTests(unittest.TestCase):
             runtime_invokers,
             {"crates/decodex-runtime/src/routing_orchestration.rs"},
         )
-        self.assertIn("pub struct ExecutionCoordinator", orchestration)
-        self.assertIn("pub(crate) async fn coordinate", orchestration)
+        self.assertIn("pub(crate) struct ExecutionCoordinator", orchestration)
+        self.assertIn("pub(crate) async fn pre_process", orchestration)
+        self.assertIn("pub(crate) async fn post_process", orchestration)
         self.assertNotIn("DisabledRoutingOrchestration", orchestration)
-
-        selected_start = orchestration.index("RoutingDecisionKind::Selected =>")
-        selected_end = orchestration.index(
-            "RoutingDecisionKind::WaitingUsage =>", selected_start
-        )
-        selected = orchestration[selected_start:selected_end]
-        waiting = _rust_braced_body_after(
-            orchestration, "RoutingDecisionKind::WaitingUsage =>"
-        )
-        reconciliation = _rust_braced_body_after(
-            orchestration, "RoutingDecisionKind::WaitingReconciliation =>"
-        )
-        no_route = _rust_braced_body_after(
-            orchestration, "RoutingDecisionKind::NoRoute =>"
-        )
-        self.assertIn("plan_and_prepare", selected)
-        self.assertNotIn("plan_and_prepare", waiting)
-        self.assertNotIn("plan_and_prepare", reconciliation)
-        self.assertNotIn("plan_and_prepare", no_route)
-        self.assertIn("WaitingUsageHandoff", waiting)
-        self.assertNotIn("WaitingUsageHandoff", reconciliation)
-        self.assertIn("WaitingReconciliationHandoff", reconciliation)
-        self.assertNotIn("WaitingUsageWake", waiting)
+        self.assertNotIn("pub use routing_orchestration", runtime_root)
+        for removed_surface in (
+            "ContinuationCoordinates",
+            "ExecutionOutcome",
+            "WaitingUsageHandoff",
+            "WaitingReconciliationHandoff",
+            "RoutingAuthorityRejection",
+        ):
+            self.assertNotIn(removed_surface, orchestration)
+            self.assertNotIn(removed_surface, runtime_root)
 
     def test_stateless_routing_coordinator_has_no_live_consumer_or_v18_composition(
         self,
@@ -680,10 +611,7 @@ class VnextArchitectureTests(unittest.TestCase):
         core = (ROOT / "crates/decodex-core/src/program.rs").read_text()
         core_lib = (ROOT / "crates/decodex-core/src/lib.rs").read_text()
         postgres = (ROOT / "crates/decodex-postgres/src/programs.rs").read_text()
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V7__program_objective_authority.sql"
-        ).read_text()
+        schema = (ROOT / "crates/decodex-postgres/schema.sql").read_text()
 
         self.assertIn("stable_id!(ProgramId", core)
         self.assertIn("stable_id!(ObjectiveId", core)
@@ -699,7 +627,6 @@ class VnextArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(parallel_identity, core)
             self.assertNotIn(parallel_identity, postgres)
-            self.assertNotIn(parallel_identity, migration)
         for runtime_identity in (
             "RuntimeSessionId",
             "ConversationId",
@@ -709,137 +636,56 @@ class VnextArchitectureTests(unittest.TestCase):
         ):
             self.assertNotIn(runtime_identity, core)
             self.assertNotIn(runtime_identity, postgres)
-            self.assertNotIn(runtime_identity, migration)
 
-        self.assertIn("REFERENCES decodex.projects", migration)
-        self.assertIn("REFERENCES decodex.agents(agent_id, project_id)", migration)
-        self.assertIn("REFERENCES decodex.policy_revisions", migration)
-        self.assertIn("objective_completion_evidence", migration)
-        self.assertIn("DEFERRABLE INITIALLY DEFERRED", migration)
-        self.assertIn("p_project_id decodex.canonical_uuid_v4_text", migration)
-        self.assertIn("stored.project_id<>canonical_project_id", migration)
-        self.assertIn("evidence_row.objective_updated_at <> OLD.updated_at", migration)
-        self.assertIn("ON CONFLICT DO NOTHING", migration)
-        self.assertNotIn("WorkItem", migration)
+        self.assertIn("REFERENCES decodex.projects", schema)
+        self.assertIn("REFERENCES decodex.agents(agent_id, project_id)", schema)
+        self.assertIn("REFERENCES decodex.policy_revisions", schema)
+        self.assertIn("objective_completion_evidence", schema)
+        self.assertIn("DEFERRABLE INITIALLY DEFERRED", schema)
+        self.assertIn("p_project_id decodex.canonical_uuid_v4_text", schema)
+        self.assertIn("stored.project_id<>canonical_project_id", schema)
+        self.assertIn("evidence_row.objective_updated_at <> OLD.updated_at", schema)
+        self.assertIn("ON CONFLICT DO NOTHING", schema)
 
     def test_active_vnext_contracts_have_no_product_goal_authority(self):
         findings = {}
+        paths = [ROOT / "crates/decodex-postgres/schema.sql"]
         for root in VNEXT_CONTRACT_ROOTS:
-            for path in sorted(root.rglob("*")):
-                if path.is_file() and path.suffix in CONTRACT_SUFFIXES:
-                    path_findings = forbidden_goal_contracts(
-                        path.read_text(), path.suffix
-                    )
-                    if path_findings:
-                        findings[str(path.relative_to(ROOT))] = path_findings
+            paths.extend(sorted(root.rglob("*")))
+        for path in paths:
+            if path.is_file() and path.suffix in CONTRACT_SUFFIXES:
+                path_findings = forbidden_goal_contracts(path.read_text(), path.suffix)
+                if path_findings:
+                    findings[str(path.relative_to(ROOT))] = path_findings
 
         self.assertEqual(findings, {})
 
-    def test_v22_retained_title_bridge_is_two_effect_and_production_inert(self):
-        migration = (
-            ROOT
-            / "crates/decodex-postgres/migrations/V22__retained_title_experiment_bridge.sql"
-        ).read_text()
-        runner = (
-            ROOT
-            / "crates/decodex-runtime/src/account_launch/retained_title_experiment.rs"
-        ).read_text()
-        runtime_manifest = (ROOT / "crates/decodex-runtime/Cargo.toml").read_text()
-        runtime_lib = (ROOT / "crates/decodex-runtime/src/lib.rs").read_text()
-        daemon_manifest = (ROOT / "apps/decodexd/Cargo.toml").read_text()
-        daemon_source = "\n".join(
-            path.read_text()
-            for path in sorted((ROOT / "apps/decodexd/src").rglob("*.rs"))
-        )
-
-        for exact_fact in (
-            "start_request_id",
-            "start_request_digest",
-            "request_cwd",
-            "request_marker",
-            "request_ephemeral",
-            "start_response_id",
-            "start_response_digest",
-            "response_ephemeral",
-            "returned_name",
-            "requested_title",
-            "read_request_digest",
-            "read_response_digest",
-            "returned_cwd",
+    def test_retained_title_runtime_experiment_is_absent(self):
+        for path in (
+            ROOT / "crates/decodex-runtime/src/account_launch/retained_title_experiment.rs",
+            ROOT / "crates/decodex-runtime/src/bin/decodex-retained-title-experiment.rs",
         ):
-            self.assertIn(exact_fact, migration)
-        self.assertIn("p_returned_name IS NOT NULL", migration)
-        self.assertIn("returned_name text CHECK (returned_name IS NULL)", migration)
-        self.assertIn("codex_experiment_title_set_attempts", migration)
-        self.assertIn("codex_experiment_retained_title_attestations", migration)
-        self.assertIn("codex_experiment_attested_observations", migration)
-        self.assertIn("attestation.attested_at<=observation.observed_at", migration)
-        self.assertIn(
-            "REVOKE EXECUTE ON FUNCTION decodex.bind_codex_experiment_thread_exact",
-            migration,
-        )
-        self.assertIn(
-            "REVOKE EXECUTE ON FUNCTION decodex.record_codex_experiment_observation_exact",
-            migration,
-        )
+            self.assertFalse(path.exists(), str(path))
 
-        ordered_calls = (
-            ".prepare_codex_experiment(",
-            ".mark_codex_experiment_creation_possible(",
-            ".start_retained_title_thread(",
-            ".bind_codex_experiment_start(",
-            ".mark_codex_experiment_title_set_possible(",
-            ".set_retained_title(",
-            ".read_retained_title_thread(",
-            ".attest_codex_experiment_retained_title(",
-            ".record_attested_codex_experiment_observation(",
-        )
-        positions = [runner.index(call) for call in ordered_calls]
-        self.assertEqual(positions, sorted(positions))
-        self.assertIn("const START_REQUEST_ID: i64 = 3", runner)
-        self.assertIn("const TITLE_SET_REQUEST_ID: i64 = 4", runner)
-        self.assertIn("const READ_REQUEST_ID: i64 = 5", runner)
-        self.assertRegex(
-            runner,
-            r"Err\(RpcError::MethodRejected\(_\)\)\s*=>\s*(?:"
-            r"return Err\(ManualRetainedTitleExperimentError::RetainedTitleAmbiguous\)\s*,?"
-            r"|\{\s*return Err\("
-            r"ManualRetainedTitleExperimentError::RetainedTitleAmbiguous"
-            r"\);\s*\})",
-        )
-        self.assertNotIn("Err(RpcError::MethodRejected(_)) => false", runner)
-        self.assertIn("Err(RpcError::Supervision(_)) => false", runner)
-        self.assertIn('format!("v22:retained-title:{experiment_id}:{operation}")', runner)
-        for forbidden_method in (
-            "thread/list",
-            "thread/search",
-            "thread/archive",
-            "turn/start",
-            "thread/resume",
+        process = (
+            ROOT / "crates/decodex-runtime/src/account_launch/process.rs"
+        ).read_text()
+        for token in (
+            "RETAINED_TITLE_DEVELOPER_INSTRUCTIONS",
+            "start_retained_title_thread",
+            "set_retained_title",
+            "read_retained_title_thread",
+            "launch_retained_title_process",
         ):
-            self.assertNotIn(forbidden_method, runner)
+            self.assertNotIn(token, process)
 
-        self.assertIn('retained-title-experiment = []', runtime_manifest)
-        self.assertIn('required-features = ["retained-title-experiment"]', runtime_manifest)
-        self.assertIn('#[cfg(feature = "retained-title-experiment")]', runtime_lib)
-        self.assertNotIn("retained-title-experiment", daemon_manifest)
-        self.assertNotIn("run_manual_retained_title_experiment", daemon_source)
-
-        production_roots = (
-            ROOT / "crates/decodex-protocol/src",
-            ROOT / "apps/decodexd/src",
-        )
-        production_files = (
-            ROOT / "crates/decodex-runtime/src/application.rs",
-            ROOT / "crates/decodex-runtime/src/routing_orchestration.rs",
-        )
-        production_source = "\n".join(
-            path.read_text()
-            for root in production_roots
-            for path in sorted(root.rglob("*.rs"))
-        ) + "\n".join(path.read_text() for path in production_files)
-        self.assertNotIn("run_manual_retained_title_experiment", production_source)
-        self.assertNotIn("FreshCodexExperimentCreation", production_source)
+        schema = (ROOT / "crates/decodex-postgres/schema.sql").read_text()
+        for durable_authority in (
+            "prepare_codex_experiment_exact",
+            "attest_codex_experiment_retained_title_exact",
+            "record_attested_codex_experiment_observation_exact",
+        ):
+            self.assertIn(durable_authority, schema)
 
     def test_managed_run_success_requires_work_item_acceptance_authority(self):
         required = (

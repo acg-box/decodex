@@ -30,7 +30,10 @@ use decodex_protocol::{
 	ResetCardOperationResult, ResultPayload, ResumeCursor, ServerId, ServerInstanceId,
 	ServerMessage, SnapshotItem, VersionRefusal, WireText,
 };
-use decodex_runtime::{Application, ApplicationPublication, ProtocolServer, ServerConfig};
+use decodex_runtime::{
+	ActorCommandDeadlineClass, Application, ApplicationPublication, ProtocolServer, ServerConfig,
+	TerminationPrimary, TerminationReceipt,
+};
 
 type Client = WebSocketStream<LocalTransportStream>;
 
@@ -213,7 +216,7 @@ impl Application for FixtureApplication {
 					DoctorReport::new(
 						ServerId::new("fixture-server").expect("bounded fixture server ID"),
 						CURRENT_VERSION,
-						vec![DoctorCheck::new(DoctorComponent::Database, database)],
+						vec![DoctorCheck::new(DoctorComponent::ProductStore, database)],
 					)
 					.expect("empty fixture doctor is bounded"),
 				)
@@ -1036,11 +1039,11 @@ async fn repeated_live_queries_are_fresh_ordered_and_do_not_consume_receipts() {
 	assert_eq!(first.query_id, QueryId::new("query-1").expect("bounded query ID"));
 	assert_eq!(second.query_id, QueryId::new("query-2").expect("bounded query ID"));
 	assert_eq!(
-		first_report.check(DoctorComponent::Database).expect("database check").status,
+		first_report.check(DoctorComponent::ProductStore).expect("database check").status,
 		DoctorStatus::Ready
 	);
 	assert_eq!(
-		second_report.check(DoctorComponent::Database).expect("database check").status,
+		second_report.check(DoctorComponent::ProductStore).expect("database check").status,
 		DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
 	);
 	assert_eq!(application.queries(), 2);
@@ -1241,6 +1244,69 @@ async fn oversized_wire_identifier_is_refused_without_execution() {
 	drop(client);
 
 	bound.shutdown().await.expect("shutdown bounded-identifiers server");
+}
+
+#[tokio::test]
+async fn malformed_and_abandoned_pre_registration_sessions_are_session_local() {
+	let (_temp, transport) = local_transport();
+	let mut bound = server(
+		"pre-registration-peer-failures",
+		FixtureApplication::default(),
+		ServerConfig::default(),
+	)
+	.bind(transport.clone())
+	.await
+	.expect("bind pre-registration peer-failure server");
+
+	let stream = transport.connect().await.expect("connect abandoned local stream");
+	let (abandoned, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
+			.await
+			.expect("connect abandoned real WebSocket client");
+	drop(abandoned);
+
+	let stream = transport.connect().await.expect("connect malformed local stream");
+	let (mut malformed, _) =
+		tokio_tungstenite::client_async_with_config(LOCAL_WEBSOCKET_URI, stream, None)
+			.await
+			.expect("connect malformed real WebSocket client");
+	malformed
+		.send(Message::Text("{".into()))
+		.await
+		.expect("send malformed first WebSocket message");
+	let ServerMessage::Refusal(refusal) = receive(&mut malformed).await else {
+		panic!("expected malformed first-message refusal");
+	};
+	assert!(matches!(refusal.refusal, Refusal::ProtocolViolation { .. }));
+	drop(malformed);
+
+	let mut healthy = connect(&transport, CURRENT_VERSION).await;
+	receive_initial(&mut healthy).await;
+	drop(healthy);
+
+	let receipt = bound.shutdown().await.expect("requested shutdown remains exact");
+	assert_eq!(
+		receipt,
+		TerminationReceipt {
+			primary: TerminationPrimary::RequestedShutdown,
+			spawned_sessions: 3,
+			spawned_services: 0,
+			actor_commands_admitted: 0,
+			actor_commands_settled: 0,
+			actor_command_deadline: ActorCommandDeadlineClass::NoActiveCommand,
+			harvested_tasks: 3,
+			expected_tasks: 3,
+			panicked_tasks: 0,
+			failed_tasks: 0,
+			forced_cancelled_tasks: 0,
+			owner_integrity_failures: 0,
+			lowest_panicked: None,
+			lowest_failed: None,
+			lowest_forced: None,
+			endpoint_refusal: None,
+			cleanup_refusal: None,
+		},
+	);
 }
 
 #[tokio::test]

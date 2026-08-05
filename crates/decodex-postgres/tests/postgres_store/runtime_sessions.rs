@@ -3,7 +3,7 @@ use std::{env, path::PathBuf};
 use tokio::{task::JoinSet, time};
 use tokio_postgres::{Client, NoTls};
 
-use super::{expected_peer_uid, separated_configs, wait_for_blocker};
+use super::{expected_peer_uid, owner_runtime_configs};
 use decodex_core::{ConversationId, RuntimeSessionId, RuntimeSessionState};
 use decodex_postgres::{
 	AccountId, AccountState, BootstrapRoleProfiles, CommandIdentity, CreateConversation,
@@ -13,45 +13,6 @@ use decodex_postgres::{
 };
 
 const PROFILE_RACE_GATE: i64 = 913_371_364;
-const MIGRATION_NAMES_THROUGH_V10: [&str; 10] = [
-	"persistence_foundation",
-	"claim_indexes",
-	"conversation_history",
-	"account_readiness",
-	"project_agent_authority",
-	"project_policy_authority",
-	"program_objective_authority",
-	"quota_exclusions",
-	"exact_role_profiles",
-	"runtime_session_snapshots",
-];
-
-async fn exact_migration_history(
-	client: &Client,
-	expected_names: &[&str],
-) -> Result<Vec<(i32, String, String)>, tokio_postgres::Error> {
-	let history = client
-		.query(
-			"SELECT version, name, checksum \
-			 FROM public.refinery_schema_history ORDER BY version",
-			&[],
-		)
-		.await?
-		.into_iter()
-		.map(|row| (row.get::<_, i32>(0), row.get::<_, String>(1), row.get::<_, String>(2)))
-		.collect::<Vec<_>>();
-
-	assert_eq!(history.len(), expected_names.len());
-	for (index, ((version, name, checksum), expected_name)) in
-		history.iter().zip(expected_names).enumerate()
-	{
-		assert_eq!(*version, i32::try_from(index + 1).expect("migration index fits i32"));
-		assert_eq!(name.as_str(), *expected_name);
-		assert!(!checksum.is_empty());
-	}
-
-	Ok(history)
-}
 
 fn profile(marker: &str) -> RoleProfileConfiguration {
 	RoleProfileConfiguration {
@@ -572,7 +533,7 @@ async fn cleanup_profile_snapshot_race_unconditionally(
 async fn assert_profile_snapshot_race(
 	store: &PostgresStore,
 	updater_store: &PostgresStore,
-	migration: &tokio_postgres::Config,
+	schema_owner: &tokio_postgres::Config,
 	client: &Client,
 	conversation_id: &ConversationId,
 	created: &RuntimeSessionCommandEffect,
@@ -615,7 +576,7 @@ async fn assert_profile_snapshot_race(
 		"43000000-0000-4000-8000-000000000064",
 		"profile-race",
 	)?;
-	let (observer, observer_connection) = migration.connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.connect(NoTls).await?;
 	let mut fixture = ProfileSnapshotRaceFixture {
 		observer,
 		observer_task: tokio::spawn(observer_connection),
@@ -724,14 +685,13 @@ async fn assert_duplicate_creation_race(
 #[tokio::test(flavor = "multi_thread", worker_threads = 8)]
 #[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession database"]
 async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	let updater_store =
-		PostgresStore::connect_fixture(migration.clone(), runtime.clone(), expected_peer_uid())
-			.await?;
-	let (migration_client, migration_connection) = migration.connect(NoTls).await?;
-	let migration_task = tokio::spawn(migration_connection);
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (schema_owner_client, schema_owner_connection) = schema_owner.connect(NoTls).await?;
+	let schema_owner_task = tokio::spawn(schema_owner_connection);
 
 	assert!(matches!(
 		store.bootstrap_role_profiles("session-profiles", &profiles("v1")).await?,
@@ -748,13 +708,13 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 		)
 		.await?;
 
-	let created = assert_creation_command(&store, &migration_client, &conversation_id).await?;
-	assert_transition_command(&store, &migration_client, &created.request).await?;
+	let created = assert_creation_command(&store, &schema_owner_client, &conversation_id).await?;
+	assert_transition_command(&store, &schema_owner_client, &created.request).await?;
 	assert_profile_snapshot_race(
 		&store,
 		&updater_store,
-		&migration,
-		&migration_client,
+		&schema_owner,
+		&schema_owner_client,
 		&conversation_id,
 		&created.effect,
 	)
@@ -762,8 +722,8 @@ async fn postgres_exact_runtime_session_commands() -> Result<(), Box<dyn std::er
 	assert_runtime_authority_denials(&runtime).await?;
 	assert_duplicate_creation_race(&store, &conversation_id).await?;
 
-	drop(migration_client);
-	migration_task.await??;
+	drop(schema_owner_client);
+	schema_owner_task.await??;
 	Ok(())
 }
 
@@ -787,8 +747,9 @@ async fn runtime_state(client: &Client) -> Result<[i64; 6], tokio_postgres::Erro
 #[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession rollback database"]
 async fn postgres_exact_runtime_session_atomic_rollback() -> Result<(), Box<dyn std::error::Error>>
 {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("rollback-profiles", &profiles("rollback")).await?,
 		RoleProfileCommandOutcome::Success(_)
@@ -803,7 +764,7 @@ async fn postgres_exact_runtime_session_atomic_rollback() -> Result<(), Box<dyn 
 			},
 		)
 		.await?;
-	let (admin, admin_connection) = migration.connect(NoTls).await?;
+	let (admin, admin_connection) = schema_owner.connect(NoTls).await?;
 	let admin_task = tokio::spawn(admin_connection);
 	admin
 		.batch_execute(
@@ -884,8 +845,9 @@ async fn postgres_exact_runtime_session_atomic_rollback() -> Result<(), Box<dyn 
 #[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession retry database"]
 async fn postgres_exact_runtime_session_retry_convergence() -> Result<(), Box<dyn std::error::Error>>
 {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("retry-profiles", &profiles("retry")).await?,
 		RoleProfileCommandOutcome::Success(_)
@@ -900,7 +862,7 @@ async fn postgres_exact_runtime_session_retry_convergence() -> Result<(), Box<dy
 			},
 		)
 		.await?;
-	let (admin, admin_connection) = migration.connect(NoTls).await?;
+	let (admin, admin_connection) = schema_owner.connect(NoTls).await?;
 	let admin_task = tokio::spawn(admin_connection);
 	admin
 		.batch_execute(
@@ -948,185 +910,12 @@ async fn postgres_exact_runtime_session_retry_convergence() -> Result<(), Box<dy
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires an isolated PostgreSQL 18 V9 to V10 upgrade database"]
-async fn postgres_v9_to_v10_runtime_session_upgrade() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
-	let identities_before: (u32, u32, u32) = {
-		let row = client
-			.query_one(
-				"SELECT 'decodex.profile_snapshots'::regclass::oid, \
-				 'decodex.account_snapshots'::regclass::oid, \
-				 'decodex.runtime_sessions'::regclass::oid",
-				&[],
-			)
-			.await?;
-		(row.get(0), row.get(1), row.get(2))
-	};
-	drop(client);
-	connection_task.await??;
-	PostgresStore::migrate_fixture_through_v10(migration.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let row = client
-		.query_one(
-			"SELECT 'decodex.profile_snapshots'::regclass::oid, \
-			 'decodex.account_snapshots'::regclass::oid, \
-			 'decodex.runtime_sessions'::regclass::oid, \
-			 to_regclass('decodex.work_items') IS NULL",
-			&[],
-		)
-		.await?;
-	exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10).await?;
-	assert!(row.get::<_, bool>(3), "V11 WorkItem relation must be absent at V10");
-	assert_eq!(
-		(row.get::<_, u32>(0), row.get::<_, u32>(1), row.get::<_, u32>(2)),
-		identities_before,
-	);
-	drop(client);
-	connection_task.await??;
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-#[ignore = "requires an isolated PostgreSQL 18 V10 zero-state rejection database"]
-async fn postgres_v10_rejects_classified_runtime_state() -> Result<(), Box<dyn std::error::Error>> {
-	let variant = env::var("DECODEX_V10_PRIOR_STATE")?;
-	let (migration, _) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
-	let (client, connection) = migration.clone().connect(NoTls).await?;
-	let connection_task = tokio::spawn(connection);
-	let history_before =
-		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?;
-	let statement = match variant.as_str() {
-		"profile_snapshot" =>
-			"INSERT INTO decodex.profile_snapshots(profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier,instructions_digest,source_revision) VALUES ('42000000-0000-4000-8000-000000000090','task','task','model','medium','priority',repeat('a',64),1)",
-		"account_snapshot" =>
-			"INSERT INTO decodex.account_snapshots(account_snapshot_id,source_account_id,display_label,observed_state,source_revision) VALUES ('43000000-0000-4000-8000-000000000090','13000000-0000-4000-8000-000000000090','Account','unknown',1)",
-		"runtime_session" =>
-			"INSERT INTO decodex.conversations(conversation_id,title) VALUES ('40000000-0000-4000-8000-000000000090','V9 state'); INSERT INTO decodex.profile_snapshots(profile_snapshot_id,source_profile_id,role,model,reasoning_effort,service_tier,instructions_digest,source_revision) VALUES ('42000000-0000-4000-8000-000000000090','task','task','model','medium','priority',repeat('a',64),1); INSERT INTO decodex.account_snapshots(account_snapshot_id,source_account_id,display_label,observed_state,source_revision) VALUES ('43000000-0000-4000-8000-000000000090','13000000-0000-4000-8000-000000000090','Account','unknown',1); INSERT INTO decodex.runtime_sessions(runtime_session_id,conversation_id,profile_snapshot_id,account_snapshot_id) VALUES ('41000000-0000-4000-8000-000000000090','40000000-0000-4000-8000-000000000090','42000000-0000-4000-8000-000000000090','43000000-0000-4000-8000-000000000090')",
-		"legacy_receipt" =>
-			"INSERT INTO decodex.command_receipts(idempotency_key,request_hash,operation,claim_token,claim_expires_at) VALUES ('v9-runtime',repeat('a',64),'create_runtime_session',gen_random_uuid(),clock_timestamp()+interval '1 minute')",
-		"exact_receipt" =>
-			"WITH request(value) AS (VALUES ('{\"operation\":\"create_runtime_session\"}'::jsonb)), effect(value) AS (VALUES ('{\"changed\":false,\"code\":\"missing_target\"}'::jsonb)) INSERT INTO decodex.exact_command_receipts(protocol_version,idempotency_key,request_envelope,request_digest,receipt_state,outcome_class,effect_envelope,response_bytes,created_at,completed_at) SELECT 'decodex/exact-command/1','v9-runtime',request.value,public.digest(convert_to(request.value::text,'UTF8'),'sha256'),'completed_rejected','stable_domain_rejection',effect.value,convert_to(jsonb_build_object('classification','stable_domain_rejection','code','missing_target','effect',effect.value)::text,'UTF8'),statement_timestamp(),statement_timestamp() FROM request,effect",
-		"activity" =>
-			"INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES ('runtime_session','v9',1,'runtime_session_recorded','v9-runtime','{}')",
-		"activity_nested_aggregate" =>
-			"INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES ('conversation','v9',1,'conversation_recorded','v9-runtime','{\"event\":{\"aggregate_kind\":\"runtime_session\"}}')",
-		"activity_legacy_other_aggregate" =>
-			"INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES ('conversation','v9',1,'runtime_session_recorded','v9-runtime','{}')",
-		"outbox" =>
-			"INSERT INTO decodex.outbox(effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES ('v9-runtime','runtime_session','v9',1,'{}')",
-		"outbox_nested_effect" =>
-			"INSERT INTO decodex.outbox(effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) VALUES ('v9-runtime','conversation','v9',1,'{\"effect\":{\"payload\":{\"event_kind\":\"runtime_session_transitioned\"}}}')",
-		"outbox_activity_link" =>
-			"WITH activity AS (INSERT INTO decodex.activity(aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload) VALUES ('conversation','v9',1,'runtime_session_recorded','v9-runtime','{}') RETURNING sequence) INSERT INTO decodex.outbox(effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload) SELECT 'v9-runtime','conversation','v9',1,jsonb_build_object('link',jsonb_build_object('activity_sequence',sequence)) FROM activity",
-		_ => return Err(format!("unknown V10 prior-state fixture {variant}").into()),
-	};
-	client.batch_execute(statement).await?;
-	let error = PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid())
-		.await
-		.expect_err("classified V9 RuntimeSession state must reject V10 atomically");
-	assert!(format!("{error:?}").contains("zero incompatible state"));
-	assert_eq!(
-		exact_migration_history(&client, &MIGRATION_NAMES_THROUGH_V10[..9]).await?,
-		history_before,
-	);
-	let v10_schema_absent: bool = client
-		.query_one(
-			"SELECT NOT EXISTS ( \
-			 SELECT 1 FROM pg_catalog.pg_attribute AS attribute \
-			 JOIN pg_catalog.pg_class AS class ON class.oid=attribute.attrelid \
-			 JOIN pg_catalog.pg_namespace AS namespace ON namespace.oid=class.relnamespace \
-			 WHERE namespace.nspname='decodex' AND class.relname='profile_snapshots' \
-			 AND attribute.attname='instructions' AND attribute.attnum>0 \
-			 AND NOT attribute.attisdropped)",
-			&[],
-		)
-		.await?
-		.get(0);
-	assert!(v10_schema_absent, "V10 profile instructions column must be absent after rejection");
-	drop(client);
-	connection_task.await??;
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "requires an isolated PostgreSQL 18 V10 old-writer fence database"]
-async fn postgres_v10_fences_blocked_old_runtime_writer() -> Result<(), Box<dyn std::error::Error>>
-{
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	PostgresStore::migrate_fixture_through_v9(migration.clone(), expected_peer_uid()).await?;
-	let runtime_role = runtime.get_user().ok_or("runtime role is absent")?;
-	let (admin, admin_connection) = migration.clone().connect(NoTls).await?;
-	let admin_task = tokio::spawn(admin_connection);
-	admin
-		.batch_execute(&format!(
-			"GRANT USAGE ON SCHEMA decodex TO {runtime_role}; \
-			 GRANT INSERT ON decodex.profile_snapshots TO {runtime_role}; \
-			 GRANT USAGE ON TYPE decodex.role_profile_role TO {runtime_role}"
-		))
-		.await?;
-	let (old_writer, old_connection) = runtime.connect(NoTls).await?;
-	let old_connection_task = tokio::spawn(old_connection);
-	old_writer
-		.batch_execute(
-			"PREPARE xy1337_old_writer AS \
-			 INSERT INTO decodex.profile_snapshots( \
-			  profile_snapshot_id,source_profile_id,role,model,reasoning_effort, \
-			  service_tier,instructions_digest,source_revision \
-			 ) VALUES ( \
-			  '42000000-0000-4000-8000-000000000091','task','task','old', \
-			  'medium','priority',repeat('a',64),1 \
-			 )",
-		)
-		.await?;
-	let old_pid: i32 = old_writer.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
-	let admin_pid: i32 = admin.query_one("SELECT pg_backend_pid()", &[]).await?.get(0);
-	admin.query_one("SELECT pg_advisory_lock(991337)", &[]).await?;
-	let writer = tokio::spawn(async move {
-		old_writer
-			.batch_execute(
-				"BEGIN; SELECT pg_advisory_xact_lock(991337); \
-				 EXECUTE xy1337_old_writer; COMMIT",
-			)
-			.await
-	});
-	assert!(
-		wait_for_blocker(&admin, admin_pid, old_pid).await?,
-		"admin backend must block the old writer before V10"
-	);
-	assert!(!writer.is_finished(), "old writer must be blocked before V10");
-	PostgresStore::migrate_fixture_through_v10(migration, expected_peer_uid()).await?;
-	admin.query_one("SELECT pg_advisory_unlock(991337)", &[]).await?;
-	let error = writer.await?.expect_err("pre-V10 writer must fail behind the committed fence");
-	assert_eq!(error.code().map(|code| code.code()), Some("42501"));
-	exact_migration_history(&admin, &MIGRATION_NAMES_THROUGH_V10).await?;
-	let fenced: bool = admin
-		.query_one(
-			"SELECT to_regclass('decodex.work_items') IS NULL \
-			 AND NOT EXISTS (SELECT 1 FROM decodex.profile_snapshots)",
-			&[],
-		)
-		.await?
-		.get(0);
-	assert!(fenced);
-	drop(admin);
-	admin_task.await??;
-	old_connection_task.await??;
-	Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires an isolated PostgreSQL 18 V10 RuntimeSession crash database"]
 async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn std::error::Error>> {
 	let sync = PathBuf::from(env::var("DECODEX_RUNTIME_SESSION_RESTART_SYNC")?);
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
 	let store =
-		PostgresStore::connect(migration.clone(), runtime.clone(), expected_peer_uid()).await?;
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		store.bootstrap_role_profiles("crash-profiles", &profiles("crash")).await?,
 		RoleProfileCommandOutcome::Success(_)
@@ -1147,7 +936,7 @@ async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn s
 		"43000000-0000-4000-8000-000000000070",
 		"crash",
 	)?;
-	let (blocker, blocker_connection) = migration.clone().connect(NoTls).await?;
+	let (blocker, blocker_connection) = schema_owner.clone().connect(NoTls).await?;
 	let blocker_task = tokio::spawn(blocker_connection);
 	blocker
 		.batch_execute("BEGIN; LOCK TABLE decodex.runtime_sessions IN ACCESS EXCLUSIVE MODE")
@@ -1158,7 +947,7 @@ async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn s
 	let create_task = tokio::spawn(async move {
 		task_store.create_runtime_session("crash-session", &task_create).await
 	});
-	let (observer, observer_connection) = migration.clone().connect(NoTls).await?;
+	let (observer, observer_connection) = schema_owner.clone().connect(NoTls).await?;
 	let observer_task = tokio::spawn(observer_connection);
 	assert!(super::wait_for_any_blocked_by(&observer, blocker_pid).await?);
 	std::fs::write(sync.join("ready"), b"ready")?;
@@ -1178,12 +967,13 @@ async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn s
 	let _ = blocker_task.await;
 	drop(store);
 
-	let recovered = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
+	let recovered =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
 	assert!(matches!(
 		recovered.create_runtime_session("crash-session", &create).await?,
 		RuntimeSessionCommandOutcome::Success(_)
 	));
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let state = runtime_state(&client).await?;
 	assert_eq!(state[1..], [1, 1, 1, 1, 1]);
@@ -1206,9 +996,10 @@ async fn postgres_exact_runtime_session_crash_recovery() -> Result<(), Box<dyn s
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "requires the populated PostgreSQL 18 V10 RuntimeSession restore database"]
 async fn postgres_exact_runtime_session_restore() -> Result<(), Box<dyn std::error::Error>> {
-	let (migration, runtime) = separated_configs("DECODEX_TEST")?;
-	let _store = PostgresStore::connect(migration.clone(), runtime, expected_peer_uid()).await?;
-	let (client, connection) = migration.connect(NoTls).await?;
+	let (schema_owner, runtime) = owner_runtime_configs("DECODEX_TEST")?;
+	let _store =
+		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
+	let (client, connection) = schema_owner.connect(NoTls).await?;
 	let connection_task = tokio::spawn(connection);
 	let valid: bool = client
 		.query_one(
