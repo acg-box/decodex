@@ -81,6 +81,8 @@ struct AccountPrimaryActionsView: View {
 
 	private var canSelect: Bool {
 		state.account.enabled
+			// Quick Task launch still requires the separately attested callback
+			// capability; account data does not.
 			&& state.account.lifecycleReadiness == .ready
 			&& state.account.unsettledOperation == nil
 			&& store.isAwaitingFreshAccountSkeleton(state.account.accountID) == false
