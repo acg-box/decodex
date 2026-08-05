@@ -472,7 +472,7 @@ behavior exactly.
 ## ProcessGeneration
 
 ProcessSupervisor is the sole ProcessGeneration writer. A generation binds one account,
-initial account revision, credential version/fingerprint, provider binding, exact-build
+initial account revision, credential version/fingerprint, provider binding, runtime-negotiated
 capability profile, execution epoch, attested launch manifest, boot identity, process
 identity, state, revision, and timestamps. It stores no secret.
 

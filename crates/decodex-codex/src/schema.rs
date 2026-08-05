@@ -14,9 +14,9 @@ use sha2::{Digest as _, Sha256};
 
 use crate::quick_task::{QuickTaskMethod, QuickTaskNotification};
 
-/// Accepted XY-1262 schema receipt used by the marker golden.
+/// Marker receipt retained for the checked-in structural fixture.
 pub const ACCEPTED_SCHEMA_RECEIPT: &str = "decodex/vnext-codex-schema-receipt/1";
-/// Request methods required by the accepted schema receipt.
+/// Request methods required by the current Decodex adapter.
 pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 	"initialize",
 	"account/read",
@@ -28,12 +28,12 @@ pub const REQUIRED_REQUEST_METHODS: &[&str] = &[
 	"account/rateLimits/read",
 	"collaborationMode/list",
 ];
-/// Notification methods required by the accepted schema receipt.
+/// Notification methods required by the current Decodex adapter.
 pub const REQUIRED_NOTIFICATION_METHODS: &[&str] =
 	&["thread/started", "turn/started", "item/started", "item/completed", "turn/completed"];
-/// Exact account-auth request initiated by the supported Codex build.
+/// Account-auth request initiated by a compatible Codex executable.
 pub const ACCOUNT_LOGIN_METHOD: &str = "account/login/start";
-/// Exact credential-refresh request initiated by the supported Codex build.
+/// Credential-refresh request initiated by a compatible Codex executable.
 pub const ACCOUNT_REFRESH_CALLBACK_METHOD: &str = "account/chatgptAuthTokens/refresh";
 #[doc(hidden)]
 pub const MAX_SCHEMA_FILE_BYTES: u64 = 16 * 1_024 * 1_024;
@@ -44,37 +44,8 @@ pub(crate) const MAX_SCHEMA_TOTAL_BYTES: u64 = 32 * 1_024 * 1_024;
 const COLLABORATION_MARKERS: &[&str] =
 	&["collabAgentToolCall", "parentThreadId", "agentNickname", "agentRole", "subAgentActivity"];
 const MAX_SCHEMA_DIRECTORY_DEPTH: usize = 8;
-const ACCEPTED_DIGESTS: &[(&str, &str)] = &[
-	("ClientRequest.json", "6ffc593d603d21a051840539a4dbfad95cad2e7fec315e252b6722bd71bf37b4"),
-	("ServerRequest.json", "6455b23a65fa3d9c7749ecd2ecbc4b829c9039f6cd8f9adc44d86ad4522e37ec"),
-	("ServerNotification.json", "abbb54060ea6a6005e63267bc6996eacd70cbb7954a7e0d61f50ea02af4acf02"),
-	(
-		"codex_app_server_protocol.v2.schemas.json",
-		"e554a74bd59d38d16acb1744750b2999156ee3d65d0fe906b22ab52edf17fbbc",
-	),
-	(
-		"v2/LoginAccountParams.json",
-		"3bec7003eb85aabbeaf0ba8a22ec54b68ec26d2657d6878a31ca0d01dfe642e0",
-	),
-	(
-		"ChatgptAuthTokensRefreshParams.json",
-		"74d490082dab616ac01c94d388c9a836304c96092db37290cfdd10a46b0f3ef9",
-	),
-	(
-		"ChatgptAuthTokensRefreshResponse.json",
-		"ff76f5cc58bff40216f9d5f3c5be921268059f6d66d6c034970cddf0e08f0ced",
-	),
-	(
-		"v2/ThreadReadResponse.json",
-		"94689cd705b4936a5c361deaa51fed69101eaba0629899ef8a39b600180de9b3",
-	),
-	(
-		"v2/ThreadStartParams.json",
-		"001c07a58981df5d860335bf8cee4d336df2165db6dc9c645cefed0467ccebbe",
-	),
-];
 
-/// One checked-in schema marker set, never a capability promise.
+/// One checked-in structural schema fixture, never a capability promise.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SchemaMarker {
 	/// Receipt schema identifier.
@@ -178,12 +149,6 @@ impl SchemaContract {
 				missing.push(format!("collaboration:{field}"));
 			}
 		}
-		for (file, digest) in ACCEPTED_DIGESTS {
-			if marker.canonical_sha256.get(*file).map(String::as_str) != Some(*digest) {
-				missing.push(format!("digest:{file}"));
-			}
-		}
-
 		if missing.is_empty() {
 			Ok(Self {
 				request_methods: marker.request_methods,
@@ -274,10 +239,7 @@ pub struct GeneratedSchemaEvidence {
 	contract: SchemaContract,
 }
 impl GeneratedSchemaEvidence {
-	pub fn load(
-		directory: &Path,
-		expected_digests: Option<&BTreeMap<String, String>>,
-	) -> Result<Self, Vec<String>> {
+	pub fn load(directory: &Path) -> Result<Self, Vec<String>> {
 		validate_generated_directory_budget(directory)?;
 
 		let request = read_json(directory.join("ClientRequest.json"))?;
@@ -324,18 +286,6 @@ impl GeneratedSchemaEvidence {
 		if let Some(value) = thread_start.as_ref() {
 			actual_digests.insert("v2/ThreadStartParams.json".into(), canonical_digest(value));
 		}
-		if let Some(expected) = expected_digests {
-			let mismatches = expected
-				.iter()
-				.filter(|(name, digest)| actual_digests.get(*name) != Some(*digest))
-				.map(|(name, _)| format!("digest:{name}"))
-				.collect::<Vec<_>>();
-
-			if !mismatches.is_empty() {
-				return Err(mismatches);
-			}
-		}
-
 		let contract = SchemaContract::from_generated(
 			request_methods,
 			notification_methods,
@@ -921,16 +871,18 @@ mod tests {
 	}
 
 	#[test]
-	fn marker_validation_rejects_a_tampered_receipt_digest() {
+	fn marker_validation_ignores_observed_schema_digests() {
 		let mut marker = SchemaMarker::accepted();
 
-		marker.canonical_sha256.insert("ClientRequest.json".into(), "wrong".into());
+		marker
+			.canonical_sha256
+			.insert("ClientRequest.json".into(), "observed-from-user-codex".into());
 
-		assert_eq!(SchemaContract::validate(marker).unwrap_err(), ["digest:ClientRequest.json"]);
+		assert!(SchemaContract::validate(marker).is_ok());
 	}
 
 	#[test]
-	fn marker_validation_rejects_the_prior_schema_digest_set() {
+	fn marker_validation_accepts_the_prior_schema_shape() {
 		let mut marker = SchemaMarker::accepted();
 		for (file, digest) in [
 			(
@@ -949,18 +901,11 @@ mod tests {
 			marker.canonical_sha256.insert(file.into(), digest.into());
 		}
 
-		assert_eq!(
-			SchemaContract::validate(marker).unwrap_err(),
-			[
-				"digest:ClientRequest.json",
-				"digest:ServerNotification.json",
-				"digest:codex_app_server_protocol.v2.schemas.json",
-			]
-		);
+		assert!(SchemaContract::validate(marker).is_ok());
 	}
 
 	#[test]
-	fn marker_validation_rejects_the_previous_supported_build_schema_digest_set() {
+	fn marker_validation_accepts_a_different_schema_shape() {
 		let mut marker = SchemaMarker::accepted();
 		for (file, digest) in [
 			(
@@ -979,18 +924,11 @@ mod tests {
 			marker.canonical_sha256.insert(file.into(), digest.into());
 		}
 
-		assert_eq!(
-			SchemaContract::validate(marker).unwrap_err(),
-			[
-				"digest:ClientRequest.json",
-				"digest:ServerNotification.json",
-				"digest:codex_app_server_protocol.v2.schemas.json",
-			]
-		);
+		assert!(SchemaContract::validate(marker).is_ok());
 	}
 
 	#[test]
-	fn marker_validation_rejects_the_rust_v0_145_0_schema_digest_set() {
+	fn marker_validation_accepts_an_older_schema_shape_when_methods_match() {
 		let mut marker = SchemaMarker::accepted();
 		for (file, digest) in [
 			(
@@ -1009,18 +947,11 @@ mod tests {
 			marker.canonical_sha256.insert(file.into(), digest.into());
 		}
 
-		assert_eq!(
-			SchemaContract::validate(marker).unwrap_err(),
-			[
-				"digest:ClientRequest.json",
-				"digest:ServerNotification.json",
-				"digest:codex_app_server_protocol.v2.schemas.json",
-			]
-		);
+		assert!(SchemaContract::validate(marker).is_ok());
 	}
 
 	#[test]
-	fn marker_validation_rejects_the_rust_v0_146_0_alpha_11_schema_digest_set() {
+	fn marker_validation_accepts_a_current_schema_shape_without_a_release_pin() {
 		let mut marker = SchemaMarker::accepted();
 		for (file, digest) in [
 			(
@@ -1039,14 +970,7 @@ mod tests {
 			marker.canonical_sha256.insert(file.into(), digest.into());
 		}
 
-		assert_eq!(
-			SchemaContract::validate(marker).unwrap_err(),
-			[
-				"digest:ClientRequest.json",
-				"digest:ServerNotification.json",
-				"digest:codex_app_server_protocol.v2.schemas.json",
-			]
-		);
+		assert!(SchemaContract::validate(marker).is_ok());
 	}
 
 	#[test]

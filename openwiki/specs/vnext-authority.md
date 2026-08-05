@@ -898,27 +898,28 @@ XY-1400 implements the accepted ProcessGeneration contract in
 [the ProcessGeneration authority specification](process-generation-authority.md).
 `ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
 protected executable snapshot and derives the durable launch-manifest identity and exact command.
-The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
+The manifest binds the observed executable identity and BuildId, fixed `app-server --stdio`
+arguments, working directory,
 sanitized environment, account, initial account revision, canonical credential version and
-fingerprint, provider identity, and exact-build startup/lifetime/account-callback capability. No
+fingerprint, provider identity, and runtime-negotiated startup/lifetime/account-callback capability. No
 caller can pair an independent digest with a raw command. The supervisor commits this intent
 before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
 transition, and readback carry the same non-secret binding. No new process or effect ledger is
 added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
-The current lifetime profile accepts only the recorded macOS `codex-cli 0.146.0-alpha.9.2` image. It
-sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
-argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
-raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
-contains a protocol writer. Other builds, including an unrecorded Linux image, fail closed before
-profile-dependent preflights. Generic session/descriptor setup does not install
+The current lifetime profile uses the user's installed macOS arm64 Codex executable. It sets
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control argument.
+The marker proves only that process's startup state. `ProcessSupervisor` retains the raw channels
+privately for lifetime ownership, and no returned ProcessGeneration capability contains a protocol
+writer. No Codex release/version or executable digest is allowlisted; only the platform, process
+shape, generated schema, and live capability proof are checked. Generic session/descriptor setup does not install
 `PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
 Linux lifetime capability. `decodexd` remains the only product daemon.
 
-This profile proves AccountLifecycle readiness only after a positive exact-build callback receipt
+This profile proves AccountLifecycle readiness only after a positive runtime callback receipt
 and the typed daemon gateway pass the generated-schema and callback-shape preflights. Generated
 types, version text, or upstream implementation presence alone are insufficient.
-Unsupported builds and callback shapes fail closed before account launch.
+Incompatible process shapes and callback shapes fail closed before account launch.
 
 The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
 All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only
