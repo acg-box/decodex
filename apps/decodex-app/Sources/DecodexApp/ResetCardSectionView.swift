@@ -141,27 +141,29 @@ enum ResetCardInventoryPresentation: Equatable {
 			self = .connecting(detail: detail)
 			return
 		}
-		if case .updating(let detail) = state.inventoryFailure {
-			self = .updating(detail: detail)
-			return
-		}
-		if case .unavailable(let detail) = state.inventoryFailure,
-			state.isRefreshing == false,
-			isAwaitingFreshAccountSkeleton == false
-		{
-			self = .unavailable(detail: detail)
-			return
-		}
 
 		if state.isRefreshing
 			|| isAwaitingFreshAccountSkeleton
 			|| (state.inventory != nil && state.inventoryIsCurrent == false)
 		{
-			self = state.inventory == nil ? .checking : .updating(detail: nil)
+			let detail: String?
+			if case .updating(let failureDetail) = state.inventoryFailure {
+				detail = failureDetail
+			} else {
+				detail = nil
+			}
+			self = state.inventory == nil ? .checking : .updating(detail: detail)
 			return
 		}
 
 		if case .unavailable(let detail) = state.inventoryFailure {
+			self = .unavailable(detail: detail)
+			return
+		}
+		if case .updating(let detail) = state.inventoryFailure {
+			// A completed retryable read failure is not an in-flight refresh. Keep
+			// the retained quota visible, but do not leave a permanent spinner in
+			// every account row.
 			self = .unavailable(detail: detail)
 			return
 		}

@@ -51,7 +51,7 @@ impl BuildId {
 		Self::from_attestation(value, &[0; 32]).expect("test build identity must be valid")
 	}
 
-	/// Return the opaque exact-build fingerprint.
+	/// Return the opaque observed-executable fingerprint.
 	pub fn as_str(&self) -> &str {
 		&self.0
 	}
@@ -339,7 +339,7 @@ pub struct ExactThreadReadResult {
 /// Closed reason an archive mutation could not be verified.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArchiveUnverifiedReason {
-	/// The exact build does not support `thread/archive`.
+	/// The observed executable does not support `thread/archive`.
 	MethodUnsupported,
 	/// The mutation response was ambiguous and exact readback did not confirm the desired state.
 	AmbiguousMutation,

@@ -549,6 +549,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(statusPanel.contains("StatusPanelInteraction.isStatusItemPress"))
 		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
 		XCTAssertTrue(statusPanel.contains("#selector(panelDidResize(_:))"))
+		XCTAssertTrue(statusPanel.contains("panel.onFrameChange"))
+		XCTAssertTrue(statusPanel.contains("isPositioningPanel"))
+		XCTAssertTrue(statusPanel.contains("scheduleAnchorRetry()"))
+		XCTAssertTrue(statusPanel.contains("Task.sleep(nanoseconds: 16_000_000)"))
 		XCTAssertEqual(
 			panelControls.components(
 				separatedBy: "isDisabled && isActive == false"
@@ -579,6 +583,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 				"window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor"
 			)
 		)
+		XCTAssertTrue(panelWindow.contains("x: currentFrame.minX"))
+		XCTAssertFalse(panelWindow.contains("currentFrame.midX"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
@@ -806,5 +812,27 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"Opening the panel must not start a full refresh; Refresh all is explicit."
 		)
 		XCTAssertTrue(panel.contains("store.ensureFresh()"))
+		let ensureFreshStart = try XCTUnwrap(store.range(of: "func ensureFresh()"))
+		let priorityTaskStart = try XCTUnwrap(
+			store.range(
+				of: "priorityObservationTask = Task",
+				range: ensureFreshStart.upperBound ..< store.endIndex
+			)
+		)
+		let ensureFreshBeforePriorityTask = String(
+			store[ensureFreshStart.lowerBound ..< priorityTaskStart.lowerBound]
+		)
+		XCTAssertFalse(
+			ensureFreshBeforePriorityTask.contains("requestObservationRefresh()"),
+			"Panel presentation must wait for the daemon priority signal before reading UI state."
+		)
+		let resizeStart = try XCTUnwrap(panel.range(of: "private func panelDidResize"))
+		let positionStart = try XCTUnwrap(panel.range(of: "private func positionPanel"))
+		let resizeHandler = String(panel[resizeStart.lowerBound ..< positionStart.lowerBound])
+		XCTAssertTrue(resizeHandler.contains("positionPanel()"))
+		XCTAssertFalse(
+			resizeHandler.contains("guard panel.isVisible"),
+			"Content sizing must re-anchor the panel even while it is hidden."
+		)
 	}
 }

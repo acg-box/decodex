@@ -266,7 +266,7 @@ enum PanelWindowSizingLayout {
 		let requestedFrameSize = frameSizeForContentSize(contentSize)
 		guard let visibleFrame = visibleFrame() else {
 			return NSRect(
-				x: currentFrame.midX - requestedFrameSize.width / 2,
+				x: currentFrame.minX,
 				y: currentFrame.maxY - requestedFrameSize.height,
 				width: requestedFrameSize.width,
 				height: requestedFrameSize.height
@@ -278,7 +278,10 @@ enum PanelWindowSizingLayout {
 			inside: visibleFrame
 		)
 		let proposedFrame = NSRect(
-			x: currentFrame.midX - frameSize.width / 2,
+			// The status-panel controller owns horizontal placement. Keep the
+			// current origin while SwiftUI changes only the window size; otherwise a
+			// hidden sizing pass can move the panel to the screen edge.
+			x: currentFrame.minX,
 			y: currentFrame.maxY - frameSize.height,
 			width: frameSize.width,
 			height: frameSize.height
