@@ -434,7 +434,10 @@ delay another.
 
 Results publish progressively only against the current Account revision and cache
 generation. A changed account invalidates its old Reset Card/profile state before a stale
-in-flight result can publish.
+in-flight result can publish. Each accepted account observation updates the daemon's
+per-account freshness metadata and cache value. The opaque public cache generation
+advances only when the semantic public value or its typed result changes; a timestamp-only
+refresh does not create a UI invalidation.
 
 `GetResetCards` and `GetAccountProfile` are isolated reads. They do not contact the
 provider, start an app-server, join a refresh future, wait for an observation round, or
@@ -444,10 +447,16 @@ cache. Restart discards that cache and reports typed retryable unavailability un
 new observation warms it.
 
 The UI starts independent daemon value reads concurrently and keeps one bounded
-`WaitForAccountObservation` query open instead of owning a second refresh clock. Each
-daemon publication advances an opaque generation and wakes one coalesced cached-value
-reload. Panel-open and manual triggers reload cached values only; they do not start
-provider or app-server work.
+`WaitForAccountObservation` query open instead of owning a second refresh clock. A
+daemon publication with a newly observed opaque generation wakes one coalesced
+background synchronization. A same-generation heartbeat is ignored unless the
+previous synchronization needs retry. Background synchronization retains the last
+published snapshot and does not enter the global loading or action gate. Opening
+the panel presents that snapshot immediately and may issue one single-flight
+priority observation request; the daemon coalesces it with its current round and
+the panel never waits for provider work. The manual `Refresh all` trigger remains
+the explicit full-read action. Normal value reads do not start provider or app-server
+work; only the explicit priority observation request schedules daemon-owned work.
 
 The macOS UI uses its existing in-process Rust protocol client. `Refresh login` is its
 only credential-replacement surface, and the native app ABI has no separate direct

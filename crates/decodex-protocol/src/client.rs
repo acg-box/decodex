@@ -1063,12 +1063,31 @@ impl AccountClient {
 		&self,
 		after_generation: u64,
 	) -> Result<AccountObservationSignal, ClientFailure> {
+		self.wait_for_observation_inner(after_generation, false).await
+	}
+
+	/// Ask the daemon to coalesce one observation round, then wait for its semantic generation.
+	pub async fn request_observation_refresh(
+		&self,
+		after_generation: u64,
+	) -> Result<AccountObservationSignal, ClientFailure> {
+		self.wait_for_observation_inner(after_generation, true).await
+	}
+
+	async fn wait_for_observation_inner(
+		&self,
+		after_generation: u64,
+		request_refresh: bool,
+	) -> Result<AccountObservationSignal, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
 			self.transport.timeout,
 			self.transport.query_inner(
 				"decodex-account-observation-wait",
-				QueryPayload::WaitForAccountObservation { after_generation },
+				QueryPayload::WaitForAccountObservation {
+					after_generation,
+					request_refresh: request_refresh.then_some(true),
+				},
 			),
 		)
 		.await

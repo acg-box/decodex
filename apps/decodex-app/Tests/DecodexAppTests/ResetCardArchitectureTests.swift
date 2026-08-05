@@ -793,11 +793,18 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(store.contains("startAccountObservationSignals()"))
 		XCTAssertTrue(store.contains("accountObservationTask?.cancel()"))
 		XCTAssertTrue(store.contains("waitForAccountObservation("))
+		XCTAssertTrue(store.contains("func ensureFresh()"))
+		XCTAssertTrue(store.contains("requestAccountObservationRefresh("))
 		XCTAssertFalse(store.contains("ContinuousClock()"))
 		XCTAssertTrue(store.contains("self.requestObservationRefresh()"))
 		XCTAssertTrue(store.contains("await performRefreshCycle()"))
+		XCTAssertTrue(store.contains("await performObservationRefresh()"))
 		XCTAssertTrue(store.contains("await performAccountSkeletonRead()"))
 		XCTAssertFalse(store.contains("Timer.publish"))
-		XCTAssertTrue(panel.contains("store.requestRefresh()"))
+		XCTAssertFalse(
+			panel.contains("store.requestRefresh()"),
+			"Opening the panel must not start a full refresh; Refresh all is explicit."
+		)
+		XCTAssertTrue(panel.contains("store.ensureFresh()"))
 	}
 }
