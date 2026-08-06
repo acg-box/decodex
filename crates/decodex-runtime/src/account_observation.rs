@@ -100,13 +100,13 @@ impl AccountObservationState {
 		let account_id = observation.account_id.clone();
 		let reset_cards_changed = observation.reset_cards.as_ref().is_some_and(|next| {
 			self.reset_cards.get(&account_id).is_none_or(|current| {
-				reset_card_observation_semantically_equal(&current.result, next) == false
+				!reset_card_observation_semantically_equal(&current.result, next)
 			})
 		});
 		let profile_changed = observation.profile.as_ref().is_some_and(|next| {
 			self.profiles
 				.get(&account_id)
-				.is_none_or(|current| profile_status_semantically_equal(current, next) == false)
+				.is_none_or(|current| !profile_status_semantically_equal(current, next))
 		});
 		if let Some(reset_cards) = observation.reset_cards {
 			let inventory_revision = reset_cards

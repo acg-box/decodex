@@ -611,9 +611,9 @@ impl ProcessGenerationControl {
 	///
 	/// Callers supply only a new generation identity and external restore authorization. The
 	/// launch authority derives account, runner manifest, observed executable identity and command,
-	/// fixed arguments and environment, and the runtime private-stdio startup capability. Replay and
-	/// restored database state cannot enter this path. The returned receipt contains no protocol
-	/// writer.
+	/// fixed arguments and environment, and the runtime private-stdio startup capability. Replay
+	/// and restored database state cannot enter this path. The returned receipt contains no
+	/// protocol writer.
 	pub(crate) async fn spawn_fenced(
 		&self,
 		generation_id: ProcessGenerationId,

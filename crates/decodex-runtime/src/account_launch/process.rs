@@ -62,6 +62,7 @@ use crate::account_launch::{
 		ThreadListResponse, ThreadReadParams, ThreadReadResponse,
 	},
 };
+#[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
 	CapabilityProfile, ExactResetCreditId, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
@@ -76,7 +77,6 @@ use decodex_codex::{
 	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
-#[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
@@ -535,12 +535,8 @@ impl AttestedAppServerProfile {
 			.filter(|home| !home.is_empty())
 			.ok_or(SupervisionError::InvalidBinding)?;
 		let expected_codex_home = PathBuf::from(home).join(".codex");
-		let (build, generated, guard) = attest_executable_for_home(
-			&command,
-			&expected_codex_home,
-			timeout,
-			None,
-		)?;
+		let (build, generated, guard) =
+			attest_executable_for_home(&command, &expected_codex_home, timeout, None)?;
 		if guard.is_some() {
 			return Err(SupervisionError::CleanupUnavailable.into());
 		}
@@ -1186,12 +1182,12 @@ struct QuickTaskProcessSuccess<T> {
 fn callback_probe_access_token(
 	provider_account_id: &str,
 ) -> Result<Zeroizing<String>, ResetCardProcessError> {
-	// This observed executable refreshes external auth after a read-only cloud-config 401, but not after
-	// `account/rateLimits/read`. A business-shaped, invalidly signed JWT reaches that path without
-	// creating a thread or turn. The separate RPC account ID and this claim stay bound to the
-	// immutable ProcessGeneration provider; the Account Service supplies the real successor token.
-	// Omitting the user ID makes the cloud-config cache identity incomplete and forces a read.
-	// After a successful callback, Codex writes any resulting cache under the refreshed real
+	// This observed executable refreshes external auth after a read-only cloud-config 401, but not
+	// after `account/rateLimits/read`. A business-shaped, invalidly signed JWT reaches that path
+	// without creating a thread or turn. The separate RPC account ID and this claim stay bound to
+	// the immutable ProcessGeneration provider; the Account Service supplies the real successor
+	// token. Omitting the user ID makes the cloud-config cache identity incomplete and forces a
+	// read. After a successful callback, Codex writes any resulting cache under the refreshed real
 	// identity.
 	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
 	let payload = serde_json::to_vec(&serde_json::json!({
@@ -2296,12 +2292,7 @@ impl ReadOnlyProbe {
 		_schema_marker: SchemaMarker,
 		timeout: Duration,
 	) -> Self {
-		Self {
-			command,
-			binding,
-			timeout,
-			attestation_timeout_override: None,
-		}
+		Self { command, binding, timeout, attestation_timeout_override: None }
 	}
 
 	#[cfg(test)]
@@ -2315,12 +2306,7 @@ impl ReadOnlyProbe {
 	#[cfg(test)]
 	#[doc(hidden)]
 	pub fn fixture(command: AppServerCommand, binding: AccountBinding, timeout: Duration) -> Self {
-		Self {
-			command,
-			binding,
-			timeout,
-			attestation_timeout_override: None,
-		}
+		Self { command, binding, timeout, attestation_timeout_override: None }
 	}
 
 	/// Test-only ambient probe retained for the landed XY-1270 capability fixtures.
@@ -2368,12 +2354,8 @@ impl ReadOnlyProbe {
 		let attestation_timeout = self.attestation_timeout_override.unwrap_or(self.timeout);
 		#[cfg(not(test))]
 		let attestation_timeout = self.timeout;
-		let (build, generated, guard) = attest_executable(
-			&self.command,
-			&self.binding,
-			attestation_timeout,
-			guard,
-		)?;
+		let (build, generated, guard) =
+			attest_executable(&self.command, &self.binding, attestation_timeout, guard)?;
 		let mut negotiation = ProbeNegotiation::new(cache, &build, &generated);
 		let account_id = self.binding.account_id.clone();
 		let guard = guard.ok_or(SupervisionError::SpawnFailed)?;
@@ -2657,11 +2639,7 @@ impl ExactThreadReconciler {
 		binding: AccountBinding,
 		timeout: Duration,
 	) -> Self {
-		Self {
-			command,
-			binding,
-			timeout,
-		}
+		Self { command, binding, timeout }
 	}
 
 	pub(super) fn account_id(&self) -> &AccountId {
@@ -2670,11 +2648,7 @@ impl ExactThreadReconciler {
 
 	#[cfg(test)]
 	fn fixture(command: AppServerCommand, binding: AccountBinding, timeout: Duration) -> Self {
-		Self {
-			command,
-			binding,
-			timeout,
-		}
+		Self { command, binding, timeout }
 	}
 
 	pub(super) fn run_mechanical_with_lifetime_guard(
@@ -2684,13 +2658,9 @@ impl ExactThreadReconciler {
 		guard: RunnerPermit,
 		operation: ExactThreadReconciliation,
 	) -> Result<ExactThreadReconciliationResult, ExactThreadReconciliationFailure> {
-		let (build, generated, guard) = attest_executable(
-			&self.command,
-			&self.binding,
-			self.timeout,
-			Some(guard),
-		)
-		.map_err(ExactThreadReconciliationFailure::Probe)?;
+		let (build, generated, guard) =
+			attest_executable(&self.command, &self.binding, self.timeout, Some(guard))
+				.map_err(ExactThreadReconciliationFailure::Probe)?;
 		let required_method = match &operation {
 			ExactThreadReconciliation::List(_) => "thread/list",
 			ExactThreadReconciliation::Read(_) => "thread/read",
@@ -4674,12 +4644,7 @@ fn attest_executable(
 	timeout: Duration,
 	guard: Option<RunnerPermit>,
 ) -> Result<(BuildId, GeneratedSchemaEvidence, Option<RunnerPermit>), ProbeError> {
-	attest_executable_for_home(
-		command,
-		&binding.expected_codex_home,
-		timeout,
-		guard,
-	)
+	attest_executable_for_home(command, &binding.expected_codex_home, timeout, guard)
 }
 
 fn attest_executable_for_home(
