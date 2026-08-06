@@ -125,7 +125,6 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.has_credential_material(pg_catalog.text)",
 	"decodex.has_credential_material(pg_catalog.jsonb)",
 	"decodex.is_meaningful_evidence(pg_catalog.jsonb)",
-	"decodex.rfc3339_utc(pg_catalog.timestamptz)",
 	"decodex.is_valid_operation_duration(pg_catalog.interval)",
 	"decodex.lease_ttl_milliseconds(pg_catalog.interval)",
 	"decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
