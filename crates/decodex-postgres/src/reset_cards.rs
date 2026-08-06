@@ -71,6 +71,13 @@ const RENEW_RESET_CARD_CLAIM_SQL: &str = "WITH write_time AS (SELECT clock_times
 	   AND lease_holder=$2::text::uuid AND claim_token=$3::text::uuid \
 	   AND lease_expires_at > write_time.value";
 
+/// Reserved non-Codex execution profile used by the direct account backend API path.
+///
+/// It is intentionally a fixed, non-secret marker.  It is not an executable hash and is never
+/// used to authorize a Codex process callback.
+pub const RESET_CARD_API_CALLBACK_PROFILE_SHA256: &str =
+	"0000000000000000000000000000000000000000000000000000000000000000";
+
 /// Durable public operation state returned after command preparation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ResetCardPreparation {
@@ -161,7 +168,8 @@ pub enum ResetCardFailureCode {
 	AccountChanged,
 	/// The selected host-vault entry was unavailable or rejected.
 	VaultUnavailable,
-	/// The exact Codex build did not advertise both required methods.
+	/// Compatibility failure retained for durable replay/decoding. The current direct provider
+	/// API path does not inspect the installed executable build.
 	SchemaUnsupported,
 	/// Complete provider card details were unavailable or unsafe.
 	InventoryIncomplete,
@@ -284,6 +292,34 @@ impl PostgresStore {
 			account_revision: expected_revision,
 			descriptor,
 		})
+	}
+
+	/// Atomically prepare one reset-card operation for the direct backend API path.
+	///
+	/// The existing outbox format is retained for durable upgrade compatibility, but its execution
+	/// profile is a reserved API marker rather than a Codex executable/callback capability.
+	pub async fn prepare_reset_card_api_operation(
+		&self,
+		command: &CommandIdentity,
+		account_id: &AccountId,
+		expected_revision: i64,
+		credential_binding: &CredentialBinding,
+		descriptor: ResetCardDescriptor,
+	) -> Result<ResetCardPreparation, StoreError> {
+		let process_binding = ProcessGenerationAccountBinding::new(
+			expected_revision,
+			credential_binding.clone(),
+			RESET_CARD_API_CALLBACK_PROFILE_SHA256.to_owned(),
+		)
+		.map_err(|_| StoreError::InvalidInput("direct API reset-card binding is invalid"))?;
+		self.prepare_reset_card_operation(
+			command,
+			account_id,
+			expected_revision,
+			&process_binding,
+			descriptor,
+		)
+		.await
 	}
 
 	/// Replay one completed exact preparation without applying current account or vault admission.
@@ -415,6 +451,24 @@ impl PostgresStore {
 			},
 			ResetCardPreparationReplay::Completed(prepared) => Ok(Some(prepared)),
 		}
+	}
+
+	/// Replay a direct backend API reset-card preparation with the reserved API execution marker.
+	pub async fn replay_reset_card_api_preparation(
+		&self,
+		command: &CommandIdentity,
+		account_id: &AccountId,
+		expected_revision: i64,
+		descriptor: ResetCardDescriptor,
+	) -> Result<Option<ResetCardPreparation>, StoreError> {
+		self.replay_reset_card_preparation(
+			command,
+			account_id,
+			expected_revision,
+			descriptor,
+			Some(RESET_CARD_API_CALLBACK_PROFILE_SHA256),
+		)
+		.await
 	}
 
 	async fn observe_pending_reset_card_recovery(

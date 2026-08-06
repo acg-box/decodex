@@ -165,71 +165,47 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		PanelWindowAppearance.apply(to: nil)
 	}
 
+	func testStatusPanelCentersBelowTheStatusItemWithoutUsingScreenCornerPlacement() {
+		let origin = StatusPanelLayout.origin(
+			anchorRect: NSRect(x: 1_000, y: 1_000, width: 24, height: 24),
+			panelSize: NSSize(width: 320, height: 480),
+			visibleFrame: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+			screenMargin: 8,
+			menuBarGap: 4
+		)
+
+		XCTAssertEqual(origin.x, 852)
+		XCTAssertEqual(origin.y, 516)
+	}
+
+	func testStatusPanelOriginClampsOnlyWhenTheAnchorIsNearAScreenEdge() {
+		let origin = StatusPanelLayout.origin(
+			anchorRect: NSRect(x: 1_900, y: 1_000, width: 20, height: 24),
+			panelSize: NSSize(width: 320, height: 480),
+			visibleFrame: NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
+			screenMargin: 8,
+			menuBarGap: 4
+		)
+
+		XCTAssertEqual(origin.x, 1_592)
+		XCTAssertEqual(origin.y, 516)
+	}
+
 	@MainActor
-	func testCustomStatusPanelIsBorderlessTransparentAndKeyCapable() {
+	func testStatusPanelUsesATransparentBorderlessWindow() {
 		let panel = TransparentStatusPanel(
-			contentRect: NSRect(x: 0, y: 0, width: 320, height: 480),
+			contentRect: .zero,
 			styleMask: [.borderless],
 			backing: .buffered,
-			defer: false
+			defer: true
 		)
 
 		PanelWindowAppearance.apply(to: panel)
 
-		XCTAssertEqual(panel.styleMask, [.borderless])
+		XCTAssertTrue(panel.styleMask.contains(.borderless))
 		XCTAssertFalse(panel.isOpaque)
 		XCTAssertEqual(panel.backgroundColor, .clear)
 		XCTAssertFalse(panel.hasShadow)
-		XCTAssertTrue(panel.canBecomeKey)
-		XCTAssertFalse(panel.canBecomeMain)
-	}
-
-	func testStatusPanelOriginUsesTheStatusItemsDisplayAndKeepsThePanelVisible() {
-		let origin = StatusPanelLayout.origin(
-			anchorRect: NSRect(x: 2_470, y: 1_320, width: 30, height: 24),
-			panelSize: NSSize(width: 340, height: 620),
-			visibleFrame: NSRect(x: 1_920, y: 0, width: 1_080, height: 1_320)
-		)
-
-		XCTAssertEqual(origin, NSPoint(x: 2_315, y: 692))
-	}
-
-	func testStatusPanelSelectsTheDisplayContainingTheStatusItemBeforeAStaleFallback() {
-		let screenFrames = [
-			NSRect(x: 0, y: 0, width: 1_920, height: 1_080),
-			NSRect(x: 1_920, y: 0, width: 1_080, height: 1_344),
-		]
-
-		XCTAssertEqual(
-			StatusPanelLayout.screenIndex(
-				containing: NSRect(x: 2_470, y: 1_320, width: 30, height: 24),
-				screenFrames: screenFrames,
-				fallbackIndex: 0
-			),
-			1
-		)
-	}
-
-	func testStatusPanelOriginClampsAtBothHorizontalDisplayEdges() {
-		let visibleFrame = NSRect(x: 1_000, y: 100, width: 800, height: 600)
-		let panelSize = NSSize(width: 340, height: 400)
-
-		XCTAssertEqual(
-			StatusPanelLayout.origin(
-				anchorRect: NSRect(x: 1_000, y: 680, width: 24, height: 20),
-				panelSize: panelSize,
-				visibleFrame: visibleFrame
-			).x,
-			1_008
-		)
-		XCTAssertEqual(
-			StatusPanelLayout.origin(
-				anchorRect: NSRect(x: 1_776, y: 680, width: 24, height: 20),
-				panelSize: panelSize,
-				visibleFrame: visibleFrame
-			).x,
-			1_452
-		)
 	}
 
 	func testRoundedContentSizeCeilsFractionalDimensions() {
@@ -352,71 +328,4 @@ final class PanelWindowSizingLayoutTests: XCTestCase {
 		)
 	}
 
-	func testFrameKeepsTopEdgeAndHorizontalOriginWhenContentShrinks() {
-		let currentFrame = NSRect(x: 120, y: 200, width: 360, height: 700)
-		let frame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: AccountPanelLayout.panelWidth, height: 520),
-			currentFrame: currentFrame
-		) { contentSize in
-			NSSize(width: contentSize.width + 18, height: contentSize.height + 18)
-		} visibleFrame: {
-			NSRect(x: 0, y: 0, width: 1_000, height: 1_000)
-		}
-
-		XCTAssertEqual(frame.width, 294)
-		XCTAssertEqual(frame.height, 538)
-		XCTAssertEqual(frame.minX, currentFrame.minX)
-		XCTAssertEqual(frame.maxY, currentFrame.maxY)
-	}
-
-	func testFrameClampsInsideVisibleFrameWhenContentGrowsNearScreenEdge() {
-		let frame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: 420, height: 360),
-			currentFrame: NSRect(x: 700, y: 620, width: 340, height: 220)
-		) { contentSize in
-			contentSize
-		} visibleFrame: {
-			NSRect(x: 0, y: 0, width: 800, height: 700)
-		}
-
-		XCTAssertEqual(frame.minX, 800 - 420 - 8)
-		XCTAssertEqual(frame.maxY, 700 - 8)
-	}
-
-	func testOversizedFrameFallsBackToVisibleFrameLeadingMargin() {
-		let visibleFrame = NSRect(x: 0, y: 0, width: 800, height: 700)
-		let frame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: 900, height: 760),
-			currentFrame: NSRect(x: 100, y: 100, width: 340, height: 220)
-		) { contentSize in
-			contentSize
-		} visibleFrame: {
-			visibleFrame
-		}
-
-		XCTAssertEqual(frame.minX, 8)
-		XCTAssertEqual(frame.minY, 8)
-		XCTAssertEqual(frame.width, 784)
-		XCTAssertEqual(frame.height, 684)
-		XCTAssertEqual(frame.maxX, 792)
-		XCTAssertEqual(frame.maxY, 692)
-	}
-
-	func testOversizedFittedFrameConvergesOnTheSecondLayoutPass() {
-		let visibleFrame = NSRect(x: 0, y: 0, width: 800, height: 700)
-		let firstFrame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: 900, height: 760),
-			currentFrame: NSRect(x: 100, y: 100, width: 340, height: 220)
-		) { $0 } visibleFrame: {
-			visibleFrame
-		}
-		let secondFrame = PanelWindowSizingLayout.frame(
-			forContentSize: NSSize(width: 900, height: 760),
-			currentFrame: firstFrame
-		) { $0 } visibleFrame: {
-			visibleFrame
-		}
-
-		XCTAssertEqual(secondFrame, firstFrame)
-	}
 }

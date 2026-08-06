@@ -282,6 +282,32 @@ impl Debug for AccountProcessCredential {
 	}
 }
 
+/// Short-lived credential projection for the direct provider backend API.
+///
+/// This projection intentionally has no Codex executable, callback, or process-generation
+/// requirement.  The account lock remains held until the provider request owner drops it, so one
+/// account cannot refresh or rotate credentials concurrently with an API observation.
+pub(crate) struct AccountApiCredential {
+	/// Short-lived exact host-store read.
+	pub(crate) stored: StoredCredential,
+	/// Exact credential-negative provider binding.
+	pub(crate) binding: CredentialBinding,
+	/// Registry revision read together with the binding.
+	pub(crate) account_revision: i64,
+	/// Per-account lifecycle lock retained across the bounded provider request.
+	pub(crate) _launch_guard: OwnedMutexGuard<()>,
+}
+impl Debug for AccountApiCredential {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("AccountApiCredential")
+			.field("stored", &"[REDACTED]")
+			.field("binding", &self.binding)
+			.field("account_revision", &self.account_revision)
+			.finish()
+	}
+}
+
 /// Typed explicit recovery when initial selection cannot proceed.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountSelectionFailure {
@@ -423,27 +449,6 @@ impl AccountService {
 
 	/// Permit only the bootstrap-owned live proof to project the exact attested profile while the
 	/// durable capability remains closed. No transport or background worker is live at this point.
-	pub(crate) async fn arm_callback_capability_probe(
-		&self,
-		attestation: &CodexAccountCapabilityAttestation,
-	) -> Result<(), AccountLifecycleError> {
-		if !attestation.login_chatgpt_auth_tokens
-			|| !attestation.refresh_callback
-			|| attestation.callback_profile_sha256.len() != 64
-			|| !attestation
-				.callback_profile_sha256
-				.bytes()
-				.all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-		{
-			return Err(AccountLifecycleError::InvalidOperation);
-		}
-		if !self.store.attest_codex_account_capability(attestation).await? {
-			return Err(AccountLifecycleError::InvalidOperation);
-		}
-		self.set_callback_capability(attestation.callback_profile_sha256.clone(), true);
-		Ok(())
-	}
-
 	/// List account registry state with current exact host-store readiness.
 	pub async fn list(&self) -> Result<Vec<AccountInspection>, AccountLifecycleError> {
 		let accounts = self.store.read_account_registry(None, MAX_ACCOUNT_READ).await?;
@@ -451,25 +456,6 @@ impl AccountService {
 			.into_iter()
 			.map(|account| AccountInspection { readiness: account.lifecycle_readiness, account })
 			.collect())
-	}
-
-	/// Read the canonical fast account skeleton and routing control in one PostgreSQL snapshot.
-	pub async fn list_snapshot(
-		&self,
-	) -> Result<(Vec<AccountInspection>, decodex_core::AccountRoutingControl), AccountLifecycleError>
-	{
-		let (accounts, routing) =
-			self.store.read_account_registry_snapshot(MAX_ACCOUNT_READ).await?;
-		Ok((
-			accounts
-				.into_iter()
-				.map(|account| AccountInspection {
-					readiness: account.lifecycle_readiness,
-					account,
-				})
-				.collect(),
-			routing,
-		))
 	}
 
 	/// Inspect one account without exposing credential material.
@@ -1669,44 +1655,6 @@ impl AccountService {
 		Ok(())
 	}
 
-	/// Verify the exact callback-authored successor in PostgreSQL and the host store.
-	pub(crate) async fn verify_callback_successor(
-		&self,
-		account_id: &AccountId,
-		initial: &CredentialBinding,
-	) -> Result<(), AccountLifecycleError> {
-		let account = self.load_account(account_id).await?;
-		let target = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		if target.provider != initial.provider
-			|| target.version
-				!= initial
-					.version
-					.successor()
-					.map_err(|_| AccountLifecycleError::InvalidOperation)?
-			|| target.writer_operation_id == initial.writer_operation_id
-		{
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		let operation = self
-			.store
-			.read_account_operation(&target.writer_operation_id)
-			.await?
-			.ok_or(AccountLifecycleError::StaleAccount)?;
-		if operation.account_id != *account_id
-			|| operation.kind != AccountOperationKind::Refresh
-			|| operation.phase != AccountOperationPhase::Committed
-			|| operation.expected.as_ref() != Some(initial)
-			|| operation.target.as_ref() != Some(target)
-		{
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		let observed = self.credentials.read_exact(account_id, target)?;
-		if observed.binding() != target {
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		Ok(())
-	}
-
 	/// Delete an exact host bundle, then tombstone its PostgreSQL account projection.
 	pub async fn logout(
 		&self,
@@ -2676,16 +2624,19 @@ impl AccountService {
 		Ok(AccountProcessCredential { stored, binding, launch_guard })
 	}
 
-	/// Acquire one exact projection for the bounded per-account observation query. Administrative
-	/// disablement blocks effects and new work admission, not a user-requested health read.
-	pub(crate) async fn process_credential_for_observation(
+	/// Acquire one exact credential projection for the direct provider backend API.
+	///
+	/// API health and usage observation are allowed to run when the optional Codex app-server
+	/// callback capability is absent.  This is the boundary that prevents provider account health
+	/// from inheriting an executable/protocol-version gate.
+	pub(crate) async fn api_credential_for_observation(
 		&self,
 		account_id: &AccountId,
 		minimum_validity: Duration,
-	) -> Result<AccountProcessCredential, AccountLifecycleError> {
+	) -> Result<AccountApiCredential, AccountLifecycleError> {
 		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
 		let mut account = self.load_account(account_id).await?;
-		let mut stored = self.read_exact_for_existing_work(&account).await?;
+		let mut stored = self.read_exact_for_api(&account).await?;
 		let now_unix_micros = current_unix_micros()?;
 		if access_token_needs_refresh(
 			stored.bundle().access_token_expires_at_unix_micros(),
@@ -2704,7 +2655,7 @@ impl AccountService {
 			)
 			.await?;
 			account = self.load_account(account_id).await?;
-			stored = self.read_exact_for_existing_work(&account).await?;
+			stored = self.read_exact_for_api(&account).await?;
 			let refreshed_at_unix_micros = current_unix_micros()?;
 			require_refreshed_access_token_for_observation(
 				stored.bundle().access_token_expires_at_unix_micros(),
@@ -2712,76 +2663,13 @@ impl AccountService {
 				minimum_validity,
 			)?;
 		}
-		let credential =
-			account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		let callback_profile = self.callback_profile().map_err(|_| {
-			AccountLifecycleError::NotReady(AccountLifecycleReadiness::CallbackCapabilityUnready)
-		})?;
-		let binding =
-			ProcessGenerationAccountBinding::new(account.revision, credential, callback_profile)
-				.map_err(|_| AccountLifecycleError::InvalidOperation)?;
-		Ok(AccountProcessCredential { stored, binding, launch_guard })
-	}
-
-	/// Acquire the retained exact binding for already-admitted work. Administrative changes do not
-	/// revoke that work, but credential and callback changes still fail before provider effect.
-	pub(crate) async fn process_credential_for_existing_work(
-		&self,
-		account_id: &AccountId,
-		retained: &ProcessGenerationAccountBinding,
-	) -> Result<AccountProcessCredential, AccountLifecycleError> {
-		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
-		let account = self.load_account(account_id).await?;
-		let credential =
-			account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		if credential != retained.credential {
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		let stored = self.read_exact_for_existing_work(&account).await?;
-		let callback_profile = self.callback_profile().map_err(|_| {
-			AccountLifecycleError::NotReady(AccountLifecycleReadiness::CallbackCapabilityUnready)
-		})?;
-		if callback_profile != retained.refresh_callback_profile_sha256 {
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		let binding =
-			ProcessGenerationAccountBinding::new(account.revision, credential, callback_profile)
-				.map_err(|_| AccountLifecycleError::InvalidOperation)?;
-		Ok(AccountProcessCredential { stored, binding, launch_guard })
-	}
-
-	/// Acquire current exact credentials for one already-started Reset Card reconciliation.
-	pub(crate) async fn process_credential_for_reconciliation(
-		&self,
-		account_id: &AccountId,
-		retained: &ProcessGenerationAccountBinding,
-	) -> Result<AccountProcessCredential, AccountLifecycleError> {
-		let launch_guard = self.lock_for(account_id)?.lock_owned().await;
-		let account = self.load_account(account_id).await?;
-		if account.tombstoned {
-			return Err(AccountLifecycleError::StaleAccount);
-		}
-		let credential =
-			account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
-		if credential.provider != retained.credential.provider {
-			return Err(AccountLifecycleError::ProviderMismatch);
-		}
-		let stored = self.credentials.read_exact(account_id, &credential)?;
-		self.store
-			.observe_account_store(
-				account_id,
-				account.revision,
-				&credential,
-				AccountStoreObservation::Exact,
-			)
-			.await?;
-		let binding = ProcessGenerationAccountBinding::new(
-			account.revision,
-			credential,
-			retained.refresh_callback_profile_sha256.clone(),
-		)
-		.map_err(|_| AccountLifecycleError::InvalidOperation)?;
-		Ok(AccountProcessCredential { stored, binding, launch_guard })
+		let binding = account.credential.clone().ok_or(AccountLifecycleError::CredentialAbsent)?;
+		Ok(AccountApiCredential {
+			stored,
+			binding,
+			account_revision: account.revision,
+			_launch_guard: launch_guard,
+		})
 	}
 
 	fn selection_candidate(
@@ -2836,6 +2724,49 @@ impl AccountService {
 		account: &AccountRecord,
 	) -> Result<StoredCredential, AccountLifecycleError> {
 		self.read_exact_with_gate(account, false).await
+	}
+
+	async fn read_exact_for_api(
+		&self,
+		account: &AccountRecord,
+	) -> Result<StoredCredential, AccountLifecycleError> {
+		if account.tombstoned {
+			return Err(AccountLifecycleError::NotReady(AccountLifecycleReadiness::Tombstoned));
+		}
+		if account.unsettled_operation.is_some() {
+			return Err(AccountLifecycleError::NotReady(
+				AccountLifecycleReadiness::OperationUnsettled,
+			));
+		}
+		let binding = account
+			.credential
+			.as_ref()
+			.ok_or(AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent))?;
+		match self.credentials.read_exact(&account.account_id, binding) {
+			Ok(stored) => {
+				self.store
+					.observe_account_store(
+						&account.account_id,
+						account.revision,
+						binding,
+						AccountStoreObservation::Exact,
+					)
+					.await?;
+				Ok(stored)
+			},
+			Err(error) => {
+				let (observation, readiness) = store_error_observation(error);
+				self.store
+					.observe_account_store(
+						&account.account_id,
+						account.revision,
+						binding,
+						observation,
+					)
+					.await?;
+				Err(AccountLifecycleError::NotReady(readiness))
+			},
+		}
 	}
 
 	async fn read_exact_for_bound_callback(
@@ -3263,10 +3194,6 @@ impl AccountService {
 			.ok()
 			.and_then(|profile| profile.clone())
 			.ok_or(AccountSelectionRecovery::UpgradeCodex)
-	}
-
-	pub(crate) fn reset_card_callback_profile(&self) -> Option<String> {
-		self.callback_profile().ok()
 	}
 }
 

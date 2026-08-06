@@ -242,28 +242,30 @@ receipt. Exact replay returns those bytes; conflicting reuse fails before effect
 ### Manual reset-card authority
 
 Manual reset-card use is a common vNext application service. `decodexd` is its sole
-credential-vault reader, Codex app-server child owner, opaque provider-credit resolver,
+credential-vault reader, direct provider API client, opaque provider-credit resolver,
 mutation coordinator, and external-effect owner. CLI and SwiftUI are clients. They cannot
-read credentials, launch app-server for this operation, receive a provider credit ID, or
-own effect retry.
+read credentials, launch a Codex app-server for this operation, receive a provider credit ID,
+or own effect retry.
 
 The public selection contract contains one canonical vNext Account UUID, its exact
 optimistic revision, and one credential-negative card descriptor made from grant and
-expiry timestamps. New admission requires `enabled=true`, AccountLifecycle readiness,
+expiry timestamps. Direct API admission requires `enabled=true`, a present credential,
 no unsettled account operation, and exact agreement among the account revision,
 HostCredentialStore version and fingerprint, and provider binding. Observed quota or
 health does not replace these gates. Manual Reset Card use does not enable conversation
 dispatch or automatic fallback.
 
-The Codex adapter must prove that one generated schema advertises both
-`account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
-complete unique inventory before it maps the public descriptor to one exact opaque credit
+The direct provider API adapter reads usage and reset-credit inventory from the same backend
+API contract used by Codex: `/wham/usage` and `/wham/rate-limit-reset-credits`. It establishes
+a complete unique inventory before it maps the public descriptor to one exact opaque credit
 ID. A read can publish a provider-reported available count with incomplete or absent detail
 rows, but it must publish no selectable descriptors from that partial inventory and must
 retain independently valid quota facts. A reported zero count is a definitive complete empty
-inventory. Null quota reset timestamps are unsupported windows, not protocol corruption.
+inventory. Null quota reset timestamps are unsupported windows, not protocol corruption. The
+consume effect uses `/wham/rate-limit-reset-credits/consume`; it does not require a Codex
+executable, app-server process, generated schema, or exact-version admission.
 Before an observation, the Account Service refreshes only an expired access token or one
-that cannot cover the bounded provider-process deadline, under the existing account lock,
+that cannot cover the bounded API request deadline, under the existing account lock,
 refresh journal, and credential compare-and-swap. The daemon persists the resolved exact ID
 and the unchanged logical-command idempotency key before it starts the provider effect. A
 terminal result requires a closed provider receipt and a fresh complete authoritative
@@ -281,7 +283,7 @@ UUID and configured provider identity fields. Restart must reject drift, and gen
 account mutation cannot replace or remove the binding. A terminal same-key receipt
 replays unconditionally before any current account, store, provider, readiness, or
 enabled-state check. New work and the pre-effect fence both require `enabled=true`,
-AccountLifecycle readiness, no unsettled operation, and exact account revision,
+a present credential, no unsettled operation, and exact account revision,
 credential version/fingerprint, provider binding, and selected oldest public descriptor.
 A terminal effect-present readback erases the private exact-ID and provider-key projection while it
 retains the public receipt, reconciliation status, and replay result. Generic retention
