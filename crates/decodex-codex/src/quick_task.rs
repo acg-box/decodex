@@ -128,7 +128,7 @@ pub enum QuickTaskContractError {
 	EphemeralThreadRejected,
 	/// An app-server response did not identify the exact requested thread.
 	ThreadIdMismatch,
-	/// App-server response cwd facts disagreed with each other or with the request.
+	/// A required app-server response cwd agreement failed.
 	CwdMismatch,
 	/// The app-server reported a model other than the explicit requested model.
 	ModelMismatch,
@@ -426,7 +426,7 @@ impl QuickTaskThreadStartResponse {
 	) -> Result<Self, QuickTaskContractError> {
 		wire.validate_private_facts()?;
 		let facts = validate_thread_response_facts(
-			None,
+			ThreadResponseContext::Start,
 			request.cwd(),
 			request.model(),
 			wire.thread,
@@ -562,7 +562,7 @@ impl QuickTaskThreadResumeResponse {
 	) -> Result<Self, QuickTaskContractError> {
 		wire.validate_private_facts()?;
 		let facts = validate_thread_response_facts(
-			Some(request.thread_id()),
+			ThreadResponseContext::Resume(request.thread_id()),
 			request.cwd(),
 			request.model(),
 			wire.thread,
@@ -584,7 +584,7 @@ impl QuickTaskThreadResumeResponse {
 		&self.thread_id
 	}
 
-	/// Bounded working directory returned by the app server.
+	/// Bounded live working directory returned at the top level by the resumed session.
 	pub fn cwd(&self) -> &ThreadCwd {
 		&self.cwd
 	}
@@ -949,7 +949,19 @@ struct QuickTaskThreadResponseWire {
 	agent_role: Option<String>,
 	git_info: Option<QuickTaskGitInfoWire>,
 	name: Option<String>,
+	#[serde(default)]
+	section: Option<QuickTaskThreadSectionWire>,
+	#[serde(default)]
+	section_entered_at: Option<i64>,
 	turns: Vec<QuickTaskForbiddenValueWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QuickTaskThreadSectionWire {
+	id: String,
+	name: String,
 }
 
 #[allow(dead_code)]
@@ -1397,8 +1409,14 @@ struct ValidatedThreadResponseFacts {
 	reasoning_effort: Option<QuickTaskReasoningEffort>,
 }
 
+#[derive(Clone, Copy)]
+enum ThreadResponseContext<'a> {
+	Start,
+	Resume(&'a ExactThreadId),
+}
+
 fn validate_thread_response_facts(
-	expected_thread_id: Option<&ExactThreadId>,
+	context: ThreadResponseContext<'_>,
 	expected_cwd: &ThreadCwd,
 	expected_model: &QuickTaskModel,
 	thread: QuickTaskThreadResponseWire,
@@ -1415,7 +1433,7 @@ fn validate_thread_response_facts(
 
 	let thread_id =
 		ExactThreadId::new(thread.id).map_err(|_| QuickTaskContractError::InvalidThreadId)?;
-	if expected_thread_id.is_some_and(|expected| expected != &thread_id) {
+	if matches!(context, ThreadResponseContext::Resume(expected) if expected != &thread_id) {
 		return Err(QuickTaskContractError::ThreadIdMismatch);
 	}
 
@@ -1423,7 +1441,10 @@ fn validate_thread_response_facts(
 		.map_err(|_| QuickTaskContractError::InvalidCwd)?;
 	let cwd =
 		ThreadCwd::from_protocol(response_cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?;
-	if thread_cwd != cwd || expected_cwd != &cwd {
+	if expected_cwd != &cwd {
+		return Err(QuickTaskContractError::CwdMismatch);
+	}
+	if matches!(context, ThreadResponseContext::Start) && thread_cwd != cwd {
 		return Err(QuickTaskContractError::CwdMismatch);
 	}
 
@@ -1499,6 +1520,8 @@ const THREAD_RESPONSE_FIELDS: &[&str] = &[
 	"agentRole",
 	"gitInfo",
 	"name",
+	"section",
+	"sectionEnteredAt",
 	"turns",
 ];
 const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
@@ -1845,6 +1868,148 @@ mod tests {
 		assert_eq!(turn.status(), QuickTaskTurnStatus::InProgress);
 		assert!(decode_quick_task_turn_interrupt_response(b"{}").is_ok());
 		assert!(decode_quick_task_thread_archive_response(b"{}").is_ok());
+	}
+
+	#[test]
+	fn current_thread_section_fields_decode_when_omitted_null_or_populated() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let omitted = canonical.clone();
+
+		let mut null = canonical.clone();
+		null["thread"]["section"] = Value::Null;
+		null["thread"]["sectionEnteredAt"] = Value::Null;
+
+		let mut populated = canonical;
+		populated["thread"]["section"] = json!({"id": "section-1", "name": "Active"});
+		populated["thread"]["sectionEnteredAt"] = json!(2);
+
+		for (case, response) in [("omitted", omitted), ("null", null), ("populated", populated)] {
+			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+			assert!(
+				decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok(),
+				"thread/start must accept {case} section fields",
+			);
+			assert!(
+				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				"thread/resume must accept {case} section fields",
+			);
+		}
+	}
+
+	#[test]
+	fn malformed_or_unknown_thread_section_fields_are_rejected() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let cases = [
+			("missing id", json!({"name": "Active"}), QuickTaskContractError::MissingResponseField),
+			(
+				"missing name",
+				json!({"id": "section-1"}),
+				QuickTaskContractError::MissingResponseField,
+			),
+			(
+				"non-string id",
+				json!({"id": 1, "name": "Active"}),
+				QuickTaskContractError::MalformedResponse,
+			),
+			(
+				"non-string name",
+				json!({"id": "section-1", "name": 1}),
+				QuickTaskContractError::MalformedResponse,
+			),
+			("non-object section", json!("section-1"), QuickTaskContractError::MalformedResponse),
+			(
+				"unknown nested field",
+				json!({"id": "section-1", "name": "Active", "unexpected": true}),
+				QuickTaskContractError::UnknownResponseField,
+			),
+		];
+
+		for (case, section, expected) in cases {
+			let mut response = canonical.clone();
+			response["thread"]["section"] = section;
+
+			assert_eq!(
+				decode_quick_task_thread_start_response(
+					&start_request(),
+					&serde_json::to_vec(&response).expect("fixture response must serialize"),
+				)
+				.map(|_| ()),
+				Err(expected),
+				"{case}",
+			);
+		}
+
+		let mut malformed_entered_at = canonical;
+		malformed_entered_at["thread"]["sectionEnteredAt"] = json!("2");
+
+		assert_eq!(
+			decode_quick_task_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&malformed_entered_at)
+					.expect("fixture response must serialize"),
+			)
+			.map(|_| ()),
+			Err(QuickTaskContractError::MalformedResponse),
+			"non-integer section-entered timestamp",
+		);
+	}
+
+	#[test]
+	fn resume_uses_live_response_cwd_when_persisted_thread_cwd_differs() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		response["thread"]["cwd"] = json!("/persisted");
+		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+		let resume = decode_quick_task_thread_resume_response(&resume_request(), &bytes)
+			.expect("resume must allow distinct persisted thread metadata cwd");
+
+		assert_eq!(resume.cwd().as_str(), "/workspace");
+	}
+
+	#[test]
+	fn resume_rejects_live_response_cwd_that_differs_from_request() {
+		let mut response = thread_response("thread-1", "gpt-5", "/other");
+		response["thread"]["cwd"] = json!("/persisted");
+
+		assert_eq!(
+			decode_quick_task_thread_resume_response(
+				&resume_request(),
+				&serde_json::to_vec(&response).expect("fixture response must serialize"),
+			)
+			.map(|_| ()),
+			Err(QuickTaskContractError::CwdMismatch),
+		);
+	}
+
+	#[test]
+	fn start_rejects_nested_thread_cwd_that_differs_from_live_response() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		response["thread"]["cwd"] = json!("/persisted");
+
+		assert_eq!(
+			decode_quick_task_thread_start_response(
+				&start_request(),
+				&serde_json::to_vec(&response).expect("fixture response must serialize"),
+			)
+			.map(|_| ()),
+			Err(QuickTaskContractError::CwdMismatch),
+		);
+	}
+
+	#[test]
+	fn resume_rejects_relative_persisted_thread_cwd() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		response["thread"]["cwd"] = json!("persisted");
+
+		assert_eq!(
+			decode_quick_task_thread_resume_response(
+				&resume_request(),
+				&serde_json::to_vec(&response).expect("fixture response must serialize"),
+			)
+			.map(|_| ()),
+			Err(QuickTaskContractError::MalformedResponse),
+		);
 	}
 
 	#[test]
