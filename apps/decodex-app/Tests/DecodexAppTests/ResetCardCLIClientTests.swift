@@ -48,7 +48,7 @@ final class ResetCardNativeClientTests: XCTestCase {
 		XCTAssertEqual(snapshot.accounts.map(\.accountID), [secondAccountID, accountID])
 		XCTAssertEqual(snapshot.accounts.map(\.authority), [authority, authority])
 		XCTAssertEqual(
-			snapshot.routing.mode,
+		snapshot.routing?.mode,
 			.fixed(accountID: secondAccountID)
 		)
 		let request = try XCTUnwrap(recorder.requests.first)
@@ -60,6 +60,32 @@ final class ResetCardNativeClientTests: XCTestCase {
 				"operation": "list_accounts",
 			]
 		)
+	}
+
+	func testNativeListKeepsAccountRowsWhenRoutingCapabilityIsUnavailable() async throws {
+		let accountID = accountID
+		let secondAccountID = secondAccountID
+		let authority = authority
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "list_accounts",
+				authority: authority,
+				data: """
+				{"outcome":"available","data":{
+				  "accounts":[
+				    \(nativeAccountJSON(accountID: accountID, alias: "Iris", revision: 7)),
+				    \(nativeAccountJSON(accountID: secondAccountID, alias: "Jamie", revision: 8))
+				  ],
+				  "routing":null
+				}}
+				"""
+			)
+		}
+
+		let snapshot = try await client.accountSnapshot(authority: nil)
+
+		XCTAssertEqual(snapshot.accounts.map(\.accountID), [accountID, secondAccountID])
+		XCTAssertNil(snapshot.routing)
 	}
 
 	func testNativeObservationWaitUsesOneOpaqueDaemonGeneration() async throws {

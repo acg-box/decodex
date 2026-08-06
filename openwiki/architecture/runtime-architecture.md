@@ -412,8 +412,10 @@ The account system has three owners:
 1. Account Registry owns credential-negative product state.
 2. HostCredentialStore owns versioned secret bundles.
 3. Account Service coordinates enrollment, import, stable alias derivation, list,
-   enable/disable, logout, refresh/rotation, app-server refresh callbacks, runner
-   projection, account observations, recovery, and process pre-spawn checks.
+   enable/disable, logout, refresh/rotation, direct provider API observations, runner
+   projection, account observations, recovery, and process pre-spawn checks. The
+   Codex app-server is reserved for Quick Task execution; it is not an account-health
+   or quota transport.
 
 The exact stable alias derivation and closed alias set remain owned by
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md). Account Service
@@ -427,10 +429,12 @@ long-lived child environment.
 
 The daemon account observer starts immediately, repeats on its bounded schedule, and
 wakes after relevant account/effect changes. Different accounts progress concurrently.
-Within one account, Reset Card work settles before profile observation so the profile uses
-the exact successor credential. At most one observation owner is active per Account UUID;
-additional wakes coalesce into one successor round. Slow work for one account does not
-delay another.
+Within one account, direct API observation uses one credential snapshot and one shared
+provider client for usage, profile, and Reset Card inventory. A credential refresh may
+advance the snapshot before the round publishes; the observer then retries the bounded
+API request once with the new credential. At most one observation owner is active per
+Account UUID; additional wakes coalesce into one successor round. Slow work for one
+account does not delay another.
 
 Results publish progressively only against the current Account revision and cache
 generation. A changed account invalidates its old Reset Card/profile state before a stale
@@ -443,8 +447,9 @@ refresh does not create a UI invalidation.
 provider, start an app-server, join a refresh future, wait for an observation round, or
 cause provider work. Profile reads use the latest persisted projection plus bounded
 daemon refresh status. Reset Card reads use a revision-fenced daemon-lifetime public
-cache. Restart discards that cache and reports typed retryable unavailability until the
-new observation warms it.
+cache. A transient API failure retains the last complete public snapshot for the same
+account revision; only a cold cache reports typed retryable unavailability until the new
+observation warms it.
 
 The UI starts independent daemon value reads concurrently and keeps one bounded
 `WaitForAccountObservation` query open instead of owning a second refresh clock. A

@@ -288,7 +288,7 @@ final class AccountProfileStoreTests: XCTestCase {
 		XCTAssertEqual(emailVisibility, [true, true, true])
 	}
 
-	func testAdvancedInventoryDoesNotSynthesizeRevisionBeforeProfileReturns() async throws {
+	func testAdvancedInventoryPublishesBeforeStaleProfileReturns() async throws {
 		let fixture = try PendingFixture()
 		defer { fixture.remove() }
 		let client = SuspendedProfileStoreClient(inventoryRevision: 8)
@@ -301,15 +301,15 @@ final class AccountProfileStoreTests: XCTestCase {
 		let refresh = Task { await store.refresh() }
 		try await waitForProfileRequests(1, client: client)
 		for _ in 0 ..< 2_000 {
-			if let accountID = store.accounts.first?.account.accountID,
-				store.isAwaitingFreshAccountSkeleton(accountID)
+			if store.accounts.first?.account.accountRevision == 8,
+				store.accounts.first?.inventory != nil
 			{
 				break
 			}
 			await Task.yield()
 		}
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
-		XCTAssertNil(store.accounts.first?.inventory)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertNotNil(store.accounts.first?.inventory)
 		await client.resolve(
 			request: 0,
 			with: .unavailable(
@@ -321,16 +321,13 @@ final class AccountProfileStoreTests: XCTestCase {
 		)
 		await refresh.value
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
-		XCTAssertEqual(
-			store.accounts.first?.profileUnavailable?.claims.planType,
-			"pro"
-		)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertNil(store.accounts.first?.profileUnavailable)
 		XCTAssertNil(store.accounts.first?.profileError)
 		XCTAssertEqual(store.accounts.first?.isProfileRefreshing, false)
 	}
 
-	func testAdvancedInventoryRetainsSkeletonBoundUnavailableProfile() async throws {
+	func testAdvancedInventoryDropsProfileBoundToOlderRevision() async throws {
 		let fixture = try PendingFixture()
 		defer { fixture.remove() }
 		let client = RevisionAdvanceAfterUnavailableClient()
@@ -359,13 +356,10 @@ final class AccountProfileStoreTests: XCTestCase {
 		await client.resolveInventory()
 		await refresh.value
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
-		XCTAssertNil(store.accounts.first?.inventory)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
+		XCTAssertNotNil(store.accounts.first?.inventory)
 		XCTAssertNil(store.accounts.first?.profile)
-		XCTAssertEqual(
-			store.accounts.first?.profileUnavailable?.claims.planType,
-			"old-plan"
-		)
+		XCTAssertNil(store.accounts.first?.profileUnavailable)
 		XCTAssertNil(store.accounts.first?.profileError)
 		XCTAssertEqual(store.accounts.first?.isProfileRefreshing, false)
 	}

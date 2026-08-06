@@ -173,7 +173,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 			store.message,
 			ResetCardStoreMessage(
 				tone: .error,
-				text: "The selected Codex version does not support reset cards."
+				text: "The stored reset-card result is incompatible with the current provider API."
 			)
 		)
 	}
@@ -428,13 +428,7 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 
 		let state = try XCTUnwrap(store.accounts.first)
 		XCTAssertFalse(state.isRefreshing)
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: state,
-				isAwaitingFreshAccountSkeleton: false
-			),
-			.unavailable(detail: ResetCardServiceError.providerUnavailable.presentation)
-		)
+		XCTAssertEqual(ResetCardInventoryPresentation(state: state), .available)
 
 		await client.releaseInventoryRead()
 		try await waitUntil {
@@ -783,14 +777,8 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertEqual(state.inventory, retainedInventory)
 		XCTAssertEqual(state.fiveHourQuota, retainedInventory.fiveHourQuota)
 		XCTAssertEqual(state.error, .service(.providerUnavailable))
-		XCTAssertTrue(state.targets.isEmpty)
-		XCTAssertEqual(
-			ResetCardInventoryPresentation(
-				state: state,
-				isAwaitingFreshAccountSkeleton: false
-			),
-			.unavailable(detail: ResetCardServiceError.providerUnavailable.presentation)
-		)
+		XCTAssertFalse(state.targets.isEmpty)
+		XCTAssertEqual(ResetCardInventoryPresentation(state: state), .available)
 	}
 
 	func testCompletedUseReconcilesInBackgroundAcrossTransientContention() async throws {
@@ -856,10 +844,9 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
-				state: updating,
-				isAwaitingFreshAccountSkeleton: false
+				state: updating
 			),
-			.updating(detail: ResetCardServiceError.resourceExhausted.presentation)
+			.available
 		)
 
 		try await waitUntil {
@@ -944,10 +931,9 @@ final class ResetCardStoreStartupRetryTests: XCTestCase {
 		XCTAssertTrue(store.blocksNewAttempt(for: attempt.target))
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
-				state: afterPreEffectRead,
-				isAwaitingFreshAccountSkeleton: false
+				state: afterPreEffectRead
 			),
-			.updating(detail: nil)
+			.available
 		)
 
 		await client.releaseInventoryCall(3)

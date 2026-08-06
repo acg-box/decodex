@@ -5,23 +5,25 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 	let contentSize: CGSize
 	let screenParametersRevision: Int
 	let onVisibleFrameChange: (NSRect?) -> Void
+	let onContentSizeChange: (CGSize) -> Void
 
 	func makeNSView(context: Context) -> NSView {
 		let view = PanelWindowSizingProbeView(frame: .zero)
 		view.didMoveToWindow = { [weak coordinator = context.coordinator] view in
 			PanelWindowAppearance.apply(to: view.window)
-			coordinator?.retryResizeAfterWindowAttachment(from: view)
+			coordinator?.retryReportAfterWindowAttachment(from: view)
 		}
 		return view
 	}
 
 	func updateNSView(_ nsView: NSView, context: Context) {
 		PanelWindowAppearance.apply(to: nsView.window)
-		context.coordinator.scheduleResize(
+		context.coordinator.scheduleReport(
 			from: nsView,
 			contentSize: contentSize,
 			screenParametersRevision: screenParametersRevision,
-			onVisibleFrameChange: onVisibleFrameChange
+			onVisibleFrameChange: onVisibleFrameChange,
+			onContentSizeChange: onContentSizeChange
 		)
 	}
 
@@ -30,20 +32,22 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 	}
 
 	final class Coordinator {
-		private var lastAppliedScreenParametersRevision = -1
+		private var lastReportedScreenParametersRevision = -1
 		private var pendingSize = CGSize.zero
 		private var pendingScreenParametersRevision = 0
 		private var pendingVisibleFrameCallback: (NSRect?) -> Void = { _ in }
-		private var resizeIsScheduled = false
+		private var pendingContentSizeCallback: (CGSize) -> Void = { _ in }
+		private var reportIsScheduled = false
 		private var hasReportedVisibleFrame = false
 		private var lastReportedVisibleFrame: NSRect?
 
 		@MainActor
-		func scheduleResize(
+		func scheduleReport(
 			from view: NSView,
 			contentSize: CGSize,
 			screenParametersRevision: Int,
-			onVisibleFrameChange: @escaping (NSRect?) -> Void
+			onVisibleFrameChange: @escaping (NSRect?) -> Void,
+			onContentSizeChange: @escaping (CGSize) -> Void
 		) {
 			guard contentSize.width > 0, contentSize.height > 0 else {
 				return
@@ -52,76 +56,62 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 			pendingSize = contentSize
 			pendingScreenParametersRevision = screenParametersRevision
 			pendingVisibleFrameCallback = onVisibleFrameChange
-			guard resizeIsScheduled == false else {
+			pendingContentSizeCallback = onContentSizeChange
+			guard reportIsScheduled == false else {
 				return
 			}
 
-			resizeIsScheduled = true
+			reportIsScheduled = true
 			DispatchQueue.main.async { [weak self, weak view] in
 				guard let self, let view else {
 					return
 				}
-				self.resizeIsScheduled = false
-				self.resizeWindow(
+				self.reportIsScheduled = false
+				self.report(
 					from: view,
 					contentSize: self.pendingSize,
 					screenParametersRevision: self.pendingScreenParametersRevision,
-					onVisibleFrameChange: self.pendingVisibleFrameCallback
+					onVisibleFrameChange: self.pendingVisibleFrameCallback,
+					onContentSizeChange: self.pendingContentSizeCallback
 				)
 			}
 		}
 
 		@MainActor
-		private func resizeWindow(
+		private func report(
 			from view: NSView,
 			contentSize: CGSize,
 			screenParametersRevision: Int,
-			onVisibleFrameChange: (NSRect?) -> Void
+			onVisibleFrameChange: (NSRect?) -> Void,
+			onContentSizeChange: (CGSize) -> Void
 		) {
 			guard let window = view.window else {
 				return
 			}
 
-			let visibleFrame = (window.screen ?? NSScreen.main)?.visibleFrame
+			if screenParametersRevision != lastReportedScreenParametersRevision {
+				lastReportedScreenParametersRevision = screenParametersRevision
+				hasReportedVisibleFrame = false
+			}
 			reportVisibleFrameIfNeeded(
-				visibleFrame,
+				(window.screen ?? NSScreen.main)?.visibleFrame,
 				onVisibleFrameChange: onVisibleFrameChange
 			)
-			let targetSize = PanelWindowSizingLayout.roundedContentSize(for: contentSize)
-			let frame = PanelWindowSizingLayout.frame(
-				forContentSize: targetSize,
-				currentFrame: window.frame
-			) { contentSize in
-				window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize)).size
-			} visibleFrame: {
-				visibleFrame
-			}
-			let screenParametersChanged =
-				screenParametersRevision != lastAppliedScreenParametersRevision
-			let frameChanged = Self.frameDiffers(frame, window.frame)
-			guard screenParametersChanged || frameChanged else {
-				return
-			}
-
-			lastAppliedScreenParametersRevision = screenParametersRevision
-			guard frameChanged else {
-				return
-			}
-
-			window.setFrame(frame, display: true)
+			onContentSizeChange(contentSize)
 		}
 
 		@MainActor
-		func retryResizeAfterWindowAttachment(from view: NSView) {
+		func retryReportAfterWindowAttachment(from view: NSView) {
 			guard pendingSize != .zero else {
 				return
 			}
 
-			scheduleResize(
+			scheduleReport(
 				from: view,
 				contentSize: pendingSize,
 				screenParametersRevision: pendingScreenParametersRevision,
-				onVisibleFrameChange: pendingVisibleFrameCallback
+				onVisibleFrameChange: pendingVisibleFrameCallback,
+				onContentSizeChange: pendingContentSizeCallback
 			)
 		}
 
@@ -141,13 +131,6 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 			onVisibleFrameChange(visibleFrame)
 		}
 
-		private static func frameDiffers(_ lhs: NSRect, _ rhs: NSRect) -> Bool {
-			abs(lhs.minX - rhs.minX) > 0.5
-				|| abs(lhs.minY - rhs.minY) > 0.5
-				|| abs(lhs.width - rhs.width) > 0.5
-				|| abs(lhs.height - rhs.height) > 0.5
-		}
-
 		private static func rectDiffers(_ lhs: NSRect?, _ rhs: NSRect?) -> Bool {
 			switch (lhs, rhs) {
 			case (.none, .none):
@@ -155,7 +138,10 @@ private struct PanelWindowSizeReporter: NSViewRepresentable {
 			case (.none, .some), (.some, .none):
 				return true
 			case (.some(let lhs), .some(let rhs)):
-				return frameDiffers(lhs, rhs)
+				return abs(lhs.minX - rhs.minX) > 0.5
+					|| abs(lhs.minY - rhs.minY) > 0.5
+					|| abs(lhs.width - rhs.width) > 0.5
+					|| abs(lhs.height - rhs.height) > 0.5
 			}
 		}
 	}
@@ -177,6 +163,7 @@ enum PanelWindowAppearance {
 
 private struct PanelWindowSizingModifier: ViewModifier {
 	let onVisibleFrameChange: (NSRect?) -> Void
+	let onContentSizeChange: (CGSize) -> Void
 	@State private var contentSize = CGSize.zero
 	@State private var screenParametersRevision = 0
 
@@ -189,15 +176,20 @@ private struct PanelWindowSizingModifier: ViewModifier {
 				}
 			}
 			.onPreferenceChange(PanelWindowContentSizeKey.self) { size in
+				guard size != .zero else {
+					return
+				}
 				contentSize = size
+				onContentSizeChange(size)
 			}
 			.background {
 				PanelWindowSizeReporter(
 					contentSize: contentSize,
 					screenParametersRevision: screenParametersRevision,
-					onVisibleFrameChange: onVisibleFrameChange
+					onVisibleFrameChange: onVisibleFrameChange,
+					onContentSizeChange: onContentSizeChange
 				)
-					.frame(width: 0, height: 0)
+				.frame(width: 0, height: 0)
 			}
 			.onReceive(
 				NotificationCenter.default.publisher(
@@ -217,11 +209,13 @@ private struct PanelWindowSizingModifier: ViewModifier {
 }
 
 extension View {
-	func sizesPanelWindowToContent(
-		onVisibleFrameChange: @escaping (NSRect?) -> Void = { _ in }
+	func reportsPanelContentMetrics(
+		onVisibleFrameChange: @escaping (NSRect?) -> Void = { _ in },
+		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
 	) -> some View {
 		modifier(PanelWindowSizingModifier(
-			onVisibleFrameChange: onVisibleFrameChange
+			onVisibleFrameChange: onVisibleFrameChange,
+			onContentSizeChange: onContentSizeChange
 		))
 	}
 }
@@ -248,79 +242,7 @@ struct PanelWindowContentSizeKey: PreferenceKey {
 }
 
 enum PanelWindowSizingLayout {
-	private static let placementMargin: CGFloat = 8
-
 	static func roundedContentSize(for contentSize: CGSize) -> NSSize {
-		NSSize(
-			width: ceil(contentSize.width),
-			height: ceil(contentSize.height)
-		)
-	}
-
-	static func frame(
-		forContentSize contentSize: NSSize,
-		currentFrame: NSRect,
-		frameSizeForContentSize: (NSSize) -> NSSize,
-		visibleFrame: () -> NSRect?
-	) -> NSRect {
-		let requestedFrameSize = frameSizeForContentSize(contentSize)
-		guard let visibleFrame = visibleFrame() else {
-			return NSRect(
-				x: currentFrame.minX,
-				y: currentFrame.maxY - requestedFrameSize.height,
-				width: requestedFrameSize.width,
-				height: requestedFrameSize.height
-			)
-		}
-
-		let frameSize = fittedFrameSize(
-			requestedFrameSize,
-			inside: visibleFrame
-		)
-		let proposedFrame = NSRect(
-			// The status-panel controller owns horizontal placement. Keep the
-			// current origin while SwiftUI changes only the window size; otherwise a
-			// hidden sizing pass can move the panel to the screen edge.
-			x: currentFrame.minX,
-			y: currentFrame.maxY - frameSize.height,
-			width: frameSize.width,
-			height: frameSize.height
-		)
-
-		return NSRect(
-			x: clamped(
-				proposedFrame.origin.x,
-				min: visibleFrame.minX + placementMargin,
-				max: visibleFrame.maxX - frameSize.width - placementMargin
-			),
-			y: clamped(
-				proposedFrame.origin.y,
-				min: visibleFrame.minY + placementMargin,
-				max: visibleFrame.maxY - frameSize.height - placementMargin
-			),
-			width: frameSize.width,
-			height: frameSize.height
-		)
-	}
-
-	private static func fittedFrameSize(
-		_ frameSize: NSSize,
-		inside visibleFrame: NSRect
-	) -> NSSize {
-		let maximumWidth = max(1, visibleFrame.width - placementMargin * 2)
-		let maximumHeight = max(1, visibleFrame.height - placementMargin * 2)
-
-		return NSSize(
-			width: min(frameSize.width, maximumWidth),
-			height: min(frameSize.height, maximumHeight)
-		)
-	}
-
-	private static func clamped(_ value: CGFloat, min: CGFloat, max: CGFloat) -> CGFloat {
-		guard min <= max else {
-			return min
-		}
-
-		return Swift.min(Swift.max(value, min), max)
+		NSSize(width: ceil(contentSize.width), height: ceil(contentSize.height))
 	}
 }

@@ -1,4 +1,4 @@
-//! Typed, fail-closed Codex app-server adapter foundation.
+//! Typed, fail-closed Codex and account backend adapter foundation.
 //!
 //! This crate owns protocol decoding, capability evidence, and redaction. Private
 //! process supervision belongs to the runtime composition owner. This crate defines a pure
@@ -17,13 +17,21 @@
 #[doc(hidden)] pub mod protocol;
 #[doc(hidden)] pub mod schema;
 
+mod account_api;
 mod capability;
 mod dispatch;
 mod event;
 mod quick_task;
-mod reset_card;
 
 pub use self::{
+	account_api::{
+		AccountApiConsumeOutcome, AccountApiDailyUsage, AccountApiProfile, AccountApiProtocolError,
+		AccountApiQuotaWindow, AccountApiResetCredit, AccountApiResetCredits, AccountApiUsage,
+		ExactResetCreditId, MAX_ACCOUNT_API_BODY_BYTES, MAX_EXACT_RESET_CREDIT_ID_BYTES,
+		MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARDS_PER_INVENTORY,
+		ResetCardIdempotencyKey, decode_account_api_consume, decode_account_api_profile,
+		decode_account_api_reset_credits, decode_account_api_usage,
+	},
 	capability::{
 		Capability, CapabilityCache, CapabilityContradiction, CapabilityProfile, CapabilityState,
 		DegradedReason, LiveMethodOutcome, MethodObservation, NegotiationError, UnavailableReason,
@@ -61,15 +69,6 @@ pub use self::{
 		QuickTaskTurnStatus, decode_quick_task_thread_archive_response,
 		decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
 		decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
-	},
-	reset_card::{
-		AccountRateLimitObservation, AvailableResetCardObservation, ExactResetCreditId,
-		MAX_EXACT_RESET_CREDIT_ID_BYTES, MAX_RESET_CARD_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARDS_PER_INVENTORY, RESET_CARD_CONSUME_METHOD, RESET_CARD_READ_METHOD,
-		ResetCardCapabilityProfile, ResetCardCapabilityState, ResetCardConsumeParams,
-		ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
-		ResetCardProtocolError, ResetCardResolutionError, decode_reset_card_consume_result,
-		decode_reset_card_inventory,
 	},
 	schema::{
 		ACCEPTED_SCHEMA_RECEIPT, QuickTaskSchemaError, QuickTaskSchemaRequirement,

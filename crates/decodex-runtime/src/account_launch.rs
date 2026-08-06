@@ -1,14 +1,16 @@
 //! Runtime-owned PostgreSQL authorization and bounded process-capacity composition.
 
+mod api_reset_card;
 #[cfg(target_os = "macos")] mod macos_attested_spawn;
 pub(crate) mod process;
 mod protocol;
-mod reset_card;
+mod reset_card_types;
 
+pub(crate) use api_reset_card::ApiResetCardRuntime;
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
-#[cfg(test)] pub(crate) use reset_card::ResetCardInventoryView;
-pub(crate) use reset_card::{
-	ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError, ResetCardVaultStatus,
+pub(crate) use reset_card_types::{
+	ResetCardInventoryObservation, ResetCardInventoryView, ResetCardObservationFailure,
+	ResetCardServiceError, ResetCardVaultStatus,
 };
 
 use std::{

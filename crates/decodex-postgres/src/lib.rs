@@ -83,7 +83,8 @@ pub use self::{
 		ProviderAttemptRejection, RuntimeSessionBindingReceipt,
 	},
 	reset_cards::{
-		ResetCardClaim, ResetCardFailureCode, ResetCardOperationStatus, ResetCardPreparation,
+		RESET_CARD_API_CALLBACK_PROFILE_SHA256, ResetCardClaim, ResetCardFailureCode,
+		ResetCardOperationStatus, ResetCardPreparation,
 	},
 	role_profiles::{
 		BootstrapRoleProfiles, RoleProfileCommandOutcome, RoleProfileConfiguration,
