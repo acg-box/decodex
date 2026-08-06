@@ -1,9 +1,8 @@
 use serde_json::Value;
-use sha2::{Digest as _, Sha256};
 
 use crate::{
 	PostgresStore, RoleProfileRole, StoreError,
-	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
+	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_effect_digest, validate_exact_key},
 };
 use decodex_core::{
 	AccountId, AccountState, ConversationId, ProcessExecutionEpochId, ProcessGenerationId,
@@ -1243,7 +1242,7 @@ fn parse_quick_task_process_generation_response(
 			"Quick Task ProcessGeneration response carries invalid rejection authority".into(),
 		));
 	}
-	validate_thread_effect_digest(effect)?;
+	validate_exact_effect_digest(effect)?;
 	Ok((
 		classification,
 		QuickTaskProcessGenerationReadback {
@@ -1464,7 +1463,7 @@ fn parse_turn_acknowledgement_response(
 			"RuntimeSession turn acknowledgement readback does not match its request".into(),
 		));
 	}
-	validate_thread_effect_digest(effect)?;
+	validate_exact_effect_digest(effect)?;
 
 	Ok(RuntimeSessionTurnAcknowledgementReadback {
 		runtime_session_id: acknowledgement.runtime_session_id.clone(),
@@ -1525,7 +1524,7 @@ fn parse_thread_fence_response(
 		));
 	}
 	validate_stored_sha256(required_str(effect, "thread_start_request_sha256")?)?;
-	validate_thread_effect_digest(effect)?;
+	validate_exact_effect_digest(effect)?;
 
 	Ok(RuntimeSessionThreadFenceReadback {
 		fence_idempotency_key: idempotency_key.to_owned(),
@@ -1600,7 +1599,7 @@ fn parse_thread_binding_response(
 			"stored RuntimeSession Codex thread identity is invalid".into(),
 		));
 	}
-	validate_thread_effect_digest(effect)?;
+	validate_exact_effect_digest(effect)?;
 
 	Ok(RuntimeSessionThreadBindingReadback {
 		conversation_id: binding.conversation_id.clone(),
@@ -1642,7 +1641,7 @@ fn parse_thread_establishment_rejection(
 		},
 	}
 	let effect = required_value(&document, "effect")?;
-	validate_thread_effect_digest(effect)?;
+	validate_exact_effect_digest(effect)?;
 	let request = required_value(effect, "request")?;
 	if required_str(effect, "operation")? != expected_operation
 		|| effect.get("changed").and_then(Value::as_bool) != Some(false)
@@ -1675,35 +1674,6 @@ fn parse_thread_establishment_success(response: &[u8]) -> Result<Value, StoreErr
 		));
 	}
 	Ok(document)
-}
-
-fn validate_thread_effect_digest(effect: &Value) -> Result<(), StoreError> {
-	let digest = required_str(effect, "effect_digest")?;
-	let source = required_str(effect, "effect_digest_source")?;
-	validate_stored_sha256(digest)?;
-	let actual = Sha256::digest(source.as_bytes())
-		.iter()
-		.map(|byte| format!("{byte:02x}"))
-		.collect::<String>();
-	if actual != digest {
-		return Err(StoreError::Incompatible(
-			"RuntimeSession thread effect digest does not match its source".into(),
-		));
-	}
-	let source_value: Value = serde_json::from_str(source).map_err(|_| {
-		StoreError::Incompatible("RuntimeSession thread effect digest source is invalid".into())
-	})?;
-	let mut projection = effect.as_object().cloned().ok_or_else(|| {
-		StoreError::Incompatible("RuntimeSession thread effect is not an object".into())
-	})?;
-	projection.remove("effect_digest");
-	projection.remove("effect_digest_source");
-	if source_value != Value::Object(projection) {
-		return Err(StoreError::Incompatible(
-			"RuntimeSession thread effect differs from its digest source".into(),
-		));
-	}
-	Ok(())
 }
 
 fn validate_thread_establishment_revision(revision: i64) -> Result<(), StoreError> {

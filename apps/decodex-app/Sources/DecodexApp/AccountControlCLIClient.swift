@@ -47,7 +47,7 @@ struct AccountRoutingControl: Equatable, Sendable {
 struct AccountControlSnapshot: Equatable, Sendable {
 	let authority: ResetCardAuthority?
 	let accounts: [ResetCardAccountRecord]
-	let routing: AccountRoutingControl
+	let routing: AccountRoutingControl?
 }
 
 enum CodexAuthProjection: Equatable, Sendable {

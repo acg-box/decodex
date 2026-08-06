@@ -240,11 +240,11 @@ one exact store version through the same journal. Metadata deletion is allowed o
 after logout and creates a tombstone. Historical UUIDs, receipts, and execution
 references remain.
 
-## Exact-build account capability
+## Runtime-negotiated account capability
 
-`AccountLifecycle` readiness for a build is positive evidence, not a schema assumption.
-Before account-backed runner launch or a new Reset Card effect, the exact protected
-Codex build must prove all of these facts:
+`AccountLifecycle` readiness is positive runtime evidence, not a release allowlist or a
+schema assumption. Before account-backed runner launch or a new Reset Card effect, the
+currently installed protected Codex executable must prove all of these facts:
 
 - generated schema supports process-scoped `account/login/start` with
   `chatgptAuthTokens`;
@@ -253,15 +253,15 @@ Codex build must prove all of these facts:
   `account/chatgptAuthTokens/refresh`;
 - the Account Service can bind that callback to the exact ProcessGeneration, serialize
   refresh, complete credential compare-and-swap, and reply for the same provider binding;
-- the exact build, schema fingerprint, and callback capability profile are cached and
-  bound to launch authority.
+- the observed executable identity, generated-schema fingerprint, and callback capability
+  profile are cached and bound to launch authority for that process lifetime.
 
-Unsupported, unprobed, contradictory, or changed builds fail closed. The current exact
-`codex-cli 0.146.0-alpha.9.2` adapter services the root refresh request through the Account
-Service and returns the root refresh response. This source capability can satisfy
-`AccountLifecycle`, `MacDogfoodReady`, and runner readiness only when the exact-image,
-generated-schema, and live callback preflights also pass. Initial token projection alone is
-insufficient.
+The daemon does not pin or compare a Codex release/version or a pre-recorded executable
+digest. It uses the user's installed executable and rejects only incompatible process
+shapes, missing generated methods, malformed callback schemas, failed live probes, or
+contradictory runtime evidence. This source capability can satisfy `AccountLifecycle`,
+`MacDogfoodReady`, and runner readiness only when the runtime executable, generated schema,
+and live callback preflights pass. Initial token projection alone is insufficient.
 
 The supported macOS bridge can launch one explicit official Codex device-login in an
 owner-private temporary home without changing ambient `~/.codex`. It publishes only the
@@ -281,7 +281,7 @@ is safe, and ambiguous store state becomes `RecoveryRequired`.
 The owning [ProcessGeneration authority](process-generation-authority.md) must extend
 its intent, launch-manifest identity, prepare command, and strict readback
 with the canonical initial account revision, credential version, credential fingerprint,
-provider binding, and exact-build account-capability profile. These fields are immutable
+provider binding, and runtime-negotiated account-capability profile. These fields are immutable
 launch facts. Same-account callback rotation does not rewrite them.
 
 Immediately before spawn, the Account Service must read the exact HostCredentialStore
@@ -300,14 +300,19 @@ a second route decision.
 ## Reset Card fencing
 
 Reset Card keeps its existing exact provider-credit ID, provider key, durable receipt,
-and authoritative readback. New admission and the final pre-effect fence both require:
+and authoritative readback. The operation uses the same direct ChatGPT backend API as
+background account observation. New admission and the final pre-effect fence both require:
 
 - the exact account revision and `enabled=true`;
-- `AccountLifecycle=ready` for the active platform and exact Codex build;
+- a present, exact account credential binding;
 - no unsettled account operation other than reconciliation of this exact receipt;
 - exact Account Registry and HostCredentialStore credential version, fingerprint, and
   provider-binding agreement; and
 - the existing admissible observed state and exact public card descriptor.
+
+No Codex executable, app-server capability, generated schema, or exact Codex version is
+part of direct API admission. The app-server remains an execution transport for Quick Task
+only.
 
 The final fence repeats these checks in the effect-start transaction. A disable,
 operation start, revision change, or store drift between discovery and effect prevents
@@ -325,39 +330,48 @@ reconciliation also remain readable after a gate changes. They cannot start a ne
 in [Runtime architecture](../architecture/runtime-architecture.md#account-lifecycle-and-credential-authority).
 Its account observer starts immediately, repeats every 15 seconds, and wakes after a
 successful account command or when a durable Reset Card worker claim settles. Each round
-discovers every non-tombstoned AccountLifecycle-ready account, including administratively
-disabled accounts because observation is not new-work admission. It starts one independent
-async owner for every account without a small global fan-out cap. Reset Card and profile
-provider work for different accounts runs concurrently. Within one account, the observer first
-settles the Reset Card owner because it can rotate credentials, then observes the profile with
-that exact successor. At most one observation owner is active for one Account UUID; another
-lifecycle or effect wake becomes that account's pending successor round. A periodic tick does
-not queue a hot-loop successor for an already slow account.
+discovers every non-tombstoned account with a credential, including administratively disabled
+accounts because observation is not new-work admission. It starts one independent async owner
+for every account without a small global fan-out cap. Usage, profile, and Reset Card inventory
+for different accounts run concurrently through one shared direct provider API runtime. Within
+one account, a round uses one credential snapshot and the bounded API client may retry once
+after Account Service refreshes that credential. At most one observation owner is active for
+one Account UUID; another lifecycle or effect wake becomes that account's pending successor
+round. A periodic tick does not queue a hot-loop successor for an already slow account.
 
 One slow account does not delay completion or later scheduling for another account.
 Observation results publish progressively and only against the current Account revision.
 An account change prunes old Reset Card and profile refresh state before a later result
-can become current. Every accepted publication advances one opaque daemon-lifetime
-observation generation. `WaitForAccountObservation` returns when that generation differs
-from the caller's last applied value, or after one 30-second heartbeat. The macOS app keeps
-one such wait open and reloads daemon values after the response. It has no independent
-15-second refresh clock; a disconnected wait reconnects with bounded backoff.
+can become current. Every accepted observation updates its per-account freshness metadata
+and daemon-owned cache. The opaque daemon-lifetime observation generation advances only
+when the semantic public cache value or its typed result changes; timestamp-only refreshes
+do not invalidate the UI. `WaitForAccountObservation` returns when that generation differs
+from the caller's last applied value, or after one 30-second heartbeat. Its optional
+`request_refresh` flag asks the daemon to schedule one coalesced observation before waiting;
+it does not make the query perform or await provider work directly. The macOS app keeps
+one standing wait plus at most one bounded priority wait, and synchronizes the cache in
+the background without entering the global loading gate. It has no independent 15-second
+refresh clock; a disconnected wait reconnects with bounded backoff.
 
 Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
 app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
-observation round, and returns a typed retryable unavailable result until that account is
-warm. A Reset Card query reads only that memory value; it does not wait for an account-registry
-or provider read. Every successful account or Reset Card command invalidates the affected
-account value and advances its cache generation before requesting observation. A result from an
-older in-flight generation cannot republish after that invalidation. No credential or
-provider-private Reset Card ID enters this cache.
+observation round, and returns a typed retryable unavailable result only until that account is
+warm. A transient direct API failure retains the last complete snapshot for the same account
+revision; a detail-incomplete response updates quota facts but disables stale card selection.
+A Reset Card query reads only that memory value; it does not wait for an account-registry or
+provider read. Every successful account or Reset Card command invalidates the affected account
+value and advances its cache generation before requesting observation. A result from an older
+in-flight generation cannot republish after that invalidation. No credential or provider-private
+Reset Card ID enters this cache.
 
-Query handling is isolated from refresh work. A query does not join, await, register with,
-or inject work into an observation owner. It cannot convert a read into provider access or
-make a slow refresh hold the request path. Candidate-5 Quick Task work must preserve this
-current-main cache-read and observation behavior unchanged.
+Normal value-query handling is isolated from refresh work. `GetResetCards` and
+`GetAccountProfile` do not join, await, register with, or inject work into an observation
+owner. The explicit priority form of `WaitForAccountObservation` is the only client
+revalidation hook; it only signals the daemon scheduler and waits on the semantic
+generation. Candidate-5 Quick Task work must preserve this cache-read and observation
+boundary.
 
 ```mermaid
 sequenceDiagram
@@ -366,10 +380,11 @@ sequenceDiagram
     participant Accounts as Account service
     participant Provider as Provider adapters
     participant Store as PostgreSQL
-    participant Cache as Daemon Reset Card cache
+	participant Cache as Daemon Reset Card cache
 	participant Client as UI or protocol client
 
 	Client->>Observer: Wait after last observation generation
+	Client->>Observer: Optional priority wait requests one coalesced round
 	Timer->>Observer: Request coalesced observation round
     Observer->>Accounts: List lifecycle-ready account revisions
     par Each independent account
@@ -397,11 +412,13 @@ persisted projection and the daemon observer's revision-scoped refresh status. O
 background profile observation affects only that account row.
 
 During a background observation, the daemon reads the exact current HostCredentialStore
-binding and calls only
-`https://chatgpt.com/backend-api/wham/profiles/me`. The request has bounded connect and
-total timeouts, no redirects, and a bounded response body. The daemon sends the access
-token and provider account ID only to that endpoint. It does not log or return the token,
-provider body, or raw error.
+binding and calls only the direct ChatGPT backend API routes used by the Codex backend
+client: `/wham/usage`, `/wham/profiles/me`, and `/wham/rate-limit-reset-credits`.
+Reset-card consumption uses `/wham/rate-limit-reset-credits/consume` with the exact selected
+credit ID and one durable idempotency key. Requests have bounded connect and total timeouts,
+no redirects, and bounded response bodies. The daemon sends the access token and provider
+account ID only to these routes. It does not log or return the token, provider body, or raw
+error. This path does not inspect or lock a Codex executable version or app-server schema.
 
 The latest schema stores one latest non-secret profile snapshot and at most 36 unique
 ascending daily usage facts. Persistence uses the exact account revision, provider

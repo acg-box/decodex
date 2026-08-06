@@ -2,7 +2,6 @@
   "receipt": "decodex/vnext-codex-schema-receipt/1",
   "request_methods": [
     "account/read",
-    "account/rateLimits/read",
     "collaborationMode/list",
     "initialize",
     "thread/archive",

@@ -14,14 +14,16 @@ use crate::{
 	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
 };
 
-const READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL: &str = "SELECT routing_policy_id::text,routing_policy_revision \
-	 FROM decodex.read_current_task_routing_authority_exact()";
+const RESOLVE_ROUTING_SNAPSHOT_SQL: &str = "SELECT decodex.resolve_routing_snapshot_exact(\
+	 $1,$2,$3::text::decodex.routing_authority_shape,$4::text::uuid,$5,$6,\
+	 $7::text::decodex.provider_attempt_consumer_kind,$8::text::uuid,$9,\
+	 $10::text::uuid,$11,$12::text::uuid,$13::text::uuid,$14,$15::text::uuid)";
 
 #[cfg(all(test, feature = "test-support"))]
 pub(crate) async fn prepare_routing_decision_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
-	client.prepare(READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL).await?;
+	client.prepare(RESOLVE_ROUTING_SNAPSHOT_SQL).await?;
 	Ok(1)
 }
 
@@ -99,41 +101,7 @@ pub struct PublishRoutingEvidence {
 	pub capabilities: Vec<(CodexCapability, RoutingCapabilityState)>,
 }
 
-/// Exact current Task-role routing policy selected by database-owned routing authority.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct CurrentTaskRoutingAuthority {
-	/// Stable current routing policy identity.
-	pub routing_policy_id: String,
-	/// Exact positive current routing policy revision.
-	pub routing_policy_revision: i64,
-}
-
 impl PostgresStore {
-	/// Read the sole current Task-role routing authority through the RuntimeSession Thread
-	/// Establishment read seam.
-	pub async fn read_current_task_routing_authority(
-		&self,
-	) -> Result<Option<CurrentTaskRoutingAuthority>, StoreError> {
-		let rows =
-			self.pool().get().await?.query(READ_CURRENT_TASK_ROUTING_AUTHORITY_SQL, &[]).await?;
-		if rows.len() > 1 {
-			return incompatible("current Task routing authority is not unique");
-		}
-		let Some(row) = rows.first() else {
-			return Ok(None);
-		};
-		let routing_policy_id: String = row.get(0);
-		let routing_policy_revision: i64 = row.get(1);
-		validate_uuid(&routing_policy_id, "current Task routing policy identity").map_err(
-			|_| StoreError::Incompatible("current Task routing policy identity is invalid".into()),
-		)?;
-		if routing_policy_revision <= 0 {
-			return incompatible("current Task routing policy revision is invalid");
-		}
-
-		Ok(Some(CurrentTaskRoutingAuthority { routing_policy_id, routing_policy_revision }))
-	}
-
 	/// Replace the complete routing policy through the Routing Snapshot command owner.
 	pub async fn replace_routing_policy(
 		&self,
@@ -234,7 +202,7 @@ impl PostgresStore {
 		parse_evidence_response(&response, request)
 	}
 
-	/// Resolve and persist one immutable complete fact snapshot without selecting an account.
+	/// Resolve one immutable ManagedRun fact snapshot without selecting an account.
 	pub async fn resolve_routing_snapshot(
 		&self,
 		idempotency_key: &str,
@@ -247,6 +215,11 @@ impl PostgresStore {
 		if expected_routing_policy_revision <= 0 || consumer.domain_revision() <= 0 {
 			return Err(StoreError::InvalidInput("routing source revisions must be positive"));
 		}
+		if !matches!(consumer, ExecutionConsumer::ManagedRunExecution { .. }) {
+			return Err(StoreError::InvalidInput(
+				"split routing snapshots are reserved for ManagedRun execution",
+			));
+		}
 		let parts = ExecutionConsumerParts::from(consumer);
 		if parts.source_runtime_session_id.is_some()
 			!= parts.source_runtime_session_revision.is_some()
@@ -258,14 +231,14 @@ impl PostgresStore {
 		}
 		let response = self
 			.execute_exact_with_retry(
-				"SELECT decodex.resolve_routing_snapshot_exact($1,$2,$3::text::uuid,$4,\
-				 $5::text::decodex.provider_attempt_consumer_kind,$6::text::uuid,$7,\
-				 $8::text::uuid,$9,$10::text::uuid,$11::text::uuid,$12,$13::text::uuid)",
+				RESOLVE_ROUTING_SNAPSHOT_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
+					&"managed_run_project_policy",
 					&routing_policy_id,
 					&expected_routing_policy_revision,
+					&None::<i64>,
 					&parts.kind,
 					&parts.conversation_id,
 					&parts.conversation_revision,

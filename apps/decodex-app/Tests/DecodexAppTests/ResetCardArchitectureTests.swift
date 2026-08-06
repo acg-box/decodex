@@ -497,7 +497,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(cardSurface.contains("cardFill"))
 		XCTAssertFalse(cardSurface.contains("cardStroke"))
 		XCTAssertFalse(cardSurface.contains("strokeBorder"))
-		XCTAssertTrue(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
+		// Keep each card's material independent. Grouping the panel in a
+		// GlassEffectContainer creates the enclosing surface users perceive as a
+		// second card around the whole list.
+		XCTAssertFalse(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
 		XCTAssertTrue(
 			accountPanel.contains(".environment(\\.panelCardMaterial, panelCardMaterial)")
 		)
@@ -532,12 +535,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(appScene.contains("MenuBarExtra"))
 		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
-		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel"))
-		XCTAssertTrue(statusPanel.contains("styleMask: [.borderless]"))
-		XCTAssertTrue(statusPanel.contains("TransparentHostingView(rootView: StatusPanelRootView"))
+		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel("))
+		XCTAssertTrue(statusPanel.contains("statusItemScreenRect()"))
+		XCTAssertTrue(statusPanel.contains("StatusPanelLayout.origin("))
+		XCTAssertTrue(statusPanel.contains("panel.setFrameOrigin(targetOrigin)"))
+		XCTAssertTrue(statusPanel.contains("TransparentHostingView("))
 		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
-		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
-		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
+		XCTAssertTrue(statusPanel.contains("AccountPanelView("))
 		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseUp])"))
 		XCTAssertTrue(statusPanel.contains("NSApp.activate(ignoringOtherApps: true)"))
 		XCTAssertFalse(
@@ -547,8 +551,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(statusPanel.contains("DispatchQueue.main.async"))
 		XCTAssertFalse(statusPanel.contains("NSApp.currentEvent"))
 		XCTAssertFalse(statusPanel.contains("StatusPanelInteraction.isStatusItemPress"))
-		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
-		XCTAssertTrue(statusPanel.contains("#selector(panelDidResize(_:))"))
+		XCTAssertFalse(statusPanel.contains("NSPopover"))
 		XCTAssertEqual(
 			panelControls.components(
 				separatedBy: "isDisabled && isActive == false"
@@ -579,6 +582,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 				"window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor"
 			)
 		)
+		XCTAssertTrue(panelWindow.contains("roundedContentSize"))
+		XCTAssertFalse(panelWindow.contains("currentFrame"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
@@ -786,6 +791,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("StatusPanelController.swift"),
 			encoding: .utf8
 		)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
 
 		XCTAssertFalse(store.contains("defaultAutomaticRefreshInterval"))
 		XCTAssertTrue(store.contains("private var accountObservationTask"))
@@ -793,11 +802,34 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(store.contains("startAccountObservationSignals()"))
 		XCTAssertTrue(store.contains("accountObservationTask?.cancel()"))
 		XCTAssertTrue(store.contains("waitForAccountObservation("))
+		XCTAssertTrue(store.contains("func ensureFresh()"))
+		XCTAssertTrue(store.contains("requestAccountObservationRefresh("))
 		XCTAssertFalse(store.contains("ContinuousClock()"))
 		XCTAssertTrue(store.contains("self.requestObservationRefresh()"))
 		XCTAssertTrue(store.contains("await performRefreshCycle()"))
+		XCTAssertTrue(store.contains("await performObservationRefresh()"))
 		XCTAssertTrue(store.contains("await performAccountSkeletonRead()"))
 		XCTAssertFalse(store.contains("Timer.publish"))
-		XCTAssertTrue(panel.contains("store.requestRefresh()"))
+		XCTAssertFalse(
+			panel.contains("store.requestRefresh()"),
+			"Opening the panel must not start a full refresh; Refresh all is explicit."
+		)
+		XCTAssertTrue(panel.contains("store.ensureFresh()"))
+		let ensureFreshStart = try XCTUnwrap(store.range(of: "func ensureFresh()"))
+		let priorityTaskStart = try XCTUnwrap(
+			store.range(
+				of: "priorityObservationTask = Task",
+				range: ensureFreshStart.upperBound ..< store.endIndex
+			)
+		)
+		let ensureFreshBeforePriorityTask = String(
+			store[ensureFreshStart.lowerBound ..< priorityTaskStart.lowerBound]
+		)
+		XCTAssertFalse(
+			ensureFreshBeforePriorityTask.contains("requestObservationRefresh()"),
+			"Panel presentation must wait for the daemon priority signal before reading UI state."
+		)
+		XCTAssertTrue(panel.contains("onContentSizeChange"))
+		XCTAssertTrue(accountPanel.contains("reportsPanelContentMetrics"))
 	}
 }

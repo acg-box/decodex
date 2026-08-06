@@ -28,7 +28,7 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 		case .vaultUnavailable:
 			return "The daemon credential vault is unavailable."
 		case .schemaUnsupported:
-			return "The selected Codex version does not support reset cards."
+			return "The stored reset-card result is incompatible with the current provider API."
 		case .providerUnavailable:
 			return "The reset-card provider is unavailable."
 		case .inventoryIncomplete:
@@ -266,7 +266,9 @@ struct ResetCardAccountRecord: Identifiable, Equatable, Sendable {
 		case .operationUnsettled:
 			return "Operation pending"
 		case .callbackCapabilityUnready:
-			return "Update required"
+			// Direct provider API observation does not require the optional Codex
+			// callback capability. Route actions keep their own admission check.
+			break
 		case .tombstoned:
 			return "Logged out"
 		case .ready:
@@ -418,6 +420,17 @@ protocol AccountObservationClient: Sendable {
 	func waitForAccountObservation(
 		afterGeneration: UInt64
 	) async throws -> AccountObservationSignal
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal
+}
+
+extension AccountObservationClient {
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(afterGeneration: afterGeneration)
+	}
 }
 
 extension ResetCardClient {
@@ -552,13 +565,33 @@ extension DecodexNativeClient: AccountObservationClient {
 	func waitForAccountObservation(
 		afterGeneration: UInt64
 	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(
+			afterGeneration: afterGeneration,
+			requestRefresh: false
+		)
+	}
+
+	func requestAccountObservationRefresh(
+		afterGeneration: UInt64
+	) async throws -> AccountObservationSignal {
+		try await waitForAccountObservation(
+			afterGeneration: afterGeneration,
+			requestRefresh: true
+		)
+	}
+
+	private func waitForAccountObservation(
+		afterGeneration: UInt64,
+		requestRefresh: Bool
+	) async throws -> AccountObservationSignal {
 		let response: (
 			authority: ResetCardAuthority,
 			data: AccountObservationSignal
 		) = try await perform(
 			DecodexNativeRequest(
 				operation: "wait_for_account_observation",
-				afterGeneration: afterGeneration
+				afterGeneration: afterGeneration,
+				requestRefresh: requestRefresh ? true : nil
 			),
 			authority: nil
 		)
@@ -638,13 +671,13 @@ private enum AccountListWireResult: Decodable {
 
 struct AccountListWireData: Decodable {
 	let accounts: [ResetCardAccountWire]
-	let routing: AccountRoutingWire
+	let routing: AccountRoutingWire?
 
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(in: decoder, allowed: ["accounts", "routing"])
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		accounts = try container.decode([ResetCardAccountWire].self, forKey: .accounts)
-		routing = try container.decode(AccountRoutingWire.self, forKey: .routing)
+		routing = try container.decodeIfPresent(AccountRoutingWire.self, forKey: .routing)
 	}
 
 	func snapshot(
@@ -675,22 +708,28 @@ struct AccountListWireData: Decodable {
 				throw ResetCardClientError.invalidResponse
 			}
 		}
-		guard routing.order.count == records.count,
-			Set(routing.order) == Set(byID.keys)
-		else {
-			throw ResetCardClientError.invalidResponse
-		}
-
-		let ordered = try routing.order.map {
-			guard let account = byID[$0] else {
+		let ordered: [ResetCardAccountRecord]
+		if let routing {
+			guard routing.order.count == records.count,
+				Set(routing.order) == Set(byID.keys)
+			else {
 				throw ResetCardClientError.invalidResponse
 			}
-			return account
+			ordered = try routing.order.map {
+				guard let account = byID[$0] else {
+					throw ResetCardClientError.invalidResponse
+				}
+				return account
+			}
+		} else {
+			// Account data remains usable while the independent routing capability is being
+			// retried. Preserve the daemon's registry order until a routing snapshot arrives.
+			ordered = records
 		}
 		return AccountControlSnapshot(
 			authority: authority,
 			accounts: ordered,
-			routing: routing.routing
+			routing: routing?.routing
 		)
 	}
 

@@ -115,10 +115,10 @@ impl<'de> Deserialize<'de> for QuickTaskWorkingDirectory {
 pub enum QuickTaskState {
 	/// The Conversation is durable but no L0 Routing Decision has committed yet.
 	RoutingPending,
+	/// A selected initial decision is durable, but first-session planning is incomplete.
+	EstablishmentPending,
 	/// The latest explicit L0 Routing Decision found only positive quota exhaustion.
 	QuotaExhausted,
-	/// The latest explicit L0 Routing Decision retained unresolved execution authority.
-	WaitingReconciliation,
 	/// The latest explicit L0 Routing Decision found no eligible account route.
 	NoRoute,
 	/// The initial ordinary RuntimeSession thread is being established.
@@ -147,8 +147,12 @@ pub enum QuickTaskTurnOutcome {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuickTaskRecoveryAction {
-	/// Explicitly request a new L0 Routing Decision for this pre-session Conversation.
-	RetryRouting,
+	/// Resume the sole uncommitted initial route on this Conversation.
+	ResumeRouting,
+	/// Create one fresh routing Conversation successor for immutable waiting/no-route authority.
+	CreateRoutingSuccessor,
+	/// Resume first-session planning or establishment from committed durable coordinates.
+	ResumeEstablishment,
 	/// Configure deterministic account selection.
 	ConfigureAccount,
 	/// Enable the selected account.
@@ -262,6 +266,8 @@ pub struct QuickTaskSummary {
 	pub conversation_id: EntityId,
 	/// Exact ordinary Conversation revision represented by this projection.
 	pub conversation_revision: EntityRevision,
+	/// PostgreSQL-owned monotonic order of the durable facts represented by this projection.
+	pub projection_updated_at_micros: i64,
 	/// Sole current ordinary RuntimeSession identity, absent before first-session planning
 	/// succeeds.
 	#[serde(skip_serializing_if = "Option::is_none")]
@@ -284,6 +290,7 @@ impl QuickTaskSummary {
 	pub fn new(
 		conversation_id: EntityId,
 		conversation_revision: EntityRevision,
+		projection_updated_at_micros: i64,
 		runtime_session_id: Option<EntityId>,
 		runtime_session_revision: Option<EntityRevision>,
 		state: QuickTaskState,
@@ -297,25 +304,31 @@ impl QuickTaskSummary {
 		let pre_session = matches!(
 			state,
 			QuickTaskState::RoutingPending
+				| QuickTaskState::EstablishmentPending
 				| QuickTaskState::QuotaExhausted
-				| QuickTaskState::WaitingReconciliation
 				| QuickTaskState::NoRoute
 		);
 		let state_shape = match state {
-			QuickTaskState::RoutingPending
-			| QuickTaskState::QuotaExhausted
-			| QuickTaskState::WaitingReconciliation
-			| QuickTaskState::NoRoute =>
+			QuickTaskState::RoutingPending =>
 				active_turn_id.is_none()
-					&& recovery_action == Some(QuickTaskRecoveryAction::RetryRouting),
-			QuickTaskState::Establishing | QuickTaskState::Ready =>
-				active_turn_id.is_none() && recovery_action.is_none(),
+					&& recovery_action == Some(QuickTaskRecoveryAction::ResumeRouting),
+			QuickTaskState::EstablishmentPending =>
+				active_turn_id.is_none()
+					&& recovery_action == Some(QuickTaskRecoveryAction::ResumeEstablishment),
+			QuickTaskState::QuotaExhausted | QuickTaskState::NoRoute =>
+				active_turn_id.is_none()
+					&& recovery_action == Some(QuickTaskRecoveryAction::CreateRoutingSuccessor),
+			QuickTaskState::Establishing =>
+				recovery_action.is_none()
+					|| recovery_action == Some(QuickTaskRecoveryAction::ResumeEstablishment),
+			QuickTaskState::Ready => active_turn_id.is_none() && recovery_action.is_none(),
 			QuickTaskState::Running => active_turn_id.is_some() && recovery_action.is_none(),
 			QuickTaskState::ManualRecovery => recovery_action.is_some(),
 			QuickTaskState::OutcomeUnknown => recovery_action.is_none(),
 		};
 		if !canonical
 			|| conversation_revision.0 == 0
+			|| projection_updated_at_micros <= 0
 			|| runtime_session_revision.as_ref().is_some_and(|revision| revision.0 == 0)
 			|| has_session == pre_session
 			|| runtime_session_id.is_some() != runtime_session_revision.is_some()
@@ -326,6 +339,7 @@ impl QuickTaskSummary {
 		Ok(Self {
 			conversation_id,
 			conversation_revision,
+			projection_updated_at_micros,
 			runtime_session_id,
 			runtime_session_revision,
 			state,
@@ -344,6 +358,7 @@ impl<'de> Deserialize<'de> for QuickTaskSummary {
 		struct Raw {
 			conversation_id: EntityId,
 			conversation_revision: EntityRevision,
+			projection_updated_at_micros: i64,
 			runtime_session_id: Option<EntityId>,
 			runtime_session_revision: Option<EntityRevision>,
 			state: QuickTaskState,
@@ -355,6 +370,7 @@ impl<'de> Deserialize<'de> for QuickTaskSummary {
 		Self::new(
 			raw.conversation_id,
 			raw.conversation_revision,
+			raw.projection_updated_at_micros,
 			raw.runtime_session_id,
 			raw.runtime_session_revision,
 			raw.state,
@@ -440,6 +456,17 @@ pub enum QuickTaskListResult {
 pub enum QuickTaskResult {
 	/// Current ordinary Conversation and RuntimeSession projection.
 	Available(QuickTaskSummary),
+	/// The requested archived source redirects to its sole routing successor.
+	RoutingSuccessorRedirect {
+		/// Archived source Conversation identity.
+		source_conversation_id: EntityId,
+		/// Exact archived source revision.
+		source_conversation_revision: EntityRevision,
+		/// Direct open successor Conversation identity.
+		successor_conversation_id: EntityId,
+		/// Exact current successor revision returned by the Conversation owner.
+		successor_conversation_revision: EntityRevision,
+	},
 	/// No eligible ordinary Task conversation exists for the requested identity.
 	NotFound,
 	/// The ordinary read authority could not produce a safe projection.
