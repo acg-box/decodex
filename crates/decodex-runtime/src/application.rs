@@ -375,17 +375,24 @@ impl ServiceApplication {
 		let Some(service) = &self.accounts else {
 			return AccountsResult::Unavailable;
 		};
-		let Ok((accounts, routing)) = service.list_snapshot().await else {
+		// Account rows and routing are independent capabilities. The row read must not acquire
+		// routing's all-account lock, and a transient routing read conflict must not erase fresh
+		// account observations from the panel.
+		let Ok(accounts) = service.list().await else {
 			return AccountsResult::Unavailable;
 		};
 		let accounts = accounts
 			.into_iter()
 			.map(|inspection| account_dto(inspection.account))
 			.collect::<Result<Vec<_>, _>>();
-		let routing = routing_dto(routing);
-		match (accounts, routing) {
-			(Ok(accounts), Ok(routing)) => AccountsResult::Available { accounts, routing },
-			_ => AccountsResult::Unavailable,
+		let routing = service
+			.routing_control()
+			.await
+			.ok()
+			.and_then(|routing| routing_dto(routing).ok());
+		match accounts {
+			Ok(accounts) => AccountsResult::Available { accounts, routing },
+			Err(_) => AccountsResult::Unavailable,
 		}
 	}
 
@@ -2740,7 +2747,8 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 		ResetCardServiceError::AccountChanged
 		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
 		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
-		ResetCardServiceError::SchemaUnsupported => "Codex app-server does not support reset cards",
+		ResetCardServiceError::SchemaUnsupported =>
+			"stored reset-card result is incompatible with the current provider API",
 		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
 		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
 		ResetCardServiceError::InventoryChanged => "selected reset card changed",

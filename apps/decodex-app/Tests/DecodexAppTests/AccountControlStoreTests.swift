@@ -425,7 +425,7 @@ final class AccountControlStoreTests: XCTestCase {
 		await stopObservation()
 	}
 
-	func testAdvancedInventoryWaitsForFreshSkeletonBeforeControls() async throws {
+	func testAdvancedInventoryRemainsVisibleWhileSkeletonReconcilesInBackground() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
 			account: account,
@@ -455,22 +455,20 @@ final class AccountControlStoreTests: XCTestCase {
 			return XCTFail("Fresh skeleton read did not enter the pending state.")
 		}
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
 		XCTAssertEqual(store.accounts.first?.account.alias, "Account 00000-00001")
 		XCTAssertTrue(store.accounts.first?.account.enabled == true)
-		XCTAssertNil(store.accounts.first?.inventory)
+		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
 		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(accountID))
-		XCTAssertTrue(store.accounts.first?.isRefreshing == true)
+		XCTAssertFalse(store.accounts.first?.isRefreshing == true)
+		XCTAssertEqual(store.accounts.first?.routeCapability, .ready)
 
 		await store.selectFixedAccount(accountID)
-		await store.setAccount(accountID, enabled: false)
 		await store.useAccountInCodex(accountID)
-		let blockedFixedRequest = await client.fixedRequest()
-		let blockedEnabledRequest = await client.enabledRequest()
-		let blockedUseRequest = await client.useRequest()
-		XCTAssertNil(blockedFixedRequest)
-		XCTAssertNil(blockedEnabledRequest)
-		XCTAssertNil(blockedUseRequest)
+		let fixedRequest = await client.fixedRequest()
+		let useRequest = await client.useRequest()
+		XCTAssertEqual(fixedRequest?.expectedAccountRevision, 8)
+		XCTAssertEqual(useRequest?.expectedRevision, 8)
 
 		let refreshedAccount = accountRecord(
 			alias: "Account 00000-00008",
@@ -483,7 +481,8 @@ final class AccountControlStoreTests: XCTestCase {
 		await client.releaseSnapshot()
 		for _ in 0 ..< 200 {
 			if store.accounts.first?.account.accountRevision == 8,
-				store.accounts.first?.inventory?.accountRevision == 8
+				store.accounts.first?.inventory?.accountRevision == 8,
+				store.isAwaitingFreshAccountSkeleton(accountID) == false
 			{
 				break
 			}
@@ -627,7 +626,7 @@ final class AccountControlStoreTests: XCTestCase {
 		}
 
 		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(secondAccountID))
-		XCTAssertTrue(
+		XCTAssertFalse(
 			store.accounts.first(where: {
 				$0.account.accountID == secondAccountID
 			})?.isRefreshing == true

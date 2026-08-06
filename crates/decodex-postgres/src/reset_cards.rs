@@ -168,7 +168,8 @@ pub enum ResetCardFailureCode {
 	AccountChanged,
 	/// The selected host-vault entry was unavailable or rejected.
 	VaultUnavailable,
-	/// The exact Codex build did not advertise both required methods.
+	/// Compatibility failure retained for durable replay/decoding. The current direct provider
+	/// API path does not inspect the installed executable build.
 	SchemaUnsupported,
 	/// Complete provider card details were unavailable or unsafe.
 	InventoryIncomplete,

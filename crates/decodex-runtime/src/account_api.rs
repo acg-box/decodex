@@ -182,10 +182,10 @@ impl AccountApiRuntime {
 			.await
 		{
 			Ok(credential) => credential,
-			Err(error) =>
-				return PendingAccountApiObservation::credential_error(map_account_service_error(
-					error,
-				)),
+			Err(error) => {
+				let error = map_account_service_error(error);
+				return PendingAccountApiObservation::credential_error(error);
+			},
 		};
 		if credential.binding.provider.provider() != AccountProvider::Chatgpt {
 			return PendingAccountApiObservation::failed(
@@ -239,11 +239,16 @@ impl AccountApiRuntime {
 				credits: Vec::new(),
 			});
 		}
-		let details = self
+		let details = match self
 			.request_json(Method::GET, RESET_CREDITS_PATH, credential, None)
 			.await
-			.map_err(map_request_error)
-			.and_then(|body| decode_account_api_reset_credits(&body).map_err(map_protocol_error));
+		{
+			Ok(body) => match decode_account_api_reset_credits(&body) {
+				Ok(details) => Ok(details),
+				Err(error) => Err(map_protocol_error(error)),
+			},
+			Err(error) => Err(map_request_error(error)),
+		};
 		match details {
 			Ok(details) => Ok(AccountApiInventory {
 				account_revision: credential.account_revision,
@@ -308,8 +313,10 @@ impl AccountApiRuntime {
 		if let Some(json) = json {
 			request = request.json(json);
 		}
-		let response =
-			request.send().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
+		let response = request
+			.send()
+			.await
+			.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
 		let status = response.status();
 		if status == StatusCode::UNAUTHORIZED {
 			return Err(AccountApiRequestError::Unauthorized);

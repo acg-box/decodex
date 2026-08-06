@@ -80,12 +80,7 @@ struct AccountPrimaryActionsView: View {
 	}
 
 	private var canSelect: Bool {
-		state.account.enabled
-			// Quick Task launch still requires the separately attested callback
-			// capability; account data does not.
-			&& state.account.lifecycleReadiness == .ready
-			&& state.account.unsettledOperation == nil
-			&& store.isAwaitingFreshAccountSkeleton(state.account.accountID) == false
+		state.routeCapability == .ready
 	}
 
 	private var isFixed: Bool {
@@ -195,7 +190,6 @@ struct AccountUtilityActionsView: View {
 	private var lifecycleActionIsDisabled: Bool {
 		store.canPerformDirectAccountControl == false
 			|| store.isAccountControlInProgress
-			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
 			|| store.submittingKey != nil
 	}
 }
@@ -224,7 +218,6 @@ struct AccountRefreshLoginButton: View {
 
 	private var isDisabled: Bool {
 		state.account.credentialBinding == nil
-			|| store.isAwaitingFreshAccountSkeleton(state.account.accountID)
 			|| store.canPerformDirectAccountControl == false
 			|| store.isControllingAccount(state.account.accountID)
 			|| store.isEnrollingAccount
