@@ -1851,8 +1851,9 @@ fn parse_quota(
 			AccountQuotaDisposition::Error(parse_quota_error(error)?),
 		_ => return Err(incompatible("quota observation shape")),
 	};
-	let observed_at_unix_micros =
-		(!matches!(disposition, AccountQuotaDisposition::Unknown)).then_some(observed_micros).flatten();
+	let observed_at_unix_micros = (!matches!(disposition, AccountQuotaDisposition::Unknown))
+		.then_some(observed_micros)
+		.flatten();
 	Ok(AccountQuotaWindowObservation {
 		duration_minutes: duration,
 		observed_at_unix_micros,

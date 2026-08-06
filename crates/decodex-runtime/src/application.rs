@@ -385,11 +385,8 @@ impl ServiceApplication {
 			.into_iter()
 			.map(|inspection| account_dto(inspection.account))
 			.collect::<Result<Vec<_>, _>>();
-		let routing = service
-			.routing_control()
-			.await
-			.ok()
-			.and_then(|routing| routing_dto(routing).ok());
+		let routing =
+			service.routing_control().await.ok().and_then(|routing| routing_dto(routing).ok());
 		match accounts {
 			Ok(accounts) => AccountsResult::Available { accounts, routing },
 			Err(_) => AccountsResult::Unavailable,
