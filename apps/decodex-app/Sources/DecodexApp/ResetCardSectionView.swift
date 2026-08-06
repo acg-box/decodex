@@ -122,15 +122,13 @@ struct ResetCardPendingAttemptsView: View {
 enum ResetCardInventoryPresentation: Equatable {
 	case loginRequired
 	case checking
-	case updating(detail: String?)
 	case connecting(detail: String)
 	case unavailable(detail: String)
 	case empty
 	case available
 
 	init(
-		state: ResetCardAccountState,
-		isAwaitingFreshAccountSkeleton: Bool
+		state: ResetCardAccountState
 	) {
 		if state.requiresLoginRefresh {
 			self = .loginRequired
@@ -138,32 +136,13 @@ enum ResetCardInventoryPresentation: Equatable {
 		}
 
 		if case .connecting(let detail) = state.inventoryFailure {
-			self = .connecting(detail: detail)
-			return
-		}
-
-		if state.isRefreshing
-			|| isAwaitingFreshAccountSkeleton
-			|| (state.inventory != nil && state.inventoryIsCurrent == false)
-		{
-			let detail: String?
-			if case .updating(let failureDetail) = state.inventoryFailure {
-				detail = failureDetail
-			} else {
-				detail = nil
+			if state.inventory == nil {
+				self = .connecting(detail: detail)
+				return
 			}
-			self = state.inventory == nil ? .checking : .updating(detail: detail)
-			return
 		}
 
 		if case .unavailable(let detail) = state.inventoryFailure {
-			self = .unavailable(detail: detail)
-			return
-		}
-		if case .updating(let detail) = state.inventoryFailure {
-			// A completed retryable read failure is not an in-flight refresh. Keep
-			// the retained quota visible, but do not leave a permanent spinner in
-			// every account row.
 			self = .unavailable(detail: detail)
 			return
 		}
@@ -172,7 +151,9 @@ enum ResetCardInventoryPresentation: Equatable {
 			return
 		}
 		guard inventory.detailsComplete else {
-			self = .checking
+			self = .unavailable(
+				detail: "Reset Card details are temporarily unavailable."
+			)
 			return
 		}
 		self = state.targets.isEmpty ? .empty : .available
@@ -537,12 +518,6 @@ struct ResetCardAccountRow: View {
 				"Checking Reset Cards…",
 				help: "Waiting for the current Reset Card inventory."
 			)
-		case .updating(let detail):
-			inventoryProgress(
-				"Updating usage…",
-				help: detail
-					?? "Waiting for the current account revision and usage."
-			)
 		case .connecting(let detail):
 			inventoryProgress("Connecting to Decodex…", help: detail)
 		case .unavailable(let detail):
@@ -608,12 +583,7 @@ struct ResetCardAccountRow: View {
 	}
 
 	private var inventoryPresentation: ResetCardInventoryPresentation {
-		ResetCardInventoryPresentation(
-			state: state,
-			isAwaitingFreshAccountSkeleton: store.isAwaitingFreshAccountSkeleton(
-				state.account.accountID
-			)
-		)
+		ResetCardInventoryPresentation(state: state)
 	}
 
 	private var countdownAttempt: ResetCardUseAttempt? {

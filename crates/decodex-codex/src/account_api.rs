@@ -12,7 +12,7 @@ use std::{
 use decodex_core::{
 	AccountQuotaObservationError, AccountQuotaWindow, ResetCardDescriptor, ResetCardTimestamp,
 };
-use serde_json::Value;
+use serde_json::{Map, Value};
 use zeroize::Zeroizing;
 
 /// Maximum UTF-8 bytes retained for one exact provider credit identifier.
@@ -111,10 +111,11 @@ pub struct AccountApiDailyUsage {
 /// One required rate-limit window decoded from `/wham/usage`.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountApiQuotaWindow {
-	/// The accepted five-hour or seven-day duration.
+	/// The accepted five-hour or seven-day duration slot.
 	pub duration_minutes: u32,
-	/// The decoded quota fact or a bounded protocol classification.
-	pub result: Result<AccountQuotaWindow, AccountQuotaObservationError>,
+	/// The decoded quota fact, an explicitly unreported optional window, or a bounded
+	/// protocol classification.
+	pub result: Result<Option<AccountQuotaWindow>, AccountQuotaObservationError>,
 }
 
 /// A rate-limit response with its optional reset-credit summary.
@@ -264,12 +265,7 @@ pub fn decode_account_api_usage(bytes: &[u8]) -> Result<AccountApiUsage, Account
 	let payload: Value =
 		serde_json::from_slice(bytes).map_err(|_| AccountApiProtocolError::MalformedResponse)?;
 	let object = payload.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
-	let rate_limit = match object.get("rate_limit") {
-		None | Some(Value::Null) => None,
-		Some(Value::Object(value)) => Some(value),
-		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
-	};
-	let quota_windows = decode_quota_windows(rate_limit);
+	let quota_windows = decode_quota_windows(object)?;
 	let reported_available_count = object
 		.get("rate_limit_reset_credits")
 		.map(|value| decode_reset_credit_summary(Some(value)))
@@ -307,7 +303,7 @@ pub fn decode_account_api_reset_credits(
 						continue;
 					}
 					if status != "available"
-						|| required_text(credit.get("reset_type"))? != "codexRateLimits"
+						|| !is_codex_reset_type(required_text(credit.get("reset_type"))?)
 					{
 						details_complete = false;
 						continue;
@@ -364,6 +360,10 @@ pub fn decode_account_api_reset_credits(
 	Ok(AccountApiResetCredits { reported_available_count, credits, details_complete })
 }
 
+fn is_codex_reset_type(value: &str) -> bool {
+	matches!(value, "codexRateLimits" | "codex_rate_limits")
+}
+
 /// Decode one direct consume response.
 pub fn decode_account_api_consume(
 	bytes: &[u8],
@@ -382,42 +382,204 @@ pub fn decode_account_api_consume(
 }
 
 fn decode_quota_windows(
-	rate_limit: Option<&serde_json::Map<String, Value>>,
-) -> [AccountApiQuotaWindow; 2] {
+	object: &Map<String, Value>,
+) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
+	if let Some(rate_limit) = object.get("rate_limit") {
+		return match rate_limit {
+			Value::Null => Ok(optional_quota_windows()),
+			Value::Object(rate_limit) => {
+				if rate_limit.contains_key("primary") || rate_limit.contains_key("secondary") {
+					decode_camel_case_quota_windows(rate_limit)
+				} else {
+					decode_snake_case_quota_windows(rate_limit)
+				}
+			},
+			_ => Err(AccountApiProtocolError::MalformedResponse),
+		};
+	}
+
+	let default_snapshot = match object.get("rate_limits") {
+		None | Some(Value::Null) => None,
+		Some(Value::Object(value)) => Some(value),
+		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
+	};
+	let bucket = match object.get("rate_limits_by_limit_id") {
+		None | Some(Value::Null) => default_snapshot,
+		Some(Value::Object(buckets)) => match buckets.get("codex") {
+			Some(Value::Object(value)) => Some(value),
+			Some(Value::Null) => default_snapshot,
+			Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
+			None if buckets.is_empty() => default_snapshot,
+			None => return Err(AccountApiProtocolError::MalformedResponse),
+		},
+		Some(_) => return Err(AccountApiProtocolError::MalformedResponse),
+	};
+	let Some(bucket) = bucket else {
+		return Ok(optional_quota_windows());
+	};
+	decode_camel_case_quota_windows(bucket)
+}
+
+fn decode_snake_case_quota_windows(
+	object: &Map<String, Value>,
+) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
+	let mut windows = optional_quota_windows();
+	for key in ["primary_window", "secondary_window"] {
+		let Some(value) = object.get(key).filter(|value| value.is_null() == false) else {
+			continue;
+		};
+		let duration_minutes = reported_duration_minutes(value, "limit_window_seconds", 60)?;
+		let Some(slot) = quota_window_slot(duration_minutes) else {
+			continue;
+		};
+		windows[slot] = decode_snake_case_quota_window(Some(value), duration_minutes);
+	}
+	Ok(windows)
+}
+
+fn decode_camel_case_quota_windows(
+	object: &Map<String, Value>,
+) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
+	let mut windows = optional_quota_windows();
+	for key in ["primary", "secondary"] {
+		let Some(value) = object.get(key).filter(|value| value.is_null() == false) else {
+			continue;
+		};
+		let duration_minutes = reported_duration_minutes(value, "windowDurationMins", 1)?;
+		let Some(slot) = quota_window_slot(duration_minutes) else {
+			continue;
+		};
+		windows[slot] = decode_camel_case_quota_window(Some(value), duration_minutes);
+	}
+	Ok(windows)
+}
+
+fn reported_duration_minutes(
+	value: &Value,
+	field: &str,
+	divisor: i64,
+) -> Result<u32, AccountApiProtocolError> {
+	let object = value.as_object().ok_or(AccountApiProtocolError::MalformedResponse)?;
+	let raw = parse_integer(object.get(field)).ok_or(AccountApiProtocolError::MalformedResponse)?;
+	let duration = raw
+		.checked_div(divisor)
+		.and_then(|value| u32::try_from(value).ok())
+		.ok_or(AccountApiProtocolError::InvalidValue)?;
+	Ok(duration)
+}
+
+fn quota_window_slot(duration_minutes: u32) -> Option<usize> {
+	match duration_minutes {
+		AccountQuotaWindow::FIVE_HOURS_MINUTES => Some(0),
+		AccountQuotaWindow::SEVEN_DAYS_MINUTES => Some(1),
+		_ => None,
+	}
+}
+
+fn optional_quota_windows() -> [AccountApiQuotaWindow; 2] {
 	[
-		decode_quota_window(
-			rate_limit.and_then(|value| value.get("primary_window")),
-			AccountQuotaWindow::FIVE_HOURS_MINUTES,
-		),
-		decode_quota_window(
-			rate_limit.and_then(|value| value.get("secondary_window")),
-			AccountQuotaWindow::SEVEN_DAYS_MINUTES,
-		),
+		optional_quota_window(AccountQuotaWindow::FIVE_HOURS_MINUTES),
+		optional_quota_window(AccountQuotaWindow::SEVEN_DAYS_MINUTES),
 	]
 }
 
-fn decode_quota_window(value: Option<&Value>, expected_duration: u32) -> AccountApiQuotaWindow {
+fn optional_quota_window(expected_duration: u32) -> AccountApiQuotaWindow {
+	AccountApiQuotaWindow {
+		duration_minutes: expected_duration,
+		result: Ok(None),
+	}
+}
+
+fn decode_snake_case_quota_window(
+	value: Option<&Value>,
+	expected_duration: u32,
+) -> AccountApiQuotaWindow {
+	let Some(value) = value.filter(|value| value.is_null() == false) else {
+		return optional_quota_window(expected_duration);
+	};
+	if value.as_object().is_some_and(|object| {
+		object.contains_key("windowDurationMins") || object.contains_key("usedPercent")
+	}) {
+		return decode_camel_case_quota_window(Some(value), expected_duration);
+	}
 	let result = (|| {
-		let object = value?.as_object()?;
+		let object = value.as_object()?;
 		let duration_seconds = parse_integer(object.get("limit_window_seconds"))?;
 		let duration_minutes = u32::try_from(duration_seconds / 60).ok()?;
 		if duration_minutes != expected_duration {
 			return None;
 		}
 		let used_percent = u8::try_from(parse_integer(object.get("used_percent"))?).ok()?;
-		let reset_at_seconds = parse_integer(object.get("reset_at"))?;
-		let reset_at_micros = reset_at_seconds.checked_mul(1_000_000)?;
+		let reset_at_micros = parse_reset_at_micros(object.get("reset_at"))?;
 		AccountQuotaWindow::new(duration_minutes, used_percent, reset_at_micros).ok()
 	})();
+	let missing_reset = value.as_object().is_some_and(|object| {
+		object.contains_key("limit_window_seconds")
+			&& object.contains_key("used_percent")
+			&& matches!(object.get("reset_at"), None | Some(Value::Null))
+	});
 	AccountApiQuotaWindow {
 		duration_minutes: expected_duration,
-		result: result.ok_or_else(|| {
-			if value.is_none() {
-				AccountQuotaObservationError::UnsupportedWindow
-			} else {
-				AccountQuotaObservationError::ProtocolUnavailable
-			}
-		}),
+		result: match result {
+			Some(fact) => Ok(Some(fact)),
+			None if missing_reset => Err(AccountQuotaObservationError::UnsupportedWindow),
+			None => Err(AccountQuotaObservationError::ProtocolUnavailable),
+		},
+	}
+}
+
+fn decode_camel_case_quota_window(
+	value: Option<&Value>,
+	expected_duration: u32,
+) -> AccountApiQuotaWindow {
+	let Some(value) = value.filter(|value| value.is_null() == false) else {
+		return optional_quota_window(expected_duration);
+	};
+	let result = (|| {
+		let object = value.as_object()?;
+		let duration_minutes = parse_integer(object.get("windowDurationMins"))
+			.and_then(|value| u32::try_from(value).ok())?;
+		if duration_minutes != expected_duration {
+			return None;
+		}
+		let used_percent = u8::try_from(parse_integer(object.get("usedPercent"))?).ok()?;
+		let reset_at_micros = parse_reset_at_micros(object.get("resetsAt"))?;
+		AccountQuotaWindow::new(duration_minutes, used_percent, reset_at_micros).ok()
+	})();
+	let missing_reset = value.as_object().is_some_and(|object| {
+		object.contains_key("windowDurationMins")
+			&& object.contains_key("usedPercent")
+			&& matches!(object.get("resetsAt"), None | Some(Value::Null))
+	});
+	AccountApiQuotaWindow {
+		duration_minutes: expected_duration,
+		result: match result {
+			Some(fact) => Ok(Some(fact)),
+			None if missing_reset => Err(AccountQuotaObservationError::UnsupportedWindow),
+			None => Err(AccountQuotaObservationError::ProtocolUnavailable),
+		},
+	}
+}
+
+/// Normalize the timestamp units used by the provider's historical response shapes.
+///
+/// The direct `/wham/usage` response currently returns Unix milliseconds, while Codex's
+/// app-server projection uses Unix seconds.  Keep the decoder tolerant at this boundary and
+/// expose one internal Unix-microsecond representation to the rest of the application.
+fn parse_reset_at_micros(value: Option<&Value>) -> Option<i64> {
+	let value = parse_integer(value)?;
+	if value <= 0 {
+		return None;
+	}
+	match value {
+		// Unix seconds, including dates far beyond the current epoch.
+		value if value < 100_000_000_000 => value.checked_mul(1_000_000),
+		// Unix milliseconds.
+		value if value < 100_000_000_000_000 => value.checked_mul(1_000),
+		// Unix microseconds.
+		value if value < 100_000_000_000_000_000 => Some(value),
+		// Be defensive if a provider shape ever supplies Unix nanoseconds.
+		value => Some(value / 1_000),
 	}
 }
 
@@ -677,27 +839,138 @@ mod tests {
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 		assert_eq!(usage.reported_available_count, Some(2));
-		assert_eq!(usage.quota_windows[0].result.unwrap().used_percent, 12);
-		assert_eq!(usage.quota_windows[1].result.unwrap().duration_minutes, 10_080);
+		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 12);
+		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
+	}
+
+	#[test]
+	fn normalizes_provider_millisecond_reset_timestamps() {
+		let body = serde_json::json!({
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": {
+					"used_percent": 12,
+					"limit_window_seconds": 18_000,
+					"reset_after_seconds": 18_000,
+					"reset_at": 1_800_000_000_000_i64
+				}
+			}
+		})
+		.to_string();
+		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		assert_eq!(
+			usage.quota_windows[0].result.unwrap().unwrap().resets_at_unix_micros,
+			1_800_000_000_000_000
+		);
+	}
+
+	#[test]
+	fn maps_named_windows_by_reported_duration() {
+		let body = serde_json::json!({
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": {
+					"used_percent": 42,
+					"limit_window_seconds": 604_800,
+					"reset_after_seconds": 86_400,
+					"reset_at": 1_800_000_000_000_i64
+				}
+			}
+		})
+		.to_string();
+		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		assert_eq!(usage.quota_windows[0].result, Ok(None));
+		assert_eq!(
+			usage.quota_windows[1].result.unwrap().unwrap().used_percent,
+			42
+		);
+	}
+
+	#[test]
+	fn treats_optional_missing_rate_limit_window_as_unreported() {
+		let body = serde_json::json!({
+			"plan_type": "pro",
+			"rate_limit": {
+				"primary_window": null,
+				"secondary_window": {
+					"used_percent": 34,
+					"limit_window_seconds": 604800,
+					"reset_at": 1_800_100_000
+				}
+			}
+		})
+		.to_string();
+		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		assert_eq!(usage.quota_windows[0].result, Ok(None));
+		assert_eq!(
+			usage.quota_windows[1].result.unwrap().unwrap().duration_minutes,
+			10_080
+		);
+	}
+
+	#[test]
+	fn decodes_current_codex_bucket_usage_shape() {
+		let body = serde_json::json!({
+			"rate_limits_by_limit_id": {
+				"codex": {
+					"primary": {
+						"windowDurationMins": 300,
+						"usedPercent": 17,
+						"resetsAt": 1_800_000_000
+					},
+					"secondary": {
+						"windowDurationMins": 10_080,
+						"usedPercent": 41,
+						"resetsAt": 1_800_100_000
+					}
+				}
+			},
+			"rate_limit_reset_credits": {"available_count": 0}
+		})
+		.to_string();
+		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		assert_eq!(usage.quota_windows[0].result.unwrap().unwrap().used_percent, 17);
+		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 41);
+		assert_eq!(usage.reported_available_count, Some(0));
+	}
+
+	#[test]
+	fn missing_current_codex_bucket_window_is_unreported() {
+		let body = serde_json::json!({
+			"rate_limits": {
+				"primary": null,
+				"secondary": {
+					"windowDurationMins": 10_080,
+					"usedPercent": 41,
+					"resetsAt": 1_800_100_000
+				}
+			}
+		})
+		.to_string();
+		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
+		assert_eq!(usage.quota_windows[0].result, Ok(None));
+		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
 	}
 
 	#[test]
 	fn decodes_string_timestamps_and_direct_consume_code() {
-		let body = serde_json::json!({
-			"available_count": 1,
-			"credits": [{
-				"id": "credit-1",
-				"reset_type": "codexRateLimits",
-				"status": "available",
-				"granted_at": "2027-01-15T08:00:00Z",
-				"expires_at": "2027-01-15T09:00:00Z"
-			}]
-		})
-		.to_string();
-		let credits =
-			decode_account_api_reset_credits(body.as_bytes()).expect("credits should decode");
-		assert!(credits.details_complete);
-		assert_eq!(credits.credits[0].descriptor().granted_at().unix_seconds(), 1_800_000_000);
+		for reset_type in ["codexRateLimits", "codex_rate_limits"] {
+			let body = serde_json::json!({
+				"available_count": 1,
+				"credits": [{
+					"id": "credit-1",
+					"reset_type": reset_type,
+					"status": "available",
+					"granted_at": "2027-01-15T08:00:00Z",
+					"expires_at": "2027-01-15T09:00:00Z"
+				}]
+			})
+			.to_string();
+			let credits =
+				decode_account_api_reset_credits(body.as_bytes()).expect("credits should decode");
+			assert!(credits.details_complete);
+			assert_eq!(credits.credits[0].descriptor().granted_at().unix_seconds(), 1_800_000_000);
+		}
 		assert_eq!(
 			decode_account_api_consume(br#"{"code":"nothing_to_reset","windows_reset":0}"#)
 				.unwrap(),

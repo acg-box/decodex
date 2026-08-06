@@ -13289,9 +13289,7 @@ BEGIN
 			WHERE operation.account_id=account.account_id
 				AND operation.phase NOT IN ('committed','cancelled')
 		),
-		(
-			p_callback_profile_sha256='0000000000000000000000000000000000000000000000000000000000000000'
-			OR EXISTS (
+		EXISTS (
 			SELECT 1 FROM decodex.codex_account_capability AS capability
 			WHERE capability.singleton
 				AND capability.executable_sha256 ~ '^[0-9a-f]{64}$'
@@ -13300,7 +13298,6 @@ BEGIN
 				AND capability.login_chatgpt_auth_tokens
 				AND capability.refresh_callback
 				AND capability.callback_profile_sha256=p_callback_profile_sha256
-			)
 		)
 	FROM decodex.accounts AS account
 	WHERE account.account_id=p_account_id

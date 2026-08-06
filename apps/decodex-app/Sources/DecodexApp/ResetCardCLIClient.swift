@@ -28,7 +28,7 @@ enum ResetCardServiceError: String, Decodable, Equatable, Sendable {
 		case .vaultUnavailable:
 			return "The daemon credential vault is unavailable."
 		case .schemaUnsupported:
-			return "The selected Codex version does not support reset cards."
+			return "The stored reset-card result is incompatible with the current provider API."
 		case .providerUnavailable:
 			return "The reset-card provider is unavailable."
 		case .inventoryIncomplete:
@@ -671,13 +671,13 @@ private enum AccountListWireResult: Decodable {
 
 struct AccountListWireData: Decodable {
 	let accounts: [ResetCardAccountWire]
-	let routing: AccountRoutingWire
+	let routing: AccountRoutingWire?
 
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(in: decoder, allowed: ["accounts", "routing"])
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		accounts = try container.decode([ResetCardAccountWire].self, forKey: .accounts)
-		routing = try container.decode(AccountRoutingWire.self, forKey: .routing)
+		routing = try container.decodeIfPresent(AccountRoutingWire.self, forKey: .routing)
 	}
 
 	func snapshot(
@@ -708,22 +708,28 @@ struct AccountListWireData: Decodable {
 				throw ResetCardClientError.invalidResponse
 			}
 		}
-		guard routing.order.count == records.count,
-			Set(routing.order) == Set(byID.keys)
-		else {
-			throw ResetCardClientError.invalidResponse
-		}
-
-		let ordered = try routing.order.map {
-			guard let account = byID[$0] else {
+		let ordered: [ResetCardAccountRecord]
+		if let routing {
+			guard routing.order.count == records.count,
+				Set(routing.order) == Set(byID.keys)
+			else {
 				throw ResetCardClientError.invalidResponse
 			}
-			return account
+			ordered = try routing.order.map {
+				guard let account = byID[$0] else {
+					throw ResetCardClientError.invalidResponse
+				}
+				return account
+			}
+		} else {
+			// Account data remains usable while the independent routing capability is being
+			// retried. Preserve the daemon's registry order until a routing snapshot arrives.
+			ordered = records
 		}
 		return AccountControlSnapshot(
 			authority: authority,
 			accounts: ordered,
-			routing: routing.routing
+			routing: routing?.routing
 		)
 	}
 

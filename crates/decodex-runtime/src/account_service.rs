@@ -458,25 +458,6 @@ impl AccountService {
 			.collect())
 	}
 
-	/// Read the canonical fast account skeleton and routing control in one PostgreSQL snapshot.
-	pub async fn list_snapshot(
-		&self,
-	) -> Result<(Vec<AccountInspection>, decodex_core::AccountRoutingControl), AccountLifecycleError>
-	{
-		let (accounts, routing) =
-			self.store.read_account_registry_snapshot(MAX_ACCOUNT_READ).await?;
-		Ok((
-			accounts
-				.into_iter()
-				.map(|account| AccountInspection {
-					readiness: account.lifecycle_readiness,
-					account,
-				})
-				.collect(),
-			routing,
-		))
-	}
-
 	/// Inspect one account without exposing credential material.
 	pub async fn inspect(
 		&self,
