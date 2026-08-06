@@ -208,12 +208,12 @@ impl AccountApiRuntime {
 			Ok(usage) => self.enrich_inventory(&credential, usage).await,
 			Err(error) => Err(error),
 		};
-		PendingAccountApiObservation::Pending(AccountApiObservation {
+		PendingAccountApiObservation::Pending(Box::new(AccountApiObservation {
 			account_revision: credential.account_revision,
 			provider: Some(credential.binding.provider.clone()),
 			inventory,
 			profile,
-		})
+		}))
 	}
 
 	async fn enrich_inventory(
@@ -239,16 +239,14 @@ impl AccountApiRuntime {
 				credits: Vec::new(),
 			});
 		}
-		let details = match self
-			.request_json(Method::GET, RESET_CREDITS_PATH, credential, None)
-			.await
-		{
-			Ok(body) => match decode_account_api_reset_credits(&body) {
-				Ok(details) => Ok(details),
-				Err(error) => Err(map_protocol_error(error)),
-			},
-			Err(error) => Err(map_request_error(error)),
-		};
+		let details =
+			match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
+				Ok(body) => match decode_account_api_reset_credits(&body) {
+					Ok(details) => Ok(details),
+					Err(error) => Err(map_protocol_error(error)),
+				},
+				Err(error) => Err(map_request_error(error)),
+			};
 		match details {
 			Ok(details) => Ok(AccountApiInventory {
 				account_revision: credential.account_revision,
@@ -313,10 +311,8 @@ impl AccountApiRuntime {
 		if let Some(json) = json {
 			request = request.json(json);
 		}
-		let response = request
-			.send()
-			.await
-			.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
+		let response =
+			request.send().await.map_err(|_| AccountApiRequestError::ProviderUnavailable)?;
 		let status = response.status();
 		if status == StatusCode::UNAUTHORIZED {
 			return Err(AccountApiRequestError::Unauthorized);
@@ -340,7 +336,7 @@ impl AccountApiRuntime {
 }
 
 enum PendingAccountApiObservation {
-	Pending(AccountApiObservation),
+	Pending(Box<AccountApiObservation>),
 	CredentialError { error: AccountApiRuntimeError },
 }
 impl PendingAccountApiObservation {
@@ -349,12 +345,12 @@ impl PendingAccountApiObservation {
 	}
 
 	fn failed(account_revision: i64, error: AccountApiRuntimeError) -> Self {
-		Self::Pending(AccountApiObservation {
+		Self::Pending(Box::new(AccountApiObservation {
 			account_revision,
 			provider: None,
 			inventory: Err(error),
 			profile: Err(error),
-		})
+		}))
 	}
 
 	fn account_revision(&self) -> i64 {
@@ -365,21 +361,17 @@ impl PendingAccountApiObservation {
 	}
 
 	fn requires_auth_retry(&self) -> bool {
-		matches!(
-			self,
-			Self::Pending(AccountApiObservation {
-				inventory: Err(AccountApiRuntimeError::Unauthorized),
-				..
-			}) | Self::Pending(AccountApiObservation {
-				profile: Err(AccountApiRuntimeError::Unauthorized),
-				..
-			})
-		)
+		match self {
+			Self::Pending(observation) =>
+				matches!(observation.inventory, Err(AccountApiRuntimeError::Unauthorized))
+					|| matches!(observation.profile, Err(AccountApiRuntimeError::Unauthorized)),
+			Self::CredentialError { .. } => false,
+		}
 	}
 
 	fn into_observation(self) -> AccountApiObservation {
 		match self {
-			Self::Pending(observation) => observation,
+			Self::Pending(observation) => *observation,
 			Self::CredentialError { error } => AccountApiObservation {
 				account_revision: 0,
 				provider: None,

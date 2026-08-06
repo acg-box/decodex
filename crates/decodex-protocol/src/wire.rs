@@ -2043,7 +2043,8 @@ pub enum AccountsResult {
 	Available {
 		/// Bounded visible account projections.
 		accounts: Vec<AccountDto>,
-		/// Routing controls with an exact account permutation, when that capability read succeeded.
+		/// Routing controls with an exact account permutation, when that capability read
+		/// succeeded.
 		routing: Option<AccountRoutingControlDto>,
 	},
 	/// The account authority could not return a safe snapshot.
@@ -2146,10 +2147,7 @@ impl Serialize for AccountsResult {
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
 		enum Raw<'a> {
-			Available {
-				accounts: &'a [AccountDto],
-				routing: Option<&'a AccountRoutingControlDto>,
-			},
+			Available { accounts: &'a [AccountDto], routing: Option<&'a AccountRoutingControlDto> },
 			Unavailable,
 		}
 		let raw = match self {
@@ -2170,10 +2168,7 @@ impl<'de> Deserialize<'de> for AccountsResult {
 		#[derive(Deserialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 		enum Raw {
-			Available {
-				accounts: Vec<AccountDto>,
-				routing: Option<AccountRoutingControlDto>,
-			},
+			Available { accounts: Vec<AccountDto>, routing: Option<AccountRoutingControlDto> },
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
@@ -4081,20 +4076,19 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountCommandRejectionDto, AccountDto, AccountInitialSelectionResult, AccountsResult,
+		AccountCommandRejectionDto, AccountDto, AccountInitialSelectionResult,
 		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
 		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
-		CURRENT_VERSION,
-		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError, CorrelationId,
-		EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
-		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
-		MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE, MAX_IDEMPOTENCY_KEY_BYTES,
-		MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES, MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId,
-		QueryResultPayload, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId,
-		ServerInstanceId, Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardPage,
-		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
-		WorkItemBoardWorkItemId, WorkItemState,
+		AccountsResult, CURRENT_VERSION, CausationId, ClientCommandId, CodexAuthProjectionResult,
+		CommandError, CorrelationId, EntityId, EventPayload, HistoryCursorToken, HistoryText,
+		IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
+		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
+		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
+		MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId, QueryResultPayload, ResetCardDescriptorDto,
+		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
+		WorkItemBoardContractError, WorkItemBoardPage, WorkItemBoardPageSize,
+		WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,

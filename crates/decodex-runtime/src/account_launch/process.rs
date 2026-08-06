@@ -68,8 +68,8 @@ use decodex_codex::{
 	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
 	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, NormalizedEvent, QuickTaskMessageDelta,
 	QuickTaskThreadResumeRequest, QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest,
-	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest,
-	ThreadSummary, TurnStatus, UnavailableReason, decode_quick_task_thread_resume_response,
+	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest, ThreadSummary, TurnStatus,
+	UnavailableReason, decode_quick_task_thread_resume_response,
 	decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
 	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
@@ -985,7 +985,6 @@ impl AttestedProcessChild {
 	fn require_ordinary_turns_initialized(&self) -> Result<(), QuickTaskProcessError> {
 		self.initialized.then_some(()).ok_or(QuickTaskProcessError::Unavailable)
 	}
-
 }
 
 /// Exact request facts reserved before a RuntimeSession thread-start fence.
@@ -1166,7 +1165,6 @@ impl CredentialProjection<'_> {
 			.map(|_| ())
 			.map_err(|_| CredentialVaultError::ProjectionRejected)
 	}
-
 }
 
 impl Debug for CredentialProjection<'_> {
@@ -4634,9 +4632,8 @@ mod tests {
 	use crate::account_launch::{
 		RunnerCapacity, RunnerPermit,
 		process::{
-			self, AccountBinding, AccountIdentity, AppServerCommand,
-			AttestedAppServerLaunch, AttestedAppServerProfile,
-			CredentialProjection, CredentialProjectionResponse,
+			self, AccountBinding, AccountIdentity, AppServerCommand, AttestedAppServerLaunch,
+			AttestedAppServerProfile, CredentialProjection, CredentialProjectionResponse,
 			CredentialVault, CredentialVaultError, ExactThreadReconciler,
 			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
 			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
@@ -4649,8 +4646,8 @@ mod tests {
 	};
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
-		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter, SchemaMarker,
-		ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
+		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter,
+		SchemaMarker, ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
 	use decodex_core::{
 		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
