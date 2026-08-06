@@ -27,7 +27,6 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use libc::{EPERM, ESRCH, F_GETFL, F_SETFL, O_NONBLOCK, SIGKILL, SIGTERM};
 #[cfg(target_os = "linux")]
 use libc::{
@@ -65,13 +64,11 @@ use crate::account_launch::{
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactResetCreditId, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
+	CapabilityProfile, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
 	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
 	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, NormalizedEvent, QuickTaskMessageDelta,
 	QuickTaskThreadResumeRequest, QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest,
-	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest, RESET_CARD_CONSUME_METHOD,
-	RESET_CARD_READ_METHOD, ResetCardCapabilityProfile, ResetCardCapabilityState,
-	ResetCardConsumeParams, ResetCardConsumeResult, ResetCardIdempotencyKey, ResetCardInventory,
+	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest,
 	ThreadSummary, TurnStatus, UnavailableReason, decode_quick_task_thread_resume_response,
 	decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
 	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
@@ -80,7 +77,7 @@ use decodex_codex::{
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, ResetCardConsumeOutcome,
+	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId,
 };
 use decodex_postgres::{
 	BindRuntimeSessionThread, CodexAccountCapabilityAttestation, FreshProviderDispatchFence,
@@ -116,10 +113,6 @@ const QUARANTINE_SLOT_RESERVED: u8 = 1;
 const QUARANTINE_SLOT_READY: u8 = 2;
 const QUARANTINE_SLOT_WORKING: u8 = 3;
 const QUARANTINE_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
-const RESET_CARD_SHUTDOWN_WAIT: Duration = Duration::from_secs(1);
-const CALLBACK_PROBE_PLAN_TYPE: &str = "business";
-const CALLBACK_PROBE_EMAIL: &str = "decodex-callback-capability-probe.invalid";
-const CALLBACK_PROBE_SIGNATURE: &[u8] = b"decodex-callback-capability-probe";
 #[cfg(test)]
 static ZEROIZED_INBOUND_BLOCKS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(test)]
@@ -848,26 +841,6 @@ impl AttestedProcessChild {
 		self.process.stdin = Box::new(io::sink());
 	}
 
-	/// Initialize and project one exact credential only after ProcessGeneration identity binding.
-	pub(super) fn initialize_reset_card(
-		&mut self,
-		vault: &dyn CredentialVault,
-	) -> Result<(), ResetCardProcessError> {
-		if self.initialized {
-			return Err(ResetCardProcessError::ProcessUnavailable);
-		}
-		let reset_profile = ResetCardCapabilityProfile::from_schema(self.generated.contract());
-		if !reset_profile.is_supported() {
-			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
-		}
-		let mut cache = CapabilityCache::default();
-		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
-		initialize_probe(&mut self.process, Some(vault), self.timeout, &mut negotiation)
-			.map_err(ResetCardProcessError::from_probe)?;
-		self.initialized = true;
-		Ok(())
-	}
-
 	/// Initialize one exact account-bound child for ordinary Conversation I/O.
 	pub(crate) fn initialize_ordinary_turns(
 		&mut self,
@@ -1013,66 +986,6 @@ impl AttestedProcessChild {
 		self.initialized.then_some(()).ok_or(QuickTaskProcessError::Unavailable)
 	}
 
-	/// Initialize one fresh callback-capability child with the synthetic probe credential.
-	///
-	/// Cloud-config's unauthorized response during the synthetic initial login triggers the refresh
-	/// callback. The later inventory read and account readback only prove the installed real
-	/// successor.
-	pub(super) fn initialize_callback_probe(
-		&mut self,
-		vault: &dyn CredentialVault,
-	) -> Result<(), ResetCardProcessError> {
-		if self.initialized {
-			return Err(ResetCardProcessError::ProcessUnavailable);
-		}
-		let reset_profile = ResetCardCapabilityProfile::from_schema(self.generated.contract());
-		if !reset_profile.is_supported() {
-			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
-		}
-		let mut cache = CapabilityCache::default();
-		let mut negotiation = ProbeNegotiation::new(&mut cache, &self.build, &self.generated);
-		initialize_probe_projection(&mut self.process, vault, self.timeout, &mut negotiation)
-			.map_err(ResetCardProcessError::from_probe)?;
-		self.initialized = true;
-		Ok(())
-	}
-
-	/// Read one bounded inventory and re-attest the immutable account before returning it.
-	pub(super) fn read_reset_card_inventory(
-		&mut self,
-	) -> Result<ResetCardInventory, ResetCardProcessError> {
-		if !self.initialized {
-			return Err(ResetCardProcessError::ProcessUnavailable);
-		}
-		let inventory = read_reset_card_inventory(&mut self.process, self.timeout)?;
-		re_attest_reset_card_account(&mut self.process, self.timeout)?;
-		Ok(inventory)
-	}
-
-	/// Prove the unauthorized refresh callback and exact successor readback path once.
-	pub(super) fn prove_refresh_callback(&mut self) -> Result<(), ResetCardProcessError> {
-		if !self.initialized {
-			return Err(ResetCardProcessError::ProcessUnavailable);
-		}
-		let _ = read_reset_card_inventory(&mut self.process, self.timeout)?;
-		re_attest_reset_card_account(&mut self.process, self.timeout)
-	}
-
-	/// Consume one fenced credit, read back inventory, and re-attest the account.
-	pub(super) fn consume_reset_card(
-		&mut self,
-		credit_id: ExactResetCreditId,
-		idempotency_key: ResetCardIdempotencyKey,
-	) -> Result<ResetCardConsumeReadback, ResetCardProcessError> {
-		if !self.initialized {
-			return Err(ResetCardProcessError::ProcessUnavailable);
-		}
-		let outcome =
-			consume_reset_card(&mut self.process, self.timeout, credit_id, idempotency_key)?;
-		let inventory = read_reset_card_inventory(&mut self.process, self.timeout)?;
-		re_attest_reset_card_account(&mut self.process, self.timeout)?;
-		Ok(ResetCardConsumeReadback { outcome, inventory })
-	}
 }
 
 /// Exact request facts reserved before a RuntimeSession thread-start fence.
@@ -1179,31 +1092,6 @@ struct QuickTaskProcessSuccess<T> {
 	events: Vec<QuickTaskProcessEvent>,
 }
 
-fn callback_probe_access_token(
-	provider_account_id: &str,
-) -> Result<Zeroizing<String>, ResetCardProcessError> {
-	// This observed executable refreshes external auth after a read-only cloud-config 401, but not
-	// after `account/rateLimits/read`. A business-shaped, invalidly signed JWT reaches that path
-	// without creating a thread or turn. The separate RPC account ID and this claim stay bound to
-	// the immutable ProcessGeneration provider; the Account Service supplies the real successor
-	// token. Omitting the user ID makes the cloud-config cache identity incomplete and forces a
-	// read. After a successful callback, Codex writes any resulting cache under the refreshed real
-	// identity.
-	let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"none","typ":"JWT"}"#);
-	let payload = serde_json::to_vec(&serde_json::json!({
-		"email": CALLBACK_PROBE_EMAIL,
-		"https://api.openai.com/auth": {
-			"chatgpt_plan_type": CALLBACK_PROBE_PLAN_TYPE,
-			"chatgpt_account_id": provider_account_id,
-		},
-	}))
-	.map_err(|_| ResetCardProcessError::InvalidProviderResponse)?;
-	let payload = URL_SAFE_NO_PAD.encode(payload);
-	let signature = URL_SAFE_NO_PAD.encode(CALLBACK_PROBE_SIGNATURE);
-
-	Ok(Zeroizing::new(format!("{header}.{payload}.{signature}")))
-}
-
 /// Exact active-account identity retained only in zeroizing, redacted process memory.
 #[derive(Clone, Eq, PartialEq)]
 pub(crate) struct AccountIdentity {
@@ -1279,19 +1167,6 @@ impl CredentialProjection<'_> {
 			.map_err(|_| CredentialVaultError::ProjectionRejected)
 	}
 
-	/// Authenticate one fresh callback-capability child with the non-secret synthetic probe JWT.
-	pub fn authenticate_callback_probe(
-		&mut self,
-		provider_account_id: &str,
-	) -> Result<(), CredentialVaultError> {
-		let access_token = callback_probe_access_token(provider_account_id)
-			.map_err(|_| CredentialVaultError::ProjectionRejected)?;
-		self.authenticate_chatgpt(
-			access_token.as_str(),
-			provider_account_id,
-			Some(CALLBACK_PROBE_PLAN_TYPE),
-		)
-	}
 }
 
 impl Debug for CredentialProjection<'_> {
@@ -2382,246 +2257,6 @@ impl ReadOnlyProbe {
 			process_id,
 		})
 	}
-}
-
-/// One exact account-bound reset-card app-server run.
-///
-/// This mechanical owner does not select an account, resolve a public card descriptor, persist an
-/// effect, or retry a consume request. Its consume entrypoint accepts only the exact provider
-/// identifier and idempotency key that the runtime persisted before the external effect began.
-#[derive(Clone)]
-pub(super) struct ResetCardProcessRunner {
-	command: AppServerCommand,
-	binding: AccountBinding,
-	timeout: Duration,
-}
-impl ResetCardProcessRunner {
-	/// Configure one exact account-bound run. Schema attestation and process creation are deferred
-	/// until an operation starts.
-	pub(super) const fn new(
-		command: AppServerCommand,
-		binding: AccountBinding,
-		timeout: Duration,
-	) -> Self {
-		Self { command, binding, timeout }
-	}
-
-	/// Exact non-secret account selected before process creation.
-	pub(super) fn account_id(&self) -> &AccountId {
-		self.binding.account_id()
-	}
-
-	/// Read one bounded strict inventory under an already-reserved runner permit.
-	pub(super) fn read_inventory(
-		self,
-		vault: &dyn CredentialVault,
-		guard: RunnerPermit,
-	) -> Result<ResetCardInventory, ResetCardProcessError> {
-		let timeout = self.timeout;
-		let mut process = self.launch(vault, guard)?;
-		let result = read_reset_card_inventory(&mut process, timeout).and_then(|inventory| {
-			re_attest_reset_card_account(&mut process, timeout)?;
-
-			Ok(inventory)
-		});
-
-		finish_reset_card_process(process, result)
-	}
-
-	/// Consume one already-persisted exact credit with its already-persisted key, then read a fresh
-	/// bounded inventory before re-attesting the immutable account binding.
-	pub(super) fn consume_and_readback(
-		self,
-		vault: &dyn CredentialVault,
-		guard: RunnerPermit,
-		credit_id: ExactResetCreditId,
-		idempotency_key: ResetCardIdempotencyKey,
-	) -> Result<ResetCardConsumeReadback, ResetCardProcessError> {
-		let timeout = self.timeout;
-		let mut process = self.launch(vault, guard)?;
-		let result = consume_reset_card(&mut process, timeout, credit_id, idempotency_key)
-			.and_then(|outcome| {
-				let inventory = read_reset_card_inventory(&mut process, timeout)?;
-
-				re_attest_reset_card_account(&mut process, timeout)?;
-
-				Ok(ResetCardConsumeReadback { outcome, inventory })
-			});
-
-		finish_reset_card_process(process, result)
-	}
-
-	fn launch(
-		self,
-		vault: &dyn CredentialVault,
-		guard: RunnerPermit,
-	) -> Result<SupervisedProcess, ResetCardProcessError> {
-		if &guard.account_id != self.binding.account_id() {
-			return Err(ResetCardProcessError::AccountBindingChanged);
-		}
-
-		let (build, generated, guard) =
-			attest_executable(&self.command, &self.binding, self.timeout, Some(guard))
-				.map_err(ResetCardProcessError::from_probe)?;
-		let reset_profile = ResetCardCapabilityProfile::from_schema(generated.contract());
-
-		if !reset_profile.is_supported() {
-			return Err(ResetCardProcessError::SchemaUnsupported(reset_profile.state()));
-		}
-
-		let guard = guard.ok_or(ResetCardProcessError::ProcessUnavailable)?;
-		let mut process = SupervisedProcess::spawn_bound(self.command, self.binding, guard)
-			.map_err(ResetCardProcessError::from_supervision)?;
-		let mut cache = CapabilityCache::default();
-		let mut negotiation = ProbeNegotiation::new(&mut cache, &build, &generated);
-
-		if let Err(error) =
-			initialize_probe(&mut process, Some(vault), self.timeout, &mut negotiation)
-		{
-			let mapped = ResetCardProcessError::from_probe(error);
-
-			return finish_reset_card_process(process, Err(mapped));
-		}
-
-		Ok(process)
-	}
-}
-
-impl Debug for ResetCardProcessRunner {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter.debug_struct("ResetCardProcessRunner").finish_non_exhaustive()
-	}
-}
-
-/// Terminal provider outcome plus the immediate strict inventory readback.
-pub(super) struct ResetCardConsumeReadback {
-	pub(super) outcome: ResetCardConsumeOutcome,
-	pub(super) inventory: ResetCardInventory,
-}
-impl Debug for ResetCardConsumeReadback {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("ResetCardConsumeReadback")
-			.field("outcome", &self.outcome)
-			.field("inventory", &self.inventory)
-			.finish()
-	}
-}
-
-/// Closed reset-card app-server method classification.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ResetCardProcessMethod {
-	InventoryRead,
-	Consume,
-}
-
-/// Sanitized reset-card process failure.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(super) enum ResetCardProcessError {
-	/// The generated schema was malformed or lacked the shared app-server baseline.
-	SchemaInvalid,
-	/// The exact generated schema did not advertise both reset-card methods.
-	SchemaUnsupported(ResetCardCapabilityState),
-	/// The selected account credential could not be projected into the child.
-	CredentialVault(CredentialVaultError),
-	/// Account identity changed before the operation readback completed.
-	AccountBindingChanged,
-	/// The exact generated method was advertised but rejected at runtime.
-	MethodUnavailable(ResetCardProcessMethod),
-	/// An app-server response did not satisfy the strict typed provider contract.
-	InvalidProviderResponse,
-	/// Executable, process, or bounded transport mechanics were unavailable.
-	ProcessUnavailable,
-	/// Bounded process-group shutdown could not be confirmed.
-	ShutdownFailed,
-}
-impl ResetCardProcessError {
-	fn from_probe(error: ProbeError) -> Self {
-		match error {
-			ProbeError::SchemaMissing { .. } => Self::SchemaInvalid,
-			ProbeError::CredentialVault(error) => Self::CredentialVault(error),
-			ProbeError::Supervision(SupervisionError::AccountChanged) =>
-				Self::AccountBindingChanged,
-			ProbeError::Supervision(SupervisionError::InvalidProtocol)
-			| ProbeError::Supervision(SupervisionError::ProtocolLimitExceeded) =>
-				Self::InvalidProviderResponse,
-			ProbeError::Supervision(SupervisionError::ShutdownFailed) => Self::ShutdownFailed,
-			ProbeError::MethodRejected { .. } => Self::ProcessUnavailable,
-			ProbeError::CapabilityConflict | ProbeError::Supervision(_) => Self::ProcessUnavailable,
-		}
-	}
-
-	fn from_supervision(error: SupervisionError) -> Self {
-		match error {
-			SupervisionError::AccountChanged => Self::AccountBindingChanged,
-			SupervisionError::InvalidProtocol | SupervisionError::ProtocolLimitExceeded =>
-				Self::InvalidProviderResponse,
-			SupervisionError::ShutdownFailed => Self::ShutdownFailed,
-			_ => Self::ProcessUnavailable,
-		}
-	}
-
-	fn from_rpc(error: RpcError, method: ResetCardProcessMethod) -> Self {
-		match error {
-			RpcError::MethodRejected(-32_601) => Self::MethodUnavailable(method),
-			RpcError::MethodRejected(_) => Self::ProcessUnavailable,
-			RpcError::Supervision(error) => Self::from_supervision(error),
-		}
-	}
-}
-
-fn read_reset_card_inventory(
-	process: &mut SupervisedProcess,
-	timeout: Duration,
-) -> Result<ResetCardInventory, ResetCardProcessError> {
-	let inventory = request_reset_card_inventory(process, timeout)?;
-	if !inventory.details_complete() {
-		return request_reset_card_inventory(process, timeout);
-	}
-	Ok(inventory)
-}
-
-fn request_reset_card_inventory(
-	process: &mut SupervisedProcess,
-	timeout: Duration,
-) -> Result<ResetCardInventory, ResetCardProcessError> {
-	process.request_rpc(RESET_CARD_READ_METHOD, &(), timeout).map_err(|error| {
-		ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::InventoryRead)
-	})
-}
-
-fn consume_reset_card(
-	process: &mut SupervisedProcess,
-	timeout: Duration,
-	credit_id: ExactResetCreditId,
-	idempotency_key: ResetCardIdempotencyKey,
-) -> Result<ResetCardConsumeOutcome, ResetCardProcessError> {
-	process
-		.request_rpc::<_, ResetCardConsumeResult>(
-			RESET_CARD_CONSUME_METHOD,
-			&ResetCardConsumeParams::new(credit_id, idempotency_key),
-			timeout,
-		)
-		.map(ResetCardConsumeResult::outcome)
-		.map_err(|error| ResetCardProcessError::from_rpc(error, ResetCardProcessMethod::Consume))
-}
-
-fn re_attest_reset_card_account(
-	process: &mut SupervisedProcess,
-	timeout: Duration,
-) -> Result<(), ResetCardProcessError> {
-	process.read_account_identity(timeout).map(|_| ()).map_err(ResetCardProcessError::from_probe)
-}
-
-fn finish_reset_card_process<T>(
-	process: SupervisedProcess,
-	result: Result<T, ResetCardProcessError>,
-) -> Result<T, ResetCardProcessError> {
-	process
-		.shutdown(RESET_CARD_SHUTDOWN_WAIT)
-		.map_err(|_| ResetCardProcessError::ShutdownFailed)?;
-
-	result
 }
 
 /// Private account-bound exact reconciliation configuration.
@@ -4990,27 +4625,22 @@ mod tests {
 		time::{Duration, Instant},
 	};
 
-	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use serde::{
 		Serialize,
 		ser::{Error as _, SerializeMap as _},
 	};
-	use serde_json::Value;
 	use tempfile::TempDir;
 
 	use crate::account_launch::{
 		RunnerCapacity, RunnerPermit,
 		process::{
-			self, AccountBinding, AccountIdentity, AccountRefreshCallback, AppServerCommand,
-			AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild,
-			CALLBACK_PROBE_EMAIL, CALLBACK_PROBE_PLAN_TYPE, CALLBACK_PROBE_SIGNATURE,
-			ChatgptRefreshProjection, CredentialProjection, CredentialProjectionResponse,
+			self, AccountBinding, AccountIdentity, AppServerCommand,
+			AttestedAppServerLaunch, AttestedAppServerProfile,
+			CredentialProjection, CredentialProjectionResponse,
 			CredentialVault, CredentialVaultError, ExactThreadReconciler,
 			ExactThreadReconciliation, ExactThreadReconciliationResult, PROTOCOL_QUEUE_CAPACITY,
-			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ResetCardProcessError,
-			ResetCardProcessMethod, ResetCardProcessRunner, RpcError, ShutdownOutcome,
+			ProbeError, ProcessQuarantine, ReadOnlyMethod, ReadOnlyProbe, ShutdownOutcome,
 			SupervisedProcess, SupervisionError, UnavailableCredentialVault,
-			callback_probe_access_token,
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
@@ -5019,14 +4649,13 @@ mod tests {
 	};
 	use decodex_codex::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, Capability, CapabilityCache,
-		CapabilityState, DecodexThreadSearchTerm, ExactResetCreditId, ExactThreadId,
-		ExactThreadListFilter, ResetCardCapabilityState, ResetCardIdempotencyKey, SchemaMarker,
+		CapabilityState, DecodexThreadSearchTerm, ExactThreadId, ExactThreadListFilter, SchemaMarker,
 		ThreadArchivedFilter, UnavailableReason, UnsupportedReason,
 	};
 	use decodex_core::{
 		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
-		ProviderIdentity, ResetCardConsumeOutcome,
+		ProviderIdentity,
 	};
 
 	struct TestCapacity {
@@ -5091,47 +4720,6 @@ mod tests {
 		}
 	}
 
-	struct CallbackProbeFixtureVault;
-	impl CredentialVault for CallbackProbeFixtureVault {
-		fn project(
-			&self,
-			account_id: &AccountId,
-			projection: &mut CredentialProjection<'_>,
-		) -> Result<AccountIdentity, CredentialVaultError> {
-			assert_eq!(account_id, binding().account_id());
-			projection.authenticate_callback_probe("callback-provider-account")?;
-			Ok(AccountIdentity::from_observation("chatgpt", Some("private@example.test"), true))
-		}
-	}
-
-	#[derive(Default)]
-	struct FixtureRefreshCallback {
-		calls: AtomicU32,
-	}
-	impl AccountRefreshCallback for FixtureRefreshCallback {
-		fn refresh(
-			&self,
-			account_id: &AccountId,
-			initial_binding: &ProcessGenerationAccountBinding,
-			reason: &str,
-			previous_provider_account_id: Option<&str>,
-		) -> Result<ChatgptRefreshProjection, CredentialVaultError> {
-			assert_eq!(account_id, binding().account_id());
-			assert_eq!(
-				initial_binding.credential.provider.account_id(),
-				"callback-provider-account"
-			);
-			assert_eq!(reason, "unauthorized");
-			assert_eq!(previous_provider_account_id, Some("callback-provider-account"));
-			self.calls.fetch_add(1, Ordering::AcqRel);
-			ChatgptRefreshProjection::new(
-				"synthetic-successor-token".to_owned(),
-				"callback-provider-account".to_owned(),
-				Some("business".to_owned()),
-			)
-		}
-	}
-
 	fn profile_binding(
 		account_id: AccountId,
 		account_revision: i64,
@@ -5160,27 +4748,7 @@ mod tests {
 				)
 				.unwrap(),
 			),
-			refresh_callback: Some(Arc::new(FixtureRefreshCallback::default())),
-		}
-	}
-
-	fn callback_binding(callback: Arc<dyn AccountRefreshCallback>) -> AccountBinding {
-		let credential = CredentialBinding {
-			schema_version: CredentialStoreSchemaVersion::V1,
-			version: CredentialVersion::new(1).unwrap(),
-			fingerprint: CredentialFingerprint::new("1".repeat(64)).unwrap(),
-			provider: ProviderIdentity::new(AccountProvider::Chatgpt, "callback-provider-account")
-				.unwrap(),
-			writer_operation_id: AccountOperationId::new("20000000-0000-4000-8000-000000000001")
-				.unwrap(),
-		};
-		AccountBinding {
-			account_id: binding().account_id().clone(),
-			expected_codex_home: PathBuf::from("/tmp/.codex"),
-			process_binding: Some(
-				ProcessGenerationAccountBinding::new(1, credential, "2".repeat(64)).unwrap(),
-			),
-			refresh_callback: Some(callback),
+			refresh_callback: None,
 		}
 	}
 
@@ -5188,7 +4756,7 @@ mod tests {
 	fn daemon_profile_reuses_one_snapshot_and_preflight_across_account_bindings() {
 		let temp = TempDir::new().unwrap();
 		let preflight_count = Arc::new(AtomicU32::new(0));
-		let command = fake_command("reset-card", temp.path(), None).with_before_spawn_for_test(
+		let command = fake_command("normal", temp.path(), None).with_before_spawn_for_test(
 			u32::MAX,
 			Arc::clone(&preflight_count),
 			Arc::new(|| {}),
@@ -5311,16 +4879,6 @@ mod tests {
 		if mode == "preflight-uncertain-schema" {
 			schema_args.push("--preflight-hang".into());
 		}
-		if matches!(
-			mode,
-			"reset-card"
-				| "reset-card-partial-first"
-				| "reset-card-missing-first"
-				| "callback-probe"
-		) {
-			schema_args.push("--reset-card".into());
-		}
-
 		let version_flag = match mode {
 			"preflight-hang" | "preflight-uncertain-version" => "--version-hang",
 			"oversized-version" => "--version-oversized",
@@ -5544,164 +5102,6 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn reset_card_runner_requires_both_exact_schema_methods_before_spawn() {
-		let temp = TempDir::new().unwrap();
-		let spawn_marker = temp.path().join("reset-card-spawned");
-		let capacity = TestCapacity::new(1);
-		let runner = ResetCardProcessRunner::new(
-			fake_command("mark-spawn", temp.path(), Some(&spawn_marker)),
-			binding(),
-			Duration::from_secs(2),
-		);
-
-		let error = runner
-			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
-			.unwrap_err();
-
-		assert_eq!(
-			error,
-			ResetCardProcessError::SchemaUnsupported(
-				ResetCardCapabilityState::ConsumeMethodMissing
-			)
-		);
-		assert!(!spawn_marker.exists());
-		assert_eq!(capacity.active(), 0);
-	}
-
-	#[test]
-	fn reset_card_runner_uses_null_read_params_and_completes_consume_readback() {
-		let temp = TempDir::new().unwrap();
-		let capacity = TestCapacity::new(1);
-		let runner = ResetCardProcessRunner::new(
-			fake_command("reset-card", temp.path(), None),
-			binding(),
-			Duration::from_secs(2),
-		);
-		let inventory = runner
-			.clone()
-			.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap())
-			.unwrap();
-
-		assert_eq!(inventory.available_count(), 1);
-		assert_eq!(
-			inventory
-				.resolve_exact_credit_id(
-					decodex_core::ResetCardDescriptor::new(
-						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_000_000).unwrap(),
-						decodex_core::ResetCardTimestamp::from_unix_seconds(1_700_003_600).unwrap(),
-					)
-					.unwrap(),
-				)
-				.unwrap()
-				.as_str(),
-			"fixture-reset-credit",
-		);
-
-		let readback = runner
-			.consume_and_readback(
-				&FixtureVault::matching(),
-				capacity.reserve().unwrap(),
-				ExactResetCreditId::new("fixture-reset-credit").unwrap(),
-				ResetCardIdempotencyKey::new("fixture-reset-operation").unwrap(),
-			)
-			.unwrap();
-
-		assert_eq!(readback.outcome, ResetCardConsumeOutcome::Reset);
-		assert_eq!(readback.inventory.available_count(), 0);
-		assert_eq!(capacity.active(), 0);
-	}
-
-	#[test]
-	fn reset_card_runner_retries_an_incomplete_positive_inventory() {
-		let temp = TempDir::new().unwrap();
-		let capacity = TestCapacity::new(1);
-		let runner = ResetCardProcessRunner::new(
-			fake_command("reset-card-partial-first", temp.path(), None),
-			binding(),
-			Duration::from_secs(2),
-		);
-
-		let inventory =
-			runner.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap()).unwrap();
-
-		assert!(inventory.details_complete());
-		assert_eq!(inventory.reported_available_count(), Some(1));
-		assert_eq!(inventory.available_count(), 1);
-		assert_eq!(capacity.active(), 0);
-	}
-
-	#[test]
-	fn reset_card_runner_retries_an_inventory_with_missing_count_and_details() {
-		let temp = TempDir::new().unwrap();
-		let capacity = TestCapacity::new(1);
-		let runner = ResetCardProcessRunner::new(
-			fake_command("reset-card-missing-first", temp.path(), None),
-			binding(),
-			Duration::from_secs(2),
-		);
-
-		let inventory =
-			runner.read_inventory(&FixtureVault::matching(), capacity.reserve().unwrap()).unwrap();
-
-		assert!(inventory.details_complete());
-		assert_eq!(inventory.reported_available_count(), Some(1));
-		assert_eq!(inventory.available_count(), 1);
-		assert_eq!(capacity.active(), 0);
-	}
-
-	#[test]
-	fn callback_probe_uses_one_initial_synthetic_login_then_re_attests_the_real_successor() {
-		let temp = TempDir::new().unwrap();
-		let timeout = Duration::from_secs(2);
-		let capacity = TestCapacity::new(1);
-		let command = fake_command("callback-probe", temp.path(), None);
-		let callback = Arc::new(FixtureRefreshCallback::default());
-		let process_binding =
-			callback_binding(Arc::clone(&callback) as Arc<dyn AccountRefreshCallback>);
-		let (build, generated, guard) = process::attest_executable(
-			&command,
-			&process_binding,
-			timeout,
-			Some(capacity.reserve().unwrap()),
-		)
-		.unwrap();
-		let process = SupervisedProcess::spawn_bound(
-			command,
-			process_binding,
-			guard.expect("the test supplied one runner permit"),
-		)
-		.unwrap();
-		let mut child =
-			AttestedProcessChild { process, build, generated, timeout, initialized: false };
-
-		child.initialize_callback_probe(&CallbackProbeFixtureVault).unwrap();
-		child.prove_refresh_callback().unwrap();
-
-		assert_eq!(callback.calls.load(Ordering::Acquire), 1);
-		let AttestedProcessChild { process, .. } = child;
-		process.shutdown(Duration::from_secs(1)).unwrap();
-		assert_eq!(capacity.active(), 0);
-	}
-
-	#[test]
-	fn reset_card_rpc_errors_distinguish_missing_methods_from_provider_failures() {
-		assert_eq!(
-			ResetCardProcessError::from_rpc(
-				RpcError::MethodRejected(-32_601),
-				ResetCardProcessMethod::InventoryRead,
-			),
-			ResetCardProcessError::MethodUnavailable(ResetCardProcessMethod::InventoryRead)
-		);
-		assert_eq!(
-			ResetCardProcessError::from_rpc(
-				RpcError::MethodRejected(-32_603),
-				ResetCardProcessMethod::InventoryRead,
-			),
-			ResetCardProcessError::ProcessUnavailable
-		);
-	}
-
 	#[cfg(test)]
 	#[test]
 	fn cross_adapter_fixture_runs_the_same_bound_mechanics() {
@@ -5876,32 +5276,6 @@ mod tests {
 		] {
 			assert!(serde_json::from_slice::<CredentialProjectionResponse>(json).is_err());
 		}
-	}
-
-	#[test]
-	fn callback_probe_token_is_a_nonsecret_business_jwt_bound_to_the_provider() {
-		let provider_account_id = "provider-account-for-callback-proof";
-		let token = callback_probe_access_token(provider_account_id).unwrap();
-		let parts = token.split('.').collect::<Vec<_>>();
-
-		assert_eq!(parts.len(), 3);
-		let header: Value =
-			serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[0]).unwrap()).unwrap();
-		let payload: Value =
-			serde_json::from_slice(&URL_SAFE_NO_PAD.decode(parts[1]).unwrap()).unwrap();
-		assert_eq!(header, serde_json::json!({"alg": "none", "typ": "JWT"}));
-		assert_eq!(payload["email"], CALLBACK_PROBE_EMAIL);
-		assert_eq!(
-			payload["https://api.openai.com/auth"]["chatgpt_plan_type"],
-			CALLBACK_PROBE_PLAN_TYPE
-		);
-		assert!(payload["https://api.openai.com/auth"].get("chatgpt_user_id").is_none());
-		assert_eq!(
-			payload["https://api.openai.com/auth"]["chatgpt_account_id"],
-			provider_account_id
-		);
-		assert_eq!(URL_SAFE_NO_PAD.decode(parts[2]).unwrap(), CALLBACK_PROBE_SIGNATURE);
-		assert_ne!(*token, *callback_probe_access_token("different-provider-account").unwrap());
 	}
 
 	#[test]

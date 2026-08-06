@@ -85,8 +85,9 @@ remain domain integrity records. They are not schema migration records.
   current catalog/authority verification, PostgreSQL adapters, exact commands, leases,
   activity/outbox, account state, routing state, Conversation history, RuntimeSession,
   managed repositories, ProcessGeneration, and ProviderAttempt persistence.
-- `crates/decodex-codex/` owns typed app-server contracts, exact-build capability
-  profiles, redaction, and one-account-per-process adapter behavior.
+- `crates/decodex-codex/` owns typed direct ChatGPT backend API contracts and provider
+  helpers. Codex app-server contracts remain isolated to Quick Task execution; account
+  health, quota, profile, and Reset Card observation do not depend on an executable version.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner
   that composes infrastructure adapters. It records independent immutable startup
   projections for ProductStore, Quick Task, and ManagedRepository without adding a
@@ -126,11 +127,14 @@ control a Decodex extension member. Hostile `search_path`, overload, trigger, ru
 policy, RLS, external-cascade, and default-ACL paths fail closed.
 
 `decodexd` starts the account observation service independently from client queries. It
-refreshes different accounts concurrently. Within one account it settles Reset Card work
-before profile observation, coalesces successor rounds, and publishes only to a matching
-account revision/cache generation. Account and Reset Card/profile queries read the
-daemon-owned cache or persisted projection without contacting the provider, joining a
-refresh, or starting refresh work. Candidate 5 must preserve this current-main behavior.
+refreshes different accounts concurrently through one shared direct provider API runtime.
+Within one account it uses one credential snapshot and retries once after a bounded token
+refresh, coalesces successor rounds, and publishes only to a matching account revision/cache
+generation. Account and Reset Card/profile queries read the daemon-owned cache or persisted
+projection without contacting the provider, joining a refresh, or starting refresh work. A
+transient provider failure keeps the last good snapshot visible; a cold account reports
+retryable unavailable until its first observation completes. Candidate 5 must preserve this
+current-main behavior.
 
 ProcessSupervisor projects restored nonterminal ProcessGenerations to `death_unknown`
 and performs positive-only reconciliation. Uncertainty quarantines only the affected

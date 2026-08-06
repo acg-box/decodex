@@ -1240,7 +1240,8 @@ pub enum ResetCardError {
 	AccountStateRejected,
 	/// The daemon credential vault could not provide an account credential.
 	VaultUnavailable,
-	/// The selected Codex app-server schema does not advertise reset-card support.
+	/// Compatibility result retained for decoding older durable/public records. The current
+	/// direct provider API path never emits an executable or app-server version requirement.
 	SchemaUnsupported,
 	/// The upstream provider could not establish current state.
 	ProviderUnavailable,
@@ -2038,12 +2039,12 @@ pub enum AccountManualRecoveryActionDto {
 /// Closed account read result without credential material.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccountsResult {
-	/// Complete visible account rows and matching routing controls.
+	/// Visible account rows with an independently readable routing capability.
 	Available {
 		/// Bounded visible account projections.
 		accounts: Vec<AccountDto>,
-		/// Routing controls with an exact account permutation.
-		routing: AccountRoutingControlDto,
+		/// Routing controls with an exact account permutation, when that capability read succeeded.
+		routing: Option<AccountRoutingControlDto>,
 	},
 	/// The account authority could not return a safe snapshot.
 	Unavailable,
@@ -2145,13 +2146,16 @@ impl Serialize for AccountsResult {
 		#[derive(Serialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
 		enum Raw<'a> {
-			Available { accounts: &'a [AccountDto], routing: &'a AccountRoutingControlDto },
+			Available {
+				accounts: &'a [AccountDto],
+				routing: Option<&'a AccountRoutingControlDto>,
+			},
 			Unavailable,
 		}
 		let raw = match self {
 			Self::Available { accounts, routing } => {
-				validate_accounts_result(accounts, routing).map_err(S::Error::custom)?;
-				Raw::Available { accounts, routing }
+				validate_accounts_result(accounts, routing.as_ref()).map_err(S::Error::custom)?;
+				Raw::Available { accounts, routing: routing.as_ref() }
 			},
 			Self::Unavailable => Raw::Unavailable,
 		};
@@ -2166,12 +2170,15 @@ impl<'de> Deserialize<'de> for AccountsResult {
 		#[derive(Deserialize)]
 		#[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 		enum Raw {
-			Available { accounts: Vec<AccountDto>, routing: AccountRoutingControlDto },
+			Available {
+				accounts: Vec<AccountDto>,
+				routing: Option<AccountRoutingControlDto>,
+			},
 			Unavailable,
 		}
 		match Raw::deserialize(deserializer)? {
 			Raw::Available { accounts, routing } => {
-				validate_accounts_result(&accounts, &routing).map_err(D::Error::custom)?;
+				validate_accounts_result(&accounts, routing.as_ref()).map_err(D::Error::custom)?;
 				Ok(Self::Available { accounts, routing })
 			},
 			Raw::Unavailable => Ok(Self::Unavailable),
@@ -2309,7 +2316,7 @@ pub enum QueryPayload {
 		/// Stable key supplied to the original consume command.
 		idempotency_key: IdempotencyKey,
 	},
-	/// List daemon-owned accounts and deterministic routing controls.
+	/// List daemon-owned accounts and independently readable routing controls.
 	ListAccounts,
 	/// Inspect one daemon-owned account and exact lifecycle readiness.
 	InspectAccount {
@@ -3793,7 +3800,7 @@ fn validate_initial_selection_result(
 
 fn validate_accounts_result(
 	accounts: &[AccountDto],
-	routing: &AccountRoutingControlDto,
+	routing: Option<&AccountRoutingControlDto>,
 ) -> Result<(), &'static str> {
 	if accounts.len() > 512 {
 		return Err("account result exceeds cardinality bound");
@@ -3806,21 +3813,23 @@ fn validate_accounts_result(
 	if universe.len() != accounts.len() {
 		return Err("account result contains duplicate identities");
 	}
-	validate_routing_control(routing)?;
-	if routing.order.len() != accounts.len() {
-		return Err("account routing control is incomplete");
-	}
-	let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
-	if order.len() != routing.order.len()
-		|| order != universe
-		|| routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
-	{
-		return Err("account routing order is not an exact permutation");
-	}
-	if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
-		&& !universe.contains(account_id.as_str())
-	{
-		return Err("fixed account target is outside the account universe");
+	if let Some(routing) = routing {
+		validate_routing_control(routing)?;
+		if routing.order.len() != accounts.len() {
+			return Err("account routing control is incomplete");
+		}
+		let order = routing.order.iter().map(EntityId::as_str).collect::<HashSet<_>>();
+		if order.len() != routing.order.len()
+			|| order != universe
+			|| routing.order.iter().any(|account_id| !is_canonical_uuid(account_id.as_str()))
+		{
+			return Err("account routing order is not an exact permutation");
+		}
+		if let AccountSelectionModeDto::Fixed(account_id) = &routing.mode
+			&& !universe.contains(account_id.as_str())
+		{
+			return Err("fixed account target is outside the account universe");
+		}
 	}
 	Ok(())
 }
@@ -4072,9 +4081,11 @@ fn validate_public_quota_window(quota: AccountQuotaWindowDto) -> Result<(), &'st
 #[cfg(test)]
 mod tests {
 	use crate::{
-		AccountCommandRejectionDto, AccountInitialSelectionResult, AccountObservationSignal,
+		AccountCommandRejectionDto, AccountDto, AccountInitialSelectionResult, AccountsResult,
+		AccountLifecycleReadinessDto, AccountObservationSignal, AccountObservedStateDto,
 		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
-		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, CURRENT_VERSION,
+		AccountProfileErrorDto, AccountProfileResult, AccountQuotaStateDto, AccountQuotaWindowDto,
+		CURRENT_VERSION,
 		CausationId, ClientCommandId, CodexAuthProjectionResult, CommandError, CorrelationId,
 		EntityId, EventPayload, HistoryCursorToken, HistoryText, IdempotencyKey,
 		MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS, MAX_HISTORY_METADATA_KEY_BYTES,
@@ -4159,6 +4170,36 @@ mod tests {
 		] {
 			assert!(!super::is_canonical_account_alias(invalid), "{invalid}");
 		}
+	}
+
+	#[test]
+	fn account_rows_remain_readable_without_routing_capability() {
+		let account_id =
+			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let unknown_quota = |duration_minutes| AccountQuotaWindowDto {
+			duration_minutes,
+			observed_at_unix_micros: None,
+			result: AccountQuotaStateDto::Unknown,
+		};
+		let result = AccountsResult::Available {
+			accounts: vec![AccountDto {
+				account_id,
+				alias: WireText::new("Iris").expect("canonical alias"),
+				enabled: true,
+				account_revision: EntityRevision(1),
+				observed_state: AccountObservedStateDto::Unknown,
+				lifecycle_readiness: AccountLifecycleReadinessDto::CredentialAbsent,
+				credential_binding: None,
+				unsettled_operation: None,
+				five_hour_quota: unknown_quota(300),
+				seven_day_quota: unknown_quota(10_080),
+			}],
+			routing: None,
+		};
+
+		let encoded = serde_json::to_value(&result).expect("account rows should serialize");
+		assert!(encoded["data"]["routing"].is_null());
+		assert_eq!(serde_json::from_value::<AccountsResult>(encoded).unwrap(), result);
 	}
 
 	#[test]
