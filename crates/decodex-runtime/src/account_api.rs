@@ -363,8 +363,8 @@ impl PendingAccountApiObservation {
 	fn requires_auth_retry(&self) -> bool {
 		match self {
 			Self::Pending(observation) =>
-				matches!(&observation.inventory, Err(AccountApiRuntimeError::Unauthorized))
-					|| matches!(&observation.profile, Err(AccountApiRuntimeError::Unauthorized)),
+				matches!(observation.inventory, Err(AccountApiRuntimeError::Unauthorized))
+					|| matches!(observation.profile, Err(AccountApiRuntimeError::Unauthorized)),
 			Self::CredentialError { .. } => false,
 		}
 	}
