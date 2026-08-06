@@ -134,8 +134,17 @@ Unix-socket boundary. Prove:
   relation, function, type, extension, or other product object;
 - `pgcrypto` and every final Decodex object are created in one transaction;
 - any SQL, catalog, authority, or verification failure rolls back the complete schema;
+- one closed credential-negative bootstrap report identifies the failing pre-schema,
+  schema-apply, post-schema-verification, or final-commit operation; PostgreSQL SQLSTATE and
+  original-statement byte position are allowed, but SQL text and open error messages are not;
+- a rollback failure is recorded only as secondary closed evidence and never replaces the
+  primary failure or its completed authority prefix;
 - exact post-execution verification passes before commit; and
 - no source except `schema.sql` can create an accepted product catalog.
+
+The private gate PostgreSQL server uses verbose error identity and suppresses failed SQL
+statement logging. Owner-private failure retention has fixed per-file and total bounds. For
+an oversized file it retains deterministic head and tail segments, not only the tail.
 
 ### Second-bootstrap refusal
 

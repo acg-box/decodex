@@ -12,13 +12,15 @@ use crate::{
 		BootstrapAuthorityEvidence, BootstrapAuthorityFailureClass, BootstrapAuthorityObservation,
 		BootstrapAuthorityOperation, BootstrapAuthorityProgress, BootstrapDigestEvidence,
 	},
-	checkout, validate_connection, verified_socket_connect,
+	checkout,
+	error::{BootstrapDatabaseDiagnostic, BootstrapFailureIdentity},
+	validate_connection, verified_socket_connect,
 };
 
 pub(crate) const LATEST_SCHEMA_SQL: &str = include_str!("../schema.sql");
 /// Fixed prefix for the hidden operator command's one credential-negative report line.
-pub const BOOTSTRAP_AUTHORITY_REPORT_PREFIX: &str = "DECODEX_BOOTSTRAP_AUTHORITY_REPORT=";
-const BOOTSTRAP_AUTHORITY_REPORT_SCHEMA: &str = "decodex/bootstrap-authority-report/1";
+pub const BOOTSTRAP_AUTHORITY_REPORT_PREFIX: &str = "DECODEX_BOOTSTRAP_REPORT=";
+const BOOTSTRAP_AUTHORITY_REPORT_SCHEMA: &str = "decodex/bootstrap-report/1";
 const BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES: usize = 16 * 1024;
 const BOOTSTRAP_PLATFORM_NAMES: [&str; 8] = [
 	"postgres_major",
@@ -31,37 +33,63 @@ const BOOTSTRAP_PLATFORM_NAMES: [&str; 8] = [
 	"pgcrypto_version",
 ];
 
-/// Failed latest-schema bootstrap with an optional bounded post-schema authority report.
-#[derive(Debug)]
+/// Failed latest-schema bootstrap with a bounded credential-negative transaction report.
 pub struct LatestSchemaBootstrapFailure {
-	error: StoreError,
-	report_json: Option<String>,
+	_error: StoreError,
+	report: BootstrapReport,
 }
 
 impl LatestSchemaBootstrapFailure {
-	fn plain(error: StoreError) -> Self {
-		Self { error, report_json: None }
+	fn reported(error: StoreError, report: BootstrapReport) -> Self {
+		Self { _error: error, report }
 	}
 
-	fn reported(error: StoreError, report: &BootstrapVerificationReport) -> Self {
-		Self { error, report_json: Some(report.canonical_json()) }
+	fn operation_failure(
+		error: StoreError,
+		operation: BootstrapOperation,
+		statement: Option<&str>,
+	) -> Self {
+		let report = BootstrapReport::operation_failure(operation, &error, statement);
+		Self::reported(error, report)
+	}
+
+	fn with_rollback_failure(mut self, rollback_error: &StoreError) -> Self {
+		let rollback = rollback_error.bootstrap_failure_identity();
+		self.report.rollback_failure =
+			Some(BootstrapRollbackFailure { failed: true, category: rollback.category });
+		self
+	}
+
+	fn fmt_closed(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(
+			formatter,
+			"latest-schema bootstrap failed (classification={}, phase={})",
+			bootstrap_failure_name(self.report.classification),
+			self.report.failure.phase,
+		)
 	}
 
 	/// Return the stable value-free command failure classification.
 	pub fn bootstrap_failure(&self) -> BootstrapFailure {
-		self.error.bootstrap_failure()
+		self.report.classification
 	}
 
-	/// Return the canonical credential-negative report for the hidden command, when collected.
+	/// Return the canonical credential-negative report for the hidden command.
 	#[doc(hidden)]
-	pub fn report_json(&self) -> Option<&str> {
-		self.report_json.as_deref()
+	pub fn report_json(&self) -> String {
+		self.report.canonical_json()
+	}
+}
+
+impl std::fmt::Debug for LatestSchemaBootstrapFailure {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		self.fmt_closed(formatter)
 	}
 }
 
 impl std::fmt::Display for LatestSchemaBootstrapFailure {
 	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		self.error.fmt(formatter)
+		self.fmt_closed(formatter)
 	}
 }
 
@@ -69,114 +97,191 @@ impl std::error::Error for LatestSchemaBootstrapFailure {}
 
 impl From<StoreError> for LatestSchemaBootstrapFailure {
 	fn from(error: StoreError) -> Self {
-		Self::plain(error)
+		Self::operation_failure(error, BootstrapOperation::BootstrapAdmission, None)
 	}
 }
 
 impl From<deadpool_postgres::BuildError> for LatestSchemaBootstrapFailure {
 	fn from(error: deadpool_postgres::BuildError) -> Self {
-		Self::plain(StoreError::from(error))
+		Self::operation_failure(
+			StoreError::from(error),
+			BootstrapOperation::BootstrapAdmission,
+			None,
+		)
 	}
 }
 
 impl From<tokio_postgres::Error> for LatestSchemaBootstrapFailure {
 	fn from(error: tokio_postgres::Error) -> Self {
-		Self::plain(StoreError::from(error))
+		Self::operation_failure(
+			StoreError::Database(error),
+			BootstrapOperation::BootstrapAdmission,
+			None,
+		)
 	}
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-struct BootstrapQueryFailure {
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct BootstrapOperationFailure {
 	phase: &'static str,
 	operation: &'static str,
 	category: &'static str,
+	sqlstate: Option<String>,
+	statement_byte_position: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum BootstrapQueryOperation {
+enum BootstrapOperation {
+	BootstrapAdmission,
+	TargetVerification,
+	RuntimeRoleBinding,
+	SchemaBatch,
+	TrustedSessionReset,
 	Platform,
 	InitialAuthorization,
 	Authority(BootstrapAuthorityOperation),
+	AuthorityVerification,
+	TransactionCommit,
 }
 
-impl BootstrapQueryOperation {
+impl BootstrapOperation {
 	const fn phase(self) -> &'static str {
 		match self {
-			Self::Platform => "platform",
-			Self::InitialAuthorization => "initial_authorization",
-			Self::Authority(_) => "authority",
+			Self::BootstrapAdmission | Self::TargetVerification | Self::RuntimeRoleBinding =>
+				"pre_schema",
+			Self::SchemaBatch => "schema_apply",
+			Self::TrustedSessionReset
+			| Self::Platform
+			| Self::InitialAuthorization
+			| Self::Authority(_)
+			| Self::AuthorityVerification => "post_schema_verify",
+			Self::TransactionCommit => "finalize",
 		}
 	}
 
 	const fn as_str(self) -> &'static str {
 		match self {
+			Self::BootstrapAdmission => "bootstrap_admission",
+			Self::TargetVerification => "target_verification",
+			Self::RuntimeRoleBinding => "runtime_role_binding",
+			Self::SchemaBatch => "schema_batch",
+			Self::TrustedSessionReset => "trusted_session_reset",
 			Self::Platform => "platform",
 			Self::InitialAuthorization => "initial_authorization",
 			Self::Authority(operation) => operation.as_str(),
+			Self::AuthorityVerification => "authority_verification",
+			Self::TransactionCommit => "transaction_commit",
 		}
 	}
 
 	const fn completed_authority_components(self) -> usize {
 		match self {
-			Self::Platform | Self::InitialAuthorization => 0,
+			Self::BootstrapAdmission
+			| Self::TargetVerification
+			| Self::RuntimeRoleBinding
+			| Self::SchemaBatch
+			| Self::TrustedSessionReset
+			| Self::Platform
+			| Self::InitialAuthorization => 0,
 			Self::Authority(operation) => operation.completed_components_before(),
+			Self::AuthorityVerification | Self::TransactionCommit => 4,
 		}
+	}
+
+	const fn platform_complete(self) -> bool {
+		matches!(
+			self,
+			Self::InitialAuthorization
+				| Self::Authority(_)
+				| Self::AuthorityVerification
+				| Self::TransactionCommit
+		)
 	}
 }
 
 #[derive(Debug)]
-struct BootstrapVerificationReport {
+struct BootstrapReport {
 	complete: bool,
 	classification: BootstrapFailure,
 	platform: Vec<BootstrapAuthorityObservation>,
 	authority: BootstrapAuthorityProgress,
-	query_failure: Option<BootstrapQueryFailure>,
+	failure: BootstrapOperationFailure,
+	rollback_failure: Option<BootstrapRollbackFailure>,
 }
 
-impl BootstrapVerificationReport {
-	fn complete(
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct BootstrapRollbackFailure {
+	failed: bool,
+	category: &'static str,
+}
+
+struct CompletedBootstrapVerification {
+	platform: Vec<BootstrapAuthorityObservation>,
+	authority: BootstrapAuthorityEvidence,
+}
+
+impl BootstrapReport {
+	fn operation_failure(
+		operation: BootstrapOperation,
+		error: &StoreError,
+		statement: Option<&str>,
+	) -> Self {
+		Self::partial_failure(
+			Vec::new(),
+			BootstrapAuthorityProgress::default(),
+			operation,
+			error,
+			statement,
+		)
+	}
+
+	fn complete_failure(
 		platform: Vec<BootstrapAuthorityObservation>,
 		authority: BootstrapAuthorityEvidence,
-		classification: BootstrapFailure,
+		operation: BootstrapOperation,
+		error: &StoreError,
 	) -> Self {
 		assert_eq!(
 			platform.iter().map(|observation| observation.name).collect::<Vec<_>>(),
 			BOOTSTRAP_PLATFORM_NAMES
 		);
 		assert_eq!(authority.semantic.len(), authority::SEMANTIC_AUTHORITY_PREDICATE_COUNT);
+		let BootstrapFailureIdentity { classification, category } =
+			error.bootstrap_failure_identity();
 		Self {
 			complete: true,
 			classification,
 			platform,
 			authority: authority.into(),
-			query_failure: None,
+			failure: operation_failure(operation, error, None, category),
+			rollback_failure: None,
 		}
 	}
 
-	fn query_failure(
+	fn partial_failure(
 		platform: Vec<BootstrapAuthorityObservation>,
 		authority: BootstrapAuthorityProgress,
-		operation: BootstrapQueryOperation,
+		operation: BootstrapOperation,
 		error: &StoreError,
+		statement: Option<&str>,
 	) -> Self {
-		if operation == BootstrapQueryOperation::Platform {
-			assert!(platform.is_empty());
-		} else {
+		if operation.platform_complete() {
 			assert!(
 				platform.iter().map(|observation| observation.name).eq(BOOTSTRAP_PLATFORM_NAMES)
 			);
+		} else {
+			assert!(platform.is_empty());
 		}
 		assert_eq!(authority.completed_components(), operation.completed_authority_components());
+		let BootstrapFailureIdentity { classification, category } =
+			error.bootstrap_failure_identity();
 		Self {
 			complete: false,
-			classification: error.bootstrap_failure(),
+			classification,
 			platform,
 			authority,
-			query_failure: Some(BootstrapQueryFailure {
-				phase: operation.phase(),
-				operation: operation.as_str(),
-				category: error.bootstrap_query_failure_category(),
-			}),
+			failure: operation_failure(operation, error, statement, category),
+			rollback_failure: None,
 		}
 	}
 
@@ -195,20 +300,27 @@ impl BootstrapVerificationReport {
 			.unwrap_or_default();
 		let configured_authority = self.authority.configured_authority.as_ref().map(digest_json);
 		let schema_contract = self.authority.schema_contract.as_ref().map(digest_json);
-		let query_failure = self.query_failure.map(|failure| {
+		let failure = json!({
+			"category": self.failure.category,
+			"operation": self.failure.operation,
+			"phase": self.failure.phase,
+			"sqlstate": self.failure.sqlstate.as_deref(),
+			"statement_byte_position": self.failure.statement_byte_position,
+		});
+		let rollback_failure = self.rollback_failure.map(|failure| {
 			json!({
 				"category": failure.category,
-				"operation": failure.operation,
-				"phase": failure.phase,
+				"failed": failure.failed,
 			})
 		});
 		let value = json!({
 			"classification": bootstrap_failure_name(self.classification),
 			"complete": self.complete,
 			"configured_authority": configured_authority,
+			"failure": failure,
 			"namespace": namespace,
 			"platform": self.platform.iter().map(observation_json).collect::<Vec<_>>(),
-			"query_failure": query_failure,
+			"rollback_failure": rollback_failure,
 			"schema": BOOTSTRAP_AUTHORITY_REPORT_SCHEMA,
 			"schema_contract": schema_contract,
 			"semantic": semantic,
@@ -216,6 +328,23 @@ impl BootstrapVerificationReport {
 		let encoded = serde_json::to_string(&value).expect("closed bootstrap report serializes");
 		assert!(encoded.len() <= BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES);
 		encoded
+	}
+}
+
+fn operation_failure(
+	operation: BootstrapOperation,
+	error: &StoreError,
+	statement: Option<&str>,
+	category: &'static str,
+) -> BootstrapOperationFailure {
+	let BootstrapDatabaseDiagnostic { sqlstate, statement_byte_position } =
+		error.bootstrap_database_diagnostic(statement);
+	BootstrapOperationFailure {
+		phase: operation.phase(),
+		operation: operation.as_str(),
+		category,
+		sqlstate,
+		statement_byte_position,
 	}
 }
 
@@ -273,10 +402,25 @@ pub(crate) async fn bootstrap_latest_schema(
 	let bootstrap_result =
 		bootstrap_transaction(&transaction, schema_owner_role, runtime_role, authorization).await;
 	let result = match bootstrap_result {
-		Ok(()) => transaction.commit().await.map_err(LatestSchemaBootstrapFailure::from),
+		Ok(verification) => match transaction.commit().await {
+			Ok(()) => Ok(()),
+			Err(error) => {
+				let error = StoreError::Database(error);
+				let report = BootstrapReport::complete_failure(
+					verification.platform,
+					verification.authority,
+					BootstrapOperation::TransactionCommit,
+					&error,
+				);
+				Err(LatestSchemaBootstrapFailure::reported(error, report))
+			},
+		},
 		Err(error) => match transaction.rollback().await {
 			Ok(()) => Err(error),
-			Err(rollback_error) => Err(LatestSchemaBootstrapFailure::from(rollback_error)),
+			Err(rollback_error) => {
+				let rollback_error = StoreError::Database(rollback_error);
+				Err(error.with_rollback_failure(&rollback_error))
+			},
 		},
 	};
 	drop(client);
@@ -289,32 +433,59 @@ async fn bootstrap_transaction(
 	schema_owner_role: &str,
 	runtime_role: &str,
 	authorization: &ProcessExecutionAuthorization,
-) -> Result<(), LatestSchemaBootstrapFailure> {
-	verify_clean_target(transaction, schema_owner_role, runtime_role).await?;
+) -> Result<CompletedBootstrapVerification, LatestSchemaBootstrapFailure> {
+	verify_clean_target(transaction, schema_owner_role, runtime_role).await.map_err(|error| {
+		LatestSchemaBootstrapFailure::operation_failure(
+			error,
+			BootstrapOperation::TargetVerification,
+			None,
+		)
+	})?;
 	transaction
 		.execute(
 			"SELECT pg_catalog.set_config('decodex.bootstrap_runtime_role',$1,true)",
 			&[&runtime_role],
 		)
-		.await?;
-	transaction.batch_execute(LATEST_SCHEMA_SQL).await?;
+		.await
+		.map_err(|error| {
+			LatestSchemaBootstrapFailure::operation_failure(
+				StoreError::Database(error),
+				BootstrapOperation::RuntimeRoleBinding,
+				None,
+			)
+		})?;
+	transaction.batch_execute(LATEST_SCHEMA_SQL).await.map_err(|error| {
+		LatestSchemaBootstrapFailure::operation_failure(
+			StoreError::Database(error),
+			BootstrapOperation::SchemaBatch,
+			Some(LATEST_SCHEMA_SQL),
+		)
+	})?;
 	transaction
 		.execute(
 			"SELECT pg_catalog.set_config('search_path','pg_catalog',false), \
 			 pg_catalog.set_config('TimeZone','+05:00',false)",
 			&[],
 		)
-		.await?;
+		.await
+		.map_err(|error| {
+			LatestSchemaBootstrapFailure::operation_failure(
+				StoreError::Database(error),
+				BootstrapOperation::TrustedSessionReset,
+				None,
+			)
+		})?;
 	let platform = match platform_evidence(transaction).await {
 		Ok(evidence) => evidence,
 		Err(error) => {
-			let report = BootstrapVerificationReport::query_failure(
+			let report = BootstrapReport::partial_failure(
 				Vec::new(),
 				BootstrapAuthorityProgress::default(),
-				BootstrapQueryOperation::Platform,
+				BootstrapOperation::Platform,
 				&error,
+				None,
 			);
-			return Err(LatestSchemaBootstrapFailure::reported(error, &report));
+			return Err(LatestSchemaBootstrapFailure::reported(error, report));
 		},
 	};
 	if let Err(error) = transaction
@@ -326,14 +497,15 @@ async fn bootstrap_transaction(
 		)
 		.await
 	{
-		let error = StoreError::from(error);
-		let report = BootstrapVerificationReport::query_failure(
+		let error = StoreError::Database(error);
+		let report = BootstrapReport::partial_failure(
 			platform,
 			BootstrapAuthorityProgress::default(),
-			BootstrapQueryOperation::InitialAuthorization,
+			BootstrapOperation::InitialAuthorization,
 			&error,
+			None,
 		);
-		return Err(LatestSchemaBootstrapFailure::reported(error, &report));
+		return Err(LatestSchemaBootstrapFailure::reported(error, report));
 	}
 	let authority = match authority::collect_bootstrap_authority_evidence(
 		transaction,
@@ -347,22 +519,27 @@ async fn bootstrap_transaction(
 			let progress = failure.progress;
 			let operation = failure.operation;
 			let error = failure.error;
-			let report = BootstrapVerificationReport::query_failure(
+			let report = BootstrapReport::partial_failure(
 				platform,
 				progress,
-				BootstrapQueryOperation::Authority(operation),
+				BootstrapOperation::Authority(operation),
 				&error,
+				None,
 			);
-			return Err(LatestSchemaBootstrapFailure::reported(error, &report));
+			return Err(LatestSchemaBootstrapFailure::reported(error, report));
 		},
 	};
 	if let Err(error) = enforce_bootstrap_verification(&platform, &authority) {
-		let report =
-			BootstrapVerificationReport::complete(platform, authority, error.bootstrap_failure());
-		return Err(LatestSchemaBootstrapFailure::reported(error, &report));
+		let report = BootstrapReport::complete_failure(
+			platform,
+			authority,
+			BootstrapOperation::AuthorityVerification,
+			&error,
+		);
+		return Err(LatestSchemaBootstrapFailure::reported(error, report));
 	}
 
-	Ok(())
+	Ok(CompletedBootstrapVerification { platform, authority })
 }
 
 async fn verify_clean_target<C>(
@@ -718,8 +895,8 @@ mod tests {
 	use super::{
 		BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES, BOOTSTRAP_AUTHORITY_REPORT_SCHEMA,
 		BOOTSTRAP_PLATFORM_NAMES, BootstrapAuthorityFailureClass, BootstrapAuthorityObservation,
-		BootstrapAuthorityOperation, BootstrapAuthorityProgress, BootstrapFailure,
-		BootstrapQueryOperation, BootstrapVerificationReport, StoreError,
+		BootstrapAuthorityOperation, BootstrapAuthorityProgress, BootstrapOperation,
+		BootstrapReport, LatestSchemaBootstrapFailure, StoreError,
 	};
 	use crate::authority;
 
@@ -774,10 +951,12 @@ mod tests {
 	fn complete_bootstrap_report_is_canonical_closed_unique_and_credential_negative() {
 		let mut authority = authority::passing_bootstrap_authority_evidence_fixture();
 		authority.configured_authority.actual_sha256 = Some([0; 32]);
-		let report = BootstrapVerificationReport::complete(
+		let error = StoreError::UnsafeAuthority("test authority mismatch");
+		let report = BootstrapReport::complete_failure(
 			passing_platform(),
 			authority,
-			BootstrapFailure::UnsafeAuthority,
+			BootstrapOperation::AuthorityVerification,
+			&error,
 		);
 		let encoded = report.canonical_json();
 		assert!(encoded.len() <= BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES);
@@ -786,7 +965,9 @@ mod tests {
 		assert_eq!(encoded, serde_json::to_string(&value).expect("canonical report reserializes"));
 		assert_eq!(value["schema"], BOOTSTRAP_AUTHORITY_REPORT_SCHEMA);
 		assert_eq!(value["complete"], true);
-		assert!(value["query_failure"].is_null());
+		assert_eq!(value["failure"]["phase"], "post_schema_verify");
+		assert_eq!(value["failure"]["operation"], "authority_verification");
+		assert!(value["rollback_failure"].is_null());
 		assert_eq!(value["semantic"].as_array().expect("semantic array").len(), 37);
 		let names = value["semantic"]
 			.as_array()
@@ -811,62 +992,61 @@ mod tests {
 	}
 
 	#[test]
-	fn query_failure_reports_retain_only_completed_authority_prefixes() {
+	fn operation_failure_reports_retain_only_completed_authority_prefixes() {
 		let private_detail = concat!(
 			"credential_secret database_message_secret detail_secret hint_secret path_secret ",
 			"role_name_secret sql_text_secret token_secret",
 		);
 		let error = StoreError::Incompatible(private_detail.into());
 		for (operation, operation_name, phase, completed_components, platform_complete) in [
-			(BootstrapQueryOperation::Platform, "platform", "platform", 0, false),
+			(BootstrapOperation::Platform, "platform", "post_schema_verify", 0, false),
 			(
-				BootstrapQueryOperation::InitialAuthorization,
+				BootstrapOperation::InitialAuthorization,
 				"initial_authorization",
-				"initial_authorization",
+				"post_schema_verify",
 				0,
 				true,
 			),
 			(
-				BootstrapQueryOperation::Authority(BootstrapAuthorityOperation::Namespace),
+				BootstrapOperation::Authority(BootstrapAuthorityOperation::Namespace),
 				"namespace",
-				"authority",
+				"post_schema_verify",
 				0,
 				true,
 			),
 			(
-				BootstrapQueryOperation::Authority(BootstrapAuthorityOperation::Semantic),
+				BootstrapOperation::Authority(BootstrapAuthorityOperation::Semantic),
 				"semantic",
-				"authority",
+				"post_schema_verify",
 				1,
 				true,
 			),
 			(
-				BootstrapQueryOperation::Authority(
-					BootstrapAuthorityOperation::ConfiguredAuthority,
-				),
+				BootstrapOperation::Authority(BootstrapAuthorityOperation::ConfiguredAuthority),
 				"configured_authority",
-				"authority",
+				"post_schema_verify",
 				2,
 				true,
 			),
 			(
-				BootstrapQueryOperation::Authority(BootstrapAuthorityOperation::SchemaContract),
+				BootstrapOperation::Authority(BootstrapAuthorityOperation::SchemaContract),
 				"schema_contract",
-				"authority",
+				"post_schema_verify",
 				3,
 				true,
 			),
 		] {
 			let platform = if platform_complete { passing_platform() } else { Vec::new() };
-			let report = BootstrapVerificationReport::query_failure(
+			let report = BootstrapReport::partial_failure(
 				platform,
 				authority_progress(completed_components),
 				operation,
 				&error,
+				None,
 			);
 			let encoded = report.canonical_json();
 			let value: Value = serde_json::from_str(&encoded).expect("report is JSON");
-			let failure = value["query_failure"].as_object().expect("query failure object");
+			let failure = value["failure"].as_object().expect("operation failure object");
 			assert_eq!(value["complete"], false);
 			assert_eq!(
 				value["platform"].as_array().expect("platform array").len(),
@@ -882,10 +1062,12 @@ mod tests {
 			);
 			assert_eq!(value["configured_authority"].is_object(), completed_components >= 3);
 			assert!(value["schema_contract"].is_null());
-			assert_eq!(failure.len(), 3);
+			assert_eq!(failure.len(), 5);
 			assert_eq!(failure["phase"], phase);
 			assert_eq!(failure["operation"], operation_name);
 			assert_eq!(failure["category"], "evidence");
+			assert!(failure["sqlstate"].is_null());
+			assert!(failure["statement_byte_position"].is_null());
 			for forbidden in [
 				"credential_secret",
 				"database_message_secret",
@@ -905,5 +1087,52 @@ mod tests {
 			}
 			assert_bounded_strings(&value);
 		}
+	}
+
+	#[test]
+	fn schema_apply_report_preserves_primary_identity_when_rollback_also_fails() {
+		let primary = StoreError::Incompatible("private primary detail".into());
+		let mut report = BootstrapReport::operation_failure(
+			BootstrapOperation::SchemaBatch,
+			&primary,
+			Some("SELECT 'secret';"),
+		);
+		report.failure.sqlstate = Some("42601".into());
+		report.failure.statement_byte_position = Some(8);
+		let failure = LatestSchemaBootstrapFailure::reported(primary, report)
+			.with_rollback_failure(&StoreError::Incompatible("private rollback detail".into()));
+		let encoded = failure.report_json();
+		let value: Value = serde_json::from_str(&encoded).expect("report is JSON");
+
+		assert_eq!(value["schema"], BOOTSTRAP_AUTHORITY_REPORT_SCHEMA);
+		assert_eq!(value["classification"], "incompatible");
+		assert_eq!(value["complete"], false);
+		assert_eq!(value["failure"]["phase"], "schema_apply");
+		assert_eq!(value["failure"]["operation"], "schema_batch");
+		assert_eq!(value["failure"]["category"], "evidence");
+		assert_eq!(value["failure"]["sqlstate"], "42601");
+		assert_eq!(value["failure"]["statement_byte_position"], 8);
+		assert_eq!(value["rollback_failure"]["failed"], true);
+		assert_eq!(value["rollback_failure"]["category"], "evidence");
+		assert!(!encoded.contains("private primary detail"));
+		assert!(!encoded.contains("private rollback detail"));
+		assert!(!encoded.contains("SELECT"));
+	}
+
+	#[test]
+	fn public_bootstrap_failure_formatting_never_exposes_the_private_store_error() {
+		let secret = "credential_secret database_message_secret path_secret token_secret";
+		let failure = LatestSchemaBootstrapFailure::operation_failure(
+			StoreError::Incompatible(secret.into()),
+			BootstrapOperation::TargetVerification,
+			None,
+		);
+		let expected =
+			"latest-schema bootstrap failed (classification=incompatible, phase=pre_schema)";
+
+		assert_eq!(failure.to_string(), expected);
+		assert_eq!(format!("{failure:?}"), expected);
+		assert!(!failure.to_string().contains(secret));
+		assert!(!format!("{failure:?}").contains(secret));
 	}
 }

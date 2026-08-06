@@ -82,7 +82,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			match result {
 				Ok(()) => Ok(()),
 				Err(error) => {
-					if let Some(report) = error.authority_report_line() {
+					if let Some(report) = error.bootstrap_report_line() {
 						eprintln!("{report}");
 					}
 					Err(Box::<dyn Error>::from(error))

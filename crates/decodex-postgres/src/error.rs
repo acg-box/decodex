@@ -53,19 +53,54 @@ pub enum StoreError {
 	/// Content-addressed bytes were missing, tampered, unsafe, or could not be persisted.
 	Blob(decodex_core::StorageError),
 }
+
+/// Closed PostgreSQL identity retained only for explicit bootstrap diagnostics.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(crate) struct BootstrapDatabaseDiagnostic {
+	pub(crate) sqlstate: Option<String>,
+	pub(crate) statement_byte_position: Option<u64>,
+}
+
+/// Closed bootstrap identity derived once from the private store failure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct BootstrapFailureIdentity {
+	pub(crate) classification: BootstrapFailure,
+	pub(crate) category: &'static str,
+}
+
 impl StoreError {
 	/// Classify bootstrap without exporting database, socket, role, or credential text.
 	pub fn bootstrap_failure(&self) -> BootstrapFailure {
+		self.bootstrap_failure_identity().classification
+	}
+
+	/// Return one paired closed classification and detail category for bootstrap reporting.
+	pub(crate) fn bootstrap_failure_identity(&self) -> BootstrapFailureIdentity {
 		match self {
 			Self::Pool(deadpool_postgres::PoolError::Backend(error)) =>
 				classify_pool_backend(error),
-			Self::Database(error) => classify_database_error(error),
-			Self::UnsafeAuthority(_) => BootstrapFailure::UnsafeAuthority,
-			Self::UnsafeHostPath => BootstrapFailure::UnsafeHostPath,
-			Self::SocketUnavailable => BootstrapFailure::Unreachable,
-			Self::Incompatible(_) => BootstrapFailure::Incompatible,
+			Self::Database(error) => database_bootstrap_identity(error),
+			Self::UnsafeAuthority(_) => BootstrapFailureIdentity {
+				classification: BootstrapFailure::UnsafeAuthority,
+				category: "authority",
+			},
+			Self::UnsafeHostPath => BootstrapFailureIdentity {
+				classification: BootstrapFailure::UnsafeHostPath,
+				category: "host_path",
+			},
+			Self::SocketUnavailable => BootstrapFailureIdentity {
+				classification: BootstrapFailure::Unreachable,
+				category: "transport",
+			},
+			Self::Incompatible(_) => BootstrapFailureIdentity {
+				classification: BootstrapFailure::Incompatible,
+				category: "evidence",
+			},
 			Self::RepositoryCommitOutcomeUnknown(error) if is_authentication_error(error) =>
-				BootstrapFailure::Authentication,
+				BootstrapFailureIdentity {
+					classification: BootstrapFailure::Authentication,
+					category: "authentication",
+				},
 			Self::RepositoryCommitOutcomeUnknown(_)
 			| Self::ResetCardCommitOutcomeUnknown
 			| Self::ResetCardSelectionConflict
@@ -74,20 +109,43 @@ impl StoreError {
 			| Self::ManagedRepositoryAlreadyAllocated
 			| Self::ManagedRepositoryAllocationConflict
 			| Self::ManagedRepositoryCompareAndSwapConflict
-			| Self::ManagedRepository(_) => BootstrapFailure::Unreachable,
-			_ => BootstrapFailure::Unreachable,
+			| Self::ManagedRepository(_)
+			| Self::Pool(_)
+			| Self::IdempotencyConflict
+			| Self::RevisionConflict { .. }
+			| Self::OwnershipLost(_)
+			| Self::CredentialRejected
+			| Self::InvalidInput(_)
+			| Self::CapacityExhausted(_)
+			| Self::Blob(_) => BootstrapFailureIdentity {
+				classification: BootstrapFailure::Unreachable,
+				category: "internal",
+			},
 		}
 	}
 
-	pub(crate) fn bootstrap_query_failure_category(&self) -> &'static str {
-		match self {
+	pub(crate) fn bootstrap_database_diagnostic(
+		&self,
+		statement: Option<&str>,
+	) -> BootstrapDatabaseDiagnostic {
+		let error = match self {
 			Self::Database(error) | Self::Pool(deadpool_postgres::PoolError::Backend(error)) =>
-				query_failure_category(error),
-			Self::UnsafeAuthority(_) => "authority",
-			Self::Incompatible(_) => "evidence",
-			Self::UnsafeHostPath => "host_path",
-			Self::SocketUnavailable => "transport",
-			_ => "internal",
+				error,
+			_ => return BootstrapDatabaseDiagnostic::default(),
+		};
+		let Some(database) = error.as_db_error() else {
+			return BootstrapDatabaseDiagnostic::default();
+		};
+		let statement_byte_position = statement.and_then(|statement| {
+			let tokio_postgres::error::ErrorPosition::Original(position) = database.position()?
+			else {
+				return None;
+			};
+			original_statement_byte_position(statement, *position)
+		});
+		BootstrapDatabaseDiagnostic {
+			sqlstate: Some(database.code().code().to_owned()),
+			statement_byte_position,
 		}
 	}
 }
@@ -206,50 +264,94 @@ pub enum BootstrapFailure {
 }
 
 fn is_authentication_error(error: &tokio_postgres::Error) -> bool {
-	error.as_db_error().is_some_and(|database| {
-		matches!(
-			database.code(),
-			&tokio_postgres::error::SqlState::INVALID_AUTHORIZATION_SPECIFICATION
-				| &tokio_postgres::error::SqlState::INVALID_PASSWORD
-		)
-	})
+	error.as_db_error().is_some_and(|database| is_authentication_sqlstate(database.code().code()))
 }
 
-fn classify_database_error(error: &tokio_postgres::Error) -> BootstrapFailure {
-	if is_authentication_error(error) {
-		BootstrapFailure::Authentication
-	} else if error.as_db_error().is_some() {
-		BootstrapFailure::Incompatible
-	} else {
-		BootstrapFailure::Unreachable
-	}
+fn is_authentication_sqlstate(sqlstate: &str) -> bool {
+	matches!(sqlstate, "28000" | "28P01")
 }
 
-fn query_failure_category(error: &tokio_postgres::Error) -> &'static str {
-	let Some(database) = error.as_db_error() else {
-		return "transport";
+fn database_bootstrap_identity(error: &tokio_postgres::Error) -> BootstrapFailureIdentity {
+	database_bootstrap_identity_from_sqlstate(
+		error.as_db_error().map(|database| database.code().code()),
+	)
+}
+
+fn database_bootstrap_identity_from_sqlstate(sqlstate: Option<&str>) -> BootstrapFailureIdentity {
+	let classification = match sqlstate {
+		Some(code) if is_authentication_sqlstate(code) => BootstrapFailure::Authentication,
+		Some(_) => BootstrapFailure::Incompatible,
+		None => BootstrapFailure::Unreachable,
 	};
-	let code = database.code().code();
-	match code.get(..2).unwrap_or_default() {
-		"08" => "transport",
-		"23" => "constraint",
-		"25" | "40" => "transaction",
-		"28" => "authentication",
-		"3D" => "catalog",
-		"42" if code == "42501" => "authorization",
-		"42" => "catalog",
-		"53" | "54" | "55" | "57" | "58" | "XX" => "server",
-		_ => "server",
-	}
+	let category = match sqlstate.and_then(|code| code.get(..2)) {
+		None | Some("08") => "transport",
+		Some("23") => "constraint",
+		Some("25") | Some("40") => "transaction",
+		Some("28") => "authentication",
+		Some("3D") => "catalog",
+		Some("42") if sqlstate == Some("42501") => "authorization",
+		Some("42") => "catalog",
+		Some("53") | Some("54") | Some("55") | Some("57") | Some("58") | Some("XX") => "server",
+		Some(_) => "server",
+	};
+	BootstrapFailureIdentity { classification, category }
 }
 
-fn classify_pool_backend(error: &tokio_postgres::Error) -> BootstrapFailure {
+fn classify_pool_backend(error: &tokio_postgres::Error) -> BootstrapFailureIdentity {
 	#[cfg(unix)]
 	if crate::socket::rejected_endpoint_failure(error)
 		== Some(crate::socket::SocketConnectFailure::UnsafeAuthority)
 	{
-		return BootstrapFailure::UnsafeHostPath;
+		return BootstrapFailureIdentity {
+			classification: BootstrapFailure::UnsafeHostPath,
+			category: "host_path",
+		};
 	}
 
-	classify_database_error(error)
+	database_bootstrap_identity(error)
+}
+
+fn original_statement_byte_position(statement: &str, character_position: u32) -> Option<u64> {
+	let character_index = usize::try_from(character_position).ok()?.checked_sub(1)?;
+	let byte_index =
+		statement.char_indices().nth(character_index).map(|(index, _)| index).or_else(|| {
+			(statement.chars().count() == character_index).then_some(statement.len())
+		})?;
+	u64::try_from(byte_index.checked_add(1)?).ok()
+}
+
+#[cfg(test)]
+mod tests {
+	use super::{
+		BootstrapFailure, BootstrapFailureIdentity, StoreError,
+		database_bootstrap_identity_from_sqlstate, original_statement_byte_position,
+	};
+
+	#[test]
+	fn bootstrap_identity_keeps_unsafe_host_path_and_database_transport_consistent() {
+		assert_eq!(
+			StoreError::UnsafeHostPath.bootstrap_failure_identity(),
+			BootstrapFailureIdentity {
+				classification: BootstrapFailure::UnsafeHostPath,
+				category: "host_path",
+			}
+		);
+		assert_eq!(
+			database_bootstrap_identity_from_sqlstate(Some("08006")),
+			BootstrapFailureIdentity {
+				classification: BootstrapFailure::Incompatible,
+				category: "transport",
+			}
+		);
+	}
+
+	#[test]
+	fn postgres_character_position_maps_to_one_based_original_statement_byte_position() {
+		assert_eq!(original_statement_byte_position("SELECT x", 1), Some(1));
+		assert_eq!(original_statement_byte_position("SELECT x", 8), Some(8));
+		assert_eq!(original_statement_byte_position("a\u{e9}z", 3), Some(4));
+		assert_eq!(original_statement_byte_position("a\u{e9}z", 4), Some(5));
+		assert_eq!(original_statement_byte_position("SELECT x", 0), None);
+		assert_eq!(original_statement_byte_position("SELECT x", 10), None);
+	}
 }

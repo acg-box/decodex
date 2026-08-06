@@ -534,38 +534,135 @@ class VnextArchitectureTests(unittest.TestCase):
         postgres_routing = _strip_rust_prose(
             (ROOT / "crates/decodex-postgres/src/routing_decisions.rs").read_text()
         )
+        postgres_snapshots = _strip_rust_prose(
+            (ROOT / "crates/decodex-postgres/src/routing.rs").read_text()
+        )
+        quick_task_routing_path = (
+            ROOT / "crates/decodex-postgres/src/quick_task_routing.rs"
+        )
+        postgres_quick_task_routing = _strip_rust_prose(
+            quick_task_routing_path.read_text()
+        )
         orchestration = _strip_rust_prose(
             (ROOT / "crates/decodex-runtime/src/routing_orchestration.rs").read_text()
+        )
+        runtime_quick_task = _strip_rust_prose(
+            (ROOT / "crates/decodex-runtime/src/quick_task.rs").read_text()
+        )
+        exact_commands = _strip_rust_prose(
+            (ROOT / "crates/decodex-postgres/src/exact_commands.rs").read_text()
         )
         runtime_root = _strip_rust_prose(
             (ROOT / "crates/decodex-runtime/src/lib.rs").read_text()
         )
+        schema = (ROOT / "crates/decodex-postgres/schema.sql").read_text()
 
         self.assertEqual(core_routing.count("fn decide_routing"), 1)
+        self.assertEqual(core_routing.count("fn decide_account_registry_routing"), 1)
         self.assertEqual(postgres_routing.count("decide_routing("), 1)
-        runtime_invokers = {
-            path.relative_to(ROOT).as_posix()
-            for path in (ROOT / "crates/decodex-runtime/src").rglob("*.rs")
-            if ".route_account(" in _strip_rust_prose(path.read_text())
-        }
-        self.assertEqual(
-            runtime_invokers,
-            {"crates/decodex-runtime/src/routing_orchestration.rs"},
+        self.assertEqual(postgres_quick_task_routing.count("decide_account_registry_routing("), 1)
+        self.assertIn("client.transaction()", postgres_quick_task_routing)
+        self.assertIn("parse_snapshot_envelope", postgres_quick_task_routing)
+        self.assertIn("parse_initial_route_effect", postgres_quick_task_routing)
+        self.assertIn("parse_continuation_binding", postgres_quick_task_routing)
+        self.assertIn("pub async fn route_quick_task_initial", postgres_quick_task_routing)
+        self.assertIn("pub async fn bind_quick_task_continuation", postgres_quick_task_routing)
+        self.assertIn(
+            "split routing decisions are reserved for ManagedRun execution",
+            (ROOT / "crates/decodex-postgres/src/routing_decisions.rs").read_text(),
         )
+        self.assertIn(
+            "split routing snapshots are reserved for ManagedRun execution",
+            (ROOT / "crates/decodex-postgres/src/routing.rs").read_text(),
+        )
+        self.assertNotIn("conversation_account_registry", postgres_routing)
+        self.assertNotIn("conversation_account_registry", postgres_snapshots)
+
+        expected_orchestration_invokers = {
+            ".route_quick_task_initial(": "crates/decodex-runtime/src/routing_orchestration.rs",
+            ".read_quick_task_initial_route(": "crates/decodex-runtime/src/routing_orchestration.rs",
+            ".create_quick_task_routing_successor(": "crates/decodex-runtime/src/routing_orchestration.rs",
+            ".bind_quick_task_continuation(": "crates/decodex-runtime/src/routing_orchestration.rs",
+            ".plan_initial_thread_continuation(": "crates/decodex-runtime/src/routing_orchestration.rs",
+            ".plan_continuation(": "crates/decodex-runtime/src/routing_orchestration.rs",
+        }
+        for call, owner in expected_orchestration_invokers.items():
+            invokers = {
+                path.relative_to(ROOT).as_posix()
+                for path in (ROOT / "crates/decodex-runtime/src").rglob("*.rs")
+                if call in _strip_rust_prose(path.read_text())
+            }
+            self.assertEqual(invokers, {owner}, call)
+
+        for forbidden in (
+            "route_quick_task_initial(",
+            "bind_quick_task_continuation(",
+            "resolve_routing_snapshot(",
+            "route_account(",
+            "decide_account_registry_routing(",
+            "BEGIN_INITIAL_ROUTE_SQL",
+            "COMPLETE_INITIAL_ROUTE_SQL",
+            "BIND_CONTINUATION_SQL",
+        ):
+            self.assertNotIn(forbidden, runtime_quick_task)
+        for routing_adapter in (
+            "RouteQuickTaskInitial",
+            "BindQuickTaskContinuation",
+            "CreateQuickTaskRoutingSuccessor",
+            "QuickTaskRoutingSuccessor",
+            "successor_to_route(",
+        ):
+            self.assertNotIn(routing_adapter, runtime_quick_task)
+        self.assertNotIn("QuickTask", exact_commands)
+
+        for function in (
+            "begin_quick_task_initial_route_exact",
+            "complete_quick_task_initial_route_exact",
+            "read_quick_task_initial_route_exact",
+            "bind_quick_task_continuation_exact",
+        ):
+            self.assertEqual(schema.count(f"CREATE FUNCTION decodex.{function}("), 1)
+        postgres_sql = sorted(
+            path.relative_to(ROOT / "crates/decodex-postgres").as_posix()
+            for path in (ROOT / "crates/decodex-postgres").rglob("*.sql")
+        )
+        self.assertEqual(postgres_sql, ["schema.sql"])
+
         self.assertIn("pub(crate) struct ExecutionCoordinator", orchestration)
         self.assertIn("pub(crate) async fn pre_process", orchestration)
+        self.assertIn("pub(crate) async fn resume_establishment", orchestration)
+        self.assertIn("pub(crate) async fn successor_to_route", orchestration)
+        self.assertIn("pub(crate) async fn continuation_bind_to_plan", orchestration)
         self.assertIn("pub(crate) async fn post_process", orchestration)
         self.assertNotIn("DisabledRoutingOrchestration", orchestration)
         self.assertNotIn("pub use routing_orchestration", runtime_root)
-        for removed_surface in (
+        for identifier in (
             "ContinuationCoordinates",
             "ExecutionOutcome",
             "WaitingUsageHandoff",
             "WaitingReconciliationHandoff",
             "RoutingAuthorityRejection",
         ):
-            self.assertNotIn(removed_surface, orchestration)
-            self.assertNotIn(removed_surface, runtime_root)
+            self.assertIsNone(
+                re.search(rf"\b{re.escape(identifier)}\b", orchestration),
+                f"removed Rust identifier remains: {identifier}",
+            )
+            self.assertIsNone(
+                re.search(rf"\b{re.escape(identifier)}\b", runtime_root),
+                f"removed Rust identifier remains: {identifier}",
+            )
+
+        public_quick_task_source = "\n".join(
+            path.read_text()
+            for root in (
+                ROOT / "crates/decodex-protocol/src",
+                ROOT / "crates/decodex-runtime/src",
+                ROOT / "apps/decodex-gpui/src",
+            )
+            for path in sorted(root.rglob("*.rs"))
+        )
+        self.assertNotIn("RetryRouting", public_quick_task_source)
+        self.assertNotIn("RetryQuickTaskRouting", public_quick_task_source)
 
     def test_stateless_routing_coordinator_has_no_live_consumer_or_v18_composition(
         self,
@@ -592,7 +689,10 @@ class VnextArchitectureTests(unittest.TestCase):
             "WaitingUsageHandoff",
             "WaitingUsageWake",
         ):
-            self.assertNotIn(identifier, isolated_source)
+            self.assertIsNone(
+                re.search(rf"\b{re.escape(identifier)}\b", isolated_source),
+                f"removed Rust identifier remains: {identifier}",
+            )
 
         runtime_source = "\n".join(
             _strip_rust_prose(path.read_text())

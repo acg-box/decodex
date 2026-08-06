@@ -450,6 +450,11 @@ fn parse_rejection(effect: &Value) -> Result<ContinuationRejection, StoreError> 
 		"stale_consumer_revision" => Ok(ContinuationRejection::StaleConsumerRevision),
 		"decision_already_consumed" => Ok(ContinuationRejection::DecisionAlreadyConsumed),
 		"same_thread_unavailable" => Ok(ContinuationRejection::SameThreadUnavailable),
+		"selected_account_drift" => Ok(ContinuationRejection::SelectedAccountDrift),
+		"selected_account_readiness_required" =>
+			Ok(ContinuationRejection::SelectedAccountReadinessRequired),
+		"selected_account_quota_required" =>
+			Ok(ContinuationRejection::SelectedAccountQuotaRequired),
 		"invalid_context_pack" => Ok(ContinuationRejection::InvalidContextPack),
 		"fallback_identity_conflict" => Ok(ContinuationRejection::FallbackIdentityConflict),
 		_ => incompatible("stored continuation rejection is unknown"),

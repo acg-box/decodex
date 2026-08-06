@@ -57,16 +57,16 @@ pub enum LatestSchemaBootstrapError {
 	Database {
 		/// Stable value-free failure class used by operator output and callers.
 		failure: BootstrapFailure,
-		/// Optional bounded canonical post-schema report; no credential-bearing values.
-		report_json: Option<String>,
+		/// Bounded canonical transaction report; no credential-bearing values.
+		report_json: String,
 	},
 }
 impl LatestSchemaBootstrapError {
 	/// Return the one bounded canonical report line emitted only by the hidden operator command.
 	#[doc(hidden)]
-	pub fn authority_report_line(&self) -> Option<String> {
+	pub fn bootstrap_report_line(&self) -> Option<String> {
 		match self {
-			Self::Database { report_json: Some(report), .. } =>
+			Self::Database { report_json: report, .. } =>
 				Some(format!("{BOOTSTRAP_AUTHORITY_REPORT_PREFIX}{report}")),
 			_ => None,
 		}
@@ -883,7 +883,7 @@ pub(crate) async fn bootstrap_latest_schema(
 	.await
 	.map_err(|error| LatestSchemaBootstrapError::Database {
 		failure: error.bootstrap_failure(),
-		report_json: error.report_json().map(str::to_owned),
+		report_json: error.report_json(),
 	})
 }
 
@@ -968,13 +968,11 @@ mod tests {
 	fn latest_schema_bootstrap_report_has_one_hidden_command_line() {
 		let error = bootstrap::LatestSchemaBootstrapError::Database {
 			failure: BootstrapFailure::Incompatible,
-			report_json: Some("{\"schema\":\"decodex/bootstrap-authority-report/1\"}".into()),
+			report_json: "{\"schema\":\"decodex/bootstrap-report/1\"}".into(),
 		};
 		assert_eq!(
-			error.authority_report_line().as_deref(),
-			Some(
-				"DECODEX_BOOTSTRAP_AUTHORITY_REPORT={\"schema\":\"decodex/bootstrap-authority-report/1\"}"
-			)
+			error.bootstrap_report_line().as_deref(),
+			Some("DECODEX_BOOTSTRAP_REPORT={\"schema\":\"decodex/bootstrap-report/1\"}")
 		);
 		assert_eq!(error.to_string(), "latest-schema bootstrap target is incompatible");
 		assert_eq!(format!("{error:?}"), "Database(Incompatible)");

@@ -300,59 +300,13 @@ dependencies = [
 
 [tasks.lint-rust]
 workspace = false
-command = "cargo"
-args = [
-	"clippy",
-	"--all-features",
-	"--all-targets",
-	"--workspace",
-	"--",
-	"-D",
-	"clippy::all",
-	"-D",
-	"clippy::too_many_lines",
-	"-D",
-	"clippy::unwrap_used",
-	"-D",
-	"clippy::use_self",
-	"-D",
-	"clippy::wildcard_imports",
-	"-D",
-	"missing-docs",
-	"-D",
-	"unused-crate-dependencies",
-	"-D",
-	"warnings",
-]
+command = "python3"
+args = ["scripts/lint_rust_workspace.py"]
 
 [tasks.lint-rust-headless]
 workspace = false
-command = "cargo"
-args = [
-	"clippy",
-	"--all-features",
-	"--all-targets",
-	"--workspace",
-	"--exclude",
-	"decodex-gpui",
-	"--",
-	"-D",
-	"clippy::all",
-	"-D",
-	"clippy::too_many_lines",
-	"-D",
-	"clippy::unwrap_used",
-	"-D",
-	"clippy::use_self",
-	"-D",
-	"clippy::wildcard_imports",
-	"-D",
-	"missing-docs",
-	"-D",
-	"unused-crate-dependencies",
-	"-D",
-	"warnings",
-]
+command = "python3"
+args = ["scripts/lint_rust_workspace.py", "--headless"]
 
 # Fix
 # | task          | type      | cwd |

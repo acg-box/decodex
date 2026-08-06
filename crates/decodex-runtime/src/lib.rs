@@ -25,7 +25,6 @@ mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
 mod quick_task;
-#[expect(dead_code, reason = "sealed until a separate live-routing authority enables dispatch")]
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;

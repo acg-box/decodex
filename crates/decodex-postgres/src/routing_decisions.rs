@@ -16,6 +16,20 @@ use crate::{
 	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_key},
 };
 
+const ROUTE_ACCOUNT_SQL: &str = "SELECT decodex.route_account_exact(\
+	 $1,$2,$3::text::uuid,$4::text::decodex.routing_authority_shape,\
+	 $5::text::uuid,$6,$7,$8::text::decodex.provider_attempt_consumer_kind,\
+	 $9::text::uuid,$10,$11::text::uuid,$12,$13::text::uuid,\
+	 $14::text::uuid,$15,$16::text::uuid)";
+
+#[cfg(all(test, feature = "test-support"))]
+pub(crate) async fn prepare_route_account_sql(
+	client: &tokio_postgres::Client,
+) -> Result<usize, StoreError> {
+	client.prepare(ROUTE_ACCOUNT_SQL).await?;
+	Ok(1)
+}
+
 /// Caller-owned operation identity and optimistic authority coordinates.
 ///
 /// Callers cannot supply candidates or evidence through this value. Constructing it does not prove
@@ -28,7 +42,7 @@ pub struct RouteAccount {
 	pub routing_policy_id: String,
 	/// Positive, exact policy revision PostgreSQL must lock for immutable snapshot selection.
 	pub expected_routing_policy_revision: i64,
-	/// Exact ordinary or managed execution consumer. It cannot carry an account choice.
+	/// Exact ManagedRun execution consumer. It cannot carry an account choice.
 	pub consumer: ExecutionConsumer,
 }
 
@@ -52,7 +66,7 @@ pub struct PersistedRoutingDecision {
 }
 
 impl PostgresStore {
-	/// Atomically persist one inert decision over PostgreSQL's complete locked universe.
+	/// Atomically persist one inert ManagedRun decision over PostgreSQL's locked universe.
 	pub async fn route_account(
 		&self,
 		idempotency_key: &str,
@@ -65,6 +79,11 @@ impl PostgresStore {
 		{
 			return Err(StoreError::InvalidInput("routing decision revisions must be positive"));
 		}
+		if !matches!(request.consumer, ExecutionConsumer::ManagedRunExecution { .. }) {
+			return Err(StoreError::InvalidInput(
+				"split routing decisions are reserved for ManagedRun execution",
+			));
+		}
 		let parts = ExecutionConsumerParts::from(&request.consumer);
 		if parts.source_runtime_session_id.is_some()
 			!= parts.source_runtime_session_revision.is_some()
@@ -76,15 +95,15 @@ impl PostgresStore {
 		}
 		let response = self
 			.execute_exact_with_retry(
-				"SELECT decodex.route_account_exact($1,$2,$3::text::uuid,$4::text::uuid,$5,\
-				 $6::text::decodex.provider_attempt_consumer_kind,$7::text::uuid,$8,\
-				 $9::text::uuid,$10,$11::text::uuid,$12::text::uuid,$13,$14::text::uuid)",
+				ROUTE_ACCOUNT_SQL,
 				&[
 					&EXACT_COMMAND_PROTOCOL,
 					&idempotency_key,
 					&request.operation_id,
+					&"managed_run_project_policy",
 					&request.routing_policy_id,
 					&request.expected_routing_policy_revision,
+					&None::<i64>,
 					&parts.kind,
 					&parts.conversation_id,
 					&parts.conversation_revision,
