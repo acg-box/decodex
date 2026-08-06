@@ -15,6 +15,7 @@ struct AccountPanelView: View {
 	let store: ResetCardStore
 	private let layoutVisibleFrameOverride: CGRect?
 	private let loadsExternalState: Bool
+	private let onContentSizeChange: (CGSize) -> Void
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@State private var panelScreenVisibleFrame: CGRect?
@@ -32,31 +33,34 @@ struct AccountPanelView: View {
 		store: ResetCardStore,
 		fastModeStore: FastModeStore = FastModeStore(),
 		layoutVisibleFrameOverride: CGRect? = nil,
-		loadsExternalState: Bool = true
+		loadsExternalState: Bool = true,
+		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
 	) {
 		self.store = store
 		self.layoutVisibleFrameOverride = layoutVisibleFrameOverride
 		self.loadsExternalState = loadsExternalState
+		self.onContentSizeChange = onContentSizeChange
 		_fastMode = State(initialValue: fastModeStore)
 	}
 
 	var body: some View {
-		GlassEffectContainer(spacing: 0) {
-			ZStack {
-				panelContent
-					.disabled(store.accountReauthentication != nil)
-					.allowsHitTesting(store.accountReauthentication == nil)
-					.accessibilityHidden(store.accountReauthentication != nil)
+		// Keep the popover itself transparent and let each section own its
+		// floating surface. Grouping the cards in GlassEffectContainer makes
+		// Liquid Glass merge them into one enclosing panel.
+		ZStack {
+			panelContent
+				.disabled(store.accountReauthentication != nil)
+				.allowsHitTesting(store.accountReauthentication == nil)
+				.accessibilityHidden(store.accountReauthentication != nil)
 
-				if store.accountReauthentication != nil {
-					reauthenticationOverlay
-						.transition(
-							.opacity.combined(
-								with: .scale(scale: 0.98, anchor: .center)
-							)
+			if store.accountReauthentication != nil {
+				reauthenticationOverlay
+					.transition(
+						.opacity.combined(
+							with: .scale(scale: 0.98, anchor: .center)
 						)
-						.zIndex(1)
-				}
+					)
+					.zIndex(1)
 			}
 		}
 		.environment(\.panelCardMaterial, panelCardMaterial)
@@ -65,11 +69,14 @@ struct AccountPanelView: View {
 		.controlSize(.small)
 		.symbolRenderingMode(.hierarchical)
 		.animation(panelLayoutAnimation, value: store.accounts.map(\.id))
-		.sizesPanelWindowToContent { visibleFrame in
-			if panelScreenVisibleFrame != visibleFrame {
-				panelScreenVisibleFrame = visibleFrame
-			}
-		}
+		.reportsPanelContentMetrics(
+			onVisibleFrameChange: { visibleFrame in
+				if panelScreenVisibleFrame != visibleFrame {
+					panelScreenVisibleFrame = visibleFrame
+				}
+			},
+			onContentSizeChange: onContentSizeChange
+		)
 		// Re-key the singleton panel, rather than every repeated card, when
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")

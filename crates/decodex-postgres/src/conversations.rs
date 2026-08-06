@@ -14,6 +14,7 @@ use tokio_postgres::{Row, Transaction, error::SqlState};
 use crate::{
 	CommandIdentity, PostgresStore, StoreError,
 	accounts::{self, CommandClaim, CommandDescriptor},
+	exact_commands::{EXACT_COMMAND_PROTOCOL, validate_exact_effect_digest, validate_exact_key},
 };
 use decodex_core::{
 	self, ArtifactId, ArtifactStatus, BlobHash, BlobInventoryCursor, BlobStore, ContextPack,
@@ -34,9 +35,19 @@ const READ_ORDINARY_TASK_CONVERSATIONS_SQL: &str = "SELECT conversation_id::text
 	 thread_start_response_id,thread_start_response_sha256,has_acknowledged_turn,\
 		 active_user_turn_id::text,\
 		 active_user_turn_count,has_active_provider_attempt,has_unknown_provider_attempt,\
-		 pre_session_state::text,routing_decision_id::text,updated_at_micros \
+		 pre_session_state::text,routing_decision_id::text,updated_at_micros,\
+		 routing_successor_conversation_id::text,routing_successor_conversation_revision,\
+		 has_admitted_user_turn \
 	 FROM decodex.read_ordinary_task_conversations_exact(\
 	 $1::text::uuid,$2,$3::text::uuid,$4)";
+const READ_QUICK_TASK_REQUEST_SQL: &str = "SELECT message,working_directory \
+	 FROM decodex.read_quick_task_request_exact($1::text::uuid)";
+const CREATE_ROUTING_SUCCESSOR_SQL: &str = "SELECT response_bytes,replayed FROM \
+	 decodex.create_quick_task_routing_successor_exact($1,$2,$3::text::uuid,$4)";
+const ADMIT_INITIAL_QUICK_TASK_TURN_SQL: &str = "SELECT response_bytes,replayed FROM \
+	 decodex.admit_initial_quick_task_turn_exact(\
+	 $1,$2,$3::text::uuid,$4,$5::text::uuid,$6,$7::text::uuid,$8::text::uuid,\
+	 $9::text::uuid,$10,$11,$12,$13)";
 const READ_TURN_ADMISSION_SQL: &str = "SELECT conversation_id::text,runtime_session_id::text,turn_id::text,sequence,\
 	 role::text,possible_side_effects::text,status::text,revision \
 	 FROM decodex.read_turn_admission_exact(\
@@ -57,8 +68,11 @@ const RECONCILE_QUICK_TASK_TERMINALIZATIONS_SQL: &str =
 pub(crate) async fn prepare_conversation_admission_sql(
 	client: &tokio_postgres::Client,
 ) -> Result<usize, StoreError> {
-	const SOURCES: [&str; 4] = [
+	const SOURCES: [&str; 7] = [
 		READ_ORDINARY_TASK_CONVERSATIONS_SQL,
+		READ_QUICK_TASK_REQUEST_SQL,
+		CREATE_ROUTING_SUCCESSOR_SQL,
+		ADMIT_INITIAL_QUICK_TASK_TURN_SQL,
 		READ_TURN_ADMISSION_SQL,
 		TERMINALIZE_QUICK_TASK_TURN_SQL,
 		RECONCILE_QUICK_TASK_TERMINALIZATIONS_SQL,
@@ -76,6 +90,68 @@ pub struct CreateConversation {
 	pub conversation_id: ConversationId,
 	/// Bounded display title.
 	pub title: String,
+}
+
+/// Create one ordinary Quick Task Conversation with immutable initial request coordinates.
+#[derive(Clone, Debug)]
+pub struct CreateQuickTaskConversation {
+	/// Caller-selected logical identity.
+	pub conversation_id: ConversationId,
+	/// Bounded display title.
+	pub title: String,
+	/// Original first-Turn message used by route and establishment recovery.
+	pub message: String,
+	/// Original absolute working directory used by establishment recovery.
+	pub working_directory: String,
+}
+
+/// Immutable original request coordinates for one open ordinary Quick Task Conversation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuickTaskRequest {
+	/// Original first-Turn message.
+	pub message: String,
+	/// Original absolute working directory.
+	pub working_directory: String,
+}
+
+/// Conversation-owner input for a waiting/no-route routing successor.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct CreateQuickTaskRoutingSuccessor {
+	/// Waiting/no-route source Conversation.
+	pub source_conversation_id: ConversationId,
+	/// Exact expected open source revision.
+	pub expected_source_revision: i64,
+}
+
+/// Exact immutable source-to-successor relation readback.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct QuickTaskRoutingSuccessor {
+	/// Archived waiting/no-route source Conversation.
+	pub source_conversation_id: ConversationId,
+	/// Archived source revision after the command.
+	pub source_revision: i64,
+	/// Fresh open routing Conversation.
+	pub successor_conversation_id: ConversationId,
+	/// Fresh successor revision, always one.
+	pub successor_revision: i64,
+	/// Initial waiting/no-route decision that authorized the successor.
+	pub source_routing_decision_id: String,
+}
+
+/// Exact result of the Conversation-owned routing-successor command.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum QuickTaskRoutingSuccessorOutcome {
+	/// This call created and archived the exact pair.
+	Fresh(QuickTaskRoutingSuccessor),
+	/// The same exact command returned its committed pair.
+	Replayed(QuickTaskRoutingSuccessor),
+	/// Stable refusal with no successor created.
+	Rejected {
+		/// Stable refusal code.
+		code: String,
+		/// Whether this result was replayed.
+		replayed: bool,
+	},
 }
 
 /// Committed logical Conversation readback.
@@ -109,6 +185,61 @@ pub enum TurnReservationOutcome {
 	Fresh(TurnReservationReadback),
 	/// The exact history command was already complete; current Turn authority is read back only.
 	Replayed(TurnReservationReadback),
+}
+
+/// Exact first-Turn admission consumed only by the initial Quick Task plan owner.
+#[derive(Clone, Debug)]
+pub struct AdmitInitialQuickTaskTurn {
+	/// Positive Conversation revision bound by the initial plan.
+	pub expected_conversation_revision: i64,
+	/// Exact starting RuntimeSession revision; this command accepts only revision one.
+	pub expected_runtime_session_revision: i64,
+	/// Immutable initial-thread Continuation Plan identity.
+	pub continuation_plan_id: String,
+	/// Exact initial user Turn and completed message shape.
+	pub message: RecordHistoryItem,
+}
+
+/// Exact durable readback from atomic initial Quick Task admission.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct InitialQuickTaskTurnAdmissionReadback {
+	/// Selected initial Routing Decision bound through the immutable plan.
+	pub routing_decision_id: String,
+	/// Exact immutable initial-thread Continuation Plan identity.
+	pub continuation_plan_id: String,
+	/// Active revision-one user Turn created by the command.
+	pub turn: TurnReservationReadback,
+	/// Completed revision-one message created with the Turn.
+	pub history_item_id: HistoryItemId,
+}
+
+/// Closed stable refusal from atomic initial Quick Task admission.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum InitialQuickTaskTurnAdmissionRejection {
+	/// Input failed the command's exact bounded shape.
+	InvalidInput,
+	/// Conversation, session, plan, or selected route authority is unavailable.
+	AuthorityUnavailable,
+	/// Another Turn or history identity already occupies the initial admission surface.
+	InitialAdmissionConflict,
+	/// The referenced content-addressed message blob is absent.
+	MessageBlobMissing,
+}
+
+/// Closed exact result from atomic initial Quick Task Turn admission.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum InitialQuickTaskTurnAdmissionOutcome {
+	/// This call committed the Turn, message, activity, outbox, and exact response.
+	Fresh(InitialQuickTaskTurnAdmissionReadback),
+	/// The same exact command was already complete and returned immutable response bytes.
+	Replayed(InitialQuickTaskTurnAdmissionReadback),
+	/// The exact command durably refused without creating the Turn or message.
+	Rejected {
+		/// Stable typed refusal.
+		rejection: InitialQuickTaskTurnAdmissionRejection,
+		/// True when this call read the already completed refusal receipt.
+		replayed: bool,
+	},
 }
 
 /// Exact positive-evidence coordinates for one crash-convergent ordinary Turn terminalization.
@@ -201,6 +332,8 @@ pub struct OrdinaryTaskConversationReadback {
 	pub has_acknowledged_turn: bool,
 	/// Exact active logical user Turn, when durable state requires reconciliation.
 	pub active_turn_id: Option<TurnId>,
+	/// At least one logical user Turn has been durably admitted for this session.
+	pub has_admitted_user_turn: bool,
 	/// A prepared or dispatch-authorized ProviderAttempt remains unresolved.
 	pub has_active_provider_attempt: bool,
 	/// A ProviderAttempt has terminally unknown submission outcome.
@@ -213,15 +346,33 @@ pub struct OrdinaryTaskConversationReadback {
 	pub updated_at_micros: i64,
 }
 
+/// Typed ordinary Conversation get/list projection.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum OrdinaryTaskConversationProjection {
+	/// Current open ordinary Conversation.
+	Current(OrdinaryTaskConversationReadback),
+	/// Archived waiting/no-route source redirects directly to its sole open successor.
+	RoutingSuccessorRedirect {
+		/// Archived source identity requested by the caller.
+		source_conversation_id: ConversationId,
+		/// Exact archived source revision.
+		source_revision: i64,
+		/// Sole fresh routing successor.
+		successor_conversation_id: ConversationId,
+		/// Exact open successor revision.
+		successor_conversation_revision: i64,
+	},
+}
+
 /// Credential-negative state derived from the latest immutable L0 Routing Decision.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrdinaryTaskPreSessionState {
 	/// The Conversation committed before a corresponding Routing Decision was available.
 	RoutingPending,
+	/// Initial selection committed, but RuntimeSession and initial plan are absent.
+	EstablishmentPending,
 	/// Positive current quota facts exhausted every eligible route.
 	QuotaExhausted,
-	/// Exact execution authority remains unresolved and no retry is automatic.
-	WaitingReconciliation,
 	/// The latest explicit decision found no eligible route.
 	NoRoute,
 }
@@ -240,11 +391,14 @@ struct OrdinaryTaskConversationRow {
 	has_acknowledged_turn: bool,
 	active_turn_id: Option<TurnId>,
 	active_turn_count: i64,
+	has_admitted_user_turn: bool,
 	has_active_provider_attempt: bool,
 	has_unknown_provider_attempt: bool,
 	pre_session_state: Option<OrdinaryTaskPreSessionState>,
 	routing_decision_id: Option<String>,
 	updated_at_micros: i64,
+	routing_successor_conversation_id: Option<ConversationId>,
+	routing_successor_conversation_revision: Option<i64>,
 }
 
 /// Create one immutable-content Artifact scoped to a logical Conversation.
@@ -484,8 +638,8 @@ fn parse_ordinary_task_conversation_row(
 		.get::<_, Option<String>>(15)
 		.map(|state| match state.as_str() {
 			"routing_pending" => Ok(OrdinaryTaskPreSessionState::RoutingPending),
+			"establishment_pending" => Ok(OrdinaryTaskPreSessionState::EstablishmentPending),
 			"quota_exhausted" => Ok(OrdinaryTaskPreSessionState::QuotaExhausted),
-			"waiting_reconciliation" => Ok(OrdinaryTaskPreSessionState::WaitingReconciliation),
 			"no_route" => Ok(OrdinaryTaskPreSessionState::NoRoute),
 			_ => Err(StoreError::Incompatible("ordinary Task pre-session state is invalid".into())),
 		})
@@ -509,39 +663,101 @@ fn parse_ordinary_task_conversation_row(
 		pre_session_state,
 		routing_decision_id: row.get(16),
 		updated_at_micros: row.get(17),
+		routing_successor_conversation_id: row
+			.get::<_, Option<String>>(18)
+			.map(ConversationId::new)
+			.transpose()
+			.map_err(|_| {
+				StoreError::Incompatible(
+					"ordinary Task routing successor identity is invalid".into(),
+				)
+			})?,
+		routing_successor_conversation_revision: row.get(19),
+		has_admitted_user_turn: row.get(20),
 	})
 }
 
 impl OrdinaryTaskConversationRow {
+	fn into_projection(self) -> Result<OrdinaryTaskConversationProjection, StoreError> {
+		if let Some(successor_conversation_id) = self.routing_successor_conversation_id.clone() {
+			let Some(successor_conversation_revision) =
+				self.routing_successor_conversation_revision
+			else {
+				return Err(StoreError::Incompatible(
+					"ordinary Task routing redirect successor revision is absent".into(),
+				));
+			};
+			if self.conversation_revision <= 0
+				|| successor_conversation_revision <= 0
+				|| self.updated_at_micros <= 0
+				|| self.runtime_session_id.is_some()
+				|| self.runtime_session_revision.is_some()
+				|| self.runtime_session_state.is_some()
+				|| self.codex_thread_id.is_some()
+				|| self.thread_start_request_id.is_some()
+				|| self.thread_start_request_sha256.is_some()
+				|| self.thread_start_response_id.is_some()
+				|| self.thread_start_response_sha256.is_some()
+				|| self.has_acknowledged_turn
+				|| self.active_turn_id.is_some()
+				|| self.active_turn_count != 0
+				|| self.has_admitted_user_turn
+				|| self.has_active_provider_attempt
+				|| self.has_unknown_provider_attempt
+				|| self.pre_session_state.is_some()
+				|| self.routing_decision_id.is_some()
+			{
+				return Err(StoreError::Incompatible(
+					"ordinary Task routing redirect is inconsistent".into(),
+				));
+			}
+			return Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
+				source_conversation_id: self.conversation_id,
+				source_revision: self.conversation_revision,
+				successor_conversation_id,
+				successor_conversation_revision,
+			});
+		}
+		if self.routing_successor_conversation_revision.is_some() {
+			return Err(StoreError::Incompatible(
+				"ordinary Task current projection has redirect revision authority".into(),
+			));
+		}
+		self.into_readback().map(OrdinaryTaskConversationProjection::Current)
+	}
+
 	fn into_readback(self) -> Result<OrdinaryTaskConversationReadback, StoreError> {
+		let starting_thread_shape = || {
+			!self.has_acknowledged_turn
+				&& self.codex_thread_id.is_none()
+				&& self.thread_start_response_id.is_none()
+				&& self.thread_start_response_sha256.is_none()
+				&& match (self.thread_start_request_id, self.thread_start_request_sha256.as_deref())
+				{
+					(None, None) => true,
+					(Some(id), Some(digest)) => id > 0 && is_lower_sha256(digest),
+					_ => false,
+				}
+		};
+		let active_thread_shape = || {
+			self.codex_thread_id.as_ref().is_some_and(|id| is_canonical_uuid(id))
+				&& self.thread_start_request_id.is_some_and(|id| id > 0)
+				&& self.thread_start_response_id.is_some_and(|id| id > 0)
+				&& self.thread_start_response_id == self.thread_start_request_id
+				&& self
+					.thread_start_request_sha256
+					.as_ref()
+					.is_some_and(|digest| is_lower_sha256(digest))
+				&& self
+					.thread_start_response_sha256
+					.as_ref()
+					.is_some_and(|digest| is_lower_sha256(digest))
+		};
 		let lifecycle_valid = match self.runtime_session_state.as_ref() {
-			Some(RuntimeSessionState::Starting) =>
-				!self.has_acknowledged_turn
-					&& self.codex_thread_id.is_none()
-					&& self.thread_start_response_id.is_none()
-					&& self.thread_start_response_sha256.is_none()
-					&& match (
-						self.thread_start_request_id,
-						self.thread_start_request_sha256.as_deref(),
-					) {
-						(None, None) => true,
-						(Some(id), Some(digest)) => id > 0 && is_lower_sha256(digest),
-						_ => false,
-					},
-			Some(RuntimeSessionState::Active) =>
-				self.codex_thread_id.as_ref().is_some_and(|id| is_canonical_uuid(id))
-					&& self.thread_start_request_id.is_some_and(|id| id > 0)
-					&& self.thread_start_response_id.is_some_and(|id| id > 0)
-					&& self.thread_start_response_id == self.thread_start_request_id
-					&& self
-						.thread_start_request_sha256
-						.as_ref()
-						.is_some_and(|digest| is_lower_sha256(digest))
-					&& self
-						.thread_start_response_sha256
-						.as_ref()
-						.is_some_and(|digest| is_lower_sha256(digest)),
-			Some(RuntimeSessionState::Ended | RuntimeSessionState::Diverged) => false,
+			Some(RuntimeSessionState::Starting) => starting_thread_shape(),
+			Some(RuntimeSessionState::Active) => active_thread_shape(),
+			Some(RuntimeSessionState::Ended | RuntimeSessionState::Diverged) =>
+				starting_thread_shape() || active_thread_shape(),
 			None =>
 				!self.has_acknowledged_turn
 					&& self.codex_thread_id.is_none()
@@ -554,11 +770,10 @@ impl OrdinaryTaskConversationRow {
 			&& self.runtime_session_revision.is_some()
 			&& self.runtime_session_state.is_some();
 		let routing_shape_valid = match self.pre_session_state.as_ref() {
-			Some(OrdinaryTaskPreSessionState::RoutingPending) =>
-				self.routing_decision_id.as_deref().is_none_or(is_canonical_uuid),
+			Some(OrdinaryTaskPreSessionState::RoutingPending) => self.routing_decision_id.is_none(),
 			Some(
-				OrdinaryTaskPreSessionState::QuotaExhausted
-				| OrdinaryTaskPreSessionState::WaitingReconciliation
+				OrdinaryTaskPreSessionState::EstablishmentPending
+				| OrdinaryTaskPreSessionState::QuotaExhausted
 				| OrdinaryTaskPreSessionState::NoRoute,
 			) => self.routing_decision_id.as_deref().is_some_and(is_canonical_uuid),
 			None =>
@@ -573,9 +788,12 @@ impl OrdinaryTaskConversationRow {
 			|| has_runtime_session == self.pre_session_state.is_some()
 			|| !(0..=1).contains(&self.active_turn_count)
 			|| (self.active_turn_count == 1) != self.active_turn_id.is_some()
+			|| self.active_turn_id.is_some() && !self.has_admitted_user_turn
+			|| self.has_acknowledged_turn && !self.has_admitted_user_turn
 			|| self.has_active_provider_attempt && self.has_unknown_provider_attempt
 			|| !has_runtime_session
-				&& (self.active_turn_id.is_some()
+				&& (self.has_admitted_user_turn
+					|| self.active_turn_id.is_some()
 					|| self.has_active_provider_attempt
 					|| self.has_unknown_provider_attempt)
 			|| !routing_shape_valid
@@ -593,12 +811,29 @@ impl OrdinaryTaskConversationRow {
 			runtime_session_state: self.runtime_session_state,
 			has_acknowledged_turn: self.has_acknowledged_turn,
 			active_turn_id: self.active_turn_id,
+			has_admitted_user_turn: self.has_admitted_user_turn,
 			has_active_provider_attempt: self.has_active_provider_attempt,
 			has_unknown_provider_attempt: self.has_unknown_provider_attempt,
 			pre_session_state: self.pre_session_state,
 			routing_decision_id: self.routing_decision_id,
 			updated_at_micros: self.updated_at_micros,
 		})
+	}
+}
+
+impl OrdinaryTaskConversationProjection {
+	fn conversation_id(&self) -> &ConversationId {
+		match self {
+			Self::Current(readback) => &readback.conversation_id,
+			Self::RoutingSuccessorRedirect { source_conversation_id, .. } => source_conversation_id,
+		}
+	}
+
+	fn updated_at_micros(&self) -> i64 {
+		match self {
+			Self::Current(readback) => readback.updated_at_micros,
+			Self::RoutingSuccessorRedirect { .. } => 0,
+		}
 	}
 }
 
@@ -753,13 +988,220 @@ impl PostgresStore {
 		conversation_from_response(&response)
 	}
 
+	/// Atomically create one ordinary Quick Task Conversation and retain its original request.
+	pub async fn create_quick_task_conversation(
+		&self,
+		command: &CommandIdentity,
+		create: &CreateQuickTaskConversation,
+	) -> Result<StoredConversation, StoreError> {
+		if create.title.is_empty()
+			|| create.title.len() > 512
+			|| create.message.is_empty()
+			|| create.message.len() > 16_384
+			|| create.working_directory.is_empty()
+			|| create.working_directory.len() > 4_096
+			|| !create.working_directory.starts_with('/')
+			|| create.working_directory.chars().any(char::is_control)
+		{
+			return Err(StoreError::InvalidInput(
+				"initial Quick Task Conversation request is invalid",
+			));
+		}
+		crate::ensure_credential_negative_text(&create.title)?;
+		crate::ensure_credential_negative_text(&create.message)?;
+
+		let mut client = self.pool().get().await?;
+		let reservation = match reserve_conversation_command(
+			&mut client,
+			command,
+			"create_quick_task_conversation",
+			("global", "conversations", create.conversation_id.as_str()),
+			None,
+			None,
+		)
+		.await?
+		{
+			accounts::CommandClaim::Completed(response) => {
+				return conversation_from_response(&response);
+			},
+			accounts::CommandClaim::Owned(reservation) => reservation,
+		};
+		let transaction = client.transaction().await?;
+		let inserted = transaction
+			.query_opt(
+				"INSERT INTO decodex.conversations (conversation_id,title,\
+				 initial_quick_task_message,initial_quick_task_working_directory) \
+				 VALUES ($1::text::uuid,$2,$3,$4) ON CONFLICT DO NOTHING \
+				 RETURNING revision",
+				&[
+					&create.conversation_id.as_str(),
+					&create.title,
+					&create.message,
+					&create.working_directory,
+				],
+			)
+			.await?;
+		if inserted.is_none() {
+			return Err(StoreError::RevisionConflict {
+				entity: format!("conversation/{}", create.conversation_id),
+				expected: None,
+				actual: conversation_revision(&transaction, &create.conversation_id).await?,
+			});
+		}
+		let payload = serde_json::json!({
+			"conversation_id": create.conversation_id.as_str(),
+			"revision": 1,
+			"request_kind": "quick_task",
+		});
+		accounts::append_activity_and_outbox(
+			&transaction,
+			"conversation",
+			create.conversation_id.as_str(),
+			1,
+			"quick_task_conversation_created",
+			&command.key,
+			&payload,
+		)
+		.await?;
+		let response = serde_json::json!({
+			"kind": "conversation",
+			"conversation_id": create.conversation_id.as_str(),
+			"title": create.title,
+			"revision": 1,
+		});
+		accounts::finish_command(&transaction, &reservation, &response).await?;
+		transaction.commit().await?;
+		conversation_from_response(&response)
+	}
+
+	/// Read immutable original request coordinates for routing or establishment recovery.
+	pub async fn read_quick_task_request(
+		&self,
+		conversation_id: &ConversationId,
+	) -> Result<Option<QuickTaskRequest>, StoreError> {
+		let rows = self
+			.pool()
+			.get()
+			.await?
+			.query(READ_QUICK_TASK_REQUEST_SQL, &[&conversation_id.as_str()])
+			.await?;
+		if rows.len() > 1 {
+			return Err(StoreError::Incompatible(
+				"Quick Task request readback is not unique".into(),
+			));
+		}
+		Ok(rows
+			.first()
+			.map(|row| QuickTaskRequest { message: row.get(0), working_directory: row.get(1) }))
+	}
+
+	/// Create one fresh routing Conversation and archive its waiting/no-route source.
+	pub async fn create_quick_task_routing_successor(
+		&self,
+		idempotency_key: &str,
+		request: &CreateQuickTaskRoutingSuccessor,
+	) -> Result<QuickTaskRoutingSuccessorOutcome, StoreError> {
+		validate_exact_key(idempotency_key)?;
+		if request.expected_source_revision <= 0 {
+			return Err(StoreError::InvalidInput(
+				"routing successor source revision must be positive",
+			));
+		}
+		let (response, replayed) = self
+			.execute_exact_with_replay_status(
+				CREATE_ROUTING_SUCCESSOR_SQL,
+				&[
+					&EXACT_COMMAND_PROTOCOL,
+					&idempotency_key,
+					&request.source_conversation_id.as_str(),
+					&request.expected_source_revision,
+				],
+			)
+			.await?;
+		parse_routing_successor_response(&response, replayed, request)
+	}
+
+	/// Atomically admit the first Quick Task Turn and its completed user message.
+	pub async fn admit_initial_quick_task_turn(
+		&self,
+		blob_store: &BlobStore,
+		idempotency_key: &str,
+		request: &AdmitInitialQuickTaskTurn,
+	) -> Result<InitialQuickTaskTurnAdmissionOutcome, StoreError> {
+		validate_exact_key(idempotency_key)?;
+		let message = &request.message;
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision != 1
+			|| !is_canonical_uuid(&request.continuation_plan_id)
+			|| message.turn_sequence != 1
+			|| message.turn_role != TurnRole::User
+			|| message.possible_side_effects != PossibleSideEffects::Unknown
+			|| message.ordinal != 0
+			|| message.kind != HistoryItemKind::Message
+			|| message.status != ItemStatus::Completed
+			|| message.expected_revision.is_some()
+			|| message.artifact.is_some()
+		{
+			return Err(StoreError::InvalidInput("initial Quick Task admission shape is invalid"));
+		}
+		validate_history_item(message)?;
+
+		let blob = prepare_payload(&message.text)?;
+		let metadata = history_metadata_json(&message.metadata)?;
+		let mut publication = if let Some((hash, _)) = blob {
+			let publication = self.lock_blob_session(&[hash], &[hash]).await?;
+			publish_verified_blob(blob_store, hash, message.text.as_bytes())?;
+			publication
+		} else {
+			self.dedicated_session().await?
+		};
+		let transaction = publication.client.transaction().await?;
+		if let Some((hash, byte_length)) = blob {
+			insert_verified_blob(&transaction, hash, byte_length).await?;
+		}
+		let inline_text = blob.is_none().then_some(message.text.as_str());
+		let blob_hash = blob.map(|(hash, _)| hash.to_hex());
+		let row = transaction
+			.query_one(
+				ADMIT_INITIAL_QUICK_TASK_TURN_SQL,
+				&[
+					&EXACT_COMMAND_PROTOCOL,
+					&idempotency_key,
+					&message.conversation_id.as_str(),
+					&request.expected_conversation_revision,
+					&message.runtime_session_id.as_str(),
+					&request.expected_runtime_session_revision,
+					&request.continuation_plan_id,
+					&message.turn_id.as_str(),
+					&message.history_item_id.as_str(),
+					&inline_text,
+					&blob_hash,
+					&message.media_type.as_str(),
+					&metadata,
+				],
+			)
+			.await?;
+		let response: Vec<u8> = row.get(0);
+		let replayed: bool = row.get(1);
+		let outcome = parse_initial_quick_task_admission_response(
+			&response,
+			replayed,
+			request,
+			inline_text,
+			blob_hash.as_deref(),
+			&metadata,
+		)?;
+		transaction.commit().await?;
+		Ok(outcome)
+	}
+
 	/// Read one bounded function-only page of ordinary Task-role Conversations.
 	pub async fn read_ordinary_task_conversations(
 		&self,
 		conversation_id: Option<&ConversationId>,
 		after: Option<&OrdinaryTaskConversationCursor>,
 		limit: usize,
-	) -> Result<Vec<OrdinaryTaskConversationReadback>, StoreError> {
+	) -> Result<Vec<OrdinaryTaskConversationProjection>, StoreError> {
 		if limit == 0 || limit > 65 || conversation_id.is_some() && after.is_some() {
 			return Err(StoreError::InvalidInput(
 				"ordinary Task Conversation read bound is invalid",
@@ -790,18 +1232,18 @@ impl PostgresStore {
 
 		let readbacks = rows
 			.into_iter()
-			.map(|row| parse_ordinary_task_conversation_row(row)?.into_readback())
+			.map(|row| parse_ordinary_task_conversation_row(row)?.into_projection())
 			.collect::<Result<Vec<_>, StoreError>>()?;
 
 		if readbacks.windows(2).any(|pair| {
-			pair[0].updated_at_micros < pair[1].updated_at_micros
-				|| pair[0].updated_at_micros == pair[1].updated_at_micros
-					&& pair[0].conversation_id.as_str() <= pair[1].conversation_id.as_str()
+			pair[0].updated_at_micros() < pair[1].updated_at_micros()
+				|| pair[0].updated_at_micros() == pair[1].updated_at_micros()
+					&& pair[0].conversation_id().as_str() <= pair[1].conversation_id().as_str()
 		}) || after.is_some_and(|cursor| {
 			readbacks.first().is_some_and(|first| {
-				first.updated_at_micros > cursor.updated_at_micros
-					|| first.updated_at_micros == cursor.updated_at_micros
-						&& first.conversation_id.as_str() >= cursor.conversation_id.as_str()
+				first.updated_at_micros() > cursor.updated_at_micros
+					|| first.updated_at_micros() == cursor.updated_at_micros
+						&& first.conversation_id().as_str() >= cursor.conversation_id.as_str()
 			})
 		}) {
 			return Err(StoreError::Incompatible(
@@ -2538,6 +2980,209 @@ fn history_entry_from_response(response: &Value) -> Result<HistoryEntry, StoreEr
 		metadata,
 		artifact,
 		revision: response_revision(response, "history_item")?,
+	})
+}
+
+fn parse_initial_quick_task_admission_response(
+	response: &[u8],
+	replayed: bool,
+	request: &AdmitInitialQuickTaskTurn,
+	inline_text: Option<&str>,
+	blob_hash: Option<&str>,
+	metadata: &Value,
+) -> Result<InitialQuickTaskTurnAdmissionOutcome, StoreError> {
+	let document: Value = serde_json::from_slice(response).map_err(|_| {
+		StoreError::Incompatible("initial Quick Task admission response is invalid".into())
+	})?;
+	let classification =
+		document.get("classification").and_then(Value::as_str).ok_or_else(|| {
+			StoreError::Incompatible("initial Quick Task admission classification is absent".into())
+		})?;
+	let effect = document.get("effect").filter(|value| value.is_object()).ok_or_else(|| {
+		StoreError::Incompatible("initial Quick Task admission effect is invalid".into())
+	})?;
+	validate_exact_effect_digest(effect)?;
+	if classification == "stable_domain_rejection" {
+		let rejection = match effect.get("code").and_then(Value::as_str) {
+			Some("invalid_input") => InitialQuickTaskTurnAdmissionRejection::InvalidInput,
+			Some("authority_unavailable") =>
+				InitialQuickTaskTurnAdmissionRejection::AuthorityUnavailable,
+			Some("initial_admission_conflict") =>
+				InitialQuickTaskTurnAdmissionRejection::InitialAdmissionConflict,
+			Some("message_blob_missing") =>
+				InitialQuickTaskTurnAdmissionRejection::MessageBlobMissing,
+			_ => {
+				return Err(StoreError::Incompatible(
+					"initial Quick Task admission rejection is unknown".into(),
+				));
+			},
+		};
+		if effect.get("operation").and_then(Value::as_str) != Some("admit_initial_quick_task_turn")
+		{
+			return Err(StoreError::Incompatible(
+				"initial Quick Task admission rejection is cross-linked".into(),
+			));
+		}
+		return Ok(InitialQuickTaskTurnAdmissionOutcome::Rejected { rejection, replayed });
+	}
+	if classification != "success" {
+		return Err(StoreError::Incompatible(
+			"initial Quick Task admission classification is unknown".into(),
+		));
+	}
+
+	let message_request = &request.message;
+	let turn = effect.get("turn").filter(|value| value.is_object()).ok_or_else(|| {
+		StoreError::Incompatible("initial Quick Task Turn effect is absent".into())
+	})?;
+	let message = effect.get("message").filter(|value| value.is_object()).ok_or_else(|| {
+		StoreError::Incompatible("initial Quick Task message effect is absent".into())
+	})?;
+	let routing_decision_id = effect
+		.get("routing_decision_id")
+		.and_then(Value::as_str)
+		.filter(|value| is_canonical_uuid(value))
+		.ok_or_else(|| {
+			StoreError::Incompatible("initial Quick Task Routing Decision is invalid".into())
+		})?;
+	let optional_payload_is_exact = |value: &Value, key: &str, expected: Option<&str>| {
+		value.get(key).is_some() && value.get(key).and_then(Value::as_str) == expected
+	};
+	let exact = effect.get("operation").and_then(Value::as_str)
+		== Some("admit_initial_quick_task_turn")
+		&& effect.get("kind").and_then(Value::as_str) == Some("initial_quick_task_turn_admission")
+		&& effect.get("conversation_id").and_then(Value::as_str)
+			== Some(message_request.conversation_id.as_str())
+		&& effect.get("conversation_revision").and_then(Value::as_i64)
+			== Some(request.expected_conversation_revision)
+		&& effect.get("runtime_session_id").and_then(Value::as_str)
+			== Some(message_request.runtime_session_id.as_str())
+		&& effect.get("runtime_session_revision").and_then(Value::as_i64)
+			== Some(request.expected_runtime_session_revision)
+		&& effect.get("continuation_plan_id").and_then(Value::as_str)
+			== Some(request.continuation_plan_id.as_str())
+		&& effect.get("activity_sequence").and_then(Value::as_i64).is_some_and(|v| v > 0)
+		&& effect.get("outbox_id").and_then(Value::as_i64).is_some_and(|v| v > 0)
+		&& turn.get("turn_id").and_then(Value::as_str) == Some(message_request.turn_id.as_str())
+		&& turn.get("conversation_id").and_then(Value::as_str)
+			== Some(message_request.conversation_id.as_str())
+		&& turn.get("runtime_session_id").and_then(Value::as_str)
+			== Some(message_request.runtime_session_id.as_str())
+		&& turn.get("sequence").and_then(Value::as_i64) == Some(1)
+		&& turn.get("role").and_then(Value::as_str) == Some("user")
+		&& turn.get("possible_side_effects").and_then(Value::as_str) == Some("unknown")
+		&& turn.get("status").and_then(Value::as_str) == Some("active")
+		&& turn.get("revision").and_then(Value::as_i64) == Some(1)
+		&& message.get("history_item_id").and_then(Value::as_str)
+			== Some(message_request.history_item_id.as_str())
+		&& message.get("conversation_id").and_then(Value::as_str)
+			== Some(message_request.conversation_id.as_str())
+		&& message.get("history_position").and_then(Value::as_i64) == Some(1)
+		&& message.get("turn_id").and_then(Value::as_str) == Some(message_request.turn_id.as_str())
+		&& message.get("ordinal").and_then(Value::as_i64) == Some(0)
+		&& message.get("kind").and_then(Value::as_str) == Some("message")
+		&& message.get("status").and_then(Value::as_str) == Some("completed")
+		&& optional_payload_is_exact(message, "inline_text", inline_text)
+		&& optional_payload_is_exact(message, "blob_hash", blob_hash)
+		&& message.get("media_type").and_then(Value::as_str)
+			== Some(message_request.media_type.as_str())
+		&& message.get("metadata") == Some(metadata)
+		&& message.get("revision").and_then(Value::as_i64) == Some(1);
+	if !exact {
+		return Err(StoreError::Incompatible(
+			"initial Quick Task admission success is cross-linked".into(),
+		));
+	}
+	let readback = InitialQuickTaskTurnAdmissionReadback {
+		routing_decision_id: routing_decision_id.to_owned(),
+		continuation_plan_id: request.continuation_plan_id.clone(),
+		turn: TurnReservationReadback {
+			turn_id: message_request.turn_id.clone(),
+			sequence: 1,
+			status: TurnStatus::Active,
+			revision: 1,
+		},
+		history_item_id: message_request.history_item_id.clone(),
+	};
+	Ok(if replayed {
+		InitialQuickTaskTurnAdmissionOutcome::Replayed(readback)
+	} else {
+		InitialQuickTaskTurnAdmissionOutcome::Fresh(readback)
+	})
+}
+
+fn parse_routing_successor_response(
+	response: &[u8],
+	replayed: bool,
+	request: &CreateQuickTaskRoutingSuccessor,
+) -> Result<QuickTaskRoutingSuccessorOutcome, StoreError> {
+	let document: Value = serde_json::from_slice(response).map_err(|_| {
+		StoreError::Incompatible("routing Conversation successor response is invalid".into())
+	})?;
+	let classification =
+		document.get("classification").and_then(Value::as_str).ok_or_else(|| {
+			StoreError::Incompatible(
+				"routing Conversation successor classification is absent".into(),
+			)
+		})?;
+	let effect = document.get("effect").filter(|value| value.is_object()).ok_or_else(|| {
+		StoreError::Incompatible("routing Conversation successor effect is absent".into())
+	})?;
+	validate_exact_effect_digest(effect)?;
+	if effect.get("operation").and_then(Value::as_str)
+		!= Some("create_quick_task_routing_successor")
+	{
+		return Err(StoreError::Incompatible(
+			"routing Conversation successor response is cross-linked".into(),
+		));
+	}
+	if classification == "stable_domain_rejection" {
+		let code = effect.get("rejection").and_then(Value::as_str).ok_or_else(|| {
+			StoreError::Incompatible("routing successor rejection is absent".into())
+		})?;
+		if !matches!(
+			code,
+			"malformed_input"
+				| "source_conversation_mismatch"
+				| "routing_successor_already_exists"
+				| "routing_successor_forbidden"
+		) {
+			return Err(StoreError::Incompatible("routing successor rejection is unknown".into()));
+		}
+		return Ok(QuickTaskRoutingSuccessorOutcome::Rejected { code: code.to_owned(), replayed });
+	}
+	if classification != "success" {
+		return Err(StoreError::Incompatible("routing successor classification is unknown".into()));
+	}
+	let source_id = effect.get("source_conversation_id").and_then(Value::as_str);
+	let successor_id = effect.get("successor_conversation_id").and_then(Value::as_str);
+	let source_decision_id = effect.get("source_routing_decision_id").and_then(Value::as_str);
+	let source_revision = effect.get("source_conversation_revision").and_then(Value::as_i64);
+	let successor_revision = effect.get("successor_conversation_revision").and_then(Value::as_i64);
+	if source_id != Some(request.source_conversation_id.as_str())
+		|| source_revision != request.expected_source_revision.checked_add(1)
+		|| successor_revision != Some(1)
+		|| successor_id.is_none_or(|value| !is_canonical_uuid(value))
+		|| source_decision_id.is_none_or(|value| !is_canonical_uuid(value))
+	{
+		return Err(StoreError::Incompatible("routing successor success is cross-linked".into()));
+	}
+	let successor = QuickTaskRoutingSuccessor {
+		source_conversation_id: request.source_conversation_id.clone(),
+		source_revision: source_revision.expect("validated source revision is present"),
+		successor_conversation_id: ConversationId::new(
+			successor_id.expect("validated successor identity is present").to_owned(),
+		)
+		.map_err(|_| StoreError::Incompatible("routing successor identity is invalid".into()))?,
+		successor_revision: 1,
+		source_routing_decision_id: source_decision_id
+			.expect("validated source decision is present")
+			.to_owned(),
+	};
+	Ok(if replayed {
+		QuickTaskRoutingSuccessorOutcome::Replayed(successor)
+	} else {
+		QuickTaskRoutingSuccessorOutcome::Fresh(successor)
 	})
 }
 

@@ -1,22 +1,34 @@
 use tokio::task::JoinSet;
 use tokio_postgres::{Client, Config};
 
-use super::expected_peer_uid;
+use super::{expected_peer_uid, isolated_blob_store};
 use decodex_core::{
-	AccountOperationId, AccountProvider, CodexCapability, ConversationId, CredentialBinding,
-	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ExecutionConsumer,
-	ManagedExecutionId, ManagedRunId, ProcessBootIdentity, ProcessControlKind,
+	AccountOperationId, AccountProvider, AccountRegistryRoutingDecisionKind, CodexCapability,
+	ContinuationCommandOutcome, ConversationId, CredentialBinding, CredentialFingerprint,
+	CredentialStoreSchemaVersion, CredentialVersion, ExecutionConsumer, HistoryItemId,
+	HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus, ManagedExecutionId,
+	ManagedRunId, PossibleSideEffects, ProcessBootIdentity, ProcessControlKind,
+	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
 	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGenerationAccountBinding,
 	ProcessGenerationId, ProcessGenerationIntent, ProcessIdentity, ProcessIsolationKind,
 	ProcessRunnerIdentity, ProcessStartIdentity, ProviderIdentity, RoutingCapabilityState,
-	RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId, TurnId,
+	RoutingCommandOutcome, RoutingDecisionKind, RoutingMemberDisposition, RuntimeSessionId,
+	RuntimeSessionState, TurnId, TurnRole,
 };
 use decodex_postgres::{
-	AccountId, AccountState, CommandIdentity, CreateConversation, CreateRuntimeSession,
-	CreateRuntimeSessionAccountSnapshot, PersistedRoutingDecision, PostgresStore,
-	PrepareProcessGenerationOutcome, ProcessGenerationMutationOutcome, PublishRoutingEvidence,
-	ReplaceRoutingPolicy, RoleProfileRole, RouteAccount, RoutingPolicyMemberInput,
-	RuntimeSessionCommandOutcome, StoreError,
+	AccountId, AccountState, AdmitInitialQuickTaskTurn, BindQuickTaskContinuation,
+	BindRuntimeSessionThreadOutcome, CommandIdentity, ContinuationPlanEffect, CreateConversation,
+	CreateQuickTaskConversation, CreateQuickTaskRoutingSuccessor, CreateRuntimeSession,
+	CreateRuntimeSessionAccountSnapshot, FenceRuntimeSessionThreadStart,
+	FenceRuntimeSessionThreadStartOutcome, InitialQuickTaskTurnAdmissionOutcome,
+	OrdinaryTaskConversationProjection, OrdinaryTaskPreSessionState, PersistedRoutingDecision,
+	PlanInitialThreadContinuation, PostgresStore, PrepareProcessGenerationOutcome,
+	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
+	ProcessGenerationMutationOutcome, PublishRoutingEvidence, QuickTaskContinuationBinding,
+	QuickTaskInitialRoute, QuickTaskInitialRouteOutcome, QuickTaskRoutingSuccessorOutcome,
+	RecordHistoryItem, ReplaceRoutingPolicy, RoleProfileRole, RouteAccount, RouteQuickTaskInitial,
+	RoutingPolicyMemberInput, RuntimeSessionCommandOutcome, StoreError, StoredRuntimeSession,
+	SuccessfulRuntimeSessionThreadStart,
 };
 
 const PROJECT_ID: &str = "a1000000-0000-4000-8000-000000000016";
@@ -40,19 +52,19 @@ const PROCESS_AUTHORIZATION_DIGEST: &str =
 const PROCESS_CREDENTIAL_FINGERPRINT: &str =
 	"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 const PROCESS_CALLBACK_PROFILE: &str =
-	"64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29";
+	"cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const CURRENT_CODEX_EXECUTABLE_SHA256: &str =
-	"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2";
+	"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
 #[derive(Clone)]
 pub(super) struct RoutingFixture {
-	pub selected: PersistedRoutingDecision,
+	pub continuation: QuickTaskContinuationBinding,
 	pub waiting: PersistedRoutingDecision,
 	pub cancel_waiting: PersistedRoutingDecision,
 	pub stale_waiting: PersistedRoutingDecision,
-	pub selected_request: RouteAccount,
 	pub selected_account_id: AccountId,
 	pub selected_runtime_session_id: RuntimeSessionId,
+	pub continuation_runtime_session_id: RuntimeSessionId,
 	pub stale_policy_id: String,
 }
 
@@ -79,6 +91,7 @@ pub(super) async fn assert_routing_decision_contract(
 	runtime: &Config,
 ) -> Result<RoutingFixture, Box<dyn std::error::Error>> {
 	let setup = prepare_routing_contract(store, owner).await?;
+	assert_conversation_split_routing_rejected(store, owner, &setup).await?;
 	assert_rolled_back_routing_decision(owner, &setup.selected_request).await?;
 	let selected = assert_selected_routing_decision(store, owner, &setup.selected_request).await?;
 	let (waiting, cancel_waiting, stale_waiting) = assert_alternate_routing_decisions(
@@ -90,6 +103,10 @@ pub(super) async fn assert_routing_decision_contract(
 	)
 	.await?;
 	assert_concurrent_routing_replay(store, owner, &setup.selected_request).await?;
+	let (continuation, _, continuation_runtime_session_id, _) =
+		prepare_quick_task_continuation_route(store, owner).await?;
+	assert_atomic_quick_task_route_race(store, owner).await?;
+	assert_quick_task_routing_successor(store, owner).await?;
 
 	let restarted =
 		PostgresStore::connect_runtime_fixture(runtime.clone(), expected_peer_uid()).await?;
@@ -99,15 +116,246 @@ pub(super) async fn assert_routing_decision_contract(
 	);
 
 	Ok(RoutingFixture {
-		selected,
+		continuation,
 		waiting,
 		cancel_waiting,
 		stale_waiting,
-		selected_request: setup.selected_request,
 		selected_account_id: AccountId::new(SELECTED_ACCOUNT_ID)?,
 		selected_runtime_session_id: setup.selected_run.runtime_session_id,
+		continuation_runtime_session_id,
 		stale_policy_id: STALE_POLICY_ID.to_owned(),
 	})
+}
+
+async fn assert_atomic_quick_task_route_race(
+	store: &PostgresStore,
+	owner: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let conversation_id = ConversationId::new(uuid(0xca, 17))?;
+	store
+		.create_quick_task_conversation(
+			&CommandIdentity::new("v16-quick-task-race-conversation", b"v16-race")?,
+			&CreateQuickTaskConversation {
+				conversation_id: conversation_id.clone(),
+				title: "V16 initial route race".into(),
+				message: "Serialize two initial route keys.".into(),
+				working_directory: "/tmp".into(),
+			},
+		)
+		.await?;
+	let request = RouteQuickTaskInitial {
+		conversation_id: conversation_id.clone(),
+		expected_conversation_revision: 1,
+	};
+	let keys = ["v16-quick-task-race-a", "v16-quick-task-race-b"];
+	let mut racers = JoinSet::new();
+	for key in keys {
+		let store = store.clone();
+		let request = request.clone();
+		racers.spawn(async move { (key, store.route_quick_task_initial(key, &request).await) });
+	}
+	let mut winner = None;
+	let mut rejection_count = 0;
+	while let Some(result) = racers.join_next().await {
+		let (_key, outcome) = result?;
+		match outcome? {
+			QuickTaskInitialRouteOutcome::Fresh(route) => {
+				assert!(winner.replace(route).is_none(), "initial route race had two winners");
+			},
+			QuickTaskInitialRouteOutcome::Rejected(rejection)
+				if rejection.code == "initial_routing_already_bound" =>
+			{
+				rejection_count += 1;
+			},
+			other => return Err(format!("unexpected initial route race outcome: {other:?}").into()),
+		}
+	}
+	let winner = winner
+		.ok_or_else(|| StoreError::Incompatible("initial route race had no winner".into()))?;
+	assert_eq!(rejection_count, 1);
+	assert_eq!(store.read_quick_task_initial_route(&conversation_id).await?, Some(winner));
+	for key in keys {
+		assert_eq!(receipt_count(owner, key).await?, 1);
+	}
+	Ok(())
+}
+
+async fn assert_quick_task_routing_successor(
+	store: &PostgresStore,
+	owner: &Client,
+) -> Result<(), Box<dyn std::error::Error>> {
+	set_account_registry_quota_usage(owner, SELECTED_ACCOUNT_ID, 100).await?;
+	let source_id = ConversationId::new(uuid(0xca, 18))?;
+	store
+		.create_quick_task_conversation(
+			&CommandIdentity::new("v16-routing-successor-source", b"v16-successor")?,
+			&CreateQuickTaskConversation {
+				conversation_id: source_id.clone(),
+				title: "V16 waiting routing source".into(),
+				message: "Create a fresh routing Conversation.".into(),
+				working_directory: "/tmp".into(),
+			},
+		)
+		.await?;
+	let route = match store
+		.route_quick_task_initial(
+			"v16-routing-successor-source-route",
+			&RouteQuickTaskInitial {
+				conversation_id: source_id.clone(),
+				expected_conversation_revision: 1,
+			},
+		)
+		.await?
+	{
+		QuickTaskInitialRouteOutcome::Fresh(route) => route,
+		other => return Err(format!("waiting source route was not fresh: {other:?}").into()),
+	};
+	assert_eq!(route.decision.kind, AccountRegistryRoutingDecisionKind::Waiting);
+	assert!(route.decision.selected_account_id.is_none());
+	assert!(route.decision.causes.is_empty());
+	assert!(!route.decision.exclusions.is_empty());
+
+	let request = CreateQuickTaskRoutingSuccessor {
+		source_conversation_id: source_id.clone(),
+		expected_source_revision: 1,
+	};
+	let successor =
+		match store.create_quick_task_routing_successor("v16-routing-successor", &request).await? {
+			QuickTaskRoutingSuccessorOutcome::Fresh(successor) => successor,
+			other => return Err(format!("routing successor was not fresh: {other:?}").into()),
+		};
+	assert_eq!(successor.source_routing_decision_id, route.decision_id);
+	assert_eq!(successor.source_revision, 2);
+	assert_eq!(successor.successor_revision, 1);
+	let receipt = receipt_bytes(owner, "v16-routing-successor").await?;
+	assert_eq!(
+		store.create_quick_task_routing_successor("v16-routing-successor", &request).await?,
+		QuickTaskRoutingSuccessorOutcome::Replayed(successor.clone()),
+	);
+	assert_eq!(receipt_bytes(owner, "v16-routing-successor").await?, receipt);
+	assert!(matches!(
+		store
+			.create_quick_task_routing_successor("v16-routing-successor-other-key", &request)
+			.await?,
+		QuickTaskRoutingSuccessorOutcome::Rejected { .. }
+	));
+
+	let source_projection =
+		store.read_ordinary_task_conversations(Some(&source_id), None, 2).await?;
+	assert_eq!(
+		source_projection,
+		vec![OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
+			source_conversation_id: source_id.clone(),
+			source_revision: 2,
+			successor_conversation_id: successor.successor_conversation_id.clone(),
+			successor_conversation_revision: 1,
+		}],
+	);
+	let successor_projection = store
+		.read_ordinary_task_conversations(Some(&successor.successor_conversation_id), None, 2)
+		.await?;
+	assert!(matches!(
+		successor_projection.as_slice(),
+		[OrdinaryTaskConversationProjection::Current(readback)]
+			if readback.conversation_revision == 1
+				&& readback.runtime_session_id.is_none()
+				&& readback.routing_decision_id.is_none()
+				&& readback.pre_session_state == Some(OrdinaryTaskPreSessionState::RoutingPending)
+	));
+	let listed = store.read_ordinary_task_conversations(None, None, 65).await?;
+	assert_eq!(
+		listed
+			.iter()
+			.filter(|projection| matches!(
+				projection,
+				OrdinaryTaskConversationProjection::Current(readback)
+					if readback.conversation_id == successor.successor_conversation_id
+			))
+			.count(),
+		1,
+	);
+	assert!(!listed.iter().any(|projection| matches!(
+		projection,
+		OrdinaryTaskConversationProjection::Current(readback)
+			if readback.conversation_id == source_id
+	)));
+	assert_eq!(
+		store.read_quick_task_request(&successor.successor_conversation_id).await?,
+		Some(decodex_postgres::QuickTaskRequest {
+			message: "Create a fresh routing Conversation.".into(),
+			working_directory: "/tmp".into(),
+		}),
+	);
+	let relation_count: i64 = owner
+		.query_one(
+			"SELECT count(*) FROM decodex.conversation_routing_successors \
+			 WHERE source_conversation_id=$1::text::uuid",
+			&[&source_id.as_str()],
+		)
+		.await?
+		.get(0);
+	assert_eq!(relation_count, 1);
+	set_account_registry_quota_usage(owner, SELECTED_ACCOUNT_ID, 25).await?;
+	Ok(())
+}
+
+pub(super) async fn set_account_registry_quota_usage(
+	owner: &Client,
+	account_id: &str,
+	used_percent: i32,
+) -> Result<(), Box<dyn std::error::Error>> {
+	for duration_minutes in [300_i32, 10_080_i32] {
+		let updated = owner
+			.execute(
+				"WITH observed AS (SELECT (extract(epoch FROM \
+				 pg_catalog.clock_timestamp())*1000000)::bigint AS micros) \
+				 UPDATE decodex.account_quota_facts AS quota SET \
+				 used_percent=$3,resets_at_micros=observed.micros+3600000000,\
+				 error_code=NULL,observed_at_micros=observed.micros FROM observed \
+				 WHERE quota.account_id=$1::text::uuid AND quota.duration_minutes=$2",
+				&[&account_id, &duration_minutes, &used_percent],
+			)
+			.await?;
+		assert_eq!(updated, 1);
+	}
+	Ok(())
+}
+
+async fn assert_conversation_split_routing_rejected(
+	store: &PostgresStore,
+	owner: &Client,
+	setup: &RoutingContractSetup,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let consumer = ExecutionConsumer::ConversationTurn {
+		conversation_id: setup.selected_run.conversation_id.clone(),
+		conversation_revision: 1,
+		source_runtime_session_id: Some(setup.selected_run.runtime_session_id.clone()),
+		source_runtime_session_revision: Some(1),
+		turn_id: setup.selected_run.turn_id.clone(),
+	};
+	let request = RouteAccount { consumer: consumer.clone(), ..setup.selected_request.clone() };
+	assert!(matches!(
+		store.route_account("v16-conversation-split-decision", &request).await,
+		Err(StoreError::InvalidInput(
+			"split routing decisions are reserved for ManagedRun execution"
+		))
+	));
+	assert!(matches!(
+		store
+			.resolve_routing_snapshot(
+				"v16-conversation-split-snapshot",
+				&setup.selected_request.routing_policy_id,
+				setup.selected_request.expected_routing_policy_revision,
+				&consumer,
+			)
+			.await,
+		Err(StoreError::InvalidInput(
+			"split routing snapshots are reserved for ManagedRun execution"
+		))
+	));
+	assert_eq!(receipt_count(owner, "v16-conversation-split-decision").await?, 0);
+	assert_eq!(receipt_count(owner, "v16-conversation-split-snapshot").await?, 0);
+	Ok(())
 }
 
 async fn prepare_routing_contract(
@@ -139,13 +387,7 @@ async fn prepare_routing_contract(
 		publish_evidence(store, marker, account_id).await?;
 	}
 
-	let selected_consumer = ExecutionConsumer::ConversationTurn {
-		conversation_id: selected_run.conversation_id.clone(),
-		conversation_revision: 1,
-		source_runtime_session_id: Some(selected_run.runtime_session_id.clone()),
-		source_runtime_session_revision: Some(1),
-		turn_id: selected_run.turn_id.clone(),
-	};
+	let selected_consumer = managed_consumer(&selected_run);
 	let selected_request = create_policy_snapshot_and_request(
 		store,
 		owner,
@@ -207,6 +449,371 @@ async fn prepare_routing_contract(
 	})
 }
 
+#[expect(
+	clippy::too_many_lines,
+	reason = "the sequential authority fixture is one cohesive end-to-end contract"
+)]
+async fn prepare_quick_task_continuation_route(
+	store: &PostgresStore,
+	owner: &Client,
+) -> Result<
+	(QuickTaskContinuationBinding, ConversationId, RuntimeSessionId, i64),
+	Box<dyn std::error::Error>,
+> {
+	for (account_id, used_percent) in [
+		(SELECTED_ACCOUNT_ID, 25_i32),
+		(WAITING_ACCOUNT_ID, 100_i32),
+		(NO_ROUTE_ACCOUNT_ID, 100_i32),
+	] {
+		for duration_minutes in [300_i32, 10_080_i32] {
+			owner
+				.execute(
+					"WITH observed AS (SELECT (extract(epoch FROM \
+					 pg_catalog.clock_timestamp())*1000000)::bigint AS micros) \
+					 INSERT INTO decodex.account_quota_facts(\
+					 account_id,duration_minutes,used_percent,resets_at_micros,error_code,\
+					 observed_at_micros) SELECT $1::text::uuid,$2,$3,\
+					 observed.micros+3600000000,NULL,observed.micros FROM observed \
+					 ON CONFLICT(account_id,duration_minutes) DO UPDATE SET \
+					 used_percent=EXCLUDED.used_percent,\
+					 resets_at_micros=EXCLUDED.resets_at_micros,error_code=NULL,\
+					 observed_at_micros=EXCLUDED.observed_at_micros",
+					&[&account_id, &duration_minutes, &used_percent],
+				)
+				.await?;
+		}
+	}
+
+	let conversation_id = ConversationId::new(uuid(0xca, 16))?;
+	store
+		.create_quick_task_conversation(
+			&CommandIdentity::new("v16-quick-task-conversation", b"v16")?,
+			&CreateQuickTaskConversation {
+				conversation_id: conversation_id.clone(),
+				title: "V16 ordinary Quick Task".into(),
+				message: "Exercise atomic Account Registry routing.".into(),
+				working_directory: "/tmp".into(),
+			},
+		)
+		.await?;
+	let request = RouteQuickTaskInitial {
+		conversation_id: conversation_id.clone(),
+		expected_conversation_revision: 1,
+	};
+	let route = match store.route_quick_task_initial("v16-quick-task-route", &request).await? {
+		QuickTaskInitialRouteOutcome::Fresh(route) => route,
+		other => return Err(format!("initial Quick Task route was not fresh: {other:?}").into()),
+	};
+	assert_eq!(route.decision.kind, AccountRegistryRoutingDecisionKind::Selected);
+	assert_eq!(
+		route.decision.selected_account_id.as_ref(),
+		Some(&AccountId::new(SELECTED_ACCOUNT_ID)?),
+	);
+	let route_bytes = receipt_bytes(owner, "v16-quick-task-route").await?;
+	assert_eq!(
+		store.route_quick_task_initial("v16-quick-task-route", &request).await?,
+		QuickTaskInitialRouteOutcome::Replayed(route.clone()),
+	);
+	assert_eq!(receipt_bytes(owner, "v16-quick-task-route").await?, route_bytes);
+	assert_eq!(store.read_quick_task_initial_route(&conversation_id).await?, Some(route.clone()));
+	assert!(matches!(
+		store.route_quick_task_initial("v16-quick-task-route-other-key", &request).await?,
+		QuickTaskInitialRouteOutcome::Rejected(ref rejection)
+			if rejection.code == "initial_routing_already_bound"
+	));
+
+	let initial_plan = match store
+		.plan_initial_thread_continuation(
+			"v16-quick-task-initial-plan",
+			&PlanInitialThreadContinuation {
+				operation_id: uuid(0xcb, 1),
+				routing_decision_id: route.decision_id.clone(),
+				expected_conversation_revision: 1,
+				plan_id: uuid(0xcb, 2),
+			},
+		)
+		.await?
+	{
+		ContinuationCommandOutcome::Success(plan) => plan,
+		ContinuationCommandOutcome::Rejected(rejection) =>
+			return Err(format!("initial Quick Task plan rejected: {rejection:?}").into()),
+	};
+	let (runtime_session_id, runtime_session_revision) =
+		establish_quick_task_runtime_session(store, &route, &initial_plan).await?;
+
+	let binding = match store
+		.bind_quick_task_continuation(
+			"v16-quick-task-continuation-1",
+			&BindQuickTaskContinuation {
+				operation_id: uuid(0xcf, 1),
+				conversation_id: conversation_id.clone(),
+				expected_conversation_revision: 1,
+				source_runtime_session_id: runtime_session_id.clone(),
+				expected_source_runtime_session_revision: runtime_session_revision,
+				turn_id: TurnId::new(uuid(0xd0, 1))?,
+			},
+		)
+		.await?
+	{
+		RoutingCommandOutcome::Success(binding) => binding,
+		RoutingCommandOutcome::Rejected(rejection) =>
+			return Err(format!("continuation binding rejected: {}", rejection.code).into()),
+	};
+	assert_eq!(binding.initial_decision_id, route.decision_id);
+	let initial_session = initial_plan.runtime_session.as_ref().ok_or_else(|| {
+		StoreError::Incompatible("initial Quick Task plan omitted its RuntimeSession".into())
+	})?;
+	assert_eq!(binding.account_snapshot_id, initial_session.account_snapshot.account_snapshot_id);
+	assert_eq!(
+		binding.account_snapshot_source_revision,
+		initial_session.account_snapshot.source_revision,
+	);
+	assert_eq!(binding.profile_snapshot_id, initial_session.profile_snapshot.profile_snapshot_id);
+	assert_eq!(
+		binding.profile_snapshot_source_revision,
+		initial_session.profile_snapshot.source_revision,
+	);
+	assert!(matches!(
+		&binding.consumer,
+		ExecutionConsumer::ConversationTurn {
+			conversation_id: bound_conversation_id,
+			conversation_revision: 1,
+			source_runtime_session_id: Some(source_runtime_session_id),
+			source_runtime_session_revision: Some(source_runtime_session_revision),
+			turn_id,
+		} if bound_conversation_id == &conversation_id
+			&& source_runtime_session_id == &runtime_session_id
+			&& *source_runtime_session_revision == runtime_session_revision
+			&& turn_id.as_str() == uuid(0xd0, 1)
+	));
+	Ok((binding, conversation_id, runtime_session_id, runtime_session_revision))
+}
+
+async fn establish_quick_task_runtime_session(
+	store: &PostgresStore,
+	route: &QuickTaskInitialRoute,
+	initial_plan: &ContinuationPlanEffect,
+) -> Result<(RuntimeSessionId, i64), Box<dyn std::error::Error>> {
+	let session = initial_plan.runtime_session.as_ref().ok_or_else(|| {
+		StoreError::Incompatible("initial Quick Task plan omitted its RuntimeSession".into())
+	})?;
+	if initial_plan.plan.routing_decision_id != route.decision_id
+		|| initial_plan.plan.consumer != route.consumer
+		|| initial_plan.plan.source_runtime_session_id != session.runtime_session_id
+		|| initial_plan.plan.source_runtime_session_revision != 1
+		|| session.state != RuntimeSessionState::Starting
+		|| session.revision != 1
+		|| session.codex_thread_id.is_some()
+	{
+		return Err(StoreError::Incompatible(
+			"initial Quick Task plan and RuntimeSession are cross-linked".into(),
+		)
+		.into());
+	}
+
+	let blob_store = isolated_blob_store()?;
+	let admission = store
+		.admit_initial_quick_task_turn(
+			&blob_store,
+			"v16-quick-task-initial-turn",
+			&AdmitInitialQuickTaskTurn {
+				expected_conversation_revision: 1,
+				expected_runtime_session_revision: 1,
+				continuation_plan_id: initial_plan.plan.plan_id.clone(),
+				message: RecordHistoryItem {
+					conversation_id: session.conversation_id.clone(),
+					runtime_session_id: session.runtime_session_id.clone(),
+					turn_id: route.turn_id.clone(),
+					turn_sequence: 1,
+					turn_role: TurnRole::User,
+					possible_side_effects: PossibleSideEffects::Unknown,
+					history_item_id: HistoryItemId::new(uuid(0xdd, 16))?,
+					ordinal: 0,
+					kind: HistoryItemKind::Message,
+					status: ItemStatus::Completed,
+					text: "Exercise atomic Account Registry routing.".into(),
+					media_type: HistoryMediaType::new("text/markdown")?,
+					metadata: HistoryMetadata::empty(),
+					expected_revision: None,
+					artifact: None,
+				},
+			},
+		)
+		.await?;
+	let admitted = match admission {
+		InitialQuickTaskTurnAdmissionOutcome::Fresh(admitted) => admitted,
+		other => return Err(format!("initial Quick Task Turn was not fresh: {other:?}").into()),
+	};
+	assert_eq!(admitted.routing_decision_id, route.decision_id);
+	assert_eq!(admitted.turn.turn_id, route.turn_id);
+	assert_eq!(admitted.turn.revision, 1);
+
+	let (generation_id, process_revision) =
+		prepare_initial_quick_task_process_generation(store, route, initial_plan, session).await?;
+
+	let thread_start_request_id = 1_276_016_i64;
+	let thread_start_request_sha256 = "1".repeat(64);
+	let fence_key = "v16-quick-task-thread-fence";
+	let authority = match store
+		.fence_runtime_session_thread_start(
+			fence_key,
+			&FenceRuntimeSessionThreadStart {
+				conversation_id: session.conversation_id.clone(),
+				expected_conversation_revision: 1,
+				runtime_session_id: session.runtime_session_id.clone(),
+				expected_revision: 1,
+				turn_id: route.turn_id.clone(),
+				expected_turn_revision: 1,
+				continuation_plan_id: initial_plan.plan.plan_id.clone(),
+				process_generation_id: generation_id,
+				process_generation_revision: process_revision,
+				process_execution_epoch_id: ProcessExecutionEpochId::new(
+					PROCESS_EXECUTION_EPOCH_ID,
+				)?,
+				thread_start_request_id,
+				thread_start_request_sha256: thread_start_request_sha256.clone(),
+			},
+		)
+		.await?
+	{
+		FenceRuntimeSessionThreadStartOutcome::Fresh(authority) => authority,
+		other => return Err(format!("RuntimeSession thread fence was not fresh: {other:?}").into()),
+	};
+	assert_eq!(authority.readback().prior_revision, 1);
+	assert_eq!(authority.readback().revision, 2);
+	let codex_thread_id = uuid(0xde, 16);
+	let binding = authority.into_binding(SuccessfulRuntimeSessionThreadStart {
+		response_id: thread_start_request_id,
+		response_sha256: "2".repeat(64),
+		codex_thread_id: codex_thread_id.clone(),
+	});
+	let bound =
+		match store.bind_runtime_session_thread("v16-quick-task-thread-binding", &binding).await? {
+			BindRuntimeSessionThreadOutcome::Applied(bound) => bound,
+			other => return Err(format!("RuntimeSession thread binding failed: {other:?}").into()),
+		};
+	assert_eq!(bound.prior_revision, 2);
+	assert_eq!(bound.revision, 3);
+	assert_eq!(bound.codex_thread_id, codex_thread_id);
+	Ok((session.runtime_session_id.clone(), bound.revision))
+}
+
+async fn prepare_initial_quick_task_process_generation(
+	store: &PostgresStore,
+	route: &QuickTaskInitialRoute,
+	initial_plan: &ContinuationPlanEffect,
+	session: &StoredRuntimeSession,
+) -> Result<(ProcessGenerationId, i64), Box<dyn std::error::Error>> {
+	retire_selected_routing_generation(store).await?;
+	let generation_id = ProcessGenerationId::new(uuid(0xdc, 16))?;
+	let process_admission = match store
+		.prepare_quick_task_process_generation(
+			"v16-quick-task-process-admission",
+			&PrepareQuickTaskProcessGeneration {
+				conversation_id: session.conversation_id.clone(),
+				expected_conversation_revision: 1,
+				runtime_session_id: session.runtime_session_id.clone(),
+				expected_runtime_session_revision: 1,
+				turn_id: route.turn_id.clone(),
+				expected_turn_revision: 1,
+				continuation_plan_id: initial_plan.plan.plan_id.clone(),
+				routing_decision_id: route.decision_id.clone(),
+				selected_account_id: session.account_snapshot.source_account_id.clone(),
+				process_generation_id: generation_id.clone(),
+			},
+		)
+		.await?
+	{
+		PrepareQuickTaskProcessGenerationOutcome::Fresh(admission) => admission,
+		other =>
+			return Err(format!("Quick Task process admission was not fresh: {other:?}").into()),
+	};
+
+	let boot_id = ProcessBootIdentity::new("xy-1276-quick-task-boot")?;
+	let intent = ProcessGenerationIntent {
+		generation_id: generation_id.clone(),
+		account_id: session.account_snapshot.source_account_id.clone(),
+		runner_identity: ProcessRunnerIdentity::new(format!(
+			"sha256:{PROCESS_AUTHORIZATION_DIGEST}"
+		))?,
+		intended_boot_id: boot_id.clone(),
+		control_kind: ProcessControlKind::StdioOnlyBestEffortEof,
+		isolation_kind: ProcessIsolationKind::Session,
+		execution_authorization: ProcessExecutionAuthorization::new(
+			ProcessExecutionEpochId::new(PROCESS_EXECUTION_EPOCH_ID)?,
+			PROCESS_AUTHORIZATION_DIGEST,
+		)?,
+	};
+	let account_binding = ProcessGenerationAccountBinding::new(
+		session.account_snapshot.source_revision,
+		CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(1)?,
+			fingerprint: CredentialFingerprint::new(PROCESS_CREDENTIAL_FINGERPRINT)?,
+			provider: ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id(16))?,
+			writer_operation_id: AccountOperationId::new(uuid(0xa6, 16))?,
+		},
+		PROCESS_CALLBACK_PROFILE,
+	)?;
+	let process_fence = match store
+		.prepare_quick_task_bound_process_generation(&intent, &account_binding, process_admission)
+		.await?
+	{
+		PrepareProcessGenerationOutcome::Fresh(fence) => fence,
+		other =>
+			return Err(format!("Quick Task ProcessGeneration was not fresh: {other:?}").into()),
+	};
+	assert_eq!(process_fence.revision(), 1);
+	let process_id = 1_516_u32;
+	let process_identity = ProcessIdentity::new(
+		boot_id,
+		process_id,
+		ProcessStartIdentity::new("xy-1276-quick-task-process-start")?,
+		process_id,
+		process_id,
+	)?;
+	assert!(matches!(
+		store.bind_process_generation_identity(&generation_id, 1, &process_identity).await?,
+		ProcessGenerationMutationOutcome::Applied(ref mutation) if mutation.revision == 2
+	));
+	let process_revision = match store.mark_process_generation_ready(&generation_id, 2).await? {
+		ProcessGenerationMutationOutcome::Applied(mutation) => mutation.revision,
+		other => return Err(format!("Quick Task process readiness failed: {other:?}").into()),
+	};
+	assert_eq!(process_revision, 3);
+	Ok((generation_id, process_revision))
+}
+
+async fn retire_selected_routing_generation(
+	store: &PostgresStore,
+) -> Result<(), Box<dyn std::error::Error>> {
+	let generation_id = ProcessGenerationId::new(process_generation_id(16))?;
+	let boot_id = ProcessBootIdentity::new("xy-1416-boot-16")?;
+	let process_id = 1_416_u32;
+	let process_identity = ProcessIdentity::new(
+		boot_id.clone(),
+		process_id,
+		ProcessStartIdentity::new("xy-1416-process-start-16")?,
+		process_id,
+		process_id,
+	)?;
+	let evidence = ProcessDeathEvidence::new(
+		ProcessDeathEvidenceId::new(uuid(0xdb, 16))?,
+		generation_id,
+		ProcessDeathEvidenceKind::OwnedChildExit,
+		boot_id,
+		Some(process_identity),
+		"3".repeat(64),
+	)?;
+	assert!(matches!(
+		store.record_process_generation_death(3, &evidence).await?,
+		ProcessGenerationMutationOutcome::Applied(ref mutation)
+			if mutation.state == decodex_core::ProcessGenerationState::Dead
+				&& mutation.revision == 5
+	));
+	Ok(())
+}
+
 async fn create_routing_accounts(owner: &Client) -> Result<(), Box<dyn std::error::Error>> {
 	owner.batch_execute("BEGIN; SELECT decodex.lock_account_routing_universe_exact()").await?;
 	for (account_id, label) in [
@@ -258,33 +865,27 @@ async fn assert_rolled_back_routing_decision(
 	owner: &Client,
 	selected_request: &RouteAccount,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let ExecutionConsumer::ConversationTurn {
-		conversation_id,
-		conversation_revision,
-		source_runtime_session_id,
-		source_runtime_session_revision,
-		turn_id,
+	let ExecutionConsumer::ManagedRunExecution {
+		managed_run_id,
+		managed_run_revision,
+		execution_id,
 	} = &selected_request.consumer
 	else {
-		return Err("selected V16 fixture is not an ordinary Conversation Turn".into());
+		return Err("selected V16 fixture is not a ManagedRun execution".into());
 	};
 	owner.batch_execute("BEGIN").await?;
 	let rolled_back: Vec<u8> = owner
 		.query_one(
 			"SELECT decodex.route_account_exact('decodex/exact-command/1',\
-			 'v16-rollback',$1::text::uuid,$2::text::uuid,1,'conversation_turn',\
-			 $3::text::uuid,$4,$5::text::uuid,$6,$7::text::uuid,NULL,NULL,NULL)",
+			 'v16-rollback',$1::text::uuid,'managed_run_project_policy',\
+			 $2::text::uuid,1,NULL,'managed_run_execution',\
+			 NULL,NULL,NULL,NULL,NULL,$3::text::uuid,$4,$5::text::uuid)",
 			&[
 				&uuid(0xb6, 1),
 				&SELECTED_POLICY_ID,
-				&conversation_id.as_str(),
-				conversation_revision,
-				&source_runtime_session_id
-					.as_ref()
-					.expect("selected source runtime session is present")
-					.as_str(),
-				source_runtime_session_revision,
-				&turn_id.as_str(),
+				&managed_run_id.as_str(),
+				managed_run_revision,
+				&execution_id.as_str(),
 			],
 		)
 		.await?
@@ -551,7 +1152,6 @@ async fn create_run(
 		)
 		.await?;
 	let runtime_session_id = RuntimeSessionId::new(uuid(0xc2, marker))?;
-	let thread_id = uuid(0xc3, marker);
 	let outcome = store
 		.create_runtime_session(
 			&format!("v16-runtime-session-{marker}"),
@@ -566,8 +1166,8 @@ async fn create_run(
 					observed_state: AccountState::Available,
 					source_revision: 1,
 				},
-				codex_thread_id: Some(thread_id.clone()),
-				initial_state: decodex_core::RuntimeSessionState::Active,
+				codex_thread_id: None,
+				initial_state: RuntimeSessionState::Starting,
 			},
 		)
 		.await?;
@@ -638,14 +1238,6 @@ async fn create_run(
 		)
 		.await?;
 	let turn_id = TurnId::new(uuid(0xc9, marker))?;
-	owner
-		.execute(
-			"INSERT INTO decodex.turns(\
-			 turn_id,conversation_id,runtime_session_id,sequence,role)\
-			 VALUES($1::text::uuid,$2::text::uuid,$3::text::uuid,1,'user')",
-			&[&turn_id.as_str(), &conversation_id.as_str(), &runtime_session_id.as_str()],
-		)
-		.await?;
 	Ok(RunFixture { conversation_id, managed_run_id, execution_id, runtime_session_id, turn_id })
 }
 
@@ -664,7 +1256,7 @@ async fn prepare_routing_process_generations(
 	assert!(
 		store
 			.attest_codex_account_capability(&decodex_postgres::CodexAccountCapabilityAttestation {
-				build_identity: "codex-cli 0.146.0-alpha.9.2".to_owned(),
+				build_identity: "sha256:fixture-current-codex".to_owned(),
 				executable_sha256: CURRENT_CODEX_EXECUTABLE_SHA256.to_owned(),
 				schema_sha256: SCHEMA_FINGERPRINT.to_owned(),
 				callback_profile_sha256: PROCESS_CALLBACK_PROFILE.to_owned(),

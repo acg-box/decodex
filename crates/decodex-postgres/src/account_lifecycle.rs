@@ -1827,6 +1827,10 @@ fn parse_quota(
 	let disposition = match (status, used, resets_micros, error) {
 		("unknown", None, None, None) if observed_micros.is_none() =>
 			AccountQuotaDisposition::Unknown,
+		// Older observers stored an optional provider window as unsupported_window.  Keep this
+		// compatibility value non-fatal at the read boundary; the current decoder returns None
+		// and no longer writes it.
+		("error", None, None, Some("unsupported_window")) => AccountQuotaDisposition::Unknown,
 		("current", Some(used), Some(resets), None) => AccountQuotaDisposition::Current(
 			AccountQuotaWindow::new(
 				duration,
@@ -1847,9 +1851,12 @@ fn parse_quota(
 			AccountQuotaDisposition::Error(parse_quota_error(error)?),
 		_ => return Err(incompatible("quota observation shape")),
 	};
+	let observed_at_unix_micros = (!matches!(disposition, AccountQuotaDisposition::Unknown))
+		.then_some(observed_micros)
+		.flatten();
 	Ok(AccountQuotaWindowObservation {
 		duration_minutes: duration,
-		observed_at_unix_micros: observed_micros,
+		observed_at_unix_micros,
 		disposition,
 	})
 }
@@ -2022,5 +2029,21 @@ mod tests {
 				..
 			})
 		));
+	}
+
+	#[test]
+	fn historical_unsupported_window_is_read_as_unknown() {
+		let observation = parse_quota(
+			AccountQuotaWindow::FIVE_HOURS_MINUTES,
+			"error",
+			None,
+			None,
+			Some(1_000_000),
+			Some("unsupported_window"),
+		)
+		.expect("legacy optional-window error should remain readable");
+
+		assert_eq!(observation.observed_at_unix_micros, None);
+		assert_eq!(observation.disposition, AccountQuotaDisposition::Unknown);
 	}
 }

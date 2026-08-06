@@ -34,6 +34,53 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(presentation.usesDisabledEnvironment)
 	}
 
+	func testRouteCapabilityDoesNotDependOnQuickTaskCallbackReadiness() {
+		let authority = ResetCardAuthority(
+			profileName: "local",
+			serverID: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+		)
+		let account = ResetCardAccountRecord(
+			authority: authority,
+			accountID: "11111111-1111-4111-8111-111111111111",
+			alias: "Account TEST0-00000",
+			accountRevision: 7,
+			enabled: true,
+			observedState: .available,
+			lifecycleReadiness: .callbackCapabilityUnready,
+			fiveHourQuota: .unknown(durationMinutes: 300),
+			sevenDayQuota: .unknown(durationMinutes: 10_080)
+		)
+
+		XCTAssertEqual(
+			ResetCardAccountState(
+				account: account,
+				inventory: nil,
+				error: nil,
+				isRefreshing: true
+			).routeCapability,
+			.ready
+		)
+		XCTAssertEqual(
+			ResetCardAccountState(
+				account: ResetCardAccountRecord(
+					authority: authority,
+					accountID: account.accountID,
+					alias: account.alias,
+					accountRevision: account.accountRevision,
+					enabled: true,
+					observedState: .available,
+					lifecycleReadiness: .operationUnsettled,
+					fiveHourQuota: .unknown(durationMinutes: 300),
+					sevenDayQuota: .unknown(durationMinutes: 10_080)
+				),
+				inventory: nil,
+				error: nil,
+				isRefreshing: false
+			).routeCapability,
+			.operationPending
+		)
+	}
+
 	func testUnsupportedQuotaWindowIsHidden() {
 		let presentation = ResetCardQuotaPresentation(
 			window: ResetCardQuotaWindow(
@@ -366,12 +413,9 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
-				state: state,
-				isAwaitingFreshAccountSkeleton: false
+				state: state
 			),
-			.updating(
-				detail: ResetCardClientError.transportBackpressured.localizedDescription
-			)
+			.empty
 		)
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
@@ -380,12 +424,9 @@ final class AccountPanelPresentationTests: XCTestCase {
 					inventory: staleInventory,
 					error: .transportDisconnected,
 					isRefreshing: false
-				),
-				isAwaitingFreshAccountSkeleton: false
+				)
 			),
-			.connecting(
-				detail: ResetCardClientError.transportDisconnected.localizedDescription
-			)
+			.empty
 		)
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
@@ -394,14 +435,13 @@ final class AccountPanelPresentationTests: XCTestCase {
 					inventory: staleInventory,
 					error: nil,
 					isRefreshing: true
-				),
-				isAwaitingFreshAccountSkeleton: true
+				)
 			),
-			.updating(detail: nil)
+			.empty
 		)
 
 		let source = try resetCardSectionSource()
-		XCTAssertTrue(source.contains("Updating usage…"))
+		XCTAssertFalse(source.contains("Updating usage…"))
 		XCTAssertTrue(source.contains("Connecting to Decodex…"))
 		XCTAssertFalse(source.contains("Reconnecting…"))
 	}
@@ -442,10 +482,9 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 		XCTAssertEqual(
 			ResetCardInventoryPresentation(
-				state: state,
-				isAwaitingFreshAccountSkeleton: false
+				state: state
 			),
-			.checking
+			.unavailable(detail: "Reset Card details are temporarily unavailable.")
 		)
 	}
 

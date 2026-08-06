@@ -963,8 +963,8 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 fn quick_task_state_label(state: QuickTaskState) -> &'static str {
 	match state {
 		QuickTaskState::RoutingPending => "Routing pending",
+		QuickTaskState::EstablishmentPending => "Establishment pending",
 		QuickTaskState::QuotaExhausted => "Quota exhausted",
-		QuickTaskState::WaitingReconciliation => "Waiting for reconciliation",
 		QuickTaskState::NoRoute => "No route",
 		QuickTaskState::Establishing => "Establishing",
 		QuickTaskState::Ready => "Ready",
@@ -979,8 +979,8 @@ fn quick_task_state_color(state: QuickTaskState) -> u32 {
 		QuickTaskState::Ready => 0x22c55e,
 		QuickTaskState::Running | QuickTaskState::Establishing => 0x60a5fa,
 		QuickTaskState::RoutingPending
+		| QuickTaskState::EstablishmentPending
 		| QuickTaskState::QuotaExhausted
-		| QuickTaskState::WaitingReconciliation
 		| QuickTaskState::NoRoute => 0xf59e0b,
 		QuickTaskState::ManualRecovery | QuickTaskState::OutcomeUnknown => 0xef4444,
 	}
@@ -1001,8 +1001,11 @@ fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
 
 fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
 	match action {
-		QuickTaskRecoveryAction::RetryRouting =>
-			"Review the message and retry account routing explicitly.",
+		QuickTaskRecoveryAction::ResumeRouting => "Resume the pending account route.",
+		QuickTaskRecoveryAction::CreateRoutingSuccessor =>
+			"Create a new conversation and route it explicitly.",
+		QuickTaskRecoveryAction::ResumeEstablishment =>
+			"Resume the selected account session establishment.",
 		QuickTaskRecoveryAction::ConfigureAccount => "Configure an account before continuing.",
 		QuickTaskRecoveryAction::EnableAccount => "Enable the selected account before continuing.",
 		QuickTaskRecoveryAction::EnrollCredentials =>
@@ -1014,7 +1017,8 @@ fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
 		QuickTaskRecoveryAction::RestoreProviderAgreement =>
 			"Restore provider account agreement before continuing.",
 		QuickTaskRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
-		QuickTaskRecoveryAction::UpgradeCodex => "Install the accepted Codex build.",
+		QuickTaskRecoveryAction::UpgradeCodex =>
+			"Use a Codex build with the required app-server methods.",
 		QuickTaskRecoveryAction::SelectWorkingDirectory =>
 			"Select an owned local working directory before continuing.",
 		QuickTaskRecoveryAction::StartNewConversation =>
@@ -1304,16 +1308,24 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let task = shell.quick.selected_task();
+	let has_pre_session_recovery = task.is_some_and(|task| {
+		matches!(
+			task.recovery_action,
+			Some(
+				QuickTaskRecoveryAction::ResumeRouting
+					| QuickTaskRecoveryAction::CreateRoutingSuccessor
+					| QuickTaskRecoveryAction::ResumeEstablishment
+			)
+		)
+	});
 	let can_continue = shell.creating_new
 		|| task.is_none()
-		|| task.is_some_and(|task| {
-			task.state == QuickTaskState::Ready
-				|| task.recovery_action == Some(QuickTaskRecoveryAction::RetryRouting)
-		});
+		|| task.is_some_and(|task| task.state == QuickTaskState::Ready || has_pre_session_recovery);
 	let composer = shell.composer.read(cx);
 	let composer_len = composer.len();
 	let has_message = !composer.content().trim().is_empty();
-	let can_send = shell.quick.can_submit && can_continue && has_message;
+	let can_send =
+		shell.quick.can_submit && can_continue && (has_message || has_pre_session_recovery);
 	let can_interrupt =
 		shell.quick.can_submit && task.is_some_and(|task| task.state == QuickTaskState::Running);
 

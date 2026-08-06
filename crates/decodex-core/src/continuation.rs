@@ -105,6 +105,12 @@ pub enum ContinuationRejection {
 	DecisionAlreadyConsumed,
 	/// Exact same-thread proof is absent or incompatible. The receipt is stable and replayable.
 	SameThreadUnavailable,
+	/// The originally selected account no longer has its routed source revision.
+	SelectedAccountDrift,
+	/// The originally selected account is not currently ready for same-account continuation.
+	SelectedAccountReadinessRequired,
+	/// The originally selected account lacks two current positive quota windows.
+	SelectedAccountQuotaRequired,
 	/// The fallback Context Pack failed the authority's canonical content or lineage checks.
 	InvalidContextPack,
 	/// A fallback Context Pack or RuntimeSession identity conflicts with persisted lineage.

@@ -171,7 +171,11 @@ decodex-publisher validate-social
   `Refresh all`, that material selector, and Quit. A manual reload remains available
   during a background read and coalesces into the active reload cycle; it reads
   daemon-owned values and does not start provider work. Account mutations and Reset
-  Card submissions still disable it.
+  Card submissions still disable it. Observation synchronization keeps the last
+  published values usable while a new cache read is in flight. Opening the panel
+  presents the latest published values immediately and may ask the daemon for one
+  coalesced priority observation; only the explicit `Refresh all` action enters the
+  full-read lane.
 - Reveals a compact trailing-edge reorder grip over an account card's padding while
   the pointer is over that card, so the grip does not reserve a layout column. A
   drag uses the stable list coordinate space and keeps the full-size card on a
@@ -196,8 +200,10 @@ decodex-publisher validate-social
   five-second local confirmation. The second click ends the countdown, shows a busy
   indicator, persists a pending attempt, and submits one in-process Rust request with
   a vNext account UUID, exact revision, public grant/expiry descriptor, and one
-  idempotency key. `decodexd` owns credentials, app-server, the opaque credit ID, the
-  provider effect, and durable recovery. If inventory advances during a skeleton
+  idempotency key. `decodexd` owns credentials, the direct ChatGPT backend API client, the
+  opaque credit ID, the provider effect, and durable recovery. The Codex app-server is
+  reserved for Quick Task execution and is not used for account health or Reset Card.
+  If inventory advances during a skeleton
   read, the app queues one newer skeleton read instead of leaving the row in a
   checking state. During that reconciliation, the app keeps the last quota visible
   but does not expose Reset Cards from the old account revision. It holds an
@@ -206,8 +212,8 @@ decodex-publisher validate-social
   same-revision inventory calls. A use gate waits for any older daemon read and
   blocks fresh reads until the effect dispatch ends. A terminal use result starts
   bounded background reconciliation without holding the button busy. Internal contention, provider
-  cleanup, and other retryable detail failures show `Updating usage…` while the
-  retained quota remains visible. Only a typed local daemon transport loss shows
+  cleanup, and other retryable detail failures retain the last good snapshot while the
+  next daemon observation retries. Only a typed local daemon transport loss shows
   `Connecting to Decodex…`. The next current inventory replaces the retained value
   directly, so the quota bar can animate to the restored value.
 - Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,

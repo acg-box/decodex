@@ -412,8 +412,10 @@ The account system has three owners:
 1. Account Registry owns credential-negative product state.
 2. HostCredentialStore owns versioned secret bundles.
 3. Account Service coordinates enrollment, import, stable alias derivation, list,
-   enable/disable, logout, refresh/rotation, app-server refresh callbacks, runner
-   projection, account observations, recovery, and process pre-spawn checks.
+   enable/disable, logout, refresh/rotation, direct provider API observations, runner
+   projection, account observations, recovery, and process pre-spawn checks. The
+   Codex app-server is reserved for Quick Task execution; it is not an account-health
+   or quota transport.
 
 The exact stable alias derivation and closed alias set remain owned by
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md). Account Service
@@ -427,27 +429,39 @@ long-lived child environment.
 
 The daemon account observer starts immediately, repeats on its bounded schedule, and
 wakes after relevant account/effect changes. Different accounts progress concurrently.
-Within one account, Reset Card work settles before profile observation so the profile uses
-the exact successor credential. At most one observation owner is active per Account UUID;
-additional wakes coalesce into one successor round. Slow work for one account does not
-delay another.
+Within one account, direct API observation uses one credential snapshot and one shared
+provider client for usage, profile, and Reset Card inventory. A credential refresh may
+advance the snapshot before the round publishes; the observer then retries the bounded
+API request once with the new credential. At most one observation owner is active per
+Account UUID; additional wakes coalesce into one successor round. Slow work for one
+account does not delay another.
 
 Results publish progressively only against the current Account revision and cache
 generation. A changed account invalidates its old Reset Card/profile state before a stale
-in-flight result can publish.
+in-flight result can publish. Each accepted account observation updates the daemon's
+per-account freshness metadata and cache value. The opaque public cache generation
+advances only when the semantic public value or its typed result changes; a timestamp-only
+refresh does not create a UI invalidation.
 
 `GetResetCards` and `GetAccountProfile` are isolated reads. They do not contact the
 provider, start an app-server, join a refresh future, wait for an observation round, or
 cause provider work. Profile reads use the latest persisted projection plus bounded
 daemon refresh status. Reset Card reads use a revision-fenced daemon-lifetime public
-cache. Restart discards that cache and reports typed retryable unavailability until the
-new observation warms it.
+cache. A transient API failure retains the last complete public snapshot for the same
+account revision; only a cold cache reports typed retryable unavailability until the new
+observation warms it.
 
 The UI starts independent daemon value reads concurrently and keeps one bounded
-`WaitForAccountObservation` query open instead of owning a second refresh clock. Each
-daemon publication advances an opaque generation and wakes one coalesced cached-value
-reload. Panel-open and manual triggers reload cached values only; they do not start
-provider or app-server work.
+`WaitForAccountObservation` query open instead of owning a second refresh clock. A
+daemon publication with a newly observed opaque generation wakes one coalesced
+background synchronization. A same-generation heartbeat is ignored unless the
+previous synchronization needs retry. Background synchronization retains the last
+published snapshot and does not enter the global loading or action gate. Opening
+the panel presents that snapshot immediately and may issue one single-flight
+priority observation request; the daemon coalesces it with its current round and
+the panel never waits for provider work. The manual `Refresh all` trigger remains
+the explicit full-read action. Normal value reads do not start provider or app-server
+work; only the explicit priority observation request schedules daemon-owned work.
 
 The macOS UI uses its existing in-process Rust protocol client. `Refresh login` is its
 only credential-replacement surface, and the native app ABI has no separate direct
@@ -463,7 +477,7 @@ behavior exactly.
 ## ProcessGeneration
 
 ProcessSupervisor is the sole ProcessGeneration writer. A generation binds one account,
-initial account revision, credential version/fingerprint, provider binding, exact-build
+initial account revision, credential version/fingerprint, provider binding, runtime-negotiated
 capability profile, execution epoch, attested launch manifest, boot identity, process
 identity, state, revision, and timestamps. It stores no secret.
 

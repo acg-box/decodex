@@ -4,8 +4,8 @@
 //! provenance, persistence, eligibility authority, dispatch authority, or production enablement.
 
 use crate::{
-	AccountId, AccountQuotaObservationError, AccountSelectionMode, AccountState,
-	ExecutionConsumer, ObservationConfidence, QuotaWindowClass, RuntimeSessionId,
+	AccountId, AccountQuotaObservationError, AccountSelectionMode, AccountState, ExecutionConsumer,
+	ObservationConfidence, QuotaWindowClass, RuntimeSessionId,
 };
 
 /// Closed persisted routing authority shape.
@@ -40,10 +40,7 @@ impl RoutingAuthorityShape {
 
 	/// Report whether this shape owns an account-selection decision.
 	pub const fn is_selecting(self) -> bool {
-		matches!(
-			self,
-			Self::ConversationAccountRegistry | Self::ManagedRunProjectPolicy
-		)
+		matches!(self, Self::ConversationAccountRegistry | Self::ManagedRunProjectPolicy)
 	}
 }
 
@@ -497,25 +494,6 @@ pub struct AccountRegistryRoutingSnapshot {
 	pub members: Vec<AccountRegistryRoutingMember>,
 	/// Complete two-window Account Registry quota matrix for every member.
 	pub quota_facts: Vec<AccountRegistryQuotaFact>,
-}
-
-/// Immutable lineage binding for a later Conversation routing continuation.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ConversationContinuationRoutingBinding {
-	/// RuntimeSession identity that owns the original selection.
-	pub source_session_id: RuntimeSessionId,
-	/// Positive revision of the source RuntimeSession.
-	pub source_session_revision: i64,
-	/// Immutable identity of the initial routing decision.
-	pub initial_decision_id: String,
-	/// Immutable account-snapshot identity bound by the initial decision.
-	pub account_snapshot_id: String,
-	/// Positive revision of the bound account snapshot.
-	pub account_snapshot_revision: i64,
-	/// Immutable profile-snapshot identity bound by the initial decision.
-	pub profile_snapshot_id: String,
-	/// Positive revision of the bound profile snapshot.
-	pub profile_snapshot_revision: i64,
 }
 
 /// One exact duration-owned quota fact. Missing observations retain explicit null facts.
@@ -1116,10 +1094,9 @@ pub struct AccountRegistryRoutingExclusion {
 /// Field rules by `kind`:
 /// - `Selected`: `selected_account_id` is `Some`; causes and exclusions contain complete
 ///   classifications for evaluated preceding members and may be empty.
-/// - `Waiting`: `selected_account_id` is `None`, `exclusions` is non-empty, and `causes`
-///   is empty.
-/// - `NoRoute`: `selected_account_id` is `None`, `causes` is non-empty, and `exclusions`
-///   contains every positive current depletion found during evaluation.
+/// - `Waiting`: `selected_account_id` is `None`, `exclusions` is non-empty, and `causes` is empty.
+/// - `NoRoute`: `selected_account_id` is `None`, `causes` is non-empty, and `exclusions` contains
+///   every positive current depletion found during evaluation.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountRegistryRoutingDecision {
 	/// Exact identity copied from the validated source snapshot.
@@ -1310,8 +1287,7 @@ pub fn decide_account_registry_routing(
 	snapshot: &AccountRegistryRoutingSnapshot,
 	decided_at_micros: i64,
 ) -> Result<AccountRegistryRoutingDecision, AccountRegistryRoutingKernelError> {
-	let facts_by_member =
-		validated_account_registry_quota_facts(snapshot, decided_at_micros)?;
+	let facts_by_member = validated_account_registry_quota_facts(snapshot, decided_at_micros)?;
 	let evaluated_member_indexes = account_registry_evaluated_member_indexes(snapshot)?;
 	let mut exclusions = Vec::new();
 	let mut causes = Vec::new();
@@ -1350,10 +1326,10 @@ pub fn decide_account_registry_routing(
 	})
 }
 
-fn validated_account_registry_quota_facts<'a>(
-	snapshot: &'a AccountRegistryRoutingSnapshot,
+fn validated_account_registry_quota_facts(
+	snapshot: &AccountRegistryRoutingSnapshot,
 	decided_at_micros: i64,
-) -> Result<Vec<[&'a AccountRegistryQuotaFact; 2]>, AccountRegistryRoutingKernelError> {
+) -> Result<Vec<[&AccountRegistryQuotaFact; 2]>, AccountRegistryRoutingKernelError> {
 	if !account_registry_timestamp_is_valid(decided_at_micros) {
 		return Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros {
 			decided_at_micros,
@@ -1365,11 +1341,9 @@ fn validated_account_registry_quota_facts<'a>(
 		});
 	}
 	if snapshot.task_role_profile_revision <= 0 {
-		return Err(
-			AccountRegistryRoutingKernelError::InvalidTaskRoleProfileRevision {
-				task_role_profile_revision: snapshot.task_role_profile_revision,
-			},
-		);
+		return Err(AccountRegistryRoutingKernelError::InvalidTaskRoleProfileRevision {
+			task_role_profile_revision: snapshot.task_role_profile_revision,
+		});
 	}
 	if !account_registry_timestamp_is_valid(snapshot.resolved_at_micros)
 		|| snapshot.resolved_at_micros > decided_at_micros
@@ -1391,12 +1365,10 @@ fn validated_account_registry_quota_facts<'a>(
 			});
 		}
 		if member.account_revision <= 0 {
-			return Err(
-				AccountRegistryRoutingKernelError::InvalidMemberAccountRevision {
-					account_id: member.account_id.clone(),
-					account_revision: member.account_revision,
-				},
-			);
+			return Err(AccountRegistryRoutingKernelError::InvalidMemberAccountRevision {
+				account_id: member.account_id.clone(),
+				account_revision: member.account_revision,
+			});
 		}
 		if let Some(first) =
 			snapshot.members[..index].iter().find(|prior| prior.account_id == member.account_id)
@@ -1419,14 +1391,12 @@ fn validated_account_registry_quota_facts<'a>(
 		}
 		let expected_duration_minutes = account_registry_window_duration(fact.window);
 		if fact.duration_minutes != expected_duration_minutes {
-			return Err(
-				AccountRegistryRoutingKernelError::QuotaFactWindowDurationMismatch {
-					account_id: fact.account_id.clone(),
-					window: fact.window,
-					expected_duration_minutes,
-					duration_minutes: fact.duration_minutes,
-				},
-			);
+			return Err(AccountRegistryRoutingKernelError::QuotaFactWindowDurationMismatch {
+				account_id: fact.account_id.clone(),
+				window: fact.window,
+				expected_duration_minutes,
+				duration_minutes: fact.duration_minutes,
+			});
 		}
 		if snapshot.quota_facts[..index]
 			.iter()
@@ -1446,8 +1416,7 @@ fn validated_account_registry_quota_facts<'a>(
 			.quota_facts
 			.iter()
 			.find(|fact| {
-				fact.account_id == member.account_id
-					&& fact.window == QuotaWindowClass::FiveHour
+				fact.account_id == member.account_id && fact.window == QuotaWindowClass::FiveHour
 			})
 			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
 				account_id: member.account_id.clone(),
@@ -1457,8 +1426,7 @@ fn validated_account_registry_quota_facts<'a>(
 			.quota_facts
 			.iter()
 			.find(|fact| {
-				fact.account_id == member.account_id
-					&& fact.window == QuotaWindowClass::SevenDay
+				fact.account_id == member.account_id && fact.window == QuotaWindowClass::SevenDay
 			})
 			.ok_or_else(|| AccountRegistryRoutingKernelError::MissingQuotaFact {
 				account_id: member.account_id.clone(),
@@ -1469,9 +1437,7 @@ fn validated_account_registry_quota_facts<'a>(
 
 	let mut fact_index = 0;
 	for member in &snapshot.members {
-		for expected_window in
-			[QuotaWindowClass::FiveHour, QuotaWindowClass::SevenDay]
-		{
+		for expected_window in [QuotaWindowClass::FiveHour, QuotaWindowClass::SevenDay] {
 			let fact = &snapshot.quota_facts[fact_index];
 			if fact.account_id != member.account_id || fact.window != expected_window {
 				return Err(AccountRegistryRoutingKernelError::NonCanonicalQuotaFact {
@@ -1500,47 +1466,38 @@ fn validate_account_registry_quota_observation(
 			resets_at_micros,
 		} => {
 			if *used_percent > 100 {
-				return Err(
-					AccountRegistryRoutingKernelError::InvalidQuotaFactUsedPercent {
-						account_id: fact.account_id.clone(),
-						window: fact.window,
-						used_percent: *used_percent,
-					},
-				);
+				return Err(AccountRegistryRoutingKernelError::InvalidQuotaFactUsedPercent {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					used_percent: *used_percent,
+				});
 			}
 			if !account_registry_timestamp_is_valid(*observed_at_micros) {
-				return Err(
-					AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
-						account_id: fact.account_id.clone(),
-						window: fact.window,
-						observed_at_micros: *observed_at_micros,
-					},
-				);
+				return Err(AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					observed_at_micros: *observed_at_micros,
+				});
 			}
 			if !account_registry_timestamp_is_valid(*resets_at_micros)
 				|| *resets_at_micros <= *observed_at_micros
 			{
-				return Err(
-					AccountRegistryRoutingKernelError::InvalidQuotaFactResetsAtMicros {
-						account_id: fact.account_id.clone(),
-						window: fact.window,
-						observed_at_micros: *observed_at_micros,
-						resets_at_micros: *resets_at_micros,
-					},
-				);
+				return Err(AccountRegistryRoutingKernelError::InvalidQuotaFactResetsAtMicros {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					observed_at_micros: *observed_at_micros,
+					resets_at_micros: *resets_at_micros,
+				});
 			}
 		},
-		AccountRegistryQuotaObservation::ObservationError { observed_at_micros, .. } => {
+		AccountRegistryQuotaObservation::ObservationError { observed_at_micros, .. } =>
 			if !account_registry_timestamp_is_valid(*observed_at_micros) {
-				return Err(
-					AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
-						account_id: fact.account_id.clone(),
-						window: fact.window,
-						observed_at_micros: *observed_at_micros,
-					},
-				);
-			}
-		},
+				return Err(AccountRegistryRoutingKernelError::InvalidQuotaFactObservedAtMicros {
+					account_id: fact.account_id.clone(),
+					window: fact.window,
+					observed_at_micros: *observed_at_micros,
+				});
+			},
 	}
 	Ok(())
 }
@@ -1558,9 +1515,8 @@ fn validate_account_registry_member_blockers(
 				blocker,
 			});
 		};
-		if let Some(first_index) = member.blockers[..index]
-			.iter()
-			.position(|prior| *prior == blocker)
+		if let Some(first_index) =
+			member.blockers[..index].iter().position(|prior| *prior == blocker)
 		{
 			return Err(AccountRegistryRoutingKernelError::DuplicateMemberBlocker {
 				account_id: member.account_id.clone(),
@@ -1570,16 +1526,16 @@ fn validate_account_registry_member_blockers(
 				duplicate_blocker_position: index + 1,
 			});
 		}
-		if let Some((previous_blocker, previous_rank)) = previous {
-			if previous_rank >= rank {
-				return Err(AccountRegistryRoutingKernelError::NonCanonicalMemberBlocker {
-					account_id: member.account_id.clone(),
-					member_position: member.position,
-					blocker_position: index + 1,
-					previous_blocker,
-					blocker,
-				});
-			}
+		if let Some((previous_blocker, previous_rank)) = previous
+			&& previous_rank >= rank
+		{
+			return Err(AccountRegistryRoutingKernelError::NonCanonicalMemberBlocker {
+				account_id: member.account_id.clone(),
+				member_position: member.position,
+				blocker_position: index + 1,
+				previous_blocker,
+				blocker,
+			});
 		}
 		previous = Some((blocker, rank));
 	}
@@ -1611,10 +1567,7 @@ fn classify_account_registry_member(
 		.blockers
 		.iter()
 		.copied()
-		.map(|blocker| RoutingDecisionCause {
-			account_id: member.account_id.clone(),
-			blocker,
-		})
+		.map(|blocker| RoutingDecisionCause { account_id: member.account_id.clone(), blocker })
 		.collect::<Vec<_>>();
 	let mut exclusions = Vec::new();
 
@@ -1634,7 +1587,7 @@ fn classify_account_registry_member(
 				used_percent,
 				observed_at_micros,
 				resets_at_micros,
-			} => {
+			} =>
 				if *observed_at_micros > decided_at_micros {
 					causes.push(RoutingDecisionCause {
 						account_id: member.account_id.clone(),
@@ -1662,8 +1615,7 @@ fn classify_account_registry_member(
 						observed_at_micros: *observed_at_micros,
 						resets_at_micros: *resets_at_micros,
 					});
-				}
-			},
+				},
 		}
 	}
 
