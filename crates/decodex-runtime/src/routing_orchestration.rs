@@ -1,20 +1,24 @@
 //! Stateless execution sequencing over accepted durable owners.
 //!
-//! `ExecutionCoordinator` retains no services or lifecycle state. Pre-process commits only Routing
-//! Decision routing and Continuation Planning. Post-process consumes a ready generation plus exact
-//! establishment or affine resume authority into ProviderAttempt preparation. No dispatch
-//! authorization or provider gateway is reachable from either boundary.
+//! `ExecutionCoordinator` retains no services or lifecycle state. Pre-process sequences routing
+//! Conversation successors, Routing Decision routing, and Continuation Planning. Post-process
+//! consumes a ready generation plus exact establishment or affine resume authority into
+//! ProviderAttempt preparation. No dispatch authorization or provider gateway is reachable from
+//! either boundary.
 
 use decodex_core::{
-	BlobStore, ContextPack, ContinuationCommandOutcome, ContinuationPlanKind,
-	ContinuationRejection, ExecutionConsumer, ProviderAttemptConsumer, ProviderAttemptId,
-	ProviderAttemptPreparation, ProviderAttemptState, RoutingBlocker, RoutingCommandOutcome,
-	RoutingDecisionKind,
+	AccountRegistryRoutingDecisionKind, BlobStore, ContextPack, ContinuationCommandOutcome,
+	ContinuationPlanKind, ContinuationRejection, ConversationId, ExecutionConsumer,
+	ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
+	RoutingCommandOutcome, RuntimeSessionId, TurnId,
 };
 use decodex_postgres::{
-	ContinuationPlanEffect, PersistedRoutingDecision, PlanContinuation,
-	PlanInitialThreadContinuation, PostgresStore, PrepareProviderAttemptOutcome, RouteAccount,
+	BindQuickTaskContinuation, ContinuationPlanEffect, CreateQuickTaskRoutingSuccessor,
+	PlanContinuation, PlanInitialThreadContinuation, PostgresStore, PrepareProviderAttemptOutcome,
+	QuickTaskInitialRoute, QuickTaskInitialRouteOutcome, QuickTaskRoutingSuccessor,
+	QuickTaskRoutingSuccessorOutcome, RouteQuickTaskInitial,
 };
+use sha2::{Digest as _, Sha256};
 
 use crate::{
 	process_supervisor::FencedProcess,
@@ -23,77 +27,116 @@ use crate::{
 	},
 };
 
-/// Closed Continuation Planning input selected before any process operation exists.
-pub(crate) enum ContinuationPlanning {
-	/// Bind the exact existing starting/unfenced RuntimeSession without creating a successor.
-	InitialThread { operation_id: String, plan_id: String },
-	/// Atomically preserve same-thread evidence or allocate one Context-Pack successor.
-	ExistingSession {
-		operation_id: String,
-		plan_id: String,
-		fallback_runtime_session_id: String,
-		fallback_account_snapshot_id: String,
-		fallback_context_pack_id: String,
-		fallback_context_pack: Box<ContextPack>,
-	},
-}
-
-/// Complete input for one stateless pre-process route-and-plan call.
+/// Complete input for one atomic initial Account Registry route followed by initial planning.
 pub(crate) struct ExecutionCommand {
-	/// Exact-command idempotency key for Routing Decision.
-	pub routing_idempotency_key: String,
-	/// Routing Decision operation, policy, and exact consumer coordinates.
-	pub routing: RouteAccount,
-	/// Exact-command idempotency key for Continuation Plan.
-	pub continuation_idempotency_key: String,
-	/// Closed initial-thread or existing-session Continuation Planning input.
-	continuation: ContinuationPlanning,
+	/// Exact-command key for the whole initial Account Registry route transaction.
+	routing_idempotency_key: String,
+	/// Exact open Conversation coordinates. PostgreSQL generates route and Turn identities.
+	routing: RouteQuickTaskInitial,
 }
 
 impl ExecutionCommand {
 	/// Construct first-Turn pre-process input without exposing a process operation.
 	pub(crate) fn initial_thread(
-		routing_idempotency_key: String,
-		routing: RouteAccount,
-		continuation_idempotency_key: String,
-		operation_id: String,
-		plan_id: String,
+		operation_key: &str,
+		conversation_id: ConversationId,
+		expected_conversation_revision: i64,
 	) -> Self {
 		Self {
-			routing_idempotency_key,
-			routing,
-			continuation_idempotency_key,
-			continuation: ContinuationPlanning::InitialThread { operation_id, plan_id },
+			routing_idempotency_key: routing_scoped_key("route", operation_key),
+			routing: RouteQuickTaskInitial { conversation_id, expected_conversation_revision },
 		}
 	}
 
-	/// Construct existing-session pre-process input with one bounded fallback candidate.
+	fn exact(routing_idempotency_key: String, routing: RouteQuickTaskInitial) -> Self {
+		Self { routing_idempotency_key, routing }
+	}
+}
+
+/// Complete non-selecting later-Turn binding followed by ordinary continuation planning.
+pub(crate) struct ContinuationExecutionCommand {
+	/// Exact-command key for the immutable continuation routing binding.
+	binding_idempotency_key: String,
+	/// Existing session and original route lineage to bind.
+	binding: BindQuickTaskContinuation,
+	/// Exact-command key for same-thread or same-account Context Pack planning.
+	continuation_idempotency_key: String,
+	/// Stable Continuation Planning operation identity.
+	continuation_operation_id: String,
+	/// Stable immutable Continuation Plan identity.
+	continuation_plan_id: String,
+	/// Preallocated same-account fallback RuntimeSession identity.
+	fallback_runtime_session_id: String,
+	/// Preallocated Context Pack identity.
+	fallback_context_pack_id: String,
+	/// Complete ordinary Quick Task Context Pack.
+	fallback_context_pack: ContextPack,
+}
+
+impl ContinuationExecutionCommand {
+	/// Construct one non-selecting ordinary continuation bind-and-plan sequence.
 	#[allow(clippy::too_many_arguments)]
-	pub(crate) fn existing_session(
-		routing_idempotency_key: String,
-		routing: RouteAccount,
-		continuation_idempotency_key: String,
-		operation_id: String,
-		plan_id: String,
-		fallback_runtime_session_id: String,
-		fallback_account_snapshot_id: String,
-		fallback_context_pack_id: String,
+	pub(crate) fn ordinary(
+		operation_key: &str,
+		conversation_id: ConversationId,
+		expected_conversation_revision: i64,
+		source_runtime_session_id: RuntimeSessionId,
+		expected_source_runtime_session_revision: i64,
+		turn_id: TurnId,
 		fallback_context_pack: ContextPack,
 	) -> Self {
 		Self {
-			routing_idempotency_key,
-			routing,
-			continuation_idempotency_key,
-			continuation: ContinuationPlanning::ExistingSession {
-				operation_id,
-				plan_id,
-				fallback_runtime_session_id,
-				fallback_account_snapshot_id,
-				fallback_context_pack_id,
-				fallback_context_pack: Box::new(fallback_context_pack),
+			binding_idempotency_key: routing_scoped_key("continuation-binding", operation_key),
+			binding: BindQuickTaskContinuation {
+				operation_id: routing_uuid("continuation-binding-operation", &[operation_key]),
+				conversation_id,
+				expected_conversation_revision,
+				source_runtime_session_id,
+				expected_source_runtime_session_revision,
+				turn_id,
 			},
+			continuation_idempotency_key: routing_scoped_key("continuation", operation_key),
+			continuation_operation_id: routing_uuid("continuation-operation", &[operation_key]),
+			continuation_plan_id: routing_uuid("continuation-plan", &[operation_key]),
+			fallback_runtime_session_id: routing_uuid("fallback-runtime-session", &[operation_key]),
+			fallback_context_pack_id: routing_uuid("fallback-context-pack", &[operation_key]),
+			fallback_context_pack,
 		}
 	}
+}
+
+/// Conversation-successor command followed by a separately committed route command.
+pub(crate) struct RoutingSuccessorExecutionCommand {
+	/// Exact key for Conversation-owned successor creation.
+	successor_idempotency_key: String,
+	/// Waiting/no-route source and expected revision.
+	successor: CreateQuickTaskRoutingSuccessor,
+	/// Exact key for the new Conversation's route transaction.
+	routing_idempotency_key: String,
+}
+
+impl RoutingSuccessorExecutionCommand {
+	/// Construct the separate successor command and its follow-on initial route coordinates.
+	pub(crate) fn new(
+		operation_key: &str,
+		source_conversation_id: ConversationId,
+		expected_source_revision: i64,
+	) -> Self {
+		Self {
+			successor_idempotency_key: routing_scoped_key("routing-successor", operation_key),
+			successor: CreateQuickTaskRoutingSuccessor {
+				source_conversation_id,
+				expected_source_revision,
+			},
+			routing_idempotency_key: routing_scoped_key("successor-route", operation_key),
+		}
+	}
+}
+
+/// Result after the Conversation successor command commits before routing starts.
+pub(crate) struct RoutingSuccessorExecutionOutcome {
+	pub successor: QuickTaskRoutingSuccessor,
+	pub routing: PreProcessOutcome,
 }
 
 /// Complete post-process input after one ready generation and positive establish/resume result.
@@ -148,12 +191,12 @@ pub(crate) enum PreProcessOutcome {
 		/// Exact Continuation Plan result.
 		plan: ContinuationPlanEffect,
 	},
-	/// Pure positive quota depletion. No wake is registered here.
-	WaitingUsage,
-	/// Pure unresolved ProcessGeneration or ProviderAttempt authority.
-	WaitingReconciliation,
+	/// Account Registry waiting with only positive current depletion exclusions.
+	Waiting,
 	/// Typed unavailable state whose complete causes remain in the persisted decision.
 	NoRoute,
+	/// A selected decision committed, but first-session planning is not yet complete.
+	EstablishmentPending,
 	/// Missing, stale, rejected, mismatched, or unavailable authority.
 	FailedClosed(ExecutionFailureKind),
 }
@@ -187,160 +230,181 @@ pub(crate) enum PostProcessOutcome {
 pub(crate) struct ExecutionCoordinator;
 
 impl ExecutionCoordinator {
-	/// Persist only one Routing Decision and one inert Continuation Plan.
-	#[allow(clippy::too_many_lines)]
+	/// Atomically route one initial Conversation, then plan only when selection committed.
 	pub(crate) async fn pre_process(
 		&self,
 		store: &PostgresStore,
-		blob_store: &BlobStore,
 		command: &ExecutionCommand,
 	) -> PreProcessOutcome {
-		let consumer = command.routing.consumer.clone();
-		let persisted =
-			match store.route_account(&command.routing_idempotency_key, &command.routing).await {
-				Ok(RoutingCommandOutcome::Success(persisted)) => persisted,
-				Ok(RoutingCommandOutcome::Rejected(_)) | Err(_) => {
-					return failed(ExecutionFailureKind::Other);
-				},
-			};
-		if persisted.consumer != consumer {
-			return failed(ExecutionFailureKind::Other);
-		}
-		let decision = PersistedDecisionProvenance {
-			decision_id: persisted.decision_id.clone(),
-			consumer: consumer.clone(),
+		let route = match store
+			.route_quick_task_initial(&command.routing_idempotency_key, &command.routing)
+			.await
+		{
+			Ok(QuickTaskInitialRouteOutcome::Fresh(route))
+			| Ok(QuickTaskInitialRouteOutcome::Replayed(route)) => route,
+			Ok(
+				QuickTaskInitialRouteOutcome::Rejected(_)
+				| QuickTaskInitialRouteOutcome::ReplayedRejection(_),
+			)
+			| Err(_) => return failed(ExecutionFailureKind::Other),
 		};
-
-		match persisted.decision.kind {
-			RoutingDecisionKind::Selected =>
-				self.plan_selected(store, blob_store, command, consumer, decision, &persisted).await,
-			RoutingDecisionKind::WaitingUsage => {
-				let Some(earliest_ready_at_micros) = persisted.decision.ready_at_micros else {
-					return failed(ExecutionFailureKind::Other);
-				};
-				if persisted.decision.selected_account_id.is_some()
-					|| persisted.decision.no_route_reason.is_some()
-					|| earliest_ready_at_micros < 0
-					|| persisted.decision.causes.is_empty()
-					|| persisted.decision.exclusions.is_empty()
-					|| persisted.decision.causes.len() != persisted.decision.exclusions.len()
-					|| persisted.decision.causes.iter().any(|cause| {
-						!matches!(
-							cause.blocker,
-							RoutingBlocker::QuotaFiveHourDepleted
-								| RoutingBlocker::QuotaSevenDayDepleted
-						)
-					}) {
-					return failed(ExecutionFailureKind::Other);
-				}
-				PreProcessOutcome::WaitingUsage
-			},
-			RoutingDecisionKind::WaitingReconciliation => {
-				if persisted.decision.selected_account_id.is_some()
-					|| persisted.decision.ready_at_micros.is_some()
-					|| persisted.decision.no_route_reason.is_some()
-					|| persisted.decision.causes.is_empty()
-					|| !persisted.decision.exclusions.is_empty()
-					|| persisted.decision.causes.iter().any(|cause| {
-						!matches!(
-							cause.blocker,
-							RoutingBlocker::ProcessGenerationUnresolved
-								| RoutingBlocker::ProviderAttemptUnresolved
-						)
-					}) {
-					return failed(ExecutionFailureKind::Other);
-				}
-				PreProcessOutcome::WaitingReconciliation
-			},
-			RoutingDecisionKind::NoRoute => {
-				if persisted.decision.no_route_reason.is_none()
-					|| persisted.decision.selected_account_id.is_some()
-					|| persisted.decision.ready_at_micros.is_some()
-					|| !persisted.decision.exclusions.is_empty()
-					|| persisted.decision.causes.is_empty()
-				{
-					return failed(ExecutionFailureKind::Other);
-				}
-				PreProcessOutcome::NoRoute
-			},
+		match route.decision.kind {
+			AccountRegistryRoutingDecisionKind::Selected =>
+				self.plan_selected_initial(store, route).await,
+			AccountRegistryRoutingDecisionKind::Waiting
+				if route.decision.selected_account_id.is_none()
+					&& route.decision.causes.is_empty()
+					&& !route.decision.exclusions.is_empty() =>
+				PreProcessOutcome::Waiting,
+			AccountRegistryRoutingDecisionKind::NoRoute
+				if route.decision.selected_account_id.is_none()
+					&& !route.decision.causes.is_empty() =>
+				PreProcessOutcome::NoRoute,
+			_ => failed(ExecutionFailureKind::Other),
 		}
 	}
 
-	async fn plan_selected(
+	/// Resume establishment from the committed selected decision without routing again.
+	pub(crate) async fn resume_establishment(
+		&self,
+		store: &PostgresStore,
+		conversation_id: &ConversationId,
+	) -> PreProcessOutcome {
+		let route = match store.read_quick_task_initial_route(conversation_id).await {
+			Ok(Some(route))
+				if route.decision.kind == AccountRegistryRoutingDecisionKind::Selected =>
+				route,
+			Ok(_) | Err(_) => return failed(ExecutionFailureKind::Other),
+		};
+		self.plan_selected_initial(store, route).await
+	}
+
+	/// Create one routing successor, then route the committed successor in a separate command.
+	pub(crate) async fn successor_to_route(
+		&self,
+		store: &PostgresStore,
+		command: &RoutingSuccessorExecutionCommand,
+	) -> Result<RoutingSuccessorExecutionOutcome, ExecutionFailureKind> {
+		let successor = match store
+			.create_quick_task_routing_successor(
+				&command.successor_idempotency_key,
+				&command.successor,
+			)
+			.await
+		{
+			Ok(QuickTaskRoutingSuccessorOutcome::Fresh(successor))
+			| Ok(QuickTaskRoutingSuccessorOutcome::Replayed(successor)) => successor,
+			Ok(QuickTaskRoutingSuccessorOutcome::Rejected { .. }) | Err(_) =>
+				return Err(ExecutionFailureKind::Other),
+		};
+		let routing = self
+			.pre_process(
+				store,
+				&ExecutionCommand::exact(
+					command.routing_idempotency_key.clone(),
+					RouteQuickTaskInitial {
+						conversation_id: successor.successor_conversation_id.clone(),
+						expected_conversation_revision: successor.successor_revision,
+					},
+				),
+			)
+			.await;
+		Ok(RoutingSuccessorExecutionOutcome { successor, routing })
+	}
+
+	/// Bind immutable original route lineage, then plan same-thread or same-account Context Pack.
+	pub(crate) async fn continuation_bind_to_plan(
 		&self,
 		store: &PostgresStore,
 		blob_store: &BlobStore,
-		command: &ExecutionCommand,
-		consumer: ExecutionConsumer,
-		decision: PersistedDecisionProvenance,
-		persisted: &PersistedRoutingDecision,
+		command: &ContinuationExecutionCommand,
 	) -> PreProcessOutcome {
-		let Some(selected_account_id) = persisted.decision.selected_account_id.clone() else {
-			return failed(ExecutionFailureKind::Other);
+		let binding = match store
+			.bind_quick_task_continuation(&command.binding_idempotency_key, &command.binding)
+			.await
+		{
+			Ok(RoutingCommandOutcome::Success(binding)) => binding,
+			Ok(RoutingCommandOutcome::Rejected(_)) | Err(_) =>
+				return failed(ExecutionFailureKind::Other),
 		};
-		if persisted.decision.ready_at_micros.is_some()
-			|| persisted.decision.no_route_reason.is_some()
-			|| !persisted.decision.causes.is_empty()
+		let decision = PersistedDecisionProvenance {
+			decision_id: binding.decision_id.clone(),
+			consumer: binding.consumer.clone(),
+		};
+		let request = PlanContinuation {
+			operation_id: command.continuation_operation_id.clone(),
+			routing_decision_id: binding.decision_id,
+			expected_consumer_revision: binding.consumer.domain_revision(),
+			plan_id: command.continuation_plan_id.clone(),
+			fallback_runtime_session_id: command.fallback_runtime_session_id.clone(),
+			fallback_account_snapshot_id: binding.account_snapshot_id,
+			fallback_context_pack_id: command.fallback_context_pack_id.clone(),
+		};
+		let plan = match store
+			.plan_continuation(
+				blob_store,
+				&command.continuation_idempotency_key,
+				&request,
+				&command.fallback_context_pack,
+			)
+			.await
+		{
+			Ok(ContinuationCommandOutcome::Success(plan)) => plan,
+			Ok(ContinuationCommandOutcome::Rejected(rejection)) =>
+				return failed(ExecutionFailureKind::ContinuationRejected(rejection)),
+			Err(_) => return failed(ExecutionFailureKind::Other),
+		};
+		if plan.plan.routing_decision_id != decision.decision_id
+			|| plan.plan.consumer != decision.consumer
+			|| plan.plan.replay_permitted
+			|| plan.plan.dispatch_enabled
+			|| !valid_plan_shape(&plan)
 		{
 			return failed(ExecutionFailureKind::Other);
 		}
-		let planned = match &command.continuation {
-			ContinuationPlanning::InitialThread { operation_id, plan_id } => {
-				let request = PlanInitialThreadContinuation {
-					operation_id: operation_id.clone(),
-					routing_decision_id: persisted.decision_id.clone(),
-					expected_conversation_revision: consumer.domain_revision(),
-					plan_id: plan_id.clone(),
-				};
-				store
-					.plan_initial_thread_continuation(
-						&command.continuation_idempotency_key,
-						&request,
-					)
-					.await
-			},
-			ContinuationPlanning::ExistingSession {
-				operation_id,
-				plan_id,
-				fallback_runtime_session_id,
-				fallback_account_snapshot_id,
-				fallback_context_pack_id,
-				fallback_context_pack,
-			} => {
-				let request = PlanContinuation {
-					operation_id: operation_id.clone(),
-					routing_decision_id: persisted.decision_id.clone(),
-					expected_consumer_revision: consumer.domain_revision(),
-					plan_id: plan_id.clone(),
-					fallback_runtime_session_id: fallback_runtime_session_id.clone(),
-					fallback_account_snapshot_id: fallback_account_snapshot_id.clone(),
-					fallback_context_pack_id: fallback_context_pack_id.clone(),
-				};
-				store
-					.plan_continuation(
-						blob_store,
-						&command.continuation_idempotency_key,
-						&request,
-						fallback_context_pack,
-					)
-					.await
-			},
+		PreProcessOutcome::Planned { decision, plan }
+	}
+
+	async fn plan_selected_initial(
+		&self,
+		store: &PostgresStore,
+		route: QuickTaskInitialRoute,
+	) -> PreProcessOutcome {
+		let Some(selected_account_id) = route.decision.selected_account_id.clone() else {
+			return failed(ExecutionFailureKind::Other);
 		};
-		let plan = match planned {
+		if route.decision.kind != AccountRegistryRoutingDecisionKind::Selected {
+			return failed(ExecutionFailureKind::Other);
+		}
+		let consumer = route.consumer.clone();
+		let decision = PersistedDecisionProvenance {
+			decision_id: route.decision_id.clone(),
+			consumer: consumer.clone(),
+		};
+		let continuation_idempotency_key =
+			routing_scoped_key("initial-continuation", &route.decision_id);
+		let request = PlanInitialThreadContinuation {
+			operation_id: routing_uuid("initial-continuation-operation", &[&route.decision_id]),
+			routing_decision_id: route.decision_id.clone(),
+			expected_conversation_revision: consumer.domain_revision(),
+			plan_id: routing_uuid("initial-continuation-plan", &[&route.decision_id]),
+		};
+		let plan = match store
+			.plan_initial_thread_continuation(&continuation_idempotency_key, &request)
+			.await
+		{
 			Ok(ContinuationCommandOutcome::Success(effect)) => effect,
-			Ok(ContinuationCommandOutcome::Rejected(rejection)) => {
-				return failed(ExecutionFailureKind::ContinuationRejected(rejection));
-			},
-			Err(_) => return failed(ExecutionFailureKind::Other),
+			Ok(ContinuationCommandOutcome::Rejected(_)) | Err(_) =>
+				return PreProcessOutcome::EstablishmentPending,
 		};
-		if plan.plan.routing_decision_id != persisted.decision_id
+		if plan.plan.routing_decision_id != route.decision_id
 			|| plan.plan.consumer != consumer
 			|| plan.plan.selected_account_id != selected_account_id
 			|| plan.plan.replay_permitted
 			|| plan.plan.dispatch_enabled
 			|| !valid_plan_shape(&plan)
 		{
-			return failed(ExecutionFailureKind::Other);
+			return PreProcessOutcome::EstablishmentPending;
 		}
 
 		PreProcessOutcome::Planned { decision, plan }
@@ -421,6 +485,48 @@ impl ExecutionCoordinator {
 			},
 		}
 	}
+}
+
+fn routing_scoped_key(scope: &str, key: &str) -> String {
+	format!("ordinary-{scope}:{}", routing_digest(&[key]))
+}
+
+fn routing_digest(parts: &[&str]) -> String {
+	let mut digest = Sha256::new();
+	for part in parts {
+		digest.update(part.len().to_be_bytes());
+		digest.update(part.as_bytes());
+	}
+	digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
+fn routing_uuid(scope: &str, parts: &[&str]) -> String {
+	let digest = Sha256::digest(
+		format!("decodex/ordinary-task/{scope}/{}", routing_digest(parts)).as_bytes(),
+	);
+	let mut bytes = [0_u8; 16];
+	bytes.copy_from_slice(&digest[..16]);
+	bytes[6] = (bytes[6] & 0x0f) | 0x40;
+	bytes[8] = (bytes[8] & 0x3f) | 0x80;
+	format!(
+		"{:02x}{:02x}{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}-{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
+		bytes[0],
+		bytes[1],
+		bytes[2],
+		bytes[3],
+		bytes[4],
+		bytes[5],
+		bytes[6],
+		bytes[7],
+		bytes[8],
+		bytes[9],
+		bytes[10],
+		bytes[11],
+		bytes[12],
+		bytes[13],
+		bytes[14],
+		bytes[15],
+	)
 }
 
 fn same_consumer(execution: &ExecutionConsumer, attempt: &ProviderAttemptConsumer) -> bool {

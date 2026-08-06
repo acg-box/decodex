@@ -30,16 +30,16 @@ OUTPUT_TAIL_BYTES = 4_096
 SOURCE_LIST_BYTES = 4 * 1_024 * 1_024
 SOURCE_FILE_BYTES = 2 * 1_024 * 1_024
 SOURCE_TOTAL_BYTES = 16 * 1_024 * 1_024
-SECOND_BOOTSTRAP_REFUSAL_DIAGNOSTIC = "Error: Database(Incompatible)"
+SECOND_BOOTSTRAP_REFUSAL_ERROR = b"Error: Database(Incompatible)"
 DIAGNOSTIC_COMMAND_BYTES = 32 * 1_024
 DIAGNOSTIC_LOG_BYTES = 128 * 1_024
 FAILURE_LOG_FILE_BYTES = 1 * 1_024 * 1_024
 FAILURE_LOG_TOTAL_BYTES = 16 * 1_024 * 1_024
 COPY_BUFFER_BYTES = 64 * 1_024
 FAILURE_EVIDENCE_PARENT = Path("/private/tmp")
-BOOTSTRAP_AUTHORITY_REPORT_PREFIX = b"DECODEX_BOOTSTRAP_AUTHORITY_REPORT="
-BOOTSTRAP_AUTHORITY_REPORT_SCHEMA = "decodex/bootstrap-authority-report/1"
-BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES = 16 * 1024
+BOOTSTRAP_REPORT_PREFIX = b"DECODEX_BOOTSTRAP_REPORT="
+BOOTSTRAP_REPORT_SCHEMA = "decodex/bootstrap-report/1"
+BOOTSTRAP_REPORT_MAX_BYTES = 16 * 1024
 BOOTSTRAP_PLATFORM_NAMES = (
     "postgres_major",
     "data_checksums",
@@ -115,41 +115,46 @@ BOOTSTRAP_PLATFORM_INCOMPATIBLE = frozenset(
     }
 )
 BOOTSTRAP_NAMESPACE_INCOMPATIBLE = frozenset({"namespace_present"})
-BOOTSTRAP_QUERY_FAILURE_CATEGORIES = frozenset(
-    {
-        "authentication",
-        "authorization",
-        "authority",
-        "catalog",
-        "constraint",
-        "evidence",
-        "host_path",
-        "internal",
-        "server",
-        "transaction",
-        "transport",
-    }
-)
-BOOTSTRAP_QUERY_FAILURE_CLASSIFICATIONS = {
-    "authentication": "authentication",
-    "authorization": "incompatible",
-    "authority": "unsafe_authority",
-    "catalog": "incompatible",
-    "constraint": "incompatible",
-    "evidence": "incompatible",
-    "host_path": "unsafe_host_path",
-    "internal": "unreachable",
-    "server": "incompatible",
-    "transaction": "incompatible",
-    "transport": "unreachable",
+BOOTSTRAP_FAILURE_CATEGORIES_BY_CLASSIFICATION = {
+    "authentication": frozenset({"authentication"}),
+    "unreachable": frozenset({"internal", "transport"}),
+    "incompatible": frozenset(
+        {
+            "authentication",
+            "authorization",
+            "catalog",
+            "constraint",
+            "evidence",
+            "server",
+            "transaction",
+            "transport",
+        }
+    ),
+    "unsafe_authority": frozenset({"authority"}),
+    "unsafe_host_path": frozenset({"host_path"}),
 }
-BOOTSTRAP_QUERY_FAILURE_OPERATIONS = {
-    "platform": ("platform", False, 0),
-    "initial_authorization": ("initial_authorization", True, 0),
-    "namespace": ("authority", True, 0),
-    "semantic": ("authority", True, 1),
-    "configured_authority": ("authority", True, 2),
-    "schema_contract": ("authority", True, 3),
+BOOTSTRAP_FAILURE_CLASSIFICATIONS = frozenset(
+    BOOTSTRAP_FAILURE_CATEGORIES_BY_CLASSIFICATION
+)
+BOOTSTRAP_FAILURE_CATEGORIES = frozenset(
+    category
+    for categories in BOOTSTRAP_FAILURE_CATEGORIES_BY_CLASSIFICATION.values()
+    for category in categories
+)
+BOOTSTRAP_FAILURE_OPERATIONS = {
+    "bootstrap_admission": ("pre_schema", False, 0, False),
+    "target_verification": ("pre_schema", False, 0, False),
+    "runtime_role_binding": ("pre_schema", False, 0, False),
+    "schema_batch": ("schema_apply", False, 0, True),
+    "trusted_session_reset": ("post_schema_verify", False, 0, False),
+    "platform": ("post_schema_verify", False, 0, False),
+    "initial_authorization": ("post_schema_verify", True, 0, False),
+    "namespace": ("post_schema_verify", True, 0, False),
+    "semantic": ("post_schema_verify", True, 1, False),
+    "configured_authority": ("post_schema_verify", True, 2, False),
+    "schema_contract": ("post_schema_verify", True, 3, False),
+    "authority_verification": ("post_schema_verify", True, 4, False),
+    "transaction_commit": ("finalize", True, 4, False),
 }
 GATE_LOG_NAMES = frozenset(
     {
@@ -300,21 +305,6 @@ class GateLogDirectory:
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         return " | ".join(lines[-6:])[-1_000:] or "command failed without output"
 
-    def has_exact_diagnostic(self, name: str, expected: str) -> bool:
-        try:
-            opened = self._open_existing(name)
-            if opened is None:
-                return False
-            descriptor, _ = opened
-            with os.fdopen(descriptor, "rb") as stream:
-                output = stream.read(OUTPUT_TAIL_BYTES + 1)
-        except (OSError, GateFailure):
-            return False
-        if len(output) > OUTPUT_TAIL_BYTES:
-            return False
-        text = output.decode("utf-8", errors="replace")
-        return [line.strip() for line in text.splitlines() if line.strip()] == [expected]
-
     def read_bounded(self, name: str, limit: int) -> bytes:
         opened = self._open_existing(name)
         if opened is None:
@@ -445,7 +435,7 @@ def socket_file_type(mode: int) -> str:
 
 def _exact_keys(value: object, keys: set[str], label: str) -> dict[str, object]:
     if not isinstance(value, dict) or set(value) != keys:
-        raise GateFailure(f"bootstrap authority report has an invalid {label} shape")
+        raise GateFailure(f"bootstrap report has an invalid {label} shape")
     return value
 
 
@@ -455,7 +445,7 @@ def _validate_observations(
     label: str,
 ) -> list[dict[str, object]]:
     if not isinstance(value, list) or len(value) != len(expected_names):
-        raise GateFailure(f"bootstrap authority report has an invalid {label} count")
+        raise GateFailure(f"bootstrap report has an invalid {label} count")
     observations = [
         _exact_keys(item, {"class", "name", "pass"}, f"{label} observation")
         for item in value
@@ -466,13 +456,13 @@ def _validate_observations(
             or not isinstance(item["class"], str)
             or not isinstance(item["pass"], bool)
         ):
-            raise GateFailure(f"bootstrap authority report has invalid {label} values")
+            raise GateFailure(f"bootstrap report has invalid {label} values")
     names = tuple(item["name"] for item in observations)
     if names != expected_names or len(set(names)) != len(names):
-        raise GateFailure(f"bootstrap authority report has invalid {label} identities")
+        raise GateFailure(f"bootstrap report has invalid {label} identities")
     for item in observations:
         if item["class"] not in {"unsafe", "incompatible"}:
-            raise GateFailure(f"bootstrap authority report has invalid {label} values")
+            raise GateFailure(f"bootstrap report has invalid {label} values")
     return observations
 
 
@@ -486,7 +476,7 @@ def _require_observation_classes(
             continue
         expected = "incompatible" if item["name"] in incompatible_names else "unsafe"
         if item["class"] != expected:
-            raise GateFailure("bootstrap authority report changes an observation class")
+            raise GateFailure("bootstrap report changes an observation class")
 
 
 def _validate_digest(value: object, label: str) -> dict[str, object]:
@@ -510,41 +500,55 @@ def _validate_digest(value: object, label: str) -> dict[str, object]:
             )
         )
     ):
-        raise GateFailure(f"bootstrap authority report has invalid {label} values")
+        raise GateFailure(f"bootstrap report has invalid {label} values")
     expected_pass = (
         digest["complete"]
         and digest["actual_sha256"] == digest["expected_sha256"]
     )
     if digest["pass"] is not expected_pass:
-        raise GateFailure(f"bootstrap authority report has inconsistent {label} evidence")
+        raise GateFailure(f"bootstrap report has inconsistent {label} evidence")
     return digest
 
 
-def validate_bootstrap_authority_report(logs: GateLogDirectory) -> tuple[str, tuple[str, ...]]:
+def bootstrap_failure_requires_report(logs: GateLogDirectory) -> bool:
     body = logs.read_bounded("bootstrap.log", FAILURE_LOG_FILE_BYTES)
+    return any(line.startswith(b"Error: Database(") for line in body.splitlines())
+
+
+def validate_bootstrap_report(
+    logs: GateLogDirectory,
+    name: str = "bootstrap.log",
+) -> tuple[str, tuple[str, ...]]:
+    return _validate_bootstrap_report_body(
+        logs.read_bounded(name, FAILURE_LOG_FILE_BYTES)
+    )
+
+
+def _validate_bootstrap_report_body(body: bytes) -> tuple[str, tuple[str, ...]]:
     report_lines = [
-        line[len(BOOTSTRAP_AUTHORITY_REPORT_PREFIX) :]
+        line[len(BOOTSTRAP_REPORT_PREFIX) :]
         for line in body.splitlines()
-        if line.startswith(BOOTSTRAP_AUTHORITY_REPORT_PREFIX)
+        if line.startswith(BOOTSTRAP_REPORT_PREFIX)
     ]
     if len(report_lines) != 1:
-        raise GateFailure("bootstrap emitted no unique authority report")
+        raise GateFailure("bootstrap emitted no unique transaction report")
     encoded = report_lines[0]
-    if not encoded or len(encoded) > BOOTSTRAP_AUTHORITY_REPORT_MAX_BYTES:
-        raise GateFailure("bootstrap authority report exceeds its bound")
+    if not encoded or len(encoded) > BOOTSTRAP_REPORT_MAX_BYTES:
+        raise GateFailure("bootstrap report exceeds its bound")
     try:
         report = json.loads(encoded)
     except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise GateFailure("bootstrap authority report is not canonical JSON") from error
+        raise GateFailure("bootstrap report is not canonical JSON") from error
     report = _exact_keys(
         report,
         {
             "classification",
             "complete",
             "configured_authority",
+            "failure",
             "namespace",
             "platform",
-            "query_failure",
+            "rollback_failure",
             "schema",
             "schema_contract",
             "semantic",
@@ -554,123 +558,131 @@ def validate_bootstrap_authority_report(logs: GateLogDirectory) -> tuple[str, tu
     try:
         canonical = json.dumps(report, sort_keys=True, separators=(",", ":")).encode("ascii")
     except UnicodeEncodeError as error:
-        raise GateFailure("bootstrap authority report contains non-ASCII values") from error
+        raise GateFailure("bootstrap report contains non-ASCII values") from error
     if canonical != encoded:
-        raise GateFailure("bootstrap authority report JSON is not canonical")
-    if report["schema"] != BOOTSTRAP_AUTHORITY_REPORT_SCHEMA or not isinstance(
+        raise GateFailure("bootstrap report JSON is not canonical")
+    if report["schema"] != BOOTSTRAP_REPORT_SCHEMA or not isinstance(
         report["complete"], bool
     ):
-        raise GateFailure("bootstrap authority report has invalid closure metadata")
-    if not isinstance(report["classification"], str) or report["classification"] not in {
-        "authentication",
-        "unreachable",
-        "incompatible",
-        "unsafe_authority",
-        "unsafe_host_path",
-    }:
-        raise GateFailure("bootstrap authority report has an invalid classification")
+        raise GateFailure("bootstrap report has invalid closure metadata")
+    if (
+        not isinstance(report["classification"], str)
+        or report["classification"] not in BOOTSTRAP_FAILURE_CLASSIFICATIONS
+    ):
+        raise GateFailure("bootstrap report has an invalid classification")
 
-    if not report["complete"]:
-        failure = _exact_keys(
-            report["query_failure"],
-            {"category", "operation", "phase"},
-            "query failure",
+    failure = _exact_keys(
+        report["failure"],
+        {"category", "operation", "phase", "sqlstate", "statement_byte_position"},
+        "operation failure",
+    )
+    if (
+        not isinstance(failure["phase"], str)
+        or not isinstance(failure["operation"], str)
+        or not isinstance(failure["category"], str)
+        or failure["operation"] not in BOOTSTRAP_FAILURE_OPERATIONS
+        or failure["category"] not in BOOTSTRAP_FAILURE_CATEGORIES
+    ):
+        raise GateFailure("bootstrap report has an invalid operation failure")
+    expected_phase, platform_complete, completed_authority, allows_position = (
+        BOOTSTRAP_FAILURE_OPERATIONS[failure["operation"]]
+    )
+    sqlstate = failure["sqlstate"]
+    statement_position = failure["statement_byte_position"]
+    if (
+        failure["phase"] != expected_phase
+        or (sqlstate is not None and (
+            not isinstance(sqlstate, str)
+            or re.fullmatch(r"[0-9A-Z]{5}", sqlstate) is None
+        ))
+        or (statement_position is not None and (
+            type(statement_position) is not int
+            or statement_position <= 0
+            or not allows_position
+            or sqlstate is None
+            or statement_position > SCHEMA.stat().st_size + 1
+        ))
+    ):
+        raise GateFailure("bootstrap report has an invalid operation failure")
+    expected_complete = platform_complete and completed_authority == 4
+    if report["complete"] is not expected_complete:
+        raise GateFailure("bootstrap report has inconsistent closure metadata")
+    if failure["category"] not in BOOTSTRAP_FAILURE_CATEGORIES_BY_CLASSIFICATION[
+        report["classification"]
+    ]:
+        raise GateFailure("bootstrap report changes the operation failure classification")
+
+    rollback_failure = report["rollback_failure"]
+    if rollback_failure is not None:
+        rollback_failure = _exact_keys(
+            rollback_failure,
+            {"category", "failed"},
+            "rollback failure",
         )
         if (
-            not isinstance(failure["phase"], str)
-            or not isinstance(failure["operation"], str)
-            or not isinstance(failure["category"], str)
-            or failure["operation"] not in BOOTSTRAP_QUERY_FAILURE_OPERATIONS
-            or failure["category"] not in BOOTSTRAP_QUERY_FAILURE_CATEGORIES
+            rollback_failure["failed"] is not True
+            or not isinstance(rollback_failure["category"], str)
+            or rollback_failure["category"] not in BOOTSTRAP_FAILURE_CATEGORIES
         ):
-            raise GateFailure("bootstrap authority report has an invalid query failure")
-        expected_phase, platform_complete, completed_authority = (
-            BOOTSTRAP_QUERY_FAILURE_OPERATIONS[failure["operation"]]
+            raise GateFailure("bootstrap report has an invalid rollback failure")
+
+    if platform_complete:
+        platform = _validate_observations(
+            report["platform"], BOOTSTRAP_PLATFORM_NAMES, "platform"
         )
-        if failure["phase"] != expected_phase:
-            raise GateFailure("bootstrap authority report has an invalid query failure")
-        if report["classification"] != BOOTSTRAP_QUERY_FAILURE_CLASSIFICATIONS[
-            failure["category"]
-        ]:
-            raise GateFailure(
-                "bootstrap authority report changes the query failure classification"
-            )
+        _require_observation_classes(platform, BOOTSTRAP_PLATFORM_INCOMPATIBLE)
+    elif report["platform"] != []:
+        raise GateFailure("bootstrap report contains unavailable platform evidence")
+    else:
+        platform = []
 
-        if platform_complete:
-            platform = _validate_observations(
-                report["platform"], BOOTSTRAP_PLATFORM_NAMES, "platform"
-            )
-            _require_observation_classes(platform, BOOTSTRAP_PLATFORM_INCOMPATIBLE)
-        elif report["platform"] != []:
-            raise GateFailure("partial bootstrap authority report contains platform evidence")
-
-        if completed_authority >= 1:
-            namespace = _validate_observations(
-                report["namespace"], BOOTSTRAP_NAMESPACE_NAMES, "namespace"
-            )
-            _require_observation_classes(namespace, BOOTSTRAP_NAMESPACE_INCOMPATIBLE)
-        elif report["namespace"] != []:
-            raise GateFailure("partial bootstrap authority report contains namespace evidence")
-
-        if completed_authority >= 2:
-            semantic = _validate_observations(
-                report["semantic"], BOOTSTRAP_SEMANTIC_NAMES, "semantic"
-            )
-            _require_observation_classes(
-                semantic,
-                BOOTSTRAP_SEMANTIC_INCOMPATIBLE,
-                frozenset({"exact_function_inventory"}),
-            )
-        elif report["semantic"] != []:
-            raise GateFailure("partial bootstrap authority report contains semantic evidence")
-
-        if completed_authority >= 3:
-            configured = _validate_digest(
-                report["configured_authority"], "configured authority"
-            )
-            if configured["class"] != (
-                "unsafe" if configured["complete"] else "incompatible"
-            ):
-                raise GateFailure(
-                    "bootstrap authority report misclassifies configured authority"
-                )
-        elif report["configured_authority"] is not None:
-            raise GateFailure(
-                "partial bootstrap authority report contains configured authority evidence"
-            )
-
-        if report["schema_contract"] is not None:
-            raise GateFailure(
-                "partial bootstrap authority report contains schema contract evidence"
-            )
-        return encoded.decode("ascii"), (
-            f"query:{failure['phase']}:{failure['operation']}:{failure['category']}",
+    if completed_authority >= 1:
+        namespace = _validate_observations(
+            report["namespace"], BOOTSTRAP_NAMESPACE_NAMES, "namespace"
         )
+        _require_observation_classes(namespace, BOOTSTRAP_NAMESPACE_INCOMPATIBLE)
+    elif report["namespace"] != []:
+        raise GateFailure("bootstrap report contains unavailable namespace evidence")
+    else:
+        namespace = []
 
-    if report["query_failure"] is not None:
-        raise GateFailure("complete bootstrap authority report contains a query failure")
-    platform = _validate_observations(report["platform"], BOOTSTRAP_PLATFORM_NAMES, "platform")
-    namespace = _validate_observations(
-        report["namespace"], BOOTSTRAP_NAMESPACE_NAMES, "namespace"
-    )
-    semantic = _validate_observations(
-        report["semantic"], BOOTSTRAP_SEMANTIC_NAMES, "semantic"
-    )
-    _require_observation_classes(platform, BOOTSTRAP_PLATFORM_INCOMPATIBLE)
-    _require_observation_classes(namespace, BOOTSTRAP_NAMESPACE_INCOMPATIBLE)
-    _require_observation_classes(
-        semantic,
-        BOOTSTRAP_SEMANTIC_INCOMPATIBLE,
-        frozenset({"exact_function_inventory"}),
-    )
-    configured = _validate_digest(report["configured_authority"], "configured authority")
-    schema = _validate_digest(report["schema_contract"], "schema contract")
-    if configured["class"] != ("unsafe" if configured["complete"] else "incompatible"):
-        raise GateFailure("bootstrap authority report misclassifies configured authority")
-    if schema["class"] != "incompatible":
-        raise GateFailure("bootstrap authority report misclassifies the schema contract")
+    if completed_authority >= 2:
+        semantic = _validate_observations(
+            report["semantic"], BOOTSTRAP_SEMANTIC_NAMES, "semantic"
+        )
+        _require_observation_classes(
+            semantic,
+            BOOTSTRAP_SEMANTIC_INCOMPATIBLE,
+            frozenset({"exact_function_inventory"}),
+        )
+    elif report["semantic"] != []:
+        raise GateFailure("bootstrap report contains unavailable semantic evidence")
+    else:
+        semantic = []
 
-    failed = tuple(
+    if completed_authority >= 3:
+        configured = _validate_digest(
+            report["configured_authority"], "configured authority"
+        )
+        if configured["class"] != (
+            "unsafe" if configured["complete"] else "incompatible"
+        ):
+            raise GateFailure("bootstrap report misclassifies configured authority")
+    elif report["configured_authority"] is not None:
+        raise GateFailure("bootstrap report contains unavailable configured authority evidence")
+    else:
+        configured = None
+
+    if completed_authority >= 4:
+        schema = _validate_digest(report["schema_contract"], "schema contract")
+        if schema["class"] != "incompatible":
+            raise GateFailure("bootstrap report misclassifies the schema contract")
+    elif report["schema_contract"] is not None:
+        raise GateFailure("bootstrap report contains unavailable schema contract evidence")
+    else:
+        schema = None
+
+    authority_failures = tuple(
         f"{group}:{item['name']}:{item['class']}"
         for group, observations in (
             ("platform", platform),
@@ -685,10 +697,17 @@ def validate_bootstrap_authority_report(logs: GateLogDirectory) -> tuple[str, tu
             ("configured_authority", configured),
             ("schema_contract", schema),
         )
-        if not evidence["pass"]
+        if evidence is not None and not evidence["pass"]
     )
-    if not failed:
-        raise GateFailure("failed bootstrap emitted a passing authority report")
+    primary = (
+        f"failure:{failure['phase']}:{failure['operation']}:{failure['category']}",
+    )
+    if failure["operation"] != "authority_verification":
+        if failure["operation"] == "transaction_commit" and authority_failures:
+            raise GateFailure("commit failure report contains failed authority evidence")
+        return encoded.decode("ascii"), primary + authority_failures
+    if not authority_failures:
+        raise GateFailure("authority verification failure report contains passing evidence")
 
     primary_class = next(
         (item["class"] for item in platform if not item["pass"]),
@@ -701,17 +720,45 @@ def validate_bootstrap_authority_report(logs: GateLogDirectory) -> tuple[str, tu
             primary_class = "unsafe"
         elif any(not item["pass"] for item in semantic):
             primary_class = "incompatible"
-    if primary_class is None and not configured["pass"]:
+    if primary_class is None and configured is not None and not configured["pass"]:
         primary_class = configured["class"]
-    if primary_class is None and not schema["pass"]:
+    if primary_class is None and schema is not None and not schema["pass"]:
         primary_class = schema["class"]
     expected_classification = {
         "unsafe": "unsafe_authority",
         "incompatible": "incompatible",
     }[primary_class]
     if report["classification"] != expected_classification:
-        raise GateFailure("bootstrap authority report changes the primary failure classification")
-    return encoded.decode("ascii"), failed
+        raise GateFailure("bootstrap report changes the primary failure classification")
+    return encoded.decode("ascii"), primary + authority_failures
+
+
+def validate_second_bootstrap_refusal(logs: GateLogDirectory) -> None:
+    name = "second-bootstrap.log"
+    body = logs.read_bounded(name, FAILURE_LOG_FILE_BYTES)
+    encoded, failures = _validate_bootstrap_report_body(body)
+    report = json.loads(encoded)
+    expected_failure = {
+        "category": "evidence",
+        "operation": "target_verification",
+        "phase": "pre_schema",
+        "sqlstate": None,
+        "statement_byte_position": None,
+    }
+    if (
+        report["classification"] != "incompatible"
+        or report["complete"] is not False
+        or report["failure"] != expected_failure
+        or report["rollback_failure"] is not None
+        or failures != ("failure:pre_schema:target_verification:evidence",)
+    ):
+        raise GateFailure("second bootstrap emitted an invalid target refusal report")
+    expected_lines = [
+        BOOTSTRAP_REPORT_PREFIX + encoded.encode("ascii"),
+        SECOND_BOOTSTRAP_REFUSAL_ERROR,
+    ]
+    if body.splitlines() != expected_lines:
+        raise GateFailure("second bootstrap emitted an invalid refusal output")
 
 
 def capture_bootstrap_diagnostic(
@@ -797,9 +844,17 @@ def capture_bootstrap_diagnostic(
     return "; ".join(failures) or None
 
 
+def retention_ranges(source_size: int, limit: int) -> tuple[tuple[int, int], ...]:
+    if source_size <= limit:
+        return ((0, source_size),)
+    head_size = limit // 2
+    tail_size = limit - head_size
+    return ((0, head_size), (source_size - tail_size, tail_size))
+
+
 def retain_failure_logs(
     logs: GateLogDirectory,
-) -> tuple[Path, list[tuple[str, str, int, int, int]], list[str]]:
+) -> tuple[Path, list[tuple[str, str, int, int, int, int]], list[str]]:
     if not FAILURE_EVIDENCE_PARENT.is_dir():
         raise GateFailure(f"failure evidence parent is unavailable: {FAILURE_EVIDENCE_PARENT}")
 
@@ -839,7 +894,7 @@ def retain_failure_logs(
         os.close(evidence_descriptor)
         raise
 
-    records: list[tuple[str, str, int, int, int]] = []
+    records: list[tuple[str, str, int, int, int, int]] = []
     warnings: list[str] = []
     total = 0
     try:
@@ -860,8 +915,11 @@ def retain_failure_logs(
             limit = min(FAILURE_LOG_FILE_BYTES, remaining)
             destination_descriptor = -1
             try:
-                retained_offset = max(0, current.st_size - limit)
-                os.lseek(source_descriptor, retained_offset, os.SEEK_SET)
+                ranges = retention_ranges(current.st_size, limit)
+                retained_head_bytes = ranges[0][1]
+                retained_tail_offset = (
+                    ranges[1][0] if len(ranges) == 2 else current.st_size
+                )
                 destination_descriptor = os.open(
                     name,
                     os.O_WRONLY
@@ -883,22 +941,33 @@ def retain_failure_logs(
                     raise GateFailure(f"retained log is not private owner authority: {name}")
                 digest = hashlib.sha256()
                 copied = 0
-                while copied < limit:
-                    chunk = os.read(
-                        source_descriptor,
-                        min(COPY_BUFFER_BYTES, limit - copied),
-                    )
-                    if not chunk:
-                        break
-                    view = memoryview(chunk)
-                    while view:
-                        written = os.write(destination_descriptor, view)
-                        view = view[written:]
-                    digest.update(chunk)
-                    copied += len(chunk)
+                for offset, length in ranges:
+                    os.lseek(source_descriptor, offset, os.SEEK_SET)
+                    segment_copied = 0
+                    while segment_copied < length:
+                        chunk = os.read(
+                            source_descriptor,
+                            min(COPY_BUFFER_BYTES, length - segment_copied),
+                        )
+                        if not chunk:
+                            raise GateFailure(f"failure log ended while retaining {name}")
+                        view = memoryview(chunk)
+                        while view:
+                            written = os.write(destination_descriptor, view)
+                            view = view[written:]
+                        digest.update(chunk)
+                        segment_copied += len(chunk)
+                        copied += len(chunk)
                 os.fsync(destination_descriptor)
                 records.append(
-                    (name, digest.hexdigest(), copied, current.st_size, retained_offset)
+                    (
+                        name,
+                        digest.hexdigest(),
+                        copied,
+                        current.st_size,
+                        retained_head_bytes,
+                        retained_tail_offset,
+                    )
                 )
                 total += copied
             except (OSError, GateFailure) as error:
@@ -1220,6 +1289,10 @@ def start_cluster(
                 str(PORT),
                 "-c",
                 "unix_socket_permissions=0700",
+                "-c",
+                "log_error_verbosity=verbose",
+                "-c",
+                "log_min_error_statement=panic",
             ],
             cwd=ROOT,
             env=environment,
@@ -1356,7 +1429,7 @@ def main() -> int:
     bootstrap_report_json: str | None = None
     bootstrap_report_failures: tuple[str, ...] = ()
     evidence_directory: Path | None = None
-    evidence_records: list[tuple[str, str, int, int, int]] = []
+    evidence_records: list[tuple[str, str, int, int, int, int]] = []
     evidence_warnings: list[str] = []
     evidence_failure: str | None = None
     fixture: Path | None = None
@@ -1439,13 +1512,14 @@ def main() -> int:
             if results["bootstrap"][0] == "FAIL":
                 diagnostic_failures: list[str] = []
                 try:
-                    bootstrap_report_json, bootstrap_report_failures = (
-                        validate_bootstrap_authority_report(logs)
-                    )
+                    if bootstrap_failure_requires_report(logs):
+                        bootstrap_report_json, bootstrap_report_failures = (
+                            validate_bootstrap_report(logs)
+                        )
                 except Exception as error:
                     detail = str(error) or type(error).__name__
                     diagnostic_failures.append(
-                        f"authority-report {type(error).__name__}: {detail[:500]}"
+                        f"bootstrap-report {type(error).__name__}: {detail[:500]}"
                     )
                 try:
                     if tools is None or not postgres_processes:
@@ -1487,15 +1561,11 @@ def main() -> int:
                     raise GateFailure(
                         f"second bootstrap exited with unexpected status {return_code}"
                     )
-                if not logs.has_exact_diagnostic(
-                    "second-bootstrap.log", SECOND_BOOTSTRAP_REFUSAL_DIAGNOSTIC
-                ):
-                    raise GateFailure(
-                        "second bootstrap did not report the exact empty PostgreSQL target "
-                        "refusal classification"
-                    )
+                validate_second_bootstrap_refusal(logs)
 
             stage("second-bootstrap-refusal", refuse_second_bootstrap, ("bootstrap",))
+            # Keep this independent of report parsing so every attempted refusal receives
+            # a post-attempt exact catalog and configured-authority proof.
             stage(
                 "validation-after-refusal",
                 lambda: require_command(
@@ -1664,18 +1734,18 @@ def main() -> int:
     if diagnostic_failure is not None:
         print(f"DIAGNOSTIC bootstrap: FAIL: {diagnostic_failure}")
     if bootstrap_report_json is not None:
-        print(f"BOOTSTRAP-AUTHORITY-REPORT {bootstrap_report_json}")
+        print(f"BOOTSTRAP-REPORT {bootstrap_report_json}")
         print(
-            "BOOTSTRAP-AUTHORITY-FAILURES "
+            "BOOTSTRAP-FAILURES "
             + ",".join(bootstrap_report_failures)
         )
     if evidence_directory is not None:
         print(f"FAILURE-EVIDENCE directory={evidence_directory}")
-        for name, digest, size, source_size, offset in evidence_records:
+        for name, digest, size, source_size, head_bytes, tail_offset in evidence_records:
             print(
                 f"FAILURE-EVIDENCE file={evidence_directory / name} "
                 f"sha256={digest} size={size} source_size={source_size} "
-                f"retained_offset={offset}"
+                f"retained_head_bytes={head_bytes} retained_tail_offset={tail_offset}"
             )
         for warning in evidence_warnings:
             print(f"FAILURE-EVIDENCE warning={warning}")
