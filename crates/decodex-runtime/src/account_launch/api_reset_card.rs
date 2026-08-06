@@ -308,10 +308,7 @@ async fn read_inventory_for_claim(
 	inner: &Arc<ApiResetCardRuntimeInner>,
 	claim: &ResetCardClaim,
 ) -> Option<AccountApiInventory> {
-	match inner.api.observe_account(&claim.account_id).await.inventory {
-		Ok(inventory) => Some(inventory),
-		Err(_) => None,
-	}
+	inner.api.observe_account(&claim.account_id).await.inventory.ok()
 }
 
 async fn run_with_claim_heartbeat<T, MakeWork, Work>(

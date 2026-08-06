@@ -615,13 +615,7 @@ impl ProcessGenerationControl {
 		launch: AttestedAppServerLaunch,
 	) -> Result<FencedProcess, ProcessSupervisorError> {
 		let generation_id = admission.generation_id().clone();
-		self.spawn_fenced_inner(
-			generation_id,
-			execution_authorization,
-			launch,
-			admission,
-		)
-		.await
+		self.spawn_fenced_inner(generation_id, execution_authorization, launch, admission).await
 	}
 
 	async fn spawn_fenced_inner(
@@ -643,7 +637,7 @@ impl ProcessGenerationControl {
 			.store
 			.prepare_quick_task_bound_process_generation(&intent, &account_binding, admission)
 			.await
-		.map_err(|_| ProcessSupervisorError::ProductState)?;
+			.map_err(|_| ProcessSupervisorError::ProductState)?;
 		let fence = match preparation {
 			PrepareProcessGenerationOutcome::Fresh(fence) => fence,
 			PrepareProcessGenerationOutcome::Replayed(_)

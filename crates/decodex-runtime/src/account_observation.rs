@@ -92,10 +92,7 @@ async fn persist_direct_quotas(
 		let observed_at_unix_micros =
 			current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
 		let cached_window = cached.as_ref().and_then(|windows| {
-			windows
-				.iter()
-				.find(|window| window.duration_minutes == quota.duration_minutes)
-				.copied()
+			windows.iter().find(|window| window.duration_minutes == quota.duration_minutes).copied()
 		});
 		let (observed_at_unix_micros, disposition) = match quota.result {
 			Ok(Some(fact)) => {
@@ -142,9 +139,8 @@ fn retained_last_good_quota(
 ) -> Option<(Option<i64>, AccountQuotaDisposition)> {
 	let window = cached.filter(|window| window.duration_minutes == duration_minutes)?;
 	match window.disposition {
-		AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_) => {
-			Some((window.observed_at_unix_micros, window.disposition))
-		},
+		AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_) =>
+			Some((window.observed_at_unix_micros, window.disposition)),
 		AccountQuotaDisposition::Unknown | AccountQuotaDisposition::Error(_) => None,
 	}
 }
@@ -910,8 +906,8 @@ mod tests {
 
 	use super::{
 		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
-		resolve_direct_quota, ResetCardInventoryObservation, ResetCardServiceError,
-		plan_observation_round, wait_for_generation,
+		ResetCardInventoryObservation, ResetCardServiceError, plan_observation_round,
+		resolve_direct_quota, wait_for_generation,
 	};
 
 	#[tokio::test]
