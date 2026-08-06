@@ -22,13 +22,18 @@ final class StatusPanelController: NSObject {
 			backing: .buffered,
 			defer: true
 		)
-		hostingView = TransparentHostingView(rootView: StatusPanelRootView(store: store))
+		hostingView = TransparentHostingView(
+			rootView: StatusPanelRootView(store: store)
+		)
 
 		super.init()
+
 		panel.onFrameChange = { [weak self] in
 			self?.positionPanel()
 		}
-
+		hostingView.rootView = StatusPanelRootView(store: store) { [weak self] size in
+			self?.updatePanelContentSize(size)
+		}
 		configureStatusItem()
 		configurePanel()
 		observePanelLifecycle()
@@ -52,23 +57,16 @@ final class StatusPanelController: NSObject {
 		hostingView.layoutSubtreeIfNeeded()
 		let fittingSize = hostingView.fittingSize
 		if fittingSize.width > 0, fittingSize.height > 0 {
-			panel.setContentSize(fittingSize)
+			updatePanelContentSize(fittingSize)
 		}
 		positionPanel()
 		if NSApp.isActive == false {
-			// This is an explicit status-item click. Accessory apps do not
-			// reliably become active from cooperative activation before the panel
-			// is ordered front, so force activation for this explicit user-initiated
-			// presentation only. The close path never activates the app.
+			// Accessory apps do not reliably become active from cooperative
+			// activation before a custom panel is ordered front.
 			NSApp.activate(ignoringOtherApps: true)
 		}
 		panel.makeKeyAndOrderFront(nil)
-		// The status-item window can attach one run-loop turn after the panel is
-		// created. Retry only during this presentation so a missed first anchor
-		// cannot leave the panel at AppKit's default screen edge.
 		scheduleAnchorRetry()
-		// Presentation remains immediate. The store asks the daemon for one
-		// coalesced priority observation without entering the visible full-refresh lane.
 		store.ensureFresh()
 	}
 
@@ -116,9 +114,6 @@ final class StatusPanelController: NSObject {
 		panel.isOpaque = false
 		panel.backgroundColor = .clear
 		panel.hasShadow = false
-		// Let NSPanel own the transient presentation lifecycle. Keeping this true
-		// prevents a panel shown by the status item from surviving app focus
-		// changes and competing with the next status-item click.
 		panel.hidesOnDeactivate = true
 		panel.isMovable = false
 		panel.level = .popUpMenu
@@ -132,29 +127,46 @@ final class StatusPanelController: NSObject {
 	}
 
 	private func observePanelLifecycle() {
-		NotificationCenter.default.addObserver(
-			self,
-			selector: #selector(panelDidResize(_:)),
-			name: NSWindow.didResizeNotification,
-			object: panel
-		)
+		let notificationNames: [Notification.Name] = [
+			NSApplication.didChangeScreenParametersNotification,
+			NSWindow.didChangeScreenNotification,
+			NSWindow.didMoveNotification,
+		]
+		for name in notificationNames {
+			NotificationCenter.default.addObserver(
+				self,
+				selector: #selector(panelLifecycleChanged(_:)),
+				name: name,
+				object: nil
+			)
+		}
 	}
 
 	@objc
-	private func panelDidResize(_: Notification) {
-		// SwiftUI can resize the hidden panel after its content tree settles. The
-		// status-item anchor must win that resize as well, otherwise the generic
-		// content-sizing frame becomes the next presentation origin.
+	private func panelLifecycleChanged(_: Notification) {
+		guard panel.isVisible else {
+			return
+		}
+		positionPanel()
+	}
+
+	private func updatePanelContentSize(_ size: CGSize) {
+		guard size.width > 0, size.height > 0 else {
+			return
+		}
+		let roundedSize = PanelWindowSizingLayout.roundedContentSize(for: size)
+		if panel.frame.size != roundedSize {
+			panel.setContentSize(roundedSize)
+		}
 		positionPanel()
 	}
 
 	@discardableResult
 	private func positionPanel() -> Bool {
-		guard isPositioningPanel == false else {
-			return false
-		}
-		guard let anchorRect = statusItemScreenRect(),
-			let statusWindow = statusItem.button?.window
+		guard isPositioningPanel == false,
+			let anchorRect = statusItemScreenRect(),
+			let statusWindow = statusItem.button?.window,
+			panel.frame.size != .zero
 		else {
 			return false
 		}
@@ -168,22 +180,28 @@ final class StatusPanelController: NSObject {
 			containing: anchorRect,
 			screenFrames: screens.map(\.frame),
 			fallbackIndex: fallbackIndex
-		) else {
+		), screens.indices.contains(screenIndex)
+		else {
 			return false
 		}
+
 		let screen = screens[screenIndex]
+		let targetOrigin = StatusPanelLayout.origin(
+			anchorRect: anchorRect,
+			panelSize: panel.frame.size,
+			visibleFrame: screen.visibleFrame,
+			screenMargin: Self.screenMargin,
+			menuBarGap: Self.menuBarGap
+		)
+		guard abs(panel.frame.minX - targetOrigin.x) > 0.5
+			|| abs(panel.frame.minY - targetOrigin.y) > 0.5
+		else {
+			return true
+		}
 
 		isPositioningPanel = true
-		defer { isPositioningPanel = false }
-		panel.setFrameOrigin(
-			StatusPanelLayout.origin(
-				anchorRect: anchorRect,
-				panelSize: panel.frame.size,
-				visibleFrame: screen.visibleFrame,
-				screenMargin: Self.screenMargin,
-				menuBarGap: Self.menuBarGap
-			)
-		)
+		panel.setFrameOrigin(targetOrigin)
+		isPositioningPanel = false
 		return true
 	}
 
@@ -290,8 +308,20 @@ final class TransparentStatusPanel: NSPanel {
 
 private struct StatusPanelRootView: View {
 	let store: ResetCardStore
+	let onContentSizeChange: (CGSize) -> Void
+
+	init(
+		store: ResetCardStore,
+		onContentSizeChange: @escaping (CGSize) -> Void = { _ in }
+	) {
+		self.store = store
+		self.onContentSizeChange = onContentSizeChange
+	}
 
 	var body: some View {
-		AccountPanelView(store: store)
+		AccountPanelView(
+			store: store,
+			onContentSizeChange: onContentSizeChange
+		)
 	}
 }

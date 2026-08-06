@@ -497,7 +497,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(cardSurface.contains("cardFill"))
 		XCTAssertFalse(cardSurface.contains("cardStroke"))
 		XCTAssertFalse(cardSurface.contains("strokeBorder"))
-		XCTAssertTrue(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
+		// Keep each card's material independent. Grouping the panel in a
+		// GlassEffectContainer creates the enclosing surface users perceive as a
+		// second card around the whole list.
+		XCTAssertFalse(accountPanel.contains("GlassEffectContainer(spacing: 0)"))
 		XCTAssertTrue(
 			accountPanel.contains(".environment(\\.panelCardMaterial, panelCardMaterial)")
 		)
@@ -532,12 +535,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(appScene.contains("MenuBarExtra"))
 		XCTAssertFalse(appScene.contains(".menuBarExtraStyle"))
 		XCTAssertTrue(statusPanel.contains("NSStatusBar.system.statusItem"))
-		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel"))
-		XCTAssertTrue(statusPanel.contains("styleMask: [.borderless]"))
-		XCTAssertTrue(statusPanel.contains("TransparentHostingView(rootView: StatusPanelRootView"))
+		XCTAssertTrue(statusPanel.contains("TransparentStatusPanel("))
+		XCTAssertTrue(statusPanel.contains("statusItemScreenRect()"))
+		XCTAssertTrue(statusPanel.contains("StatusPanelLayout.origin("))
+		XCTAssertTrue(statusPanel.contains("panel.setFrameOrigin(targetOrigin)"))
+		XCTAssertTrue(statusPanel.contains("TransparentHostingView("))
 		XCTAssertTrue(statusPanel.contains("override var isOpaque"))
-		XCTAssertTrue(statusPanel.contains("AccountPanelView(store: store)"))
-		XCTAssertTrue(statusPanel.contains("panel.hidesOnDeactivate = true"))
+		XCTAssertTrue(statusPanel.contains("AccountPanelView("))
 		XCTAssertTrue(statusPanel.contains("button.sendAction(on: [.leftMouseUp])"))
 		XCTAssertTrue(statusPanel.contains("NSApp.activate(ignoringOtherApps: true)"))
 		XCTAssertFalse(
@@ -547,12 +551,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(statusPanel.contains("DispatchQueue.main.async"))
 		XCTAssertFalse(statusPanel.contains("NSApp.currentEvent"))
 		XCTAssertFalse(statusPanel.contains("StatusPanelInteraction.isStatusItemPress"))
-		XCTAssertTrue(statusPanel.contains("NSWindow.didResizeNotification"))
-		XCTAssertTrue(statusPanel.contains("#selector(panelDidResize(_:))"))
-		XCTAssertTrue(statusPanel.contains("panel.onFrameChange"))
-		XCTAssertTrue(statusPanel.contains("isPositioningPanel"))
-		XCTAssertTrue(statusPanel.contains("scheduleAnchorRetry()"))
-		XCTAssertTrue(statusPanel.contains("Task.sleep(nanoseconds: 16_000_000)"))
+		XCTAssertFalse(statusPanel.contains("NSPopover"))
 		XCTAssertEqual(
 			panelControls.components(
 				separatedBy: "isDisabled && isActive == false"
@@ -583,8 +582,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 				"window.contentView?.layer?.backgroundColor = NSColor.clear.cgColor"
 			)
 		)
-		XCTAssertTrue(panelWindow.contains("x: currentFrame.minX"))
-		XCTAssertFalse(panelWindow.contains("currentFrame.midX"))
+		XCTAssertTrue(panelWindow.contains("roundedContentSize"))
+		XCTAssertFalse(panelWindow.contains("currentFrame"))
 		XCTAssertFalse(panelWindow.contains("window.appearance ="))
 		XCTAssertFalse(
 			FileManager.default.fileExists(
@@ -792,6 +791,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("StatusPanelController.swift"),
 			encoding: .utf8
 		)
+		let accountPanel = try String(
+			contentsOf: sourceURL.appendingPathComponent("AccountPanelView.swift"),
+			encoding: .utf8
+		)
 
 		XCTAssertFalse(store.contains("defaultAutomaticRefreshInterval"))
 		XCTAssertTrue(store.contains("private var accountObservationTask"))
@@ -826,13 +829,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 			ensureFreshBeforePriorityTask.contains("requestObservationRefresh()"),
 			"Panel presentation must wait for the daemon priority signal before reading UI state."
 		)
-		let resizeStart = try XCTUnwrap(panel.range(of: "private func panelDidResize"))
-		let positionStart = try XCTUnwrap(panel.range(of: "private func positionPanel"))
-		let resizeHandler = String(panel[resizeStart.lowerBound ..< positionStart.lowerBound])
-		XCTAssertTrue(resizeHandler.contains("positionPanel()"))
-		XCTAssertFalse(
-			resizeHandler.contains("guard panel.isVisible"),
-			"Content sizing must re-anchor the panel even while it is hidden."
-		)
+		XCTAssertTrue(panel.contains("onContentSizeChange"))
+		XCTAssertTrue(accountPanel.contains("reportsPanelContentMetrics"))
 	}
 }
