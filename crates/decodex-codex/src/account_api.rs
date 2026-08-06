@@ -425,7 +425,7 @@ fn decode_snake_case_quota_windows(
 ) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
 	let mut windows = optional_quota_windows();
 	for key in ["primary_window", "secondary_window"] {
-		let Some(value) = object.get(key).filter(|value| value.is_null() == false) else {
+		let Some(value) = object.get(key).filter(|value| !value.is_null()) else {
 			continue;
 		};
 		let duration_minutes = reported_duration_minutes(value, "limit_window_seconds", 60)?;
@@ -442,7 +442,7 @@ fn decode_camel_case_quota_windows(
 ) -> Result<[AccountApiQuotaWindow; 2], AccountApiProtocolError> {
 	let mut windows = optional_quota_windows();
 	for key in ["primary", "secondary"] {
-		let Some(value) = object.get(key).filter(|value| value.is_null() == false) else {
+		let Some(value) = object.get(key).filter(|value| !value.is_null()) else {
 			continue;
 		};
 		let duration_minutes = reported_duration_minutes(value, "windowDurationMins", 1)?;
@@ -484,17 +484,14 @@ fn optional_quota_windows() -> [AccountApiQuotaWindow; 2] {
 }
 
 fn optional_quota_window(expected_duration: u32) -> AccountApiQuotaWindow {
-	AccountApiQuotaWindow {
-		duration_minutes: expected_duration,
-		result: Ok(None),
-	}
+	AccountApiQuotaWindow { duration_minutes: expected_duration, result: Ok(None) }
 }
 
 fn decode_snake_case_quota_window(
 	value: Option<&Value>,
 	expected_duration: u32,
 ) -> AccountApiQuotaWindow {
-	let Some(value) = value.filter(|value| value.is_null() == false) else {
+	let Some(value) = value.filter(|value| !value.is_null()) else {
 		return optional_quota_window(expected_duration);
 	};
 	if value.as_object().is_some_and(|object| {
@@ -532,7 +529,7 @@ fn decode_camel_case_quota_window(
 	value: Option<&Value>,
 	expected_duration: u32,
 ) -> AccountApiQuotaWindow {
-	let Some(value) = value.filter(|value| value.is_null() == false) else {
+	let Some(value) = value.filter(|value| !value.is_null()) else {
 		return optional_quota_window(expected_duration);
 	};
 	let result = (|| {
@@ -880,10 +877,7 @@ mod tests {
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
-		assert_eq!(
-			usage.quota_windows[1].result.unwrap().unwrap().used_percent,
-			42
-		);
+		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().used_percent, 42);
 	}
 
 	#[test]
@@ -902,10 +896,7 @@ mod tests {
 		.to_string();
 		let usage = decode_account_api_usage(body.as_bytes()).expect("usage should decode");
 		assert_eq!(usage.quota_windows[0].result, Ok(None));
-		assert_eq!(
-			usage.quota_windows[1].result.unwrap().unwrap().duration_minutes,
-			10_080
-		);
+		assert_eq!(usage.quota_windows[1].result.unwrap().unwrap().duration_minutes, 10_080);
 	}
 
 	#[test]
