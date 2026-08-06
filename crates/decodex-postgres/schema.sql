@@ -27567,6 +27567,13 @@ REVOKE ALL ON FUNCTION decodex.enforce_continuation_plan_completeness() FROM PUB
 
 
 --
+-- Name: FUNCTION enforce_conversation_routing_successor(); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.enforce_conversation_routing_successor() FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION enforce_conversation_state(); Type: ACL; Schema: decodex; Owner: -
 --
 
@@ -29144,7 +29151,6 @@ BEGIN
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.renew_lease(p_resource_key text, p_holder_id uuid, p_lease_token uuid, p_ttl interval) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.replace_routing_policy_exact(p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_project_id uuid, p_expected_revision bigint, p_accepted_policy_id uuid, p_accepted_policy_revision bigint, p_required_role decodex.role_profile_role, p_required_role_profile_revision bigint, p_required_build_id text, p_account_ids uuid[], p_account_revisions bigint[], p_dispositions decodex.routing_member_disposition[], p_required_capabilities decodex.codex_capability[]) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.resolve_routing_snapshot_exact(p_protocol text, p_idempotency_key text, p_authority_shape decodex.routing_authority_shape, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_expected_account_routing_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid) TO %I',runtime_role);
-	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.rfc3339_utc(value timestamp with time zone) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.route_account_exact(p_protocol text, p_idempotency_key text, p_operation_id uuid, p_authority_shape decodex.routing_authority_shape, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_expected_account_routing_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.set_account_enabled_exact(p_account_id uuid, p_expected_revision bigint, p_enabled boolean) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.set_account_operation_target_exact(p_operation_id uuid, p_target_store_schema_version integer, p_target_credential_version bigint, p_target_credential_fingerprint text, p_target_credential_writer_operation_id uuid) TO %I',runtime_role);
