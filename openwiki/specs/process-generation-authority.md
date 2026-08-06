@@ -28,7 +28,7 @@ daemon startup.
 | Concept | Contract |
 | --- | --- |
 | Execution epoch | An external restore authority supplies an epoch UUID and matching SHA-256 authorization digest. Runtime cannot recover the digest from PostgreSQL. |
-| ProcessGeneration | One immutable generation, account, initial account revision, credential version/fingerprint, provider binding, exact-build capability profile, epoch, launch-manifest identity, intended boot, control kind, isolation kind, optional exact process identity, state, revision, and timestamps. It stores no credential bytes. |
+| ProcessGeneration | One immutable generation, account, initial account revision, credential version/fingerprint, provider binding, runtime-negotiated capability profile, epoch, launch-manifest identity, intended boot, control kind, isolation kind, optional exact process identity, state, revision, and timestamps. It stores no credential bytes. |
 | Death evidence | One append-only positive receipt for an exact generation and source revision. |
 | Transition history | One append-only row for each accepted revision. |
 
@@ -48,19 +48,20 @@ constructor. The account-launch owner creates it only after these facts agree:
 
 - the capacity permit, immutable account binding, and positive account revision;
 - Account Registry, HostCredentialStore version/fingerprint, and provider binding;
-- version and canonical generated schema from the retained executable snapshot;
-- executable digest, derived `BuildId`, fixed `app-server --stdio` arguments, and one
-  accepted exact-build profile;
+- observed version identity and canonical generated schema from the retained executable
+  snapshot; the version is diagnostic identity, not a release allowlist;
+- verified executable identity, derived `BuildId`, fixed `app-server --stdio` process
+  arguments, and one runtime-negotiated capability profile;
 - positive support for the typed account refresh callback and response shape;
 - a clear-then-set environment with exact `HOME`, `PATH`, and
   `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` values;
 - the accepted platform lifetime capability; and
 - working directory, protected executable snapshot, and execution identity.
 
-The launch-manifest SHA-256 binds the schema identity, platform execution policy,
-control/session isolation, `BuildId`, image digest, command and ordered arguments,
+The launch-manifest SHA-256 binds the observed schema identity, platform execution policy,
+control/session isolation, `BuildId`, image identity, command and ordered arguments,
 working directory, complete sanitized environment, account, initial account revision,
-credential version/fingerprint, provider binding, and exact-build account capability.
+credential version/fingerprint, provider binding, and runtime-negotiated account capability.
 
 `ProcessSupervisor` derives durable runner identity from the opaque launch. Its spawn API
 accepts no caller runner digest, raw command, arguments, environment, account, or control
@@ -69,23 +70,24 @@ command internally.
 
 On macOS, preflights execute the protected snapshot. The final app-server starts
 suspended and resumes only after snapshot-rooted dynamic code identity, canonical path,
-session, and process group agree. Unsupported platform, image, version, argument,
-environment, or capability rejects before a provider app-server can start.
+session, and process group agree. Unsupported platform, process shape, argument,
+environment, or capability rejects before a provider app-server can start. The user's
+Codex release/version is not pinned.
 
-The current accepted profile is intentionally narrow:
+The current runtime profile is intentionally narrow only where the process boundary requires:
 
 | Field | Accepted value |
 | --- | --- |
 | Platform | macOS arm64 |
-| Version | `codex-cli 0.146.0-alpha.9.2` |
-| Executable SHA-256 | `d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2` |
+| Version | Observed from the user's installed Codex at startup; not pinned |
+| Executable SHA-256 | Observed and rechecked for process identity; not compared with a fixed digest |
 | Command | Canonical Codex path as executable and argv0, suspended before user code, with fixed `app-server --stdio` arguments |
 | Startup state | `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1`; no remote-control argument |
 | Protocol boundary | Child stdin/stdout remain private to `ProcessSupervisor`; `FencedProcess` returns no protocol handle |
 | Capability | `codex-app-server-private-stdio-disabled-ephemeral-startup-v1` |
-| Account callback | Ready only after exact-image, generated-schema, and live callback preflights pass |
+| Account callback | Ready only after runtime executable, generated-schema, and live callback preflights pass |
 
-The startup marker is exact-build startup-state evidence only. The same build can accept
+The startup marker is process startup-state evidence only. The same executable can accept
 an alternate-control enable RPC if a protocol writer can send one. Therefore no raw
 stdin/stdout, generic protocol access, or protocol writer can leave ProcessSupervisor.
 A future live-dispatch gateway must source-reject alternate-control RPCs before product
@@ -100,7 +102,7 @@ before profile-dependent preflights.
 
 The launch sequence is:
 
-1. Account launch rejects unsupported platform, image, callback, or argument profile.
+1. Account launch rejects unsupported platform, process shape, callback, or argument profile.
 2. It reads the canonical account revision and credential-negative binding and creates
    the opaque launch.
 3. The caller supplies only a new generation ID and external execution authorization.

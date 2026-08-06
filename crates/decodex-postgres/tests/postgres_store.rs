@@ -155,7 +155,7 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
 	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
-	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
@@ -163,8 +163,15 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
 	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
-	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_quick_task_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.begin_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.complete_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.routing_decision_kind,pg_catalog.uuid,pg_catalog.jsonb,pg_catalog.jsonb)",
+	"decodex.create_quick_task_routing_successor_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_quick_task_initial_route_exact(pg_catalog.uuid)",
+	"decodex.read_quick_task_request_exact(pg_catalog.uuid)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
+	"decodex.plan_initial_thread_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
 	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
@@ -191,7 +198,19 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.attest_codex_account_capability_exact(pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.bool)",
 	"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_account_profile_exact(pg_catalog.uuid)",
-	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.acknowledge_runtime_session_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.admit_initial_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+	"decodex.read_ordinary_runtime_session_for_resume_exact(pg_catalog.uuid)",
+	"decodex.read_ordinary_task_conversations_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_turn_admission_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.prove_initial_quick_task_spawn_not_created_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.prepare_quick_task_process_generation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.fence_runtime_session_thread_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.text)",
+	"decodex.bind_runtime_session_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
+	"decodex.read_quick_task_thread_establishment_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+	"decodex.terminalize_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.provider_attempt_terminal_outcome,pg_catalog.uuid,pg_catalog.text)",
+	"decodex.reconcile_quick_task_terminalizations_exact(pg_catalog.int4)",
+	"decodex.prepare_process_generation_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,decodex.process_generation_control_kind,decodex.process_generation_isolation_kind,pg_catalog.int8,pg_catalog.int4,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,decodex.account_provider_kind,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.bind_process_generation_identity_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
 	"decodex.mark_process_generation_ready_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_process_generation_stopping_exact(pg_catalog.uuid,pg_catalog.int8)",
@@ -199,8 +218,8 @@ const RUNTIME_EXECUTE_SIGNATURES: &[&str] = &[
 	"decodex.record_process_generation_death_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.process_generation_death_evidence_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.text)",
 	"decodex.project_process_generations_after_supervisor_loss_exact()",
 	"decodex.read_process_generations_exact(pg_catalog.uuid,pg_catalog.bool,pg_catalog.uuid,pg_catalog.int8)",
-	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text)",
-	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.prepare_provider_attempt_exact(pg_catalog.uuid,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8)",
+	"decodex.authorize_provider_attempt_dispatch_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.cancel_provider_attempt_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.mark_provider_attempt_unknown_exact(pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_unknown_reason)",
 	"decodex.record_provider_attempt_positive_evidence_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.provider_attempt_evidence_source,decodex.provider_attempt_terminal_outcome,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
@@ -219,8 +238,11 @@ const TRIGGER_ONLY_SIGNATURES: &[&str] = &[
 	"decodex.canonicalize_created_at()",
 	"decodex.enforce_blob_object_state()",
 	"decodex.enforce_conversation_state()",
+	"decodex.enforce_conversation_routing_successor()",
 	"decodex.enforce_runtime_session_state()",
 	"decodex.enforce_turn_state()",
+	"decodex.enforce_initial_quick_task_admission_complete()",
+	"decodex.enforce_initial_quick_task_admission_owner()",
 	"decodex.enforce_history_item_state()",
 	"decodex.capture_history_item_version()",
 	"decodex.enforce_artifact_state()",
@@ -563,17 +585,22 @@ async fn postgres_latest_schema_bootstrap_contract() -> Result<(), Box<dyn std::
 	let store =
 		PostgresStore::connect_runtime_explicit(&config, config_password(&runtime)?).await?;
 	assert_eq!(store.availability(), Availability::Available);
-	assert!(matches!(
-		PostgresStore::bootstrap_latest_schema_explicit(
-			&config,
-			&schema_owner_identity,
-			config_password(&schema_owner)?,
-			&authorization,
+	let refusal = PostgresStore::bootstrap_latest_schema_explicit(
+		&config,
+		&schema_owner_identity,
+		config_password(&schema_owner)?,
+		&authorization,
+	)
+	.await
+	.expect_err("second latest-schema bootstrap must refuse the nonempty target");
+	assert_eq!(refusal.bootstrap_failure(), BootstrapFailure::Incompatible);
+	assert_eq!(
+		refusal.report_json(),
+		concat!(
+			r#"{"classification":"incompatible","complete":false,"configured_authority":null,"failure":{"category":"evidence","operation":"target_verification","phase":"pre_schema","sqlstate":null,"statement_byte_position":null},"#,
+			r#""namespace":[],"platform":[],"rollback_failure":null,"schema":"decodex/bootstrap-report/1","schema_contract":null,"semantic":[]}"#,
 		)
-		.await,
-		Err(error) if error.bootstrap_failure() == BootstrapFailure::Incompatible
-			&& error.report_json().is_none()
-	));
+	);
 	store.close();
 
 	Ok(())

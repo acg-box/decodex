@@ -242,28 +242,30 @@ receipt. Exact replay returns those bytes; conflicting reuse fails before effect
 ### Manual reset-card authority
 
 Manual reset-card use is a common vNext application service. `decodexd` is its sole
-credential-vault reader, Codex app-server child owner, opaque provider-credit resolver,
+credential-vault reader, direct provider API client, opaque provider-credit resolver,
 mutation coordinator, and external-effect owner. CLI and SwiftUI are clients. They cannot
-read credentials, launch app-server for this operation, receive a provider credit ID, or
-own effect retry.
+read credentials, launch a Codex app-server for this operation, receive a provider credit ID,
+or own effect retry.
 
 The public selection contract contains one canonical vNext Account UUID, its exact
 optimistic revision, and one credential-negative card descriptor made from grant and
-expiry timestamps. New admission requires `enabled=true`, AccountLifecycle readiness,
+expiry timestamps. Direct API admission requires `enabled=true`, a present credential,
 no unsettled account operation, and exact agreement among the account revision,
 HostCredentialStore version and fingerprint, and provider binding. Observed quota or
 health does not replace these gates. Manual Reset Card use does not enable conversation
 dispatch or automatic fallback.
 
-The Codex adapter must prove that one generated schema advertises both
-`account/rateLimits/read` and `account/rateLimitResetCredit/consume`. It must establish a
-complete unique inventory before it maps the public descriptor to one exact opaque credit
+The direct provider API adapter reads usage and reset-credit inventory from the same backend
+API contract used by Codex: `/wham/usage` and `/wham/rate-limit-reset-credits`. It establishes
+a complete unique inventory before it maps the public descriptor to one exact opaque credit
 ID. A read can publish a provider-reported available count with incomplete or absent detail
 rows, but it must publish no selectable descriptors from that partial inventory and must
 retain independently valid quota facts. A reported zero count is a definitive complete empty
-inventory. Null quota reset timestamps are unsupported windows, not protocol corruption.
+inventory. Null quota reset timestamps are unsupported windows, not protocol corruption. The
+consume effect uses `/wham/rate-limit-reset-credits/consume`; it does not require a Codex
+executable, app-server process, generated schema, or exact-version admission.
 Before an observation, the Account Service refreshes only an expired access token or one
-that cannot cover the bounded provider-process deadline, under the existing account lock,
+that cannot cover the bounded API request deadline, under the existing account lock,
 refresh journal, and credential compare-and-swap. The daemon persists the resolved exact ID
 and the unchanged logical-command idempotency key before it starts the provider effect. A
 terminal result requires a closed provider receipt and a fresh complete authoritative
@@ -281,7 +283,7 @@ UUID and configured provider identity fields. Restart must reject drift, and gen
 account mutation cannot replace or remove the binding. A terminal same-key receipt
 replays unconditionally before any current account, store, provider, readiness, or
 enabled-state check. New work and the pre-effect fence both require `enabled=true`,
-AccountLifecycle readiness, no unsettled operation, and exact account revision,
+a present credential, no unsettled operation, and exact account revision,
 credential version/fingerprint, provider binding, and selected oldest public descriptor.
 A terminal effect-present readback erases the private exact-ID and provider-key projection while it
 retains the public receipt, reconciliation status, and replay result. Generic retention
@@ -898,27 +900,28 @@ XY-1400 implements the accepted ProcessGeneration contract in
 [the ProcessGeneration authority specification](process-generation-authority.md).
 `ProcessSupervisor` is the sole product writer. A private opaque launch authority retains one
 protected executable snapshot and derives the durable launch-manifest identity and exact command.
-The manifest binds the image and BuildId, fixed `app-server --stdio` arguments, working directory,
+The manifest binds the observed executable identity and BuildId, fixed `app-server --stdio`
+arguments, working directory,
 sanitized environment, account, initial account revision, canonical credential version and
-fingerprint, provider identity, and exact-build startup/lifetime/account-callback capability. No
+fingerprint, provider identity, and runtime-negotiated startup/lifetime/account-callback capability. No
 caller can pair an independent digest with a raw command. The supervisor commits this intent
 before a fresh fence can authorize one spawn. Intent, launch manifest, prepare fence, ready
 transition, and readback carry the same non-secret binding. No new process or effect ledger is
 added. The supervisor then binds the exact PID, process-start identity, process group, and session.
 
-The current lifetime profile accepts only the recorded macOS `codex-cli 0.146.0-alpha.9.2` image. It
-sets `CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control
-argument. The marker proves only the exact build's startup state. `ProcessSupervisor` retains the
-raw channels privately for lifetime ownership, and no returned ProcessGeneration capability
-contains a protocol writer. Other builds, including an unrecorded Linux image, fail closed before
-profile-dependent preflights. Generic session/descriptor setup does not install
+The current lifetime profile uses the user's installed macOS arm64 Codex executable. It sets
+`CODEX_INTERNAL_APP_SERVER_REMOTE_CONTROL_DISABLED=1` and supplies no remote-control argument.
+The marker proves only that process's startup state. `ProcessSupervisor` retains the raw channels
+privately for lifetime ownership, and no returned ProcessGeneration capability contains a protocol
+writer. No Codex release/version or executable digest is allowlisted; only the platform, process
+shape, generated schema, and live capability proof are checked. Generic session/descriptor setup does not install
 `PR_SET_PDEATHSIG`; a future Linux parent-death primitive requires a separately accepted exact
 Linux lifetime capability. `decodexd` remains the only product daemon.
 
-This profile proves AccountLifecycle readiness only after a positive exact-build callback receipt
+This profile proves AccountLifecycle readiness only after a positive runtime callback receipt
 and the typed daemon gateway pass the generated-schema and callback-shape preflights. Generated
 types, version text, or upstream implementation presence alone are insufficient.
-Unsupported builds and callback shapes fail closed before account launch.
+Incompatible process shapes and callback shapes fail closed before account launch.
 
 The durable states are `starting`, `ready`, `stopping`, `dead`, and `death_unknown`.
 All present restored nonterminal rows become `death_unknown`. A generation becomes `dead` only

@@ -11,15 +11,14 @@ use toml as _;
 
 use decodex_core::{
 	AccountId, AccountQuotaObservationError, AccountRegistryQuotaFact,
-	AccountRegistryQuotaObservation,
-	AccountRegistryRoutingDecision, AccountRegistryRoutingDecisionKind,
-	AccountRegistryRoutingExclusion, AccountRegistryRoutingKernelError,
-	AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot, AccountSelectionMode,
-	CodexCapability, ObservationConfidence, QuotaWindowClass, RoutingBlocker, RoutingDecision,
+	AccountRegistryQuotaObservation, AccountRegistryRoutingDecision,
+	AccountRegistryRoutingDecisionKind, AccountRegistryRoutingExclusion,
+	AccountRegistryRoutingKernelError, AccountRegistryRoutingMember,
+	AccountRegistryRoutingSnapshot, AccountSelectionMode, CodexCapability, ObservationConfidence,
+	QuotaWindowClass, RoutingAuthorityShape, RoutingBlocker, RoutingDecision,
 	RoutingDecisionCandidate, RoutingDecisionCause, RoutingDecisionExclusion, RoutingDecisionKind,
 	RoutingDecisionQuotaFact, RoutingDecisionSnapshot, RoutingKernelError,
-	RoutingAuthorityShape, RoutingMemberDisposition, RoutingNoRouteReason,
-	RoutingSnapshotCapabilityFact,
+	RoutingMemberDisposition, RoutingNoRouteReason, RoutingSnapshotCapabilityFact,
 	RoutingTimestampPrecision, RoutingTimestampProvenance, decide_account_registry_routing,
 	decide_routing,
 };
@@ -29,6 +28,7 @@ const SOURCE_ID: &str = "codex-account-readback";
 const DECIDED_AT: i64 = 1_000_000_000;
 const OBSERVED_AT: i64 = DECIDED_AT - 100;
 const OBSERVED_AT_RAW: &str = "999999900";
+const MAX_TIMESTAMP_MICROS: i64 = 253_402_300_799_999_999;
 
 fn account(number: u8) -> AccountId {
 	AccountId::new(format!("10000000-0000-4000-8000-{number:012}"))
@@ -602,20 +602,8 @@ fn account_registry_balanced_selects_later_member_with_exact_prior_exclusions() 
 		],
 	);
 	input.quota_facts = [
-		account_registry_quota_pair(
-			&first,
-			100,
-			DECIDED_AT + 500,
-			100,
-			DECIDED_AT + 10_000,
-		),
-		account_registry_quota_pair(
-			&second,
-			50,
-			DECIDED_AT + 600,
-			50,
-			DECIDED_AT + 20_000,
-		),
+		account_registry_quota_pair(&first, 100, DECIDED_AT + 500, 100, DECIDED_AT + 10_000),
+		account_registry_quota_pair(&second, 50, DECIDED_AT + 600, 50, DECIDED_AT + 20_000),
 	]
 	.concat();
 
@@ -720,7 +708,7 @@ fn account_registry_closed_observation_errors_remain_exact_and_map_to_window_unk
 			vec![account_registry_member(1, account_id.clone(), vec![])],
 		);
 		let observation = AccountRegistryQuotaObservation::ObservationError {
-			error: error.clone(),
+			error,
 			observed_at_micros: OBSERVED_AT,
 		};
 		let fact_index = match window {
@@ -757,20 +745,8 @@ fn account_registry_split_depletion_waiting_never_pools_accounts_or_windows() {
 		],
 	);
 	input.quota_facts = [
-		account_registry_quota_pair(
-			&first,
-			100,
-			DECIDED_AT + 500,
-			50,
-			DECIDED_AT + 2_000,
-		),
-		account_registry_quota_pair(
-			&second,
-			50,
-			DECIDED_AT + 1_700,
-			100,
-			DECIDED_AT + 1_800,
-		),
+		account_registry_quota_pair(&first, 100, DECIDED_AT + 500, 50, DECIDED_AT + 2_000),
+		account_registry_quota_pair(&second, 50, DECIDED_AT + 1_700, 100, DECIDED_AT + 1_800),
 	]
 	.concat();
 
@@ -826,10 +802,7 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		decide_account_registry_routing(&stale, DECIDED_AT),
 		Ok(account_registry_no_route(
 			vec![],
-			vec![account_registry_cause(
-				account_id.clone(),
-				RoutingBlocker::QuotaFiveHourStale,
-			)],
+			vec![account_registry_cause(account_id.clone(), RoutingBlocker::QuotaFiveHourStale,)],
 		)),
 	);
 
@@ -864,18 +837,13 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 		decide_account_registry_routing(&future, DECIDED_AT),
 		Ok(account_registry_no_route(
 			vec![],
-			vec![account_registry_cause(
-				account_id,
-				RoutingBlocker::QuotaFiveHourFromFuture,
-			)],
+			vec![account_registry_cause(account_id, RoutingBlocker::QuotaFiveHourFromFuture,)],
 		)),
 	);
 }
 
 #[test]
 fn account_registry_timestamp_product_bound_is_closed() {
-	const MAX_TIMESTAMP_MICROS: i64 = 253_402_300_799_999_999;
-
 	let account_id = account(29);
 	let mut epoch = account_registry_snapshot(
 		AccountSelectionMode::Balanced,
@@ -883,20 +851,8 @@ fn account_registry_timestamp_product_bound_is_closed() {
 	);
 	epoch.resolved_at_micros = 0;
 	epoch.quota_facts = vec![
-		account_registry_current_fact(
-			account_id.clone(),
-			QuotaWindowClass::FiveHour,
-			50,
-			0,
-			1,
-		),
-		account_registry_current_fact(
-			account_id.clone(),
-			QuotaWindowClass::SevenDay,
-			50,
-			0,
-			2,
-		),
+		account_registry_current_fact(account_id.clone(), QuotaWindowClass::FiveHour, 50, 0, 1),
+		account_registry_current_fact(account_id.clone(), QuotaWindowClass::SevenDay, 50, 0, 2),
 	];
 	assert_eq!(
 		decide_account_registry_routing(&epoch, 0),
@@ -947,11 +903,17 @@ fn account_registry_timestamp_product_bound_is_closed() {
 			],
 		)),
 	);
+	assert_account_registry_timestamp_product_bound_rejections(account_id, epoch, maximum);
+}
+
+fn assert_account_registry_timestamp_product_bound_rejections(
+	account_id: AccountId,
+	epoch: AccountRegistryRoutingSnapshot,
+	maximum: AccountRegistryRoutingSnapshot,
+) {
 	assert_eq!(
 		decide_account_registry_routing(&maximum, -1),
-		Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros {
-			decided_at_micros: -1,
-		}),
+		Err(AccountRegistryRoutingKernelError::InvalidDecidedAtMicros { decided_at_micros: -1 }),
 	);
 	assert_eq!(
 		decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS + 1),
@@ -976,9 +938,7 @@ fn account_registry_timestamp_product_bound_is_closed() {
 		invalid.resolved_at_micros = resolved_at_micros;
 		assert_eq!(
 			decide_account_registry_routing(&invalid, MAX_TIMESTAMP_MICROS),
-			Err(AccountRegistryRoutingKernelError::InvalidResolvedAtMicros {
-				resolved_at_micros,
-			}),
+			Err(AccountRegistryRoutingKernelError::InvalidResolvedAtMicros { resolved_at_micros }),
 		);
 	}
 
@@ -1028,13 +988,8 @@ fn account_registry_timestamp_product_bound_is_closed() {
 	}
 
 	let mut nonincreasing_reset = epoch;
-	nonincreasing_reset.quota_facts[0] = account_registry_current_fact(
-		account_id.clone(),
-		QuotaWindowClass::FiveHour,
-		50,
-		0,
-		0,
-	);
+	nonincreasing_reset.quota_facts[0] =
+		account_registry_current_fact(account_id.clone(), QuotaWindowClass::FiveHour, 50, 0, 0);
 	assert_eq!(
 		decide_account_registry_routing(&nonincreasing_reset, 0),
 		Err(AccountRegistryRoutingKernelError::InvalidQuotaFactResetsAtMicros {
@@ -1220,10 +1175,7 @@ fn account_registry_rejects_forbidden_duplicate_and_reordered_member_blockers() 
 		),
 		(
 			"reordered",
-			snapshot_with(vec![
-				RoutingBlocker::AccountDisabled,
-				RoutingBlocker::AccountFromFuture,
-			]),
+			snapshot_with(vec![RoutingBlocker::AccountDisabled, RoutingBlocker::AccountFromFuture]),
 			AccountRegistryRoutingKernelError::NonCanonicalMemberBlocker {
 				account_id,
 				member_position: 1,
@@ -1242,21 +1194,9 @@ fn account_registry_rejects_forbidden_duplicate_and_reordered_member_blockers() 
 #[test]
 fn routing_authority_shape_discriminators_and_selection_contract_are_closed() {
 	let cases = [
-		(
-			RoutingAuthorityShape::ConversationAccountRegistry,
-			"conversation_account_registry",
-			true,
-		),
-		(
-			RoutingAuthorityShape::ManagedRunProjectPolicy,
-			"managed_run_project_policy",
-			true,
-		),
-		(
-			RoutingAuthorityShape::ConversationContinuation,
-			"conversation_continuation",
-			false,
-		),
+		(RoutingAuthorityShape::ConversationAccountRegistry, "conversation_account_registry", true),
+		(RoutingAuthorityShape::ManagedRunProjectPolicy, "managed_run_project_policy", true),
+		(RoutingAuthorityShape::ConversationContinuation, "conversation_continuation", false),
 	];
 
 	for (shape, discriminator, is_selecting) in cases {

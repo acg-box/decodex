@@ -2,7 +2,7 @@ import Foundation
 import Observation
 
 enum ResetCardInventoryFailure: Equatable {
-	case updating(detail: String)
+	case retryable(detail: String)
 	case connecting(detail: String)
 	case unavailable(detail: String)
 }
@@ -69,12 +69,12 @@ struct ResetCardAccountState: Identifiable, Equatable {
 				return .connecting(detail: error.localizedDescription)
 			}
 			return error.isRetryableReadFailure
-				? .updating(detail: error.localizedDescription)
+				? .retryable(detail: error.localizedDescription)
 				: .unavailable(detail: error.localizedDescription)
 		}
 		if let error = inventory?.observationError {
 			return error.isRetryableReadFailure
-				? .updating(detail: error.presentation)
+				? .retryable(detail: error.presentation)
 				: .unavailable(detail: error.presentation)
 		}
 		return nil
@@ -102,7 +102,7 @@ struct ResetCardAccountState: Identifiable, Equatable {
 	var targets: [ResetCardUseTarget] {
 		guard let inventory,
 			inventoryIsCurrent,
-			error == nil,
+			(error == nil || error?.isRetryableReadFailure == true),
 			inventory.observationError == nil,
 			inventory.detailsComplete
 		else {
@@ -141,6 +141,33 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 		return profileUnavailable?.error == .unauthorized
 			|| profile?.refreshError == .unauthorized
+	}
+}
+
+/// Route admission is an account-control capability, not an account-data refresh state.
+/// The optional Codex callback capability is intentionally not part of this gate; direct
+/// provider observations and account routing remain usable while Quick Task capability is
+/// independently settling.
+enum AccountRouteCapability: Equatable {
+	case ready
+	case disabled
+	case operationPending
+	case unavailable
+}
+
+extension ResetCardAccountState {
+	var routeCapability: AccountRouteCapability {
+		guard account.enabled else {
+			return .disabled
+		}
+		switch account.lifecycleReadiness {
+		case .ready, .callbackCapabilityUnready:
+			return account.unsettledOperation == nil ? .ready : .operationPending
+		case .operationUnsettled:
+			return .operationPending
+		case .credentialAbsent, .storeUnavailable, .storeMismatch, .providerMismatch, .tombstoned:
+			return .unavailable
+		}
 	}
 }
 
@@ -249,7 +276,6 @@ private enum ResetCardRefreshResult: Equatable {
 
 private enum ResetCardInventoryRefreshResult: Equatable {
 	case current
-	case awaitingSkeleton
 	case retryNeeded
 	case failed
 	case missing
@@ -325,8 +351,12 @@ final class ResetCardStore {
 	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var accountObservationTask: Task<Void, Never>?
+	@ObservationIgnored private var priorityObservationTask: Task<Void, Never>?
 	@ObservationIgnored private var refreshCoordinatorTask: Task<Void, Never>?
 	@ObservationIgnored private var refreshRequests = ResetCardRefreshRequests()
+	@ObservationIgnored private var observationSyncNeedsRetry = false
+	@ObservationIgnored private var accountObservationGeneration: UInt64 = 0
+	@ObservationIgnored private var lastPriorityObservationRequestAt: Date?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
 	@ObservationIgnored private var postUseReconciliationTasks = [
@@ -339,10 +369,8 @@ final class ResetCardStore {
 	@ObservationIgnored private var requestedProfileEmailVisibility = false
 	@ObservationIgnored private var profilePrivacyEpoch: UInt64 = 0
 	@ObservationIgnored private var codexProjectionRequestGeneration: UInt64 = 0
+	@ObservationIgnored private var accountSnapshotRequestGeneration: UInt64 = 0
 	@ObservationIgnored private var accountSkeletonRefreshGeneration: UInt64 = 0
-	@ObservationIgnored private var advancedInventoriesAwaitingSkeleton = [
-		String: ResetCardInventory
-	]()
 
 	init(
 		client: any ResetCardClient = DecodexNativeClient(),
@@ -386,6 +414,7 @@ final class ResetCardStore {
 	deinit {
 		startupTask?.cancel()
 		accountObservationTask?.cancel()
+		priorityObservationTask?.cancel()
 		refreshCoordinatorTask?.cancel()
 		pendingRecoveryTask?.cancel()
 		accountReauthenticationTask?.cancel()
@@ -399,8 +428,7 @@ final class ResetCardStore {
 	}
 
 	var canPerformDirectAccountControl: Bool {
-		isRefreshingAccountSkeleton == false
-			&& (isRefreshing == false || refreshSkeletonIsPublished)
+		isRefreshing == false || refreshSkeletonIsPublished
 	}
 
 	var canBeginEnrollment: Bool {
@@ -427,7 +455,6 @@ final class ResetCardStore {
 		isPendingRecoveryBlocked
 			|| submittingKey != nil
 			|| postUseReconciliationAccountIDs.contains(target.accountID)
-			|| isAwaitingFreshAccountSkeleton(target.accountID)
 			|| pendingAttempts.count >= ResetCardPendingAttemptStore.maximumAttempts
 			|| pendingAttempts.contains(where: {
 				$0.target.accountID == target.accountID
@@ -503,6 +530,7 @@ final class ResetCardStore {
 
 		let inFlightStartupTask = startupTask
 		let inFlightRefreshCoordinatorTask = refreshCoordinatorTask
+		let inFlightPriorityObservationTask = priorityObservationTask
 		let inFlightPendingRecoveryTask = pendingRecoveryTask
 		let inFlightAccountReauthenticationTask = accountReauthenticationTask
 		let inFlightPostUseReconciliationTasks = Array(
@@ -513,6 +541,8 @@ final class ResetCardStore {
 		startupTask = nil
 		accountObservationTask?.cancel()
 		accountObservationTask = nil
+		priorityObservationTask?.cancel()
+		priorityObservationTask = nil
 		refreshCoordinatorTask?.cancel()
 		refreshCoordinatorTask = nil
 		refreshRequests.reset()
@@ -526,6 +556,7 @@ final class ResetCardStore {
 		postUseReconciliationTasks.removeAll()
 
 		await inFlightStartupTask?.value
+		await inFlightPriorityObservationTask?.value
 		// The native wait is a bounded synchronous FFI request. Client destruction
 		// safely releases its in-flight Arc, so termination cancels this owner but
 		// does not wait for a daemon heartbeat before shutting down the shared client.
@@ -554,9 +585,13 @@ final class ResetCardStore {
 					guard Task.isCancelled == false, let self else {
 						return
 					}
+					let advanced = signal.generation != generation
 					generation = signal.generation
+					self.accountObservationGeneration = signal.generation
 					failureCount = 0
-					self.requestObservationRefresh()
+					if self.hasLoaded && (advanced || self.observationSyncNeedsRetry) {
+						self.requestObservationRefresh()
+					}
 				} catch {
 					guard Task.isCancelled == false, reconnectDelays.isEmpty == false else {
 						return
@@ -573,11 +608,54 @@ final class ResetCardStore {
 		}
 	}
 
+	/// Keep the panel immediate while asking the daemon for the freshest available cache.
+	/// The request is coalesced by the daemon and never enters the visible full-refresh lane.
+	func ensureFresh() {
+		guard hasLoaded,
+			isPreparingForTermination == false,
+			let accountObservationClient
+		else {
+			return
+		}
+		let now = Date()
+		if let lastPriorityObservationRequestAt,
+			now.timeIntervalSince(lastPriorityObservationRequestAt) < 5
+		{
+			return
+		}
+		guard priorityObservationTask == nil else {
+			return
+		}
+		lastPriorityObservationRequestAt = now
+		let generation = accountObservationGeneration
+		priorityObservationTask = Task { [weak self, accountObservationClient] in
+			do {
+				let signal = try await accountObservationClient.requestAccountObservationRefresh(
+					afterGeneration: generation
+				)
+				guard Task.isCancelled == false, let self else {
+					self?.priorityObservationTask = nil
+					return
+				}
+				defer {
+					self.priorityObservationTask = nil
+				}
+				if signal.generation != self.accountObservationGeneration {
+					self.accountObservationGeneration = signal.generation
+					self.requestObservationRefresh()
+				} else if self.observationSyncNeedsRetry {
+					self.requestObservationRefresh()
+				}
+			} catch {
+				self?.priorityObservationTask = nil
+				// The standing observation wait will reconnect. Panel presentation must
+				// remain usable when a priority request cannot reach the daemon.
+			}
+		}
+	}
+
 	func requestRefresh() {
 		guard isPreparingForTermination == false,
-			refreshCoordinatorTask == nil,
-			isRefreshing == false,
-			isRefreshingAccountSkeleton == false,
 			isAccountControlInProgress == false
 		else {
 			return
@@ -621,7 +699,6 @@ final class ResetCardStore {
 
 	private var canStartCoordinatedRead: Bool {
 		isRefreshing == false
-			&& isRefreshingAccountSkeleton == false
 			&& isAccountControlInProgress == false
 	}
 
@@ -656,15 +733,34 @@ final class ResetCardStore {
 		switch work {
 		case .full:
 			await performRefreshCycle()
+			if Task.isCancelled == false {
+				refreshRequests.completeManualRefresh()
+			}
+		case .observation:
+			await performObservationRefresh()
 		case .skeleton:
 			await performAccountSkeletonRead()
 		}
 	}
 
 	func refresh() async {
-		let inFlightCoordinatorTask = refreshCoordinatorTask
+		let previousManualRefreshGeneration = refreshRequests.manualRefreshGeneration
 		requestRefresh()
-		await (refreshCoordinatorTask ?? inFlightCoordinatorTask)?.value
+		guard refreshRequests.manualRefreshGeneration != previousManualRefreshGeneration else {
+			return
+		}
+		let requestedManualRefreshGeneration = refreshRequests.manualRefreshGeneration
+		while Task.isCancelled == false,
+			isPreparingForTermination == false,
+			refreshRequests.didCompleteManualRefresh(upTo: requestedManualRefreshGeneration) == false
+		{
+			if let task = refreshCoordinatorTask {
+				await task.value
+			} else {
+				scheduleRefreshCoordinator()
+				await Task.yield()
+			}
+		}
 	}
 
 	private func performRefreshCycle() async {
@@ -681,11 +777,20 @@ final class ResetCardStore {
 			return
 		}
 		clearStaleControlError()
-		_ = await refreshReadState()
+		let result = await refreshReadState()
+		observationSyncNeedsRetry = result == .retryNeeded
 		guard Task.isCancelled == false else {
 			return
 		}
 		_ = await recoverPendingAttempts()
+	}
+
+	private func performObservationRefresh() async {
+		guard Task.isCancelled == false else {
+			return
+		}
+		let result = await refreshReadState(backgroundObservation: true)
+		observationSyncNeedsRetry = result == .retryNeeded
 	}
 
 	func setProfileEmailVisibility(_ isVisible: Bool) async {
@@ -725,16 +830,22 @@ final class ResetCardStore {
 		_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
 	}
 
-	private func refreshReadState() async -> ResetCardRefreshResult {
-		guard isRefreshing == false else {
+	private func refreshReadState(
+		backgroundObservation: Bool = false
+	) async -> ResetCardRefreshResult {
+		guard backgroundObservation || isRefreshing == false else {
 			return .skipped
 		}
 
-		isRefreshing = true
-		refreshSkeletonIsPublished = false
-		defer {
-			isRefreshing = false
+		if backgroundObservation == false {
+			isRefreshing = true
 			refreshSkeletonIsPublished = false
+		}
+		defer {
+			if backgroundObservation == false {
+				isRefreshing = false
+				refreshSkeletonIsPublished = false
+			}
 			hasLoaded = true
 			scheduleRefreshCoordinator()
 		}
@@ -751,9 +862,10 @@ final class ResetCardStore {
 			let discovered: [ResetCardAccountRecord]
 			var projectionReadback: (
 				generation: UInt64,
-				projection: CodexAuthProjection
+				projection: CodexAuthProjection?
 			)?
 			if let accountControlClient {
+				let snapshotGeneration = beginAccountSnapshotRequest()
 				let projectionGeneration = beginCodexProjectionRequest()
 				async let snapshotRead = accountControlClient.accountSnapshot(
 					authority: retainedAuthority
@@ -762,9 +874,18 @@ final class ResetCardStore {
 					authority: retainedAuthority
 				)
 				let snapshot = try await snapshotRead
-				let projection = await projectionRead ?? .unavailable
+				let projection = await projectionRead
+				// A local account-control result may have superseded this snapshot while
+				// either read was suspended. Never publish that older routing/account view.
+				guard snapshotGeneration == accountSnapshotRequestGeneration else {
+					return .complete
+				}
 				projectionReadback = (projectionGeneration, projection)
-				routing = snapshot.routing
+				if let snapshotRouting = snapshot.routing,
+					routing != snapshotRouting
+				{
+					routing = snapshotRouting
+				}
 				discovered = snapshot.accounts
 			} else {
 				discovered = try await client.accounts(authority: retainedAuthority)
@@ -772,14 +893,19 @@ final class ResetCardStore {
 			let previousByID = Dictionary(
 				uniqueKeysWithValues: accounts.map { ($0.account.accountID, $0) }
 			)
-			accounts = discovered.map { account in
+			let nextAccounts = discovered.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = retainedAuthority
 					?? account.authority
 					?? previous?.account.authority
 					?? previous?.inventory?.authority
-				let boundAccount = Self.account(account, authority: authority)
-				let sameRevision = previous?.account.accountRevision == account.accountRevision
+				let boundAccount = Self.boundAccount(
+					account,
+					previous: previous,
+					authority: authority
+				)
+				let sameRevision = previous?.account.accountRevision
+					== boundAccount.accountRevision
 				let retriesInventory = sameRevision
 					&& (
 						previous?.error?.isRetryableReadFailure == true
@@ -789,9 +915,6 @@ final class ResetCardStore {
 				let retainedError = sameRevision
 					? previous?.error
 					: nil
-				let inventoryIsStale = retainedInventory.map {
-					$0.accountRevision != boundAccount.accountRevision
-				} ?? false
 				let retainedProfile = sameRevision
 					? previous?.profile
 					: nil
@@ -806,16 +929,14 @@ final class ResetCardStore {
 				let retainedProfileError = sameRevision && retriesProfile == false
 					? previous?.profileError
 					: nil
-				let awaitsNewerSkeleton = accountSkeletonRevisionTargets[
-					account.accountID
-				].map { account.accountRevision < $0 } ?? false
 				return ResetCardAccountState(
 					account: boundAccount,
 					inventory: retainedInventory,
 					error: retainedError,
-					isRefreshing: awaitsNewerSkeleton
-						|| inventoryIsStale
-						|| retriesInventory
+					// A daemon cache read may be newer than this independently read
+					// account projection. Keep the retained value visible while the
+					// projection catches up; the revision fence remains on effects.
+					isRefreshing: (backgroundObservation == false && retriesInventory)
 						|| postUseReconciliationAccountIDs.contains(
 							account.accountID
 						)
@@ -830,23 +951,32 @@ final class ResetCardStore {
 					isProfileRefreshing: accountProfileClient != nil
 						&& retainedProfile == nil
 						&& retainedProfileUnavailable == nil
-					&& retainedProfileError == nil
+						&& retainedProfileError == nil
 				)
+			}
+			if accounts != nextAccounts {
+				accounts = nextAccounts
 			}
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
 			if let projectionReadback,
+				let projection = projectionReadback.projection,
 				applyCodexAuthProjection(
-					projectionReadback.projection,
+					projection,
 					generation: projectionReadback.generation
 				) {
 				scheduleCodexProjectionRefresh()
 			}
-			if message?.tone == .error, isPendingRecoveryBlocked == false {
+			if backgroundObservation == false,
+				message?.tone == .error,
+				isPendingRecoveryBlocked == false
+			{
 				message = nil
 			}
-			refreshSkeletonIsPublished = true
+			if backgroundObservation == false {
+				refreshSkeletonIsPublished = true
+			}
 
 			let inventoryReads = self.inventoryReads
 			let accountProfileClient = self.accountProfileClient
@@ -964,22 +1094,24 @@ final class ResetCardStore {
 		} catch {
 			let clientError = Self.clientError(error)
 			shouldRetry = clientError.isRetryableReadFailure
-			accounts = accounts.map {
-				ResetCardAccountState(
-					account: $0.account,
-					inventory: $0.inventory,
-					error: $0.error,
-					isRefreshing: false,
-					profile: $0.profile,
-					profileUnavailable: $0.profileUnavailable,
-					profileError: $0.profileError,
-					isProfileRefreshing: false
+			if backgroundObservation == false {
+				accounts = accounts.map {
+					ResetCardAccountState(
+						account: $0.account,
+						inventory: $0.inventory,
+						error: $0.error,
+						isRefreshing: false,
+						profile: $0.profile,
+						profileUnavailable: $0.profileUnavailable,
+						profileError: $0.profileError,
+						isProfileRefreshing: false
+					)
+				}
+				message = ResetCardStoreMessage(
+					tone: .error,
+					text: clientError.localizedDescription
 				)
 			}
-			message = ResetCardStoreMessage(
-				tone: .error,
-				text: clientError.localizedDescription
-			)
 		}
 
 		if isPendingRecoveryBlocked {
@@ -992,13 +1124,6 @@ final class ResetCardStore {
 	func use(_ attempt: ResetCardUseAttempt) async -> ResetCardUseCompletion {
 		guard isPendingRecoveryBlocked == false else {
 			message = Self.pendingRecoveryBlockedMessage
-			return ResetCardUseCompletion(resolved: true)
-		}
-		guard isAwaitingFreshAccountSkeleton(attempt.target.accountID) == false else {
-			message = ResetCardStoreMessage(
-				tone: .information,
-				text: "The account state changed. Wait for the account list to refresh."
-			)
 			return ResetCardUseCompletion(resolved: true)
 		}
 		guard submittingKey == nil,
@@ -1116,6 +1241,13 @@ final class ResetCardStore {
 		accountSkeletonRevisionTargets[accountID] != nil
 	}
 
+	func canRouteAccount(_ accountID: String) -> Bool {
+		guard let state = accounts.first(where: { $0.account.accountID == accountID }) else {
+			return false
+		}
+		return state.routeCapability == .ready
+	}
+
 	func enrollFromSharedCodex(enabled: Bool = true) async {
 		guard canBeginEnrollment,
 			let accountControlClient
@@ -1203,7 +1335,7 @@ final class ResetCardStore {
 
 	func selectFixedAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
-			isAwaitingFreshAccountSkeleton(accountID) == false,
+			canRouteAccount(accountID),
 			let routing,
 			routing.order.contains(accountID),
 			let accountControlClient
@@ -1229,7 +1361,7 @@ final class ResetCardStore {
 
 	func routeAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
-			isAwaitingFreshAccountSkeleton(accountID) == false,
+			canRouteAccount(accountID),
 			let routing,
 			routing.order.contains(accountID),
 			let accountControlClient
@@ -1400,11 +1532,10 @@ final class ResetCardStore {
 			let state = accounts.first(where: {
 				$0.account.accountID == accountID
 			}),
-			state.requiresLoginRefresh,
-			state.account.credentialBinding != nil,
-			let accountControlClient,
-			canPerformDirectAccountControl,
-			isAwaitingFreshAccountSkeleton(accountID) == false,
+				state.requiresLoginRefresh,
+				state.account.credentialBinding != nil,
+				let accountControlClient,
+				canPerformDirectAccountControl,
 			accountControlActivities[accountID] == nil,
 			isEnrollingAccount == false,
 			isRoutingAccountControl == false,
@@ -1855,30 +1986,9 @@ final class ResetCardStore {
 		switch result {
 		case .current, .failed, .missing:
 			return true
-		case .awaitingSkeleton:
-			await waitForAccountSkeletonRefresh()
-			if canCompletePostUseReconciliation(accountID) {
-				completePostUseReconciliation(accountID)
-				return true
-			}
-			return postUseReconciliationAccountIDs.contains(accountID) == false
 		case .retryNeeded:
-			if isAwaitingFreshAccountSkeleton(accountID) {
-				await waitForAccountSkeletonRefresh()
-			}
 			return postUseReconciliationAccountIDs.contains(accountID) == false
 		}
-	}
-
-	private func canCompletePostUseReconciliation(_ accountID: String) -> Bool {
-		guard let state = accounts.first(where: {
-			$0.account.accountID == accountID
-		}) else {
-			return false
-		}
-		return state.inventoryIsCurrent
-			&& state.error == nil
-			&& state.inventory?.observationError == nil
 	}
 
 	private func completePostUseReconciliation(_ accountID: String) {
@@ -1895,7 +2005,7 @@ final class ResetCardStore {
 			account: existing.account,
 			inventory: existing.inventory,
 			error: existing.error,
-			isRefreshing: isAwaitingFreshAccountSkeleton(accountID),
+			isRefreshing: false,
 			profile: existing.profile,
 			profileUnavailable: existing.profileUnavailable,
 			profileError: existing.profileError,
@@ -2056,6 +2166,7 @@ final class ResetCardStore {
 			scheduleRefreshCoordinator()
 		}
 		do {
+			let snapshotGeneration = beginAccountSnapshotRequest()
 			let projectionGeneration = beginCodexProjectionRequest()
 			async let snapshotRead = accountControlClient.accountSnapshot(
 				authority: establishedAuthority
@@ -2064,69 +2175,53 @@ final class ResetCardStore {
 				authority: establishedAuthority
 			)
 			let snapshot = try await snapshotRead
+			guard snapshotGeneration == accountSnapshotRequestGeneration else {
+				return
+			}
 			let previousByID = Dictionary(
 				uniqueKeysWithValues: accounts.map {
 					($0.account.accountID, $0)
 				}
 			)
-			routing = snapshot.routing
+			if let snapshotRouting = snapshot.routing {
+				routing = snapshotRouting
+			}
 			var accountsNeedingDetails = [(
 				accountID: String,
 				refreshInventory: Bool
 			)]()
-			var postUseReconciledAccountIDs = Set<String>()
 			accounts = snapshot.accounts.map { account in
 				let previous = previousByID[account.accountID]
 				let authority = snapshot.authority
 					?? account.authority
 					?? previous?.account.authority
 					?? previous?.inventory?.authority
-				let bound = Self.account(account, authority: authority)
+				let bound = Self.boundAccount(
+					account,
+					previous: previous,
+					authority: authority
+				)
 				let sameRevision = previous?.account.accountRevision
 					== bound.accountRevision
-				let advancedInventory = advancedInventoriesAwaitingSkeleton[
-					bound.accountID
-				].flatMap { inventory in
-					inventory.accountID == bound.accountID
-						&& inventory.accountRevision == bound.accountRevision
-						? inventory
-						: nil
-				}
-				let reconcilesPostUse = advancedInventory != nil
-					&& postUseReconciliationAccountIDs.contains(bound.accountID)
-					&& postUseReconciliationTasks[bound.accountID] == nil
-				if reconcilesPostUse {
-					postUseReconciledAccountIDs.insert(bound.accountID)
-				}
-				let retainedInventory = advancedInventory ?? previous?.inventory
-				let inventoryIsCurrent = retainedInventory.map {
-					$0.accountID == bound.accountID
-						&& $0.accountRevision == bound.accountRevision
-				} ?? false
-				let awaitsNewerSkeleton = accountSkeletonRevisionTargets[
-					bound.accountID
-				].map { bound.accountRevision < $0 } ?? false
+				let retainedInventory = previous?.inventory
 				if sameRevision == false {
 					accountsNeedingDetails.append(
 						(
 							accountID: bound.accountID,
-							refreshInventory: advancedInventory == nil
-								|| advancedInventory?.observationError != nil
+							refreshInventory: true
 						)
 					)
 				}
 				return ResetCardAccountState(
 					account: bound,
 					inventory: retainedInventory,
-					error: advancedInventory == nil && sameRevision
+					error: sameRevision
 						? previous?.error
 						: nil,
-					isRefreshing: awaitsNewerSkeleton
-						|| (sameRevision == false && inventoryIsCurrent == false)
-						|| (
-							postUseReconciliationAccountIDs.contains(bound.accountID)
-								&& reconcilesPostUse == false
-						),
+					// Skeleton reconciliation updates account metadata in the
+					// background. It is not a reason to replace a usable row with a
+					// spinner.
+					isRefreshing: postUseReconciliationAccountIDs.contains(bound.accountID),
 					profile: sameRevision ? previous?.profile : nil,
 					profileUnavailable: sameRevision
 						? previous?.profileUnavailable
@@ -2136,13 +2231,9 @@ final class ResetCardStore {
 					&& accountProfileClient != nil
 				)
 			}
-			postUseReconciliationAccountIDs.subtract(
-				postUseReconciledAccountIDs
-			)
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
-			pruneAdvancedInventoriesAwaitingSkeleton()
 			for details in accountsNeedingDetails {
 				scheduleAccountControlFollowUp(
 					.account(
@@ -2151,10 +2242,11 @@ final class ResetCardStore {
 					)
 				)
 			}
-			if applyCodexAuthProjection(
-				await projectionRead ?? .unavailable,
-				generation: projectionGeneration
-			) {
+			if let projection = await projectionRead,
+				applyCodexAuthProjection(
+					projection,
+					generation: projectionGeneration
+				) {
 				scheduleCodexProjectionRefresh()
 			}
 		} catch {
@@ -2210,13 +2302,12 @@ final class ResetCardStore {
 				? .retryNeeded
 				: .failed
 		}
-		guard inventory.accountRevision == existing.accountRevision else {
-			rejectAdvancedInventory(
-				inventory,
-				accountID: accountID,
-				index: index
+		if inventory.accountRevision > existing.accountRevision {
+			accountSkeletonRevisionTargets[accountID] = max(
+				accountSkeletonRevisionTargets[accountID] ?? 0,
+				inventory.accountRevision
 			)
-			return .awaitingSkeleton
+			scheduleFreshAccountSkeletonRead()
 		}
 		let account = ResetCardAccountRecord(
 			authority: inventory.authority,
@@ -2234,12 +2325,11 @@ final class ResetCardStore {
 		let retainsProfileState = accounts[index].account.accountRevision
 			== inventory.accountRevision
 		let revisionChanged = retainsProfileState == false
-		accounts[index] = ResetCardAccountState(
+		let updatedState = ResetCardAccountState(
 			account: account,
 			inventory: inventory,
 			error: nil,
-			isRefreshing: postUseReconciliationAccountIDs.contains(accountID)
-				|| isAwaitingFreshAccountSkeleton(accountID),
+			isRefreshing: postUseReconciliationAccountIDs.contains(accountID),
 			profile: retainsProfileState ? accounts[index].profile : nil,
 			profileUnavailable: retainsProfileState
 				? accounts[index].profileUnavailable
@@ -2247,15 +2337,13 @@ final class ResetCardStore {
 			profileError: retainsProfileState ? accounts[index].profileError : nil,
 			isProfileRefreshing: accounts[index].isProfileRefreshing
 		)
+		if accounts[index] != updatedState {
+			accounts[index] = updatedState
+		}
 		if completesPostUseReconciliation
 			|| postUseReconciliationTasks[accountID] == nil
 		{
 			completePostUseReconciliation(accountID)
-		}
-		if let deferred = advancedInventoriesAwaitingSkeleton[accountID],
-			deferred.accountRevision <= inventory.accountRevision
-		{
-			advancedInventoriesAwaitingSkeleton.removeValue(forKey: accountID)
 		}
 		if revisionChanged {
 			invalidateCodexProjectionAfterRevisionChange(
@@ -2264,35 +2352,6 @@ final class ResetCardStore {
 			)
 		}
 		return .current
-	}
-
-	private func rejectAdvancedInventory(
-		_ inventory: ResetCardInventory,
-		accountID: String,
-		index: Int
-	) {
-		let existing = accounts[index]
-		accounts[index] = ResetCardAccountState(
-			account: existing.account,
-			inventory: existing.inventory,
-			error: existing.error,
-			isRefreshing: true,
-			profile: existing.profile,
-			profileUnavailable: existing.profileUnavailable,
-			profileError: existing.profileError,
-			isProfileRefreshing: existing.isProfileRefreshing
-		)
-		if advancedInventoriesAwaitingSkeleton[accountID].map({
-			$0.accountRevision <= inventory.accountRevision
-		}) ?? true {
-			advancedInventoriesAwaitingSkeleton[accountID] = inventory
-		}
-
-		accountSkeletonRevisionTargets[accountID] = max(
-			accountSkeletonRevisionTargets[accountID] ?? 0,
-			inventory.accountRevision
-		)
-		scheduleFreshAccountSkeletonRead()
 	}
 
 	private func scheduleFreshAccountSkeletonRead() {
@@ -2317,21 +2376,6 @@ final class ResetCardStore {
 			}
 			return revision < targetRevision
 		}
-	}
-
-	private func pruneAdvancedInventoriesAwaitingSkeleton() {
-		let revisionsByID = Dictionary(
-			uniqueKeysWithValues: accounts.map {
-				($0.account.accountID, $0.account.accountRevision)
-			}
-		)
-		advancedInventoriesAwaitingSkeleton =
-			advancedInventoriesAwaitingSkeleton.filter { accountID, inventory in
-				guard let accountRevision = revisionsByID[accountID] else {
-					return false
-				}
-				return accountRevision < inventory.accountRevision
-			}
 	}
 
 	private func applyInventoryFailure(
@@ -2363,10 +2407,7 @@ final class ResetCardStore {
 			inventory: existing.inventory,
 			error: error,
 			isRefreshing: isRetryable
-				&& (
-					postUseReconciliationAccountIDs.contains(accountID)
-						|| isAwaitingFreshAccountSkeleton(accountID)
-				),
+				&& postUseReconciliationAccountIDs.contains(accountID),
 			profile: existing.profile,
 			profileUnavailable: existing.profileUnavailable,
 			profileError: existing.profileError,
@@ -2791,6 +2832,20 @@ final class ResetCardStore {
 		)
 	}
 
+	private static func boundAccount(
+		_ account: ResetCardAccountRecord,
+		previous: ResetCardAccountState?,
+		authority: ResetCardAuthority?
+	) -> ResetCardAccountRecord {
+		let candidate = Self.account(account, authority: authority)
+		guard let previous,
+			previous.account.accountRevision > candidate.accountRevision
+		else {
+			return candidate
+		}
+		return previous.account
+	}
+
 	nonisolated private static func clientError(_ error: Error) -> ResetCardClientError {
 		error as? ResetCardClientError ?? .invalidResponse
 	}
@@ -3054,15 +3109,13 @@ final class ResetCardStore {
 		successMessage: String?,
 		operation: () async throws -> AccountControlResult
 	) async {
-		guard isRefreshingAccountSkeleton == false,
-			isRefreshing == false
-				|| (allowsDuringRefresh && refreshSkeletonIsPublished)
+		guard isRefreshing == false
+			|| (allowsDuringRefresh && refreshSkeletonIsPublished)
 		else {
 			return
 		}
 		if let accountID {
 			guard activity != nil,
-				accountSkeletonRevisionTargets[accountID] == nil,
 				accountControlActivities[accountID] == nil,
 				isRoutingControl == false || accountControlActivities.isEmpty,
 				isEnrollingAccount == false,
@@ -3087,6 +3140,7 @@ final class ResetCardStore {
 				return
 			}
 		}
+		invalidateAccountSnapshotRequest()
 
 		if let accountID, let activity {
 			accountControlActivities[accountID] = activity
@@ -3159,12 +3213,11 @@ final class ResetCardStore {
 			{
 				codexProjectionRequestGeneration &+= 1
 				codexAuthProjection = nil
-			}
-			accounts.removeAll { $0.account.accountID == accountID }
-			postUseReconciliationAccountIDs.remove(accountID)
-			postUseReconciliationTasks.removeValue(forKey: accountID)?.cancel()
-			accountSkeletonRevisionTargets.removeValue(forKey: accountID)
-			advancedInventoriesAwaitingSkeleton.removeValue(forKey: accountID)
+				}
+				accounts.removeAll { $0.account.accountID == accountID }
+				postUseReconciliationAccountIDs.remove(accountID)
+				postUseReconciliationTasks.removeValue(forKey: accountID)?.cancel()
+				accountSkeletonRevisionTargets.removeValue(forKey: accountID)
 			Task { [inventoryReads] in
 				await inventoryReads.discard(accountID)
 			}
@@ -3261,6 +3314,16 @@ final class ResetCardStore {
 		return codexProjectionRequestGeneration
 	}
 
+	private func beginAccountSnapshotRequest() -> UInt64 {
+		accountSnapshotRequestGeneration &+= 1
+		return accountSnapshotRequestGeneration
+	}
+
+	private func invalidateAccountSnapshotRequest() {
+		// Fence every snapshot already in flight before a local account mutation.
+		accountSnapshotRequestGeneration &+= 1
+	}
+
 	@discardableResult
 	private func applyCodexAuthProjection(
 		_ projection: CodexAuthProjection,
@@ -3277,6 +3340,9 @@ final class ResetCardStore {
 				codexAuthProjection = nil
 				return true
 			}
+		}
+		guard codexAuthProjection != projection else {
+			return false
 		}
 		codexAuthProjection = projection
 		return false
@@ -3307,9 +3373,11 @@ final class ResetCardStore {
 			return
 		}
 		let generation = beginCodexProjectionRequest()
-		let projection = (try? await accountControlClient.codexAuthProjection(
+		guard let projection = try? await accountControlClient.codexAuthProjection(
 			authority: establishedAuthority
-		)) ?? .unavailable
+		) else {
+			return
+		}
 		_ = applyCodexAuthProjection(projection, generation: generation)
 	}
 

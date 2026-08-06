@@ -3,6 +3,7 @@
 //! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
 
+mod account_api;
 mod account_import;
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
@@ -24,7 +25,6 @@ mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
 mod quick_task;
-#[expect(dead_code, reason = "sealed until a separate live-routing authority enables dispatch")]
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;

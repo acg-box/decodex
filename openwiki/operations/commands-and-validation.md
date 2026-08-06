@@ -46,10 +46,13 @@ retired.
 | Product-native latest-schema and current-authority gate | `cargo make test-vnext-latest-schema` |
 | Rust formatting check | `cargo make fmt-rust-check` |
 | TOML formatting check | `cargo make fmt-toml-check` |
-| Rust lint | `cargo make lint-rust` |
+| Rust lint | `cargo make lint-rust`; use `cargo make lint-rust-headless` to exclude only `decodex-gpui` |
 | Read-only Vstyle audit | `cargo make audit-vstyle-rust` |
 | Site type check | `cargo make check-node` or `npm --prefix site run check` |
 | Site build | `cargo make build` or `npm --prefix site run build` |
+
+`cargo make lint-rust` runs one isolated Clippy process for each selected workspace package.
+It runs all selected packages and fails if any package fails.
 
 The product-native task is the sole canonical latest-schema and current-authority gate.
 The other commands are current source checks and do not replace it. Do not cite a
@@ -68,13 +71,14 @@ There are three separate operations:
 
 1. **Empty-target bootstrap** resolves the schema-owner credential, proves a clean
    target, executes `crates/decodex-postgres/schema.sql` once in one transaction, verifies
-   the result, and commits. If post-schema verification fails, the hidden command emits
-   one bounded credential-negative `decodex/bootstrap-authority-report/1` JSON line from
-   that transaction. A complete report includes the closed platform checks, all semantic
-   authority predicates, and both expected and actual authority digests. If a query stops
-   collection, the report retains each completed component in collection order and gives
-   the closed failing operation and category. The current and later unavailable components
-   are empty or null. The command does not add a second validator or digest-harvest command.
+   the result, and commits. A database failure emits one bounded credential-negative
+   `decodex/bootstrap-report/1` JSON line. The report identifies one closed phase and
+   operation across pre-schema verification, schema application, post-schema verification,
+   or final commit. It includes SQLSTATE and the one-based original-statement byte position
+   only when PostgreSQL supplies them; it includes no SQL text or database message. A
+   post-schema report retains each completed authority component in collection order. A
+   rollback failure is secondary closed evidence and never replaces the primary failure.
+   The command does not add a second validator or digest-harvest command.
 2. **Current-authority validation** is read-only and verifies the live catalog and
    configured runtime authority. It resolves no schema-owner credential and executes no
    DDL.
@@ -273,7 +277,7 @@ leaves the daemon stopped.
   implementation choice; its ownership contract is fixed.
 - `crates/decodex-postgres/`: current PostgreSQL adapters and read-only authority
   verification.
-- `crates/decodex-codex/`: typed app-server adapter and exact-build capability profiles.
+- `crates/decodex-codex/`: typed app-server adapter and runtime-negotiated capability profiles.
 - `crates/decodex-runtime/`: daemon service assembly, Account Service,
   ProcessSupervisor, ProviderAttemptService, account observations, and stateless execution
   coordination.
@@ -308,10 +312,13 @@ cargo make test-vnext-latest-schema
 It resolves PostgreSQL 18 through `DECODEX_POSTGRES_18_BINDIR` or `pg_config` on `PATH`,
 builds the real `decodexd` binary, and uses only a disposable private target. A test that
 still initializes through numbered SQL is not evidence for this reset. On bootstrap
-failure, the gate requires the command's one canonical authority report, validates its
-closed schema, and retains it with the fixed private gate logs. Query or transport
-failure can stop collection only with a closed operation and category. The gate does not
-run a second bootstrap to collect diagnostics.
+failure, the gate requires the command's one canonical bootstrap report and validates its
+closed phase, operation, category, and available authority prefix. Its private PostgreSQL
+server records verbose error identity but suppresses failed-statement logging. Failure
+evidence is owner-private, content-addressed, and bounded per file and in total; an
+oversized file retains deterministic head and tail segments so the error header and final
+shutdown state both survive. The gate does not run a second bootstrap to collect
+diagnostics.
 
 The existing `account-contract` stage first runs the bounded ignored runtime test
 `local_account_authority::tests::local_account_restore_command_proves_two_exact_credential_fences_and_readback`,
@@ -360,8 +367,9 @@ cargo test -p decodex-runtime macos_attested_spawn --lib
 cargo test -p decodex-runtime live_read_only_probe_negotiates_without_dispatch -- --ignored
 ```
 
-The exact-build supervisor verifies executable identity and generated schema before
-spawn. Raw protocol handles do not leave ProcessSupervisor. The live probe remains
+The runtime supervisor verifies the user's executable identity and generated schema before
+spawn, without a fixed Codex release/version allowlist. Raw protocol handles do not leave
+ProcessSupervisor. The live probe remains
 read-only and does not establish global title discovery or product dispatch.
 
 ## Plugin and automation checks

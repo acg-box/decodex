@@ -1,9 +1,11 @@
+use serde_json::Value;
+use sha2::{Digest as _, Sha256};
 use tokio_postgres::{Row, error::SqlState, types::ToSql};
 
 use crate::{PostgresStore, StoreError};
 
 pub(crate) const EXACT_COMMAND_PROTOCOL: &str = "decodex/exact-command/1";
-const MAX_EXACT_ATTEMPTS: usize = 4;
+pub(crate) const MAX_EXACT_ATTEMPTS: usize = 4;
 
 impl PostgresStore {
 	pub(crate) async fn execute_exact_with_retry(
@@ -86,7 +88,46 @@ pub(crate) fn validate_exact_key(key: &str) -> Result<(), StoreError> {
 	crate::ensure_credential_negative_text(key)
 }
 
-fn is_retryable_exact_database_error(error: &tokio_postgres::Error) -> bool {
+pub(crate) fn validate_exact_effect_digest(effect: &Value) -> Result<(), StoreError> {
+	let digest = effect
+		.get("effect_digest")
+		.and_then(Value::as_str)
+		.ok_or_else(|| StoreError::Incompatible("exact command effect digest is absent".into()))?;
+	let source = effect.get("effect_digest_source").and_then(Value::as_str).ok_or_else(|| {
+		StoreError::Incompatible("exact command effect digest source is absent".into())
+	})?;
+	if digest.len() != 64
+		|| !digest.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+	{
+		return Err(StoreError::Incompatible("exact command effect digest is invalid".into()));
+	}
+	let actual = Sha256::digest(source.as_bytes())
+		.iter()
+		.map(|byte| format!("{byte:02x}"))
+		.collect::<String>();
+	if actual != digest {
+		return Err(StoreError::Incompatible(
+			"exact command effect digest does not match its source".into(),
+		));
+	}
+	let source_value: Value = serde_json::from_str(source).map_err(|_| {
+		StoreError::Incompatible("exact command effect digest source is invalid".into())
+	})?;
+	let mut projection = effect
+		.as_object()
+		.cloned()
+		.ok_or_else(|| StoreError::Incompatible("exact command effect is not an object".into()))?;
+	projection.remove("effect_digest");
+	projection.remove("effect_digest_source");
+	if source_value != Value::Object(projection) {
+		return Err(StoreError::Incompatible(
+			"exact command effect differs from its digest source".into(),
+		));
+	}
+	Ok(())
+}
+
+pub(crate) fn is_retryable_exact_database_error(error: &tokio_postgres::Error) -> bool {
 	let Some(code) = error.code() else {
 		return false;
 	};

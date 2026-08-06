@@ -47,7 +47,7 @@ const PENDING_OPERATION_KEY: &str = "reset-card-integration-pending-operation";
 const EXACT_PROVIDER_CREDIT_ID: &str = "sk-live-provider-id";
 const CREDENTIAL_FINGERPRINT: &str =
 	"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
-const CALLBACK_PROFILE: &str = "64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29";
+const CALLBACK_PROFILE: &str = "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
 const CREDENTIAL_WRITER: &str = "71000000-0000-4000-8000-000000000010";
 const ROTATED_CREDENTIAL_FINGERPRINT: &str =
 	"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
@@ -1889,9 +1889,9 @@ async fn enroll_v27_account(
 	assert!(
 		store
 			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
-				build_identity: "codex-cli 0.146.0-alpha.9.2".to_owned(),
+				build_identity: "sha256:fixture-current-codex".to_owned(),
 				executable_sha256:
-					"d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2".to_owned(),
+					"eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee".to_owned(),
 				schema_sha256: "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 					.to_owned(),
 				callback_profile_sha256: CALLBACK_PROFILE.to_owned(),

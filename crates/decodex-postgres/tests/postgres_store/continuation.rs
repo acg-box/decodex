@@ -1,12 +1,15 @@
 use serde_json::Value;
 use tokio_postgres::{Client, Config};
 
-use super::{expected_peer_uid, isolated_blob_store, routing_decision::RoutingFixture};
+use super::{
+	expected_peer_uid, isolated_blob_store,
+	routing_decision::{RoutingFixture, set_account_registry_quota_usage},
+};
 use decodex_core::{
 	BlobStore, ContextPack, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
 	ContinuationPlanKind, ContinuationRejection, PinnedContextSource, PossibleSideEffects,
 };
-use decodex_postgres::{ContinuationPlanEffect, PlanContinuation, PostgresStore, RouteAccount};
+use decodex_postgres::{ContinuationPlanEffect, PlanContinuation, PostgresStore};
 
 pub(super) async fn assert_continuation_contract(
 	store: &PostgresStore,
@@ -17,11 +20,11 @@ pub(super) async fn assert_continuation_contract(
 	let blob_store = isolated_blob_store()?;
 	let fallback_pack = fallback_pack(owner, routing).await?;
 	prepare_continuation_fixture(owner, routing).await?;
+	set_account_registry_quota_usage(owner, routing.selected_account_id.as_str(), 100).await?;
+	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	let (fallback, fallback_request) =
 		assert_missing_fallback_contract(store, owner, routing, &blob_store, &fallback_pack)
 			.await?;
-	assert_alternate_fallback_contracts(store, routing, &blob_store, &fallback_pack).await?;
-	assert_stale_revision_contract(store, owner, routing, &blob_store, &fallback_pack).await?;
 	assert_lineage_and_restart_contract(
 		owner,
 		runtime,
@@ -31,6 +34,7 @@ pub(super) async fn assert_continuation_contract(
 		fallback,
 	)
 	.await?;
+	set_account_registry_quota_usage(owner, routing.selected_account_id.as_str(), 25).await?;
 	Ok(())
 }
 
@@ -50,7 +54,7 @@ async fn prepare_continuation_fixture(
 			 ARRAY[]::text[],ARRAY[]::bigint[])",
 			&[
 				&uuid(0xf3, 1),
-				&routing.selected.decision_id,
+				&routing.continuation.decision_id,
 				&uuid(0xf3, 2),
 				&uuid(0xf3, 3),
 				&uuid(0xf3, 4),
@@ -72,7 +76,7 @@ async fn assert_missing_fallback_contract(
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
 ) -> Result<(ContinuationPlanEffect, PlanContinuation), Box<dyn std::error::Error>> {
-	let missing_request = plan_request(1, &routing.selected.decision_id);
+	let missing_request = plan_request(1, &routing.continuation);
 	let missing = continuation_success(
 		store
 			.plan_continuation(blob_store, "v17-missing-fallback", &missing_request, fallback_pack)
@@ -163,56 +167,6 @@ async fn assert_missing_fallback_contract(
 	Ok((missing, missing_request))
 }
 
-async fn assert_alternate_fallback_contracts(
-	store: &PostgresStore,
-	routing: &RoutingFixture,
-	blob_store: &BlobStore,
-	fallback_pack: &ContextPack,
-) -> Result<(), Box<dyn std::error::Error>> {
-	let second_decision = route_selected(store, routing, 2).await?;
-	let second = continuation_success(
-		store
-			.plan_continuation(
-				blob_store,
-				"v17-second-fallback",
-				&plan_request(2, &second_decision.decision_id),
-				fallback_pack,
-			)
-			.await?,
-	)?;
-	assert_eq!(second.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&second.plan);
-
-	let third_decision = route_selected(store, routing, 6).await?;
-	let third = continuation_success(
-		store
-			.plan_continuation(
-				blob_store,
-				"v17-third-fallback",
-				&plan_request(6, &third_decision.decision_id),
-				fallback_pack,
-			)
-			.await?,
-	)?;
-	assert_eq!(third.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&third.plan);
-
-	let fourth_decision = route_selected(store, routing, 4).await?;
-	let fourth = continuation_success(
-		store
-			.plan_continuation(
-				blob_store,
-				"v17-fourth-fallback",
-				&plan_request(4, &fourth_decision.decision_id),
-				fallback_pack,
-			)
-			.await?,
-	)?;
-	assert_eq!(fourth.plan.kind, ContinuationPlanKind::ContextPackFallback);
-	assert_inert_plan(&fourth.plan);
-	Ok(())
-}
-
 async fn assert_stale_revision_contract(
 	store: &PostgresStore,
 	owner: &Client,
@@ -220,10 +174,9 @@ async fn assert_stale_revision_contract(
 	blob_store: &BlobStore,
 	fallback_pack: &ContextPack,
 ) -> Result<(), Box<dyn std::error::Error>> {
-	let stale_decision = route_selected(store, routing, 5).await?;
 	let stale_request = PlanContinuation {
 		expected_consumer_revision: 2,
-		..plan_request(5, &stale_decision.decision_id)
+		..plan_request(5, &routing.continuation)
 	};
 	let stale_inventory = continuation_effect_inventory(owner, &stale_request).await?;
 	assert_eq!(stale_inventory["activity"].as_array().map(|rows| rows.len()), Some(0),);
@@ -298,7 +251,7 @@ async fn fallback_pack(
 				"SELECT conversation_id::text FROM decodex.runtime_sessions ",
 				"WHERE runtime_session_id=$1::text::uuid",
 			),
-			&[&routing.selected_runtime_session_id.as_str()],
+			&[&routing.continuation_runtime_session_id.as_str()],
 		)
 		.await?
 		.get(0);
@@ -315,33 +268,18 @@ async fn fallback_pack(
 	})?)
 }
 
-fn plan_request(marker: u8, decision_id: &str) -> PlanContinuation {
+fn plan_request(
+	marker: u8,
+	binding: &decodex_postgres::QuickTaskContinuationBinding,
+) -> PlanContinuation {
 	PlanContinuation {
 		operation_id: uuid(0xf4, marker),
-		routing_decision_id: decision_id.to_owned(),
+		routing_decision_id: binding.decision_id.clone(),
 		expected_consumer_revision: 1,
 		plan_id: uuid(0xf5, marker),
 		fallback_runtime_session_id: uuid(0xf6, marker),
-		fallback_account_snapshot_id: uuid(0xf7, marker),
+		fallback_account_snapshot_id: binding.account_snapshot_id.clone(),
 		fallback_context_pack_id: uuid(0xf8, marker),
-	}
-}
-
-async fn route_selected(
-	store: &PostgresStore,
-	routing: &RoutingFixture,
-	marker: u8,
-) -> Result<decodex_postgres::PersistedRoutingDecision, Box<dyn std::error::Error>> {
-	let outcome = store
-		.route_account(
-			&format!("v17-selected-decision-{marker}"),
-			&RouteAccount { operation_id: uuid(0xf9, marker), ..routing.selected_request.clone() },
-		)
-		.await?;
-	match outcome {
-		decodex_core::RoutingCommandOutcome::Success(value) => Ok(value),
-		decodex_core::RoutingCommandOutcome::Rejected(rejection) =>
-			Err(format!("V17 selected fixture rejected: {}", rejection.code).into()),
 	}
 }
 
@@ -451,7 +389,7 @@ pub(super) async fn assert_restored_continuation_contract(
 				"WHERE kind='same_thread')=0,",
 				"(SELECT count(*) FROM decodex.continuation_plans ",
 				"WHERE kind='context_pack_fallback' AND fallback_context_pack_id IS NOT NULL ",
-				"AND fallback_runtime_session_id IS NOT NULL)=4,",
+				"AND fallback_runtime_session_id IS NOT NULL)=1,",
 				"(SELECT bool_and(consumer_kind='conversation_turn' ",
 				"AND consumer_conversation_id IS NOT NULL AND conversation_revision=1 ",
 				"AND turn_id IS NOT NULL AND managed_run_id IS NULL ",

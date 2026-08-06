@@ -189,7 +189,6 @@ impl QuickTasks {
 
 	pub(crate) fn create(&self, message: &str) -> Result<(), QuickTaskInputError> {
 		let conversation_id = entity_id()?;
-		let turn_id = entity_id()?;
 		let working_directory = self
 			.inner
 			.working_directory
@@ -197,7 +196,6 @@ impl QuickTasks {
 			.ok_or(QuickTaskInputError::WorkingDirectoryUnavailable)?;
 		let payload = CommandPayload::CreateQuickTask {
 			conversation_id: conversation_id.clone(),
-			turn_id,
 			message: message_text(message)?,
 			working_directory,
 		};
@@ -207,10 +205,13 @@ impl QuickTasks {
 	pub(crate) fn submit(&self, message: &str) -> Result<(), QuickTaskInputError> {
 		let state = self.lock();
 		let task = state.selected_task().ok_or(QuickTaskInputError::NoSelection)?.clone();
-		if !task_accepts_turn(&task) && !task_accepts_routing_retry(&task) {
+		if !task_accepts_turn(&task) && task_recovery_command(&task).is_none() {
 			return Err(QuickTaskInputError::NotReady);
 		}
 		drop(state);
+		if let Some(payload) = task_recovery_command(&task) {
+			return self.queue_command(payload, Some(task.conversation_revision), None);
+		}
 		let turn_id = entity_id()?;
 		let message = message_text(message)?;
 		let working_directory = self
@@ -218,20 +219,11 @@ impl QuickTasks {
 			.working_directory
 			.clone()
 			.ok_or(QuickTaskInputError::WorkingDirectoryUnavailable)?;
-		let payload = if task_accepts_routing_retry(&task) {
-			CommandPayload::RetryQuickTaskRouting {
-				conversation_id: task.conversation_id,
-				turn_id,
-				message,
-				working_directory,
-			}
-		} else {
-			CommandPayload::SubmitQuickTaskTurn {
-				conversation_id: task.conversation_id,
-				turn_id,
-				message,
-				working_directory,
-			}
+		let payload = CommandPayload::SubmitQuickTaskTurn {
+			conversation_id: task.conversation_id,
+			turn_id,
+			message,
+			working_directory,
 		};
 		self.queue_command(payload, Some(task.conversation_revision), None)
 	}
@@ -590,6 +582,10 @@ impl QuickTasks {
 		let in_flight =
 			state.in_flight_command.take().expect("matching Quick Task command remains in flight");
 		let select_after_acceptance = in_flight.select_after_acceptance.clone();
+		let select_returned_successor = matches!(
+			&in_flight.envelope.payload,
+			CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
+		);
 		match result.outcome {
 			CommandOutcome::Succeeded => {
 				let task = accepted_result_task(&in_flight, result);
@@ -597,7 +593,18 @@ impl QuickTasks {
 					state.command = QuickTaskCommandState::Refused;
 					return QuickTaskRouteOutcome::Refused;
 				};
+				let returned_conversation_id = task.conversation_id.clone();
+				if select_returned_successor
+					&& let CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id } =
+						&in_flight.envelope.payload
+				{
+					state.tasks.retain(|task| task.conversation_id != *conversation_id);
+				}
 				state.upsert_task(task);
+				if select_returned_successor {
+					state.selected = Some(returned_conversation_id);
+					state.selection_suppressed = false;
+				}
 				if let Some(conversation_id) = select_after_acceptance {
 					state.selected = Some(conversation_id);
 					state.selection_suppressed = false;
@@ -727,14 +734,13 @@ impl State {
 			else {
 				continue;
 			};
-			let incoming_revision = (task.conversation_revision, task.runtime_session_revision);
-			let current_revision =
-				(existing.conversation_revision, existing.runtime_session_revision);
-			let phase_regresses_at_same_session_revision = task.runtime_session_revision
-				== existing.runtime_session_revision
-				&& quick_task_phase_rank(task.state) < quick_task_phase_rank(existing.state);
-			if incoming_revision < current_revision || phase_regresses_at_same_session_revision {
+			if !task_can_replace(existing, task) {
 				*task = existing.clone();
+			}
+		}
+		for existing in &self.tasks {
+			if !tasks.iter().any(|task| task.conversation_id == existing.conversation_id) {
+				tasks.push(existing.clone());
 			}
 		}
 		let selected_is_present = self
@@ -774,16 +780,7 @@ impl State {
 		if let Some(existing) =
 			self.tasks.iter_mut().find(|existing| existing.conversation_id == task.conversation_id)
 		{
-			let incoming_revision = (task.conversation_revision, task.runtime_session_revision);
-			let current_revision =
-				(existing.conversation_revision, existing.runtime_session_revision);
-			let phase_regresses_at_same_session_revision = task.runtime_session_revision
-				== existing.runtime_session_revision
-				&& quick_task_phase_rank(task.state) < quick_task_phase_rank(existing.state);
-			if incoming_revision > current_revision && !phase_regresses_at_same_session_revision
-				|| incoming_revision == current_revision
-					&& !phase_regresses_at_same_session_revision
-			{
+			if task_can_replace(existing, &task) {
 				*existing = task;
 			}
 		} else {
@@ -861,10 +858,27 @@ fn accepted_result_task(
 	in_flight: &InFlightCommand,
 	result: &CommandResultEnvelope,
 ) -> Option<QuickTaskSummary> {
+	if let (
+		CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id },
+		Some(ResultPayload::QuickTaskRoutingSuccessorAccepted {
+			source_conversation_id,
+			source_conversation_revision,
+			successor,
+		}),
+	) = (&in_flight.envelope.payload, result.payload.as_ref())
+	{
+		return (source_conversation_id == conversation_id
+			&& in_flight.envelope.expected_revision?.0.checked_add(1)
+				== Some(source_conversation_revision.0)
+			&& successor.conversation_id != *conversation_id
+			&& result.entity_revision == Some(successor.conversation_revision))
+		.then(|| successor.clone());
+	}
 	let conversation = match (&in_flight.envelope.payload, result.payload.as_ref()) {
 		(
 			CommandPayload::CreateQuickTask { .. }
-			| CommandPayload::RetryQuickTaskRouting { .. }
+			| CommandPayload::ResumeQuickTaskRouting { .. }
+			| CommandPayload::ResumeQuickTaskEstablishment { .. }
 			| CommandPayload::SubmitQuickTaskTurn { .. },
 			Some(ResultPayload::QuickTaskConversationAccepted { conversation }),
 		) => conversation,
@@ -951,7 +965,9 @@ fn message_text(value: &str) -> Result<HistoryText, QuickTaskInputError> {
 fn command_conversation_id(payload: &CommandPayload) -> EntityId {
 	match payload {
 		CommandPayload::CreateQuickTask { conversation_id, .. }
-		| CommandPayload::RetryQuickTaskRouting { conversation_id, .. }
+		| CommandPayload::ResumeQuickTaskRouting { conversation_id }
+		| CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id }
+		| CommandPayload::ResumeQuickTaskEstablishment { conversation_id }
 		| CommandPayload::SubmitQuickTaskTurn { conversation_id, .. }
 		| CommandPayload::InterruptQuickTask { conversation_id, .. } => conversation_id.clone(),
 		_ => unreachable!("Quick Tasks queues only ordinary Quick Task commands"),
@@ -962,37 +978,27 @@ fn task_accepts_turn(task: &QuickTaskSummary) -> bool {
 	task.state == QuickTaskState::Ready
 }
 
-fn task_accepts_routing_retry(task: &QuickTaskSummary) -> bool {
-	matches!(
-		task.state,
-		QuickTaskState::RoutingPending
-			| QuickTaskState::QuotaExhausted
-			| QuickTaskState::WaitingReconciliation
-			| QuickTaskState::NoRoute
-	) && task.recovery_action == Some(QuickTaskRecoveryAction::RetryRouting)
+fn task_recovery_command(task: &QuickTaskSummary) -> Option<CommandPayload> {
+	let conversation_id = task.conversation_id.clone();
+	match (task.state, task.recovery_action) {
+		(QuickTaskState::RoutingPending, Some(QuickTaskRecoveryAction::ResumeRouting)) =>
+			Some(CommandPayload::ResumeQuickTaskRouting { conversation_id }),
+		(
+			QuickTaskState::EstablishmentPending | QuickTaskState::Establishing,
+			Some(QuickTaskRecoveryAction::ResumeEstablishment),
+		) => Some(CommandPayload::ResumeQuickTaskEstablishment { conversation_id }),
+		(
+			QuickTaskState::QuotaExhausted | QuickTaskState::NoRoute,
+			Some(QuickTaskRecoveryAction::CreateRoutingSuccessor),
+		) => Some(CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id }),
+		_ => None,
+	}
 }
 
 fn task_can_replace(existing: &QuickTaskSummary, task: &QuickTaskSummary) -> bool {
-	let incoming_revision = (task.conversation_revision, task.runtime_session_revision);
-	let current_revision = (existing.conversation_revision, existing.runtime_session_revision);
-	let phase_regresses_at_same_session_revision = task.runtime_session_revision
-		== existing.runtime_session_revision
-		&& quick_task_phase_rank(task.state) < quick_task_phase_rank(existing.state);
-	incoming_revision >= current_revision && !phase_regresses_at_same_session_revision
-}
-
-const fn quick_task_phase_rank(state: QuickTaskState) -> u8 {
-	match state {
-		QuickTaskState::RoutingPending
-		| QuickTaskState::QuotaExhausted
-		| QuickTaskState::WaitingReconciliation
-		| QuickTaskState::NoRoute => 0,
-		QuickTaskState::Establishing => 1,
-		QuickTaskState::Ready => 2,
-		QuickTaskState::Running => 3,
-		QuickTaskState::ManualRecovery => 4,
-		QuickTaskState::OutcomeUnknown => 5,
-	}
+	task.projection_updated_at_micros > existing.projection_updated_at_micros
+		|| task.projection_updated_at_micros == existing.projection_updated_at_micros
+			&& task == existing
 }
 
 #[cfg(test)]
@@ -1018,6 +1024,7 @@ mod tests {
 		let task = QuickTaskSummary::new(
 			conversation_id.clone(),
 			EntityRevision(1),
+			1,
 			Some(
 				EntityId::new("00000000-0000-4000-8000-000000000002")
 					.expect("test session ID is valid"),
@@ -1173,5 +1180,76 @@ mod tests {
 		assert_eq!(quick_tasks.submit("retry explicitly"), Err(QuickTaskInputError::Busy));
 		quick_tasks.begin_new();
 		assert_eq!(quick_tasks.snapshot().command, QuickTaskCommandState::OutcomeUnknown);
+	}
+
+	#[test]
+	fn waiting_recovery_replaces_the_archived_source_with_its_successor() {
+		let (quick_tasks, server_id, existing) = connected_quick_tasks();
+		let source = QuickTaskSummary::new(
+			existing.conversation_id.clone(),
+			EntityRevision(1),
+			1,
+			None,
+			None,
+			QuickTaskState::QuotaExhausted,
+			None,
+			Some(QuickTaskRecoveryAction::CreateRoutingSuccessor),
+		)
+		.expect("waiting source projection is valid");
+		{
+			let mut state = quick_tasks.lock();
+			state.tasks = vec![source.clone()];
+			state.selected = Some(source.conversation_id.clone());
+		}
+
+		assert_eq!(quick_tasks.submit("ignored for typed recovery"), Ok(()));
+		let dispatch = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.expect("routing successor command is dispatchable");
+		let command = dispatch.command().expect("recovery dispatch is a command");
+		assert!(matches!(
+			&command.payload,
+			CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id }
+				if conversation_id == &source.conversation_id
+		));
+		assert_eq!(command.expected_revision, Some(source.conversation_revision));
+		quick_tasks.command_sent(&dispatch);
+
+		let successor_id =
+			EntityId::new("00000000-0000-4000-8000-000000000003").expect("test ID is valid");
+		let successor = QuickTaskSummary::new(
+			successor_id.clone(),
+			EntityRevision(1),
+			1,
+			None,
+			None,
+			QuickTaskState::RoutingPending,
+			None,
+			Some(QuickTaskRecoveryAction::ResumeRouting),
+		)
+		.expect("successor projection is valid");
+		let result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: command.client_command_id.clone(),
+			idempotency_key: command.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(successor.conversation_revision),
+			payload: Some(ResultPayload::QuickTaskRoutingSuccessorAccepted {
+				source_conversation_id: source.conversation_id.clone(),
+				source_conversation_revision: EntityRevision(2),
+				successor: successor.clone(),
+			}),
+			error: None,
+		};
+
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let snapshot = quick_tasks.snapshot();
+		assert_eq!(snapshot.tasks, vec![successor]);
+		assert_eq!(snapshot.selected, Some(successor_id));
+		assert_eq!(snapshot.command, QuickTaskCommandState::Accepted);
 	}
 }

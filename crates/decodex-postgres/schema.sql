@@ -1910,10 +1910,10 @@ BEGIN
 		callback_profile_sha256=EXCLUDED.callback_profile_sha256,
 		login_chatgpt_auth_tokens=EXCLUDED.login_chatgpt_auth_tokens,
 		refresh_callback=EXCLUDED.refresh_callback,observed_at=pg_catalog.clock_timestamp();
-	RETURN CASE WHEN p_build_identity='codex-cli 0.146.0-alpha.9.2'
-		AND p_executable_sha256='d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2'
+	RETURN CASE WHEN octet_length(p_build_identity) BETWEEN 1 AND 256
+		AND p_executable_sha256 ~ '^[0-9a-f]{64}$'
 		AND p_schema_sha256 ~ '^[0-9a-f]{64}$'
-		AND p_callback_profile_sha256='64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29'
+		AND p_callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 		AND p_login_chatgpt_auth_tokens AND p_refresh_callback
 		THEN 'ready' ELSE 'unready' END;
 END
@@ -5161,6 +5161,10 @@ BEGIN
 	END IF;
 	IF NEW.conversation_id <> OLD.conversation_id
 		OR NEW.title IS DISTINCT FROM OLD.title
+		OR NEW.initial_quick_task_message IS DISTINCT FROM
+			OLD.initial_quick_task_message
+		OR NEW.initial_quick_task_working_directory IS DISTINCT FROM
+			OLD.initial_quick_task_working_directory
 		OR NEW.created_at IS DISTINCT FROM OLD.created_at
 		OR NEW.revision <> OLD.revision + 1
 		OR OLD.status <> 'open' OR NEW.status <> 'archived' THEN
@@ -5177,6 +5181,75 @@ BEGIN
 	NEW.updated_at := pg_catalog.clock_timestamp();
 	RETURN NEW;
 END;
+$$;
+
+
+--
+-- Name: enforce_conversation_routing_successor(); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.enforce_conversation_routing_successor() RETURNS trigger
+    LANGUAGE plpgsql
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $$
+DECLARE source_row decodex.conversations%ROWTYPE;
+DECLARE successor_row decodex.conversations%ROWTYPE;
+BEGIN
+	IF TG_OP<>'INSERT' THEN
+		RAISE EXCEPTION 'routing Conversation successor relation is immutable'
+			USING ERRCODE='23514',CONSTRAINT='conversation_routing_successor_exact';
+	END IF;
+	SELECT * INTO source_row FROM decodex.conversations
+	WHERE conversation_id=NEW.source_conversation_id;
+	SELECT * INTO successor_row FROM decodex.conversations
+	WHERE conversation_id=NEW.successor_conversation_id;
+	IF source_row.conversation_id IS NULL OR successor_row.conversation_id IS NULL
+		OR source_row.status<>'archived' OR source_row.revision<>NEW.source_revision
+		OR successor_row.status<>'open'
+		OR successor_row.revision<>NEW.successor_revision
+		OR source_row.title<>successor_row.title
+		OR source_row.initial_quick_task_message IS NULL
+		OR source_row.initial_quick_task_message IS DISTINCT FROM
+			successor_row.initial_quick_task_message
+		OR source_row.initial_quick_task_working_directory IS DISTINCT FROM
+			successor_row.initial_quick_task_working_directory
+		OR NOT EXISTS (
+			SELECT 1 FROM decodex.routing_decisions AS decision
+			WHERE decision.decision_id=NEW.source_routing_decision_id
+				AND decision.authority_shape='conversation_account_registry'
+				AND decision.conversation_id=NEW.source_conversation_id
+				AND decision.kind IN ('waiting','no_route')
+				AND decision.selected_account_id IS NULL
+		)
+		OR EXISTS (SELECT 1 FROM decodex.runtime_sessions
+			WHERE conversation_id=NEW.source_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.turns
+			WHERE conversation_id=NEW.source_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.routing_decisions
+			WHERE conversation_id=NEW.source_conversation_id
+				AND decision_id<>NEW.source_routing_decision_id)
+		OR EXISTS (SELECT 1 FROM decodex.continuation_plans
+			WHERE consumer_conversation_id=NEW.source_conversation_id
+				OR conversation_id=NEW.source_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.provider_attempts
+			WHERE conversation_id=NEW.source_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.routing_decisions
+			WHERE conversation_id=NEW.successor_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.runtime_sessions
+			WHERE conversation_id=NEW.successor_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.turns
+			WHERE conversation_id=NEW.successor_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.continuation_plans
+			WHERE consumer_conversation_id=NEW.successor_conversation_id
+				OR conversation_id=NEW.successor_conversation_id)
+		OR EXISTS (SELECT 1 FROM decodex.provider_attempts
+			WHERE conversation_id=NEW.successor_conversation_id)
+	THEN
+		RAISE EXCEPTION 'routing Conversation successor relation is incomplete'
+			USING ERRCODE='23514',CONSTRAINT='conversation_routing_successor_exact';
+	END IF;
+	RETURN NULL;
+END
 $$;
 
 
@@ -7433,8 +7506,7 @@ CREATE FUNCTION decodex.enforce_routing_decision_completeness() RETURNS trigger
     AS $$
 DECLARE member_count bigint; quota_count bigint; capability_count bigint;
 DECLARE blocker_count bigint; included_count bigint; exclusion_count bigint;
-DECLARE decided_at_micros bigint; expected_selected uuid;
-DECLARE expected_kind decodex.routing_decision_kind; lineage_complete boolean;
+DECLARE lineage_complete boolean;
 BEGIN
 	SELECT pg_catalog.count(*) INTO member_count
 	FROM decodex.routing_decision_member_refs WHERE decision_id=NEW.decision_id;
@@ -7490,7 +7562,19 @@ BEGIN
 						AND other.state IN ('starting','active')
 				)
 				AND NOT EXISTS (
-					SELECT 1 FROM decodex.turns WHERE turn_id=NEW.turn_id
+					SELECT 1 FROM decodex.turns AS turn_row
+					WHERE turn_row.turn_id=NEW.turn_id
+						AND NOT (
+							turn_row.conversation_id=NEW.conversation_id
+							AND turn_row.runtime_session_id=
+								NEW.source_runtime_session_id
+							AND turn_row.sequence>1
+							AND turn_row.role='user'
+							AND turn_row.possible_side_effects='unknown'
+							AND turn_row.status='active'
+							AND turn_row.revision=1
+							AND turn_row.completed_at IS NULL
+						)
 				)
 		) INTO lineage_complete;
 
@@ -7504,77 +7588,7 @@ BEGIN
 	END IF;
 
 	IF NEW.authority_shape='conversation_account_registry' THEN
-		decided_at_micros :=
-			(extract(epoch FROM NEW.decided_at)*1000000)::bigint;
-
-		SELECT member.account_id
-		INTO expected_selected
-		FROM decodex.routing_snapshot_members AS member
-		JOIN decodex.routing_snapshots AS snapshot
-			ON snapshot.snapshot_id=member.snapshot_id
-		WHERE member.snapshot_id=NEW.snapshot_id
-			AND (
-				snapshot.account_selection_mode='balanced'
-				OR member.account_id=snapshot.fixed_account_id
-			)
-			AND pg_catalog.cardinality(member.blockers)=0
-			AND NOT EXISTS (
-				SELECT 1
-				FROM decodex.routing_snapshot_quota_facts AS quota
-				WHERE quota.snapshot_id=member.snapshot_id
-					AND quota.account_id=member.account_id
-					AND (
-						quota.observation_state<>'current'
-						OR quota.observed_at_micros>decided_at_micros
-						OR decided_at_micros-quota.observed_at_micros>300000000
-						OR quota.resets_at_micros<=decided_at_micros
-						OR quota.used_percent>=100
-					)
-			)
-		ORDER BY member.position
-		LIMIT 1;
-
-		IF expected_selected IS NOT NULL THEN
-			expected_kind := 'selected';
-		ELSIF EXISTS (
-			SELECT 1
-			FROM decodex.routing_snapshot_members AS member
-			JOIN decodex.routing_snapshots AS snapshot
-				ON snapshot.snapshot_id=member.snapshot_id
-			WHERE member.snapshot_id=NEW.snapshot_id
-				AND (
-					snapshot.account_selection_mode='balanced'
-					OR member.account_id=snapshot.fixed_account_id
-				)
-				AND (
-					pg_catalog.cardinality(member.blockers)>0
-					OR EXISTS (
-						SELECT 1
-						FROM decodex.routing_snapshot_quota_facts AS quota
-						WHERE quota.snapshot_id=member.snapshot_id
-							AND quota.account_id=member.account_id
-							AND (
-								quota.observation_state IN ('missing','observation_error')
-								OR (
-									quota.observation_state='current'
-									AND (
-										quota.observed_at_micros>decided_at_micros
-										OR decided_at_micros-quota.observed_at_micros>300000000
-										OR quota.resets_at_micros<=decided_at_micros
-									)
-								)
-							)
-					)
-				)
-		) THEN
-			expected_kind := 'no_route';
-		ELSE
-			expected_kind := 'waiting';
-		END IF;
-
-		IF NEW.kind IS DISTINCT FROM expected_kind
-			OR NEW.selected_account_id IS DISTINCT FROM expected_selected
-			OR member_count=0
+		IF member_count=0
 			OR quota_count<>member_count*2
 			OR capability_count<>0
 			OR NOT EXISTS (
@@ -7663,147 +7677,30 @@ BEGIN
 				SELECT 1 FROM difference
 			)
 			OR EXISTS (
-				WITH evaluated AS (
-					SELECT member.*
-					FROM decodex.routing_snapshot_members AS member
-					JOIN decodex.routing_snapshots AS snapshot
-						ON snapshot.snapshot_id=member.snapshot_id
-					WHERE member.snapshot_id=NEW.snapshot_id
-						AND (
-							snapshot.account_selection_mode='fixed'
-							AND member.account_id=snapshot.fixed_account_id
-							OR snapshot.account_selection_mode='balanced'
-							AND (
-								expected_selected IS NULL
-								OR member.position<=(
-									SELECT selected.position
-									FROM decodex.routing_snapshot_members AS selected
-									WHERE selected.snapshot_id=NEW.snapshot_id
-										AND selected.account_id=expected_selected
-								)
-							)
-						)
-				), expected AS (
-					SELECT member.account_id,item.ordinality::integer AS position,item.blocker
-					FROM evaluated AS member
-					CROSS JOIN LATERAL pg_catalog.unnest(member.blockers)
-						WITH ORDINALITY AS item(blocker,ordinality)
-					UNION ALL
-					SELECT member.account_id,
-						pg_catalog.cardinality(member.blockers)+quota.position,
-						CASE
-							WHEN quota.observation_state='missing' THEN
-								CASE quota.window_class
-									WHEN 'five_hour' THEN 'quota_five_hour_missing'
-									ELSE 'quota_seven_day_missing'
-								END
-							WHEN quota.observation_state='observation_error' THEN
-								CASE quota.window_class
-									WHEN 'five_hour' THEN 'quota_five_hour_unknown'
-									ELSE 'quota_seven_day_unknown'
-								END
-							WHEN quota.observed_at_micros>decided_at_micros THEN
-								CASE quota.window_class
-									WHEN 'five_hour' THEN 'quota_five_hour_from_future'
-									ELSE 'quota_seven_day_from_future'
-								END
-							WHEN decided_at_micros-quota.observed_at_micros>300000000 THEN
-								CASE quota.window_class
-									WHEN 'five_hour' THEN 'quota_five_hour_stale'
-									ELSE 'quota_seven_day_stale'
-								END
-							WHEN quota.resets_at_micros<=decided_at_micros THEN
-								CASE quota.window_class
-									WHEN 'five_hour' THEN 'quota_five_hour_reset_elapsed'
-									ELSE 'quota_seven_day_reset_elapsed'
-								END
-						END::decodex.routing_blocker
-					FROM evaluated AS member
-					JOIN decodex.routing_snapshot_quota_facts AS quota
-						ON quota.snapshot_id=member.snapshot_id
-						AND quota.account_id=member.account_id
-					WHERE quota.observation_state<>'current'
-						OR quota.observed_at_micros>decided_at_micros
-						OR decided_at_micros-quota.observed_at_micros>300000000
-						OR quota.resets_at_micros<=decided_at_micros
-				), difference AS (
-					(
-						SELECT account_id,position,blocker FROM expected
-						EXCEPT
-						SELECT account_id,position,blocker
-						FROM decodex.routing_decision_blocker_refs
-						WHERE decision_id=NEW.decision_id
-					)
-					UNION ALL
-					(
-						SELECT account_id,position,blocker
-						FROM decodex.routing_decision_blocker_refs
-						WHERE decision_id=NEW.decision_id
-						EXCEPT
-						SELECT account_id,position,blocker FROM expected
-					)
-				)
-				SELECT 1 FROM difference
+				SELECT blocker.account_id
+				FROM decodex.routing_decision_blocker_refs AS blocker
+				WHERE blocker.decision_id=NEW.decision_id
+				GROUP BY blocker.account_id
+				HAVING pg_catalog.min(blocker.position)<>1
+					OR pg_catalog.max(blocker.position)<>pg_catalog.count(*)
+			)
+			OR NEW.kind='selected' AND NOT EXISTS (
+				SELECT 1
+				FROM decodex.routing_decision_member_refs AS member
+				WHERE member.decision_id=NEW.decision_id
+					AND member.account_id=NEW.selected_account_id
 			)
 			OR EXISTS (
-				WITH evaluated AS (
-					SELECT member.*
-					FROM decodex.routing_snapshot_members AS member
-					JOIN decodex.routing_snapshots AS snapshot
-						ON snapshot.snapshot_id=member.snapshot_id
-					WHERE member.snapshot_id=NEW.snapshot_id
-						AND (
-							snapshot.account_selection_mode='fixed'
-							AND member.account_id=snapshot.fixed_account_id
-							OR snapshot.account_selection_mode='balanced'
-							AND (
-								expected_selected IS NULL
-								OR member.position<=(
-									SELECT selected.position
-									FROM decodex.routing_snapshot_members AS selected
-									WHERE selected.snapshot_id=NEW.snapshot_id
-										AND selected.account_id=expected_selected
-								)
-							)
-						)
-				), expected AS (
-					SELECT member.account_id,member.position AS member_position,
-						quota.window_class,quota.duration_minutes,quota.used_percent,
-						quota.observed_at_micros,quota.resets_at_micros,
-						'usage_depleted'::text AS reason
-					FROM evaluated AS member
-					JOIN decodex.routing_snapshot_quota_facts AS quota
-						ON quota.snapshot_id=member.snapshot_id
-						AND quota.account_id=member.account_id
-					WHERE quota.observation_state='current'
-						AND quota.observed_at_micros<=decided_at_micros
-						AND decided_at_micros-quota.observed_at_micros<=300000000
-						AND quota.resets_at_micros>decided_at_micros
-						AND quota.used_percent>=100
-				), difference AS (
-					(
-						SELECT account_id,member_position,window_class,duration_minutes,
-							used_percent,observed_at_micros,resets_at_micros,reason
-						FROM expected
-						EXCEPT
-						SELECT account_id,member_position,window_class,duration_minutes,
-							used_percent,observed_at_micros,resets_at_micros,reason
-						FROM decodex.routing_decision_exclusions
-						WHERE decision_id=NEW.decision_id
-					)
-					UNION ALL
-					(
-						SELECT account_id,member_position,window_class,duration_minutes,
-							used_percent,observed_at_micros,resets_at_micros,reason
-						FROM decodex.routing_decision_exclusions
-						WHERE decision_id=NEW.decision_id
-						EXCEPT
-						SELECT account_id,member_position,window_class,duration_minutes,
-							used_percent,observed_at_micros,resets_at_micros,reason
-						FROM expected
-					)
-				)
-				SELECT 1 FROM difference
+				SELECT 1
+				FROM decodex.routing_decision_blocker_refs AS blocker
+				WHERE blocker.decision_id=NEW.decision_id
+					AND blocker.snapshot_id<>NEW.snapshot_id
+			)
+			OR EXISTS (
+				SELECT 1
+				FROM decodex.routing_decision_exclusions AS exclusion
+				WHERE exclusion.decision_id=NEW.decision_id
+					AND exclusion.authority_shape<>NEW.authority_shape
 			)
 		THEN
 			RAISE EXCEPTION 'Account Registry routing decision is incomplete or cross-linked'
@@ -11134,8 +11031,8 @@ CREATE FUNCTION decodex.plan_continuation_exact(p_protocol text, p_idempotency_k
     AS $$
 DECLARE request jsonb; replay bytea; existing_plan record; decision_row record;
 DECLARE snapshot_row record; run_row record; session_row record; profile_row record;
-DECLARE conversation_row record; member_row record; initial_row record;
-DECLARE account_snapshot_row record;
+	DECLARE conversation_row record; member_row record; initial_row record;
+	DECLARE account_snapshot_row record;
 DECLARE evidence_count bigint; selected_evidence_id uuid:=NULL;
 DECLARE selected_evidence_revision bigint:=NULL;
 DECLARE selected_schema_fingerprint text:=NULL;
@@ -11317,66 +11214,27 @@ BEGIN
 			OR profile_row.source_revision<>snapshot_row.task_role_profile_revision
 			OR profile_row.source_revision<>
 				decision_row.profile_snapshot_source_revision
-			OR EXISTS (SELECT 1 FROM decodex.turns WHERE turn_id=decision_row.turn_id)
+			OR EXISTS (
+				SELECT 1 FROM decodex.turns AS turn_row
+				WHERE turn_row.turn_id=decision_row.turn_id
+					AND NOT (
+						turn_row.conversation_id=decision_row.conversation_id
+						AND turn_row.runtime_session_id=
+							decision_row.source_runtime_session_id
+						AND turn_row.sequence>1
+						AND turn_row.role='user'
+						AND turn_row.possible_side_effects='unknown'
+						AND turn_row.status='active'
+						AND turn_row.revision=1
+						AND turn_row.completed_at IS NULL
+					)
+			)
 		THEN
 			RETURN decodex.complete_exact_continuation_rejection(
 				p_protocol,p_idempotency_key,'stale_consumer_revision'
 			);
 		END IF;
 
-		PERFORM 1
-		FROM decodex.accounts AS account
-		WHERE account.account_id=initial_row.selected_account_id
-			AND account.revision=member_row.account_revision
-			AND account.tombstoned_at IS NULL
-			AND account.enabled
-			AND account.state='available'
-			AND account.observed_at<=planned
-			AND planned-account.observed_at<=INTERVAL '300 seconds'
-			AND account.provider_kind IS NOT NULL
-			AND account.provider_account_id IS NOT NULL
-			AND account.credential_store_schema_version=1
-			AND account.credential_version IS NOT NULL
-			AND account.credential_fingerprint IS NOT NULL
-			AND account.credential_writer_operation_id IS NOT NULL
-			AND account.credential_store_observation='exact'
-			AND account.credential_store_observed_at<=planned
-			AND planned-account.credential_store_observed_at<=
-				INTERVAL '300 seconds'
-			AND NOT EXISTS (
-				SELECT 1 FROM decodex.account_operations AS operation
-				WHERE operation.account_id=account.account_id
-					AND operation.phase NOT IN ('committed','cancelled')
-			)
-		FOR UPDATE OF account;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_continuation_rejection(
-				p_protocol,p_idempotency_key,'selected_account_recovery_required'
-			);
-		END IF;
-		PERFORM quota.account_id
-		FROM decodex.account_quota_facts AS quota
-		WHERE quota.account_id=initial_row.selected_account_id
-		ORDER BY quota.duration_minutes
-		FOR SHARE OF quota;
-		IF (
-			SELECT pg_catalog.count(*)
-			FROM decodex.account_quota_facts AS quota
-			WHERE quota.account_id=initial_row.selected_account_id
-				AND quota.duration_minutes IN (300,10080)
-				AND quota.error_code IS NULL
-				AND quota.used_percent<100
-				AND quota.observed_at_micros<=
-					(extract(epoch FROM planned)*1000000)::bigint
-				AND (extract(epoch FROM planned)*1000000)::bigint-
-					quota.observed_at_micros<=300000000
-				AND quota.resets_at_micros>
-					(extract(epoch FROM planned)*1000000)::bigint
-		)<>2 THEN
-			RETURN decodex.complete_exact_continuation_rejection(
-				p_protocol,p_idempotency_key,'selected_account_recovery_required'
-			);
-		END IF;
 		decision_row.selected_account_id:=initial_row.selected_account_id;
 		decision_row.snapshot_id:=initial_row.snapshot_id;
 	ELSE
@@ -12018,7 +11876,7 @@ DECLARE request jsonb; replay bytea; existing_plan decodex.continuation_plans%RO
 DECLARE decision_row decodex.routing_decisions%ROWTYPE;
 DECLARE snapshot_row decodex.routing_snapshots%ROWTYPE;
 DECLARE member_row decodex.routing_snapshot_members%ROWTYPE;
-DECLARE account_source decodex.accounts%ROWTYPE; profile_source record;
+DECLARE profile_source decodex.role_profile_revisions%ROWTYPE;
 DECLARE new_account_snapshot_id uuid; new_profile_snapshot_id uuid;
 DECLARE new_runtime_session_id uuid;
 DECLARE account_value jsonb; profile_value jsonb; session_value jsonb;
@@ -12126,20 +11984,14 @@ BEGIN
 		);
 	END IF;
 
-	SELECT * INTO account_source FROM decodex.accounts
-	WHERE account_id=decision_row.selected_account_id
-		AND revision=member_row.account_revision
-		AND tombstoned_at IS NULL
+	SELECT * INTO profile_source
+	FROM decodex.role_profile_revisions AS revision
+	WHERE revision.role='task'
+		AND revision.revision=snapshot_row.task_role_profile_revision
 	FOR SHARE;
-	SELECT revision.* INTO profile_source
-	FROM decodex.role_profiles AS profile
-	JOIN decodex.role_profile_revisions AS revision
-		ON (revision.role,revision.revision)=
-			(profile.role,profile.current_revision)
-	WHERE profile.role='task'
-		AND profile.current_revision=snapshot_row.task_role_profile_revision
-	FOR SHARE OF profile,revision;
-	IF account_source.account_id IS NULL OR profile_source.role IS NULL THEN
+	IF member_row.display_label IS NULL OR member_row.account_state IS NULL
+		OR profile_source.role IS NULL
+	THEN
 		RETURN decodex.complete_exact_continuation_rejection(
 			p_protocol,p_idempotency_key,'stale_consumer_revision'
 		);
@@ -12154,8 +12006,8 @@ BEGIN
 		account_snapshot_id,source_account_id,display_label,observed_state,
 		source_revision
 	) VALUES (
-		new_account_snapshot_id,account_source.account_id,account_source.display_label,
-		account_source.state,account_source.revision
+		new_account_snapshot_id,member_row.account_id,member_row.display_label,
+		member_row.account_state,member_row.account_revision
 	) RETURNING pg_catalog.jsonb_build_object(
 		'account_snapshot_id',account_snapshot_id,
 		'source_account_id',source_account_id,'display_label',display_label,
@@ -12801,9 +12653,9 @@ BEGIN
 		SELECT 1 FROM decodex.codex_account_capability AS capability
 		WHERE capability.singleton AND capability.login_chatgpt_auth_tokens
 			AND capability.refresh_callback
-			AND capability.build_identity='codex-cli 0.146.0-alpha.9.2'
-			AND capability.executable_sha256='d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2'
-			AND capability.callback_profile_sha256='64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29'
+			AND capability.executable_sha256 ~ '^[0-9a-f]{64}$'
+			AND capability.schema_sha256 ~ '^[0-9a-f]{64}$'
+			AND capability.callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 			AND capability.callback_profile_sha256=p_refresh_callback_profile_sha256)
 	THEN
 		RETURN QUERY SELECT 'callback_capability_unready',0::bigint,
@@ -14065,9 +13917,9 @@ CREATE FUNCTION decodex.read_account_registry_exact(p_account_id uuid, p_limit b
 			WHEN NOT EXISTS (
 				SELECT 1 FROM decodex.codex_account_capability AS capability
 				WHERE capability.singleton
-					AND capability.build_identity='codex-cli 0.146.0-alpha.9.2'
-					AND capability.executable_sha256='d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2'
-					AND capability.callback_profile_sha256='64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29'
+					AND capability.executable_sha256 ~ '^[0-9a-f]{64}$'
+					AND capability.schema_sha256 ~ '^[0-9a-f]{64}$'
+					AND capability.callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 					AND capability.login_chatgpt_auth_tokens AND capability.refresh_callback
 			) THEN 'callback_capability_unready'
 			WHEN account.credential_store_observation='exact' THEN 'ready'
@@ -14171,45 +14023,6 @@ CREATE FUNCTION decodex.read_continuation_plan_exact(p_plan_id uuid, p_expected_
 $$;
 
 
---
--- Name: read_current_task_routing_authority_exact(); Type: FUNCTION; Schema: decodex; Owner: -
---
-
-CREATE FUNCTION decodex.read_current_task_routing_authority_exact() RETURNS TABLE(routing_policy_id uuid, routing_policy_revision bigint)
-    LANGUAGE plpgsql STABLE SECURITY DEFINER
-    SET search_path TO 'pg_catalog', 'decodex'
-    AS $$
-DECLARE authority_count bigint;
-BEGIN
-	SELECT pg_catalog.count(*)
-	INTO authority_count
-	FROM decodex.routing_policy_heads AS head
-	JOIN decodex.routing_policy_revisions AS revision
-		ON revision.routing_policy_id=head.routing_policy_id
-		AND revision.revision=head.current_revision
-	WHERE revision.required_role='task'::decodex.role_profile_role;
-
-	IF authority_count=0 THEN
-		RETURN;
-	END IF;
-	IF authority_count<>1 THEN
-		RAISE EXCEPTION 'current Task routing authority is ambiguous'
-			USING ERRCODE='55000';
-	END IF;
-
-	RETURN QUERY
-	SELECT head.routing_policy_id,head.current_revision
-	FROM decodex.routing_policy_heads AS head
-	JOIN decodex.routing_policy_revisions AS revision
-		ON revision.routing_policy_id=head.routing_policy_id
-		AND revision.revision=head.current_revision
-	WHERE revision.required_role='task'::decodex.role_profile_role
-	LIMIT 1;
-END
-$$;
-
-
---
 -- Name: read_execution_decision_exact(uuid); Type: FUNCTION; Schema: decodex; Owner: -
 --
 
@@ -14486,10 +14299,28 @@ $$;
 
 
 --
+-- Name: read_quick_task_request_exact(uuid); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.read_quick_task_request_exact(p_conversation_id uuid) RETURNS TABLE(message text, working_directory text)
+    LANGUAGE sql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $$
+	SELECT conversation.initial_quick_task_message,
+		conversation.initial_quick_task_working_directory
+	FROM decodex.conversations AS conversation
+	WHERE conversation.conversation_id=p_conversation_id
+		AND conversation.status='open'
+		AND conversation.initial_quick_task_message IS NOT NULL
+		AND conversation.initial_quick_task_working_directory IS NOT NULL
+$$;
+
+
+--
 -- Name: read_ordinary_task_conversations_exact(uuid, bigint, uuid, bigint); Type: FUNCTION; Schema: decodex; Owner: -
 --
 
-CREATE FUNCTION decodex.read_ordinary_task_conversations_exact(p_conversation_id uuid, p_after_updated_at_micros bigint, p_after_conversation_id uuid, p_limit bigint) RETURNS TABLE(conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, runtime_session_state decodex.runtime_session_state, codex_thread_id uuid, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, active_user_turn_id uuid, active_user_turn_count bigint, has_active_provider_attempt boolean, has_unknown_provider_attempt boolean, pre_session_state text, routing_decision_id uuid, updated_at_micros bigint)
+CREATE FUNCTION decodex.read_ordinary_task_conversations_exact(p_conversation_id uuid, p_after_updated_at_micros bigint, p_after_conversation_id uuid, p_limit bigint) RETURNS TABLE(conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, runtime_session_state decodex.runtime_session_state, codex_thread_id uuid, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, active_user_turn_id uuid, active_user_turn_count bigint, has_active_provider_attempt boolean, has_unknown_provider_attempt boolean, pre_session_state text, routing_decision_id uuid, updated_at_micros bigint, routing_successor_conversation_id uuid, routing_successor_conversation_revision bigint, has_admitted_user_turn boolean)
     LANGUAGE plpgsql STABLE SECURITY DEFINER
     SET search_path TO 'pg_catalog', 'decodex'
     AS $$
@@ -14514,24 +14345,16 @@ BEGIN
 				AS active_user_turn_id,
 			CASE WHEN session.runtime_session_id IS NULL THEN 0
 				ELSE COALESCE(active_turn.active_count,0) END AS active_user_turn_count,
-			CASE WHEN session.runtime_session_id IS NULL THEN false ELSE EXISTS (
-				SELECT 1 FROM decodex.provider_attempts AS attempt
-				WHERE attempt.conversation_id=conversation.conversation_id
-					AND attempt.accepted_runtime_session_id=session.runtime_session_id
-					AND attempt.state IN ('prepared','dispatch_authorized')
-			) END AS has_active_provider_attempt,
-			CASE WHEN session.runtime_session_id IS NULL THEN false ELSE EXISTS (
-				SELECT 1 FROM decodex.provider_attempts AS attempt
-				WHERE attempt.conversation_id=conversation.conversation_id
-					AND attempt.accepted_runtime_session_id=session.runtime_session_id
-					AND attempt.state='unknown'
-			) END AS has_unknown_provider_attempt,
+			CASE WHEN session.runtime_session_id IS NULL THEN false
+				ELSE COALESCE(active_turn.total_count,0)>0 END AS has_admitted_user_turn,
+			COALESCE(attempt.has_active,false) AS has_active_provider_attempt,
+			COALESCE(attempt.has_unknown,false) AS has_unknown_provider_attempt,
 			CASE
 				WHEN session.runtime_session_id IS NOT NULL THEN NULL
 				WHEN decision.authority_shape='conversation_account_registry'
+					AND decision.kind='selected' THEN 'establishment_pending'
+				WHEN decision.authority_shape='conversation_account_registry'
 					AND decision.kind='waiting' THEN 'quota_exhausted'
-				WHEN decision.kind='waiting_usage' THEN 'quota_exhausted'
-				WHEN decision.kind='waiting_reconciliation' THEN 'waiting_reconciliation'
 				WHEN decision.kind='no_route' THEN 'no_route'
 				ELSE 'routing_pending'
 			END AS pre_session_state,
@@ -14540,7 +14363,9 @@ BEGIN
 				conversation.updated_at,
 				COALESCE(session.updated_at,conversation.updated_at),
 				COALESCE(decision.decided_at,conversation.updated_at),
-				COALESCE(active_turn.updated_at,conversation.updated_at)
+				COALESCE(plan.planned_at,conversation.updated_at),
+				COALESCE(active_turn.updated_at,conversation.updated_at),
+				COALESCE(attempt.updated_at,conversation.updated_at)
 			))*1000000)::bigint AS updated_at_micros
 		FROM decodex.conversations AS conversation
 		LEFT JOIN LATERAL (
@@ -14562,27 +14387,43 @@ BEGIN
 		) AS plan ON true
 		LEFT JOIN decodex.runtime_sessions AS session
 			ON session.runtime_session_id=plan.current_runtime_session_id
-			AND session.state IN ('starting','active')
 		LEFT JOIN decodex.profile_snapshots AS profile
 			ON profile.profile_snapshot_id=session.profile_snapshot_id
-		LEFT JOIN LATERAL (
-			SELECT latest.turn_id,aggregate.active_count,aggregate.updated_at
-			FROM (
-				SELECT pg_catalog.count(*) AS active_count,
-					pg_catalog.max(turn_row.updated_at) AS updated_at
-				FROM decodex.turns AS turn_row
-				WHERE turn_row.conversation_id=conversation.conversation_id
-					AND turn_row.role='user' AND turn_row.status='active'
-			) AS aggregate
+			LEFT JOIN LATERAL (
+				SELECT latest.turn_id,aggregate.active_count,aggregate.total_count,
+					aggregate.updated_at
+				FROM (
+					SELECT pg_catalog.count(*) FILTER (WHERE turn_row.status='active')
+						AS active_count,
+						pg_catalog.count(*) AS total_count,
+						pg_catalog.max(turn_row.updated_at) AS updated_at
+					FROM decodex.turns AS turn_row
+					WHERE turn_row.conversation_id=conversation.conversation_id
+						AND turn_row.runtime_session_id=session.runtime_session_id
+						AND turn_row.role='user'
+				) AS aggregate
 			LEFT JOIN LATERAL (
 				SELECT candidate.turn_id
 				FROM decodex.turns AS candidate
 				WHERE candidate.conversation_id=conversation.conversation_id
+					AND candidate.runtime_session_id=session.runtime_session_id
 					AND candidate.role='user' AND candidate.status='active'
 				ORDER BY candidate.sequence DESC LIMIT 1
-			) AS latest ON true
-		) AS active_turn ON true
+				) AS latest ON true
+			) AS active_turn ON true
+			LEFT JOIN LATERAL (
+				SELECT pg_catalog.bool_or(stored.state IN ('prepared','dispatch_authorized'))
+						AS has_active,
+					pg_catalog.bool_or(stored.state='unknown') AS has_unknown,
+					pg_catalog.max(stored.updated_at) AS updated_at
+				FROM decodex.provider_attempts AS stored
+				WHERE session.runtime_session_id IS NOT NULL
+					AND stored.conversation_id=conversation.conversation_id
+					AND stored.accepted_runtime_session_id=session.runtime_session_id
+			) AS attempt ON true
 		WHERE conversation.status='open'
+			AND conversation.initial_quick_task_message IS NOT NULL
+			AND conversation.initial_quick_task_working_directory IS NOT NULL
 			AND (p_conversation_id IS NULL
 				OR conversation.conversation_id=p_conversation_id)
 			AND (
@@ -14620,21 +14461,59 @@ BEGIN
 							AND snapshot.task_role='task'
 					)
 			)
-	)
-	SELECT projected.conversation_id,projected.conversation_revision,
-		projected.runtime_session_id,projected.runtime_session_revision,
-		projected.runtime_session_state,projected.codex_thread_id,
-		projected.thread_start_request_id,projected.thread_start_request_sha256,
-		projected.thread_start_response_id,projected.thread_start_response_sha256,
-		projected.has_acknowledged_turn,projected.active_user_turn_id,
-		projected.active_user_turn_count,projected.has_active_provider_attempt,
-		projected.has_unknown_provider_attempt,projected.pre_session_state,
-		projected.routing_decision_id,projected.updated_at_micros
+	), current_page AS (
+	SELECT projected.*
 	FROM projected
 	WHERE p_after_updated_at_micros IS NULL
 		OR (projected.updated_at_micros,projected.conversation_id)<
 			(p_after_updated_at_micros,p_after_conversation_id)
 	ORDER BY projected.updated_at_micros DESC,projected.conversation_id DESC
+	LIMIT p_limit
+	), combined AS (
+		SELECT current_page.conversation_id,current_page.conversation_revision,
+		current_page.runtime_session_id,current_page.runtime_session_revision,
+		current_page.runtime_session_state,current_page.codex_thread_id,
+		current_page.thread_start_request_id,current_page.thread_start_request_sha256,
+		current_page.thread_start_response_id,current_page.thread_start_response_sha256,
+		current_page.has_acknowledged_turn,current_page.active_user_turn_id,
+		current_page.active_user_turn_count,current_page.has_active_provider_attempt,
+		current_page.has_unknown_provider_attempt,current_page.pre_session_state,
+			current_page.routing_decision_id,current_page.updated_at_micros,
+			NULL::uuid AS routing_successor_conversation_id,
+			NULL::bigint AS routing_successor_conversation_revision,
+			current_page.has_admitted_user_turn
+	FROM current_page
+	UNION ALL
+	SELECT source.conversation_id,source.revision,
+		NULL::uuid,NULL::bigint,NULL::decodex.runtime_session_state,NULL::uuid,
+		NULL::bigint,NULL::text,NULL::bigint,NULL::text,
+			false,NULL::uuid,0::bigint,false,false,NULL::text,NULL::uuid,
+			(extract(epoch FROM source.updated_at)*1000000)::bigint,
+			relation.successor_conversation_id,relation.successor_revision,false
+	FROM decodex.conversation_routing_successors AS relation
+	JOIN decodex.conversations AS source
+		ON source.conversation_id=relation.source_conversation_id
+	JOIN decodex.conversations AS successor
+		ON successor.conversation_id=relation.successor_conversation_id
+	WHERE p_conversation_id IS NOT NULL
+		AND relation.source_conversation_id=p_conversation_id
+		AND source.status='archived' AND source.revision=relation.source_revision
+		AND successor.status='open' AND successor.revision=relation.successor_revision
+	)
+	SELECT combined.conversation_id,combined.conversation_revision,
+		combined.runtime_session_id,combined.runtime_session_revision,
+		combined.runtime_session_state,combined.codex_thread_id,
+		combined.thread_start_request_id,combined.thread_start_request_sha256,
+		combined.thread_start_response_id,combined.thread_start_response_sha256,
+		combined.has_acknowledged_turn,combined.active_user_turn_id,
+		combined.active_user_turn_count,combined.has_active_provider_attempt,
+		combined.has_unknown_provider_attempt,combined.pre_session_state,
+		combined.routing_decision_id,combined.updated_at_micros,
+			combined.routing_successor_conversation_id,
+			combined.routing_successor_conversation_revision,
+			combined.has_admitted_user_turn
+	FROM combined
+	ORDER BY combined.updated_at_micros DESC,combined.conversation_id DESC
 	LIMIT p_limit;
 END
 $$;
@@ -14922,10 +14801,9 @@ BEGIN
 		EXISTS (
 			SELECT 1 FROM decodex.codex_account_capability AS capability
 			WHERE capability.singleton
-				AND capability.build_identity='codex-cli 0.146.0-alpha.9.2'
-				AND capability.executable_sha256='d96ae1ca1ff6fc8587842fa04c92d3ee4d31651a811c2f89b65fcfd9c28473e2'
+				AND capability.executable_sha256 ~ '^[0-9a-f]{64}$'
 				AND capability.schema_sha256 ~ '^[0-9a-f]{64}$'
-				AND capability.callback_profile_sha256='64a98c3328d1eba74aaf18a3995523e07fd2f1395bc6fb4a121b74338c404a29'
+				AND capability.callback_profile_sha256 ~ '^[0-9a-f]{64}$'
 				AND capability.login_chatgpt_auth_tokens
 				AND capability.refresh_callback
 				AND capability.callback_profile_sha256=p_callback_profile_sha256
@@ -16209,6 +16087,767 @@ $_$;
 
 
 --
+-- Name: create_quick_task_routing_successor_exact(text, text, uuid, bigint); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.create_quick_task_routing_successor_exact(p_protocol text, p_idempotency_key text, p_source_conversation_id uuid, p_expected_source_revision bigint) RETURNS TABLE(response_bytes bytea, replayed boolean)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $_$
+DECLARE request jsonb; claimed record; source_row decodex.conversations%ROWTYPE;
+DECLARE decision_row decodex.routing_decisions%ROWTYPE;
+DECLARE successor_uuid uuid; activity_sequence bigint; outbox_id bigint;
+DECLARE payload jsonb; core jsonb; effect jsonb; response_value bytea;
+DECLARE rejection_code text;
+BEGIN
+	IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+		RAISE EXCEPTION 'exact commands require READ COMMITTED' USING ERRCODE='40001';
+	END IF;
+	IF p_protocol IS NULL OR p_idempotency_key IS NULL
+		OR pg_catalog.octet_length(p_protocol) NOT BETWEEN 1 AND 64
+		OR p_protocol COLLATE pg_catalog."C" !~ '^[a-z0-9][a-z0-9._/-]{0,63}$'
+		OR pg_catalog.octet_length(p_idempotency_key) NOT BETWEEN 1 AND 256
+		OR decodex.has_credential_material(p_idempotency_key)
+	THEN
+		RAISE EXCEPTION 'exact routing successor identity is invalid' USING ERRCODE='22023';
+	END IF;
+	request:=pg_catalog.jsonb_build_object(
+		'operation','create_quick_task_routing_successor','protocol',p_protocol,
+		'source_conversation_id',p_source_conversation_id,
+		'expected_source_revision',p_expected_source_revision
+	);
+	SELECT receipt.request_envelope,receipt.response_bytes,receipt.receipt_state
+	INTO claimed
+	FROM decodex.exact_command_receipts AS receipt
+	WHERE receipt.protocol_version=p_protocol
+		AND receipt.idempotency_key=p_idempotency_key;
+	IF FOUND THEN
+		IF claimed.request_envelope<>request THEN
+			RAISE EXCEPTION 'idempotency key reused for another routing successor'
+				USING ERRCODE='DX001';
+		END IF;
+		IF claimed.receipt_state<>'executing' THEN
+			RETURN QUERY SELECT claimed.response_bytes,true;
+			RETURN;
+		END IF;
+	END IF;
+
+	IF p_source_conversation_id IS NULL OR p_expected_source_revision IS NULL
+		OR p_expected_source_revision<=0
+	THEN
+		rejection_code:='malformed_input';
+	ELSE
+		SELECT * INTO source_row FROM decodex.conversations
+		WHERE conversation_id=p_source_conversation_id FOR UPDATE;
+		IF NOT FOUND THEN rejection_code:='source_conversation_mismatch'; END IF;
+	END IF;
+	INSERT INTO decodex.exact_command_receipts(
+		protocol_version,idempotency_key,request_envelope,request_digest,receipt_state
+	) VALUES (
+		p_protocol,p_idempotency_key,request,
+		public.digest(pg_catalog.convert_to(request::text,'UTF8'),'sha256'),'executing'
+	) ON CONFLICT DO NOTHING;
+	SELECT receipt.request_envelope,receipt.response_bytes,receipt.receipt_state
+	INTO STRICT claimed
+	FROM decodex.exact_command_receipts AS receipt
+	WHERE receipt.protocol_version=p_protocol
+		AND receipt.idempotency_key=p_idempotency_key
+	FOR UPDATE;
+	IF claimed.request_envelope<>request THEN
+		RAISE EXCEPTION 'idempotency key reused for another routing successor'
+			USING ERRCODE='DX001';
+	END IF;
+	IF claimed.receipt_state<>'executing' THEN
+		RETURN QUERY SELECT claimed.response_bytes,true;
+		RETURN;
+	END IF;
+
+	IF rejection_code IS NULL AND (
+		source_row.revision<>p_expected_source_revision
+		OR source_row.status<>'open'
+		OR source_row.initial_quick_task_message IS NULL
+		OR source_row.initial_quick_task_working_directory IS NULL
+	) THEN rejection_code:='source_conversation_mismatch'; END IF;
+	IF rejection_code IS NULL AND EXISTS (
+		SELECT 1 FROM decodex.conversation_routing_successors
+		WHERE source_conversation_id=p_source_conversation_id
+			OR successor_conversation_id=p_source_conversation_id
+	) THEN rejection_code:='routing_successor_already_exists'; END IF;
+	IF rejection_code IS NULL THEN
+		SELECT * INTO decision_row
+		FROM decodex.routing_decisions
+		WHERE authority_shape='conversation_account_registry'
+			AND conversation_id=p_source_conversation_id
+		FOR SHARE;
+		IF NOT FOUND OR decision_row.kind NOT IN ('waiting','no_route')
+			OR decision_row.selected_account_id IS NOT NULL
+			OR EXISTS (
+				SELECT 1 FROM decodex.routing_decisions
+				WHERE conversation_id=p_source_conversation_id
+					AND decision_id<>decision_row.decision_id
+			)
+			OR EXISTS (SELECT 1 FROM decodex.runtime_sessions
+				WHERE conversation_id=p_source_conversation_id)
+			OR EXISTS (SELECT 1 FROM decodex.turns
+				WHERE conversation_id=p_source_conversation_id)
+			OR EXISTS (SELECT 1 FROM decodex.continuation_plans
+				WHERE consumer_conversation_id=p_source_conversation_id
+					OR conversation_id=p_source_conversation_id)
+			OR EXISTS (SELECT 1 FROM decodex.provider_attempts
+				WHERE conversation_id=p_source_conversation_id)
+		THEN rejection_code:='routing_successor_forbidden'; END IF;
+	END IF;
+	IF rejection_code IS NOT NULL THEN
+		response_value:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'create_quick_task_routing_successor',
+			rejection_code
+		);
+		RETURN QUERY SELECT response_value,false;
+		RETURN;
+	END IF;
+
+	successor_uuid:=pg_catalog.gen_random_uuid();
+	INSERT INTO decodex.conversations(
+		conversation_id,title,initial_quick_task_message,
+		initial_quick_task_working_directory
+	) VALUES (
+		successor_uuid,source_row.title,source_row.initial_quick_task_message,
+		source_row.initial_quick_task_working_directory
+	);
+	UPDATE decodex.conversations SET status='archived',revision=revision+1
+	WHERE conversation_id=p_source_conversation_id;
+	INSERT INTO decodex.conversation_routing_successors(
+		source_conversation_id,successor_conversation_id,source_routing_decision_id,
+		source_revision,successor_revision
+	) VALUES (
+		p_source_conversation_id,successor_uuid,decision_row.decision_id,
+		p_expected_source_revision+1,1
+	);
+	payload:=pg_catalog.jsonb_build_object(
+		'kind','quick_task_routing_successor_created',
+		'source_conversation_id',p_source_conversation_id,
+		'source_conversation_revision',p_expected_source_revision+1,
+		'successor_conversation_id',successor_uuid,
+		'successor_conversation_revision',1,
+		'source_routing_decision_id',decision_row.decision_id
+	);
+	INSERT INTO decodex.activity(
+		aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload
+	) VALUES (
+		'conversation',p_source_conversation_id::text,p_expected_source_revision+1,
+		'quick_task_routing_successor_created',p_idempotency_key,payload
+	) RETURNING sequence INTO activity_sequence;
+	INSERT INTO decodex.outbox(
+		effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload
+	) VALUES (
+		'activity/'||activity_sequence::text,'conversation',
+		p_source_conversation_id::text,p_expected_source_revision+1,
+		pg_catalog.jsonb_build_object(
+			'activity_sequence',activity_sequence,
+			'event_kind','quick_task_routing_successor_created',
+			'aggregate_kind','conversation',
+			'aggregate_id',p_source_conversation_id,
+			'revision',p_expected_source_revision+1,'payload',payload
+		)
+	) RETURNING id INTO outbox_id;
+	core:=payload||pg_catalog.jsonb_build_object(
+		'operation','create_quick_task_routing_successor',
+		'activity_sequence',activity_sequence,'outbox_id',outbox_id
+	);
+	effect:=core||pg_catalog.jsonb_build_object(
+		'effect_digest_source',core::text,
+		'effect_digest',pg_catalog.encode(public.digest(
+			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex')
+	);
+	response_value:=pg_catalog.convert_to(pg_catalog.jsonb_build_object(
+		'classification','success','effect',effect
+	)::text,'UTF8');
+	UPDATE decodex.exact_command_receipts SET
+		receipt_state='completed_success',outcome_class='success',
+		effect_envelope=effect,response_bytes=response_value,
+		completed_at=pg_catalog.clock_timestamp()
+	WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
+	RETURN QUERY SELECT response_value,false;
+END
+$_$;
+
+
+--
+-- Name: begin_quick_task_initial_route_exact(text, text, uuid, bigint); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.begin_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint) RETURNS TABLE(disposition text, response_bytes bytea, snapshot_envelope jsonb)
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $_$
+DECLARE request jsonb; stored record; replay bytea; response bytea;
+DECLARE conversation_row decodex.conversations%ROWTYPE;
+DECLARE control_row decodex.account_routing_control%ROWTYPE;
+DECLARE task_profile_revision bigint; account_count bigint;
+DECLARE resolved timestamptz; snapshot_uuid uuid; turn_uuid uuid; core jsonb;
+DECLARE conversation_found boolean;
+BEGIN
+	IF pg_catalog.current_setting('transaction_isolation')<>'read committed' THEN
+		RAISE EXCEPTION 'exact commands require READ COMMITTED' USING ERRCODE='40001';
+	END IF;
+	IF p_protocol IS NULL OR p_idempotency_key IS NULL
+		OR pg_catalog.octet_length(p_protocol) NOT BETWEEN 1 AND 64
+		OR p_protocol COLLATE pg_catalog."C" !~ '^[a-z0-9][a-z0-9._/-]{0,63}$'
+		OR pg_catalog.octet_length(p_idempotency_key) NOT BETWEEN 1 AND 256
+		OR decodex.has_credential_material(p_idempotency_key)
+	THEN
+		RAISE EXCEPTION 'exact initial route identity is invalid' USING ERRCODE='22023';
+	END IF;
+	request:=pg_catalog.jsonb_build_object(
+		'operation','route_quick_task_initial','protocol',p_protocol,
+		'conversation_id',p_conversation_id,
+		'conversation_revision',p_expected_conversation_revision
+	);
+
+	-- Completed same-key replay is immutable and does not consume a new lock universe.
+	SELECT receipt.request_envelope,receipt.response_bytes,receipt.receipt_state
+	INTO stored
+	FROM decodex.exact_command_receipts AS receipt
+	WHERE receipt.protocol_version=p_protocol
+		AND receipt.idempotency_key=p_idempotency_key;
+	IF FOUND THEN
+		IF stored.request_envelope<>request THEN
+			RAISE EXCEPTION 'idempotency key reused for another initial route'
+				USING ERRCODE='DX001';
+		END IF;
+		IF stored.receipt_state<>'executing' THEN
+			disposition:='replayed'; response_bytes:=stored.response_bytes;
+			snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+		END IF;
+	END IF;
+
+	IF p_conversation_id IS NULL OR p_expected_conversation_revision IS NULL
+		OR p_expected_conversation_revision<=0
+	THEN
+		replay:=decodex.reserve_exact_routing_command(p_protocol,p_idempotency_key,request);
+		IF replay IS NOT NULL THEN
+			disposition:='replayed'; response_bytes:=replay;
+			snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+		END IF;
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial','malformed_input'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+
+	-- The Conversation is always the first mutable domain lock for a fresh route.
+	SELECT * INTO conversation_row
+	FROM decodex.conversations
+	WHERE conversation_id=p_conversation_id
+	FOR UPDATE;
+	conversation_found:=FOUND;
+	replay:=decodex.reserve_exact_routing_command(p_protocol,p_idempotency_key,request);
+	IF replay IS NOT NULL THEN
+		disposition:='replayed'; response_bytes:=replay;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+	IF NOT conversation_found OR conversation_row.revision<>p_expected_conversation_revision
+		OR conversation_row.status<>'open'
+		OR conversation_row.initial_quick_task_message IS NULL
+		OR conversation_row.initial_quick_task_working_directory IS NULL
+	THEN
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial','conversation_mismatch'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+	IF EXISTS (
+		SELECT 1 FROM decodex.routing_snapshots
+		WHERE authority_shape='conversation_account_registry'
+			AND conversation_id=p_conversation_id
+	) OR EXISTS (
+		SELECT 1 FROM decodex.routing_decisions
+		WHERE authority_shape='conversation_account_registry'
+			AND conversation_id=p_conversation_id
+	) OR EXISTS (
+		SELECT 1 FROM decodex.runtime_sessions
+		WHERE conversation_id=p_conversation_id
+	) OR EXISTS (
+		SELECT 1 FROM decodex.turns
+		WHERE conversation_id=p_conversation_id
+	) OR EXISTS (
+		SELECT 1 FROM decodex.continuation_plans
+		WHERE consumer_conversation_id=p_conversation_id
+			OR conversation_id=p_conversation_id
+	) OR EXISTS (
+		SELECT 1 FROM decodex.provider_attempts
+		WHERE conversation_id=p_conversation_id
+	) THEN
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial',
+			'initial_routing_already_bound'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+
+	-- One repeatable Account Registry universe, in the authority-defined lock order.
+	SELECT * INTO control_row
+	FROM decodex.account_routing_control AS control
+	WHERE control.singleton
+	FOR UPDATE;
+	IF NOT FOUND THEN
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial',
+			'routing_authority_unavailable'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+	PERFORM account.account_id
+	FROM decodex.accounts AS account
+	WHERE account.tombstoned_at IS NULL
+	ORDER BY account.account_id
+	FOR UPDATE OF account;
+	SELECT head.current_revision INTO task_profile_revision
+	FROM decodex.role_profiles AS head
+	JOIN decodex.role_profile_revisions AS revision
+		ON revision.role=head.role AND revision.revision=head.current_revision
+	WHERE head.role='task'
+	FOR UPDATE OF head,revision;
+	IF NOT FOUND THEN
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial',
+			'routing_authority_unavailable'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+	PERFORM ordering.account_id
+	FROM decodex.account_routing_order AS ordering
+	ORDER BY ordering.account_id
+	FOR UPDATE OF ordering;
+	PERFORM operation.operation_id
+	FROM decodex.account_operations AS operation
+	JOIN decodex.accounts AS account USING(account_id)
+	WHERE account.tombstoned_at IS NULL
+		AND operation.phase NOT IN ('committed','cancelled')
+	ORDER BY operation.account_id,operation.operation_id
+	FOR SHARE OF operation;
+	PERFORM quota.account_id
+	FROM decodex.account_quota_facts AS quota
+	JOIN decodex.accounts AS account USING(account_id)
+	WHERE account.tombstoned_at IS NULL
+	ORDER BY quota.account_id,quota.duration_minutes
+	FOR SHARE OF quota;
+
+	SELECT pg_catalog.count(*) INTO account_count
+	FROM decodex.accounts WHERE tombstoned_at IS NULL;
+	IF account_count<1 OR account_count>512
+		OR NOT EXISTS (SELECT 1 FROM decodex.account_routing_order)
+		OR EXISTS (
+			SELECT 1 FROM decodex.account_routing_order
+			GROUP BY true
+			HAVING pg_catalog.count(*)<>account_count
+				OR pg_catalog.min(position)<>0
+				OR pg_catalog.max(position)<>account_count-1
+				OR pg_catalog.count(DISTINCT position)<>account_count
+		)
+		OR EXISTS (
+			SELECT account_id FROM decodex.accounts WHERE tombstoned_at IS NULL
+			EXCEPT SELECT account_id FROM decodex.account_routing_order
+		)
+		OR EXISTS (
+			SELECT account_id FROM decodex.account_routing_order
+			EXCEPT SELECT account_id FROM decodex.accounts WHERE tombstoned_at IS NULL
+		)
+		OR (control_row.mode='fixed') IS DISTINCT FROM
+			(control_row.fixed_account_id IS NOT NULL)
+		OR (control_row.fixed_account_id IS NOT NULL AND NOT EXISTS (
+			SELECT 1 FROM decodex.account_routing_order
+			WHERE account_id=control_row.fixed_account_id
+		))
+	THEN
+		response:=decodex.complete_exact_routing_rejection(
+			p_protocol,p_idempotency_key,'route_quick_task_initial',
+			'routing_authority_unavailable'
+		);
+		disposition:='rejected'; response_bytes:=response;
+		snapshot_envelope:=NULL; RETURN NEXT; RETURN;
+	END IF;
+
+	resolved:=pg_catalog.clock_timestamp();
+	snapshot_uuid:=pg_catalog.gen_random_uuid();
+	turn_uuid:=pg_catalog.gen_random_uuid();
+	INSERT INTO decodex.routing_snapshots(
+		snapshot_id,authority_shape,account_routing_revision,account_selection_mode,
+		fixed_account_id,task_role,task_role_profile_revision,resolved_at,
+		consumer_kind,conversation_id,conversation_revision,turn_id
+	) VALUES (
+		snapshot_uuid,'conversation_account_registry',control_row.revision,control_row.mode,
+		control_row.fixed_account_id,'task',task_profile_revision,resolved,
+		'conversation_turn',p_conversation_id,p_expected_conversation_revision,turn_uuid
+	);
+	INSERT INTO decodex.routing_snapshot_members(
+		snapshot_id,authority_shape,position,account_id,account_revision,
+		display_label,account_state,blockers
+	)
+	SELECT snapshot_uuid,'conversation_account_registry',ordering.position+1,
+		account.account_id,account.revision,account.display_label,account.state,
+		expected.blockers
+	FROM decodex.accounts AS account
+	JOIN decodex.account_routing_order AS ordering USING(account_id)
+	CROSS JOIN LATERAL (
+		SELECT COALESCE(
+			pg_catalog.array_agg(fact.blocker ORDER BY fact.blocker),
+			ARRAY[]::decodex.routing_blocker[]
+		) AS blockers
+		FROM (
+			SELECT source.blocker
+			FROM (VALUES
+				('account_from_future'::decodex.routing_blocker,
+					account.observed_at>resolved
+					OR account.credential_store_observed_at>resolved),
+				('account_stale'::decodex.routing_blocker,
+					account.observed_at<=resolved
+						AND resolved-account.observed_at>INTERVAL '300 seconds'
+					OR account.credential_store_observed_at<=resolved
+						AND resolved-account.credential_store_observed_at>
+							INTERVAL '300 seconds'),
+				('account_unavailable'::decodex.routing_blocker,
+					account.state='unavailable'
+					OR account.credential_store_observation='unavailable'
+					OR EXISTS (
+						SELECT 1 FROM decodex.account_operations AS operation
+						WHERE operation.account_id=account.account_id
+							AND operation.phase NOT IN ('committed','cancelled')
+					)),
+				('account_unknown'::decodex.routing_blocker,
+					account.state='unknown'
+					OR account.credential_store_observation='unknown'),
+				('account_depleted'::decodex.routing_blocker,
+					account.state='depleted'),
+				('account_auth_failed'::decodex.routing_blocker,
+					account.state='auth_failed'
+					OR account.provider_kind IS NULL
+					OR account.provider_account_id IS NULL
+					OR account.credential_store_schema_version IS DISTINCT FROM 1
+					OR account.credential_version IS NULL
+					OR account.credential_fingerprint IS NULL
+					OR account.credential_writer_operation_id IS NULL
+					OR account.credential_store_observation IN (
+						'missing','mismatch','provider_mismatch'
+					)),
+				('account_plugin_unready'::decodex.routing_blocker,
+					account.state='plugin_unready'),
+				('account_disabled'::decodex.routing_blocker,
+					NOT account.enabled OR account.state='disabled')
+			) AS source(blocker,applies)
+			WHERE source.applies
+		) AS fact
+	) AS expected
+	WHERE account.tombstoned_at IS NULL
+	ORDER BY ordering.position;
+	INSERT INTO decodex.routing_snapshot_blockers(
+		snapshot_id,account_id,position,blocker
+	)
+	SELECT member.snapshot_id,member.account_id,item.ordinality::integer,item.blocker
+	FROM decodex.routing_snapshot_members AS member
+	CROSS JOIN LATERAL pg_catalog.unnest(member.blockers)
+		WITH ORDINALITY AS item(blocker,ordinality)
+	WHERE member.snapshot_id=snapshot_uuid;
+	INSERT INTO decodex.routing_snapshot_quota_facts(
+		snapshot_id,authority_shape,account_id,position,window_class,
+		duration_minutes,observed_at_micros,resets_at_micros,
+		observation_state,used_percent,error_code
+	)
+	SELECT snapshot_uuid,'conversation_account_registry',member.account_id,
+		definition.position,definition.window_class,definition.duration_minutes,
+		quota.observed_at_micros,quota.resets_at_micros,
+		CASE WHEN quota.account_id IS NULL THEN 'missing'::decodex.account_registry_quota_state
+			WHEN quota.error_code IS NULL THEN 'current'::decodex.account_registry_quota_state
+			ELSE 'observation_error'::decodex.account_registry_quota_state END,
+		quota.used_percent,quota.error_code
+	FROM decodex.routing_snapshot_members AS member
+	CROSS JOIN (VALUES
+		(1::smallint,'five_hour'::decodex.quota_window_class,300::smallint),
+		(2::smallint,'seven_day'::decodex.quota_window_class,10080::smallint)
+	) AS definition(position,window_class,duration_minutes)
+	LEFT JOIN decodex.account_quota_facts AS quota
+		ON quota.account_id=member.account_id
+		AND quota.duration_minutes=definition.duration_minutes
+	WHERE member.snapshot_id=snapshot_uuid
+	ORDER BY member.position,definition.position;
+
+	core:=pg_catalog.jsonb_build_object(
+		'operation','route_quick_task_initial',
+		'authority_shape','conversation_account_registry',
+		'snapshot_id',snapshot_uuid,
+		'account_routing_revision',control_row.revision,
+		'account_selection_mode',control_row.mode,
+		'fixed_account_id',control_row.fixed_account_id,
+		'task_role_profile_revision',task_profile_revision,
+		'consumer_kind','conversation_turn',
+		'conversation_id',p_conversation_id,
+		'conversation_revision',p_expected_conversation_revision,
+		'turn_id',turn_uuid,
+		'resolved_at_micros',(extract(epoch FROM resolved)*1000000)::bigint,
+		'members',(
+			SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+				'position',member.position,'account_id',member.account_id,
+				'account_revision',member.account_revision,
+				'display_label',member.display_label,
+				'account_state',member.account_state,'blockers',member.blockers
+			) ORDER BY member.position)
+			FROM decodex.routing_snapshot_members AS member
+			WHERE member.snapshot_id=snapshot_uuid
+		),
+		'quota_facts',(
+			SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+				'account_id',quota.account_id,'position',quota.position,
+				'window_class',quota.window_class,
+				'duration_minutes',quota.duration_minutes,
+				'observation_state',quota.observation_state,
+				'used_percent',quota.used_percent,
+				'observed_at_micros',quota.observed_at_micros,
+				'resets_at_micros',quota.resets_at_micros,
+				'error_code',quota.error_code
+			) ORDER BY member.position,quota.position)
+			FROM decodex.routing_snapshot_quota_facts AS quota
+			JOIN decodex.routing_snapshot_members AS member USING(snapshot_id,account_id)
+			WHERE quota.snapshot_id=snapshot_uuid
+		)
+	);
+	disposition:='fresh'; response_bytes:=NULL; snapshot_envelope:=core;
+	RETURN NEXT;
+END
+$_$;
+
+
+--
+-- Name: complete_quick_task_initial_route_exact(text, text, uuid, bigint, uuid, decodex.routing_decision_kind, uuid, jsonb, jsonb); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.complete_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_snapshot_id uuid, p_kind decodex.routing_decision_kind, p_selected_account_id uuid, p_causes jsonb, p_exclusions jsonb) RETURNS bytea
+    LANGUAGE plpgsql SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $_$
+DECLARE receipt_row decodex.exact_command_receipts%ROWTYPE;
+DECLARE snapshot_row decodex.routing_snapshots%ROWTYPE;
+DECLARE decision_uuid uuid; operation_uuid uuid; decided timestamptz;
+DECLARE activity_sequence bigint; outbox_id bigint;
+DECLARE snapshot_value jsonb; payload jsonb; core jsonb; effect jsonb; response bytea;
+BEGIN
+	SELECT * INTO receipt_row
+	FROM decodex.exact_command_receipts
+	WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key
+	FOR UPDATE;
+	IF NOT FOUND OR receipt_row.receipt_state<>'executing'
+		OR receipt_row.request_envelope<>pg_catalog.jsonb_build_object(
+			'operation','route_quick_task_initial','protocol',p_protocol,
+			'conversation_id',p_conversation_id,
+			'conversation_revision',p_expected_conversation_revision
+		)
+	THEN
+		RAISE EXCEPTION 'initial route completion has no matching executing receipt'
+			USING ERRCODE='23514',CONSTRAINT='quick_task_initial_route_atomic';
+	END IF;
+	SELECT * INTO snapshot_row
+	FROM decodex.routing_snapshots
+	WHERE snapshot_id=p_snapshot_id
+		AND authority_shape='conversation_account_registry'
+		AND consumer_kind='conversation_turn'
+		AND conversation_id=p_conversation_id
+		AND conversation_revision=p_expected_conversation_revision
+	FOR SHARE;
+	IF NOT FOUND OR EXISTS (
+		SELECT 1 FROM decodex.routing_decisions
+		WHERE authority_shape='conversation_account_registry'
+			AND conversation_id=p_conversation_id
+	) OR p_kind NOT IN ('selected','waiting','no_route')
+		OR (p_kind='selected') IS DISTINCT FROM (p_selected_account_id IS NOT NULL)
+		OR p_causes IS NULL OR pg_catalog.jsonb_typeof(p_causes)<>'array'
+		OR p_exclusions IS NULL OR pg_catalog.jsonb_typeof(p_exclusions)<>'array'
+		OR decodex.has_credential_material(p_causes)
+		OR decodex.has_credential_material(p_exclusions)
+		OR (p_kind='selected' AND NOT EXISTS (
+			SELECT 1 FROM decodex.routing_snapshot_members
+			WHERE snapshot_id=p_snapshot_id AND account_id=p_selected_account_id
+		))
+	THEN
+		RAISE EXCEPTION 'initial route completion is malformed or cross-linked'
+			USING ERRCODE='23514',CONSTRAINT='quick_task_initial_route_atomic';
+	END IF;
+
+	decision_uuid:=pg_catalog.gen_random_uuid();
+	operation_uuid:=pg_catalog.gen_random_uuid();
+	decided:=snapshot_row.resolved_at;
+	INSERT INTO decodex.routing_decision_member_refs(
+		decision_id,snapshot_id,position,account_id
+	)
+	SELECT decision_uuid,snapshot_id,position,account_id
+	FROM decodex.routing_snapshot_members
+	WHERE snapshot_id=p_snapshot_id ORDER BY position;
+	INSERT INTO decodex.routing_decision_quota_refs(
+		decision_id,snapshot_id,authority_shape,account_id,position,
+		window_class,duration_minutes,observed_at_micros,resets_at_micros,
+		observation_state,used_percent,error_code
+	)
+	SELECT decision_uuid,snapshot_id,'conversation_account_registry',account_id,
+		position,window_class,duration_minutes,observed_at_micros,resets_at_micros,
+		observation_state,used_percent,error_code
+	FROM decodex.routing_snapshot_quota_facts
+	WHERE snapshot_id=p_snapshot_id ORDER BY account_id,position;
+	INSERT INTO decodex.routing_decision_blocker_refs(
+		decision_id,snapshot_id,account_id,position,blocker
+	)
+	SELECT decision_uuid,p_snapshot_id,(item.value->>'account_id')::uuid,
+		pg_catalog.row_number() OVER (
+			PARTITION BY item.value->>'account_id' ORDER BY item.ordinality
+		)::integer,(item.value->>'blocker')::decodex.routing_blocker
+	FROM pg_catalog.jsonb_array_elements(p_causes)
+		WITH ORDINALITY AS item(value,ordinality)
+	ORDER BY item.ordinality;
+	INSERT INTO decodex.routing_decision_exclusions(
+		decision_id,authority_shape,account_id,member_position,window_class,
+		duration_minutes,used_percent,observed_at_micros,resets_at_micros,reason
+	)
+	SELECT decision_uuid,'conversation_account_registry',
+		(item.value->>'account_id')::uuid,
+		(item.value->>'member_position')::integer,
+		(item.value->>'window_class')::decodex.quota_window_class,
+		(item.value->>'duration_minutes')::smallint,
+		(item.value->>'used_percent')::smallint,
+		(item.value->>'observed_at_micros')::bigint,
+		(item.value->>'resets_at_micros')::bigint,'usage_depleted'
+	FROM pg_catalog.jsonb_array_elements(p_exclusions)
+		WITH ORDINALITY AS item(value,ordinality)
+	ORDER BY item.ordinality;
+	INSERT INTO decodex.routing_decisions(
+		decision_id,operation_id,authority_shape,snapshot_id,
+		account_routing_revision,consumer_kind,conversation_id,
+		conversation_revision,turn_id,kind,selected_account_id,decided_at
+	) VALUES (
+		decision_uuid,operation_uuid,'conversation_account_registry',p_snapshot_id,
+		snapshot_row.account_routing_revision,'conversation_turn',p_conversation_id,
+		p_expected_conversation_revision,snapshot_row.turn_id,p_kind,
+		p_selected_account_id,decided
+	);
+
+	snapshot_value:=pg_catalog.jsonb_build_object(
+		'snapshot_id',p_snapshot_id,
+		'account_routing_revision',snapshot_row.account_routing_revision,
+		'account_selection_mode',snapshot_row.account_selection_mode,
+		'fixed_account_id',snapshot_row.fixed_account_id,
+		'task_role_profile_revision',snapshot_row.task_role_profile_revision,
+		'resolved_at_micros',(extract(epoch FROM snapshot_row.resolved_at)*1000000)::bigint,
+		'members',(
+			SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+				'position',member.position,'account_id',member.account_id,
+				'account_revision',member.account_revision,
+				'display_label',member.display_label,
+				'account_state',member.account_state,'blockers',member.blockers
+			) ORDER BY member.position)
+			FROM decodex.routing_snapshot_members AS member
+			WHERE member.snapshot_id=p_snapshot_id
+		),
+		'quota_facts',(
+			SELECT pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+				'account_id',quota.account_id,'position',quota.position,
+				'window_class',quota.window_class,
+				'duration_minutes',quota.duration_minutes,
+				'observation_state',quota.observation_state,
+				'used_percent',quota.used_percent,
+				'observed_at_micros',quota.observed_at_micros,
+				'resets_at_micros',quota.resets_at_micros,
+				'error_code',quota.error_code
+			) ORDER BY member.position,quota.position)
+			FROM decodex.routing_snapshot_quota_facts AS quota
+			JOIN decodex.routing_snapshot_members AS member USING(snapshot_id,account_id)
+			WHERE quota.snapshot_id=p_snapshot_id
+		)
+	);
+	payload:=pg_catalog.jsonb_build_object(
+		'kind','quick_task_initial_route_committed',
+		'decision_id',decision_uuid,'operation_id',operation_uuid,
+		'snapshot_id',p_snapshot_id,'conversation_id',p_conversation_id,
+		'conversation_revision',p_expected_conversation_revision,
+		'turn_id',snapshot_row.turn_id,'decision_kind',p_kind,
+		'selected_account_id',p_selected_account_id
+	);
+	INSERT INTO decodex.activity(
+		aggregate_kind,aggregate_id,revision,event_kind,correlation_key,payload
+	) VALUES (
+		'routing_decision',decision_uuid::text,1,
+		'quick_task_initial_route_committed',p_idempotency_key,payload
+	) RETURNING sequence INTO activity_sequence;
+	INSERT INTO decodex.outbox(
+		effect_key,aggregate_kind,aggregate_id,aggregate_revision,payload
+	) VALUES (
+		'activity/'||activity_sequence::text,'routing_decision',decision_uuid::text,1,
+		pg_catalog.jsonb_build_object(
+			'activity_sequence',activity_sequence,
+			'event_kind','quick_task_initial_route_committed',
+			'aggregate_kind','routing_decision','aggregate_id',decision_uuid,
+			'revision',1,'payload',payload
+		)
+	) RETURNING id INTO outbox_id;
+	core:=pg_catalog.jsonb_build_object(
+		'operation','route_quick_task_initial',
+		'authority_shape','conversation_account_registry',
+		'decision_id',decision_uuid,'operation_id',operation_uuid,
+		'snapshot_id',p_snapshot_id,
+		'account_routing_revision',snapshot_row.account_routing_revision,
+		'consumer_kind','conversation_turn','conversation_id',p_conversation_id,
+		'conversation_revision',p_expected_conversation_revision,
+		'turn_id',snapshot_row.turn_id,'kind',p_kind,
+		'selected_account_id',p_selected_account_id,
+		'decided_at_micros',(extract(epoch FROM decided)*1000000)::bigint,
+		'causes',p_causes,'exclusions',p_exclusions,
+		'routing_snapshot',snapshot_value,
+		'activity_sequence',activity_sequence,'outbox_id',outbox_id
+	);
+	effect:=core||pg_catalog.jsonb_build_object(
+		'effect_digest_source',core::text,
+		'effect_digest',pg_catalog.encode(public.digest(
+			pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex')
+	);
+	response:=pg_catalog.convert_to(pg_catalog.jsonb_build_object(
+		'classification','success','effect',effect
+	)::text,'UTF8');
+	UPDATE decodex.exact_command_receipts SET
+		receipt_state='completed_success',outcome_class='success',
+		effect_envelope=effect,response_bytes=response,
+		completed_at=pg_catalog.clock_timestamp()
+	WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
+	RETURN response;
+END
+$_$;
+
+
+--
+-- Name: read_quick_task_initial_route_exact(uuid); Type: FUNCTION; Schema: decodex; Owner: -
+--
+
+CREATE FUNCTION decodex.read_quick_task_initial_route_exact(p_conversation_id uuid) RETURNS jsonb
+    LANGUAGE plpgsql STABLE SECURITY DEFINER
+    SET search_path TO 'pg_catalog', 'decodex'
+    AS $$
+DECLARE route_count bigint; route_effect jsonb;
+BEGIN
+	SELECT pg_catalog.count(*),(pg_catalog.array_agg(receipt.effect_envelope))[1]
+	INTO route_count,route_effect
+	FROM decodex.exact_command_receipts AS receipt
+	WHERE receipt.receipt_state='completed_success'
+		AND receipt.request_envelope->>'operation'='route_quick_task_initial'
+		AND receipt.request_envelope->>'conversation_id'=p_conversation_id::text;
+	IF route_count>1 THEN
+		RAISE EXCEPTION 'initial Quick Task route receipt is not unique'
+			USING ERRCODE='23514',CONSTRAINT='quick_task_initial_route_atomic';
+	END IF;
+	RETURN route_effect;
+END
+$$;
+
+
+--
 -- Name: bind_quick_task_continuation_exact(text, text, uuid, uuid, bigint, uuid, bigint, uuid); Type: FUNCTION; Schema: decodex; Owner: -
 --
 
@@ -16310,7 +16949,18 @@ BEGIN
 				AND other.state IN ('starting','active')
 		)
 		AND NOT EXISTS (
-			SELECT 1 FROM decodex.turns WHERE turn_id=p_turn_id
+			SELECT 1 FROM decodex.turns AS turn_row
+			WHERE turn_row.turn_id=p_turn_id
+				AND NOT (
+					turn_row.conversation_id=p_conversation_id
+					AND turn_row.runtime_session_id=session.runtime_session_id
+					AND turn_row.sequence>1
+					AND turn_row.role='user'
+					AND turn_row.possible_side_effects='unknown'
+					AND turn_row.status='active'
+					AND turn_row.revision=1
+					AND turn_row.completed_at IS NULL
+				)
 		)
 	FOR UPDATE OF session;
 	IF NOT FOUND THEN
@@ -16385,8 +17035,7 @@ CREATE FUNCTION decodex.resolve_routing_snapshot_exact(p_protocol text, p_idempo
     SET search_path TO 'pg_catalog', 'decodex'
     AS $$
 DECLARE request jsonb; replay bytea; policy_row record; run_row record;
-DECLARE conversation_row record; session_row record; resolved timestamptz;
-DECLARE control_row record; task_profile_row record; account_count bigint;
+DECLARE session_row record; resolved timestamptz;
 DECLARE new_snapshot_id uuid; member record; evidence record; quota record;
 DECLARE blockers decodex.routing_blocker[]; sticky_account uuid;
 DECLARE core jsonb; effect jsonb; response bytea;
@@ -16413,310 +17062,6 @@ BEGIN
 		p_protocol,p_idempotency_key,request
 	);
 	IF replay IS NOT NULL THEN RETURN replay; END IF;
-
-	IF p_authority_shape='conversation_account_registry' THEN
-		IF p_routing_policy_id IS NOT NULL
-			OR p_expected_routing_policy_revision IS NOT NULL
-			OR p_expected_account_routing_revision IS NULL
-			OR p_expected_account_routing_revision<=0
-			OR p_consumer_kind<>'conversation_turn'
-			OR p_conversation_id IS NULL
-			OR p_expected_conversation_revision IS NULL
-			OR p_expected_conversation_revision<=0
-			OR p_source_runtime_session_id IS NOT NULL
-			OR p_expected_source_runtime_session_revision IS NOT NULL
-			OR p_turn_id IS NULL
-			OR p_managed_run_id IS NOT NULL
-			OR p_expected_managed_run_revision IS NOT NULL
-			OR p_managed_execution_id IS NOT NULL
-		THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot','malformed_input'
-			);
-		END IF;
-
-		SELECT * INTO conversation_row
-		FROM decodex.conversations
-		WHERE conversation_id=p_conversation_id
-			AND revision=p_expected_conversation_revision
-			AND status='open'
-		FOR UPDATE;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot',
-				'conversation_mismatch'
-			);
-		END IF;
-		IF EXISTS (
-			SELECT 1 FROM decodex.routing_snapshots
-			WHERE authority_shape='conversation_account_registry'
-				AND conversation_id=p_conversation_id
-		) OR EXISTS (
-			SELECT 1 FROM decodex.routing_decisions
-			WHERE authority_shape='conversation_account_registry'
-				AND conversation_id=p_conversation_id
-		) THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot',
-				'initial_routing_already_bound'
-			);
-		END IF;
-
-		SELECT control.* INTO control_row
-		FROM decodex.account_routing_control AS control
-		WHERE control.singleton
-		FOR UPDATE;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot',
-				'routing_authority_mismatch'
-			);
-		END IF;
-
-		PERFORM account.account_id
-		FROM decodex.accounts AS account
-		WHERE account.tombstoned_at IS NULL
-		ORDER BY account.account_id
-		FOR UPDATE OF account;
-
-		SELECT head.current_revision
-		INTO task_profile_row
-		FROM decodex.role_profiles AS head
-		JOIN decodex.role_profile_revisions AS revision
-			ON revision.role=head.role AND revision.revision=head.current_revision
-		WHERE head.role='task'
-		FOR UPDATE OF head,revision;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot',
-				'routing_authority_mismatch'
-			);
-		END IF;
-
-		PERFORM ordering.account_id
-		FROM decodex.account_routing_order AS ordering
-		ORDER BY ordering.position,ordering.account_id
-		FOR SHARE OF ordering;
-		PERFORM quota.account_id
-		FROM decodex.account_quota_facts AS quota
-		JOIN decodex.accounts AS account USING(account_id)
-		WHERE account.tombstoned_at IS NULL
-		ORDER BY quota.account_id,quota.duration_minutes
-		FOR SHARE OF quota;
-
-		SELECT pg_catalog.count(*) INTO account_count
-		FROM decodex.accounts WHERE tombstoned_at IS NULL;
-		IF control_row.revision<>p_expected_account_routing_revision
-			OR account_count<1 OR account_count>512
-			OR EXISTS (
-				SELECT 1
-				FROM decodex.account_routing_order
-				GROUP BY true
-				HAVING pg_catalog.count(*)<>account_count
-					OR pg_catalog.min(position)<>0
-					OR pg_catalog.max(position)<>account_count-1
-					OR pg_catalog.count(DISTINCT position)<>account_count
-			)
-			OR NOT EXISTS (SELECT 1 FROM decodex.account_routing_order)
-			OR EXISTS (
-				SELECT account_id FROM decodex.accounts WHERE tombstoned_at IS NULL
-				EXCEPT
-				SELECT account_id FROM decodex.account_routing_order
-			)
-			OR EXISTS (
-				SELECT account_id FROM decodex.account_routing_order
-				EXCEPT
-				SELECT account_id FROM decodex.accounts WHERE tombstoned_at IS NULL
-			)
-			OR (control_row.mode='fixed') IS DISTINCT FROM
-				(control_row.fixed_account_id IS NOT NULL)
-			OR (
-				control_row.fixed_account_id IS NOT NULL
-				AND NOT EXISTS (
-					SELECT 1 FROM decodex.account_routing_order
-					WHERE account_id=control_row.fixed_account_id
-				)
-			)
-			OR EXISTS (
-				SELECT 1 FROM decodex.runtime_sessions
-				WHERE conversation_id=p_conversation_id
-			)
-			OR EXISTS (
-				SELECT 1 FROM decodex.turns
-				WHERE conversation_id=p_conversation_id OR turn_id=p_turn_id
-			)
-		THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'resolve_routing_snapshot',
-				'routing_authority_mismatch'
-			);
-		END IF;
-
-		resolved:=pg_catalog.clock_timestamp();
-		INSERT INTO decodex.routing_snapshots(
-			authority_shape,account_routing_revision,account_selection_mode,
-			fixed_account_id,task_role,task_role_profile_revision,resolved_at,
-			consumer_kind,conversation_id,conversation_revision,turn_id
-		) VALUES (
-			'conversation_account_registry',control_row.revision,control_row.mode,
-			control_row.fixed_account_id,'task',task_profile_row.current_revision,resolved,
-			p_consumer_kind,p_conversation_id,p_expected_conversation_revision,p_turn_id
-		) RETURNING snapshot_id INTO new_snapshot_id;
-
-		INSERT INTO decodex.routing_snapshot_members(
-			snapshot_id,authority_shape,position,account_id,account_revision,blockers
-		)
-		SELECT new_snapshot_id,'conversation_account_registry',ordering.position+1,
-			account.account_id,account.revision,expected.blockers
-		FROM decodex.accounts AS account
-		JOIN decodex.account_routing_order AS ordering USING(account_id)
-		CROSS JOIN LATERAL (
-			SELECT COALESCE(
-				pg_catalog.array_agg(fact.blocker ORDER BY fact.blocker),
-				ARRAY[]::decodex.routing_blocker[]
-			) AS blockers
-			FROM (
-				SELECT source.blocker
-				FROM (VALUES
-					('account_from_future'::decodex.routing_blocker,
-						account.observed_at>resolved
-						OR account.credential_store_observed_at>resolved),
-					('account_stale'::decodex.routing_blocker,
-						account.observed_at<=resolved
-							AND resolved-account.observed_at>INTERVAL '300 seconds'
-						OR account.credential_store_observed_at<=resolved
-							AND resolved-account.credential_store_observed_at>
-								INTERVAL '300 seconds'),
-					('account_unavailable'::decodex.routing_blocker,
-						account.state='unavailable'
-						OR account.credential_store_observation='unavailable'
-						OR EXISTS (
-							SELECT 1 FROM decodex.account_operations AS operation
-							WHERE operation.account_id=account.account_id
-								AND operation.phase NOT IN ('committed','cancelled')
-						)),
-					('account_unknown'::decodex.routing_blocker,
-						account.state='unknown'
-						OR account.credential_store_observation='unknown'),
-					('account_depleted'::decodex.routing_blocker,
-						account.state='depleted'),
-					('account_auth_failed'::decodex.routing_blocker,
-						account.state='auth_failed'
-						OR account.provider_kind IS NULL
-						OR account.provider_account_id IS NULL
-						OR account.credential_store_schema_version IS DISTINCT FROM 1
-						OR account.credential_version IS NULL
-						OR account.credential_fingerprint IS NULL
-						OR account.credential_writer_operation_id IS NULL
-						OR account.credential_store_observation IN (
-							'missing','mismatch','provider_mismatch'
-						)),
-					('account_plugin_unready'::decodex.routing_blocker,
-						account.state='plugin_unready'),
-					('account_disabled'::decodex.routing_blocker,
-						NOT account.enabled OR account.state='disabled')
-				) AS source(blocker,applies)
-				WHERE source.applies
-			) AS fact
-		) AS expected
-		WHERE account.tombstoned_at IS NULL
-		ORDER BY ordering.position;
-
-		INSERT INTO decodex.routing_snapshot_blockers(
-			snapshot_id,account_id,position,blocker
-		)
-		SELECT member.snapshot_id,member.account_id,item.ordinality::integer,item.blocker
-		FROM decodex.routing_snapshot_members AS member
-		CROSS JOIN LATERAL pg_catalog.unnest(member.blockers)
-			WITH ORDINALITY AS item(blocker,ordinality)
-		WHERE member.snapshot_id=new_snapshot_id;
-
-		INSERT INTO decodex.routing_snapshot_quota_facts(
-			snapshot_id,authority_shape,account_id,position,window_class,
-			duration_minutes,observed_at_micros,resets_at_micros,
-			observation_state,used_percent,error_code
-		)
-		SELECT new_snapshot_id,'conversation_account_registry',member.account_id,
-			definition.position,definition.window_class,definition.duration_minutes,
-			quota.observed_at_micros,quota.resets_at_micros,
-			CASE
-				WHEN quota.account_id IS NULL THEN 'missing'::decodex.account_registry_quota_state
-				WHEN quota.error_code IS NULL THEN 'current'::decodex.account_registry_quota_state
-				ELSE 'observation_error'::decodex.account_registry_quota_state
-			END,
-			quota.used_percent,quota.error_code
-		FROM decodex.routing_snapshot_members AS member
-		CROSS JOIN (VALUES
-			(1::smallint,'five_hour'::decodex.quota_window_class,300::smallint),
-			(2::smallint,'seven_day'::decodex.quota_window_class,10080::smallint)
-		) AS definition(position,window_class,duration_minutes)
-		LEFT JOIN decodex.account_quota_facts AS quota
-			ON quota.account_id=member.account_id
-			AND quota.duration_minutes=definition.duration_minutes
-		WHERE member.snapshot_id=new_snapshot_id
-		ORDER BY member.position,definition.position;
-
-		core:=pg_catalog.jsonb_build_object(
-			'operation','resolve_routing_snapshot',
-			'authority_shape','conversation_account_registry',
-			'snapshot_id',new_snapshot_id,
-			'account_routing_revision',control_row.revision,
-			'account_selection_mode',control_row.mode,
-			'fixed_account_id',control_row.fixed_account_id,
-			'task_role_profile_revision',task_profile_row.current_revision,
-			'consumer_kind',p_consumer_kind,
-			'conversation_id',p_conversation_id,
-			'conversation_revision',p_expected_conversation_revision,
-			'turn_id',p_turn_id,
-			'resolved_at_micros',(extract(epoch FROM resolved)*1000000)::bigint,
-			'members',(
-				SELECT pg_catalog.jsonb_agg(
-					pg_catalog.jsonb_build_object(
-						'position',member.position,
-						'account_id',member.account_id,
-						'account_revision',member.account_revision,
-						'blockers',member.blockers
-					) ORDER BY member.position
-				)
-				FROM decodex.routing_snapshot_members AS member
-				WHERE member.snapshot_id=new_snapshot_id
-			),
-			'quota_facts',(
-				SELECT pg_catalog.jsonb_agg(
-					pg_catalog.jsonb_build_object(
-						'account_id',quota.account_id,
-						'position',quota.position,
-						'window_class',quota.window_class,
-						'duration_minutes',quota.duration_minutes,
-						'observation_state',quota.observation_state,
-						'used_percent',quota.used_percent,
-						'observed_at_micros',quota.observed_at_micros,
-						'resets_at_micros',quota.resets_at_micros,
-						'error_code',quota.error_code
-					) ORDER BY member.position,quota.position
-				)
-				FROM decodex.routing_snapshot_quota_facts AS quota
-				JOIN decodex.routing_snapshot_members AS member USING(snapshot_id,account_id)
-				WHERE quota.snapshot_id=new_snapshot_id
-			)
-		);
-		effect:=core||pg_catalog.jsonb_build_object(
-			'effect_digest_source',core::text,
-			'effect_digest',pg_catalog.encode(
-				public.digest(pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'
-			)
-		);
-		response:=pg_catalog.convert_to(
-			pg_catalog.jsonb_build_object('classification','success','effect',effect)::text,
-			'UTF8'
-		);
-		UPDATE decodex.exact_command_receipts
-		SET receipt_state='completed_success',outcome_class='success',
-			effect_envelope=effect,response_bytes=response,
-			completed_at=pg_catalog.clock_timestamp()
-		WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
-		RETURN response;
-	END IF;
 
 	IF p_authority_shape<>'managed_run_project_policy'
 		OR p_routing_policy_id IS NULL
@@ -17242,7 +17587,6 @@ DECLARE run_row decodex.managed_runs%ROWTYPE; selected_account uuid;
 DECLARE selected_position integer; decided timestamptz; decided_micros bigint;
 DECLARE decision_kind text; no_route_value text; ready_micros bigint;
 DECLARE decision_uuid uuid; core jsonb; effect jsonb; response bytea;
-DECLARE control_row record; task_profile_row record; account_count bigint;
 BEGIN
 	request:=pg_catalog.jsonb_build_object(
 		'operation','route_account',
@@ -17266,514 +17610,6 @@ BEGIN
 		p_protocol,p_idempotency_key,request
 	);
 	IF replay IS NOT NULL THEN RETURN replay; END IF;
-	IF p_authority_shape='conversation_account_registry' THEN
-		IF p_operation_id IS NULL
-			OR p_routing_policy_id IS NOT NULL
-			OR p_expected_routing_policy_revision IS NOT NULL
-			OR p_expected_account_routing_revision IS NULL
-			OR p_expected_account_routing_revision<=0
-			OR p_consumer_kind<>'conversation_turn'
-			OR p_conversation_id IS NULL
-			OR p_expected_conversation_revision IS NULL
-			OR p_expected_conversation_revision<=0
-			OR p_source_runtime_session_id IS NOT NULL
-			OR p_expected_source_runtime_session_revision IS NOT NULL
-			OR p_turn_id IS NULL
-			OR p_managed_run_id IS NOT NULL
-			OR p_expected_managed_run_revision IS NOT NULL
-			OR p_managed_execution_id IS NOT NULL
-		THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account','malformed_input'
-			);
-		END IF;
-
-		PERFORM 1
-		FROM decodex.conversations
-		WHERE conversation_id=p_conversation_id
-			AND revision=p_expected_conversation_revision
-			AND status='open'
-		FOR UPDATE;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account','stale_consumer'
-			);
-		END IF;
-		IF EXISTS (
-			SELECT 1 FROM decodex.routing_decisions
-			WHERE authority_shape='conversation_account_registry'
-				AND conversation_id=p_conversation_id
-		) THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account',
-				'initial_routing_already_bound'
-			);
-		END IF;
-
-		SELECT control.* INTO control_row
-		FROM decodex.account_routing_control AS control
-		WHERE control.singleton
-		FOR UPDATE;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account',
-				'concurrent_authority_change'
-			);
-		END IF;
-		PERFORM account.account_id
-		FROM decodex.accounts AS account
-		WHERE account.tombstoned_at IS NULL
-		ORDER BY account.account_id
-		FOR UPDATE OF account;
-		SELECT head.current_revision
-		INTO task_profile_row
-		FROM decodex.role_profiles AS head
-		JOIN decodex.role_profile_revisions AS revision
-			ON revision.role=head.role AND revision.revision=head.current_revision
-		WHERE head.role='task'
-		FOR UPDATE OF head,revision;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account',
-				'concurrent_authority_change'
-			);
-		END IF;
-		PERFORM ordering.account_id
-		FROM decodex.account_routing_order AS ordering
-		ORDER BY ordering.position,ordering.account_id
-		FOR SHARE OF ordering;
-		PERFORM quota.account_id
-		FROM decodex.account_quota_facts AS quota
-		JOIN decodex.accounts AS account USING(account_id)
-		WHERE account.tombstoned_at IS NULL
-		ORDER BY quota.account_id,quota.duration_minutes
-		FOR SHARE OF quota;
-
-		SELECT snapshot.* INTO snapshot_row
-		FROM decodex.routing_snapshots AS snapshot
-		WHERE snapshot.authority_shape='conversation_account_registry'
-			AND snapshot.account_routing_revision=p_expected_account_routing_revision
-			AND snapshot.consumer_kind=p_consumer_kind
-			AND snapshot.conversation_id=p_conversation_id
-			AND snapshot.conversation_revision=p_expected_conversation_revision
-			AND snapshot.turn_id=p_turn_id
-		FOR SHARE;
-		IF NOT FOUND THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account','snapshot_missing'
-			);
-		END IF;
-
-		SELECT pg_catalog.count(*) INTO account_count
-		FROM decodex.accounts WHERE tombstoned_at IS NULL;
-		IF control_row.revision<>snapshot_row.account_routing_revision
-			OR control_row.mode<>snapshot_row.account_selection_mode
-			OR control_row.fixed_account_id IS DISTINCT FROM snapshot_row.fixed_account_id
-			OR task_profile_row.current_revision<>snapshot_row.task_role_profile_revision
-			OR account_count<1 OR account_count>512
-			OR EXISTS (
-				SELECT member.position,member.account_id,member.account_revision
-				FROM decodex.routing_snapshot_members AS member
-				WHERE member.snapshot_id=snapshot_row.snapshot_id
-				EXCEPT
-				SELECT ordering.position+1,account.account_id,account.revision
-				FROM decodex.accounts AS account
-				JOIN decodex.account_routing_order AS ordering USING(account_id)
-				WHERE account.tombstoned_at IS NULL
-			)
-			OR EXISTS (
-				SELECT ordering.position+1,account.account_id,account.revision
-				FROM decodex.accounts AS account
-				JOIN decodex.account_routing_order AS ordering USING(account_id)
-				WHERE account.tombstoned_at IS NULL
-				EXCEPT
-				SELECT member.position,member.account_id,member.account_revision
-				FROM decodex.routing_snapshot_members AS member
-				WHERE member.snapshot_id=snapshot_row.snapshot_id
-			)
-			OR EXISTS (
-				SELECT 1
-				FROM decodex.routing_snapshot_members AS member
-				JOIN decodex.accounts AS account ON account.account_id=member.account_id
-				CROSS JOIN LATERAL (
-					SELECT COALESCE(
-						pg_catalog.array_agg(fact.blocker ORDER BY fact.blocker),
-						ARRAY[]::decodex.routing_blocker[]
-					) AS blockers
-					FROM (
-						SELECT source.blocker
-						FROM (VALUES
-							('account_from_future'::decodex.routing_blocker,
-								account.observed_at>snapshot_row.resolved_at
-								OR account.credential_store_observed_at>snapshot_row.resolved_at),
-							('account_stale'::decodex.routing_blocker,
-								account.observed_at<=snapshot_row.resolved_at
-								AND snapshot_row.resolved_at-account.observed_at>
-									INTERVAL '300 seconds'
-								OR account.credential_store_observed_at<=
-									snapshot_row.resolved_at
-									AND snapshot_row.resolved_at-
-										account.credential_store_observed_at>
-										INTERVAL '300 seconds'),
-							('account_unavailable'::decodex.routing_blocker,
-								account.state='unavailable'
-								OR account.credential_store_observation='unavailable'
-								OR EXISTS (
-									SELECT 1 FROM decodex.account_operations AS operation
-									WHERE operation.account_id=account.account_id
-										AND operation.phase NOT IN ('committed','cancelled')
-								)),
-							('account_unknown'::decodex.routing_blocker,
-								account.state='unknown'
-								OR account.credential_store_observation='unknown'),
-							('account_depleted'::decodex.routing_blocker,
-								account.state='depleted'),
-							('account_auth_failed'::decodex.routing_blocker,
-								account.state='auth_failed'
-								OR account.provider_kind IS NULL
-								OR account.provider_account_id IS NULL
-								OR account.credential_store_schema_version IS DISTINCT FROM 1
-								OR account.credential_version IS NULL
-								OR account.credential_fingerprint IS NULL
-								OR account.credential_writer_operation_id IS NULL
-								OR account.credential_store_observation IN (
-									'missing','mismatch','provider_mismatch'
-								)),
-							('account_plugin_unready'::decodex.routing_blocker,
-								account.state='plugin_unready'),
-							('account_disabled'::decodex.routing_blocker,
-								NOT account.enabled OR account.state='disabled')
-						) AS source(blocker,applies)
-						WHERE source.applies
-					) AS fact
-				) AS expected
-				WHERE member.snapshot_id=snapshot_row.snapshot_id
-					AND member.blockers IS DISTINCT FROM expected.blockers
-			)
-			OR EXISTS (
-				WITH expected AS (
-					SELECT member.account_id,definition.position,
-						definition.window_class,definition.duration_minutes,
-						CASE
-							WHEN quota.account_id IS NULL THEN
-								'missing'::decodex.account_registry_quota_state
-							WHEN quota.error_code IS NULL THEN
-								'current'::decodex.account_registry_quota_state
-							ELSE 'observation_error'::decodex.account_registry_quota_state
-						END AS observation_state,
-						quota.used_percent,quota.observed_at_micros,
-						quota.resets_at_micros,quota.error_code
-					FROM decodex.routing_snapshot_members AS member
-					CROSS JOIN (VALUES
-						(1::smallint,'five_hour'::decodex.quota_window_class,300::smallint),
-						(2::smallint,'seven_day'::decodex.quota_window_class,10080::smallint)
-					) AS definition(position,window_class,duration_minutes)
-					LEFT JOIN decodex.account_quota_facts AS quota
-						ON quota.account_id=member.account_id
-						AND quota.duration_minutes=definition.duration_minutes
-					WHERE member.snapshot_id=snapshot_row.snapshot_id
-				), difference AS (
-					(
-						SELECT account_id,position,window_class,duration_minutes,
-							observation_state,used_percent,observed_at_micros,
-							resets_at_micros,error_code
-						FROM expected
-						EXCEPT
-						SELECT account_id,position,window_class,duration_minutes,
-							observation_state,used_percent,observed_at_micros,
-							resets_at_micros,error_code
-						FROM decodex.routing_snapshot_quota_facts
-						WHERE snapshot_id=snapshot_row.snapshot_id
-					)
-					UNION ALL
-					(
-						SELECT account_id,position,window_class,duration_minutes,
-							observation_state,used_percent,observed_at_micros,
-							resets_at_micros,error_code
-						FROM decodex.routing_snapshot_quota_facts
-						WHERE snapshot_id=snapshot_row.snapshot_id
-						EXCEPT
-						SELECT account_id,position,window_class,duration_minutes,
-							observation_state,used_percent,observed_at_micros,
-							resets_at_micros,error_code
-						FROM expected
-					)
-				)
-				SELECT 1 FROM difference
-			)
-			OR EXISTS (
-				SELECT 1 FROM decodex.runtime_sessions
-				WHERE conversation_id=p_conversation_id
-			)
-			OR EXISTS (
-				SELECT 1 FROM decodex.turns
-				WHERE conversation_id=p_conversation_id OR turn_id=p_turn_id
-			)
-		THEN
-			RETURN decodex.complete_exact_routing_rejection(
-				p_protocol,p_idempotency_key,'route_account',
-				'concurrent_authority_change'
-			);
-		END IF;
-
-		decided:=pg_catalog.clock_timestamp();
-		decided_micros:=(extract(epoch FROM decided)*1000000)::bigint;
-		decision_uuid:=pg_catalog.gen_random_uuid();
-
-		INSERT INTO decodex.routing_decision_member_refs(
-			decision_id,snapshot_id,position,account_id
-		)
-		SELECT decision_uuid,snapshot_id,position,account_id
-		FROM decodex.routing_snapshot_members
-		WHERE snapshot_id=snapshot_row.snapshot_id
-		ORDER BY position;
-
-		INSERT INTO decodex.routing_decision_quota_refs(
-			decision_id,snapshot_id,authority_shape,account_id,position,
-			window_class,duration_minutes,observed_at_micros,resets_at_micros,
-			observation_state,used_percent,error_code
-		)
-		SELECT decision_uuid,snapshot_id,'conversation_account_registry',account_id,
-			position,window_class,duration_minutes,observed_at_micros,resets_at_micros,
-			observation_state,used_percent,error_code
-		FROM decodex.routing_snapshot_quota_facts
-		WHERE snapshot_id=snapshot_row.snapshot_id
-		ORDER BY account_id,position;
-
-		SELECT member.position,member.account_id
-		INTO selected_position,selected_account
-		FROM decodex.routing_snapshot_members AS member
-		WHERE member.snapshot_id=snapshot_row.snapshot_id
-			AND (
-				snapshot_row.account_selection_mode='balanced'
-				OR member.account_id=snapshot_row.fixed_account_id
-			)
-			AND pg_catalog.cardinality(member.blockers)=0
-			AND NOT EXISTS (
-				SELECT 1
-				FROM decodex.routing_decision_quota_refs AS quota
-				WHERE quota.decision_id=decision_uuid
-					AND quota.account_id=member.account_id
-					AND (
-						quota.observation_state<>'current'
-						OR quota.observed_at_micros>decided_micros
-						OR decided_micros-quota.observed_at_micros>300000000
-						OR quota.resets_at_micros<=decided_micros
-						OR quota.used_percent>=100
-					)
-			)
-		ORDER BY member.position
-		LIMIT 1;
-
-		IF selected_account IS NOT NULL THEN
-			decision_kind:='selected';
-		ELSIF EXISTS (
-			SELECT 1
-			FROM decodex.routing_snapshot_members AS member
-			WHERE member.snapshot_id=snapshot_row.snapshot_id
-				AND (
-					snapshot_row.account_selection_mode='balanced'
-					OR member.account_id=snapshot_row.fixed_account_id
-				)
-				AND (
-					pg_catalog.cardinality(member.blockers)>0
-					OR EXISTS (
-						SELECT 1
-						FROM decodex.routing_decision_quota_refs AS quota
-						WHERE quota.decision_id=decision_uuid
-							AND quota.account_id=member.account_id
-							AND (
-								quota.observation_state IN ('missing','observation_error')
-								OR (
-									quota.observation_state='current'
-									AND (
-										quota.observed_at_micros>decided_micros
-										OR decided_micros-quota.observed_at_micros>300000000
-										OR quota.resets_at_micros<=decided_micros
-									)
-								)
-							)
-					)
-				)
-		) THEN
-			decision_kind:='no_route';
-		ELSE
-			decision_kind:='waiting';
-		END IF;
-
-		WITH evaluated AS (
-			SELECT member.*
-			FROM decodex.routing_snapshot_members AS member
-			WHERE member.snapshot_id=snapshot_row.snapshot_id
-				AND (
-					snapshot_row.account_selection_mode='fixed'
-					AND member.account_id=snapshot_row.fixed_account_id
-					OR snapshot_row.account_selection_mode='balanced'
-					AND (
-						selected_account IS NULL OR member.position<=selected_position
-					)
-				)
-		), expected AS (
-			SELECT member.account_id,item.ordinality::integer AS position,item.blocker
-			FROM evaluated AS member
-			CROSS JOIN LATERAL pg_catalog.unnest(member.blockers)
-				WITH ORDINALITY AS item(blocker,ordinality)
-			UNION ALL
-			SELECT member.account_id,
-				pg_catalog.cardinality(member.blockers)+quota.position,
-				CASE
-					WHEN quota.observation_state='missing' THEN
-						CASE quota.window_class
-							WHEN 'five_hour' THEN 'quota_five_hour_missing'
-							ELSE 'quota_seven_day_missing'
-						END
-					WHEN quota.observation_state='observation_error' THEN
-						CASE quota.window_class
-							WHEN 'five_hour' THEN 'quota_five_hour_unknown'
-							ELSE 'quota_seven_day_unknown'
-						END
-					WHEN quota.observed_at_micros>decided_micros THEN
-						CASE quota.window_class
-							WHEN 'five_hour' THEN 'quota_five_hour_from_future'
-							ELSE 'quota_seven_day_from_future'
-						END
-					WHEN decided_micros-quota.observed_at_micros>300000000 THEN
-						CASE quota.window_class
-							WHEN 'five_hour' THEN 'quota_five_hour_stale'
-							ELSE 'quota_seven_day_stale'
-						END
-					WHEN quota.resets_at_micros<=decided_micros THEN
-						CASE quota.window_class
-							WHEN 'five_hour' THEN 'quota_five_hour_reset_elapsed'
-							ELSE 'quota_seven_day_reset_elapsed'
-						END
-				END::decodex.routing_blocker
-			FROM evaluated AS member
-			JOIN decodex.routing_decision_quota_refs AS quota
-				ON quota.decision_id=decision_uuid
-				AND quota.account_id=member.account_id
-			WHERE quota.observation_state<>'current'
-				OR quota.observed_at_micros>decided_micros
-				OR decided_micros-quota.observed_at_micros>300000000
-				OR quota.resets_at_micros<=decided_micros
-		)
-		INSERT INTO decodex.routing_decision_blocker_refs(
-			decision_id,snapshot_id,account_id,position,blocker
-		)
-		SELECT decision_uuid,snapshot_row.snapshot_id,account_id,position,blocker
-		FROM expected
-		ORDER BY account_id,position;
-
-		WITH evaluated AS (
-			SELECT member.*
-			FROM decodex.routing_snapshot_members AS member
-			WHERE member.snapshot_id=snapshot_row.snapshot_id
-				AND (
-					snapshot_row.account_selection_mode='fixed'
-					AND member.account_id=snapshot_row.fixed_account_id
-					OR snapshot_row.account_selection_mode='balanced'
-					AND (
-						selected_account IS NULL OR member.position<=selected_position
-					)
-				)
-		)
-		INSERT INTO decodex.routing_decision_exclusions(
-			decision_id,authority_shape,account_id,member_position,window_class,
-			duration_minutes,used_percent,observed_at_micros,resets_at_micros,reason
-		)
-		SELECT decision_uuid,'conversation_account_registry',member.account_id,
-			member.position,quota.window_class,quota.duration_minutes,quota.used_percent,
-			quota.observed_at_micros,quota.resets_at_micros,'usage_depleted'
-		FROM evaluated AS member
-		JOIN decodex.routing_decision_quota_refs AS quota
-			ON quota.decision_id=decision_uuid
-			AND quota.account_id=member.account_id
-		WHERE quota.observation_state='current'
-			AND quota.observed_at_micros<=decided_micros
-			AND decided_micros-quota.observed_at_micros<=300000000
-			AND quota.resets_at_micros>decided_micros
-			AND quota.used_percent>=100
-		ORDER BY member.position,quota.position;
-
-		INSERT INTO decodex.routing_decisions(
-			decision_id,operation_id,authority_shape,snapshot_id,
-			account_routing_revision,consumer_kind,conversation_id,
-			conversation_revision,turn_id,kind,selected_account_id,decided_at
-		) VALUES (
-			decision_uuid,p_operation_id,'conversation_account_registry',
-			snapshot_row.snapshot_id,snapshot_row.account_routing_revision,
-			p_consumer_kind,p_conversation_id,p_expected_conversation_revision,
-			p_turn_id,decision_kind::decodex.routing_decision_kind,selected_account,decided
-		);
-
-		core:=pg_catalog.jsonb_build_object(
-			'operation','route_account',
-			'authority_shape','conversation_account_registry',
-			'decision_id',decision_uuid,
-			'operation_id',p_operation_id,
-			'snapshot_id',snapshot_row.snapshot_id,
-			'account_routing_revision',snapshot_row.account_routing_revision,
-			'consumer_kind',p_consumer_kind,
-			'conversation_id',p_conversation_id,
-			'conversation_revision',p_expected_conversation_revision,
-			'turn_id',p_turn_id,
-			'kind',decision_kind,
-			'selected_account_id',selected_account,
-			'waiting_ready_at_micros',NULL,
-			'no_route_reason',NULL,
-			'decided_at_micros',decided_micros,
-			'exclusions',(
-				SELECT COALESCE(
-					pg_catalog.jsonb_agg(
-						pg_catalog.jsonb_build_object(
-							'account_id',exclusion.account_id,
-							'member_position',exclusion.member_position,
-							'window_class',exclusion.window_class,
-							'duration_minutes',exclusion.duration_minutes,
-							'used_percent',exclusion.used_percent,
-							'observed_at_micros',exclusion.observed_at_micros,
-							'resets_at_micros',exclusion.resets_at_micros
-						) ORDER BY exclusion.member_position,exclusion.window_class
-					),
-					'[]'::jsonb
-				)
-				FROM decodex.routing_decision_exclusions AS exclusion
-				WHERE exclusion.decision_id=decision_uuid
-			),
-			'causes',(
-				SELECT COALESCE(
-					pg_catalog.jsonb_agg(
-						pg_catalog.jsonb_build_object(
-							'account_id',blocker.account_id,
-							'blocker',blocker.blocker
-						) ORDER BY member.position,blocker.position
-					),
-					'[]'::jsonb
-				)
-				FROM decodex.routing_decision_blocker_refs AS blocker
-				JOIN decodex.routing_snapshot_members AS member
-					ON member.snapshot_id=blocker.snapshot_id
-					AND member.account_id=blocker.account_id
-				WHERE blocker.decision_id=decision_uuid
-			)
-		);
-		effect:=core||pg_catalog.jsonb_build_object(
-			'effect_digest_source',core::text,
-			'effect_digest',pg_catalog.encode(
-				public.digest(pg_catalog.convert_to(core::text,'UTF8'),'sha256'),'hex'
-			)
-		);
-		response:=pg_catalog.convert_to(
-			pg_catalog.jsonb_build_object('classification','success','effect',effect)::text,
-			'UTF8'
-		);
-		UPDATE decodex.exact_command_receipts
-		SET receipt_state='completed_success',outcome_class='success',
-			effect_envelope=effect,response_bytes=response,
-			completed_at=pg_catalog.clock_timestamp()
-		WHERE protocol_version=p_protocol AND idempotency_key=p_idempotency_key;
-		RETURN response;
-	END IF;
 	IF p_operation_id IS NULL
 		OR p_authority_shape<>'managed_run_project_policy'
 		OR p_routing_policy_id IS NULL
@@ -20665,15 +20501,35 @@ CREATE TABLE decodex.continuation_plans (
 CREATE TABLE decodex.conversations (
     conversation_id uuid NOT NULL,
     title text NOT NULL,
+    initial_quick_task_message text,
+    initial_quick_task_working_directory text,
     status decodex.conversation_status DEFAULT 'open'::decodex.conversation_status NOT NULL,
     revision bigint DEFAULT 1 NOT NULL,
     created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     updated_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
     CONSTRAINT conversations_finite_timestamps CHECK ((isfinite(created_at) AND isfinite(updated_at))),
+    CONSTRAINT conversations_initial_quick_task_request CHECK ((((initial_quick_task_message IS NULL) AND (initial_quick_task_working_directory IS NULL)) OR ((initial_quick_task_message IS NOT NULL) AND (octet_length(initial_quick_task_message) BETWEEN 1 AND 16384) AND (initial_quick_task_working_directory IS NOT NULL) AND (octet_length(initial_quick_task_working_directory) BETWEEN 1 AND 4096) AND (left(initial_quick_task_working_directory, 1) = '/'::text) AND (initial_quick_task_working_directory !~ '[[:cntrl:]]'::text)))),
     CONSTRAINT conversations_no_credentials CHECK ((NOT decodex.has_credential_material(title))),
     CONSTRAINT conversations_revision_check CHECK ((revision > 0)),
     CONSTRAINT conversations_timestamp_order CHECK ((updated_at >= created_at)),
     CONSTRAINT conversations_title_check CHECK (((octet_length(title) >= 1) AND (octet_length(title) <= 512)))
+);
+
+
+--
+-- Name: conversation_routing_successors; Type: TABLE; Schema: decodex; Owner: -
+--
+
+CREATE TABLE decodex.conversation_routing_successors (
+    source_conversation_id uuid NOT NULL,
+    successor_conversation_id uuid NOT NULL,
+    source_routing_decision_id uuid NOT NULL,
+    source_revision bigint NOT NULL,
+    successor_revision bigint DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT clock_timestamp() NOT NULL,
+    CONSTRAINT conversation_routing_successors_distinct CHECK ((source_conversation_id <> successor_conversation_id)),
+    CONSTRAINT conversation_routing_successors_finite_time CHECK (isfinite(created_at)),
+    CONSTRAINT conversation_routing_successors_revisions CHECK (((source_revision > 1) AND (successor_revision = 1)))
 );
 
 
@@ -21719,7 +21575,7 @@ CREATE TABLE decodex.routing_decision_quota_refs (
     used_percent smallint,
     error_code decodex.account_quota_observation_error,
     CONSTRAINT routing_decision_quota_identity CHECK (((("position" = 1) AND (window_class = 'five_hour'::decodex.quota_window_class) AND (duration_minutes = 300)) OR (("position" = 2) AND (window_class = 'seven_day'::decodex.quota_window_class) AND (duration_minutes = 10080)))),
-    CONSTRAINT routing_decision_quota_provenance CHECK ((((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (observation_state IS NULL) AND (used_percent IS NULL) AND (error_code IS NULL) AND (((observation_revision IS NULL) AND (remaining_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (confidence IS NULL) AND (source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL)) OR ((observation_revision > 0) AND ((remaining_percent >= 0) AND (remaining_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND ((resets_at_micros IS NULL) OR ((resets_at_micros >= 0) AND (resets_at_micros <= '253402300799999999'::bigint))) AND (confidence IS NOT NULL) AND (((source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL)) OR ((source_id <> ''::text) AND (octet_length(source_id) <= 256) AND (NOT decodex.has_credential_material(source_id)) AND (timestamp_precision = 'unix_microsecond'::text) AND (raw_observed_at = (observed_at_micros)::text) AND ((resets_at_micros IS NULL) = (raw_resets_at IS NULL)) AND ((raw_resets_at IS NULL) OR (raw_resets_at = (resets_at_micros)::text))))))) OR ((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (observation_revision IS NULL) AND (remaining_percent IS NULL) AND (confidence IS NULL) AND (source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL) AND (((observation_state = 'missing'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (error_code IS NULL)) OR ((observation_state = 'current'::decodex.account_registry_quota_state) AND ((used_percent >= 0) AND (used_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros > observed_at_micros) AND (resets_at_micros <= '253402300799999999'::bigint) AND (error_code IS NULL)) OR ((observation_state = 'observation_error'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros IS NULL) AND (error_code IS NOT NULL))))))),
+    CONSTRAINT routing_decision_quota_provenance CHECK ((((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (observation_state IS NULL) AND (used_percent IS NULL) AND (error_code IS NULL) AND (((observation_revision IS NULL) AND (remaining_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (confidence IS NULL) AND (source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL)) OR ((observation_revision > 0) AND ((remaining_percent >= 0) AND (remaining_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND ((resets_at_micros IS NULL) OR ((resets_at_micros >= 0) AND (resets_at_micros <= '253402300799999999'::bigint))) AND (confidence IS NOT NULL) AND (((source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL)) OR ((source_id <> ''::text) AND (octet_length(source_id) <= 256) AND (NOT decodex.has_credential_material(source_id)) AND (timestamp_precision = 'unix_microsecond'::text) AND (raw_observed_at = (observed_at_micros)::text) AND ((resets_at_micros IS NULL) = (raw_resets_at IS NULL)) AND ((raw_resets_at IS NULL) OR (raw_resets_at = (resets_at_micros)::text))))))) OR ((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (observation_revision IS NULL) AND (remaining_percent IS NULL) AND (confidence IS NULL) AND (source_id IS NULL) AND (timestamp_precision IS NULL) AND (raw_observed_at IS NULL) AND (raw_resets_at IS NULL) AND (((observation_state = 'missing'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (error_code IS NULL)) OR ((observation_state = 'current'::decodex.account_registry_quota_state) AND ((used_percent >= 0) AND (used_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros > observed_at_micros) AND (resets_at_micros <= '253402300799999999'::bigint) AND (error_code IS NULL)) OR ((observation_state = 'observation_error'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros IS NULL) AND (error_code IS NOT NULL)))))),
     CONSTRAINT routing_decision_quota_refs_position_check CHECK (("position" = ANY (ARRAY[1, 2])))
 );
 
@@ -21889,7 +21745,7 @@ CREATE TABLE decodex.routing_snapshot_members (
     CONSTRAINT routing_snapshot_members_evidence_pair CHECK ((((evidence_id IS NULL) = (evidence_revision IS NULL)) AND ((evidence_id IS NULL) = (evidence_account_revision IS NULL)) AND ((evidence_id IS NULL) = (evidence_role IS NULL)) AND ((evidence_id IS NULL) = (evidence_role_profile_revision IS NULL)) AND ((evidence_id IS NULL) = (evidence_build_id IS NULL)) AND ((evidence_id IS NULL) = (process_id IS NULL)) AND ((evidence_id IS NULL) = (schema_fingerprint IS NULL)))),
     CONSTRAINT routing_snapshot_members_evidence_revision_check CHECK ((evidence_revision > 0)),
     CONSTRAINT routing_snapshot_members_evidence_role_profile_revision_check CHECK ((evidence_role_profile_revision > 0)),
-    CONSTRAINT routing_snapshot_members_authority_shape CHECK ((((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (disposition IS NULL) AND (display_label IS NULL) AND (account_state IS NULL) AND (account_observed_at_utc IS NULL) AND (evidence_id IS NULL) AND (evidence_revision IS NULL) AND (evidence_account_revision IS NULL) AND (evidence_role IS NULL) AND (evidence_role_profile_revision IS NULL) AND (evidence_build_id IS NULL) AND (process_id IS NULL) AND (schema_fingerprint IS NULL) AND (sticky IS NULL) AND (blockers <@ ARRAY['account_from_future'::decodex.routing_blocker, 'account_stale'::decodex.routing_blocker, 'account_unavailable'::decodex.routing_blocker, 'account_unknown'::decodex.routing_blocker, 'account_depleted'::decodex.routing_blocker, 'account_auth_failed'::decodex.routing_blocker, 'account_plugin_unready'::decodex.routing_blocker, 'account_disabled'::decodex.routing_blocker])) OR ((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (disposition IS NOT NULL) AND (display_label IS NOT NULL) AND (account_state IS NOT NULL) AND (account_observed_at_utc IS NOT NULL) AND (sticky IS NOT NULL)))),
+    CONSTRAINT routing_snapshot_members_authority_shape CHECK ((((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (disposition IS NULL) AND (display_label IS NOT NULL) AND (account_state IS NOT NULL) AND (account_observed_at_utc IS NULL) AND (evidence_id IS NULL) AND (evidence_revision IS NULL) AND (evidence_account_revision IS NULL) AND (evidence_role IS NULL) AND (evidence_role_profile_revision IS NULL) AND (evidence_build_id IS NULL) AND (process_id IS NULL) AND (schema_fingerprint IS NULL) AND (sticky IS NULL) AND (blockers <@ ARRAY['account_from_future'::decodex.routing_blocker, 'account_stale'::decodex.routing_blocker, 'account_unavailable'::decodex.routing_blocker, 'account_unknown'::decodex.routing_blocker, 'account_depleted'::decodex.routing_blocker, 'account_auth_failed'::decodex.routing_blocker, 'account_plugin_unready'::decodex.routing_blocker, 'account_disabled'::decodex.routing_blocker])) OR ((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (disposition IS NOT NULL) AND (display_label IS NOT NULL) AND (account_state IS NOT NULL) AND (account_observed_at_utc IS NOT NULL) AND (sticky IS NOT NULL)))),
     CONSTRAINT routing_snapshot_members_facts CHECK ((((account_observed_at_utc IS NULL) OR ((account_observed_at_utc COLLATE "C") ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}[.][0-9]{6}Z$'::text)) AND ((display_label IS NULL) OR ((octet_length(display_label) >= 1) AND (octet_length(display_label) <= 128) AND (NOT decodex.has_credential_material(display_label)))) AND ((evidence_build_id IS NULL) OR ((evidence_build_id COLLATE "C") ~ '^sha256:[0-9a-f]{64}$'::text)) AND ((schema_fingerprint IS NULL) OR ((schema_fingerprint COLLATE "C") ~ '^[0-9a-f]{64}$'::text)))),
     CONSTRAINT routing_snapshot_members_position_check CHECK (("position" > 0))
 );
@@ -21915,7 +21771,7 @@ CREATE TABLE decodex.routing_snapshot_quota_facts (
     used_percent smallint,
     error_code decodex.account_quota_observation_error,
     CONSTRAINT routing_snapshot_quota_facts_identity CHECK (((("position" = 1) AND (window_class = 'five_hour'::decodex.quota_window_class) AND (duration_minutes = 300)) OR (("position" = 2) AND (window_class = 'seven_day'::decodex.quota_window_class) AND (duration_minutes = 10080)))),
-    CONSTRAINT routing_snapshot_quota_facts_observation CHECK ((((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (observation_state IS NULL) AND (used_percent IS NULL) AND (error_code IS NULL) AND ((remaining_percent IS NULL) OR ((remaining_percent >= 0) AND (remaining_percent <= 100))) AND ((observation_revision IS NULL) = (observed_at_micros IS NULL)) AND ((observation_revision IS NULL) = (confidence IS NULL)) AND ((observation_revision IS NOT NULL) OR ((remaining_percent IS NULL) AND (resets_at_micros IS NULL))) AND ((observation_revision IS NULL) OR (observation_revision > 0)) AND ((observed_at_micros IS NULL) OR (observed_at_micros >= 0)) AND ((resets_at_micros IS NULL) OR (resets_at_micros >= 0))) OR ((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (observation_revision IS NULL) AND (remaining_percent IS NULL) AND (confidence IS NULL) AND (((observation_state = 'missing'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (error_code IS NULL)) OR ((observation_state = 'current'::decodex.account_registry_quota_state) AND ((used_percent >= 0) AND (used_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros > observed_at_micros) AND (resets_at_micros <= '253402300799999999'::bigint) AND (error_code IS NULL)) OR ((observation_state = 'observation_error'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros IS NULL) AND (error_code IS NOT NULL))))))),
+    CONSTRAINT routing_snapshot_quota_facts_observation CHECK ((((authority_shape = 'managed_run_project_policy'::decodex.routing_authority_shape) AND (observation_state IS NULL) AND (used_percent IS NULL) AND (error_code IS NULL) AND ((remaining_percent IS NULL) OR ((remaining_percent >= 0) AND (remaining_percent <= 100))) AND ((observation_revision IS NULL) = (observed_at_micros IS NULL)) AND ((observation_revision IS NULL) = (confidence IS NULL)) AND ((observation_revision IS NOT NULL) OR ((remaining_percent IS NULL) AND (resets_at_micros IS NULL))) AND ((observation_revision IS NULL) OR (observation_revision > 0)) AND ((observed_at_micros IS NULL) OR (observed_at_micros >= 0)) AND ((resets_at_micros IS NULL) OR (resets_at_micros >= 0))) OR ((authority_shape = 'conversation_account_registry'::decodex.routing_authority_shape) AND (observation_revision IS NULL) AND (remaining_percent IS NULL) AND (confidence IS NULL) AND (((observation_state = 'missing'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND (observed_at_micros IS NULL) AND (resets_at_micros IS NULL) AND (error_code IS NULL)) OR ((observation_state = 'current'::decodex.account_registry_quota_state) AND ((used_percent >= 0) AND (used_percent <= 100)) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros > observed_at_micros) AND (resets_at_micros <= '253402300799999999'::bigint) AND (error_code IS NULL)) OR ((observation_state = 'observation_error'::decodex.account_registry_quota_state) AND (used_percent IS NULL) AND ((observed_at_micros >= 0) AND (observed_at_micros <= '253402300799999999'::bigint)) AND (resets_at_micros IS NULL) AND (error_code IS NOT NULL)))))),
     CONSTRAINT routing_snapshot_quota_facts_position_check CHECK (("position" = ANY (ARRAY[1, 2])))
 );
 
@@ -22685,6 +22541,22 @@ ALTER TABLE ONLY decodex.continuation_plans
 
 ALTER TABLE ONLY decodex.conversations
     ADD CONSTRAINT conversations_pkey PRIMARY KEY (conversation_id);
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successors_pkey; Type: CONSTRAINT; Schema: decodex; Owner: -
+--
+
+ALTER TABLE ONLY decodex.conversation_routing_successors
+    ADD CONSTRAINT conversation_routing_successors_pkey PRIMARY KEY (source_conversation_id);
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successors_successor_key; Type: CONSTRAINT; Schema: decodex; Owner: -
+--
+
+ALTER TABLE ONLY decodex.conversation_routing_successors
+    ADD CONSTRAINT conversation_routing_successors_successor_key UNIQUE (successor_conversation_id);
 
 
 --
@@ -24332,6 +24204,20 @@ CREATE TRIGGER conversations_state_guard BEFORE INSERT OR UPDATE ON decodex.conv
 
 
 --
+-- Name: conversation_routing_successors conversation_routing_successor_complete; Type: TRIGGER; Schema: decodex; Owner: -
+--
+
+CREATE CONSTRAINT TRIGGER conversation_routing_successor_complete AFTER INSERT ON decodex.conversation_routing_successors DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION decodex.enforce_conversation_routing_successor();
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successor_immutable; Type: TRIGGER; Schema: decodex; Owner: -
+--
+
+CREATE TRIGGER conversation_routing_successor_immutable BEFORE DELETE OR UPDATE ON decodex.conversation_routing_successors FOR EACH ROW EXECUTE FUNCTION decodex.enforce_conversation_routing_successor();
+
+
+--
 -- Name: exact_command_receipts exact_receipts_complete_at_commit; Type: TRIGGER; Schema: decodex; Owner: -
 --
 
@@ -25541,6 +25427,30 @@ ALTER TABLE ONLY decodex.continuation_plans
 
 ALTER TABLE ONLY decodex.continuation_plans
     ADD CONSTRAINT continuation_plans_source_conversation_fk FOREIGN KEY (source_runtime_session_id, conversation_id) REFERENCES decodex.runtime_sessions(runtime_session_id, conversation_id);
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successors_source_fkey; Type: FK CONSTRAINT; Schema: decodex; Owner: -
+--
+
+ALTER TABLE ONLY decodex.conversation_routing_successors
+    ADD CONSTRAINT conversation_routing_successors_source_fkey FOREIGN KEY (source_conversation_id) REFERENCES decodex.conversations(conversation_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successors_source_decision_fkey; Type: FK CONSTRAINT; Schema: decodex; Owner: -
+--
+
+ALTER TABLE ONLY decodex.conversation_routing_successors
+    ADD CONSTRAINT conversation_routing_successors_source_decision_fkey FOREIGN KEY (source_routing_decision_id) REFERENCES decodex.routing_decisions(decision_id) ON DELETE RESTRICT;
+
+
+--
+-- Name: conversation_routing_successors conversation_routing_successors_successor_fkey; Type: FK CONSTRAINT; Schema: decodex; Owner: -
+--
+
+ALTER TABLE ONLY decodex.conversation_routing_successors
+    ADD CONSTRAINT conversation_routing_successors_successor_fkey FOREIGN KEY (successor_conversation_id) REFERENCES decodex.conversations(conversation_id) ON DELETE RESTRICT;
 
 
 --
@@ -27314,6 +27224,13 @@ REVOKE ALL ON FUNCTION decodex.authorize_provider_attempt_dispatch_exact(p_attem
 
 
 --
+-- Name: FUNCTION begin_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.begin_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint) FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION bind_codex_experiment_start_exact(p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid, p_thread_id text, p_start_request_id bigint, p_start_request_digest text, p_request_cwd text, p_request_marker text, p_request_ephemeral boolean, p_start_response_id bigint, p_start_response_digest text, p_response_cwd text, p_response_marker text, p_response_ephemeral boolean, p_returned_name text); Type: ACL; Schema: decodex; Owner: -
 --
 
@@ -27510,6 +27427,13 @@ REVOKE ALL ON FUNCTION decodex.complete_exact_work_item_success(p_protocol text,
 
 
 --
+-- Name: FUNCTION complete_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_snapshot_id uuid, p_kind decodex.routing_decision_kind, p_selected_account_id uuid, p_causes jsonb, p_exclusions jsonb); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.complete_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_snapshot_id uuid, p_kind decodex.routing_decision_kind, p_selected_account_id uuid, p_causes jsonb, p_exclusions jsonb) FROM PUBLIC;
+
+
+--
 -- Name: FUNCTION complete_runtime_session_thread_command(p_protocol text, p_idempotency_key text, p_effect jsonb); Type: ACL; Schema: decodex; Owner: -
 --
 
@@ -27556,6 +27480,13 @@ REVOKE ALL ON FUNCTION decodex.create_project(p_project_id decodex.canonical_uui
 --
 
 REVOKE ALL ON FUNCTION decodex.create_runtime_session_exact(p_protocol text, p_idempotency_key text, p_session_id uuid, p_conversation_id uuid, p_role decodex.role_profile_role, p_account_snapshot_id uuid, p_source_account_id uuid, p_display_label text, p_observed_state decodex.account_state, p_account_source_revision bigint, p_codex_thread_id uuid, p_initial_state decodex.runtime_session_state) FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION create_quick_task_routing_successor_exact(p_protocol text, p_idempotency_key text, p_source_conversation_id uuid, p_expected_source_revision bigint); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.create_quick_task_routing_successor_exact(p_protocol text, p_idempotency_key text, p_source_conversation_id uuid, p_expected_source_revision bigint) FROM PUBLIC;
 
 
 --
@@ -28427,13 +28358,6 @@ REVOKE ALL ON FUNCTION decodex.read_continuation_plan_exact(p_plan_id uuid, p_ex
 
 
 --
--- Name: FUNCTION read_current_task_routing_authority_exact(); Type: ACL; Schema: decodex; Owner: -
---
-
-REVOKE ALL ON FUNCTION decodex.read_current_task_routing_authority_exact() FROM PUBLIC;
-
-
---
 -- Name: FUNCTION read_execution_decision_exact(p_decision_id uuid); Type: ACL; Schema: decodex; Owner: -
 --
 
@@ -28473,6 +28397,20 @@ REVOKE ALL ON FUNCTION decodex.read_process_generations_exact(p_account_id uuid,
 --
 
 REVOKE ALL ON FUNCTION decodex.read_provider_attempts_exact(p_attempt_id uuid, p_account_id uuid, p_state decodex.provider_attempt_state, p_after_attempt_id uuid, p_limit bigint) FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION read_quick_task_initial_route_exact(p_conversation_id uuid); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.read_quick_task_initial_route_exact(p_conversation_id uuid) FROM PUBLIC;
+
+
+--
+-- Name: FUNCTION read_quick_task_request_exact(p_conversation_id uuid); Type: ACL; Schema: decodex; Owner: -
+--
+
+REVOKE ALL ON FUNCTION decodex.read_quick_task_request_exact(p_conversation_id uuid) FROM PUBLIC;
 
 
 --
@@ -29126,6 +29064,7 @@ BEGIN
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.attest_codex_account_capability_exact(p_build_identity text, p_executable_sha256 text, p_schema_sha256 text, p_callback_profile_sha256 text, p_login_chatgpt_auth_tokens boolean, p_refresh_callback boolean) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.attest_codex_experiment_retained_title_exact(p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attestation_id uuid, p_title_attempt_id uuid, p_thread_id text, p_read_request_id bigint, p_read_request_digest text, p_read_response_id bigint, p_read_response_digest text, p_returned_title text, p_returned_cwd text, p_returned_marker text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.authorize_provider_attempt_dispatch_exact(p_attempt_id uuid, p_expected_revision bigint, p_process_generation_id uuid, p_process_generation_revision bigint, p_conversation_id uuid, p_expected_conversation_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint) TO %I',runtime_role);
+	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.begin_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.bind_codex_experiment_start_exact(p_protocol text, p_idempotency_key text, p_experiment_id uuid, p_expected_revision bigint, p_attempt_id uuid, p_thread_id text, p_start_request_id bigint, p_start_request_digest text, p_request_cwd text, p_request_marker text, p_request_ephemeral boolean, p_start_response_id bigint, p_start_response_digest text, p_response_cwd text, p_response_marker text, p_response_ephemeral boolean, p_returned_name text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.bind_process_generation_identity_exact(p_generation_id uuid, p_expected_revision bigint, p_bound_boot_id text, p_process_id bigint, p_process_start_id text, p_process_group_id bigint, p_session_id bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.bind_runtime_session_thread_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_fence_protocol text, p_fence_idempotency_key text, p_thread_start_request_id bigint, p_thread_start_request_sha256 text, p_thread_start_response_id bigint, p_thread_start_response_sha256 text, p_codex_thread_id uuid) TO %I',runtime_role);
@@ -29135,10 +29074,12 @@ BEGIN
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.cancel_provider_attempt_exact(p_attempt_id uuid, p_expected_revision bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.cancel_waiting_usage_wake_exact(p_protocol text, p_idempotency_key text, p_operation_id uuid, p_wake_id uuid, p_expected_revision bigint, p_expected_transition_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.claim_due_waiting_usage_wake_exact(p_protocol text, p_idempotency_key text, p_operation_id uuid, p_claim_id uuid, p_holder_id uuid) TO %I',runtime_role);
+	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.complete_quick_task_initial_route_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_snapshot_id uuid, p_kind decodex.routing_decision_kind, p_selected_account_id uuid, p_causes jsonb, p_exclusions jsonb) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_objective(p_objective_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_program_id decodex.canonical_uuid_v4_text, p_outcome text, p_acceptance_criteria text[], p_validation_criteria text[], p_target_at bigint, p_actor_id decodex.canonical_uuid_v4_text, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_policy(p_policy_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_program(p_program_id decodex.canonical_uuid_v4_text, p_project_id decodex.canonical_uuid_v4_text, p_owner_agent_id decodex.canonical_uuid_v4_text, p_name text, p_responsibility text, p_policy_id decodex.canonical_uuid_v4_text, p_policy_revision bigint, p_review_interval_days integer, p_next_review_at bigint, p_metrics jsonb, p_signals jsonb, p_correlation_id decodex.canonical_uuid_v4_text, p_provenance text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_project(p_project_id decodex.canonical_uuid_v4_text, p_repository_identity text, p_repository_root text, p_default_cwd text, p_metadata jsonb, p_lead_id decodex.canonical_uuid_v4_text) TO %I',runtime_role);
+	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_quick_task_routing_successor_exact(p_protocol text, p_idempotency_key text, p_source_conversation_id uuid, p_expected_source_revision bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_runtime_session_exact(p_protocol text, p_idempotency_key text, p_session_id uuid, p_conversation_id uuid, p_role decodex.role_profile_role, p_account_snapshot_id uuid, p_source_account_id uuid, p_display_label text, p_observed_state decodex.account_state, p_account_source_revision bigint, p_codex_thread_id uuid, p_initial_state decodex.runtime_session_state) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.create_work_item_exact(p_protocol text, p_idempotency_key text, p_work_item_id uuid, p_project_id uuid, p_lead_agent_id uuid, p_program_id uuid, p_objective_ids uuid[], p_depends_on_ids uuid[], p_blocked_by_ids uuid[], p_title text, p_description text, p_priority decodex.work_item_priority, p_acceptance_criteria text[], p_validation_criteria text[], p_actor_id uuid, p_correlation_id uuid, p_provenance text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.fence_runtime_session_thread_start_exact(p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_process_generation_id uuid, p_process_generation_revision bigint, p_process_execution_epoch_id uuid, p_thread_start_request_id bigint, p_thread_start_request_sha256 text) TO %I',runtime_role);
@@ -29181,13 +29122,14 @@ BEGIN
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_account_routing_control_exact() TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_codex_experiment_start_exact(p_experiment_id uuid, p_attempt_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_continuation_plan_exact(p_plan_id uuid, p_expected_revision bigint) TO %I',runtime_role);
-	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_current_task_routing_authority_exact() TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_execution_decision_exact(p_decision_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_managed_run_execution_exact(p_managed_run_id uuid, p_project_id uuid, p_expected_revision bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_ordinary_runtime_session_for_resume_exact(p_conversation_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_ordinary_task_conversations_exact(p_conversation_id uuid, p_after_updated_at_micros bigint, p_after_conversation_id uuid, p_limit bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_process_generations_exact(p_account_id uuid, p_include_dead boolean, p_after_generation_id uuid, p_limit bigint) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_provider_attempts_exact(p_attempt_id uuid, p_account_id uuid, p_state decodex.provider_attempt_state, p_after_attempt_id uuid, p_limit bigint) TO %I',runtime_role);
+	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_quick_task_initial_route_exact(p_conversation_id uuid) TO %I',runtime_role);
+	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_quick_task_request_exact(p_conversation_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_quick_task_thread_establishment_exact(p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_routing_decision_id uuid, p_selected_account_id uuid, p_process_generation_id uuid) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_reset_card_account_admission_exact(p_account_id uuid, p_callback_profile_sha256 text) TO %I',runtime_role);
 	EXECUTE pg_catalog.format('GRANT EXECUTE ON FUNCTION decodex.read_turn_admission_exact(p_conversation_id uuid, p_runtime_session_id uuid, p_turn_id uuid) TO %I',runtime_role);

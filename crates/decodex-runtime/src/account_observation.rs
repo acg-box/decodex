@@ -7,7 +7,10 @@ use std::{
 	time::Duration,
 };
 
-use decodex_core::{AccountId, AccountLifecycleReadiness};
+use decodex_core::{
+	AccountId, AccountQuotaDisposition, AccountQuotaObservationError, AccountQuotaWindow,
+	AccountQuotaWindowObservation,
+};
 use decodex_protocol::AccountObservationSignal;
 use tokio::{
 	sync::{Notify, RwLock, watch},
@@ -16,9 +19,13 @@ use tokio::{
 };
 
 use crate::{
-	account_launch::{ResetCardInventoryObservation, ResetCardRuntime, ResetCardServiceError},
+	account_api::{
+		AccountApiInventory, AccountApiObservation, AccountApiRuntime, AccountApiRuntimeError,
+	},
+	account_launch::{ApiResetCardRuntime, ResetCardInventoryObservation, ResetCardServiceError},
 	account_profile::{
-		AccountProfileRefreshStatus, AccountProfileRuntime, AccountProfileRuntimeResult,
+		AccountProfileRefreshStatus, AccountProfileRuntime, AccountProfileRuntimeError,
+		AccountProfileRuntimeResult,
 	},
 	account_service::AccountService,
 };
@@ -30,6 +37,222 @@ const OBSERVATION_WAIT_TIMEOUT: Duration = Duration::from_secs(30);
 struct CachedResetCardInventory {
 	account_revision: i64,
 	result: Result<ResetCardInventoryObservation, ResetCardServiceError>,
+}
+
+async fn direct_inventory_observation(
+	accounts: &AccountService,
+	account_id: &AccountId,
+	requested_revision: i64,
+	observation: &AccountApiObservation,
+) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
+	let inventory = match &observation.inventory {
+		Ok(inventory) => inventory,
+		Err(error) => {
+			let [five_hour_quota, seven_day_quota] =
+				cached_direct_quotas(accounts, account_id, map_api_error_to_quota(*error)).await;
+			return Ok(ResetCardInventoryObservation::ObservationFailed(
+				crate::account_launch::ResetCardObservationFailure {
+					account_id: account_id.clone(),
+					account_revision: requested_revision,
+					five_hour_quota,
+					seven_day_quota,
+					error: map_api_error_to_reset(*error),
+				},
+			));
+		},
+	};
+	let [five_hour_quota, seven_day_quota] =
+		persist_direct_quotas(accounts, account_id, inventory).await?;
+	Ok(ResetCardInventoryObservation::Available(crate::account_launch::ResetCardInventoryView {
+		account_id: account_id.clone(),
+		account_revision: inventory.account_revision,
+		reported_available_count: inventory.reported_available_count,
+		details_complete: inventory.details_complete,
+		cards: if inventory.details_complete {
+			inventory.credits.iter().map(|credit| credit.descriptor()).collect()
+		} else {
+			Vec::new()
+		},
+		five_hour_quota,
+		seven_day_quota,
+	}))
+}
+
+async fn persist_direct_quotas(
+	accounts: &AccountService,
+	account_id: &AccountId,
+	inventory: &AccountApiInventory,
+) -> Result<[AccountQuotaWindowObservation; 2], ResetCardServiceError> {
+	let cached =
+		accounts.inspect(account_id).await.ok().map(|inspection| {
+			[inspection.account.five_hour_quota, inspection.account.seven_day_quota]
+		});
+	let mut observations = Vec::with_capacity(2);
+	for quota in inventory.quota_windows {
+		let observed_at_unix_micros =
+			current_unix_micros().ok_or(ResetCardServiceError::ProductStateUnavailable)?;
+		let cached_window = cached.as_ref().and_then(|windows| {
+			windows.iter().find(|window| window.duration_minutes == quota.duration_minutes).copied()
+		});
+		let (observed_at_unix_micros, disposition) = match quota.result {
+			Ok(Some(fact)) => {
+				accounts
+					.observe_quota(account_id, fact, observed_at_unix_micros)
+					.await
+					.map_err(|_| ResetCardServiceError::ProductStateUnavailable)?;
+				(Some(observed_at_unix_micros), AccountQuotaDisposition::Current(fact))
+			},
+			result => resolve_direct_quota(
+				quota.duration_minutes,
+				result,
+				cached_window,
+				observed_at_unix_micros,
+			),
+		};
+		observations.push(AccountQuotaWindowObservation {
+			duration_minutes: quota.duration_minutes,
+			observed_at_unix_micros,
+			disposition,
+		});
+	}
+	observations.try_into().map_err(|_| ResetCardServiceError::InventoryIncomplete)
+}
+
+fn resolve_direct_quota(
+	duration_minutes: u32,
+	result: Result<Option<AccountQuotaWindow>, AccountQuotaObservationError>,
+	cached: Option<AccountQuotaWindowObservation>,
+	observed_at_unix_micros: i64,
+) -> (Option<i64>, AccountQuotaDisposition) {
+	match result {
+		Ok(None) => retained_last_good_quota(cached, duration_minutes)
+			.unwrap_or((None, AccountQuotaDisposition::Unknown)),
+		Err(error) => retained_last_good_quota(cached, duration_minutes)
+			.unwrap_or((Some(observed_at_unix_micros), AccountQuotaDisposition::Error(error))),
+		Ok(Some(fact)) => (Some(observed_at_unix_micros), AccountQuotaDisposition::Current(fact)),
+	}
+}
+
+fn retained_last_good_quota(
+	cached: Option<AccountQuotaWindowObservation>,
+	duration_minutes: u32,
+) -> Option<(Option<i64>, AccountQuotaDisposition)> {
+	let window = cached.filter(|window| window.duration_minutes == duration_minutes)?;
+	match window.disposition {
+		AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_) =>
+			Some((window.observed_at_unix_micros, window.disposition)),
+		AccountQuotaDisposition::Unknown | AccountQuotaDisposition::Error(_) => None,
+	}
+}
+
+async fn cached_direct_quotas(
+	accounts: &AccountService,
+	account_id: &AccountId,
+	error: AccountQuotaObservationError,
+) -> [AccountQuotaWindowObservation; 2] {
+	let cached =
+		accounts.inspect(account_id).await.ok().map(|inspection| {
+			[inspection.account.five_hour_quota, inspection.account.seven_day_quota]
+		});
+	[
+		cached
+			.as_ref()
+			.and_then(|windows| {
+				windows
+					.iter()
+					.find(|window| {
+						window.duration_minutes == AccountQuotaWindow::FIVE_HOURS_MINUTES
+					})
+					.copied()
+			})
+			.and_then(|window| {
+				matches!(
+					window.disposition,
+					AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_)
+				)
+				.then_some(window)
+			})
+			.unwrap_or_else(|| {
+				quota_error_observation(AccountQuotaWindow::FIVE_HOURS_MINUTES, error)
+			}),
+		cached
+			.as_ref()
+			.and_then(|windows| {
+				windows
+					.iter()
+					.find(|window| {
+						window.duration_minutes == AccountQuotaWindow::SEVEN_DAYS_MINUTES
+					})
+					.copied()
+			})
+			.and_then(|window| {
+				matches!(
+					window.disposition,
+					AccountQuotaDisposition::Current(_) | AccountQuotaDisposition::Stale(_)
+				)
+				.then_some(window)
+			})
+			.unwrap_or_else(|| {
+				quota_error_observation(AccountQuotaWindow::SEVEN_DAYS_MINUTES, error)
+			}),
+	]
+}
+
+fn quota_error_observation(
+	duration_minutes: u32,
+	error: AccountQuotaObservationError,
+) -> AccountQuotaWindowObservation {
+	AccountQuotaWindowObservation {
+		duration_minutes,
+		observed_at_unix_micros: current_unix_micros(),
+		disposition: AccountQuotaDisposition::Error(error),
+	}
+}
+
+fn current_unix_micros() -> Option<i64> {
+	std::time::SystemTime::now()
+		.duration_since(std::time::UNIX_EPOCH)
+		.ok()
+		.and_then(|duration| i64::try_from(duration.as_micros()).ok())
+}
+
+fn map_api_error_to_quota(error: AccountApiRuntimeError) -> AccountQuotaObservationError {
+	match error {
+		AccountApiRuntimeError::AccountChanged | AccountApiRuntimeError::AccountUnavailable =>
+			AccountQuotaObservationError::AccountMismatch,
+		AccountApiRuntimeError::ProtocolUnavailable =>
+			AccountQuotaObservationError::ProtocolUnavailable,
+		AccountApiRuntimeError::CredentialUnavailable
+		| AccountApiRuntimeError::Unauthorized
+		| AccountApiRuntimeError::ProviderUnavailable =>
+			AccountQuotaObservationError::ProviderUnavailable,
+	}
+}
+
+fn map_api_error_to_reset(error: AccountApiRuntimeError) -> ResetCardServiceError {
+	match error {
+		AccountApiRuntimeError::AccountUnavailable => ResetCardServiceError::AccountNotFound,
+		AccountApiRuntimeError::CredentialUnavailable => ResetCardServiceError::VaultUnavailable,
+		AccountApiRuntimeError::AccountChanged => ResetCardServiceError::AccountChanged,
+		AccountApiRuntimeError::ProtocolUnavailable => ResetCardServiceError::InventoryIncomplete,
+		AccountApiRuntimeError::Unauthorized | AccountApiRuntimeError::ProviderUnavailable =>
+			ResetCardServiceError::ProviderUnavailable,
+	}
+}
+
+fn map_profile_api_error(error: AccountApiRuntimeError) -> AccountProfileRuntimeError {
+	match error {
+		AccountApiRuntimeError::AccountUnavailable =>
+			AccountProfileRuntimeError::AccountUnavailable,
+		AccountApiRuntimeError::CredentialUnavailable =>
+			AccountProfileRuntimeError::CredentialUnavailable,
+		AccountApiRuntimeError::Unauthorized => AccountProfileRuntimeError::Unauthorized,
+		AccountApiRuntimeError::AccountChanged => AccountProfileRuntimeError::AccountChanged,
+		AccountApiRuntimeError::ProtocolUnavailable =>
+			AccountProfileRuntimeError::ProtocolUnavailable,
+		AccountApiRuntimeError::ProviderUnavailable =>
+			AccountProfileRuntimeError::ProviderUnavailable,
+	}
 }
 
 #[derive(Default)]
@@ -95,7 +318,32 @@ impl AccountObservationState {
 		if !self.generation_matches(&observation.account_id, &observation.cache_generation) {
 			return false;
 		}
-		let has_value = observation.reset_cards.is_some() || observation.profile.is_some();
+		let mut observation = observation;
+		if let Some(next) = observation.reset_cards.take() {
+			observation.reset_cards = Some(
+				self.reset_cards
+					.get(&observation.account_id)
+					.map(|current| {
+						retain_last_good_inventory(
+							current,
+							observation.requested_revision,
+							next.clone(),
+						)
+					})
+					.unwrap_or(next),
+			);
+		}
+		let account_id = observation.account_id.clone();
+		let reset_cards_changed = observation.reset_cards.as_ref().is_some_and(|next| {
+			self.reset_cards.get(&account_id).is_none_or(|current| {
+				!reset_card_observation_semantically_equal(&current.result, next)
+			})
+		});
+		let profile_changed = observation.profile.as_ref().is_some_and(|next| {
+			self.profiles
+				.get(&account_id)
+				.is_none_or(|current| !profile_status_semantically_equal(current, next))
+		});
 		if let Some(reset_cards) = observation.reset_cards {
 			let inventory_revision = reset_cards
 				.as_ref()
@@ -103,7 +351,7 @@ impl AccountObservationState {
 				.map(inventory_revision)
 				.unwrap_or(observation.requested_revision);
 			self.reset_cards.insert(
-				observation.account_id.clone(),
+				account_id.clone(),
 				CachedResetCardInventory {
 					account_revision: inventory_revision,
 					result: reset_cards,
@@ -111,18 +359,135 @@ impl AccountObservationState {
 			);
 		}
 		if let Some(profile) = observation.profile {
-			self.profiles.insert(observation.account_id, profile);
+			self.profiles.insert(account_id, profile);
 		}
-		has_value
+		reset_cards_changed || profile_changed
 	}
+}
+
+fn retain_last_good_inventory(
+	current: &CachedResetCardInventory,
+	requested_revision: i64,
+	next: Result<ResetCardInventoryObservation, ResetCardServiceError>,
+) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
+	if current.account_revision != requested_revision {
+		return next;
+	}
+	match (&current.result, &next) {
+		(Ok(ResetCardInventoryObservation::Available(current)), Err(error))
+			if should_retain_last_good_inventory(*error) =>
+			Ok(ResetCardInventoryObservation::Available(current.clone())),
+		(
+			Ok(ResetCardInventoryObservation::Available(current)),
+			Ok(ResetCardInventoryObservation::Available(next)),
+		) if current.details_complete && !next.details_complete => {
+			let mut retained_quota = next.clone();
+			// Usage windows are still authoritative when only the optional credit-detail request
+			// failed. Keep the new quota facts, but make card selection wait for a complete retry.
+			retained_quota.cards.clear();
+			Ok(ResetCardInventoryObservation::Available(retained_quota))
+		},
+		(
+			Ok(ResetCardInventoryObservation::Available(current)),
+			Ok(ResetCardInventoryObservation::ObservationFailed(failure)),
+		) if should_retain_last_good_inventory(failure.error) =>
+			Ok(ResetCardInventoryObservation::Available(current.clone())),
+		_ => next,
+	}
+}
+
+const fn should_retain_last_good_inventory(error: ResetCardServiceError) -> bool {
+	matches!(
+		error,
+		ResetCardServiceError::ProviderUnavailable
+			| ResetCardServiceError::VaultUnavailable
+			| ResetCardServiceError::InventoryIncomplete
+			| ResetCardServiceError::ProductStateUnavailable
+	)
+}
+
+fn reset_card_observation_semantically_equal(
+	left: &Result<ResetCardInventoryObservation, ResetCardServiceError>,
+	right: &Result<ResetCardInventoryObservation, ResetCardServiceError>,
+) -> bool {
+	match (left, right) {
+		(
+			Ok(ResetCardInventoryObservation::Available(left)),
+			Ok(ResetCardInventoryObservation::Available(right)),
+		) =>
+			left.account_id == right.account_id
+				&& left.account_revision == right.account_revision
+				&& left.reported_available_count == right.reported_available_count
+				&& left.details_complete == right.details_complete
+				&& left.cards == right.cards
+				&& quota_observation_semantically_equal(
+					&left.five_hour_quota,
+					&right.five_hour_quota,
+				) && quota_observation_semantically_equal(&left.seven_day_quota, &right.seven_day_quota),
+		(
+			Ok(ResetCardInventoryObservation::ObservationFailed(left)),
+			Ok(ResetCardInventoryObservation::ObservationFailed(right)),
+		) =>
+			left.account_id == right.account_id
+				&& left.account_revision == right.account_revision
+				&& quota_observation_semantically_equal(
+					&left.five_hour_quota,
+					&right.five_hour_quota,
+				) && quota_observation_semantically_equal(&left.seven_day_quota, &right.seven_day_quota)
+				&& left.error == right.error,
+		(Err(left), Err(right)) => left == right,
+		_ => false,
+	}
+}
+
+fn quota_observation_semantically_equal(
+	left: &AccountQuotaWindowObservation,
+	right: &AccountQuotaWindowObservation,
+) -> bool {
+	left.duration_minutes == right.duration_minutes
+		&& match (left.disposition, right.disposition) {
+			(AccountQuotaDisposition::Unknown, AccountQuotaDisposition::Unknown) => true,
+			(AccountQuotaDisposition::Current(left), AccountQuotaDisposition::Current(right)) =>
+				left == right,
+			(AccountQuotaDisposition::Stale(left), AccountQuotaDisposition::Stale(right)) =>
+				left == right,
+			(AccountQuotaDisposition::Error(left), AccountQuotaDisposition::Error(right)) =>
+				left == right,
+			_ => false,
+		}
+}
+
+fn profile_status_semantically_equal(
+	left: &AccountProfileRefreshStatus,
+	right: &AccountProfileRefreshStatus,
+) -> bool {
+	left.account_revision == right.account_revision
+		&& left.refresh_error == right.refresh_error
+		&& match (&left.snapshot, &right.snapshot) {
+			(None, None) => true,
+			(Some(left), Some(right)) =>
+				left.account_id == right.account_id
+					&& left.account_revision == right.account_revision
+					&& left.provider == right.provider
+					&& left.display_name == right.display_name
+					&& left.username == right.username
+					&& left.lifetime_tokens == right.lifetime_tokens
+					&& left.peak_daily_tokens == right.peak_daily_tokens
+					&& left.longest_task_seconds == right.longest_task_seconds
+					&& left.current_streak_days == right.current_streak_days
+					&& left.longest_streak_days == right.longest_streak_days
+					&& left.daily_usage == right.daily_usage,
+			_ => false,
+		}
 }
 
 /// One daemon-lifecycle observer that refreshes independent accounts concurrently.
 #[derive(Clone)]
 pub(crate) struct AccountObservationService {
 	accounts: Arc<AccountService>,
+	api: Option<Arc<AccountApiRuntime>>,
 	profiles: Option<AccountProfileRuntime>,
-	reset_cards: Option<ResetCardRuntime>,
+	reset_cards: Option<ApiResetCardRuntime>,
 	state: Arc<RwLock<AccountObservationState>>,
 	refresh_requested: Arc<Notify>,
 	observation_generation: watch::Sender<u64>,
@@ -131,12 +496,14 @@ pub(crate) struct AccountObservationService {
 impl AccountObservationService {
 	pub(crate) fn new(
 		accounts: Arc<AccountService>,
+		api: Option<Arc<AccountApiRuntime>>,
 		profiles: Option<AccountProfileRuntime>,
-		reset_cards: Option<ResetCardRuntime>,
+		reset_cards: Option<ApiResetCardRuntime>,
 	) -> Self {
 		let (observation_generation, _) = watch::channel(0);
 		Self {
 			accounts,
+			api,
 			profiles,
 			reset_cards,
 			state: Arc::new(RwLock::new(AccountObservationState::default())),
@@ -177,9 +544,6 @@ impl AccountObservationService {
 		&self,
 		account_id: &AccountId,
 	) -> Result<ResetCardInventoryObservation, ResetCardServiceError> {
-		if self.reset_cards.is_none() {
-			return Err(ResetCardServiceError::ProductStateUnavailable);
-		}
 		self.state.read().await.reset_card_inventory(account_id)
 	}
 
@@ -190,13 +554,14 @@ impl AccountObservationService {
 		include_email: bool,
 	) -> Option<AccountProfileRuntimeResult> {
 		let profiles = self.profiles.as_ref()?;
-		let status = self.state.read().await.profiles.get(account_id).copied();
+		let status = self.state.read().await.profiles.get(account_id).cloned();
 		Some(profiles.read_cached(account_id, include_email, status).await)
 	}
 
 	/// Run immediate startup observation and all later coalesced daemon refreshes.
 	pub(crate) async fn daemon_service(self, mut stop: watch::Receiver<bool>) {
-		let reset_card_wakeup = self.reset_cards.as_ref().map(ResetCardRuntime::observation_wakeup);
+		let reset_card_wakeup =
+			self.reset_cards.as_ref().map(ApiResetCardRuntime::observation_wakeup);
 		let mut interval = time::interval(OBSERVATION_REFRESH_INTERVAL);
 		interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
 		let mut desired = HashMap::new();
@@ -274,14 +639,19 @@ impl AccountObservationService {
 		task_accounts: &mut HashMap<TaskId, AccountId>,
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
-		let Ok((accounts, _routing)) = self.accounts.list_snapshot().await else {
+		// Observation scheduling only needs the account registry.  Reading routing here takes the
+		// database-wide routing lock and conflicts with the quota fact writer, even though routing
+		// cannot change which provider snapshot belongs to an account.  Keep Route reads on their
+		// own capability path so a transient routing serialization failure cannot stop observation.
+		let Ok(accounts) = self.accounts.list().await else {
 			return;
 		};
 		let current = accounts
 			.into_iter()
 			.filter(|inspection| {
 				!inspection.account.tombstoned
-					&& inspection.readiness == AccountLifecycleReadiness::Ready
+					&& inspection.account.credential.is_some()
+					&& inspection.account.unsettled_operation.is_none()
 			})
 			.map(|inspection| (inspection.account.account_id, inspection.account.revision))
 			.collect::<HashMap<_, _>>();
@@ -318,25 +688,76 @@ impl AccountObservationService {
 		observations: &mut JoinSet<AccountObservationOutcome>,
 	) {
 		let cache_generation = self.state.write().await.cache_generation(&account_id);
+		let accounts = Arc::clone(&self.accounts);
+		let api = self.api.clone();
 		let profiles = self.profiles.clone();
-		let reset_cards = self.reset_cards.clone();
 		let task_account_id = account_id.clone();
 		let task = observations.spawn(async move {
-			// Reset Card observation can rotate the account credential. Complete it first so the
-			// profile observation uses that exact successor instead of racing an old revision.
-			let reset_cards = match reset_cards {
-				Some(reset_cards) => Some(reset_cards.observe_inventory(&task_account_id).await),
+			let api_observation = match api {
+				Some(api) => Some(api.observe_account(&task_account_id).await),
 				None => None,
 			};
-			let profile_revision = reset_cards
-				.as_ref()
-				.and_then(|result| result.as_ref().ok())
-				.map_or(account_revision, inventory_revision);
-			let profile = match profiles {
-				Some(profiles) => Some(
-					profiles.query(&task_account_id, false).await.refresh_status(profile_revision),
-				),
-				None => None,
+			let (reset_cards, profile) = match api_observation {
+				Some(observation) => {
+					let reset_cards = Some(
+						direct_inventory_observation(
+							accounts.as_ref(),
+							&task_account_id,
+							account_revision,
+							&observation,
+						)
+						.await,
+					);
+					let profile = match profiles {
+						Some(profiles) => Some(match (observation.provider, observation.profile) {
+							(Some(provider), Ok(profile)) =>
+								profiles
+									.observe_provider_profile(
+										&task_account_id,
+										observation.account_revision,
+										provider,
+										profile,
+									)
+									.await,
+							(_, Err(error)) =>
+								profiles
+									.status_after_failure(
+										&task_account_id,
+										account_revision,
+										map_profile_api_error(error),
+									)
+									.await,
+							(None, Ok(_)) =>
+								profiles
+									.status_after_failure(
+										&task_account_id,
+										account_revision,
+										AccountProfileRuntimeError::AccountChanged,
+									)
+									.await,
+						}),
+						None => None,
+					};
+					(reset_cards, profile)
+				},
+				None => {
+					// No provider adapter means no provider observation. Keep the last daemon-owned
+					// values visible and expose a bounded refresh error instead of blocking the UI.
+					let reset_cards = Some(Err(ResetCardServiceError::ProviderUnavailable));
+					let profile = match profiles {
+						Some(profiles) => Some(
+							profiles
+								.status_after_failure(
+									&task_account_id,
+									account_revision,
+									AccountProfileRuntimeError::ProviderUnavailable,
+								)
+								.await,
+						),
+						None => None,
+					};
+					(reset_cards, profile)
+				},
 			};
 			AccountObservationOutcome {
 				account_id: task_account_id,
@@ -470,15 +891,23 @@ const fn inventory_revision(observation: &ResetCardInventoryObservation) -> i64 
 mod tests {
 	use std::{
 		collections::{HashMap, HashSet},
+		sync::Arc,
 		time::Duration,
 	};
 
-	use decodex_core::AccountId;
+	use decodex_core::{
+		AccountId, AccountProvider, AccountQuotaDisposition, AccountQuotaWindowObservation,
+		ProviderIdentity,
+	};
+	use decodex_postgres::AccountProfileSnapshot;
 	use tokio::{sync::watch, time};
+
+	use crate::account_launch::ResetCardInventoryView;
 
 	use super::{
 		AccountObservationOutcome, AccountObservationState, AccountProfileRefreshStatus,
-		ResetCardServiceError, plan_observation_round, wait_for_generation,
+		ResetCardInventoryObservation, ResetCardServiceError, plan_observation_round,
+		resolve_direct_quota, wait_for_generation,
 	};
 
 	#[tokio::test]
@@ -535,7 +964,11 @@ mod tests {
 			requested_revision: 7,
 			cache_generation,
 			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
-			profile: Some(AccountProfileRefreshStatus { account_revision: 7, refresh_error: None }),
+			profile: Some(AccountProfileRefreshStatus {
+				account_revision: 7,
+				refresh_error: None,
+				snapshot: None,
+			}),
 		});
 
 		state.retain_current(&HashMap::from([(account_id.clone(), 8)]));
@@ -560,7 +993,11 @@ mod tests {
 			requested_revision: 9,
 			cache_generation: stale_generation,
 			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
-			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
+			profile: Some(AccountProfileRefreshStatus {
+				account_revision: 9,
+				refresh_error: None,
+				snapshot: None,
+			}),
 		});
 
 		assert!(state.reset_cards.is_empty());
@@ -576,7 +1013,11 @@ mod tests {
 			requested_revision: 9,
 			cache_generation,
 			reset_cards: Some(Err(ResetCardServiceError::InventoryIncomplete)),
-			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
+			profile: Some(AccountProfileRefreshStatus {
+				account_revision: 9,
+				refresh_error: None,
+				snapshot: None,
+			}),
 		});
 
 		assert!(state.reset_cards.contains_key(&account_id));
@@ -597,14 +1038,243 @@ mod tests {
 			requested_revision: 9,
 			cache_generation,
 			reset_cards: None,
-			profile: Some(AccountProfileRefreshStatus { account_revision: 9, refresh_error: None }),
+			profile: Some(AccountProfileRefreshStatus {
+				account_revision: 9,
+				refresh_error: None,
+				snapshot: None,
+			}),
 		});
 
 		assert!(state.reset_cards.is_empty());
 		assert_eq!(
 			state.profiles.get(&account_id),
-			Some(&AccountProfileRefreshStatus { account_revision: 9, refresh_error: None })
+			Some(&AccountProfileRefreshStatus {
+				account_revision: 9,
+				refresh_error: None,
+				snapshot: None,
+			})
 		);
+	}
+
+	#[test]
+	fn unchanged_observation_updates_freshness_without_advancing_generation() {
+		let account_id = account(3);
+		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
+
+		assert!(state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation: Arc::clone(&cache_generation),
+			reset_cards: Some(Ok(available_inventory(&account_id, 100))),
+			profile: None,
+		}));
+
+		assert!(!state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation,
+			reset_cards: Some(Ok(available_inventory(&account_id, 200))),
+			profile: None,
+		}));
+
+		let cached = state.reset_cards.get(&account_id).expect("cached observation");
+		let Ok(ResetCardInventoryObservation::Available(inventory)) = &cached.result else {
+			panic!("expected available inventory");
+		};
+		assert_eq!(inventory.five_hour_quota.observed_at_unix_micros, Some(200));
+		assert_eq!(inventory.seven_day_quota.observed_at_unix_micros, Some(200));
+	}
+
+	#[test]
+	fn unchanged_profile_updates_observation_time_without_advancing_generation() {
+		let account_id = account(4);
+		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
+
+		assert!(state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 12,
+			cache_generation: Arc::clone(&cache_generation),
+			reset_cards: None,
+			profile: Some(profile_status(&account_id, 100)),
+		}));
+
+		assert!(!state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 12,
+			cache_generation,
+			reset_cards: None,
+			profile: Some(profile_status(&account_id, 200)),
+		}));
+
+		assert_eq!(
+			state
+				.profiles
+				.get(&account_id)
+				.and_then(|status| status.snapshot.as_ref())
+				.map(|snapshot| snapshot.observed_at_unix_micros),
+			Some(200)
+		);
+	}
+
+	#[test]
+	fn transient_inventory_failure_keeps_the_last_good_snapshot_visible() {
+		let account_id = account(5);
+		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
+
+		assert!(state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation: Arc::clone(&cache_generation),
+			reset_cards: Some(Ok(available_inventory(&account_id, 100))),
+			profile: None,
+		}));
+
+		assert!(!state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation,
+			reset_cards: Some(Err(ResetCardServiceError::ProviderUnavailable)),
+			profile: None,
+		}));
+
+		let cached = state.reset_cards.get(&account_id).expect("last good inventory");
+		let Ok(ResetCardInventoryObservation::Available(inventory)) = &cached.result else {
+			panic!("expected the available snapshot to remain cached");
+		};
+		assert_eq!(inventory.five_hour_quota.observed_at_unix_micros, Some(100));
+	}
+
+	#[test]
+	fn incomplete_reset_credit_details_update_quota_but_disable_stale_selection() {
+		let account_id = account(6);
+		let mut state = AccountObservationState::default();
+		let cache_generation = state.cache_generation(&account_id);
+		assert!(state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation: Arc::clone(&cache_generation),
+			reset_cards: Some(Ok(available_inventory(&account_id, 100))),
+			profile: None,
+		}));
+
+		let incomplete = ResetCardInventoryObservation::Available(ResetCardInventoryView {
+			account_id: account_id.clone(),
+			account_revision: 11,
+			reported_available_count: Some(1),
+			details_complete: false,
+			cards: Vec::new(),
+			five_hour_quota: quota(300, 200, 40, 2_000_000),
+			seven_day_quota: quota(10_080, 200, 50, 3_000_000),
+		});
+		assert!(state.insert(AccountObservationOutcome {
+			account_id: account_id.clone(),
+			requested_revision: 11,
+			cache_generation,
+			reset_cards: Some(Ok(incomplete)),
+			profile: None,
+		}));
+
+		let cached = state.reset_cards.get(&account_id).expect("incomplete inventory");
+		let Ok(ResetCardInventoryObservation::Available(inventory)) = &cached.result else {
+			panic!("expected available inventory");
+		};
+		assert!(!inventory.details_complete);
+		assert!(inventory.cards.is_empty());
+		assert_eq!(inventory.five_hour_quota.observed_at_unix_micros, Some(200));
+	}
+
+	#[test]
+	fn missing_optional_quota_window_retains_last_good_fact_and_freshness() {
+		let cached = quota(300, 100, 20, 2_000_000);
+		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), Some(cached), 456);
+
+		assert_eq!(observed_at, Some(100));
+		assert_eq!(disposition, cached.disposition);
+	}
+
+	#[test]
+	fn missing_optional_quota_window_without_cache_is_unknown_not_an_error() {
+		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), None, 456);
+
+		assert_eq!(observed_at, None);
+		assert_eq!(disposition, AccountQuotaDisposition::Unknown);
+	}
+
+	#[test]
+	fn missing_optional_quota_window_does_not_retain_an_old_error() {
+		let cached = AccountQuotaWindowObservation {
+			duration_minutes: 300,
+			observed_at_unix_micros: Some(100),
+			disposition: AccountQuotaDisposition::Error(
+				decodex_core::AccountQuotaObservationError::UnsupportedWindow,
+			),
+		};
+		let (observed_at, disposition) = resolve_direct_quota(300, Ok(None), Some(cached), 456);
+
+		assert_eq!(observed_at, None);
+		assert_eq!(disposition, AccountQuotaDisposition::Unknown);
+	}
+
+	fn available_inventory(
+		account_id: &AccountId,
+		observed_at_unix_micros: i64,
+	) -> ResetCardInventoryObservation {
+		ResetCardInventoryObservation::Available(ResetCardInventoryView {
+			account_id: account_id.clone(),
+			account_revision: 11,
+			reported_available_count: Some(0),
+			details_complete: true,
+			cards: Vec::new(),
+			five_hour_quota: quota(300, observed_at_unix_micros, 20, 2_000_000),
+			seven_day_quota: quota(10_080, observed_at_unix_micros, 30, 3_000_000),
+		})
+	}
+
+	fn profile_status(
+		account_id: &AccountId,
+		observed_at_unix_micros: i64,
+	) -> AccountProfileRefreshStatus {
+		AccountProfileRefreshStatus {
+			account_revision: 12,
+			refresh_error: None,
+			snapshot: Some(AccountProfileSnapshot {
+				account_id: account_id.clone(),
+				account_revision: 12,
+				provider: ProviderIdentity::new(AccountProvider::Chatgpt, "provider-account")
+					.expect("fixture provider identity"),
+				observed_at_unix_micros,
+				display_name: None,
+				username: None,
+				lifetime_tokens: None,
+				peak_daily_tokens: None,
+				longest_task_seconds: None,
+				current_streak_days: None,
+				longest_streak_days: None,
+				daily_usage: Vec::new(),
+			}),
+		}
+	}
+
+	fn quota(
+		duration_minutes: u32,
+		observed_at_unix_micros: i64,
+		used_percent: u8,
+		resets_at_unix_micros: i64,
+	) -> AccountQuotaWindowObservation {
+		AccountQuotaWindowObservation {
+			duration_minutes,
+			observed_at_unix_micros: Some(observed_at_unix_micros),
+			disposition: decodex_core::AccountQuotaDisposition::Current(
+				decodex_core::AccountQuotaWindow {
+					duration_minutes,
+					used_percent,
+					resets_at_unix_micros,
+				},
+			),
+		}
 	}
 
 	fn account(index: u16) -> AccountId {

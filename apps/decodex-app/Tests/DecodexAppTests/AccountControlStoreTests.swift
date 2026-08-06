@@ -264,6 +264,86 @@ final class AccountControlStoreTests: XCTestCase {
 		await stopObservation()
 	}
 
+	func testBackgroundObservationCannotOverwriteRoutingChangedDuringRead() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsSnapshotAfterFirstRead: true,
+			capturesSnapshotBeforeWait: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+		func stopObservation() async {
+			await store.prepareForApplicationTermination()
+			await client.publishObservation(generation: 2)
+		}
+		store.start()
+
+		for _ in 0 ..< 200 {
+			if store.hasLoaded,
+				store.isRefreshing == false,
+				store.accounts.first?.inventoryIsCurrent == true
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		XCTAssertTrue(store.hasLoaded)
+		XCTAssertTrue(store.accounts.first?.inventoryIsCurrent == true)
+
+		for _ in 0 ..< 200 {
+			if await client.observationIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.observationIsPending() else {
+			await stopObservation()
+			return XCTFail("Account observation signal did not enter the pending state.")
+		}
+		await client.publishObservation(generation: 1)
+
+		for _ in 0 ..< 200 {
+			if await client.snapshotIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.snapshotIsPending() else {
+			await client.releaseSnapshot()
+			await stopObservation()
+			return XCTFail("Background account snapshot did not enter the pending state.")
+		}
+
+		await store.selectFixedAccount(accountID)
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+		store.message = ResetCardStoreMessage(tone: .error, text: "Keep this message")
+
+		await client.releaseSnapshot()
+		for _ in 0 ..< 200 {
+			if store.isRefreshing == false,
+				(await client.readCounts()).snapshot >= 2
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertEqual(
+			store.routing?.mode,
+			.fixed(accountID: accountID),
+			"A stale background snapshot must not flash the route back to balanced."
+		)
+		XCTAssertEqual(store.message?.text, "Keep this message")
+		await stopObservation()
+	}
+
 	func testObservationRefreshIsQueuedUntilEnrollmentCompletes() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -345,7 +425,7 @@ final class AccountControlStoreTests: XCTestCase {
 		await stopObservation()
 	}
 
-	func testAdvancedInventoryWaitsForFreshSkeletonBeforeControls() async throws {
+	func testAdvancedInventoryRemainsVisibleWhileSkeletonReconcilesInBackground() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
 			account: account,
@@ -375,22 +455,20 @@ final class AccountControlStoreTests: XCTestCase {
 			return XCTFail("Fresh skeleton read did not enter the pending state.")
 		}
 
-		XCTAssertEqual(store.accounts.first?.account.accountRevision, 7)
+		XCTAssertEqual(store.accounts.first?.account.accountRevision, 8)
 		XCTAssertEqual(store.accounts.first?.account.alias, "Account 00000-00001")
 		XCTAssertTrue(store.accounts.first?.account.enabled == true)
-		XCTAssertNil(store.accounts.first?.inventory)
+		XCTAssertEqual(store.accounts.first?.inventory?.accountRevision, 8)
 		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(accountID))
-		XCTAssertTrue(store.accounts.first?.isRefreshing == true)
+		XCTAssertFalse(store.accounts.first?.isRefreshing == true)
+		XCTAssertEqual(store.accounts.first?.routeCapability, .ready)
 
 		await store.selectFixedAccount(accountID)
-		await store.setAccount(accountID, enabled: false)
 		await store.useAccountInCodex(accountID)
-		let blockedFixedRequest = await client.fixedRequest()
-		let blockedEnabledRequest = await client.enabledRequest()
-		let blockedUseRequest = await client.useRequest()
-		XCTAssertNil(blockedFixedRequest)
-		XCTAssertNil(blockedEnabledRequest)
-		XCTAssertNil(blockedUseRequest)
+		let fixedRequest = await client.fixedRequest()
+		let useRequest = await client.useRequest()
+		XCTAssertEqual(fixedRequest?.expectedAccountRevision, 8)
+		XCTAssertEqual(useRequest?.expectedRevision, 8)
 
 		let refreshedAccount = accountRecord(
 			alias: "Account 00000-00008",
@@ -403,7 +481,8 @@ final class AccountControlStoreTests: XCTestCase {
 		await client.releaseSnapshot()
 		for _ in 0 ..< 200 {
 			if store.accounts.first?.account.accountRevision == 8,
-				store.accounts.first?.inventory?.accountRevision == 8
+				store.accounts.first?.inventory?.accountRevision == 8,
+				store.isAwaitingFreshAccountSkeleton(accountID) == false
 			{
 				break
 			}
@@ -547,7 +626,7 @@ final class AccountControlStoreTests: XCTestCase {
 		}
 
 		XCTAssertTrue(store.isAwaitingFreshAccountSkeleton(secondAccountID))
-		XCTAssertTrue(
+		XCTAssertFalse(
 			store.accounts.first(where: {
 				$0.account.accountID == secondAccountID
 			})?.isRefreshing == true
@@ -1068,6 +1147,42 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
 	}
 
+	func testTransientProjectionReadFailureRetainsCurrentRouteState() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			routing: AccountRoutingControl(
+				revision: 9,
+				mode: .fixed(accountID: accountID),
+				order: [accountID]
+			),
+			projection: .current(
+				accountID: accountID,
+				accountRevision: 7,
+				projectionDigest: String(repeating: "a", count: 64)
+			)
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		XCTAssertTrue(store.isCodexProjection(accountID))
+
+		await client.setProjectionError(.applicationUnavailable)
+		await store.refresh()
+
+		XCTAssertTrue(
+			store.isCodexProjection(accountID),
+			"A transient read failure must not flash the current route back to Route."
+		)
+	}
+
 	func testRouteAccountSerializesSharedProjectionAcrossAccounts() async throws {
 		let secondAccountID = "22222222-2222-4222-8222-222222222222"
 		let account = accountRecord()
@@ -1392,6 +1507,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var fixedRequestCount = 0
 	private var projectionRequestCount = 0
 	private var projection: CodexAuthProjection
+	private var projectionError: AccountControlError?
 	private var projectionReads = 0
 	private var snapshotReadCount = 0
 	private var inventoryReadCount = 0
@@ -1721,7 +1837,14 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		authority: ResetCardAuthority?
 	) async throws -> CodexAuthProjection {
 		projectionReads += 1
+		if let projectionError {
+			throw projectionError
+		}
 		return projection
+	}
+
+	func setProjectionError(_ error: AccountControlError?) {
+		projectionError = error
 	}
 
 	func projectionReadCount() -> Int {
