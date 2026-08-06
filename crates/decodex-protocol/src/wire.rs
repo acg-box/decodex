@@ -2354,23 +2354,25 @@ pub enum CommandPayload {
 	CreateQuickTask {
 		/// Caller-generated stable logical Conversation identity.
 		conversation_id: EntityId,
-		/// Caller-generated stable first logical Turn identity.
-		turn_id: EntityId,
 		/// Bounded user-authored message.
 		message: HistoryText,
 		/// Untrusted server-host working directory selected for this process lineage.
 		working_directory: QuickTaskWorkingDirectory,
 	},
-	/// Explicitly retry L0 routing for one durable pre-session Quick Task Conversation.
-	RetryQuickTaskRouting {
-		/// Stable logical Conversation identity with no current RuntimeSession.
+	/// Resume the sole initial route for one routing-pending Conversation.
+	ResumeQuickTaskRouting {
+		/// Stable routing-pending Conversation identity.
 		conversation_id: EntityId,
-		/// Caller-generated stable first logical Turn identity for this retry.
-		turn_id: EntityId,
-		/// Bounded user-authored message admitted only after first-session planning succeeds.
-		message: HistoryText,
-		/// Untrusted server-host working directory selected for this process lineage.
-		working_directory: QuickTaskWorkingDirectory,
+	},
+	/// Create and route one fresh successor for a waiting/no-route Conversation.
+	CreateQuickTaskRoutingSuccessor {
+		/// Stable waiting/no-route source Conversation identity.
+		conversation_id: EntityId,
+	},
+	/// Resume only initial session establishment from one selected decision.
+	ResumeQuickTaskEstablishment {
+		/// Stable establishment-pending Conversation identity.
+		conversation_id: EntityId,
 	},
 	/// Submit one subsequent turn on the exact existing Codex thread.
 	SubmitQuickTaskTurn {
@@ -2680,6 +2682,15 @@ pub enum ResultPayload {
 	QuickTaskConversationAccepted {
 		/// Complete current ordinary projection after acceptance.
 		conversation: QuickTaskSummary,
+	},
+	/// A waiting/no-route source was archived in favor of one routed successor.
+	QuickTaskRoutingSuccessorAccepted {
+		/// Archived source Conversation identity.
+		source_conversation_id: EntityId,
+		/// Exact archived source revision.
+		source_conversation_revision: EntityRevision,
+		/// Complete current projection of the direct successor.
+		successor: QuickTaskSummary,
 	},
 	/// An interrupt request reached the exact daemon-local active Turn handle.
 	QuickTaskInterruptAccepted {
@@ -3584,7 +3595,9 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
 		CommandPayload::CreateQuickTask { .. }
-		| CommandPayload::RetryQuickTaskRouting { .. }
+		| CommandPayload::ResumeQuickTaskRouting { .. }
+		| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
+		| CommandPayload::ResumeQuickTaskEstablishment { .. }
 		| CommandPayload::SubmitQuickTaskTurn { .. }
 		| CommandPayload::InterruptQuickTask { .. } => validate_quick_task_command(command),
 		CommandPayload::RefreshSystemObservation { .. } => Ok(()),
@@ -3682,10 +3695,9 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::CreateQuickTask { conversation_id, turn_id, message, .. } => {
+		CommandPayload::CreateQuickTask { conversation_id, message, .. } => {
 			if command.expected_revision.is_some()
 				|| !is_canonical_uuid(conversation_id.as_str())
-				|| !is_canonical_uuid(turn_id.as_str())
 				|| message.as_str().trim().is_empty()
 			{
 				Err("Quick Task create identity, revision, or message is invalid")
@@ -3693,16 +3705,15 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Ok(())
 			}
 		},
-		CommandPayload::RetryQuickTaskRouting { conversation_id, turn_id, message, .. } =>
-			if positive_expected
-				&& is_canonical_uuid(conversation_id.as_str())
-				&& is_canonical_uuid(turn_id.as_str())
-				&& !message.as_str().trim().is_empty()
-			{
+		CommandPayload::ResumeQuickTaskRouting { conversation_id }
+		| CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id }
+		| CommandPayload::ResumeQuickTaskEstablishment { conversation_id } => {
+			if positive_expected && is_canonical_uuid(conversation_id.as_str()) {
 				Ok(())
 			} else {
-				Err("Quick Task routing retry identity, revision, or message is invalid")
-			},
+				Err("Quick Task recovery identity or revision is invalid")
+			}
+		},
 		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } =>
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
@@ -4085,7 +4096,8 @@ mod tests {
 		IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
 		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId, QueryResultPayload, ResetCardDescriptorDto,
+		MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId, QueryResultPayload, QuickTaskRecoveryAction,
+		QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory, ResetCardDescriptorDto,
 		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
 		WorkItemBoardContractError, WorkItemBoardPage, WorkItemBoardPageSize,
 		WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
@@ -4214,6 +4226,94 @@ mod tests {
 		assert!(encoded.contains("\"type\":\"command\""));
 		assert!(encoded.contains("\"name\":\"refresh_system_observation\""));
 		assert_eq!(serde_json::from_str::<ClientMessage>(&encoded).unwrap(), message);
+	}
+
+	#[test]
+	fn quick_task_routing_recovery_has_clean_break_wire_shapes() {
+		let source =
+			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical source ID");
+		let successor =
+			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical successor ID");
+		let create = CommandPayload::CreateQuickTask {
+			conversation_id: source.clone(),
+			message: HistoryText::new("route this request").expect("bounded message"),
+			working_directory: QuickTaskWorkingDirectory::new("/tmp/work")
+				.expect("bounded working directory"),
+		};
+		assert_eq!(
+			serde_json::to_value(&create).unwrap(),
+			serde_json::json!({
+				"name": "create_quick_task",
+				"arguments": {
+					"conversation_id": source.as_str(),
+					"message": "route this request",
+					"working_directory": "/tmp/work",
+				},
+			}),
+		);
+		for (payload, name) in [
+			(
+				CommandPayload::ResumeQuickTaskRouting { conversation_id: source.clone() },
+				"resume_quick_task_routing",
+			),
+			(
+				CommandPayload::CreateQuickTaskRoutingSuccessor { conversation_id: source.clone() },
+				"create_quick_task_routing_successor",
+			),
+			(
+				CommandPayload::ResumeQuickTaskEstablishment { conversation_id: source.clone() },
+				"resume_quick_task_establishment",
+			),
+		] {
+			assert_eq!(
+				serde_json::to_value(payload).unwrap(),
+				serde_json::json!({
+					"name": name,
+					"arguments": {"conversation_id": source.as_str()},
+				}),
+			);
+		}
+		assert!(
+			serde_json::from_value::<CommandPayload>(serde_json::json!({
+				"name": "retry_quick_task_routing",
+				"arguments": {"conversation_id": source.as_str()},
+			}))
+			.is_err()
+		);
+
+		let successor_summary = QuickTaskSummary::new(
+			successor.clone(),
+			EntityRevision(1),
+			1,
+			None,
+			None,
+			QuickTaskState::RoutingPending,
+			None,
+			Some(QuickTaskRecoveryAction::ResumeRouting),
+		)
+		.expect("routing-pending successor projection is valid");
+		let result = ResultPayload::QuickTaskRoutingSuccessorAccepted {
+			source_conversation_id: source.clone(),
+			source_conversation_revision: EntityRevision(2),
+			successor: successor_summary,
+		};
+		assert_eq!(
+			serde_json::to_value(result).unwrap(),
+			serde_json::json!({
+				"name": "quick_task_routing_successor_accepted",
+				"data": {
+					"source_conversation_id": source.as_str(),
+					"source_conversation_revision": 2,
+					"successor": {
+						"conversation_id": successor.as_str(),
+						"conversation_revision": 1,
+						"projection_updated_at_micros": 1,
+						"state": "routing_pending",
+						"recovery_action": "resume_routing",
+					},
+				},
+			}),
+		);
 	}
 
 	#[test]

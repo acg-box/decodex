@@ -27,20 +27,21 @@ use decodex_codex::{
 };
 use decodex_core::{
 	AccountId, AccountLifecycleReadiness, AccountOperationId, ContextPack, ContextPackInput,
-	ContextPackPolicy, ContextPackSource, ContextSourceKind, ConversationId, ExecutionConsumer,
-	HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata, ItemStatus,
-	MAX_CONTEXT_PACK_BYTES, MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES, PinnedContextSource,
-	PossibleSideEffects, ProcessExecutionAuthorization, ProcessGenerationAccountBinding,
-	ProcessGenerationId, ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation,
-	ProviderAttemptState, ProviderDuplicateRisk, ProviderEvidenceId, ProviderEvidenceSource,
-	ProviderPositiveEvidence, ProviderRequestId, ProviderRequestKey, ProviderRequestKeys,
-	ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole,
-	compile_context_pack,
+	ContextPackPolicy, ContextPackSource, ContextSourceKind, ContinuationRejection, ConversationId,
+	ExecutionConsumer, HistoryItemId, HistoryItemKind, HistoryMediaType, HistoryMetadata,
+	ItemStatus, MAX_CONTEXT_PACK_BYTES, MAX_CONTEXT_RECENT_ITEMS, MIN_CONTEXT_PACK_BYTES,
+	PinnedContextSource, PossibleSideEffects, ProcessExecutionAuthorization,
+	ProcessGenerationAccountBinding, ProcessGenerationId, ProviderAttemptConsumer,
+	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
+	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
+	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
+	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
 };
 use decodex_postgres::{
-	AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome, CommandIdentity,
-	CreateConversation, FenceRuntimeSessionThreadStart, FenceRuntimeSessionThreadStartOutcome,
-	FreshQuickTaskProcessGeneration, OrdinaryRuntimeSessionResumeReadback, PostgresStore,
+	AdmitInitialQuickTaskTurn, AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome,
+	CommandIdentity, CreateQuickTaskConversation, FenceRuntimeSessionThreadStart,
+	FenceRuntimeSessionThreadStartOutcome, FreshQuickTaskProcessGeneration,
+	InitialQuickTaskTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback, PostgresStore,
 	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
 	ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome,
 	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
@@ -63,8 +64,9 @@ use crate::{
 		SuccessfulRuntimeSessionResume,
 	},
 	routing_orchestration::{
-		DefinitePostProcessRefusal, ExecutionCommand, ExecutionCoordinator,
-		PersistedDecisionProvenance, PostProcessCommand, PostProcessOutcome, PreProcessOutcome,
+		ContinuationExecutionCommand, DefinitePostProcessRefusal, ExecutionCommand,
+		ExecutionCoordinator, ExecutionFailureKind, PersistedDecisionProvenance,
+		PostProcessCommand, PostProcessOutcome, PreProcessOutcome,
 	},
 };
 
@@ -285,23 +287,23 @@ fn selected_directory_from_descriptor(descriptor: i32) -> Result<File, ()> {
 	Ok(unsafe { File::from_raw_fd(descriptor) })
 }
 
-/// Current routing-policy head supplied by the application authority owner.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub(crate) struct QuickTaskRoutingAuthority {
-	pub routing_policy_id: String,
-	pub routing_policy_revision: i64,
-}
-
 /// First ordinary Turn input. Model and reasoning come from the selected Task RoleProfile.
 pub(crate) struct CreateQuickTask {
 	pub operation_key: String,
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
 	pub conversation_id: ConversationId,
-	pub turn_id: TurnId,
 	pub message: String,
 	pub working_directory: String,
-	pub routing: QuickTaskRoutingAuthority,
+}
+
+/// Public recovery coordinates. Message, directory, and route authority are read from PostgreSQL.
+pub(crate) struct RecoverQuickTask {
+	pub operation_key: String,
+	pub correlation_id: String,
+	pub causation_id: Option<String>,
+	pub conversation_id: ConversationId,
+	pub expected_conversation_revision: i64,
 }
 
 /// Later ordinary Turn input over the exact existing RuntimeSession.
@@ -313,7 +315,16 @@ pub(crate) struct SubmitQuickTaskTurn {
 	pub turn_id: TurnId,
 	pub message: String,
 	pub working_directory: String,
-	pub routing: QuickTaskRoutingAuthority,
+}
+
+struct InitialQuickTaskExecution {
+	operation_key: String,
+	correlation_id: String,
+	causation_id: Option<String>,
+	conversation_id: ConversationId,
+	turn_id: TurnId,
+	message: String,
+	working_directory: String,
 }
 
 /// Daemon-local projection. It is never serialized or accepted as durable authority.
@@ -336,8 +347,8 @@ pub(crate) struct QuickTaskReadback {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum QuickTaskLocalState {
 	RoutingPending,
+	EstablishmentPending,
 	QuotaExhausted,
-	WaitingReconciliation,
 	NoRoute,
 	Establishing,
 	Ready,
@@ -362,6 +373,8 @@ pub(crate) enum QuickTaskManualRecovery {
 	RepairCredentialStore,
 	RestoreProviderAgreement,
 	RefreshQuota,
+	SelectedAccountDrift,
+	SelectedAccountReadiness,
 	UpgradeCodex,
 	SelectWorkingDirectory,
 	MissingLocalProcess,
@@ -543,9 +556,23 @@ enum PreparedCancellationDisposition {
 }
 
 enum ExistingSessionPlanningRefusal {
-	WaitingUsage,
-	WaitingReconciliation,
+	Recovery(QuickTaskManualRecovery),
 	Conflict,
+	Unknown,
+}
+
+const fn continuation_recovery(
+	rejection: ContinuationRejection,
+) -> Option<QuickTaskManualRecovery> {
+	match rejection {
+		ContinuationRejection::SelectedAccountDrift =>
+			Some(QuickTaskManualRecovery::SelectedAccountDrift),
+		ContinuationRejection::SelectedAccountReadinessRequired =>
+			Some(QuickTaskManualRecovery::SelectedAccountReadiness),
+		ContinuationRejection::SelectedAccountQuotaRequired =>
+			Some(QuickTaskManualRecovery::RefreshQuota),
+		_ => None,
+	}
 }
 
 struct ExistingSessionExpectation<'a> {
@@ -557,7 +584,6 @@ struct ExistingSessionExpectation<'a> {
 
 struct ExistingSessionPlanningInput<'a> {
 	operation_key: &'a str,
-	routing: &'a QuickTaskRoutingAuthority,
 	consumer: ExecutionConsumer,
 	message_bytes: usize,
 	expected: ExistingSessionExpectation<'a>,
@@ -620,6 +646,12 @@ struct RehydratedProcessLaunch {
 	sequence: i64,
 }
 
+enum InitialRouteAction {
+	Route,
+	ResumeEstablishment,
+	Preplanned(Box<PreProcessOutcome>),
+}
+
 impl QuickTaskRuntime {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
@@ -674,20 +706,86 @@ impl QuickTaskRuntime {
 		outcome
 	}
 
-	/// Explicitly issue a new L0 Routing Decision for one durable pre-session Conversation.
-	pub(crate) async fn retry_routing(
+	/// Resume the sole initial route from PostgreSQL-owned request coordinates.
+	pub(crate) async fn resume_routing(&self, command: RecoverQuickTask) -> QuickTaskOutcome {
+		self.resume_initial(command, InitialRouteAction::Route).await
+	}
+
+	/// Resume only first-session planning from one committed selected decision.
+	pub(crate) async fn resume_establishment(&self, command: RecoverQuickTask) -> QuickTaskOutcome {
+		self.resume_initial(command, InitialRouteAction::ResumeEstablishment).await
+	}
+
+	/// Start lifecycle work from an already routed successor without invoking routing persistence.
+	pub(crate) async fn start_preplanned_initial(
 		&self,
-		command: CreateQuickTask,
-		expected_conversation_revision: i64,
+		command: RecoverQuickTask,
+		routing: PreProcessOutcome,
+	) {
+		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
+			return;
+		}
+		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await
+		{
+			Ok(Some(request)) => request,
+			Ok(None) | Err(_) => return,
+		};
+		let initial = CreateQuickTask {
+			operation_key: command.operation_key,
+			correlation_id: command.correlation_id,
+			causation_id: command.causation_id,
+			conversation_id: command.conversation_id,
+			message: request.message,
+			working_directory: request.working_directory,
+		};
+		let _ = self
+			.run_reserved_initial(
+				initial,
+				command.expected_conversation_revision,
+				InitialRouteAction::Preplanned(Box::new(routing)),
+			)
+			.await;
+	}
+
+	async fn resume_initial(
+		&self,
+		command: RecoverQuickTask,
+		action: InitialRouteAction,
 	) -> QuickTaskOutcome {
-		if self.is_shutting_down() || expected_conversation_revision <= 0 {
+		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
 			return QuickTaskOutcome::Unavailable;
 		}
+		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await
+		{
+			Ok(Some(request)) => request,
+			Ok(None) | Err(_) => return QuickTaskOutcome::Unavailable,
+		};
+		self.run_reserved_initial(
+			CreateQuickTask {
+				operation_key: command.operation_key,
+				correlation_id: command.correlation_id,
+				causation_id: command.causation_id,
+				conversation_id: command.conversation_id,
+				message: request.message,
+				working_directory: request.working_directory,
+			},
+			command.expected_conversation_revision,
+			action,
+		)
+		.await
+	}
+
+	async fn run_reserved_initial(
+		&self,
+		command: CreateQuickTask,
+		conversation_revision: i64,
+		action: InitialRouteAction,
+	) -> QuickTaskOutcome {
 		if let Err(outcome) = self.reserve_initial(&command) {
 			return *outcome;
 		}
 		let conversation_id = command.conversation_id.clone();
-		let outcome = self.establish_first_session(command, expected_conversation_revision).await;
+		let outcome = self.establish_first_session(command, conversation_revision, action).await;
 		if matches!(
 			&outcome,
 			QuickTaskOutcome::PreSession(_)
@@ -701,18 +799,14 @@ impl QuickTaskRuntime {
 
 	#[allow(clippy::too_many_lines)]
 	async fn create_inner(&self, command: CreateQuickTask) -> QuickTaskOutcome {
-		let routing_revision = command.routing.routing_policy_revision.to_string();
 		let conversation_command = match exact_command(
 			"conversation",
 			&command.operation_key,
 			&[
 				command.conversation_id.as_str(),
 				"Quick Task",
-				command.turn_id.as_str(),
 				&command.message,
 				&command.working_directory,
-				&command.routing.routing_policy_id,
-				&routing_revision,
 			],
 		) {
 			Ok(command) => command,
@@ -721,11 +815,13 @@ impl QuickTaskRuntime {
 		let conversation = match self
 			.inner
 			.store
-			.create_conversation(
+			.create_quick_task_conversation(
 				&conversation_command,
-				&CreateConversation {
+				&CreateQuickTaskConversation {
 					conversation_id: command.conversation_id.clone(),
 					title: "Quick Task".to_owned(),
+					message: command.message.clone(),
+					working_directory: command.working_directory.clone(),
 				},
 			)
 			.await
@@ -733,7 +829,8 @@ impl QuickTaskRuntime {
 			Ok(conversation) => conversation,
 			Err(error) => return store_outcome(error),
 		};
-		self.establish_first_session(command, conversation.revision).await
+		self.establish_first_session(command, conversation.revision, InitialRouteAction::Route)
+			.await
 	}
 
 	#[allow(clippy::too_many_lines)]
@@ -741,43 +838,36 @@ impl QuickTaskRuntime {
 		&self,
 		command: CreateQuickTask,
 		conversation_revision: i64,
+		action: InitialRouteAction,
 	) -> QuickTaskOutcome {
-		let working_directory = command.working_directory.clone();
-		let consumer = ExecutionConsumer::ConversationTurn {
-			conversation_id: command.conversation_id.clone(),
-			conversation_revision,
-			source_runtime_session_id: None,
-			source_runtime_session_revision: None,
-			turn_id: command.turn_id.clone(),
-		};
-		let execution = ExecutionCommand::initial_thread(
-			scoped_key("route", &command.operation_key),
-			decodex_postgres::RouteAccount {
-				operation_id: derived_uuid("route-operation", &[&command.operation_key]),
-				routing_policy_id: command.routing.routing_policy_id.clone(),
-				expected_routing_policy_revision: command.routing.routing_policy_revision,
-				consumer: consumer.clone(),
+		let outcome = match action {
+			InitialRouteAction::Route => {
+				let execution = ExecutionCommand::initial_thread(
+					&command.operation_key,
+					command.conversation_id.clone(),
+					conversation_revision,
+				);
+				ExecutionCoordinator.pre_process(&self.inner.store, &execution).await
 			},
-			scoped_key("continuation", &command.operation_key),
-			derived_uuid("continuation-operation", &[&command.operation_key]),
-			derived_uuid("continuation-plan", &[&command.operation_key]),
-		);
-		let (decision, plan) = match ExecutionCoordinator
-			.pre_process(&self.inner.store, &self.inner.blob_store, &execution)
-			.await
-		{
+			InitialRouteAction::ResumeEstablishment =>
+				ExecutionCoordinator
+					.resume_establishment(&self.inner.store, &command.conversation_id)
+					.await,
+			InitialRouteAction::Preplanned(outcome) => *outcome,
+		};
+		let (decision, plan) = match outcome {
 			PreProcessOutcome::Planned { decision, plan } => (decision, plan),
-			PreProcessOutcome::WaitingUsage =>
+			PreProcessOutcome::Waiting =>
 				return self.pre_session(
 					&command,
 					conversation_revision,
 					QuickTaskLocalState::QuotaExhausted,
 				),
-			PreProcessOutcome::WaitingReconciliation =>
+			PreProcessOutcome::EstablishmentPending =>
 				return self.pre_session(
 					&command,
 					conversation_revision,
-					QuickTaskLocalState::WaitingReconciliation,
+					QuickTaskLocalState::EstablishmentPending,
 				),
 			PreProcessOutcome::NoRoute =>
 				return self.pre_session(
@@ -792,6 +882,29 @@ impl QuickTaskRuntime {
 					QuickTaskLocalState::RoutingPending,
 				),
 		};
+		let consumer = decision.consumer.clone();
+		let turn_id = match &consumer {
+			ExecutionConsumer::ConversationTurn {
+				conversation_id,
+				conversation_revision: revision,
+				source_runtime_session_id: None,
+				source_runtime_session_revision: None,
+				turn_id,
+			} if conversation_id == &command.conversation_id
+				&& *revision == conversation_revision =>
+				turn_id.clone(),
+			_ => return QuickTaskOutcome::Conflict,
+		};
+		let command = InitialQuickTaskExecution {
+			operation_key: scoped_key("initial-lifecycle", &decision.decision_id),
+			correlation_id: command.correlation_id,
+			causation_id: command.causation_id,
+			conversation_id: command.conversation_id,
+			turn_id,
+			message: command.message,
+			working_directory: command.working_directory,
+		};
+		let working_directory = command.working_directory.clone();
 		let Some(session) = plan.runtime_session.clone() else {
 			return QuickTaskOutcome::Conflict;
 		};
@@ -815,18 +928,56 @@ impl QuickTaskRuntime {
 		let runtime_session_id = session.runtime_session_id.clone();
 		let selected_account_id = plan.plan.selected_account_id.clone();
 		let selected_account_revision = session.account_snapshot.source_revision;
-		let turn_reservation = match self
-			.reserve_user_turn(
-				&command.operation_key,
-				&command.conversation_id,
-				&runtime_session_id,
-				&command.turn_id,
-				1,
-				&command.message,
+		let history_item_id = match HistoryItemId::new(derived_uuid(
+			"user-history",
+			&[command.operation_key.as_str(), command.turn_id.as_str()],
+		)) {
+			Ok(value) => value,
+			Err(_) => return QuickTaskOutcome::Conflict,
+		};
+		let turn_admission = match self
+			.inner
+			.store
+			.admit_initial_quick_task_turn(
+				&self.inner.blob_store,
+				&scoped_key("initial-turn-admission", &command.operation_key),
+				&AdmitInitialQuickTaskTurn {
+					expected_conversation_revision: conversation_revision,
+					expected_runtime_session_revision: session.revision,
+					continuation_plan_id: plan.plan.plan_id.clone(),
+					message: RecordHistoryItem {
+						conversation_id: command.conversation_id.clone(),
+						runtime_session_id: runtime_session_id.clone(),
+						turn_id: command.turn_id.clone(),
+						turn_sequence: 1,
+						turn_role: TurnRole::User,
+						possible_side_effects: PossibleSideEffects::Unknown,
+						history_item_id: history_item_id.clone(),
+						ordinal: 0,
+						kind: HistoryItemKind::Message,
+						status: ItemStatus::Completed,
+						text: command.message.clone(),
+						media_type: markdown_media_type(),
+						metadata: HistoryMetadata::empty(),
+						expected_revision: None,
+						artifact: None,
+					},
+				},
 			)
 			.await
 		{
-			Ok(reservation) => reservation,
+			Ok(
+				InitialQuickTaskTurnAdmissionOutcome::Fresh(admission)
+				| InitialQuickTaskTurnAdmissionOutcome::Replayed(admission),
+			) if admission.routing_decision_id == decision.decision_id
+				&& admission.continuation_plan_id == plan.plan.plan_id
+				&& admission.history_item_id == history_item_id
+				&& admission.turn.turn_id == command.turn_id
+				&& admission.turn.sequence == 1
+				&& admission.turn.status == decodex_core::TurnStatus::Active
+				&& admission.turn.revision == 1 =>
+				admission,
+			Ok(_) => return QuickTaskOutcome::Conflict,
 			Err(error)
 				if turn_reservation_is_definite(&error)
 					|| turn_reservation_is_integrity_failure(&error) =>
@@ -854,7 +1005,9 @@ impl QuickTaskRuntime {
 					.await;
 			},
 		};
-		if !turn_admits_execution(&turn_reservation) {
+		if turn_admission.turn.status != decodex_core::TurnStatus::Active
+			|| turn_admission.turn.revision != 1
+		{
 			return QuickTaskOutcome::Conflict;
 		}
 		let created = QuickTaskReadback {
@@ -870,7 +1023,6 @@ impl QuickTaskRuntime {
 			active_turn_id: Some(command.turn_id.clone()),
 			state: QuickTaskLocalState::Establishing,
 		};
-
 		let generation_id = match ProcessGenerationId::new(derived_uuid(
 			"process-generation",
 			&[command.operation_key.as_str(), command.conversation_id.as_str()],
@@ -1616,43 +1768,38 @@ impl QuickTaskRuntime {
 		(PersistedDecisionProvenance, decodex_postgres::ContinuationPlanEffect),
 		ExistingSessionPlanningRefusal,
 	> {
-		let ExistingSessionPlanningInput {
-			operation_key,
-			routing,
-			consumer,
-			message_bytes,
-			expected,
-		} = input;
+		let ExistingSessionPlanningInput { operation_key, consumer, message_bytes, expected } =
+			input;
+		let (conversation_id, turn_id) = match &consumer {
+			ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. } =>
+				(conversation_id.clone(), turn_id.clone()),
+			ExecutionConsumer::ManagedRunExecution { .. } =>
+				return Err(ExistingSessionPlanningRefusal::Conflict),
+		};
 		let fallback_context_pack = self
 			.compile_fallback_context_pack(
-				match &consumer {
-					ExecutionConsumer::ConversationTurn { conversation_id, .. } => conversation_id,
-					ExecutionConsumer::ManagedRunExecution { .. } =>
-						return Err(ExistingSessionPlanningRefusal::Conflict),
-				},
+				&conversation_id,
 				consumer.domain_revision(),
 				message_bytes,
 			)
 			.await
-			.map_err(|_| ExistingSessionPlanningRefusal::Conflict)?;
-		let execution = ExecutionCommand::existing_session(
-			scoped_key("route", operation_key),
-			decodex_postgres::RouteAccount {
-				operation_id: derived_uuid("route-operation", &[operation_key]),
-				routing_policy_id: routing.routing_policy_id.clone(),
-				expected_routing_policy_revision: routing.routing_policy_revision,
-				consumer: consumer.clone(),
-			},
-			scoped_key("continuation", operation_key),
-			derived_uuid("continuation-operation", &[operation_key]),
-			derived_uuid("continuation-plan", &[operation_key]),
-			derived_uuid("fallback-runtime-session", &[operation_key]),
-			derived_uuid("fallback-account-snapshot", &[operation_key]),
-			derived_uuid("fallback-context-pack", &[operation_key]),
+			.map_err(|error| match error {
+				StoreError::InvalidInput(_)
+				| StoreError::Incompatible(_)
+				| StoreError::CredentialRejected => ExistingSessionPlanningRefusal::Conflict,
+				_ => ExistingSessionPlanningRefusal::Unknown,
+			})?;
+		let execution = ContinuationExecutionCommand::ordinary(
+			operation_key,
+			conversation_id,
+			consumer.domain_revision(),
+			expected.runtime_session_id.clone(),
+			expected.runtime_session_revision,
+			turn_id,
 			fallback_context_pack,
 		);
 		match ExecutionCoordinator
-			.pre_process(&self.inner.store, &self.inner.blob_store, &execution)
+			.continuation_bind_to_plan(&self.inner.store, &self.inner.blob_store, &execution)
 			.await
 		{
 			PreProcessOutcome::Planned { decision, plan }
@@ -1677,11 +1824,17 @@ impl QuickTaskRuntime {
 					} =>
 				Ok((decision, plan)),
 			PreProcessOutcome::Planned { .. } => Err(ExistingSessionPlanningRefusal::Conflict),
-			PreProcessOutcome::WaitingUsage => Err(ExistingSessionPlanningRefusal::WaitingUsage),
-			PreProcessOutcome::WaitingReconciliation =>
-				Err(ExistingSessionPlanningRefusal::WaitingReconciliation),
-			PreProcessOutcome::NoRoute | PreProcessOutcome::FailedClosed(_) =>
-				Err(ExistingSessionPlanningRefusal::Conflict),
+			PreProcessOutcome::FailedClosed(ExecutionFailureKind::ContinuationRejected(
+				rejection,
+			)) => match continuation_recovery(rejection) {
+				Some(recovery) => Err(ExistingSessionPlanningRefusal::Recovery(recovery)),
+				None => Err(ExistingSessionPlanningRefusal::Conflict),
+			},
+			PreProcessOutcome::FailedClosed(ExecutionFailureKind::Other) =>
+				Err(ExistingSessionPlanningRefusal::Unknown),
+			PreProcessOutcome::Waiting
+			| PreProcessOutcome::NoRoute
+			| PreProcessOutcome::EstablishmentPending => Err(ExistingSessionPlanningRefusal::Conflict),
 		}
 	}
 
@@ -1822,7 +1975,6 @@ impl QuickTaskRuntime {
 		let (decision, plan) = match self
 			.plan_existing_session(ExistingSessionPlanningInput {
 				operation_key: &command.operation_key,
-				routing: &command.routing,
 				consumer: consumer.clone(),
 				message_bytes: command.message.len(),
 				expected: ExistingSessionExpectation {
@@ -1835,21 +1987,12 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(planned) => planned,
-			Err(ExistingSessionPlanningRefusal::WaitingUsage) => {
+			Err(ExistingSessionPlanningRefusal::Recovery(recovery)) => {
 				return self
 					.finalize_bound_refusal(
 						session,
 						&command.turn_id,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::RefreshQuota),
-					)
-					.await;
-			},
-			Err(ExistingSessionPlanningRefusal::WaitingReconciliation) => {
-				return self
-					.finalize_bound_refusal(
-						session,
-						&command.turn_id,
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
+						ReservedTurnRefusal::Recovery(recovery),
 					)
 					.await;
 			},
@@ -1862,6 +2005,14 @@ impl QuickTaskRuntime {
 					)
 					.await;
 			},
+			Err(ExistingSessionPlanningRefusal::Unknown) =>
+				return self
+					.ambiguous_session(
+						session,
+						command.turn_id.clone(),
+						QuickTaskAmbiguity::TurnFinalization,
+					)
+					.await,
 		};
 		if plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
 			return self
@@ -3079,7 +3230,6 @@ impl QuickTaskRuntime {
 		let planned = self
 			.plan_existing_session(ExistingSessionPlanningInput {
 				operation_key: &command.operation_key,
-				routing: &command.routing,
 				consumer,
 				message_bytes: command.message.len(),
 				expected: ExistingSessionExpectation {
@@ -3092,21 +3242,31 @@ impl QuickTaskRuntime {
 			.await;
 		let (decision, plan) = match planned {
 			Ok(planned) => planned,
-			Err(refusal) => {
-				let refusal = match refusal {
-					ExistingSessionPlanningRefusal::WaitingUsage =>
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::RefreshQuota),
-					ExistingSessionPlanningRefusal::WaitingReconciliation =>
-						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
-					ExistingSessionPlanningRefusal::Conflict => ReservedTurnRefusal::Conflict,
-				};
+			Err(ExistingSessionPlanningRefusal::Recovery(recovery)) => {
 				let outcome = self
 					.finalize_initial_refusal(
 						&command.operation_key,
 						&command.turn_id,
 						admission.durable_readback,
-						refusal,
+						ReservedTurnRefusal::Recovery(recovery),
 					)
+					.await;
+				return Err(Box::new(outcome));
+			},
+			Err(ExistingSessionPlanningRefusal::Conflict) => {
+				let outcome = self
+					.finalize_initial_refusal(
+						&command.operation_key,
+						&command.turn_id,
+						admission.durable_readback,
+						ReservedTurnRefusal::Conflict,
+					)
+					.await;
+				return Err(Box::new(outcome));
+			},
+			Err(ExistingSessionPlanningRefusal::Unknown) => {
+				let outcome = self
+					.ambiguous(admission.durable_readback, QuickTaskAmbiguity::TurnFinalization)
 					.await;
 				return Err(Box::new(outcome));
 			},
@@ -4024,8 +4184,8 @@ fn account_recovery(error: AccountLifecycleError) -> QuickTaskManualRecovery {
 		AccountLifecycleError::OperationRejected(_)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
 			QuickTaskManualRecovery::ResolveAccountOperation,
+		AccountLifecycleError::StaleAccount => QuickTaskManualRecovery::SelectedAccountDrift,
 		AccountLifecycleError::ProviderMismatch
-		| AccountLifecycleError::StaleAccount
 		| AccountLifecycleError::Refresh(_)
 		| AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) =>
 			QuickTaskManualRecovery::RestoreProviderAgreement,
@@ -4142,12 +4302,12 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 
 #[cfg(test)]
 mod tests {
-	use decodex_core::{TurnId, TurnStatus};
+	use decodex_core::{ContinuationRejection, TurnId, TurnStatus};
 	use decodex_postgres::{TurnReservationOutcome, TurnReservationReadback};
 
 	use super::{
-		QuickTaskManualRecovery, account_recovery, derived_uuid, request_digest, scoped_key,
-		turn_admits_execution,
+		QuickTaskManualRecovery, account_recovery, continuation_recovery, derived_uuid,
+		request_digest, scoped_key, turn_admits_execution,
 	};
 	use crate::account_service::AccountLifecycleError;
 
@@ -4206,8 +4366,29 @@ mod tests {
 			QuickTaskManualRecovery::RestoreProviderAgreement
 		);
 		assert_eq!(
+			account_recovery(AccountLifecycleError::StaleAccount),
+			QuickTaskManualRecovery::SelectedAccountDrift
+		);
+		assert_eq!(
 			account_recovery(AccountLifecycleError::AccountMissing),
 			QuickTaskManualRecovery::MissingLocalProcess
 		);
+	}
+
+	#[test]
+	fn continuation_account_recovery_is_typed_without_reselection() {
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountDrift),
+			Some(QuickTaskManualRecovery::SelectedAccountDrift),
+		);
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountReadinessRequired),
+			Some(QuickTaskManualRecovery::SelectedAccountReadiness),
+		);
+		assert_eq!(
+			continuation_recovery(ContinuationRejection::SelectedAccountQuotaRequired),
+			Some(QuickTaskManualRecovery::RefreshQuota),
+		);
+		assert_eq!(continuation_recovery(ContinuationRejection::SameThreadUnavailable), None);
 	}
 }

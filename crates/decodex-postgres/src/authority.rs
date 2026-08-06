@@ -413,7 +413,7 @@ const SEMANTIC_AUTHORITY_DEFINITION: [SemanticAuthorityDescriptor;
 		SemanticAuthorityFailurePolicy::Unsafe,
 	),
 ];
-static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
+static FUNCTION_CONTRACTS: [FunctionContract; 227] = [
 	FunctionContract {
 		name: "is_canonical_media_type",
 		lookup_signature: "decodex.is_canonical_media_type(pg_catalog.text)",
@@ -692,11 +692,26 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		"enforce_conversation_state()",
 	),
 	trigger_contract(
+		"enforce_conversation_routing_successor",
+		"decodex.enforce_conversation_routing_successor()",
+		"enforce_conversation_routing_successor()",
+	),
+	trigger_contract(
 		"enforce_runtime_session_state",
 		"decodex.enforce_runtime_session_state()",
 		"enforce_runtime_session_state()",
 	),
 	trigger_contract("enforce_turn_state", "decodex.enforce_turn_state()", "enforce_turn_state()"),
+	trigger_contract(
+		"enforce_initial_quick_task_admission_complete",
+		"decodex.enforce_initial_quick_task_admission_complete()",
+		"enforce_initial_quick_task_admission_complete()",
+	),
+	trigger_contract(
+		"enforce_initial_quick_task_admission_owner",
+		"decodex.enforce_initial_quick_task_admission_owner()",
+		"enforce_initial_quick_task_admission_owner()",
+	),
 	trigger_contract(
 		"enforce_history_item_state",
 		"decodex.enforce_history_item_state()",
@@ -1306,9 +1321,9 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 	),
 	exact_function_contract(
 		"resolve_routing_snapshot_exact",
-		"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-		"resolve_routing_snapshot_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
-		"p_protocol text, p_idempotency_key text, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
+		"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"resolve_routing_snapshot_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_authority_shape decodex.routing_authority_shape,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_expected_account_routing_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_authority_shape decodex.routing_authority_shape, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_expected_account_routing_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
 		"bytea",
 		"plpgsql",
 		"v",
@@ -1451,9 +1466,18 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 	),
 	exact_function_contract(
 		"route_account_exact",
-		"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
-		"route_account_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_operation_id uuid,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
-		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
+		"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"route_account_exact(\n\tp_protocol text,\n\tp_idempotency_key text,\n\tp_operation_id uuid,\n\tp_authority_shape decodex.routing_authority_shape,\n\tp_routing_policy_id uuid,\n\tp_expected_routing_policy_revision bigint,\n\tp_expected_account_routing_revision bigint,\n\tp_consumer_kind decodex.provider_attempt_consumer_kind,\n\tp_conversation_id uuid,\n\tp_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,\n\tp_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid,\n\tp_managed_run_id uuid,\n\tp_expected_managed_run_revision bigint,\n\tp_managed_execution_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_authority_shape decodex.routing_authority_shape, p_routing_policy_id uuid, p_expected_routing_policy_revision bigint, p_expected_account_routing_revision bigint, p_consumer_kind decodex.provider_attempt_consumer_kind, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid, p_managed_run_id uuid, p_expected_managed_run_revision bigint, p_managed_execution_id uuid",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	exact_function_contract(
+		"bind_quick_task_continuation_exact",
+		"decodex.bind_quick_task_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+		"bind_quick_task_continuation_exact(\n\tp_protocol text,p_idempotency_key text,p_operation_id uuid,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_source_runtime_session_id uuid,p_expected_source_runtime_session_revision bigint,\n\tp_turn_id uuid\n)",
+		"p_protocol text, p_idempotency_key text, p_operation_id uuid, p_conversation_id uuid, p_expected_conversation_revision bigint, p_source_runtime_session_id uuid, p_expected_source_runtime_session_revision bigint, p_turn_id uuid",
 		"bytea",
 		"plpgsql",
 		"v",
@@ -1837,6 +1861,52 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		"v",
 	),
 	table_function_contract(
+		"begin_quick_task_initial_route_exact",
+		"decodex.begin_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+		"begin_quick_task_initial_route_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint",
+		"TABLE(disposition text, response_bytes bytea, snapshot_envelope jsonb)",
+		"v",
+	),
+	exact_function_contract(
+		"complete_quick_task_initial_route_exact",
+		"decodex.complete_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.routing_decision_kind,pg_catalog.uuid,pg_catalog.jsonb,pg_catalog.jsonb)",
+		"complete_quick_task_initial_route_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_snapshot_id uuid,p_kind decodex.routing_decision_kind,\n\tp_selected_account_id uuid,p_causes jsonb,p_exclusions jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_snapshot_id uuid, p_kind decodex.routing_decision_kind, p_selected_account_id uuid, p_causes jsonb, p_exclusions jsonb",
+		"bytea",
+		"plpgsql",
+		"v",
+	),
+	table_function_contract(
+		"create_quick_task_routing_successor_exact",
+		"decodex.create_quick_task_routing_successor_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+		"create_quick_task_routing_successor_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_source_conversation_id uuid,p_expected_source_revision bigint\n)",
+		"p_protocol text, p_idempotency_key text, p_source_conversation_id uuid, p_expected_source_revision bigint",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
+	exact_function_contract(
+		"read_quick_task_initial_route_exact",
+		"decodex.read_quick_task_initial_route_exact(pg_catalog.uuid)",
+		"read_quick_task_initial_route_exact(p_conversation_id uuid)",
+		"p_conversation_id uuid",
+		"jsonb",
+		"plpgsql",
+		"s",
+	),
+	FunctionContract {
+		name: "read_quick_task_request_exact",
+		lookup_signature: "decodex.read_quick_task_request_exact(pg_catalog.uuid)",
+		declaration_signature: "read_quick_task_request_exact(p_conversation_id uuid)",
+		arguments: "p_conversation_id uuid",
+		result: "TABLE(message text, working_directory text)",
+		language: "sql",
+		volatility: "s",
+		strict: false,
+		returns_set: true,
+		rows: 1_000.0,
+	},
+	table_function_contract(
 		"claim_runtime_session_thread_command",
 		"decodex.claim_runtime_session_thread_command(pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
 		"claim_runtime_session_thread_command(\n\tp_protocol text,p_idempotency_key text,p_request jsonb\n)",
@@ -1879,6 +1949,14 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		"TABLE(response_bytes bytea, replayed boolean)",
 		"v",
 	),
+	table_function_contract(
+		"admit_initial_quick_task_turn_exact",
+		"decodex.admit_initial_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
+		"admit_initial_quick_task_turn_exact(\n\tp_protocol text,p_idempotency_key text,\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_continuation_plan_id uuid,p_turn_id uuid,p_history_item_id uuid,\n\tp_inline_text text,p_blob_hash text,p_media_type text,p_metadata jsonb\n)",
+		"p_protocol text, p_idempotency_key text, p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_continuation_plan_id uuid, p_turn_id uuid, p_history_item_id uuid, p_inline_text text, p_blob_hash text, p_media_type text, p_metadata jsonb",
+		"TABLE(response_bytes bytea, replayed boolean)",
+		"v",
+	),
 	FunctionContract {
 		name: "read_ordinary_runtime_session_for_resume_exact",
 		lookup_signature: "decodex.read_ordinary_runtime_session_for_resume_exact(pg_catalog.uuid)",
@@ -1896,7 +1974,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		"decodex.read_ordinary_task_conversations_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 		"read_ordinary_task_conversations_exact(\n\tp_conversation_id uuid,p_after_updated_at_micros bigint,\n\tp_after_conversation_id uuid,p_limit bigint\n)",
 		"p_conversation_id uuid, p_after_updated_at_micros bigint, p_after_conversation_id uuid, p_limit bigint",
-		"TABLE(conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, runtime_session_state decodex.runtime_session_state, codex_thread_id uuid, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, active_user_turn_id uuid, active_user_turn_count bigint, has_active_provider_attempt boolean, has_unknown_provider_attempt boolean, pre_session_state text, routing_decision_id uuid, updated_at_micros bigint)",
+		"TABLE(conversation_id uuid, conversation_revision bigint, runtime_session_id uuid, runtime_session_revision bigint, runtime_session_state decodex.runtime_session_state, codex_thread_id uuid, thread_start_request_id bigint, thread_start_request_sha256 text, thread_start_response_id bigint, thread_start_response_sha256 text, has_acknowledged_turn boolean, active_user_turn_id uuid, active_user_turn_count bigint, has_active_provider_attempt boolean, has_unknown_provider_attempt boolean, pre_session_state text, routing_decision_id uuid, updated_at_micros bigint, routing_successor_conversation_id uuid, routing_successor_conversation_revision bigint, has_admitted_user_turn boolean)",
 		"s",
 	),
 	table_function_contract(
@@ -1907,12 +1985,13 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		"TABLE(conversation_id uuid, runtime_session_id uuid, turn_id uuid, sequence bigint, role decodex.turn_role, possible_side_effects decodex.side_effect_state, status decodex.turn_status, revision bigint)",
 		"s",
 	),
-	table_function_contract(
-		"read_current_task_routing_authority_exact",
-		"decodex.read_current_task_routing_authority_exact()",
-		"read_current_task_routing_authority_exact()",
-		"",
-		"TABLE(routing_policy_id uuid, routing_policy_revision bigint)",
+	exact_function_contract(
+		"prove_initial_quick_task_spawn_not_created_exact",
+		"decodex.prove_initial_quick_task_spawn_not_created_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
+		"prove_initial_quick_task_spawn_not_created_exact(\n\tp_conversation_id uuid,p_expected_conversation_revision bigint,\n\tp_runtime_session_id uuid,p_expected_runtime_session_revision bigint,\n\tp_turn_id uuid,p_expected_turn_revision bigint,\n\tp_continuation_plan_id uuid,p_routing_decision_id uuid,\n\tp_selected_account_id uuid,p_process_generation_id uuid\n)",
+		"p_conversation_id uuid, p_expected_conversation_revision bigint, p_runtime_session_id uuid, p_expected_runtime_session_revision bigint, p_turn_id uuid, p_expected_turn_revision bigint, p_continuation_plan_id uuid, p_routing_decision_id uuid, p_selected_account_id uuid, p_process_generation_id uuid",
+		"boolean",
+		"plpgsql",
 		"s",
 	),
 	table_function_contract(
@@ -2148,7 +2227,7 @@ static FUNCTION_CONTRACTS: [FunctionContract; 217] = [
 		rows: 1_000.0,
 	},
 ];
-const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
+const RUNTIME_EXECUTE_FUNCTIONS: [&str; 106] = [
 	"decodex.is_canonical_media_type(pg_catalog.text)",
 	"decodex.is_history_metadata_projection(pg_catalog.jsonb)",
 	"decodex.normalize_unicode_whitespace(pg_catalog.text)",
@@ -2156,7 +2235,6 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.has_credential_material(pg_catalog.text)",
 	"decodex.has_credential_material(pg_catalog.jsonb)",
 	"decodex.is_meaningful_evidence(pg_catalog.jsonb)",
-	"decodex.rfc3339_utc(pg_catalog.timestamptz)",
 	"decodex.is_valid_operation_duration(pg_catalog.interval)",
 	"decodex.lease_ttl_milliseconds(pg_catalog.interval)",
 	"decodex.try_acquire_lease(pg_catalog.text,pg_catalog.uuid,pg_catalog.interval)",
@@ -2186,7 +2264,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.guard_work_item_running_resume(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.replace_routing_policy_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog._uuid,pg_catalog._int8,decodex._routing_member_disposition,decodex._codex_capability)",
 	"decodex.publish_routing_evidence_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.role_profile_role,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,decodex._codex_capability,decodex._capability_evidence_state)",
-	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.resolve_routing_snapshot_exact(pg_catalog.text,pg_catalog.text,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.prepare_codex_experiment_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.mark_codex_experiment_creation_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
 	"decodex.bind_codex_experiment_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.bool,pg_catalog.text)",
@@ -2194,9 +2272,16 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.mark_codex_experiment_title_set_possible_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text)",
 	"decodex.attest_codex_experiment_retained_title_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
 	"decodex.record_attested_codex_experiment_observation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,decodex.codex_experiment_observation_kind,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.text)",
-	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.route_account_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,decodex.routing_authority_shape,pg_catalog.uuid,pg_catalog.int8,pg_catalog.int8,decodex.provider_attempt_consumer_kind,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.bind_quick_task_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.begin_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.complete_quick_task_initial_route_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,decodex.routing_decision_kind,pg_catalog.uuid,pg_catalog.jsonb,pg_catalog.jsonb)",
+	"decodex.create_quick_task_routing_successor_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8)",
+	"decodex.read_quick_task_initial_route_exact(pg_catalog.uuid)",
+	"decodex.read_quick_task_request_exact(pg_catalog.uuid)",
 	"decodex.plan_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.bytea,pg_catalog.text,pg_catalog.text,pg_catalog.int4,pg_catalog.int4,pg_catalog.text,pg_catalog.bool,pg_catalog.int4,pg_catalog._text,pg_catalog._text,pg_catalog._int8,pg_catalog._text,pg_catalog._int8,pg_catalog._int8,pg_catalog._text,pg_catalog._text,pg_catalog._text,pg_catalog._int8)",
 	"decodex.plan_initial_thread_continuation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid)",
+	"decodex.admit_initial_quick_task_turn_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.text,pg_catalog.jsonb)",
 	"decodex.read_continuation_plan_exact(pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_execution_decision_exact(pg_catalog.uuid)",
 	"decodex.read_managed_run_execution_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8)",
@@ -2225,7 +2310,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.read_ordinary_runtime_session_for_resume_exact(pg_catalog.uuid)",
 	"decodex.read_ordinary_task_conversations_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8)",
 	"decodex.read_turn_admission_exact(pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
-	"decodex.read_current_task_routing_authority_exact()",
+	"decodex.prove_initial_quick_task_spawn_not_created_exact(pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.prepare_quick_task_process_generation_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.uuid)",
 	"decodex.fence_runtime_session_thread_start_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.text)",
 	"decodex.bind_runtime_session_thread_exact(pg_catalog.text,pg_catalog.text,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.int8,pg_catalog.uuid,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.uuid)",
@@ -2250,7 +2335,7 @@ const RUNTIME_EXECUTE_FUNCTIONS: [&str; 100] = [
 	"decodex.observe_account_profile_exact(pg_catalog.uuid,pg_catalog.int8,decodex.account_provider_kind,pg_catalog.text,pg_catalog.int8,pg_catalog.text,pg_catalog.text,pg_catalog.int8,pg_catalog.int8,pg_catalog.int8,pg_catalog.int4,pg_catalog.int4,pg_catalog._text,pg_catalog._int8)",
 	"decodex.read_account_profile_exact(pg_catalog.uuid)",
 ];
-const SAFETY_FUNCTIONS: [&str; 74] = [
+const SAFETY_FUNCTIONS: [&str; 77] = [
 	"enforce_lease_operation_time",
 	"enforce_outbox_operation_time",
 	"enforce_quota_observation_monotonicity",
@@ -2262,8 +2347,11 @@ const SAFETY_FUNCTIONS: [&str; 74] = [
 	"canonicalize_created_at",
 	"enforce_blob_object_state",
 	"enforce_conversation_state",
+	"enforce_conversation_routing_successor",
 	"enforce_runtime_session_state",
 	"enforce_turn_state",
+	"enforce_initial_quick_task_admission_complete",
+	"enforce_initial_quick_task_admission_owner",
 	"enforce_history_item_state",
 	"capture_history_item_version",
 	"enforce_artifact_state",
@@ -2326,7 +2414,7 @@ const SAFETY_FUNCTIONS: [&str; 74] = [
 	"enforce_provider_attempt_turn_materialization",
 	"forbid_provider_attempt_history_mutation",
 ];
-const SAFETY_TRIGGER_COUNT: usize = 146;
+const SAFETY_TRIGGER_COUNT: usize = 151;
 const ROLE_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
   SELECT role.*
@@ -2468,6 +2556,7 @@ WITH set_roles AS (
   ('leases', true, true, true, false),
   ('outbox', true, true, true, true),
   ('conversations', true, true, true, false),
+	('conversation_routing_successors', false, false, false, false),
 	  ('profile_snapshots', true, false, false, false),
 	  ('account_snapshots', true, false, false, false),
 	  ('runtime_sessions', true, false, false, false),
@@ -2797,6 +2886,8 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('command_receipts', 'command_receipts_state_guard', 'enforce_command_receipt_state', 31),
   ('conversations', 'conversations_coordinator', 'acquire_hierarchy_coordinator', 30),
   ('conversations', 'conversations_state_guard', 'enforce_conversation_state', 23),
+  ('conversation_routing_successors', 'conversation_routing_successor_complete', 'enforce_conversation_routing_successor', 5),
+  ('conversation_routing_successors', 'conversation_routing_successor_immutable', 'enforce_conversation_routing_successor', 27),
   ('profile_snapshots', 'profile_snapshots_created_at_guard', 'canonicalize_created_at', 7),
   ('account_snapshots', 'account_snapshots_created_at_guard', 'canonicalize_created_at', 7),
   ('runtime_sessions', 'runtime_sessions_state_guard', 'enforce_runtime_session_state', 23),
@@ -2804,9 +2895,12 @@ WITH expected(table_name, trigger_name, function_name, trigger_type) AS (VALUES
   ('blob_objects', 'blob_objects_state_guard', 'enforce_blob_object_state', 7),
   ('turns', 'turns_state_guard', 'enforce_turn_state', 23),
   ('turns', 'turns_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('turns', 'turns_initial_quick_task_admission_complete', 'enforce_initial_quick_task_admission_complete', 5),
+  ('turns', 'turns_initial_quick_task_admission_owner', 'enforce_initial_quick_task_admission_owner', 7),
   ('history_items', 'history_items_state_guard', 'enforce_history_item_state', 23),
   ('history_items', 'history_items_version_capture', 'capture_history_item_version', 21),
   ('history_items', 'history_items_coordinator', 'acquire_hierarchy_coordinator', 30),
+  ('history_items', 'history_items_initial_quick_task_admission_owner', 'enforce_initial_quick_task_admission_owner', 7),
   ('history_cursors', 'history_cursors_state_guard', 'enforce_history_cursor_state', 7),
   ('artifacts', 'artifacts_state_guard', 'enforce_artifact_state', 23),
   ('artifacts', 'artifacts_coordinator', 'acquire_hierarchy_coordinator', 30),
@@ -2942,15 +3036,15 @@ SELECT
     AND trigger.tgtype = expected.trigger_type
     AND trigger.tgparentid = 0
     AND (trigger.tgconstraint <> 0) = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete', 'conversation_routing_successor_complete', 'turns_initial_quick_task_admission_complete')
     )
     AND trigger.tgconstrrelid = 0
     AND trigger.tgconstrindid = 0
     AND trigger.tgdeferrable = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete', 'conversation_routing_successor_complete', 'turns_initial_quick_task_admission_complete')
     )
     AND trigger.tginitdeferred = (
-      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete')
+      expected.trigger_name IN ('objectives_completion_coherence', 'objective_evidence_completion_coherence', 'exact_receipts_complete_at_commit', 'role_profiles_exact_global_set', 'work_item_acceptance_coherence', 'managed_run_assignment_scope', 'managed_repositories_projection_complete', 'repository_operations_scope_complete', 'repository_operation_evidence_complete', 'repository_operation_results_complete', 'repository_operation_events_complete', 'repository_authority_transitions_complete', 'routing_policy_revision_complete', 'routing_evidence_complete', 'routing_snapshot_complete', 'routing_decision_complete', 'continuation_plan_complete', 'waiting_usage_wake_transition_complete', 'waiting_usage_wake_head_projection', 'provider_attempt_binding_complete', 'conversation_routing_successor_complete', 'turns_initial_quick_task_admission_complete')
     )
     AND trigger.tgnargs = 0
     AND trigger.tgattr = ''::pg_catalog.int2vector
@@ -3215,6 +3309,8 @@ WITH catalog_context AS MATERIALIZED (
   ('command_receipts', 'command_receipts_state_guard', 'decodex.enforce_command_receipt_state()'),
   ('conversations', 'conversations_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
   ('conversations', 'conversations_state_guard', 'decodex.enforce_conversation_state()'),
+  ('conversation_routing_successors', 'conversation_routing_successor_complete', 'decodex.enforce_conversation_routing_successor()'),
+  ('conversation_routing_successors', 'conversation_routing_successor_immutable', 'decodex.enforce_conversation_routing_successor()'),
   ('profile_snapshots', 'profile_snapshots_created_at_guard', 'decodex.canonicalize_created_at()'),
   ('account_snapshots', 'account_snapshots_created_at_guard', 'decodex.canonicalize_created_at()'),
   ('runtime_sessions', 'runtime_sessions_state_guard', 'decodex.enforce_runtime_session_state()'),
@@ -3222,9 +3318,12 @@ WITH catalog_context AS MATERIALIZED (
   ('blob_objects', 'blob_objects_state_guard', 'decodex.enforce_blob_object_state()'),
   ('turns', 'turns_state_guard', 'decodex.enforce_turn_state()'),
   ('turns', 'turns_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
+  ('turns', 'turns_initial_quick_task_admission_complete', 'decodex.enforce_initial_quick_task_admission_complete()'),
+  ('turns', 'turns_initial_quick_task_admission_owner', 'decodex.enforce_initial_quick_task_admission_owner()'),
   ('history_items', 'history_items_state_guard', 'decodex.enforce_history_item_state()'),
   ('history_items', 'history_items_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
   ('history_items', 'history_items_version_capture', 'decodex.capture_history_item_version()'),
+  ('history_items', 'history_items_initial_quick_task_admission_owner', 'decodex.enforce_initial_quick_task_admission_owner()'),
   ('history_cursors', 'history_cursors_state_guard', 'decodex.enforce_history_cursor_state()'),
   ('artifacts', 'artifacts_state_guard', 'decodex.enforce_artifact_state()'),
   ('artifacts', 'artifacts_coordinator', 'decodex.acquire_hierarchy_coordinator()'),
@@ -4378,8 +4477,8 @@ SELECT
   )
 "#;
 const SCHEMA_CONTRACT_SHA256: [u8; 32] = [
-	0x34, 0x04, 0x5d, 0xe0, 0x42, 0xf5, 0x03, 0xec, 0x27, 0x6f, 0x75, 0x91, 0x4b, 0x81, 0x1c, 0xff,
-	0x19, 0xb9, 0xb5, 0xde, 0x50, 0xaa, 0x3b, 0x8b, 0x14, 0x32, 0x28, 0xd2, 0x25, 0x97, 0x40, 0xe7,
+	0x10, 0x6a, 0xa6, 0x32, 0x7b, 0x87, 0x5a, 0x43, 0xd9, 0x29, 0x87, 0xb3, 0x1b, 0x95, 0x98, 0x08,
+	0x56, 0x98, 0x7c, 0x9a, 0xf4, 0xb3, 0x30, 0x3b, 0x58, 0xad, 0xbe, 0xfa, 0x4c, 0xa5, 0x15, 0xfb,
 ];
 // The shipped authority permits no role settings. Record only cardinality so any setting
 // fails closed without copying an arbitrary custom-GUC value into the manifest or digest input.
@@ -4864,8 +4963,8 @@ SELECT pg_catalog.jsonb_agg(
 FROM contract_rows
 "#;
 const CONFIGURED_AUTHORITY_SHA256: [u8; 32] = [
-	0x1d, 0x56, 0x72, 0x1b, 0x9b, 0x31, 0xc3, 0x6a, 0x59, 0xba, 0xb7, 0xe5, 0x2b, 0x45, 0x4c, 0xa6,
-	0x3e, 0x6c, 0x3b, 0x35, 0x0d, 0xfe, 0x7a, 0xbd, 0xe5, 0x5a, 0x17, 0x57, 0x4c, 0x7d, 0x1d, 0x88,
+	0x99, 0x80, 0x39, 0xe6, 0x5b, 0x2b, 0xca, 0x99, 0x4b, 0xc4, 0xaf, 0x1a, 0x02, 0x3e, 0x67, 0x1d,
+	0x05, 0xd5, 0xf1, 0x8c, 0x41, 0x92, 0x72, 0xf5, 0x6e, 0x40, 0xae, 0xcb, 0xe3, 0x04, 0x45, 0x1f,
 ];
 const EXTENSION_AUTHORITY_SQL: &str = r#"
 WITH set_roles AS (
@@ -5668,8 +5767,15 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "attest_codex_experiment_retained_title_exact"
 			| "record_attested_codex_experiment_observation_exact"
 			| "route_account_exact"
+			| "bind_quick_task_continuation_exact"
+			| "begin_quick_task_initial_route_exact"
+			| "complete_quick_task_initial_route_exact"
+			| "create_quick_task_routing_successor_exact"
+			| "read_quick_task_initial_route_exact"
+			| "read_quick_task_request_exact"
 			| "plan_continuation_exact"
 			| "plan_initial_thread_continuation_exact"
+			| "admit_initial_quick_task_turn_exact"
 			| "read_continuation_plan_exact"
 			| "read_execution_decision_exact"
 			| "read_managed_run_execution_exact"
@@ -5700,7 +5806,7 @@ fn function_is_security_definer(function_name: &str) -> bool {
 			| "read_ordinary_runtime_session_for_resume_exact"
 			| "read_ordinary_task_conversations_exact"
 			| "read_turn_admission_exact"
-			| "read_current_task_routing_authority_exact"
+			| "prove_initial_quick_task_spawn_not_created_exact"
 			| "prepare_quick_task_process_generation_exact"
 			| "fence_runtime_session_thread_start_exact"
 			| "bind_runtime_session_thread_exact"

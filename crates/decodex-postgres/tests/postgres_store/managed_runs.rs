@@ -67,8 +67,8 @@ async fn create_lead_session(
 					observed_state: AccountState::Available,
 					source_revision: 1,
 				},
-				codex_thread_id: Some("da000000-0000-4000-8000-000000001416".into()),
-				initial_state: RuntimeSessionState::Active,
+				codex_thread_id: None,
+				initial_state: RuntimeSessionState::Starting,
 			},
 		)
 		.await?;
@@ -333,7 +333,7 @@ async fn assert_readback(
 	assert!(!readback.diverged);
 	assert!(readback.blocked);
 	assert_eq!(readback.runtime_session_revision, 1);
-	assert_eq!(readback.runtime_session_state, RuntimeSessionState::Active);
+	assert_eq!(readback.runtime_session_state, RuntimeSessionState::Starting);
 	assert_eq!(readback.assignments.len(), 1);
 	assert_eq!(readback.assignments[0].role, ExecutionAssignmentRole::Task);
 	assert_eq!(&readback.assignments[0].runtime_session_id, expected_runtime_session_id,);

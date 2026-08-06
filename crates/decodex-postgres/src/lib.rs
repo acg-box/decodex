@@ -24,6 +24,7 @@ mod process_generations;
 mod programs;
 mod project_agents;
 mod provider_attempts;
+mod quick_task_routing;
 mod quota;
 mod reset_cards;
 mod role_profiles;
@@ -50,11 +51,15 @@ pub use self::{
 	},
 	continuations::{ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation},
 	conversations::{
-		BlobReclaimPage, ContextPackRecord, CreateArtifact, CreateConversation, HistoryCursor,
-		HistoryEntry, HistoryPage, OrdinaryTaskConversationCursor,
+		AdmitInitialQuickTaskTurn, BlobReclaimPage, ContextPackRecord, CreateArtifact,
+		CreateConversation, CreateQuickTaskConversation, CreateQuickTaskRoutingSuccessor,
+		HistoryCursor, HistoryEntry, HistoryPage, InitialQuickTaskTurnAdmissionOutcome,
+		InitialQuickTaskTurnAdmissionReadback, InitialQuickTaskTurnAdmissionRejection,
+		OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
 		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, PersistContextPack,
-		ProposeTransition, QuickTaskTerminalizationOutcome, RecordHistoryItem, StoredArtifact,
-		StoredConversation, TerminalizeQuickTaskTurn, TurnReservationOutcome,
+		ProposeTransition, QuickTaskRequest, QuickTaskRoutingSuccessor,
+		QuickTaskRoutingSuccessorOutcome, QuickTaskTerminalizationOutcome, RecordHistoryItem,
+		StoredArtifact, StoredConversation, TerminalizeQuickTaskTurn, TurnReservationOutcome,
 		TurnReservationReadback,
 	},
 	error::{BootstrapFailure, StoreError},
@@ -81,6 +86,10 @@ pub use self::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
 		PrepareProviderAttemptOutcome, ProviderAttemptMutation, ProviderAttemptMutationOutcome,
 		ProviderAttemptRejection, RuntimeSessionBindingReceipt,
+	},
+	quick_task_routing::{
+		BindQuickTaskContinuation, QuickTaskContinuationBinding, QuickTaskInitialRoute,
+		QuickTaskInitialRouteOutcome, RouteQuickTaskInitial,
 	},
 	reset_cards::{
 		RESET_CARD_API_CALLBACK_PROFILE_SHA256, ResetCardClaim, ResetCardFailureCode,
@@ -124,22 +133,25 @@ pub use self::{
 pub use decodex_core::{
 	AcceptedPolicyRevision, AccountId, AccountLifecycleReadiness, AccountOperation,
 	AccountOperationId, AccountOperationKind, AccountOperationPhase, AccountProvider,
-	AccountQuotaWindow, AccountRecord, AccountRoutingControl, AccountSelectionMode,
-	AccountSelectionRecovery, AccountState, AdmissionDescriptorDigest, AdmittedRepositoryIdentity,
-	Agent, AgentId, AgentRole, AgentStatus, AggregateCheckpoint, AllocateRepositoryCommand,
-	BeginCommitCommand, BeginRegistrationCommand, BeginWorktreeReadyCommand, CanonicalCommitIntent,
-	CanonicalOperationDescriptor, CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest,
-	ContinuationCommandOutcome, ContinuationPlan, ContinuationPlanKind, ContinuationRejection,
-	CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion,
-	ExactCommitEvidence, ExactRegistrationEvidence, ExactRepositoryReadbackScope,
-	ExactWorktreeReadyEvidence, ExecutionAssignment, ExecutionAssignmentRole,
-	ExecutorContractVersion, ManagedExecutionId, ManagedRepositoryError, ManagedRepositoryFacts,
-	ManagedRepositoryId, ManagedRepositoryPhase, ManagedRunError, ManagedRunId, ManagedRunIdentity,
-	ManagedRunLifecycle, ManagedRunPhase, ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId,
-	NoDispatch, Objective, ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId,
-	ObjectiveState, OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy,
-	PolicyId, PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId,
-	PolicySnapshot, PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
+	AccountQuotaWindow, AccountRecord, AccountRegistryQuotaFact, AccountRegistryQuotaObservation,
+	AccountRegistryRoutingDecision, AccountRegistryRoutingDecisionKind,
+	AccountRegistryRoutingExclusion, AccountRegistryRoutingMember, AccountRegistryRoutingSnapshot,
+	AccountRoutingControl, AccountSelectionMode, AccountSelectionRecovery, AccountState,
+	AdmissionDescriptorDigest, AdmittedRepositoryIdentity, Agent, AgentId, AgentRole, AgentStatus,
+	AggregateCheckpoint, AllocateRepositoryCommand, BeginCommitCommand, BeginRegistrationCommand,
+	BeginWorktreeReadyCommand, CanonicalCommitIntent, CanonicalOperationDescriptor,
+	CanonicalOperationPayload, CommitEvidence, CommitReadbackRequest, ContinuationCommandOutcome,
+	ContinuationPlan, ContinuationPlanKind, ContinuationRejection, CredentialBinding,
+	CredentialFingerprint, CredentialStoreSchemaVersion, CredentialVersion, ExactCommitEvidence,
+	ExactRegistrationEvidence, ExactRepositoryReadbackScope, ExactWorktreeReadyEvidence,
+	ExecutionAssignment, ExecutionAssignmentRole, ExecutorContractVersion, ManagedExecutionId,
+	ManagedRepositoryError, ManagedRepositoryFacts, ManagedRepositoryId, ManagedRepositoryPhase,
+	ManagedRunError, ManagedRunId, ManagedRunIdentity, ManagedRunLifecycle, ManagedRunPhase,
+	ManagedRunState, ManagedRunWaitReason, ManagedWorktreeId, NoDispatch, Objective,
+	ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState,
+	OperationDescriptorVersion, OperationView, PersistedAbsolutePath, Policy, PolicyId,
+	PolicyProvenance, PolicyRevision, PolicyRevisionAcceptance, PolicyRevisionId, PolicySnapshot,
+	PolicySnapshotValue, PolicyStatus, PolicyTimestamp, PositiveAllocationEvidence,
 	ProcessAccountQuarantine, ProcessAuthorityLossReason, ProcessBootIdentity, ProcessControlKind,
 	ProcessDeathEvidence, ProcessDeathEvidenceId, ProcessDeathEvidenceKind,
 	ProcessExecutionAuthorization, ProcessExecutionEpochId, ProcessGeneration,
@@ -539,8 +551,8 @@ mod launch_gate_tests {
 
 	use super::{
 		account_lifecycle, account_profiles, apply_trusted_session_invariants, continuations,
-		conversations, process_generations, provider_attempts, reset_cards, routing,
-		runtime_sessions,
+		conversations, process_generations, provider_attempts, quick_task_routing, reset_cards,
+		routing, routing_decisions, runtime_sessions,
 	};
 
 	#[tokio::test]
@@ -562,7 +574,9 @@ mod launch_gate_tests {
 			process_generations::prepare_account_bound_process_generation_sql(&client).await?,
 			reset_cards::prepare_account_bound_reset_card_sql(&client).await?,
 			conversations::prepare_conversation_admission_sql(&client).await?,
+			quick_task_routing::prepare_quick_task_routing_sql(&client).await?,
 			routing::prepare_routing_decision_sql(&client).await?,
+			routing_decisions::prepare_route_account_sql(&client).await?,
 			continuations::prepare_continuation_plan_sql(&client).await?,
 			provider_attempts::prepare_provider_attempt_sql(&client).await?,
 			runtime_sessions::prepare_runtime_session_thread_establishment_sql(&client).await?,
