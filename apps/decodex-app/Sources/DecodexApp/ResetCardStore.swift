@@ -860,27 +860,27 @@ final class ResetCardStore {
 			}
 			let retainedAuthority = retainedAuthorities.first
 			let discovered: [ResetCardAccountRecord]
-			var projectionReadback: (
-				generation: UInt64,
-				projection: CodexAuthProjection?
-			)?
+			var projectionReadTask: Task<CodexAuthProjection?, Never>?
+			var projectionReadGeneration: UInt64?
+			defer {
+				projectionReadTask?.cancel()
+			}
 			if let accountControlClient {
 				let snapshotGeneration = beginAccountSnapshotRequest()
-				let projectionGeneration = beginCodexProjectionRequest()
-				async let snapshotRead = accountControlClient.accountSnapshot(
+				projectionReadGeneration = beginCodexProjectionRequest()
+				projectionReadTask = Task { [accountControlClient] in
+					try? await accountControlClient.codexAuthProjection(
+						authority: retainedAuthority
+					)
+				}
+				let snapshot = try await accountControlClient.accountSnapshot(
 					authority: retainedAuthority
 				)
-				async let projectionRead = try? accountControlClient.codexAuthProjection(
-					authority: retainedAuthority
-				)
-				let snapshot = try await snapshotRead
-				let projection = await projectionRead
 				// A local account-control result may have superseded this snapshot while
-				// either read was suspended. Never publish that older routing/account view.
+				// the read was suspended. Never publish that older routing/account view.
 				guard snapshotGeneration == accountSnapshotRequestGeneration else {
 					return .complete
 				}
-				projectionReadback = (projectionGeneration, projection)
 				if let snapshotRouting = snapshot.routing,
 					routing != snapshotRouting
 				{
@@ -957,17 +957,13 @@ final class ResetCardStore {
 			if accounts != nextAccounts {
 				accounts = nextAccounts
 			}
+			// The account skeleton is the first usable panel state. Detail reads below
+			// are independent daemon-cache reads and must not keep the panel in its
+			// initial-loading state while one account is slow.
+			hasLoaded = true
 			prunePostUseReconciliationsForCurrentAccounts()
 			pruneProfileEmailCache()
 			reconcileAccountSkeletonRevisionTargets()
-			if let projectionReadback,
-				let projection = projectionReadback.projection,
-				applyCodexAuthProjection(
-					projection,
-					generation: projectionReadback.generation
-				) {
-				scheduleCodexProjectionRefresh()
-			}
 			if backgroundObservation == false,
 				message?.tone == .error,
 				isPendingRecoveryBlocked == false
@@ -1084,6 +1080,15 @@ final class ResetCardStore {
 				finishProfileRequest(request)
 			}
 			_ = publishProfileEmailsIfReady(expectedEpoch: visibilityEpoch)
+			if let projectionReadTask,
+				let projection = await projectionReadTask.value,
+				let projectionReadGeneration,
+				applyCodexAuthProjection(
+					projection,
+					generation: projectionReadGeneration
+				) {
+				scheduleCodexProjectionRefresh()
+			}
 			shouldRetry = accounts.contains { state in
 				state.error?.isRetryableReadFailure == true
 					|| state.inventory?.observationError?.isRetryableReadFailure == true

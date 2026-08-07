@@ -514,10 +514,7 @@ struct ResetCardAccountRow: View {
 					"Choose Refresh login in the menu bar app to sign in with the official Codex device login."
 				)
 		case .checking:
-			inventoryProgress(
-				"Checking Reset Cards…",
-				help: "Waiting for the current Reset Card inventory."
-			)
+			ResetCardInventoryPendingView()
 		case .connecting(let detail):
 			inventoryProgress("Connecting to Decodex…", help: detail)
 		case .unavailable(let detail):
@@ -801,6 +798,19 @@ struct ResetCardAccountRow: View {
 			timeZone.abbreviation(for: date)
 			?? timeZone.identifier
 		return "Reset Card, expires \(spokenExpiry) \(zone)"
+	}
+}
+
+private struct ResetCardInventoryPendingView: View {
+	@Environment(\.colorScheme) private var colorScheme
+
+	var body: some View {
+		ProgressView()
+			.controlSize(.mini)
+			.frame(width: 16, height: 16)
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.help("Reset Card inventory is updating in the background.")
+			.accessibilityLabel("Reset Card inventory is updating")
 	}
 }
 
