@@ -744,6 +744,8 @@ final class AccountControlStoreTests: XCTestCase {
 
 		XCTAssertTrue(store.isRefreshing)
 		XCTAssertTrue(store.refreshSkeletonIsPublished)
+		XCTAssertTrue(store.hasLoaded)
+		XCTAssertFalse(store.isInitialLoading)
 		XCTAssertTrue(store.canBeginEnrollment)
 
 		await store.enrollFromSharedCodex()
@@ -754,6 +756,38 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.message?.tone, .success)
 
 		await client.releaseInventory()
+		await refreshTask.value
+		XCTAssertFalse(store.isRefreshing)
+	}
+
+	func testSkeletonPublishesWhileProjectionReadIsPending() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsProjection: true
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		let refreshTask = Task { await store.refresh() }
+		for _ in 0 ..< 200 {
+			if await client.projectionIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		XCTAssertTrue(store.hasLoaded)
+		XCTAssertFalse(store.isInitialLoading)
+		XCTAssertEqual(store.accounts.map(\.account.accountID), [accountID])
+
+		await client.releaseProjection()
 		await refreshTask.value
 		XCTAssertFalse(store.isRefreshing)
 	}
@@ -1486,6 +1520,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private let authority: ResetCardAuthority
 	private let inventoryGate: AccountControlReadGate?
 	private let snapshotGate: AccountControlReadGate?
+	private let projectionGate: AccountControlReadGate?
 	private let capturesSnapshotBeforeWait: Bool
 	private let fixedSelectionGate: AccountControlReadGate?
 	private let enrollmentGate: AccountControlReadGate?
@@ -1533,6 +1568,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		authority: ResetCardAuthority,
 		suspendsInventory: Bool = false,
 		suspendsSnapshotAfterFirstRead: Bool = false,
+		suspendsProjection: Bool = false,
 		capturesSnapshotBeforeWait: Bool = false,
 		suspendsFixedSelection: Bool = false,
 		suspendsEnrollment: Bool = false,
@@ -1554,6 +1590,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.projection = projection
 		inventoryGate = suspendsInventory ? AccountControlReadGate() : nil
 		snapshotGate = suspendsSnapshotAfterFirstRead ? AccountControlReadGate() : nil
+		projectionGate = suspendsProjection ? AccountControlReadGate() : nil
 		self.capturesSnapshotBeforeWait = capturesSnapshotBeforeWait
 		fixedSelectionGate = suspendsFixedSelection ? AccountControlReadGate() : nil
 		enrollmentGate = suspendsEnrollment ? AccountControlReadGate() : nil
@@ -1837,6 +1874,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		authority: ResetCardAuthority?
 	) async throws -> CodexAuthProjection {
 		projectionReads += 1
+		await projectionGate?.wait()
 		if let projectionError {
 			throw projectionError
 		}
@@ -1849,6 +1887,17 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 
 	func projectionReadCount() -> Int {
 		projectionReads
+	}
+
+	func projectionIsPending() async -> Bool {
+		guard let projectionGate else {
+			return false
+		}
+		return await projectionGate.isPending()
+	}
+
+	func releaseProjection() async {
+		await projectionGate?.release()
 	}
 
 	func useAccountInCodex(
