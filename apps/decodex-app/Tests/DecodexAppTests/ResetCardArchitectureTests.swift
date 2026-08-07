@@ -26,6 +26,8 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertTrue(store.contains("Checking reset result…"))
 		XCTAssertTrue(store.contains("Check delayed; retrying…"))
+		XCTAssertFalse(rows.contains("Checking Reset Cards…"))
+		XCTAssertTrue(rows.contains("ResetCardInventoryPendingView()"))
 		XCTAssertFalse(rows.contains("Button(\"Resume\")"))
 		XCTAssertFalse(store.contains("Resume the pending request"))
 	}
