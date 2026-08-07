@@ -445,7 +445,9 @@ impl ResetCardClient {
 		self.require_local_profile()?;
 		let expected_account_id = account_id.clone();
 		let completed = time::timeout(
-			self.timeout,
+			// This query reads the daemon-owned observation cache. It must not inherit
+			// the longer budget used by reset-card effects and recovery.
+			CLIENT_TIMEOUT,
 			self.query_inner("decodex-reset-card-list", QueryPayload::GetResetCards { account_id }),
 		)
 		.await
@@ -940,7 +942,7 @@ impl AccountClient {
 	pub async fn list(&self) -> Result<AccountsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
-			self.transport.timeout,
+			CLIENT_TIMEOUT,
 			self.transport.query_inner("decodex-accounts-list", QueryPayload::ListAccounts),
 		)
 		.await
@@ -961,7 +963,7 @@ impl AccountClient {
 		self.transport.require_local_profile()?;
 		let expected = account_id.clone();
 		let completed = time::timeout(
-			self.transport.timeout,
+			CLIENT_TIMEOUT,
 			self.transport.query_inner(
 				"decodex-account-inspect",
 				QueryPayload::InspectAccount { account_id },
@@ -993,7 +995,7 @@ impl AccountClient {
 		self.transport.require_local_profile()?;
 		let expected = account_id.clone();
 		let completed = time::timeout(
-			self.transport.timeout,
+			CLIENT_TIMEOUT,
 			self.transport.query_inner(
 				"decodex-account-profile",
 				QueryPayload::GetAccountProfile { account_id, include_email },
@@ -1044,7 +1046,7 @@ impl AccountClient {
 	pub async fn codex_auth_projection(&self) -> Result<CodexAuthProjectionResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
-			self.transport.timeout,
+			CLIENT_TIMEOUT,
 			self.transport
 				.query_inner("decodex-codex-auth-projection", QueryPayload::GetCodexAuthProjection),
 		)
