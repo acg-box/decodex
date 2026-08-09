@@ -430,11 +430,12 @@ long-lived child environment.
 The daemon account observer starts immediately, repeats on its bounded schedule, and
 wakes after relevant account/effect changes. Different accounts progress concurrently.
 Within one account, direct API observation uses one credential snapshot and one shared
-provider client for usage, profile, and Reset Card inventory. A credential refresh may
-advance the snapshot before the round publishes; the observer then retries the bounded
-API request once with the new credential. At most one observation owner is active per
-Account UUID; additional wakes coalesce into one successor round. Slow work for one
-account does not delay another.
+provider client for usage, profile, and Reset Card inventory. The provider exposes the Reset
+Card summary and details through separate reads. The observer retries one incomplete or
+count-mismatched detail read after 250 milliseconds. A credential refresh may advance the
+snapshot before the round publishes; the observer then retries the bounded API request once
+with the new credential. At most one observation owner is active per Account UUID; additional
+wakes coalesce into one successor round. Slow work for one account does not delay another.
 
 Results publish progressively only against the current Account revision and cache
 generation. A changed account invalidates its old Reset Card/profile state before a stale
@@ -447,9 +448,11 @@ refresh does not create a UI invalidation.
 provider, start an app-server, join a refresh future, wait for an observation round, or
 cause provider work. Profile reads use the latest persisted projection plus bounded
 daemon refresh status. Reset Card reads use a revision-fenced daemon-lifetime public
-cache. A transient API failure retains the last complete public snapshot for the same
-account revision; only a cold cache reports typed retryable unavailability until the new
-observation warms it.
+cache. A transient API failure, incomplete detail response, or summary/detail count mismatch
+retains the last complete public snapshot for the same account revision. New quota facts still
+update that snapshot. Only a cold cache reports typed retryable unavailability until a complete
+observation warms it. Public cache values do not authorize a provider effect. The Reset Card
+effect owner gets and fences one fresh complete inventory before dispatch.
 
 The UI starts independent daemon value reads concurrently and keeps one bounded
 `WaitForAccountObservation` query open instead of owning a second refresh clock. A

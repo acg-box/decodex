@@ -211,9 +211,10 @@ decodex-publisher validate-social
   it without a duplicate daemon read. One per-account coordinator coalesces
   same-revision inventory calls. A use gate waits for any older daemon read and
   blocks fresh reads until the effect dispatch ends. A terminal use result starts
-  bounded background reconciliation without holding the button busy. Internal contention, provider
-  cleanup, and other retryable detail failures retain the last good snapshot while the
-  next daemon observation retries. Only a typed local daemon transport loss shows
+  bounded background reconciliation without holding the button busy. Internal contention,
+  provider cleanup, an incomplete detail response, and a summary/detail count mismatch retain the
+  same-revision last complete snapshot while the daemon performs its bounded retry. Only a typed
+  local daemon transport loss shows
   `Connecting to Decodex…`. The next current inventory replaces the retained value
   directly, so the quota bar can animate to the restored value.
 - Uses an in-process Rust protocol client for active vNext account, profile, Reset Card,
