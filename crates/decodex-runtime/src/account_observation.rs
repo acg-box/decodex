@@ -380,12 +380,19 @@ fn retain_last_good_inventory(
 		(
 			Ok(ResetCardInventoryObservation::Available(current)),
 			Ok(ResetCardInventoryObservation::Available(next)),
-		) if current.details_complete && !next.details_complete => {
-			let mut retained_quota = next.clone();
-			// Usage windows are still authoritative when only the optional credit-detail request
-			// failed. Keep the new quota facts, but make card selection wait for a complete retry.
-			retained_quota.cards.clear();
-			Ok(ResetCardInventoryObservation::Available(retained_quota))
+		) if current.account_revision == next.account_revision
+			&& current.details_complete
+			&& !next.details_complete =>
+		{
+			let mut retained = current.clone();
+			// The provider exposes quota and Reset Card details through separate reads. A partial
+			// detail read must not replace the last coherent public inventory. Keep that complete
+			// inventory visible while still publishing the newer independent quota facts. Reset
+			// Card use does not trust this cache: the effect owner fetches and fences a fresh
+			// complete provider inventory before dispatch.
+			retained.five_hour_quota = next.five_hour_quota;
+			retained.seven_day_quota = next.seven_day_quota;
+			Ok(ResetCardInventoryObservation::Available(retained))
 		},
 		(
 			Ok(ResetCardInventoryObservation::Available(current)),
@@ -897,7 +904,7 @@ mod tests {
 
 	use decodex_core::{
 		AccountId, AccountProvider, AccountQuotaDisposition, AccountQuotaWindowObservation,
-		ProviderIdentity,
+		ProviderIdentity, ResetCardDescriptor, ResetCardTimestamp,
 	};
 	use decodex_postgres::AccountProfileSnapshot;
 	use tokio::{sync::watch, time};
@@ -1148,7 +1155,7 @@ mod tests {
 	}
 
 	#[test]
-	fn incomplete_reset_credit_details_update_quota_but_disable_stale_selection() {
+	fn incomplete_reset_credit_details_keep_last_complete_inventory_visible() {
 		let account_id = account(6);
 		let mut state = AccountObservationState::default();
 		let cache_generation = state.cache_generation(&account_id);
@@ -1177,12 +1184,13 @@ mod tests {
 			profile: None,
 		}));
 
-		let cached = state.reset_cards.get(&account_id).expect("incomplete inventory");
+		let cached = state.reset_cards.get(&account_id).expect("last complete inventory");
 		let Ok(ResetCardInventoryObservation::Available(inventory)) = &cached.result else {
 			panic!("expected available inventory");
 		};
-		assert!(!inventory.details_complete);
-		assert!(inventory.cards.is_empty());
+		assert!(inventory.details_complete);
+		assert_eq!(inventory.reported_available_count, Some(1));
+		assert_eq!(inventory.cards.len(), 1);
 		assert_eq!(inventory.five_hour_quota.observed_at_unix_micros, Some(200));
 	}
 
@@ -1222,12 +1230,17 @@ mod tests {
 		account_id: &AccountId,
 		observed_at_unix_micros: i64,
 	) -> ResetCardInventoryObservation {
+		let descriptor = ResetCardDescriptor::new(
+			ResetCardTimestamp::from_unix_seconds(1_800_000_000).expect("valid grant"),
+			ResetCardTimestamp::from_unix_seconds(1_800_003_600).expect("valid expiry"),
+		)
+		.expect("valid descriptor");
 		ResetCardInventoryObservation::Available(ResetCardInventoryView {
 			account_id: account_id.clone(),
 			account_revision: 11,
-			reported_available_count: Some(0),
+			reported_available_count: Some(1),
 			details_complete: true,
-			cards: Vec::new(),
+			cards: vec![descriptor],
 			five_hour_quota: quota(300, observed_at_unix_micros, 20, 2_000_000),
 			seven_day_quota: quota(10_080, observed_at_unix_micros, 30, 3_000_000),
 		})

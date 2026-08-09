@@ -132,8 +132,9 @@ Within one account it uses one credential snapshot and retries once after a boun
 refresh, coalesces successor rounds, and publishes only to a matching account revision/cache
 generation. Account and Reset Card/profile queries read the daemon-owned cache or persisted
 projection without contacting the provider, joining a refresh, or starting refresh work. A
-transient provider failure keeps the last good snapshot visible; a cold account reports
-retryable unavailable until its first observation completes. Candidate 5 must preserve this
+transient provider failure or incomplete Reset Card detail response keeps the same-revision last
+complete snapshot visible while the daemon performs a bounded retry. A cold account reports
+retryable unavailable until its first complete observation. Candidate 5 must preserve this
 current-main behavior.
 
 ProcessSupervisor projects restored nonterminal ProcessGenerations to `death_unknown`

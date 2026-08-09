@@ -334,10 +334,11 @@ discovers every non-tombstoned account with a credential, including administrati
 accounts because observation is not new-work admission. It starts one independent async owner
 for every account without a small global fan-out cap. Usage, profile, and Reset Card inventory
 for different accounts run concurrently through one shared direct provider API runtime. Within
-one account, a round uses one credential snapshot and the bounded API client may retry once
-after Account Service refreshes that credential. At most one observation owner is active for
-one Account UUID; another lifecycle or effect wake becomes that account's pending successor
-round. A periodic tick does not queue a hot-loop successor for an already slow account.
+one account, a round uses one credential snapshot. It retries one incomplete or count-mismatched
+Reset Card detail read after 250 milliseconds. The bounded API client may also retry once after
+Account Service refreshes that credential. At most one observation owner is active for one
+Account UUID; another lifecycle or effect wake becomes that account's pending successor round. A
+periodic tick does not queue a hot-loop successor for an already slow account.
 
 One slow account does not delay completion or later scheduling for another account.
 Observation results publish progressively and only against the current Account revision.
@@ -358,13 +359,15 @@ app-server. They read daemon-owned values. PostgreSQL remains the persistence au
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
 observation round, and returns a typed retryable unavailable result only until that account is
-warm. A transient direct API failure retains the last complete snapshot for the same account
-revision; a detail-incomplete response updates quota facts but disables stale card selection.
-A Reset Card query reads only that memory value; it does not wait for an account-registry or
-provider read. Every successful account or Reset Card command invalidates the affected account
-value and advances its cache generation before requesting observation. A result from an older
-in-flight generation cannot republish after that invalidation. No credential or provider-private
-Reset Card ID enters this cache.
+warm. A transient direct API failure or incomplete detail response retains the last complete
+snapshot for the same account revision. The daemon merges newer independent quota facts into
+that snapshot and retries the detail read in the background. The public descriptor is not effect
+authority. Before an effect, the Reset Card owner fetches a fresh complete provider inventory and
+fences the selected descriptor. A Reset Card query reads only the memory value; it does not wait
+for an account-registry or provider read. Every successful account or Reset Card command
+invalidates the affected account value and advances its cache generation before requesting
+observation. A result from an older in-flight generation cannot republish after that
+invalidation. No credential or provider-private Reset Card ID enters this cache.
 
 Normal value-query handling is isolated from refresh work. `GetResetCards` and
 `GetAccountProfile` do not join, await, register with, or inject work into an observation
