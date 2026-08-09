@@ -221,9 +221,10 @@ Validation must prove:
 
 For account observation preservation, prove different accounts progress concurrently;
 Reset Card work precedes profile observation within one account; repeated wakes coalesce;
-publication is revision/cache-generation fenced; and Reset Card/profile queries read
-daemon cache or persisted projection without joining, waiting for, or starting provider
-refresh work.
+publication is revision/cache-generation fenced; an incomplete or count-mismatched Reset Card
+detail read gets one bounded retry and cannot replace a same-revision complete public inventory;
+new quota facts still publish; and Reset Card/profile queries read daemon cache or persisted
+projection without joining, waiting for, or starting provider refresh work.
 
 ## Local database reset validation
 

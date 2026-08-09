@@ -4,8 +4,8 @@ use std::{sync::Arc, time::Duration};
 
 use decodex_codex::{
 	AccountApiConsumeOutcome, AccountApiProfile, AccountApiProtocolError, AccountApiQuotaWindow,
-	AccountApiResetCredit, AccountApiUsage, decode_account_api_consume, decode_account_api_profile,
-	decode_account_api_reset_credits, decode_account_api_usage,
+	AccountApiResetCredit, AccountApiResetCredits, AccountApiUsage, decode_account_api_consume,
+	decode_account_api_profile, decode_account_api_reset_credits, decode_account_api_usage,
 };
 use decodex_core::{
 	AccountId, AccountOperationId, AccountProvider, ProviderIdentity, ResetCardConsumeOutcome,
@@ -22,6 +22,7 @@ const CONSUME_RESET_CREDIT_PATH: &str = "/wham/rate-limit-reset-credits/consume"
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
+const RESET_CREDIT_DETAIL_RETRY_DELAY: Duration = Duration::from_millis(250);
 
 /// Closed provider failure safe for UI and durable operation mapping.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -239,44 +240,46 @@ impl AccountApiRuntime {
 				credits: Vec::new(),
 			});
 		}
-		let details =
-			match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
-				Ok(body) => match decode_account_api_reset_credits(&body) {
-					Ok(details) => Ok(details),
-					Err(error) => Err(map_protocol_error(error)),
-				},
-				Err(error) => Err(map_request_error(error)),
-			};
+		let mut details = self.request_reset_credit_details(credential).await;
+		if should_retry_reset_credit_details(reported_available_count, &details) {
+			// The summary and detail endpoints are independent provider projections. One bounded
+			// successor read absorbs their common short convergence window without delaying any
+			// other account's observation owner.
+			tokio::time::sleep(RESET_CREDIT_DETAIL_RETRY_DELAY).await;
+			details = self.request_reset_credit_details(credential).await;
+		}
 		match details {
-			Ok(details) => Ok(AccountApiInventory {
+			Ok(details)
+				if reset_credit_details_are_complete(reported_available_count, &details) =>
+				Ok(AccountApiInventory {
+					account_revision: credential.account_revision,
+					quota_windows: usage.quota_windows,
+					reported_available_count: Some(reported_available_count),
+					details_complete: true,
+					credits: details.credits,
+				}),
+			Err(AccountApiRuntimeError::Unauthorized) => Err(AccountApiRuntimeError::Unauthorized),
+			Ok(_) | Err(_) => Ok(AccountApiInventory {
+				// Preserve the fresh quota projection even when the optional details do not
+				// converge. The observation cache retains a same-revision complete public
+				// inventory, if one exists, and a later daemon round retries this bounded
+				// provider read.
 				account_revision: credential.account_revision,
 				quota_windows: usage.quota_windows,
 				reported_available_count: Some(reported_available_count),
-				details_complete: details.details_complete
-					&& details.reported_available_count == reported_available_count,
-				credits: if details.details_complete
-					&& details.reported_available_count == reported_available_count
-				{
-					details.credits
-				} else {
-					Vec::new()
-				},
+				details_complete: false,
+				credits: Vec::new(),
 			}),
-			Err(error) => {
-				// A detail failure must not erase a valid quota snapshot.  The row stays selectable
-				// only for display; manual selection requires a complete later detail read.
-				if error == AccountApiRuntimeError::Unauthorized {
-					Err(error)
-				} else {
-					Ok(AccountApiInventory {
-						account_revision: credential.account_revision,
-						quota_windows: usage.quota_windows,
-						reported_available_count: Some(reported_available_count),
-						details_complete: false,
-						credits: Vec::new(),
-					})
-				}
-			},
+		}
+	}
+
+	async fn request_reset_credit_details(
+		&self,
+		credential: &AccountApiCredential,
+	) -> Result<AccountApiResetCredits, AccountApiRuntimeError> {
+		match self.request_json(Method::GET, RESET_CREDITS_PATH, credential, None).await {
+			Ok(body) => decode_account_api_reset_credits(&body).map_err(map_protocol_error),
+			Err(error) => Err(map_request_error(error)),
 		}
 	}
 
@@ -440,5 +443,58 @@ fn map_consume_outcome(outcome: AccountApiConsumeOutcome) -> ResetCardConsumeOut
 		AccountApiConsumeOutcome::NothingToReset => ResetCardConsumeOutcome::NothingToReset,
 		AccountApiConsumeOutcome::NoCredit => ResetCardConsumeOutcome::NoCredit,
 		AccountApiConsumeOutcome::AlreadyRedeemed => ResetCardConsumeOutcome::AlreadyRedeemed,
+	}
+}
+
+fn reset_credit_details_are_complete(
+	reported_available_count: u64,
+	details: &AccountApiResetCredits,
+) -> bool {
+	details.details_complete
+		&& details.reported_available_count == reported_available_count
+		&& u64::try_from(details.credits.len()).ok() == Some(reported_available_count)
+}
+
+fn should_retry_reset_credit_details(
+	reported_available_count: u64,
+	details: &Result<AccountApiResetCredits, AccountApiRuntimeError>,
+) -> bool {
+	match details {
+		Ok(details) => !reset_credit_details_are_complete(reported_available_count, details),
+		Err(AccountApiRuntimeError::Unauthorized) => false,
+		Err(_) => true,
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use decodex_codex::{AccountApiResetCredits, decode_account_api_reset_credits};
+
+	use super::{
+		AccountApiRuntimeError, reset_credit_details_are_complete,
+		should_retry_reset_credit_details,
+	};
+
+	#[test]
+	fn incomplete_or_mismatched_reset_credit_details_get_one_bounded_retry() {
+		let complete = decode_account_api_reset_credits(
+			br#"{"available_count":1,"credits":[{"id":"credit-1","reset_type":"codexRateLimits","status":"available","granted_at":1800000000,"expires_at":1800003600}]}"#,
+		)
+		.expect("complete fixture");
+		assert!(reset_credit_details_are_complete(1, &complete));
+		assert!(!should_retry_reset_credit_details(1, &Ok(complete.clone())));
+		assert!(should_retry_reset_credit_details(2, &Ok(complete)));
+
+		let incomplete = AccountApiResetCredits {
+			reported_available_count: 1,
+			credits: Vec::new(),
+			details_complete: false,
+		};
+		assert!(should_retry_reset_credit_details(1, &Ok(incomplete)));
+		assert!(should_retry_reset_credit_details(
+			1,
+			&Err(AccountApiRuntimeError::ProviderUnavailable),
+		));
+		assert!(!should_retry_reset_credit_details(1, &Err(AccountApiRuntimeError::Unauthorized),));
 	}
 }

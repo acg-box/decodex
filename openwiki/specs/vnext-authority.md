@@ -793,7 +793,9 @@ recovery framework, transport/idempotency mechanism, wrapper, runner, scheduler,
 capability manager, compatibility bridge, duplicate Quick Task policy path, or explicit-successor
 product surface. It must preserve current-main independent account observations, Reset
 Card-before-profile ordering within an account, concurrent progress across accounts,
-revision-fenced cache publication, and query paths that do not join or start refresh work.
+revision-fenced cache publication, same-revision last-complete Reset Card continuity across an
+incomplete detail read, fresh effect-time inventory fencing, and query paths that do not join or
+start refresh work.
 
 Long-term context consists of immutable Project, Advisor, and Program revisions. Project
 context records decisions, constraints, repository facts, active Programs/Objectives,
