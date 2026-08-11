@@ -962,6 +962,16 @@ struct QuickTaskThreadResponseWire {
 struct QuickTaskThreadSectionWire {
 	id: String,
 	name: String,
+	#[serde(default)]
+	appearance: Option<QuickTaskThreadSectionAppearanceWire>,
+}
+
+#[allow(dead_code)]
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct QuickTaskThreadSectionAppearanceWire {
+	icon: Option<String>,
+	color: Option<String>,
 }
 
 #[allow(dead_code)]
@@ -1893,6 +1903,94 @@ mod tests {
 			assert!(
 				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
 				"thread/resume must accept {case} section fields",
+			);
+		}
+	}
+
+	#[test]
+	fn thread_section_appearance_decodes_when_omitted_null_or_populated() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let cases = [
+			("omitted", json!({"id": "section-1", "name": "Active"})),
+			("null", json!({"id": "section-1", "name": "Active", "appearance": null})),
+			(
+				"populated",
+				json!({
+					"id": "section-1",
+					"name": "Active",
+					"appearance": {"icon": "folder", "color": "blue"},
+				}),
+			),
+			(
+				"populated with omitted metadata",
+				json!({"id": "section-1", "name": "Active", "appearance": {}}),
+			),
+			(
+				"populated with null metadata",
+				json!({
+					"id": "section-1",
+					"name": "Active",
+					"appearance": {"icon": null, "color": null},
+				}),
+			),
+		];
+
+		for (case, section) in cases {
+			let mut response = canonical.clone();
+			response["thread"]["section"] = section;
+			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+			assert!(
+				decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok(),
+				"thread/start must accept {case} section appearance",
+			);
+			assert!(
+				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				"thread/resume must accept {case} section appearance",
+			);
+		}
+	}
+
+	#[test]
+	fn malformed_or_unknown_thread_section_appearance_fields_are_rejected() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let cases = [
+			("non-object appearance", json!("folder"), QuickTaskContractError::MalformedResponse),
+			(
+				"non-string icon",
+				json!({"icon": 1, "color": null}),
+				QuickTaskContractError::MalformedResponse,
+			),
+			(
+				"non-string color",
+				json!({"icon": null, "color": true}),
+				QuickTaskContractError::MalformedResponse,
+			),
+			(
+				"unknown appearance field",
+				json!({"icon": null, "color": null, "unexpected": true}),
+				QuickTaskContractError::UnknownResponseField,
+			),
+		];
+
+		for (case, appearance, expected) in cases {
+			let mut response = canonical.clone();
+			response["thread"]["section"] = json!({
+				"id": "section-1",
+				"name": "Active",
+				"appearance": appearance,
+			});
+			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+			assert_eq!(
+				decode_quick_task_thread_start_response(&start_request(), &bytes).map(|_| ()),
+				Err(expected),
+				"thread/start {case}",
+			);
+			assert_eq!(
+				decode_quick_task_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
+				Err(expected),
+				"thread/resume {case}",
 			);
 		}
 	}
