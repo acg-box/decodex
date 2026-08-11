@@ -160,13 +160,32 @@ class GateContractTests(unittest.TestCase):
             with self.subTest(task=task_name):
                 self.assertEqual(self.tasks[task_name]["args"], args)
 
-    def test_workspace_compiler_remains_separately_pinned(self) -> None:
-        with (REPO_ROOT / "rust-toolchain.toml").open("rb") as toolchain_file:
-            toolchain = tomllib.load(toolchain_file)["toolchain"]
+    def test_active_rust_toolchains_use_stable_channel(self) -> None:
+        toolchain_paths = [
+            Path("rust-toolchain.toml"),
+            Path("spikes/gpui/rust-toolchain.toml"),
+        ]
 
-        self.assertEqual(toolchain["channel"], "1.97.0")
-        self.assertIn("rustfmt", toolchain["components"])
-        self.assertNotEqual(toolchain["channel"], FORMATTER_TOOLCHAIN)
+        for toolchain_path in toolchain_paths:
+            with self.subTest(toolchain=toolchain_path):
+                with (REPO_ROOT / toolchain_path).open("rb") as toolchain_file:
+                    toolchain = tomllib.load(toolchain_file)["toolchain"]
+
+                self.assertEqual(toolchain["channel"], "stable")
+                self.assertIn("rustfmt", toolchain["components"])
+                self.assertNotEqual(toolchain["channel"], FORMATTER_TOOLCHAIN)
+
+    def test_native_gpui_build_scripts_use_stable_channel(self) -> None:
+        script_paths = [
+            Path("scripts/macos/stage_decodex_gpui.sh"),
+            Path("scripts/macos/stage_gpui_spike.sh"),
+        ]
+
+        for script_path in script_paths:
+            with self.subTest(script=script_path):
+                script = (REPO_ROOT / script_path).read_text(encoding="utf-8")
+                self.assertIn("cargo +stable build", script)
+                self.assertNotRegex(script, r"\bcargo \+\d")
 
     def test_blocking_aggregates_retain_every_non_vstyle_gate(self) -> None:
         self.assertEqual(

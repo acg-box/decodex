@@ -9,7 +9,7 @@ CONTENTS="$APP/Contents"
 MACOS="$CONTENTS/MacOS"
 SIGN_IDENTITY=${DECODEX_GPUI_SPIKE_SIGN_IDENTITY:--}
 
-cargo +1.97.0 build --manifest-path "$MANIFEST" --release --bin decodex-gpui-spike
+cargo +stable build --manifest-path "$MANIFEST" --release --bin decodex-gpui-spike
 rm -rf "$APP"
 mkdir -p "$MACOS"
 cp "$ROOT/spikes/gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
