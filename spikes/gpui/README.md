@@ -2,9 +2,9 @@
 
 This isolated workspace is the XY-1263 evidence harness, not the production Decodex UI.
 It pins GPUI and `gpui_platform` to Zed commit
-`aeeacf5439b2d30d01e38d65d767e6f31b255ecc` and Rust 1.97.0. The isolation keeps the
-pre-1.0 dependency graph out of the root runtime lockfile. The exact-pin replacement remains
-a candidate pending review and repository acceptance. A later 38/40 invalidated the initial
+`aeeacf5439b2d30d01e38d65d767e6f31b255ecc` and uses the stable Rust channel. The isolation
+keeps the pre-1.0 dependency graph out of the root runtime lockfile. The exact-pin replacement
+remains a candidate pending review and repository acceptance. A later 38/40 invalidated the initial
 10/10 stability claim, and a subsequent ad-hoc 40/40 lacked exact launch provenance. The
 current PID-bound harness then passed a fresh normalized current-main direct 40/40 with
 complete provenance and literal-zero outer receipts. All earlier results remain provenance
@@ -14,12 +14,12 @@ Run the deterministic and native probes from the repository root:
 
 ```sh
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  cargo +1.97.0 test --manifest-path spikes/gpui/Cargo.toml --release
+  cargo +stable test --manifest-path spikes/gpui/Cargo.toml --release
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  cargo +1.97.0 test --manifest-path spikes/gpui/Cargo.toml --release --lib \
+  cargo +stable test --manifest-path spikes/gpui/Cargo.toml --release --lib \
   workspace_headless_frame_benchmark -- --ignored --nocapture --test-threads=1
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
-  cargo +1.97.0 run --manifest-path spikes/gpui/Cargo.toml --release \
+  cargo +stable run --manifest-path spikes/gpui/Cargo.toml --release \
   --features visual-probe --bin render_probe -- /tmp/decodex-gpui-spike.png
 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer \
   scripts/macos/stage_gpui_spike.sh
