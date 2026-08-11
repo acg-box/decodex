@@ -10,7 +10,7 @@ SIGN_IDENTITY=${DECODEX_GPUI_SIGN_IDENTITY:--}
 DEVELOPER_DIR=${DEVELOPER_DIR:-/Applications/Xcode-beta.app/Contents/Developer}
 export DEVELOPER_DIR
 
-cargo +1.97.0 build --locked --release --bin decodex-gpui
+cargo +stable build --locked --release --bin decodex-gpui
 rm -rf "$APP"
 mkdir -p "$MACOS"
 cp "$ROOT/apps/decodex-gpui/packaging/Info.plist" "$CONTENTS/Info.plist"
