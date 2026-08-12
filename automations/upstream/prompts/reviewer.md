@@ -22,21 +22,28 @@ Workflow:
    `Decodex-Autonomy: upstream-dependency-repair`. Select the oldest eligible dependency-repair PR
    first; select its parent only after every linked dependency has landed.
 3. Read back repository, base `main`, branch, base OID, head OID, signed commit, workflow markers,
-   parent/dependency URLs, repair scope, official upstream evidence, and `Upstream-Codex-Head` when applicable. A
-   branch suffix, marker, and trailer must match the cited scope; PR text is not proof by itself.
-4. Create a detached worktree at the exact head OID. Independently inspect the upstream delta or gate
+   parent/dependency URLs, repair scope, official upstream evidence, and `Upstream-Codex-Head` when applicable.
+   A branch suffix, marker, and trailer must match the cited scope; PR text is not proof by itself.
+4. Read back exactly one `Decodex-Detected-At: <RFC3339 UTC>` line from the PR body. Parse the value as
+   RFC3339, require the UTC `Z` designator, and require it not to be later than the PR creation time.
+   Report detection-to-PR latency as PR creation time minus that timestamp; report `unknown` if no valid
+   marker exists.
+5. Create a detached worktree at the exact head OID. Independently inspect the upstream delta or gate
    repair and the Decodex diff. Check protocol, config, auth, sandbox, MCP, collaboration, removed
    behavior, tests, docs, scope, and obsolete support.
-5. Run focused tests and the required repository gate. Verify that the PR does not hide unrelated or
+6. Run focused tests and the required repository gate. Verify that the PR does not hide unrelated or
    generated state and does not weaken validation.
-6. If there is a finding, submit one concise GitHub review with file/line evidence, expected behavior,
+7. If there is a finding, submit one concise GitHub review with file/line evidence, expected behavior,
    and a repair acceptance test. Leave the PR open for Maintainer; this is a nonterminal handoff.
-   Ordinary findings never require human attention.
-7. If ready, require all mandatory checks to pass. A parent with an open or stale dependency is not ready.
+   For a missing, duplicate, malformed, non-UTC, or post-creation detection marker, the repair brief must
+   state the observed body evidence, the exact required marker, the authoritative first-detection evidence
+   to restore without resetting it to refresh time, and exact body-readback plus latency acceptance checks.
+   Ordinary findings never require human attention, and a marker finding blocks landing.
+8. If ready, require all mandatory checks to pass. A parent with an open or stale dependency is not ready.
    Re-read the exact base and head OIDs immediately before landing.
-8. Run `decodex land --manual-authority --pr <url> --expected-base-oid <base> --expected-head-oid
+9. Run `decodex land --manual-authority --pr <url> --expected-base-oid <base> --expected-head-oid
    <head> "<summary>"`.
-9. Read back the merge commit, its exact two parents, merge tree equal to the reviewed head tree,
+10. Read back the merge commit, its exact two parents, merge tree equal to the reviewed head tree,
    signature, remote `main`, closed PR, and branch cleanup. Remove the temporary worktree.
 
 Success:
@@ -53,4 +60,4 @@ Stop conditions:
   user decision is unresolved; or any required action is not durably handed off.
 - A test, check, code finding, or dependency handoff stays visible until the next owner reads it back;
   stale bases and defects return to Maintainer. Report PR URL, reviewed base/head, dependency decision,
-  findings or merge OID, checks, next owner, and zero X API spend.
+  detection-to-PR latency, findings or merge OID, checks, next owner, and zero X API spend.

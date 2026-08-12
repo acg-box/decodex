@@ -67,6 +67,21 @@ class PortfolioTests(unittest.TestCase):
             portfolio.validate_manifest({**manifest, "status": "DISABLED"}),
         )
 
+    def test_upstream_prompts_share_the_detection_marker_contract(self) -> None:
+        rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
+        marker = "Decodex-Detected-At: <RFC3339 UTC>"
+
+        for automation_id in (
+            "codex-upstream-maintainer",
+            "codex-upstream-reviewer",
+            "codex-upstream-health",
+        ):
+            self.assertIn(marker, rendered[automation_id])
+
+        self.assertIn("first detection instant", rendered["codex-upstream-maintainer"])
+        self.assertIn("marker finding blocks landing", rendered["codex-upstream-reviewer"])
+        self.assertIn("as `unknown`", rendered["codex-upstream-health"])
+
     def test_runtime_evaluation_requires_metadata_and_rejects_extra_managed_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             codex_home = Path(directory)
