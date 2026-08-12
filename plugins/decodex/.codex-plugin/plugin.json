@@ -26,9 +26,7 @@
       "scripts/**",
       "skills/**"
     ],
-    "exclude": [
-      "tests/**"
-    ]
+    "exclude": []
   },
   "skills": "./skills/",
   "interface": {
