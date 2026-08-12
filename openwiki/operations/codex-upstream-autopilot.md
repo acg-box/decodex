@@ -29,7 +29,7 @@ Manager/native sync can then activate all five definitions. No activation
 workflow engine or extra state exists.
 
 All roles start in the clean primary checkout at
-`/Users/x/code/y/hack-ink/decodex`. Temporary task worktrees are execution
+`/Users/x/code/acg-box/decodex`. Temporary task worktrees are execution
 details, never scheduled cwd or durable workflow state.
 
 Agents own technical judgment. Bounded code validates the exact-five portfolio,
@@ -64,7 +64,7 @@ or:
 
 ```text
 Decodex-Autonomy: upstream-dependency-repair
-Decodex-Parent-PR: https://github.com/hack-ink/decodex/pull/<number>
+Decodex-Parent-PR: https://github.com/acg-box/decodex/pull/<number>
 ```
 
 A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is

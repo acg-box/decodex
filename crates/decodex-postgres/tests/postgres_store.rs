@@ -315,68 +315,68 @@ const INVALID_PROJECT_AGENT_SQL_CALLS: &[(&str, &str)] = &[
 	),
 	(
 		"SELECT * FROM decodex.create_project('00000000-0000-0000-0000-000000000000',\
-		 'hack-ink/invalid-project-id','/srv/repos/invalid-project-id',\
+		 'acg-box/invalid-project-id','/srv/repos/invalid-project-id',\
 		 '/srv/repos/invalid-project-id','{}','22000000-0000-4000-8000-000000000020')",
 		"canonical_uuid_v4_text_exact",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000021',\
-		 'hack-ink/invalid-lead-id','/srv/repos/invalid-lead-id',\
+		 'acg-box/invalid-lead-id','/srv/repos/invalid-lead-id',\
 		 '/srv/repos/invalid-lead-id','{}','22000000-0000-1000-8000-000000000021')",
 		"canonical_uuid_v4_text_exact",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000022',\
-		 'hack-ink/backslash-path',E'/srv/repos/bad\\\\path',E'/srv/repos/bad\\\\path',\
+		 'acg-box/backslash-path',E'/srv/repos/bad\\\\path',E'/srv/repos/bad\\\\path',\
 		 '{}','22000000-0000-4000-8000-000000000022')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000023',\
-		 'hack-ink/dot-dot-path','/srv/repos/canonical','/srv/repos/canonical/../bad',\
+		 'acg-box/dot-dot-path','/srv/repos/canonical','/srv/repos/canonical/../bad',\
 		 '{}','22000000-0000-4000-8000-000000000023')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000030',\
-		 'hack-ink/dot-path','/srv/./repos/dot','/srv/./repos/dot',\
+		 'acg-box/dot-path','/srv/./repos/dot','/srv/./repos/dot',\
 		 '{}','22000000-0000-4000-8000-000000000030')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000031',\
-		 'hack-ink/lf-path',E'/srv/repos/line\\nfeed',E'/srv/repos/line\\nfeed',\
+		 'acg-box/lf-path',E'/srv/repos/line\\nfeed',E'/srv/repos/line\\nfeed',\
 		 '{}','22000000-0000-4000-8000-000000000031')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000032',\
-		 'hack-ink/del-path',U&'/srv/repos/del\\007Fcontrol',U&'/srv/repos/del\\007Fcontrol',\
+		 'acg-box/del-path',U&'/srv/repos/del\\007Fcontrol',U&'/srv/repos/del\\007Fcontrol',\
 		 '{}','22000000-0000-4000-8000-000000000032')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000033',\
-		 'hack-ink/c1-path',U&'/srv/repos/c1\\0085control',U&'/srv/repos/c1\\0085control',\
+		 'acg-box/c1-path',U&'/srv/repos/c1\\0085control',U&'/srv/repos/c1\\0085control',\
 		 '{}','22000000-0000-4000-8000-000000000033')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000024',\
-		 'hack-ink/unicode-path','/' || repeat('é',2048),\
+		 'acg-box/unicode-path','/' || repeat('é',2048),\
 		 '/' || repeat('é',2048),'{}','22000000-0000-4000-8000-000000000024')",
 		"projects_paths_bounded_absolute",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000025',\
-		 'hack-ink/control-metadata','/srv/repos/control-metadata',\
+		 'acg-box/control-metadata','/srv/repos/control-metadata',\
 		 '/srv/repos/control-metadata',jsonb_build_object('note',E'line\\nfeed'),\
 		 '22000000-0000-4000-8000-000000000025')",
 		"projects_metadata_bounded",
 	),
 	(
 		"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000027',\
-		 'hack-ink/unicode-control-metadata','/srv/repos/unicode-control-metadata',\
+		 'acg-box/unicode-control-metadata','/srv/repos/unicode-control-metadata',\
 		 '/srv/repos/unicode-control-metadata',jsonb_build_object('note',U&'before\\0085after'),\
 		 '22000000-0000-4000-8000-000000000027')",
 		"projects_metadata_bounded",
@@ -2795,7 +2795,7 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 	let restored_project_id: String = client
 		.query_one(
 			"SELECT project_id::text FROM decodex.projects \
-			 WHERE repository_identity='hack-ink/decodex'",
+			 WHERE repository_identity='acg-box/decodex'",
 			&[],
 		)
 		.await?
@@ -2809,7 +2809,7 @@ async fn postgres_store_restored_contract() -> Result<(), Box<dyn std::error::Er
 		restored.project.id().as_str(),
 		"11000000-0000-4000-8000-000000000001" | "11000000-0000-4000-8000-000000000002"
 	));
-	assert_eq!(restored.project.repository().identity().as_str(), "hack-ink/decodex");
+	assert_eq!(restored.project.repository().identity().as_str(), "acg-box/decodex");
 	assert_eq!(
 		restored.project.repository().root().as_server_path(),
 		Path::new("/srv/repos/decodex")
@@ -3097,7 +3097,7 @@ async fn assert_project_agent_authority(
 			let project = Project::new(
 				project_id.clone(),
 				ProjectRepositoryBinding::new(
-					RepositoryIdentity::new("hack-ink/decodex")
+					RepositoryIdentity::new("acg-box/decodex")
 						.expect("repository fixture identity is canonical"),
 					PathBuf::from("/srv/repos/decodex"),
 					PathBuf::from("/srv/repos/decodex"),
@@ -3175,13 +3175,13 @@ async fn assert_policy_authority(
 	let primary = project_request(
 		"11000000-0000-4000-8000-000000000050",
 		"22000000-0000-4000-8000-000000000050",
-		"hack-ink/policy-authority-a",
+		"acg-box/policy-authority-a",
 		"/srv/repos/policy-authority-a",
 	);
 	let secondary = project_request(
 		"11000000-0000-4000-8000-000000000051",
 		"22000000-0000-4000-8000-000000000051",
-		"hack-ink/policy-authority-b",
+		"acg-box/policy-authority-b",
 		"/srv/repos/policy-authority-b",
 	);
 	let primary_authority = store.create_project(primary).await?;
@@ -3296,7 +3296,7 @@ async fn assert_program_objective_authority(
 		.create_project(project_request(
 			"11000000-0000-4000-8000-000000000060",
 			"22000000-0000-4000-8000-000000000060",
-			"hack-ink/program-objective-authority",
+			"acg-box/program-objective-authority",
 			"/srv/repos/program-objective-authority",
 		))
 		.await?;
@@ -4844,13 +4844,13 @@ async fn assert_project_identity_pair_conflicts(
 	let first = project_request(
 		"11000000-0000-4000-8000-000000000010",
 		"22000000-0000-4000-8000-000000000010",
-		"hack-ink/identity-a",
+		"acg-box/identity-a",
 		"/srv/repos/identity-a",
 	);
 	let second = project_request(
 		"11000000-0000-4000-8000-000000000011",
 		"22000000-0000-4000-8000-000000000011",
-		"hack-ink/identity-b",
+		"acg-box/identity-b",
 		"/srv/repos/identity-b",
 	);
 
@@ -4873,7 +4873,7 @@ async fn assert_project_identity_pair_conflicts(
 	let rebound_id = project_request(
 		first.project.id().as_str(),
 		"22000000-0000-4000-8000-000000000013",
-		"hack-ink/identity-c",
+		"acg-box/identity-c",
 		"/srv/repos/identity-c",
 	);
 
@@ -4891,7 +4891,7 @@ async fn assert_project_identity_pair_conflicts(
 	let error = runtime_client
 		.query(
 			"SELECT * FROM decodex.create_project(\
-			 '11000000-0000-4000-8000-000000000010','hack-ink/identity-b',\
+			 '11000000-0000-4000-8000-000000000010','acg-box/identity-b',\
 			 '/srv/repos/identity-b','/srv/repos/identity-b','{}',\
 			 '22000000-0000-4000-8000-000000000014')",
 			&[],
@@ -4927,14 +4927,14 @@ async fn assert_project_metadata_credential_sql_boundary(
 	for (statement, exposed_value) in [
 		(
 			"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000026',\
-			 'hack-ink/credential-key','/srv/repos/credential-key','/srv/repos/credential-key',\
+			 'acg-box/credential-key','/srv/repos/credential-key','/srv/repos/credential-key',\
 			 '{\"refresh_token\":\"sk-proj-0123456789abcdef\"}',\
 			 '22000000-0000-4000-8000-000000000026')",
 			"sk-proj",
 		),
 		(
 			"SELECT * FROM decodex.create_project('11000000-0000-4000-8000-000000000028',\
-			 'hack-ink/credential-value','/srv/repos/credential-value',\
+			 'acg-box/credential-value','/srv/repos/credential-value',\
 			 '/srv/repos/credential-value','{\"note\":\"Bearer abcdefghijklmnop\"}',\
 			 '22000000-0000-4000-8000-000000000028')",
 			"Bearer",
@@ -4965,7 +4965,7 @@ async fn assert_project_path_sql_acceptance(
 	let row = runtime_client
 		.query_one(
 			"SELECT repository_root,default_cwd FROM decodex.create_project(\
-			 '11000000-0000-4000-8000-000000000029','hack-ink/international-path',\
+			 '11000000-0000-4000-8000-000000000029','acg-box/international-path',\
 			 '/srv/répos/décodex','/srv/répos/décodex/crates','{}',\
 			 '22000000-0000-4000-8000-000000000029')",
 			&[],
@@ -5224,14 +5224,14 @@ async fn assert_identity_ingress_null(runtime: &Client) {
 			"SELECT * FROM decodex.create_project(
 			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
 			  WHERE false),
-			 'hack-ink/null-project','/srv/repos/null-project','/srv/repos/null-project','{}',
+			 'acg-box/null-project','/srv/repos/null-project','/srv/repos/null-project','{}',
 			 '22000000-0000-4000-8000-000000000040'::pg_catalog.text::decodex.canonical_uuid_v4_text)",
 		),
 		(
 			"create Project empty Lead-ID scalar subquery",
 			"SELECT * FROM decodex.create_project(
 			 '11000000-0000-4000-8000-000000000040'::pg_catalog.text::decodex.canonical_uuid_v4_text,
-			 'hack-ink/null-lead','/srv/repos/null-lead','/srv/repos/null-lead','{}',
+			 'acg-box/null-lead','/srv/repos/null-lead','/srv/repos/null-lead','{}',
 			 (SELECT value FROM (VALUES(NULL::decodex.canonical_uuid_v4_text)) AS empty(value)
 			  WHERE false))",
 		),

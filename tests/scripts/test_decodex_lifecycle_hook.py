@@ -111,11 +111,18 @@ class DecodexLifecycleHookTests(unittest.TestCase):
     def test_blocks_gh_pr_merge_with_long_repo_option_inside_decodex_repo(self) -> None:
         repo = self.make_decodex_repo()
 
-        result = self.run_hook(repo, "gh --repo hack-ink/decodex pr merge 123 --merge")
+        result = self.run_hook(repo, "gh --repo acg-box/decodex pr merge 123 --merge")
 
         self.assert_blocked(result, "decodex land")
 
     def test_blocks_gh_pr_merge_with_repo_option_outside_decodex_repo(self) -> None:
+        repo = self.make_git_repo("ordinary")
+
+        result = self.run_hook(repo, "gh --repo acg-box/decodex pr merge 123 --merge")
+
+        self.assert_blocked(result, "decodex land")
+
+    def test_blocks_gh_pr_merge_with_transferred_repo_alias_outside_decodex_repo(self) -> None:
         repo = self.make_git_repo("ordinary")
 
         result = self.run_hook(repo, "gh --repo hack-ink/decodex pr merge 123 --merge")
@@ -125,14 +132,14 @@ class DecodexLifecycleHookTests(unittest.TestCase):
     def test_blocks_gh_pr_merge_with_host_qualified_repo_option_outside_decodex_repo(self) -> None:
         repo = self.make_git_repo("ordinary")
 
-        result = self.run_hook(repo, "gh --repo github.com/hack-ink/decodex pr merge 123 --merge")
+        result = self.run_hook(repo, "gh --repo github.com/acg-box/decodex pr merge 123 --merge")
 
         self.assert_blocked(result, "decodex land")
 
     def test_blocks_gh_pr_merge_with_joined_short_repo_option_outside_decodex_repo(self) -> None:
         repo = self.make_git_repo("ordinary")
 
-        result = self.run_hook(repo, "gh -Rgithub.com/hack-ink/decodex pr merge 123 --merge")
+        result = self.run_hook(repo, "gh -Rgithub.com/acg-box/decodex pr merge 123 --merge")
 
         self.assert_blocked(result, "decodex land")
 
@@ -141,7 +148,7 @@ class DecodexLifecycleHookTests(unittest.TestCase):
 
         result = self.run_hook(
             repo,
-            "gh pr merge https://github.com/hack-ink/decodex/pull/123 --merge",
+            "gh pr merge https://github.com/acg-box/decodex/pull/123 --merge",
         )
 
         self.assert_blocked(result, "decodex land")
@@ -283,7 +290,7 @@ class DecodexLifecycleHookTests(unittest.TestCase):
             version_text = version.group(1)
         else:
             version_text = PLUGIN_ROOT.name
-        expected_path = f"plugins/cache/hack-ink/decodex/{version_text}/scripts/decodex_lifecycle_hook"
+        expected_path = f"plugins/cache/acg-box/decodex/{version_text}/scripts/decodex_lifecycle_hook"
 
         self.assertEqual({"PreToolUse"}, set(hooks))
         for entries in hooks.values():

@@ -274,7 +274,7 @@ fn is_openai_codex_release_path(path: &str) -> bool {
 }
 
 fn is_decodex_commit_path(path: &str) -> bool {
-	let Some(oid) = path.strip_prefix("hack-ink/decodex/commit/") else {
+	let Some(oid) = path.strip_prefix("acg-box/decodex/commit/") else {
 		return false;
 	};
 	oid.len() == 40 && oid.bytes().all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
@@ -313,7 +313,7 @@ mod tests {
 	use super::{SourceKind, classify_source_url, validate_sources};
 
 	const DECODEX_COMMIT_URL: &str =
-		"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567";
+		"https://github.com/acg-box/decodex/commit/0123456789abcdef0123456789abcdef01234567";
 	const OFFICIAL_CODEX_URL: &str = "https://github.com/openai/codex/pull/22414";
 
 	#[test]
@@ -362,21 +362,25 @@ mod tests {
 			("https://github.com/openai/not-codex", "official_codex"),
 			("https://github.com/other/codex", "official_codex"),
 			(
-				"https://github.com/hack-ink/other/commit/0123456789abcdef0123456789abcdef01234567",
-				"landed_decodex",
-			),
-			("https://github.com/hack-ink/decodex/pull/1", "landed_decodex"),
-			("https://github.com/hack-ink/decodex/commit/0123456", "landed_decodex"),
-			(
-				"https://github.com/hack-ink/decodex/commit/0123456789ABCDEF0123456789ABCDEF01234567",
+				"https://github.com/acg-box/other/commit/0123456789abcdef0123456789abcdef01234567",
 				"landed_decodex",
 			),
 			(
-				"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567/extra",
+				"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567",
+				"landed_decodex",
+			),
+			("https://github.com/acg-box/decodex/pull/1", "landed_decodex"),
+			("https://github.com/acg-box/decodex/commit/0123456", "landed_decodex"),
+			(
+				"https://github.com/acg-box/decodex/commit/0123456789ABCDEF0123456789ABCDEF01234567",
 				"landed_decodex",
 			),
 			(
-				"https://github.com/hack-ink/decodex/commit/0123456789abcdef0123456789abcdef01234567/",
+				"https://github.com/acg-box/decodex/commit/0123456789abcdef0123456789abcdef01234567/extra",
+				"landed_decodex",
+			),
+			(
+				"https://github.com/acg-box/decodex/commit/0123456789abcdef0123456789abcdef01234567/",
 				"landed_decodex",
 			),
 		] {

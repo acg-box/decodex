@@ -29,7 +29,7 @@ Workflow:
    with mode `0600`. Omit `decision.idempotency_key`; the recording boundary derives it. Every factual claim must point to
    one declared canonical HTTPS source. Match each source label to its URL: use `official_codex` only
    for allowlisted OpenAI Codex source, documentation, or release paths; use `landed_decodex` only for
-   `github.com/hack-ink/decodex/commit/<40-lowercase-hex>`; and mark Radar sources as secondary. At
+   `github.com/acg-box/decodex/commit/<40-lowercase-hex>`; and mark Radar sources as secondary. At
    least one source must be primary.
 6. For `decision = "publish"`, provide exactly one original text item with 80 to 260 weighted
    characters, no URL, one concrete change, and why it matters. Use `decision = "no_op"` when evidence

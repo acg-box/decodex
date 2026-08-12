@@ -488,7 +488,7 @@ mod tests {
 
 	fn binding() -> ProjectRepositoryBinding {
 		ProjectRepositoryBinding::new(
-			RepositoryIdentity::new("hack-ink/decodex").unwrap(),
+			RepositoryIdentity::new("acg-box/decodex").unwrap(),
 			PathBuf::from("/srv/repos/decodex"),
 			PathBuf::from("/srv/repos/decodex/crates"),
 		)
@@ -511,17 +511,17 @@ mod tests {
 
 	#[test]
 	fn repository_binding_is_canonical_server_host_authority() {
-		assert_eq!(binding().identity().as_str(), "hack-ink/decodex");
+		assert_eq!(binding().identity().as_str(), "acg-box/decodex");
 		assert!(
 			ProjectRepositoryBinding::new(
-				RepositoryIdentity::new("hack-ink/international").unwrap(),
+				RepositoryIdentity::new("acg-box/international").unwrap(),
 				PathBuf::from("/srv/répos/décodex"),
 				PathBuf::from("/srv/répos/décodex/crates"),
 			)
 			.is_ok()
 		);
 
-		for identity in ["", "Hack-Ink/decodex", "hack-ink//decodex", "../decodex"] {
+		for identity in ["", "Acg-Box/decodex", "acg-box//decodex", "../decodex"] {
 			assert_eq!(
 				RepositoryIdentity::new(identity),
 				Err(ProjectError::InvalidRepositoryIdentity)
@@ -534,7 +534,7 @@ mod tests {
 		] {
 			assert_eq!(
 				ProjectRepositoryBinding::new(
-					RepositoryIdentity::new("hack-ink/decodex").unwrap(),
+					RepositoryIdentity::new("acg-box/decodex").unwrap(),
 					PathBuf::from(root),
 					PathBuf::from(cwd),
 				),
@@ -548,7 +548,7 @@ mod tests {
 			"/srv/repos/delete\u{7f}control",
 			"/srv/repos/c1\u{85}control",
 		] {
-			let identity = || RepositoryIdentity::new("hack-ink/decodex").unwrap();
+			let identity = || RepositoryIdentity::new("acg-box/decodex").unwrap();
 
 			assert_eq!(
 				ProjectRepositoryBinding::new(

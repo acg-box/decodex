@@ -1146,7 +1146,7 @@ mod tests {
 		Project::new(
 			ProjectId::new(format!("10000000-0000-4000-8000-{value:012x}")).unwrap(),
 			ProjectRepositoryBinding::new(
-				RepositoryIdentity::new(format!("hack-ink/context-project-{value}")).unwrap(),
+				RepositoryIdentity::new(format!("acg-box/context-project-{value}")).unwrap(),
 				root.clone(),
 				root,
 			)
