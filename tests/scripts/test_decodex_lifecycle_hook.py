@@ -9,9 +9,9 @@ import unittest
 from pathlib import Path
 
 
-PLUGIN_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
+PLUGIN_ROOT = REPO_ROOT / "plugins" / "decodex"
 HOOK_SCRIPT = PLUGIN_ROOT / "scripts" / "decodex_lifecycle_hook"
-REPO_ROOT = PLUGIN_ROOT.parents[1]
 
 
 class DecodexLifecycleHookTests(unittest.TestCase):
