@@ -15,10 +15,10 @@
   "tool": {
     "package": "vibe-style",
     "version": "0.2.3",
-    "source": "https://github.com/hack-ink/vibe-style.git",
+    "source": "https://github.com/acg-box/vibe-style.git",
     "commit": "3a0959eac5363c4c427382bae1d80d87ecadb702",
     "git_short": "3a0959e",
-    "install": "cargo install --git https://github.com/hack-ink/vibe-style.git --rev 3a0959eac5363c4c427382bae1d80d87ecadb702 --locked --force vibe-style"
+    "install": "cargo install --git https://github.com/acg-box/vibe-style.git --rev 3a0959eac5363c4c427382bae1d80d87ecadb702 --locked --force vibe-style"
   },
   "accepted_baseline": {
     "checked_files": 227,

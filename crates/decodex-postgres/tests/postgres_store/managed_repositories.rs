@@ -230,7 +230,7 @@ async fn ensure_project(store: &PostgresStore) -> Result<(), Box<dyn std::error:
 			.create_project(project_request(
 				PROJECT_ID,
 				LEAD_ID,
-				"hack-ink/managed-repository-acceptance",
+				"acg-box/managed-repository-acceptance",
 				"/srv/decodex/acceptance",
 			))
 			.await?;

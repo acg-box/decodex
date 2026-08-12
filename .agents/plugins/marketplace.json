@@ -1,7 +1,7 @@
 {
-  "name": "hack-ink",
+  "name": "acg-box",
   "interface": {
-    "displayName": "hack-ink"
+    "displayName": "acg-box"
   },
   "plugins": [
     {

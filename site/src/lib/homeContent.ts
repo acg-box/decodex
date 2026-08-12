@@ -1,4 +1,4 @@
-const decodexGitHubUrl = "https://github.com/hack-ink/decodex";
+const decodexGitHubUrl = "https://github.com/acg-box/decodex";
 
 const productLoops = [
   {
