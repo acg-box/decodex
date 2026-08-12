@@ -31,20 +31,25 @@ Every run:
    signed one-line manifest promotion; after that promotion, native sync may activate all five.
 4. Inspect every managed PR: `xv/codex-upstream-*` compatibility branches plus exact
    `Decodex-Autonomy: upstream-compatibility` or `Decodex-Autonomy: upstream-dependency-repair` markers.
-   Follow parent and blocked-by URLs, measure
-   detection-to-PR and PR-to-land time, and require land within 24 hours.
-5. Treat stale bases, failed tests, requested changes, open dependencies, and ordinary implementation
-   defects as autonomous repair work. Ensure one precise repair brief and next owner exist on the same
-   PR. An open PR is a nonterminal handoff, never a successful outcome or archive candidate.
-6. Run Publisher validation, xurl readiness, and cost reports. Check candidate age, one-post-per-day,
+   Follow parent and blocked-by URLs and read back exactly one
+   `Decodex-Detected-At: <RFC3339 UTC>` marker from each PR body.
+5. Validate the marker as RFC3339 with the UTC `Z` designator and not later than PR creation. Measure
+   detection-to-PR as PR creation time minus that marker and PR-to-land separately. Report detection-to-PR
+   as `unknown` when the marker is absent or malformed. Require land within 24 hours even when latency is
+   unknown; a missing marker cannot reset or weaken the landing requirement.
+6. Treat absent, duplicate, or malformed detection markers, stale bases, failed tests, requested changes,
+   open dependencies, and ordinary implementation defects as autonomous repair work. Put one precise
+   repair brief and next owner on the same PR; marker briefs return to Maintainer and require exact
+   body readback without substituting refresh time. An open PR remains a nonterminal handoff.
+7. Run Publisher validation, xurl readiness, and cost reports. Check candidate age, one-post-per-day,
    exact `@decodexspace` readback, unresolved write effects, and due 24-hour and 7-day outcomes.
-7. Check Content Manager results for official evidence, concrete usefulness, repetition, and unsupported
+8. Check Content Manager results for official evidence, concrete usefulness, repetition, and unsupported
    claims. Check CodexRadar only as secondary editorial evidence.
-8. Enforce self-archive policy from the exact-five definitions and observed results. Do not depend on an
+9. Enforce self-archive policy from the exact-five definitions and observed results. Do not depend on an
    unbounded global scan. Manager may inspect and archive one known completed managed task only when
    bounded native readback for that exact task is available and proves terminal success with no unresolved
    effect, failure, continuation, or decision request.
-9. Memory may record only the last completed weekly review with measured outcomes, repairs, handoffs,
+10. Memory may record only the last completed weekly review with measured outcomes, repairs, handoffs,
    archive results, and the next experiment. It is advisory only and never workflow authority; actual
    evidence must be rechecked.
 

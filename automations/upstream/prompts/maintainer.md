@@ -27,9 +27,15 @@ Workflow:
    `openwiki/operations/commands-and-validation.md`.
 2. Verify the cwd is the primary worktree on clean `main`. Fetch and fast-forward `origin/main`.
 3. Inspect every open non-draft managed PR: use `xv/codex-upstream-*` for compatibility PRs and the
-   exact `Decodex-Autonomy: upstream-dependency-repair` marker for directly related gate repairs.
+   exact `Decodex-Autonomy: upstream-dependency-repair` marker for directly related gate repairs. On first
+   creation, add exactly one `Decodex-Detected-At: <RFC3339 UTC>` from the first detection instant. Before
+   every body refresh, read and preserve the exact valid value. If it is missing or malformed, recover the
+   earliest authoritative detection evidence named by the repair brief; never use refresh time. Read back
+   the exact marker value after every create or update.
    Repair an existing PR or its dependency chain before starting a new upstream head.
 4. Fetch official `openai/codex` commits, releases, app-server schemas, and removed-feature evidence.
+   When evidence first proves an actionable compatibility change, record that detection instant once as
+   RFC3339 with the UTC `Z` designator. A later scan, implementation run, or PR refresh cannot reset it.
 5. Use the memory cursor only when its official upstream OID exists in the official mirror, is an ancestor
    of the current official head, is not older than the latest merged `Upstream-Codex-Head: <oid>` trailer,
    and its reviewed Decodex `main` OID equals current `main`. A missing or mismatched OID requires a
@@ -45,14 +51,16 @@ Workflow:
    support removal to one ephemeral subagent. Give it the exact upstream evidence and Reviewer feedback.
 10. Review the diff yourself. Run focused tests, then the repository-owned gate from
     `openwiki/operations/commands-and-validation.md`. If the gate exposes an unrelated base defect,
-    create one signed dependency-repair PR with `Decodex-Autonomy: upstream-dependency-repair`,
-    `Decodex-Parent-PR: <url>`, `Decodex-Blocked-By: <url>`, and
-    `Decodex-Repair-Scope: <bounded-scope>` markers; do not leave an unowned blocker or weaken tests.
+    record its first detection instant and create one signed dependency-repair PR with
+    `Decodex-Autonomy: upstream-dependency-repair`, `Decodex-Parent-PR: <url>`,
+    `Decodex-Repair-Scope: <bounded-scope>`, and `Decodex-Detected-At: <RFC3339 UTC>`. Add
+    `Decodex-Blocked-By: <url>` to the parent without changing the parent's detection marker.
 11. Use `decodex commit --manual-authority "<summary>"`. Include `Upstream-Codex-Head: <oid>` and official
    source URLs in the commit or PR evidence. Never use raw `git commit`.
 12. Push the deterministic branch. Create or update its one non-draft PR with
-    `Decodex-Autonomy: upstream-compatibility`, then read back base `main`, head branch, exact head OID,
-    body markers, evidence, and checks. Remove the temporary worktree after push.
+    `Decodex-Autonomy: upstream-compatibility` and the detection marker under the rule above. Read back
+    base `main`, head branch, exact head OID, body markers, evidence, and checks. Remove the temporary
+    worktree after push.
 
 Success:
 - A source-backed no-op is terminal. A tested, signed, deterministic PR is a nonterminal handoff until

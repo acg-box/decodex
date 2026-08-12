@@ -58,14 +58,22 @@ Managed PRs use exact body markers:
 
 ```text
 Decodex-Autonomy: upstream-compatibility
+Decodex-Detected-At: <RFC3339 UTC>
 ```
 
 or:
 
 ```text
 Decodex-Autonomy: upstream-dependency-repair
+Decodex-Detected-At: <RFC3339 UTC>
 Decodex-Parent-PR: https://github.com/acg-box/decodex/pull/<number>
+Decodex-Repair-Scope: <bounded-scope>
 ```
+
+Each managed PR has exactly one `Decodex-Detected-At` marker. The value is the
+first time when evidence proved the actionable compatibility change or gate
+defect. It must use RFC3339 with the UTC `Z` designator. A refresh preserves
+the exact value. It never replaces the value with the refresh time.
 
 A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is
 open. A dependency repair also states `Decodex-Repair-Scope: <bounded-scope>` and
@@ -83,7 +91,9 @@ nonterminal `handed_off` outcome. Only an exact signed merge readback is
 1. Read `AGENTS.md`, OpenWiki, this runbook, and the relevant project tests.
 2. Require clean primary `main` equal to `origin/main`.
 3. Inspect official Codex releases, source changes, protocol schemas, and
-   documentation since the latest Decodex adaptation.
+   documentation since the latest Decodex adaptation. When evidence first
+   proves an actionable change, record that time once. On a later refresh,
+   read and preserve the exact valid detection marker.
 4. Compare upstream behavior with current Decodex code and tests. State the
    concrete user or operator consequence.
 5. Search GitHub for the deterministic branch, upstream-head trailer, workflow
@@ -100,7 +110,8 @@ nonterminal `handed_off` outcome. Only an exact signed merge readback is
 10. Create or update the one matching PR. Compatibility PRs carry
     `Decodex-Autonomy: upstream-compatibility`; dependency repairs carry
     `Decodex-Autonomy: upstream-dependency-repair`, `Decodex-Parent-PR: <url>`,
-    and `Decodex-Repair-Scope: <bounded-scope>`. Verify exact remote head and the
+    and `Decodex-Repair-Scope: <bounded-scope>`. Both types carry the exact
+    detection marker. Read back that marker, the exact remote head, and the
     trailer `Upstream-Codex-Head: <oid>` when applicable.
 11. Remove the temporary worktree only after the remote PR state is read back.
 
@@ -113,14 +124,18 @@ Maintainer updates those PRs and does not create a parallel workflow record.
 1. Enumerate open PRs with the upstream trailer and deterministic branch, plus
    directly linked `upstream-dependency-repair` PRs.
 2. Read the complete diff, upstream evidence, review history, and check results.
+   Read exactly one detection marker. Require RFC3339 UTC, require that it is
+   not later than PR creation, and calculate detection-to-PR latency. A missing,
+   duplicate, malformed, non-UTC, or post-creation marker blocks landing.
 3. Record exact base and head OIDs. Create a temporary review worktree at that
    head.
 4. Review independently for correctness, scope, removed obsolete support,
    security, and test quality.
 5. Run the focused tests and the appropriate repository gate.
 6. When a defect exists, submit precise GitHub review feedback with a required
-   outcome. Leave the PR open for Maintainer repair; this is a nonterminal
-   handoff.
+   outcome. A detection-marker repair identifies the earliest authoritative
+   evidence and requires exact body readback. Leave the PR open for Maintainer
+   repair; this is a nonterminal handoff.
 7. When the head is acceptable and every dependency is landed, invoke only:
 
 ```sh
@@ -145,7 +160,8 @@ Every run checks:
 - exact models, efforts, schedules, local execution, status, and primary cwd;
 - duplicate managed definitions and missing native metadata;
 - upstream release or protocol changes not yet investigated;
-- detection-to-PR and PR-to-land latency;
+- detection-to-PR and PR-to-land latency, or `unknown` detection latency while
+  the marker is invalid;
 - managed workflow markers, dependency chains, `handed_off` outcomes, and next owners;
 - stale PRs, failed checks, review feedback, and merged outcomes;
 - content evidence, X results, due observations, and cost;

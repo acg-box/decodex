@@ -43,18 +43,39 @@ compatibility PR to a directly related gate-repair PR.
 
 ## Handoff Contract
 
-Every managed PR carries one exact body marker:
+Every managed PR carries one exact autonomy marker:
 
 ```text
 Decodex-Autonomy: upstream-compatibility
+Decodex-Detected-At: <RFC3339 UTC>
 ```
 
 or:
 
 ```text
 Decodex-Autonomy: upstream-dependency-repair
+Decodex-Detected-At: <RFC3339 UTC>
 Decodex-Parent-PR: https://github.com/acg-box/decodex/pull/<number>
+Decodex-Repair-Scope: <bounded-scope>
 ```
+
+A managed PR has exactly one durable detection marker. Its timestamp is the
+first instant when evidence established the actionable official compatibility
+change or the gate defect that requires that dependency repair. The value must
+be valid RFC3339 with the UTC `Z` designator. A dependency repair records its own
+gate-defect detection time; adding its blocked-by link does not change the
+parent's detection time.
+
+On first PR creation, the Maintainer writes `Decodex-Detected-At` and reads the
+exact body back. On every refresh, it first reads and then preserves the exact
+valid timestamp; refresh time is never a replacement. The Reviewer reads back
+exactly one marker, validates it, and reports detection-to-PR latency as the PR
+creation time minus the marker timestamp. A missing, duplicate, malformed,
+non-UTC, or post-creation marker blocks landing and returns one precise repair
+brief to the Maintainer on the same PR. The Manager reports that latency as
+`unknown` while the marker is absent or malformed and treats the marker defect
+as autonomous repair work. Marker repair never creates a replacement PR and
+never weakens the 24-hour landing requirement.
 
 A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is
 open. A dependency repair must be directly required by its parent or by a
