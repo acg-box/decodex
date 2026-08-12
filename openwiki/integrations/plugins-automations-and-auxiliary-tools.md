@@ -39,8 +39,9 @@ $CODEX_HOME/plugins/cache/hack-ink/<plugin>/<version>
 ```
 
 Each plugin manifest declares `package.include` and `package.exclude`. The sync
-script materializes only that runtime package contract; source-only assets such
-as `plugins/decodex/tests/` stay out of installed plugin cache entries.
+script materializes only that runtime package contract. Repository-only plugin
+tests live under `tests/scripts/`, outside the physical runtime root. The sync
+tests require every file under `plugins/*` to match its package contract.
 
 Commands:
 
