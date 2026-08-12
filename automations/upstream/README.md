@@ -12,7 +12,7 @@ automation portfolio. It declares exactly five native Codex tasks:
 | `decodex-xurl-publisher` | Publish or observe through the X safety boundary | `gpt-5.6-luna` | `max` | Three times daily |
 
 No managed task uses `xhigh`. Every native definition has local execution and
-uses `/Users/x/code/y/hack-ink/decodex` as its scheduled cwd. A scheduled task
+uses `/Users/x/code/acg-box/decodex` as its scheduled cwd. A scheduled task
 must never use a task worktree as its cwd.
 
 The two Sol roles are difficult protocol and code tasks, so both use `max`.
@@ -53,7 +53,7 @@ or:
 
 ```text
 Decodex-Autonomy: upstream-dependency-repair
-Decodex-Parent-PR: https://github.com/hack-ink/decodex/pull/<number>
+Decodex-Parent-PR: https://github.com/acg-box/decodex/pull/<number>
 ```
 
 A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is

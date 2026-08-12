@@ -17,7 +17,7 @@ use tempfile::TempDir;
 use tokio as _;
 use toml_edit as _;
 
-const PR_URL: &str = "https://github.com/hack-ink/decodex/pull/123";
+const PR_URL: &str = "https://github.com/acg-box/decodex/pull/123";
 const PR_BRANCH: &str = "xv/exact-land";
 
 #[test]
@@ -149,12 +149,12 @@ impl Fixture {
 			&[
 				"config",
 				&format!("url.{}.insteadOf", origin.to_str().expect("origin path should be UTF-8")),
-				"git@github.com:hack-ink/decodex.git",
+				"git@github.com:acg-box/decodex.git",
 			],
 		);
 		git_checked(
 			&primary,
-			&["remote", "set-url", "origin", "git@github.com:hack-ink/decodex.git"],
+			&["remote", "set-url", "origin", "git@github.com:acg-box/decodex.git"],
 		);
 		git_checked(
 			&primary,

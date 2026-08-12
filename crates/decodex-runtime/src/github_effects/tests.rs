@@ -65,7 +65,7 @@ impl GitHubEffectProvider for FakeProvider {
 		&self,
 		mutation: GitHubPullRequestMutation<'_>,
 	) -> GitHubPullRequestMutationOutcome {
-		assert_eq!(mutation.authority().repository.owner(), "hack-ink");
+		assert_eq!(mutation.authority().repository.owner(), "acg-box");
 		assert_eq!(mutation.title(), "Acceptance pull request");
 		self.pr_mutations.set(self.pr_mutations.get() + 1);
 		self.pr_mutation.get()
@@ -111,7 +111,7 @@ fn binding() -> GitHubRepositoryBinding {
 	GitHubRepositoryBinding::new(
 		GitHubProviderIdentity::GitHubDotCom,
 		GitHubRepositoryId::new(1).expect("repository ID is positive"),
-		GitHubRepositoryOwner::new("hack-ink").expect("owner is canonical"),
+		GitHubRepositoryOwner::new("acg-box").expect("owner is canonical"),
 		GitHubRepositoryName::new("decodex").expect("repository name is canonical"),
 		GitHubInstallationId::new(2).expect("installation ID is positive"),
 		GitHubAccountId::new(3).expect("account ID is positive"),
@@ -235,7 +235,7 @@ fn check_observation(
 
 #[test]
 fn explicit_identity_and_public_text_contracts_reject_ambient_or_secret_inference() {
-	assert!(GitHubRepositoryOwner::new("Hack-Ink").is_err());
+	assert!(GitHubRepositoryOwner::new("Acg-Box").is_err());
 	assert!(GitHubBranchName::new("../main").is_err());
 	assert!(GitHubRevision::new("HEAD").is_err());
 	assert!(GitHubOperationMarker::new("marker-from-cwd").is_err());

@@ -25,6 +25,7 @@ LAND_BLOCK = (
     "`decodex land --manual-authority --pr <URL> \"<summary>\"` instead of raw "
     "`gh pr merge` inside Decodex-owned scope."
 )
+DECODEX_GITHUB_REPOSITORIES = ("acg-box/decodex", "hack-ink/decodex")
 
 
 def load_payload() -> dict[str, Any]:
@@ -255,14 +256,18 @@ def decodex_repo_selector(value: str) -> bool:
         if normalized.startswith(prefix):
             normalized = normalized.removeprefix(prefix)
             break
-    if normalized in {"hack-ink/decodex", "decodex"}:
+    if normalized == "decodex":
         return True
-    if normalized.startswith("hack-ink/decodex/"):
+    if any(
+        normalized == repository or normalized.startswith(f"{repository}/")
+        for repository in DECODEX_GITHUB_REPOSITORIES
+    ):
         return True
     parsed = urlparse(value)
-    if parsed.netloc == "github.com" and parsed.path.strip("/").startswith("hack-ink/decodex/"):
-        return True
-    return False
+    path = parsed.path.strip("/")
+    return parsed.netloc == "github.com" and any(
+        path.startswith(f"{repository}/") for repository in DECODEX_GITHUB_REPOSITORIES
+    )
 
 
 def gh_command(tokens: list[str], default_cwd: Path) -> tuple[str, list[str], Path, bool] | None:

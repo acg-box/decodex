@@ -56,7 +56,7 @@ export function buildSnapshot(accounts, fixedAccountSelector) {
 			{
 				project_id: "decodex-preview",
 				config_path: "~/.codex/decodex/projects/decodex/project.toml",
-				repo_root: "/Users/x/code/y/hack-ink/decodex",
+				repo_root: "/Users/x/code/acg-box/decodex",
 				enabled: true,
 				active_run_count: activeRuns.length,
 				queued_candidate_count: queuedCandidates().length,

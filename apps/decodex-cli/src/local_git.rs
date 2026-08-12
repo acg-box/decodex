@@ -838,35 +838,35 @@ mod tests {
 	#[test]
 	fn canonical_github_repository_identities_match_supported_urls() {
 		assert_eq!(
-			github_repository_from_pull_request_url("https://github.com/hack-ink/decodex/pull/123")
+			github_repository_from_pull_request_url("https://github.com/acg-box/decodex/pull/123")
 				.unwrap(),
-			"hack-ink/decodex"
+			"acg-box/decodex"
 		);
 		for remote in [
-			"git@github.com:hack-ink/decodex.git",
-			"ssh://git@github.com/hack-ink/decodex.git",
-			"https://github.com/hack-ink/decodex.git",
-			"https://github.com/hack-ink/decodex",
+			"git@github.com:acg-box/decodex.git",
+			"ssh://git@github.com/acg-box/decodex.git",
+			"https://github.com/acg-box/decodex.git",
+			"https://github.com/acg-box/decodex",
 		] {
-			assert_eq!(github_repository_from_remote(remote).unwrap(), "hack-ink/decodex");
+			assert_eq!(github_repository_from_remote(remote).unwrap(), "acg-box/decodex");
 		}
 	}
 
 	#[test]
 	fn noncanonical_github_repository_identities_fail_closed() {
 		for pull_request in [
-			"http://github.com/hack-ink/decodex/pull/1",
-			"https://github.com/hack-ink/decodex/pull/0",
-			"https://github.com/hack-ink/decodex/pull/01",
-			"https://github.com/hack-ink/decodex/pull/1/",
-			"https://github.com/hack-ink/decodex/issues/1",
-			"https://example.com/hack-ink/decodex/pull/1",
+			"http://github.com/acg-box/decodex/pull/1",
+			"https://github.com/acg-box/decodex/pull/0",
+			"https://github.com/acg-box/decodex/pull/01",
+			"https://github.com/acg-box/decodex/pull/1/",
+			"https://github.com/acg-box/decodex/issues/1",
+			"https://example.com/acg-box/decodex/pull/1",
 		] {
 			assert!(github_repository_from_pull_request_url(pull_request).is_err());
 		}
 		for remote in [
-			"git@example.com:hack-ink/decodex.git",
-			"https://github.com/hack-ink/decodex/extra",
+			"git@example.com:acg-box/decodex.git",
+			"https://github.com/acg-box/decodex/extra",
 			"/tmp/decodex.git",
 		] {
 			assert!(github_repository_from_remote(remote).is_err());
