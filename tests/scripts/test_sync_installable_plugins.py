@@ -24,6 +24,22 @@ def load_sync_module():
 
 
 class SyncInstallablePluginsTests(unittest.TestCase):
+    def test_plugin_roots_match_their_runtime_package_contract(self):
+        module = load_sync_module()
+
+        for plugin_root in module.plugin_sources(REPO_ROOT):
+            physical_files = {
+                path.relative_to(plugin_root)
+                for path in plugin_root.rglob("*")
+                if path.is_file()
+            }
+            packaged_files = {
+                path.relative_to(plugin_root)
+                for path in module.package_files(plugin_root)
+            }
+
+            self.assertEqual(physical_files, packaged_files, plugin_root)
+
     def test_sync_installs_plugins_without_global_repo_local_skills(self):
         module = load_sync_module()
         with tempfile.TemporaryDirectory() as temp_dir:
