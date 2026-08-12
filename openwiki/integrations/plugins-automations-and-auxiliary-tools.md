@@ -26,6 +26,9 @@ Recent git history added lifecycle hook guardrails. `hooks.json` registers a Pre
 - Blocks raw `git commit` inside Decodex scope and instructs use of `decodex commit`.
 - Blocks raw `gh pr merge` inside Decodex scope and instructs use of `decodex land`.
 
+Explicit GitHub selectors recognize canonical `acg-box/decodex` and the transferred
+`hack-ink/decodex` redirect alias, so an old link cannot bypass the landing guard.
+
 This protects high-risk history and landing surfaces from bypassing Decodex authority. Future changes should preserve scoped behavior: outside Decodex-owned paths, the hook should not become a generic Git policy.
 
 Watchpoint: `hooks.json` currently hardcodes the plugin path version `0.2.0`, while `scripts/config/sync_installable_plugins.py` derives install version from root `Cargo.toml`. Tests currently assert the `0.2.0` install path (`tests/scripts/test_sync_installable_plugins.py`), so update hook path, manifest version, workspace version, and tests together during version changes.

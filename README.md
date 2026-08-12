@@ -5,9 +5,9 @@
 Local-first agent workspace orchestration.
 
 [![License](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/hack-ink/decodex)](https://github.com/hack-ink/decodex/tags)
-[![GitHub last commit](https://img.shields.io/github/last-commit/hack-ink/decodex?color=red&style=plastic)](https://github.com/hack-ink/decodex)
-[![GitHub code lines](https://tokei.rs/b1/github/hack-ink/decodex)](https://github.com/hack-ink/decodex)
+[![GitHub tag (latest by date)](https://img.shields.io/github/v/tag/acg-box/decodex)](https://github.com/acg-box/decodex/tags)
+[![GitHub last commit](https://img.shields.io/github/last-commit/acg-box/decodex?color=red&style=plastic)](https://github.com/acg-box/decodex)
+[![GitHub code lines](https://tokei.rs/b1/github/acg-box/decodex)](https://github.com/acg-box/decodex)
 
 </div>
 

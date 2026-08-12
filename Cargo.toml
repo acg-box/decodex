@@ -25,7 +25,7 @@ description = "Decodex runtime, static site, and local operator tooling."
 edition     = "2024"
 homepage    = "https://decodex.space"
 license     = "GPL-3.0"
-repository  = "https://github.com/hack-ink/decodex"
+repository  = "https://github.com/acg-box/decodex"
 version     = "0.2.0"
 
 [workspace.dependencies]
