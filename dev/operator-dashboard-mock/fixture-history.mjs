@@ -198,7 +198,7 @@ export function historyLane(accounts) {
 			final_event_type: "issue_closeout_complete",
 			final_event_at: ago(7_200),
 			summary: "Merged, closed out, and cleaned up.",
-			pr_url: "https://github.com/hack-ink/decodex/pull/430",
+			pr_url: "https://github.com/acg-box/decodex/pull/430",
 			commit_sha: "abc123def456",
 			branch: "xy/xy-430-dashboard",
 			closeout_status: "completed",

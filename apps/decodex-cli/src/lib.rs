@@ -560,7 +560,7 @@ mod tests {
 			"Exact candidate",
 			"--manual-authority",
 			"--pr",
-			"https://github.com/hack-ink/decodex/pull/123",
+			"https://github.com/acg-box/decodex/pull/123",
 			"--expected-base-oid",
 			"1111111111111111111111111111111111111111",
 			"--expected-head-oid",
@@ -584,7 +584,7 @@ mod tests {
 			land.command,
 			Command::Land(command)
 				if command.manual_authority
-					&& command.pr == "https://github.com/hack-ink/decodex/pull/123"
+					&& command.pr == "https://github.com/acg-box/decodex/pull/123"
 					&& command.expected_base_oid
 						== "1111111111111111111111111111111111111111"
 					&& command.expected_head_oid

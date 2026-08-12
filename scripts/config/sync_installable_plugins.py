@@ -16,7 +16,7 @@ from pathlib import Path
 from pathlib import PurePosixPath
 
 
-NAMESPACE = "hack-ink"
+NAMESPACE = "acg-box"
 
 
 @dataclass(frozen=True)
