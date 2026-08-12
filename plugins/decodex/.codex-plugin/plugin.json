@@ -4,7 +4,6 @@
   "description": "Decodex runtime and operator workflows for planning, ops, commit, and landing.",
   "author": {
     "name": "acg-box",
-    "email": "hi@hack.ink",
     "url": "https://github.com/acg-box"
   },
   "homepage": "https://github.com/acg-box/decodex",

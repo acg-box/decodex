@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/hack-ink/decodex/0.2.0/scripts/decodex_lifecycle_hook\" --event PreToolUse",
+            "command": "python3 \"${CODEX_HOME:-$HOME/.codex}/plugins/cache/acg-box/decodex/0.2.0/scripts/decodex_lifecycle_hook\" --event PreToolUse",
             "timeout": 10
           }
         ]

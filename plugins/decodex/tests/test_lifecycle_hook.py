@@ -290,7 +290,7 @@ class DecodexLifecycleHookTests(unittest.TestCase):
             version_text = version.group(1)
         else:
             version_text = PLUGIN_ROOT.name
-        expected_path = f"plugins/cache/hack-ink/decodex/{version_text}/scripts/decodex_lifecycle_hook"
+        expected_path = f"plugins/cache/acg-box/decodex/{version_text}/scripts/decodex_lifecycle_hook"
 
         self.assertEqual({"PreToolUse"}, set(hooks))
         for entries in hooks.values():

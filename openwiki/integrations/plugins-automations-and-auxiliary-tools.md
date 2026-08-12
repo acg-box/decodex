@@ -38,7 +38,7 @@ Watchpoint: `hooks.json` currently hardcodes the plugin path version `0.2.0`, wh
 The installer is `scripts/config/sync_installable_plugins.py`. It finds the repo root, reads the workspace version from root `Cargo.toml`, discovers plugins under `plugins/*/.codex-plugin/plugin.json`, and copies each plugin to:
 
 ```text
-$CODEX_HOME/plugins/cache/hack-ink/<plugin>/<version>
+$CODEX_HOME/plugins/cache/acg-box/<plugin>/<version>
 ```
 
 Each plugin manifest declares `package.include` and `package.exclude`. The sync

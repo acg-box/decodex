@@ -46,11 +46,11 @@ class SyncInstallablePluginsTests(unittest.TestCase):
             self.assertTrue(
                 (
                     codex_home
-                    / "plugins/cache/hack-ink/decodex/0.2.0/.codex-plugin/plugin.json"
+                    / "plugins/cache/acg-box/decodex/0.2.0/.codex-plugin/plugin.json"
                 ).is_file()
             )
-            hooks_path = codex_home / "plugins/cache/hack-ink/decodex/0.2.0/hooks/hooks.json"
-            hook_script = codex_home / "plugins/cache/hack-ink/decodex/0.2.0/scripts/decodex_lifecycle_hook"
+            hooks_path = codex_home / "plugins/cache/acg-box/decodex/0.2.0/hooks/hooks.json"
+            hook_script = codex_home / "plugins/cache/acg-box/decodex/0.2.0/scripts/decodex_lifecycle_hook"
             self.assertTrue(hooks_path.is_file())
             self.assertTrue(hook_script.is_file())
             self.assertTrue(os.access(hook_script, os.X_OK))
