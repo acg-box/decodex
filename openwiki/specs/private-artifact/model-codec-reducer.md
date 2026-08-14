@@ -15,8 +15,8 @@ conditions in the retirement decision apply and no private-artifact work can sta
 
 <a id="rule-PA-MODEL-0001"></a>
 **[rule:PA-MODEL-0001]** Every independently persisted semantic value, exact
-response, tombstone, canonical PostgreSQL `bytea` argument, and canonical
-PostgreSQL `bytea` result is one framed root record:
+response, tombstone, canonical former server store `bytea` argument, and canonical
+former server store `bytea` result is one framed root record:
 
 ```text
 offset  size  value
@@ -47,7 +47,7 @@ Signed integers are fixed-width big-endian two's-complement values. A Boolean is
 one byte, exactly 0 or 1. `StatTime` is `i64 seconds || u32 nanoseconds`, with
 nanoseconds below 1,000,000,000. Every canonical `u64`, including revision,
 epoch, generation, length, device, inode, link count, and process tick, follows
-`U`. PostgreSQL represents it as nonnegative `bigint`, never `numeric`.
+`U`. former server store represents it as nonnegative `bigint`, never `numeric`.
 
 The path codec and internal names are exact:
 
@@ -503,7 +503,7 @@ Commands derive scalar columns only from that output and compare them with `IS N
 DISTINCT FROM`. Sequence columns store exact count and projection-sequence digest.
 Locked mutation repeats every comparison.
 
-PostgreSQL uses exactly one private validator with this signature:
+former server store uses exactly one private validator with this signature:
 
 ```sql
 decodex.private_artifact_validate_record_v1(
@@ -754,7 +754,7 @@ positive `PreEffect` observation in canonical `(role,subject with None first)`
 order. It has one count and no root frame, observation field, or padding. Every
 authorized effect sets `EffectIntent.expected_object_digest=Some(EO)`.
 `CompleteDependency` and `RecordBlockedObservation` create no effect intent.
-PostgreSQL recomputes EO from the locked canonical input and rejects a difference.
+former server store recomputes EO from the locked canonical input and rejects a difference.
 
 For a `PresentSafe` authority-root observation `r`, define:
 
@@ -891,7 +891,7 @@ mutable-state identities are invalid.
 A `Reconcile` observation qualifies only when it proves the exact effect occurred.
 It produces the unchanged Ensure and milestone effects without a new permit. A
 probe that proves no effect or remains ambiguous produces no debt. Rust and
-PostgreSQL apply the same predicate. Missing, unsafe, duplicate, differently
+former server store apply the same predicate. Missing, unsafe, duplicate, differently
 phased, or cross-observation identity input is
 `Transition/ObservationMismatch`.
 

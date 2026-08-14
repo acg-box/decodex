@@ -276,7 +276,7 @@ pub enum ProcessGenerationState {
 	DeathUnknown,
 }
 impl ProcessGenerationState {
-	/// Return the canonical PostgreSQL label.
+	/// Return the canonical durable-store label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Starting => "starting",
@@ -302,7 +302,7 @@ pub enum ProcessControlKind {
 	ParentDeathSignalAndStdioEof,
 }
 impl ProcessControlKind {
-	/// Return the canonical PostgreSQL label.
+	/// Return the canonical durable-store label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::StdioOnlyBestEffortEof => "stdio_only_best_effort_eof",
@@ -318,7 +318,7 @@ pub enum ProcessIsolationKind {
 	Session,
 }
 impl ProcessIsolationKind {
-	/// Return the canonical PostgreSQL label.
+	/// Return the canonical durable-store label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Session => "session",
@@ -341,7 +341,7 @@ pub enum ProcessAuthorityLossReason {
 	ControlAuthorityLost,
 }
 impl ProcessAuthorityLossReason {
-	/// Return the canonical PostgreSQL label.
+	/// Return the canonical durable-store label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::SupervisorRestarted => "supervisor_restarted",
@@ -370,7 +370,7 @@ pub enum ProcessDeathEvidenceKind {
 	PriorBootEnded,
 }
 impl ProcessDeathEvidenceKind {
-	/// Return the canonical PostgreSQL label.
+	/// Return the canonical durable-store label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::SpawnNotCreated => "spawn_not_created",
@@ -497,9 +497,9 @@ pub struct ProcessGeneration {
 	pub death_evidence_id: Option<ProcessDeathEvidenceId>,
 	/// Positive current revision.
 	pub revision: i64,
-	/// PostgreSQL-authored creation instant in Unix microseconds.
+	/// durable-store-authored creation instant in Unix microseconds.
 	pub created_at_micros: i64,
-	/// PostgreSQL-authored last-transition instant in Unix microseconds.
+	/// durable-store-authored last-transition instant in Unix microseconds.
 	pub updated_at_micros: i64,
 }
 

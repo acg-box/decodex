@@ -79,7 +79,7 @@ use decodex_core::{
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
 	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId,
 };
-use decodex_postgres::{
+use decodex_database::{
 	BindRuntimeSessionThread, CodexAccountCapabilityAttestation, FreshProviderDispatchFence,
 	FreshQuickTaskProcessGeneration, FreshRuntimeSessionThreadStart,
 	SuccessfulRuntimeSessionThreadStart,
@@ -861,7 +861,7 @@ impl AttestedProcessChild {
 		Ok(())
 	}
 
-	/// Reserve the exact `thread/start` frame before its PostgreSQL fence is committed.
+	/// Reserve the exact `thread/start` frame before its durable fence is committed.
 	pub(crate) fn prepare_ordinary_thread_start(
 		&mut self,
 		request: &QuickTaskThreadStartRequest,

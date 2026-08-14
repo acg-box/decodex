@@ -77,7 +77,7 @@ pub const MAX_PROGRAM_CONTEXT_DECISIONS: usize = 64;
 pub const MAX_PROGRAM_CONTEXT_BYTES: usize = 256 * 1_024;
 /// Maximum accepted interval for an explicit Program review cadence.
 pub const MAX_REVIEW_CADENCE_DAYS: u16 = 365;
-/// Latest finite timestamp representable by PostgreSQL and RFC 3339, in Unix microseconds.
+/// Latest finite timestamp representable by durable-store and RFC 3339, in Unix microseconds.
 pub const MAX_PROGRAM_TIMESTAMP_MICROSECONDS: i64 = 253_402_300_799_999_999;
 
 /// Closed Program-domain validation failure without caller-controlled text.
@@ -187,12 +187,15 @@ impl ProgramState {
 	/// Whether this state can transition to `next`.
 	pub const fn can_transition_to(self, next: Self) -> bool {
 		match self {
-			Self::Active =>
-				matches!(next, Self::NeedsAttention | Self::Blocked | Self::Paused | Self::Retired),
-			Self::NeedsAttention =>
-				matches!(next, Self::Active | Self::Blocked | Self::Paused | Self::Retired),
-			Self::Blocked =>
-				matches!(next, Self::Active | Self::NeedsAttention | Self::Paused | Self::Retired),
+			Self::Active => {
+				matches!(next, Self::NeedsAttention | Self::Blocked | Self::Paused | Self::Retired)
+			},
+			Self::NeedsAttention => {
+				matches!(next, Self::Active | Self::Blocked | Self::Paused | Self::Retired)
+			},
+			Self::Blocked => {
+				matches!(next, Self::Active | Self::NeedsAttention | Self::Paused | Self::Retired)
+			},
 			Self::Paused => matches!(next, Self::Active | Self::Retired),
 			Self::Retired => false,
 		}

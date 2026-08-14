@@ -35,8 +35,8 @@ fn help_exits_without_starting_the_daemon() {
 	let stdout = String::from_utf8(output.stdout).expect("help output is UTF-8");
 
 	assert!(output.status.success());
-	assert!(stdout.contains("supervise-local"));
 	assert!(stdout.contains("serve"));
+	assert!(!stdout.contains("supervise-local"));
 	assert!(!stdout.contains("secret-run"));
 	assert!(output.stderr.is_empty());
 	assert!(!home.path().join(".decodex").exists());

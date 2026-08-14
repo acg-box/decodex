@@ -38,9 +38,23 @@ Historical basis: this page consolidates former `docs/decisions` records for the
 ## Account lifecycle ownership
 
 Account routing, account presentation, and secret storage have different security and
-recovery requirements. Decodex therefore uses one small three-owner design: PostgreSQL
+recovery requirements. Decodex therefore uses one small three-owner design: former server store
 holds credential-negative product state, the HostCredentialStore holds only secret
 bundles, and the `decodexd` Account Service coordinates operations across them.
+
+For Mac dogfood, the HostCredentialStore uses one daemon-owned redb file. The former
+Keychain adapter forced normal service startup through an app bundle, development
+provisioning profile, access-group entitlement, and wrapper process. Those mechanisms
+served the backend choice, not the product boundary. Redb keeps atomic transactions,
+exact compare-and-swap, restart recovery, and one-writer exclusion while allowing one
+direct signed daemon executable. Keeping credentials out of former server store still limits
+exposure through SQL access, dumps, backups, and ordinary product-state tools.
+
+This is a deliberate v1 host-trust trade-off. The vault is owner-only and relies on host
+disk encryption; it does not claim protection from root or malicious same-user code. An
+extra application encryption layer would also need a separate durable key authority and
+rotation design. Decodex does not add that system until a named threat requires it. See
+[Credential Vault Cutover Evidence](../evidence/credential-vault-cutover.md).
 
 The first Mac dogfood keeps the smallest usable set: enrollment/import, refresh and
 rotation, enable/disable, logout, quota-aware fixed/balanced initial selection, explicit

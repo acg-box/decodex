@@ -14,6 +14,7 @@ use sha2::{Digest, Sha256};
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 const FINGERPRINT_DOMAIN: &[u8] = b"decodex-host-credential-store-v1\0";
+const MAX_CREDENTIAL_RECORD_BYTES: usize = 1024 * 1024;
 
 /// Secret bundle kept only in the host credential store and short-lived daemon memory.
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
@@ -213,6 +214,8 @@ pub enum CredentialStoreError {
 	FingerprintMismatch,
 	/// The current provider identity differs.
 	ProviderMismatch,
+	/// Another account record already owns the same provider identity.
+	DuplicateProvider,
 	/// The serialized account identity differs.
 	AccountMismatch,
 	/// The current writer operation differs.
@@ -234,6 +237,7 @@ impl Display for CredentialStoreError {
 			Self::VersionConflict => "host credential version conflict",
 			Self::FingerprintMismatch => "host credential fingerprint mismatch",
 			Self::ProviderMismatch => "host credential provider mismatch",
+			Self::DuplicateProvider => "host credential provider already exists",
 			Self::AccountMismatch => "host credential account mismatch",
 			Self::WriterMismatch => "host credential writer operation mismatch",
 			Self::UnsupportedSchema => "host credential schema unsupported",
@@ -329,14 +333,20 @@ impl PersistedCredentialV1 {
 }
 
 fn encode(persisted: &PersistedCredentialV1) -> Result<Zeroizing<Vec<u8>>, CredentialStoreError> {
-	serde_json::to_vec(persisted)
-		.map(Zeroizing::new)
-		.map_err(|_| CredentialStoreError::InvalidBundle)
+	let bytes = serde_json::to_vec(persisted).map_err(|_| CredentialStoreError::InvalidBundle)?;
+	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
+		return Err(CredentialStoreError::InvalidBundle);
+	}
+
+	Ok(Zeroizing::new(bytes))
 }
 
 fn decode(
 	bytes: Vec<u8>,
 ) -> Result<(PersistedCredentialV1, CredentialFingerprint), CredentialStoreError> {
+	if bytes.len() > MAX_CREDENTIAL_RECORD_BYTES {
+		return Err(CredentialStoreError::CorruptBundle);
+	}
 	let bytes = Zeroizing::new(bytes);
 	let fingerprint = fingerprint(&bytes)?;
 	let persisted =
@@ -403,360 +413,6 @@ pub(crate) fn seal_exact_read(
 	Ok(StoredCredential { binding: actual.clone(), bundle })
 }
 
-#[cfg(target_os = "macos")]
-mod macos {
-	use std::{
-		fs::{File, OpenOptions},
-		os::{
-			fd::AsRawFd as _,
-			unix::fs::{MetadataExt as _, OpenOptionsExt as _},
-		},
-		path::PathBuf,
-		sync::Mutex,
-	};
+mod sqlite_store;
 
-	use crate::daemon_wrapper::inspect_current_daemon_wrapper;
-	use decodex_core::DecodexPaths;
-	use security_framework::{
-		access_control::{ProtectionMode, SecAccessControl},
-		passwords::{
-			PasswordOptions, delete_generic_password_options, generic_password,
-			set_generic_password_options,
-		},
-	};
-
-	use super::{
-		AccountId, CredentialBinding, CredentialSecretBundle, CredentialStoreError,
-		CredentialVersion, HostCredentialStore, PersistedCredentialV1, StoredCredential, decode,
-		encode, enforce_exact, fingerprint, seal_exact_read,
-	};
-
-	const APPLICATION_IDENTITY: &str = "box.acg.decodex";
-	const KEYCHAIN_SERVICE: &str = "box.acg.decodex.credentials.v1";
-	const KEYCHAIN_ACCESS_GROUP: &str = "T54QFA7W2S.box.acg.decodex.daemon";
-	const ITEM_NOT_FOUND: i32 = -25_300;
-
-	#[derive(Debug, Eq, PartialEq)]
-	struct KeychainQueryAuthority {
-		service: &'static str,
-		account: String,
-		access_group: String,
-	}
-
-	/// macOS generic-password adapter used only by the singleton daemon Account Service.
-	pub struct MacosKeychainCredentialStore {
-		serial: Mutex<()>,
-		lock_path: PathBuf,
-		access_group: String,
-	}
-	impl MacosKeychainCredentialStore {
-		/// Construct the daemon-owned Keychain adapter from the verified current wrapper.
-		pub fn new(paths: &DecodexPaths) -> Result<Self, CredentialStoreError> {
-			let descriptor =
-				inspect_current_daemon_wrapper().map_err(|_| CredentialStoreError::Unavailable)?;
-			let access_group = descriptor.keychain_access_group();
-			if access_group != KEYCHAIN_ACCESS_GROUP {
-				return Err(CredentialStoreError::Unavailable);
-			}
-			Ok(Self {
-				serial: Mutex::new(()),
-				lock_path: paths.server_dir().join("account-credential-store.lock"),
-				access_group: access_group.to_owned(),
-			})
-		}
-
-		#[cfg(test)]
-		fn new_for_process_lock_test(paths: &DecodexPaths) -> Self {
-			Self {
-				serial: Mutex::new(()),
-				lock_path: paths.server_dir().join("account-credential-store.lock"),
-				access_group: KEYCHAIN_ACCESS_GROUP.to_owned(),
-			}
-		}
-
-		fn lock_process(&self) -> Result<ProcessCredentialLock, CredentialStoreError> {
-			let file = OpenOptions::new()
-				.read(true)
-				.write(true)
-				.create(true)
-				.mode(0o600)
-				.custom_flags(libc::O_CLOEXEC | libc::O_NOFOLLOW)
-				.open(&self.lock_path)
-				.map_err(|_| CredentialStoreError::Unavailable)?;
-			let metadata = file.metadata().map_err(|_| CredentialStoreError::Unavailable)?;
-			if !metadata.file_type().is_file()
-				|| metadata.uid() != unsafe { libc::geteuid() }
-				|| metadata.mode() & 0o077 != 0
-				|| metadata.nlink() != 1
-			{
-				return Err(CredentialStoreError::Unavailable);
-			}
-			if unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } != 0 {
-				return Err(CredentialStoreError::Unavailable);
-			}
-			Ok(ProcessCredentialLock(file))
-		}
-
-		fn query_authority(&self, account_id: &AccountId) -> KeychainQueryAuthority {
-			KeychainQueryAuthority {
-				service: KEYCHAIN_SERVICE,
-				account: account_id.as_str().to_owned(),
-				access_group: self.access_group.clone(),
-			}
-		}
-
-		fn query(&self, account_id: &AccountId) -> PasswordOptions {
-			let authority = self.query_authority(account_id);
-			let mut options =
-				PasswordOptions::new_generic_password(authority.service, &authority.account);
-			options.set_access_group(&authority.access_group);
-			options.set_access_synchronized(Some(false));
-			options.use_protected_keychain();
-			options
-		}
-
-		fn write_options(
-			&self,
-			account_id: &AccountId,
-		) -> Result<PasswordOptions, CredentialStoreError> {
-			let mut options = self.query(account_id);
-			let access = SecAccessControl::create_with_protection(
-				Some(ProtectionMode::AccessibleAfterFirstUnlockThisDeviceOnly),
-				0,
-			)
-			.map_err(|_| CredentialStoreError::Unavailable)?;
-			options.set_access_control(access);
-			options.set_label(APPLICATION_IDENTITY);
-			options.set_description("Decodex daemon account credential bundle");
-			Ok(options)
-		}
-
-		fn read_unlocked(
-			&self,
-			account_id: &AccountId,
-		) -> Result<(PersistedCredentialV1, CredentialBinding), CredentialStoreError> {
-			let bytes = generic_password(self.query(account_id)).map_err(map_keychain_error)?;
-			let (persisted, fingerprint) = decode(bytes)?;
-			if persisted.account_id()? != *account_id {
-				return Err(CredentialStoreError::AccountMismatch);
-			}
-			let binding = persisted.binding(fingerprint)?;
-
-			Ok((persisted, binding))
-		}
-
-		#[cfg(test)]
-		fn enforce_metadata_access_group(
-			&self,
-			observed: Option<&str>,
-		) -> Result<(), CredentialStoreError> {
-			if observed == Some(self.access_group.as_str()) {
-				Ok(())
-			} else {
-				Err(CredentialStoreError::CorruptBundle)
-			}
-		}
-	}
-
-	struct ProcessCredentialLock(File);
-	impl Drop for ProcessCredentialLock {
-		fn drop(&mut self) {
-			let _ = unsafe { libc::flock(self.0.as_raw_fd(), libc::LOCK_UN) };
-		}
-	}
-	impl HostCredentialStore for MacosKeychainCredentialStore {
-		fn create(
-			&self,
-			account_id: &AccountId,
-			target: &CredentialBinding,
-			bundle: CredentialSecretBundle,
-		) -> Result<(), CredentialStoreError> {
-			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
-			let _process_guard = self.lock_process()?;
-			if target.version.get() != 1 {
-				return Err(CredentialStoreError::VersionConflict);
-			}
-			match self.read_unlocked(account_id) {
-				Ok(_) => return Err(CredentialStoreError::AlreadyExists),
-				Err(CredentialStoreError::NotFound) => {},
-				Err(error) => return Err(error),
-			}
-			let persisted = PersistedCredentialV1::new(
-				account_id,
-				&target.writer_operation_id,
-				CredentialVersion::new(1).map_err(|_| CredentialStoreError::InvalidBundle)?,
-				&target.provider,
-				bundle,
-			);
-			let bytes = encode(&persisted)?;
-			let binding = persisted.binding(fingerprint(&bytes)?)?;
-			enforce_exact(&binding, target)?;
-			set_generic_password_options(&bytes, self.write_options(account_id)?)
-				.map_err(map_keychain_error)?;
-
-			Ok(())
-		}
-
-		fn read_exact(
-			&self,
-			account_id: &AccountId,
-			expected: &CredentialBinding,
-		) -> Result<StoredCredential, CredentialStoreError> {
-			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
-			let _process_guard = self.lock_process()?;
-			let (persisted, binding) = self.read_unlocked(account_id)?;
-			let bundle = persisted.into_bundle()?;
-
-			seal_exact_read(account_id, &binding, expected, bundle)
-		}
-
-		fn compare_and_swap_rotate(
-			&self,
-			account_id: &AccountId,
-			expected: &CredentialBinding,
-			target: &CredentialBinding,
-			bundle: CredentialSecretBundle,
-		) -> Result<(), CredentialStoreError> {
-			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
-			let _process_guard = self.lock_process()?;
-			let (_, actual) = self.read_unlocked(account_id)?;
-			enforce_exact(&actual, expected)?;
-			let next =
-				expected.version.successor().map_err(|_| CredentialStoreError::VersionConflict)?;
-			if target.version != next || target.provider != expected.provider {
-				return Err(CredentialStoreError::VersionConflict);
-			}
-			let persisted = PersistedCredentialV1::new(
-				account_id,
-				&target.writer_operation_id,
-				next,
-				&target.provider,
-				bundle,
-			);
-			let bytes = encode(&persisted)?;
-			let binding = persisted.binding(fingerprint(&bytes)?)?;
-			enforce_exact(&binding, target)?;
-			set_generic_password_options(&bytes, self.write_options(account_id)?)
-				.map_err(map_keychain_error)?;
-
-			Ok(())
-		}
-
-		fn delete(
-			&self,
-			account_id: &AccountId,
-			expected: &CredentialBinding,
-		) -> Result<(), CredentialStoreError> {
-			let _guard = self.serial.lock().map_err(|_| CredentialStoreError::Unavailable)?;
-			let _process_guard = self.lock_process()?;
-			let (_, actual) = self.read_unlocked(account_id)?;
-			enforce_exact(&actual, expected)?;
-			delete_generic_password_options(self.query(account_id)).map_err(map_keychain_error)
-		}
-	}
-
-	fn map_keychain_error(error: security_framework::base::Error) -> CredentialStoreError {
-		if error.code() == ITEM_NOT_FOUND {
-			CredentialStoreError::NotFound
-		} else {
-			CredentialStoreError::Unavailable
-		}
-	}
-
-	#[cfg(test)]
-	mod tests {
-		use std::{
-			env, fs,
-			process::{Command, Stdio},
-			thread,
-			time::{Duration, Instant},
-		};
-
-		use super::{KEYCHAIN_ACCESS_GROUP, KEYCHAIN_SERVICE, MacosKeychainCredentialStore};
-		use crate::CredentialStoreError;
-		use decodex_core::{AccountId, DecodexRoot};
-
-		const CHILD_ROOT_ENV: &str = "DECODEX_TEST_KEYCHAIN_LOCK_CHILD_ROOT";
-		const TEST_NAME: &str =
-			"host_credentials::macos::tests::keychain_cas_boundary_blocks_competing_writer_process";
-
-		#[test]
-		fn keychain_cas_boundary_blocks_competing_writer_process() {
-			if let Some(root) = env::var_os(CHILD_ROOT_ENV) {
-				let root = DecodexRoot::new(root).expect("child root is valid");
-				let paths = root.paths();
-				fs::write(root.as_path().join("child-lock-attempt"), b"ready")
-					.expect("child attempt marker is writable");
-				let store = MacosKeychainCredentialStore::new_for_process_lock_test(&paths);
-				let _guard =
-					store.lock_process().expect("child acquires the released process lock");
-				return;
-			}
-
-			let temporary_root =
-				fs::canonicalize(env::temp_dir()).expect("temporary root is canonical");
-			let temporary = tempfile::Builder::new()
-				.prefix("decodex-keychain-lock-")
-				.tempdir_in(temporary_root)
-				.expect("temporary root exists");
-			let root = DecodexRoot::new(temporary.path().join("decodex-root"))
-				.expect("temporary Decodex root is valid");
-			let paths = root.paths();
-			paths.ensure_local_transport_layout().expect("private server directory exists");
-			let store = MacosKeychainCredentialStore::new_for_process_lock_test(&paths);
-			let account_id = AccountId::new("00000000-0000-4000-8000-000000000001".to_owned())
-				.expect("test account identity is valid");
-			let authority = store.query_authority(&account_id);
-			assert_eq!(authority.service, KEYCHAIN_SERVICE);
-			assert_eq!(authority.account, account_id.as_str());
-			assert_eq!(authority.access_group, KEYCHAIN_ACCESS_GROUP);
-			assert_eq!(store.enforce_metadata_access_group(Some(KEYCHAIN_ACCESS_GROUP)), Ok(()));
-			assert_eq!(
-				store.enforce_metadata_access_group(None),
-				Err(CredentialStoreError::CorruptBundle)
-			);
-			assert_eq!(
-				store.enforce_metadata_access_group(Some("wrong.group")),
-				Err(CredentialStoreError::CorruptBundle)
-			);
-			let guard = store.lock_process().expect("parent acquires the process lock");
-			let mut child = Command::new(env::current_exe().expect("test executable is available"))
-				.args(["--exact", TEST_NAME])
-				.env(CHILD_ROOT_ENV, root.as_path())
-				.stdin(Stdio::null())
-				.stdout(Stdio::null())
-				.stderr(Stdio::null())
-				.spawn()
-				.expect("competing writer process starts");
-			let marker = root.as_path().join("child-lock-attempt");
-			let marker_deadline = Instant::now() + Duration::from_secs(5);
-			while !marker.exists() && Instant::now() < marker_deadline {
-				thread::sleep(Duration::from_millis(10));
-			}
-			assert!(marker.exists(), "competing writer reached the process-lock boundary");
-			thread::sleep(Duration::from_millis(50));
-			assert!(
-				child.try_wait().expect("competing writer state is observable").is_none(),
-				"competing writer must remain blocked while the first writer owns the boundary",
-			);
-
-			drop(guard);
-			let completion_deadline = Instant::now() + Duration::from_secs(5);
-			loop {
-				if let Some(status) =
-					child.try_wait().expect("competing writer state is observable")
-				{
-					assert!(status.success(), "competing writer acquires the released boundary");
-					break;
-				}
-				assert!(
-					Instant::now() < completion_deadline,
-					"competing writer did not acquire the released boundary",
-				);
-				thread::sleep(Duration::from_millis(10));
-			}
-		}
-	}
-}
-
-#[cfg(target_os = "macos")] pub use macos::MacosKeychainCredentialStore;
+pub use sqlite_store::SqliteCredentialStore;

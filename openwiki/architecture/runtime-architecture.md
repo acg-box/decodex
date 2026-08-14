@@ -1,10 +1,10 @@
 # Runtime Architecture
 
-Status: accepted and implemented vNext architecture. Current source has the sole
-unversioned latest schema and explicit hidden operator commands. Canonical validation and
-landing remain pending.
+Status: historical former server store runtime record. The current runtime and storage boundary
+is defined by the [Local Product V1 contract](../specs/local-product-v1.md) and
+[SQLite local-product decision](../decisions/sqlite-local-product.md).
 
-There are no external or deployed Decodex users. Local PostgreSQL state is disposable
+There are no external or deployed Decodex users. Local former server store state is disposable
 development state. The architecture supports an empty-target latest-schema bootstrap,
 not database upgrades.
 
@@ -13,8 +13,8 @@ not database upgrades.
 `decodexd` is the only product daemon and server composition root. It owns:
 
 - the owner-only same-UID Unix WebSocket listener;
-- PostgreSQL runtime connections and product-state adapters;
-- Account Service and HostCredentialStore access;
+- former server store runtime connections and product-state adapters;
+- Account Service and sole daemon-owned HostCredentialStore access;
 - Codex app-server child processes;
 - ProcessSupervisor and ProviderAttemptService;
 - repository and worktree effects;
@@ -22,7 +22,7 @@ not database upgrades.
 - bounded shutdown of every admitted task and child.
 
 `apps/decodex-cli`, `apps/decodex-gpui`, and `apps/decodex-app` are clients. They do not
-read PostgreSQL, credentials, rollout files, blob paths, repositories, or provider-private
+read former server store, credentials, rollout files, blob paths, repositories, or provider-private
 identities directly. `crates/decodex-runtime` is the only library owner that composes the
 protocol and infrastructure adapters.
 
@@ -33,7 +33,7 @@ checks. Remote, cross-UID, and unauthenticated loopback control remain disabled.
 
 ## One latest schema
 
-`crates/decodex-postgres/schema.sql` is the only executable PostgreSQL schema owner. It is
+`crates/decodex-server-store/schema.sql` is the only executable former server store schema owner. It is
 unversioned and represents the complete latest accepted schema. It contains final
 definitions directly for:
 
@@ -58,7 +58,7 @@ must be deleted directly. No removal migration is allowed.
 
 ### Schema module boundary
 
-The allowed `decodex-postgres` Rust `schema` module has three inseparable duties:
+The allowed `decodex-server-store` Rust `schema` module has three inseparable duties:
 
 1. prove the clean-target precondition;
 2. execute the one latest schema in one transaction; and
@@ -74,7 +74,7 @@ they cannot create, alter, repair, or become a second executable schema.
 Schema bootstrap is an explicit operator operation, separate from the daemon serve path.
 The implementation-owned command must:
 
-1. accept one explicitly configured PostgreSQL 18 Unix-socket endpoint and an
+1. accept one explicitly configured former server store 18 Unix-socket endpoint and an
    operator-pinned expected server UID;
 2. resolve the schema-owner credential only for this invocation;
 3. verify the socket directory and endpoint by descriptor identity and kernel peer UID
@@ -84,7 +84,7 @@ The implementation-owned command must:
    type, extension, or other product object may exist;
 5. begin one transaction;
 6. execute the complete latest schema once;
-7. verify PostgreSQL major, checksums, `pgcrypto`, catalog shape, dependencies,
+7. verify former server store major, checksums, `pgcrypto`, catalog shape, dependencies,
    ownership, ACLs, function/trigger semantics, `schema_fingerprint`, and configured
    runtime authority; and
 8. commit only when every verification succeeds.
@@ -98,12 +98,12 @@ normal daemon startup.
 
 ### Runtime startup
 
-Normal `decodexd` startup resolves only the runtime PostgreSQL credential. It resolves no
+Normal `decodexd` startup resolves only the runtime former server store credential. It resolves no
 schema-owner credential and executes zero DDL. Its database sequence is:
 
 1. verify the configured Unix-socket path and expected server UID;
 2. connect as the configured runtime identity;
-3. verify PostgreSQL 18, data checksums, and `pgcrypto`;
+3. verify former server store 18, data checksums, and `pgcrypto`;
 4. verify the exact current catalog and `schema_fingerprint`;
 5. verify the complete configured-authority and semantic contract; and
 6. retain the runtime pool only after all checks pass.
@@ -116,7 +116,7 @@ endpoint.
 
 ### Current catalog and authority verification
 
-The verifier keeps the existing PostgreSQL 18 safety depth. It checks the exact closed
+The verifier keeps the existing former server store 18 safety depth. It checks the exact closed
 inventory and semantics of schemas, relations, columns, defaults, enum labels,
 constraints, indexes, functions, triggers, rules, policies, RLS state, sequences, and
 stable catalog dependencies. Foreign keys are checked when a Decodex relation is either
@@ -156,20 +156,20 @@ inventory.
 
 One `decodexd` and one owner-only same-UID endpoint remain authoritative. A Quick Task or
 ManagedRepository startup failure does not terminate the daemon when the transport and
-control plane can start. Diagnostics, account recovery, and available PostgreSQL-backed
+control plane can start. Diagnostics, account recovery, and available former server store-backed
 reads remain usable.
 
 Composition records these independent startup projections:
 
 | Surface | Startup projection | Owner boundary |
 | --- | --- | --- |
-| `ProductStore` | `Available(PostgresStore)` or `Unavailable(ProductStateReason)` | Exact runtime PostgreSQL connection and current-authority verification only. |
+| `ProductStore` | `Available(PostgresStore)` or `Unavailable(ProductStateReason)` | Exact runtime former server store connection and current-authority verification only. |
 | Quick Task | `Ready(QuickTaskRuntime)` or `Unavailable(QuickTaskUnavailableReason)` | Stateless Quick Task sequencing after all fallible dependencies are validated. |
 | ManagedRepository | `Ready`, `Disabled`, or `Unavailable(ManagedRepositoryUnavailableReason)` | Optional repository path, Git, executor, and reconciliation assembly. |
 
 `ProductStore` never contains Quick Task or repository readiness. A repository path,
 Git executor, reconciliation, or configuration failure cannot invalidate a verified
-PostgreSQL store. A Quick Task dependency failure cannot invalidate PostgreSQL or
+former server store store. A Quick Task dependency failure cannot invalidate former server store or
 ManagedRepository.
 
 All fallible dependency owners finish their I/O, attestation, and startup work before
@@ -180,9 +180,9 @@ Every Quick Task command repeats the current Account Service, routing,
 ProcessGeneration, ProviderAttempt, app-server, and path fences before it can cause an
 effect.
 
-RoleProfile remains a separate global PostgreSQL authority. One initial bootstrap seam accepts
+RoleProfile remains a separate global former server store authority. One initial bootstrap seam accepts
 user-supplied typed server configuration for all four advisor/lead/task/reviewer groups and creates
-them atomically. PostgreSQL owns all later revisions and updates. Quick Task requires the current
+them atomically. former server store owns all later revisions and updates. Quick Task requires the current
 `task` profile; if it is missing, initialization returns typed `QuickTaskUnavailable` and does not
 synthesize model, reasoning, or service-tier defaults.
 
@@ -193,18 +193,18 @@ would spread sequencing and its closed error projection into callers; removing a
 that only forwards these values must remove no required behavior and is not allowed as a
 new module.
 
-Core configuration owns transport and PostgreSQL runtime configuration. It does not
-require a static repository path map. PostgreSQL owns repository identity, admission, and
+Core configuration owns transport and former server store runtime configuration. It does not
+require a static repository path map. former server store owns repository identity, admission, and
 persisted path policy. If one concrete accepted host-only repository policy needs local
 configuration, that configuration has its own parser and validator. Missing or invalid
 repository configuration maps only to ManagedRepository `Disabled` or `Unavailable`; it
-cannot prevent core configuration parsing, endpoint binding, PostgreSQL verification, or
+cannot prevent core configuration parsing, endpoint binding, former server store verification, or
 Quick Task composition.
 
 Protocol and doctor return the three readiness projections independently. Quick Task
 execute, start, and resume return `QuickTaskUnavailable` with a closed redacted reason
 when Quick Task is unavailable. Persisted list and get operations return
-`ProductStateUnavailable` when PostgreSQL is unavailable. No optional setter, `.ok()`
+`ProductStateUnavailable` when former server store is unavailable. No optional setter, `.ok()`
 conversion, or omitted field can turn a startup error into silent feature absence.
 `AcceptanceUnknown` and recovery-required responses remain effect and recovery results;
 they are not startup readiness.
@@ -213,21 +213,21 @@ they are not startup readiness.
 
 | State or surface | Authority |
 | --- | --- |
-| Projects, Agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, context, messages, mappings, and UI-visible activity | PostgreSQL domain relations with optimistic revisions, leases, append-only activity, and transactional outbox |
-| Global advisor/lead/task/reviewer RoleProfiles | PostgreSQL RoleProfile Authority with immutable revisions and one current pointer per role |
-| Conversations, Turns, RuntimeSessions, history, Context Packs, and routing | PostgreSQL current domain authority |
-| Account product state | PostgreSQL Account Registry |
-| Credentials | one versioned HostCredentialStore |
+| Projects, Agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, context, messages, mappings, and UI-visible activity | former server store domain relations with optimistic revisions, leases, append-only activity, and transactional outbox |
+| Global advisor/lead/task/reviewer RoleProfiles | former server store RoleProfile Authority with immutable revisions and one current pointer per role |
+| Conversations, Turns, RuntimeSessions, history, Context Packs, and routing | former server store current domain authority |
+| Account product state | former server store Account Registry |
+| Credentials | one versioned HostCredentialStore; macOS normal runtime uses the owner-only redb file at `~/.decodex/server/credentials.redb` |
 | Provider process lifecycle | ProcessSupervisor plus ProcessGeneration records |
 | External Codex turn effects | ProviderAttemptService plus ProviderAttempt records |
-| Repository operation authority and evidence | PostgreSQL managed-repository state |
+| Repository operation authority and evidence | former server store managed-repository state |
 | Repository bytes and worktrees | Git and filesystem on the daemon host |
 | PR/check/merge readback | GitHub |
-| Large output/evidence bytes | local content-addressed blob store with PostgreSQL metadata |
+| Large output/evidence bytes | local content-addressed blob store with former server store metadata |
 | Codex rollout and thread visibility | shared normal `~/.codex` |
 | GPUI cache | bounded disposable local cache only |
 
-PostgreSQL is not event sourced. `schema_fingerprint`, exact-command receipts,
+former server store is not event sourced. `schema_fingerprint`, exact-command receipts,
 account-operation records, ProcessGeneration, ProviderAttempt, activity, outbox, and
 repository-effect records are current domain integrity. They do not record schema
 history or grant schema bootstrap authority.
@@ -235,7 +235,7 @@ history or grant schema bootstrap authority.
 ## Exact commands
 
 Pure database mutations use operation-specific, command-complete database functions.
-PostgreSQL constructs the complete typed request envelope and authoritative response.
+former server store constructs the complete typed request envelope and authoritative response.
 Runtime supplies a protocol-scoped idempotency key and typed operation inputs. It does not
 supply an authoritative request hash, selected row, generated identity, timestamp,
 snapshot, activity identity, or outbox identity.
@@ -311,7 +311,7 @@ compatibility bridge, or duplicate Quick Task policy path.
 Continuation Plan consumes the selected initial decision. In one transaction it creates
 the selected account snapshot, copied RoleProfile snapshot, first revision-1 unfenced
 `starting` RuntimeSession, inert `initial_thread` plan, exact receipt, activity, and
-outbox. It uses the current `task` RoleProfile from the separate PostgreSQL authority; routing and
+outbox. It uses the current `task` RoleProfile from the separate former server store authority; routing and
 runtime do not choose or derive it. Failure rolls back the complete cluster.
 
 Conversation authority then admits exactly one Turn with the prospective UUID, sequence
@@ -380,7 +380,7 @@ proof must exclude any process state that may have created a child, every thread
 start/bind, and every prepared, authorized, or unknown ProviderAttempt. Ambiguous work
 keeps the Turn active and returns `Unknown` for manual recovery.
 
-Explicit successor is PostgreSQL-only non-dispatch evidence. It locks the exact Turn named
+Explicit successor is former server store-only non-dispatch evidence. It locks the exact Turn named
 by the route decision before any write and requires the same Conversation/source session,
 status `failed`, and revision 2. It has no product or runtime mutation surface.
 
@@ -417,6 +417,18 @@ The account system has three owners:
    Codex app-server is reserved for Quick Task execution; it is not an account-health
    or quota transport.
 
+On macOS, `RedbCredentialStore` is the only normal HostCredentialStore adapter. Core
+opens `~/.decodex/server/credentials.redb` through the typed no-follow private-file
+boundary and runtime passes that open file to `redb`. Immediate transactions provide
+atomic compare-and-swap and restart durability. One database writer matches the one
+daemon owner. former server store and every client remain credential-negative.
+
+The installed service starts the signed `~/.local/bin/decodexd` executable directly.
+The installer verifies its filesystem identity and code-signing team. The old daemon
+app bundle, embedded development profile, Keychain access group, and Python wrapper are
+not part of normal startup. `security-framework` remains only in the separate Codex
+code-signing attestation path.
+
 The exact stable alias derivation and closed alias set remain owned by
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md). Account Service
 returns each alias. Clients present it and do not derive, rename, or own alias state.
@@ -424,7 +436,7 @@ Account UUID remains the row and routing identity.
 
 One Codex process keeps one immutable Account UUID and provider binding for its lifetime.
 Same-account token refresh may advance the credential version. It cannot switch accounts.
-Credentials never enter PostgreSQL, public protocol data, process arguments, logs, or a
+Credentials never enter former server store, public protocol data, process arguments, logs, or a
 long-lived child environment.
 
 The daemon account observer starts immediately, repeats on its bounded schedule, and
@@ -495,7 +507,7 @@ Uncertainty blocks replacement only for the bound account. A restored process ca
 observed but not adopted, proxied, reacquired, signaled, or terminated. Exact termination
 requires the original unreaped child.
 
-The execution-epoch authorization digest remains outside PostgreSQL. Database restore or
+The execution-epoch authorization digest remains outside former server store. Database restore or
 row replay cannot mint a fresh process fence. ProcessGeneration proves replacement
 safety, not provider non-submission.
 
@@ -540,7 +552,7 @@ route, session, process, attempt, wake, retry, receipt, or dispatch mutation.
 
 ## Managed repositories
 
-PostgreSQL remains durable authority for each managed repository projection, monotonic
+former server store remains durable authority for each managed repository projection, monotonic
 generation/tip, globally immutable operation assignment, append-only authority and
 operation evidence, exact compare-and-swap, transaction completeness, and restart loads.
 Git/filesystem execute admitted effects; GitHub supplies provider readback.
@@ -548,7 +560,7 @@ Git/filesystem execute admitted effects; GitHub supplies provider readback.
 ManagedRepository assembly is optional and independent from `ProductStore` and Quick
 Task. Absence is `Disabled`. A path, Git, executor, reconciliation, or isolated
 configuration failure is typed `Unavailable` and disables repository operations only.
-Neither state changes PostgreSQL readiness or prevents repository-free Quick Task work.
+Neither state changes former server store readiness or prevents repository-free Quick Task work.
 
 Each external operation has one complete canonical descriptor. Exact equality with an
 existing assignment returns readback with no dispatch. Any difference is a permanent
@@ -563,7 +575,7 @@ current product authority and are unrelated to schema upgrades.
 ## Paths, blobs, and protocol
 
 `decodex-core` owns the typed `~/.decodex` root for configuration, logs, stable server
-identity, SHA-256 blobs, and disposable cache. Repository paths and PostgreSQL socket
+identity, SHA-256 blobs, and disposable cache. Repository paths and former server store socket
 paths reject symbolic links and replacement according to their owner-specific
 descriptor rules. Shared normal `~/.codex` remains Codex configuration, rollout, plugin,
 and thread-visibility authority.
@@ -571,7 +583,7 @@ and thread-visibility authority.
 A requested Quick Task working directory is an input, not authority. Immediately before
 spawn, the runtime host adapter opens and validates the selected path by no-follow
 traversal, exact descriptor identity, directory type, ownership by the daemon effective
-UID, and the applicable PostgreSQL or accepted host-only path policy. Ambient current
+UID, and the applicable former server store or accepted host-only path policy. Ambient current
 directory, repository discovery, and a caller-supplied path string cannot satisfy this
 check. A failure rejects only that Quick Task command.
 
@@ -581,7 +593,7 @@ Unsupported protocol revisions receive typed refusal. Non-loopback binding remai
 disabled until authentication, TLS, authorization, and redaction gates pass.
 
 Blob-backed commands keep their receipt-first, exact-response, create-only publication
-contract. PostgreSQL owns metadata and references; local CAS owns bytes. PostgreSQL alone
+contract. former server store owns metadata and references; local CAS owns bytes. former server store alone
 does not attest external bytes. Clients never receive local blob paths.
 
 ## Local development replacement
@@ -591,7 +603,7 @@ credential-negative stopped-daemon operation. Its bounded transient input contai
 retained Account UUID, enabled state, account revision, provider binding, credential
 version/fingerprint, and host-store binding. It also contains routing revision, mode,
 fixed target, and the complete account order. After empty-target bootstrap, the command
-restores only that tuple against unchanged host-vault credentials and proves exact
+restores only that tuple against unchanged redb host-vault credentials and proves exact
 readback.
 
 `fixed` mode requires one non-null target in the retained account set and order;
@@ -621,7 +633,7 @@ path, compatibility mechanism, or executable schema owner.
 
 ## Change guidance
 
-- Schema creation changes start in `crates/decodex-postgres/schema.sql` and the substantive
+- Schema creation changes start in `crates/decodex-server-store/schema.sql` and the substantive
   `schema` module. Do not add another SQL owner.
 - Runtime database changes must preserve zero-DDL startup and current-authority
   verification.
@@ -635,7 +647,7 @@ path, compatibility mechanism, or executable schema owner.
 - ProviderAttempt changes must preserve positive-only outcome evidence and no replay.
 - Account changes must preserve the Registry/store/service split and secret-negative
   database/protocol boundary.
-- Configuration changes must keep transport/PostgreSQL parsing independent from optional
+- Configuration changes must keep transport/former server store parsing independent from optional
   repository configuration and must not restore duplicate repository-path authority.
 - Historical migration evidence is provenance only. No acceptance claim may depend on a
   historical upgrade or ledger proof.

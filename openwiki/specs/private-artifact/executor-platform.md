@@ -55,7 +55,7 @@ acquire roles
 No descriptor crosses an executor turn or restart. Restart reacquires through the
 durable parent, fixed derived name, marker bytes, and exact object identities.
 Failure to reacquire every identity enters attention. The executor performs no
-filesystem or CAS I/O while a PostgreSQL transaction is open.
+filesystem or CAS I/O while a former server store transaction is open.
 
 All distinct admitted names must have distinct device/inode identities. Regular
 files and markers require link count one. Directory link count can exceed one but
@@ -138,7 +138,7 @@ directory entry still names the guarded identity.
 
 `EWOULDBLOCK` is `ExecutorBusy`. Unsupported locking, replacement, descriptor loss,
 or identity drift is unavailable. There is no PID-file, lock-directory,
-PostgreSQL-lease, or mutex fallback.
+former server store-lease, or mutex fallback.
 
 ### Boot scope and producer admission
 

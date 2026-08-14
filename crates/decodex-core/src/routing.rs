@@ -1,6 +1,6 @@
-//! Mechanism-neutral facts for PostgreSQL-produced routing authority snapshots.
+//! Mechanism-neutral facts for durable-store-produced routing authority snapshots.
 //!
-//! Public construction supports the pure kernel and tests; it does not prove PostgreSQL
+//! Public construction supports the pure kernel and tests; it does not prove durable-store
 //! provenance, persistence, eligibility authority, dispatch authority, or production enablement.
 
 use crate::{
@@ -19,7 +19,7 @@ pub enum RoutingAuthorityShape {
 	ConversationContinuation,
 }
 impl RoutingAuthorityShape {
-	/// Return the exact stable PostgreSQL discriminator.
+	/// Return the exact stable durable-store discriminator.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::ConversationAccountRegistry => "conversation_account_registry",
@@ -28,7 +28,7 @@ impl RoutingAuthorityShape {
 		}
 	}
 
-	/// Parse one exact stable PostgreSQL discriminator.
+	/// Parse one exact stable durable-store discriminator.
 	pub fn from_sql(value: &str) -> Option<Self> {
 		Some(match value {
 			"conversation_account_registry" => Self::ConversationAccountRegistry,
@@ -77,7 +77,7 @@ impl CodexCapability {
 		Self::ThreadSearch,
 	];
 
-	/// Closed PostgreSQL identity.
+	/// Closed durable-store identity.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Initialize => "initialize",
@@ -211,7 +211,7 @@ pub enum RoutingBlocker {
 	ProviderAttemptCompleted,
 }
 impl RoutingBlocker {
-	/// Return the exact stable PostgreSQL and protocol spelling.
+	/// Return the exact stable durable-store and protocol spelling.
 	pub const fn as_sql(self) -> &'static str {
 		use RoutingBlocker::*;
 		match self {
@@ -261,7 +261,7 @@ impl RoutingBlocker {
 		}
 	}
 
-	/// Parse one exact stable PostgreSQL spelling.
+	/// Parse one exact stable durable-store spelling.
 	pub fn from_sql(value: &str) -> Option<Self> {
 		use RoutingBlocker::*;
 		Some(match value {
@@ -357,7 +357,7 @@ pub struct RoutingPolicyEffect {
 
 /// Immutable compatibility evidence publication readback.
 ///
-/// Rust construction alone proves neither publication nor PostgreSQL provenance.
+/// Rust construction alone proves neither publication nor durable-store provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingEvidenceEffect {
 	/// Immutable identity of the published compatibility evidence.
@@ -530,7 +530,7 @@ pub struct RoutingSnapshotCapabilityFact {
 	pub evidence_state: Option<RoutingCapabilityState>,
 }
 
-/// Complete immutable PostgreSQL classification readback for the later Routing Decision pure
+/// Complete immutable durable-store classification readback for the later Routing Decision pure
 /// kernel.
 ///
 /// The public value is mechanism-neutral; only the adapter and transaction establish provenance.
@@ -566,7 +566,7 @@ pub struct RoutingSnapshot {
 	pub profile_snapshot_id: Option<String>,
 	/// Positive profile source revision, jointly absent only for initial L0 routing.
 	pub profile_snapshot_source_revision: Option<i64>,
-	/// PostgreSQL resolution instant in UTC Unix microseconds.
+	/// durable-store resolution instant in UTC Unix microseconds.
 	pub resolved_at_micros: i64,
 	/// Complete account inventory in canonical policy order.
 	pub members: Vec<RoutingSnapshotMember>,
@@ -616,7 +616,7 @@ pub struct RoutingTimestampProvenance {
 	pub evidence_revision: i64,
 }
 
-/// Routing Decision quota evidence presented to the pure kernel by PostgreSQL.
+/// Routing Decision quota evidence presented to the pure kernel by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecisionQuotaFact {
 	/// Account identity to which this Routing Decision quota fact belongs.
@@ -644,13 +644,13 @@ pub struct RoutingDecisionQuotaFact {
 
 /// Closed input shape consumed by the Routing Decision pure routing kernel.
 ///
-/// PostgreSQL supplies the authoritative production value; arbitrary Rust construction does not
+/// durable-store supplies the authoritative production value; arbitrary Rust construction does not
 /// establish completeness, persistence, or routing authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecisionSnapshot {
 	/// Immutable snapshot identity whose text alone does not prove database authorship.
 	pub snapshot_id: String,
-	/// Decision instant in UTC Unix microseconds, supplied by PostgreSQL in authoritative use.
+	/// Decision instant in UTC Unix microseconds, supplied by durable-store in authoritative use.
 	pub decided_at_micros: i64,
 	/// Complete canonically ordered candidate universe supplied to the pure kernel.
 	pub members: Vec<RoutingDecisionCandidate>,
@@ -1289,27 +1289,63 @@ pub fn decide_account_registry_routing(
 ) -> Result<AccountRegistryRoutingDecision, AccountRegistryRoutingKernelError> {
 	let facts_by_member = validated_account_registry_quota_facts(snapshot, decided_at_micros)?;
 	let evaluated_member_indexes = account_registry_evaluated_member_indexes(snapshot)?;
+	let evaluations = evaluated_member_indexes
+		.iter()
+		.map(|member_index| {
+			classify_account_registry_member(
+				&snapshot.members[*member_index],
+				&facts_by_member[*member_index],
+				decided_at_micros,
+			)
+		})
+		.collect::<Vec<_>>();
+
 	let mut exclusions = Vec::new();
 	let mut causes = Vec::new();
-
-	for member_index in evaluated_member_indexes {
-		let member = &snapshot.members[member_index];
-		let (member_causes, member_exclusions) = classify_account_registry_member(
-			member,
-			&facts_by_member[member_index],
-			decided_at_micros,
-		);
-		if member_causes.is_empty() && member_exclusions.is_empty() {
-			return Ok(AccountRegistryRoutingDecision {
-				snapshot_id: snapshot.snapshot_id.clone(),
-				kind: AccountRegistryRoutingDecisionKind::Selected,
-				selected_account_id: Some(member.account_id.clone()),
-				exclusions,
-				causes,
-			});
+	for (member_index, evaluation) in evaluated_member_indexes.iter().zip(&evaluations) {
+		let member = &snapshot.members[*member_index];
+		match evaluation {
+			AccountRegistryMemberCapacity::KnownAvailable => {
+				return Ok(account_registry_selected_decision(
+					snapshot, member, exclusions, causes,
+				));
+			},
+			AccountRegistryMemberCapacity::Unknown { causes: soft_causes } => {
+				causes.extend(soft_causes.iter().cloned());
+			},
+			AccountRegistryMemberCapacity::Blocked {
+				causes: member_causes,
+				exclusions: member_exclusions,
+			} => {
+				causes.extend(member_causes.iter().cloned());
+				exclusions.extend(member_exclusions.iter().cloned());
+			},
 		}
-		causes.extend(member_causes);
-		exclusions.extend(member_exclusions);
+	}
+
+	// Unknown capacity is a fallback, not evidence of depletion. Balanced mode prefers complete
+	// current non-depletion evidence, then preserves configured order among unknown candidates.
+	// Fixed mode evaluates one member, so this pass admits that member unless a hard blocker or a
+	// current positive depletion was observed.
+	exclusions.clear();
+	causes.clear();
+	for (member_index, evaluation) in evaluated_member_indexes.iter().zip(&evaluations) {
+		let member = &snapshot.members[*member_index];
+		match evaluation {
+			AccountRegistryMemberCapacity::Unknown { .. } => {
+				return Ok(account_registry_selected_decision(
+					snapshot, member, exclusions, causes,
+				));
+			},
+			AccountRegistryMemberCapacity::KnownAvailable => unreachable!("selected in first pass"),
+			AccountRegistryMemberCapacity::Blocked {
+				causes: member_causes,
+				exclusions: member_exclusions,
+			} => {
+				causes.extend(member_causes.iter().cloned());
+				exclusions.extend(member_exclusions.iter().cloned());
+			},
+		}
 	}
 
 	let kind = if causes.is_empty() {
@@ -1324,6 +1360,21 @@ pub fn decide_account_registry_routing(
 		exclusions,
 		causes,
 	})
+}
+
+fn account_registry_selected_decision(
+	snapshot: &AccountRegistryRoutingSnapshot,
+	member: &AccountRegistryRoutingMember,
+	exclusions: Vec<AccountRegistryRoutingExclusion>,
+	causes: Vec<RoutingDecisionCause>,
+) -> AccountRegistryRoutingDecision {
+	AccountRegistryRoutingDecision {
+		snapshot_id: snapshot.snapshot_id.clone(),
+		kind: AccountRegistryRoutingDecisionKind::Selected,
+		selected_account_id: Some(member.account_id.clone()),
+		exclusions,
+		causes,
+	}
 }
 
 fn validated_account_registry_quota_facts(
@@ -1558,27 +1609,35 @@ fn account_registry_evaluated_member_indexes(
 	}
 }
 
+enum AccountRegistryMemberCapacity {
+	KnownAvailable,
+	Unknown { causes: Vec<RoutingDecisionCause> },
+	Blocked { causes: Vec<RoutingDecisionCause>, exclusions: Vec<AccountRegistryRoutingExclusion> },
+}
+
 fn classify_account_registry_member(
 	member: &AccountRegistryRoutingMember,
 	facts: &[&AccountRegistryQuotaFact; 2],
 	decided_at_micros: i64,
-) -> (Vec<RoutingDecisionCause>, Vec<AccountRegistryRoutingExclusion>) {
-	let mut causes = member
+) -> AccountRegistryMemberCapacity {
+	let mut hard_causes = member
 		.blockers
 		.iter()
 		.copied()
 		.map(|blocker| RoutingDecisionCause { account_id: member.account_id.clone(), blocker })
 		.collect::<Vec<_>>();
+	let mut unknown_causes = Vec::new();
 	let mut exclusions = Vec::new();
+	let mut known_available_windows = 0_u8;
 
 	for fact in facts {
 		match &fact.observation {
-			AccountRegistryQuotaObservation::Missing => causes.push(RoutingDecisionCause {
+			AccountRegistryQuotaObservation::Missing => unknown_causes.push(RoutingDecisionCause {
 				account_id: member.account_id.clone(),
 				blocker: account_registry_missing_blocker(fact.window),
 			}),
 			AccountRegistryQuotaObservation::ObservationError { .. } => {
-				causes.push(RoutingDecisionCause {
+				unknown_causes.push(RoutingDecisionCause {
 					account_id: member.account_id.clone(),
 					blocker: account_registry_unknown_blocker(fact.window),
 				});
@@ -1589,19 +1648,19 @@ fn classify_account_registry_member(
 				resets_at_micros,
 			} =>
 				if *observed_at_micros > decided_at_micros {
-					causes.push(RoutingDecisionCause {
+					hard_causes.push(RoutingDecisionCause {
 						account_id: member.account_id.clone(),
 						blocker: account_registry_from_future_blocker(fact.window),
 					});
 				} else if decided_at_micros - *observed_at_micros
 					> ACCOUNT_REGISTRY_QUOTA_FRESHNESS_MICROS
 				{
-					causes.push(RoutingDecisionCause {
+					unknown_causes.push(RoutingDecisionCause {
 						account_id: member.account_id.clone(),
 						blocker: account_registry_stale_blocker(fact.window),
 					});
 				} else if *resets_at_micros <= decided_at_micros {
-					causes.push(RoutingDecisionCause {
+					unknown_causes.push(RoutingDecisionCause {
 						account_id: member.account_id.clone(),
 						blocker: account_registry_reset_elapsed_blocker(fact.window),
 					});
@@ -1615,11 +1674,22 @@ fn classify_account_registry_member(
 						observed_at_micros: *observed_at_micros,
 						resets_at_micros: *resets_at_micros,
 					});
+				} else {
+					known_available_windows += 1;
 				},
 		}
 	}
 
-	(causes, exclusions)
+	if !hard_causes.is_empty() {
+		hard_causes.extend(unknown_causes);
+		AccountRegistryMemberCapacity::Blocked { causes: hard_causes, exclusions }
+	} else if !exclusions.is_empty() {
+		AccountRegistryMemberCapacity::Blocked { causes: Vec::new(), exclusions }
+	} else if known_available_windows == 2 {
+		AccountRegistryMemberCapacity::KnownAvailable
+	} else {
+		AccountRegistryMemberCapacity::Unknown { causes: unknown_causes }
+	}
 }
 
 const fn account_registry_window_duration(window: QuotaWindowClass) -> u16 {

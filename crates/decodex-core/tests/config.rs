@@ -1,4 +1,4 @@
-//! XY-1306 configuration, profile, redaction, and identity adversarial coverage.
+//! Configuration, profile, redaction, and identity adversarial coverage.
 
 #[path = "support/test_root.rs"] mod support;
 
@@ -30,7 +30,35 @@ fn checked_in_example_matches_the_bounded_vnext_schema() {
 }
 
 #[test]
-fn valid_configuration_keeps_profiles_and_runtime_postgres_explicit() {
+fn first_release_local_config_needs_no_database_endpoint() {
+	#[cfg(unix)]
+	// SAFETY: `geteuid` has no arguments or failure return.
+	let uid = unsafe { libc::geteuid() };
+	#[cfg(not(unix))]
+	let uid = 0;
+	let input = format!(
+		r#"version = 1
+active_profile = "local"
+
+[profiles.local]
+kind = "local"
+policy = "same_uid"
+service_owner_uid = {}
+
+[cache]
+max_entries = 128
+max_bytes = 1048576
+max_entry_bytes = 65536
+	"#,
+		uid,
+	);
+	let config = DecodexConfig::parse(input.as_bytes()).expect("SQLite local config parses");
+
+	assert!(matches!(config.active_profile(), ServerProfile::Local(_)));
+}
+
+#[test]
+fn valid_configuration_keeps_profiles_and_cache_explicit() {
 	let config =
 		DecodexConfig::parse(support::valid_config().as_bytes()).expect("valid configuration");
 
@@ -57,25 +85,15 @@ fn valid_configuration_keeps_profiles_and_runtime_postgres_explicit() {
 	assert_eq!(remote.host(), "server.example.test");
 	assert_eq!(remote.port(), 49_152);
 	assert_eq!(remote.expected_server_identity().as_str(), SERVER_ID);
-
-	assert_eq!(config.postgres().socket_directory().to_str(), Some("/var/run/postgresql"));
-	assert_eq!(config.postgres().expected_peer_uid(), 70);
-	assert_eq!(config.postgres().port(), 5_432);
-	assert_eq!(config.postgres().database(), "decodex");
-	assert_eq!(config.postgres().runtime().user(), "decodex_runtime");
-	assert_eq!(
-		config.postgres().runtime().credential_env_var(),
-		Some("DECODEX_POSTGRES_RUNTIME_PASSWORD")
-	);
 	assert_eq!(config.cache().limits().max_entries(), 128);
 }
 
 #[test]
-fn landed_portless_postgres_config_keeps_the_standard_typed_default() {
-	let input = support::valid_config().replace("port = 5432\n", "");
-	let config = DecodexConfig::parse(input.as_bytes()).expect("test operation must succeed");
+fn unknown_top_level_sections_are_rejected() {
+	let input = format!("{}\n[retired_store]\narbitrary = [1, 2, 3]\n", support::valid_config());
 
-	assert_eq!(config.postgres().port(), 5_432);
+	assert_eq!(DecodexConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
+	assert_eq!(DecodexClientConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
 }
 
 #[test]
@@ -86,25 +104,6 @@ fn remote_profiles_have_no_client_local_repository_path_field() {
 	);
 
 	assert_eq!(DecodexConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
-}
-
-#[test]
-fn remote_client_projection_never_validates_postgres_host_paths() {
-	let input = support::valid_config()
-		.replace("active_profile = \"local\"", "active_profile = \"remote\"")
-		.replace(
-			"socket_directory = \"/var/run/postgresql\"",
-			"socket_directory = \"../server-only\"",
-		);
-	let client = DecodexClientConfig::parse(input.as_bytes())
-		.expect("client projection treats server-host data as opaque");
-	let (_, profile) = client.selected_profile(None).expect("active remote profile");
-
-	assert!(matches!(profile, ServerProfile::Remote(_)));
-	assert_eq!(
-		DecodexConfig::parse(input.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgresHostPath,
-	);
 }
 
 #[test]
@@ -159,51 +158,6 @@ fn local_and_remote_profile_boundaries_fail_closed() {
 		DecodexConfig::parse(credential_endpoint.as_bytes()).unwrap_err(),
 		ConfigError::InvalidProfile,
 	);
-}
-
-#[test]
-fn relative_or_oversized_postgres_host_paths_are_rejected() {
-	let relative_socket = support::valid_config().replace(
-		"socket_directory = \"/var/run/postgresql\"",
-		"socket_directory = \"../postgresql\"",
-	);
-
-	assert_eq!(
-		DecodexConfig::parse(relative_socket.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgresHostPath,
-	);
-
-	let oversized_socket = support::valid_config()
-		.replace("/var/run/postgresql", &format!("/var/{}", "x".repeat(4 * 1_024)));
-
-	assert_eq!(
-		DecodexConfig::parse(oversized_socket.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgresHostPath,
-	);
-}
-
-#[test]
-fn malformed_postgres_fields_are_distinct_from_unsafe_host_paths() {
-	let invalid_port = support::valid_config().replace("port = 5432", "port = 0");
-
-	assert_eq!(
-		DecodexConfig::parse(invalid_port.as_bytes()).unwrap_err(),
-		ConfigError::InvalidPostgres,
-	);
-
-	let missing_peer_uid = support::valid_config().replace("expected_peer_uid = 70\n", "");
-
-	assert_eq!(
-		DecodexConfig::parse(missing_peer_uid.as_bytes()).unwrap_err(),
-		ConfigError::Malformed,
-	);
-}
-
-#[test]
-fn accepted_postgres_host_paths_are_stored_in_one_lexically_normalized_form() {
-	let input = support::valid_config().replace("/var/run/postgresql", "/var//run/./postgresql");
-	let config = DecodexConfig::parse(input.as_bytes()).expect("normalizable host paths");
-	assert_eq!(config.postgres().socket_directory(), std::path::Path::new("/var/run/postgresql"),);
 }
 
 #[test]

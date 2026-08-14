@@ -1,13 +1,15 @@
 # Decodex vNext Gate Manifest
 
-Status: normative sequencing and acceptance boundary.
+Status: historical former server store gate manifest. The current acceptance boundary is the
+[Local Product V1 contract](local-product-v1.md), and executable database validation is
+owned by `scripts/vnext/local_database_gate.py`.
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Contract:
 [vNext authority contract](vnext-authority.md).
 
 ## Changed decision
 
-There are no external or deployed users. Local PostgreSQL state is disposable. Decodex
+There are no external or deployed users. Local former server store state is disposable. Decodex
 has one canonical unversioned latest schema and no supported schema migration or upgrade
 path.
 
@@ -46,7 +48,7 @@ After one source candidate is frozen, run gates in this order:
 
 1. integrated source-boundary and reverse scan for retired machinery, stale references,
    and duplicate owners;
-2. fresh PostgreSQL 18 empty-target latest-schema bootstrap;
+2. fresh former server store 18 empty-target latest-schema bootstrap;
 3. refusal of a second bootstrap against the same nonempty target;
 4. runtime-only `decodexd` startup with zero DDL and no schema-owner credential;
 5. independent ProductStore, Quick Task, and ManagedRepository startup projections;
@@ -70,7 +72,7 @@ stdin.
 Freeze Quick Task source before runtime integration. Then use one integration owner for
 core configuration; runtime bootstrap, application, library, Quick Task, and
 managed-repository modules; protocol doctor, Quick Task, wire, and library surfaces; and
-the PostgreSQL latest-schema handoff.
+the former server store latest-schema handoff.
 
 The same owner removes shared acceptance drift from the root Cargo workspace,
 `Cargo.lock`, task-runner definitions, deleted storage-spike references, and stale
@@ -88,7 +90,7 @@ task-runner files, lockfiles, and active fixtures.
 ### Canonical source
 
 Acceptance requires exactly one executable schema source at
-`crates/decodex-postgres/schema.sql`. It contains final enum, relation, constraint, index,
+`crates/decodex-server-store/schema.sql`. It contains final enum, relation, constraint, index,
 function, trigger, dependency, ownership, and ACL definitions directly.
 
 Reject the candidate if it contains:
@@ -112,7 +114,7 @@ They must not be used as schema history.
 
 ### Module boundary
 
-The `decodex-postgres` `schema` module passes only if it owns:
+The `decodex-server-store` `schema` module passes only if it owns:
 
 - the clean-target precondition;
 - one transaction that executes the complete latest schema; and
@@ -123,7 +125,7 @@ schema steps or invoke schema creation through normal store connection/startup.
 
 ### Empty-target bootstrap
 
-Run against one fresh PostgreSQL 18 target with data checksums and the accepted verified
+Run against one fresh former server store 18 target with data checksums and the accepted verified
 Unix-socket boundary. Prove:
 
 - schema-owner credentials resolve only in the explicit operator invocation;
@@ -135,14 +137,14 @@ Unix-socket boundary. Prove:
 - `pgcrypto` and every final Decodex object are created in one transaction;
 - any SQL, catalog, authority, or verification failure rolls back the complete schema;
 - one closed credential-negative bootstrap report identifies the failing pre-schema,
-  schema-apply, post-schema-verification, or final-commit operation; PostgreSQL SQLSTATE and
+  schema-apply, post-schema-verification, or final-commit operation; former server store SQLSTATE and
   original-statement byte position are allowed, but SQL text and open error messages are not;
 - a rollback failure is recorded only as secondary closed evidence and never replaces the
   primary failure or its completed authority prefix;
 - exact post-execution verification passes before commit; and
 - no source except `schema.sql` can create an accepted product catalog.
 
-The private gate PostgreSQL server uses verbose error identity and suppresses failed SQL
+The private gate former server store server uses verbose error identity and suppresses failed SQL
 statement logging. Owner-private failure retention has fixed per-file and total bounds. For
 an oversized file it retains deterministic head and tail segments, not only the tail.
 
@@ -171,9 +173,9 @@ Prove:
 Start one daemon and keep the one accepted endpoint. Exercise independent assembly
 outcomes and prove:
 
-- verified PostgreSQL produces `ProductStore::Available` even when Quick Task or
+- verified former server store produces `ProductStore::Available` even when Quick Task or
   ManagedRepository assembly fails;
-- unavailable PostgreSQL produces `ProductStore::Unavailable` and persisted Quick Task
+- unavailable former server store produces `ProductStore::Unavailable` and persisted Quick Task
   reads return `ProductStateUnavailable`;
 - Quick Task construction performs no I/O and cannot fail after validated ready
   dependencies are supplied;
@@ -183,7 +185,7 @@ outcomes and prove:
 - the initial user-supplied typed RoleProfile configuration bootstraps all four roles atomically,
   and a missing current `task` profile is a typed Quick Task initialization refusal;
 - Quick Task unavailability does not remove diagnostics, account recovery, control-plane
-  commands, or available PostgreSQL-backed reads;
+  commands, or available former server store-backed reads;
 - ManagedRepository absence is `Disabled`; repository-only configuration, path, Git,
   executor, or reconciliation failure is typed `Unavailable` and affects repository
   operations only;
@@ -193,10 +195,10 @@ outcomes and prove:
   effect authority; and
 - `AcceptanceUnknown` and recovery-required results are unchanged.
 
-Configuration cases must prove that core transport/PostgreSQL parsing does not require a
+Configuration cases must prove that core transport/former server store parsing does not require a
 static repository map. Missing or malformed isolated repository configuration cannot
-block endpoint binding, PostgreSQL verification, or Quick Task. If a concrete host-only
-repository policy remains, prove that it does not duplicate PostgreSQL identity,
+block endpoint binding, former server store verification, or Quick Task. If a concrete host-only
+repository policy remains, prove that it does not duplicate former server store identity,
 admission, or persisted path policy.
 
 For Quick Task spawn, prove exact no-follow working-directory traversal, descriptor
@@ -207,7 +209,7 @@ disable another Quick Task with a valid selected path.
 
 ## Current-authority gate
 
-The accepted candidate must attest the exact current PostgreSQL 18 catalog. It covers:
+The accepted candidate must attest the exact current former server store 18 catalog. It covers:
 
 - schemas, types/enums, relations, columns, defaults, constraints, indexes, sequences,
   functions, triggers, rules, policies, RLS state, and internal constraint triggers;
@@ -298,7 +300,7 @@ not schema phases or separate authority frameworks.
    ProcessGeneration, thread, and ProviderAttempt fence, prove drift or lost-result/restart state
    cannot re-select, spawn from non-fresh authority, duplicate an attempt, or fail the Turn. Only
    positive definite pre-effect refusal may create failed revision 2; explicit successor remains
-   PostgreSQL-only non-dispatch evidence.
+   former server store-only non-dispatch evidence.
 5. **Conversation and stream order.** Preserve result-before-stream order, one actor owner,
    bounded deferred publication, one command/registration slot, explicit publication
    source, non-reserving per-session acceptance, and no cross-session starvation.
@@ -360,7 +362,7 @@ background progress, and no second provider-effect ledger.
 Prove Registry/HostCredentialStore/Account Service separation; versioned enable/mode/order
 controls; exact credential CAS and reconciliation; exact-build refresh callback;
 one-account-per-process binding; Reset Card fencing/replay; bounded profile/quota storage;
-and current-main observation/cache-read isolation. No secret byte may enter PostgreSQL,
+and current-main observation/cache-read isolation. No secret byte may enter former server store,
 protocol data, logs, process arguments, or the local reset metadata.
 
 ### Managed repositories
@@ -372,7 +374,7 @@ repository effect records.
 
 Also prove independent service assembly: `Ready`, `Disabled`, and typed `Unavailable`
 cannot alter ProductStore or Quick Task readiness. Repository configuration parsing is
-isolated from core runtime configuration, and no static path map duplicates PostgreSQL
+isolated from core runtime configuration, and no static path map duplicates former server store
 repository authority.
 
 ### Same-UID transport
@@ -393,7 +395,7 @@ One reviewed operator-only action may:
 4. run `decodexd restore-local-account-authority --root ROOT
    --schema-owner-user USER [--schema-owner-credential-env-var ENV]` with the one strict
    `decodex/local-account-authority-restore/1` JSON document on stdin;
-5. prove every exact host-vault binding before PostgreSQL mutation and again before
+5. prove every exact host-vault binding before former server store mutation and again before
    commit;
 6. prove every retained account, enabled value, revision, binding, and the exact routing
    revision/mode/fixed-target/order tuple; and
@@ -424,8 +426,9 @@ only a closed `classification` and `account_count`.
 
 MacDogfoodReady requires:
 
-- a fresh latest-schema PostgreSQL 18 database or the accepted local reset result;
-- the signed daemon wrapper, exact Keychain identity/access group, and same-UID transport;
+- a fresh latest-schema former server store 18 database or the accepted local reset result;
+- one directly signed hardened-runtime daemon executable, the owner-only single-link
+  redb credential vault, and same-UID transport;
 - Account Registry/HostCredentialStore exact bindings and routing controls;
 - all four global RoleProfiles from the atomic typed configuration bootstrap, including a current
   `task` profile;
@@ -447,7 +450,7 @@ later obligations unless a slice explicitly names them.
 
 ## Historical evidence
 
-Old migration-based PostgreSQL evidence, frozen schema manifests, S0/R1/R2 captures,
+Old migration-based former server store evidence, frozen schema manifests, S0/R1/R2 captures,
 Phase A/B receipts, numbered-ledger checks, version-specific matrices, private-artifact
 phases, Lane Authority v2, PR #1092, and v0.2 state are superseded provenance. They can
 suggest invariants and hostile cases only.
@@ -468,7 +471,7 @@ Stop the owning gate on:
 - daemon-fatal Quick Task or ManagedRepository startup when the control plane can start;
 - a mutable capability manager, silent optional Quick Task disappearance, or readiness
   state that substitutes for current owner fences;
-- repository configuration that blocks core parsing or duplicates PostgreSQL path
+- repository configuration that blocks core parsing or duplicates former server store path
   authority;
 - a Quick Task dependency on Project policy, `routing_compatibility_evidence`, or `quota_windows`;
   a later-Turn snapshot/selection call; or a compatibility bridge that keeps duplicate routing

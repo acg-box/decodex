@@ -109,7 +109,7 @@ impl DoctorCheck {
 pub enum DoctorComponent {
 	/// Typed operator configuration.
 	Configuration,
-	/// PostgreSQL product-state authority.
+	/// Bundled local product-state authority.
 	ProductStore,
 	/// Ordinary Quick Task execution composition.
 	QuickTask,
@@ -127,7 +127,7 @@ pub enum DoctorComponent {
 	ManagedRepository,
 	/// Content-addressed blob-store integrity.
 	BlobIntegrity,
-	/// Host credential-vault boundary.
+	/// Daemon-private credential storage boundary.
 	CredentialVault,
 	/// Required plugin inventory/readiness.
 	PluginReadiness,
@@ -218,15 +218,15 @@ pub enum DoctorIssue {
 	ConfigurationMalformed,
 	/// The operator configuration schema version was unsupported.
 	ConfigurationVersion,
-	/// No explicit PostgreSQL configuration was available.
+	/// No usable local database configuration was available.
 	DatabaseNotConfigured,
-	/// PostgreSQL connection fields were malformed.
+	/// Local database configuration was malformed.
 	DatabaseMalformedConfig,
-	/// The explicit PostgreSQL endpoint could not be reached.
+	/// The local product database could not be opened.
 	DatabaseUnreachable,
-	/// PostgreSQL exact-current verification found an incompatible state.
+	/// Exact-current database verification found an incompatible state.
 	DatabaseIncompatible,
-	/// The steady-state PostgreSQL identity retains forbidden authority.
+	/// The steady-state database owner or file retains forbidden authority.
 	UnsafeDatabaseAuthority,
 	/// No connection to the daemon protocol was established.
 	ProtocolDisconnected,

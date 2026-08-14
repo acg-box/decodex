@@ -6,7 +6,7 @@
 //! turn-dispatch API. XY-1304 governs only later automatic cross-account fallback and
 //! all-depleted wake.
 //!
-//! Product runner capacity and PostgreSQL authorization are deliberately absent:
+//! Product runner capacity and durable-store authorization are deliberately absent:
 //!
 //! ```compile_fail
 //! use decodex_codex::{AppServerCommand, CredentialVault, ReadOnlyProbe, RunnerCapacity};

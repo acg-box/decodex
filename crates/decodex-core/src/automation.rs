@@ -52,7 +52,7 @@ pub const MAX_AUTOMATION_RRULE_BYTES: usize = 4_096;
 pub const MAX_AUTOMATION_TIMEZONE_BYTES: usize = 256;
 /// Maximum UTF-8 bytes in one credential-negative source symbol.
 pub const MAX_AUTOMATION_SYMBOL_BYTES: usize = 64;
-/// Latest finite timestamp representable by PostgreSQL and RFC 3339, in Unix microseconds.
+/// Latest finite timestamp representable by durable-store and RFC 3339, in Unix microseconds.
 pub const MAX_AUTOMATION_TIMESTAMP_MICROSECONDS: i64 = 253_402_300_799_999_999;
 
 /// Closed Automation-domain validation failure without caller-controlled text.
@@ -589,8 +589,9 @@ pub fn propose_automation_firing(
 			AutomationTrigger::Schedule(trigger_schedule),
 			AutomationFiringSource::Schedule { schedule },
 		) if trigger_schedule == schedule => {},
-		(AutomationTrigger::Schedule(_), AutomationFiringSource::Schedule { .. }) =>
-			return Err(AutomationError::SourceTriggerMismatch),
+		(AutomationTrigger::Schedule(_), AutomationFiringSource::Schedule { .. }) => {
+			return Err(AutomationError::SourceTriggerMismatch);
+		},
 		(AutomationTrigger::Schedule(_), AutomationFiringSource::ObservedSignal { .. })
 		| (
 			AutomationTrigger::Webhook { .. }

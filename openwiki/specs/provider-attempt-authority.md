@@ -57,7 +57,7 @@ One preparation transaction binds:
 - original-intent disposition, or one exact unknown predecessor plus a durable
   duplicate-risk acknowledgement digest.
 
-The service never accepts a caller-selected account or RuntimeSession. PostgreSQL derives
+The service never accepts a caller-selected account or RuntimeSession. former server store derives
 both from accepted route and plan records, then verifies that the ready generation belongs
 to that account and its execution epoch is active.
 
@@ -176,7 +176,7 @@ synthesize ManagedRun or WorkItem acceptance.
 
 After source freeze, validation must cover:
 
-- fresh PostgreSQL 18 latest-schema bootstrap and second-bootstrap refusal;
+- fresh former server store 18 latest-schema bootstrap and second-bootstrap refusal;
 - exact ProviderAttempt catalog, function, trigger, ownership, ACL, dependency, and
   negative PUBLIC/runtime authority;
 - both consumer shapes and every partial, stale, cross-linked, or ambiguous binding;

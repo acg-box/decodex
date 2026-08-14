@@ -1,7 +1,7 @@
 //! Pure, mechanism-neutral managed-repository decisions.
 //!
 //! Every fact, view, and decision in this module is forgeable data. None establishes durable
-//! freshness, permits an external effect, or authorizes persistence. PostgreSQL must load current
+//! freshness, permits an external effect, or authorizes persistence. durable-store must load current
 //! facts inside its transaction and owns checkpoints, global operation assignment, append-only
 //! evidence, CAS, transaction completeness, restart loads, and private post-commit dispatch.
 //!
@@ -105,7 +105,7 @@ uuid_id!(/// Globally single-assigned repository-operation identity.
 	RepositoryOperationId, InvalidOperationId);
 uuid_id!(/// Immutable read-only evidence identity.
 	RepositoryEvidenceId, InvalidEvidenceId);
-uuid_id!(/// PostgreSQL-issued aggregate authority-event identity carried only as data.
+uuid_id!(/// durable-store-issued aggregate authority-event identity carried only as data.
 	RepositoryAuthorityTip, InvalidAuthorityTip);
 
 bounded_value!(/// Opaque external identity fixed at repository admission.
@@ -632,12 +632,12 @@ impl PositiveAllocationEvidence {
 	}
 }
 
-/// Forgeable representation of PostgreSQL's current aggregate checkpoint.
+/// Forgeable representation of durable-store's current aggregate checkpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AggregateCheckpoint {
-	/// Positive PostgreSQL-owned generation.
+	/// Positive durable-store-owned generation.
 	pub generation: u64,
-	/// Exact PostgreSQL-owned authority-event tip.
+	/// Exact durable-store-owned authority-event tip.
 	pub tip: RepositoryAuthorityTip,
 }
 impl AggregateCheckpoint {
@@ -678,7 +678,7 @@ impl ExecutorContractVersion {
 	}
 }
 
-/// Forgeable positive availability facts that PostgreSQL must independently enforce.
+/// Forgeable positive availability facts that durable-store must independently enforce.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AllocationAvailabilityFacts {
 	/// Globally available allocation identity.
@@ -692,11 +692,11 @@ pub struct AllocationAvailabilityFacts {
 /// Persistence-only Allocate command.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AllocateRepositoryCommand {
-	/// Allocation identity to claim in PostgreSQL.
+	/// Allocation identity to claim in durable-store.
 	pub allocation_id: RepositoryAllocationId,
-	/// Worktree identity to claim in PostgreSQL.
+	/// Worktree identity to claim in durable-store.
 	pub worktree_id: ManagedWorktreeId,
-	/// Final worktree path to claim in PostgreSQL.
+	/// Final worktree path to claim in durable-store.
 	pub worktree_path: PersistedAbsolutePath,
 }
 
@@ -709,7 +709,7 @@ pub struct AllocateRepositoryDecision {
 	pub allocation_id: RepositoryAllocationId,
 	/// Worktree identity proposed for persistence.
 	pub worktree_id: ManagedWorktreeId,
-	/// Worktree path proposed for a PostgreSQL uniqueness claim only.
+	/// Worktree path proposed for a durable-store uniqueness claim only.
 	pub worktree_path: PersistedAbsolutePath,
 	/// Exact initial head, unchanged from admission.
 	pub head: RepositoryContentRevision,
@@ -751,7 +751,7 @@ pub fn decide_allocate(
 /// Current lifecycle projection loaded from persistence as forgeable data.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ManagedRepositoryPhase {
-	/// PostgreSQL allocation exists; no external mutation is implied.
+	/// durable-store allocation exists; no external mutation is implied.
 	Allocated,
 	/// Exact reciprocal repository/worktree registration completed.
 	Registered,
@@ -776,7 +776,7 @@ pub struct ManagedRepositoryFacts {
 	pub phase: ManagedRepositoryPhase,
 	/// Current exact head fact.
 	pub head: RepositoryContentRevision,
-	/// PostgreSQL checkpoint fact; this value grants no CAS or write authority.
+	/// durable-store checkpoint fact; this value grants no CAS or write authority.
 	pub checkpoint: AggregateCheckpoint,
 	/// Operation currently fencing the aggregate, if any.
 	pub active_operation: Option<RepositoryOperationId>,
@@ -918,7 +918,7 @@ impl CanonicalOperationPayload {
 
 /// Complete canonical immutable assignment descriptor.
 ///
-/// Equality covers every field. PostgreSQL must persist the complete representation and enforce
+/// Equality covers every field. durable-store must persist the complete representation and enforce
 /// global assignment; a digest alone is not assignment authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CanonicalOperationDescriptor {
@@ -944,7 +944,7 @@ pub struct CanonicalOperationDescriptor {
 	pub repository_absolute_path: PersistedAbsolutePath,
 	/// Exact persisted worktree path.
 	pub worktree_absolute_path: PersistedAbsolutePath,
-	/// Pre-operation PostgreSQL checkpoint fact.
+	/// Pre-operation durable-store checkpoint fact.
 	pub expected_checkpoint: AggregateCheckpoint,
 	/// Closed kind, redundant by design for canonical persistence checks.
 	pub kind: RepositoryOperationKind,
@@ -1015,7 +1015,7 @@ pub struct NoDispatch;
 #[allow(clippy::large_enum_variant)] // Preserve the stable by-value semantic result algebra.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AssignmentResolution {
-	/// No assignment fact was supplied; PostgreSQL may attempt a new global insert.
+	/// No assignment fact was supplied; durable-store may attempt a new global insert.
 	NewlyAssigned,
 	/// The complete existing descriptor is exact and can only be read back.
 	ExistingExact(OperationView, NoDispatch),
@@ -1023,7 +1023,7 @@ pub enum AssignmentResolution {
 	OperationIdConflict,
 }
 
-/// Compare a requested descriptor with a PostgreSQL-loaded global assignment fact.
+/// Compare a requested descriptor with a durable-store-loaded global assignment fact.
 pub fn resolve_operation_assignment(
 	requested: &CanonicalOperationDescriptor,
 	existing: Option<&OperationView>,
@@ -1347,7 +1347,7 @@ pub enum CommitEvidence {
 	Unavailable,
 }
 
-/// Proposed terminal aggregate projection update. PostgreSQL alone applies it and issues its next
+/// Proposed terminal aggregate projection update. durable-store alone applies it and issues its next
 /// checkpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryProjectionUpdate {
@@ -1355,7 +1355,7 @@ pub struct RepositoryProjectionUpdate {
 	pub phase: ManagedRepositoryPhase,
 	/// Proposed exact current head.
 	pub head: RepositoryContentRevision,
-	/// Exact active operation that PostgreSQL must clear atomically.
+	/// Exact active operation that durable-store must clear atomically.
 	pub clear_active_operation: RepositoryOperationId,
 }
 

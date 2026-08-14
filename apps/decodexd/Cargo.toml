@@ -11,7 +11,6 @@ version.workspace    = true
 [dependencies]
 clap            = { workspace = true }
 decodex-runtime = { workspace = true }
-libc            = { workspace = true }
 tokio           = { workspace = true }
 
 [dev-dependencies]

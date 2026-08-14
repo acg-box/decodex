@@ -25,6 +25,7 @@ use decodex_protocol::{
 const MAX_LIVE_DELTAS: usize = 64;
 const MAX_LIVE_DELTA_BYTES: usize = 64 * 1_024;
 const MAX_LIST_PAGES: usize = 32;
+const QUICK_TASK_WORKING_DIRECTORY_ENV: &str = "DECODEX_QUICK_TASK_WORKING_DIRECTORY";
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 
@@ -46,7 +47,7 @@ impl QuickTasksSnapshot {
 	}
 }
 
-/// Finite list/readback state. PostgreSQL remains the product authority.
+/// Finite list/readback state. The daemon-owned product store remains authoritative.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum QuickTasksLoadState {
 	NeverRequested,
@@ -134,13 +135,13 @@ struct QuickTasksInner {
 
 impl QuickTasks {
 	pub(crate) fn production() -> Self {
+		let configured_working_directory = std::env::var(QUICK_TASK_WORKING_DIRECTORY_ENV).ok();
+		let home = std::env::var("HOME").ok();
 		Self {
 			inner: Arc::new(QuickTasksInner {
 				state: Mutex::new(State::new()),
 				notify: Notify::new(),
-				working_directory: std::env::var("HOME")
-					.ok()
-					.and_then(|home| QuickTaskWorkingDirectory::new(home).ok()),
+				working_directory: production_working_directory(configured_working_directory, home),
 			}),
 		}
 	}
@@ -174,6 +175,32 @@ impl QuickTasks {
 		state.selected = Some(conversation_id);
 		state.selection_suppressed = false;
 		true
+	}
+
+	/// Insert one verified command result and make its Conversation current.
+	pub(crate) fn adopt_and_select(&self, conversation: QuickTaskSummary) {
+		let mut state = self.lock();
+		let conversation_id = conversation.conversation_id.clone();
+		state.upsert_task(conversation);
+		state.selected = Some(conversation_id);
+		state.selection_suppressed = false;
+	}
+
+	/// Select an existing Conversation after authoritative list readback finds it.
+	pub(crate) fn select_when_available(&self, conversation_id: EntityId) {
+		let mut state = self.lock();
+		if state.tasks.iter().any(|task| task.conversation_id == conversation_id) {
+			state.selected = Some(conversation_id);
+			state.selection_suppressed = false;
+			return;
+		}
+		state.requested_selection = Some(conversation_id);
+		state.selection_suppressed = false;
+		let queued = state.queue_list();
+		drop(state);
+		if queued {
+			self.inner.notify.notify_one();
+		}
 	}
 
 	pub(crate) fn begin_new(&self) {
@@ -477,17 +504,19 @@ impl QuickTasks {
 		}
 		state.in_flight_query = None;
 		let (outcome, query_queued) = match purpose {
-			QuickTaskQueryPurpose::List { after } =>
-				state.route_list_query_result(generation, after, &result.payload),
+			QuickTaskQueryPurpose::List { after } => {
+				state.route_list_query_result(generation, after, &result.payload)
+			},
 			QuickTaskQueryPurpose::RoutingSuccessorSource { reconciliation } => state
 				.route_routing_successor_source_result(generation, reconciliation, &result.payload),
-			QuickTaskQueryPurpose::RoutingSuccessorProjection { reconciliation, successor } =>
+			QuickTaskQueryPurpose::RoutingSuccessorProjection { reconciliation, successor } => {
 				state.route_routing_successor_projection_result(
 					generation,
 					reconciliation,
 					successor,
 					&result.payload,
-				),
+				)
+			},
 		};
 		drop(state);
 		if query_queued {
@@ -628,8 +657,9 @@ impl QuickTasks {
 					state.routing_successor_reconciliation = None;
 					state.outcome_unknown_readback_generation = None;
 					state.command = match result.error.as_ref() {
-						Some(CommandError::QuickTaskRecoveryRequired { action }) =>
-							QuickTaskCommandState::ManualRecovery(*action),
+						Some(CommandError::QuickTaskRecoveryRequired { action }) => {
+							QuickTaskCommandState::ManualRecovery(*action)
+						},
 						_ => QuickTaskCommandState::Refused,
 					};
 				}
@@ -662,6 +692,7 @@ struct State {
 	tasks: Vec<QuickTaskSummary>,
 	selected: Option<EntityId>,
 	selection_suppressed: bool,
+	requested_selection: Option<EntityId>,
 	pending_query: Option<PendingQuery>,
 	in_flight_query: Option<InFlightQuery>,
 	pending_command: Option<PendingCommand>,
@@ -686,6 +717,7 @@ impl State {
 			tasks: Vec::new(),
 			selected: None,
 			selection_suppressed: true,
+			requested_selection: None,
 			pending_query: None,
 			in_flight_query: None,
 			pending_command: None,
@@ -997,6 +1029,11 @@ impl State {
 				tasks.push(existing.clone());
 			}
 		}
+		if let Some(requested) = self.requested_selection.as_ref()
+			&& tasks.iter().any(|task| &task.conversation_id == requested)
+		{
+			self.selected = self.requested_selection.take();
+		}
 		let selected_is_present = self
 			.selected
 			.as_ref()
@@ -1025,12 +1062,18 @@ impl State {
 				self.tasks.push(task);
 			}
 		}
+		if let Some(requested) = self.requested_selection.as_ref()
+			&& self.tasks.iter().any(|task| &task.conversation_id == requested)
+		{
+			self.selected = self.requested_selection.take();
+		}
 		if self.selected.is_none() && !self.selection_suppressed {
 			self.selected = self.tasks.first().map(|task| task.conversation_id.clone());
 		}
 	}
 
 	fn upsert_task(&mut self, task: QuickTaskSummary) {
+		let requested = self.requested_selection.as_ref() == Some(&task.conversation_id);
 		if let Some(existing) =
 			self.tasks.iter_mut().find(|existing| existing.conversation_id == task.conversation_id)
 		{
@@ -1042,6 +1085,10 @@ impl State {
 			if self.selected.is_none() && !self.selection_suppressed {
 				self.selected = Some(task.conversation_id);
 			}
+		}
+		if requested {
+			self.selected = self.requested_selection.take();
+			self.selection_suppressed = false;
 		}
 	}
 
@@ -1290,6 +1337,16 @@ fn command_conversation_id(payload: &CommandPayload) -> EntityId {
 	}
 }
 
+fn production_working_directory(
+	configured: Option<String>,
+	home: Option<String>,
+) -> Option<QuickTaskWorkingDirectory> {
+	match configured {
+		Some(configured) => QuickTaskWorkingDirectory::new(configured).ok(),
+		None => home.and_then(|home| QuickTaskWorkingDirectory::new(home).ok()),
+	}
+}
+
 fn task_accepts_turn(task: &QuickTaskSummary) -> bool {
 	task.state == QuickTaskState::Ready
 }
@@ -1297,8 +1354,9 @@ fn task_accepts_turn(task: &QuickTaskSummary) -> bool {
 fn task_recovery_command(task: &QuickTaskSummary) -> Option<CommandPayload> {
 	let conversation_id = task.conversation_id.clone();
 	match (task.state, task.recovery_action) {
-		(QuickTaskState::RoutingPending, Some(QuickTaskRecoveryAction::ResumeRouting)) =>
-			Some(CommandPayload::ResumeQuickTaskRouting { conversation_id }),
+		(QuickTaskState::RoutingPending, Some(QuickTaskRecoveryAction::ResumeRouting)) => {
+			Some(CommandPayload::ResumeQuickTaskRouting { conversation_id })
+		},
 		(
 			QuickTaskState::EstablishmentPending | QuickTaskState::Establishing,
 			Some(QuickTaskRecoveryAction::ResumeEstablishment),
@@ -1322,6 +1380,36 @@ mod tests {
 	use decodex_protocol::{EntityRevision, QuickTaskListPage};
 
 	use super::*;
+
+	#[test]
+	fn explicit_production_working_directory_overrides_home() {
+		let working_directory = production_working_directory(
+			Some("/private/tmp/decodex-empty-project".to_owned()),
+			Some("/Users/tester".to_owned()),
+		)
+		.expect("explicit working directory is valid");
+
+		assert_eq!(working_directory.as_str(), "/private/tmp/decodex-empty-project");
+	}
+
+	#[test]
+	fn production_working_directory_uses_home_without_an_override() {
+		let working_directory =
+			production_working_directory(None, Some("/Users/tester".to_owned()))
+				.expect("home working directory is valid");
+
+		assert_eq!(working_directory.as_str(), "/Users/tester");
+	}
+
+	#[test]
+	fn invalid_explicit_production_working_directory_does_not_fall_back() {
+		let working_directory = production_working_directory(
+			Some("relative/project".to_owned()),
+			Some("/Users/tester".to_owned()),
+		);
+
+		assert_eq!(working_directory, None);
+	}
 
 	fn connected_quick_tasks() -> (QuickTasks, ServerId, QuickTaskSummary) {
 		let quick_tasks = QuickTasks {
