@@ -1391,7 +1391,7 @@ pub enum AccountOperationKindDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountOperationPhaseDto {
-	/// PostgreSQL accepted the operation before an external effect.
+	/// The product store accepted the operation before an external effect.
 	Prepared,
 	/// A provider effect can no longer be proved absent.
 	ProviderEffectPending,
@@ -1608,7 +1608,7 @@ pub enum AccountProfileErrorDto {
 	InvalidRequest,
 	/// The account does not exist or is tombstoned.
 	AccountUnavailable,
-	/// Authoritative PostgreSQL state was unavailable.
+	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// The exact host credential item was absent, stale, or unavailable.
 	CredentialUnavailable,
@@ -2030,7 +2030,7 @@ impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AccountManualRecoveryActionDto {
-	/// Re-read PostgreSQL and the exact host-store version and settle only a proven state.
+	/// Re-read durable account and credential state and settle only a proven state.
 	ReconcileExactStoreState,
 	/// Cancel an operation only when the daemon proves that no external effect began.
 	CancelBeforeEffect,
@@ -2769,7 +2769,7 @@ pub enum QueryResultPayload {
 	ExecutionDecision(ExecutionDecisionResult),
 	/// Bounded daemon-owned logical-conversation history result.
 	ConversationHistory(ConversationHistoryResult),
-	/// Bounded canonical PostgreSQL WorkItem board observation.
+	/// Bounded canonical WorkItem board observation.
 	WorkItemBoard(WorkItemBoardResult),
 	/// Bounded current reset-card observation or a closed unavailable reason.
 	ResetCards(ResetCardInventoryResult),
@@ -3096,7 +3096,7 @@ pub enum WorkItemBoardResult {
 pub enum WorkItemBoardQueryError {
 	/// Request Project, filter, cursor, or bound was invalid.
 	InvalidRequest,
-	/// Authoritative PostgreSQL product state was unavailable.
+	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// Persisted page facts failed strict integrity verification.
 	IntegrityUnavailable,
@@ -3125,7 +3125,7 @@ pub enum ExecutionDecisionResult {
 pub enum ExecutionDecisionQueryError {
 	/// Decision identity was invalid or no exact decision exists.
 	InvalidRequest,
-	/// Authoritative PostgreSQL state was unavailable.
+	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// Persisted decision evidence failed integrity verification.
 	IntegrityUnavailable,
@@ -3364,7 +3364,7 @@ pub enum HistoryQueryError {
 	InvalidRequest,
 	/// The bounded continuation inventory is temporarily exhausted.
 	ResourceExhausted,
-	/// Authoritative PostgreSQL product state was unavailable.
+	/// Authoritative product state was unavailable.
 	ProductStateUnavailable,
 	/// Referenced bytes or persisted metadata failed integrity verification.
 	IntegrityUnavailable,
@@ -3922,7 +3922,7 @@ fn validate_account_profile(profile: &AccountProfileDto) -> Result<(), &'static 
 		|| profile.current_streak_days.is_some_and(|value| value > i32::MAX as u32)
 		|| profile.longest_streak_days.is_some_and(|value| value > i32::MAX as u32)
 	{
-		return Err("account profile metric exceeds the PostgreSQL contract");
+		return Err("account profile metric exceeds the storage contract");
 	}
 	if profile.daily_usage.len() > MAX_ACCOUNT_PROFILE_DAILY_USAGE {
 		return Err("account profile daily usage exceeds the cardinality bound");

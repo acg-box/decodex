@@ -1,6 +1,8 @@
 # Decodex vNext Gate Manifest
 
-Status: normative sequencing and acceptance boundary.
+Status: historical PostgreSQL gate manifest. The current acceptance boundary is the
+[Local Product V1 contract](local-product-v1.md), and executable database validation is
+owned by `scripts/vnext/local_database_gate.py`.
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Contract:
 [vNext authority contract](vnext-authority.md).

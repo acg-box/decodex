@@ -1,15 +1,13 @@
-//! One authenticated OpenAI/Codex backend API client for account observation and reset cards.
+//! One authenticated OpenAI/Codex backend API client for account observation.
 
 use std::{sync::Arc, time::Duration};
 
 use decodex_codex::{
-	AccountApiConsumeOutcome, AccountApiProfile, AccountApiProtocolError, AccountApiQuotaWindow,
-	AccountApiResetCredit, AccountApiResetCredits, AccountApiUsage, decode_account_api_consume,
-	decode_account_api_profile, decode_account_api_reset_credits, decode_account_api_usage,
+	AccountApiProfile, AccountApiProtocolError, AccountApiQuotaWindow, AccountApiResetCredit,
+	AccountApiResetCredits, AccountApiUsage, decode_account_api_profile,
+	decode_account_api_reset_credits, decode_account_api_usage,
 };
-use decodex_core::{
-	AccountId, AccountOperationId, AccountProvider, ProviderIdentity, ResetCardConsumeOutcome,
-};
+use decodex_core::{AccountId, AccountOperationId, AccountProvider, ProviderIdentity};
 use reqwest::{Method, StatusCode};
 
 use crate::account_service::{AccountApiCredential, AccountLifecycleError, AccountService};
@@ -18,7 +16,6 @@ const BACKEND_API_BASE: &str = "https://chatgpt.com/backend-api";
 const USAGE_PATH: &str = "/wham/usage";
 const PROFILE_PATH: &str = "/wham/profiles/me";
 const RESET_CREDITS_PATH: &str = "/wham/rate-limit-reset-credits";
-const CONSUME_RESET_CREDIT_PATH: &str = "/wham/rate-limit-reset-credits/consume";
 const HTTP_TIMEOUT: Duration = Duration::from_secs(10);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
 const MINIMUM_ACCESS_TOKEN_VALIDITY: Duration = Duration::from_secs(20);
@@ -43,31 +40,6 @@ pub(crate) struct AccountApiInventory {
 	pub(crate) reported_available_count: Option<u64>,
 	pub(crate) details_complete: bool,
 	pub(crate) credits: Vec<AccountApiResetCredit>,
-}
-impl AccountApiInventory {
-	pub(crate) fn resolve_exact_credit_id(
-		&self,
-		descriptor: decodex_core::ResetCardDescriptor,
-	) -> Result<decodex_codex::ExactResetCreditId, AccountApiRuntimeError> {
-		if !self.details_complete {
-			return Err(AccountApiRuntimeError::ProtocolUnavailable);
-		}
-		let mut matches = self.credits.iter().filter(|credit| credit.descriptor() == descriptor);
-		let Some(credit) = matches.next() else {
-			return Err(AccountApiRuntimeError::ProtocolUnavailable);
-		};
-		if matches.next().is_some() {
-			return Err(AccountApiRuntimeError::ProtocolUnavailable);
-		}
-		Ok(credit.exact_id().clone())
-	}
-
-	pub(crate) fn contains_exact_credit_id(
-		&self,
-		exact_id: &decodex_codex::ExactResetCreditId,
-	) -> bool {
-		self.credits.iter().any(|credit| credit.exact_id() == exact_id)
-	}
 }
 
 /// Result of one coalesced provider refresh round.
@@ -110,67 +82,6 @@ impl AccountApiRuntime {
 			return first.into_observation();
 		}
 		self.observe_with_current_credential(account_id).await.into_observation()
-	}
-
-	/// Consume one exact reset credit with the provider's direct API contract.
-	pub(crate) async fn consume_reset_credit(
-		&self,
-		account_id: &AccountId,
-		account_revision: i64,
-		redeem_request_id: &str,
-		credit_id: &decodex_codex::ExactResetCreditId,
-	) -> Result<ResetCardConsumeOutcome, AccountApiRuntimeError> {
-		let response = match self
-			.consume_reset_credit_request(
-				account_id,
-				account_revision,
-				redeem_request_id,
-				credit_id,
-			)
-			.await
-		{
-			Ok(response) => response,
-			Err(AccountApiRuntimeError::Unauthorized) => {
-				self.refresh_after_unauthorized(account_id, account_revision).await?;
-				self.consume_reset_credit_request(
-					account_id,
-					account_revision,
-					redeem_request_id,
-					credit_id,
-				)
-				.await?
-			},
-			Err(error) => return Err(error),
-		};
-		decode_account_api_consume(&response)
-			.map(map_consume_outcome)
-			.map_err(|_| AccountApiRuntimeError::ProtocolUnavailable)
-	}
-
-	async fn consume_reset_credit_request(
-		&self,
-		account_id: &AccountId,
-		account_revision: i64,
-		redeem_request_id: &str,
-		credit_id: &decodex_codex::ExactResetCreditId,
-	) -> Result<Vec<u8>, AccountApiRuntimeError> {
-		let credential = self
-			.accounts
-			.api_credential_for_observation(account_id, MINIMUM_ACCESS_TOKEN_VALIDITY)
-			.await
-			.map_err(map_account_service_error)?;
-		if credential.account_revision != account_revision {
-			return Err(AccountApiRuntimeError::AccountChanged);
-		}
-		let body = serde_json::json!({
-			"redeem_request_id": redeem_request_id,
-			"credit_id": credit_id.as_str(),
-		});
-		let response = self
-			.request_json(Method::POST, CONSUME_RESET_CREDIT_PATH, &credential, Some(&body))
-			.await
-			.map_err(map_request_error)?;
-		Ok(response)
 	}
 
 	async fn observe_with_current_credential(
@@ -434,15 +345,6 @@ fn map_account_service_error(error: AccountLifecycleError) -> AccountApiRuntimeE
 		| AccountLifecycleError::InvalidOperation
 		| AccountLifecycleError::Persistence(_)
 		| AccountLifecycleError::CoordinatorUnavailable => AccountApiRuntimeError::AccountUnavailable,
-	}
-}
-
-fn map_consume_outcome(outcome: AccountApiConsumeOutcome) -> ResetCardConsumeOutcome {
-	match outcome {
-		AccountApiConsumeOutcome::Reset => ResetCardConsumeOutcome::Reset,
-		AccountApiConsumeOutcome::NothingToReset => ResetCardConsumeOutcome::NothingToReset,
-		AccountApiConsumeOutcome::NoCredit => ResetCardConsumeOutcome::NoCredit,
-		AccountApiConsumeOutcome::AlreadyRedeemed => ResetCardConsumeOutcome::AlreadyRedeemed,
 	}
 }
 

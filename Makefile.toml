@@ -357,12 +357,12 @@ args = [
 # | test-headless                      | composite |     |
 # | test-headless-sandboxed            | composite |     |
 # | test-gate-contract                 | command   |     |
+# | test-local-database                | command   |     |
 # | test-rust                          | command   |     |
 # | test-rust-headless                 | command   |     |
 # | test-sandboxed                     | composite |     |
 # | test-vnext-architecture            | command   |     |
 # | test-vnext-cli-diagnostics         | command   |     |
-# | test-vnext-latest-schema           | command   |     |
 
 [tasks.test]
 clear = true
@@ -370,6 +370,7 @@ workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
+	"test-local-database",
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
@@ -390,6 +391,7 @@ workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
+	"test-local-database",
 	"test-rust",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
@@ -401,6 +403,7 @@ workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
+	"test-local-database",
 	"test-rust-headless",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
@@ -412,6 +415,7 @@ workspace = false
 dependencies = [
 	"test-automations",
 	"test-gate-contract",
+	"test-local-database",
 	"test-rust-headless",
 	"test-vnext-architecture",
 	"test-vnext-cli-diagnostics",
@@ -468,9 +472,9 @@ args = [
 	"scripts/vnext/cli_diagnostics_test.py",
 ]
 
-[tasks.test-vnext-latest-schema]
+[tasks.test-local-database]
 workspace = false
 command = "python3"
 args = [
-	"scripts/vnext/latest_schema_gate.py",
+	"scripts/vnext/local_database_gate.py",
 ]

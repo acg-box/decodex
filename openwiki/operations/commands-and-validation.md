@@ -1,5 +1,9 @@
 # Commands And Validation
 
+Status: historical PostgreSQL command catalog. Use
+[Local database operations](local-database.md) for current initialization, installation,
+transfer, and acceptance commands.
+
 Use this page to choose the command boundary for current work. `Makefile.toml` owns
 implemented task names. This document owns the target behavior for the latest-schema,
 runtime-authority, Candidate-5, and local database reset commands.

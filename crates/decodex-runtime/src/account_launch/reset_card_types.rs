@@ -1,6 +1,38 @@
 //! Shared reset-card projections used by the daemon API and account observer.
 
-use decodex_core::{AccountId, AccountQuotaWindowObservation, ResetCardDescriptor};
+use decodex_core::{
+	AccountId, AccountQuotaWindowObservation, ResetCardConsumeOutcome, ResetCardDescriptor,
+};
+
+/// Inert compatibility readback for the deferred reset-card capability.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) struct ResetCardPreparation {
+	pub account_id: AccountId,
+	pub account_revision: i64,
+	pub descriptor: ResetCardDescriptor,
+}
+
+/// Closed deferred-capability operation status retained by the public protocol mapper.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ResetCardOperationStatus {
+	NotFound,
+	Prepared,
+	EffectAmbiguous,
+	Completed(ResetCardConsumeOutcome),
+	FailedBeforeEffect(ResetCardFailureCode),
+}
+
+/// Value-free reset failure codes retained by the protocol mapper.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ResetCardFailureCode {
+	AccountChanged,
+	VaultUnavailable,
+	SchemaUnsupported,
+	InventoryIncomplete,
+	InventoryChanged,
+	ProviderUnavailable,
+	ResourceExhausted,
+}
 
 /// Public reset-card observation plus the exact account revision observed around provider work.
 #[derive(Clone, Debug, Eq, PartialEq)]

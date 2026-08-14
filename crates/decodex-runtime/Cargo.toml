@@ -8,18 +8,14 @@ name                 = "decodex-runtime"
 repository.workspace = true
 version.workspace    = true
 
-[features]
-account-binding-fixtures = ["decodex-postgres/test-support"]
-
 [dependencies]
 base64            = { workspace = true }
 decodex-codex     = { workspace = true }
 decodex-core      = { workspace = true }
-decodex-postgres  = { workspace = true }
+decodex-database  = { workspace = true }
 decodex-protocol  = { workspace = true }
 futures-util      = { workspace = true }
 libc              = { workspace = true }
-redb              = { workspace = true }
 reqwest           = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }
@@ -34,5 +30,4 @@ core-foundation    = { workspace = true }
 security-framework = { workspace = true }
 
 [dev-dependencies]
-tempfile       = { workspace = true }
-tokio-postgres = { workspace = true }
+tempfile = { workspace = true }

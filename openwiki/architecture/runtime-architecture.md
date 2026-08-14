@@ -1,8 +1,8 @@
 # Runtime Architecture
 
-Status: accepted and implemented vNext architecture. Current source has the sole
-unversioned latest schema and explicit hidden operator commands. Canonical validation and
-landing remain pending.
+Status: historical PostgreSQL runtime record. The current runtime and storage boundary
+is defined by the [Local Product V1 contract](../specs/local-product-v1.md) and
+[SQLite local-product decision](../decisions/sqlite-local-product.md).
 
 There are no external or deployed Decodex users. Local PostgreSQL state is disposable
 development state. The architecture supports an empty-target latest-schema bootstrap,

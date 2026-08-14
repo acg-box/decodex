@@ -1,7 +1,9 @@
 # Decodex vNext Authority Decision
 
-Status: accepted repository authority for the vNext target. This decision describes
-the target architecture. It does not claim that current source implements the target.
+Status: historical PostgreSQL design record. Its storage, migration, and delivery
+authority is superseded by the
+[SQLite local-product decision](sqlite-local-product.md). Retain this page only to
+explain earlier choices and reusable domain invariants.
 
 Owner issue: [XY-1260](https://linear.app/hack-ink/issue/XY-1260/promote-the-vnext-authority-contract-and-supersede-lane-authority-v2)
 

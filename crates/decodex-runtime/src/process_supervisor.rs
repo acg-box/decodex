@@ -21,9 +21,9 @@ use decodex_core::{
 	ProcessExecutionAuthorization, ProcessGeneration, ProcessGenerationAccountBinding,
 	ProcessGenerationId, ProcessGenerationIntent, ProcessGenerationState, ProcessIdentity,
 };
-use decodex_postgres::{
-	FreshQuickTaskProcessGeneration, PostgresStore, PrepareProcessGenerationOutcome,
-	ProcessGenerationMutation, ProcessGenerationMutationOutcome,
+use decodex_database::{
+	FreshQuickTaskProcessGeneration, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
+	ProcessGenerationMutationOutcome, SqliteStore,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -45,7 +45,7 @@ pub struct ProcessGenerationControl {
 
 /// Sole in-process owner of every durable ProcessGeneration mutation capability.
 struct ProcessSupervisor {
-	store: PostgresStore,
+	store: SqliteStore,
 	boot_id: ProcessBootIdentity,
 	owned: OwnedGenerationRegistry<OwnedGeneration>,
 	observers: Mutex<BTreeMap<String, KernelExitWitness>>,
@@ -269,7 +269,7 @@ pub enum ProcessGenerationTermination {
 pub enum ProcessGenerationReadiness {
 	/// Startup projection and the first positive reconciliation pass completed.
 	Ready,
-	/// PostgreSQL authority was unavailable or inconsistent.
+	/// Durable product authority was unavailable or inconsistent.
 	ProductStateUnavailable,
 	/// The supported-OS exact identity adapter was unavailable.
 	PlatformUnavailable,
@@ -278,7 +278,7 @@ pub enum ProcessGenerationReadiness {
 /// Closed supervisor failure without provider, credential, or database detail.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProcessSupervisorError {
-	/// PostgreSQL ProcessGeneration authority was unavailable or inconsistent.
+	/// Durable ProcessGeneration authority was unavailable or inconsistent.
 	ProductState,
 	/// The supported-OS adapter could not establish exact identity or evidence.
 	Platform,
@@ -332,7 +332,7 @@ impl ProcessGenerationControl {
 	///
 	/// The server lifecycle separately owns continued background reconciliation. One uncertain
 	/// account does not change product-state availability.
-	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ProcessSupervisorError> {
+	pub(crate) async fn start(store: SqliteStore) -> Result<Self, ProcessSupervisorError> {
 		let boot_id = process_platform::current_boot_identity()
 			.map_err(|_| ProcessSupervisorError::Platform)?;
 		store

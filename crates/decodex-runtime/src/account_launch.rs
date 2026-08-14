@@ -1,16 +1,17 @@
-//! Runtime-owned PostgreSQL authorization and bounded process-capacity composition.
+//! Runtime-owned SQLite authorization and bounded process-capacity composition.
 
-mod api_reset_card;
+mod api_reset_card_disabled;
 #[cfg(target_os = "macos")] mod macos_attested_spawn;
 pub(crate) mod process;
 mod protocol;
 mod reset_card_types;
 
-pub(crate) use api_reset_card::ApiResetCardRuntime;
+pub(crate) use api_reset_card_disabled::ApiResetCardRuntime;
 pub(crate) use process::{AttestedAppServerLaunch, AttestedAppServerProfile, AttestedProcessChild};
 pub(crate) use reset_card_types::{
-	ResetCardInventoryObservation, ResetCardInventoryView, ResetCardObservationFailure,
-	ResetCardServiceError, ResetCardVaultStatus,
+	ResetCardFailureCode, ResetCardInventoryObservation, ResetCardInventoryView,
+	ResetCardObservationFailure, ResetCardOperationStatus, ResetCardPreparation,
+	ResetCardServiceError,
 };
 
 use std::{
@@ -29,7 +30,7 @@ use crate::account_launch::process::{
 };
 use decodex_codex::CapabilityCache;
 use decodex_core::AccountId;
-use decodex_postgres::PostgresStore;
+use decodex_database::SqliteStore;
 
 const MAX_RUNNER_CAPACITY: u16 = 64;
 
@@ -44,17 +45,17 @@ const MAX_RUNNER_CAPACITY: u16 = 64;
 /// ```
 #[derive(Clone)]
 struct ManualAccountLauncher {
-	store: PostgresStore,
+	store: SqliteStore,
 	capacity: Arc<RunnerCapacity>,
 }
 impl ManualAccountLauncher {
-	/// Bind the dormant composition to an already-authorized PostgreSQL adapter.
-	fn new(store: &PostgresStore) -> Result<Self, CapacityExhausted> {
+	/// Bind the dormant composition to the daemon-owned SQLite authority.
+	fn new(store: &SqliteStore) -> Result<Self, CapacityExhausted> {
 		Ok(Self { store: store.clone(), capacity: RunnerCapacity::daemon()? })
 	}
 
 	#[cfg(test)]
-	fn with_capacity(store: &PostgresStore, limit: u16) -> Self {
+	fn with_capacity(store: &SqliteStore, limit: u16) -> Self {
 		Self {
 			store: store.clone(),
 			capacity: Arc::new(RunnerCapacity::try_with_limit(limit).unwrap()),
@@ -63,7 +64,7 @@ impl ManualAccountLauncher {
 
 	/// Produce one post-cleanup observation for an explicitly selected account and revision.
 	///
-	/// PostgreSQL is observed once before any process can spawn and again after the process is
+	/// SQLite is observed once before any process can spawn and again after the process is
 	/// confirmed dead or its guard is quarantined. No database client or transaction spans the
 	/// process or vault call. The returned value is not live-runner authority.
 	async fn run_bound(
@@ -112,8 +113,8 @@ impl ManualAccountLauncher {
 	/// Execute one exact reconciliation under an explicitly selected ready account.
 	///
 	/// This private composition performs no selection, persistence, turn dispatch, or restart
-	/// replay. PostgreSQL authority is checked before process mechanics and again after bounded
-	/// cleanup.
+	/// replay. Durable account authority is checked before process mechanics and again after
+	/// bounded cleanup.
 	async fn reconcile_bound(
 		&self,
 		request: ManualReconciliationRequest,
@@ -203,7 +204,7 @@ impl ManualReconciliationRequest {
 		Ok(Self { account_id, expected_revision, reconciler, operation })
 	}
 }
-/// Non-live observation produced only after exact final PostgreSQL revalidation and cleanup.
+/// Non-live observation produced only after exact final product-store revalidation and cleanup.
 struct ManualAccountLaunchResult {
 	observation: ReadOnlyProbeResult,
 	account_revision: i64,
@@ -214,7 +215,7 @@ impl ManualAccountLaunchResult {
 		&self.observation
 	}
 
-	/// Exact positive PostgreSQL readiness revision re-observed after cleanup.
+	/// Exact positive account-readiness revision re-observed after cleanup.
 	const fn account_revision(&self) -> i64 {
 		self.account_revision
 	}
@@ -255,13 +256,13 @@ impl Debug for ManualReconciliationResult {
 /// Closed manual launch failure without database, account, credential, or provider text.
 #[derive(Debug)]
 enum ManualAccountLaunchError {
-	/// PostgreSQL could not provide product-state authority.
+	/// The product store could not provide account authority.
 	ProductStateUnavailable,
 	/// The exact account revision was stale, missing, or not ready.
 	ReadinessRejected,
 	/// The runtime-private daemon capacity is occupied, including quarantined cleanup.
 	CapacityExhausted,
-	/// Mechanical probe binding contradicted the PostgreSQL-authorized account.
+	/// Mechanical probe binding contradicted the durably authorized account.
 	BindingMismatch,
 	/// Bounded process mechanics failed.
 	Probe(ProbeError),
@@ -474,407 +475,5 @@ mod tests {
 		let restarted_process = RunnerCapacity::try_with_limit(1).unwrap();
 
 		assert_eq!(restarted_process.active(), 0);
-	}
-}
-#[cfg(test)]
-#[cfg(all(unix, feature = "account-binding-fixtures"))]
-mod postgres_composition_tests {
-	use std::{
-		fs,
-		path::Path,
-		sync::{
-			Arc, Mutex,
-			mpsc::{self, Receiver, SyncSender},
-		},
-		time::Duration,
-	};
-
-	use tempfile::TempDir;
-	use tokio::{runtime::Handle, task, time};
-	use tokio_postgres::Client;
-
-	use crate::account_launch::{
-		ManualAccountLaunchError, ManualAccountLaunchRequest, ManualAccountLauncher,
-		process::{
-			AccountBinding, AccountIdentity, AppServerCommand, CredentialProjection,
-			CredentialVault, CredentialVaultError, ProbeError, ReadOnlyProbe, SupervisionError,
-		},
-	};
-	use decodex_codex::CapabilityCache;
-	use decodex_core::{AccountId, AccountState};
-	use decodex_postgres::{AccountMetadata, PostgresStore};
-
-	struct MatchingVault;
-	impl CredentialVault for MatchingVault {
-		fn project(
-			&self,
-			_account_id: &AccountId,
-			projection: &mut CredentialProjection<'_>,
-		) -> Result<AccountIdentity, CredentialVaultError> {
-			projection.authenticate_chatgpt(
-				"synthetic-nonsecret-sentinel",
-				"synthetic-provider-sentinel",
-				Some("synthetic-plan"),
-			)?;
-
-			Ok(AccountIdentity::from_observation("chatgpt", Some("private@example.test"), true))
-		}
-	}
-
-	struct BlockingVault {
-		entered: SyncSender<()>,
-		release: Mutex<Receiver<()>>,
-	}
-	impl CredentialVault for BlockingVault {
-		fn project(
-			&self,
-			account_id: &AccountId,
-			projection: &mut CredentialProjection<'_>,
-		) -> Result<AccountIdentity, CredentialVaultError> {
-			self.entered.send(()).map_err(|_| CredentialVaultError::Unavailable)?;
-			self.release
-				.lock()
-				.map_err(|_| CredentialVaultError::Unavailable)?
-				.recv_timeout(Duration::from_secs(5))
-				.map_err(|_| CredentialVaultError::Unavailable)?;
-
-			MatchingVault.project(account_id, projection)
-		}
-	}
-
-	fn request(
-		account_id: &AccountId,
-		revision: i64,
-		temp: &TempDir,
-		mode: &str,
-		extra: Option<&Path>,
-	) -> ManualAccountLaunchRequest {
-		let codex_home = temp.path().join("home/.codex");
-
-		fs::create_dir_all(&codex_home).unwrap();
-
-		ManualAccountLaunchRequest::new(
-			account_id.clone(),
-			revision,
-			ReadOnlyProbe::fixture(
-				AppServerCommand::fixture(mode, temp.path(), extra),
-				AccountBinding::fixture(account_id.clone(), codex_home),
-				Duration::from_secs(2),
-			),
-		)
-		.unwrap()
-	}
-
-	fn blocking_vault() -> (Arc<BlockingVault>, Receiver<()>, SyncSender<()>) {
-		let (entered_sender, entered_receiver) = mpsc::sync_channel(1);
-		let (release_sender, release_receiver) = mpsc::sync_channel(1);
-
-		(
-			Arc::new(BlockingVault {
-				entered: entered_sender,
-				release: Mutex::new(release_receiver),
-			}),
-			entered_receiver,
-			release_sender,
-		)
-	}
-
-	fn fixture_state(state: AccountState) -> &'static str {
-		match state {
-			AccountState::Unknown => "unknown",
-			AccountState::Available => "available",
-			AccountState::Depleted => "depleted",
-			_ => panic!("the manual launcher fixture accepts only exercised account states"),
-		}
-	}
-
-	async fn read_fixture_account(
-		store: &PostgresStore,
-		account_id: &AccountId,
-		expected_revision: i64,
-		state: AccountState,
-	) -> AccountMetadata {
-		let account = store.account(account_id).await.unwrap().expect("fixture account exists");
-
-		assert_eq!(account.account_id, *account_id);
-		assert_eq!(account.display_label, "Manual fixture");
-		assert_eq!(account.state, state);
-		assert_eq!(account.revision, expected_revision);
-		assert_eq!(account.metadata, serde_json::json!({"observation": "synthetic_fixture"}));
-
-		account
-	}
-
-	async fn create_fixture_account(
-		owner: &mut Client,
-		store: &PostgresStore,
-		account_id: &AccountId,
-	) -> AccountMetadata {
-		let transaction = owner.transaction().await.unwrap();
-		let locked: bool = transaction
-			.query_one("SELECT decodex.lock_account_routing_universe_exact()", &[])
-			.await
-			.unwrap()
-			.get(0);
-
-		assert!(locked);
-		assert_eq!(
-			transaction
-				.execute(
-					"INSERT INTO decodex.accounts(\
-					 account_id,display_label,state,metadata,enabled\
-					 ) VALUES(\
-					 $1::text::uuid,'Manual fixture','unknown',\
-					 '{\"observation\":\"synthetic_fixture\"}'::jsonb,true)",
-					&[&account_id.as_str()],
-				)
-				.await
-				.unwrap(),
-			1
-		);
-		assert_eq!(
-			transaction
-				.execute(
-					"INSERT INTO decodex.account_routing_order(account_id,position) \
-					 SELECT $1::text::uuid,pg_catalog.count(*)::integer \
-					 FROM decodex.account_routing_order",
-					&[&account_id.as_str()],
-				)
-				.await
-				.unwrap(),
-			1
-		);
-		assert_eq!(
-			transaction
-				.execute(
-					"UPDATE decodex.account_routing_control SET revision=revision+1,\
-					 updated_at=pg_catalog.clock_timestamp() WHERE singleton",
-					&[],
-				)
-				.await
-				.unwrap(),
-			1
-		);
-		transaction.commit().await.unwrap();
-
-		let account = read_fixture_account(store, account_id, 1, AccountState::Unknown).await;
-		let (accounts, routing) = store.read_account_registry_snapshot(512).await.unwrap();
-		let record = accounts
-			.iter()
-			.find(|candidate| candidate.account_id == *account_id)
-			.expect("fixture account is visible");
-
-		assert!(record.enabled);
-		assert_eq!(record.revision, account.revision);
-		assert!(routing.order.contains(account_id));
-
-		account
-	}
-
-	async fn update_fixture_account(
-		owner: &Client,
-		store: &PostgresStore,
-		account_id: &AccountId,
-		expected_revision: i64,
-		state: AccountState,
-	) -> AccountMetadata {
-		let row = owner
-			.query_one(
-				"UPDATE decodex.accounts SET state=$3::text::decodex.account_state,\
-				 revision=revision+1,observed_at=pg_catalog.clock_timestamp(),\
-				 updated_at=pg_catalog.clock_timestamp() \
-				 WHERE account_id=$1::text::uuid AND revision=$2 \
-				 RETURNING revision",
-				&[&account_id.as_str(), &expected_revision, &fixture_state(state)],
-			)
-			.await
-			.unwrap();
-		let revision: i64 = row.get(0);
-
-		assert_eq!(revision, expected_revision + 1);
-		read_fixture_account(store, account_id, revision, state).await
-	}
-
-	async fn assert_readiness_rejections_and_success(
-		owner: &mut Client,
-		store: &PostgresStore,
-		launcher: &ManualAccountLauncher,
-		account_id: &AccountId,
-	) -> AccountMetadata {
-		let unknown = create_fixture_account(owner, store, account_id).await;
-		let rejected_temp = TempDir::new().unwrap();
-		let rejected_marker = rejected_temp.path().join("unexpected-spawn");
-		let rejected = launcher
-			.run_bound(
-				request(
-					account_id,
-					unknown.revision,
-					&rejected_temp,
-					"mark-spawn",
-					Some(&rejected_marker),
-				),
-				&MatchingVault,
-				&mut CapabilityCache::default(),
-			)
-			.await;
-
-		assert!(matches!(rejected, Err(ManualAccountLaunchError::ReadinessRejected)));
-		assert!(!rejected_marker.exists());
-
-		let available = update_fixture_account(
-			owner,
-			store,
-			account_id,
-			unknown.revision,
-			AccountState::Available,
-		)
-		.await;
-		let stale_temp = TempDir::new().unwrap();
-		let stale_marker = stale_temp.path().join("unexpected-stale-spawn");
-		let stale = launcher
-			.run_bound(
-				request(
-					account_id,
-					unknown.revision,
-					&stale_temp,
-					"mark-spawn",
-					Some(&stale_marker),
-				),
-				&MatchingVault,
-				&mut CapabilityCache::default(),
-			)
-			.await;
-
-		assert!(matches!(stale, Err(ManualAccountLaunchError::ReadinessRejected)));
-		assert!(!stale_marker.exists());
-
-		let success_temp = TempDir::new().unwrap();
-		let success = launcher
-			.run_bound(
-				request(account_id, available.revision, &success_temp, "normal", None),
-				&MatchingVault,
-				&mut CapabilityCache::default(),
-			)
-			.await
-			.unwrap();
-
-		assert_eq!(success.account_revision(), available.revision);
-		assert_eq!(success.observation().account_id, *account_id);
-		assert_eq!(launcher.active_capacity(), 0);
-
-		available
-	}
-
-	async fn assert_blocking_vault_releases_postgres(
-		owner: &Client,
-		store: &PostgresStore,
-		launcher: &ManualAccountLauncher,
-		account_id: &AccountId,
-		available: &AccountMetadata,
-	) -> AccountMetadata {
-		let blocked_temp = TempDir::new().unwrap();
-		let (vault, entered, release) = blocking_vault();
-		let blocked_launcher = launcher.clone();
-		let blocked_account = account_id.clone();
-		let available_revision = available.revision;
-		let runtime = Handle::current();
-		let blocked = task::spawn_blocking(move || {
-			runtime.block_on(blocked_launcher.run_bound(
-				request(&blocked_account, available_revision, &blocked_temp, "normal", None),
-				vault.as_ref(),
-				&mut CapabilityCache::default(),
-			))
-		});
-
-		entered.recv_timeout(Duration::from_secs(3)).unwrap();
-
-		assert_eq!(launcher.active_capacity(), 1);
-
-		let depleted = time::timeout(
-			Duration::from_secs(1),
-			update_fixture_account(
-				owner,
-				store,
-				account_id,
-				available.revision,
-				AccountState::Depleted,
-			),
-		)
-		.await
-		.expect("the one-connection pool is free while the vault is blocked");
-
-		release.send(()).unwrap();
-
-		assert!(matches!(
-			time::timeout(Duration::from_secs(5), blocked)
-				.await
-				.expect("released blocking vault must finish bounded fixture work")
-				.unwrap(),
-			Err(ManualAccountLaunchError::ReadinessRejected)
-		));
-		assert_eq!(launcher.active_capacity(), 0);
-
-		update_fixture_account(owner, store, account_id, depleted.revision, AccountState::Available)
-			.await
-	}
-
-	async fn assert_capacity_and_mismatch(
-		launcher: &ManualAccountLauncher,
-		account_id: &AccountId,
-		available: &AccountMetadata,
-	) {
-		let capacity_temp = TempDir::new().unwrap();
-		let (vault, entered, release) = blocking_vault();
-		let capacity_launcher = launcher.clone();
-		let capacity_account = account_id.clone();
-		let capacity_revision = available.revision;
-		let runtime = Handle::current();
-		let occupied = task::spawn_blocking(move || {
-			runtime.block_on(capacity_launcher.run_bound(
-				request(&capacity_account, capacity_revision, &capacity_temp, "normal", None),
-				vault.as_ref(),
-				&mut CapabilityCache::default(),
-			))
-		});
-
-		entered.recv_timeout(Duration::from_secs(3)).unwrap();
-
-		let capacity_rejected = launcher
-			.run_bound(
-				request(account_id, available.revision, &TempDir::new().unwrap(), "normal", None),
-				&MatchingVault,
-				&mut CapabilityCache::default(),
-			)
-			.await;
-
-		assert!(matches!(capacity_rejected, Err(ManualAccountLaunchError::CapacityExhausted)));
-
-		release.send(()).unwrap();
-
-		assert!(
-			time::timeout(Duration::from_secs(5), occupied)
-				.await
-				.expect("released capacity fixture must finish")
-				.unwrap()
-				.is_ok()
-		);
-		assert_eq!(launcher.active_capacity(), 0);
-
-		let mismatch_temp = TempDir::new().unwrap();
-		let mismatch = launcher
-			.run_bound(
-				request(account_id, available.revision, &mismatch_temp, "account-switch", None),
-				&MatchingVault,
-				&mut CapabilityCache::default(),
-			)
-			.await;
-
-		assert!(matches!(
-			mismatch,
-			Err(ManualAccountLaunchError::Probe(ProbeError::Supervision(
-				SupervisionError::AccountChanged
-			)))
-		));
-		assert_eq!(launcher.active_capacity(), 0);
 	}
 }

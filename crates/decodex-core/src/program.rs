@@ -187,12 +187,15 @@ impl ProgramState {
 	/// Whether this state can transition to `next`.
 	pub const fn can_transition_to(self, next: Self) -> bool {
 		match self {
-			Self::Active =>
-				matches!(next, Self::NeedsAttention | Self::Blocked | Self::Paused | Self::Retired),
-			Self::NeedsAttention =>
-				matches!(next, Self::Active | Self::Blocked | Self::Paused | Self::Retired),
-			Self::Blocked =>
-				matches!(next, Self::Active | Self::NeedsAttention | Self::Paused | Self::Retired),
+			Self::Active => {
+				matches!(next, Self::NeedsAttention | Self::Blocked | Self::Paused | Self::Retired)
+			},
+			Self::NeedsAttention => {
+				matches!(next, Self::Active | Self::Blocked | Self::Paused | Self::Retired)
+			},
+			Self::Blocked => {
+				matches!(next, Self::Active | Self::NeedsAttention | Self::Paused | Self::Retired)
+			},
 			Self::Paused => matches!(next, Self::Active | Self::Retired),
 			Self::Retired => false,
 		}
