@@ -11,9 +11,9 @@ The current milestone uses one bundled SQLite database. The fixed database is
 migrations, credential table, adapters, transfer tool, and restart tests. `decodexd` is
 the only normal reader and writer. GPUI and CLI remain same-UID protocol clients.
 
-This authority supersedes the former PostgreSQL latest-schema reset and the intermediate
-redb credential-vault target. Those implementations can remain as inert transfer or
-historical evidence, but neither is a normal runtime dependency.
+This authority supersedes the former server-database reset and the intermediate redb
+credential-vault target. The server adapter is removed. redb remains linked only by the
+one-shot transfer tool.
 
 ## Start here
 
@@ -26,7 +26,7 @@ historical evidence, but neither is a normal runtime dependency.
 - [SQLite implementation evidence](evidence/sqlite-local-product.md): current automated
   evidence and the remaining live cutover gate.
 - [Historical account lifecycle contract](specs/account-lifecycle-authority.md): retained
-  domain semantics whose former PostgreSQL/redb ownership is superseded.
+  domain semantics whose former server-store and redb ownership is superseded.
 - [ProcessGeneration authority](specs/process-generation-authority.md): durable pre-spawn
   fences and positive-only process evidence.
 - [ProviderAttempt authority](specs/provider-attempt-authority.md): one external turn
@@ -58,15 +58,16 @@ blocks that account.
 The runtime keeps the mature Codex app-server protocol and safety harness. It does not
 replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn
 fencing, one dispatch authorization, positive-only terminal evidence, and restart-safe
-ambiguity handling.
+ambiguity handling. One Conversation keeps its initially selected account even when the
+global routing default changes. Independent Conversations can use different accounts.
 
 ## Deferred product surfaces
 
 ManagedRepository, WorkItem board persistence, Reset Card consumption, execution-decision
 queries, automation, ManagedRun, ontology projection, graph visualization, remote
 workers, and multi-machine deployment are not partially ported. Current protocol calls
-for the first four return typed unavailable results. They do not activate PostgreSQL as a
-fallback.
+for the first four return typed unavailable results. They do not activate a legacy
+storage fallback.
 
 Ontology and graph engineering remain central to the product direction. They belong
 above the proven conversation/runtime facts: the graph must explain and coordinate real
@@ -87,8 +88,6 @@ event history.
 - `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
-- `crates/decodex-postgres/` is excluded historical source. It is not a workspace member
-  or supported runtime owner.
 
 ## First commands
 
@@ -120,7 +119,7 @@ decodexd validate-local-database --root ROOT
   reports.
 - Do not share the SQLite file over a network filesystem.
 - Keep migrations ordered, embedded, immutable after release, and transactional.
-- Preserve old PostgreSQL, redb, and Keychain source data until a separate verified
+- Preserve retained rollback data, the redb source, and Keychain records until a verified
   rollback-window decision authorizes deletion.
 - Treat multi-machine deployment as a later server-mode architecture, not a generic
   database abstraction added to the desktop product now.

@@ -102,7 +102,7 @@ cannot complete more than one receipt.
 CaptureFile and CaptureTree wait for their linked publication receipts. PublishFile
 and PublishTree retain paired-receipt consumption dependencies for pruning.
 OwnedRoot waits for the linked tree publication before retirement and pruning.
-Dependency completion is a PostgreSQL-owned immutable fact.
+Dependency completion is a former server store-owned immutable fact.
 
 The private completion helper validates the exact linked operation, plan, receipt,
 cluster roster, artifact kind, manifest reference, semantic digest, and pair in one
@@ -220,7 +220,7 @@ V23 adds exactly the 21 relations and 24 functions in
 functions, 22 are runtime-executable and 2 are private. The final exact totals are
 99 relations, 185 function contracts, 76 runtime-executable functions, 67 retained
 safety functions, and 142 retained triggers. V23 adds no sequence, trigger
-function, caller-facing PostgreSQL enum, service, daemon, crate, or dependency.
+function, caller-facing former server store enum, service, daemon, crate, or dependency.
 
 The configured migration principal owns every V23 object. `PUBLIC` has no object
 or function authority. Runtime has schema usage and execute only on the 22 named
@@ -357,7 +357,7 @@ references. CAS GC then starts its independent observation period.
 
 <a id="rule-PA-PERSIST-0007"></a>
 **[rule:PA-PERSIST-0007]** V1 has no artifact export, backup API, backup receipt,
-or cross-medium atomic online snapshot. PostgreSQL-only, CAS-only, and
+or cross-medium atomic online snapshot. former server store-only, CAS-only, and
 uncoordinated paired copies are not artifact-consistent. Only an external cold copy
 after daemon shutdown and writer/GC quiescence can be described as consistent.
 

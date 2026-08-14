@@ -110,14 +110,14 @@ impl BlobStore {
 		Ok(bytes)
 	}
 
-	/// Absolute owned path for PostgreSQL artifact metadata. The path is derived only
+	/// Absolute owned path for durable-store artifact metadata. The path is derived only
 	/// from the validated root and digest, never from caller path text.
 	pub fn path_for(&self, hash: BlobHash) -> PathBuf {
 		self.blob_path(hash).1
 	}
 
 	/// Return one bounded deterministic shard page of canonical grace-aged files.
-	/// PostgreSQL authority must prove each candidate unreferenced before removal and
+	/// durable-store authority must prove each candidate unreferenced before removal and
 	/// pass the returned cursor to make repeated calls cover the complete namespace.
 	pub fn old_inventory(
 		&self,
@@ -202,7 +202,7 @@ impl BlobStore {
 		Ok(())
 	}
 
-	/// Recheck age and remove one candidate. Call only while holding the shared PostgreSQL
+	/// Recheck age and remove one candidate. Call only while holding the shared durable-store
 	/// blob-writer/collector advisory lock and after proving no database reference exists.
 	pub fn remove_orphan_if_old(
 		&self,

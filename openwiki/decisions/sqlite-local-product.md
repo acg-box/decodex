@@ -10,7 +10,7 @@ The first usable Decodex product is a local desktop application with one daemon 
 It uses bundled SQLite as its only normal product-state authority. The schema and its
 evolution owner live under `database/`.
 
-PostgreSQL is not packaged, supervised, configured, or contacted by a normal install.
+No separate database server is packaged, supervised, configured, or contacted by a normal install.
 redb is not a runtime credential store. It is linked only by the separate one-shot
 account transfer executable. Keychain is not required for normal account credentials.
 
@@ -28,7 +28,7 @@ The first product deployment has these facts:
 3. GPUI, menu bar, and CLI clients communicate through one same-UID protocol.
 4. Multi-machine workers are a possible future product, not a current requirement.
 
-Under these facts, a PostgreSQL server adds packaging, bootstrap, roles, sockets,
+Under these facts, a separate server database adds packaging, bootstrap, roles, sockets,
 supervision, credentials, and failure modes without adding useful concurrency or remote
 authority. SQLite is the smaller complete mechanism.
 
@@ -44,7 +44,7 @@ authority. SQLite is the smaller complete mechanism.
   limited to the daemon credential adapter and zeroizing memory values.
 - The schema has an ordered migration ledger. Fresh install and upgrade execute the same
   embedded migrations in `BEGIN IMMEDIATE` transactions and verify migration digests.
-- There is no backend trait, pool, dual-write system, or SQLite/PostgreSQL switch.
+- There is no backend trait, pool, dual-write system, or storage-engine switch.
 - A future multi-machine product must define a separate server-mode authority and a data
   transfer boundary. It must not make the desktop database a shared network file.
 
@@ -58,11 +58,11 @@ The old running daemon supplies account, quota, and routing facts without creden
 After a graceful stop, a signed transfer tool opens the fixed retired redb vault read
 only, validates exact account and credential bindings, and commits one SQLite transaction.
 The transfer is idempotent and value-suppressing. It does not accept an arbitrary source
-path and does not delete the PostgreSQL cluster, redb vault, or Keychain records.
+path and does not delete retained rollback data, the redb vault, or Keychain records.
 
 ## Scope control
 
 This decision does not port every planned factory domain. The first proof is one real
 Quick Task conversation that returns an assistant response and continues on the same
 Codex thread after daemon restart. Deferred domains return typed unavailable responses
-instead of keeping PostgreSQL alive.
+instead of keeping a legacy backend alive.

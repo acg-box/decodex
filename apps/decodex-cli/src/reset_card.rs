@@ -850,7 +850,6 @@ expected_server_identity = "{SERVER_ID}""#
 		let config = format!(
 			r#"version = 1
 active_profile = "selected"
-postgres = {{}}
 cache = {{}}
 
 [profiles.selected]

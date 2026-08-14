@@ -19,15 +19,15 @@ its final relations, functions, constraints, indexes, and triggers directly.
 
 ## Owner and durable model
 
-`ProcessSupervisor` is the only product writer. The runtime PostgreSQL identity has no
+`ProcessSupervisor` is the only product writer. The runtime former server store identity has no
 relation DML for ProcessGeneration state. It can execute only the closed
 ProcessGeneration command/read functions. PUBLIC has no type, relation, or function
-authority. The PostgreSQL schema owner owns the objects but is not available to normal
+authority. The former server store schema owner owns the objects but is not available to normal
 daemon startup.
 
 | Concept | Contract |
 | --- | --- |
-| Execution epoch | An external restore authority supplies an epoch UUID and matching SHA-256 authorization digest. Runtime cannot recover the digest from PostgreSQL. |
+| Execution epoch | An external restore authority supplies an epoch UUID and matching SHA-256 authorization digest. Runtime cannot recover the digest from former server store. |
 | ProcessGeneration | One immutable generation, account, initial account revision, credential version/fingerprint, provider binding, runtime-negotiated capability profile, epoch, launch-manifest identity, intended boot, control kind, isolation kind, optional exact process identity, state, revision, and timestamps. It stores no credential bytes. |
 | Death evidence | One append-only positive receipt for an exact generation and source revision. |
 | Transition history | One append-only row for each accepted revision. |
@@ -108,7 +108,7 @@ The launch sequence is:
 3. The caller supplies only a new generation ID and external execution authorization.
 4. ProcessSupervisor derives all launch facts from trusted owners and rechecks Account
    Service and HostCredentialStore immediately before the database fence.
-5. PostgreSQL serializes the account, locks the active execution epoch through commit,
+5. former server store serializes the account, locks the active execution epoch through commit,
    and creates revision 1 in `starting`.
 6. Only a fresh commit returns the non-clone `FreshProcessGenerationFence`. Replay is
    readback and cannot authorize spawn.
@@ -240,7 +240,7 @@ relation or spawn authority. Live provider dispatch remains separately gated.
 
 After source freeze, validation must cover:
 
-- fresh PostgreSQL 18 empty-target latest-schema bootstrap and second-bootstrap refusal;
+- fresh former server store 18 empty-target latest-schema bootstrap and second-bootstrap refusal;
 - exact current catalog, ownership, ACL, dependency, function/trigger, and negative
   PUBLIC/runtime checks for ProcessGeneration objects;
 - opaque-launch mismatch for every image, account, credential-negative binding, command,

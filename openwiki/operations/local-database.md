@@ -51,7 +51,7 @@ The macOS installer:
 5. starts the daemon; and
 6. runs doctor and account-list readback.
 
-It does not install PostgreSQL, create roles or databases, manage a socket directory, or
+It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.
 
 ## Existing account transfer
@@ -74,7 +74,7 @@ Output contains only the outcome, count, digest, and source-retained fact.
 
 ## Rollback retention
 
-The installer and transfer tool do not delete the old PostgreSQL cluster, redb file, or
+The installer and transfer tool do not delete the old former server store cluster, redb file, or
 Keychain records. They are inert rollback sources. Delete them only after a separate
 decision confirms live account inventory, first response, daemon restart, later response,
 and an accepted observation window.

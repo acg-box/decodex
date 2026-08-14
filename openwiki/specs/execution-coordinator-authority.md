@@ -19,7 +19,7 @@ decision, RuntimeSession decision, process state, or ProviderAttempt state.
 | ManagedRun authority | ManagedRun lifecycle, execution assignment, wait state, review, acceptance, and completion. |
 | Routing Snapshot | Closed consumer-specific authority: initial `conversation_account_registry` `L0` facts or `managed_run_project_policy` `L6` policy/evidence facts; never a merged shape. |
 | Routing Decision | Sole selector for selecting snapshots, exact shape-specific cause projection, and immutable non-selecting `conversation_continuation` binding. |
-| Continuation Plan | First-session planning plus same-thread or Context Pack continuation that retains the original Quick Task account/profile binding; PostgreSQL-only explicit-successor evidence. |
+| Continuation Plan | First-session planning plus same-thread or Context Pack continuation that retains the original Quick Task account/profile binding; former server store-only explicit-successor evidence. |
 | RuntimeSession Thread Establishment | Exact thread request fence, start binding, activation, and acknowledgement. |
 | ProcessSupervisor | ProcessGeneration intent, live fence, positive-only death evidence, and account-local quarantine. |
 | ProviderAttemptService | Atomic attempt binding, dispatch authorization, provider-effect state, positive evidence, restore projection, and reconciliation. |
@@ -199,7 +199,7 @@ only after positive proof of definite pre-effect refusal. The proof excludes eve
 state that may have created a child, thread fence/start/bind, and prepared, authorized, or
 unknown ProviderAttempt. Ambiguous work remains active and returns `Unknown`.
 
-Explicit successor remains PostgreSQL-only non-dispatch evidence. Before any write it
+Explicit successor remains former server store-only non-dispatch evidence. Before any write it
 locks the Turn named by the selected route and requires the same Conversation/source
 RuntimeSession, `failed`, revision 2. It has no protocol field, command, runtime grant,
 facade, fallback, or wake path.
@@ -256,7 +256,7 @@ until the Candidate-5 gate accepts the complete composition.
 
 After source freeze, validation must cover:
 
-- fresh PostgreSQL 18 latest-schema bootstrap, second-bootstrap refusal, and runtime-only
+- fresh former server store 18 latest-schema bootstrap, second-bootstrap refusal, and runtime-only
   daemon startup with zero DDL and no schema-owner credential;
 - exact current catalog/authority for all routing, continuation, Conversation,
   ProcessGeneration, ProviderAttempt, and read-only projection objects;

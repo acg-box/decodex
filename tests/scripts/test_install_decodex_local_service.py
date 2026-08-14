@@ -118,15 +118,11 @@ class LocalServiceInstallerTests(unittest.TestCase):
     def test_source_has_one_direct_sqlite_install_path(self) -> None:
         source = SCRIPT_PATH.read_text(encoding="utf-8")
         for retired_term in (
-            '"--postgres"',
             '"--initdb"',
             '"--pg-isready"',
-            '"--psql"',
             '"supervise-local"',
             "initialize_cluster",
-            "start_temporary_postgres",
             "ensure_roles_and_database",
-            "POSTGRES_RUNTIME_ROLE",
         ):
             with self.subTest(term=retired_term):
                 self.assertNotIn(retired_term, source)
@@ -134,14 +130,11 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertIn('"initialize-local-database"', source)
         self.assertIn('"validate-local-database"', source)
 
-    def test_parser_exposes_no_postgres_arguments(self) -> None:
+    def test_parser_exposes_only_current_arguments(self) -> None:
         args = self.module.parse_args(["--no-launch"])
         self.assertTrue(args.no_launch)
-        for field in ("postgres", "initdb", "pg_isready", "psql"):
+        for field in ("initdb", "pg_isready"):
             self.assertFalse(hasattr(args, field))
-        with contextlib.redirect_stderr(io.StringIO()):
-            with self.assertRaises(SystemExit):
-                self.module.parse_args(["--postgres", "/private/retired/postgres"])
 
     def test_install_paths_are_local_database_owned(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
@@ -170,7 +163,6 @@ class LocalServiceInstallerTests(unittest.TestCase):
 
         self.assertEqual(config_document["active_profile"], "local")
         self.assertEqual(config_document["profiles"]["local"]["policy"], "same_uid")
-        self.assertNotIn("postgres", config_document)
         self.assertNotIn("database", config_document)
         self.assertEqual(
             launch_agent["ProgramArguments"],

@@ -177,7 +177,7 @@ Exact production ownership is:
   paths in `authority/inventories.json#/issue_path_owners/D`.
 
 A1 owns pure values, codec, validity, digests, plans, reducer, and reason codes. B
-owns V23, PostgreSQL records/transitions, receipts, CAS/reference coordination,
+owns V23, former server store records/transitions, receipts, CAS/reference coordination,
 dependencies, debts, retention, GC, ACL, fencing, and the fixed SQL locator. C owns
 descriptor acquisition, capture, filesystem effects, repair, sync, guard, boot,
 collection, and observation. D owns composition, admission-before-spawn,
@@ -185,7 +185,7 @@ supervision, maintenance, restart, controllers, status, V1.3 protocol, doctor,
 CLI, and DTO substitution.
 
 No pre-freeze owner changes a Cargo manifest, `Cargo.lock`, root workspace
-manifest, `Makefile.toml`, the PostgreSQL wrapper, the XY-1368 runbook, or a test or
+manifest, `Makefile.toml`, the former server store wrapper, the XY-1368 runbook, or a test or
 fixture source. A required dependency, alias, third task, second preparation task,
 public command family, or test framework is a stop.
 
@@ -216,7 +216,7 @@ a materially changed condition or evidence design, and a new candidate identity.
 **[rule:PA-FREEZE-0001]** CORE-FREEZE begins only after D, XY-1369, XY-1370, and
 XY-1363 complete by source inspection; the integrated production and V23 migration
 source is present; every path transfer has one final owner; every changed embedded
-PostgreSQL statement is in the fixed locator; the superseded production
+former server store statement is in the fixed locator; the superseded production
 preparation APIs are absent; the one stale ACC-owned test caller is identified;
 and no other obsolete caller or test-delegated product invariant exists.
 
@@ -239,11 +239,11 @@ at most these 15 paths:
 
 - `crates/decodex-core/tests/private_artifact_codec.rs`
 - `crates/decodex-core/tests/private_artifact_reducer.rs`
-- `crates/decodex-postgres/tests/postgres_store.rs`
-- `crates/decodex-postgres/tests/postgres_store/private_artifacts.rs`
+- `crates/decodex-server-store/tests/server-store_store.rs`
+- `crates/decodex-server-store/tests/server-store_store/private_artifacts.rs`
 - `crates/decodex-core/tests/private_artifact_blob_gc.rs`
-- `scripts/vnext/postgres_store_test.py`
-- `tests/scripts/test_postgres_authority_capture.py`
+- `scripts/vnext/server-store_store_test.py`
+- `tests/scripts/test_server-store_authority_capture.py`
 - `crates/decodex-runtime/src/private_artifact/tests.rs`
 - `crates/decodex-runtime/tests/private_artifact_integration.rs`
 - `crates/decodex-runtime/tests/bootstrap_doctor.rs`
@@ -254,13 +254,13 @@ at most these 15 paths:
 - `openwiki/operations/xy-1368-retained-title-validation.md`
 
 This is a maximum, not a required edit list. The mandatory delivery-retirement
-slice is exactly the PostgreSQL integration test, PostgreSQL wrapper, task runner,
+slice is exactly the former server store integration test, former server store wrapper, task runner,
 and XY-1368 runbook. An unused optional test path stays unchanged. No Cargo
 manifest or lockfile is in scope.
 
 <a id="rule-PA-ACC-0002"></a>
 **[rule:PA-ACC-0002]** ACC adds the minimum high-value acceptance source for
-architecture, authority, Rust/PostgreSQL codec agreement, `Reason(8,6)`, V22
+architecture, authority, Rust/former server store codec agreement, `Reason(8,6)`, V22
 preservation, V23 and ACL, restart/recovery, guard/boot integration without
 re-proving D0a, accepted deferred cases, one representative end-to-end flow,
 minimum package integrity, integrated retained-title semantics, and one consumer
@@ -274,7 +274,7 @@ duplicate or implementation-detail assertions, test-count targets, new
 dependencies/frameworks, new command families, package-specific checkers,
 test-only production visibility, and command-patch-command loops.
 
-Minimum semantic groups are model/codec, reducer, PostgreSQL authority, GC,
+Minimum semantic groups are model/codec, reducer, former server store authority, GC,
 executor, runtime, protocol/CLI, architecture, and one prepare-to-terminal flow.
 Package-integrity assertions can check file presence, fixed TSV/JSON shapes, raw
 manifest hashes, row order, unique IDs, owner references, and V22 snapshot hashes.
@@ -284,7 +284,7 @@ They cannot duplicate semantic constants or decide package acceptance.
 
 <a id="rule-PA-PREP-0001"></a>
 **[rule:PA-PREP-0001]** B adds one production-compiled, non-test-only fixed
-locator in `private_artifacts.rs`, re-exported through PostgreSQL `lib.rs`:
+locator in `private_artifacts.rs`, re-exported through former server store `lib.rs`:
 
 ```rust
 pub struct VNextPostgresPreparationSourceV1 {
@@ -292,11 +292,11 @@ pub struct VNextPostgresPreparationSourceV1 {
     pub sql: &'static str,
 }
 
-pub fn vnext_postgres_preparation_sources_v1(
+pub fn vnext_server-store_preparation_sources_v1(
 ) -> &'static [VNextPostgresPreparationSourceV1];
 ```
 
-The locator contains every embedded PostgreSQL statement added or changed from the
+The locator contains every embedded former server store statement added or changed from the
 accepted base through CORE-FREEZE, including the five retained V22 statements.
 Each source occurs once and rows sort lexically by stable
 `module::CONST_IDENTIFIER`. `sql` references the production constant and does not
@@ -311,31 +311,31 @@ one of those constants, it updates the same in-module reference set under an
 explicit sequential path transfer before CORE-FREEZE. A later embedded SQL source
 outside the locator stops work and returns to B; ACC cannot repair it.
 
-### Distinct canonical PostgreSQL tasks
+### Distinct canonical former server store tasks
 
 <a id="rule-PA-PREP-0002"></a>
 **[rule:PA-PREP-0002]** ACC owns one mechanical task:
 
 ```toml
-[tasks.check-vnext-postgres-preparation]
+[tasks.check-vnext-server-store-preparation]
 workspace = false
 command = "python3"
 args = [
-    "scripts/vnext/postgres_store_test.py",
-    "--prepare-vnext-postgres",
+    "scripts/vnext/server-store_store_test.py",
+    "--prepare-vnext-server-store",
 ]
 ```
 
-It creates one private PostgreSQL 18 cluster, checks and applies the complete exact
+It creates one private former server store 18 cluster, checks and applies the complete exact
 V1-V23 ledger, requires terminal migration 23 named
 `private_artifact_authority`, provisions runtime, gets sources only from the fixed
 locator, calls `Client::prepare` once for every source without executing a prepared
 statement, collects all possible source results, emits schema/configured-authority
 digests, tears down, and emits one stable report.
 
-The outer schema is `decodex/postgres-preparation-stage-report/1`, mode
-`vnext_postgres_preparation`. Inner stages use
-`decodex/postgres-preparation-stage/1` and are `cluster_preflight`,
+The outer schema is `decodex/server-store-preparation-stage-report/1`, mode
+`vnext_server-store_preparation`. Inner stages use
+`decodex/server-store-preparation-stage/1` and are `cluster_preflight`,
 `migration_syntax`, `changed_embedded_sql_prepare`,
 `generated_authority_inventory`, `teardown`, and `final_report`. The wrapper must
 not copy a source list, assume a count of five, parse Rust to discover SQL, select
@@ -351,7 +351,7 @@ rename, or second preparation task.
 workspace = false
 command = "python3"
 args = [
-    "scripts/vnext/postgres_store_test.py",
+    "scripts/vnext/server-store_store_test.py",
     "--focus-retained-title-core",
 ]
 ```
@@ -362,11 +362,11 @@ entries, requires terminal V23 `private_artifact_authority`, requires V22
 runs the retained-title semantic boundary against that integrated schema. It keeps
 the accepted V22 two-effect protocol and authority assertions.
 
-The inner receipt is `decodex/postgres-retained-title-acceptance/2`. It records
+The inner receipt is `decodex/server-store-retained-title-acceptance/2`. It records
 first version 1, last/terminal version 23, count 23, terminal name, retained-title
 version 22 and name, ordered-ledger digest, V22 semantic result, authority and
 architecture digests, environment/command identity, and final status. The outer
-schema is `decodex/postgres-retained-title-stage-report/2`; its mode remains
+schema is `decodex/server-store-retained-title-stage-report/2`; its mode remains
 `retained_title_boundary`.
 
 The mechanical and semantic tasks do not call each other. Sharing one wrapper does
@@ -383,21 +383,21 @@ another row. Base locations are bound to
 
 | ID | Obsolete identifier or equivalent | Base occurrence classification | Owner and action | Replacement | Permitted historical evidence |
 | --- | --- | --- | --- | --- | --- |
-| `RET-01` | `prepare_retained_title_sql` | Callable product definition and delegation at `crates/decodex-postgres/src/experiments.rs:32` and `crates/decodex-postgres/src/lib.rs:221`; remove | B: delete function and sole-purpose visibility/imports | Fixed locator; ACC prepares each locator entry | None |
-| `RET-02` | `PostgresStore::prepare_retained_title_sql_fixture` | Callable test-support definition at `crates/decodex-postgres/src/lib.rs:218` and test call at `crates/decodex-postgres/tests/postgres_store.rs:445`; remove | B: delete fixture; ACC replaces its one caller | Direct test consumption of fixed locator | None |
-| `RET-03` | `postgres_retained_title_sql_preparation_contract` | Test caller at `crates/decodex-postgres/tests/postgres_store.rs:438` and wrapper selector at `scripts/vnext/postgres_store_test.py:4153`; rewrite | ACC: replace both ends atomically | Integrated locator-driven preparation contract | None |
-| `RET-04` | `RETAINED_TITLE_SQL_SOURCES` | Wrapper inventory and consumers at `scripts/vnext/postgres_store_test.py:229,4158-4159`; remove | ACC: delete list and count assumption | Rust locator is sole inventory | None |
-| `RET-05` | `RETAINED_TITLE_PREPARATION_DATABASE` | Wrapper database constant and consumers at `scripts/vnext/postgres_store_test.py:138,2203,4122-4132,4149`; rename and generalize | ACC: replace in one wrapper cutover | Generic V1-V23 preparation database identity | None |
-| `RET-06` | `prepare_retained_title_migrations` | Wrapper function/call at `scripts/vnext/postgres_store_test.py:4119,6159`; replace | ACC: rewrite for exact integrated ledger | V1-V23 migration preparation stage | None |
-| `RET-07` | `prepare_retained_title_embedded_sql` | Wrapper function/call at `scripts/vnext/postgres_store_test.py:4148,6165`; replace | ACC: rewrite for all locator sources | Locator-driven SQL preparation stage | None |
-| `RET-08` | `prepare_retained_title_authority_inventory` | Wrapper function/call at `scripts/vnext/postgres_store_test.py:2190,6171`; replace | ACC: generalize authority inventory stage | Generic generated-authority inventory stage | None |
-| `RET-09` | `check-vnext-retained-title-preparation` | Task audit/definition at `Makefile.toml:22,61` and command runbook at `openwiki/operations/xy-1368-retained-title-validation.md:10`; remove | ACC: atomic task, wrapper, test, runbook cutover | `check-vnext-postgres-preparation` | None |
-| `RET-10` | `--prepare-retained-title-core` | Task argument and wrapper parser/usage at `Makefile.toml:66` and `scripts/vnext/postgres_store_test.py:5874,5900`; remove | ACC: replace parser and task argument without alias | `--prepare-vnext-postgres` | None |
-| `RET-11` | `decodex/retained-title-preparation-stage/1` | Current wrapper emission at `scripts/vnext/postgres_store_test.py:4141,4156`; remove | ACC: replace all current executable emissions | `decodex/postgres-preparation-stage/1` | None |
-| `RET-12` | `retained_title_preparation` | Current wrapper final-report mode at `scripts/vnext/postgres_store_test.py:7633`; remove | ACC: replace generic preparation mode | `vnext_postgres_preparation` | None |
-| `RET-13` | `decodex/postgres-retained-title-acceptance/1` | Current wrapper emission at `scripts/vnext/postgres_store_test.py:2288`; historical evidence at freeze page line 9 | ACC: current executable source uses version 2 | `decodex/postgres-retained-title-acceptance/2` | Only `openwiki/specs/xy-1368-retained-title-freeze.md` as immutable V22 historical evidence |
-| `RET-14` | `decodex/postgres-retained-title-stage-report/1` | Current wrapper emission at `scripts/vnext/postgres_store_test.py:7628`; historical evidence at freeze page line 10 | ACC: current executable source uses version 2 | `decodex/postgres-retained-title-stage-report/2` | Only `openwiki/specs/xy-1368-retained-title-freeze.md` as immutable V22 historical evidence |
-| `RET-15` | `V14-V22 retained-title core` | Current wrapper acceptance at `scripts/vnext/postgres_store_test.py:2246` and current runbook scope at `openwiki/operations/xy-1368-retained-title-validation.md:3`; rewrite | ACC: state integrated ledger truthfully | Retained-title semantics anchored at V22 on V1-V23 | Freeze page can describe accepted V22 history but is not command authority |
+| `RET-01` | `prepare_retained_title_sql` | Callable product definition and delegation at `crates/decodex-server-store/src/experiments.rs:32` and `crates/decodex-server-store/src/lib.rs:221`; remove | B: delete function and sole-purpose visibility/imports | Fixed locator; ACC prepares each locator entry | None |
+| `RET-02` | `PostgresStore::prepare_retained_title_sql_fixture` | Callable test-support definition at `crates/decodex-server-store/src/lib.rs:218` and test call at `crates/decodex-server-store/tests/server-store_store.rs:445`; remove | B: delete fixture; ACC replaces its one caller | Direct test consumption of fixed locator | None |
+| `RET-03` | `server-store_retained_title_sql_preparation_contract` | Test caller at `crates/decodex-server-store/tests/server-store_store.rs:438` and wrapper selector at `scripts/vnext/server-store_store_test.py:4153`; rewrite | ACC: replace both ends atomically | Integrated locator-driven preparation contract | None |
+| `RET-04` | `RETAINED_TITLE_SQL_SOURCES` | Wrapper inventory and consumers at `scripts/vnext/server-store_store_test.py:229,4158-4159`; remove | ACC: delete list and count assumption | Rust locator is sole inventory | None |
+| `RET-05` | `RETAINED_TITLE_PREPARATION_DATABASE` | Wrapper database constant and consumers at `scripts/vnext/server-store_store_test.py:138,2203,4122-4132,4149`; rename and generalize | ACC: replace in one wrapper cutover | Generic V1-V23 preparation database identity | None |
+| `RET-06` | `prepare_retained_title_migrations` | Wrapper function/call at `scripts/vnext/server-store_store_test.py:4119,6159`; replace | ACC: rewrite for exact integrated ledger | V1-V23 migration preparation stage | None |
+| `RET-07` | `prepare_retained_title_embedded_sql` | Wrapper function/call at `scripts/vnext/server-store_store_test.py:4148,6165`; replace | ACC: rewrite for all locator sources | Locator-driven SQL preparation stage | None |
+| `RET-08` | `prepare_retained_title_authority_inventory` | Wrapper function/call at `scripts/vnext/server-store_store_test.py:2190,6171`; replace | ACC: generalize authority inventory stage | Generic generated-authority inventory stage | None |
+| `RET-09` | `check-vnext-retained-title-preparation` | Task audit/definition at `Makefile.toml:22,61` and command runbook at `openwiki/operations/xy-1368-retained-title-validation.md:10`; remove | ACC: atomic task, wrapper, test, runbook cutover | `check-vnext-server-store-preparation` | None |
+| `RET-10` | `--prepare-retained-title-core` | Task argument and wrapper parser/usage at `Makefile.toml:66` and `scripts/vnext/server-store_store_test.py:5874,5900`; remove | ACC: replace parser and task argument without alias | `--prepare-vnext-server-store` | None |
+| `RET-11` | `decodex/retained-title-preparation-stage/1` | Current wrapper emission at `scripts/vnext/server-store_store_test.py:4141,4156`; remove | ACC: replace all current executable emissions | `decodex/server-store-preparation-stage/1` | None |
+| `RET-12` | `retained_title_preparation` | Current wrapper final-report mode at `scripts/vnext/server-store_store_test.py:7633`; remove | ACC: replace generic preparation mode | `vnext_server-store_preparation` | None |
+| `RET-13` | `decodex/server-store-retained-title-acceptance/1` | Current wrapper emission at `scripts/vnext/server-store_store_test.py:2288`; historical evidence at freeze page line 9 | ACC: current executable source uses version 2 | `decodex/server-store-retained-title-acceptance/2` | Only `openwiki/specs/xy-1368-retained-title-freeze.md` as immutable V22 historical evidence |
+| `RET-14` | `decodex/server-store-retained-title-stage-report/1` | Current wrapper emission at `scripts/vnext/server-store_store_test.py:7628`; historical evidence at freeze page line 10 | ACC: current executable source uses version 2 | `decodex/server-store-retained-title-stage-report/2` | Only `openwiki/specs/xy-1368-retained-title-freeze.md` as immutable V22 historical evidence |
+| `RET-15` | `V14-V22 retained-title core` | Current wrapper acceptance at `scripts/vnext/server-store_store_test.py:2246` and current runbook scope at `openwiki/operations/xy-1368-retained-title-validation.md:3`; rewrite | ACC: state integrated ledger truthfully | Retained-title semantics anchored at V22 on V1-V23 | Freeze page can describe accepted V22 history but is not command authority |
 | `RET-16` | V22-terminal ledger predicate | Current wrapper requires 22 entries and terminal migration 22; current runbook repeats the old preparation scope | ACC: require exact 23-entry integrated ledger and explicit V22 semantic position | V23 terminal predicate plus V22 semantic predicate | Freeze page can preserve the historical V22-terminal acceptance fact |
 | `RET-17` | Five-source-only preparation capability | Current product helper/fixture, test, wrapper source tuple, count, and runbook describe a five-statement preparation boundary | B removes production surface; ACC removes delivery surface and renamed equivalents | One complete fixed production locator | No callable or current-command historical exception |
 
@@ -456,12 +456,12 @@ exact CORE-FREEZE-plus-ACC candidate. From its absolute Git top level, use the
 fixed nonsecret prefix
 `SCCACHE_DISABLE=1 DEVELOPER_DIR=/Applications/Xcode-beta.app/Contents/Developer`
 and run, in order, `cargo make fmt`, `cargo make check-rust`, and
-`cargo make check-vnext-postgres-preparation`. The separate initial aggregate is
+`cargo make check-vnext-server-store-preparation`. The separate initial aggregate is
 then `cargo make check`. The retained-title semantic task is not on the success
 path.
 
 Receipts bind working directory, exact tasks/arguments/prefix, Rust 1.97.0,
-formatter pin `nightly-2026-07-16`, task-runner hash, PostgreSQL 18 identities,
+formatter pin `nightly-2026-07-16`, task-runner hash, former server store 18 identities,
 temporary-root choice, noninteractive capture, exit status, complete output bytes
 and hashes, and pre/post tree identity. A supplied temporary root is a preselected
 short existing absolute real nonsymlinked directory. Do not change it after failure
@@ -486,7 +486,7 @@ identity. Test/wrapper/task/runbook repair creates a new ACC identity. A
 cross-boundary repair creates both.
 
 After that batch, run one existing canonical task that covers the complete affected
-boundary: `test-rust`, `test`, `test-vnext-postgres-store`,
+boundary: `test-rust`, `test`, `test-vnext-server-store-store`,
 `test-vnext-retained-title-core`, `test-vnext-architecture`,
 `test-vnext-cli-diagnostics`, `check-rust`, `lint`, or `check-node`. Use the
 smallest whole boundary; use `test` for cross-test failures. Do not add filters,

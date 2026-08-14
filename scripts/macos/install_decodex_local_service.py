@@ -5,7 +5,7 @@ The installer retains the existing signature, namespace, and graceful-drain
 boundaries. Fresh installs initialize only the bundled SQLite database. During a
 bounded upgrade, it captures the running daemon's credential-negative account
 snapshot, stops the old service, and invokes the one-shot retired-vault transfer.
-It never deletes the retired vault or PostgreSQL files.
+It never deletes retained rollback data.
 """
 
 from __future__ import annotations

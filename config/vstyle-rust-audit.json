@@ -22,7 +22,7 @@
   },
   "accepted_baseline": {
     "checked_files": 227,
-    "findings": 184,
+    "findings": 178,
     "manual": 7
   },
   "rust_rules": [
@@ -414,41 +414,6 @@
       "message": "Insert exactly one blank line before the final tail expression.",
       "path": "apps/decodex-gpui/src/shell.rs",
       "rule": "RUST-STYLE-SPACE-004"
-    },
-    {
-      "count": 1,
-      "fixable": true,
-      "message": "Prefer importing non-function, non-macro symbols and using short paths when unambiguous.",
-      "path": "crates/decodex-postgres/tests/postgres_store.rs",
-      "rule": "RUST-STYLE-IMPORT-008"
-    },
-    {
-      "count": 1,
-      "fixable": true,
-      "message": "Top-level module item order does not match rust.md order.",
-      "path": "crates/decodex-postgres/tests/postgres_store.rs",
-      "rule": "RUST-STYLE-MOD-001"
-    },
-    {
-      "count": 1,
-      "fixable": true,
-      "message": "Place non-async functions before async functions at the same visibility.",
-      "path": "crates/decodex-postgres/tests/postgres_store.rs",
-      "rule": "RUST-STYLE-MOD-003"
-    },
-    {
-      "count": 1,
-      "fixable": true,
-      "message": "Do not insert blank lines within the same statement type.",
-      "path": "crates/decodex-postgres/tests/postgres_store.rs",
-      "rule": "RUST-STYLE-SPACE-003"
-    },
-    {
-      "count": 2,
-      "fixable": true,
-      "message": "Insert exactly one blank line between different statement types.",
-      "path": "crates/decodex-postgres/tests/postgres_store.rs",
-      "rule": "RUST-STYLE-SPACE-003"
     }
   ]
 }

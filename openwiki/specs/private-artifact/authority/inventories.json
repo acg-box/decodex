@@ -153,7 +153,7 @@
     {
       "case_id": "DA-A1-03",
       "owner": "ACC",
-      "requirement": "Rust and PostgreSQL agree on digest vectors, projections, and raw-name/path ordering."
+      "requirement": "Rust and former server store agree on digest vectors, projections, and raw-name/path ordering."
     },
     {
       "case_id": "DA-A1-04",
@@ -338,11 +338,11 @@
     "ACC": [
       "crates/decodex-core/tests/private_artifact_codec.rs",
       "crates/decodex-core/tests/private_artifact_reducer.rs",
-      "crates/decodex-postgres/tests/postgres_store.rs",
-      "crates/decodex-postgres/tests/postgres_store/private_artifacts.rs",
+      "crates/decodex-server-store/tests/server-store_store.rs",
+      "crates/decodex-server-store/tests/server-store_store/private_artifacts.rs",
       "crates/decodex-core/tests/private_artifact_blob_gc.rs",
-      "scripts/vnext/postgres_store_test.py",
-      "tests/scripts/test_postgres_authority_capture.py",
+      "scripts/vnext/server-store_store_test.py",
+      "tests/scripts/test_server-store_authority_capture.py",
       "crates/decodex-runtime/src/private_artifact/tests.rs",
       "crates/decodex-runtime/tests/private_artifact_integration.rs",
       "crates/decodex-runtime/tests/bootstrap_doctor.rs",
@@ -353,13 +353,13 @@
       "openwiki/operations/xy-1368-retained-title-validation.md"
     ],
     "B": [
-      "crates/decodex-postgres/migrations/V23__private_artifact_authority.sql",
-      "crates/decodex-postgres/src/private_artifacts.rs",
-      "crates/decodex-postgres/src/lib.rs",
-      "crates/decodex-postgres/src/migrations.rs",
-      "crates/decodex-postgres/src/authority.rs",
-      "crates/decodex-postgres/src/conversations.rs",
-      "crates/decodex-postgres/src/experiments.rs",
+      "crates/decodex-server-store/migrations/V23__private_artifact_authority.sql",
+      "crates/decodex-server-store/src/private_artifacts.rs",
+      "crates/decodex-server-store/src/lib.rs",
+      "crates/decodex-server-store/src/migrations.rs",
+      "crates/decodex-server-store/src/authority.rs",
+      "crates/decodex-server-store/src/conversations.rs",
+      "crates/decodex-server-store/src/experiments.rs",
       "crates/decodex-core/src/blob.rs"
     ],
     "C": [
@@ -447,7 +447,7 @@
     },
     {
       "closure_id": "CL-06",
-      "result": "All 34 canonical roots have one exact PostgreSQL owner."
+      "result": "All 34 canonical roots have one exact former server store owner."
     },
     {
       "closure_id": "CL-07",
@@ -497,7 +497,7 @@
     },
     {
       "risk_id": "PA-RISK-06",
-      "wording": "PostgreSQL and CAS have no atomic online backup boundary."
+      "wording": "former server store and CAS have no atomic online backup boundary."
     },
     {
       "risk_id": "PA-RISK-07",
@@ -513,7 +513,7 @@
     },
     {
       "risk_id": "PA-RISK-10",
-      "wording": "The Rust and PostgreSQL codec implementations remain independent code and require differential fixtures. Their shared prose grammar is authority; successful tests will be evidence, not a replacement for it."
+      "wording": "The Rust and former server store codec implementations remain independent code and require differential fixtures. Their shared prose grammar is authority; successful tests will be evidence, not a replacement for it."
     }
   ],
   "reason_codes": [
@@ -959,8 +959,8 @@
     "outcome_probes_per_attempt": 3,
     "plan_dependencies": 2,
     "plan_framed_bytes": 4675,
-    "postgres_lock_timeout_seconds": 5,
-    "postgres_statement_timeout_seconds": 15,
+    "server-store_lock_timeout_seconds": 5,
+    "server-store_statement_timeout_seconds": 15,
     "preparation_completion_deadline_seconds": 600,
     "preparation_completion_protocol_statements": 777,
     "preparation_full_protocol_statements": 783,

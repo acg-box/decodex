@@ -84,14 +84,9 @@ def validate_repository_contract() -> None:
     """Verify that only the one-shot transfer tool retains redb."""
     workspace = read_toml(ROOT / "Cargo.toml")
     members = set(workspace["workspace"]["members"])
-    excluded = set(workspace["workspace"].get("exclude", []))
     dependencies = workspace["workspace"]["dependencies"]
     if "database" not in members or "database/transfer" not in members:
         raise GateFailure("database workspace owners are missing")
-    if "crates/decodex-postgres" in members or "crates/decodex-postgres" not in excluded:
-        raise GateFailure("retired PostgreSQL crate is active")
-    if "decodex-postgres" in dependencies or "tokio-postgres" in dependencies:
-        raise GateFailure("PostgreSQL remains in workspace dependencies")
 
     rusqlite = dependencies.get("rusqlite")
     if not isinstance(rusqlite, dict) or "bundled" not in rusqlite.get("features", []):
@@ -100,7 +95,7 @@ def validate_repository_contract() -> None:
     runtime = read_toml(ROOT / "crates/decodex-runtime/Cargo.toml")["dependencies"]
     if "decodex-database" not in runtime:
         raise GateFailure("runtime does not own the SQLite adapter")
-    if {"decodex-postgres", "tokio-postgres", "redb"}.intersection(runtime):
+    if "redb" in runtime:
         raise GateFailure("runtime retains a retired storage dependency")
 
     transfer = read_toml(ROOT / "database/transfer/Cargo.toml")["dependencies"]

@@ -50,16 +50,6 @@ host = "server.example.test"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[postgres]
-socket_directory = "/var/run/postgresql"
-expected_peer_uid = 70
-port = 5432
-database = "decodex"
-
-[postgres.runtime]
-user = "decodex_runtime"
-credential_env_var = "DECODEX_POSTGRES_RUNTIME_PASSWORD"
-
 [cache]
 max_entries = 128
 max_bytes = 1048576

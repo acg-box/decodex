@@ -162,10 +162,10 @@ pub enum AccountOperationKind {
 	Logout,
 }
 
-/// Recoverable phase of one finite PostgreSQL/host-store account operation.
+/// Recoverable phase of one finite durable-store/host-store account operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccountOperationPhase {
-	/// PostgreSQL accepted the operation before an external effect.
+	/// durable-store accepted the operation before an external effect.
 	Prepared,
 	/// A provider refresh effect can no longer be proved absent.
 	ProviderEffectPending,
@@ -404,7 +404,7 @@ impl AccountQuotaWindowObservation {
 	}
 }
 
-/// Credential-negative account registry view owned by PostgreSQL.
+/// Credential-negative account registry view owned by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountRecord {
 	/// Canonical Decodex account identity.

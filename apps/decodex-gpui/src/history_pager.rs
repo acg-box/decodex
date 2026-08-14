@@ -1,5 +1,6 @@
 //! Presentation-neutral, bounded ConversationHistory paging for one GPUI view.
 
+#[path = "history_pager/page_cache.rs"]
 mod page_cache;
 
 use std::{
@@ -182,8 +183,9 @@ impl PageCacheOwner {
 
 	fn ensure_open(&mut self) -> bool {
 		let dormant = match self {
-			Self::Dormant { parent, cache_schema_generation } =>
-				Some((parent.clone(), *cache_schema_generation)),
+			Self::Dormant { parent, cache_schema_generation } => {
+				Some((parent.clone(), *cache_schema_generation))
+			},
 			Self::Enabled(_) => return true,
 			Self::Disabled => return false,
 		};
@@ -222,8 +224,9 @@ impl PageCacheOwner {
 
 		match lookup {
 			CacheLookup::Hit(hit) => PageCacheLookupRead::Hit(hit),
-			CacheLookup::Miss(CacheDiagnostic::NotFound | CacheDiagnostic::Ineligible) =>
-				PageCacheLookupRead::Miss,
+			CacheLookup::Miss(CacheDiagnostic::NotFound | CacheDiagnostic::Ineligible) => {
+				PageCacheLookupRead::Miss
+			},
 			CacheLookup::Miss(diagnostic) => {
 				self.disable(CacheFailure::new(diagnostic));
 				PageCacheLookupRead::Failure
@@ -272,8 +275,9 @@ impl PageCacheOwner {
 			return Err(());
 		}
 		let result = match self {
-			Self::Enabled(cache) =>
-				cache.prepare_publication(&request, &publication.page, admitted_at_unix_seconds),
+			Self::Enabled(cache) => {
+				cache.prepare_publication(&request, &publication.page, admitted_at_unix_seconds)
+			},
 			Self::Dormant { .. } | Self::Disabled => return Err(()),
 		};
 
@@ -338,8 +342,9 @@ impl PageCacheOwner {
 		};
 
 		match result {
-			Ok(CachePublishResult::Published | CachePublishResult::Reinitialized) =>
-				PageCachePublishResult::Stored,
+			Ok(CachePublishResult::Published | CachePublishResult::Reinitialized) => {
+				PageCachePublishResult::Stored
+			},
 			Err(failure) => {
 				self.disable(failure);
 				PageCachePublishResult::Failure
@@ -945,8 +950,9 @@ impl HistoryPager {
 		active.cache_publication_fence = None;
 		match result {
 			PageCachePublishResult::Stored => active.cache_diagnostic = None,
-			PageCachePublishResult::Failure =>
-				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable),
+			PageCachePublishResult::Failure => {
+				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable)
+			},
 			PageCachePublishResult::Skipped => {},
 		}
 	}
@@ -1027,8 +1033,9 @@ impl CacheOperationIdentity {
 		)?;
 
 		match self.request.key.after.clone() {
-			Some(after) =>
-				CacheRequest::after(&authority, self.request.key.conversation_id.clone(), after),
+			Some(after) => {
+				CacheRequest::after(&authority, self.request.key.conversation_id.clone(), after)
+			},
 			None => CacheRequest::head(&authority, self.request.key.conversation_id.clone()),
 		}
 	}
@@ -1299,10 +1306,12 @@ impl PagerState {
 			.map(|request| request.request.purpose)
 			.or_else(|| active.pending.as_ref().map(|request| request.purpose));
 		let load = match active.unavailable {
-			Some(HistoryAvailability::Retryable(reason)) =>
-				HistoryLoadState::RetryableUnavailable(reason),
-			Some(HistoryAvailability::Closed(reason)) =>
-				HistoryLoadState::ClosedUnavailable(reason),
+			Some(HistoryAvailability::Retryable(reason)) => {
+				HistoryLoadState::RetryableUnavailable(reason)
+			},
+			Some(HistoryAvailability::Closed(reason)) => {
+				HistoryLoadState::ClosedUnavailable(reason)
+			},
 			None => match (visible.is_some(), current_request) {
 				(false, Some(_)) => HistoryLoadState::InitialLoading,
 				(true, Some(RequestPurpose::Prefetch)) => HistoryLoadState::PrefetchingAdjacent,
@@ -1721,14 +1730,18 @@ struct CancelledRequest {
 
 fn history_availability(error: HistoryQueryError) -> HistoryAvailability {
 	match error {
-		HistoryQueryError::InvalidRequest =>
-			HistoryAvailability::Closed(HistoryClosedReason::InvalidRequest),
-		HistoryQueryError::ResourceExhausted =>
-			HistoryAvailability::Retryable(HistoryRetryReason::ResourceExhausted),
-		HistoryQueryError::ProductStateUnavailable =>
-			HistoryAvailability::Retryable(HistoryRetryReason::ProductStateUnavailable),
-		HistoryQueryError::IntegrityUnavailable =>
-			HistoryAvailability::Retryable(HistoryRetryReason::IntegrityUnavailable),
+		HistoryQueryError::InvalidRequest => {
+			HistoryAvailability::Closed(HistoryClosedReason::InvalidRequest)
+		},
+		HistoryQueryError::ResourceExhausted => {
+			HistoryAvailability::Retryable(HistoryRetryReason::ResourceExhausted)
+		},
+		HistoryQueryError::ProductStateUnavailable => {
+			HistoryAvailability::Retryable(HistoryRetryReason::ProductStateUnavailable)
+		},
+		HistoryQueryError::IntegrityUnavailable => {
+			HistoryAvailability::Retryable(HistoryRetryReason::IntegrityUnavailable)
+		},
 	}
 }
 

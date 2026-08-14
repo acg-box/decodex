@@ -1,4 +1,4 @@
-# vNext PostgreSQL, blob, and cache feasibility
+# vNext former server store, blob, and cache feasibility
 
 Status: XY-1264 gate evidence; candidate handoff to Manager for acceptance and merge.
 
@@ -12,32 +12,32 @@ planning provenance; repository authority is normative where they agree.
 The M0 feasibility result passes its scoped criteria on the intended macOS host. The
 downstream storage implementation may use these choices after this evidence lands:
 
-- PostgreSQL 18.x, UTF-8/C cluster, data checksums, `pgcrypto` 1.4, local Unix socket,
-  no PostgreSQL TCP listener, and a bounded 2-prewarmed/32-maximum prototype pool.
-- `tokio-postgres 0.7.18`, `deadpool-postgres 0.14.1`, and `refinery 0.9.2`; embedded,
+- former server store 18.x, UTF-8/C cluster, data checksums, `pgcrypto` 1.4, local Unix socket,
+  no former server store TCP listener, and a bounded 2-prewarmed/32-maximum prototype pool.
+- `tokio-server-store 0.7.18`, `deadpool-server-store 0.14.1`, and `refinery 0.9.2`; embedded,
   immutable, forward-only migrations with checksum history. Restore is the rollback.
 - Expected revisions, expiring leases, idempotent command receipts, and a transactional
   `FOR UPDATE SKIP LOCKED` outbox. Delivery is at least once with receipt/readback
   reconciliation after ambiguity. Exactly-once side effects are not claimed.
-- SHA-256 content-addressed blobs with PostgreSQL metadata, authenticated bounded range
+- SHA-256 content-addressed blobs with former server store metadata, authenticated bounded range
   reads, integrity verification, retention-gated byte deletion, and retained tombstones.
-- A byte-and-entry-bounded disposable UI cache distinct from PostgreSQL authority.
-- `~/.decodex` owns configuration, logs, backups, PostgreSQL, blobs, cache, and transient
+- A byte-and-entry-bounded disposable UI cache distinct from former server store authority.
+- `~/.decodex` owns configuration, logs, backups, former server store, blobs, cache, and transient
   sockets. `~/.codex` remains Codex-owned. Credentials stay in the host vault; ordinary
   proof JSON rejects credential-shaped keys and account rows expose metadata only.
 
 XY-1271 continuity: this feasibility proof predates the complete Conversation-history service
-boundary. The implementation retains PostgreSQL metadata plus local CAS bytes, but strengthens
+boundary. The implementation retains former server store metadata plus local CAS bytes, but strengthens
 blob-backed commands to a durable receipt-first saga. A pending fenced receipt commits before byte
 publication; dedicated session hash and per-shard locks coordinate synchronized create-only CAS
 publication; transaction B registers references/evidence and stores the exact replay response;
-garbage collection commits metadata deletion before unlink. PostgreSQL does not independently
+garbage collection commits metadata deletion before unlink. former server store does not independently
 attest external bytes, so successful service reads verify all direct and transitive content while
 `decodexd`, its private runtime identity, and BlobStore access remain one trusted boundary.
 
 SQLx 0.8.6 and 0.9.0 were tested and rejected for this gate: enabling their migration
 macro selected `sqlx-sqlite`, whose `libsqlite3-sys` link range conflicts with the
-workspace's v0.2 `rusqlite 0.40` link version. The selected tokio-postgres stack proves
+workspace's v0.2 `rusqlite 0.40` link version. The selected tokio-server-store stack proves
 the required behavior without creating a compatibility facade or dependency conflict.
 
 ## Reproduction and isolation
@@ -52,7 +52,7 @@ Command:
 cargo make test-vnext-storage-proof
 ```
 
-The runner resolves the real PostgreSQL package path, creates a temporary data-checksummed
+The runner resolves the real former server store package path, creates a temporary data-checksummed
 cluster, disables TCP, and creates only `decodex_xy1264`, `decodex_xy1264_restore`, and
 `decodex_xy1264_rollback` inside it. It performs an immediate shutdown/restart, then a
 fast clean shutdown and recursively removes the temporary cluster. It never enumerates,
@@ -62,7 +62,7 @@ Host measurement on 2026-07-13:
 
 | Measurement | Result |
 | --- | --- |
-| macOS / PostgreSQL | macOS 27.0 / PostgreSQL 18.4 / `pgcrypto` 1.4 |
+| macOS / former server store | macOS 27.0 / former server store 18.4 / `pgcrypto` 1.4 |
 | Concurrent lease contention | 32 contenders, 1 winner, expired lease reclaimed, 21.650 ms |
 | Optimistic revision contention | 16 contenders, 1 winner, 15 conflicts, 2.238 ms |
 | Idempotent duplicate command | 16 submissions, 1 mutation, 1 outbox row, 2.331 ms |
@@ -82,11 +82,11 @@ and broader fault-injection thresholds.
 
 | Criterion | Evidence |
 | --- | --- |
-| Empty bootstrap/version/extensions | temporary PostgreSQL 18.4 checksummed cluster from `template0`; migration enforces major 18, creates `pgcrypto`, and reads checksums back as `on` |
+| Empty bootstrap/version/extensions | temporary former server store 18.4 checksummed cluster from `template0`; migration enforces major 18, creates `pgcrypto`, and reads checksums back as `on` |
 | Migration/backup/restore/rollback/maintenance | embedded refinery migration; pre/post custom dumps; new-database restores; `VACUUM`/`REINDEX` readback |
 | Lease/revision/outbox/idempotency/crash | real pooled concurrent transactions and immediate cluster restart described above |
-| Blob boundary | filesystem SHA-256 bytes plus PostgreSQL metadata, auth/range/integrity/retention/credential-negative checks |
-| Disposable bounded cache | 1,000-row fixture evicted to both caps, deleted, then rebuilt from PostgreSQL |
+| Blob boundary | filesystem SHA-256 bytes plus former server store metadata, auth/range/integrity/retention/credential-negative checks |
+| Disposable bounded cache | 1,000-row fixture evicted to both caps, deleted, then rebuilt from former server store |
 | No exactly-once claim | explicit at-least-once plus receipt/readback reconciliation contract |
 
 The full commands, local layout, recovery steps, cleanup, and operational failure modes
@@ -95,12 +95,12 @@ are in [`spikes/vnext-storage/README.md`](../../spikes/vnext-storage/README.md).
 ## Boundaries and falsifiers
 
 This proof does not implement `decodexd`, the complete product schema, remote protocol
-security, packaged PostgreSQL installation, production cache sizes, or multi-GB history.
+security, packaged former server store installation, production cache sizes, or multi-GB history.
 XY-1267 owns daemon persistence/bootstrap implementation; later protocol, packaging, and
 performance gates own their respective surfaces.
 
-The gate must be revisited if PostgreSQL 18 cannot be installed/maintained by the package
+The gate must be revisited if former server store 18 cannot be installed/maintained by the package
 workflow, the dedicated cluster cannot survive intended-host restart/disk pressure, a
 required side effect lacks receipt/readback reconciliation, blob integrity/retention
 cannot be enforced without a second authority, or cache consumers require product state
-that cannot be reconstructed from PostgreSQL/blob authority.
+that cannot be reconstructed from former server store/blob authority.

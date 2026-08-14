@@ -62,7 +62,7 @@ pub enum CodexExperimentObservationKind {
 	MessageItem,
 }
 impl CodexExperimentObservationKind {
-	/// Return the fixed V15 PostgreSQL enum label for this positive observation kind.
+	/// Return the fixed V15 durable-store enum label for this positive observation kind.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::ThreadListItem => "thread_list_item",
@@ -74,17 +74,17 @@ impl CodexExperimentObservationKind {
 	}
 }
 
-/// Revisioned preparation effect returned by PostgreSQL.
+/// Revisioned preparation effect returned by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexExperimentPrepared {
-	/// Complete mechanism-neutral identity whose provenance PostgreSQL must independently verify.
+	/// Complete mechanism-neutral identity whose provenance durable-store must independently verify.
 	pub identity: CodexExperimentIdentity,
 	/// Positive experiment revision returned for the initial prepared state; fixed to revision
 	/// one.
 	pub revision: i64,
 	/// Deterministic retained marker derived from the canonical experiment identity.
 	pub marker: String,
-	/// PostgreSQL-owned preparation time in UTC Unix microseconds.
+	/// durable-store-owned preparation time in UTC Unix microseconds.
 	pub prepared_at_micros: i64,
 }
 
@@ -97,7 +97,7 @@ pub struct CodexExperimentCreationPossible {
 	pub revision: i64,
 	/// Canonical UUID text identifying the sole fenced creation attempt.
 	pub attempt_id: String,
-	/// PostgreSQL-owned fence time in UTC Unix microseconds.
+	/// durable-store-owned fence time in UTC Unix microseconds.
 	pub fenced_at_micros: i64,
 }
 
@@ -134,7 +134,7 @@ pub struct CodexExperimentThreadBinding {
 	pub response_ephemeral: bool,
 	/// Nullable name returned by `thread/start`. The pinned build requires `None`.
 	pub returned_name: Option<String>,
-	/// PostgreSQL-owned binding time in UTC Unix microseconds.
+	/// durable-store-owned binding time in UTC Unix microseconds.
 	pub bound_at_micros: i64,
 }
 
@@ -155,7 +155,7 @@ pub struct CodexExperimentTitleSetPossible {
 	pub request_digest: String,
 	/// Exact immutable prepared title bound into the fenced request.
 	pub requested_title: String,
-	/// PostgreSQL-owned fence time in UTC Unix microseconds.
+	/// durable-store-owned fence time in UTC Unix microseconds.
 	pub fenced_at_micros: i64,
 }
 
@@ -184,7 +184,7 @@ pub struct CodexExperimentRetainedTitleAttestation {
 	pub returned_cwd: String,
 	/// Exact retained provenance marker returned by the positive readback.
 	pub marker: String,
-	/// PostgreSQL-owned attestation time in UTC Unix microseconds.
+	/// durable-store-owned attestation time in UTC Unix microseconds.
 	pub attested_at_micros: i64,
 }
 
@@ -204,7 +204,7 @@ pub struct CodexExperimentObservation {
 	pub kind: CodexExperimentObservationKind,
 	/// Exact app-server source identity whose payload is retained by digest at persistence.
 	pub source_id: String,
-	/// PostgreSQL-owned observation time in UTC Unix microseconds.
+	/// durable-store-owned observation time in UTC Unix microseconds.
 	pub observed_at_micros: i64,
 }
 
@@ -220,7 +220,7 @@ pub struct CodexExperimentRejection {
 /// Fail-closed exact-command result.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodexExperimentCommandOutcome<T> {
-	/// Exact command effect accepted after PostgreSQL has verified and persisted its authority.
+	/// Exact command effect accepted after durable-store has verified and persisted its authority.
 	///
 	/// Constructing this Rust variant alone does not prove database authorship or authorize
 	/// routing, dispatch, thread creation, retry, or adoption.
