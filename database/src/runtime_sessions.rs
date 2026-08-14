@@ -599,6 +599,7 @@ impl SqliteStore {
 	) -> Result<QuickTaskThreadEstablishmentReadback, StoreError> {
 		let request = request.clone();
 		self.run(move |connection| {
+			let admission_sha256 = reconciliation_process_admission_sha(&request);
 			let state = connection
 				.query_row(
 					"SELECT thread_start_fence_key, thread_start_binding_key
@@ -616,23 +617,51 @@ impl SqliteStore {
 					read_thread_fence(connection, &request.runtime_session_id)?,
 				)),
 				_ => {
-					let death = connection
+					let generation = connection
 						.query_row(
-							"SELECT revision, death_evidence_id FROM process_generations
-						 WHERE generation_id = ?1 AND state = 'dead'",
+							"SELECT state, revision, death_evidence_id FROM process_generations
+							 WHERE generation_id = ?1",
 							params![request.process_generation_id.as_str()],
-							|row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+							|row| {
+								Ok((
+									row.get::<_, String>(0)?,
+									row.get::<_, i64>(1)?,
+									row.get::<_, Option<String>>(2)?,
+								))
+							},
 						)
 						.optional()
 						.map_err(sql_error)?;
-					Ok(death.map_or(
+					if let Some((state, revision, evidence)) = generation {
+						return Ok(match (state.as_str(), evidence) {
+							("dead", Some(evidence_id)) =>
+								QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(
+									QuickTaskThreadStartNonEffect {
+										process_generation_revision: Some(revision),
+										kind: QuickTaskPreEffectEvidenceKind::ProcessDead,
+										evidence_id,
+									},
+								),
+							_ => QuickTaskThreadEstablishmentReadback::Unknown,
+						});
+					}
+					let admission_evidence = connection
+						.query_row(
+							"SELECT MIN(idempotency_key) FROM runtime_command_receipts
+							 WHERE operation = 'prepare_quick_task_process_generation'
+							   AND entity_id = ?1 AND request_sha256 = ?2",
+							params![request.process_generation_id.as_str(), admission_sha256],
+							|row| row.get::<_, Option<String>>(0),
+						)
+						.map_err(sql_error)?;
+					Ok(admission_evidence.map_or(
 						QuickTaskThreadEstablishmentReadback::Unknown,
-						|(revision, evidence)| {
+						|evidence_id| {
 							QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(
 								QuickTaskThreadStartNonEffect {
-									process_generation_revision: Some(revision),
-									kind: QuickTaskPreEffectEvidenceKind::ProcessDead,
-									evidence_id: evidence,
+									process_generation_revision: None,
+									kind: QuickTaskPreEffectEvidenceKind::AdmissionRejected,
+									evidence_id,
 								},
 							)
 						},
@@ -1074,6 +1103,21 @@ pub(crate) fn read_stored_runtime_session(
 }
 
 fn process_admission_sha(request: &PrepareQuickTaskProcessGeneration) -> String {
+	digest(&[
+		request.conversation_id.as_str(),
+		&request.expected_conversation_revision.to_string(),
+		request.runtime_session_id.as_str(),
+		&request.expected_runtime_session_revision.to_string(),
+		request.turn_id.as_str(),
+		&request.expected_turn_revision.to_string(),
+		&request.continuation_plan_id,
+		&request.routing_decision_id,
+		request.selected_account_id.as_str(),
+		request.process_generation_id.as_str(),
+	])
+}
+
+fn reconciliation_process_admission_sha(request: &ReconcileQuickTaskThreadEstablishment) -> String {
 	digest(&[
 		request.conversation_id.as_str(),
 		&request.expected_conversation_revision.to_string(),

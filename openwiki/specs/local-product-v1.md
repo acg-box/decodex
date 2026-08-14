@@ -45,6 +45,12 @@ bounded inline value or a digest and length.
    revisions.
 10. Same-thread continuation requires the persisted Codex thread and exact positive
     evidence from a terminal ProviderAttempt.
+11. A ProcessGeneration intent is committed before process creation. When an exact
+    completed process-admission receipt exists but its target generation is absent, the
+    request is positively known not to have spawned a process.
+12. V1 permits one non-dead ProcessGeneration per account. A second initial request for
+    that account fails before provider effect with `RestoreProcessReadiness`; it must not
+    become acceptance ambiguity.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -83,6 +89,7 @@ The following are outside V1 and must not activate a second store:
 - ManagedRun and automation;
 - ontology and graph projections;
 - remote workers and multi-machine coordination; and
+- cross-conversation app-server process multiplexing; and
 - Context Pack fallback when exact same-thread proof is absent.
 
 ## Acceptance
