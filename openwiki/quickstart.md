@@ -24,7 +24,7 @@ one-shot transfer tool.
 - [Local database operations](operations/local-database.md): initialization, validation,
   installation, one-shot account transfer, rollback retention, and checks.
 - [SQLite implementation evidence](evidence/sqlite-local-product.md): current automated
-  evidence and the remaining live cutover gate.
+  evidence and signed live acceptance.
 - [Historical account lifecycle contract](specs/account-lifecycle-authority.md): retained
   domain semantics whose former server-store and redb ownership is superseded.
 - [ProcessGeneration authority](specs/process-generation-authority.md): durable pre-spawn
@@ -45,6 +45,7 @@ user message
 -> fenced ProcessGeneration
 -> fenced ProviderAttempt
 -> assistant history and positive terminal evidence
+-> exact app-server retirement and positive death evidence
 -> daemon restart
 -> later user message on the same Codex thread
 ```
@@ -60,6 +61,10 @@ replace Codex with a new agent kernel. It preserves exact account binding, pre-s
 fencing, one dispatch authorization, positive-only terminal evidence, and restart-safe
 ambiguity handling. One Conversation keeps its initially selected account even when the
 global routing default changes. Independent Conversations can use different accounts.
+Only one non-dead app-server generation can use an account at one time. After positive
+turn terminal evidence, the runtime retires that process before it publishes `Ready`. A
+later Turn starts a fresh process generation and rehydrates the same account and Codex
+thread. An idle completed Conversation does not reserve the account process slot.
 
 ## Deferred product surfaces
 

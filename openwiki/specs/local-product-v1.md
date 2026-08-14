@@ -48,9 +48,13 @@ bounded inline value or a digest and length.
 11. A ProcessGeneration intent is committed before process creation. When an exact
     completed process-admission receipt exists but its target generation is absent, the
     request is positively known not to have spawned a process.
-12. V1 permits one non-dead ProcessGeneration per account. A second initial request for
-    that account fails before provider effect with `RestoreProcessReadiness`; it must not
-    become acceptance ambiguity.
+12. V1 permits one non-dead ProcessGeneration per account at one time. After positive
+    provider terminal evidence and atomic Turn terminalization, the runtime retires the
+    exact process and records positive death evidence before it publishes `Ready`. A
+    later Turn uses a fresh ProcessGeneration to rehydrate the same account and Codex
+    thread. A second request while the account still has a live generation fails before
+    provider effect with `RestoreProcessReadiness`; it must not become acceptance
+    ambiguity. An idle completed Turn must not reserve the account process slot.
 13. Account affinity is scoped to a Conversation. Its initial Routing Decision binds the
     RuntimeSession and Codex thread to one account. Later Turns do not re-evaluate global
     routing. Independent Conversations can bind to different accounts.
@@ -68,8 +72,9 @@ prevent an implicit duplicate effect.
 
 A terminal Quick Task keeps its Conversation, history, RuntimeSession, selected account,
 Codex thread, and next Turn sequence. A later user Turn can bind a SameThread continuation
-after the daemon restarts. If the bound account becomes depleted, V1 fails closed instead
-of switching the Conversation in place and losing provider cache affinity.
+after process retirement or after the daemon restarts. If the bound account becomes
+depleted, V1 fails closed instead of switching the Conversation in place and losing
+provider cache affinity.
 
 ## Credential boundary
 

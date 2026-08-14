@@ -10,12 +10,18 @@ use gpui::{
 };
 
 use decodex_protocol::{
-	AppServerCapability, ClientFailure, DoctorComponent, DoctorStatus, EntityId,
-	HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole,
-	QuickTaskRecoveryAction, QuickTaskState, WorkItemBoardCard, WorkItemState,
+	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
+	AccountQuotaWindowDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
+	DoctorComponent, DoctorStatus, EntityId, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState, WorkItemBoardCard,
+	WorkItemState,
 };
 
 use crate::{
+	accounts::{
+		AccountCommandState, AccountInputError, AccountsController, AccountsLoadState,
+		AccountsSnapshot,
+	},
 	client_lifecycle::{
 		ClientLifecycle, CompatibilityReason, ConnectionView, LifecycleCancellation,
 		QuarantineReason, QuarantineRecovery,
@@ -33,7 +39,7 @@ use crate::{
 	work_items::{WorkItems, WorkItemsSnapshot},
 };
 
-const WORKBENCH_TOPBAR_HEIGHT: f32 = 48.0;
+const WORKBENCH_TOPBAR_HEIGHT: f32 = 42.0;
 const WORKBENCH_SESSION_SIDEBAR_WIDTH: f32 = 248.0;
 const WORKBENCH_INSPECTOR_WIDTH: f32 = 344.0;
 const LIFECYCLE_POLL: Duration = Duration::from_millis(40);
@@ -293,6 +299,9 @@ pub(crate) struct Shell {
 	composer: Entity<ComposerInput>,
 	factory: Entity<FactorySurface>,
 	settings: Entity<SettingsSurface>,
+	accounts_controller: AccountsController,
+	accounts: AccountsSnapshot,
+	account_status: Option<SharedString>,
 	health_query: HealthQuery,
 	health: HealthSnapshot,
 	quick_tasks: QuickTasks,
@@ -333,13 +342,14 @@ impl Shell {
 		})
 		.detach();
 		let settings = cx.new(SettingsSurface::new);
+		let accounts_controller = AccountsController::production();
+		let accounts = accounts_controller.snapshot();
 		let health_query = HealthQuery::production();
 		let health = health_query.snapshot();
 		let quick_tasks = QuickTasks::production();
 		quick_tasks.activate();
 		let quick = quick_tasks.snapshot();
 		let work_items = WorkItems::production();
-		work_items.activate();
 		let work = work_items.snapshot();
 		factory.update(cx, |factory, cx| factory.bind_work_items(work_items.clone(), cx));
 		window.focus(&root_focus, cx);
@@ -360,6 +370,9 @@ impl Shell {
 			composer,
 			factory,
 			settings,
+			accounts_controller,
+			accounts,
+			account_status: None,
 			health_query,
 			health,
 			quick_tasks,
@@ -379,8 +392,8 @@ impl Shell {
 	#[allow(dead_code)]
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		use decodex_protocol::{
-			ConversationHistoryPage, EntityRevision, ProjectSummary, QuickTaskSummary, WireText,
-			WorkItemBoardLeadId, WorkItemBoardProjectId, WorkItemBoardTitle,
+			AccountRoutingControlDto, ConversationHistoryPage, EntityRevision, ProjectSummary,
+			QuickTaskSummary, WireText, WorkItemBoardLeadId, WorkItemBoardProjectId, WorkItemBoardTitle,
 			WorkItemBoardWorkItemId, WorkItemPriority,
 		};
 
@@ -518,6 +531,68 @@ impl Shell {
 				),
 			],
 			can_mutate: true,
+		};
+		let visual_account = |id: &str,
+		                      alias: &str,
+		                      used_five_hour: u8,
+		                      used_seven_day: u8,
+		                      revision: u64| AccountDto {
+			account_id: EntityId::new(id).expect("visual account identity is canonical"),
+			alias: WireText::new(alias).expect("visual account alias is bounded"),
+			enabled: true,
+			account_revision: EntityRevision(revision),
+			observed_state: AccountObservedStateDto::Available,
+			lifecycle_readiness: AccountLifecycleReadinessDto::Ready,
+			credential_binding: None,
+			unsettled_operation: None,
+			five_hour_quota: AccountQuotaWindowDto {
+				duration_minutes: 300,
+				observed_at_unix_micros: Some(1_786_000_000_000_000),
+				result: AccountQuotaStateDto::Current {
+					used_percent: used_five_hour,
+					resets_at_unix_micros: 1_786_018_000_000_000,
+				},
+			},
+			seven_day_quota: AccountQuotaWindowDto {
+				duration_minutes: 10_080,
+				observed_at_unix_micros: Some(1_786_000_000_000_000),
+				result: AccountQuotaStateDto::Current {
+					used_percent: used_seven_day,
+					resets_at_unix_micros: 1_786_604_800_000_000,
+				},
+			},
+		};
+		let primary = visual_account(
+			"70000000-0000-4000-8000-000000000001",
+			"Primary",
+			64,
+			28,
+			12,
+		);
+		let reserve = visual_account(
+			"70000000-0000-4000-8000-000000000002",
+			"Build reserve",
+			18,
+			9,
+			7,
+		);
+		let research = visual_account(
+			"70000000-0000-4000-8000-000000000003",
+			"Research reserve",
+			91,
+			55,
+			4,
+		);
+		shell.accounts = AccountsSnapshot {
+			load: AccountsLoadState::Ready,
+			command: AccountCommandState::Idle,
+			accounts: vec![primary.clone(), reserve.clone(), research.clone()],
+			routing: Some(AccountRoutingControlDto {
+				revision: EntityRevision(6),
+				mode: AccountSelectionModeDto::Fixed(primary.account_id.clone()),
+				order: vec![primary.account_id, reserve.account_id, research.account_id],
+			}),
+			can_manage: true,
 		};
 
 		let item = |history_item_id: &str,
@@ -711,10 +786,8 @@ impl Shell {
 		if self.selected == Destination::QuickTasks {
 			self.quick_tasks.deactivate();
 		}
-		if matches!(self.selected, Destination::Factory | Destination::QuickTasks)
-			&& !matches!(destination, Destination::Factory | Destination::QuickTasks)
-		{
-			self.work_items.deactivate();
+		if self.selected == Destination::Accounts {
+			self.accounts_controller.deactivate();
 		}
 
 		self.selected = destination;
@@ -724,8 +797,9 @@ impl Shell {
 		if destination == Destination::QuickTasks {
 			self.quick_tasks.activate();
 		}
-		if matches!(destination, Destination::Factory | Destination::QuickTasks) {
-			self.work_items.activate();
+		if destination == Destination::Accounts {
+			self.accounts_controller.activate();
+			self.synchronize_accounts();
 		}
 		if destination == Destination::Settings {
 			self.settings.update(cx, SettingsSurface::refresh);
@@ -859,11 +933,68 @@ impl Shell {
 	fn bind_work_items(&mut self, work_items: WorkItems, cx: &mut Context<Self>) {
 		self.work_items.deactivate();
 		self.work_items = work_items;
-		if matches!(self.selected, Destination::Factory | Destination::QuickTasks) {
-			self.work_items.activate();
-		}
 		self.factory.update(cx, |factory, cx| factory.bind_work_items(self.work_items.clone(), cx));
 		self.synchronize_work_items(cx);
+	}
+
+	fn bind_accounts(&mut self, accounts: AccountsController, cx: &mut Context<Self>) {
+		self.accounts_controller.deactivate();
+		self.accounts_controller = accounts;
+		if self.selected == Destination::Accounts {
+			self.accounts_controller.activate();
+		}
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn synchronize_accounts(&mut self) {
+		self.accounts = self.accounts_controller.snapshot();
+	}
+
+	fn refresh_accounts(&mut self, cx: &mut Context<Self>) {
+		if self.accounts_controller.refresh() {
+			self.account_status = None;
+			self.synchronize_accounts();
+			cx.notify();
+		}
+	}
+
+	fn set_account_enabled(
+		&mut self,
+		account_id: &EntityId,
+		enabled: bool,
+		cx: &mut Context<Self>,
+	) {
+		self.account_status = self
+			.accounts_controller
+			.set_enabled(account_id, enabled)
+			.err()
+			.map(account_input_error_label)
+			.map(Into::into);
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn select_fixed_account(&mut self, account_id: &EntityId, cx: &mut Context<Self>) {
+		self.account_status = self
+			.accounts_controller
+			.select_fixed(account_id)
+			.err()
+			.map(account_input_error_label)
+			.map(Into::into);
+		self.synchronize_accounts();
+		cx.notify();
+	}
+
+	fn select_balanced_accounts(&mut self, cx: &mut Context<Self>) {
+		self.account_status = self
+			.accounts_controller
+			.select_balanced()
+			.err()
+			.map(account_input_error_label)
+			.map(Into::into);
+		self.synchronize_accounts();
+		cx.notify();
 	}
 
 	fn synchronize_work_items(&mut self, cx: &mut Context<Self>) {
@@ -1086,11 +1217,13 @@ pub(crate) fn retain_lifecycle(
 	let views = lifecycle.observe_views();
 	let initial_view = lifecycle.view();
 	let shell = window.entity(cx).expect("the production shell window remains open");
+	let accounts = lifecycle.accounts();
 	let health_query = lifecycle.health_query();
 	let quick_tasks = lifecycle.quick_tasks();
 	let work_items = lifecycle.work_items();
 	let history_pager = lifecycle.history_pager();
 	shell.update(cx, |shell, cx| {
+		shell.bind_accounts(accounts, cx);
 		shell.bind_health_query(health_query, cx);
 		shell.bind_quick_tasks(quick_tasks, history_pager, cx);
 		shell.bind_work_items(work_items, cx);
@@ -1160,11 +1293,16 @@ fn publish_views(
 		});
 	}
 	let _ = shell.update(cx, |shell, cx| {
+		let accounts = shell.accounts_controller.snapshot();
 		let health = shell.health_query.snapshot();
 		let quick = shell.quick_tasks.snapshot();
 		let work = shell.work_items.snapshot();
 		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
+		if accounts != shell.accounts {
+			shell.accounts = accounts;
+			cx.notify();
+		}
 		if health != shell.health {
 			shell.health = health;
 			cx.notify();
@@ -1862,28 +2000,65 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 		.into_any_element()
 }
 
-fn accounts_content(cx: &mut Context<Shell>) -> AnyElement {
+fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
+	let snapshot = &shell.accounts;
+	let fixed = snapshot.routing.as_ref().and_then(|routing| match &routing.mode {
+		AccountSelectionModeDto::Fixed(account_id) => Some(account_id),
+		AccountSelectionModeDto::Balanced => None,
+	});
+	let balanced = snapshot
+		.routing
+		.as_ref()
+		.is_some_and(|routing| routing.mode == AccountSelectionModeDto::Balanced);
+	let can_manage = snapshot.can_manage;
+	let rows = snapshot
+		.accounts
+		.iter()
+		.enumerate()
+		.map(|(index, account)| {
+			account_pool_row(account, index, fixed == Some(&account.account_id), can_manage, cx)
+		})
+		.collect::<Vec<_>>();
+	let status = shell
+		.account_status
+		.as_ref()
+		.map(SharedString::to_string)
+		.or_else(|| account_command_label(snapshot.command).map(str::to_owned))
+		.unwrap_or_else(|| accounts_load_label(snapshot.load).to_owned());
+	let count = snapshot.accounts.len();
+	let available = snapshot
+		.accounts
+		.iter()
+		.filter(|account| {
+			account.enabled
+				&& account.observed_state == AccountObservedStateDto::Available
+				&& account.lifecycle_readiness == AccountLifecycleReadinessDto::Ready
+		})
+		.count();
+
 	div()
 		.flex_1()
 		.min_h_0()
-		.p_7()
+		.px_6()
+		.py_5()
 		.flex()
 		.justify_center()
 		.child(
 			div()
 				.w_full()
-				.max_w(px(820.0))
+				.max_w(px(900.0))
+				.min_h_0()
 				.flex()
 				.flex_col()
-				.gap_4()
+				.gap_3()
 				.child(
 					div()
-						.p_6()
+						.p_5()
 						.flex()
 						.items_center()
 						.justify_between()
 						.gap_6()
-						.rounded(px(14.0))
+						.rounded(px(13.0))
 						.border_1()
 						.border_color(rgba(0xffffff12))
 						.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
@@ -1892,7 +2067,7 @@ fn accounts_content(cx: &mut Context<Shell>) -> AnyElement {
 								.min_w_0()
 								.flex()
 								.flex_col()
-								.gap_2()
+								.gap_1()
 								.child(
 									div()
 										.flex()
@@ -1903,59 +2078,390 @@ fn accounts_content(cx: &mut Context<Shell>) -> AnyElement {
 											div()
 												.text_size(px(14.0))
 												.font_weight(FontWeight::SEMIBOLD)
-												.child("Codex account operations"),
+												.child("Account pool"),
+										)
+										.child(
+											div()
+										.font_family("SF Mono")
+										.text_size(px(8.0))
+										.text_color(rgb(WB_TEXT_FAINT))
+										.child(format!("{count} ACCOUNTS · {available} AVAILABLE")),
 										),
 								)
 								.child(
 									div()
-										.max_w(px(580.0))
-										.text_size(px(11.0))
-										.line_height(px(17.0))
+										.max_w(px(570.0))
+										.text_size(px(10.5))
+										.line_height(px(16.0))
 										.text_color(rgb(WB_TEXT_MUTED))
-										.child("Multi-account quota, routing, reauthentication, and recovery remain available through the signed menu bar companion."),
+										.child("Routing is chosen only for a new Codex conversation. Existing threads keep their bound account and cache affinity."),
 								),
 						)
 						.child(
 							div()
-								.id("accounts-open-settings")
-								.role(Role::Button)
-								.aria_label("Manage desktop surfaces")
-								.h(px(30.0))
-								.px_3()
 								.flex()
 								.items_center()
-								.rounded(px(8.0))
-								.border_1()
-								.border_color(rgba(0xffffff18))
-								.text_size(px(9.5))
-								.text_color(rgb(WB_TEXT_MUTED))
-								.cursor_pointer()
-								.hover(|element| {
-									element.bg(rgba(0xffffff0e)).text_color(rgb(WB_TEXT))
-								})
-								.active(|element| element.bg(rgba(0xffffff1c)).opacity(0.82))
-								.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-								.on_click(cx.listener(|shell, _, _, cx| {
-									shell.select_destination(Destination::Settings, cx);
-								}))
-								.child("Desktop settings"),
+								.gap_2()
+								.child(account_mode_button("Balanced", balanced, can_manage, cx))
+								.child(
+									div()
+										.id("accounts-refresh")
+										.role(Role::Button)
+										.aria_label("Refresh account pool")
+										.h(px(28.0))
+										.px_3()
+										.flex()
+										.items_center()
+										.rounded(px(7.0))
+										.border_1()
+										.border_color(rgba(0xffffff14))
+										.text_size(px(9.0))
+										.text_color(rgb(WB_TEXT_MUTED))
+										.cursor_pointer()
+										.hover(|element| {
+											element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
+										})
+										.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+										.on_click(cx.listener(|shell, _, _, cx| {
+											shell.refresh_accounts(cx);
+										}))
+										.child("Refresh"),
+								),
 						),
 				)
 				.child(
 					div()
-						.p_5()
-						.rounded(px(12.0))
+						.id("account-list")
+						.flex_1()
+						.min_h_0()
+						.overflow_y_scroll()
+						.flex()
+						.flex_col()
+						.gap_2()
+						.when(count == 0, |list| {
+							list.child(
+								div()
+									.h(px(150.0))
+									.flex()
+									.flex_col()
+									.items_center()
+									.justify_center()
+									.gap_2()
+									.rounded(px(12.0))
+									.border_1()
+									.border_color(rgba(0xffffff0d))
+									.bg(rgba(0x0000001f))
+									.text_size(px(10.0))
+									.text_color(rgb(WB_TEXT_MUTED))
+									.child("No account projection is available yet.")
+									.child(
+										div()
+											.font_family("SF Mono")
+											.text_size(px(8.0))
+											.text_color(rgb(WB_TEXT_FAINT))
+											.child("Enroll or recover credentials from the menu bar surface."),
+									),
+							)
+						})
+						.children(rows),
+				)
+				.child(
+					div()
+						.h(px(28.0))
+						.px_3()
+						.flex()
+						.items_center()
+						.justify_between()
+						.rounded(px(8.0))
 						.border_1()
 						.border_color(rgba(0xffffff0d))
 						.bg(rgba(0x0000001f))
 						.font_family("SF Mono")
-						.text_size(px(8.5))
-						.line_height(px(14.0))
+						.text_size(px(8.0))
 						.text_color(rgb(WB_TEXT_FAINT))
-						.child("AUTHORITY BOUNDARY  ·  Decodex renders account readiness; the Codex app-server remains the account authority."),
+						.child(status)
+						.child("CREDENTIAL-NEGATIVE · DAEMON AUTHORITY"),
 				),
 		)
 		.into_any_element()
+}
+
+fn account_mode_button(
+	label: &'static str,
+	selected: bool,
+	can_manage: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	div()
+		.id("accounts-balanced")
+		.role(Role::Button)
+		.aria_label("Use balanced routing for new conversations")
+		.h(px(28.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(if selected { rgba(0x60a5fa55) } else { rgba(0xffffff14) })
+		.bg(if selected { rgba(0x60a5fa16) } else { rgba(0x00000000) })
+		.text_size(px(9.0))
+		.text_color(if selected { rgb(WB_TEXT) } else { rgb(WB_TEXT_MUTED) })
+		.when(can_manage && !selected, |button| {
+			button
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT)))
+				.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+				.on_click(cx.listener(|shell, _, _, cx| shell.select_balanced_accounts(cx)))
+		})
+		.child(label)
+		.into_any_element()
+}
+
+fn account_pool_row(
+	account: &AccountDto,
+	index: usize,
+	fixed: bool,
+	can_manage: bool,
+	cx: &mut Context<Shell>,
+) -> AnyElement {
+	let account_id = account.account_id.clone();
+	let toggle_account_id = account.account_id.clone();
+	let enabled = account.enabled;
+	let pin_enabled = can_manage && enabled && !fixed;
+	let toggle_enabled = can_manage;
+	let state_color = account_state_color(account);
+	let short_id = account.account_id.as_str().get(..8).unwrap_or(account.account_id.as_str());
+
+	div()
+		.id(("account-row", index))
+		.p_4()
+		.flex()
+		.items_center()
+		.gap_4()
+		.rounded(px(11.0))
+		.border_1()
+		.border_color(if fixed { rgba(0x60a5fa42) } else { rgba(0xffffff0f) })
+		.bg(if fixed { rgba(0x60a5fa0d) } else { rgba(ui_theme::SURFACE_MATERIAL) })
+		.child(
+			div()
+				.w(px(222.0))
+				.min_w(px(190.0))
+				.flex()
+				.items_center()
+				.gap_3()
+				.child(div().size(px(7.0)).rounded_full().bg(rgb(state_color)))
+				.child(
+					div()
+						.min_w_0()
+						.flex()
+						.flex_col()
+						.gap_1()
+						.child(
+							div()
+								.overflow_hidden()
+								.whitespace_nowrap()
+								.text_ellipsis()
+								.text_size(px(11.0))
+								.font_weight(FontWeight::SEMIBOLD)
+								.text_color(if enabled { rgb(WB_TEXT) } else { rgb(WB_TEXT_FAINT) })
+								.child(account.alias.as_str().to_owned()),
+						)
+						.child(
+							div()
+								.flex()
+								.items_center()
+								.gap_2()
+								.font_family("SF Mono")
+								.text_size(px(7.5))
+								.text_color(rgb(WB_TEXT_FAINT))
+								.child(account_readiness_label(account.lifecycle_readiness))
+								.child(format!("· {short_id}")),
+						),
+				),
+		)
+		.child(
+			div()
+				.flex_1()
+				.min_w_0()
+				.flex()
+				.items_center()
+				.gap_5()
+				.child(account_quota("5 HOUR", account.five_hour_quota))
+				.child(account_quota("7 DAY", account.seven_day_quota)),
+		)
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.gap_2()
+				.child(
+					div()
+						.id(("account-pin", index))
+						.role(Role::Button)
+						.aria_label(format!("Route new conversations to {}", account.alias.as_str()))
+						.h(px(27.0))
+						.w(px(58.0))
+						.flex()
+						.items_center()
+						.justify_center()
+						.rounded(px(7.0))
+						.border_1()
+						.border_color(if fixed { rgba(0x60a5fa55) } else { rgba(0xffffff12) })
+						.bg(if fixed { rgba(0x60a5fa18) } else { rgba(0x00000000) })
+						.text_size(px(8.5))
+						.text_color(if fixed { rgb(WB_BLUE) } else { rgb(WB_TEXT_MUTED) })
+						.when(pin_enabled, |button| {
+							button
+								.cursor_pointer()
+								.hover(|element| {
+									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
+								})
+								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+								.on_click(cx.listener(move |shell, _, _, cx| {
+									shell.select_fixed_account(&account_id, cx);
+								}))
+						})
+						.child(if fixed { "Pinned" } else { "Route" }),
+				)
+				.child(
+					div()
+						.id(("account-enabled", index))
+						.role(Role::Button)
+						.aria_label(format!(
+							"{} {}",
+							if enabled { "Disable" } else { "Enable" },
+							account.alias.as_str()
+						))
+						.h(px(27.0))
+						.w(px(58.0))
+						.flex()
+						.items_center()
+						.justify_center()
+						.rounded(px(7.0))
+						.border_1()
+						.border_color(if enabled { rgba(0x22c55e45) } else { rgba(0xffffff12) })
+						.bg(if enabled { rgba(0x22c55e12) } else { rgba(0x00000000) })
+						.text_size(px(8.5))
+						.text_color(if enabled { rgb(WB_GREEN) } else { rgb(WB_TEXT_FAINT) })
+						.when(toggle_enabled, |button| {
+							button
+								.cursor_pointer()
+								.hover(|element| {
+									element.bg(rgba(0xffffff0d)).text_color(rgb(WB_TEXT))
+								})
+								.active(|element| element.bg(rgba(0xffffff1b)).opacity(0.84))
+								.on_click(cx.listener(move |shell, _, _, cx| {
+									shell.set_account_enabled(&toggle_account_id, !enabled, cx);
+								}))
+						})
+						.child(if enabled { "Enabled" } else { "Disabled" }),
+				),
+		)
+		.into_any_element()
+}
+
+fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> AnyElement {
+	let (detail, used, color) = match quota.result {
+		AccountQuotaStateDto::Current { used_percent, .. } => (
+			format!("{used_percent}% used"),
+			f32::from(used_percent),
+			if used_percent >= 90 { 0xef4444 } else if used_percent >= 70 { WB_AMBER } else { WB_BLUE },
+		),
+		AccountQuotaStateDto::Unknown => ("Unknown".to_owned(), 0.0, WB_TEXT_FAINT),
+		AccountQuotaStateDto::Error { .. } => ("Unavailable".to_owned(), 0.0, WB_TEXT_FAINT),
+	};
+	div()
+		.w(px(122.0))
+		.flex()
+		.flex_col()
+		.gap_1()
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.justify_between()
+				.font_family("SF Mono")
+				.text_size(px(7.5))
+				.text_color(rgb(WB_TEXT_FAINT))
+				.child(label)
+				.child(detail),
+		)
+		.child(
+			div()
+				.h(px(3.0))
+				.w_full()
+				.rounded_full()
+				.bg(rgba(0xffffff0c))
+				.child(
+					div()
+						.h_full()
+						.w(px(used.clamp(0.0, 100.0) * 1.22))
+						.rounded_full()
+						.bg(rgb(color)),
+				),
+		)
+		.into_any_element()
+}
+
+fn account_state_color(account: &AccountDto) -> u32 {
+	if !account.enabled {
+		return WB_TEXT_FAINT;
+	}
+	match account.observed_state {
+		AccountObservedStateDto::Available => WB_GREEN,
+		AccountObservedStateDto::Unknown | AccountObservedStateDto::PluginUnready => WB_AMBER,
+		AccountObservedStateDto::Unavailable
+		| AccountObservedStateDto::Depleted
+		| AccountObservedStateDto::AuthFailed => 0xef4444,
+	}
+}
+
+fn account_readiness_label(readiness: AccountLifecycleReadinessDto) -> &'static str {
+	match readiness {
+		AccountLifecycleReadinessDto::Ready => "READY",
+		AccountLifecycleReadinessDto::CredentialAbsent => "NO CREDENTIAL",
+		AccountLifecycleReadinessDto::StoreUnavailable => "STORE UNAVAILABLE",
+		AccountLifecycleReadinessDto::StoreMismatch => "STORE MISMATCH",
+		AccountLifecycleReadinessDto::ProviderMismatch => "PROVIDER MISMATCH",
+		AccountLifecycleReadinessDto::OperationUnsettled => "OPERATION PENDING",
+		AccountLifecycleReadinessDto::CallbackCapabilityUnready => "CALLBACK UNREADY",
+		AccountLifecycleReadinessDto::Tombstoned => "LOGGED OUT",
+	}
+}
+
+fn accounts_load_label(load: AccountsLoadState) -> &'static str {
+	match load {
+		AccountsLoadState::NeverRequested => "Open Accounts to load the daemon-owned pool.",
+		AccountsLoadState::Loading => "Loading account pool…",
+		AccountsLoadState::Ready => "Account pool is synchronized.",
+		AccountsLoadState::Offline => "Account authority is offline.",
+		AccountsLoadState::Stale => "Showing retained account state; refresh after reconnect.",
+		AccountsLoadState::Unavailable => "The daemon could not return a safe account snapshot.",
+		AccountsLoadState::Refused => "The account response did not match this request.",
+	}
+}
+
+fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
+	match command {
+		AccountCommandState::Idle => None,
+		AccountCommandState::Sending => Some("Sending account command…"),
+		AccountCommandState::AwaitingResult => Some("Waiting for durable account result…"),
+		AccountCommandState::Accepted => Some("Account pool updated."),
+		AccountCommandState::OutcomeUnknown => {
+			Some("Outcome is unknown. Refresh readback before another account change.")
+		},
+		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
+	}
+}
+
+fn account_input_error_label(error: AccountInputError) -> &'static str {
+	match error {
+		AccountInputError::Offline => "Account authority is offline.",
+		AccountInputError::Busy => "Wait for the current account change to finish.",
+		AccountInputError::AccountMissing => "That account is no longer in the current pool.",
+		AccountInputError::RoutingUnavailable => "Routing controls are unavailable. Refresh first.",
+		AccountInputError::IdentityUnavailable => "A command identity could not be created.",
+	}
 }
 
 fn quick_task_state_label(state: QuickTaskState) -> &'static str {
@@ -3393,7 +3899,7 @@ fn destination_content(
 	let content = if selected == Destination::Health {
 		health_content(&shell.health)
 	} else if selected == Destination::Accounts {
-		accounts_content(cx)
+		accounts_content(shell, cx)
 	} else {
 		placeholder_content(selected)
 	};
@@ -3453,6 +3959,7 @@ mod tests {
 
 	use super::*;
 	use crate::client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery};
+	use crate::work_items::WorkItemsLoadState;
 
 	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
@@ -3589,6 +4096,17 @@ mod tests {
 	}
 
 	#[gpui::test]
+	fn workbench_does_not_activate_the_deferred_factory_protocol(cx: &mut TestAppContext) {
+		let (shell, _visual) = open_shell(cx);
+
+		assert_eq!(
+			shell.read_with(_visual, |shell, _| shell.work.load),
+			WorkItemsLoadState::NeverRequested,
+			"the default conversation surface must not send Factory-only queries"
+		);
+	}
+
+	#[gpui::test]
 	fn panel_shortcuts_toggle_both_workbench_sidebars(cx: &mut TestAppContext) {
 		let (shell, visual) = open_shell(cx);
 		assert!(shell.read_with(visual, |shell, _| shell.left_sidebar_visible));
@@ -3622,7 +4140,7 @@ mod tests {
 			visual.update(|window, cx| {
 				window.resize(size(px(width), px(height)));
 				window.draw(cx).clear();
-				assert_eq!(WORKBENCH_TOPBAR_HEIGHT, 48.0);
+				assert_eq!(WORKBENCH_TOPBAR_HEIGHT, 42.0);
 				assert_eq!(WORKBENCH_SESSION_SIDEBAR_WIDTH, 248.0);
 				assert_eq!(WORKBENCH_INSPECTOR_WIDTH, 344.0);
 			});
