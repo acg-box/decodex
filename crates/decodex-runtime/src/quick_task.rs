@@ -58,7 +58,7 @@ use crate::{
 	ProcessGenerationControl, ProviderAttemptControl, ProviderAttemptReconciliation,
 	account_launch::{CapacityExhausted, RunnerCapacity},
 	account_service::{AccountLifecycleError, AccountProcessCredential, AccountService},
-	process_supervisor::FencedProcess,
+	process_supervisor::{FencedProcess, ProcessGenerationTermination},
 	provider_attempt_service::{
 		FreshRuntimeSessionResume, ProviderAttemptRuntimeAuthority, RuntimeSessionResumeRequest,
 		SuccessfulRuntimeSessionResume,
@@ -2681,16 +2681,33 @@ impl QuickTaskRuntime {
 		session.next_user_sequence =
 			context.logical_turn_sequence.saturating_add(sequence_increment);
 		let readback = session_readback(&session, QuickTaskLocalState::Ready, None);
-		if !self.restore_ready_if_active(&context.attempt_id, session) {
-			return Err(());
+		if self.retire_process(&session.process).await {
+			if !self.remove_active_if(&context.attempt_id, &session.conversation_id) {
+				return Err(());
+			}
+			self.emit(QuickTaskOutcome::Terminal {
+				readback,
+				turn_id: context.logical_turn_id.clone(),
+				state: terminal,
+				provider_turn_id: context.provider_turn_id.clone(),
+			})
+			.await;
+		} else {
+			let mut recovery = readback;
+			recovery.state = QuickTaskLocalState::ManualRecovery;
+			if !self.set_recovery_if_active(
+				&context.attempt_id,
+				recovery.clone(),
+				QuickTaskManualRecovery::ProcessUnavailable,
+			) {
+				return Err(());
+			}
+			self.emit(QuickTaskOutcome::ManualRecovery {
+				readback: recovery,
+				action: QuickTaskManualRecovery::ProcessUnavailable,
+			})
+			.await;
 		}
-		self.emit(QuickTaskOutcome::Terminal {
-			readback,
-			turn_id: context.logical_turn_id.clone(),
-			state: terminal,
-			provider_turn_id: context.provider_turn_id.clone(),
-		})
-		.await;
 		Ok(())
 	}
 
@@ -3082,11 +3099,21 @@ impl QuickTaskRuntime {
 	}
 
 	async fn terminate_process(&self, process: &FencedProcess) {
-		let _ = self
+		let _ = self.retire_process(process).await;
+	}
+
+	async fn retire_process(&self, process: &FencedProcess) -> bool {
+		matches!(
+			self
 			.inner
 			.process_generations
 			.terminate_exact(process.generation_id(), process.revision(), Duration::from_secs(5))
-			.await;
+			.await,
+			Ok(
+				ProcessGenerationTermination::PositiveDeathRecorded
+					| ProcessGenerationTermination::AlreadyDead
+			)
+		)
 	}
 
 	fn reserve_initial(&self, command: &CreateQuickTask) -> Result<(), Box<QuickTaskOutcome>> {
@@ -3674,24 +3701,44 @@ impl QuickTaskRuntime {
 		}
 	}
 
-	fn restore_ready_if_active(
+	fn remove_active_if(
 		&self,
 		attempt_id: &ProviderAttemptId,
-		session: LocalSession,
+		conversation_id: &ConversationId,
 	) -> bool {
 		let mut local = self.local();
-		if let Some(task) = local.get_mut(session.conversation_id.as_str()) {
-			let belongs = matches!(
+		let belongs = local.get(conversation_id.as_str()).is_some_and(|task| {
+			matches!(
 				&task.state,
 				LocalTaskState::Active { attempt_id: active_attempt_id, .. }
 					if active_attempt_id == attempt_id
-			);
-			if belongs {
-				task.state = LocalTaskState::Ready(session);
-				return true;
-			}
+			)
+		});
+		if belongs {
+			local.remove(conversation_id.as_str());
 		}
-		false
+		belongs
+	}
+
+	fn set_recovery_if_active(
+		&self,
+		attempt_id: &ProviderAttemptId,
+		readback: QuickTaskReadback,
+		action: QuickTaskManualRecovery,
+	) -> bool {
+		let mut local = self.local();
+		let Some(task) = local.get_mut(readback.conversation_id.as_str()) else {
+			return false;
+		};
+		if !matches!(
+			&task.state,
+			LocalTaskState::Active { attempt_id: active_attempt_id, .. }
+				if active_attempt_id == attempt_id
+		) {
+			return false;
+		}
+		task.state = LocalTaskState::Recovery { readback, action };
+		true
 	}
 
 	fn stop_active_worker(&self, attempt_id: &ProviderAttemptId, conversation_id: &ConversationId) {

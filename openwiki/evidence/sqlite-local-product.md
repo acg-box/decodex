@@ -90,6 +90,39 @@ evidence showed one failed user Turn, no active Turn, no Codex thread, no target
 ProcessGeneration, and no ProviderAttempt. The one-live-generation-per-account policy remains;
 cross-conversation process multiplexing is deferred.
 
+## Live GPUI workbench acceptance
+
+The current GPUI Workbench uses one retained same-UID protocol session for Conversation,
+Accounts, and Health. The Accounts destination shows bounded account lifecycle, quota,
+and routing controls. It does not read SQLite or expose credentials. The title bar is 42
+pixels high. Deterministic native captures cover the live Accounts destination and the
+transparent Workbench with the thinner title bar.
+
+The client does not activate the deferred WorkItem and Project query surface. Protocol
+V2.0 is strict, and an older daemon can close a retained session when it receives an
+unknown `ListProjects` query. The WorkItem controller stays dormant until a later
+capability-negotiation contract exists. This prevents the deferred factory surface from
+making Conversation history stay in loading state or making the whole Workbench appear
+offline.
+
+One ignored live integration test connected to the installed signed daemon and completed
+two new real Conversations in sequence. It then returned to the first Conversation,
+submitted a later Turn, and proved that its RuntimeSession revision and complete
+cursor-paged history advanced. The test read only bounded presentation state and did not
+emit an account, Conversation, Codex thread, or credential identifier.
+
+The runtime now retires the exact app-server process after positive provider terminal
+evidence and durable Turn terminalization. It records positive ProcessGeneration death
+before it publishes `Ready`. The later Turn rehydrates the original account and Codex
+thread in a fresh ProcessGeneration. After the three-turn live test, read-only SQLite
+inspection found zero non-dead ProcessGenerations and no app-server child owned by the
+daemon.
+
+A terminal event now refreshes history when its Conversation is open. If another
+Conversation is open, the pager records a bounded invalidation. The next open bypasses
+the cached head and waits for a fresh server page. A deterministic test proves that the
+old cached page cannot become visible after this invalidation.
+
 ## Final repository gates
 
 One complete `cargo make check` run finished successfully on the final source. It included:

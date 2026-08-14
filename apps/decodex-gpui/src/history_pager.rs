@@ -24,6 +24,7 @@ use self::page_cache::{
 };
 
 const MAX_CANCELLED_REQUESTS: usize = 8;
+const MAX_INVALIDATED_CONVERSATIONS: usize = 64;
 const PRODUCTION_MAX_PAGE_BYTES: usize = 256 * 1_024;
 const PRODUCTION_MAX_WINDOW_BYTES: usize = 1_024 * 1_024;
 const PRODUCTION_MAX_WINDOW_ITEMS: usize = 32;
@@ -394,16 +395,17 @@ impl HistoryPager {
 		let mut state = self.lock();
 		let generation =
 			state.next_view_generation().ok_or(HistoryClosedReason::RequestIdentityExhausted)?;
+		let cache_eligible = !state.take_invalidated(&conversation_id);
 
 		state.cancel_in_flight(HistoryStaleReason::ConversationChanged);
-		state.active = Some(ActiveView::new(conversation_id, generation));
+		state.active = Some(ActiveView::new(conversation_id, generation, cache_eligible));
 		drop(state);
 		self.inner.notify.notify_one();
 
 		Ok(())
 	}
 
-	/// Reload the first bounded page only when the terminal event belongs to the open view.
+	/// Reload an open terminal Conversation or mark its cached head stale until the next open.
 	pub(crate) fn reload_if_open(
 		&self,
 		conversation_id: &EntityId,
@@ -411,8 +413,10 @@ impl HistoryPager {
 		let _commit_gate = self.lock_cache_publication_commit_gate();
 		let mut state = self.lock();
 		if !state.active.as_ref().is_some_and(|active| &active.conversation_id == conversation_id) {
+			state.invalidate(conversation_id.clone());
 			return Ok(false);
 		}
+		state.take_invalidated(conversation_id);
 		let generation =
 			state.next_view_generation().ok_or(HistoryClosedReason::RequestIdentityExhausted)?;
 		state.cancel_in_flight(HistoryStaleReason::ConversationChanged);
@@ -847,6 +851,7 @@ impl HistoryPager {
 					return HistoryRouteOutcome::Closed;
 				}
 
+				active.cache_reuse_allowed = true;
 				active.unavailable = None;
 				active.retry_request = None;
 				active.cache_publication_fence = cache_identity.clone();
@@ -1121,6 +1126,7 @@ struct PagerState {
 	send_in_flight: Option<HistorySendToken>,
 	active: Option<ActiveView>,
 	cancelled: VecDeque<CancelledRequest>,
+	invalidated: VecDeque<EntityId>,
 	last_stale_cancellation: Option<HistoryStaleCancellation>,
 }
 
@@ -1134,8 +1140,27 @@ impl PagerState {
 			send_in_flight: None,
 			active: None,
 			cancelled: VecDeque::new(),
+			invalidated: VecDeque::new(),
 			last_stale_cancellation: None,
 		}
+	}
+
+	fn invalidate(&mut self, conversation_id: EntityId) {
+		if let Some(index) = self.invalidated.iter().position(|current| current == &conversation_id) {
+			self.invalidated.remove(index);
+		}
+		self.invalidated.push_back(conversation_id);
+		while self.invalidated.len() > MAX_INVALIDATED_CONVERSATIONS {
+			self.invalidated.pop_front();
+		}
+	}
+
+	fn take_invalidated(&mut self, conversation_id: &EntityId) -> bool {
+		let Some(index) = self.invalidated.iter().position(|current| current == conversation_id) else {
+			return false;
+		};
+		self.invalidated.remove(index);
+		true
 	}
 
 	fn next_view_generation(&mut self) -> Option<u64> {
@@ -1368,13 +1393,14 @@ struct ActiveView {
 	retry_request: Option<PageRequest>,
 	unavailable: Option<HistoryAvailability>,
 	cache_lookup_armed: Option<PageRequest>,
+	cache_reuse_allowed: bool,
 	cache_publication_fence: Option<CacheOperationIdentity>,
 	provisional: Option<ProvisionalPage>,
 	cache_diagnostic: Option<HistoryCacheDiagnostic>,
 }
 
 impl ActiveView {
-	fn new(conversation_id: EntityId, generation: u64) -> Self {
+	fn new(conversation_id: EntityId, generation: u64, cache_eligible: bool) -> Self {
 		let initial = PageRequest::new(
 			generation,
 			PageKey::initial(conversation_id.clone()),
@@ -1390,7 +1416,8 @@ impl ActiveView {
 			in_flight: None,
 			retry_request: None,
 			unavailable: None,
-			cache_lookup_armed: Some(initial),
+			cache_lookup_armed: cache_eligible.then_some(initial),
+			cache_reuse_allowed: cache_eligible,
 			cache_publication_fence: None,
 			provisional: None,
 			cache_diagnostic: None,
@@ -1409,6 +1436,7 @@ impl ActiveView {
 		self.retry_request = None;
 		self.unavailable = None;
 		self.cache_lookup_armed = None;
+		self.cache_reuse_allowed = false;
 		self.cache_publication_fence = None;
 	}
 
@@ -1426,7 +1454,7 @@ impl ActiveView {
 		self.in_flight = None;
 		self.retry_request = None;
 		self.unavailable = unavailable;
-		self.cache_lookup_armed = Some(request);
+		self.cache_lookup_armed = self.cache_reuse_allowed.then_some(request);
 		self.cache_publication_fence = None;
 	}
 
@@ -1959,6 +1987,73 @@ mod tests {
 				reason: HistoryStaleReason::ConversationChanged,
 			})
 		);
+	}
+
+	#[test]
+	fn terminal_event_invalidates_cached_head_until_fresh_response() {
+		let temporary = TempDir::new_in(std::env::temp_dir())
+			.expect("host temporary directory accepts an isolated fixture");
+		let cache_parent = temporary.path().join("cache-parent");
+		let server_id = server("server-invalidated-cache");
+		let conversation_id = entity("conversation-invalidated-cache");
+		let cached_page = page(Some("cached-next"));
+		let fresh_page = page(Some("fresh-next"));
+
+		seed_cached_head(&cache_parent, &server_id, &conversation_id, &cached_page);
+
+		let pager = HistoryPager::production(&cache_parent, TEST_CACHE_SCHEMA_GENERATION);
+
+		pager.bind_session(SESSION_GENERATION, server_id.clone());
+		assert!(!pager
+			.reload_if_open(&conversation_id)
+			.expect("terminal invalidation remains bounded"));
+		pager.open(conversation_id).expect("invalidated conversation view opens");
+
+		let head = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("fresh head request is ready");
+		let send = pager.begin_send(&head).expect("current head enters the send phase");
+
+		assert!(pager.finish_send(&send));
+		pager.lookup_sent_request(&send);
+
+		let awaiting_fresh = pager.snapshot();
+
+		assert!(awaiting_fresh.visible.is_none());
+		assert_eq!(awaiting_fresh.visible_source, None);
+		assert_eq!(awaiting_fresh.cursor, HistoryCursorObservation::Unknown);
+
+		pager.session_ended(SESSION_GENERATION);
+		pager.bind_session(SESSION_GENERATION + 1, server_id.clone());
+		let replacement = pager
+			.try_take_dispatch(SESSION_GENERATION + 1, &server_id)
+			.expect("replacement session requests a fresh head");
+		let replacement_send = pager
+			.begin_send(&replacement)
+			.expect("replacement head enters the send phase");
+
+		assert!(pager.finish_send(&replacement_send));
+		pager.lookup_sent_request(&replacement_send);
+		assert!(pager.snapshot().visible.is_none());
+
+		assert!(matches!(
+			pager.route_result(
+				SESSION_GENERATION + 1,
+				&server_id,
+				result(
+					&replacement,
+					&server_id,
+					ConversationHistoryResult::Page(fresh_page.clone()),
+				),
+			),
+			HistoryRouteOutcome::Fresh
+		));
+
+		let fresh = pager.snapshot();
+
+		assert_eq!(fresh.visible, Some(fresh_page));
+		assert_eq!(fresh.visible_source, Some(HistoryPageSource::FreshServer));
+		assert_eq!(fresh.cursor, HistoryCursorObservation::ContinuationAvailable);
 	}
 
 	#[test]
