@@ -8,7 +8,9 @@ filter     = 'test(account_launch::process::tests::)'
 test-group = 'app-server-process'
 
 # These tests start full daemon processes and wait for exact transport cleanup.
-# Share the process-test semaphore so host load cannot consume their startup bound.
+# Keep them in the process group and reserve every global test thread so unrelated
+# heavy tests cannot consume their bounded startup window.
 [[profile.default.overrides]]
-filter     = 'binary_id(decodexd::signal_shutdown)'
-test-group = 'app-server-process'
+filter           = 'binary_id(decodexd::signal_shutdown)'
+test-group       = 'app-server-process'
+threads-required = 'num-test-threads'

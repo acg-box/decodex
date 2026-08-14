@@ -32,9 +32,10 @@ use decodex_database::{
 	PlanInitialThreadContinuation, PrepareProcessGenerationOutcome, PrepareProviderAttemptOutcome,
 	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
 	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome, QuickTaskInitialRouteOutcome,
-	QuickTaskTerminalizationOutcome, RecordHistoryItem, RouteQuickTaskInitial,
-	RuntimeSessionBindingReceipt, SqliteStore, SuccessfulRuntimeSessionThreadStart,
-	TerminalizeQuickTaskTurn, TurnReservationOutcome,
+	QuickTaskPreEffectEvidenceKind, QuickTaskTerminalizationOutcome,
+	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
+	RouteQuickTaskInitial, RuntimeSessionBindingReceipt, SqliteStore,
+	SuccessfulRuntimeSessionThreadStart, TerminalizeQuickTaskTurn, TurnReservationOutcome,
 };
 use tempfile::tempdir;
 use zeroize::Zeroizing;
@@ -183,6 +184,28 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		PrepareQuickTaskProcessGenerationOutcome::Fresh(admission) => admission,
 		other => panic!("process admission was not fresh: {other:?}"),
 	};
+	let pre_spawn_readback = store
+		.reconcile_quick_task_thread_establishment(&ReconcileQuickTaskThreadEstablishment {
+			conversation_id: conversation_id.clone(),
+			expected_conversation_revision: 1,
+			runtime_session_id: initial_session.runtime_session_id.clone(),
+			expected_runtime_session_revision: 1,
+			turn_id: route.turn_id.clone(),
+			expected_turn_revision: 1,
+			continuation_plan_id: INITIAL_PLAN_ID.to_owned(),
+			routing_decision_id: route.decision_id.clone(),
+			selected_account_id: account_id.clone(),
+			process_generation_id: generation_id.clone(),
+		})
+		.await
+		.expect("reconcile admitted generation before spawn");
+	assert!(matches!(
+		pre_spawn_readback,
+		QuickTaskThreadEstablishmentReadback::DefinitelyNotStarted(ref evidence)
+			if evidence.process_generation_revision.is_none()
+				&& evidence.kind == QuickTaskPreEffectEvidenceKind::AdmissionRejected
+				&& evidence.evidence_id == "quick-task-process-admission"
+	));
 	let execution_epoch_id =
 		ProcessExecutionEpochId::new(EXECUTION_EPOCH_ID).expect("execution epoch identity");
 	let boot_id = ProcessBootIdentity::new("fixture-boot").expect("boot identity");

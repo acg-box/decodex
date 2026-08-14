@@ -21,13 +21,17 @@ credential fingerprint.
   terminalization. It then reopens SQLite, reserves a later Turn, and proves a SameThread
   plan on the original account and Codex thread. It admits one fresh rehydrated
   ProcessGeneration only from the active, acknowledged source RuntimeSession and exact prior
-  terminal evidence. Replaying the old attempt leaves exactly one dispatch intent.
+  terminal evidence. It also proves that an exact completed process-admission receipt plus an
+  absent target generation is durable pre-effect evidence. Replaying the old attempt leaves
+  exactly one dispatch intent.
 - `database/transfer` tests a real redb fixture, exact import, exact replay, SQLite
   readback, owner-private mode, and byte-for-byte source retention.
 - Installer tests cover fresh install, direct LaunchAgent composition, transfer ordering,
   bounded subprocesses, signature checks, account-count readback, and source retention.
 - Runtime and daemon focused checks compile without PostgreSQL. Daemon signal tests cover
-  SIGINT, SIGTERM, exact socket cleanup, and stale-socket recovery after SIGKILL.
+  SIGINT, SIGTERM, exact socket cleanup, and stale-socket recovery after SIGKILL. In the full
+  nextest run, these real cold-start tests reserve all global test threads while retaining their
+  20-second startup bound.
 
 ## Signed live acceptance
 
@@ -47,7 +51,7 @@ first turn. The probe reported one preserved RuntimeSession and one Codex thread
 read-only SQLite queries found:
 
 - four completed Turns: two user and two assistant;
-- 44 ordered history items;
+- 48 ordered history items;
 - one InitialThread and one SameThread continuation plan, each with a distinct operation and
   idempotency key;
 - two distinct succeeded ProviderAttempts, each with exact terminal evidence; and
@@ -57,6 +61,14 @@ read-only SQLite queries found:
 The exact Codex thread value and all credential-bearing values were suppressed. The failed
 pre-dispatch probe and the later acceptance-unknown probe remain durable diagnostic evidence and
 were not automatically retried.
+
+An additional new conversation was started while the selected account still owned the prior
+conversation's ready ProcessGeneration. Before the repair, this case returned
+`AcceptanceUnknown` despite having no target generation or ProviderAttempt. After the repair, the
+same live condition returned the explicit `RestoreProcessReadiness` rejection. Read-only SQLite
+evidence showed one failed user Turn, no active Turn, no Codex thread, no target
+ProcessGeneration, and no ProviderAttempt. The one-live-generation-per-account policy remains;
+cross-conversation process multiplexing is deferred.
 
 ## Final repository gates
 
@@ -68,8 +80,8 @@ One complete `cargo make check` run finished successfully on the final source. I
   Clippy checks for all 12 active Rust packages;
 - the schema-V2 local database gate with both immutable migration digests, WAL, foreign keys,
   integrity checks, owner-private mode, and the exact 28-table inventory;
-- 833 passed nextest tests with three declared skips, including the serialized full-daemon signal
-  group; and
+- 833 passed nextest tests with three declared skips, including the globally isolated
+  full-daemon signal tests; and
 - architecture-contract and real CLI/daemon diagnostic tests.
 
 The final Rust advisory scan reports zero vulnerabilities. Its information-only result remains

@@ -1,6 +1,6 @@
 # SQLite Local-Product Decision
 
-Status: accepted and being implemented.
+Status: accepted and implemented.
 
 Date: 2026-08-14.
 
