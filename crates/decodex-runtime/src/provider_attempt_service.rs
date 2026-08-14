@@ -19,10 +19,10 @@ use decodex_core::{
 	ProviderAttemptPreparation, ProviderAttemptState, ProviderAttemptUnknownReason,
 	ProviderEvidenceId, ProviderPositiveEvidence, ProviderRequestId, RuntimeSessionId,
 };
-use decodex_postgres::{
+use decodex_database::{
 	AuthorizeProviderDispatchOutcome, ContinuationPlanEffect, FreshPreparedProviderAttempt,
-	PostgresStore, PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome,
-	RuntimeSessionBindingReceipt, RuntimeSessionThreadBindingReadback,
+	PrepareProviderAttemptOutcome, ProviderAttemptMutationOutcome, RuntimeSessionBindingReceipt,
+	RuntimeSessionThreadBindingReadback, SqliteStore,
 };
 
 use crate::process_supervisor::FencedProcess;
@@ -39,7 +39,7 @@ pub struct ProviderAttemptControl {
 
 /// Sole in-process owner of every durable ProviderAttempt mutation capability.
 struct ProviderAttemptService {
-	store: PostgresStore,
+	store: SqliteStore,
 	evidence_source: Arc<dyn ProviderPositiveEvidenceSource>,
 	reconciliation_cursor: tokio::sync::Mutex<ProviderAttemptReconciliationCursor>,
 }
@@ -87,7 +87,7 @@ pub struct ProviderAttemptDiagnostic {
 	pub terminal_evidence_id: Option<ProviderEvidenceId>,
 	/// Current durable revision.
 	pub revision: i64,
-	/// PostgreSQL-authored last-transition instant in Unix microseconds.
+	/// Product-store-authored last-transition instant in Unix microseconds.
 	pub updated_at_micros: i64,
 }
 
@@ -120,7 +120,7 @@ pub enum ProviderAttemptReconciliation {
 pub enum ProviderAttemptReadiness {
 	/// Restore projection and the first positive-only reconciliation pass completed.
 	Ready,
-	/// PostgreSQL authority was unavailable or inconsistent.
+	/// Durable product authority was unavailable or inconsistent.
 	ProductStateUnavailable,
 }
 
@@ -160,7 +160,7 @@ pub trait ProviderPositiveEvidenceSource: Send + Sync {
 /// Closed service failure without provider keys, credentials, or database detail.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderAttemptServiceError {
-	/// PostgreSQL ProviderAttempt authority was unavailable or inconsistent.
+	/// Durable ProviderAttempt authority was unavailable or inconsistent.
 	ProductState,
 	/// A requested attempt or positive receipt contradicted durable authority.
 	AuthorityConflict,
@@ -279,12 +279,12 @@ impl ProviderAttemptControl {
 	///
 	/// The server lifecycle separately owns continued background reconciliation. No provider
 	/// dispatch source is constructed by this composition.
-	pub(crate) async fn start(store: PostgresStore) -> Result<Self, ProviderAttemptServiceError> {
+	pub(crate) async fn start(store: SqliteStore) -> Result<Self, ProviderAttemptServiceError> {
 		Self::start_with_source(store, Arc::new(NoPositiveProviderEvidence)).await
 	}
 
 	pub(crate) async fn start_with_source(
-		store: PostgresStore,
+		store: SqliteStore,
 		evidence_source: Arc<dyn ProviderPositiveEvidenceSource>,
 	) -> Result<Self, ProviderAttemptServiceError> {
 		store

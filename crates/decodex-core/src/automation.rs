@@ -589,8 +589,9 @@ pub fn propose_automation_firing(
 			AutomationTrigger::Schedule(trigger_schedule),
 			AutomationFiringSource::Schedule { schedule },
 		) if trigger_schedule == schedule => {},
-		(AutomationTrigger::Schedule(_), AutomationFiringSource::Schedule { .. }) =>
-			return Err(AutomationError::SourceTriggerMismatch),
+		(AutomationTrigger::Schedule(_), AutomationFiringSource::Schedule { .. }) => {
+			return Err(AutomationError::SourceTriggerMismatch);
+		},
 		(AutomationTrigger::Schedule(_), AutomationFiringSource::ObservedSignal { .. })
 		| (
 			AutomationTrigger::Webhook { .. }

@@ -175,7 +175,7 @@ pub(crate) fn open_private_database_file(
 
 	let descriptor = match open_private_database_file_at(&parent, &name, false) {
 		Ok(descriptor) => descriptor,
-		Err(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
+		Err(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
 			match open_private_database_file_at(&parent, &name, true) {
 				Ok(descriptor) => {
 					created = true;
@@ -184,8 +184,7 @@ pub(crate) fn open_private_database_file(
 				Err(PathError::Io { kind: ErrorKind::AlreadyExists, .. }) =>
 					open_private_database_file_at(&parent, &name, false)?,
 				Err(error) => return Err(error),
-			}
-		},
+			},
 		Err(error) => return Err(error),
 	};
 	let file = file_from_descriptor(descriptor, IoOperation::Open)?;
@@ -488,11 +487,8 @@ fn open_private_database_file_at(
 	name: &CStr,
 	create: bool,
 ) -> Result<RawFd, PathError> {
-	let flags = O_RDWR
-		| O_NONBLOCK
-		| O_NOFOLLOW
-		| O_CLOEXEC
-		| if create { O_CREAT | O_EXCL } else { 0 };
+	let flags =
+		O_RDWR | O_NONBLOCK | O_NOFOLLOW | O_CLOEXEC | if create { O_CREAT | O_EXCL } else { 0 };
 	// SAFETY: `parent` is open, `name` is NUL-terminated, and a successful
 	// `openat` returns one new descriptor owned by the caller.
 	let descriptor = unsafe {

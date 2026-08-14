@@ -906,7 +906,7 @@ mod tests {
 		AccountId, AccountProvider, AccountQuotaDisposition, AccountQuotaWindowObservation,
 		ProviderIdentity, ResetCardDescriptor, ResetCardTimestamp,
 	};
-	use decodex_postgres::AccountProfileSnapshot;
+	use decodex_database::AccountProfileSnapshot;
 	use tokio::{sync::watch, time};
 
 	use crate::account_launch::ResetCardInventoryView;

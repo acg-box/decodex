@@ -1,7 +1,8 @@
 # Account Lifecycle Authority
 
-Status: normative vNext account authority. This document defines the usable macOS
-boundary and the later complete account lifecycle.
+Status: historical account-domain contract. Its durable lifecycle and exact-binding
+invariants remain useful, but its PostgreSQL/redb ownership is superseded by the
+[Local Product V1 contract](local-product-v1.md).
 
 The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
 requirements. A component-first global gate is not the delivery order.

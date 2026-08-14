@@ -1,4 +1,4 @@
-//! Sole daemon coordinator for PostgreSQL account state and host credential effects.
+//! Sole daemon coordinator for durable account state and credential effects.
 
 use std::{
 	collections::HashMap,
@@ -17,10 +17,10 @@ use decodex_core::{
 	AccountSelectionMode, AccountSelectionRecovery, CredentialBinding, CredentialVersion,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
-use decodex_postgres::{
+use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountLifecycleMutationOutcome,
 	AccountOperationPreparation, AccountStoreObservation, CodexAccountCapabilityAttestation,
-	PostgresStore, RoutingControlOutcome, StoreError,
+	RoutingControlOutcome, SqliteStore, StoreError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -375,7 +375,7 @@ pub struct StartupAccountReconciliation {
 /// Explicit action accepted for one unsettled credential operation.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum AccountManualRecoveryAction {
-	/// Re-read exact PostgreSQL and host-store state and settle only proved effects.
+	/// Re-read exact account and credential state and settle only proved effects.
 	ReconcileExactStoreState,
 	/// Cancel only when the external effect is proved absent.
 	CancelBeforeEffect,
@@ -402,7 +402,7 @@ struct ReauthenticationCommandInput<'a> {
 
 /// Sole account lifecycle coordinator in `decodexd`.
 pub struct AccountService {
-	store: PostgresStore,
+	store: SqliteStore,
 	credentials: Arc<dyn HostCredentialStore>,
 	refresher: Arc<dyn CredentialRefreshPort>,
 	account_locks: Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
@@ -412,7 +412,7 @@ pub struct AccountService {
 impl AccountService {
 	/// Assemble one coordinator from its three narrow infrastructure ports.
 	pub(crate) fn new(
-		store: PostgresStore,
+		store: SqliteStore,
 		credentials: Arc<dyn HostCredentialStore>,
 		refresher: Arc<dyn CredentialRefreshPort>,
 	) -> Self {
@@ -552,7 +552,9 @@ impl AccountService {
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
-		F: FnOnce(Result<(i64, String), AccountLifecycleError>) -> Result<Value, StoreError> + Send,
+		F: FnOnce(Result<(i64, String), AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -613,7 +615,7 @@ impl AccountService {
 	}
 
 	/// Enroll through the logical-command journal and commit the terminal registry projection with
-	/// its exact public result in one PostgreSQL transaction.
+	/// its exact public result in one product-store transaction.
 	pub(crate) async fn enroll_from_shared_codex_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -624,7 +626,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let imported = match read_shared_codex_credential() {
 			Ok(imported) => imported,
@@ -662,7 +665,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let imported = match read_explicit_credential_file(source_descriptor) {
 			Ok(imported) => imported,
@@ -702,7 +706,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(&account_id)?;
 		let _guard = lock.lock().await;
@@ -1022,7 +1027,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -1065,7 +1071,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let disposition = match self.reauthentication_replay_disposition(
 			operation,
@@ -1154,7 +1161,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let ReauthenticationCommandInput {
 			operation_id,
@@ -1283,7 +1291,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -1655,7 +1664,7 @@ impl AccountService {
 		Ok(())
 	}
 
-	/// Delete an exact host bundle, then tombstone its PostgreSQL account projection.
+	/// Delete an exact credential bundle, then tombstone its account projection.
 	pub async fn logout(
 		&self,
 		operation_id: AccountOperationId,
@@ -1730,7 +1739,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -1911,7 +1921,8 @@ impl AccountService {
 				&AccountAdministrationOutcome,
 				Option<&AccountRecord>,
 			) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let lock = self.lock_for(account_id)?;
 		let _guard = lock.lock().await;
@@ -1954,7 +1965,7 @@ impl AccountService {
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
-		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send + 'static,
 	{
 		Ok(self
 			.store
@@ -1984,7 +1995,7 @@ impl AccountService {
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
-		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send + 'static,
 	{
 		Ok(self
 			.store
@@ -2014,7 +2025,7 @@ impl AccountService {
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
 	where
-		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send,
+		F: FnOnce(&RoutingControlOutcome) -> Result<Value, StoreError> + Send + 'static,
 	{
 		Ok(self
 			.store
@@ -2030,7 +2041,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let response = build_response(Err(error))?;
 		self.store.complete_account_command(lease, &response).await?;
@@ -2047,7 +2059,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		Ok(self
 			.store
@@ -2086,7 +2099,8 @@ impl AccountService {
 	) -> Result<Value, AccountLifecycleError>
 	where
 		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		Ok(self
 			.store
@@ -2122,7 +2136,8 @@ impl AccountService {
 		F: FnOnce(
 				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
 			) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let response = build_response(Err(error))?;
 		self.store.complete_account_command(lease, &response).await?;
@@ -2144,7 +2159,8 @@ impl AccountService {
 		F: FnOnce(
 				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
 			) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		Ok(self
 			.store
@@ -2347,7 +2363,8 @@ impl AccountService {
 		F: FnOnce(
 				Result<(AccountManualRecoveryOutcome, &AccountRecord), AccountLifecycleError>,
 			) -> Result<Value, StoreError>
-			+ Send,
+			+ Send
+			+ 'static,
 	{
 		let Some(initial) = self.store.read_account_operation(operation_id).await? else {
 			return self
@@ -3388,7 +3405,7 @@ where
 		AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied =>
 			ReauthenticationReplayDisposition::Complete,
 		AccountOperationPhase::Cancelled => ReauthenticationReplayDisposition::Cancel,
-		AccountOperationPhase::Prepared =>
+		AccountOperationPhase::Prepared => {
 			match classify_prepared_refresh_reconciliation(expected, target, read_exact) {
 				PreparedRefreshReconciliation::StoreApplied =>
 					ReauthenticationReplayDisposition::Complete,
@@ -3396,7 +3413,8 @@ where
 					ReauthenticationReplayDisposition::Cancel,
 				PreparedRefreshReconciliation::RecoveryRequired =>
 					ReauthenticationReplayDisposition::Recover,
-			},
+			}
+		},
 		AccountOperationPhase::ProviderEffectPending | AccountOperationPhase::RecoveryRequired =>
 			if target.is_some_and(|target| read_exact(target).is_ok()) {
 				ReauthenticationReplayDisposition::Complete
@@ -3492,14 +3510,14 @@ enum ReconciliationDisposition {
 /// Closed Account Service failure. No variant contains credential material.
 #[derive(Debug)]
 pub enum AccountLifecycleError {
-	/// PostgreSQL authority failed.
+	/// Durable account authority failed.
 	Persistence(StoreError),
 	/// The exact host credential store operation failed.
 	CredentialStore(CredentialStoreError),
 	/// The provider refresh adapter failed.
 	Refresh(CredentialRefreshError),
-	/// PostgreSQL rejected a finite lifecycle transition.
-	OperationRejected(decodex_postgres::AccountLifecycleRejection),
+	/// The product store rejected a finite lifecycle transition.
+	OperationRejected(decodex_database::AccountLifecycleRejection),
 	/// A derived lifecycle gate is not ready.
 	NotReady(AccountLifecycleReadiness),
 	/// Administrative disablement blocks new work.

@@ -66,16 +66,6 @@ kind = "local"
 policy = "same_uid"
 service_owner_uid = {}
 
-[postgres]
-socket_directory = "/var/run/postgresql"
-expected_peer_uid = 70
-port = 5432
-database = "decodex"
-
-[postgres.runtime]
-user = "decodex_runtime"
-credential_env_var = "DECODEX_SIGNAL_TEST_RUNTIME_PASSWORD"
-
 [cache]
 max_entries = 16
 max_bytes = 1048576
@@ -119,7 +109,6 @@ impl RunningDaemon {
 	fn start(home: &Path) -> Self {
 		let mut child = Command::new(env!("CARGO_BIN_EXE_decodexd"))
 			.env("HOME", home)
-			.env_remove("DECODEX_SIGNAL_TEST_RUNTIME_PASSWORD")
 			.stdout(Stdio::piped())
 			.spawn()
 			.expect("start daemon test process");

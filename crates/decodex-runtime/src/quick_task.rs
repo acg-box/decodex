@@ -37,15 +37,15 @@ use decodex_core::{
 	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
 	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
 };
-use decodex_postgres::{
+use decodex_database::{
 	AdmitInitialQuickTaskTurn, AuthorizeProviderDispatchOutcome, BindRuntimeSessionThreadOutcome,
 	CommandIdentity, CreateQuickTaskConversation, FenceRuntimeSessionThreadStart,
 	FenceRuntimeSessionThreadStartOutcome, FreshQuickTaskProcessGeneration,
-	InitialQuickTaskTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback, PostgresStore,
+	InitialQuickTaskTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback,
 	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
 	ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome,
 	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
-	RoleProfileRole, StoreError, TerminalizeQuickTaskTurn, TurnReservationOutcome,
+	RoleProfileRole, SqliteStore, StoreError, TerminalizeQuickTaskTurn, TurnReservationOutcome,
 };
 use decodex_protocol::{HistoryText, MAX_HISTORY_INLINE_BYTES, QuickTaskUnavailableReason};
 use sha2::{Digest as _, Sha256};
@@ -297,7 +297,7 @@ pub(crate) struct CreateQuickTask {
 	pub working_directory: String,
 }
 
-/// Public recovery coordinates. Message, directory, and route authority are read from PostgreSQL.
+/// Public recovery coordinates. Message, directory, and route authority come from durable state.
 pub(crate) struct RecoverQuickTask {
 	pub operation_key: String,
 	pub correlation_id: String,
@@ -476,7 +476,7 @@ pub(crate) struct QuickTaskRuntime {
 }
 
 struct QuickTaskRuntimeInner {
-	store: PostgresStore,
+	store: SqliteStore,
 	blob_store: decodex_core::BlobStore,
 	accounts: Arc<AccountService>,
 	process_generations: ProcessGenerationControl,
@@ -624,7 +624,7 @@ struct RehydratedTurnAdmission {
 struct RehydratedTurnPlan {
 	admission: RehydratedTurnAdmission,
 	decision: PersistedDecisionProvenance,
-	plan: decodex_postgres::ContinuationPlanEffect,
+	plan: decodex_database::ContinuationPlanEffect,
 }
 
 struct RehydratedAccountRevision {
@@ -641,7 +641,7 @@ struct RehydratedProcessAdmission {
 
 struct RehydratedProcessLaunch {
 	decision: PersistedDecisionProvenance,
-	plan: decodex_postgres::ContinuationPlanEffect,
+	plan: decodex_database::ContinuationPlanEffect,
 	session: LocalSession,
 	sequence: i64,
 }
@@ -655,7 +655,7 @@ enum InitialRouteAction {
 impl QuickTaskRuntime {
 	#[allow(clippy::too_many_arguments)]
 	pub(crate) fn new(
-		store: PostgresStore,
+		store: SqliteStore,
 		blob_store: decodex_core::BlobStore,
 		accounts: Arc<AccountService>,
 		process_generations: ProcessGenerationControl,
@@ -706,7 +706,7 @@ impl QuickTaskRuntime {
 		outcome
 	}
 
-	/// Resume the sole initial route from PostgreSQL-owned request coordinates.
+	/// Resume the sole initial route from product-store-owned request coordinates.
 	pub(crate) async fn resume_routing(&self, command: RecoverQuickTask) -> QuickTaskOutcome {
 		self.resume_initial(command, InitialRouteAction::Route).await
 	}
@@ -857,30 +857,34 @@ impl QuickTaskRuntime {
 		};
 		let (decision, plan) = match outcome {
 			PreProcessOutcome::Planned { decision, plan } => (decision, plan),
-			PreProcessOutcome::Waiting =>
+			PreProcessOutcome::Waiting => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
 					QuickTaskLocalState::QuotaExhausted,
-				),
-			PreProcessOutcome::EstablishmentPending =>
+				);
+			},
+			PreProcessOutcome::EstablishmentPending => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
 					QuickTaskLocalState::EstablishmentPending,
-				),
-			PreProcessOutcome::NoRoute =>
+				);
+			},
+			PreProcessOutcome::NoRoute => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
 					QuickTaskLocalState::NoRoute,
-				),
-			PreProcessOutcome::FailedClosed(_) =>
+				);
+			},
+			PreProcessOutcome::FailedClosed(_) => {
 				return self.pre_session(
 					&command,
 					conversation_revision,
 					QuickTaskLocalState::RoutingPending,
-				),
+				);
+			},
 		};
 		let consumer = decision.consumer.clone();
 		let turn_id = match &consumer {
@@ -1073,7 +1077,7 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(admission)) => admission,
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) =>
+			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1082,12 +1086,13 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Conflict,
 					)
-					.await,
+					.await;
+			},
 			Ok(
 				PrepareQuickTaskProcessGenerationOutcome::Replayed(_)
 				| PrepareQuickTaskProcessGenerationOutcome::Unknown(_),
 			)
-			| Err(_) =>
+			| Err(_) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1096,7 +1101,8 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
 					)
-					.await,
+					.await;
+			},
 		};
 		let process = match self
 			.launch_process(
@@ -1108,7 +1114,7 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(process) => process,
-			Err(action) =>
+			Err(action) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1117,7 +1123,8 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Recovery(action),
 					)
-					.await,
+					.await;
+			},
 		};
 		let spawned = QuickTaskReadback {
 			process_generation_id: Some(process.generation_id().clone()),
@@ -1347,7 +1354,7 @@ impl QuickTaskRuntime {
 		command: SubmitQuickTaskTurn,
 		turn_sequence: i64,
 		decision: PersistedDecisionProvenance,
-		plan: decodex_postgres::ContinuationPlanEffect,
+		plan: decodex_database::ContinuationPlanEffect,
 		prior_session: Option<LocalSession>,
 	) -> QuickTaskOutcome {
 		let working_directory = command.working_directory.clone();
@@ -1440,7 +1447,7 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(PrepareQuickTaskProcessGenerationOutcome::Fresh(admission)) => admission,
-			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) =>
+			Ok(PrepareQuickTaskProcessGenerationOutcome::Rejected(_)) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1449,12 +1456,13 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Conflict,
 					)
-					.await,
+					.await;
+			},
 			Ok(
 				PrepareQuickTaskProcessGenerationOutcome::Replayed(_)
 				| PrepareQuickTaskProcessGenerationOutcome::Unknown(_),
 			)
-			| Err(_) =>
+			| Err(_) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1463,7 +1471,8 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Recovery(QuickTaskManualRecovery::ProcessUnavailable),
 					)
-					.await,
+					.await;
+			},
 		};
 		let process = match self
 			.launch_process(
@@ -1475,7 +1484,7 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(process) => process,
-			Err(action) =>
+			Err(action) => {
 				return self
 					.reconcile_pre_effect(
 						&command.operation_key,
@@ -1484,7 +1493,8 @@ impl QuickTaskRuntime {
 						&establishment,
 						ReservedTurnRefusal::Recovery(action),
 					)
-					.await,
+					.await;
+			},
 		};
 		let spawned = QuickTaskReadback {
 			process_generation_id: Some(process.generation_id().clone()),
@@ -1765,7 +1775,7 @@ impl QuickTaskRuntime {
 		&self,
 		input: ExistingSessionPlanningInput<'_>,
 	) -> Result<
-		(PersistedDecisionProvenance, decodex_postgres::ContinuationPlanEffect),
+		(PersistedDecisionProvenance, decodex_database::ContinuationPlanEffect),
 		ExistingSessionPlanningRefusal,
 	> {
 		let ExistingSessionPlanningInput { operation_key, consumer, message_bytes, expected } =
@@ -1773,8 +1783,9 @@ impl QuickTaskRuntime {
 		let (conversation_id, turn_id) = match &consumer {
 			ExecutionConsumer::ConversationTurn { conversation_id, turn_id, .. } =>
 				(conversation_id.clone(), turn_id.clone()),
-			ExecutionConsumer::ManagedRunExecution { .. } =>
-				return Err(ExistingSessionPlanningRefusal::Conflict),
+			ExecutionConsumer::ManagedRunExecution { .. } => {
+				return Err(ExistingSessionPlanningRefusal::Conflict);
+			},
 		};
 		let fallback_context_pack = self
 			.compile_fallback_context_pack(
@@ -2005,14 +2016,15 @@ impl QuickTaskRuntime {
 					)
 					.await;
 			},
-			Err(ExistingSessionPlanningRefusal::Unknown) =>
+			Err(ExistingSessionPlanningRefusal::Unknown) => {
 				return self
 					.ambiguous_session(
 						session,
 						command.turn_id.clone(),
 						QuickTaskAmbiguity::TurnFinalization,
 					)
-					.await,
+					.await;
+			},
 		};
 		if plan.plan.kind == decodex_core::ContinuationPlanKind::ContextPackFallback {
 			return self
@@ -2077,7 +2089,7 @@ impl QuickTaskRuntime {
 		&self,
 		operation_key: &str,
 		decision: crate::routing_orchestration::PersistedDecisionProvenance,
-		plan: decodex_postgres::ContinuationPlanEffect,
+		plan: decodex_database::ContinuationPlanEffect,
 		session: LocalSession,
 		turn_id: TurnId,
 		turn_sequence: i64,
@@ -2854,7 +2866,7 @@ impl QuickTaskRuntime {
 		&self,
 		process: &FencedProcess,
 		prepared: PreparedThreadStart,
-		authority: decodex_postgres::FreshRuntimeSessionThreadStart,
+		authority: decodex_database::FreshRuntimeSessionThreadStart,
 	) -> Result<EstablishedOrdinaryThread, QuickTaskProcessError> {
 		let fence = authority.readback();
 		if &fence.process_generation_id != process.generation_id()
@@ -2920,7 +2932,7 @@ impl QuickTaskRuntime {
 		&self,
 		process: &FencedProcess,
 		prepared: PreparedTurnStart,
-		authority: decodex_postgres::FreshProviderDispatchFence,
+		authority: decodex_database::FreshProviderDispatchFence,
 	) -> Result<StartedOrdinaryTurn, QuickTaskProcessError> {
 		let control = self.inner.process_generations.clone();
 		let process = process.clone();
@@ -4225,19 +4237,16 @@ fn turn_reservation_is_definite(error: &StoreError) -> bool {
 }
 
 fn turn_reservation_is_integrity_failure(error: &StoreError) -> bool {
-	matches!(
-		error,
-		StoreError::Incompatible(_) | StoreError::UnsafeAuthority(_) | StoreError::UnsafeHostPath
-	)
+	matches!(error, StoreError::Incompatible(_) | StoreError::UnsafeHostPath)
 }
 
-fn store_outcome(error: decodex_postgres::StoreError) -> QuickTaskOutcome {
+fn store_outcome(error: decodex_database::StoreError) -> QuickTaskOutcome {
 	match error {
-		decodex_postgres::StoreError::IdempotencyConflict
-		| decodex_postgres::StoreError::OperationIdConflict
-		| decodex_postgres::StoreError::RevisionConflict { .. }
-		| decodex_postgres::StoreError::InvalidInput(_)
-		| decodex_postgres::StoreError::CredentialRejected => QuickTaskOutcome::Conflict,
+		decodex_database::StoreError::IdempotencyConflict
+		| decodex_database::StoreError::OperationIdConflict
+		| decodex_database::StoreError::RevisionConflict { .. }
+		| decodex_database::StoreError::InvalidInput(_)
+		| decodex_database::StoreError::CredentialRejected => QuickTaskOutcome::Conflict,
 		_ => QuickTaskOutcome::Unavailable,
 	}
 }
@@ -4303,7 +4312,7 @@ fn derived_uuid(scope: &str, parts: &[&str]) -> String {
 #[cfg(test)]
 mod tests {
 	use decodex_core::{ContinuationRejection, TurnId, TurnStatus};
-	use decodex_postgres::{TurnReservationOutcome, TurnReservationReadback};
+	use decodex_database::{TurnReservationOutcome, TurnReservationReadback};
 
 	use super::{
 		QuickTaskManualRecovery, account_recovery, continuation_recovery, derived_uuid,

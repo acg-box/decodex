@@ -632,6 +632,43 @@ fn account_registry_balanced_selects_later_member_with_exact_prior_exclusions() 
 }
 
 #[test]
+fn account_registry_balanced_prefers_known_capacity_then_falls_back_to_unknown_order() {
+	let unknown = account(40);
+	let known = account(41);
+	let mut input = account_registry_snapshot(
+		AccountSelectionMode::Balanced,
+		vec![
+			account_registry_member(1, unknown.clone(), vec![]),
+			account_registry_member(2, known.clone(), vec![]),
+		],
+	);
+	input.quota_facts[0].observation = AccountRegistryQuotaObservation::Missing;
+	input.quota_facts[1].observation = AccountRegistryQuotaObservation::Missing;
+
+	assert_eq!(
+		decide_account_registry_routing(&input, DECIDED_AT),
+		Ok(AccountRegistryRoutingDecision {
+			snapshot_id: SNAPSHOT_ID.to_owned(),
+			kind: AccountRegistryRoutingDecisionKind::Selected,
+			selected_account_id: Some(known),
+			exclusions: vec![],
+			causes: vec![
+				account_registry_cause(unknown.clone(), RoutingBlocker::QuotaFiveHourMissing,),
+				account_registry_cause(unknown, RoutingBlocker::QuotaSevenDayMissing),
+			],
+		}),
+	);
+
+	for fact in &mut input.quota_facts[2..] {
+		fact.observation = AccountRegistryQuotaObservation::Missing;
+	}
+	assert_eq!(
+		decide_account_registry_routing(&input, DECIDED_AT),
+		Ok(account_registry_selected(account(40), vec![])),
+	);
+}
+
+#[test]
 fn account_registry_fixed_blocked_target_never_falls_back_to_eligible_non_target() {
 	let target = account(22);
 	let non_target = account(23);
@@ -693,7 +730,7 @@ fn account_registry_canonical_member_and_window_causes_retain_order() {
 }
 
 #[test]
-fn account_registry_closed_observation_errors_remain_exact_and_map_to_window_unknown() {
+fn account_registry_closed_observation_errors_are_unknown_capacity_not_depletion() {
 	let cases = [
 		(AccountQuotaObservationError::ProviderUnavailable, QuotaWindowClass::FiveHour),
 		(AccountQuotaObservationError::ProtocolUnavailable, QuotaWindowClass::SevenDay),
@@ -716,17 +753,9 @@ fn account_registry_closed_observation_errors_remain_exact_and_map_to_window_unk
 			QuotaWindowClass::SevenDay => 1,
 		};
 		input.quota_facts[fact_index].observation = observation.clone();
-		let blocker = match window {
-			QuotaWindowClass::FiveHour => RoutingBlocker::QuotaFiveHourUnknown,
-			QuotaWindowClass::SevenDay => RoutingBlocker::QuotaSevenDayUnknown,
-		};
-
 		assert_eq!(
 			decide_account_registry_routing(&input, DECIDED_AT),
-			Ok(account_registry_no_route(
-				vec![],
-				vec![account_registry_cause(account_id, blocker)],
-			)),
+			Ok(account_registry_selected(account_id, vec![])),
 			"{error:?}",
 		);
 		assert_eq!(&input.quota_facts[fact_index].observation, &observation);
@@ -800,10 +829,7 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 	);
 	assert_eq!(
 		decide_account_registry_routing(&stale, DECIDED_AT),
-		Ok(account_registry_no_route(
-			vec![],
-			vec![account_registry_cause(account_id.clone(), RoutingBlocker::QuotaFiveHourStale,)],
-		)),
+		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut elapsed = exact.clone();
@@ -816,13 +842,7 @@ fn account_registry_freshness_boundary_is_inclusive_and_future_is_typed() {
 	);
 	assert_eq!(
 		decide_account_registry_routing(&elapsed, DECIDED_AT),
-		Ok(account_registry_no_route(
-			vec![],
-			vec![account_registry_cause(
-				account_id.clone(),
-				RoutingBlocker::QuotaFiveHourResetElapsed,
-			)],
-		)),
+		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 
 	let mut future = exact;
@@ -895,13 +915,7 @@ fn account_registry_timestamp_product_bound_is_closed() {
 	}
 	assert_eq!(
 		decide_account_registry_routing(&maximum, MAX_TIMESTAMP_MICROS),
-		Ok(account_registry_no_route(
-			vec![],
-			vec![
-				account_registry_cause(account_id.clone(), RoutingBlocker::QuotaFiveHourUnknown),
-				account_registry_cause(account_id.clone(), RoutingBlocker::QuotaSevenDayUnknown),
-			],
-		)),
+		Ok(account_registry_selected(account_id.clone(), vec![])),
 	);
 	assert_account_registry_timestamp_product_bound_rejections(account_id, epoch, maximum);
 }

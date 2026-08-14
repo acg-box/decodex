@@ -12,11 +12,11 @@ use decodex_core::{
 	ProviderAttemptConsumer, ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState,
 	RoutingCommandOutcome, RuntimeSessionId, TurnId,
 };
-use decodex_postgres::{
+use decodex_database::{
 	BindQuickTaskContinuation, ContinuationPlanEffect, CreateQuickTaskRoutingSuccessor,
-	PlanContinuation, PlanInitialThreadContinuation, PostgresStore, PrepareProviderAttemptOutcome,
+	PlanContinuation, PlanInitialThreadContinuation, PrepareProviderAttemptOutcome,
 	QuickTaskInitialRoute, QuickTaskInitialRouteOutcome, QuickTaskRoutingSuccessor,
-	QuickTaskRoutingSuccessorOutcome, RouteQuickTaskInitial,
+	QuickTaskRoutingSuccessorOutcome, RouteQuickTaskInitial, SqliteStore,
 };
 use sha2::{Digest as _, Sha256};
 
@@ -31,7 +31,7 @@ use crate::{
 pub(crate) struct ExecutionCommand {
 	/// Exact-command key for the whole initial Account Registry route transaction.
 	routing_idempotency_key: String,
-	/// Exact open Conversation coordinates. PostgreSQL generates route and Turn identities.
+	/// Exact open Conversation coordinates. The product store generates route and Turn identities.
 	routing: RouteQuickTaskInitial,
 }
 
@@ -203,7 +203,7 @@ pub(crate) enum PreProcessOutcome {
 
 /// Definite post-process refusal that proves no new provider dispatch authority escaped.
 pub(crate) enum DefinitePostProcessRefusal {
-	/// Input or authority was rejected and PostgreSQL returned no ProviderAttempt row.
+	/// Input or authority was rejected and the product store returned no ProviderAttempt row.
 	NoAttempt,
 	/// A non-dispatchable existing attempt prevents this logical Turn from being finalized here.
 	ExistingAttempt,
@@ -214,7 +214,7 @@ pub(crate) enum PostProcessOutcome {
 	/// This call freshly prepared the attempt and retains one-use authorization input.
 	FreshPrepared {
 		attempt: PreparedAttemptHandoff,
-		fresh_preparation: decodex_postgres::FreshPreparedProviderAttempt,
+		fresh_preparation: decodex_database::FreshPreparedProviderAttempt,
 	},
 	/// The exact preparation already exists at the supplied prepared revision.
 	PreparedReplay { attempt: PreparedAttemptHandoff },
@@ -233,7 +233,7 @@ impl ExecutionCoordinator {
 	/// Atomically route one initial Conversation, then plan only when selection committed.
 	pub(crate) async fn pre_process(
 		&self,
-		store: &PostgresStore,
+		store: &SqliteStore,
 		command: &ExecutionCommand,
 	) -> PreProcessOutcome {
 		let route = match store
@@ -267,7 +267,7 @@ impl ExecutionCoordinator {
 	/// Resume establishment from the committed selected decision without routing again.
 	pub(crate) async fn resume_establishment(
 		&self,
-		store: &PostgresStore,
+		store: &SqliteStore,
 		conversation_id: &ConversationId,
 	) -> PreProcessOutcome {
 		let route = match store.read_quick_task_initial_route(conversation_id).await {
@@ -282,7 +282,7 @@ impl ExecutionCoordinator {
 	/// Create one routing successor, then route the committed successor in a separate command.
 	pub(crate) async fn successor_to_route(
 		&self,
-		store: &PostgresStore,
+		store: &SqliteStore,
 		command: &RoutingSuccessorExecutionCommand,
 	) -> Result<RoutingSuccessorExecutionOutcome, ExecutionFailureKind> {
 		let successor = match store
@@ -294,8 +294,9 @@ impl ExecutionCoordinator {
 		{
 			Ok(QuickTaskRoutingSuccessorOutcome::Fresh(successor))
 			| Ok(QuickTaskRoutingSuccessorOutcome::Replayed(successor)) => successor,
-			Ok(QuickTaskRoutingSuccessorOutcome::Rejected { .. }) | Err(_) =>
-				return Err(ExecutionFailureKind::Other),
+			Ok(QuickTaskRoutingSuccessorOutcome::Rejected { .. }) | Err(_) => {
+				return Err(ExecutionFailureKind::Other);
+			},
 		};
 		let routing = self
 			.pre_process(
@@ -315,7 +316,7 @@ impl ExecutionCoordinator {
 	/// Bind immutable original route lineage, then plan same-thread or same-account Context Pack.
 	pub(crate) async fn continuation_bind_to_plan(
 		&self,
-		store: &PostgresStore,
+		store: &SqliteStore,
 		blob_store: &BlobStore,
 		command: &ContinuationExecutionCommand,
 	) -> PreProcessOutcome {
@@ -324,8 +325,9 @@ impl ExecutionCoordinator {
 			.await
 		{
 			Ok(RoutingCommandOutcome::Success(binding)) => binding,
-			Ok(RoutingCommandOutcome::Rejected(_)) | Err(_) =>
-				return failed(ExecutionFailureKind::Other),
+			Ok(RoutingCommandOutcome::Rejected(_)) | Err(_) => {
+				return failed(ExecutionFailureKind::Other);
+			},
 		};
 		let decision = PersistedDecisionProvenance {
 			decision_id: binding.decision_id.clone(),
@@ -350,8 +352,9 @@ impl ExecutionCoordinator {
 			.await
 		{
 			Ok(ContinuationCommandOutcome::Success(plan)) => plan,
-			Ok(ContinuationCommandOutcome::Rejected(rejection)) =>
-				return failed(ExecutionFailureKind::ContinuationRejected(rejection)),
+			Ok(ContinuationCommandOutcome::Rejected(rejection)) => {
+				return failed(ExecutionFailureKind::ContinuationRejected(rejection));
+			},
 			Err(_) => return failed(ExecutionFailureKind::Other),
 		};
 		if plan.plan.routing_decision_id != decision.decision_id
@@ -367,7 +370,7 @@ impl ExecutionCoordinator {
 
 	async fn plan_selected_initial(
 		&self,
-		store: &PostgresStore,
+		store: &SqliteStore,
 		route: QuickTaskInitialRoute,
 	) -> PreProcessOutcome {
 		let Some(selected_account_id) = route.decision.selected_account_id.clone() else {
@@ -394,8 +397,9 @@ impl ExecutionCoordinator {
 			.await
 		{
 			Ok(ContinuationCommandOutcome::Success(effect)) => effect,
-			Ok(ContinuationCommandOutcome::Rejected(_)) | Err(_) =>
-				return PreProcessOutcome::EstablishmentPending,
+			Ok(ContinuationCommandOutcome::Rejected(_)) | Err(_) => {
+				return PreProcessOutcome::EstablishmentPending;
+			},
 		};
 		if plan.plan.routing_decision_id != route.decision_id
 			|| plan.plan.consumer != consumer

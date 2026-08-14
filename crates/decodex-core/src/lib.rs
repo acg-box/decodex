@@ -65,8 +65,7 @@ pub use self::{
 	},
 	config::{
 		CacheConfig, ConfigError, DecodexClientConfig, DecodexConfig, LocalProfile,
-		LocalTrustPolicy, MAX_CONFIG_BYTES, PostgresConnectionConfig, PostgresIdentityConfig,
-		ProfileName, RemoteProfile, ServerProfile,
+		LocalTrustPolicy, MAX_CONFIG_BYTES, ProfileName, RemoteProfile, ServerProfile,
 	},
 	context_revision::{
 		ContextRevision, ContextRevisionDecision, ContextRevisionError, ContextRevisionId,

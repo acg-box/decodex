@@ -6,3 +6,9 @@ app-server-process = { max-threads = 1 }
 [[profile.default.overrides]]
 filter     = 'test(account_launch::process::tests::)'
 test-group = 'app-server-process'
+
+# These tests start full daemon processes and wait for exact transport cleanup.
+# Share the process-test semaphore so host load cannot consume their startup bound.
+[[profile.default.overrides]]
+filter     = 'binary_id(decodexd::signal_shutdown)'
+test-group = 'app-server-process'

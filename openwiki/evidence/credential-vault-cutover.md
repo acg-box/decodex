@@ -1,6 +1,8 @@
 # Credential Vault Cutover Evidence
 
-Status: accepted local macOS dogfood evidence.
+Status: accepted historical donor evidence. redb is no longer the target credential
+authority; the current result and transfer boundary are recorded in
+[SQLite local-product evidence](sqlite-local-product.md).
 
 Date: 2026-08-14.
 

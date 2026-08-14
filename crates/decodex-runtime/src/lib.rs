@@ -16,10 +16,7 @@ mod bootstrap;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;
-mod local_account_authority;
-mod managed_repository_executor;
-mod managed_repository_runtime;
-mod managed_repository_saga;
+#[path = "managed_repository_disabled.rs"] mod managed_repository_runtime;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
@@ -27,30 +24,21 @@ mod quick_task;
 mod routing_orchestration;
 mod supervised_validation;
 mod websocket;
-mod work_item_board;
 
 pub use account_service::{
 	AccountInspection, AccountLifecycleError, AccountSelectionFailure, AccountSelectionResult,
 	AccountService, ChatgptTokenProjection, CredentialRefreshError, StartupAccountReconciliation,
 };
 pub use application::{Application, ApplicationEventPublication, ApplicationPublication};
-pub use bootstrap::{
-	CurrentAuthorityValidationError, LatestSchemaBootstrapError, ServiceBootstrap,
-};
+pub use bootstrap::{LocalDatabaseError, ServiceBootstrap};
 pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;
-#[cfg(unix)] pub use host_credentials::RedbCredentialStore;
 pub use host_credentials::{
-	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
+	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, SqliteCredentialStore,
+	StoredCredential,
 };
-pub use local_account_authority::LocalAccountAuthorityRestoreReport;
 pub use managed_repository_runtime::{
 	ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
-};
-pub use managed_repository_saga::{
-	ManagedRepositoryEffectPort, ManagedRepositoryEffectSaga, ManagedRepositoryRestartOutcome,
-	ManagedRepositorySagaOutcome, RepositoryDispatchFailure, RepositoryDispatchObservation,
-	RepositoryReadbackEvidence,
 };
 pub use process_supervisor::{
 	ProcessGenerationControl, ProcessGenerationDiagnostic, ProcessGenerationExitWitnessKind,
@@ -79,38 +67,14 @@ pub use websocket::{
 #[derive(Clone, Copy, Debug)]
 pub struct ServiceComposition;
 impl ServiceComposition {
-	/// Restore the complete local account authority while retaining the stopped-daemon boundary.
-	#[doc(hidden)]
-	pub async fn restore_local_account_authority<R: std::io::Read>(
-		root: DecodexRoot,
-		schema_owner_user: String,
-		schema_owner_credential_env_var: Option<String>,
-		input: R,
-	) -> LocalAccountAuthorityRestoreReport {
-		local_account_authority::restore_local_account_authority(
-			root,
-			schema_owner_user,
-			schema_owner_credential_env_var,
-			input,
-		)
-		.await
+	/// Initialize or upgrade the fixed bundled SQLite database.
+	pub async fn initialize_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
+		bootstrap::initialize_local_database(root).await
 	}
 
-	/// Create the latest schema once on an empty target under explicit operator authority.
-	pub async fn bootstrap_latest_schema(
-		root: DecodexRoot,
-		schema_owner_user: String,
-		schema_owner_credential_env_var: Option<String>,
-	) -> Result<(), LatestSchemaBootstrapError> {
-		bootstrap::bootstrap_latest_schema(root, schema_owner_user, schema_owner_credential_env_var)
-			.await
-	}
-
-	/// Verify the exact latest catalog and configured authority with the runtime identity only.
-	pub async fn validate_current_authority(
-		root: DecodexRoot,
-	) -> Result<(), CurrentAuthorityValidationError> {
-		bootstrap::validate_current_authority(root).await
+	/// Verify the fixed bundled SQLite database and migration ledger.
+	pub async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
+		bootstrap::validate_local_database(root).await
 	}
 
 	/// Acquire singleton authority, then bootstrap the platform-default typed root.

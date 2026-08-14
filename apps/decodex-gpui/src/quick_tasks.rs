@@ -46,7 +46,7 @@ impl QuickTasksSnapshot {
 	}
 }
 
-/// Finite list/readback state. PostgreSQL remains the product authority.
+/// Finite list/readback state. The daemon-owned product store remains authoritative.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum QuickTasksLoadState {
 	NeverRequested,

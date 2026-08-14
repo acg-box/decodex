@@ -29,6 +29,7 @@ fn every_owned_path_is_derived_below_the_decodex_root() {
 		fixture.paths.server_dir(),
 		fixture.paths.server_identity_file(),
 		fixture.paths.credential_vault_file(),
+		fixture.paths.product_database_file(),
 	] {
 		assert!(path.starts_with(root));
 		assert!(!path.components().any(|component| component.as_os_str() == ".codex"));
@@ -191,50 +192,4 @@ fn a_symlinked_config_file_is_never_followed() {
 		DecodexConfig::load(&fixture.paths),
 		Err(ConfigError::Path(PathError::Symlink)),
 	));
-}
-
-#[cfg(unix)]
-#[test]
-fn credential_vault_open_is_owner_only_no_follow_and_single_link() {
-	use std::os::unix::fs::MetadataExt as _;
-
-	let fixture = TestRoot::new();
-	let vault = fixture.paths.credential_vault_file();
-	let file = fixture.paths.open_credential_vault_file().expect("create private vault");
-	let metadata = file.metadata().expect("vault metadata");
-
-	assert!(metadata.is_file());
-	assert_eq!(metadata.mode() & 0o777, 0o600);
-	assert_eq!(metadata.nlink(), 1);
-	drop(file);
-
-	let alias = fixture.paths.server_dir().join("credentials-alias.redb");
-	fs::hard_link(&vault, &alias).expect("hard-link fixture");
-	assert_eq!(
-		fixture.paths.open_credential_vault_file().map(drop),
-		Err(PathError::InsecurePermissions),
-	);
-}
-
-#[cfg(unix)]
-#[test]
-fn credential_vault_open_rejects_symlink_and_insecure_mode() {
-	let symlink_fixture = TestRoot::new();
-	let outside = NamedTempFile::new().expect("outside vault target");
-	symlink_fixture.paths.ensure_local_transport_layout().expect("private server directory");
-	std::os::unix::fs::symlink(outside.path(), symlink_fixture.paths.credential_vault_file())
-		.expect("vault symlink fixture");
-	assert_eq!(
-		symlink_fixture.paths.open_credential_vault_file().map(drop),
-		Err(PathError::Symlink),
-	);
-
-	let mode_fixture = TestRoot::new();
-	let file = mode_fixture.paths.open_credential_vault_file().expect("create private vault");
-	drop(file);
-	support::set_mode(&mode_fixture.paths.credential_vault_file(), 0o644);
-	assert_eq!(
-		mode_fixture.paths.open_credential_vault_file().map(drop),
-		Err(PathError::InsecurePermissions),
-	);
 }

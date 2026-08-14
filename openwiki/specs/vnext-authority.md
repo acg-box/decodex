@@ -1,8 +1,9 @@
 # Decodex vNext Authority Contract
 
-Status: normative target contract; implementation is gate-controlled. The XY-1403
-private-artifact retirement takes effect only at the exact repository effective point
-in the [retirement decision](private-artifact/decision.md#repository-effective-point).
+Status: historical PostgreSQL contract. The current normative slice is the
+[Local Product V1 contract](local-product-v1.md). Keep this page as provenance for
+domain semantics only; its database ownership, reset, and gate requirements no longer
+govern current implementation.
 
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
