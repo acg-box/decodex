@@ -1,0 +1,30 @@
+[package]
+authors.workspace    = true
+description          = "One-shot legacy local account transfer into Decodex SQLite."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-database-transfer"
+repository.workspace = true
+version.workspace    = true
+
+[[bin]]
+name = "decodex-database-transfer"
+path = "src/main.rs"
+
+[dependencies]
+clap             = { workspace = true }
+decodex-core     = { workspace = true }
+decodex-database = { workspace = true }
+redb             = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+sha2             = { workspace = true }
+tokio            = { workspace = true }
+zeroize          = { workspace = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

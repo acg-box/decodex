@@ -35,7 +35,7 @@ pub enum ExecutionConsumer {
 }
 
 impl ExecutionConsumer {
-	/// Return the canonical PostgreSQL consumer label.
+	/// Return the canonical durable-store consumer label.
 	pub const fn as_sql(&self) -> &'static str {
 		match self {
 			Self::ConversationTurn { .. } => "conversation_turn",

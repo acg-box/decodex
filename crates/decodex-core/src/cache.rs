@@ -72,7 +72,7 @@ pub struct CacheUsage {
 }
 
 /// Disposable, byte-and-entry-bounded cache. It exposes no authority contract and
-/// may always be cleared and rebuilt from PostgreSQL/blob authority.
+/// may always be cleared and rebuilt from durable-store/blob authority.
 #[derive(Clone, Debug)]
 pub struct BoundedCache {
 	paths: DecodexPaths,
@@ -126,7 +126,7 @@ impl BoundedCache {
 		}
 	}
 
-	/// Delete every validated cache entry without touching PostgreSQL or blobs.
+	/// Delete every validated cache entry without touching durable-store or blobs.
 	pub fn clear(&self) -> Result<(), StorageError> {
 		paths::visit_private_files(
 			&self.paths,

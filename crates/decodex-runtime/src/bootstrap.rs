@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(target_os = "macos")] use crate::host_credentials::MacosKeychainCredentialStore;
+#[cfg(target_os = "macos")] use crate::host_credentials::SqliteCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
@@ -20,8 +20,7 @@ use crate::{
 	account_service::{AccountService, OpenAiCredentialRefresher},
 	application::{ProductStore, ProductStoreUnavailableReason, ServiceApplication},
 	managed_repository_runtime::{
-		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryRuntime,
-		ManagedRepositoryUnavailableReason,
+		ManagedRepositoryCapability, ManagedRepositoryReadiness, ManagedRepositoryUnavailableReason,
 	},
 	process_supervisor::{
 		ProcessGenerationControl, ProcessGenerationReadiness, ProcessSupervisorError,
@@ -32,10 +31,9 @@ use crate::{
 use decodex_codex::CodexAdapter;
 use decodex_core::{
 	Availability, BlobStore, ConfigError, DecodexConfig, DecodexPaths, DecodexRoot, PathError,
-	PostgresIdentityConfig, ProcessExecutionAuthorization, ProductState as _, ServerIdentity,
-	ServerProfile,
+	ProcessExecutionAuthorization, ProductState as _, ServerIdentity, ServerProfile,
 };
-use decodex_postgres::{BOOTSTRAP_AUTHORITY_REPORT_PREFIX, BootstrapFailure, PostgresStore};
+use decodex_database::{BootstrapFailure, SqliteStore};
 use decodex_protocol::{
 	AppServerCapability, CURRENT_VERSION, DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport,
 	DoctorStatus, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
@@ -43,107 +41,35 @@ use decodex_protocol::{
 };
 
 const ACCOUNT_CALLBACK_ATTESTATION_TIMEOUT: Duration = Duration::from_secs(30);
-
-/// Credential-negative failure from the explicit empty-target latest-schema bootstrap command.
+/// Value-free failure from explicit local-database initialization or validation.
 #[derive(Clone, Eq, PartialEq)]
-pub enum LatestSchemaBootstrapError {
-	/// The platform root or typed configuration is unavailable or not local.
-	Configuration,
-	/// The explicit schema-owner credential is unavailable.
-	Authentication,
-	/// The owner-only process execution authorization is unavailable.
-	ExecutionAuthorization,
-	/// PostgreSQL rejected the empty-target schema transaction or its authority proof.
-	Database {
-		/// Stable value-free failure class used by operator output and callers.
-		failure: BootstrapFailure,
-		/// Bounded canonical transaction report; no credential-bearing values.
-		report_json: String,
-	},
+pub enum LocalDatabaseError {
+	/// The database file or its parent authority is unsafe.
+	UnsafeHostPath,
+	/// The database cannot be opened or used.
+	Unavailable,
+	/// The schema, migration ledger, or stored bytes are incompatible.
+	Incompatible,
 }
-impl LatestSchemaBootstrapError {
-	/// Return the one bounded canonical report line emitted only by the hidden operator command.
-	#[doc(hidden)]
-	pub fn bootstrap_report_line(&self) -> Option<String> {
-		match self {
-			Self::Database { report_json: report, .. } =>
-				Some(format!("{BOOTSTRAP_AUTHORITY_REPORT_PREFIX}{report}")),
-			_ => None,
-		}
-	}
-}
-impl std::fmt::Debug for LatestSchemaBootstrapError {
+impl std::fmt::Debug for LocalDatabaseError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Self::Configuration => formatter.write_str("Configuration"),
-			Self::Authentication => formatter.write_str("Authentication"),
-			Self::ExecutionAuthorization => formatter.write_str("ExecutionAuthorization"),
-			Self::Database { failure, .. } =>
-				formatter.debug_tuple("Database").field(failure).finish(),
+			Self::UnsafeHostPath => formatter.write_str("UnsafeHostPath"),
+			Self::Unavailable => formatter.write_str("Unavailable"),
+			Self::Incompatible => formatter.write_str("Incompatible"),
 		}
 	}
 }
-impl Display for LatestSchemaBootstrapError {
+impl Display for LocalDatabaseError {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Configuration =>
-				formatter.write_str("latest-schema bootstrap configuration is unavailable"),
-			Self::Authentication =>
-				formatter.write_str("latest-schema bootstrap authentication is unavailable"),
-			Self::ExecutionAuthorization =>
-				formatter.write_str("local process execution authorization is unavailable"),
-			Self::Database { failure: BootstrapFailure::Authentication, .. } =>
-				formatter.write_str("latest-schema bootstrap authentication failed"),
-			Self::Database { failure: BootstrapFailure::Unreachable, .. } =>
-				formatter.write_str("latest-schema bootstrap database is unreachable"),
-			Self::Database { failure: BootstrapFailure::Incompatible, .. } =>
-				formatter.write_str("latest-schema bootstrap target is incompatible"),
-			Self::Database { failure: BootstrapFailure::UnsafeAuthority, .. } =>
-				formatter.write_str("latest-schema bootstrap authority is unsafe"),
-			Self::Database { failure: BootstrapFailure::UnsafeHostPath, .. } =>
-				formatter.write_str("latest-schema bootstrap database path is unsafe"),
-		}
+		formatter.write_str(match self {
+			Self::UnsafeHostPath => "local database path is unsafe",
+			Self::Unavailable => "local database is unavailable",
+			Self::Incompatible => "local database is incompatible",
+		})
 	}
 }
-impl std::error::Error for LatestSchemaBootstrapError {}
-
-/// Value-free failure from the explicit read-only current-authority command.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum CurrentAuthorityValidationError {
-	/// Typed local PostgreSQL configuration is unavailable.
-	Configuration,
-	/// The explicit runtime database credential is unavailable.
-	Authentication,
-	/// PostgreSQL rejected the read-only current-authority proof.
-	Database(BootstrapFailure),
-}
-impl Display for CurrentAuthorityValidationError {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		match self {
-			Self::Configuration =>
-				formatter.write_str("current PostgreSQL authority configuration is unavailable"),
-			Self::Authentication =>
-				formatter.write_str("current PostgreSQL authority authentication is unavailable"),
-			Self::Database(BootstrapFailure::Authentication) =>
-				formatter.write_str("current PostgreSQL authority authentication failed"),
-			Self::Database(BootstrapFailure::Unreachable) =>
-				formatter.write_str("current PostgreSQL authority is unreachable"),
-			Self::Database(BootstrapFailure::Incompatible) =>
-				formatter.write_str("current PostgreSQL latest schema is incompatible"),
-			Self::Database(BootstrapFailure::UnsafeAuthority) =>
-				formatter.write_str("current PostgreSQL authority is unsafe"),
-			Self::Database(BootstrapFailure::UnsafeHostPath) =>
-				formatter.write_str("current PostgreSQL authority path is unsafe"),
-		}
-	}
-}
-impl std::error::Error for CurrentAuthorityValidationError {}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum RuntimeConnectionFailure {
-	Authentication,
-	Database(BootstrapFailure),
-}
+impl std::error::Error for LocalDatabaseError {}
 
 /// Complete daemon bootstrap under one already-acquired singleton capability.
 pub struct ServiceBootstrap {
@@ -331,24 +257,13 @@ pub(crate) async fn bootstrap(root: DecodexRoot) -> ServiceBootstrap {
 	bootstrap_with_authority(paths, loaded, config_status, listener).await
 }
 
-async fn bootstrap_managed_repositories(
-	postgres: Option<PostgresStore>,
-) -> ManagedRepositoryCapability {
-	match postgres {
-		Some(postgres) => match ManagedRepositoryRuntime::start(postgres).await {
-			Ok(Some(runtime)) => ManagedRepositoryCapability::Ready { _runtime: runtime },
-			Ok(None) => ManagedRepositoryCapability::Disabled,
-			Err(error) => ManagedRepositoryCapability::startup_failed(error),
-		},
-		None => ManagedRepositoryCapability::unavailable(
-			ManagedRepositoryUnavailableReason::ProductStore,
-		),
-	}
+fn bootstrap_managed_repositories() -> ManagedRepositoryCapability {
+	ManagedRepositoryCapability::Disabled
 }
 
 #[cfg(target_os = "macos")]
 struct QuickTaskComposition {
-	postgres: Option<PostgresStore>,
+	store: Option<SqliteStore>,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
 	process_generations: Option<ProcessGenerationControl>,
@@ -360,7 +275,7 @@ struct QuickTaskComposition {
 #[cfg(target_os = "macos")]
 fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability {
 	let QuickTaskComposition {
-		postgres,
+		store,
 		blob_store,
 		accounts,
 		process_generations,
@@ -369,7 +284,7 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 		launch_profile,
 	} = composition;
 	match (
-		postgres,
+		store,
 		blob_store,
 		accounts,
 		process_generations,
@@ -392,7 +307,7 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 		(_, _, _, _, _, _, None) =>
 			QuickTaskCapability::Unavailable(QuickTaskUnavailableReason::AppServerProfile),
 		(
-			Some(postgres),
+			Some(store),
 			Some(blob_store),
 			Some(accounts),
 			Some(process_generations),
@@ -401,7 +316,7 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 			Some(launch_profile),
 		) => match RunnerCapacity::daemon() {
 			Ok(capacity) => QuickTaskCapability::Ready(QuickTaskRuntime::new(
-				postgres,
+				store,
 				blob_store,
 				accounts,
 				process_generations,
@@ -417,7 +332,7 @@ fn compose_quick_tasks(composition: QuickTaskComposition) -> QuickTaskCapability
 
 async fn bootstrap_with_authority(
 	paths: DecodexPaths,
-	loaded: Result<DecodexConfig, ConfigError>,
+	_loaded: Result<DecodexConfig, ConfigError>,
 	config_status: DoctorStatus,
 	listener: LocalTransportListener,
 ) -> ServiceBootstrap {
@@ -434,20 +349,13 @@ async fn bootstrap_with_authority(
 		Err(_) => DoctorStatus::Unavailable(DoctorIssue::Integrity),
 	};
 	let shared_home = shared_codex_home();
-	let (store, product_store, mut vault) = match loaded.as_ref() {
-		Ok(config) => connect_database(config).await,
-		Err(error) => (
-			ProductStore::Unavailable(ProductStoreUnavailableReason::Configuration),
-			DoctorStatus::Unavailable(database_config_issue(*error)),
-			DoctorStatus::Unknown(DoctorIssue::Authentication),
-		),
-	};
-	let postgres = match &store {
-		ProductStore::Available(postgres) => Some(postgres.clone()),
+	let (store, product_store, mut vault) = connect_database(&paths);
+	let sqlite = match &store {
+		ProductStore::Available(store) => Some(store.clone()),
 		ProductStore::Unavailable(_) => None,
 	};
-	let (process_generations, process_generation_readiness) = match postgres.clone() {
-		Some(postgres) => match ProcessGenerationControl::start(postgres).await {
+	let (process_generations, process_generation_readiness) = match sqlite.clone() {
+		Some(store) => match ProcessGenerationControl::start(store).await {
 			Ok(control) => (Some(control), ProcessGenerationReadiness::Ready),
 			Err(ProcessSupervisorError::Platform) =>
 				(None, ProcessGenerationReadiness::PlatformUnavailable),
@@ -457,22 +365,22 @@ async fn bootstrap_with_authority(
 	};
 	#[cfg(target_os = "macos")]
 	let process_execution_authorization = ProcessExecutionAuthorization::load(&paths).ok();
-	let (provider_attempts, provider_attempt_readiness) = match postgres.clone() {
-		Some(postgres) => match ProviderAttemptControl::start(postgres).await {
+	let (provider_attempts, provider_attempt_readiness) = match sqlite.clone() {
+		Some(store) => match ProviderAttemptControl::start(store).await {
 			Ok(control) => (Some(control), ProviderAttemptReadiness::Ready),
 			Err(_) => (None, ProviderAttemptReadiness::ProductStateUnavailable),
 		},
 		None => (None, ProviderAttemptReadiness::ProductStateUnavailable),
 	};
-	let managed_repositories = bootstrap_managed_repositories(postgres.clone()).await;
+	let managed_repositories = bootstrap_managed_repositories();
 	let managed_repository = managed_repository_doctor(&managed_repositories);
 	#[cfg(target_os = "macos")]
 	let (accounts, account_profiles, account_api, reset_cards, quick_task_launch_profile) =
-		match postgres.clone() {
-			Some(postgres) => {
+		match sqlite.clone() {
+			Some(store) => {
 				let (service, profiles, api, runtime, launch_profile, status) =
 					bootstrap_macos_account_runtime(
-						postgres,
+						store,
 						&paths,
 						process_generations.clone(),
 						process_execution_authorization.clone(),
@@ -490,7 +398,7 @@ async fn bootstrap_with_authority(
 	};
 	#[cfg(target_os = "macos")]
 	let quick_tasks = compose_quick_tasks(QuickTaskComposition {
-		postgres,
+		store: sqlite,
 		blob_store: quick_task_blob_store,
 		accounts: accounts.as_ref().map(Arc::clone),
 		process_generations: process_generations.clone(),
@@ -553,20 +461,19 @@ struct MacosAccountServiceComposition {
 
 #[cfg(target_os = "macos")]
 async fn compose_macos_account_service(
-	postgres: &PostgresStore,
-	paths: &DecodexPaths,
+	store: &SqliteStore,
+	_paths: &DecodexPaths,
 ) -> Result<MacosAccountServiceComposition, DoctorIssue> {
 	let refresher = match tokio::task::spawn_blocking(OpenAiCredentialRefresher::new).await {
 		Ok(Ok(refresher)) => refresher,
 		Ok(Err(_)) => return Err(DoctorIssue::Authentication),
 		Err(_) => return Err(DoctorIssue::Integrity),
 	};
-	let credentials =
-		MacosKeychainCredentialStore::new(paths).map_err(|_| DoctorIssue::Integrity)?;
+	let credentials = SqliteCredentialStore::new(store.clone());
 	let credentials: Arc<dyn crate::HostCredentialStore> = Arc::new(credentials);
 	let account_profiles =
-		Some(AccountProfileRuntime::new(postgres.clone(), Arc::clone(&credentials)));
-	let service = Arc::new(AccountService::new(postgres.clone(), credentials, Arc::new(refresher)));
+		Some(AccountProfileRuntime::new(store.clone(), Arc::clone(&credentials)));
+	let service = Arc::new(AccountService::new(store.clone(), credentials, Arc::new(refresher)));
 	Ok(MacosAccountServiceComposition { service, account_profiles })
 }
 
@@ -581,13 +488,13 @@ fn unavailable_macos_account_runtime(
 
 #[cfg(target_os = "macos")]
 async fn bootstrap_macos_account_runtime(
-	_postgres: PostgresStore,
+	store: SqliteStore,
 	paths: &DecodexPaths,
 	_process_generations: Option<ProcessGenerationControl>,
 	_execution_authorization: Option<ProcessExecutionAuthorization>,
 ) -> MacosAccountRuntimeBootstrap {
 	let MacosAccountServiceComposition { service, account_profiles } =
-		match compose_macos_account_service(&_postgres, paths).await {
+		match compose_macos_account_service(&store, paths).await {
 			Ok(composition) => composition,
 			Err(issue) => return unavailable_macos_account_runtime(None, None, issue),
 		};
@@ -608,9 +515,7 @@ async fn bootstrap_macos_account_runtime(
 		Some(_) => DoctorStatus::Ready,
 		None => DoctorStatus::Unavailable(DoctorIssue::Authentication),
 	};
-	let reset_cards = api.as_ref().and_then(|api| {
-		ApiResetCardRuntime::start(_postgres, Arc::clone(&service), Arc::clone(api)).ok()
-	});
+	let reset_cards = None;
 	(Some(service), account_profiles, api, reset_cards, quick_task_launch_profile, status)
 }
 
@@ -814,7 +719,6 @@ fn host_directory(path: &Path) -> Result<(), HostDirectoryError> {
 fn config_issue(error: ConfigError) -> DoctorIssue {
 	match error {
 		ConfigError::UnsupportedVersion => DoctorIssue::ConfigurationVersion,
-		ConfigError::InvalidPostgresHostPath => DoctorIssue::UnsafeHostPath,
 		ConfigError::Path(PathError::Io { kind: ErrorKind::NotFound, .. }) =>
 			DoctorIssue::ConfigurationMissing,
 		ConfigError::Path(
@@ -838,104 +742,44 @@ fn database_config_issue(error: ConfigError) -> DoctorIssue {
 	}
 }
 
-pub(crate) fn credential(identity: &PostgresIdentityConfig) -> Result<Option<String>, ()> {
-	match identity.credential_env_var() {
-		Some(name) => match env::var(name) {
-			Ok(value) if !value.is_empty() => Ok(Some(value)),
-			_ => Err(()),
-		},
-		None => Ok(None),
-	}
-}
-
-pub(crate) async fn bootstrap_latest_schema(
-	root: DecodexRoot,
-	schema_owner_user: String,
-	schema_owner_credential_env_var: Option<String>,
-) -> Result<(), LatestSchemaBootstrapError> {
+pub(crate) async fn initialize_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
 	let paths = root.paths();
-	let config =
-		DecodexConfig::load(&paths).map_err(|_| LatestSchemaBootstrapError::Configuration)?;
-	if !matches!(config.active_profile(), ServerProfile::Local(_)) {
-		return Err(LatestSchemaBootstrapError::Configuration);
-	}
-	let schema_owner =
-		PostgresIdentityConfig::new(schema_owner_user, schema_owner_credential_env_var)
-			.map_err(|_| LatestSchemaBootstrapError::Configuration)?;
-	let runtime = config.postgres().runtime();
-	if schema_owner.user() == runtime.user()
-		|| schema_owner.credential_env_var().is_some()
-			&& schema_owner.credential_env_var() == runtime.credential_env_var()
-	{
-		return Err(LatestSchemaBootstrapError::Configuration);
-	}
-	let schema_owner_credential =
-		credential(&schema_owner).map_err(|()| LatestSchemaBootstrapError::Authentication)?;
-	let execution_authorization = ProcessExecutionAuthorization::load_or_create(&paths)
-		.map_err(|_| LatestSchemaBootstrapError::ExecutionAuthorization)?;
-
-	PostgresStore::bootstrap_latest_schema_explicit(
-		config.postgres(),
-		&schema_owner,
-		schema_owner_credential.as_deref(),
-		&execution_authorization,
-	)
-	.await
-	.map_err(|error| LatestSchemaBootstrapError::Database {
-		failure: error.bootstrap_failure(),
-		report_json: error.report_json(),
-	})
-}
-
-pub(crate) async fn validate_current_authority(
-	root: DecodexRoot,
-) -> Result<(), CurrentAuthorityValidationError> {
-	let paths = root.paths();
-	let config =
-		DecodexConfig::load(&paths).map_err(|_| CurrentAuthorityValidationError::Configuration)?;
-	if !matches!(config.active_profile(), ServerProfile::Local(_)) {
-		return Err(CurrentAuthorityValidationError::Configuration);
-	}
-	let store = connect_runtime_store(&config).await.map_err(|error| match error {
-		RuntimeConnectionFailure::Authentication => CurrentAuthorityValidationError::Authentication,
-		RuntimeConnectionFailure::Database(error) =>
-			CurrentAuthorityValidationError::Database(error),
-	})?;
+	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
+	store.revalidate().await.map_err(local_database_error)?;
 	store.close();
 	Ok(())
 }
 
-async fn connect_runtime_store(
-	config: &DecodexConfig,
-) -> Result<PostgresStore, RuntimeConnectionFailure> {
-	let postgres = config.postgres();
-	let runtime_credential =
-		credential(postgres.runtime()).map_err(|()| RuntimeConnectionFailure::Authentication)?;
-	PostgresStore::connect_runtime_explicit(postgres, runtime_credential.as_deref())
-		.await
-		.map_err(|error| RuntimeConnectionFailure::Database(error.bootstrap_failure()))
+pub(crate) async fn validate_local_database(root: DecodexRoot) -> Result<(), LocalDatabaseError> {
+	let paths = root.paths();
+	let store = SqliteStore::open(&paths).map_err(local_database_error)?;
+	store.revalidate().await.map_err(local_database_error)?;
+	store.close();
+	Ok(())
 }
 
-async fn connect_database(config: &DecodexConfig) -> (ProductStore, DoctorStatus, DoctorStatus) {
+const fn local_database_error(error: decodex_database::DatabaseError) -> LocalDatabaseError {
+	match sqlite_bootstrap_failure(error) {
+		BootstrapFailure::UnsafeHostPath | BootstrapFailure::UnsafeAuthority =>
+			LocalDatabaseError::UnsafeHostPath,
+		BootstrapFailure::Incompatible => LocalDatabaseError::Incompatible,
+		BootstrapFailure::Unreachable | BootstrapFailure::Authentication =>
+			LocalDatabaseError::Unavailable,
+	}
+}
+
+fn connect_database(paths: &DecodexPaths) -> (ProductStore, DoctorStatus, DoctorStatus) {
 	let vault = DoctorStatus::Unknown(DoctorIssue::NotProbed);
-	match connect_runtime_store(config).await {
+	match SqliteStore::open(paths) {
 		Ok(store) => (ProductStore::Available(store), DoctorStatus::Ready, vault),
-		Err(RuntimeConnectionFailure::Authentication) => (
-			ProductStore::Unavailable(ProductStoreUnavailableReason::Authentication),
-			DoctorStatus::Unavailable(DoctorIssue::Authentication),
-			DoctorStatus::Unavailable(DoctorIssue::Authentication),
-		),
-		Err(RuntimeConnectionFailure::Database(error)) => {
-			let (reason, issue, vault) = match error {
-				BootstrapFailure::Authentication => (
-					ProductStoreUnavailableReason::Authentication,
-					DoctorIssue::Authentication,
-					vault,
-				),
+		Err(error) => {
+			let (reason, issue, vault) = match sqlite_bootstrap_failure(error) {
+				BootstrapFailure::Authentication =>
+					unreachable!("SQLite has no database authentication"),
 				BootstrapFailure::Unreachable => (
 					ProductStoreUnavailableReason::Unreachable,
 					DoctorIssue::DatabaseUnreachable,
-					DoctorStatus::Unknown(DoctorIssue::Authentication),
+					vault,
 				),
 				BootstrapFailure::Incompatible => (
 					ProductStoreUnavailableReason::Incompatible,
@@ -950,7 +794,7 @@ async fn connect_database(config: &DecodexConfig) -> (ProductStore, DoctorStatus
 				BootstrapFailure::UnsafeHostPath => (
 					ProductStoreUnavailableReason::UnsafeHostPath,
 					DoctorIssue::UnsafeHostPath,
-					DoctorStatus::Unknown(DoctorIssue::Authentication),
+					vault,
 				),
 			};
 			(ProductStore::Unavailable(reason), DoctorStatus::Unavailable(issue), vault)
@@ -958,24 +802,29 @@ async fn connect_database(config: &DecodexConfig) -> (ProductStore, DoctorStatus
 	}
 }
 
+const fn sqlite_bootstrap_failure(error: decodex_database::DatabaseError) -> BootstrapFailure {
+	match error {
+		decodex_database::DatabaseError::UnsafePath => BootstrapFailure::UnsafeHostPath,
+		decodex_database::DatabaseError::Incompatible
+		| decodex_database::DatabaseError::Corrupt => BootstrapFailure::Incompatible,
+		decodex_database::DatabaseError::Unavailable
+		| decodex_database::DatabaseError::Closed
+		| decodex_database::DatabaseError::Conflict
+		| decodex_database::DatabaseError::NotFound
+		| decodex_database::DatabaseError::AlreadyExists => BootstrapFailure::Unreachable,
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use crate::bootstrap;
-	use decodex_postgres::BootstrapFailure;
 	use decodex_protocol::{DoctorComponent, DoctorIssue, DoctorStatus};
 
 	#[test]
-	fn latest_schema_bootstrap_report_has_one_hidden_command_line() {
-		let error = bootstrap::LatestSchemaBootstrapError::Database {
-			failure: BootstrapFailure::Incompatible,
-			report_json: "{\"schema\":\"decodex/bootstrap-report/1\"}".into(),
-		};
-		assert_eq!(
-			error.bootstrap_report_line().as_deref(),
-			Some("DECODEX_BOOTSTRAP_REPORT={\"schema\":\"decodex/bootstrap-report/1\"}")
-		);
-		assert_eq!(error.to_string(), "latest-schema bootstrap target is incompatible");
-		assert_eq!(format!("{error:?}"), "Database(Incompatible)");
+	fn local_database_errors_are_value_free() {
+		let error = bootstrap::LocalDatabaseError::Incompatible;
+		assert_eq!(error.to_string(), "local database is incompatible");
+		assert_eq!(format!("{error:?}"), "Incompatible");
 	}
 
 	#[test]

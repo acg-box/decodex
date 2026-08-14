@@ -29,6 +29,7 @@ use crate::{
 	health_query::{HealthDispatch, HealthQuery, HealthRouteOutcome},
 	history_pager::{HistoryDispatch, HistoryPager, HistoryRouteOutcome},
 	quick_tasks::{QuickTaskDispatch, QuickTaskRouteOutcome, QuickTasks},
+	work_items::{WorkItemDispatch, WorkItemRouteOutcome, WorkItems},
 };
 
 const RETRY_DELAYS: [Duration; 4] = [
@@ -201,10 +202,11 @@ enum Delivery<C> {
 }
 
 enum SessionStep<C> {
-	Delivery(Result<Delivery<C>, RetainedSessionFailure>),
+	Delivery(Box<Result<Delivery<C>, RetainedSessionFailure>>),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
 	QuickTask(QuickTaskDispatch),
+	WorkItem(WorkItemDispatch),
 }
 
 /// The single private seam around retained-session operations and retry time.
@@ -260,10 +262,12 @@ impl LifecycleIo for TokioIo {
 
 	async fn next(&mut self) -> Result<Delivery<Self::Confirmation>, RetainedSessionFailure> {
 		match self.session.as_mut().ok_or(RetainedSessionFailure::Closed)?.next().await? {
-			SessionDelivery::Snapshot { snapshot, confirmation } =>
-				Ok(Delivery::Snapshot { snapshot, confirmation }),
-			SessionDelivery::Event { event, confirmation } =>
-				Ok(Delivery::Event { event, confirmation }),
+			SessionDelivery::Snapshot { snapshot, confirmation } => {
+				Ok(Delivery::Snapshot { snapshot, confirmation })
+			},
+			SessionDelivery::Event { event, confirmation } => {
+				Ok(Delivery::Event { event, confirmation })
+			},
 			SessionDelivery::QueryResult(result) => Ok(Delivery::QueryResult(result)),
 			SessionDelivery::CommandReceipt(receipt) => Ok(Delivery::CommandReceipt(receipt)),
 			SessionDelivery::CommandResult(result) => Ok(Delivery::CommandResult(result)),
@@ -323,6 +327,7 @@ pub(crate) struct ClientLifecycle {
 	health_query: HealthQuery,
 	history_pager: HistoryPager,
 	quick_tasks: QuickTasks,
+	work_items: WorkItems,
 	state: HashMap<String, AppliedEntity>,
 	last_cursor: Option<Cursor>,
 	binding: Option<CacheBinding>,
@@ -384,6 +389,7 @@ impl ClientLifecycle {
 			health_query: HealthQuery::production(),
 			history_pager,
 			quick_tasks: QuickTasks::production(),
+			work_items: WorkItems::production(),
 			state: HashMap::new(),
 			last_cursor: None,
 			binding: None,
@@ -434,6 +440,11 @@ impl ClientLifecycle {
 	/// Clone the presentation-neutral ordinary Quick Tasks controller.
 	pub(crate) fn quick_tasks(&self) -> QuickTasks {
 		self.quick_tasks.clone()
+	}
+
+	/// Clone the presentation-neutral internal WorkItem controller.
+	pub(crate) fn work_items(&self) -> WorkItems {
+		self.work_items.clone()
 	}
 
 	/// Run the bounded lifecycle without spawning or detaching any work.
@@ -489,12 +500,14 @@ impl ClientLifecycle {
 			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
 			self.quick_tasks.bind_session(generation, self.server_id.clone());
+			self.work_items.bind_session(generation, self.server_id.clone());
 			let failure =
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
 			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
 			self.quick_tasks.session_ended(generation);
+			self.work_items.session_ended(generation);
 			if self.quarantine.is_none() {
 				self.set_view(ConnectionView::ShuttingDown);
 			}
@@ -533,15 +546,18 @@ impl ClientLifecycle {
 			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
 			let quick_tasks = self.quick_tasks.clone();
+			let work_items = self.work_items.clone();
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
-				delivery = io.next() => SessionStep::Delivery(delivery),
+				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
 				dispatch = health_query.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Health(dispatch),
 				dispatch = history_pager.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::History(dispatch),
 				dispatch = quick_tasks.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::QuickTask(dispatch),
+				dispatch = work_items.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::WorkItem(dispatch),
 			};
 
 			if self.ensure_generation(generation).is_err() {
@@ -568,7 +584,7 @@ impl ClientLifecycle {
 						self.history_pager.lookup_sent_request(&send_token);
 					}
 				},
-				SessionStep::QuickTask(dispatch) =>
+				SessionStep::QuickTask(dispatch) => {
 					if let Some(command) = dispatch.command() {
 						let send_result = io.send_command(command.clone()).await;
 						if let Err(failure) = send_result {
@@ -580,8 +596,23 @@ impl ClientLifecycle {
 						&& let Err(failure) = io.send_query(query.clone()).await
 					{
 						return failure;
-					},
-				SessionStep::Delivery(delivery) => match delivery {
+					}
+				},
+				SessionStep::WorkItem(dispatch) => {
+					if let Some(command) = dispatch.command() {
+						let send_result = io.send_command(command.clone()).await;
+						if let Err(failure) = send_result {
+							self.work_items.command_send_failed(&dispatch);
+							return failure;
+						}
+						self.work_items.command_sent(&dispatch);
+					} else if let Some(query) = dispatch.query()
+						&& let Err(failure) = io.send_query(query.clone()).await
+					{
+						return failure;
+					}
+				},
+				SessionStep::Delivery(delivery) => match *delivery {
 					Ok(Delivery::Snapshot { snapshot, confirmation }) => {
 						let cursor = snapshot.cursor;
 						let inspection = match self.apply_snapshot(generation, snapshot) {
@@ -621,6 +652,7 @@ impl ClientLifecycle {
 								self.history_pager.reload_if_open(&conversation.conversation_id);
 						}
 						self.quick_tasks.apply_event(&quick_task_event);
+						self.work_items.apply_event(&quick_task_event);
 						let checkpoint = match io.confirm_applied(confirmation) {
 							Ok(checkpoint) => checkpoint,
 							Err(_) => return self.confirmation_failure(),
@@ -639,9 +671,16 @@ impl ClientLifecycle {
 					Ok(Delivery::CommandReceipt(receipt)) => {
 						let _ =
 							self.quick_tasks.route_receipt(generation, &self.server_id, &receipt);
+						let _ =
+							self.work_items.route_receipt(generation, &self.server_id, &receipt);
 					},
 					Ok(Delivery::CommandResult(result)) => {
 						let _ = self.quick_tasks.route_command_result(
+							generation,
+							&self.server_id,
+							&result,
+						);
+						let _ = self.work_items.route_command_result(
 							generation,
 							&self.server_id,
 							&result,
@@ -696,7 +735,9 @@ impl ClientLifecycle {
 			Ok(Some(inspection))
 				if inspection.generation == binding.generation
 					&& inspection.authority == self.cache_authority =>
-				Some(binding.checkpoint),
+			{
+				Some(binding.checkpoint)
+			},
 			_ => {
 				self.enter_quarantine(
 					QuarantineReason::ContentAttestation,
@@ -736,14 +777,19 @@ impl ClientLifecycle {
 		generation: u64,
 		result: QueryResultEnvelope,
 	) -> Result<(), RetainedSessionFailure> {
+		match self.work_items.route_query_result(generation, &self.server_id, &result) {
+			WorkItemRouteOutcome::Fresh | WorkItemRouteOutcome::Refused => return Ok(()),
+			WorkItemRouteOutcome::Unmatched => {},
+		}
 		match self.quick_tasks.route_query_result(generation, &self.server_id, &result) {
 			QuickTaskRouteOutcome::Fresh | QuickTaskRouteOutcome::Refused => return Ok(()),
 			QuickTaskRouteOutcome::Unmatched => {},
 		}
 		match self.health_query.route_result(generation, &self.server_id, &result) {
 			HealthRouteOutcome::Unmatched => self.route_history_result(generation, result),
-			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale =>
-				Ok(()),
+			HealthRouteOutcome::Fresh | HealthRouteOutcome::Refused | HealthRouteOutcome::Stale => {
+				Ok(())
+			},
 		}
 	}
 
@@ -1130,7 +1176,7 @@ fn initialize_cache(
 				Err(_) => unsafe_cache_quarantine(),
 			}
 		},
-		Err(error) if is_disposable_corruption(error) =>
+		Err(error) if is_disposable_corruption(error) => {
 			if ClientCache::dispose_all(root).is_ok() {
 				match ClientCache::open(root, limits, authority) {
 					Ok(cache) => (
@@ -1144,7 +1190,8 @@ fn initialize_cache(
 				}
 			} else {
 				unsafe_cache_quarantine()
-			},
+			}
+		},
 		Err(_) => unsafe_cache_quarantine(),
 	}
 }
@@ -1179,4 +1226,6 @@ fn next_cursor(cursor: Cursor) -> Option<Cursor> {
 	cursor.0.checked_add(1).map(Cursor)
 }
 
-#[cfg(test)] mod tests;
+#[cfg(test)]
+#[path = "client_lifecycle/tests.rs"]
+mod tests;

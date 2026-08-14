@@ -34,7 +34,7 @@ use decodex_core::{
 };
 
 const CLIENT_TIMEOUT: Duration = Duration::from_secs(5);
-// Doctor revalidates the complete PostgreSQL latest-schema and runtime-authority contract.
+// Doctor revalidates the complete local database and runtime-authority contract.
 // Keep its bounded read budget separate from ordinary cached UI queries.
 const DOCTOR_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
 const RESET_CARD_CLIENT_TIMEOUT: Duration = Duration::from_secs(35);
@@ -938,7 +938,7 @@ impl AccountClient {
 		Self { transport: ResetCardClient::new(profile) }
 	}
 
-	/// Read the canonical fast PostgreSQL-only account skeleton and routing controls.
+	/// Read the canonical account skeleton and routing controls.
 	pub async fn list(&self) -> Result<AccountsResult, ClientFailure> {
 		self.transport.require_local_profile()?;
 		let completed = time::timeout(
@@ -1751,14 +1751,6 @@ kind = "remote"
 host = "server.example.test"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
-
-[postgres]
-socket_directory = "../must-not-be-client-validated"
-expected_peer_uid = 70
-database = "ignored"
-
-[postgres.runtime]
-user = "ignored_runtime"
 
 [cache]
 max_entries = 0

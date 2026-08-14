@@ -18,14 +18,14 @@ The former boundary instructed operators to run this command once after source f
 cargo make check-vnext-retained-title-preparation
 ```
 
-The command used one private PostgreSQL 18 cluster and reported three complete stages:
+The command used one private former server store 18 cluster and reported three complete stages:
 
 1. It checked the full V1-V32 migration syntax, applied and canonically provisioned a
    fresh full ledger, and separately verified the closed migration-only authority delta
    from V24 through V32. V28, V29, V30, V31, and the V32 exact-release repair did not
    derive or grant a runtime principal. The one configured post-migration provisioner
    owned the final runtime ACL.
-2. It parsed and prepared all 30 changed V22/V27/V28 embedded PostgreSQL statements in
+2. It parsed and prepared all 30 changed V22/V27/V28 embedded former server store statements in
    one Rust process.
 3. It verified the generated schema and configured-authority digests, including the exact 28
    migration-owned function sources and 201 final function contracts in `authority.rs`.
@@ -42,7 +42,7 @@ cargo make test-vnext-retained-title-core
 ```
 
 The command required an index-only candidate. It bound the base commit and staged tree.
-It reused the accepted PostgreSQL continuation contract and the V22 production-inert check.
+It reused the accepted former server store continuation contract and the V22 production-inert check.
 
 The receipt recorded these accepted pinned protocol facts for `codex-cli 0.145.0-alpha.18`:
 

@@ -7,9 +7,9 @@ use std::{
 
 use decodex_codex::AccountApiProfile;
 use decodex_core::{AccountId, ProviderIdentity};
-use decodex_postgres::{
+use decodex_database::{
 	AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
-	AccountProfileSnapshot, PostgresStore,
+	AccountProfileSnapshot, SqliteStore,
 };
 
 use crate::host_credentials::{HostCredentialStore, StoredCredential};
@@ -60,12 +60,12 @@ pub(crate) enum AccountProfileRuntimeError {
 /// persists the decoded result and serves the daemon-owned cache to clients.
 #[derive(Clone)]
 pub(crate) struct AccountProfileRuntime {
-	store: PostgresStore,
+	store: SqliteStore,
 	credentials: Arc<dyn HostCredentialStore>,
 }
 impl AccountProfileRuntime {
 	/// Construct the cache projection over the shared provider API boundary.
-	pub(crate) fn new(store: PostgresStore, credentials: Arc<dyn HostCredentialStore>) -> Self {
+	pub(crate) fn new(store: SqliteStore, credentials: Arc<dyn HostCredentialStore>) -> Self {
 		Self { store, credentials }
 	}
 
@@ -183,17 +183,19 @@ impl AccountProfileRuntime {
 		let account = match self.store.read_account_registry(Some(account_id), 1).await {
 			Ok(accounts) => match accounts.into_iter().next() {
 				Some(account) if !account.tombstoned => account,
-				_ =>
+				_ => {
 					return AccountProfileRuntimeResult::Unavailable {
 						claims: ProfileClaims::redacted().into_view(),
 						error: AccountProfileRuntimeError::AccountUnavailable,
-					},
+					};
+				},
 			},
-			Err(_) =>
+			Err(_) => {
 				return AccountProfileRuntimeResult::Unavailable {
 					claims: ProfileClaims::redacted().into_view(),
 					error: AccountProfileRuntimeError::ProductStateUnavailable,
-				},
+				};
+			},
 		};
 		let refresh_error = match status {
 			Some(status) if status.account_revision == account.revision => status.refresh_error,
@@ -202,22 +204,24 @@ impl AccountProfileRuntime {
 		};
 		let snapshot = match self.store.read_account_profile(account_id).await {
 			Ok(Some(snapshot)) => snapshot,
-			Ok(None) =>
+			Ok(None) => {
 				return self
 					.unavailable(
 						account_id,
 						include_email,
 						refresh_error.unwrap_or(AccountProfileRuntimeError::ProviderUnavailable),
 					)
-					.await,
-			Err(_) =>
+					.await;
+			},
+			Err(_) => {
 				return self
 					.unavailable(
 						account_id,
 						include_email,
 						AccountProfileRuntimeError::ProductStateUnavailable,
 					)
-					.await,
+					.await;
+			},
 		};
 		if snapshot.account_id != *account_id || snapshot.account_revision != account.revision {
 			return self

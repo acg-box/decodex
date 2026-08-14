@@ -1,6 +1,6 @@
 captured_at_utc	logical_path	head	branch	dirty_entries	disposition
 2026-07-13T04:45:09Z	<home>/code/y/hack-ink/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	main	0	trusted-main-preserve
-2026-07-13T04:45:09Z	<home>/.codex/worktrees/07d5/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	xv/xy-1264-postgres-feasibility	3	active-vnext-preserve
+2026-07-13T04:45:09Z	<home>/.codex/worktrees/07d5/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	xv/xy-1264-server-store-feasibility	3	active-vnext-preserve
 2026-07-13T04:45:09Z	<home>/.codex/worktrees/3537/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	xv/xy-1263-gpui-feasibility	2	active-vnext-preserve
 2026-07-13T04:45:09Z	<home>/.codex/worktrees/524f/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	xv/xy-1261-v02-freeze	0	active-vnext-preserve
 2026-07-13T04:45:09Z	<home>/.codex/worktrees/e9b9/decodex	f9d6c4e70198e94e5b9461b8cac7518ae14d41ef	xv/xy-1262-codex-proof	1	active-vnext-preserve

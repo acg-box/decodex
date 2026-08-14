@@ -5,7 +5,7 @@ and Reset Cards.
 
 Read this when: You build, test, stage, or run the Decodex menu-bar app.
 
-Not this document: Daemon installation, PostgreSQL administration, credential
+Not this document: Daemon installation, database administration, credential
 import, or runtime scheduling.
 
 ## Scope
@@ -18,7 +18,7 @@ Swift only the official URL, one-time code, and closed session state. The daemon
 verifies and installs the exact account credential, and the bridge removes the
 temporary home on success, failure, cancellation, or App exit. The app never
 starts the Decodex CLI, helper, app-server, or legacy account process. Swift
-does not read account credentials, auth-file paths, PostgreSQL, Keychain, or
+does not read account credentials, auth-file paths, product storage, Keychain, or
 provider-private Reset Card identifiers.
 
 The primary panel reads the complete account skeleton, uses the returned

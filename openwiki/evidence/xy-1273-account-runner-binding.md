@@ -7,9 +7,9 @@ Status: implementation candidate, intentionally unstaged and uncommitted.
 - `decodex-core` owns canonical lowercase UUID account identities and the closed non-secret account
   observations `unavailable`, `unknown`, `available`, `depleted`, `auth_failed`, `plugin_unready`,
   and `disabled`. These types expose no selection operation.
-- PostgreSQL remains the only product-state authority. Forward-only V4 adds `unavailable` to the
+- former server store remains the only product-state authority. Forward-only V4 adds `unavailable` to the
   existing enum and adds no table, column, credential reference, selector, or callable routing
-  function. Account reads require an exact account ID. Existing recursive Rust and PostgreSQL
+  function. Account reads require an exact account ID. Existing recursive Rust and former server store
   predicates protect account metadata, activity, outbox, and command receipts from normalized,
   case-folded, nested, serialized, assignment-shaped, authorization-shaped, and known token-shaped
   credential material. Account mutation/readback `Debug` output omits all caller-controlled labels
@@ -48,7 +48,7 @@ Status: implementation candidate, intentionally unstaged and uncommitted.
   indefinitely when death cannot be confirmed. A manual fixture proves shared authentication,
   account-pool, and plugin-state files are
   byte-identical before and after bound execution.
-- The dormant runtime composition observes the exact manually selected PostgreSQL account
+- The dormant runtime composition observes the exact manually selected former server store account
   ID/revision as `available` before mechanics, explicitly releases the result row and pool checkout,
   and repeats the exact observation only after process cleanup or quarantine transfer. It returns
   only a non-live post-cleanup observation. A concurrent disabling mutation progresses while a
@@ -68,7 +68,7 @@ Status: implementation candidate, intentionally unstaged and uncommitted.
   janitor after the last capacity, permit, and cleanup job is released. A 65th attempt is rejected
   before a process exists.
   A fresh process cannot resurrect a binding, and another observation requires fresh exact
-  PostgreSQL pre- and post-observations.
+  former server store pre- and post-observations.
   Uncatchable daemon/host death can orphan an OS group; no cross-crash cleanup guarantee is claimed.
   XY-1304's live
   dispatch gate remains failed.
@@ -78,7 +78,7 @@ Status: implementation candidate, intentionally unstaged and uncommitted.
 The first independent review returned two valid P2 findings. Both were reproduced before repair.
 
 1. Caller-asserted readiness and separable capacity were removed. That repair initially used a
-   closure-scoped PostgreSQL launch capability; the fourth review correctly rejected its unbounded
+   closure-scoped former server store launch capability; the fourth review correctly rejected its unbounded
    lock duration, and the later repair described below replaced it with exact pre/post observations
    that release the pool before mechanics. The runner permit remains private. Process spawn,
    post-spawn pipe failures, success, protocol error, timeout, mismatch, explicit shutdown, Drop,
@@ -94,7 +94,7 @@ The bounded scout found that a public readiness trait, caller metadata, or separ
 reservation remained forgeable. The fresh skeptic additionally identified the stale-revision window
 in a passive read-then-launch grant. The initial row-lock solution was later rejected because a
 caller-controlled synchronous vault could retain the lock indefinitely. The final composition keeps
-the launcher/result private and requires exact pre- and post-mechanics PostgreSQL observations; it
+the launcher/result private and requires exact pre- and post-mechanics former server store observations; it
 does not claim readiness stayed true during mechanics and exposes no live runner.
 
 ## Second reviewer repair disposition
@@ -118,7 +118,7 @@ call sites.
    escaped strings, nested accounts, nested threads, later vector elements/cursors, and the real
    queued typed-parser path count every completed wrapper drop independently of raw-block wipes.
    Opaque Serde scratch and a string allocation that itself fails are not claimed as zeroized.
-3. The rejected Codex-to-PostgreSQL sibling dependency was removed. Runtime now owns the explicit
+3. The rejected Codex-to-former server store sibling dependency was removed. Runtime now owns the explicit
    manual launch composition and the exact dependency graph is restored. The later third repair
    replaces the source-spelling call-site guard and public capacity-shaped Codex primitive described
    here with private runtime authority plus manifest and compile-time evidence.
@@ -143,11 +143,11 @@ and made no repository change.
    retryable idle, poisoned wake state is recovered, and later reservation/maintenance retries.
 2. `RunnerCapacity`, its account/revision permit, reservation, errors, process supervisor, vault,
    and sensitive wire DTOs moved out of Codex into the private runtime account-launch owner. The
-   permit is constructed only after an exact PostgreSQL
+   permit is constructed only after an exact former server store
    revision/readiness observation and matching `ReadOnlyProbe::account_id`; runtime validates
-   the returned mechanical observation and exact PostgreSQL predicate again and is the only constructor of
+   the returned mechanical observation and exact former server store predicate again and is the only constructor of
    `ManualAccountLaunchResult`. Codex exposes no child-launch API. Cargo metadata proves runtime is the only workspace package with a
-   normal dependency on Codex and also owns PostgreSQL composition. Compile-fail doctests prove the
+   normal dependency on Codex and also owns former server store composition. Compile-fail doctests prove the
    former Codex command/probe/vault/capacity surfaces and runtime capacity constructor are
    unavailable. This does not claim that future source changes or wrappers are impossible.
 
@@ -161,11 +161,11 @@ depend on a contended queue mutex, and metadata evidence must be limited to depe
    exact ID/revision/`available` predicate, extracts the boolean, and explicitly drops the result row
    and pooled client before returning. Runtime performs this check before capacity reservation and
    repeats it only after mechanics have returned or transferred uncertain cleanup ownership. A
-   pool-size-one PostgreSQL 18 fixture runs the complete private composition on a dedicated blocking
+   pool-size-one former server store 18 fixture runs the complete private composition on a dedicated blocking
    executor thread, blocks the synchronous vault, and proves a concurrent disabling mutation
    completes. Releasing the vault produces final revision rejection, no live result, and capacity
    recovery. No arbitrary one-second database query timeout was invented; ordinary configured
-   PostgreSQL connectivity bounds still apply. The one-second value in the fixture bounds only the
+   former server store connectivity bounds still apply. The one-second value in the fixture bounds only the
    mutation-progress assertion.
 2. Quarantine startup now uses atomic idle/starting/running transitions independent of the queue
    mutex. Start failure restores idle without taking that mutex. A worker-liveness guard restores idle
@@ -179,7 +179,7 @@ depend on a contended queue mutex, and metadata evidence must be limited to depe
    owns both sibling adapters, prove `decodexd` reaches them only through runtime, and reject synthetic
    fixture features on normal production edges. Compile-fail doctests prove the launcher and capacity
    names are absent from public crate APIs. This evidence does not claim provenance, alias detection,
-   absence of future wrappers, or universal downstream friend visibility. The PostgreSQL 18 fixture
+   absence of future wrappers, or universal downstream friend visibility. The former server store 18 fixture
    exercises the complete supported private path for non-ready, stale, success, revision race,
    capacity exhaustion, and account mismatch.
 
@@ -325,32 +325,32 @@ The same audit corrected authority drift: process supervision is private runtime
 | An ambient shared-home account could differ from the requested account. | Production execution requires the vault projection and exact readback receipt; the old ambient probe is test-only. |
 | A vault could switch credentials twice under one child. | The projection sink is single-use and the second projection returns a closed error. |
 | A vault could claim one account while the child reports another. | The expected receipt is installed before `account/read`; mismatch terminates the process group before exposure. |
-| A crash/restart could recover a different account from persisted pool state. | Capacity is deliberately non-persistent and restart reconstructs no assignment; bound restart is not public and another observation requires fresh exact pre/post PostgreSQL checks. Uncatchable daemon/host death can orphan an OS group, so cross-crash cleanup is not claimed. |
-| Unknown, stale, authentication-failed, plugin-unready, disabled, or unavailable metadata could be treated as ready. | The exact PostgreSQL revision/state predicate rejects every value except current `available` both before and after mechanics; callers never supply `AccountState` to capacity. |
+| A crash/restart could recover a different account from persisted pool state. | Capacity is deliberately non-persistent and restart reconstructs no assignment; bound restart is not public and another observation requires fresh exact pre/post former server store checks. Uncatchable daemon/host death can orphan an OS group, so cross-crash cleanup is not claimed. |
+| Unknown, stale, authentication-failed, plugin-unready, disabled, or unavailable metadata could be treated as ready. | The exact former server store revision/state predicate rejects every value except current `available` both before and after mechanics; callers never supply `AccountState` to capacity. |
 | A permit could be dropped while a preflight, final process, or descendant remains alive. | Every sequential process group owns the same permit immediately after spawn. It returns only after confirmed group absence and child reaping; uncertainty moves it into the quarantine or intentional fail-closed retention. |
-| One uncertain group or failed cleanup worker could block PostgreSQL or every later cleanup. | No database checkout spans cleanup. Caller and Drop paths perform only bounded shutdown/transfer. Jobs rotate one nonblocking cleanup step per round; atomic start/panic recovery retains jobs for retry, and admission failure retains capacity without blocking. |
+| One uncertain group or failed cleanup worker could block former server store or every later cleanup. | No database checkout spans cleanup. Caller and Drop paths perform only bounded shutdown/transfer. Jobs rotate one nonblocking cleanup step per round; atomic start/panic recovery retains jobs for retry, and admission failure retains capacity without blocking. |
 | A repository caller could forge account/revision values through the Codex capacity API. | Codex exports no product capacity or revision-shaped seam. Runtime privately constructs the permit after exact precheck; its nonreexported result requires exact final recheck. Manifest reachability and compile-fail tests enforce the stated current repository/API boundary only. |
 | Queue overflow, disconnect, partial input, or teardown could free raw child bytes ordinarily. | Reader blocks, chunked frames, queued values, and the contiguous parse copy are all zeroizing owners; instrumented branch tests count wipes after each adversarial path. |
 | Parent secrets could leak through environment, argv, handles, logs, errors, or debug output. | Environment is allowlisted, argv fixed, descriptors close-on-exec, stderr discarded, raw transport and completed typed string owners are zeroizing, and public errors/debug output omit controlled material. |
-| Forward enum insertion could make logical restore inventory differ. | V4 appends the value, so fresh migration and logical restore produce the same PostgreSQL 18 inventory digest. |
+| Forward enum insertion could make logical restore inventory differ. | V4 appends the value, so fresh migration and logical restore produce the same former server store 18 inventory digest. |
 
 ## Tune recovery audit
 
 The rejected `cargo vstyle tune --language rust --workspace --all-features --strict` run was audited
 against its adjacent rollout records and the complete candidate diff. It reported five net changed
-files: `decodex-core/src/account.rs`, `decodex-postgres/src/types.rs`,
-`decodex-postgres/src/accounts.rs`, `decodex-runtime/src/account_launch/process.rs`, and
+files: `decodex-core/src/account.rs`, `decodex-server-store/src/types.rs`,
+`decodex-server-store/src/accounts.rs`, `decodex-runtime/src/account_launch/process.rs`, and
 the then-current Codex runner source. Its transformations were import/declaration regrouping, impl and
 private-helper adjacency, crate-absolute test imports, and whitespace normalization. No branch,
 atomic ordering, lifetime, cleanup, shutdown, redaction, account identity, descriptor operation, or
-assertion changed. Its interim Codex files did not compile. Imports, generic bounds, and PostgreSQL
+assertion changed. Its interim Codex files did not compile. Imports, generic bounds, and former server store
 test-module placement were therefore reconstructed manually; mutation-based vstyle was not reused.
 
 After the manual audit, a fresh target directory was created and the affected sources were compiled
 without prior artifacts:
 
 - `CARGO_TARGET_DIR=/tmp/xy1273-clean-source-20260714-2003 cargo check -p decodex-core -p
-  decodex-postgres -p decodex-codex --all-features --all-targets` — passed.
+  decodex-server-store -p decodex-codex --all-features --all-targets` — passed.
 - The focused commands below were then run with that same clean `CARGO_TARGET_DIR` and passed.
 
 ## Pre-freeze focused verification history
@@ -361,17 +361,17 @@ owner handoff therefore freezes the repository first, records the complete finge
 the final commands into external `/tmp` logs without further repository mutation, hashes those logs,
 and records matching post-validation fingerprints in the task transcript.
 
-- `cargo nextest run -p decodex-core -p decodex-postgres -p decodex-codex -p decodex-runtime
+- `cargo nextest run -p decodex-core -p decodex-server-store -p decodex-codex -p decodex-runtime
   --all-targets --all-features` — 200 passed and 17 owning-gate fixtures skipped. The passing suite
   includes quarantine start/reset/panic/poison/wakeup/fairness, preflight/final permit transfer,
   lifecycle teardown/join, account mismatch, inbound/outbound zeroization, native-image rejection,
   original-path and protected-snapshot replacement, credential-negative storage, and private runtime
   capacity tests.
-- `cargo make test-vnext-postgres-store` — passed a fresh PostgreSQL 18 migration, account authority,
+- `cargo make test-vnext-server-store-store` — passed a fresh former server store 18 migration, account authority,
   credential-vector, tamper, restart, Turkish collation, hostile search path, logical restore, and
   migration-ledger suite. Its pool-size-one runtime fixture passed exact non-ready/stale/success,
   blocked-vault mutation progress plus final revision rejection, capacity exhaustion, and account
-  mismatch through the complete private PostgreSQL-to-Codex composition.
+  mismatch through the complete private former server store-to-Codex composition.
 - `cargo make test-vnext-architecture` — 11 passed, including exact sibling dependencies,
   enumeration of every workspace library/binary target, current production dependency reachability,
   and absence of synthetic fixture features on normal edges. This metadata evidence does not claim
@@ -407,12 +407,12 @@ and records matching post-validation fingerprints in the task transcript.
 - `cargo vstyle curate --language rust --workspace --all-features --strict` — 213 files checked
   read-only after manual item-order, import, and spacing repairs; no mutation-based vstyle command
   was used.
-- `cargo clippy -p decodex-core -p decodex-postgres -p decodex-codex -p decodex-runtime
+- `cargo clippy -p decodex-core -p decodex-server-store -p decodex-codex -p decodex-runtime
   --all-targets --all-features -- -D clippy::all -D clippy::too_many_lines -D
   clippy::unwrap_used -D clippy::use_self -D clippy::wildcard_imports -D missing-docs -D
   unused-crate-dependencies -D warnings` — passed.
-- `cargo test -p decodex-core -p decodex-postgres -p decodex-codex -p decodex-runtime --doc
-  --all-features` — Codex 1/1 and runtime 4/4 compile-fail doctests passed; core and PostgreSQL have
+- `cargo test -p decodex-core -p decodex-server-store -p decodex-codex -p decodex-runtime --doc
+  --all-features` — Codex 1/1 and runtime 4/4 compile-fail doctests passed; core and former server store have
   no doctests. The contracts prove that product capacity and the dormant runtime launcher are absent
   from public crate APIs.
 - `cargo +nightly fmt --all -- --check`, `taplo format --check`, and `git diff --check` are the

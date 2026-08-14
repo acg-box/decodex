@@ -63,21 +63,11 @@ host = "192.0.2.1"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[postgres]
-socket_directory = "{}"
-expected_peer_uid = {uid}
-port = 5432
-database = "decodex"
-
-[postgres.runtime]
-user = "decodex_runtime"
-
 [cache]
 max_entries = 16
 max_bytes = 65536
 max_entry_bytes = 4096
 "#,
-			self.root.join("missing-postgres-socket").display(),
 		)
 	}
 
@@ -215,18 +205,12 @@ async fn real_cli_and_server_cover_status_doctor_identity_and_disconnected_state
 				"minor": CURRENT_VERSION.minor,
 			}),
 		);
-		assert_eq!(
-			status(&document, "product_store"),
-			&serde_json::json!({"state": "unavailable", "issue": "database_unreachable"}),
-		);
+		assert_eq!(status(&document, "product_store"), &serde_json::json!({"state": "ready"}),);
 		assert_eq!(
 			status(&document, "blob_integrity"),
 			&serde_json::json!({"state": "unknown", "issue": "not_probed"}),
 		);
-		assert_eq!(
-			status(&document, "credential_vault"),
-			&serde_json::json!({"state": "unknown", "issue": "authentication"}),
-		);
+		assert_eq!(status(&document, "credential_vault"), &serde_json::json!({"state": "ready"}),);
 		assert_eq!(
 			status(&document, "plugin_readiness"),
 			&serde_json::json!({"state": "unknown", "issue": "plugin"}),

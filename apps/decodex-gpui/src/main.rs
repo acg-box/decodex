@@ -10,6 +10,7 @@
 mod client_cache;
 mod client_lifecycle;
 mod composer_input;
+mod factory_surface;
 mod health_query;
 #[cfg_attr(
 	not(test),
@@ -20,9 +21,15 @@ mod health_query;
 )]
 mod history_pager;
 mod quick_tasks;
+mod settings_surface;
 mod shell;
+mod ui_theme;
+mod work_items;
 
-use gpui::{App, AppContext as _, Bounds, WindowBounds, WindowOptions, px, size};
+use gpui::{
+	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
+	px, size,
+};
 use gpui_platform::application;
 
 use decodex_protocol::ClientProfile;
@@ -38,16 +45,19 @@ fn main() {
 	application().run(|cx: &mut App| {
 		shell::bind_keys(cx);
 		let (initial_connection, lifecycle) = compose_lifecycle();
-		let bounds = Bounds::centered(None, size(px(1180.0), px(760.0)), cx);
+		let bounds = Bounds::centered(None, size(px(1248.0), px(840.0)), cx);
 		let window = cx
 			.open_window(
 				WindowOptions {
 					titlebar: Some(gpui::TitlebarOptions {
-						title: Some("Decodex".into()),
-						..Default::default()
+						title: None,
+						appears_transparent: true,
+						traffic_light_position: Some(point(px(14.0), px(17.0))),
 					}),
+					window_background: WindowBackgroundAppearance::Blurred,
+					app_owns_titlebar_drag: true,
 					window_bounds: Some(WindowBounds::Windowed(bounds)),
-					window_min_size: Some(size(px(1024.0), px(620.0))),
+					window_min_size: Some(size(px(1180.0), px(720.0))),
 					focus: false,
 					show: false,
 					..Default::default()

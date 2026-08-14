@@ -8,6 +8,9 @@ name                 = "decodex-gpui"
 repository.workspace = true
 version.workspace    = true
 
+[features]
+visual-capture = ["gpui/test-support", "gpui_platform/test-support"]
+
 [dependencies]
 decodex-protocol = { workspace = true }
 gpui             = { workspace = true }
@@ -18,6 +21,20 @@ serde_json       = { workspace = true }
 sha2             = { workspace = true }
 tokio            = { workspace = true }
 
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2-app-kit    = { version = "=0.3.2", default-features = false, features = ["NSRunningApplication", "NSWorkspace", "block2"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["NSString", "NSURL", "NSUserDefaults"] }
+
 [dev-dependencies]
 gpui     = { workspace = true, features = ["test-support"] }
 tempfile = { workspace = true }
+
+[[bin]]
+name              = "decodex-gpui-visual-capture"
+path              = "src/bin/factory_visual_capture.rs"
+required-features = ["visual-capture"]
+
+[[bin]]
+name              = "decodex-gpui-workbench-visual-capture"
+path              = "src/bin/workbench_visual_capture.rs"
+required-features = ["visual-capture"]

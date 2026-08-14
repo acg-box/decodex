@@ -13,19 +13,15 @@ use decodex_core::{
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	ExecutionConsumer, HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ProjectId,
-	QuotaWindowClass, ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp,
-	RoutingBlocker, RoutingDecisionKind, RuntimeSessionState, TurnId, TurnRole, WorkItemEdgeKind,
-	WorkItemId, WorkItemState,
+	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ResetCardConsumeOutcome,
+	ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId, TurnRole, WorkItemState,
 };
-use decodex_postgres::{
+use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-	AccountCommandReceiptLease, AccountLifecycleRejection, BootstrapFailure, CommandIdentity,
-	ExecutionDecisionReadback, ExecutionQuotaExclusion, HistoryCursor, HistoryEntry,
-	OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
-	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, PostgresStore,
-	ResetCardFailureCode, ResetCardOperationStatus, RoutingControlOutcome, StoreError,
-	StoredWorkItem,
+	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity, DatabaseError,
+	HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
+	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
+	OrdinaryTaskPreSessionState, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -38,28 +34,29 @@ use decodex_protocol::{
 	AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, CodexAuthProjectionResult,
 	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
 	ConversationHistoryResult, CorrelationId, DoctorCheck, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload, ExecutionConsumerDto,
-	ExecutionDecisionDto, ExecutionDecisionQueryError, ExecutionDecisionResult,
-	ExecutionQuotaExclusionDto, ExecutionQuotaWindowDto, ExecutionRouteBlockerDto,
-	ExecutionRouteCauseDto, ExecutionRouteDto, HistoryArtifactId, HistoryArtifactReference,
-	HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference, HistoryCursorToken,
-	HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto, HistoryPayloadDto, HistoryQueryError,
-	HistorySideEffectState, HistoryText, HistoryTurnRole, MAX_HISTORY_PAGE_SIZE, QueryEnvelope,
-	QueryPayload, QueryResultPayload, QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult,
-	QuickTaskReadError, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState, QuickTaskSummary,
-	QuickTaskTurnOutcome, ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult,
-	ResetCardObservationDto, ResetCardOperationResult, ResetCardOutcome, ResultPayload,
-	Sha256Digest, SnapshotItem, WireText, WorkItemBoardCard, WorkItemBoardLeadId,
-	WorkItemBoardObjectiveId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProgramId,
-	WorkItemBoardProjectId, WorkItemBoardQueryError, WorkItemBoardResult, WorkItemBoardTitle,
-	WorkItemBoardWorkItemId,
+	DoctorReport, DoctorStatus, EntityId, EntityRevision, EventPayload,
+	ExecutionDecisionQueryError, ExecutionDecisionResult, HistoryArtifactId,
+	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
+	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
+	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
+	MAX_HISTORY_PAGE_SIZE, ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
+	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
+	QuickTaskRecoveryAction,
+	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
+	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
+	ResetCardOperationResult, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem,
+	WireText, WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardQueryError,
+	WorkItemBoardResult, WorkItemBoardWorkItemId,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::{
 	ProcessGenerationControl, ProviderAttemptControl,
-	account_launch::{ApiResetCardRuntime, ResetCardInventoryObservation, ResetCardServiceError},
+	account_launch::{
+		ApiResetCardRuntime, ResetCardFailureCode, ResetCardInventoryObservation,
+		ResetCardOperationStatus, ResetCardServiceError,
+	},
 	account_observation::AccountObservationService,
 	account_profile::{
 		AccountProfileClaimsView, AccountProfileRuntimeError, AccountProfileRuntimeResult,
@@ -76,13 +73,11 @@ use crate::{
 		QuickTaskTerminalState, RecoverQuickTask, SubmitQuickTaskTurn,
 	},
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
-	work_item_board::WorkItemBoardQuery,
 };
 
 /// The only mutation/observation seam reachable from the WebSocket server.
 ///
-/// PostgreSQL-backed services can implement this async owner in XY-1267 without moving
-/// command execution into the transport.
+/// Product services implement this async owner without moving command execution into transport.
 pub trait Application: Send + Sync + 'static {
 	/// Maximum application publications that the transport may defer behind one command result.
 	const EVENT_CAPACITY: usize = 64;
@@ -193,7 +188,7 @@ enum StoredAccountCommandOutcome {
 		schema: String,
 		entity_id: EntityId,
 		entity_revision: EntityRevision,
-		result: ResultPayload,
+		result: Box<ResultPayload>,
 		event: Box<EventPayload>,
 	},
 	Rejected {
@@ -210,7 +205,6 @@ enum ReservedAccountCommand {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ProductStoreUnavailableReason {
 	Configuration,
-	Authentication,
 	Unreachable,
 	Incompatible,
 	UnsafeAuthority,
@@ -220,19 +214,18 @@ pub(crate) enum ProductStoreUnavailableReason {
 impl ProductStoreUnavailableReason {
 	const fn description(self) -> &'static str {
 		match self {
-			Self::Configuration => "typed PostgreSQL configuration is unavailable",
-			Self::Authentication => "PostgreSQL authentication is unavailable",
-			Self::Unreachable => "configured PostgreSQL is unreachable",
-			Self::Incompatible => "configured PostgreSQL latest schema is incompatible",
-			Self::UnsafeAuthority => "configured PostgreSQL runtime authority is unsafe",
-			Self::UnsafeHostPath => "configured PostgreSQL path is unsafe",
+			Self::Configuration => "local product database configuration is unavailable",
+			Self::Unreachable => "local product database is unavailable",
+			Self::Incompatible => "local product database schema is incompatible",
+			Self::UnsafeAuthority => "local product database authority is unsafe",
+			Self::UnsafeHostPath => "local product database path is unsafe",
 		}
 	}
 }
 
 #[derive(Clone)]
 pub(crate) enum ProductStore {
-	Available(PostgresStore),
+	Available(SqliteStore),
 	Unavailable(ProductStoreUnavailableReason),
 }
 impl ProductStore {
@@ -243,12 +236,15 @@ impl ProductStore {
 
 		match store.revalidate().await {
 			Ok(()) => DoctorStatus::Ready,
-			Err(error) => DoctorStatus::Unavailable(match error.bootstrap_failure() {
-				BootstrapFailure::Authentication => DoctorIssue::Authentication,
-				BootstrapFailure::Unreachable => DoctorIssue::DatabaseUnreachable,
-				BootstrapFailure::Incompatible => DoctorIssue::DatabaseIncompatible,
-				BootstrapFailure::UnsafeAuthority => DoctorIssue::UnsafeDatabaseAuthority,
-				BootstrapFailure::UnsafeHostPath => DoctorIssue::UnsafeHostPath,
+			Err(error) => DoctorStatus::Unavailable(match error {
+				DatabaseError::Incompatible | DatabaseError::Corrupt =>
+					DoctorIssue::DatabaseIncompatible,
+				DatabaseError::UnsafePath => DoctorIssue::UnsafeHostPath,
+				DatabaseError::Unavailable | DatabaseError::Closed =>
+					DoctorIssue::DatabaseUnreachable,
+				DatabaseError::Conflict
+				| DatabaseError::NotFound
+				| DatabaseError::AlreadyExists => DoctorIssue::Integrity,
 			}),
 		}
 	}
@@ -265,7 +261,6 @@ impl ProductState for ProductStore {
 /// Runtime-owned application service retaining the selected adapter and doctor report.
 pub(crate) struct ServiceApplication {
 	store: ProductStore,
-	work_item_board: Option<WorkItemBoardQuery>,
 	_managed_repositories: ManagedRepositoryCapability,
 	process_generations: Option<ProcessGenerationControl>,
 	provider_attempts: Option<ProviderAttemptControl>,
@@ -289,14 +284,8 @@ impl ServiceApplication {
 		quick_tasks: QuickTaskCapability,
 		doctor: DoctorReport,
 	) -> Self {
-		let work_item_board = match &store {
-			ProductStore::Available(store) => Some(WorkItemBoardQuery::new(store.clone())),
-			ProductStore::Unavailable(_) => None,
-		};
-
 		Self {
 			store,
-			work_item_board,
 			_managed_repositories: managed_repositories,
 			process_generations,
 			provider_attempts,
@@ -351,7 +340,7 @@ impl ServiceApplication {
 		let previous_database = self
 			.doctor
 			.check(DoctorComponent::ProductStore)
-			.expect("the closed doctor report includes PostgreSQL")
+			.expect("the closed doctor report includes the product store")
 			.status;
 		let database = self.store.database_status(previous_database).await;
 		let checks = self
@@ -780,27 +769,9 @@ impl ServiceApplication {
 	}
 
 	async fn execution_decision(&self, decision_id: &EntityId) -> ExecutionDecisionResult {
-		let ProductStore::Available(store) = &self.store else {
-			return ExecutionDecisionResult::Unavailable {
-				error: ExecutionDecisionQueryError::ProductStateUnavailable,
-			};
-		};
-		match store.execution_decision(decision_id.as_str()).await {
-			Ok(Some(readback)) => match execution_decision_dto(readback) {
-				Ok(decision) => ExecutionDecisionResult::Decision(decision),
-				Err(()) => ExecutionDecisionResult::Unavailable {
-					error: ExecutionDecisionQueryError::IntegrityUnavailable,
-				},
-			},
-			Ok(None) | Err(StoreError::InvalidInput(_)) => ExecutionDecisionResult::Unavailable {
-				error: ExecutionDecisionQueryError::InvalidRequest,
-			},
-			Err(StoreError::Incompatible(_)) => ExecutionDecisionResult::Unavailable {
-				error: ExecutionDecisionQueryError::IntegrityUnavailable,
-			},
-			Err(_) => ExecutionDecisionResult::Unavailable {
-				error: ExecutionDecisionQueryError::ProductStateUnavailable,
-			},
+		let _ = decision_id;
+		ExecutionDecisionResult::Unavailable {
+			error: ExecutionDecisionQueryError::ProductStateUnavailable,
 		}
 	}
 
@@ -972,52 +943,8 @@ impl ServiceApplication {
 		after: Option<&WorkItemBoardWorkItemId>,
 		page_size: WorkItemBoardPageSize,
 	) -> WorkItemBoardResult {
-		let Some(board) = &self.work_item_board else {
-			return WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::ProductStateUnavailable,
-			};
-		};
-		let Ok(project) = ProjectId::new(project_id.as_str()) else {
-			return WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::InvalidRequest,
-			};
-		};
-		let after_id = match after.map(|cursor| WorkItemId::new(cursor.as_str())).transpose() {
-			Ok(after_id) => after_id,
-			Err(_) => {
-				return WorkItemBoardResult::Unavailable {
-					error: WorkItemBoardQueryError::InvalidRequest,
-				};
-			},
-		};
-		let Some(store_limit) = usize::from(page_size.get()).checked_add(1) else {
-			return WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::InvalidRequest,
-			};
-		};
-
-		match board.page(&project, state, after_id.as_ref(), store_limit).await {
-			Ok(items) => match work_item_board_page_dto(
-				project_id.clone(),
-				state,
-				after.cloned(),
-				page_size,
-				items,
-			) {
-				Ok(page) => WorkItemBoardResult::Page(page),
-				Err(()) => WorkItemBoardResult::Unavailable {
-					error: WorkItemBoardQueryError::IntegrityUnavailable,
-				},
-			},
-			Err(StoreError::InvalidInput(_)) =>
-				WorkItemBoardResult::Unavailable { error: WorkItemBoardQueryError::InvalidRequest },
-			Err(StoreError::Incompatible(_)) => WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::IntegrityUnavailable,
-			},
-			Err(_) => WorkItemBoardResult::Unavailable {
-				error: WorkItemBoardQueryError::ProductStateUnavailable,
-			},
-		}
+		let _ = (project_id, state, after, page_size);
+		WorkItemBoardResult::Unavailable { error: WorkItemBoardQueryError::ProductStateUnavailable }
 	}
 
 	async fn quick_task_row(
@@ -1083,10 +1010,11 @@ impl ServiceApplication {
 			.collect::<Result<Vec<_>, _>>()
 		{
 			Ok(rows) => rows,
-			Err(()) =>
+			Err(()) => {
 				return QuickTaskListResult::Unavailable {
 					error: QuickTaskReadError::IntegrityUnavailable,
-				},
+				};
+			},
 		};
 		let has_more = rows.len() > requested;
 		if has_more {
@@ -1465,8 +1393,9 @@ impl ServiceApplication {
 		}
 		let runtime = match &self.quick_tasks {
 			QuickTaskCapability::Ready(runtime) => runtime,
-			QuickTaskCapability::Unavailable(reason) =>
-				return Err(CommandError::QuickTaskUnavailable { unavailable_reason: *reason }),
+			QuickTaskCapability::Unavailable(reason) => {
+				return Err(CommandError::QuickTaskUnavailable { unavailable_reason: *reason });
+			},
 		};
 		let outcome = match &command.payload {
 			CommandPayload::CreateQuickTask { .. } =>
@@ -1550,6 +1479,12 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::RegisterProject { .. }
+			| CommandPayload::CreateWorkItem { .. }
+			| CommandPayload::StartWorkItem { .. }
+			| CommandPayload::AcceptWorkItem { .. } => Err(application_unavailable(
+				"managed Factory commands are not available in Local Product V1",
+			)),
 			CommandPayload::CreateQuickTask { .. }
 			| CommandPayload::ResumeQuickTaskRouting { .. }
 			| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
@@ -1636,6 +1571,7 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ListProjects => QueryResultPayload::Projects(ProjectListResult::Unavailable),
 			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
 				self.quick_task_list(after.as_ref(), page_size.get()).await,
 			),
@@ -1917,8 +1853,9 @@ fn quick_task_command_projection(
 		QuickTaskOutcome::Unknown { .. } => return Err(CommandError::AcceptanceUnknown),
 		QuickTaskOutcome::Busy(_) => return Err(quick_task_busy()),
 		QuickTaskOutcome::Conflict => return Err(quick_task_conflict()),
-		QuickTaskOutcome::Streaming { .. } | QuickTaskOutcome::Unavailable =>
-			return Err(application_unavailable("Quick Task execution is unavailable")),
+		QuickTaskOutcome::Streaming { .. } | QuickTaskOutcome::Unavailable => {
+			return Err(application_unavailable("Quick Task execution is unavailable"));
+		},
 	};
 	Ok((readback.conversation_id, interrupt))
 }
@@ -2076,6 +2013,7 @@ fn quick_task_summary_publication(
 	})
 }
 
+#[cfg(any())]
 fn work_item_board_page_dto(
 	project_id: WorkItemBoardProjectId,
 	state: Option<WorkItemState>,
@@ -2111,6 +2049,7 @@ fn work_item_board_page_dto(
 	WorkItemBoardPage::new(project_id, state, after, page_size, cards, next_cursor).map_err(|_| ())
 }
 
+#[cfg(any())]
 fn work_item_board_card_dto(stored: StoredWorkItem) -> Result<WorkItemBoardCard, ()> {
 	let StoredWorkItem { work_item, edges, accepted_revision } = stored;
 	let work_item_id = WorkItemBoardWorkItemId::new(work_item.id().as_str()).map_err(|_| ())?;
@@ -2161,6 +2100,7 @@ fn work_item_board_card_dto(stored: StoredWorkItem) -> Result<WorkItemBoardCard,
 	.map_err(|_| ())
 }
 
+#[cfg(any())]
 fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<ExecutionDecisionDto, ()> {
 	let consumer = match readback.consumer {
 		ExecutionConsumer::ConversationTurn {
@@ -2222,6 +2162,7 @@ fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<Executi
 	Ok(ExecutionDecisionDto { decision_id: entity(&readback.decision_id)?, consumer, route })
 }
 
+#[cfg(any())]
 fn quota_exclusion_dto(
 	exclusion: ExecutionQuotaExclusion,
 ) -> Result<ExecutionQuotaExclusionDto, ()> {
@@ -2237,6 +2178,7 @@ fn quota_exclusion_dto(
 	})
 }
 
+#[cfg(any())]
 const fn blocker_dto(blocker: RoutingBlocker) -> ExecutionRouteBlockerDto {
 	use ExecutionRouteBlockerDto as Dto;
 	use RoutingBlocker as Core;
@@ -2287,6 +2229,7 @@ const fn blocker_dto(blocker: RoutingBlocker) -> ExecutionRouteBlockerDto {
 	}
 }
 
+#[cfg(any())]
 fn entity(value: &str) -> Result<EntityId, ()> {
 	EntityId::new(value.to_owned()).map_err(|_| ())
 }
@@ -2887,7 +2830,7 @@ fn stored_account_command_outcome(
 			schema: ACCOUNT_COMMAND_RECEIPT_SCHEMA.to_owned(),
 			entity_id: publication.entity_id.clone(),
 			entity_revision: publication.entity_revision,
-			result: publication.result.clone(),
+			result: Box::new(publication.result.clone()),
 			event: Box::new(publication.event.clone()),
 		},
 		Err(error) => StoredAccountCommandOutcome::Rejected {
@@ -2919,7 +2862,7 @@ fn decode_account_command_receipt(
 				channel: Channel::AccountsHealth,
 				entity_id,
 				entity_revision,
-				result,
+				result: *result,
 				event: *event,
 			})),
 		StoredAccountCommandOutcome::Rejected { schema, error }
@@ -3129,23 +3072,20 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 
 #[cfg(test)]
 mod tests {
+	use crate::account_launch::{ResetCardFailureCode, ResetCardOperationStatus};
 	use decodex_core::{
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
-		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState, AgentId,
-		ConversationId, ProjectId, ProviderIdentity, RuntimeSessionState, WorkItem,
-		WorkItemCorrelationId, WorkItemId, WorkItemPriority, WorkItemProvenance, WorkItemTimestamp,
+		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
+		ConversationId, ProviderIdentity, RuntimeSessionState,
 	};
-	use decodex_postgres::{
+	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
-		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ResetCardFailureCode,
-		ResetCardOperationStatus, StoredWorkItem,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
 		QuickTaskRecoveryAction, QuickTaskState, ResetCardError, ResetCardOperationResult,
-		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardQueryError,
-		WorkItemBoardResult,
 	};
 
 	use super::{
@@ -3154,13 +3094,17 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		protocol_reset_error, quick_task_summary_from_row, quota_dto, work_item_board_page_dto,
+		protocol_reset_error, quick_task_summary_from_row, quota_dto,
 	};
 
+	#[cfg(any())]
 	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";
+	#[cfg(any())]
 	const OTHER_PROJECT: &str = "10000000-0000-4000-8000-000000000002";
+	#[cfg(any())]
 	const BOARD_LEAD: &str = "30000000-0000-4000-8000-000000000001";
 
+	#[cfg(any())]
 	fn stored_work_item(
 		work_item_id: &str,
 		project_id: &str,
@@ -3194,6 +3138,7 @@ mod tests {
 		StoredWorkItem { work_item, edges: Vec::new(), accepted_revision }
 	}
 
+	#[cfg(any())]
 	fn mapped_board_result(items: Vec<StoredWorkItem>) -> WorkItemBoardResult {
 		match work_item_board_page_dto(
 			WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
@@ -3281,6 +3226,7 @@ mod tests {
 	}
 
 	#[test]
+	#[cfg(any())]
 	fn board_lookahead_maps_one_extra_row_and_refuses_malformed_or_cross_project_data() {
 		let result = mapped_board_result(vec![
 			stored_work_item("20000000-0000-4000-8000-000000000001", BOARD_PROJECT, Some(1)),

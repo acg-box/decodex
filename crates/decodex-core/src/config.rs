@@ -2,7 +2,6 @@ use std::{
 	collections::BTreeMap,
 	fmt::{Debug, Display, Formatter},
 	net::IpAddr,
-	path::{Component, Path, PathBuf},
 	str,
 };
 
@@ -16,8 +15,6 @@ pub const MAX_CONFIG_BYTES: usize = 64 * 1_024;
 const CONFIG_VERSION: u32 = 1;
 const MAX_NAME_BYTES: usize = 64;
 const MAX_HOST_BYTES: usize = 253;
-const MAX_DATABASE_FIELD_BYTES: usize = 128;
-const MAX_HOST_PATH_BYTES: usize = 4 * 1_024;
 
 /// Fully validated Decodex vNext configuration.
 #[derive(Clone)]
@@ -25,7 +22,6 @@ pub struct DecodexConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, ServerProfile>,
-	postgres: PostgresConnectionConfig,
 	cache: CacheConfig,
 }
 impl DecodexConfig {
@@ -53,7 +49,6 @@ impl DecodexConfig {
 			version: raw.version,
 			active_profile: raw.active_profile,
 			profiles,
-			postgres: raw.postgres.validate()?,
 			cache: raw.cache.validate()?,
 		})
 	}
@@ -86,11 +81,6 @@ impl DecodexConfig {
 		&self.profiles
 	}
 
-	/// Explicit PostgreSQL connection configuration as inert data.
-	pub fn postgres(&self) -> &PostgresConnectionConfig {
-		&self.postgres
-	}
-
 	/// Disposable cache bounds.
 	pub const fn cache(&self) -> CacheConfig {
 		self.cache
@@ -104,7 +94,6 @@ impl Debug for DecodexConfig {
 			.field("version", &self.version)
 			.field("active_profile", &self.active_profile)
 			.field("profile_count", &self.profiles.len())
-			.field("postgres", &self.postgres)
 			.field("cache", &self.cache)
 			.finish()
 	}
@@ -112,8 +101,8 @@ impl Debug for DecodexConfig {
 
 /// Client-visible projection of the global configuration.
 ///
-/// PostgreSQL data and cache policy are consumed as opaque TOML values. A client
-/// validates only profile authority and cannot reinterpret server-owned state.
+/// Server-owned cache policy is consumed as an opaque TOML value. A client validates only
+/// profile authority and cannot reinterpret server-owned state.
 #[derive(Clone)]
 pub struct DecodexClientConfig {
 	version: u32,
@@ -314,88 +303,6 @@ impl Debug for RemoteProfile {
 	}
 }
 
-/// Explicit PostgreSQL Unix-socket connection configuration as data only.
-#[derive(Clone, Eq, PartialEq)]
-pub struct PostgresConnectionConfig {
-	socket_directory: PathBuf,
-	expected_peer_uid: u32,
-	port: u16,
-	database: String,
-	runtime: PostgresIdentityConfig,
-}
-impl PostgresConnectionConfig {
-	/// Absolute server-host Unix socket directory.
-	pub fn socket_directory(&self) -> &Path {
-		&self.socket_directory
-	}
-
-	/// Operator-pinned Unix credential expected from the PostgreSQL server peer.
-	pub const fn expected_peer_uid(&self) -> u32 {
-		self.expected_peer_uid
-	}
-
-	/// Explicit PostgreSQL port selecting the Unix-socket filename.
-	pub const fn port(&self) -> u16 {
-		self.port
-	}
-
-	/// Explicit database name.
-	pub fn database(&self) -> &str {
-		&self.database
-	}
-
-	/// Least-privilege identity retained by the live adapter.
-	pub const fn runtime(&self) -> &PostgresIdentityConfig {
-		&self.runtime
-	}
-}
-
-impl Debug for PostgresConnectionConfig {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("PostgresConnectionConfig")
-			.field("socket_directory", &"<server-host-only>")
-			.field("expected_peer_uid", &self.expected_peer_uid)
-			.field("port", &self.port)
-			.field("database", &"<redacted>")
-			.field("runtime", &self.runtime)
-			.finish()
-	}
-}
-
-/// One explicit, redacted PostgreSQL role identity.
-#[derive(Clone, Eq, PartialEq)]
-pub struct PostgresIdentityConfig {
-	user: String,
-	credential_env_var: Option<String>,
-}
-impl PostgresIdentityConfig {
-	/// Build one validated identity from explicit operator or configuration input.
-	pub fn new(user: String, credential_env_var: Option<String>) -> Result<Self, ConfigError> {
-		RawPostgresIdentityConfig { user, credential_env_var }.validate()
-	}
-
-	/// Explicit database role name.
-	pub fn user(&self) -> &str {
-		&self.user
-	}
-
-	/// Optional credential environment-variable reference; its value is never stored.
-	pub fn credential_env_var(&self) -> Option<&str> {
-		self.credential_env_var.as_deref()
-	}
-}
-
-impl Debug for PostgresIdentityConfig {
-	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
-		formatter
-			.debug_struct("PostgresIdentityConfig")
-			.field("user", &"<redacted>")
-			.field("credential_reference", &self.credential_env_var.is_some())
-			.finish()
-	}
-}
-
 /// Validated disposable-cache configuration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CacheConfig {
@@ -414,7 +321,6 @@ struct RawConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	postgres: RawPostgresConnectionConfig,
 	cache: RawCacheConfig,
 }
 
@@ -424,65 +330,8 @@ struct RawClientConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	#[serde(rename = "postgres")]
-	_postgres: IgnoredAny,
 	#[serde(rename = "cache")]
 	_cache: IgnoredAny,
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawPostgresConnectionConfig {
-	socket_directory: PathBuf,
-	expected_peer_uid: u32,
-	#[serde(default = "RawPostgresConnectionConfig::default_port")]
-	port: u16,
-	database: String,
-	runtime: RawPostgresIdentityConfig,
-}
-impl RawPostgresConnectionConfig {
-	const fn default_port() -> u16 {
-		5_432
-	}
-
-	fn validate(self) -> Result<PostgresConnectionConfig, ConfigError> {
-		let socket_directory = normalize_absolute_postgres_path(self.socket_directory)?;
-
-		if self.port == 0 || !valid_database_field(&self.database) {
-			return Err(ConfigError::InvalidPostgres);
-		}
-
-		let runtime = self.runtime.validate()?;
-
-		Ok(PostgresConnectionConfig {
-			socket_directory,
-			expected_peer_uid: self.expected_peer_uid,
-			port: self.port,
-			database: self.database,
-			runtime,
-		})
-	}
-}
-
-#[derive(Deserialize)]
-#[serde(deny_unknown_fields)]
-struct RawPostgresIdentityConfig {
-	user: String,
-	credential_env_var: Option<String>,
-}
-impl RawPostgresIdentityConfig {
-	fn validate(self) -> Result<PostgresIdentityConfig, ConfigError> {
-		if !valid_database_field(&self.user)
-			|| self
-				.credential_env_var
-				.as_deref()
-				.is_some_and(|value| !valid_environment_name(value))
-		{
-			return Err(ConfigError::InvalidPostgres);
-		}
-
-		Ok(PostgresIdentityConfig { user: self.user, credential_env_var: self.credential_env_var })
-	}
 }
 
 #[derive(Deserialize)]
@@ -538,10 +387,6 @@ pub enum ConfigError {
 	InvalidProfile,
 	/// A server identity was not canonical UUID version 4 text.
 	InvalidServerIdentity,
-	/// The PostgreSQL Unix-socket directory was unsafe or relative.
-	InvalidPostgresHostPath,
-	/// PostgreSQL connection data was missing, malformed, or unbounded.
-	InvalidPostgres,
 	/// Cache bounds were invalid or exceeded hard limits.
 	InvalidCache,
 	/// The operating-system random source failed.
@@ -559,8 +404,6 @@ impl Display for ConfigError {
 			Self::MissingProfile => formatter.write_str("selected profile is not declared"),
 			Self::InvalidProfile => formatter.write_str("server profile is invalid"),
 			Self::InvalidServerIdentity => formatter.write_str("server identity is invalid"),
-			Self::InvalidPostgresHostPath => formatter.write_str("PostgreSQL host path is invalid"),
-			Self::InvalidPostgres => formatter.write_str("PostgreSQL configuration is invalid"),
 			Self::InvalidCache => formatter.write_str("cache configuration is invalid"),
 			Self::RandomnessUnavailable =>
 				formatter.write_str("operating-system randomness is unavailable"),
@@ -639,36 +482,6 @@ fn validate_name(value: &str) -> Result<(), ConfigError> {
 	Ok(())
 }
 
-fn normalize_absolute_postgres_path(path: PathBuf) -> Result<PathBuf, ConfigError> {
-	let encoded = path.as_os_str().as_encoded_bytes();
-
-	if encoded.len() > MAX_HOST_PATH_BYTES
-		|| encoded.contains(&0)
-		|| !path.is_absolute()
-		|| path.parent().is_none()
-	{
-		return Err(ConfigError::InvalidPostgresHostPath);
-	}
-
-	let mut normalized = PathBuf::new();
-
-	for component in path.components() {
-		match component {
-			Component::ParentDir => return Err(ConfigError::InvalidPostgresHostPath),
-			Component::CurDir => {},
-			Component::Prefix(_) | Component::RootDir | Component::Normal(_) => {
-				normalized.push(component.as_os_str());
-			},
-		}
-	}
-
-	if normalized.parent().is_none() {
-		return Err(ConfigError::InvalidPostgresHostPath);
-	}
-
-	Ok(normalized)
-}
-
 fn valid_remote_host(host: &str) -> bool {
 	if host.is_empty()
 		|| host.len() > MAX_HOST_BYTES
@@ -694,19 +507,4 @@ fn valid_remote_host(host: &str) -> bool {
 			&& !label.ends_with('-')
 			&& label.bytes().all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
 	})
-}
-
-fn valid_database_field(value: &str) -> bool {
-	!value.is_empty()
-		&& value.len() <= MAX_DATABASE_FIELD_BYTES
-		&& value.bytes().all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-'))
-}
-
-fn valid_environment_name(value: &str) -> bool {
-	let mut bytes = value.bytes();
-	let Some(first) = bytes.next() else { return false };
-
-	(first.is_ascii_alphabetic() || first == b'_')
-		&& value.len() <= MAX_DATABASE_FIELD_BYTES
-		&& bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }

@@ -293,8 +293,9 @@ fn spawn_suspended_with_environment(
 	let working_directory_path = match working_directory {
 		SuspendedWorkingDirectory::Path(path) => Some(os_string(path.as_os_str())?),
 		SuspendedWorkingDirectory::Descriptor(descriptor) if descriptor >= 0 => None,
-		SuspendedWorkingDirectory::Descriptor(_) =>
-			return Err(invalid_input("working-directory descriptor is invalid")),
+		SuspendedWorkingDirectory::Descriptor(_) => {
+			return Err(invalid_input("working-directory descriptor is invalid"));
+		},
 	};
 	let mut argv = Vec::with_capacity(args.len() + 1);
 

@@ -1,7 +1,8 @@
 # Account Lifecycle Authority
 
-Status: normative vNext account authority. This document defines the usable macOS
-boundary and the later complete account lifecycle.
+Status: historical account-domain contract. Its durable lifecycle and exact-binding
+invariants remain useful, but its former server store/redb ownership is superseded by the
+[Local Product V1 contract](local-product-v1.md).
 
 The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
 requirements. A component-first global gate is not the delivery order.
@@ -18,13 +19,13 @@ expose, serialize, copy, log, persist, rotate, delete, or return token bytes.
 
 The account system has exactly three owners:
 
-1. The PostgreSQL Account Registry owns credential-negative product state.
+1. The former server store Account Registry owns credential-negative product state.
 2. One HostCredentialStore owns versioned secret bundles.
 3. The `decodexd` Account Service coordinates account operations.
 
 Keep one daemon, one shared normal `~/.codex`, the same-UID typed protocol, exact
-identifiers, PostgreSQL outbox and leases, and finite per-account compare-and-swap
-operations. Credentials do not enter PostgreSQL, the public protocol, process
+identifiers, former server store outbox and leases, and finite per-account compare-and-swap
+operations. Credentials do not enter former server store, the public protocol, process
 arguments, logs, or a long-lived daemon or child environment.
 
 This boundary adds no event sourcing, generic distributed transaction coordinator,
@@ -55,7 +56,7 @@ rewrite its last health or quota observation. Enabling an account does not make 
 observation healthy. Eligibility requires both `enabled=true` and current positive
 evidence for every applicable check.
 
-PostgreSQL stores no credential, encrypted credential blob, retrieval locator, or
+former server store stores no credential, encrypted credential blob, retrieval locator, or
 ambient Codex auth export. A fingerprint is equality evidence only.
 
 The public alias is not mutable product state. Derive it from the canonical provider
@@ -114,47 +115,41 @@ Create-if-absent, exact-version compare-and-swap, and exact-version delete are a
 for one Account UUID. A stale version, wrong provider binding, duplicate provider
 identity, missing item, or unavailable backend is a typed result.
 
-For macOS, the adapter uses non-synchronizing Keychain generic-password items with
-item label `box.acg.decodex` and service namespace
-`box.acg.decodex.credentials.v1`. The Keychain account name is the canonical Account
-UUID. Accessibility is after first unlock, this device only. The daemon identity
-defined below is the only reader and writer. Locked, denied, malformed, or unsupported
-Keychain state fails closed.
+For macOS, the accepted adapter is `RedbCredentialStore`. It owns one fixed database at
+`~/.decodex/server/credentials.redb`. `decodex-core` opens the file through its typed,
+descriptor-anchored path owner. The open procedure refuses symbolic-link traversal,
+wrong ownership, a non-regular file, a link count other than one, or permissions other
+than owner read/write. The file mode is `0600`. Runtime passes the already-open file to
+the official `redb` crate so the storage engine does not re-resolve a checked path.
 
-The daemon runs only as one no-UI app-like wrapper with bundle identifier
-`box.acg.decodex.daemon` and main executable `Contents/MacOS/decodexd`. The selected
-local dogfood identity is provisioned team `T54QFA7W2S`, application identifier
-`T54QFA7W2S.box.acg.decodex.daemon`, and profile channel `development`. That
-application identifier is the daemon's sole effective Keychain access group. Every
-Keychain read, create, compare-and-swap, delete, and metadata query sets that exact
-group. Metadata verification includes the returned `agrp` attribute. A raw workspace
-binary, a raw helper in the outer app, or `~/.local/bin/decodexd` can be a build input
-or retired artifact. It is never an Account Lifecycle execution entry.
+The vault uses one ACID write transaction for each store operation and immediate
+durability before success. `redb` supplies restart recovery and one-writer exclusion.
+The daemon is the only normal reader and writer. GPUI, the native app, the menu bar,
+Swift, and the CLI remain credential-negative protocol clients. There is no normal
+Keychain read, dual read, fallback, token export, or remote vault sync.
 
-The wrapper has one fixed `Info.plist`, a valid hardened-runtime signature, an embedded
-provisioning profile, and exact signed entitlements. The profile, signature, and
-entitlements must agree on bundle identifier, application identifier, and team. The
-macOS provisioning profile must contain the single canonical team allowlist
-`T54QFA7W2S.*`; the signed entitlement must narrow that allowlist to the sole effective
-group `T54QFA7W2S.box.acg.decodex.daemon`. Both sets are closed: missing, extra, or
-duplicate values refuse. The profile must contain at least one registered device and
-must not be an all-device profile. This proves the `development` profile channel
-without applying the non-macOS `get-task-allow` profile rule. It is not public
-distribution or notarization evidence.
-The wrapper composer and verifier are deterministic and daemon-specific. They do not
-accept arbitrary identities, profiles, entitlements, groups, channels, or fallback
-binaries. SwiftUI and the CLI remain clients and receive no Keychain authority.
+The application-layer vault is plaintext. Its v1 security boundary is the private
+owner-only filesystem namespace plus host disk encryption. It does not claim protection
+from root or a malicious process that already runs as the same user. Adding
+application-layer encryption, key rotation, or a stronger same-user isolation boundary
+requires a separate accepted design.
 
-The Linux backend is a later `AccountLifecycleReady` obligation. It must be selected
-explicitly and must prove persistent private storage, atomic replace, exact-version
-compare-and-swap, delete, and restart readback. It has no environment or plaintext
-fallback.
+The normal macOS service starts `/Users/USER/.local/bin/decodexd` directly. The installer
+verifies its owner, mode, single-link identity, digest, strict code signature, hardened
+runtime, and signing team. Normal startup has no daemon app bundle, embedded development
+provisioning profile, Keychain entitlement, or Python wrapper. The macOS
+`security-framework` dependency remains only for canonical Codex executable and child
+code-signing attestation; it is not a credential backend.
+
+Linux host acceptance is a later `AccountLifecycleReady` obligation. It must select one
+explicit persistent private adapter and prove the same path, atomicity, compare-and-swap,
+delete, and restart contracts. It has no environment or ambient-auth fallback.
 
 ## Versioned account controls
 
 Every mutation uses the same versioned protocol and supplies a client command ID,
 idempotency key, and the applicable expected account or routing-control revision.
-PostgreSQL stores the complete credential-negative request and exact public result.
+former server store stores the complete credential-negative request and exact public result.
 Exact replay returns that result. Conflicting key reuse and stale revision fail before
 mutation.
 
@@ -211,10 +206,10 @@ Cross-store changes use one finite per-account operation journal:
 
 | Phase | Meaning |
 | --- | --- |
-| `prepared` | PostgreSQL committed the intent and fenced conflicting account operations. |
+| `prepared` | former server store committed the intent and fenced conflicting account operations. |
 | `provider_effect_pending` | A refresh request can have reached the provider. |
 | `store_applied` | Exact store metadata proves the target version, fingerprint, binding, and writer. |
-| `committed` | PostgreSQL committed the projection and public receipt. |
+| `committed` | former server store committed the projection and public receipt. |
 | `cancelled` | No store change is accepted and the operation is terminal. |
 | `recovery_required` | Safe automatic continuation cannot be proved; the account is ineligible. |
 
@@ -355,7 +350,7 @@ the background without entering the global loading gate. It has no independent 1
 refresh clock; a disconnected wait reconnects with bounded backoff.
 
 Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
-app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
+app-server. They read daemon-owned values. former server store remains the persistence authority for
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
 observation round, and returns a typed retryable unavailable result only until that account is
@@ -382,7 +377,7 @@ sequenceDiagram
     participant Observer as Account observation service
     participant Accounts as Account service
     participant Provider as Provider adapters
-    participant Store as PostgreSQL
+    participant Store as former server store
 	participant Cache as Daemon Reset Card cache
 	participant Client as UI or protocol client
 
@@ -404,7 +399,7 @@ sequenceDiagram
 ```
 
 The observation round separates daemon-owned provider refresh from client query readback;
-the generation signal carries no account value or credential. PostgreSQL retains profile and
+the generation signal carries no account value or credential. former server store retains profile and
 quota durability while Reset Card descriptors live only for the daemon lifetime.
 
 ## Bounded account profile
@@ -425,7 +420,7 @@ error. This path does not inspect or lock a Codex executable version or app-serv
 
 The latest schema stores one latest non-secret profile snapshot and at most 36 unique
 ascending daily usage facts. Persistence uses the exact account revision, provider
-binding, tombstone state, and a monotonic observation time. The final PostgreSQL 18
+binding, tombstone state, and a monotonic observation time. The final former server store 18
 profile-observation function zips the two bounded daily arrays through `ROWS FROM`. A
 response is `current` only after persistence.
 A previous exact snapshot can return as `cached` with one typed refresh error. Otherwise,
@@ -444,7 +439,7 @@ The profile snapshot always carries the Account UUID, a positive revision, a pos
 Unix-microsecond observation time, explicit email visibility, and the daily array.
 Credential email is at most 320 bytes, `plan_type` is at most 128 bytes, and provider
 display name and username are each at most 256 bytes. Scalar token and duration metrics
-fit non-negative PostgreSQL `bigint`; streak values fit non-negative `integer`. Optional
+fit non-negative former server store `bigint`; streak values fit non-negative `integer`. Optional
 fields are absent when the provider or current credential does not supply them.
 
 ## Clean latest-architecture cutover
@@ -452,7 +447,7 @@ fields are absent when the provider or current credential does not supply them.
 The product has no legacy-account or database migration mode. Normal startup and
 installation do not read an old database, account pool, mapping, helper, environment
 projection, migration manifest, or migration receipt. The one latest schema creates an
-empty Account Registry on an empty PostgreSQL target.
+empty Account Registry on an empty former server store target.
 
 The hidden `decodexd restore-local-account-authority` operator command is the only local
 restore path. It has required `--root` and `--schema-owner-user` options and the optional
@@ -485,7 +480,7 @@ typed credential-negative agreement result. The operator action and result never
 serialize, copy, log, persist, rotate, delete, or return token bytes.
 
 The command binds and retains the existing same-UID local transport namespace. It refuses
-an active daemon or a namespace that it cannot prove and retain. Before any PostgreSQL
+an active daemon or a namespace that it cannot prove and retain. Before any former server store
 account mutation, it calls `HostCredentialStore::read_exact` for every account. In the
 schema-owner transaction, it accepts only the exact latest schema with zero accounts,
 the initial empty routing authority, one initial active process execution epoch, empty
@@ -498,7 +493,7 @@ The command does not restore profiles, quotas, operations, conversations, sessio
 process generations, attempts, usage, or history. The stdin bytes and accepted tuple are
 transient and are not persisted as a document, receipt, or log. Output is one bounded
 JSON object with only `classification` and `account_count`. It does not include database,
-Keychain, input, provider, account, or credential text. The command is not a public
+vault, input, provider, account, or credential text. The command is not a public
 account API, generic attestation framework, metadata sidecar, product importer, source
 parser, bridge, bulk operation, backup/rollback mechanism, receipt/finalizer,
 compatibility branch, or fallback.
@@ -512,7 +507,7 @@ surface.
 
 | Obligation | `MacDogfoodReady` | Final `AccountLifecycleReady` |
 | --- | --- | --- |
-| Host secret backend | macOS Keychain adapter accepted | macOS plus an explicitly selected persistent Linux backend |
+| Host secret backend | daemon-owned macOS redb vault accepted | macOS plus an explicitly selected persistent Linux backend |
 | Exact-build auth | Initial projection and refresh callback proved for each accepted macOS build | Proved for every supported platform/build |
 | Account lifecycle | Enrollment/import, stable derived alias, list, enable/disable, logout, refresh/CAS, and startup reconciliation | Same contract across all supported hosts plus full fault acceptance |
 | Routing | Initial eligible quota-aware fixed/balanced selection and explicit manual recovery | Automatic same-thread fallback and all-depleted wake after their later gate |
@@ -522,7 +517,7 @@ surface.
 | Evidence | Two-account Mac flow with restart boundaries and package proof | Broader platform and adversarial matrix |
 
 `CredentialStore` reports backend capability. `AccountLifecycle` reports the Account
-Service, PostgreSQL authority, provider adapter, exact-build account capability, startup
+Service, former server store authority, provider adapter, exact-build account capability, startup
 reconciliation, and active host store. An environment-only projection is
 `projection_only` and cannot satisfy either readiness result.
 

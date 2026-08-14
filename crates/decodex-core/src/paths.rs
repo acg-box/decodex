@@ -1,4 +1,5 @@
 #[cfg(not(any(unix, windows)))] use std::ffi::OsString;
+#[cfg(unix)] use std::fs::File;
 use std::{
 	env,
 	ffi::OsStr,
@@ -133,6 +134,23 @@ impl DecodexPaths {
 	/// Stable server identity file.
 	pub fn server_identity_file(&self) -> PathBuf {
 		self.join("server/identity")
+	}
+
+	/// Fixed retired credential-vault path used only by the one-shot transfer tool.
+	pub fn credential_vault_file(&self) -> PathBuf {
+		self.join("server/credentials.redb")
+	}
+
+	/// Daemon-owned local product database.
+	pub fn product_database_file(&self) -> PathBuf {
+		self.join("server/decodex.sqlite3")
+	}
+
+	/// Create and verify the owner-private local product database file.
+	#[cfg(unix)]
+	pub fn open_product_database_file(&self) -> Result<File, PathError> {
+		self.ensure_owned_directory(Path::new("server"))?;
+		path_unix::open_private_database_file(self, &self.product_database_file())
 	}
 
 	/// Owner-only external ProcessGeneration execution authorization.

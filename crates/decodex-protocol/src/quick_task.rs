@@ -18,7 +18,7 @@ pub const MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES: usize = 4_096;
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuickTaskUnavailableReason {
-	/// Exact PostgreSQL product-state authority was unavailable.
+	/// Exact local product-state authority was unavailable.
 	ProductState,
 	/// Content-addressed blob storage was unavailable.
 	BlobStore,
@@ -266,7 +266,7 @@ pub struct QuickTaskSummary {
 	pub conversation_id: EntityId,
 	/// Exact ordinary Conversation revision represented by this projection.
 	pub conversation_revision: EntityRevision,
-	/// PostgreSQL-owned monotonic order of the durable facts represented by this projection.
+	/// Product-store monotonic order of the durable facts represented by this projection.
 	pub projection_updated_at_micros: i64,
 	/// Sole current ordinary RuntimeSession identity, absent before first-session planning
 	/// succeeds.
@@ -433,7 +433,7 @@ pub enum QuickTaskReadError {
 	InvalidRequest,
 	/// Persisted ordinary Conversation authority failed strict integrity checks.
 	IntegrityUnavailable,
-	/// PostgreSQL product state was unavailable.
+	/// Durable product state was unavailable.
 	ProductStateUnavailable,
 }
 

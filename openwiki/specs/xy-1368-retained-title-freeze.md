@@ -6,8 +6,8 @@ The V22 acceptance does not reopen the landed V14-V21 history.
 ## Acceptance receipt
 
 The canonical semantic boundary emits a
-`decodex/postgres-retained-title-acceptance/1` receipt. Cleanup emits the associated
-`decodex/postgres-retained-title-stage-report/1` evidence. The receipt binds the base commit and
+`decodex/server-store-retained-title-acceptance/1` receipt. Cleanup emits the associated
+`decodex/server-store-retained-title-stage-report/1` evidence. The receipt binds the base commit and
 the exact staged source tree at start and completion.
 
 The accepted evidence must contain these facts:

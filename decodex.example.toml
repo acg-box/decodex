@@ -38,24 +38,8 @@ host                     = "decodex-server.example.test"
 kind                     = "remote"
 port                     = 49152
 
-# Explicit PostgreSQL endpoint data for the server host. Normal decodexd serve resolves only
-# the least-privilege runtime identity, executes no DDL, and verifies the exact latest catalog
-# and authority. The schema-owner identity is supplied only to the explicit empty-target
-# `bootstrap-latest-schema` operator command and is never stored here. Store no password here:
-# only the named runtime environment variable is resolved at daemon bootstrap, and its value is
-# never reported. Pin the PostgreSQL server's host UID explicitly; socket ownership is evidence,
-# never its own trust root.
-# Use a dedicated directory owned by that UID with no group/other write bits; a conventional shared
-# PostgreSQL socket directory is unsuitable when it is group- or world-writable.
-[postgres]
-database          = "decodex"
-expected_peer_uid = 70                                    # `id -u postgres` on this server host; do not infer from the socket.
-port              = 5432
-socket_directory  = "/absolute/private/postgresql-socket"
-
-[postgres.runtime]
-credential_env_var = "DECODEX_POSTGRES_RUNTIME_PASSWORD"
-user               = "decodex_runtime"
+# Local product state and account credentials use the bundled owner-private SQLite database at
+# ~/.decodex/server/decodex.sqlite3. Its path is fixed by the selected root and is not configurable.
 
 # Disposable cache limits. Cache bytes are never authoritative and may be deleted
 # and rebuilt. Hard ceilings are 10,000 entries, 512 MiB total, and 16 MiB per entry.

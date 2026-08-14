@@ -74,7 +74,7 @@ pub const MAX_WORK_ITEM_GRAPH_EDGES: usize = 16_384;
 pub const MAX_WORK_ITEM_READINESS_RELATIONS: usize = 256;
 /// Combined maximum Program plus Objective observations accepted by one readiness assessment.
 pub const MAX_WORK_ITEM_READINESS_CONTEXT: usize = 256;
-/// Latest finite timestamp representable by PostgreSQL and RFC 3339, in Unix microseconds.
+/// Latest finite timestamp representable by durable-store and RFC 3339, in Unix microseconds.
 pub const MAX_WORK_ITEM_TIMESTAMP_MICROSECONDS: i64 = 253_402_300_799_999_999;
 
 /// Closed structural WorkItem refusal without caller-controlled text.

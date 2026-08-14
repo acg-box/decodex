@@ -1,228 +1,95 @@
 # OpenWiki Quickstart
 
-Decodex is resetting its vNext PostgreSQL architecture before deployment. There are no
-external or deployed users, and current local PostgreSQL data is disposable development
-state. The accepted target has one canonical unversioned latest schema, no database
-migration system, and runtime-only daemon startup.
+Decodex is a local agent factory above Codex app-server. Codex remains the execution
+kernel for one thread. Decodex owns the product state and coordination that become hard
+when one engineer operates many threads: account capacity, routing, durable conversation
+lineage, process fencing, provider-attempt safety, history, and later graph-based factory
+views.
 
-This is target authority, not a claim about current source. Existing numbered SQL,
-Refinery integration, schema-history checks, upgrade tests, and the executable storage
-spike are implementation drift to remove. Historical files that describe those paths are
-superseded provenance only.
+The current milestone uses one bundled SQLite database. The fixed database is
+`~/.decodex/server/decodex.sqlite3`. The `database/` workspace owns its schema,
+migrations, credential table, adapters, transfer tool, and restart tests. `decodexd` is
+the only normal reader and writer. GPUI and CLI remain same-UID protocol clients.
 
-OpenWiki is the repository knowledge entrypoint. Source, tests, the one latest schema,
-configuration, and accepted contracts remain executable authority.
+This authority supersedes the former server-database reset and the intermediate redb
+credential-vault target. The server adapter is removed. redb remains linked only by the
+one-shot transfer tool.
 
 ## Start here
 
-- [vNext authority decision](decisions/vnext-authority.md): the accepted no-migration
-  reset, Candidate-5 continuity, product shape, and supersession boundary.
-- [vNext authority contract](specs/vnext-authority.md): normative entities, PostgreSQL
-  schema ownership, runtime boundaries, Candidate-5 Quick Task, account continuity, and
-  delivery contract.
-- [vNext gate manifest](specs/vnext-gates.md): source-freeze, latest-schema, runtime,
-  Candidate-5, account, and local cutover gates.
-- [Runtime architecture](architecture/runtime-architecture.md): process topology,
-  PostgreSQL bootstrap/runtime separation, independent startup readiness, service
-  ownership, and current-state drift.
-- [Commands and validation](operations/commands-and-validation.md): exact hidden bootstrap,
-  current-authority validation, and local account restore commands plus repository checks.
-- [Account lifecycle authority](specs/account-lifecycle-authority.md): Account Registry,
-  HostCredentialStore, Account Service, current account observations, and the local
-  credential-negative rebind.
+- [SQLite local-product decision](decisions/sqlite-local-product.md): why the desktop
+  product uses SQLite now and when a server database can be reconsidered.
+- [Local product V1 contract](specs/local-product-v1.md): supported data, ownership,
+  execution invariants, deferred capabilities, and acceptance conditions.
+- [Local database operations](operations/local-database.md): initialization, validation,
+  installation, one-shot account transfer, rollback retention, and checks.
+- [SQLite implementation evidence](evidence/sqlite-local-product.md): current automated
+  evidence and the remaining live cutover gate.
+- [Historical account lifecycle contract](specs/account-lifecycle-authority.md): retained
+  domain semantics whose former server-store and redb ownership is superseded.
 - [ProcessGeneration authority](specs/process-generation-authority.md): durable pre-spawn
-  fencing, exact process identity, positive-only death evidence, and account-local
-  quarantine.
-- [ProviderAttempt authority](specs/provider-attempt-authority.md): one external-turn
-  attempt owner, positive-only outcome evidence, and replay prohibition.
-- [Stateless execution coordination](specs/execution-coordinator-authority.md): closed
-  Conversation/ManagedRun consumer integration and Candidate-5 owner sequencing.
-- [Design rationale](decisions/design-rationale.md): retained product design choices.
-- [Runtime operator workflows](workflows/runtime-operator-workflows.md): current operator
-  workflows; treat any schema-upgrade text there as stale until its owner aligns it.
-- [Private-artifact archive](specs/private-artifact/README.md): historical evidence only.
-- [v0.2 freeze receipt](evidence/v0.2-freeze.md): frozen legacy provenance only.
+  fences and positive-only process evidence.
+- [ProviderAttempt authority](specs/provider-attempt-authority.md): one external turn
+  attempt, positive-only outcome evidence, and replay prohibition.
+- [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
+  sequencer used by Quick Task.
 
-## Schema authority
+## Current usable slice
 
-`crates/decodex-postgres` owns exactly one executable schema source:
-`crates/decodex-postgres/schema.sql`. It contains final object definitions directly. It
-does not contain an ordered history, upgrade branch, compatibility DDL, drain, backfill,
-or old-state cleanup.
+The supported product path is one ordinary multi-turn Quick Task:
 
-One explicit operator bootstrap runs only against an empty PostgreSQL 18 target. It:
+```text
+user message
+-> account route
+-> RuntimeSession and Codex thread
+-> fenced ProcessGeneration
+-> fenced ProviderAttempt
+-> assistant history and positive terminal evidence
+-> daemon restart
+-> later user message on the same Codex thread
+```
 
-1. resolves the schema-owner credential;
-2. proves that the target is clean;
-3. executes the complete latest schema in one transaction;
-4. verifies the exact resulting catalog and configured authority; and
-5. commits only after every check passes.
+The SQLite authority persists accounts, credentials, routing controls and quota facts,
+conversation and Turn history, RuntimeSession thread binding, ProcessGeneration state,
+ProviderAttempt state, and exact command receipts. Missing or stale quota data means
+unknown capacity; it is not fabricated exhaustion. A current known depleted fact still
+blocks that account.
 
-A second bootstrap against that nonempty target fails closed. The exact hidden command
-is `decodexd bootstrap-latest-schema`; it is not `decodexd` startup. The exact read-only
-validation command is `decodexd validate-current-authority`.
+The runtime keeps the mature Codex app-server protocol and safety harness. It does not
+replace Codex with a new agent kernel. It preserves exact account binding, pre-spawn
+fencing, one dispatch authorization, positive-only terminal evidence, and restart-safe
+ambiguity handling. One Conversation keeps its initially selected account even when the
+global routing default changes. Independent Conversations can use different accounts.
 
-Normal `decodexd` startup resolves only the runtime database credential. It executes zero
-DDL and verifies the exact current catalog and authority. It never resolves a schema-owner
-credential, runs an upgrade, repairs a catalog, or consults a schema-history relation.
+## Deferred product surfaces
 
-The reset preserves PostgreSQL 18, data checksums, `pgcrypto`, verified Unix-socket and
-peer-UID checks, full schema/function/trigger/dependency/ownership/ACL/semantic
-attestation, and negative PUBLIC/runtime checks. It removes history and upgrade
-predicates only.
+ManagedRepository, WorkItem board persistence, Reset Card consumption, execution-decision
+queries, automation, ManagedRun, ontology projection, graph visualization, remote
+workers, and multi-machine deployment are not partially ported. Current protocol calls
+for the first four return typed unavailable results. They do not activate a legacy
+storage fallback.
 
-Exact-command receipts, account operations, ProcessGeneration, ProviderAttempt,
-`schema_fingerprint`, runtime authority, activity, outbox, and repository-effect evidence
-remain domain integrity records. They are not schema migration records.
+Ontology and graph engineering remain central to the product direction. They belong
+above the proven conversation/runtime facts: the graph must explain and coordinate real
+work, not become a second speculative execution engine. A later milestone can project
+Goals, tasks, agents, artifacts, claims, dependencies, gates, and evidence from the local
+event history.
 
 ## Repository map
 
-- `crates/decodex-core/` owns domain and application contracts, typed `~/.decodex`
-  paths/configuration, content-addressed blob contracts, and disposable cache contracts.
-- `crates/decodex-protocol/` owns the exact-current owner-only same-UID Unix WebSocket
-  protocol used by clients.
-- `crates/decodex-postgres/` owns `schema.sql`, empty-target transactional bootstrap,
-  current catalog/authority verification, PostgreSQL adapters, exact commands, leases,
-  activity/outbox, account state, routing state, Conversation history, RuntimeSession,
-  managed repositories, ProcessGeneration, and ProviderAttempt persistence.
-- `crates/decodex-codex/` owns typed direct ChatGPT backend API contracts and provider
-  helpers. Codex app-server contracts remain isolated to Quick Task execution; account
-  health, quota, profile, and Reset Card observation do not depend on an executable version.
-- `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner
-  that composes infrastructure adapters. It records independent immutable startup
-  projections for ProductStore, Quick Task, and ManagedRepository without adding a
-  capability manager.
-- `apps/decodexd/` is the sole server composition root. Its normal serve path is
-  runtime-only.
-- `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol clients. They do not read
-  PostgreSQL, credentials, rollout files, blobs, or repositories directly.
-- `apps/decodex-app/` is a credential-negative native account client. It has no local
-  account pool, helper/server authority, or daemon lifecycle owner.
-- `apps/decodex/` is frozen v0.2 provenance outside the active Cargo workspace.
-- `spikes/vnext-storage/` is retired as an executable schema owner. Historical feasibility
-  evidence may remain, but no product or validation path may execute its schema.
-- `site/`, Radar, Publisher, plugins, and automations remain separate auxiliary surfaces.
-
-## Runtime summary
-
-`decodexd` serves the exact-current protocol at the fixed owner-only
-`~/.decodex/server/decodex.sock` endpoint. Both sides verify kernel peer UID and stable
-server identity. Remote and cross-UID control remain disabled until their security gate.
-
-One daemon and one endpoint remain available when Quick Task execution or
-ManagedRepository is unavailable. `ProductStore` means verified PostgreSQL only. Quick
-Task and ManagedRepository startup cannot overwrite it. Protocol and doctor report all
-three readiness results separately.
-
-When PostgreSQL is available, startup verifies the pinned socket, PostgreSQL 18 and data
-checksums, `pgcrypto`, the exact latest catalog, closed dependencies, object ownership,
-function and trigger bodies/settings/bindings, ACLs, configured runtime authority, and
-negative PUBLIC/runtime conditions. Any drift produces typed unavailability. Startup
-does not mutate the database.
-
-The runtime identity has only the exact relation, sequence, and function authority needed
-by current adapters. It cannot own Decodex objects, execute DDL, bypass triggers or
-retention, use grant options, reach schema-owner authority through role membership, or
-control a Decodex extension member. Hostile `search_path`, overload, trigger, rule,
-policy, RLS, external-cascade, and default-ACL paths fail closed.
-
-`decodexd` starts the account observation service independently from client queries. It
-refreshes different accounts concurrently through one shared direct provider API runtime.
-Within one account it uses one credential snapshot and retries once after a bounded token
-refresh, coalesces successor rounds, and publishes only to a matching account revision/cache
-generation. Account and Reset Card/profile queries read the daemon-owned cache or persisted
-projection without contacting the provider, joining a refresh, or starting refresh work. A
-transient provider failure or incomplete Reset Card detail response keeps the same-revision last
-complete snapshot visible while the daemon performs a bounded retry. A cold account reports
-retryable unavailable until its first complete observation. Candidate 5 must preserve this
-current-main behavior.
-
-ProcessSupervisor projects restored nonterminal ProcessGenerations to `death_unknown`
-and performs positive-only reconciliation. Uncertainty quarantines only the affected
-account. ProviderAttemptService projects prepared or dispatch-authorized attempts to
-`unknown` after restore and performs positive-only reconciliation. Process death, EOF,
-timeout, restart, absence, or negative search never proves provider non-submission.
-
-ExecutionCoordinator is crate-private and stateless. It sequences accepted route,
-continuation, process, and provider-attempt owners. It stores no receipt or lifecycle and
-cannot authorize dispatch by itself.
-
-After fallible owners validate their dependencies, `QuickTaskRuntime` construction is
-infallible and performs no I/O. Composition records one immutable ready or typed
-unavailable result. Quick Task commands repeat all current owner fences. ManagedRepository
-is independently `Ready`, `Disabled`, or typed `Unavailable`; repository failure affects
-repository operations only.
-
-## Candidate-5 Quick Task
-
-Candidate 5 remains the product target and is not yet accepted implementation. It is one
-ordinary multi-turn Conversation. The initial authority order is:
-
-```text
-Conversation creation
--> prospective Turn intent
--> complete routing snapshot
--> one route decision
--> first snapshots + starting RuntimeSession + inert initial plan
--> atomic first Turn + first Message admission
--> selected-account pre-spawn fence
--> fresh ProcessGeneration
--> exact RuntimeSession thread start and bind
--> ProviderAttempt
-```
-
-Routing Decision is the sole account selector. Account Service fences only that selected
-account immediately before spawn. Initial planning has no source RuntimeSession and no
-sticky member. It creates the first session; it is not same-thread reuse, explicit
-successor, or Context Pack fallback.
-
-The final latest schema contains both closed routing lineage shapes: all six source
-lineage fields absent for the initial operation (`L0`), or all six present with positive
-revisions for existing-session work (`L6`). Conversation work permits `L0` or `L6`.
-ManagedRun work permits only `L6`. The latest schema creates the final constraints,
-functions, and trigger bindings directly.
-
-Every process, thread, and provider fence locks the exact selected active revision-1
-Turn. Only a fresh ProcessGeneration result can spawn. Replayed, rejected, or uncertain
-state cannot spawn, substitute an account, create a successor, duplicate an attempt, or
-terminalize the Turn. Only positive definite pre-effect refusal can let Conversation
-authority move that Turn to failed revision 2.
-
-Immediately before spawn, runtime validates the selected working directory by no-follow
-descriptor traversal, exact identity, directory type, ownership by the daemon effective
-UID, and accepted path policy. Ambient current directory and repository discovery are not
-authority. One broken repository cannot disable unrelated Quick Tasks.
-
-Automatic cross-account same-thread fallback and all-depleted wake remain disabled under
-XY-1304.
-
-## Local database reset
-
-After the operator stops the daemon and bootstraps the replacement database, the exact
-hidden `decodexd restore-local-account-authority --root ROOT --schema-owner-user USER
-[--schema-owner-credential-env-var ENV]` command reads one strict
-`decodex/local-account-authority-restore/1` JSON document from stdin. It acquires and
-retains the existing same-UID local transport namespace, proves every exact Keychain
-binding before PostgreSQL mutation and again before commit, and accepts only a fresh
-latest-schema target. It restores only current account rows, account order, and routing
-control, then proves the complete tuple by exact readback.
-
-For `fixed` mode, the fixed target is non-null and belongs to the retained account set
-and order. For `balanced` mode, it is null. The order remains a complete duplicate-free
-permutation of retained accounts whether each account is enabled or disabled.
-
-Credential agreement may invoke only the existing `HostCredentialStore` owner. That
-owner performs a confined in-process exact read, recomputes and compares the credential
-fingerprint and binding, and returns only a typed credential-negative agreement result.
-The operator action and its result never expose, serialize, copy, log, persist, rotate,
-delete, or return token bytes. The action creates no public product or migration API,
-generic attestation framework, metadata sidecar, backup/rollback path,
-receipt/finalizer, or fallback. Normal startup and installation do not read an old
-database or account source.
+- `database/` owns bundled SQLite, immutable ordered migrations, database adapters, and
+  local persistence tests.
+- `database/transfer/` is the separate one-shot redb-to-SQLite upgrade tool. Normal
+  daemon startup does not link redb.
+- `crates/decodex-core/` owns mechanism-neutral domain types and fixed local paths.
+- `crates/decodex-codex/` owns Codex app-server and direct provider contracts.
+- `crates/decodex-runtime/` owns service composition, account/process/provider services,
+  and Quick Task orchestration.
+- `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
+- `apps/decodexd/` is the only server composition root.
+- `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
 
 ## First commands
-
-Current repository discovery and source-validation entrypoints include:
 
 ```sh
 cargo run -p decodexd -- --version
@@ -230,32 +97,29 @@ cargo run -p decodex-cli -- status
 cargo run -p decodex-cli -- doctor --output json
 cargo run -p decodex-cli -- account list
 cargo run -p decodex-gpui
-cargo test -p decodex-core --all-targets --all-features
-cargo make test-vnext-architecture
+python3 scripts/vnext/local_database_gate.py
+python3 -m unittest tests/scripts/test_vnext_architecture.py
 cargo make check
 ```
 
-Do not use historical schema-provisioning or migration commands as acceptance for this
-reset. The implemented hidden commands are `decodexd bootstrap-latest-schema`,
-`decodexd validate-current-authority`, and
-`decodexd restore-local-account-authority`. See
-[Commands and validation](operations/commands-and-validation.md).
+The hidden database commands used by the installer and the local gate are:
+
+```sh
+decodexd initialize-local-database --root ROOT
+decodexd validate-local-database --root ROOT
+```
 
 ## Safety rules
 
-- Do not read `.env` files or secret-bearing live configuration.
-- Do not route vNext product state through frozen v0.2 SQLite, Linear lanes, the old
-  account watcher, an environment token projection, helper/`:8192`, or a compatibility
-  fallback.
-- Do not add numbered SQL, Refinery, a schema ledger, a schema generator, or a second
-  executable schema owner.
-- Do not make daemon startup resolve schema-owner credentials or execute DDL.
-- Do not make Quick Task or ManagedRepository startup failure fatal to an otherwise usable
-  daemon. Do not hide it through `.ok()`, an optional setter, or an omitted protocol field.
-- Do not add a mutable capability manager or duplicate PostgreSQL repository path
-  authority in core configuration.
-- Keep current-main account observation and cache-read isolation unchanged while adding
-  Candidate-5 behavior.
-- Treat historical migration evidence as superseded provenance, not current authority.
-- Update OpenWiki directly for this reset; the user prohibited OpenWiki generation for
-  this task.
+- Keep one normal product-state authority. Do not add dual-write or runtime fallback.
+- Do not let a client open SQLite, the credential table, the retired redb file, or Codex
+  authentication files.
+- Keep the database owner-private (`0600`) and its directories owner-only (`0700`).
+- Never emit credential values through logs, commands, protocol payloads, tests, or
+  reports.
+- Do not share the SQLite file over a network filesystem.
+- Keep migrations ordered, embedded, immutable after release, and transactional.
+- Preserve retained rollback data, the redb source, and Keychain records until a verified
+  rollback-window decision authorizes deletion.
+- Treat multi-machine deployment as a later server-mode architecture, not a generic
+  database abstraction added to the desktop product now.

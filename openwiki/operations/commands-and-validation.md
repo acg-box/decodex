@@ -1,11 +1,15 @@
 # Commands And Validation
 
+Status: historical former server store command catalog. Use
+[Local database operations](local-database.md) for current initialization, installation,
+transfer, and acceptance commands.
+
 Use this page to choose the command boundary for current work. `Makefile.toml` owns
 implemented task names. This document owns the target behavior for the latest-schema,
 runtime-authority, Candidate-5, and local database reset commands.
 
-There are no external or deployed users. Local PostgreSQL data is disposable. Database
-acceptance starts from one empty PostgreSQL 18 target and the one unversioned latest
+There are no external or deployed users. Local former server store data is disposable. Database
+acceptance starts from one empty former server store 18 target and the one unversioned latest
 schema. Existing migration commands and harness modes are superseded and must not be used
 as acceptance for this reset.
 
@@ -28,8 +32,8 @@ cargo make check-automations
 dependencies, or Apple GPU/build integration. Those surfaces require the broad gate on a
 host with full Xcode and Metal tools.
 
-The broad checks do not start a live PostgreSQL fixture. Use the product-native gate for
-latest-schema and current-authority acceptance; the migration-era PostgreSQL tasks are
+The broad checks do not start a live former server store fixture. Use the product-native gate for
+latest-schema and current-authority acceptance; the migration-era former server store tasks are
 retired.
 
 ## Current repository checks
@@ -56,7 +60,7 @@ It runs all selected packages and fails if any package fails.
 
 The product-native task is the sole canonical latest-schema and current-authority gate.
 The other commands are current source checks and do not replace it. Do not cite a
-migration-era PostgreSQL subcommand, numbered-ledger result, or historical restore
+migration-era former server store subcommand, numbered-ledger result, or historical restore
 receipt as latest-schema evidence.
 
 ## Latest-schema command boundary
@@ -64,18 +68,18 @@ receipt as latest-schema evidence.
 `decodexd bootstrap-latest-schema` owns empty-target bootstrap, and
 `decodexd validate-current-authority` owns read-only current-authority validation. The
 sole canonical repository gate is `cargo make test-vnext-latest-schema`; it orchestrates
-both product commands against one private PostgreSQL 18 target. Do not invent aliases or
+both product commands against one private former server store 18 target. Do not invent aliases or
 split bootstrap and current-authority validation into separate repository gates.
 
 There are three separate operations:
 
 1. **Empty-target bootstrap** resolves the schema-owner credential, proves a clean
-   target, executes `crates/decodex-postgres/schema.sql` once in one transaction, verifies
+   target, executes `crates/decodex-server-store/schema.sql` once in one transaction, verifies
    the result, and commits. A database failure emits one bounded credential-negative
    `decodex/bootstrap-report/1` JSON line. The report identifies one closed phase and
    operation across pre-schema verification, schema application, post-schema verification,
    or final commit. It includes SQLSTATE and the one-based original-statement byte position
-   only when PostgreSQL supplies them; it includes no SQL text or database message. A
+   only when former server store supplies them; it includes no SQL text or database message. A
    post-schema report retains each completed authority component in collection order. A
    rollback failure is secondary closed evidence and never replaces the primary failure.
    The command does not add a second validator or digest-harvest command.
@@ -88,7 +92,7 @@ There are three separate operations:
    `decodex/local-account-authority-restore/1` JSON document from stdin after the daemon
    is stopped and the replacement database has the fresh latest schema. It retains the
    existing same-UID local transport namespace, proves every exact host-vault binding
-   before PostgreSQL mutation and again before commit, restores only current account and
+   before former server store mutation and again before commit, restores only current account and
    routing rows, and proves exact readback.
 
 The restore stdin is at most 512 KiB and contains at most 512 accounts. Every object
@@ -108,7 +112,7 @@ current-authority validation, and local account authority restore.
 After the implementation source is frozen, use this order:
 
 1. reverse scan retired schema names, paths, dependencies, credentials, and commands;
-2. bootstrap one fresh PostgreSQL 18 empty target;
+2. bootstrap one fresh former server store 18 empty target;
 3. run the same bootstrap again and prove nonempty refusal with no change;
 4. start `decodexd` with only runtime credentials and prove zero DDL/no schema owner;
 5. run exact current catalog/configured-authority and adversarial negative checks;
@@ -125,7 +129,7 @@ second aggregate. No historical upgrade or migration proof belongs in this order
 The reverse scan is read-only and must find no active executable or acceptance reference
 to:
 
-- `crates/decodex-postgres/migrations` or numbered `V<integer>__*.sql` files;
+- `crates/decodex-server-store/migrations` or numbered `V<integer>__*.sql` files;
 - Refinery dependency, macro, runner, target version, or error type;
 - `public.refinery_schema_history` or another schema-history relation;
 - latest-version constants, `run_through_*`, prefix checks, upgrade branches, or
@@ -145,7 +149,7 @@ drift.
 
 ## Empty-target bootstrap validation
 
-Use one isolated PostgreSQL 18 target with data checksums and TCP disabled unless a
+Use one isolated former server store 18 target with data checksums and TCP disabled unless a
 separate accepted test requires it. The command must verify the configured Unix-socket
 directory, endpoint descriptor identity, expected server UID, and kernel peer UID before
 it sends authentication data.
@@ -239,7 +243,7 @@ must:
 3. bootstrap the latest schema on the replacement database;
 4. run `decodexd restore-local-account-authority` with the bounded transient document on
    stdin;
-5. prove every `HostCredentialStore::read_exact` binding before PostgreSQL mutation and
+5. prove every `HostCredentialStore::read_exact` binding before former server store mutation and
    again before commit;
 6. prove exact Account Registry and `HostCredentialStore` agreement, every retained
    account's enabled state, revision, and binding, and the routing
@@ -254,7 +258,7 @@ membership as one tuple.
 
 Refuse any target other than the fresh canonical latest schema with zero accounts, the
 initial empty routing authority, one active bootstrap execution epoch, empty unrelated
-tables, and untouched identity sequences. A refused Keychain fence or readback rolls
+tables, and untouched identity sequences. A refused host-vault fence or readback rolls
 back. Do not restore profiles, quotas, operations, conversations, sessions, process
 generations, attempts, usage, or historical rows.
 
@@ -267,16 +271,46 @@ or migration API, generic attestation framework, metadata sidecar, generic impor
 migration state, backup/rollback, receipt/finalizer, or fallback. A failed readback
 leaves the daemon stopped.
 
+## Credential vault validation
+
+The accepted macOS runtime uses only `RedbCredentialStore` during normal startup. Prove
+the following boundaries without reading or printing credential values:
+
+- create, exact read, immediate-successor compare-and-swap rotate, exact delete, and
+  duplicate-provider rejection are atomic;
+- a failed multi-record write publishes no partial destination state;
+- a committed record survives close and reopen, and a second writer is refused;
+- the fixed vault path refuses symbolic links, wrong ownership, wrong type, unsafe mode,
+  and a link count other than one;
+- normal daemon composition, account restoration, and account operations do not contain
+  a Keychain adapter or fallback;
+- the macOS installer starts the directly signed daemon executable and verifies its
+  owner, mode, link count, digest, hardened runtime, and signing team without a daemon
+  app bundle, provisioning profile, Keychain entitlement, or Python wrapper; and
+- after service restart, every registry binding is ready and one fixed account can use
+  the exact redb record to start the canonical Codex App Server and complete the
+  production read-only initialize, account-read, and thread-list probe.
+
+The completed local cutover used a temporary stopped-daemon transfer bridge. It copied
+the complete registry snapshot in one immediate vault transaction and then proved exact
+idempotent replay. That bridge is removed from the final command and feature surface.
+It is evidence, not a supported migration API. See
+[Credential-vault cutover evidence](../evidence/credential-vault-cutover.md).
+
+A full Quick Task is not valid evidence for credential storage when an independent
+routing gate refuses before process spawn. Record that refusal separately and do not
+change quota or routing policy as part of a credential-vault acceptance run.
+
 ## Owner path source map
 
 - `crates/decodex-core/`: domain/application contracts, typed paths/configuration, blobs,
   cache, and pure decision values.
 - `crates/decodex-protocol/`: exact-current same-UID local protocol and clients.
-- `crates/decodex-postgres/schema.sql`: sole executable latest schema.
-- `crates/decodex-postgres/src/schema.rs` or the final equivalent module: clean-target
+- `crates/decodex-server-store/schema.sql`: sole executable latest schema.
+- `crates/decodex-server-store/src/schema.rs` or the final equivalent module: clean-target
   bootstrap transaction and post-execution verification. The exact file name is an
   implementation choice; its ownership contract is fixed.
-- `crates/decodex-postgres/`: current PostgreSQL adapters and read-only authority
+- `crates/decodex-server-store/`: current former server store adapters and read-only authority
   verification.
 - `crates/decodex-codex/`: typed app-server adapter and runtime-negotiated capability profiles.
 - `crates/decodex-runtime/`: daemon service assembly, Account Service,
@@ -300,7 +334,7 @@ cargo check --all-features --all-targets --workspace
 cargo nextest run --workspace --all-targets --all-features
 cargo make test-vnext-architecture
 cargo test -p decodex-core --all-targets --all-features
-cargo test -p decodex-core -p decodex-protocol -p decodex-postgres -p decodex-codex -p decodex-runtime
+cargo test -p decodex-core -p decodex-protocol -p decodex-server-store -p decodex-codex -p decodex-runtime
 ```
 
 The task runner exposes one canonical product-native gate for latest-schema bootstrap and
@@ -310,11 +344,11 @@ current-authority validation:
 cargo make test-vnext-latest-schema
 ```
 
-It resolves PostgreSQL 18 through `DECODEX_POSTGRES_18_BINDIR` or `pg_config` on `PATH`,
+It resolves former server store 18 through `DECODEX_POSTGRES_18_BINDIR` or `pg_config` on `PATH`,
 builds the real `decodexd` binary, and uses only a disposable private target. A test that
 still initializes through numbered SQL is not evidence for this reset. On bootstrap
 failure, the gate requires the command's one canonical bootstrap report and validates its
-closed phase, operation, category, and available authority prefix. Its private PostgreSQL
+closed phase, operation, category, and available authority prefix. Its private former server store
 server records verbose error identity but suppresses failed-statement logging. Failure
 evidence is owner-private, content-addressed, and bounded per file and in total; an
 oversized file retains deterministic head and tail segments so the error header and final
@@ -323,9 +357,9 @@ diagnostics.
 
 The existing `account-contract` stage first runs the bounded ignored runtime test
 `local_account_authority::tests::local_account_restore_command_proves_two_exact_credential_fences_and_readback`,
-then runs `postgres_account_routing_contract` against the same private target and
+then runs `server-store_account_routing_contract` against the same private target and
 environment. The runtime test uses a module-private read-exact-only credential-store
-double; it does not use the live Keychain.
+double; it does not use the live redb vault.
 
 ## CLI discovery
 

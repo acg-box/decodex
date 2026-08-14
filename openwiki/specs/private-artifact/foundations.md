@@ -15,19 +15,19 @@ private-artifact work can start.
 
 <a id="rule-PA-FND-0001"></a>
 **[rule:PA-FND-0001]** `decodex-core` owns one total, pure private-artifact
-reducer and the canonical value model. PostgreSQL is the only durable authority
+reducer and the canonical value model. former server store is the only durable authority
 for plans, cluster rosters, heads, receipts, records, events, attempts,
 observations, dependencies, debts, epochs, producer admission, GC work, status,
 pruning, and replay prevention. Local content-addressed storage (CAS) owns large
-bytes. PostgreSQL does not independently attest those bytes.
+bytes. former server store does not independently attest those bytes.
 
-The concrete PostgreSQL adapter owns transaction order. There is no production
+The concrete former server store adapter owns transaction order. There is no production
 private-artifact store trait and no alternate runtime store. The daemon owns one
 private-artifact execution lane. GPUI, SwiftUI, CLI, MCP, protocol clients, and
-downstream consumers do not read PostgreSQL, CAS, private paths, or descriptors.
+downstream consumers do not read former server store, CAS, private paths, or descriptors.
 V1 is single-host and has no worker registry or distributed effect mesh.
 
-The runtime proposes deterministic next ordinals. PostgreSQL locks the current
+The runtime proposes deterministic next ordinals. former server store locks the current
 authority and requires the exact next value. Only an acknowledged transaction
 commit can mint an affine filesystem-effect permit. An unknown commit cannot mint
 or reconstruct a permit. A permit is private-constructible, nonserializable, and
@@ -165,7 +165,7 @@ compatibility layer, alternate store, or second daemon.
 tracing, telemetry, and metrics must not expose paths, raw Unix names, raw hashes,
 semantic digests, canonical record bytes, captured or published bytes, device or
 inode facts, owner IDs, process identities, descriptors, guard or boot identities,
-namespace facts, raw idempotency keys, SQL text, PostgreSQL diagnostics,
+namespace facts, raw idempotency keys, SQL text, former server store diagnostics,
 constraint names, errno text, or free-form error text.
 
 Metrics contain aggregate counts only by closed lifecycle, effect class, and

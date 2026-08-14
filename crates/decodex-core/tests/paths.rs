@@ -28,6 +28,8 @@ fn every_owned_path_is_derived_below_the_decodex_root() {
 		fixture.paths.cache_dir(),
 		fixture.paths.server_dir(),
 		fixture.paths.server_identity_file(),
+		fixture.paths.credential_vault_file(),
+		fixture.paths.product_database_file(),
 	] {
 		assert!(path.starts_with(root));
 		assert!(!path.components().any(|component| component.as_os_str() == ".codex"));

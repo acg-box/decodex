@@ -154,7 +154,7 @@ independently rejected:
 3. Frozen candidate fingerprint
    `057d027c820cc51c07766579ec73c9d944e61cb2dcea9441382582e7667daa4c`, with frozen V8 object
    `ca458a82da5dfd23efd8736ffd854fcc3f02a86a`, duplicated timestamp quantization with half-up Rust
-   behavior that disagreed with PostgreSQL half-microsecond tie behavior and left V7 receipt,
+   behavior that disagreed with former server store half-microsecond tie behavior and left V7 receipt,
    activity, and outbox conversion undefined.
 
 Bounded repair-loop research then confirmed that the production driver transports already
@@ -172,7 +172,7 @@ authority remaining in XY-1302. The bounded research task was
 The next XY-1274 implementation is candidate 1 of that materially redesigned boundary, not
 candidate 4 of the rejected design. XY-1304 must first capture natural upstream timestamp precision
 before live ingestion or routing; a non-exact-microsecond result keeps routing blocked and reopens
-the architecture around PostgreSQL-in-transaction canonicalization. All separate 300/10080 facts
+the architecture around former server store-in-transaction canonicalization. All separate 300/10080 facts
 remain inert, and this handoff enables no assignment, fallback, wake scheduling, continuation,
 external-effect replay, or live dispatch.
 
@@ -232,7 +232,7 @@ proposal for explicit Manager acceptance and a corresponding normative manifest 
    process-scoped auth and redaction; read-only plugin/skill inventory; and pure quota
    policy keyed only by duration 300/10080.
 2. Allow M1 foundations after their own M0 gates pass: workspace owners (XY-1265),
-   loopback protocol/idempotency/reconnect foundations (XY-1266), PostgreSQL
+   loopback protocol/idempotency/reconnect foundations (XY-1266), former server store
    transactions/leases/outbox and inert account/window schemas (XY-1267), owned paths
    plus API-only diagnostics (XY-1268), and the GPUI shell after the separate GPUI gate
    (XY-1269). These surfaces must expose unavailable/unknown states honestly.
