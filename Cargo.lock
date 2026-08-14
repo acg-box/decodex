@@ -1621,6 +1621,7 @@ dependencies = [
  "decodex-protocol",
  "futures-util",
  "libc",
+ "redb",
  "reqwest",
  "security-framework",
  "serde",
@@ -5069,6 +5070,15 @@ name = "reborrow"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "03251193000f4bd3b042892be858ee50e8b3719f2b08e5833ac4353724632430"
+
+[[package]]
+name = "redb"
+version = "4.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8e925444704b5f17d32bf42f5b6e2df050bceebc3dcd6e71cc73dafe8092e839"
+dependencies = [
+ "libc",
+]
 
 [[package]]
 name = "redox_syscall"

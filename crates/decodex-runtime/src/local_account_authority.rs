@@ -23,7 +23,7 @@ use decodex_protocol::{LocalTransportAuthority, LocalTransportListener, LocalTra
 #[cfg(any(target_os = "macos", test))] use zeroize::Zeroizing;
 
 #[cfg(any(target_os = "macos", test))] use crate::account_service::stable_account_alias;
-#[cfg(target_os = "macos")] use crate::host_credentials::MacosKeychainCredentialStore;
+#[cfg(target_os = "macos")] use crate::host_credentials::RedbCredentialStore;
 #[cfg(any(target_os = "macos", all(test, unix)))]
 use crate::{
 	bootstrap::credential,
@@ -303,7 +303,7 @@ pub(crate) async fn restore_local_account_authority<R: Read>(
 		schema_owner_user,
 		schema_owner_credential_env_var,
 		input,
-		MacosKeychainCredentialStore::new,
+		RedbCredentialStore::new,
 	)
 	.await
 }

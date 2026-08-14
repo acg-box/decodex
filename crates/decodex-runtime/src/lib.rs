@@ -13,7 +13,6 @@ mod account_service;
 mod application;
 mod auth_projection;
 mod bootstrap;
-#[cfg(target_os = "macos")] mod daemon_wrapper;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;
@@ -40,7 +39,7 @@ pub use bootstrap::{
 };
 pub use decodex_core::DecodexRoot;
 pub use decodex_protocol::ServerId;
-#[cfg(target_os = "macos")] pub use host_credentials::MacosKeychainCredentialStore;
+#[cfg(unix)] pub use host_credentials::RedbCredentialStore;
 pub use host_credentials::{
 	CredentialSecretBundle, CredentialStoreError, HostCredentialStore, StoredCredential,
 };

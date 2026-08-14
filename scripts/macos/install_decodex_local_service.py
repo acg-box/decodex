@@ -48,9 +48,8 @@ POSTGRES_RUNTIME_ROLE = "decodex_runtime"
 UUID_PATTERN = re.compile(
     r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
 )
-HEX_DIGEST_PATTERN = re.compile(r"^[0-9a-f]{64}$")
-DAEMON_WRAPPER_TOOL = Path(__file__).resolve().with_name("decodexd_wrapper.py")
 CODESIGN = Path("/usr/bin/codesign")
+MAX_EXECUTABLE_BYTES = 512 * 1024 * 1024
 
 
 class InstallError(RuntimeError):
@@ -103,23 +102,6 @@ class InstallPaths:
     @property
     def namespace_lock(self) -> Path:
         return self.server_directory / "decodex.lock"
-
-    @property
-    def daemon_wrapper(self) -> Path:
-        try:
-            contents = self.decodexd.parent.parent
-            wrapper = contents.parent
-        except IndexError as error:
-            raise InstallError("daemon wrapper main path is invalid") from error
-        if (
-            self.decodexd.name != "decodexd"
-            or self.decodexd.parent.name != "MacOS"
-            or contents.name != "Contents"
-            or wrapper.name != "decodexd.app"
-        ):
-            raise InstallError("daemon wrapper main path is invalid")
-        return wrapper
-
 
 class InstallerNamespaceLock:
     """Retain exclusive ownership of the local-listener namespace during install."""
@@ -317,15 +299,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
     parser.add_argument(
         "--decodexd",
         type=Path,
-        default=(
-            home
-            / ".local"
-            / "bin"
-            / "decodexd.app"
-            / "Contents"
-            / "MacOS"
-            / "decodexd"
-        ),
+        default=home / ".local" / "bin" / "decodexd",
     )
     parser.add_argument(
         "--decodex-cli",
@@ -499,62 +473,102 @@ def render_config(paths: InstallPaths, uid: int) -> bytes:
     return "\n".join(lines).encode("utf-8")
 
 
-def daemon_wrapper_digest(value: Any) -> str:
+def executable_sha256(path: Path, name: str) -> str:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    failure = f"{name} executable authority is unsafe"
     try:
-        normalized = json.dumps(
-            value,
-            ensure_ascii=True,
-            allow_nan=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ).encode("ascii")
-    except (TypeError, ValueError, UnicodeEncodeError) as error:
-        raise InstallError("daemon wrapper descriptor is malformed") from error
-    return hashlib.sha256(normalized).hexdigest()
+        descriptor = os.open(path, flags)
+    except OSError as error:
+        raise InstallError(failure) from error
+    try:
+        metadata = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.geteuid()
+            or metadata.st_nlink != 1
+            or metadata.st_size <= 0
+            or metadata.st_size > MAX_EXECUTABLE_BYTES
+            or stat.S_IMODE(metadata.st_mode) & 0o022
+            or not stat.S_IMODE(metadata.st_mode) & 0o100
+        ):
+            raise InstallError(failure)
+        digest = hashlib.sha256()
+        remaining = metadata.st_size
+        while remaining > 0:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                raise InstallError(failure)
+            digest.update(chunk)
+            remaining -= len(chunk)
+        if os.read(descriptor, 1):
+            raise InstallError(failure)
+        return digest.hexdigest()
+    finally:
+        os.close(descriptor)
 
 
-def inspect_daemon_wrapper(paths: InstallPaths) -> dict[str, Any]:
+def inspect_signed_executable(path: Path, name: str) -> dict[str, str]:
+    digest = executable_sha256(path, name)
+    failure = f"{name} signature did not verify"
     try:
-        completed = run(
+        run(
             [
-                sys.executable,
-                str(DAEMON_WRAPPER_TOOL),
-                "inspect",
-                "--wrapper",
-                str(paths.daemon_wrapper),
+                str(CODESIGN),
+                "--verify",
+                "--strict",
+                "--all-architectures",
+                str(path),
             ],
-            cwd=paths.repository,
+            capture=True,
+        )
+        details = run(
+            [str(CODESIGN), "-d", "--verbose=4", str(path)],
             capture=True,
         )
     except (OSError, subprocess.CalledProcessError) as error:
-        raise InstallError("daemon wrapper identity did not verify") from error
-    try:
-        result = json.loads(completed.stdout)
-    except (TypeError, json.JSONDecodeError) as error:
-        raise InstallError("daemon wrapper inspector returned an invalid result") from error
+        raise InstallError(failure) from error
+    output = "\n".join(
+        part for part in (details.stdout, details.stderr) if isinstance(part, str)
+    )
+    identifiers = re.findall(r"^Identifier=(.+)$", output, re.MULTILINE)
+    teams = re.findall(r"^TeamIdentifier=(.+)$", output, re.MULTILINE)
+    code_directories = re.findall(r"^CodeDirectory .+$", output, re.MULTILINE)
     if (
-        not isinstance(result, dict)
-        or set(result) != {"schema", "descriptor", "descriptor_sha256"}
-        or result.get("schema") != "decodex/daemon-wrapper-result/1"
-        or not isinstance(result.get("descriptor"), dict)
-        or not isinstance(result.get("descriptor_sha256"), str)
-        or not HEX_DIGEST_PATTERN.fullmatch(result["descriptor_sha256"])
-        or daemon_wrapper_digest(result["descriptor"]) != result["descriptor_sha256"]
-        or result["descriptor"].get("executable_path") != str(paths.decodexd)
+        len(identifiers) != 1
+        or not identifiers[0]
+        or contains_control(identifiers[0])
+        or len(teams) != 1
+        or not teams[0]
+        or teams[0] == "not set"
+        or contains_control(teams[0])
+        or len(code_directories) != 1
+        or "(runtime)" not in code_directories[0]
     ):
-        raise InstallError("daemon wrapper identity did not verify")
-    return result["descriptor"]
+        raise InstallError(failure)
+    return {
+        "identifier": identifiers[0],
+        "team_identifier": teams[0],
+        "sha256": digest,
+    }
 
 
-def verify_daemon_wrapper(
+def inspect_daemon_executable(paths: InstallPaths) -> dict[str, str]:
+    descriptor = inspect_signed_executable(paths.decodexd, "Decodex daemon")
+    if descriptor["identifier"] != "box.acg.decodex.daemon":
+        raise InstallError("Decodex daemon signature did not verify")
+    return descriptor
+
+
+def verify_daemon_executable(
     paths: InstallPaths,
-    expected: dict[str, Any],
+    expected: dict[str, str],
     *,
     require_launch_agent: bool,
-) -> dict[str, Any]:
-    current = inspect_daemon_wrapper(paths)
-    if daemon_wrapper_digest(current) != daemon_wrapper_digest(expected):
-        raise InstallError("daemon wrapper identity differs")
+) -> dict[str, str]:
+    current = inspect_daemon_executable(paths)
+    if current != expected:
+        raise InstallError("Decodex daemon identity differs")
     if require_launch_agent:
         body = read_owned_file(
             paths.launch_agent,
@@ -575,9 +589,9 @@ def verify_daemon_wrapper(
         if (
             not isinstance(arguments, list)
             or not arguments
-            or arguments[0] != expected.get("executable_path")
+            or arguments[0] != str(paths.decodexd)
         ):
-            raise InstallError("LaunchAgent daemon wrapper identity differs")
+            raise InstallError("LaunchAgent daemon identity differs")
     return current
 
 
@@ -587,51 +601,19 @@ def verify_signed_cli(path: Path, expected_team_identifier: str) -> dict[str, st
         or contains_control(expected_team_identifier)
         or len(expected_team_identifier.encode("utf-8")) > 64
     ):
-        raise InstallError("daemon wrapper signing identity is invalid")
-    try:
-        run(
-            [
-                str(CODESIGN),
-                "--verify",
-                "--strict",
-                "--all-architectures",
-                str(path),
-            ],
-            capture=True,
-        )
-        details = run(
-            [str(CODESIGN), "-d", "--verbose=4", str(path)],
-            capture=True,
-        )
-    except (OSError, subprocess.CalledProcessError) as error:
-        raise InstallError("Decodex CLI signature did not verify") from error
-    output = "\n".join(
-        part for part in (details.stdout, details.stderr) if isinstance(part, str)
-    )
-    identifiers = re.findall(r"^Identifier=(.+)$", output, re.MULTILINE)
-    teams = re.findall(r"^TeamIdentifier=(.+)$", output, re.MULTILINE)
-    code_directories = re.findall(r"^CodeDirectory .+$", output, re.MULTILINE)
-    if (
-        len(identifiers) != 1
-        or not identifiers[0]
-        or contains_control(identifiers[0])
-        or teams != [expected_team_identifier]
-        or len(code_directories) != 1
-        or "(runtime)" not in code_directories[0]
-    ):
+        raise InstallError("Decodex daemon signing identity is invalid")
+    descriptor = inspect_signed_executable(path, "Decodex CLI")
+    if descriptor["team_identifier"] != expected_team_identifier:
         raise InstallError("Decodex CLI signature did not verify")
     return {
-        "identifier": identifiers[0],
-        "team_identifier": teams[0],
+        "identifier": descriptor["identifier"],
+        "team_identifier": descriptor["team_identifier"],
     }
 
 
-def render_launch_agent(
-    paths: InstallPaths,
-    daemon_wrapper: dict[str, Any],
-) -> bytes:
+def render_launch_agent(paths: InstallPaths) -> bytes:
     arguments = [
-        daemon_wrapper["executable_path"],
+        str(paths.decodexd),
         "supervise-local",
         "--postgres",
         str(paths.postgres),
@@ -1769,6 +1751,8 @@ def validate_host(paths: InstallPaths) -> int:
         raise InstallError("the local service root must be the platform default")
     if paths.codex.name != "codex":
         raise InstallError("Codex executable name is invalid")
+    if paths.decodexd.name != "decodexd":
+        raise InstallError("Decodex daemon executable name is invalid")
     for name, path in (
         ("decodexd", paths.decodexd),
         ("Decodex CLI", paths.decodex_cli),
@@ -1787,18 +1771,18 @@ def install_under_namespace_lock(
     paths: InstallPaths,
     uid: int,
     namespace_lock: InstallerNamespaceLock,
-    daemon_wrapper: dict[str, Any],
+    daemon_executable: dict[str, str],
 ) -> None:
     namespace_lock.verify()
     ensure_directories(paths, uid)
-    verify_daemon_wrapper(paths, daemon_wrapper, require_launch_agent=False)
-    team_identifier = daemon_wrapper.get("team_identifier")
+    verify_daemon_executable(paths, daemon_executable, require_launch_agent=False)
+    team_identifier = daemon_executable.get("team_identifier")
     if not isinstance(team_identifier, str):
-        raise InstallError("daemon wrapper signing identity is invalid")
+        raise InstallError("Decodex daemon signing identity is invalid")
     verify_signed_cli(paths.decodex_cli, team_identifier)
 
     config = render_config(paths, uid)
-    launch_agent = render_launch_agent(paths, daemon_wrapper)
+    launch_agent = render_launch_agent(paths)
     atomic_write(paths.config, config, 0o600)
     atomic_write(paths.launch_agent, launch_agent, 0o600)
     if read_owned_file(
@@ -1831,7 +1815,7 @@ def install_under_namespace_lock(
         stop_temporary_postgres(postgres)
 
     namespace_lock.verify()
-    verify_daemon_wrapper(paths, daemon_wrapper, require_launch_agent=True)
+    verify_daemon_executable(paths, daemon_executable, require_launch_agent=True)
     verify_signed_cli(paths.decodex_cli, team_identifier)
 
 
@@ -1873,10 +1857,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     args = parse_args(argv)
     paths = install_paths(args)
     uid = validate_host(paths)
-    daemon_wrapper = inspect_daemon_wrapper(paths)
-    team_identifier = daemon_wrapper.get("team_identifier")
+    daemon_executable = inspect_daemon_executable(paths)
+    team_identifier = daemon_executable.get("team_identifier")
     if not isinstance(team_identifier, str):
-        raise InstallError("daemon wrapper signing identity is invalid")
+        raise InstallError("Decodex daemon signing identity is invalid")
     verify_signed_cli(paths.decodex_cli, team_identifier)
     ensure_installer_namespace_layout(paths, uid)
     if postgres_major(paths.postgres) != 18:
@@ -1889,7 +1873,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             paths,
             uid,
             namespace_lock,
-            daemon_wrapper,
+            daemon_executable,
         )
     finally:
         namespace_lock.close()

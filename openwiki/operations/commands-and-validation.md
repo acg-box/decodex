@@ -254,7 +254,7 @@ membership as one tuple.
 
 Refuse any target other than the fresh canonical latest schema with zero accounts, the
 initial empty routing authority, one active bootstrap execution epoch, empty unrelated
-tables, and untouched identity sequences. A refused Keychain fence or readback rolls
+tables, and untouched identity sequences. A refused host-vault fence or readback rolls
 back. Do not restore profiles, quotas, operations, conversations, sessions, process
 generations, attempts, usage, or historical rows.
 
@@ -266,6 +266,36 @@ persist, rotate, delete, or return token bytes. The check must create no public 
 or migration API, generic attestation framework, metadata sidecar, generic import API,
 migration state, backup/rollback, receipt/finalizer, or fallback. A failed readback
 leaves the daemon stopped.
+
+## Credential vault validation
+
+The accepted macOS runtime uses only `RedbCredentialStore` during normal startup. Prove
+the following boundaries without reading or printing credential values:
+
+- create, exact read, immediate-successor compare-and-swap rotate, exact delete, and
+  duplicate-provider rejection are atomic;
+- a failed multi-record write publishes no partial destination state;
+- a committed record survives close and reopen, and a second writer is refused;
+- the fixed vault path refuses symbolic links, wrong ownership, wrong type, unsafe mode,
+  and a link count other than one;
+- normal daemon composition, account restoration, and account operations do not contain
+  a Keychain adapter or fallback;
+- the macOS installer starts the directly signed daemon executable and verifies its
+  owner, mode, link count, digest, hardened runtime, and signing team without a daemon
+  app bundle, provisioning profile, Keychain entitlement, or Python wrapper; and
+- after service restart, every registry binding is ready and one fixed account can use
+  the exact redb record to start the canonical Codex App Server and complete the
+  production read-only initialize, account-read, and thread-list probe.
+
+The completed local cutover used a temporary stopped-daemon transfer bridge. It copied
+the complete registry snapshot in one immediate vault transaction and then proved exact
+idempotent replay. That bridge is removed from the final command and feature surface.
+It is evidence, not a supported migration API. See
+[Credential-vault cutover evidence](../evidence/credential-vault-cutover.md).
+
+A full Quick Task is not valid evidence for credential storage when an independent
+routing gate refuses before process spawn. Record that refusal separately and do not
+change quota or routing policy as part of a credential-vault acceptance run.
 
 ## Owner path source map
 
@@ -325,7 +355,7 @@ The existing `account-contract` stage first runs the bounded ignored runtime tes
 `local_account_authority::tests::local_account_restore_command_proves_two_exact_credential_fences_and_readback`,
 then runs `postgres_account_routing_contract` against the same private target and
 environment. The runtime test uses a module-private read-exact-only credential-store
-double; it does not use the live Keychain.
+double; it does not use the live redb vault.
 
 ## CLI discovery
 

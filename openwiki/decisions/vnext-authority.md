@@ -326,8 +326,9 @@ work for an explicit decision.
 - `ProductStore` represents verified PostgreSQL only. Quick Task and ManagedRepository
   startup projections are independent and cannot overwrite product-store readiness.
 - PostgreSQL Account Registry owns credential-negative account state. One
-  HostCredentialStore owns secret bundles. Account Service coordinates account
-  operations.
+  HostCredentialStore owns secret bundles. On macOS, its only normal adapter is the
+  daemon-owned redb file at `~/.decodex/server/credentials.redb`. Account Service
+  coordinates account operations.
 - One app-server process remains bound to one Account UUID and provider identity for its
   lifetime. Credentials do not switch accounts in a live process.
 - PostgreSQL remains the complete routing-fact and decision authority. Runtime and clients cannot

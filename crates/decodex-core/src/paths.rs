@@ -7,6 +7,7 @@ use std::{
 	io,
 	path::{Component, Path, PathBuf},
 };
+#[cfg(unix)] use std::fs::File;
 #[cfg(not(unix))] use std::{
 	fs::{self, DirBuilder, OpenOptions},
 	io::{Read, Write},
@@ -133,6 +134,22 @@ impl DecodexPaths {
 	/// Stable server identity file.
 	pub fn server_identity_file(&self) -> PathBuf {
 		self.join("server/identity")
+	}
+
+	/// Daemon-owned versioned account credential vault.
+	pub fn credential_vault_file(&self) -> PathBuf {
+		self.join("server/credentials.redb")
+	}
+
+	/// Open or create the credential vault through the verified Decodex directory tree.
+	///
+	/// Unix callers receive a read-write descriptor for one owner-only regular file with
+	/// no symbolic-link or hard-link alias. The caller owns the database format and must
+	/// keep the descriptor open for its complete database lifetime.
+	#[cfg(unix)]
+	pub fn open_credential_vault_file(&self) -> Result<File, PathError> {
+		self.ensure_owned_directory(Path::new("server"))?;
+		path_unix::open_private_database_file(self, &self.credential_vault_file())
 	}
 
 	/// Owner-only external ProcessGeneration execution authorization.

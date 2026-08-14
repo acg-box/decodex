@@ -120,7 +120,7 @@ replayed.
 | Large tool output and evidence bytes | content-addressed local blob store, with PostgreSQL metadata |
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
 | Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
-| Credentials | narrow versioned HostCredentialStore; PostgreSQL and clients never store or receive credential bytes |
+| Credentials | narrow versioned HostCredentialStore; on macOS its sole normal adapter is the daemon-owned redb file at `~/.decodex/server/credentials.redb`; PostgreSQL and clients never store or receive credential bytes |
 | v0.2 state | Final vNext runtime and installer read none. The reviewed local database reset may preserve the complete credential-negative account/routing/binding tuple, including each enabled state and the mode-valid fixed target, and rebind it to unchanged host-vault records. Only the existing HostCredentialStore owner may perform a confined in-process read for typed credential-negative agreement; no token bytes leave that owner. |
 
 PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
@@ -821,7 +821,9 @@ all account operations to the `decodexd` Account Service. Each app-server proces
 bound to one Account UUID. Shared `~/.codex` supplies configuration, plugins, rollout
 files, and Codex thread visibility. A refresh callback can supply a newer access token
 for the same account, but the account and provider identity never switch under a live
-runner. Account
+runner. The macOS store is one owner-only, single-link redb file opened through the
+typed no-follow path owner. Normal installation launches the signed daemon executable
+directly and has no Keychain, embedded provisioning-profile, or wrapper dependency. Account
 observed state is `unavailable`, `available`, `depleted`, `unknown`, `auth_failed`, or
 `plugin_unready`. Administrative `enabled` is a separate versioned boolean; no observed
 state sets or clears it. Only `managed_run_project_policy` `L6` uses the Project-era quota

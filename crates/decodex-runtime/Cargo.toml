@@ -19,6 +19,7 @@ decodex-postgres  = { workspace = true }
 decodex-protocol  = { workspace = true }
 futures-util      = { workspace = true }
 libc              = { workspace = true }
+redb              = { workspace = true }
 reqwest           = { workspace = true }
 serde             = { workspace = true }
 serde_json        = { workspace = true }

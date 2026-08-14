@@ -70,7 +70,7 @@ impl ProviderIdentity {
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub struct CredentialStoreSchemaVersion(u16);
 impl CredentialStoreSchemaVersion {
-	/// Initial macOS Keychain bundle schema.
+	/// Initial closed host credential-bundle schema.
 	pub const V1: Self = Self(1);
 
 	/// Construct a supported store schema version.

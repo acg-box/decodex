@@ -30,6 +30,9 @@ configuration, and accepted contracts remain executable authority.
 - [Account lifecycle authority](specs/account-lifecycle-authority.md): Account Registry,
   HostCredentialStore, Account Service, current account observations, and the local
   credential-negative rebind.
+- [Credential-vault cutover evidence](evidence/credential-vault-cutover.md): the completed
+  Keychain-to-redb cutover, direct daemon installation, restart proof, and real fixed-account
+  Codex App Server probe.
 - [ProcessGeneration authority](specs/process-generation-authority.md): durable pre-spawn
   fencing, exact process identity, positive-only death evidence, and account-local
   quarantine.
@@ -91,7 +94,8 @@ remain domain integrity records. They are not schema migration records.
 - `crates/decodex-runtime/` owns `decodexd` service assembly and is the only library owner
   that composes infrastructure adapters. It records independent immutable startup
   projections for ProductStore, Quick Task, and ManagedRepository without adding a
-  capability manager.
+  capability manager. On macOS, it is also the sole normal owner of the redb credential
+  vault at `~/.decodex/server/credentials.redb`.
 - `apps/decodexd/` is the sole server composition root. Its normal serve path is
   runtime-only.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol clients. They do not read
@@ -202,7 +206,7 @@ After the operator stops the daemon and bootstraps the replacement database, the
 hidden `decodexd restore-local-account-authority --root ROOT --schema-owner-user USER
 [--schema-owner-credential-env-var ENV]` command reads one strict
 `decodex/local-account-authority-restore/1` JSON document from stdin. It acquires and
-retains the existing same-UID local transport namespace, proves every exact Keychain
+retains the existing same-UID local transport namespace, proves every exact host-vault
 binding before PostgreSQL mutation and again before commit, and accepts only a fresh
 latest-schema target. It restores only current account rows, account order, and routing
 control, then proves the complete tuple by exact readback.
@@ -247,6 +251,7 @@ reset. The implemented hidden commands are `decodexd bootstrap-latest-schema`,
 - Do not route vNext product state through frozen v0.2 SQLite, Linear lanes, the old
   account watcher, an environment token projection, helper/`:8192`, or a compatibility
   fallback.
+- Do not restore a normal Keychain read, dual-store fallback, or client-side vault path.
 - Do not add numbered SQL, Refinery, a schema ledger, a schema generator, or a second
   executable schema owner.
 - Do not make daemon startup resolve schema-owner credentials or execute DDL.

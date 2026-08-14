@@ -14,7 +14,7 @@ not database upgrades.
 
 - the owner-only same-UID Unix WebSocket listener;
 - PostgreSQL runtime connections and product-state adapters;
-- Account Service and HostCredentialStore access;
+- Account Service and sole daemon-owned HostCredentialStore access;
 - Codex app-server child processes;
 - ProcessSupervisor and ProviderAttemptService;
 - repository and worktree effects;
@@ -217,7 +217,7 @@ they are not startup readiness.
 | Global advisor/lead/task/reviewer RoleProfiles | PostgreSQL RoleProfile Authority with immutable revisions and one current pointer per role |
 | Conversations, Turns, RuntimeSessions, history, Context Packs, and routing | PostgreSQL current domain authority |
 | Account product state | PostgreSQL Account Registry |
-| Credentials | one versioned HostCredentialStore |
+| Credentials | one versioned HostCredentialStore; macOS normal runtime uses the owner-only redb file at `~/.decodex/server/credentials.redb` |
 | Provider process lifecycle | ProcessSupervisor plus ProcessGeneration records |
 | External Codex turn effects | ProviderAttemptService plus ProviderAttempt records |
 | Repository operation authority and evidence | PostgreSQL managed-repository state |
@@ -417,6 +417,18 @@ The account system has three owners:
    Codex app-server is reserved for Quick Task execution; it is not an account-health
    or quota transport.
 
+On macOS, `RedbCredentialStore` is the only normal HostCredentialStore adapter. Core
+opens `~/.decodex/server/credentials.redb` through the typed no-follow private-file
+boundary and runtime passes that open file to `redb`. Immediate transactions provide
+atomic compare-and-swap and restart durability. One database writer matches the one
+daemon owner. PostgreSQL and every client remain credential-negative.
+
+The installed service starts the signed `~/.local/bin/decodexd` executable directly.
+The installer verifies its filesystem identity and code-signing team. The old daemon
+app bundle, embedded development profile, Keychain access group, and Python wrapper are
+not part of normal startup. `security-framework` remains only in the separate Codex
+code-signing attestation path.
+
 The exact stable alias derivation and closed alias set remain owned by
 [Account Lifecycle Authority](../specs/account-lifecycle-authority.md). Account Service
 returns each alias. Clients present it and do not derive, rename, or own alias state.
@@ -591,7 +603,7 @@ credential-negative stopped-daemon operation. Its bounded transient input contai
 retained Account UUID, enabled state, account revision, provider binding, credential
 version/fingerprint, and host-store binding. It also contains routing revision, mode,
 fixed target, and the complete account order. After empty-target bootstrap, the command
-restores only that tuple against unchanged host-vault credentials and proves exact
+restores only that tuple against unchanged redb host-vault credentials and proves exact
 readback.
 
 `fixed` mode requires one non-null target in the retained account set and order;

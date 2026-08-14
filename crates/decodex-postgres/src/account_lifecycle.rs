@@ -180,7 +180,7 @@ impl Display for LocalAccountAuthorityRestoreFailure {
 }
 impl std::error::Error for LocalAccountAuthorityRestoreFailure {}
 
-/// Exact input persisted before the Account Service performs a Keychain effect.
+/// Exact input persisted before the Account Service performs a credential-vault effect.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountOperationPreparation {
 	/// Stable finite operation identity.
@@ -561,7 +561,7 @@ impl PostgresStore {
 		rows.into_iter().map(parse_account).collect()
 	}
 
-	/// Persist a finite account operation before any provider or Keychain effect.
+	/// Persist a finite account operation before any provider or credential-vault effect.
 	pub async fn prepare_account_operation(
 		&self,
 		preparation: &AccountOperationPreparation,
@@ -708,7 +708,7 @@ impl PostgresStore {
 		Ok(response)
 	}
 
-	/// Attach the exact provider refresh result before the Keychain compare-and-swap effect.
+	/// Attach the exact provider refresh result before the vault compare-and-swap effect.
 	pub async fn set_account_operation_target(
 		&self,
 		operation_id: &AccountOperationId,
