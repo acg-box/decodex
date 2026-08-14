@@ -18,8 +18,9 @@ use decodex_protocol::{
 	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
 	ConversationHistoryResult, CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision,
 	EventEnvelope, EventPayload, HistoryCursorToken, QueryEnvelope, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, RetainedSessionConfig, RetainedSessionFailure,
-	ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope, SnapshotItem, WireText,
+	QueryResultEnvelope, QueryResultPayload, QuickTaskState, RetainedSessionConfig,
+	RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope,
+	SnapshotItem, WireText,
 };
 
 use crate::{
@@ -2108,4 +2109,214 @@ fn test_fixture_uses_only_typed_bounded_cache_content() {
 	assert_eq!(inspection.records, 1);
 	assert!(!temporary.path().join("not-a-path").exists());
 	assert!(fs::read(client_cache_root(&root).join("current")).is_ok());
+}
+
+#[tokio::test]
+#[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
+async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
+	use crate::quick_tasks::{QuickTaskCommandState, QuickTasksLoadState};
+
+	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
+	let config = profile.retained_session_config().expect("the live retained session is configured");
+	let mut lifecycle =
+		ClientLifecycle::production(config).expect("the production lifecycle is available");
+	let quick_tasks = lifecycle.quick_tasks();
+	let history = lifecycle.history_pager();
+	let cancellation = lifecycle.cancellation();
+	quick_tasks.activate();
+
+	let run = lifecycle.run();
+	tokio::pin!(run);
+	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+	loop {
+		let snapshot = quick_tasks.snapshot();
+		if snapshot.load == QuickTasksLoadState::Ready && snapshot.can_submit {
+			break;
+		}
+		assert!(tokio::time::Instant::now() < ready_deadline, "Quick Tasks did not become ready");
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before Quick Tasks became ready: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	let mut first_conversation = None;
+	let mut first_history_items = 0;
+	for ordinal in 1..=2 {
+		quick_tasks.begin_new();
+		quick_tasks
+			.create(&format!(
+				"Reply briefly with: Decodex sequential live smoke {ordinal} is working."
+			))
+			.expect("the live composer command is accepted for dispatch");
+		let accepted_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+		let conversation_id = loop {
+			let snapshot = quick_tasks.snapshot();
+			match snapshot.command {
+				QuickTaskCommandState::ManualRecovery(action) => {
+					panic!("the live daemon requested manual recovery before starting: {action:?}")
+				},
+				QuickTaskCommandState::OutcomeUnknown => {
+					panic!("the live daemon could not determine whether the command was accepted")
+				},
+				QuickTaskCommandState::Refused => {
+					panic!("the live daemon refused the composed Quick Task")
+				},
+				_ => {},
+			}
+			if let Some(conversation_id) = snapshot.selected.as_ref() {
+				let task = snapshot
+					.tasks
+					.iter()
+					.find(|task| &task.conversation_id == conversation_id)
+					.expect("the selected conversation has a projection");
+				if task.state == QuickTaskState::Ready {
+					break conversation_id.clone();
+				}
+			}
+			assert!(
+				tokio::time::Instant::now() < accepted_deadline,
+				"the live daemon did not finish the composed Quick Task; load={:?}, command={:?}, state={:?}",
+				snapshot.load,
+				snapshot.command,
+				snapshot.selected_task().map(|task| task.state),
+			);
+			tokio::select! {
+				result = &mut run => panic!("live lifecycle stopped before command acceptance: {result:?}"),
+				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			}
+		};
+
+		history.open(conversation_id.clone()).expect("the accepted conversation history opens");
+		let history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+		let mut advanced_visible_items = 0;
+		let history_items = loop {
+			let snapshot = history.snapshot();
+			let visible_items = snapshot.visible.as_ref().map_or(0, |page| page.items.len());
+			if snapshot.visible_source == Some(HistoryPageSource::FreshServer) && visible_items > 0 {
+				match snapshot.cursor {
+					HistoryCursorObservation::NoContinuationObserved => {
+						assert_eq!(snapshot.conversation_id, Some(conversation_id.clone()));
+						break visible_items;
+					},
+					HistoryCursorObservation::ContinuationAvailable
+						if visible_items > advanced_visible_items =>
+					{
+						advanced_visible_items = visible_items;
+						assert_eq!(history.show_next(), HistoryNavigationResult::Moved);
+					},
+					_ => {},
+				}
+			}
+			assert!(
+				tokio::time::Instant::now() < history_deadline,
+				"the accepted conversation remained stuck without complete fresh history; load={:?}, source={:?}, cursor={:?}, visible_items={}, retained_pages={}",
+				snapshot.load,
+				snapshot.visible_source,
+				snapshot.cursor,
+				visible_items,
+				snapshot.retained_pages,
+			);
+			tokio::select! {
+				result = &mut run => panic!("live lifecycle stopped before history readback: {result:?}"),
+				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			}
+		};
+		if ordinal == 1 {
+			first_conversation = Some(conversation_id);
+			first_history_items = history_items;
+		}
+	}
+
+	let first_conversation = first_conversation.expect("the first live conversation completed");
+	assert!(quick_tasks.select(first_conversation.clone()));
+	let baseline_session_revision = quick_tasks
+		.snapshot()
+		.selected_task()
+		.and_then(|task| task.runtime_session_revision)
+		.expect("the completed first conversation has a RuntimeSession revision");
+	quick_tasks
+		.submit("Reply briefly with: Decodex same-thread rehydration is working.")
+		.expect("the later live turn is accepted for dispatch");
+	let continuation_deadline = tokio::time::Instant::now() + Duration::from_secs(120);
+	loop {
+		let snapshot = quick_tasks.snapshot();
+		match snapshot.command {
+			QuickTaskCommandState::ManualRecovery(action) => {
+				panic!("the live daemon requested manual recovery during rehydration: {action:?}")
+			},
+			QuickTaskCommandState::OutcomeUnknown => {
+				panic!("the live daemon could not determine the later-turn outcome")
+			},
+			QuickTaskCommandState::Refused => panic!("the live daemon refused the later live turn"),
+			_ => {},
+		}
+		if snapshot.selected_task().is_some_and(|task| {
+			task.state == QuickTaskState::Ready
+				&& task
+					.runtime_session_revision
+					.is_some_and(|revision| revision > baseline_session_revision)
+		})
+		{
+			break;
+		}
+		assert!(
+			tokio::time::Instant::now() < continuation_deadline,
+			"the later live turn did not advance its RuntimeSession; load={:?}, command={:?}, state={:?}",
+			snapshot.load,
+			snapshot.command,
+			snapshot.selected_task().map(|task| task.state),
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before the later turn completed: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	history
+		.open(first_conversation.clone())
+		.expect("the rehydrated conversation history opens");
+	let continuation_history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	let mut advanced_visible_items = 0;
+	loop {
+		let snapshot = history.snapshot();
+		let visible_items = snapshot.visible.as_ref().map_or(0, |page| page.items.len());
+		if snapshot.visible_source == Some(HistoryPageSource::FreshServer) {
+			match snapshot.cursor {
+				HistoryCursorObservation::NoContinuationObserved
+					if visible_items > first_history_items =>
+				{
+					assert_eq!(snapshot.conversation_id, Some(first_conversation));
+					break;
+				},
+				HistoryCursorObservation::ContinuationAvailable
+					if visible_items > advanced_visible_items =>
+				{
+					advanced_visible_items = visible_items;
+					assert_eq!(history.show_next(), HistoryNavigationResult::Moved);
+				},
+				_ => {},
+			}
+		}
+		assert!(
+			tokio::time::Instant::now() < continuation_history_deadline,
+			"the rehydrated conversation history did not grow; load={:?}, source={:?}, cursor={:?}, visible_items={}, baseline_items={}, retained_pages={}",
+			snapshot.load,
+			snapshot.visible_source,
+			snapshot.cursor,
+			visible_items,
+			first_history_items,
+			snapshot.retained_pages,
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before rehydrated history readback: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	cancellation.cancel();
+	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
+		.await
+		.expect("live lifecycle stops after cancellation");
+	assert_eq!(result, RunResult::Stopped);
 }

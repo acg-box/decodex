@@ -148,6 +148,10 @@ impl WorkItems {
 		work_items
 	}
 
+	#[allow(
+		dead_code,
+		reason = "Factory activation remains gated until the retained session negotiates this capability"
+	)]
 	pub(crate) fn activate(&self) {
 		let mut state = self.lock();
 		state.active = true;

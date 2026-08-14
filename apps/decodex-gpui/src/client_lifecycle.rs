@@ -22,6 +22,7 @@ use decodex_protocol::{
 };
 
 use crate::{
+	accounts::{AccountDispatch, AccountRouteOutcome, AccountsController},
 	client_cache::{
 		CacheAuthority, CacheError, CacheLimits, ClientCache, GenerationInspection,
 		ObjectCertainty, ObjectInput,
@@ -203,6 +204,7 @@ enum Delivery<C> {
 
 enum SessionStep<C> {
 	Delivery(Box<Result<Delivery<C>, RetainedSessionFailure>>),
+	Account(AccountDispatch),
 	Health(HealthDispatch),
 	History(HistoryDispatch),
 	QuickTask(QuickTaskDispatch),
@@ -324,6 +326,7 @@ pub(crate) struct ClientLifecycle {
 	cache_limits: CacheLimits,
 	cache_authority: CacheAuthority,
 	cache: Option<ClientCache>,
+	accounts: AccountsController,
 	health_query: HealthQuery,
 	history_pager: HistoryPager,
 	quick_tasks: QuickTasks,
@@ -386,6 +389,7 @@ impl ClientLifecycle {
 			cache_limits,
 			cache_authority,
 			cache,
+			accounts: AccountsController::production(),
 			health_query: HealthQuery::production(),
 			history_pager,
 			quick_tasks: QuickTasks::production(),
@@ -435,6 +439,11 @@ impl ClientLifecycle {
 	/// Clone the presentation-neutral Health controller before moving the lifecycle task.
 	pub(crate) fn health_query(&self) -> HealthQuery {
 		self.health_query.clone()
+	}
+
+	/// Clone the presentation-neutral account-pool controller.
+	pub(crate) fn accounts(&self) -> AccountsController {
+		self.accounts.clone()
 	}
 
 	/// Clone the presentation-neutral ordinary Quick Tasks controller.
@@ -497,6 +506,7 @@ impl ClientLifecycle {
 				requested_checkpoint.is_some(),
 				connected_checkpoint.as_ref(),
 			);
+			self.accounts.bind_session(generation, self.server_id.clone());
 			self.health_query.bind_session(generation, self.server_id.clone());
 			self.history_pager.bind_session(generation, self.server_id.clone());
 			self.quick_tasks.bind_session(generation, self.server_id.clone());
@@ -504,6 +514,7 @@ impl ClientLifecycle {
 			let failure =
 				self.run_connected_session(io, generation, connected_checkpoint.is_none()).await;
 
+			self.accounts.session_ended(generation);
 			self.health_query.session_ended(generation);
 			self.history_pager.session_ended(generation);
 			self.quick_tasks.session_ended(generation);
@@ -543,6 +554,7 @@ impl ClientLifecycle {
 		I: LifecycleIo,
 	{
 		loop {
+			let accounts = self.accounts.clone();
 			let health_query = self.health_query.clone();
 			let history_pager = self.history_pager.clone();
 			let quick_tasks = self.quick_tasks.clone();
@@ -550,6 +562,8 @@ impl ClientLifecycle {
 			let server_id = self.server_id.clone();
 			let step = tokio::select! {
 				delivery = io.next() => SessionStep::Delivery(Box::new(delivery)),
+				dispatch = accounts.next_dispatch(generation, &server_id),
+					if !requires_snapshot => SessionStep::Account(dispatch),
 				dispatch = health_query.next_dispatch(generation, &server_id),
 					if !requires_snapshot => SessionStep::Health(dispatch),
 				dispatch = history_pager.next_dispatch(generation, &server_id),
@@ -565,6 +579,20 @@ impl ClientLifecycle {
 			}
 
 			match step {
+				SessionStep::Account(dispatch) => {
+					if let Some(command) = dispatch.command() {
+						let send_result = io.send_command(command.clone()).await;
+						if let Err(failure) = send_result {
+							self.accounts.command_send_failed(&dispatch);
+							return failure;
+						}
+						self.accounts.command_sent(&dispatch);
+					} else if let Some(query) = dispatch.query()
+						&& let Err(failure) = io.send_query(query.clone()).await
+					{
+						return failure;
+					}
+				},
 				SessionStep::Health(dispatch) => {
 					if let Err(failure) = io.send_query(dispatch.envelope().clone()).await {
 						return failure;
@@ -653,6 +681,7 @@ impl ClientLifecycle {
 						}
 						self.quick_tasks.apply_event(&quick_task_event);
 						self.work_items.apply_event(&quick_task_event);
+						self.accounts.apply_event(&quick_task_event);
 						let checkpoint = match io.confirm_applied(confirmation) {
 							Ok(checkpoint) => checkpoint,
 							Err(_) => return self.confirmation_failure(),
@@ -669,12 +698,22 @@ impl ClientLifecycle {
 						}
 					},
 					Ok(Delivery::CommandReceipt(receipt)) => {
+						let _ = self.accounts.route_receipt(
+							generation,
+							&self.server_id,
+							&receipt,
+						);
 						let _ =
 							self.quick_tasks.route_receipt(generation, &self.server_id, &receipt);
 						let _ =
 							self.work_items.route_receipt(generation, &self.server_id, &receipt);
 					},
 					Ok(Delivery::CommandResult(result)) => {
+						let _ = self.accounts.route_command_result(
+							generation,
+							&self.server_id,
+							&result,
+						);
 						let _ = self.quick_tasks.route_command_result(
 							generation,
 							&self.server_id,
@@ -777,6 +816,10 @@ impl ClientLifecycle {
 		generation: u64,
 		result: QueryResultEnvelope,
 	) -> Result<(), RetainedSessionFailure> {
+		match self.accounts.route_query_result(generation, &self.server_id, &result) {
+			AccountRouteOutcome::Fresh | AccountRouteOutcome::Refused => return Ok(()),
+			AccountRouteOutcome::Unmatched => {},
+		}
 		match self.work_items.route_query_result(generation, &self.server_id, &result) {
 			WorkItemRouteOutcome::Fresh | WorkItemRouteOutcome::Refused => return Ok(()),
 			WorkItemRouteOutcome::Unmatched => {},

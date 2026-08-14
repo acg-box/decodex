@@ -1,6 +1,9 @@
 //! Deterministic native screenshot capture for the Codex Workbench design review.
 
 #[allow(dead_code)]
+#[path = "../accounts.rs"]
+mod accounts;
+#[allow(dead_code)]
 #[path = "../client_cache.rs"]
 mod client_cache;
 #[allow(dead_code)]
