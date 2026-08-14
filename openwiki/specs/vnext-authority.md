@@ -1126,24 +1126,30 @@ receive a typed refusal before application payload handling.
 Large artifacts use authenticated HTTP, never WebSocket snapshots. Non-loopback binding
 remains disabled until authentication, TLS, authorization, and redaction gates pass.
 
-GPUI is the primary workspace. Current source opens a real shell and window with a
-bounded live Health destination. Every other destination remains a placeholder. The
-Quick Task and WorkItem contracts do not make their shell destinations live, and the
-app is not generally usable. Slice 1 delivers minimal Accounts, Conversation, and
-Health destinations with Quick Task. Slice 2 delivers
-Project, Work, and Run destinations for the bounded managed-work flow. Graph/timeline,
-automation, broad history presentation, and polish are later obligations. SwiftUI stays
-a thin accounts/run-health menubar client over the restricted protocol. GPUI caches are
-bounded, disposable, cursor-paginated, and keyed by server/schema/content hash; project
-opening never eagerly loads all history.
+GPUI is the primary workspace. Current source opens the transparent Workbench with live
+Conversation, Accounts, and Health destinations. One retained same-UID protocol session
+drives these destinations. Conversation creates and continues real Quick Tasks and reads
+bounded cursor-paged history. Accounts presents bounded lifecycle, quota, and routing
+controls without direct database access. The client keeps the deferred WorkItem and
+Project query surface dormant until capability negotiation exists. Project, Work, Run,
+graph, timeline, and automation remain later product slices. GPUI caches are bounded,
+disposable, cursor-paginated, and keyed by server, schema, and content hash. Opening a
+project never loads all history.
 
 ### GPUI history-page cache authority
 
-former server store remains product authority. The private `HistoryPageCache` is only GPUI-local,
-disposable presentation acceleration subordinate to `HistoryPager`. This first slice is
-dormant presentation infrastructure because no current shell destination renders
-`HistoryPager`. The pager keeps one active view and its existing four-page, 32-item,
-1 MiB in-memory window. This slice does not prove user-visible warm history.
+`decodexd` and bundled SQLite remain product authority. The private `HistoryPageCache` is
+only GPUI-local, disposable presentation acceleration subordinate to `HistoryPager`.
+Conversation renders the pager. The pager keeps one active view and its four-page,
+32-item, 1 MiB in-memory window. A terminal event refreshes an open Conversation. When
+another Conversation is open, the pager records a bounded invalidation and bypasses the
+cached head on the next open. A fresh server page must replace it.
+
+The remaining issue-specific implementation and acceptance text in this subsection is
+historical XY-1429 provenance. Its references to an unlanded or dormant slice, its old
+write set, and its deferred Conversation destination do not describe the current
+product. The current authority is the Local Product V1 contract and the live GPUI
+evidence page.
 
 `ClientLifecycle` owns one explicit GPUI cache parent. It starts with the lexical
 `std::env::temp_dir()`. On macOS only, when that path starts with the `/var` component,
