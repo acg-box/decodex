@@ -61,14 +61,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
             postgres_log=root / "logs/postgres.log",
             service_log=root / "logs/local-service.log",
             launch_agent=root / "space.decodex.local-service.plist",
-            decodexd=(
-                root
-                / "bin"
-                / "decodexd.app"
-                / "Contents"
-                / "MacOS"
-                / "decodexd"
-            ),
+            decodexd=root / "bin/decodexd",
             decodex_cli=root / "bin/decodex",
             codex=root / "codex-bin/codex",
             postgres=root / "bin/postgres",
@@ -77,33 +70,11 @@ class LocalServiceInstallerTests(unittest.TestCase):
             psql=root / "bin/psql",
         )
 
-    def daemon_wrapper(self, paths):
-        wrapper = paths.daemon_wrapper
+    def daemon_executable(self, paths):
         return {
-            "schema": "decodex/daemon-wrapper/1",
-            "wrapper_path": str(wrapper),
-            "executable_path": str(paths.decodexd),
-            "executable_sha256": "1" * 64,
-            "executable_byte_count": 1024,
-            "info_plist_path": str(wrapper / "Contents/Info.plist"),
-            "info_plist_sha256": "2" * 64,
-            "bundle_identifier": "box.acg.decodex.daemon",
-            "bundle_executable": "decodexd",
-            "bundle_package_type": "APPL",
-            "background_only": True,
-            "embedded_profile_path": str(
-                wrapper / "Contents/embedded.provisionprofile"
-            ),
-            "embedded_profile_sha256": "3" * 64,
+            "identifier": "box.acg.decodex.daemon",
             "team_identifier": "T54QFA7W2S",
-            "application_identifier": "T54QFA7W2S.box.acg.decodex.daemon",
-            "profile_expires_at": "2099-01-01T00:00:00Z",
-            "profile_channel": "development",
-            "signed_entitlements_sha256": "4" * 64,
-            "keychain_access_groups": [
-                "T54QFA7W2S.box.acg.decodex.daemon"
-            ],
-            "signature_identity_sha256": "5" * 64,
+            "sha256": "1" * 64,
         }
 
     def account_document(self, account_ids: list[str]) -> dict[str, object]:
@@ -167,6 +138,9 @@ class LocalServiceInstallerTests(unittest.TestCase):
             "staging_config",
             "receipt_phase",
             "finalize_account",
+            "daemon_wrapper",
+            "embedded.provisionprofile",
+            "keychain-access-groups",
         ):
             with self.subTest(term=retired_term):
                 self.assertNotIn(retired_term, source.lower())
@@ -190,13 +164,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 repository=REPO_ROOT,
                 root=root,
                 launch_agent=root / "agent.plist",
-                decodexd=(
-                    root
-                    / "decodexd.app"
-                    / "Contents"
-                    / "MacOS"
-                    / "decodexd"
-                ),
+                decodexd=root / "decodexd",
                 decodex_cli=root / "decodex",
                 codex=root / "codex",
                 postgres=root / "postgres",
@@ -221,10 +189,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
             paths = self.paths(Path(temp))
             config = self.module.render_config(paths, 501)
             config_document = tomllib.loads(config.decode("utf-8"))
-            wrapper = self.daemon_wrapper(paths)
-            launch_agent = plistlib.loads(
-                self.module.render_launch_agent(paths, wrapper)
-            )
+            launch_agent = plistlib.loads(self.module.render_launch_agent(paths))
 
         self.assertEqual(config_document["active_profile"], "local")
         self.assertEqual(config_document["profiles"]["local"]["policy"], "same_uid")
@@ -271,7 +236,53 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 ["config.toml"],
             )
 
-    def test_cli_signature_must_match_wrapper_team_and_hardened_runtime(self) -> None:
+    def test_daemon_digest_refuses_symlink_link_alias_and_unsafe_mode(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            executable = root / "decodexd"
+            executable.write_bytes(b"signed-daemon-fixture")
+            executable.chmod(0o755)
+            expected = self.module.hashlib.sha256(
+                b"signed-daemon-fixture"
+            ).hexdigest()
+
+            self.assertEqual(
+                self.module.executable_sha256(executable, "Decodex daemon"),
+                expected,
+            )
+
+            symlink = root / "decodexd-symlink"
+            symlink.symlink_to(executable)
+            with self.assertRaisesRegex(
+                self.module.InstallError,
+                "executable authority is unsafe",
+            ):
+                self.module.executable_sha256(symlink, "Decodex daemon")
+
+            alias = root / "decodexd-alias"
+            os.link(executable, alias)
+            with self.assertRaisesRegex(
+                self.module.InstallError,
+                "executable authority is unsafe",
+            ):
+                self.module.executable_sha256(executable, "Decodex daemon")
+            alias.unlink()
+
+            executable.chmod(0o775)
+            with self.assertRaisesRegex(
+                self.module.InstallError,
+                "executable authority is unsafe",
+            ):
+                self.module.executable_sha256(executable, "Decodex daemon")
+
+            executable.chmod(0o644)
+            with self.assertRaisesRegex(
+                self.module.InstallError,
+                "executable authority is unsafe",
+            ):
+                self.module.executable_sha256(executable, "Decodex daemon")
+
+    def test_cli_signature_must_match_daemon_team_and_hardened_runtime(self) -> None:
         verify = subprocess.CompletedProcess(
             ["/usr/bin/codesign"],
             0,
@@ -288,7 +299,18 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "CodeDirectory v=20500 size=512 flags=0x10000(runtime) hashes=8\n"
             ),
         )
-        with mock.patch.object(self.module, "run", side_effect=[verify, details]) as run:
+        with (
+            mock.patch.object(
+                self.module,
+                "executable_sha256",
+                return_value="0" * 64,
+            ),
+            mock.patch.object(
+                self.module,
+                "run",
+                side_effect=[verify, details],
+            ) as run,
+        ):
             result = self.module.verify_signed_cli(
                 Path("/private/decodex"),
                 "T54QFA7W2S",
@@ -312,10 +334,17 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "CodeDirectory v=20500 size=512 flags=0x10000(runtime) hashes=8\n"
             ),
         )
-        with mock.patch.object(
-            self.module,
-            "run",
-            side_effect=[verify, wrong_team],
+        with (
+            mock.patch.object(
+                self.module,
+                "executable_sha256",
+                return_value="0" * 64,
+            ),
+            mock.patch.object(
+                self.module,
+                "run",
+                side_effect=[verify, wrong_team],
+            ),
         ):
             with self.assertRaisesRegex(
                 self.module.InstallError,
@@ -326,22 +355,22 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     "T54QFA7W2S",
                 )
 
-    def test_launch_agent_wrapper_binding_is_verified(self) -> None:
+    def test_launch_agent_daemon_binding_is_verified(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             paths.launch_agent.parent.mkdir(parents=True, exist_ok=True)
             paths.launch_agent.write_bytes(
-                self.module.render_launch_agent(paths, self.daemon_wrapper(paths))
+                self.module.render_launch_agent(paths)
             )
             paths.launch_agent.chmod(0o600)
-            expected = self.daemon_wrapper(paths)
+            expected = self.daemon_executable(paths)
             with mock.patch.object(
                 self.module,
-                "inspect_daemon_wrapper",
+                "inspect_daemon_executable",
                 return_value=expected,
             ):
                 self.assertEqual(
-                    self.module.verify_daemon_wrapper(
+                    self.module.verify_daemon_executable(
                         paths,
                         expected,
                         require_launch_agent=True,
@@ -520,7 +549,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             paths.launch_agent.write_bytes(
-                self.module.render_launch_agent(paths, self.daemon_wrapper(paths))
+                self.module.render_launch_agent(paths)
             )
             paths.launch_agent.chmod(0o600)
             self.assertTrue(
@@ -586,15 +615,15 @@ class LocalServiceInstallerTests(unittest.TestCase):
     def test_install_bootstraps_fresh_and_validates_existing_database(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths, namespace_lock = self.namespace_lock(Path(temp))
-            wrapper = self.daemon_wrapper(paths)
+            daemon = self.daemon_executable(paths)
             process = object()
             try:
                 with (
                     mock.patch.object(
                         self.module,
-                        "verify_daemon_wrapper",
-                        return_value=wrapper,
-                    ) as verify_wrapper,
+                        "verify_daemon_executable",
+                        return_value=daemon,
+                    ) as verify_daemon,
                     mock.patch.object(
                         self.module,
                         "verify_signed_cli",
@@ -644,7 +673,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                             paths,
                             os.geteuid(),
                             namespace_lock,
-                            wrapper,
+                            daemon,
                         )
             finally:
                 namespace_lock.close()
@@ -658,7 +687,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
             launch_agent["ProgramArguments"][0:2],
             [str(paths.decodexd), "supervise-local"],
         )
-        self.assertEqual(verify_wrapper.call_count, 4)
+        self.assertEqual(verify_daemon.call_count, 4)
         self.assertEqual(verify_cli.call_count, 4)
         self.assertEqual(
             ordered.mock_calls,
@@ -725,14 +754,14 @@ class LocalServiceInstallerTests(unittest.TestCase):
     def test_installed_config_readback_must_match_before_database_start(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
-            wrapper = self.daemon_wrapper(paths)
+            daemon = self.daemon_executable(paths)
             namespace_lock = FakeNamespaceLock()
             with (
                 mock.patch.object(self.module, "ensure_directories"),
                 mock.patch.object(
                     self.module,
-                    "verify_daemon_wrapper",
-                    return_value=wrapper,
+                    "verify_daemon_executable",
+                    return_value=daemon,
                 ),
                 mock.patch.object(self.module, "verify_signed_cli"),
                 mock.patch.object(self.module, "atomic_write"),
@@ -755,7 +784,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                         paths,
                         os.geteuid(),
                         namespace_lock,
-                        wrapper,
+                        daemon,
                     )
             initialize.assert_not_called()
             start.assert_not_called()
@@ -764,7 +793,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
             args = argparse.Namespace(no_launch=False)
-            wrapper = self.daemon_wrapper(paths)
+            daemon = self.daemon_executable(paths)
             namespace_lock = FakeNamespaceLock()
             output = io.StringIO()
             with (
@@ -773,8 +802,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 mock.patch.object(self.module, "validate_host", return_value=501),
                 mock.patch.object(
                     self.module,
-                    "inspect_daemon_wrapper",
-                    return_value=wrapper,
+                    "inspect_daemon_executable",
+                    return_value=daemon,
                 ),
                 mock.patch.object(self.module, "verify_signed_cli"),
                 mock.patch.object(self.module, "ensure_installer_namespace_layout"),

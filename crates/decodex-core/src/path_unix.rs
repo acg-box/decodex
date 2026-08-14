@@ -21,8 +21,8 @@ use std::{
 
 use libc::{
 	AT_SYMLINK_NOFOLLOW, DIR, F_DUPFD_CLOEXEC, O_CLOEXEC, O_CREAT, O_DIRECTORY, O_EXCL, O_NOFOLLOW,
-	O_NONBLOCK, O_RDONLY, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_int, c_uint, mode_t, stat,
-	uid_t,
+	O_NONBLOCK, O_RDONLY, O_RDWR, O_WRONLY, S_IFDIR, S_IFLNK, S_IFMT, S_IFREG, c_int, c_uint,
+	mode_t, stat, uid_t,
 };
 
 use crate::{
@@ -163,6 +163,41 @@ pub(crate) fn read_private_file(
 	}
 
 	Ok(bytes)
+}
+
+pub(crate) fn open_private_database_file(
+	paths: &DecodexPaths,
+	path: &Path,
+) -> Result<File, PathError> {
+	let (parent, name) = open_file_parent(paths, path)?;
+	let name = c_name(&name)?;
+	let mut created = false;
+
+	let descriptor = match open_private_database_file_at(&parent, &name, false) {
+		Ok(descriptor) => descriptor,
+		Err(PathError::Io { kind: ErrorKind::NotFound, .. }) => {
+			match open_private_database_file_at(&parent, &name, true) {
+				Ok(descriptor) => {
+					created = true;
+					descriptor
+				},
+				Err(PathError::Io { kind: ErrorKind::AlreadyExists, .. }) =>
+					open_private_database_file_at(&parent, &name, false)?,
+				Err(error) => return Err(error),
+			}
+		},
+		Err(error) => return Err(error),
+	};
+	let file = file_from_descriptor(descriptor, IoOperation::Open)?;
+
+	verify_private_database_file_metadata(
+		&file.metadata().map_err(|error| paths::io_error(IoOperation::Inspect, error))?,
+	)?;
+	if created {
+		parent.sync_all().map_err(|error| paths::io_error(IoOperation::Sync, error))?;
+	}
+
+	Ok(file)
 }
 
 pub(crate) fn atomic_write(
@@ -448,6 +483,31 @@ fn open_private_file_at(parent: &File, name: &OsStr) -> Result<File, PathError> 
 	Ok(file)
 }
 
+fn open_private_database_file_at(
+	parent: &File,
+	name: &CStr,
+	create: bool,
+) -> Result<RawFd, PathError> {
+	let flags = O_RDWR
+		| O_NONBLOCK
+		| O_NOFOLLOW
+		| O_CLOEXEC
+		| if create { O_CREAT | O_EXCL } else { 0 };
+	// SAFETY: `parent` is open, `name` is NUL-terminated, and a successful
+	// `openat` returns one new descriptor owned by the caller.
+	let descriptor = unsafe {
+		libc::openat(parent.as_raw_fd(), name.as_ptr(), flags, PRIVATE_FILE_MODE as c_uint)
+	};
+
+	if descriptor == -1 {
+		let error = io::Error::last_os_error();
+
+		return Err(classify_at_error(parent, name, error, ExpectedKind::File));
+	}
+
+	Ok(descriptor)
+}
+
 fn create_temporary_file(parent: &File) -> Result<(OsString, File), PathError> {
 	for _ in 0..8 {
 		let mut random = [0_u8; 16];
@@ -581,6 +641,21 @@ fn verify_private_file_metadata(metadata: &Metadata) -> Result<(), PathError> {
 		|| mode & 0o077 != 0
 		|| mode & 0o400 == 0
 		|| mode & 0o111 != 0
+	{
+		return Err(PathError::InsecurePermissions);
+	}
+
+	Ok(())
+}
+
+fn verify_private_database_file_metadata(metadata: &Metadata) -> Result<(), PathError> {
+	if !metadata.is_file() {
+		return Err(PathError::UnexpectedFileKind);
+	}
+
+	if metadata.uid() != effective_user_id()
+		|| metadata.mode() & 0o777 != PRIVATE_FILE_MODE
+		|| metadata.nlink() != 1
 	{
 		return Err(PathError::InsecurePermissions);
 	}

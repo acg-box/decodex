@@ -10,7 +10,7 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(target_os = "macos")] use crate::host_credentials::MacosKeychainCredentialStore;
+#[cfg(target_os = "macos")] use crate::host_credentials::RedbCredentialStore;
 use crate::{
 	BoundServer, ProtocolServer, ServerConfig, ServerError,
 	account_api::AccountApiRuntime,
@@ -561,8 +561,7 @@ async fn compose_macos_account_service(
 		Ok(Err(_)) => return Err(DoctorIssue::Authentication),
 		Err(_) => return Err(DoctorIssue::Integrity),
 	};
-	let credentials =
-		MacosKeychainCredentialStore::new(paths).map_err(|_| DoctorIssue::Integrity)?;
+	let credentials = RedbCredentialStore::new(paths).map_err(|_| DoctorIssue::Integrity)?;
 	let credentials: Arc<dyn crate::HostCredentialStore> = Arc::new(credentials);
 	let account_profiles =
 		Some(AccountProfileRuntime::new(postgres.clone(), Arc::clone(&credentials)));

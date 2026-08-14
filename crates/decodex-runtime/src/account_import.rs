@@ -23,7 +23,7 @@ const MAX_PROVIDER_ACCOUNT_ID_BYTES: usize = 512;
 const MAX_PLAN_TYPE_BYTES: usize = 64;
 const MAX_EMAIL_BYTES: usize = 320;
 
-/// Parsed complete credential input retained only until the Account Service writes Keychain.
+/// Parsed complete credential input retained only until the Account Service writes the vault.
 pub(crate) struct ImportedCredential {
 	pub provider: ProviderIdentity,
 	pub bundle: CredentialSecretBundle,

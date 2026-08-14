@@ -114,41 +114,35 @@ Create-if-absent, exact-version compare-and-swap, and exact-version delete are a
 for one Account UUID. A stale version, wrong provider binding, duplicate provider
 identity, missing item, or unavailable backend is a typed result.
 
-For macOS, the adapter uses non-synchronizing Keychain generic-password items with
-item label `box.acg.decodex` and service namespace
-`box.acg.decodex.credentials.v1`. The Keychain account name is the canonical Account
-UUID. Accessibility is after first unlock, this device only. The daemon identity
-defined below is the only reader and writer. Locked, denied, malformed, or unsupported
-Keychain state fails closed.
+For macOS, the accepted adapter is `RedbCredentialStore`. It owns one fixed database at
+`~/.decodex/server/credentials.redb`. `decodex-core` opens the file through its typed,
+descriptor-anchored path owner. The open procedure refuses symbolic-link traversal,
+wrong ownership, a non-regular file, a link count other than one, or permissions other
+than owner read/write. The file mode is `0600`. Runtime passes the already-open file to
+the official `redb` crate so the storage engine does not re-resolve a checked path.
 
-The daemon runs only as one no-UI app-like wrapper with bundle identifier
-`box.acg.decodex.daemon` and main executable `Contents/MacOS/decodexd`. The selected
-local dogfood identity is provisioned team `T54QFA7W2S`, application identifier
-`T54QFA7W2S.box.acg.decodex.daemon`, and profile channel `development`. That
-application identifier is the daemon's sole effective Keychain access group. Every
-Keychain read, create, compare-and-swap, delete, and metadata query sets that exact
-group. Metadata verification includes the returned `agrp` attribute. A raw workspace
-binary, a raw helper in the outer app, or `~/.local/bin/decodexd` can be a build input
-or retired artifact. It is never an Account Lifecycle execution entry.
+The vault uses one ACID write transaction for each store operation and immediate
+durability before success. `redb` supplies restart recovery and one-writer exclusion.
+The daemon is the only normal reader and writer. GPUI, the native app, the menu bar,
+Swift, and the CLI remain credential-negative protocol clients. There is no normal
+Keychain read, dual read, fallback, token export, or remote vault sync.
 
-The wrapper has one fixed `Info.plist`, a valid hardened-runtime signature, an embedded
-provisioning profile, and exact signed entitlements. The profile, signature, and
-entitlements must agree on bundle identifier, application identifier, and team. The
-macOS provisioning profile must contain the single canonical team allowlist
-`T54QFA7W2S.*`; the signed entitlement must narrow that allowlist to the sole effective
-group `T54QFA7W2S.box.acg.decodex.daemon`. Both sets are closed: missing, extra, or
-duplicate values refuse. The profile must contain at least one registered device and
-must not be an all-device profile. This proves the `development` profile channel
-without applying the non-macOS `get-task-allow` profile rule. It is not public
-distribution or notarization evidence.
-The wrapper composer and verifier are deterministic and daemon-specific. They do not
-accept arbitrary identities, profiles, entitlements, groups, channels, or fallback
-binaries. SwiftUI and the CLI remain clients and receive no Keychain authority.
+The application-layer vault is plaintext. Its v1 security boundary is the private
+owner-only filesystem namespace plus host disk encryption. It does not claim protection
+from root or a malicious process that already runs as the same user. Adding
+application-layer encryption, key rotation, or a stronger same-user isolation boundary
+requires a separate accepted design.
 
-The Linux backend is a later `AccountLifecycleReady` obligation. It must be selected
-explicitly and must prove persistent private storage, atomic replace, exact-version
-compare-and-swap, delete, and restart readback. It has no environment or plaintext
-fallback.
+The normal macOS service starts `/Users/USER/.local/bin/decodexd` directly. The installer
+verifies its owner, mode, single-link identity, digest, strict code signature, hardened
+runtime, and signing team. Normal startup has no daemon app bundle, embedded development
+provisioning profile, Keychain entitlement, or Python wrapper. The macOS
+`security-framework` dependency remains only for canonical Codex executable and child
+code-signing attestation; it is not a credential backend.
+
+Linux host acceptance is a later `AccountLifecycleReady` obligation. It must select one
+explicit persistent private adapter and prove the same path, atomicity, compare-and-swap,
+delete, and restart contracts. It has no environment or ambient-auth fallback.
 
 ## Versioned account controls
 
@@ -498,7 +492,7 @@ The command does not restore profiles, quotas, operations, conversations, sessio
 process generations, attempts, usage, or history. The stdin bytes and accepted tuple are
 transient and are not persisted as a document, receipt, or log. Output is one bounded
 JSON object with only `classification` and `account_count`. It does not include database,
-Keychain, input, provider, account, or credential text. The command is not a public
+vault, input, provider, account, or credential text. The command is not a public
 account API, generic attestation framework, metadata sidecar, product importer, source
 parser, bridge, bulk operation, backup/rollback mechanism, receipt/finalizer,
 compatibility branch, or fallback.
@@ -512,7 +506,7 @@ surface.
 
 | Obligation | `MacDogfoodReady` | Final `AccountLifecycleReady` |
 | --- | --- | --- |
-| Host secret backend | macOS Keychain adapter accepted | macOS plus an explicitly selected persistent Linux backend |
+| Host secret backend | daemon-owned macOS redb vault accepted | macOS plus an explicitly selected persistent Linux backend |
 | Exact-build auth | Initial projection and refresh callback proved for each accepted macOS build | Proved for every supported platform/build |
 | Account lifecycle | Enrollment/import, stable derived alias, list, enable/disable, logout, refresh/CAS, and startup reconciliation | Same contract across all supported hosts plus full fault acceptance |
 | Routing | Initial eligible quota-aware fixed/balanced selection and explicit manual recovery | Automatic same-thread fallback and all-depleted wake after their later gate |

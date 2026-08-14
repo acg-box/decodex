@@ -425,7 +425,8 @@ only a closed `classification` and `account_count`.
 MacDogfoodReady requires:
 
 - a fresh latest-schema PostgreSQL 18 database or the accepted local reset result;
-- the signed daemon wrapper, exact Keychain identity/access group, and same-UID transport;
+- one directly signed hardened-runtime daemon executable, the owner-only single-link
+  redb credential vault, and same-UID transport;
 - Account Registry/HostCredentialStore exact bindings and routing controls;
 - all four global RoleProfiles from the atomic typed configuration bootstrap, including a current
   `task` profile;
