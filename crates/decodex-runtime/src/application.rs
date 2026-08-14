@@ -39,8 +39,9 @@ use decodex_protocol::{
 	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, QueryEnvelope, QueryPayload, QueryResultPayload, QuickTaskListCursor,
-	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
+	MAX_HISTORY_PAGE_SIZE, ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
+	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
+	QuickTaskRecoveryAction,
 	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
 	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
 	ResetCardOperationResult, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem,
@@ -187,7 +188,7 @@ enum StoredAccountCommandOutcome {
 		schema: String,
 		entity_id: EntityId,
 		entity_revision: EntityRevision,
-		result: ResultPayload,
+		result: Box<ResultPayload>,
 		event: Box<EventPayload>,
 	},
 	Rejected {
@@ -1478,6 +1479,12 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::RegisterProject { .. }
+			| CommandPayload::CreateWorkItem { .. }
+			| CommandPayload::StartWorkItem { .. }
+			| CommandPayload::AcceptWorkItem { .. } => Err(application_unavailable(
+				"managed Factory commands are not available in Local Product V1",
+			)),
 			CommandPayload::CreateQuickTask { .. }
 			| CommandPayload::ResumeQuickTaskRouting { .. }
 			| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
@@ -1564,6 +1571,7 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ListProjects => QueryResultPayload::Projects(ProjectListResult::Unavailable),
 			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
 				self.quick_task_list(after.as_ref(), page_size.get()).await,
 			),
@@ -2822,7 +2830,7 @@ fn stored_account_command_outcome(
 			schema: ACCOUNT_COMMAND_RECEIPT_SCHEMA.to_owned(),
 			entity_id: publication.entity_id.clone(),
 			entity_revision: publication.entity_revision,
-			result: publication.result.clone(),
+			result: Box::new(publication.result.clone()),
 			event: Box::new(publication.event.clone()),
 		},
 		Err(error) => StoredAccountCommandOutcome::Rejected {
@@ -2854,7 +2862,7 @@ fn decode_account_command_receipt(
 				channel: Channel::AccountsHealth,
 				entity_id,
 				entity_revision,
-				result,
+				result: *result,
 				event: *event,
 			})),
 		StoredAccountCommandOutcome::Rejected { schema, error }

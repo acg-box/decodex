@@ -227,7 +227,7 @@ decodex-publisher validate-social
   run the independently configured daemon service.
   The macOS source-install path provisions that service with
   `scripts/macos/install_decodex_local_service.py`; its Rust supervisor owns the
-  PostgreSQL and daemon process generations.
+  former server store and daemon process generations.
 - Uses one finite startup retry schedule for daemon transport and retryable row-scoped
   cold-cache results while the independently supervised observer warms. Permanent
   profile and Reset Card failures remain row-local. It does not retry consume, replace

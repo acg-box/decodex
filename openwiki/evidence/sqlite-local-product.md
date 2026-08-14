@@ -28,10 +28,30 @@ credential fingerprint.
   readback, owner-private mode, and byte-for-byte source retention.
 - Installer tests cover fresh install, direct LaunchAgent composition, transfer ordering,
   bounded subprocesses, signature checks, account-count readback, and source retention.
-- Runtime and daemon focused checks compile without PostgreSQL. Daemon signal tests cover
+- Runtime and daemon focused checks compile without former server store. Daemon signal tests cover
   SIGINT, SIGTERM, exact socket cleanup, and stale-socket recovery after SIGKILL. In the full
   nextest run, these real cold-start tests reserve all global test threads while retaining their
   20-second startup bound.
+
+## Workbench and account-affinity correction
+
+The 2026-08-14 correction restores the accepted transparent GPUI Workbench from its exact
+committed source. It includes the conversation-first surface, mounted left and right sidebars,
+`Command-B` and `Command-Shift-B` panel controls, symmetric 240 ms motion, the context inspector,
+and the floating composer. GPUI and its platform crate now come only from the official Zed
+repository at one pinned revision. A deterministic native visual capture completed successfully.
+
+The restart integration test now imports two accounts. It starts one conversation on account A,
+reopens SQLite, changes the global route to account B, and starts an independent conversation on
+B. It then resumes the first conversation on its original account and Codex thread. The replay
+still contains one provider dispatch intent. This proves that global route changes apply to new
+conversations and do not break the cache affinity of an existing conversation.
+
+The obsolete server-store crate and its compatibility configuration were deleted. A repository
+reverse scan finds no remaining source, configuration, documentation, or dependency reference to
+that removed implementation. The current local-database gate passed with schema version 2, WAL,
+both migration digests, and the exact 28-table inventory. `cargo test --workspace --all-targets`
+also passed on stable Rust with the Xcode beta Metal toolchain.
 
 ## Signed live acceptance
 
@@ -42,7 +62,7 @@ the three fixed executable identifiers. The installer then reported:
 - SQLite active as the local database;
 - six accounts available after the one-shot transfer;
 - the transfer was not repeated during final-source reinstall;
-- the retired PostgreSQL directory and redb vault retained; and
+- the retired former server store directory and redb vault retained; and
 - the direct `decodexd serve` LaunchAgent running.
 
 A fresh real Quick Task conversation against that final installed set completed one Codex
@@ -86,5 +106,5 @@ One complete `cargo make check` run finished successfully on the final source. I
 
 The final Rust advisory scan reports zero vulnerabilities. Its information-only result remains
 the pre-existing baseline of four unmaintained and two unsound transitive packages. Dependency
-inspection confirms that normal `decodexd` composition contains neither PostgreSQL nor redb;
+inspection confirms that normal `decodexd` composition contains neither former server store nor redb;
 redb is present only in the separate one-shot transfer executable.

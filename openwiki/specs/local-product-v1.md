@@ -51,6 +51,9 @@ bounded inline value or a digest and length.
 12. V1 permits one non-dead ProcessGeneration per account. A second initial request for
     that account fails before provider effect with `RestoreProcessReadiness`; it must not
     become acceptance ambiguity.
+13. Account affinity is scoped to a Conversation. Its initial Routing Decision binds the
+    RuntimeSession and Codex thread to one account. Later Turns do not re-evaluate global
+    routing. Independent Conversations can bind to different accounts.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -65,7 +68,8 @@ prevent an implicit duplicate effect.
 
 A terminal Quick Task keeps its Conversation, history, RuntimeSession, selected account,
 Codex thread, and next Turn sequence. A later user Turn can bind a SameThread continuation
-after the daemon restarts.
+after the daemon restarts. If the bound account becomes depleted, V1 fails closed instead
+of switching the Conversation in place and losing provider cache affinity.
 
 ## Credential boundary
 
@@ -96,7 +100,7 @@ The following are outside V1 and must not activate a second store:
 
 Acceptance requires:
 
-- a fresh installation that needs no PostgreSQL, redb, or Keychain runtime access;
+- a fresh installation that needs no separate database server, redb, or Keychain runtime access;
 - exact database initialization, reopen, migration, inventory, and integrity checks;
 - bounded idempotent transfer of the current account pool with source retention;
 - one real Codex app-server response;

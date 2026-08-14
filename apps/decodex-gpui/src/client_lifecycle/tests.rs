@@ -162,7 +162,7 @@ impl PendingSendControl {
 
 enum SessionAction {
 	Snapshot(SnapshotEnvelope),
-	Event(EventEnvelope),
+	Event(Box<EventEnvelope>),
 	HistoryPage { next_cursor: Option<&'static str> },
 	Fail(RetainedSessionFailure),
 	FailAfterQuery(RetainedSessionFailure),
@@ -241,7 +241,7 @@ impl FakeSession {
 					cache_root: self.cache_root.clone(),
 				};
 
-				Ok(Delivery::Event { event, confirmation })
+				Ok(Delivery::Event { event: *event, confirmation })
 			},
 			SessionAction::HistoryPage { next_cursor } => {
 				let query = query.expect("history response waits for one outbound query");
@@ -728,7 +728,6 @@ fn retained_config(cache_parent: &Path, server_id: &str) -> RetainedSessionConfi
 	let config = format!(
 		r#"version = 1
 active_profile = "local"
-postgres = {{}}
 cache = {{}}
 
 [profiles.local]
@@ -811,8 +810,9 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	let routes = queries
 		.iter()
 		.map(|query| match &query.payload {
-			QueryPayload::GetConversationHistory { conversation_id, after, .. } =>
-				(conversation_id.clone(), after.clone()),
+			QueryPayload::GetConversationHistory { conversation_id, after, .. } => {
+				(conversation_id.clone(), after.clone())
+			},
 			_ => panic!("history pager sends only ConversationHistory queries"),
 		})
 		.collect::<Vec<_>>();
@@ -1618,7 +1618,7 @@ async fn event_publication_retains_the_complete_authoritative_state_before_confi
 		vec![connected(
 			vec![
 				SessionAction::Snapshot(snapshot),
-				SessionAction::Event(event(6, "first", 3)),
+				SessionAction::Event(Box::new(event(6, "first", 3))),
 				SessionAction::Cancel,
 			],
 			None,
@@ -1662,7 +1662,10 @@ async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state(
 				None,
 			),
 			connected(
-				vec![SessionAction::Event(event(8, "system", 4)), SessionAction::Cancel],
+				vec![
+					SessionAction::Event(Box::new(event(8, "system", 4))),
+					SessionAction::Cancel,
+				],
 				Some(checkpoint(INSTANCE, 7)),
 			),
 		],
@@ -1782,7 +1785,7 @@ async fn snapshot_fallback_rejects_events_until_verified_rebuild_completes() {
 				None,
 			),
 			ConnectAction::Session {
-				actions: vec![SessionAction::Event(event(3, "old", 2))].into(),
+				actions: vec![SessionAction::Event(Box::new(event(3, "old", 2)))].into(),
 				checkpoint: None,
 				server_id: SERVER,
 				instance_id: "publication-b",

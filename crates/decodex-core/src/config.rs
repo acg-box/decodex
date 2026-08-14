@@ -101,8 +101,8 @@ impl Debug for DecodexConfig {
 
 /// Client-visible projection of the global configuration.
 ///
-/// Retired PostgreSQL data and cache policy are consumed as opaque TOML values. A
-/// client validates only profile authority and cannot reinterpret server-owned state.
+/// Server-owned cache policy is consumed as an opaque TOML value. A client validates only
+/// profile authority and cannot reinterpret server-owned state.
 #[derive(Clone)]
 pub struct DecodexClientConfig {
 	version: u32,
@@ -321,10 +321,6 @@ struct RawConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	/// Accepted only so an existing local config can be replaced without a flag day.
-	/// No runtime code can inspect or use this retired section.
-	#[serde(default, rename = "postgres")]
-	_legacy_postgres: Option<IgnoredAny>,
 	cache: RawCacheConfig,
 }
 
@@ -334,8 +330,6 @@ struct RawClientConfig {
 	version: u32,
 	active_profile: ProfileName,
 	profiles: BTreeMap<ProfileName, RawProfile>,
-	#[serde(default, rename = "postgres")]
-	_postgres: Option<IgnoredAny>,
 	#[serde(rename = "cache")]
 	_cache: IgnoredAny,
 }

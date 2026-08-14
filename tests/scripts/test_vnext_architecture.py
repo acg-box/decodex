@@ -24,22 +24,16 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
     def test_database_is_one_discoverable_workspace_owner(self) -> None:
         workspace = toml("Cargo.toml")["workspace"]
         members = set(workspace["members"])
-        excluded = set(workspace.get("exclude", []))
         dependencies = workspace["dependencies"]
         self.assertIn("database", members)
         self.assertIn("database/transfer", members)
-        self.assertNotIn("crates/decodex-postgres", members)
-        self.assertIn("crates/decodex-postgres", excluded)
-        self.assertNotIn("decodex-postgres", dependencies)
-        self.assertNotIn("tokio-postgres", dependencies)
         self.assertIn("bundled", dependencies["rusqlite"]["features"])
 
-    def test_normal_runtime_has_no_postgres_or_redb_dependency(self) -> None:
+    def test_normal_runtime_has_no_transfer_store_dependency(self) -> None:
         runtime = toml("crates/decodex-runtime/Cargo.toml")
         dependencies = runtime["dependencies"]
         self.assertIn("decodex-database", dependencies)
-        for retired in ("decodex-postgres", "tokio-postgres", "redb"):
-            self.assertNotIn(retired, dependencies)
+        self.assertNotIn("redb", dependencies)
         transfer = toml("database/transfer/Cargo.toml")["dependencies"]
         self.assertIn("redb", transfer)
         self.assertIn("decodex-database", transfer)

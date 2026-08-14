@@ -34,15 +34,18 @@ use decodex_database::{
 	ProcessGenerationMutationOutcome, ProviderAttemptMutationOutcome, QuickTaskInitialRouteOutcome,
 	QuickTaskPreEffectEvidenceKind, QuickTaskTerminalizationOutcome,
 	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
-	RouteQuickTaskInitial, RuntimeSessionBindingReceipt, SqliteStore,
+	RouteQuickTaskInitial, RoutingControlOutcome, RuntimeSessionBindingReceipt, SqliteStore,
 	SuccessfulRuntimeSessionThreadStart, TerminalizeQuickTaskTurn, TurnReservationOutcome,
 };
 use tempfile::tempdir;
 use zeroize::Zeroizing;
 
 const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
+const ALTERNATE_ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000002";
 const OPERATION_ID: &str = "20000000-0000-4000-8000-000000000001";
+const ALTERNATE_OPERATION_ID: &str = "20000000-0000-4000-8000-000000000002";
 const CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000001";
+const ALTERNATE_CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000002";
 const GENERATION_ID: &str = "40000000-0000-4000-8000-000000000001";
 const EXECUTION_EPOCH_ID: &str = "50000000-0000-4000-8000-000000000001";
 const ATTEMPT_ID: &str = "60000000-0000-4000-8000-000000000001";
@@ -58,6 +61,7 @@ const LATER_HISTORY_ID: &str = "f0000000-0000-4000-8000-000000000001";
 const DEATH_EVIDENCE_ID: &str = "11000000-0000-4000-8000-000000000001";
 const REHYDRATED_GENERATION_ID: &str = "12000000-0000-4000-8000-000000000001";
 const PROVIDER_ACCOUNT_ID: &str = "fixture-provider-account";
+const ALTERNATE_PROVIDER_ACCOUNT_ID: &str = "fixture-provider-account-2";
 const CODEX_THREAD_ID: &str = "fixture-codex-thread";
 const PROVIDER_TURN_ID: &str = "fixture-provider-turn-1";
 const DIGEST_A: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -74,7 +78,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	let paths = root.paths();
 	let blob_store = BlobStore::open(paths.clone()).expect("open blob store");
 	let store = SqliteStore::open(&paths).expect("open SQLite product store");
-	let (account_id, credential) = import_ready_account(&store).await;
+	let (account_id, credential, alternate_account_id) = import_ready_accounts(&store).await;
 
 	let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation identity");
 	let conversation_command =
@@ -437,6 +441,58 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	drop(store);
 	let reopened = SqliteStore::open(&paths).expect("reopen SQLite after daemon restart");
 	reopened.revalidate().await.expect("revalidate reopened SQLite");
+	let routing = reopened
+		.read_account_routing_control()
+		.await
+		.expect("read account routing before changing the default");
+	let changed_routing = match reopened
+		.set_fixed_account_selection(routing.revision, &alternate_account_id, 1)
+		.await
+		.expect("change the default account for new conversations")
+	{
+		RoutingControlOutcome::Updated { routing } => routing,
+		other => panic!("account routing did not update: {other:?}"),
+	};
+	assert_eq!(
+		changed_routing.mode,
+		AccountSelectionMode::Fixed(alternate_account_id.clone())
+	);
+
+	let alternate_conversation_id =
+		ConversationId::new(ALTERNATE_CONVERSATION_ID).expect("alternate conversation identity");
+	reopened
+		.create_quick_task_conversation(
+			&CommandIdentity::new("alternate-quick-task-conversation", b"create alternate conversation")
+				.expect("alternate conversation command"),
+			&CreateQuickTaskConversation {
+				conversation_id: alternate_conversation_id.clone(),
+				title: "Independent account affinity proof".to_owned(),
+				message: "Start an independent task.".to_owned(),
+				working_directory: temporary.path().display().to_string(),
+			},
+		)
+		.await
+		.expect("create alternate Quick Task conversation");
+	let alternate_route = match reopened
+		.route_quick_task_initial(
+			"alternate-quick-task-route",
+			&RouteQuickTaskInitial {
+				conversation_id: alternate_conversation_id,
+				expected_conversation_revision: 1,
+			},
+		)
+		.await
+		.expect("route alternate Quick Task")
+	{
+		QuickTaskInitialRouteOutcome::Fresh(route) => route,
+		other => panic!("alternate initial route was not fresh: {other:?}"),
+	};
+	assert_eq!(
+		alternate_route.decision.selected_account_id.as_ref(),
+		Some(&alternate_account_id),
+		"a new conversation may use the newly selected account",
+	);
+
 	let resume = reopened
 		.read_ordinary_runtime_session_for_resume(&conversation_id)
 		.await
@@ -536,6 +592,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	assert_eq!(continuation.plan.source_runtime_session_id, resume.runtime_session_id);
 	assert_eq!(continuation.plan.source_runtime_session_revision, 4);
 	assert_eq!(continuation.plan.selected_account_id, account_id);
+	assert_ne!(continuation.plan.selected_account_id, alternate_account_id);
 	assert!(matches!(
 		continuation.plan.same_thread_evidence,
 		Some(SameThreadContinuationEvidence::ProviderAttempt {
@@ -600,21 +657,78 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	);
 }
 
-async fn import_ready_account(store: &SqliteStore) -> (AccountId, CredentialBinding) {
-	let account_id = AccountId::new(ACCOUNT_ID).expect("account identity");
-	let operation_id = AccountOperationId::new(OPERATION_ID).expect("operation identity");
-	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, PROVIDER_ACCOUNT_ID)
+async fn import_ready_accounts(
+	store: &SqliteStore,
+) -> (AccountId, CredentialBinding, AccountId) {
+	let (account_id, credential, primary) = fixture_account_transfer(
+		ACCOUNT_ID,
+		OPERATION_ID,
+		PROVIDER_ACCOUNT_ID,
+		DIGEST_A,
+		"Primary fixture account",
+		b"opaque-primary-fixture-credential",
+	);
+	let (alternate_account_id, _, alternate) = fixture_account_transfer(
+		ALTERNATE_ACCOUNT_ID,
+		ALTERNATE_OPERATION_ID,
+		ALTERNATE_PROVIDER_ACCOUNT_ID,
+		DIGEST_B,
+		"Alternate fixture account",
+		b"opaque-alternate-fixture-credential",
+	);
+	assert_eq!(
+		store
+			.import_local_accounts(LocalAccountTransferBatch {
+				source_sha256: DIGEST_D.to_owned(),
+				accounts: vec![primary, alternate],
+				routing: AccountRoutingControl {
+					revision: 1,
+					mode: AccountSelectionMode::Fixed(account_id.clone()),
+					order: vec![account_id.clone(), alternate_account_id.clone()],
+				},
+			})
+			.expect("import fixture accounts"),
+		LocalAccountTransferOutcome::Imported { account_count: 2 }
+	);
+	assert!(
+		store
+			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
+				build_identity: "fixture-codex-build".to_owned(),
+				executable_sha256: DIGEST_A.to_owned(),
+				schema_sha256: DIGEST_B.to_owned(),
+				callback_profile_sha256: DIGEST_C.to_owned(),
+				login_chatgpt_auth_tokens: true,
+				refresh_callback: true,
+			})
+			.await
+			.expect("attest Codex account capability")
+	);
+	(account_id, credential, alternate_account_id)
+}
+
+fn fixture_account_transfer(
+	account_id: &str,
+	operation_id: &str,
+	provider_account_id: &str,
+	fingerprint: &str,
+	label: &str,
+	payload: &[u8],
+) -> (AccountId, CredentialBinding, LocalAccountTransfer) {
+	let typed_account_id = AccountId::new(account_id).expect("account identity");
+	let typed_operation_id =
+		AccountOperationId::new(operation_id).expect("operation identity");
+	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
 		.expect("provider identity");
 	let credential = CredentialBinding {
 		schema_version: CredentialStoreSchemaVersion::V1,
 		version: CredentialVersion::new(1).expect("credential version"),
-		fingerprint: CredentialFingerprint::new(DIGEST_A).expect("credential fingerprint"),
+		fingerprint: CredentialFingerprint::new(fingerprint).expect("credential fingerprint"),
 		provider,
-		writer_operation_id: operation_id,
+		writer_operation_id: typed_operation_id,
 	};
 	let account = AccountRecord {
-		account_id: account_id.clone(),
-		label: "Fixture account".to_owned(),
+		account_id: typed_account_id.clone(),
+		label: label.to_owned(),
 		enabled: true,
 		revision: 1,
 		observed_state: AccountState::Available,
@@ -635,45 +749,18 @@ async fn import_ready_account(store: &SqliteStore) -> (AccountId, CredentialBind
 		account,
 		credential: CredentialRecord {
 			key: CredentialKey {
-				account_id: ACCOUNT_ID.to_owned(),
+				account_id: account_id.to_owned(),
 				schema_version: 1,
 				credential_version: 1,
-				fingerprint: DIGEST_A.to_owned(),
-				writer_operation_id: OPERATION_ID.to_owned(),
+				fingerprint: fingerprint.to_owned(),
+				writer_operation_id: operation_id.to_owned(),
 				provider: "chatgpt".to_owned(),
-				provider_account_id: PROVIDER_ACCOUNT_ID.to_owned(),
+				provider_account_id: provider_account_id.to_owned(),
 			},
-			payload: Zeroizing::new(b"opaque-fixture-credential".to_vec()),
+			payload: Zeroizing::new(payload.to_vec()),
 		},
 	};
-	assert_eq!(
-		store
-			.import_local_accounts(LocalAccountTransferBatch {
-				source_sha256: DIGEST_D.to_owned(),
-				accounts: vec![transferred],
-				routing: AccountRoutingControl {
-					revision: 1,
-					mode: AccountSelectionMode::Fixed(account_id.clone()),
-					order: vec![account_id.clone()],
-				},
-			})
-			.expect("import fixture account"),
-		LocalAccountTransferOutcome::Imported { account_count: 1 }
-	);
-	assert!(
-		store
-			.attest_codex_account_capability(&CodexAccountCapabilityAttestation {
-				build_identity: "fixture-codex-build".to_owned(),
-				executable_sha256: DIGEST_A.to_owned(),
-				schema_sha256: DIGEST_B.to_owned(),
-				callback_profile_sha256: DIGEST_C.to_owned(),
-				login_chatgpt_auth_tokens: true,
-				refresh_callback: true,
-			})
-			.await
-			.expect("attest Codex account capability")
-	);
-	(account_id, credential)
+	(typed_account_id, credential, transferred)
 }
 
 fn history_item(

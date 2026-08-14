@@ -37,7 +37,6 @@ fn help_exits_without_starting_the_daemon() {
 	assert!(output.status.success());
 	assert!(stdout.contains("serve"));
 	assert!(!stdout.contains("supervise-local"));
-	assert!(!stdout.contains("postgres"));
 	assert!(!stdout.contains("secret-run"));
 	assert!(output.stderr.is_empty());
 	assert!(!home.path().join(".decodex").exists());

@@ -19,7 +19,7 @@ The macOS Account Lifecycle credential authority moved from Keychain generic-pas
 items to one daemon-owned redb database at
 `~/.decodex/server/credentials.redb`.
 
-PostgreSQL remains the credential-negative Account Registry. It stores account identity,
+former server store remains the credential-negative Account Registry. It stores account identity,
 revision, lifecycle state, routing, quota observations, provider binding, credential
 version, and fingerprint evidence. It does not store a token or credential blob.
 

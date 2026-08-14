@@ -820,8 +820,9 @@ fn validate_page_identity(identity: &PageIdentity) -> Result<(), CacheFailure> {
 fn validate_request_key(request_key: &CacheRequestKey) -> Result<(), CacheFailure> {
 	match request_key {
 		CacheRequestKey::Head => Ok(()),
-		CacheRequestKey::After(after) if bounded_identity(after.as_str(), MAX_CURSOR_BYTES) =>
-			Ok(()),
+		CacheRequestKey::After(after) if bounded_identity(after.as_str(), MAX_CURSOR_BYTES) => {
+			Ok(())
+		},
 		CacheRequestKey::After(_) => Err(CacheFailure::new(CacheDiagnostic::InvalidInput)),
 	}
 }
@@ -1389,8 +1390,9 @@ fn open_or_create_directory_at(parent: &File, name: &CStr) -> Result<File, Cache
 fn open_or_create_file_at(parent: &File, name: &CStr) -> Result<File, CacheFailure> {
 	let file = match create_file_at(parent.as_raw_fd(), name) {
 		Ok(file) => file,
-		Err(error) if error.raw_os_error() == Some(libc::EEXIST) =>
-			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR).map_err(|_| io_failure())?,
+		Err(error) if error.raw_os_error() == Some(libc::EEXIST) => {
+			open_file_at(parent.as_raw_fd(), name, libc::O_RDWR).map_err(|_| io_failure())?
+		},
 		Err(_) => return Err(io_failure()),
 	};
 	validate_regular_file(&file, Some(0))?;
@@ -1950,8 +1952,9 @@ mod tests {
 					assert!(parent.is_dir(), "{name} creates the unchanged final leaf");
 				},
 				(ParentExpectation::Refuses, Err(_)) => {},
-				(ParentExpectation::Opens, Err(failure)) =>
-					panic!("{name} must open: {}", failure.diagnostic()),
+				(ParentExpectation::Opens, Err(failure)) => {
+					panic!("{name} must open: {}", failure.diagnostic())
+				},
 				(ParentExpectation::Refuses, Ok(_)) => panic!("{name} must be refused"),
 			}
 		}
@@ -2214,11 +2217,12 @@ mod tests {
 					CacheLookup::Miss(CacheDiagnostic::NotFound),
 					"an uncommitted mapping never becomes authoritative",
 				),
-				DurabilityCase::PostIndexCleanup =>
+				DurabilityCase::PostIndexCleanup => {
 					match reopened.lookup(&request, fresh_received_at) {
 						CacheLookup::Hit(hit) => assert_eq!(hit.page(), &candidate),
 						other => panic!("the committed mapping must remain recoverable: {other:?}"),
-					},
+					}
+				},
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 # Decodex vNext Authority Contract
 
-Status: historical PostgreSQL contract. The current normative slice is the
+Status: historical former server store contract. The current normative slice is the
 [Local Product V1 contract](local-product-v1.md). Keep this page as provenance for
 domain semantics only; its database ownership, reset, and gate requirements no longer
 govern current implementation.
@@ -8,11 +8,11 @@ govern current implementation.
 Owner: [vNext authority decision](../decisions/vnext-authority.md). Gates:
 [vNext gate manifest](vnext-gates.md).
 
-There are no external or deployed users. The current local PostgreSQL database is
+There are no external or deployed users. The current local former server store database is
 disposable development state. This contract has no supported schema-upgrade path.
 
 Decodex has exactly one canonical unversioned latest schema source:
-`crates/decodex-postgres/schema.sql`. Numbered SQL, Refinery, schema-history ledgers,
+`crates/decodex-server-store/schema.sql`. Numbered SQL, Refinery, schema-history ledgers,
 upgrade prefixes, compatibility DDL, migration receipts/finalizers/fallback, Phase A/B
 schema receipts, schema generators, and second executable schema owners are rejected.
 The former schema labels, including V14, V16, V17, V33, and V34, are superseded
@@ -40,7 +40,7 @@ executes zero DDL, and verifies only the exact current catalog and configured au
 | Automation | Deterministic trigger targeting a Program, WorkItem, Advisor, or Lead; `enabled`, `paused`, or `retired`. It is not an agent. |
 | ContextRevision | Immutable, inspectable, provenance-linked long-term context snapshot. |
 | AgentMessage | Durable sender/recipient envelope with correlation, causation, dedupe, artifact, response, and loop-budget fields; `pending`, `delivered`, `acknowledged`, or `expired`. |
-| Artifact | Content-addressed large output/evidence with PostgreSQL metadata; `active`, `expired`, or `deleted`. |
+| Artifact | Content-addressed large output/evidence with former server store metadata; `active`, `expired`, or `deleted`. |
 
 There is no Domain Agent, automatic multi-Lead topology, arbitrary durable role, or Goal
 product entity in the first release. Task and Reviewer agents are execution-scoped. Codex-native
@@ -63,7 +63,7 @@ WorkItem acceptance and validation. Objective achievement or evidence and any ex
 Codex Goal state cannot establish WorkItem acceptance or ManagedRun success.
 The evidence persists the exact prior Objective `updated_at`; acceptance cannot predate that
 revision, including through direct SQL. Program and Objective mutation receipts are scoped
-from the caller's canonical Project authority and PostgreSQL verifies the stored Project
+from the caller's canonical Project authority and former server store verifies the stored Project
 match, so not-found replay remains deterministic even if the identity is created later.
 
 ## Interaction and work
@@ -114,27 +114,27 @@ replayed.
 
 | State/surface | Authority |
 | --- | --- |
-| Projects, agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, profiles, context, messages, mappings, and UI-visible conversation/activity projections | PostgreSQL domain tables with optimistic revisions, leases, append-only activity projection, and transactional outbox |
+| Projects, agents, policies, Programs, Objectives, WorkItems, ManagedRuns, Automations, profiles, context, messages, mappings, and UI-visible conversation/activity projections | former server store domain tables with optimistic revisions, leases, append-only activity projection, and transactional outbox |
 | Codex thread continuation and Codex UI visibility | persistent Codex rollout under the shared normal `~/.codex` |
 | Repository files and worktrees | Git/filesystem on the `decodexd` host |
 | PR/check/merge readback | GitHub |
-| Large tool output and evidence bytes | content-addressed local blob store, with PostgreSQL metadata |
+| Large tool output and evidence bytes | content-addressed local blob store, with former server store metadata |
 | GPUI local state | bounded disposable cache only; SQLite is permitted only here |
-| Account product state | PostgreSQL Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
-| Credentials | narrow versioned HostCredentialStore; on macOS its sole normal adapter is the daemon-owned redb file at `~/.decodex/server/credentials.redb`; PostgreSQL and clients never store or receive credential bytes |
+| Account product state | former server store Account Registry; it stores credential-negative identity, independent enabled state, observed health, routing mode/order, quota, usage/profile/history, credential-version evidence, and finite operation receipts |
+| Credentials | narrow versioned HostCredentialStore; on macOS its sole normal adapter is the daemon-owned redb file at `~/.decodex/server/credentials.redb`; former server store and clients never store or receive credential bytes |
 | v0.2 state | Final vNext runtime and installer read none. The reviewed local database reset may preserve the complete credential-negative account/routing/binding tuple, including each enabled state and the mode-valid fixed target, and rebind it to unchanged host-vault records. Only the existing HostCredentialStore owner may perform a confined in-process read for typed credential-negative agreement; no token bytes leave that owner. |
 
-PostgreSQL is not event sourced and no graph database is used. Stable IDs plus correlated
+former server store is not event sourced and no graph database is used. Stable IDs plus correlated
 activity derive graph/timeline projections. `decodexd` is the sole product scheduler,
 app-server child owner, mutation coordinator, and repository-side-effect owner. GPUI,
 SwiftUI menubar, CLI, and MCP are clients/adapters over common application services; they
-never read PostgreSQL, rollout files, blobs, or repositories directly. The first release is single-host
+never read former server store, rollout files, blobs, or repositories directly. The first release is single-host
 and has no worker registry or distributed mesh. Remote UI may be added only through the
 protocol security gate.
 
-### PostgreSQL latest-schema authority
+### former server store latest-schema authority
 
-`crates/decodex-postgres/schema.sql` is the only executable schema owner. It contains the
+`crates/decodex-server-store/schema.sql` is the only executable schema owner. It contains the
 final accepted enums, relations, constraints, indexes, functions, triggers,
 dependencies, ownership, and ACLs directly. It contains no old-state branch, drain,
 backfill, compatibility operation, or reverse operation.
@@ -145,7 +145,7 @@ commit. A wrapper around `include_str!` alone is prohibited. There is no schema 
 registry, version constant, generator pipeline, bootstrap facade, or cutover coordinator.
 
 The explicit operator bootstrap resolves the schema-owner credential for that invocation
-only. It requires an empty PostgreSQL 18 target with data checksums, runs the complete
+only. It requires an empty former server store 18 target with data checksums, runs the complete
 schema once, verifies `pgcrypto`, exact catalog shape, stable dependencies, ownership,
 ACLs, function/trigger bodies and settings, `schema_fingerprint`, and configured runtime
 authority, and commits only after all checks pass. A second bootstrap fails because the
@@ -160,15 +160,15 @@ upgrades, repairs, or finalizes a schema and never reads a schema-history relati
 One `decodexd` and one owner-only same-UID endpoint serve all product and diagnostic
 surfaces. Quick Task execution or ManagedRepository unavailability does not make daemon
 startup fail when the transport and control plane can start. Diagnostics, account
-recovery, and each available PostgreSQL-backed read remain reachable.
+recovery, and each available former server store-backed read remain reachable.
 
 `ProductStore` has exactly two startup results:
 
-- `Available(PostgresStore)` after exact runtime PostgreSQL and current-authority
+- `Available(PostgresStore)` after exact runtime former server store and current-authority
   verification; or
 - `Unavailable(ProductStateReason)` with no retained store.
 
-`ProductStore` means verified PostgreSQL only. Quick Task, repository, Git, path,
+`ProductStore` means verified former server store only. Quick Task, repository, Git, path,
 reconciliation, and optional repository-configuration results cannot replace, erase, or
 change it.
 
@@ -189,11 +189,11 @@ ManagedRepository has one independent optional startup projection: `Ready`, `Dis
 or `Unavailable(ManagedRepositoryUnavailableReason)`. Absence is `Disabled`. Invalid
 repository-only configuration and path, Git, executor, or reconciliation failure are
 `Unavailable`. They disable repository operations only and cannot block endpoint binding,
-PostgreSQL verification, account recovery, or repository-free Quick Task work.
+former server store verification, account recovery, or repository-free Quick Task work.
 
-Core runtime configuration contains transport and PostgreSQL runtime inputs. It does not
+Core runtime configuration contains transport and former server store runtime inputs. It does not
 require `server_host.repositories`. Repository identity, admission, and persisted path
-policy remain PostgreSQL authority. A host-only repository configuration is permitted
+policy remain former server store authority. A host-only repository configuration is permitted
 only when a concrete accepted host policy consumes it. Its parser and validator are
 separate from core configuration, so absent or malformed repository data cannot block
 core parsing or service assembly.
@@ -207,7 +207,7 @@ authority. One unrelated broken repository cannot disable all Quick Tasks.
 Protocol and doctor project ProductStore, Quick Task, and ManagedRepository readiness as
 three independent typed fields. Quick Task execute, start, and resume return
 `QuickTaskUnavailable(reason)` when the Quick Task projection is unavailable. Persisted
-Quick Task list and get retain `ProductStateUnavailable` when PostgreSQL is unavailable.
+Quick Task list and get retain `ProductStateUnavailable` when former server store is unavailable.
 No `.ok()` conversion, optional setter, omitted field, or generic integrity error may
 hide the assembly result. `AcceptanceUnknown` and recovery-required results retain their
 existing effect and recovery semantics.
@@ -229,9 +229,9 @@ fixed selection, balanced selection, and account-order changes are deterministic
 versioned CAS commands. The environment-backed projection and legacy account watcher are
 retired and cannot be a normal Slice-1 or Slice-3 runtime dependency.
 
-`decodexd`, its daemon-private PostgreSQL runtime identity, and its BlobStore access form one
-trusted service boundary. PostgreSQL owns committed metadata, domain state, command receipts,
-activity, and outbox records; local content-addressed storage owns large bytes. PostgreSQL alone
+`decodexd`, its daemon-private former server store runtime identity, and its BlobStore access form one
+trusted service boundary. former server store owns committed metadata, domain state, command receipts,
+activity, and outbox records; local content-addressed storage owns large bytes. former server store alone
 does not attest external bytes, and arbitrary/manual use of the daemon credential is unsupported
 and equivalent to daemon compromise. Blob-backed commands use a durable receipt-first saga: a
 committed pending receipt binds protocol, operation, project/scope/entity, request digest, expected
@@ -310,7 +310,7 @@ consume invocation, dispatch classification, and terminal handle removal.
 At and after the
 [repository effective point](private-artifact/decision.md#repository-effective-point),
 vNext has no private-artifact subsystem, API, runtime composition, controller,
-PostgreSQL authority, executor, platform contract, garbage collector, delivery lane,
+former server store authority, executor, platform contract, garbage collector, delivery lane,
 or future acceptance program. The
 [private-artifact archive](private-artifact/README.md) preserves the former design as
 historical evidence only. Its rule markers, inventories, dependency edges,
@@ -335,7 +335,7 @@ They cannot gate the delivery slices or restore a private-artifact authority.
 
 ### Managed repository authority
 
-The accepted XY-1348 stage-two contract makes PostgreSQL the current durable authority
+The accepted XY-1348 stage-two contract makes former server store the current durable authority
 for each managed repository's projection, monotonic generation/tip, globally immutable
 operation assignment, append-only authority transitions and operation evidence, exact
 generation/tip compare-and-swap, atomic command completeness, and every restart load.
@@ -372,7 +372,7 @@ Within the trusted single-host first-release boundary:
 
 ManagedRepository service assembly is optional. Its `Ready`, `Disabled`, or typed
 `Unavailable` projection does not change ProductStore or Quick Task readiness. A static
-host repository map cannot duplicate PostgreSQL repository identity, admission, or path
+host repository map cannot duplicate former server store repository identity, admission, or path
 policy. Any accepted host-only policy is parsed separately and affects only repository
 operations.
 
@@ -392,7 +392,7 @@ view is `PossiblyEffected`, completed, or ambiguous. Any difference is permanent
 `OperationIdConflict`. Exact repeat is immutable result/readback access only; it is never
 retry, replay, adoption, or dispatch.
 
-One top-level PostgreSQL transaction canonicalizes the new operation, resolves its global
+One top-level former server store transaction canonicalizes the new operation, resolves its global
 ID, locks and loads current authority, verifies projection/checkpoint/fence agreement,
 runs the pure decision, inserts the immutable assignment, appends `PossiblyEffected`,
 fences allocation or head, appends the authority transition, and advances the projection
@@ -411,11 +411,11 @@ existing assignment without dispatch or, if no assignment exists, perform a whol
 preparation whose own successful COMMIT acknowledgement is the only possible receipt
 source.
 
-Allocate is PostgreSQL-only. Descriptor-assisted admission facts, symlink-free verified
+Allocate is former server store-only. Descriptor-assisted admission facts, symlink-free verified
 persisted absolute-path reacquisition, identity/stat facts, read-only Git facts, and target
 availability observations must remain strictly read-only: they create no file, directory,
 lock, reservation, worktree, index, config, or Git mutation. Allocation claims the exact
-repository/allocation/worktree/path identities and initial head only in PostgreSQL.
+repository/allocation/worktree/path identities and initial head only in former server store.
 
 `Register`, `WorktreeReady`, and `Commit` are separate durably fenced
 `PossiblyEffected` operations:
@@ -427,7 +427,7 @@ repository/allocation/worktree/path identities and initial head only in PostgreS
 - `Commit` consumes exact head `H` and positively reads back exactly one advance to the
   canonical successor `H-prime`.
 
-Every restart loads PostgreSQL authority and may issue only an operation-specific,
+Every restart loads former server store authority and may issue only an operation-specific,
 strictly read-only readback for a committed `PossiblyEffected` operation. Positive
 transition-specific evidence may complete it; authoritative negative, foreign, dirty,
 rollback, replacement, or bounded inconclusive evidence may make it ambiguous; temporary
@@ -435,7 +435,7 @@ readback unavailability leaves it `PossiblyEffected`. Restart never prepares the
 ID, reconstructs a receipt, invokes or retries the effect, replays, adopts, repairs, or
 imports external state. Generic observations cannot complete any operation.
 
-Authorized whole-cluster restore is inside the trusted PostgreSQL-administrator boundary
+Authorized whole-cluster restore is inside the trusted former server store-administrator boundary
 and may remove or resurrect assignments, checkpoints, and results together, thereby
 redefining current authority. The first release has no external monotonic anchor and no automatic
 full-cluster rollback detection. The accepted trusted single-daemon/same-UID boundary,
@@ -451,8 +451,8 @@ fresh receipt consumption, execution, readback, and terminal reconciliation. Rej
 `6979e3831da772fca3fe0f0e0b4699df642d3a65`, and
 `e42212add13af3f702e0ec8966ce3d6a7b682d12` are superseded evidence only.
 
-Pure PostgreSQL commands use a different, exact in-transaction authority. Each operation has one
-command-complete schema-owner `SECURITY DEFINER` function. PostgreSQL constructs the complete
+Pure former server store commands use a different, exact in-transaction authority. Each operation has one
+command-complete schema-owner `SECURITY DEFINER` function. former server store constructs the complete
 request JSONB from the same typed values the function consumes; runtime supplies only a
 protocol-scoped idempotency key and typed operation inputs, never an authoritative
 caller-supplied request hash, claim token, lease, committed pending claim, or split-phase reserve.
@@ -463,7 +463,7 @@ cross-operation reuse conflicts without extending or changing legacy `command_re
 An exact row may be `executing` only within its operation transaction. A
 `DEFERRABLE INITIALLY DEFERRED` constraint trigger rejects commit unless every newly created exact
 row is completed success or completed stable rejection. Completed rows cannot be changed, deleted,
-or truncated and retain the authoritative response bytes created once by PostgreSQL. Expected
+or truncated and retain the authoritative response bytes created once by former server store. Expected
 missing-target, stale-revision, illegal-transition, and equivalent domain outcomes complete a
 stable rejected response; cancellation, connection loss, deadlock, serialization failure, and
 unexpected database failure propagate and roll back rather than becoming stable rejection.
@@ -476,7 +476,7 @@ guarantee.
 
 Request envelopes compare with JSONB equality, not containment. Every optional key is present with
 JSON null. Enum and numeric values are typed before construction; integer lexical spelling is not
-identity. Text uses exact PostgreSQL text/code-point semantics with no implicit Unicode, case, or
+identity. Text uses exact former server store text/code-point semantics with no implicit Unicode, case, or
 whitespace normalization. RoleProfile bootstrap takes four role-implied scalar configuration
 groups in advisor/lead/task/reviewer order, never caller roles or parallel arrays. Derived
 revisions, selected profile rows, generated IDs, database timestamps, digests, immutable snapshots,
@@ -510,10 +510,10 @@ RoleProfile Authority persists exactly the `advisor`, `lead`, `task`, and `revie
 `role_profiles`, keeps every configuration in immutable `role_profile_revisions`, and advances one
 current-revision pointer per role. One initial bootstrap seam accepts user-supplied typed server
 configuration containing all four role-implied advisor/lead/task/reviewer scalar groups and invokes
-`bootstrap_role_profiles_exact` to create all four revision-one profiles atomically. PostgreSQL then
+`bootstrap_role_profiles_exact` to create all four revision-one profiles atomically. former server store then
 owns every revision and current pointer. Later changes use only `update_role_profile_exact`, which
 accepts one typed role plus an expected revision, appends exactly one immutable revision, and
-advances only that role's pointer. Both functions return and retain PostgreSQL-built response bytes
+advances only that role's pointer. Both functions return and retain former server store-built response bytes
 whose effects are assembled from the returned profile rows and the actual canonical
 activity/outbox identities. Routing and runtime never derive, select, or override model, reasoning,
 or service tier. Quick Task requires the current `task` RoleProfile; absence is a typed
@@ -545,7 +545,7 @@ string values. Core owns this typed representation and every Rust boundary reuse
 ASCII-alphanumeric normalized form ends in a credential-bearing suffix are rejected, as are concrete
 authorization schemes, known token/key formats, credential assignments, embedded URL passwords, and
 private-key headers. Ordinary prose containing words such as `secret`, `token`, or `session` is not
-credential material. PostgreSQL enforces the equivalent closed predicate. Nested/raw app-server JSON
+credential material. former server store enforces the equivalent closed predicate. Nested/raw app-server JSON
 and unsupported, oversized, or credential-shaped forms are rejected.
 `thread/read(includeTurns=true)` and paginated/list evidence are lossy reconciliation sources.
 They may support positive observations, but never authorize a negative `Present`, `Complete`, or
@@ -761,7 +761,7 @@ The proof excludes every process state that may have created a child, every thre
 fence/start/bind, and every prepared, authorized, or unknown ProviderAttempt. Ambiguous
 work remains active and returns `Unknown` for manual recovery.
 
-Explicit successor remains PostgreSQL-only non-dispatch evidence. It has no protocol
+Explicit successor remains former server store-only non-dispatch evidence. It has no protocol
 field, product command, runtime execution grant, facade, fallback, or wake path. Before
 any write, it locks the Turn named by the route and requires the same Conversation/source
 RuntimeSession, status `failed`, and revision 2.
@@ -804,7 +804,7 @@ unresolved risks, and accepted handoffs. Advisor briefs compact cross-project st
 risk. Program context records metrics/signals, recent decisions, quiet periods, and next
 review. A Context Pack contains the current revision, recent raw window, relevant
 artifacts, and repository instructions/OpenWiki. Summaries never silently replace
-sources; users can inspect pinned memory and provenance. The first release uses structured PostgreSQL
+sources; users can inspect pinned memory and provenance. The first release uses structured former server store
 queries and full-text search, not vectors.
 
 AgentMessage carries logical endpoints, project, correlation and causal parent, dedupe
@@ -817,7 +817,7 @@ cross-run communication is delivered by Decodex as turns to recipient Conversati
 ## Account continuity and profiles
 
 The [account lifecycle authority](account-lifecycle-authority.md) assigns
-credential-negative state to PostgreSQL, secret bundles to one HostCredentialStore, and
+credential-negative state to former server store, secret bundles to one HostCredentialStore, and
 all account operations to the `decodexd` Account Service. Each app-server process is
 bound to one Account UUID. Shared `~/.codex` supplies configuration, plugins, rollout
 files, and Codex thread visibility. A refresh callback can supply a newer access token
@@ -873,15 +873,15 @@ values, remain otherwise precision-agnostic, and fail closed. XY-1357 owns the n
 precision evidence after source freeze. Incompatible evidence leaves production routing
 disabled and reopens only ingress authority.
 
-The dormant manual account observation path checks an exact PostgreSQL account revision in the
+The dormant manual account observation path checks an exact former server store account revision in the
 `available` state before mechanics and checks the same predicate again after cleanup. Each check
 releases its row and pooled client before arbitrary caller, vault, or process work. The result is a
 post-cleanup non-live observation: readiness is not claimed to remain true while the child runs, and
 any final stale, non-ready, or unavailable observation fails closed. A blocked synchronous vault can
-retain local mechanical capacity, but never a PostgreSQL transaction, row lock, or client checkout.
+retain local mechanical capacity, but never a former server store transaction, row lock, or client checkout.
 Runtime owns the sole sibling-adapter composition and all child/vault/protocol mechanics in private,
 non-reexported modules. Codex remains a pure capability/schema adapter and does not depend on
-PostgreSQL. The private concrete permit moves through every
+former server store. The private concrete permit moves through every
 sequential preflight and the final child, returning to the attempt only after confirmed group death
 and child reaping. Uncertain cleanup installs it in a hard-capped fair quarantine and ends the launch
 attempt without freeing capacity or synchronously entering an unbounded loop. A stuck group cannot
@@ -944,7 +944,7 @@ witness attachment, same-boot quarantine remains until boot change. Exact termin
 available only while the original supervisor retains the unreaped child, and it never signals
 after reap.
 
-An external execution epoch and digest prevent PostgreSQL restore readback from becoming spawn
+An external execution epoch and digest prevent former server store restore readback from becoming spawn
 authority. Replay never returns a fresh fence. An ambiguous rollback does not authorize launch.
 Persisted Codex thread identity carries Conversation continuity; process survival does not create
 or continue a RuntimeSession.
@@ -961,7 +961,7 @@ alternate-control RPCs before enablement. XY-1400 does not add that gateway.
 
 ### Durable routing and candidate-set authority
 
-PostgreSQL owns revisioned complete Routing Snapshots and immutable Routing Decisions. A selecting
+former server store owns revisioned complete Routing Snapshots and immutable Routing Decisions. A selecting
 Routing Decision remains the sole account selector; a continued decision binds lineage and cannot
 select. A routing request supplies identity and idempotency inputs only. Runtime, protocol clients,
 tests, `QuickTaskRuntime`, and
@@ -1024,7 +1024,7 @@ cause-free `no_route` is invalid.
 
 `decodex-core` is a pure deterministic selection kernel over a database-produced selecting
 snapshot. It does not establish provenance or completeness and is never invoked for a continued
-decision. PostgreSQL atomically persists only the resulting classification and exact normalized
+decision. former server store atomically persists only the resulting classification and exact normalized
 exclusions required for replay. Runtime consumes one exact persisted decision and sequences effects
 only; it cannot substitute a decision. Codex is a
 positive-evidence capability adapter and cannot determine membership, policy, or eligibility.
@@ -1099,7 +1099,7 @@ authorize eligibility, assignment, reassignment, fallback, scheduling, wakeup, c
 production routing. A future operator-triggered active diagnostic requires a separate authority
 decision and remains non-routing evidence.
 
-Users exclusively select the four global RoleProfiles through their separate PostgreSQL
+Users exclusively select the four global RoleProfiles through their separate former server store
 authority. Runtime and routing cannot alter or derive model, reasoning, or service tier. Each
 RuntimeSession snapshots the current profile for its role; Quick Task requires `task`. Decodex keeps
 a user-owned desired inventory only as intent. Until a stable passive account-owned receipt exists,
@@ -1139,7 +1139,7 @@ opening never eagerly loads all history.
 
 ### GPUI history-page cache authority
 
-PostgreSQL remains product authority. The private `HistoryPageCache` is only GPUI-local,
+former server store remains product authority. The private `HistoryPageCache` is only GPUI-local,
 disposable presentation acceleration subordinate to `HistoryPager`. This first slice is
 dormant presentation infrastructure because no current shell destination renders
 `HistoryPager`. The pager keeps one active view and its existing four-page, 32-item,
@@ -1318,14 +1318,14 @@ The first implementation write set is only
 `apps/decodex-gpui/src/client_lifecycle.rs`, and
 `apps/decodex-gpui/src/client_lifecycle/tests.rs`, plus
 `apps/decodex-gpui/Cargo.toml` solely to add the existing workspace `libc` dependency.
-`client_cache.rs`, `main.rs`, the root `Cargo.toml`, and all protocol, runtime, PostgreSQL,
+`client_cache.rs`, `main.rs`, the root `Cargo.toml`, and all protocol, runtime, former server store,
 account, Swift, and FFI paths remain unchanged. Hand-written Darwin FFI, any new crate or
 framework, a generic cache framework, a ledger, a protocol change, and a user-visible
 destination remain prohibited. The active XY-1427 account lane owns `Cargo.lock`;
 regeneration and integration of that lockfile is one deferred mechanical step after
 XY-1427 lands and is not performed by the isolated source writer. The implementation is
 not ready or landable until that exact lockfile integration and locked validation
-complete. Local full-text search is deferred to future authoritative server/PostgreSQL
+complete. Local full-text search is deferred to future authoritative server/former server store
 work. Cached cursors never drive topology, and cache failure never enters lifecycle
 quarantine or recovery.
 
@@ -1387,7 +1387,7 @@ framework, metadata sidecar, bulk importer, generic migrator, state machine,
 receipt/finalizer, backup/rollback mechanism, compatibility branch, or fallback. It
 retains no quota, usage/profile projection, account history, Codex session, SQLite
 execution state, Linear lane, or Codex-created task. Normal startup reads only current
-PostgreSQL and `HostCredentialStore` authority. Recreate selected Projects explicitly
+former server store and `HostCredentialStore` authority. Recreate selected Projects explicitly
 from reviewed inventory.
 
 Delivery has exactly three dependencies: Accounts/Quick Task/Accounts-Conversation-Health

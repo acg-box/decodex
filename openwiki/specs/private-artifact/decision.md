@@ -24,7 +24,7 @@ with existing bounded canonical privacy-safe Git evidence. Keep the accepted
 Artifact/BlobStore boundary unchanged for ordinary product evidence.
 
 The design-proportionality verdict is `over-designed`. The retired package specifies
-a reducer, PostgreSQL authority, executor, platform matrix, controllers, garbage
+a reducer, former server store authority, executor, platform matrix, controllers, garbage
 collection, CORE-FREEZE, ACC, and a validation program. No current named vNext
 capability requires that machinery. The only remaining concrete consumers are the
 XY-1369 and XY-1370 receipts that XY-1363 uses.
@@ -414,7 +414,7 @@ edge; it does not claim secure deletion or hostile-process containment.
 
 <a id="rule-PA-CLOSE-0003"></a>
 **[rule:PA-CLOSE-0003]** AR-CLOSE does not amend the external vNext state or
-RoleProfile authority. vNext starts with empty PostgreSQL product state, imports no
+RoleProfile authority. vNext starts with empty former server store product state, imports no
 historical Codex, SQLite, or Linear runtime state, and owns only new
 Decodex-created work. The user exclusively controls the four global RoleProfiles.
 Each RuntimeSession retains the exact selected model, reasoning effort, service

@@ -77,7 +77,7 @@ pub const MAX_PROGRAM_CONTEXT_DECISIONS: usize = 64;
 pub const MAX_PROGRAM_CONTEXT_BYTES: usize = 256 * 1_024;
 /// Maximum accepted interval for an explicit Program review cadence.
 pub const MAX_REVIEW_CADENCE_DAYS: u16 = 365;
-/// Latest finite timestamp representable by PostgreSQL and RFC 3339, in Unix microseconds.
+/// Latest finite timestamp representable by durable-store and RFC 3339, in Unix microseconds.
 pub const MAX_PROGRAM_TIMESTAMP_MICROSECONDS: i64 = 253_402_300_799_999_999;
 
 /// Closed Program-domain validation failure without caller-controlled text.

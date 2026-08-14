@@ -38,7 +38,7 @@ Historical basis: this page consolidates former `docs/decisions` records for the
 ## Account lifecycle ownership
 
 Account routing, account presentation, and secret storage have different security and
-recovery requirements. Decodex therefore uses one small three-owner design: PostgreSQL
+recovery requirements. Decodex therefore uses one small three-owner design: former server store
 holds credential-negative product state, the HostCredentialStore holds only secret
 bundles, and the `decodexd` Account Service coordinates operations across them.
 
@@ -47,7 +47,7 @@ Keychain adapter forced normal service startup through an app bundle, developmen
 provisioning profile, access-group entitlement, and wrapper process. Those mechanisms
 served the backend choice, not the product boundary. Redb keeps atomic transactions,
 exact compare-and-swap, restart recovery, and one-writer exclusion while allowing one
-direct signed daemon executable. Keeping credentials out of PostgreSQL still limits
+direct signed daemon executable. Keeping credentials out of former server store still limits
 exposure through SQL access, dumps, backups, and ordinary product-state tools.
 
 This is a deliberate v1 host-trust trade-off. The vault is owner-only and relies on host

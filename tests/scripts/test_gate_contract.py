@@ -48,7 +48,7 @@ class GateContractTests(unittest.TestCase):
                 self.assertIn("test-local-database", dependencies)
                 self.assertIn("test-vnext-architecture", dependencies)
 
-    def test_local_database_task_replaces_the_postgres_schema_gate(self) -> None:
+    def test_local_database_task_is_the_canonical_schema_gate(self) -> None:
         self.assertNotIn("test-vnext-latest-schema", self.tasks)
         self.assertEqual(
             self.tasks["test-local-database"],
@@ -72,10 +72,9 @@ class GateContractTests(unittest.TestCase):
         self.assertEqual(len(digest), 64)
         self.assertNotEqual(digest, __import__("hashlib").sha256(source).hexdigest())
 
-    def test_task_graph_has_no_retired_postgres_gate(self) -> None:
+    def test_task_graph_has_no_retired_schema_gate(self) -> None:
         serialized = json.dumps(self.tasks, sort_keys=True).lower()
         self.assertNotIn("latest_schema_gate", serialized)
-        self.assertNotIn("postgres-store", serialized)
 
 
 if __name__ == "__main__":

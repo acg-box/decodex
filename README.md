@@ -32,7 +32,7 @@ restart, and continue without duplicate dispatch.
 - GPUI and CLI are same-UID Unix WebSocket clients. They do not open SQLite, credential
   files, or Codex authentication files.
 
-Normal startup does not require PostgreSQL, redb, or Keychain. A separate one-shot tool
+Normal startup does not require a separate database server, redb, or Keychain. A one-shot tool
 can import the existing account pool from the retired redb vault during upgrade. It opens
 the source read only and leaves all rollback sources intact.
 
@@ -58,13 +58,19 @@ depleted observation still blocks that account. Fixed routing keeps the selected
 balanced routing prefers known available capacity and then follows configured order
 through unknown accounts.
 
+Account affinity is conversation-scoped. The first route binds one account to the
+RuntimeSession and Codex thread. Later turns keep that account even if the global routing
+default changes. A different conversation can select a different account. If the bound
+account is depleted, this milestone stops for explicit recovery; it does not silently
+replace the account and discard provider cache affinity.
+
 ## Deferred surfaces
 
 This milestone does not partially port every proposed factory feature. ManagedRepository,
 WorkItem board persistence, Reset Card consumption, execution-decision projections,
 automation, ManagedRun, ontology and graph projections, remote workers, and multi-machine
 coordination are deferred. Implemented protocol calls return typed unavailable results;
-they do not start a PostgreSQL fallback.
+they do not start a legacy storage fallback.
 
 Ontology and graph engineering remain central to the direction of Decodex. They will be
 projections over proven Goals, tasks, threads, artifacts, claims, dependencies, gates,
@@ -81,9 +87,6 @@ and evidence. They are not a second speculative execution engine.
 - `apps/decodex-cli/`: diagnostic and product command client.
 - `apps/decodex-gpui/`: desktop client.
 - `openwiki/`: current product, architecture, operations, and evidence authority.
-
-`crates/decodex-postgres/` is excluded historical source. It is not a workspace member,
-runtime dependency, package, gate target, or fallback.
 
 ## Development
 

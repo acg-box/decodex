@@ -89,17 +89,11 @@ fn valid_configuration_keeps_profiles_and_cache_explicit() {
 }
 
 #[test]
-fn retired_postgres_section_is_tolerated_but_not_interpreted() {
-	let input = support::valid_config()
-		.replace("socket_directory = \"/var/run/postgresql\"", "socket_directory = \"../unused\"")
-		.replace("port = 5432", "port = 0")
-		.replace("expected_peer_uid = 70\n", "")
-		.replace("database = \"decodex\"", "arbitrary = [1, 2, 3]");
-	let config = DecodexConfig::parse(input.as_bytes())
-		.expect("retired PostgreSQL configuration is opaque compatibility input");
+fn unknown_top_level_sections_are_rejected() {
+	let input = format!("{}\n[retired_store]\narbitrary = [1, 2, 3]\n", support::valid_config());
 
-	assert_eq!(config.active_profile_name().as_str(), "local");
-	assert_eq!(config.cache().limits().max_entries(), 128);
+	assert_eq!(DecodexConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
+	assert_eq!(DecodexClientConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
 }
 
 #[test]
@@ -110,23 +104,6 @@ fn remote_profiles_have_no_client_local_repository_path_field() {
 	);
 
 	assert_eq!(DecodexConfig::parse(input.as_bytes()).unwrap_err(), ConfigError::Malformed);
-}
-
-#[test]
-fn client_and_server_never_interpret_retired_postgres_fields() {
-	let input = support::valid_config()
-		.replace("active_profile = \"local\"", "active_profile = \"remote\"")
-		.replace(
-			"socket_directory = \"/var/run/postgresql\"",
-			"socket_directory = \"../server-only\"",
-		);
-	let client = DecodexClientConfig::parse(input.as_bytes())
-		.expect("client projection treats server-host data as opaque");
-	let (_, profile) = client.selected_profile(None).expect("active remote profile");
-
-	assert!(matches!(profile, ServerProfile::Remote(_)));
-	DecodexConfig::parse(input.as_bytes())
-		.expect("server also ignores the transfer-era PostgreSQL section");
 }
 
 #[test]

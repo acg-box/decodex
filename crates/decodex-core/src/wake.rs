@@ -2,7 +2,7 @@
 //!
 //! A fired transition can request only fresh authoritative routing resolution. It carries no
 //! candidate, quota, eligibility, account-selection, credential, or dispatch authority.
-//! These types are mechanism-neutral facts: constructing one in Rust does not prove PostgreSQL
+//! These types are mechanism-neutral facts: constructing one in Rust does not prove durable-store
 //! authorship or grant routing, scheduling, dispatch, or production authority.
 //! Authority instants use nonnegative UTC microseconds since the Unix epoch; strict readback
 //! rejects negative values.

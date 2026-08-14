@@ -2,7 +2,6 @@
 exclude = [
 	"apps/decodex",
 	"apps/decodex-app",
-	"crates/decodex-postgres",
 	"spikes/gpui",
 ]
 members = [
@@ -44,8 +43,8 @@ core-foundation    = { version = "=0.10.0" }
 futures-util       = { version = "0.3.32" }
 getrandom          = { version = "=0.4.2" }
 globset            = { version = "0.4" }
-gpui               = { git = "https://github.com/hack-ink/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false }
-gpui_platform      = { git = "https://github.com/hack-ink/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false, features = ["font-kit"] }
+gpui               = { git = "https://github.com/zed-industries/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false }
+gpui_platform      = { git = "https://github.com/zed-industries/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false, features = ["font-kit"] }
 libc               = { version = "0.2" }
 redb               = { version = "=4.1.0", default-features = false }
 regex              = { version = "1.12" }

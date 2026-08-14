@@ -1,6 +1,6 @@
-//! Mechanism-neutral facts for PostgreSQL-produced routing authority snapshots.
+//! Mechanism-neutral facts for durable-store-produced routing authority snapshots.
 //!
-//! Public construction supports the pure kernel and tests; it does not prove PostgreSQL
+//! Public construction supports the pure kernel and tests; it does not prove durable-store
 //! provenance, persistence, eligibility authority, dispatch authority, or production enablement.
 
 use crate::{
@@ -19,7 +19,7 @@ pub enum RoutingAuthorityShape {
 	ConversationContinuation,
 }
 impl RoutingAuthorityShape {
-	/// Return the exact stable PostgreSQL discriminator.
+	/// Return the exact stable durable-store discriminator.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::ConversationAccountRegistry => "conversation_account_registry",
@@ -28,7 +28,7 @@ impl RoutingAuthorityShape {
 		}
 	}
 
-	/// Parse one exact stable PostgreSQL discriminator.
+	/// Parse one exact stable durable-store discriminator.
 	pub fn from_sql(value: &str) -> Option<Self> {
 		Some(match value {
 			"conversation_account_registry" => Self::ConversationAccountRegistry,
@@ -77,7 +77,7 @@ impl CodexCapability {
 		Self::ThreadSearch,
 	];
 
-	/// Closed PostgreSQL identity.
+	/// Closed durable-store identity.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Initialize => "initialize",
@@ -211,7 +211,7 @@ pub enum RoutingBlocker {
 	ProviderAttemptCompleted,
 }
 impl RoutingBlocker {
-	/// Return the exact stable PostgreSQL and protocol spelling.
+	/// Return the exact stable durable-store and protocol spelling.
 	pub const fn as_sql(self) -> &'static str {
 		use RoutingBlocker::*;
 		match self {
@@ -261,7 +261,7 @@ impl RoutingBlocker {
 		}
 	}
 
-	/// Parse one exact stable PostgreSQL spelling.
+	/// Parse one exact stable durable-store spelling.
 	pub fn from_sql(value: &str) -> Option<Self> {
 		use RoutingBlocker::*;
 		Some(match value {
@@ -357,7 +357,7 @@ pub struct RoutingPolicyEffect {
 
 /// Immutable compatibility evidence publication readback.
 ///
-/// Rust construction alone proves neither publication nor PostgreSQL provenance.
+/// Rust construction alone proves neither publication nor durable-store provenance.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingEvidenceEffect {
 	/// Immutable identity of the published compatibility evidence.
@@ -530,7 +530,7 @@ pub struct RoutingSnapshotCapabilityFact {
 	pub evidence_state: Option<RoutingCapabilityState>,
 }
 
-/// Complete immutable PostgreSQL classification readback for the later Routing Decision pure
+/// Complete immutable durable-store classification readback for the later Routing Decision pure
 /// kernel.
 ///
 /// The public value is mechanism-neutral; only the adapter and transaction establish provenance.
@@ -566,7 +566,7 @@ pub struct RoutingSnapshot {
 	pub profile_snapshot_id: Option<String>,
 	/// Positive profile source revision, jointly absent only for initial L0 routing.
 	pub profile_snapshot_source_revision: Option<i64>,
-	/// PostgreSQL resolution instant in UTC Unix microseconds.
+	/// durable-store resolution instant in UTC Unix microseconds.
 	pub resolved_at_micros: i64,
 	/// Complete account inventory in canonical policy order.
 	pub members: Vec<RoutingSnapshotMember>,
@@ -616,7 +616,7 @@ pub struct RoutingTimestampProvenance {
 	pub evidence_revision: i64,
 }
 
-/// Routing Decision quota evidence presented to the pure kernel by PostgreSQL.
+/// Routing Decision quota evidence presented to the pure kernel by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecisionQuotaFact {
 	/// Account identity to which this Routing Decision quota fact belongs.
@@ -644,13 +644,13 @@ pub struct RoutingDecisionQuotaFact {
 
 /// Closed input shape consumed by the Routing Decision pure routing kernel.
 ///
-/// PostgreSQL supplies the authoritative production value; arbitrary Rust construction does not
+/// durable-store supplies the authoritative production value; arbitrary Rust construction does not
 /// establish completeness, persistence, or routing authority.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RoutingDecisionSnapshot {
 	/// Immutable snapshot identity whose text alone does not prove database authorship.
 	pub snapshot_id: String,
-	/// Decision instant in UTC Unix microseconds, supplied by PostgreSQL in authoritative use.
+	/// Decision instant in UTC Unix microseconds, supplied by durable-store in authoritative use.
 	pub decided_at_micros: i64,
 	/// Complete canonically ordered candidate universe supplied to the pure kernel.
 	pub members: Vec<RoutingDecisionCandidate>,

@@ -1752,14 +1752,6 @@ host = "server.example.test"
 port = 49152
 expected_server_identity = "{SERVER_ID}"
 
-[postgres]
-socket_directory = "../must-not-be-client-validated"
-expected_peer_uid = 70
-database = "ignored"
-
-[postgres.runtime]
-user = "ignored_runtime"
-
 [cache]
 max_entries = 0
 max_bytes = 0

@@ -52,7 +52,7 @@ domain_id!(ArtifactId, "artifact");
 
 /// Largest domain-owned title accepted before persistence or protocol rendering.
 pub const MAX_CONVERSATION_TITLE_BYTES: usize = 512;
-/// Largest payload retained inline in PostgreSQL history rows.
+/// Largest payload retained inline in durable-store history rows.
 pub const MAX_INLINE_HISTORY_BYTES: usize = 16 * 1_024;
 /// Maximum number of fields in one normalized history metadata projection.
 pub const MAX_HISTORY_METADATA_FIELDS: usize = 32;
@@ -84,7 +84,7 @@ pub enum ConversationError {
 	InvalidBound(&'static str),
 	/// A revision or ordinal was outside its positive domain.
 	InvalidRevision(&'static str),
-	/// An inline payload exceeded the PostgreSQL inline boundary.
+	/// An inline payload exceeded the durable-store inline boundary.
 	PayloadRequiresBlob,
 	/// A blob reference did not describe positive bounded content.
 	InvalidBlobReference,
@@ -230,7 +230,7 @@ pub enum HistoryMetadataValue {
 /// Bounded inline bytes or an integrity-checked content-addressed reference.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum NormalizedPayload {
-	/// Text small enough for direct PostgreSQL persistence.
+	/// Text small enough for direct durable-store persistence.
 	Inline {
 		/// Exact normalized text.
 		text: String,
@@ -542,7 +542,7 @@ pub struct Turn {
 	pub revision: u64,
 }
 
-/// PostgreSQL metadata for verified content-addressed bytes.
+/// durable-store metadata for verified content-addressed bytes.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ArtifactReference {
 	/// SHA-256 content address.
@@ -1063,7 +1063,7 @@ impl ContextPack {
 /// Return whether text is one bounded canonical `type/subtype` media type.
 ///
 /// Parameters are deliberately unavailable in this persistence slice. Both components use
-/// the visible RFC token subset shared by PostgreSQL and the typed wire contract.
+/// the visible RFC token subset shared by durable-store and the typed wire contract.
 pub fn is_canonical_media_type(value: &str) -> bool {
 	value.len() <= 128
 		&& value.split_once('/').is_some_and(|(type_name, subtype)| {

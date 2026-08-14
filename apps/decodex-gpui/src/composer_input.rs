@@ -11,6 +11,8 @@ use gpui::{
 	fill, point, prelude::*, px, relative, rgb, rgba, size,
 };
 
+use crate::ui_theme;
+
 pub(crate) const MAX_COMPOSER_BYTES: usize = 16 * 1_024;
 
 actions!(
@@ -39,6 +41,12 @@ pub(crate) enum ComposerEvent {
 	Changed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ComposerAppearance {
+	Workbench,
+	Field,
+}
+
 impl EventEmitter<ComposerEvent> for ComposerInput {}
 
 pub(crate) fn bind_keys(cx: &mut App) {
@@ -64,6 +72,8 @@ pub(crate) fn bind_keys(cx: &mut App) {
 /// Quick Task composer input and its native text-input lifecycle.
 pub(crate) struct ComposerInput {
 	focus_handle: FocusHandle,
+	placeholder: SharedString,
+	aria_label: SharedString,
 	content: String,
 	selected_range: Range<usize>,
 	selection_reversed: bool,
@@ -71,12 +81,40 @@ pub(crate) struct ComposerInput {
 	last_layout: Option<ShapedLine>,
 	last_bounds: Option<Bounds<Pixels>>,
 	is_selecting: bool,
+	appearance: ComposerAppearance,
 }
 
 impl ComposerInput {
 	pub(crate) fn new(tab_index: isize, cx: &mut Context<Self>) -> Self {
+		Self::build(
+			tab_index,
+			"Message Codex…",
+			"Quick Task message",
+			ComposerAppearance::Workbench,
+			cx,
+		)
+	}
+
+	pub(crate) fn with_placeholder(
+		tab_index: isize,
+		placeholder: impl Into<SharedString>,
+		aria_label: impl Into<SharedString>,
+		cx: &mut Context<Self>,
+	) -> Self {
+		Self::build(tab_index, placeholder, aria_label, ComposerAppearance::Field, cx)
+	}
+
+	fn build(
+		tab_index: isize,
+		placeholder: impl Into<SharedString>,
+		aria_label: impl Into<SharedString>,
+		appearance: ComposerAppearance,
+		cx: &mut Context<Self>,
+	) -> Self {
 		Self {
 			focus_handle: cx.focus_handle().tab_index(tab_index).tab_stop(true),
+			placeholder: placeholder.into(),
+			aria_label: aria_label.into(),
 			content: String::new(),
 			selected_range: 0..0,
 			selection_reversed: false,
@@ -84,6 +122,7 @@ impl ComposerInput {
 			last_layout: None,
 			last_bounds: None,
 			is_selecting: false,
+			appearance,
 		}
 	}
 
@@ -436,12 +475,13 @@ impl Render for ComposerInput {
 	fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let entity = cx.entity();
 		let focus_handle = self.focus_handle.clone();
+		let workbench = self.appearance == ComposerAppearance::Workbench;
 		div()
 			.id("quick-task-composer-input")
 			.key_context("ComposerInput")
 			.role(Role::TextInput)
-			.aria_label("Quick Task message")
-			.aria_placeholder("Message Codex")
+			.aria_label(self.aria_label.clone())
+			.aria_placeholder(self.placeholder.clone())
 			.aria_value(self.content.clone())
 			.track_focus(&focus_handle)
 			.on_a11y_action(AccessibleAction::SetValue, {
@@ -470,20 +510,23 @@ impl Render for ComposerInput {
 			.on_mouse_move(cx.listener(Self::on_mouse_move))
 			.cursor(CursorStyle::IBeam)
 			.size_full()
-			.px_3()
+			.px_2()
 			.py_2()
 			.flex()
 			.items_center()
 			.overflow_hidden()
-			.rounded_sm()
+			.rounded(px(if workbench { 8.0 } else { 6.0 }))
 			.border_1()
-			.border_color(if focus_handle.is_focused(window) {
-				rgb(0x60a5fa)
+			.border_color(if workbench {
+				rgba(0x00000000)
+			} else if focus_handle.is_focused(window) {
+				rgb(0x817789)
 			} else {
-				rgb(0x3b4962)
+				rgb(0x3c3744)
 			})
-			.bg(rgb(0x101827))
-			.text_color(rgb(0xe5e7eb))
+			.bg(if workbench { rgba(0x00000000) } else { rgba(ui_theme::FIELD_MATERIAL) })
+			.text_size(px(if workbench { 10.5 } else { 11.0 }))
+			.text_color(rgb(0xeeeaf0))
 			.child(ComposerTextElement { input: entity })
 	}
 }
@@ -543,7 +586,7 @@ impl Element for ComposerTextElement {
 		let input = self.input.read(cx);
 		let content_is_empty = input.content.is_empty();
 		let display_text: SharedString = if content_is_empty {
-			"Message Codex".into()
+			input.placeholder.clone()
 		} else {
 			input.content.replace('\n', " ").into()
 		};

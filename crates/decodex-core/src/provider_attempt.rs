@@ -142,7 +142,7 @@ pub enum ProviderAttemptConsumer {
 	},
 }
 impl ProviderAttemptConsumer {
-	/// Return the canonical PostgreSQL consumer label.
+	/// Return the canonical durable-store consumer label.
 	pub const fn as_sql(&self) -> &'static str {
 		match self {
 			Self::ConversationTurn { .. } => "conversation_turn",
@@ -253,7 +253,7 @@ pub enum ProviderAttemptState {
 	Unknown,
 }
 impl ProviderAttemptState {
-	/// Return the canonical PostgreSQL state label.
+	/// Return the canonical durable-store state label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Prepared => "prepared",
@@ -286,7 +286,7 @@ pub enum ProviderAttemptUnknownReason {
 	RestoreProjection,
 }
 impl ProviderAttemptUnknownReason {
-	/// Return the canonical PostgreSQL reason label.
+	/// Return the canonical durable-store reason label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::SupervisionLost => "supervision_lost",
@@ -311,7 +311,7 @@ pub enum ProviderEvidenceSource {
 	PositiveNonSubmissionReceipt,
 }
 impl ProviderEvidenceSource {
-	/// Return the canonical PostgreSQL source label.
+	/// Return the canonical durable-store source label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::ProviderReceipt => "provider_receipt",
@@ -334,7 +334,7 @@ pub enum ProviderTerminalOutcome {
 	NotSubmitted,
 }
 impl ProviderTerminalOutcome {
-	/// Return the canonical PostgreSQL outcome label.
+	/// Return the canonical durable-store outcome label.
 	pub const fn as_sql(self) -> &'static str {
 		match self {
 			Self::Succeeded => "succeeded",
@@ -480,9 +480,9 @@ pub struct ProviderAttempt {
 	pub terminal_evidence_id: Option<ProviderEvidenceId>,
 	/// Positive optimistic revision.
 	pub revision: i64,
-	/// PostgreSQL-authored creation instant in Unix microseconds.
+	/// durable-store-authored creation instant in Unix microseconds.
 	pub created_at_micros: i64,
-	/// PostgreSQL-authored last-transition instant in Unix microseconds.
+	/// durable-store-authored last-transition instant in Unix microseconds.
 	pub updated_at_micros: i64,
 }
 

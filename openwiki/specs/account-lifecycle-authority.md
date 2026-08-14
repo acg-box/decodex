@@ -1,7 +1,7 @@
 # Account Lifecycle Authority
 
 Status: historical account-domain contract. Its durable lifecycle and exact-binding
-invariants remain useful, but its PostgreSQL/redb ownership is superseded by the
+invariants remain useful, but its former server store/redb ownership is superseded by the
 [Local Product V1 contract](local-product-v1.md).
 
 The immediate target is `MacDogfoodReady`. Final `AccountLifecycleReady` has more
@@ -19,13 +19,13 @@ expose, serialize, copy, log, persist, rotate, delete, or return token bytes.
 
 The account system has exactly three owners:
 
-1. The PostgreSQL Account Registry owns credential-negative product state.
+1. The former server store Account Registry owns credential-negative product state.
 2. One HostCredentialStore owns versioned secret bundles.
 3. The `decodexd` Account Service coordinates account operations.
 
 Keep one daemon, one shared normal `~/.codex`, the same-UID typed protocol, exact
-identifiers, PostgreSQL outbox and leases, and finite per-account compare-and-swap
-operations. Credentials do not enter PostgreSQL, the public protocol, process
+identifiers, former server store outbox and leases, and finite per-account compare-and-swap
+operations. Credentials do not enter former server store, the public protocol, process
 arguments, logs, or a long-lived daemon or child environment.
 
 This boundary adds no event sourcing, generic distributed transaction coordinator,
@@ -56,7 +56,7 @@ rewrite its last health or quota observation. Enabling an account does not make 
 observation healthy. Eligibility requires both `enabled=true` and current positive
 evidence for every applicable check.
 
-PostgreSQL stores no credential, encrypted credential blob, retrieval locator, or
+former server store stores no credential, encrypted credential blob, retrieval locator, or
 ambient Codex auth export. A fingerprint is equality evidence only.
 
 The public alias is not mutable product state. Derive it from the canonical provider
@@ -149,7 +149,7 @@ delete, and restart contracts. It has no environment or ambient-auth fallback.
 
 Every mutation uses the same versioned protocol and supplies a client command ID,
 idempotency key, and the applicable expected account or routing-control revision.
-PostgreSQL stores the complete credential-negative request and exact public result.
+former server store stores the complete credential-negative request and exact public result.
 Exact replay returns that result. Conflicting key reuse and stale revision fail before
 mutation.
 
@@ -206,10 +206,10 @@ Cross-store changes use one finite per-account operation journal:
 
 | Phase | Meaning |
 | --- | --- |
-| `prepared` | PostgreSQL committed the intent and fenced conflicting account operations. |
+| `prepared` | former server store committed the intent and fenced conflicting account operations. |
 | `provider_effect_pending` | A refresh request can have reached the provider. |
 | `store_applied` | Exact store metadata proves the target version, fingerprint, binding, and writer. |
-| `committed` | PostgreSQL committed the projection and public receipt. |
+| `committed` | former server store committed the projection and public receipt. |
 | `cancelled` | No store change is accepted and the operation is terminal. |
 | `recovery_required` | Safe automatic continuation cannot be proved; the account is ineligible. |
 
@@ -350,7 +350,7 @@ the background without entering the global loading gate. It has no independent 1
 refresh clock; a disconnected wait reconnects with bounded backoff.
 
 Normal `GetResetCards` and `GetAccountProfile` queries do not contact OpenAI or start an
-app-server. They read daemon-owned values. PostgreSQL remains the persistence authority for
+app-server. They read daemon-owned values. former server store remains the persistence authority for
 quota facts and bounded profile snapshots. Public Reset Card inventory is instead a
 revision-fenced daemon-lifetime cache: restart discards it, immediately starts a new
 observation round, and returns a typed retryable unavailable result only until that account is
@@ -377,7 +377,7 @@ sequenceDiagram
     participant Observer as Account observation service
     participant Accounts as Account service
     participant Provider as Provider adapters
-    participant Store as PostgreSQL
+    participant Store as former server store
 	participant Cache as Daemon Reset Card cache
 	participant Client as UI or protocol client
 
@@ -399,7 +399,7 @@ sequenceDiagram
 ```
 
 The observation round separates daemon-owned provider refresh from client query readback;
-the generation signal carries no account value or credential. PostgreSQL retains profile and
+the generation signal carries no account value or credential. former server store retains profile and
 quota durability while Reset Card descriptors live only for the daemon lifetime.
 
 ## Bounded account profile
@@ -420,7 +420,7 @@ error. This path does not inspect or lock a Codex executable version or app-serv
 
 The latest schema stores one latest non-secret profile snapshot and at most 36 unique
 ascending daily usage facts. Persistence uses the exact account revision, provider
-binding, tombstone state, and a monotonic observation time. The final PostgreSQL 18
+binding, tombstone state, and a monotonic observation time. The final former server store 18
 profile-observation function zips the two bounded daily arrays through `ROWS FROM`. A
 response is `current` only after persistence.
 A previous exact snapshot can return as `cached` with one typed refresh error. Otherwise,
@@ -439,7 +439,7 @@ The profile snapshot always carries the Account UUID, a positive revision, a pos
 Unix-microsecond observation time, explicit email visibility, and the daily array.
 Credential email is at most 320 bytes, `plan_type` is at most 128 bytes, and provider
 display name and username are each at most 256 bytes. Scalar token and duration metrics
-fit non-negative PostgreSQL `bigint`; streak values fit non-negative `integer`. Optional
+fit non-negative former server store `bigint`; streak values fit non-negative `integer`. Optional
 fields are absent when the provider or current credential does not supply them.
 
 ## Clean latest-architecture cutover
@@ -447,7 +447,7 @@ fields are absent when the provider or current credential does not supply them.
 The product has no legacy-account or database migration mode. Normal startup and
 installation do not read an old database, account pool, mapping, helper, environment
 projection, migration manifest, or migration receipt. The one latest schema creates an
-empty Account Registry on an empty PostgreSQL target.
+empty Account Registry on an empty former server store target.
 
 The hidden `decodexd restore-local-account-authority` operator command is the only local
 restore path. It has required `--root` and `--schema-owner-user` options and the optional
@@ -480,7 +480,7 @@ typed credential-negative agreement result. The operator action and result never
 serialize, copy, log, persist, rotate, delete, or return token bytes.
 
 The command binds and retains the existing same-UID local transport namespace. It refuses
-an active daemon or a namespace that it cannot prove and retain. Before any PostgreSQL
+an active daemon or a namespace that it cannot prove and retain. Before any former server store
 account mutation, it calls `HostCredentialStore::read_exact` for every account. In the
 schema-owner transaction, it accepts only the exact latest schema with zero accounts,
 the initial empty routing authority, one initial active process execution epoch, empty
@@ -517,7 +517,7 @@ surface.
 | Evidence | Two-account Mac flow with restart boundaries and package proof | Broader platform and adversarial matrix |
 
 `CredentialStore` reports backend capability. `AccountLifecycle` reports the Account
-Service, PostgreSQL authority, provider adapter, exact-build account capability, startup
+Service, former server store authority, provider adapter, exact-build account capability, startup
 reconciliation, and active host store. An environment-only projection is
 `projection_only` and cannot satisfy either readiness result.
 

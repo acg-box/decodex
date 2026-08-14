@@ -767,7 +767,11 @@ where
 	) -> bool {
 		let (reply, result) = oneshot::channel();
 		if actor_sender
-			.send(PublicationRequest::Enqueue { connection_id, message, reply })
+			.send(PublicationRequest::Enqueue {
+				connection_id,
+				message: Box::new(message),
+				reply,
+			})
 			.await
 			.is_err()
 		{
@@ -2002,7 +2006,7 @@ where
 				OwnerDirective::Continue
 			},
 			PublicationRequest::Enqueue { connection_id, message, reply } => {
-				let acceptance = accept_for_session(&mut self.state, connection_id, message);
+				let acceptance = accept_for_session(&mut self.state, connection_id, *message);
 				let delivered = acceptance.is_accepted();
 				let directive = Self::directive_for_acceptance(acceptance);
 				let _ = reply.send(delivered);
@@ -2709,7 +2713,7 @@ enum PublicationRequest {
 	},
 	Enqueue {
 		connection_id: u64,
-		message: ServerMessage,
+		message: Box<ServerMessage>,
 		reply: oneshot::Sender<bool>,
 	},
 	Command {
