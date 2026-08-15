@@ -305,7 +305,10 @@ pub struct OrdinaryRuntimeSessionResumeReadback {
 	pub thread_start_response_sha256: String,
 	pub has_acknowledged_turn: bool,
 	pub has_active_turn: bool,
+	pub active_turn_id: Option<TurnId>,
+	pub active_turn_revision: Option<i64>,
 	pub has_unresolved_provider_attempt: bool,
+	pub has_unresolved_process_generation: bool,
 }
 
 impl SqliteStore {
@@ -688,11 +691,17 @@ impl SqliteStore {
 				        s.thread_start_request_id, s.thread_start_request_sha256,
 				        s.thread_start_response_id, s.thread_start_response_sha256,
 				        s.has_acknowledged_turn,
-				        EXISTS (SELECT 1 FROM turns AS t WHERE t.runtime_session_id = s.runtime_session_id
-				                AND t.status = 'active'),
+				        (SELECT t.turn_id FROM turns AS t
+				         WHERE t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
+				         ORDER BY t.sequence DESC LIMIT 1),
+				        (SELECT t.revision FROM turns AS t
+				         WHERE t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
+				         ORDER BY t.sequence DESC LIMIT 1),
 				        EXISTS (SELECT 1 FROM provider_attempts AS p
 				                WHERE p.runtime_session_id = s.runtime_session_id
-				                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown'))
+				                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')),
+				        EXISTS (SELECT 1 FROM process_generations AS p
+				                WHERE p.runtime_session_id = s.runtime_session_id AND p.state <> 'dead')
 				 FROM conversations AS c
 				 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
 				 WHERE c.conversation_id = ?1 AND c.state = 'active' AND s.state = 'active'",
@@ -714,14 +723,21 @@ impl SqliteStore {
 							row.get::<_, i64>(12)?,
 							row.get::<_, String>(13)?,
 							row.get::<_, bool>(14)?,
-							row.get::<_, bool>(15)?,
-							row.get::<_, bool>(16)?,
+							row.get::<_, Option<String>>(15)?,
+							row.get::<_, Option<i64>>(16)?,
+							row.get::<_, bool>(17)?,
+							row.get::<_, bool>(18)?,
 						))
 					},
 				)
 				.optional()
 				.map_err(sql_error)?;
 			row.map(|row| {
+				if row.15.is_some() != row.16.is_some()
+					|| row.16.is_some_and(|revision| revision <= 0)
+				{
+					return Err(incompatible("active Turn coordinates"));
+				}
 				Ok(OrdinaryRuntimeSessionResumeReadback {
 					conversation_id,
 					conversation_revision: row.0,
@@ -741,8 +757,15 @@ impl SqliteStore {
 					thread_start_response_id: row.12,
 					thread_start_response_sha256: row.13,
 					has_acknowledged_turn: row.14,
-					has_active_turn: row.15,
-					has_unresolved_provider_attempt: row.16,
+					has_active_turn: row.15.is_some(),
+					active_turn_id: row
+						.15
+						.map(TurnId::new)
+						.transpose()
+						.map_err(|_| incompatible("active Turn identity"))?,
+					active_turn_revision: row.16,
+					has_unresolved_provider_attempt: row.17,
+					has_unresolved_process_generation: row.18,
 				})
 			})
 			.transpose()

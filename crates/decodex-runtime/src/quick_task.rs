@@ -39,7 +39,8 @@ use decodex_core::{
 	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
 };
 use decodex_database::{
-	AdmitInitialQuickTaskTurn, ArchiveQuickTaskConversation,
+	AdmitInitialQuickTaskTurn, ArchiveLocalQuickTaskConversation,
+	ArchiveLocalQuickTaskConversationOutcome, ArchiveQuickTaskConversation,
 	ArchiveQuickTaskConversationOutcome, AuthorizeProviderDispatchOutcome,
 	BindRuntimeSessionThreadOutcome, CommandIdentity, CreateQuickTaskConversation,
 	FenceRuntimeSessionThreadStart,
@@ -47,8 +48,10 @@ use decodex_database::{
 	InitialQuickTaskTurnAdmissionOutcome, OrdinaryRuntimeSessionResumeReadback,
 	PrepareQuickTaskProcessGeneration, PrepareQuickTaskProcessGenerationOutcome,
 	ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome,
-	QuickTaskThreadEstablishmentReadback, ReconcileQuickTaskThreadEstablishment, RecordHistoryItem,
-	RoleProfileRole, SqliteStore, StoreError, TerminalizeQuickTaskTurn, TurnReservationOutcome,
+	QuickTaskThreadEstablishmentReadback,
+	ReconcileQuickTaskThreadEstablishment, ReconcileStrandedQuickTaskTurn,
+	ReconcileStrandedQuickTaskTurnOutcome, RecordHistoryItem, RoleProfileRole, SqliteStore, StoreError,
+	TerminalizeQuickTaskTurn, TurnReservationOutcome,
 };
 use decodex_protocol::{HistoryText, MAX_HISTORY_INLINE_BYTES, QuickTaskUnavailableReason};
 use sha2::{Digest as _, Sha256};
@@ -335,6 +338,10 @@ pub(crate) struct ControlQuickTask {
 	pub operation_key: String,
 	pub conversation_id: ConversationId,
 	pub expected_conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub expected_runtime_session_revision: i64,
+	pub active_turn_id: Option<TurnId>,
+	pub active_turn_revision: Option<i64>,
 	pub archive: bool,
 }
 
@@ -2822,7 +2829,10 @@ impl QuickTaskRuntime {
 		&self,
 		command: ControlQuickTask,
 	) -> QuickTaskControlOutcome {
-		if self.is_shutting_down() || command.expected_conversation_revision <= 0 {
+		if self.is_shutting_down()
+			|| command.expected_conversation_revision <= 0
+			|| command.expected_runtime_session_revision <= 0
+		{
 			return QuickTaskControlOutcome::Unavailable;
 		}
 		{
@@ -2832,7 +2842,12 @@ impl QuickTaskRuntime {
 					LocalTaskState::Active { .. }
 					| LocalTaskState::Preparing(_)
 					| LocalTaskState::Establishing => return QuickTaskControlOutcome::Busy,
-					LocalTaskState::Recovery { .. } => return QuickTaskControlOutcome::Conflict,
+					LocalTaskState::Recovery { readback, .. }
+						if readback.state == QuickTaskLocalState::OutcomeUnknown =>
+					{
+						return QuickTaskControlOutcome::Conflict;
+					},
+					LocalTaskState::Recovery { .. } => {},
 					LocalTaskState::Ready(_) => {},
 				}
 			}
@@ -2844,14 +2859,25 @@ impl QuickTaskRuntime {
 			.await
 		{
 			Ok(Some(session)) => session,
-			Ok(None) => return QuickTaskControlOutcome::Conflict,
+			Ok(None) => return self.archive_local_control_thread(&command).await,
 			Err(_) => return QuickTaskControlOutcome::Unavailable,
 		};
 		if session.conversation_revision != command.expected_conversation_revision
-			|| session.has_active_turn
+			|| session.runtime_session_id != command.runtime_session_id
+			|| session.runtime_session_revision != command.expected_runtime_session_revision
 			|| session.has_unresolved_provider_attempt
+			|| session.has_unresolved_process_generation
+			|| session.active_turn_id != command.active_turn_id
+			|| session.active_turn_revision != command.active_turn_revision
 		{
 			return QuickTaskControlOutcome::Conflict;
+		}
+		if let (Some(turn_id), Some(turn_revision)) =
+			(session.active_turn_id.as_ref(), session.active_turn_revision)
+			&& let Err(outcome) =
+				self.reconcile_control_turn(&command, turn_id, turn_revision).await
+		{
+			return outcome;
 		}
 		let request = match self.inner.store.read_quick_task_request(&command.conversation_id).await {
 			Ok(Some(request)) => request,
@@ -2923,6 +2949,114 @@ impl QuickTaskRuntime {
 		QuickTaskControlOutcome::Archived {
 			conversation_revision: archived.conversation_revision,
 		}
+	}
+
+	async fn reconcile_control_turn(
+		&self,
+		command: &ControlQuickTask,
+		turn_id: &TurnId,
+		expected_turn_revision: i64,
+	) -> Result<(), QuickTaskControlOutcome> {
+		let persistence = exact_command(
+			"reconcile-stranded-turn",
+			&command.operation_key,
+			&[
+				command.conversation_id.as_str(),
+				&command.expected_conversation_revision.to_string(),
+				command.runtime_session_id.as_str(),
+				&command.expected_runtime_session_revision.to_string(),
+				turn_id.as_str(),
+				&expected_turn_revision.to_string(),
+			],
+		)
+		.map_err(|_| QuickTaskControlOutcome::Conflict)?;
+		let outcome = self
+			.inner
+			.store
+			.reconcile_stranded_quick_task_turn(
+				&persistence,
+				&ReconcileStrandedQuickTaskTurn {
+					conversation_id: command.conversation_id.clone(),
+					expected_conversation_revision: command.expected_conversation_revision,
+					runtime_session_id: command.runtime_session_id.clone(),
+					expected_runtime_session_revision: command.expected_runtime_session_revision,
+					turn_id: turn_id.clone(),
+					expected_turn_revision,
+				},
+			)
+			.await
+			.map_err(|_| QuickTaskControlOutcome::OutcomeUnknown)?;
+		match outcome {
+			ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision }
+			| ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision }
+				if expected_turn_revision.checked_add(1) == Some(turn_revision) => {},
+			ReconcileStrandedQuickTaskTurnOutcome::Applied { .. }
+			| ReconcileStrandedQuickTaskTurnOutcome::Replayed { .. }
+			| ReconcileStrandedQuickTaskTurnOutcome::Rejected => {
+				return Err(QuickTaskControlOutcome::Conflict);
+			},
+		}
+		let mut local = self.local();
+		if local
+			.get(command.conversation_id.as_str())
+			.is_some_and(|task| matches!(&task.state, LocalTaskState::Recovery { .. }))
+		{
+			local.remove(command.conversation_id.as_str());
+		}
+		Ok(())
+	}
+
+	async fn archive_local_control_thread(
+		&self,
+		command: &ControlQuickTask,
+	) -> QuickTaskControlOutcome {
+		match (command.active_turn_id.as_ref(), command.active_turn_revision) {
+			(Some(turn_id), Some(turn_revision)) => {
+				if let Err(outcome) =
+					self.reconcile_control_turn(command, turn_id, turn_revision).await
+				{
+					return outcome;
+				}
+			},
+			(None, None) => {},
+			_ => return QuickTaskControlOutcome::Conflict,
+		}
+		let persistence = match exact_command(
+			"archive-local-conversation",
+			&command.operation_key,
+			&[
+				command.conversation_id.as_str(),
+				&command.expected_conversation_revision.to_string(),
+				command.runtime_session_id.as_str(),
+				&command.expected_runtime_session_revision.to_string(),
+			],
+		) {
+			Ok(command) => command,
+			Err(()) => return QuickTaskControlOutcome::Conflict,
+		};
+		let archived = match self
+			.inner
+			.store
+			.archive_local_quick_task_conversation(
+				&persistence,
+				&ArchiveLocalQuickTaskConversation {
+					conversation_id: command.conversation_id.clone(),
+					expected_conversation_revision: command.expected_conversation_revision,
+					runtime_session_id: command.runtime_session_id.clone(),
+					expected_runtime_session_revision: command.expected_runtime_session_revision,
+				},
+			)
+			.await
+		{
+			Ok(ArchiveLocalQuickTaskConversationOutcome::Applied(archived))
+			| Ok(ArchiveLocalQuickTaskConversationOutcome::Replayed(archived)) => archived,
+			Ok(ArchiveLocalQuickTaskConversationOutcome::Rejected) => {
+				return QuickTaskControlOutcome::Conflict;
+			},
+			Err(_) => return QuickTaskControlOutcome::OutcomeUnknown,
+		};
+		self.local().remove(command.conversation_id.as_str());
+		QuickTaskControlOutcome::Archived { conversation_revision: archived.conversation_revision }
 	}
 
 	async fn observe_control_thread(
