@@ -7,8 +7,8 @@ use serde::{Deserialize, Deserializer, Serialize};
 use zeroize::{Zeroize as _, Zeroizing};
 
 use decodex_codex::{
-	DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId, ThreadCreatedAt, ThreadCwd, ThreadId,
-	ThreadProvenance, ThreadSummary, ThreadTitle,
+	DecodexThreadSearchTerm, ExactThreadFacts, ExactThreadId, QuickTaskTurnStatus, ThreadCreatedAt,
+	ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
 };
 
 #[doc(hidden)]
@@ -211,6 +211,47 @@ pub struct ProtocolThread {
 	pub cwd: Option<SensitiveString>,
 	pub thread_source: Option<SensitiveString>,
 	pub ephemeral: Option<bool>,
+	#[serde(default)]
+	pub turns: Vec<ProtocolTurn>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtocolTurn {
+	pub id: SensitiveString,
+	pub status: ProtocolTurnStatus,
+	#[serde(default)]
+	pub items: Vec<ProtocolThreadItem>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ProtocolTurnStatus {
+	Completed,
+	Interrupted,
+	Failed,
+	InProgress,
+}
+impl ProtocolTurnStatus {
+	pub const fn into_quick_task(self) -> QuickTaskTurnStatus {
+		match self {
+			Self::Completed => QuickTaskTurnStatus::Completed,
+			Self::Interrupted => QuickTaskTurnStatus::Interrupted,
+			Self::Failed => QuickTaskTurnStatus::Failed,
+			Self::InProgress => QuickTaskTurnStatus::InProgress,
+		}
+	}
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ProtocolThreadItem {
+	#[serde(rename = "type")]
+	pub kind: SensitiveString,
+	#[serde(default)]
+	pub client_id: Option<SensitiveString>,
+	#[serde(default)]
+	pub text: Option<SensitiveString>,
 }
 
 #[derive(Debug, Deserialize)]

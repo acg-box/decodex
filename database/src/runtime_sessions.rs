@@ -698,8 +698,10 @@ impl SqliteStore {
 				         WHERE t.runtime_session_id = s.runtime_session_id AND t.status = 'active'
 				         ORDER BY t.sequence DESC LIMIT 1),
 				        EXISTS (SELECT 1 FROM provider_attempts AS p
+				                JOIN turns AS pending ON pending.turn_id = p.turn_id
 				                WHERE p.runtime_session_id = s.runtime_session_id
-				                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')),
+				                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')
+				                  AND pending.status = 'active'),
 				        EXISTS (SELECT 1 FROM process_generations AS p
 				                WHERE p.runtime_session_id = s.runtime_session_id AND p.state <> 'dead')
 				 FROM conversations AS c
@@ -782,23 +784,27 @@ fn process_admission_authority(
 		.query_row(
 			"SELECT t.status, t.revision,
 		        EXISTS (
-		          SELECT 1 FROM continuation_plans AS p
-		          JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
-		          JOIN runtime_sessions AS s ON s.runtime_session_id = p.source_runtime_session_id
-		          JOIN conversations AS c ON c.conversation_id = p.conversation_id
-			          WHERE p.continuation_plan_id = ?1 AND d.routing_decision_id = ?2
-			            AND p.conversation_id = ?3 AND p.turn_id = ?4
-			            AND p.source_runtime_session_id = ?5
-			            AND p.source_runtime_session_revision = ?6
-			            AND p.selected_account_id = ?7
-			            AND c.revision = ?8 AND c.state = 'active'
-			            AND s.revision = ?6
-			            AND (
-			              (p.kind = 'initial_thread' AND p.runtime_session_id = s.runtime_session_id
-			               AND s.state = 'starting')
-			              OR
-			              (p.kind = 'same_thread' AND p.runtime_session_id IS NULL
-			               AND s.state = 'active' AND s.has_acknowledged_turn = 1
+			          SELECT 1 FROM continuation_plans AS p
+			          JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
+			          JOIN runtime_sessions AS s ON s.runtime_session_id = p.source_runtime_session_id
+			          LEFT JOIN runtime_sessions AS fallback
+			            ON fallback.runtime_session_id = p.runtime_session_id
+			          JOIN conversations AS c ON c.conversation_id = p.conversation_id
+				          WHERE p.continuation_plan_id = ?1 AND d.routing_decision_id = ?2
+				            AND p.conversation_id = ?3 AND p.turn_id = ?4
+				            AND p.selected_account_id = ?7
+				            AND c.revision = ?8 AND c.state = 'active'
+				            AND (
+				              (p.kind = 'initial_thread' AND p.runtime_session_id = s.runtime_session_id
+				               AND p.source_runtime_session_id = ?5
+				               AND p.source_runtime_session_revision = ?6
+				               AND s.revision = ?6 AND s.state = 'starting')
+				              OR
+				              (p.kind = 'same_thread' AND p.runtime_session_id IS NULL
+				               AND p.source_runtime_session_id = ?5
+				               AND p.source_runtime_session_revision = ?6
+				               AND s.revision = ?6
+				               AND s.state = 'active' AND s.has_acknowledged_turn = 1
 			               AND p.codex_thread_id = s.codex_thread_id
 			               AND EXISTS (
 			                 SELECT 1 FROM provider_attempts AS prior
@@ -808,9 +814,18 @@ fn process_admission_authority(
 			                   AND evidence.evidence_id = p.same_thread_evidence_id
 			                   AND prior.runtime_session_id = s.runtime_session_id
 			                   AND prior.state IN ('succeeded', 'failed_definitive')
-			                   AND evidence.provider_thread_id = s.codex_thread_id
-			               ))
-			            )
+				                   AND evidence.provider_thread_id = s.codex_thread_id
+				               ))
+				              OR
+				              (p.kind = 'context_pack_fallback' AND p.runtime_session_id = ?5
+				               AND fallback.revision = ?6 AND fallback.state = 'starting'
+				               AND fallback.account_id = p.selected_account_id
+				               AND s.state = 'ended'
+				               AND s.revision = p.source_runtime_session_revision + 1
+				               AND EXISTS (SELECT 1 FROM context_packs AS pack
+				                           WHERE pack.context_pack_id = p.fallback_context_pack_id
+				                             AND pack.conversation_id = p.conversation_id))
+				            )
 			        )
 		 FROM turns AS t WHERE t.turn_id = ?4 AND t.conversation_id = ?3
 		   AND t.runtime_session_id = ?5",
@@ -848,16 +863,18 @@ fn thread_fence_authority(
 			"SELECT p.routing_decision_id, p.selected_account_id
 		 FROM continuation_plans AS p
 		 JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
-		 JOIN runtime_sessions AS s ON s.runtime_session_id = p.source_runtime_session_id
+		 JOIN runtime_sessions AS s
+		   ON s.runtime_session_id = COALESCE(p.runtime_session_id, p.source_runtime_session_id)
 		 JOIN conversations AS c ON c.conversation_id = p.conversation_id
 		 JOIN turns AS t ON t.turn_id = p.turn_id
 		 JOIN process_generations AS g ON g.generation_id = ?1
 		 WHERE p.continuation_plan_id = ?2 AND p.conversation_id = ?3
-		   AND p.source_runtime_session_id = ?4 AND p.turn_id = ?5
+		   AND COALESCE(p.runtime_session_id, p.source_runtime_session_id) = ?4
+		   AND p.kind IN ('initial_thread', 'context_pack_fallback') AND p.turn_id = ?5
 		   AND s.revision = ?6 AND s.state = 'starting'
 		   AND c.revision = ?7 AND c.state = 'active'
 		   AND t.revision = ?8 AND t.status = 'active'
-		   AND g.revision = ?9 AND g.state = 'ready'
+		   AND g.revision = ?9 AND g.state = 'ready' AND g.runtime_session_id = s.runtime_session_id
 		   AND g.execution_epoch_id = ?10 AND g.account_id = p.selected_account_id",
 			params![
 				fence.process_generation_id.as_str(),
