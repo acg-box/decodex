@@ -44,6 +44,10 @@ one-shot transfer tool.
   attempt, positive-only outcome evidence, and replay prohibition.
 - [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
   sequencer used by Quick Task.
+- [Adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md):
+  accepted product direction for Program feedback, ontology, dynamic agents, bounded
+  external actions, and future Domain Packs. This is a target decision, not a current
+  capability claim.
 
 For the current app-server freshness boundary and Quick Task controls, start with the
 [local product contract](specs/local-product-v1.md) and its [SQLite evidence](evidence/sqlite-local-product.md).
@@ -96,6 +100,11 @@ above the proven conversation/runtime facts: the graph must explain and coordina
 work, not become a second speculative execution engine. A later milestone can project
 Goals, tasks, agents, artifacts, claims, dependencies, gates, and evidence from the local
 event history.
+
+The accepted [adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md)
+defines the later product model and delivery order. It keeps the current SQLite,
+app-server, process, attempt, and positive-evidence owners as the base. It does not make
+the deferred factory surfaces partially available.
 
 ## Repository map
 
