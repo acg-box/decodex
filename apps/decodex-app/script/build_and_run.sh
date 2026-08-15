@@ -5,7 +5,8 @@ MODE="${1:-run}"
 PRODUCT_NAME="Decodex"
 EXECUTABLE_NAME="DecodexApp"
 NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib"
-BUNDLE_ID="space.decodex.app"
+BUNDLE_ID="${DECODEX_APP_BUNDLE_ID:-space.decodex.app}"
+BUNDLE_DISPLAY_NAME="${DECODEX_APP_DISPLAY_NAME:-Decodex}"
 MIN_SYSTEM_VERSION="27.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
 
@@ -93,7 +94,7 @@ write_info_plist() {
   <key>CFBundleName</key>
   <string>$PRODUCT_NAME</string>
   <key>CFBundleDisplayName</key>
-  <string>$PRODUCT_NAME</string>
+  <string>$BUNDLE_DISPLAY_NAME</string>
   <key>CFBundleIconFile</key>
   <string>${APP_ICON_NAME%.icns}</string>
   <key>CFBundlePackageType</key>

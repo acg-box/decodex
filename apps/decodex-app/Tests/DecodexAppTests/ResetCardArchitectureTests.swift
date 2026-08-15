@@ -688,6 +688,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(
 			script.contains(#"NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib""#)
 		)
+		XCTAssertTrue(
+			script.contains(
+				#"BUNDLE_ID="${DECODEX_APP_BUNDLE_ID:-space.decodex.app}""#
+			)
+		)
 		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
 		XCTAssertTrue(
 			script.contains(#"cp "$NATIVE_CLIENT_BINARY" "$APP_NATIVE_CLIENT""#)
@@ -710,6 +715,39 @@ final class ResetCardArchitectureTests: XCTestCase {
 				"Build script still packages retired component \(retiredPackageTerm)."
 			)
 		}
+	}
+
+	func testGPUIBundleBuildsAndEmbedsTheMenuBarFromTheSameCheckout() throws {
+		let testsURL = URL(fileURLWithPath: #filePath)
+			.deletingLastPathComponent()
+		let repositoryURL =
+			testsURL
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let script = try String(
+			contentsOf: repositoryURL.appendingPathComponent(
+				"scripts/macos/stage_decodex_gpui.sh"
+			),
+			encoding: .utf8
+		)
+
+		XCTAssertTrue(
+			script.contains(#"LOGIN_ITEMS="$CONTENTS/Library/LoginItems""#)
+		)
+		XCTAssertTrue(
+			script.contains(#"MENUBAR_APP="$LOGIN_ITEMS/DecodexMenuBar.app""#)
+		)
+		XCTAssertTrue(
+			script.contains("DECODEX_APP_BUNDLE_ID=box.acg.decodex.menubar")
+		)
+		XCTAssertTrue(
+			script.contains(#"apps/decodex-app/script/build_and_run.sh" stage"#)
+		)
+		XCTAssertTrue(
+			script.contains(#"cp -R "$MENUBAR_SOURCE_APP" "$MENUBAR_APP""#)
+		)
 	}
 
 	func testLoginRecoveryUsesNativeBrowserOAuthAndNoPanelDisappearCancel() throws {

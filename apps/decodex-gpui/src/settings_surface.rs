@@ -12,7 +12,6 @@ use gpui::{
 
 use crate::ui_theme;
 
-#[cfg(not(test))]
 const MENUBAR_BUNDLE_ID: &str = "box.acg.decodex.menubar";
 #[cfg(not(test))]
 const MENUBAR_PREFERENCE_KEY: &str = "decodex.operator.menubar-enabled";
@@ -548,6 +547,7 @@ mod tests {
 	fn embedded_bundle_is_below_the_outer_app_contents_directory() {
 		let bundle = embedded_menubar_bundle();
 		assert!(bundle.ends_with(MENUBAR_RELATIVE_BUNDLE));
+		assert_eq!(MENUBAR_BUNDLE_ID, "box.acg.decodex.menubar");
 	}
 
 	#[gpui::test]
