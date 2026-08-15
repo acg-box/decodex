@@ -568,6 +568,7 @@ fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {
 				&& effect.plan.fallback_context_pack_id.is_none()
 				&& effect.plan.fallback_runtime_session_id.is_none()
 				&& effect.plan.same_thread_evidence.is_none()
+				&& effect.uncertain_predecessor_attempt_id.is_none()
 				&& effect.runtime_session.is_some()
 				&& effect.fallback_context_pack.is_none(),
 		ContinuationPlanKind::SameThread =>
@@ -575,6 +576,7 @@ fn valid_plan_shape(effect: &ContinuationPlanEffect) -> bool {
 				&& effect.plan.fallback_context_pack_id.is_none()
 				&& effect.plan.fallback_runtime_session_id.is_none()
 				&& effect.plan.same_thread_evidence.is_some()
+				&& effect.uncertain_predecessor_attempt_id.is_none()
 				&& effect.runtime_session.is_none()
 				&& effect.fallback_context_pack.is_none(),
 		ContinuationPlanKind::ContextPackFallback =>

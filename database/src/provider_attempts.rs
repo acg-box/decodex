@@ -11,7 +11,7 @@ use rusqlite::{OptionalExtension as _, TransactionBehavior, params};
 
 use crate::{
 	RuntimeSessionThreadBindingReadback, SqliteStore, StoreError, account_lifecycle::sql_error,
-	unix_micros,
+	runtime_sessions::digest, unix_micros,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -193,21 +193,35 @@ impl SqliteStore {
 			}
 			let authority = transaction
 				.query_row(
-					"SELECT p.routing_decision_id, p.source_runtime_session_id, s.revision,
-				        p.selected_account_id
+					"SELECT p.routing_decision_id,
+				        COALESCE(p.runtime_session_id, p.source_runtime_session_id), execution.revision,
+				        p.selected_account_id, p.kind, p.source_runtime_session_id
 				 FROM continuation_plans AS p
 				 JOIN routing_decisions AS d ON d.routing_decision_id = p.routing_decision_id
-				 JOIN runtime_sessions AS s ON s.runtime_session_id = p.source_runtime_session_id
+				 JOIN runtime_sessions AS source
+				   ON source.runtime_session_id = p.source_runtime_session_id
+				 JOIN runtime_sessions AS execution
+				   ON execution.runtime_session_id = COALESCE(p.runtime_session_id, p.source_runtime_session_id)
 				 JOIN conversations AS c ON c.conversation_id = p.conversation_id
 				 JOIN turns AS t ON t.turn_id = p.turn_id
 				 JOIN process_generations AS g ON g.generation_id = ?1
 				 WHERE p.continuation_plan_id = ?2 AND p.conversation_id = ?3 AND p.turn_id = ?4
 				   AND c.revision = ?5 AND c.state = 'active'
 				   AND t.revision = ?6 AND t.status = 'active'
+				   AND t.runtime_session_id = execution.runtime_session_id
 				   AND g.revision = ?7 AND g.state = 'ready'
 				   AND g.execution_epoch_id = ?8 AND g.account_id = p.selected_account_id
-				   AND g.runtime_session_id = p.source_runtime_session_id
-				   AND (?9 IS NULL OR s.thread_start_binding_key = ?9)",
+				   AND g.runtime_session_id = execution.runtime_session_id
+				   AND (?9 IS NULL OR execution.thread_start_binding_key = ?9)
+				   AND (
+				     (p.kind IN ('initial_thread', 'same_thread')
+				      AND execution.runtime_session_id = source.runtime_session_id
+				      AND source.state = 'active')
+				     OR
+				     (p.kind = 'context_pack_fallback' AND p.runtime_session_id = execution.runtime_session_id
+				      AND execution.state = 'active' AND source.state = 'ended'
+				      AND source.revision = p.source_runtime_session_revision + 1)
+				   )",
 					params![
 						process_generation_id.as_str(),
 						preparation.continuation_plan_id,
@@ -225,6 +239,8 @@ impl SqliteStore {
 							row.get::<_, String>(1)?,
 							row.get::<_, i64>(2)?,
 							row.get::<_, String>(3)?,
+							row.get::<_, String>(4)?,
+							row.get::<_, String>(5)?,
 						))
 					},
 				)
@@ -235,6 +251,8 @@ impl SqliteStore {
 				runtime_session_id,
 				runtime_session_revision,
 				account_id,
+				plan_kind,
+				source_runtime_session_id,
 			)) = authority
 			else {
 				return Ok(PrepareProviderAttemptOutcome::Rejected {
@@ -242,6 +260,20 @@ impl SqliteStore {
 					actual: empty_mutation(),
 				});
 			};
+			if !duplicate_risk_matches_plan(
+				&transaction,
+				&preparation.duplicate_risk,
+				&conversation_id,
+				&turn_id,
+				&plan_kind,
+				&source_runtime_session_id,
+				&preparation.continuation_plan_id,
+			)? {
+				return Ok(PrepareProviderAttemptOutcome::Rejected {
+					rejection: ProviderAttemptRejection::AuthorityUnavailable,
+					actual: empty_mutation(),
+				});
+			}
 			let (idempotency, correlation) = provider_keys(&preparation.provider_keys);
 			let (predecessor, acknowledgement) = duplicate_risk(&preparation.duplicate_risk);
 			let now = unix_micros().map_err(StoreError::from)?;
@@ -750,6 +782,76 @@ fn duplicate_risk(risk: &ProviderDuplicateRisk) -> (Option<&str>, Option<&str>) 
 			predecessor_attempt_id,
 			acknowledgement_digest,
 		} => (Some(predecessor_attempt_id.as_str()), Some(acknowledgement_digest)),
+	}
+}
+
+fn duplicate_risk_matches_plan(
+	transaction: &rusqlite::Transaction<'_>,
+	risk: &ProviderDuplicateRisk,
+	conversation_id: &ConversationId,
+	turn_id: &TurnId,
+	plan_kind: &str,
+	source_runtime_session_id: &str,
+	continuation_plan_id: &str,
+) -> Result<bool, StoreError> {
+	if plan_kind != "context_pack_fallback" {
+		return Ok(matches!(risk, ProviderDuplicateRisk::OriginalIntent));
+	}
+	match risk {
+		ProviderDuplicateRisk::OriginalIntent => transaction
+			.query_row(
+				"SELECT NOT EXISTS (
+				 SELECT 1 FROM provider_attempts
+				 WHERE runtime_session_id = ?1 AND state = 'unknown'
+				 )",
+				params![source_runtime_session_id],
+				|row| row.get(0),
+			)
+			.map_err(sql_error),
+		ProviderDuplicateRisk::AcknowledgedSuccessor {
+			predecessor_attempt_id,
+			acknowledgement_digest,
+		} => {
+			if acknowledgement_digest
+				!= &digest(&[
+					"silent-recovery-successor",
+					predecessor_attempt_id.as_str(),
+					turn_id.as_str(),
+					continuation_plan_id,
+				]) {
+				return Ok(false);
+			}
+			transaction
+				.query_row(
+					"SELECT EXISTS (
+				 SELECT 1 FROM provider_attempts AS predecessor
+				 JOIN turns AS prior_turn ON prior_turn.turn_id = predecessor.turn_id
+				 JOIN process_generations AS generation
+				   ON generation.generation_id = predecessor.process_generation_id
+				 JOIN process_generation_death_evidence AS death
+				   ON death.generation_id = generation.generation_id
+				  AND death.evidence_id = generation.death_evidence_id
+				 WHERE predecessor.attempt_id = ?1
+				   AND predecessor.conversation_id = ?2
+				   AND predecessor.runtime_session_id = ?3
+				   AND predecessor.turn_id <> ?4 AND predecessor.state = 'unknown'
+				   AND prior_turn.status = 'failed' AND generation.state = 'dead'
+				   AND predecessor.attempt_id = (
+				     SELECT latest.attempt_id FROM provider_attempts AS latest
+				     WHERE latest.runtime_session_id = ?3
+				     ORDER BY latest.created_at_micros DESC, latest.attempt_id DESC LIMIT 1
+				   )
+				 )",
+					params![
+						predecessor_attempt_id.as_str(),
+						conversation_id.as_str(),
+						source_runtime_session_id,
+						turn_id.as_str(),
+					],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)
+		},
 	}
 }
 

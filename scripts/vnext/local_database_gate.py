@@ -28,6 +28,11 @@ MIGRATIONS = (
         "quick_task_execution_controls",
         ROOT / "database/migrations/0003_quick_task_execution_controls.sql",
     ),
+    (
+        4,
+        "context_pack_fallback",
+        ROOT / "database/migrations/0004_context_pack_fallback.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -64,6 +69,7 @@ REQUIRED_TABLES = frozenset(
         "process_generation_death_evidence",
         "provider_attempts",
         "provider_attempt_positive_evidence",
+        "context_packs",
     }
 )
 

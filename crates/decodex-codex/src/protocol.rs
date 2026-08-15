@@ -7,6 +7,8 @@ use serde::{Serialize, Serializer};
 use sha2::{Digest as _, Sha256};
 use zeroize::Zeroizing;
 
+use crate::quick_task::{ExactTurnId, QuickTaskTurnStatus};
+
 pub(crate) const MAX_APP_SERVER_FRAME_BYTES: usize = 1_024 * 1_024;
 
 /// Maximum UTF-8 bytes in an executable Codex thread identifier.
@@ -21,6 +23,12 @@ pub const MAX_THREAD_CWD_BYTES: usize = 4 * 1_024;
 pub const MAX_THREAD_PROVENANCE_BYTES: usize = 256;
 /// Maximum number of exact list results accepted from Codex.
 pub const MAX_EXACT_THREAD_LIST_RESULTS: usize = 100;
+/// Maximum turns inspected from one exact `thread/read` response.
+pub const MAX_EXACT_THREAD_READ_TURNS: usize = 1_024;
+/// Maximum items inspected across one exact `thread/read` response.
+pub const MAX_EXACT_THREAD_READ_ITEMS: usize = 8_192;
+/// Maximum recovered assistant bytes retained from one exact submitted Turn.
+pub const MAX_EXACT_TURN_ASSISTANT_BYTES: usize = 256 * 1_024;
 
 /// Exact Codex CLI build identity used as capability-cache authority.
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize)]
@@ -327,6 +335,68 @@ pub enum LossyThreadHistory {
 	IncludeTurnsReadback,
 }
 
+/// One exact submitted Turn correlated by the caller's stable user-message identity.
+///
+/// This observation is positive readback evidence only. Absence never proves non-submission and
+/// never grants retry or replay authority.
+#[derive(Clone, Eq, PartialEq)]
+pub struct ExactSubmittedTurnReadback {
+	provider_turn_id: ExactTurnId,
+	status: QuickTaskTurnStatus,
+	assistant_text: String,
+	witness_digest: String,
+}
+impl ExactSubmittedTurnReadback {
+	#[doc(hidden)]
+	pub fn from_protocol(
+		provider_turn_id: ExactTurnId,
+		status: QuickTaskTurnStatus,
+		assistant_text: String,
+		witness_digest: String,
+	) -> Result<Self, &'static str> {
+		if assistant_text.len() > MAX_EXACT_TURN_ASSISTANT_BYTES
+			|| witness_digest.len() != 64
+			|| !witness_digest
+				.bytes()
+				.all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'))
+		{
+			return Err("Codex submitted Turn readback is invalid");
+		}
+		Ok(Self { provider_turn_id, status, assistant_text, witness_digest })
+	}
+
+	/// Exact provider Turn identity observed on the account-bound thread.
+	pub fn provider_turn_id(&self) -> &ExactTurnId {
+		&self.provider_turn_id
+	}
+
+	/// Current exact provider Turn state.
+	pub const fn status(&self) -> QuickTaskTurnStatus {
+		self.status
+	}
+
+	/// Ordered assistant message text retained by the exact readback.
+	pub fn assistant_text(&self) -> &str {
+		&self.assistant_text
+	}
+
+	/// SHA-256 witness of the bounded correlated observation.
+	pub fn witness_digest(&self) -> &str {
+		&self.witness_digest
+	}
+}
+impl Debug for ExactSubmittedTurnReadback {
+	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("ExactSubmittedTurnReadback")
+			.field("provider_turn_id", &self.provider_turn_id)
+			.field("status", &self.status)
+			.field("assistant_bytes", &self.assistant_text.len())
+			.field("witness_digest", &self.witness_digest)
+			.finish()
+	}
+}
+
 /// Exact readback facts without a replay-authorizing history projection.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ExactThreadReadResult {
@@ -334,6 +404,8 @@ pub struct ExactThreadReadResult {
 	pub facts: ExactThreadFacts,
 	/// Mandatory lossy-history marker.
 	pub history: LossyThreadHistory,
+	/// Exact positive correlation for the requested client user-message identity, when present.
+	pub submitted_turn: Option<ExactSubmittedTurnReadback>,
 }
 
 /// Closed reason an archive mutation could not be verified.

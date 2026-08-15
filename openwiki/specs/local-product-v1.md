@@ -6,10 +6,10 @@ tags: [local-product, sqlite, quick-task, app-server]
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-protocol/src/quick_task.rs]
-  symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread]
-  test_paths: [database/tests/quick_task_restart.rs]
-  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; OutcomeUnknown remains durable until positive evidence exists.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, apps/decodex-gpui/src/shell.rs]
+  symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/shell.rs]
+  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
 
@@ -34,19 +34,25 @@ but its projection of a bound Codex thread can become stale when another app-ser
 client changes that thread.
 
 Decodex re-observes one thread at a time by exact thread ID through its bound account.
-Opening a Conversation refreshes that selected thread. The explicit sidebar sync builds
-a bounded client-side batch and applies the same command sequentially to every local
+Opening a Conversation first requests its daemon-owned SQLite history. After a fresh
+local page is visible, GPUI starts provider lifecycle reconciliation for the selected
+thread. This ordering prevents the provider command from blocking the first local
+history read on the retained protocol connection. The explicit sidebar sync builds a
+bounded client-side batch and applies the same command sequentially to every local
 provider-backed Conversation, then reloads the SQLite list. It does not add a bulk
 provider API or a second state authority. The current V1 refresh contract covers thread
-lifecycle. If exact app-server readback reports that the thread is archived, one SQLite
+lifecycle and exact recovery of Decodex-submitted Turns. If exact app-server readback
+reports that the thread is archived, one SQLite
 transaction archives the Conversation and ends its active RuntimeSession. Decodex
 removes that Conversation from the active task list. A Decodex archive command uses
 exact pre-read, archive, and post-read in one account-bound app-server process before it
 commits the same local transition. The runtime refuses refresh/archive while a turn,
 establishment, or unresolved provider attempt is active, and commits the local archive
 only after the exact provider result is positive and the expected Conversation and
-RuntimeSession revisions still match. The sidebar reports these definite refusals as
-skipped instead of fabricating a provider outcome.
+RuntimeSession revisions still match. A prepared or dispatch-authorized active attempt
+still blocks control. An `unknown` active attempt enters the Silent Recovery path below.
+The sidebar reports definite refusals as skipped instead of fabricating a provider
+outcome.
 
 The local Conversation list is a SQLite read and does not assert current provider
 freshness. Opening a task or explicitly syncing the sidebar requests provider readback.
@@ -71,10 +77,35 @@ thread, thread-start fence, request, response, active Turn, ProviderAttempt, or 
 ProcessGeneration exists. These transitions use durable command receipts. They do not
 generalize absence into proof.
 
-`OutcomeUnknown` remains a durable uncertainty fact. Lifecycle refresh and lossy
-`thread/read` do not convert it to success or failure. GPUI explains that the provider
-outcome cannot be proved and offers `Start new`; it does not resend into the uncertain
-thread. The old Conversation remains available as evidence.
+Every Decodex `turn/start` sends its existing durable Turn identity as Codex
+`clientUserMessageId`. This field is a correlation key, not provider idempotency. During
+Silent Recovery, one same-account `thread/read(includeTurns=true)` may select exactly
+one Turn that contains a user message with that client identity. A matching terminal
+Turn is positive evidence: Decodex appends only an exact missing assistant suffix, records
+terminal evidence, and terminalizes the original Turn without replay. If the process
+stops after terminal evidence commits but before the Turn terminalization transaction,
+the next sync completes that transaction from the exact durable evidence. It does not
+read or dispatch the provider again. A local assistant prefix that is not an exact
+prefix of the recovered text is an integrity conflict and cannot become a false
+success. No match, a
+nonterminal match, timeout, or read failure does not prove non-submission.
+
+When no terminal match is available, Decodex marks the durable active Turn failed and
+presents it as interrupted only after SQLite proves that its exact ProcessGeneration is
+dead with positive death evidence. The original ProviderAttempt remains `unknown` and
+unchanged as internal audit evidence. GPUI shows one durable “Previous turn was
+interrupted. You can continue.” activity and offers automatic or explicit `Retry sync`
+while reconciliation is pending. It does not ask the user to understand or discard an
+`OutcomeUnknown` Conversation.
+
+The next user message is a distinct effect. Decodex atomically ends the uncertain source
+RuntimeSession, persists a bounded Context Pack, creates a new RuntimeSession on the
+same account, and moves only the new active Turn to it. The new ProviderAttempt records
+the exact unknown predecessor as `AcknowledgedSuccessor`. It never resumes or resends on
+the uncertain Codex thread. Context compilation explicitly excludes that successor Turn,
+so its user message appears only once as the final `turn/start` input. SQLite retains the
+length-delimited Context Pack as authority. The runtime verifies that binary record and
+renders only its represented UTF-8 sources before it sends model input.
 
 ## Quick Task execution controls
 
@@ -95,6 +126,16 @@ clear text that the user changed after submission. If refresh removes the select
 Conversation, selection becomes empty instead of moving the draft to another thread.
 Recovery commands have a separate control and never consume composer text.
 
+GPUI projects a queued prompt into the transcript immediately and keeps that projection
+until the matching durable user history item is visible. It groups adjacent assistant
+message fragments with the same Turn identity into one response. A tool or system
+activity row ends that response block, so text on opposite sides of an activity is not
+joined. The current single-Codex view omits redundant user and assistant identity labels,
+but it keeps the protocol role and Turn identities for later manager and multi-role
+views. When a fresh head read succeeds, the pager replaces the old retained page window
+and rebuilds its next page from the new continuation. It does not treat the old valid
+successor as a continuation cycle.
+
 Change navigation: the public settings and recovery values are in
 `crates/decodex-protocol/src/quick_task.rs` (`QuickTaskExecutionSettings`,
 `QuickTaskRecoveryAction`); Codex request decoding is in
@@ -114,7 +155,7 @@ APIs, and fixtures. The V1 schema persists:
 - account identity, lifecycle operation, exact credential binding, credential payload,
   quota facts, profiles, routing control, and capability attestation;
 - Conversation, Quick Task request, Turn, normalized history, and command receipts;
-- routing decisions and inert continuation plans;
+- routing decisions, executable continuation plans, and persisted Context Packs;
 - RuntimeSession snapshots and Codex-thread establishment evidence;
 - ProcessGeneration intent, exact identity, state, and positive death evidence; and
 - ProviderAttempt preparation, dispatch authorization, unknown projection, and positive
@@ -156,17 +197,36 @@ bounded inline value or a digest and length.
 14. Each user send carries an explicit model, reasoning effort, and Fast selection.
     Fast maps to the request-scoped Codex `priority` service tier. Fast off sends a null
     service tier and does not mutate global Codex configuration.
-15. Provider archive readback can close a local Conversation only when no Turn or
-    ProviderAttempt is unresolved and exact Conversation and RuntimeSession revisions
-    still match.
+15. Provider archive readback can close a local Conversation only when no active Turn
+    owns an unresolved ProviderAttempt and exact Conversation and RuntimeSession
+    revisions still match. Historical unknown evidence on a closed Turn remains intact.
 16. A missing per-thread `archived` field requires exact bounded membership in one
     filtered provider list. Missing or contradictory membership cannot change SQLite.
-17. A stale active Turn can become failed only with exact revisions and proof that no
-    unresolved attempt, live process, or streaming history owner exists.
-18. `OutcomeUnknown` is not retry authority. The safe UI action starts a different
-    Conversation and preserves the uncertain record.
+17. A stale provider-less active Turn can become failed only with exact revisions and
+    proof that no unresolved attempt, live process, or streaming history owner exists.
+18. `OutcomeUnknown` is not retry authority. Exact correlated terminal readback may
+    terminalize the original Turn. Otherwise, positive death of its exact
+    ProcessGeneration may close only the product-visible Turn while the ProviderAttempt
+    remains unknown.
 19. Composer content clears only for the same unchanged message after explicit command
     acceptance. Rejection and selection removal retain it.
+20. Opening a Conversation must make daemon-owned local history visible before it queues
+    selected-thread provider reconciliation on the same retained client connection. A
+    successful fresh head read replaces the old retained page window before the next
+    page is rebuilt.
+21. A queued prompt remains visible until matching durable user history exists. Adjacent
+    assistant fragments with the same Turn identity render as one response, while an
+    intervening activity starts a new response block.
+22. `clientUserMessageId` equals the existing Decodex Turn ID. It is a correlation key
+    only and never authorizes replay.
+23. After inconclusive recovery, a later distinct Turn uses one persisted, same-account
+    Context Pack fallback and an `AcknowledgedSuccessor` attempt. It never dispatches on
+    the uncertain thread.
+24. A fallback Context Pack excludes its current successor Turn. Its persisted binary
+    record must verify before the runtime can render represented source text for Codex.
+25. Positive terminal evidence and Conversation terminalization are restart-safe. If
+    only the evidence transaction committed, a later sync finishes the exact pending
+    terminalization without another provider request.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -184,6 +244,13 @@ Codex thread, and next Turn sequence. A later user Turn can bind a SameThread co
 after process retirement or after the daemon restarts. If the bound account becomes
 depleted, V1 fails closed instead of switching the Conversation in place and losing
 provider cache affinity.
+
+A recovered unknown attempt is different from a terminal attempt. Its source
+RuntimeSession remains visible until the next distinct user Turn is admitted. Planning
+that Turn persists and verifies a Context Pack, ends the old RuntimeSession, and creates
+a same-account starting RuntimeSession. Reopening SQLite reconstructs the same pack and
+plan from migration-owned metadata plus the content-addressed blob. The current Turn is
+not one of the pack sources; it remains the separate final request input.
 
 ## Credential boundary
 
@@ -207,8 +274,7 @@ The following are outside V1 and must not activate a second store:
 - ManagedRun and automation;
 - ontology and graph projections;
 - remote workers and multi-machine coordination; and
-- cross-conversation app-server process multiplexing; and
-- Context Pack fallback when exact same-thread proof is absent.
+- cross-conversation app-server process multiplexing.
 
 ## Acceptance
 
@@ -221,8 +287,10 @@ Acceptance requires:
 - a daemon restart followed by a later response on the same Conversation and Codex
   thread, with no duplicate ProviderAttempt dispatch;
 - protocol-only GPUI and CLI operation;
+- local-history-first Conversation opening, immediate queued-prompt projection, and
+  Turn-level adjacent assistant-fragment coalescing;
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;
-- archived-thread rejection with retained composer content and a safe new-Conversation path;
+- archived-thread rejection with retained composer content and no implicit resend;
 - bounded stale-local reconciliation without changing unresolved provider evidence;
 - focused and workspace-wide tests; and
 - current OpenWiki and local database gates.
