@@ -33,19 +33,24 @@ second state authority or a synchronization peer. SQLite owns Decodex product fa
 but its projection of a bound Codex thread can become stale when another app-server
 client changes that thread.
 
-Decodex re-observes one selected thread by exact thread ID through its bound account.
-The current V1 refresh contract covers thread lifecycle. If exact app-server readback
-reports that the thread is archived, one SQLite transaction archives the Conversation
-and ends its active RuntimeSession. Decodex removes that Conversation from the active
-task list. A Decodex archive command uses exact pre-read, archive, and post-read in one
-account-bound app-server process before it commits the same local transition. The
-runtime refuses refresh/archive while a turn, establishment, or unresolved provider
-attempt is active, and commits the local archive only after the exact provider result
-is positive and the expected Conversation and RuntimeSession revisions still match.
+Decodex re-observes one thread at a time by exact thread ID through its bound account.
+Opening a Conversation refreshes that selected thread. The explicit sidebar sync builds
+a bounded client-side batch and applies the same command sequentially to every local
+provider-backed Conversation, then reloads the SQLite list. It does not add a bulk
+provider API or a second state authority. The current V1 refresh contract covers thread
+lifecycle. If exact app-server readback reports that the thread is archived, one SQLite
+transaction archives the Conversation and ends its active RuntimeSession. Decodex
+removes that Conversation from the active task list. A Decodex archive command uses
+exact pre-read, archive, and post-read in one account-bound app-server process before it
+commits the same local transition. The runtime refuses refresh/archive while a turn,
+establishment, or unresolved provider attempt is active, and commits the local archive
+only after the exact provider result is positive and the expected Conversation and
+RuntimeSession revisions still match. The sidebar reports these definite refusals as
+skipped instead of fabricating a provider outcome.
 
 The local Conversation list is a SQLite read and does not assert current provider
-freshness. Opening or explicitly refreshing a selected task requests a provider
-readback. V1 does not continuously poll every account and thread. App-server
+freshness. Opening a task or explicitly syncing the sidebar requests provider readback.
+V1 does not continuously poll every account and thread. App-server
 `thread/read(includeTurns=true)` exposes visible but lossy history; it is not complete
 history or tool-effect authority. V1 therefore does not import arbitrary external
 turns during lifecycle refresh. A later history-merge contract must define identity,

@@ -12,7 +12,7 @@ use gpui::{
 use decodex_protocol::{
 	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
 	AccountQuotaWindowDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
-	DoctorComponent, DoctorStatus, EntityId, HistoryItemKindDto, HistoryItemStatusDto,
+	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState, WorkItemBoardCard,
 	WorkItemState,
 };
@@ -32,7 +32,7 @@ use crate::{
 	history_pager::{HistoryLoadState, HistoryPager, HistorySnapshot},
 	quick_tasks::{
 		QuickTaskCommandState, QuickTaskInputError, QuickTasks, QuickTasksLoadState,
-		QuickTasksSnapshot,
+		QuickTaskRefreshState, QuickTasksSnapshot,
 	},
 	settings_surface::SettingsSurface,
 	ui_theme,
@@ -52,6 +52,32 @@ const WB_ACCENT: u32 = ui_theme::ACCENT;
 const WB_BLUE: u32 = ui_theme::BLUE;
 const WB_GREEN: u32 = ui_theme::GREEN;
 const WB_AMBER: u32 = ui_theme::AMBER;
+
+const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
+	DoctorComponent::Configuration,
+	DoctorComponent::ProductStore,
+	DoctorComponent::QuickTask,
+	DoctorComponent::Protocol,
+	DoctorComponent::ProtocolVersion,
+	DoctorComponent::ServerIdentity,
+	DoctorComponent::SharedCodexHome,
+	DoctorComponent::CredentialVault,
+];
+const HEALTH_APP_SERVER_COMPONENTS: [DoctorComponent; 8] = [
+	DoctorComponent::AppServerCapability(AppServerCapability::Initialize),
+	DoctorComponent::AppServerCapability(AppServerCapability::AccountRead),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadList),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadRead),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadArchive),
+	DoctorComponent::AppServerCapability(AppServerCapability::PaginatedHistory),
+	DoctorComponent::AppServerCapability(AppServerCapability::NativeCollaboration),
+	DoctorComponent::AppServerCapability(AppServerCapability::ThreadSearch),
+];
+const HEALTH_OPTIONAL_COMPONENTS: [DoctorComponent; 3] = [
+	DoctorComponent::ManagedRepository,
+	DoctorComponent::BlobIntegrity,
+	DoctorComponent::PluginReadiness,
+];
 
 actions!(
 	decodex_shell,
@@ -437,6 +463,7 @@ impl Shell {
 		shell.quick = QuickTasksSnapshot {
 			load: QuickTasksLoadState::Ready,
 			command: QuickTaskCommandState::Idle,
+			refresh: QuickTaskRefreshState::Idle,
 			tasks: vec![
 				task(
 					conversation_id.clone(),
@@ -599,6 +626,37 @@ impl Shell {
 				order: vec![primary.account_id, reserve.account_id, research.account_id],
 			}),
 			can_manage: true,
+		};
+		let health_checks = DoctorComponent::ALL
+			.into_iter()
+			.map(|component| {
+				let status = match component {
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
+						DoctorStatus::Unknown(DoctorIssue::NotProbed)
+					},
+					DoctorComponent::ManagedRepository => {
+						DoctorStatus::Unavailable(DoctorIssue::Disabled)
+					},
+					DoctorComponent::PluginReadiness => {
+						DoctorStatus::Unknown(DoctorIssue::Plugin)
+					},
+					_ => DoctorStatus::Ready,
+				};
+				decodex_protocol::DoctorCheck::new(component, status)
+			})
+			.collect();
+		shell.health = HealthSnapshot {
+			load: HealthLoadState::Ready,
+			report: Some(
+				decodex_protocol::DoctorReport::new(
+					decodex_protocol::ServerId::new("visual-health")
+						.expect("visual health server identity is bounded"),
+					decodex_protocol::CURRENT_VERSION,
+					health_checks,
+				)
+				.expect("visual health report is complete"),
+			),
+			can_refresh: true,
 		};
 
 		let item = |history_item_id: &str,
@@ -1057,7 +1115,7 @@ impl Shell {
 		if self.quick_tasks.select(conversation_id.clone()) {
 			// Re-observe the selected app-server thread. SQLite is a local projection and
 			// another app-server client can change the provider state at any time.
-			let _ = self.quick_tasks.refresh();
+			let _ = self.quick_tasks.refresh_selected();
 			self.creating_new = false;
 			self.opened_history = None;
 			self.synchronize_quick_tasks();
@@ -1102,7 +1160,7 @@ impl Shell {
 	fn refresh_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		self.input_status = self
 			.quick_tasks
-			.refresh()
+			.refresh_all()
 			.err()
 			.map(input_error_label)
 			.map(Into::into);
@@ -1796,10 +1854,36 @@ fn health_presentation(snapshot: &HealthSnapshot) -> HealthPresentation {
 			},
 			color: 0x60a5fa,
 		},
-		HealthLoadState::Ready => HealthPresentation {
-			label: "Current",
-			detail: "The bounded health report is current.",
-			color: 0x22c55e,
+		HealthLoadState::Ready => {
+			let core_statuses = HEALTH_CORE_COMPONENTS.map(|component| {
+				snapshot
+					.report
+					.as_ref()
+					.and_then(|report| report.check(component))
+					.map(|check| check.status)
+			});
+			if core_statuses.iter().all(|status| *status == Some(DoctorStatus::Ready)) {
+				HealthPresentation {
+					label: "Core ready",
+					detail: "All required Decodex services are ready.",
+					color: 0x22c55e,
+				}
+			} else if core_statuses
+				.iter()
+				.any(|status| matches!(status, Some(DoctorStatus::Unavailable(_))))
+			{
+				HealthPresentation {
+					label: "Core unavailable",
+					detail: "At least one required Decodex service is unavailable.",
+					color: 0xef4444,
+				}
+			} else {
+				HealthPresentation {
+					label: "Core not verified",
+					detail: "At least one required Decodex service has not been verified.",
+					color: 0xf59e0b,
+				}
+			}
 		},
 		HealthLoadState::Offline => HealthPresentation {
 			label: "Offline",
@@ -1850,13 +1934,57 @@ fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 		Some(DoctorStatus::Ready) => {
 			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e }
 		},
-		Some(DoctorStatus::Unavailable(_)) => {
-			HealthPresentation { label: "Unavailable", detail: "", color: 0xef4444 }
+		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
+		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
+			label: "Disabled",
+			detail: "This optional capability is intentionally disabled.",
+			color: 0x64748b,
 		},
-		Some(DoctorStatus::Unknown(_)) => {
-			HealthPresentation { label: "Unknown", detail: "", color: 0xf59e0b }
+		Some(DoctorStatus::Unavailable(DoctorIssue::NotProbed))
+		| Some(DoctorStatus::Unknown(DoctorIssue::NotProbed)) => HealthPresentation {
+			label: "Not checked",
+			detail: "The owning boundary did not run an active probe.",
+			color: 0x64748b,
+		},
+		Some(DoctorStatus::Unknown(DoctorIssue::Plugin)) => HealthPresentation {
+			label: "Not configured",
+			detail: "No required plugin inventory is configured.",
+			color: 0x64748b,
+		},
+		Some(DoctorStatus::Unavailable(issue)) => HealthPresentation {
+			label: "Unavailable",
+			detail: doctor_issue_detail(issue),
+			color: 0xef4444,
+		},
+		Some(DoctorStatus::Unknown(issue)) => HealthPresentation {
+			label: "Not verified",
+			detail: doctor_issue_detail(issue),
+			color: 0xf59e0b,
 		},
 		None => HealthPresentation { label: "No report", detail: "", color: 0x64748b },
+	}
+}
+
+fn doctor_issue_detail(issue: DoctorIssue) -> &'static str {
+	match issue {
+		DoctorIssue::Authentication => "Authentication was not established.",
+		DoctorIssue::Plugin => "Required plugin readiness was not established.",
+		DoctorIssue::ConfigurationMissing => "The operator configuration is missing.",
+		DoctorIssue::ConfigurationMalformed => "The operator configuration is malformed.",
+		DoctorIssue::ConfigurationVersion => "The configuration version is unsupported.",
+		DoctorIssue::DatabaseNotConfigured => "The local database is not configured.",
+		DoctorIssue::DatabaseMalformedConfig => "The database configuration is malformed.",
+		DoctorIssue::DatabaseUnreachable => "The local database cannot be opened.",
+		DoctorIssue::DatabaseIncompatible => "The local database state is incompatible.",
+		DoctorIssue::UnsafeDatabaseAuthority => "The database retains unsafe authority.",
+		DoctorIssue::ProtocolDisconnected => "The daemon protocol is disconnected.",
+		DoctorIssue::ProtocolVersionMismatch => "The protocol versions are incompatible.",
+		DoctorIssue::ServerIdentityMismatch => "The connected server identity does not match.",
+		DoctorIssue::ServerIdentityUnavailable => "A stable server identity is unavailable.",
+		DoctorIssue::UnsafeHostPath => "A required host path failed its safety contract.",
+		DoctorIssue::Integrity => "Storage integrity was not established.",
+		DoctorIssue::NotProbed => "The owning boundary did not run an active probe.",
+		DoctorIssue::Disabled => "This optional capability is intentionally disabled.",
 	}
 }
 
@@ -1872,8 +2000,8 @@ fn health_component_row(
 		.id(("health-component", index))
 		.role(Role::ListItem)
 		.aria_label(format!("{label}: {}", presentation.label))
-		.h(px(44.0))
-		.min_h(px(44.0))
+		.min_h(px(52.0))
+		.py_2()
 		.flex()
 		.items_center()
 		.justify_between()
@@ -1882,7 +2010,22 @@ fn health_component_row(
 		.border_color(rgba(0xffffff0a))
 		.text_size(px(10.5))
 		.text_color(rgb(WB_TEXT_MUTED))
-		.child(div().min_w_0().child(label))
+		.child(
+			div()
+				.min_w_0()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(label)
+				.when(!presentation.detail.is_empty(), |element| {
+					element.child(
+						div()
+							.text_size(px(8.0))
+							.text_color(rgb(WB_TEXT_FAINT))
+							.child(presentation.detail),
+					)
+				}),
+		)
 		.child(
 			div()
 				.w(px(128.0))
@@ -1894,6 +2037,64 @@ fn health_component_row(
 					div().size(px(9.0)).min_w(px(9.0)).rounded_full().bg(rgb(presentation.color)),
 				)
 				.child(presentation.label),
+		)
+		.into_any_element()
+}
+
+fn health_component_section(
+	id: &'static str,
+	title: &'static str,
+	detail: &'static str,
+	index_offset: usize,
+	components: &[DoctorComponent],
+	snapshot: &HealthSnapshot,
+) -> AnyElement {
+	let rows = components.iter().copied().enumerate().map(|(index, component)| {
+		let status = snapshot
+			.report
+			.as_ref()
+			.and_then(|report| report.check(component))
+			.map(|check| check.status);
+		health_component_row(index_offset + index, component, status)
+	});
+
+	div()
+		.id(id)
+		.flex()
+		.flex_col()
+		.child(
+			div()
+				.px_1()
+				.pb_2()
+				.flex()
+				.items_end()
+				.justify_between()
+				.gap_4()
+				.child(
+					div()
+						.text_size(px(10.0))
+						.font_weight(FontWeight::SEMIBOLD)
+						.text_color(rgb(WB_TEXT))
+						.child(title),
+				)
+				.child(
+					div()
+						.text_size(px(8.0))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(detail),
+				),
+		)
+		.child(
+			div()
+				.id(("health-section-list", index_offset))
+				.role(Role::List)
+				.aria_label(title)
+				.px_4()
+				.border_1()
+				.border_color(rgba(0xffffff10))
+				.rounded(px(12.0))
+				.bg(rgba(0x00000024))
+				.children(rows),
 		)
 		.into_any_element()
 }
@@ -2621,6 +2822,21 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 	}
 }
 
+fn quick_task_refresh_status(refresh: QuickTaskRefreshState) -> Option<String> {
+	match refresh {
+		QuickTaskRefreshState::Idle => None,
+		QuickTaskRefreshState::Refreshing { completed, total, archived, failed } => Some(format!(
+			"Syncing {completed}/{total} · {archived} archived · {failed} skipped"
+		)),
+		QuickTaskRefreshState::Complete { checked, archived, failed } => Some(format!(
+			"{checked} checked · {archived} archived · {failed} skipped"
+		)),
+		QuickTaskRefreshState::Stopped { checked, total, archived, failed } => Some(format!(
+			"Stopped {checked}/{total} · {archived} archived · {failed} skipped"
+		)),
+	}
+}
+
 fn bound_work_item<'a>(
 	shell: &'a Shell,
 	conversation_id: &EntityId,
@@ -2632,6 +2848,20 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 	let selected = shell.quick.selected.clone();
 	let can_control = shell.quick.can_submit
 		&& shell.quick.selected_task().is_some_and(|task| task.state == QuickTaskState::Ready);
+	let can_refresh_all = shell.quick.can_submit && shell.quick.load == QuickTasksLoadState::Ready;
+	let refresh_status = quick_task_refresh_status(shell.quick.refresh);
+	let refresh_label = match shell.quick.refresh {
+		QuickTaskRefreshState::Refreshing { completed, total, .. } => {
+			format!("{completed}/{total}")
+		},
+		_ => "↻".to_owned(),
+	};
+	let refresh_text_size = if matches!(shell.quick.refresh, QuickTaskRefreshState::Refreshing { .. })
+	{
+		8.0
+	} else {
+		12.0
+	};
 	let rows = shell.quick.tasks.iter().enumerate().map(|(index, task)| {
 		let conversation_id = task.conversation_id.clone();
 		let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
@@ -2724,10 +2954,27 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				.border_color(rgba(0xffffff0d))
 				.child(
 					div()
+						.min_w_0()
+						.flex()
+						.flex_col()
+						.gap_1()
 						.font_weight(FontWeight::SEMIBOLD)
 						.text_size(px(10.0))
 						.text_color(rgb(WB_TEXT))
-						.child("Sessions"),
+						.child("Sessions")
+						.when_some(refresh_status, |element, status| {
+							element.child(
+								div()
+									.max_w(px(156.0))
+									.overflow_hidden()
+									.whitespace_nowrap()
+									.text_ellipsis()
+									.font_weight(FontWeight::NORMAL)
+									.text_size(px(7.0))
+									.text_color(rgb(WB_TEXT_FAINT))
+									.child(status),
+							)
+						}),
 				)
 				.child(
 					div()
@@ -2738,25 +2985,38 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 							div()
 								.id("refresh-quick-task")
 								.role(Role::Button)
-								.aria_label("Refresh selected Codex conversation")
+								.aria_label("Sync Codex-backed conversations")
 								.tooltip(|_, cx| {
-									cx.new(|_| ControlTooltip("Refresh selected thread from Codex"))
+									cx.new(|_| ControlTooltip("Sync Codex-backed conversations"))
 										.into()
 								})
-								.size(px(27.0))
+								.h(px(27.0))
+								.min_w(px(27.0))
+								.px_2()
 								.flex()
 								.items_center()
 								.justify_center()
 								.rounded(px(7.0))
-								.text_size(px(12.0))
-								.text_color(rgb(WB_TEXT_MUTED))
-								.cursor_pointer()
-								.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-								.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-								.on_click(cx.listener(|shell, _, window, cx| {
-									shell.refresh_quick_task(window, cx);
-								}))
-								.child("↻"),
+								.text_size(px(refresh_text_size))
+								.text_color(if can_refresh_all {
+									rgb(WB_TEXT_MUTED)
+								} else {
+									rgb(WB_TEXT_FAINT)
+								})
+								.when(can_refresh_all, |element| {
+									element
+										.cursor_pointer()
+										.hover(|element| {
+											element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
+										})
+										.active(|element| {
+											element.bg(rgba(0xffffff18)).opacity(0.82)
+										})
+										.on_click(cx.listener(|shell, _, window, cx| {
+											shell.refresh_quick_task(window, cx);
+										}))
+								})
+								.child(refresh_label),
 						)
 						.child(
 							div()
@@ -3934,15 +4194,6 @@ fn quick_tasks_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 	let presentation = health_presentation(snapshot);
-	let rows = DoctorComponent::ALL.into_iter().enumerate().map(|(index, component)| {
-		let status = snapshot
-			.report
-			.as_ref()
-			.and_then(|report| report.check(component))
-			.map(|check| check.status);
-
-		health_component_row(index, component, status)
-	});
 
 	div()
 		.id("health-scroll-viewport")
@@ -3962,7 +4213,7 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 				.flex()
 				.items_center()
 				.gap_3()
-				.rounded_t(px(12.0))
+				.rounded(px(12.0))
 				.border_1()
 				.border_color(rgba(0xffffff10))
 				.bg(rgba(ui_theme::SURFACE_RAISED_MATERIAL))
@@ -3988,15 +4239,34 @@ fn health_content(snapshot: &HealthSnapshot) -> AnyElement {
 		.child(
 			div()
 				.id("health-components")
-				.role(Role::List)
-				.aria_label("Health components")
-				.px_4()
-				.border_1()
-				.border_t_0()
-				.border_color(rgba(0xffffff10))
-				.rounded_b(px(12.0))
-				.bg(rgba(0x00000024))
-				.children(rows),
+				.pt_5()
+				.flex()
+				.flex_col()
+				.gap_5()
+				.child(health_component_section(
+					"health-core-components",
+					"Core services",
+					"Required for normal operation",
+					0,
+					&HEALTH_CORE_COMPONENTS,
+					snapshot,
+				))
+				.child(health_component_section(
+					"health-app-server-components",
+					"Codex app-server",
+					"Capabilities are reported only after an active probe",
+					HEALTH_CORE_COMPONENTS.len(),
+					&HEALTH_APP_SERVER_COMPONENTS,
+					snapshot,
+				))
+				.child(health_component_section(
+					"health-optional-components",
+					"Optional capabilities",
+					"Disabled or unconfigured entries do not block Decodex",
+					HEALTH_CORE_COMPONENTS.len() + HEALTH_APP_SERVER_COMPONENTS.len(),
+					&HEALTH_OPTIONAL_COMPONENTS,
+					snapshot,
+				)),
 		)
 		.into_any_element()
 }
@@ -4281,6 +4551,55 @@ mod tests {
 			};
 			assert_eq!(connection_presentation(view).label, label);
 		}
+	}
+
+	#[test]
+	fn health_distinguishes_core_readiness_from_deferred_capabilities() {
+		let checks = DoctorComponent::ALL
+			.into_iter()
+			.map(|component| {
+				let status = match component {
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
+						DoctorStatus::Unknown(DoctorIssue::NotProbed)
+					},
+					DoctorComponent::ManagedRepository => {
+						DoctorStatus::Unavailable(DoctorIssue::Disabled)
+					},
+					DoctorComponent::PluginReadiness => {
+						DoctorStatus::Unknown(DoctorIssue::Plugin)
+					},
+					_ => DoctorStatus::Ready,
+				};
+				decodex_protocol::DoctorCheck::new(component, status)
+			})
+			.collect();
+		let snapshot = HealthSnapshot {
+			load: HealthLoadState::Ready,
+			report: Some(
+				decodex_protocol::DoctorReport::new(
+					decodex_protocol::ServerId::new("health-ui-test")
+						.expect("test server identity is valid"),
+					decodex_protocol::CURRENT_VERSION,
+					checks,
+				)
+				.expect("complete health report is valid"),
+			),
+			can_refresh: true,
+		};
+
+		assert_eq!(health_presentation(&snapshot).label, "Core ready");
+		assert_eq!(
+			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::NotProbed))).label,
+			"Not checked"
+		);
+		assert_eq!(
+			component_presentation(Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))).label,
+			"Disabled"
+		);
+		assert_eq!(
+			component_presentation(Some(DoctorStatus::Unknown(DoctorIssue::Plugin))).label,
+			"Not configured"
+		);
 	}
 
 	#[gpui::test]
