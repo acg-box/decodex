@@ -4,6 +4,7 @@
 mod client;
 mod doctor;
 mod local_transport;
+mod program_cycle;
 mod quick_task;
 mod retained_session;
 mod wire;
@@ -21,15 +22,20 @@ pub use self::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
 		LocalTransportStream,
 	},
+	program_cycle::{
+		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
+		ProgramCycleContractError, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
+		ProgramEdgeDto, ProgramEvidenceDraftDto, ProgramListResult, ProgramNodeDto,
+		ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramReviewClassification,
+		ProgramReviewDraftDto, ProgramState, ProgramSummaryDto,
+	},
 	quick_task::{
 		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_MODEL_BYTES,
-		MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError,
-		QuickTaskExecutionSettings,
+		MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError, QuickTaskExecutionSettings,
 		QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskListSize,
 		QuickTaskModel, QuickTaskReadError, QuickTaskReasoningEffort, QuickTaskRecoveryAction,
-		QuickTaskResult, QuickTaskState,
-		QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskUnavailableReason,
-		QuickTaskWorkingDirectory,
+		QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
+		QuickTaskUnavailableReason, QuickTaskWorkingDirectory,
 	},
 	retained_session::{
 		ApplicationConfirmation, RetainedSession, RetainedSessionConfig, RetainedSessionFailure,
@@ -80,7 +86,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 1 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 2 };
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

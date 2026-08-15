@@ -43,15 +43,22 @@ fn sigkill_stale_socket_is_recovered_by_the_next_daemon() {
 }
 
 fn fixture() -> (TempDir, PathBuf, PathBuf) {
+	#[cfg(target_os = "macos")]
+	let home = TempDir::new_in("/private/tmp").expect("create short daemon test home");
+	#[cfg(not(target_os = "macos"))]
 	let home = TempDir::new().expect("create daemon test home");
 	let canonical_home = home.path().canonicalize().expect("canonicalize daemon test home");
 	let root = canonical_home.join(".decodex");
+	let bin = canonical_home.join("bin");
 	let server = root.join("server");
 	let config_file = root.join("config.toml");
 	let socket = server.join("decodex.sock");
 
 	fs::create_dir(&root).expect("create daemon test root");
+	fs::create_dir(&bin).expect("create isolated daemon test PATH");
 	fs::create_dir(&server).expect("create daemon server directory");
+	fs::set_permissions(&bin, fs::Permissions::from_mode(0o700))
+		.expect("scope isolated daemon test PATH");
 	fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).expect("scope daemon test root");
 	fs::set_permissions(&server, fs::Permissions::from_mode(0o700))
 		.expect("scope daemon server directory");
@@ -109,6 +116,7 @@ impl RunningDaemon {
 	fn start(home: &Path) -> Self {
 		let mut child = Command::new(env!("CARGO_BIN_EXE_decodexd"))
 			.env("HOME", home)
+			.env("PATH", home.join("bin"))
 			.stdout(Stdio::piped())
 			.spawn()
 			.expect("start daemon test process");

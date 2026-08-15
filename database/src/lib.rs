@@ -11,6 +11,7 @@ mod credentials;
 mod error;
 mod migrations;
 mod process_generations;
+mod program_cycles;
 mod provider_attempts;
 mod quick_task_routing;
 mod role_profiles;
@@ -55,6 +56,12 @@ pub use self::{
 	process_generations::{
 		FreshProcessGenerationFence, PrepareProcessGenerationOutcome, ProcessGenerationMutation,
 		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
+	},
+	program_cycles::{
+		CreateProgramCycle, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
+		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
+		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
+		RecordProgramReview,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,

@@ -5,7 +5,7 @@ use decodex_core::{
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
 	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProcessGenerationId, ProviderAttemptId,
 	ProviderEvidenceId, ProviderRequestId, ProviderRequestKey, ProviderTerminalOutcome,
-	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus, WorkItemId,
 };
 use rusqlite::{OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -24,6 +24,7 @@ const MAX_RECOVERED_ASSISTANT_BYTES: usize = 256 * 1_024;
 #[derive(Clone, Debug)]
 pub struct CreateQuickTaskConversation {
 	pub conversation_id: ConversationId,
+	pub work_item_id: Option<WorkItemId>,
 	pub title: String,
 	pub message: String,
 	pub working_directory: String,
@@ -487,6 +488,14 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+			if let Some(work_item_id) = create.work_item_id.as_ref() {
+				crate::program_cycles::bind_program_work_item_execution(
+					&transaction,
+					work_item_id,
+					&create.conversation_id,
+					now,
+				)?;
+			}
 			let stored = StoredConversation {
 				conversation_id: create.conversation_id,
 				title: create.title,
@@ -2873,6 +2882,7 @@ mod archive_tests {
 					.expect("create command"),
 				&CreateQuickTaskConversation {
 					conversation_id,
+					work_item_id: None,
 					title: "Local fixture".to_owned(),
 					message: "Start this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),
@@ -3102,6 +3112,7 @@ mod archive_tests {
 					.expect("create command"),
 				&CreateQuickTaskConversation {
 					conversation_id: conversation_id.clone(),
+					work_item_id: None,
 					title: "Archive fixture".to_owned(),
 					message: "Archive this task.".to_owned(),
 					working_directory: "/tmp".to_owned(),

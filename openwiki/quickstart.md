@@ -1,7 +1,7 @@
 ---
 type: "Reference"
 title: "OpenWiki Quickstart"
-description: "Entry point for Decodex local-product architecture, SQLite authority, Quick Task execution, app-server freshness, operations, and validation."
+description: "Entry point for Decodex local-product architecture, SQLite authority, Quick Task execution, Adaptive Factory Programs, operations, and validation."
 tags: [repository, local-product, navigation]
 openwiki:
   roles: [repository, architecture, workflow]
@@ -45,9 +45,10 @@ one-shot transfer tool.
 - [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
   sequencer used by Quick Task.
 - [Adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md):
-  accepted product direction for Program feedback, ontology, dynamic agents, bounded
-  external actions, and future Domain Packs. This is a target decision, not a current
-  capability claim.
+  the implemented Adaptive Factory Spine V1, plus the accepted direction for dynamic
+  agents, bounded external actions, and future Domain Packs.
+- [Adaptive Factory Spine V1 evidence](evidence/adaptive-factory-spine-v1.md): the exact
+  current Program boundary, causal projection, restart proof, and local dogfood record.
 
 For the current app-server freshness boundary and Quick Task controls, start with the
 [local product contract](specs/local-product-v1.md) and its [SQLite evidence](evidence/sqlite-local-product.md).
@@ -55,7 +56,7 @@ The contract covers exact selected-thread read/archive reconciliation, the delib
 lossy history boundary, request-scoped model/effort/Fast settings, and the
 `RestoreProcessReadiness` pre-effect rejection.
 
-## Current usable slice
+## Current usable slices
 
 The supported product path is one ordinary multi-turn Quick Task:
 
@@ -87,24 +88,36 @@ turn terminal evidence, the runtime retires that process before it publishes `Re
 later Turn starts a fresh process generation and rehydrates the same account and Codex
 thread. An idle completed Conversation does not reserve the account process slot.
 
+The Factory also supports one bounded Adaptive Program cycle:
+
+```text
+Program -> Signal -> Claim -> Proposal -> Objective -> WorkItem
+        -> Codex Quick Task -> Evidence -> Program Review
+```
+
+SQLite owns the Program charter and every semantic identity. A Program WorkItem starts
+through the ordinary Quick Task path and binds the resulting Conversation in the same
+transaction. The Factory derives one causal graph and timeline from the authoritative
+aggregate. It does not use a graph database or a second execution engine. A Review can
+close only after the bound WorkItem has positive terminal provider evidence and the
+user supplies deterministic and external Evidence.
+
 ## Deferred product surfaces
 
-ManagedRepository, WorkItem board persistence, Reset Card consumption, execution-decision
-queries, automation, ManagedRun, ontology projection, graph visualization, remote
-workers, and multi-machine deployment are not partially ported. Current protocol calls
-for the first four return typed unavailable results. They do not activate a legacy
-storage fallback.
+ManagedRepository, the general WorkItem board, Reset Card consumption, execution-decision
+queries, automation, ManagedRun, remote workers, and multi-machine deployment are not
+partially ported. Their current protocol surfaces remain typed unavailable where a
+surface exists. They do not activate a legacy storage fallback.
 
-Ontology and graph engineering remain central to the product direction. They belong
-above the proven conversation/runtime facts: the graph must explain and coordinate real
-work, not become a second speculative execution engine. A later milestone can project
-Goals, tasks, agents, artifacts, claims, dependencies, gates, and evidence from the local
-event history.
+Ontology and graph engineering are now present only as the small closed Program
+vocabulary and derived causal projection above proven conversation/runtime facts. A
+general ontology language, graph editor, graph database, dynamic agent topology, and
+cross-Program planning remain deferred.
 
 The accepted [adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md)
-defines the later product model and delivery order. It keeps the current SQLite,
-app-server, process, attempt, and positive-evidence owners as the base. It does not make
-the deferred factory surfaces partially available.
+defines the delivered first spine and the later product order. It keeps SQLite,
+app-server, ProcessGeneration, ProviderAttempt, and positive-evidence owners as the
+base. It does not make deferred extension or multi-agent surfaces partially available.
 
 ## Repository map
 
@@ -115,8 +128,9 @@ the deferred factory surfaces partially available.
 - `crates/decodex-core/` owns mechanism-neutral domain types and fixed local paths.
 - `crates/decodex-codex/` owns Codex app-server and direct provider contracts.
 - `crates/decodex-runtime/` owns service composition, account/process/provider services,
-  and Quick Task orchestration.
+  Quick Task orchestration, and the bounded Program application projection.
 - `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
+- `database/src/program_cycles.rs` owns the atomic Program aggregate and Review rules.
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
 
