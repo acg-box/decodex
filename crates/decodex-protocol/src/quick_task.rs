@@ -13,6 +13,8 @@ use crate::{EntityId, EntityRevision};
 pub const MAX_QUICK_TASK_LIST_SIZE: u16 = 64;
 /// Maximum UTF-8 bytes in one server-host Quick Task working-directory input.
 pub const MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES: usize = 4_096;
+/// Maximum UTF-8 bytes in one explicit Codex model identifier.
+pub const MAX_QUICK_TASK_MODEL_BYTES: usize = 128;
 
 /// Closed, redacted reason that Quick Task execution was unavailable at daemon startup.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
@@ -47,6 +49,8 @@ pub enum QuickTaskContractError {
 	InvalidListSize,
 	/// A list cursor was not a positive canonical ordinary Conversation position.
 	InvalidCursor,
+	/// A model identifier was empty, oversized, or not a safe protocol label.
+	InvalidModel,
 	/// An ordinary Conversation or RuntimeSession projection was internally inconsistent.
 	InvalidProjection,
 }
@@ -56,8 +60,83 @@ impl Display for QuickTaskContractError {
 			Self::InvalidWorkingDirectory => "invalid Quick Task working directory",
 			Self::InvalidListSize => "invalid Quick Task list size",
 			Self::InvalidCursor => "invalid Quick Task list cursor",
+			Self::InvalidModel => "invalid Quick Task model",
 			Self::InvalidProjection => "invalid Quick Task conversation projection",
 		})
+	}
+}
+
+/// Bounded explicit Codex model used for the next Quick Task send.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+#[serde(transparent)]
+pub struct QuickTaskModel(String);
+impl QuickTaskModel {
+	/// Validate one model identifier without selecting a default.
+	pub fn new(value: impl Into<String>) -> Result<Self, QuickTaskContractError> {
+		let value = value.into();
+		if value.is_empty()
+			|| value.len() > MAX_QUICK_TASK_MODEL_BYTES
+			|| value.chars().any(|character| {
+				character.is_control()
+					|| !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
+			})
+		{
+			return Err(QuickTaskContractError::InvalidModel);
+		}
+		Ok(Self(value))
+	}
+
+	/// Return the exact validated model identifier.
+	pub fn as_str(&self) -> &str {
+		&self.0
+	}
+}
+impl<'de> Deserialize<'de> for QuickTaskModel {
+	fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		Self::new(String::deserialize(deserializer)?).map_err(D::Error::custom)
+	}
+}
+
+/// Closed Codex reasoning effort exposed by the Quick Task controls.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuickTaskReasoningEffort {
+	Low,
+	Medium,
+	High,
+	XHigh,
+	Max,
+	Ultra,
+}
+impl QuickTaskReasoningEffort {
+	/// Return the exact app-server wire value.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::Low => "low",
+			Self::Medium => "medium",
+			Self::High => "high",
+			Self::XHigh => "xhigh",
+			Self::Max => "max",
+			Self::Ultra => "ultra",
+		}
+	}
+}
+
+/// Explicit execution settings carried on every user send.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct QuickTaskExecutionSettings {
+	pub model: QuickTaskModel,
+	pub reasoning_effort: QuickTaskReasoningEffort,
+	/// `true` maps to Codex's request-scoped `priority` service tier.
+	pub fast: bool,
+}
+impl QuickTaskExecutionSettings {
+	pub fn new(model: QuickTaskModel, reasoning_effort: QuickTaskReasoningEffort, fast: bool) -> Self {
+		Self { model, reasoning_effort, fast }
 	}
 }
 

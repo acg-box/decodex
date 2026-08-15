@@ -23,6 +23,11 @@ MIGRATIONS = (
         "nonempty_task_instructions",
         ROOT / "database/migrations/0002_nonempty_task_instructions.sql",
     ),
+    (
+        3,
+        "quick_task_execution_controls",
+        ROOT / "database/migrations/0003_quick_task_execution_controls.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -153,6 +158,10 @@ def inspect_database(path: Path) -> dict[str, object]:
         task_profile = connection.execute(
             "SELECT revision, instructions FROM role_profiles WHERE role = 'task'"
         ).fetchone()
+        quick_task_request_columns = {
+            row[1]: (row[2], row[3], row[4])
+            for row in connection.execute("PRAGMA table_info(quick_task_requests)")
+        }
         tables = frozenset(
             row[0]
             for row in connection.execute(
@@ -174,6 +183,9 @@ def inspect_database(path: Path) -> dict[str, object]:
         raise GateFailure("SQLite migration ledger differs")
     if task_profile is None or task_profile[0] != 2 or not task_profile[1]:
         raise GateFailure("Task RoleProfile does not satisfy the executable contract")
+    for column in ("model", "reasoning_effort", "fast"):
+        if column not in quick_task_request_columns:
+            raise GateFailure("Quick Task execution settings are missing")
     if tables != REQUIRED_TABLES:
         raise GateFailure("SQLite table inventory differs")
     return {
@@ -182,6 +194,11 @@ def inspect_database(path: Path) -> dict[str, object]:
         "migration_sha256": [migration[2] for migration in expected_migrations],
         "schema_version": user_version,
         "table_count": len(tables),
+        "quick_task_execution_columns": sorted(
+            column
+            for column in ("model", "reasoning_effort", "fast")
+            if column in quick_task_request_columns
+        ),
     }
 
 

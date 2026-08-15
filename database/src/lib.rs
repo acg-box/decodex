@@ -34,7 +34,9 @@ pub use self::{
 		ContextPackRecord, ContinuationPlanEffect, PlanContinuation, PlanInitialThreadContinuation,
 	},
 	conversations::{
-		AdmitInitialQuickTaskTurn, CreateQuickTaskConversation, CreateQuickTaskRoutingSuccessor,
+		AdmitInitialQuickTaskTurn, ArchiveQuickTaskConversation,
+		ArchiveQuickTaskConversationOutcome, ArchivedQuickTaskConversation,
+		CreateQuickTaskConversation, CreateQuickTaskRoutingSuccessor,
 		HistoryCursor, HistoryEntry, HistoryPage, InitialQuickTaskTurnAdmissionOutcome,
 		InitialQuickTaskTurnAdmissionReadback, InitialQuickTaskTurnAdmissionRejection,
 		OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,

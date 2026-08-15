@@ -361,6 +361,7 @@ pub struct QuickTaskThreadStartRequest {
 	model: QuickTaskModel,
 	cwd: ThreadCwd,
 	developer_instructions: QuickTaskInstructions,
+	fast: bool,
 }
 impl QuickTaskThreadStartRequest {
 	/// Accept explicit caller configuration for one durable thread.
@@ -373,7 +374,14 @@ impl QuickTaskThreadStartRequest {
 			model: QuickTaskModel::new(model)?,
 			cwd: ThreadCwd::from_protocol(cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?,
 			developer_instructions: QuickTaskInstructions::new(developer_instructions)?,
+			fast: false,
 		})
+	}
+
+	/// Select request-scoped Codex Fast mode without changing global configuration.
+	pub const fn with_fast(mut self, fast: bool) -> Self {
+		self.fast = fast;
+		self
 	}
 
 	/// Caller-selected model sent to the app server.
@@ -401,12 +409,13 @@ impl Serialize for QuickTaskThreadStartRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskThreadStartRequest", 4)?;
+		let mut request = serializer.serialize_struct("QuickTaskThreadStartRequest", 5)?;
 
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("ephemeral", &false)?;
+		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
 		request.end()
 	}
 }
@@ -489,6 +498,7 @@ pub struct QuickTaskThreadResumeRequest {
 	model: QuickTaskModel,
 	cwd: ThreadCwd,
 	developer_instructions: QuickTaskInstructions,
+	fast: bool,
 }
 impl QuickTaskThreadResumeRequest {
 	/// Accept one exact thread and explicit caller configuration.
@@ -503,7 +513,14 @@ impl QuickTaskThreadResumeRequest {
 			model: QuickTaskModel::new(model)?,
 			cwd: ThreadCwd::from_protocol(cwd).map_err(|_| QuickTaskContractError::InvalidCwd)?,
 			developer_instructions: QuickTaskInstructions::new(developer_instructions)?,
+			fast: false,
 		})
+	}
+
+	/// Select request-scoped Codex Fast mode without changing global configuration.
+	pub const fn with_fast(mut self, fast: bool) -> Self {
+		self.fast = fast;
+		self
 	}
 
 	/// Exact caller-supplied thread.
@@ -536,13 +553,14 @@ impl Serialize for QuickTaskThreadResumeRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskThreadResumeRequest", 5)?;
+		let mut request = serializer.serialize_struct("QuickTaskThreadResumeRequest", 6)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("cwd", self.cwd.as_str())?;
 		request.serialize_field("developerInstructions", self.developer_instructions.as_str())?;
 		request.serialize_field("excludeTurns", &true)?;
+		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
 		request.end()
 	}
 }
@@ -653,6 +671,7 @@ pub struct QuickTaskTurnStartRequest {
 	input: QuickTaskTurnInput,
 	model: QuickTaskModel,
 	reasoning_effort: QuickTaskReasoningEffort,
+	fast: bool,
 }
 impl QuickTaskTurnStartRequest {
 	/// Accept one bounded turn without selecting or defaulting model settings.
@@ -667,7 +686,14 @@ impl QuickTaskTurnStartRequest {
 			input,
 			model: QuickTaskModel::new(model)?,
 			reasoning_effort: QuickTaskReasoningEffort::new(reasoning_effort)?,
+			fast: false,
 		})
+	}
+
+	/// Select request-scoped Codex Fast mode without changing global configuration.
+	pub const fn with_fast(mut self, fast: bool) -> Self {
+		self.fast = fast;
+		self
 	}
 
 	/// Exact target thread.
@@ -695,12 +721,13 @@ impl Serialize for QuickTaskTurnStartRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskTurnStartRequest", 4)?;
+		let mut request = serializer.serialize_struct("QuickTaskTurnStartRequest", 5)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &QuickTaskTextInputs(self.input.items()))?;
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("effort", self.reasoning_effort.as_str())?;
+		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
 		request.end()
 	}
 }
@@ -1752,7 +1779,8 @@ mod tests {
 
 	use super::{
 		MAX_QUICK_TASK_RESPONSE_BYTES, QuickTaskContractError, QuickTaskThreadResumeRequest,
-		QuickTaskThreadStartRequest, QuickTaskTurnStatus,
+		QuickTaskThreadStartRequest, QuickTaskTurnInput, QuickTaskTurnStartRequest,
+		QuickTaskTurnStatus,
 		decode_quick_task_thread_archive_response, decode_quick_task_thread_resume_response,
 		decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
 		decode_quick_task_turn_start_response,
@@ -1816,6 +1844,7 @@ mod tests {
 				"cwd": "/workspace",
 				"developerInstructions": "Follow the request.",
 				"excludeTurns": true,
+				"serviceTier": null,
 			})
 		);
 		let object = encoded.as_object().expect("request must remain an object");
@@ -1829,6 +1858,34 @@ mod tests {
 		] {
 			assert!(!object.contains_key(forbidden));
 		}
+	}
+
+	#[test]
+	fn fast_mode_is_explicitly_request_scoped_for_thread_start_and_resume() {
+		let start = serde_json::to_value(start_request().with_fast(true))
+			.expect("fast thread start request must serialize");
+		let resume = serde_json::to_value(resume_request().with_fast(true))
+			.expect("fast thread resume request must serialize");
+
+		assert_eq!(start.get("serviceTier"), Some(&json!("priority")));
+		assert_eq!(resume.get("serviceTier"), Some(&json!("priority")));
+	}
+
+	#[test]
+	fn turn_execution_settings_include_model_effort_and_explicit_fast_tier() {
+		let turn = QuickTaskTurnStartRequest::new(
+			exact_thread(),
+			QuickTaskTurnInput::text("Continue.").expect("turn input is valid"),
+			"gpt-5.6-terra",
+			"xhigh",
+		)
+		.expect("turn request is valid")
+		.with_fast(true);
+		let encoded = serde_json::to_value(turn).expect("turn request must serialize");
+
+		assert_eq!(encoded.get("model"), Some(&json!("gpt-5.6-terra")));
+		assert_eq!(encoded.get("effort"), Some(&json!("xhigh")));
+		assert_eq!(encoded.get("serviceTier"), Some(&json!("priority")));
 	}
 
 	#[test]

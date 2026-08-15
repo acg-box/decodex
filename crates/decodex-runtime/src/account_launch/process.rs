@@ -743,6 +743,20 @@ impl AttestedAppServerLaunch {
 		profile.bind(working_directory, binding, timeout, guard)
 	}
 
+	/// Bind one explicit thread-control launch to the same final directory descriptor check.
+	pub(crate) fn bind_selected_control_working_directory(
+		profile: AttestedAppServerProfile,
+		working_directory: PathBuf,
+		binding: AccountBinding,
+		timeout: Duration,
+		guard: RunnerPermit,
+		pre_spawn_check: Arc<dyn QuickTaskPreSpawnCheck>,
+	) -> Result<Self, ProbeError> {
+		let mut launch = profile.bind(working_directory, binding, timeout, guard)?;
+		launch.quick_task_pre_spawn_check = Some(pre_spawn_check);
+		Ok(launch)
+	}
+
 	/// Derive all durable pre-spawn facts that belong to the opaque launch authority.
 	pub(crate) fn derive_intent(
 		&self,
@@ -980,6 +994,34 @@ impl AttestedProcessChild {
 		self.process
 			.quick_task_request(wire, self.timeout, true, decode_quick_task_turn_interrupt_response)
 			.map(|success: QuickTaskProcessSuccess<QuickTaskTurnInterruptResponse>| success.events)
+	}
+
+	/// Read one exact durable thread for explicit user reconciliation.
+	pub(crate) fn read_exact_ordinary_thread(
+		&mut self,
+		thread_id: &ExactThreadId,
+	) -> Result<ExactThreadReadResult, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		self.process
+			.read_exact_thread(thread_id, self.timeout)
+			.map_err(|_| QuickTaskProcessError::Unavailable)
+	}
+
+	/// Reconcile one exact archive mutation through same-process pre/post readback.
+	pub(crate) fn archive_exact_ordinary_thread(
+		&mut self,
+		thread_id: &ExactThreadId,
+	) -> Result<ArchiveReconciliationOutcome, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		Ok(self.process.reconcile_archive(thread_id, self.timeout))
+	}
+
+	/// Confirm bounded process cleanup after an explicit control operation.
+	pub(crate) fn shutdown(self) -> Result<(), QuickTaskProcessError> {
+		self.process
+			.shutdown(Duration::from_secs(1))
+			.map(|_| ())
+			.map_err(|_| QuickTaskProcessError::Unavailable)
 	}
 
 	fn require_ordinary_turns_initialized(&self) -> Result<(), QuickTaskProcessError> {

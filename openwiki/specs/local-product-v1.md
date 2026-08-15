@@ -1,3 +1,18 @@
+---
+type: "Specification"
+title: "Local Product V1 Contract"
+description: "Normative SQLite milestone contract for app-server freshness, Quick Task execution, lifecycle safety, and deferred product capabilities."
+tags: [local-product, sqlite, quick-task, app-server]
+openwiki:
+  roles: [architecture, domain, workflow]
+  change_kinds: [lifecycle, public-api, runtime]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-protocol/src/quick_task.rs]
+  symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread]
+  test_paths: [database/tests/quick_task_restart.rs]
+  invariants: [Exact thread lifecycle readback precedes local archive commit.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
+  validation_commands: [cargo test --workspace --all-targets]
+---
+
 # Local Product V1 Contract
 
 Status: normative contract for the current SQLite milestone.
@@ -10,6 +25,54 @@ Owner: [SQLite local-product decision](../decisions/sqlite-local-product.md).
 same-UID Unix WebSocket protocol. They do not open product storage or credential files.
 Codex app-server remains the provider execution kernel, with one Codex thread bound to
 one Decodex RuntimeSession.
+
+## App-server freshness boundary
+
+Codex Desktop and Decodex are clients of Codex app-server. Codex Desktop is not a
+second state authority or a synchronization peer. SQLite owns Decodex product facts,
+but its projection of a bound Codex thread can become stale when another app-server
+client changes that thread.
+
+Decodex re-observes one selected thread by exact thread ID through its bound account.
+The current V1 refresh contract covers thread lifecycle. If exact app-server readback
+reports that the thread is archived, one SQLite transaction archives the Conversation
+and ends its active RuntimeSession. Decodex removes that Conversation from the active
+task list. A Decodex archive command uses exact pre-read, archive, and post-read in one
+account-bound app-server process before it commits the same local transition. The
+runtime refuses refresh/archive while a turn, establishment, or unresolved provider
+attempt is active, and commits the local archive only after the exact provider result
+is positive and the expected Conversation and RuntimeSession revisions still match.
+
+The local Conversation list is a SQLite read and does not assert current provider
+freshness. Opening or explicitly refreshing a selected task requests a provider
+readback. V1 does not continuously poll every account and thread. App-server
+`thread/read(includeTurns=true)` exposes visible but lossy history; it is not complete
+history or tool-effect authority. V1 therefore does not import arbitrary external
+turns during lifecycle refresh. A later history-merge contract must define identity,
+completeness, provenance, and effect safety before it can update normalized history.
+
+## Quick Task execution controls
+
+Every user send carries `QuickTaskExecutionSettings`: an explicit model, reasoning
+effort, and `fast` flag. The protocol maps `fast: true` to the request-scoped Codex
+`serviceTier = "priority"`; `fast: false` sends an explicit null. These settings are
+part of each create or continuation request and do not mutate global Codex configuration.
+The GPUI owns presentation and submits the settings; `decodexd` remains the authority
+that validates the account, working directory, process fence, and provider attempt
+before dispatch. A request whose account still owns a live non-dead generation is
+rejected with `RestoreProcessReadiness` before provider effect rather than being
+classified as acceptance ambiguity.
+
+Change navigation: the public settings and recovery values are in
+`crates/decodex-protocol/src/quick_task.rs` (`QuickTaskExecutionSettings`,
+`QuickTaskRecoveryAction`); Codex request decoding is in
+`crates/decodex-codex/src/quick_task.rs`; orchestration and exact thread control are in
+`crates/decodex-runtime/src/quick_task.rs` and
+`crates/decodex-runtime/src/account_launch/process.rs`; GPUI submission and archive
+selection are in `apps/decodex-gpui/src/quick_tasks.rs`. Focused coverage is in the
+corresponding Quick Task, process reconciliation, protocol, and database tests; use
+`cargo test --workspace --all-targets` only when a package or wire change crosses the
+workspace boundary.
 
 ## Storage boundary
 
@@ -58,6 +121,12 @@ bounded inline value or a digest and length.
 13. Account affinity is scoped to a Conversation. Its initial Routing Decision binds the
     RuntimeSession and Codex thread to one account. Later Turns do not re-evaluate global
     routing. Independent Conversations can bind to different accounts.
+14. Each user send carries an explicit model, reasoning effort, and Fast selection.
+    Fast maps to the request-scoped Codex `priority` service tier. Fast off sends a null
+    service tier and does not mutate global Codex configuration.
+15. Provider archive readback can close a local Conversation only when no Turn or
+    ProviderAttempt is unresolved and exact Conversation and RuntimeSession revisions
+    still match.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -112,5 +181,6 @@ Acceptance requires:
 - a daemon restart followed by a later response on the same Conversation and Codex
   thread, with no duplicate ProviderAttempt dispatch;
 - protocol-only GPUI and CLI operation;
+- exact selected-thread refresh, verified archive, and request-scoped execution controls;
 - focused and workspace-wide tests; and
 - current OpenWiki and local database gates.

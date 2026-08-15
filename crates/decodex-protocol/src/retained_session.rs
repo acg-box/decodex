@@ -1443,7 +1443,7 @@ mod tests {
 				unreachable!()
 			};
 
-			wrong_version.version = ProtocolVersion { major: 2, minor: 1 };
+			wrong_version.version = ProtocolVersion { major: 2, minor: 0 };
 
 			send(&mut socket, ServerMessage::Welcome(wrong_version)).await;
 		})
