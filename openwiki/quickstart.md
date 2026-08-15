@@ -45,10 +45,14 @@ one-shot transfer tool.
 - [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
   sequencer used by Quick Task.
 - [Adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md):
-  the implemented Adaptive Factory Spine V1, plus the accepted direction for dynamic
+  the implemented repeatable Program loop, plus the accepted direction for dynamic
   agents, bounded external actions, and future Domain Packs.
+- [Repeatable Program Loop V1 evidence](evidence/repeatable-program-loop-v1.md): the
+  continuation contract, restart and replay proof, repeated GPUI projection, and live
+  three-cycle dogfood record.
 - [Adaptive Factory Spine V1 evidence](evidence/adaptive-factory-spine-v1.md): the exact
-  current Program boundary, causal projection, restart proof, and local dogfood record.
+  historical first-cycle boundary, causal projection, restart proof, and local dogfood
+  record.
 
 For the current app-server freshness boundary and Quick Task controls, start with the
 [local product contract](specs/local-product-v1.md) and its [SQLite evidence](evidence/sqlite-local-product.md).
@@ -88,11 +92,12 @@ turn terminal evidence, the runtime retires that process before it publishes `Re
 later Turn starts a fresh process generation and rehydrates the same account and Codex
 thread. An idle completed Conversation does not reserve the account process slot.
 
-The Factory also supports one bounded Adaptive Program cycle:
+The Factory also supports one manually repeated Adaptive Program loop:
 
 ```text
 Program -> Signal -> Claim -> Proposal -> Objective -> WorkItem
-        -> Codex Quick Task -> Evidence -> Program Review
+        -> Codex Quick Task -> Evidence -> Review
+        -> Signal -> Claim -> Proposal -> Objective -> WorkItem -> ...
 ```
 
 SQLite owns the Program charter and every semantic identity. A Program WorkItem starts
@@ -100,7 +105,9 @@ through the ordinary Quick Task path and binds the resulting Conversation in the
 transaction. The Factory derives one causal graph and timeline from the authoritative
 aggregate. It does not use a graph database or a second execution engine. A Review can
 close only after the bound WorkItem has positive terminal provider evidence and the
-user supplies deterministic and external Evidence.
+user supplies deterministic and external Evidence. An explicit continuation binds the
+exact prior Review and Program revision. It appends one finite next cycle and permits at
+most one unreviewed cycle. No timer or automatic continuation exists.
 
 ## Deferred product surfaces
 

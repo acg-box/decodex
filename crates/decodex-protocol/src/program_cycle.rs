@@ -2,7 +2,9 @@
 
 use std::collections::HashSet;
 
-pub use decodex_core::{ProgramReviewClassification, ProgramState};
+pub use decodex_core::{
+	MAX_PROGRAM_PROJECTION_NODES as MAX_PROGRAM_NODES, ProgramReviewClassification, ProgramState,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -12,8 +14,6 @@ use crate::{
 
 /// Maximum Programs returned by one local selector query.
 pub const MAX_PROGRAM_LIST_ITEMS: usize = 64;
-/// Maximum causal nodes in one Program projection.
-pub const MAX_PROGRAM_NODES: usize = 128;
 /// Maximum causal edges in one Program projection.
 pub const MAX_PROGRAM_EDGES: usize = 256;
 /// Maximum bounded list items in one creation contract.
@@ -92,6 +92,74 @@ impl ProgramCycleDraftDto {
 			}
 		}
 		validate_list(&self.non_goals)?;
+		validate_list(&self.acceptance_criteria)?;
+		validate_list(&self.validation_criteria)?;
+		validate_joined_field(&self.acceptance_criteria)?;
+		validate_joined_field(&self.validation_criteria)?;
+		if self.signal_observed_at_micros <= 0 {
+			return Err(ProgramCycleContractError::InvalidTime);
+		}
+		Ok(())
+	}
+}
+
+/// One exact next semantic cycle for an existing reviewed Program.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ProgramContinuationDraftDto {
+	pub program_id: EntityId,
+	pub predecessor_review_id: EntityId,
+	pub signal_id: EntityId,
+	pub claim_id: EntityId,
+	pub proposal_id: EntityId,
+	pub objective_id: EntityId,
+	pub work_item_id: EntityId,
+	pub signal_source: WireText,
+	pub signal_summary: WireText,
+	pub signal_observed_at_micros: i64,
+	pub claim_statement: WireText,
+	pub proposal_summary: WireText,
+	pub proposal_expected_effect: WireText,
+	pub proposal_risk: WireText,
+	pub proposal_evidence_need: WireText,
+	pub objective_outcome: WireText,
+	pub acceptance_criteria: Vec<WireText>,
+	pub validation_criteria: Vec<WireText>,
+	pub work_item_title: WireText,
+	pub work_item_instructions: WireText,
+	pub working_directory: QuickTaskWorkingDirectory,
+}
+
+impl ProgramContinuationDraftDto {
+	pub(crate) fn validate(&self) -> Result<(), ProgramCycleContractError> {
+		let ids = [
+			self.program_id.as_str(),
+			self.predecessor_review_id.as_str(),
+			self.signal_id.as_str(),
+			self.claim_id.as_str(),
+			self.proposal_id.as_str(),
+			self.objective_id.as_str(),
+			self.work_item_id.as_str(),
+		];
+		if ids.iter().copied().collect::<HashSet<_>>().len() != ids.len() {
+			return Err(ProgramCycleContractError::InvalidIdentity);
+		}
+		for value in [
+			&self.signal_source,
+			&self.signal_summary,
+			&self.claim_statement,
+			&self.proposal_summary,
+			&self.proposal_expected_effect,
+			&self.proposal_risk,
+			&self.proposal_evidence_need,
+			&self.objective_outcome,
+			&self.work_item_title,
+			&self.work_item_instructions,
+		] {
+			if value.as_str().is_empty() || value.as_str().chars().any(char::is_control) {
+				return Err(ProgramCycleContractError::InvalidText);
+			}
+		}
 		validate_list(&self.acceptance_criteria)?;
 		validate_list(&self.validation_criteria)?;
 		validate_joined_field(&self.acceptance_criteria)?;
@@ -205,6 +273,7 @@ pub struct ProgramNodeDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgramRelationKind {
+	Continues,
 	Observes,
 	Supports,
 	Justifies,

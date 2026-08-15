@@ -12,9 +12,9 @@ use gpui::{
 };
 
 use decodex_protocol::{
-	EntityId, ProgramCycleDraftDto, ProgramNodeDto, ProgramNodeKind, ProgramReviewClassification,
-	ProgramReviewDraftDto, QuickTaskWorkingDirectory, WireText, WorkItemBoardCard,
-	WorkItemBoardProjectId, WorkItemState,
+	EntityId, MAX_PROGRAM_NODES, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramNodeDto,
+	ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto, QuickTaskWorkingDirectory,
+	WireText, WorkItemBoardCard, WorkItemBoardProjectId, WorkItemState,
 };
 
 use crate::{
@@ -31,6 +31,7 @@ use crate::{
 
 const REPLAY_HEIGHT: f32 = 134.0;
 const FACTORY_MIN_WIDTH: f32 = 1_180.0;
+const COMPLETE_PROGRAM_CYCLE_NODE_COST: usize = 9;
 
 const SURFACE: u32 = ui_theme::CANVAS;
 const SURFACE_OVERLAY: u32 = ui_theme::SURFACE_OVERLAY;
@@ -278,6 +279,53 @@ impl ProgramReviewInputs {
 	}
 }
 
+struct ProgramContinuationInputs {
+	signal_source: Entity<ComposerInput>,
+	signal: Entity<ComposerInput>,
+	claim: Entity<ComposerInput>,
+	proposal: Entity<ComposerInput>,
+	objective: Entity<ComposerInput>,
+	work_item_title: Entity<ComposerInput>,
+	work_item_instructions: Entity<ComposerInput>,
+	working_directory: Entity<ComposerInput>,
+}
+
+impl ProgramContinuationInputs {
+	fn new(cx: &mut Context<FactorySurface>) -> Self {
+		let input = |index, placeholder, label, cx: &mut Context<FactorySurface>| {
+			cx.new(|cx| ComposerInput::with_placeholder(index, placeholder, label, cx))
+		};
+		Self {
+			signal_source: input(20, "Review, observation, or external source", "Signal source", cx),
+			signal: input(21, "What changed since the prior Review", "Signal summary", cx),
+			claim: input(22, "What the new signal implies", "Claim", cx),
+			proposal: input(23, "Finite proposed response", "Proposal", cx),
+			objective: input(24, "Observable outcome for this cycle", "Objective", cx),
+			work_item_title: input(25, "One concrete Codex task", "Work item title", cx),
+			work_item_instructions: input(
+				26,
+				"Exact instructions for Codex",
+				"Work item instructions",
+				cx,
+			),
+			working_directory: input(27, "/absolute/path/to/repository", "Working directory", cx),
+		}
+	}
+
+	fn all(&self) -> [&Entity<ComposerInput>; 8] {
+		[
+			&self.signal_source,
+			&self.signal,
+			&self.claim,
+			&self.proposal,
+			&self.objective,
+			&self.work_item_title,
+			&self.work_item_instructions,
+			&self.working_directory,
+		]
+	}
+}
+
 /// One self-contained native surface. Its state is presentation-only.
 pub(crate) struct FactorySurface {
 	mode: FactoryMode,
@@ -300,9 +348,11 @@ pub(crate) struct FactorySurface {
 	program_selection: Option<EntityId>,
 	program_inputs: ProgramCreationInputs,
 	program_review_inputs: ProgramReviewInputs,
+	program_continuation_inputs: ProgramContinuationInputs,
 	program_review_classification: ProgramReviewClassification,
 	program_status: Option<SharedString>,
 	program_intake_visible: bool,
+	program_continuation_visible: bool,
 }
 
 impl EventEmitter<FactoryEvent> for FactorySurface {}
@@ -342,7 +392,13 @@ impl FactorySurface {
 		}
 		let program_inputs = ProgramCreationInputs::new(cx);
 		let program_review_inputs = ProgramReviewInputs::new(cx);
-		for input in program_inputs.all().into_iter().chain(program_review_inputs.all()) {
+		let program_continuation_inputs = ProgramContinuationInputs::new(cx);
+		for input in program_inputs
+			.all()
+			.into_iter()
+			.chain(program_review_inputs.all())
+			.chain(program_continuation_inputs.all())
+		{
 			cx.subscribe(input, |surface, _, _: &ComposerEvent, cx| {
 				surface.program_status = None;
 				cx.notify();
@@ -371,9 +427,11 @@ impl FactorySurface {
 			program_selection: None,
 			program_inputs,
 			program_review_inputs,
+			program_continuation_inputs,
 			program_review_classification: ProgramReviewClassification::OutcomeProgress,
 			program_status: None,
 			program_intake_visible: false,
+			program_continuation_visible: false,
 		}
 	}
 
@@ -591,9 +649,92 @@ impl FactorySurface {
 		if programs.select(program_id) {
 			self.programs_snapshot = Some(programs.snapshot());
 			self.program_selection = None;
+			self.program_continuation_visible = false;
 			self.program_status = None;
 			cx.notify();
 		}
+	}
+
+	fn continue_program(&mut self, cx: &mut Context<Self>) {
+		let Some(programs) = self.programs.as_ref() else {
+			return;
+		};
+		let Some(cycle) = self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
+		else {
+			self.program_status = Some("No Program cycle is selected.".into());
+			cx.notify();
+			return;
+		};
+		let Some(predecessor) = cycle.nodes.last().filter(|node| node.kind == ProgramNodeKind::Review)
+		else {
+			self.program_status = Some("The current cycle needs a Review before continuation.".into());
+			cx.notify();
+			return;
+		};
+		let build = || -> Result<ProgramContinuationDraftDto, ProgramInputError> {
+			let text = |input: &Entity<ComposerInput>| {
+				let value = input.read(cx).content().trim().to_owned();
+				if value.is_empty() {
+					return Err(ProgramInputError::InvalidDraft);
+				}
+				WireText::new(value).map_err(|_| ProgramInputError::InvalidDraft)
+			};
+			let objective = text(&self.program_continuation_inputs.objective)?;
+			let working_directory = QuickTaskWorkingDirectory::new(
+				self.program_continuation_inputs
+					.working_directory
+					.read(cx)
+					.content()
+					.trim()
+					.to_owned(),
+			)
+			.map_err(|_| ProgramInputError::InvalidDraft)?;
+			Ok(ProgramContinuationDraftDto {
+				program_id: cycle.program.program_id.clone(),
+				predecessor_review_id: predecessor.id.clone(),
+				signal_id: entity_id()?,
+				claim_id: entity_id()?,
+				proposal_id: entity_id()?,
+				objective_id: entity_id()?,
+				work_item_id: entity_id()?,
+				signal_source: text(&self.program_continuation_inputs.signal_source)?,
+				signal_summary: text(&self.program_continuation_inputs.signal)?,
+				signal_observed_at_micros: current_micros()?,
+				claim_statement: text(&self.program_continuation_inputs.claim)?,
+				proposal_summary: text(&self.program_continuation_inputs.proposal)?,
+				proposal_expected_effect: objective.clone(),
+				proposal_risk: WireText::new(
+					"The finite WorkItem may not produce the stated observable outcome.",
+				)
+				.expect("fixed Program risk is bounded"),
+				proposal_evidence_need: WireText::new(
+					"A settled Codex run, deterministic validation, and external evidence.",
+				)
+				.expect("fixed Program evidence need is bounded"),
+				objective_outcome: objective.clone(),
+				acceptance_criteria: vec![objective],
+				validation_criteria: vec![
+					WireText::new(
+						"The bound Quick Task settles and the review cites reproducible evidence.",
+					)
+					.expect("fixed Program validation criterion is bounded"),
+				],
+				work_item_title: text(&self.program_continuation_inputs.work_item_title)?,
+				work_item_instructions: text(
+					&self.program_continuation_inputs.work_item_instructions,
+				)?,
+				working_directory,
+			})
+		};
+		match build().and_then(|draft| programs.continue_program(draft, cycle.program.revision)) {
+			Ok(()) => {
+				self.program_continuation_visible = false;
+				self.program_status = Some("Appending the next Program cycle…".into());
+			},
+			Err(error) => self.program_status = Some(program_error_label(error).into()),
+		}
+		self.programs_snapshot = Some(programs.snapshot());
+		cx.notify();
 	}
 
 	fn refresh_program(&mut self, cx: &mut Context<Self>) {
@@ -620,6 +761,7 @@ impl FactorySurface {
 		let Some(work_item) = cycle
 			.nodes
 			.iter()
+			.rev()
 			.find(|node| node.kind == ProgramNodeKind::WorkItem && node.state.as_str() == "ready")
 		else {
 			self.program_status = Some("The Program WorkItem is not ready to start.".into());
@@ -657,7 +799,7 @@ impl FactorySurface {
 			return;
 		};
 		let Some(work_item) =
-			cycle.nodes.iter().find(|node| node.kind == ProgramNodeKind::WorkItem)
+			cycle.nodes.iter().rev().find(|node| node.kind == ProgramNodeKind::WorkItem)
 		else {
 			return;
 		};
@@ -1124,11 +1266,22 @@ impl FactorySurface {
 			.program_selection
 			.as_ref()
 			.and_then(|selected| cycle.nodes.iter().find(|node| &node.id == selected));
-		let has_review = cycle.nodes.iter().any(|node| node.kind == ProgramNodeKind::Review);
-		let run_ready = cycle
-			.nodes
-			.iter()
-			.any(|node| node.kind == ProgramNodeKind::Run && node.state.as_str() == "ready");
+		let latest_work_item = cycle.nodes.iter().rev().find(|node| node.kind == ProgramNodeKind::WorkItem);
+		let latest_run = latest_work_item
+			.and_then(|work_item| work_item.conversation_id.as_ref())
+			.and_then(|conversation_id| {
+				cycle.nodes.iter().find(|node| {
+					node.kind == ProgramNodeKind::Run
+						&& node.conversation_id.as_ref() == Some(conversation_id)
+				})
+			});
+		let can_review = latest_work_item.is_some_and(|node| node.state.as_str() == "running")
+			&& latest_run.is_some_and(|node| node.state.as_str() == "ready");
+		let can_continue = cycle.program.state.as_str() == "active"
+			&& cycle.nodes.last().is_some_and(|node| node.kind == ProgramNodeKind::Review)
+			&& cycle.nodes.len().saturating_add(COMPLETE_PROGRAM_CYCLE_NODE_COST)
+				<= MAX_PROGRAM_NODES
+			&& snapshot.can_mutate;
 
 		div()
 			.id("program-factory-canvas")
@@ -1188,7 +1341,7 @@ impl FactorySurface {
 					)
 					.child(self.program_graph(cycle, cx)),
 			)
-			.child(self.program_inspector(selected_node, cycle, run_ready && !has_review, cx))
+			.child(self.program_inspector(selected_node, cycle, can_review, can_continue, cx))
 			.into_any_element()
 	}
 
@@ -1303,15 +1456,19 @@ impl FactorySurface {
 		snapshot: &ProgramsSnapshot,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let work_item_ready = cycle
+		let current_work_item = cycle
 			.nodes
 			.iter()
-			.any(|node| node.kind == ProgramNodeKind::WorkItem && node.state.as_str() == "ready");
-		let conversation_id = cycle
+			.rev()
+			.find(|node| node.kind == ProgramNodeKind::WorkItem);
+		let work_item_ready =
+			current_work_item.is_some_and(|node| node.state.as_str() == "ready");
+		let conversation_id = current_work_item.and_then(|node| node.conversation_id.clone());
+		let cycle_count = cycle
 			.nodes
 			.iter()
-			.find(|node| node.kind == ProgramNodeKind::Run)
-			.and_then(|node| node.conversation_id.clone());
+			.filter(|node| node.kind == ProgramNodeKind::Signal)
+			.count();
 		div()
 			.id("program-pulse")
 			.w(px(258.0))
@@ -1356,6 +1513,7 @@ impl FactorySurface {
 					),
 			)
 			.child(program_pulse_section("REVIEW POLICY", cycle.review_policy.as_str()))
+			.child(program_pulse_section("CURRENT CYCLE", &format!("C{cycle_count}")))
 			.child(program_pulse_section(
 				"NON-GOAL",
 				cycle.non_goals.first().map_or("None", WireText::as_str),
@@ -1409,6 +1567,12 @@ impl FactorySurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let selected = self.program_selection.clone();
+		let cycle_count = cycle
+			.nodes
+			.iter()
+			.filter(|node| node.kind == ProgramNodeKind::Signal)
+			.count();
+		let mut current_cycle = 0;
 		let mut graph = div()
 			.id("program-graph-strip")
 			.flex_1()
@@ -1431,6 +1595,13 @@ impl FactorySurface {
 					.unwrap_or("relates");
 				graph = graph.child(program_edge(relation));
 			}
+			if node.kind == ProgramNodeKind::Signal {
+				current_cycle += 1;
+				graph = graph.child(program_cycle_boundary(
+					current_cycle,
+					current_cycle == cycle_count,
+				));
+			}
 			graph = graph.child(program_node_card(node, selected.as_ref() == Some(&node.id), cx));
 		}
 		graph.into_any_element()
@@ -1441,6 +1612,7 @@ impl FactorySurface {
 		selected: Option<&ProgramNodeDto>,
 		cycle: &decodex_protocol::ProgramCycleDto,
 		can_review: bool,
+		can_continue: bool,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let mut panel = div()
@@ -1515,7 +1687,108 @@ impl FactorySurface {
 		if can_review {
 			panel = panel.child(self.program_review_form(cycle, cx));
 		}
+		if can_continue {
+			panel = if self.program_continuation_visible {
+				panel.child(self.program_continuation_form(cycle, cx))
+			} else {
+				panel.child(program_action_button(
+					"show-program-continuation",
+					"CONTINUE PROGRAM",
+					GREEN,
+					true,
+					cx,
+					|surface, cx| {
+						surface.program_continuation_visible = true;
+						cx.notify();
+					},
+				))
+			};
+		}
 		panel.into_any_element()
+	}
+
+	fn program_continuation_form(
+		&self,
+		cycle: &decodex_protocol::ProgramCycleDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let labels = [
+			"SIGNAL SOURCE",
+			"SIGNAL",
+			"CLAIM",
+			"PROPOSAL",
+			"OBJECTIVE",
+			"WORK ITEM",
+			"CODEX INSTRUCTIONS",
+			"WORKING DIRECTORY",
+		];
+		let fields = self
+			.program_continuation_inputs
+			.all()
+			.into_iter()
+			.zip(labels)
+			.enumerate()
+			.map(|(index, (input, label))| program_input_field(index + 20, label, input.clone()));
+		let next_cycle = cycle
+			.nodes
+			.iter()
+			.filter(|node| node.kind == ProgramNodeKind::Signal)
+			.count()
+			+ 1;
+		div()
+			.mt_3()
+			.pt_4()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.border_t_1()
+			.border_color(rgba(0xffffff12))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						div()
+							.text_size(px(11.0))
+							.font_weight(FontWeight::SEMIBOLD)
+							.child(format!("NEXT CYCLE · C{next_cycle}")),
+					)
+					.child(
+						div()
+							.font_family("SF Mono")
+							.text_size(px(7.5))
+							.text_color(rgb(TEXT_FAINT))
+							.child(format!("REV {}", cycle.program.revision.0)),
+					),
+			)
+			.child(
+				div()
+					.text_size(px(8.5))
+					.text_color(rgb(TEXT_FAINT))
+					.child("Manual continuation preserves the prior Review and replaces any unresolved Objective."),
+			)
+			.children(fields)
+			.child(program_action_button(
+				"append-program-cycle",
+				"APPEND CYCLE",
+				GREEN,
+				true,
+				cx,
+				|surface, cx| surface.continue_program(cx),
+			))
+			.child(program_action_button(
+				"cancel-program-continuation",
+				"CANCEL",
+				TEXT_MUTED,
+				true,
+				cx,
+				|surface, cx| {
+					surface.program_continuation_visible = false;
+					cx.notify();
+				},
+			))
+			.into_any_element()
 	}
 
 	fn program_review_form(
@@ -2498,7 +2771,11 @@ impl FactorySurface {
 		};
 		let selected = self.program_selection.clone();
 		let origin = cycle.nodes.iter().filter_map(|node| node.observed_at_micros).min();
+		let mut cycle_number = 0;
 		let moments = cycle.nodes.iter().enumerate().map(|(index, node)| {
+			if node.kind == ProgramNodeKind::Signal {
+				cycle_number += 1;
+			}
 			let node_id = node.id.clone();
 			let active = selected.as_ref() == Some(&node.id);
 			let color = program_node_color(node.kind);
@@ -2544,7 +2821,7 @@ impl FactorySurface {
 						.font_family("SF Mono")
 						.text_size(px(7.5))
 						.text_color(rgb(TEXT_FAINT))
-						.child(time),
+						.child(format!("C{cycle_number} · {time}")),
 				)
 		});
 		div()
@@ -3409,6 +3686,32 @@ fn program_edge(label: &str) -> AnyElement {
 		.into_any_element()
 }
 
+fn program_cycle_boundary(number: usize, current: bool) -> AnyElement {
+	div()
+		.w(px(54.0))
+		.min_w(px(54.0))
+		.flex()
+		.flex_col()
+		.items_center()
+		.gap_1()
+		.child(
+			div()
+				.font_family("SF Mono")
+				.text_size(px(8.0))
+				.font_weight(FontWeight::SEMIBOLD)
+				.text_color(rgb(if current { GREEN } else { TEXT_FAINT }))
+				.child(format!("C{number}")),
+		)
+		.child(
+			div()
+				.font_family("SF Mono")
+				.text_size(px(6.5))
+				.text_color(rgb(TEXT_FAINT))
+				.child(if current { "CURRENT" } else { "HISTORY" }),
+		)
+		.into_any_element()
+}
+
 fn program_node_card(
 	node: &ProgramNodeDto,
 	selected: bool,
@@ -3501,6 +3804,7 @@ const fn node_kind_label(kind: ProgramNodeKind) -> &'static str {
 
 const fn relation_label(kind: decodex_protocol::ProgramRelationKind) -> &'static str {
 	match kind {
+		decodex_protocol::ProgramRelationKind::Continues => "continues",
 		decodex_protocol::ProgramRelationKind::Observes => "observes",
 		decodex_protocol::ProgramRelationKind::Supports => "supports",
 		decodex_protocol::ProgramRelationKind::Justifies => "justifies",

@@ -9,7 +9,7 @@ use decodex_core::{
 	ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
 	ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
 	ProgramReviewClassification, ProgramReviewId, ProgramState, WorkItemId, WorkItemState,
-	contains_credential_material,
+	MAX_PROGRAM_PROJECTION_NODES, contains_credential_material,
 };
 use rusqlite::{Connection, OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -17,10 +17,12 @@ use serde::{Deserialize, Serialize};
 use crate::{CommandIdentity, SqliteStore, StoreError};
 
 const CREATE_OPERATION: &str = "create_program_cycle";
+const CONTINUE_OPERATION: &str = "continue_program";
 const REVIEW_OPERATION: &str = "record_program_review";
 const MAX_LIST_ITEMS: usize = 32;
 const MAX_TEXT_BYTES: usize = 4_096;
 const MAX_INSTRUCTION_BYTES: usize = 16_384;
+const COMPLETE_PROGRAM_CYCLE_NODE_COST: usize = 9;
 
 /// Complete pre-execution semantic chain created atomically for V1.
 #[derive(Clone, Debug)]
@@ -35,6 +37,33 @@ pub struct CreateProgramCycle {
 	pub purpose: String,
 	pub non_goals: Vec<String>,
 	pub review_policy: String,
+	pub signal_source: String,
+	pub signal_summary: String,
+	pub signal_observed_at_micros: i64,
+	pub claim_statement: String,
+	pub proposal_summary: String,
+	pub proposal_expected_effect: String,
+	pub proposal_risk: String,
+	pub proposal_evidence_need: String,
+	pub objective_outcome: String,
+	pub acceptance_criteria: Vec<String>,
+	pub validation_criteria: Vec<String>,
+	pub work_item_title: String,
+	pub work_item_instructions: String,
+	pub working_directory: String,
+}
+
+/// One exact next semantic cycle appended to an existing reviewed Program.
+#[derive(Clone, Debug)]
+pub struct ContinueProgram {
+	pub program_id: ProgramId,
+	pub predecessor_review_id: ProgramReviewId,
+	pub expected_revision: u64,
+	pub signal_id: ProgramObservationId,
+	pub claim_id: ProgramClaimId,
+	pub proposal_id: ProgramProposalId,
+	pub objective_id: ObjectiveId,
+	pub work_item_id: WorkItemId,
 	pub signal_source: String,
 	pub signal_summary: String,
 	pub signal_observed_at_micros: i64,
@@ -102,6 +131,7 @@ pub struct ProgramCharterRecord {
 pub struct ProgramSignalRecord {
 	pub signal_id: ProgramObservationId,
 	pub program_id: ProgramId,
+	pub predecessor_review_id: Option<ProgramReviewId>,
 	pub source: String,
 	pub summary: String,
 	pub observed_at_micros: i64,
@@ -205,6 +235,30 @@ pub struct ProgramCycleRecord {
 	pub reviews: Vec<ProgramReviewRecord>,
 }
 
+struct ProgramStep<'a> {
+	program_id: &'a ProgramId,
+	predecessor_review_id: Option<&'a ProgramReviewId>,
+	signal_id: &'a ProgramObservationId,
+	claim_id: &'a ProgramClaimId,
+	proposal_id: &'a ProgramProposalId,
+	objective_id: &'a ObjectiveId,
+	work_item_id: &'a WorkItemId,
+	signal_source: &'a str,
+	signal_summary: &'a str,
+	signal_observed_at_micros: i64,
+	claim_statement: &'a str,
+	proposal_summary: &'a str,
+	proposal_expected_effect: &'a str,
+	proposal_risk: &'a str,
+	proposal_evidence_need: &'a str,
+	objective_outcome: &'a str,
+	acceptance_criteria: &'a [String],
+	validation_criteria: &'a [String],
+	work_item_title: &'a str,
+	work_item_instructions: &'a str,
+	working_directory: &'a str,
+}
+
 impl SqliteStore {
 	/// Atomically create one complete pre-execution semantic chain.
 	pub async fn create_program_cycle(
@@ -246,8 +300,6 @@ impl SqliteStore {
 				return Err(StoreError::InvalidInput("Signal observation is in the future"));
 			}
 			let non_goals = encode_list(&create.non_goals)?;
-			let acceptance = encode_list(&create.acceptance_criteria)?;
-			let validation = encode_list(&create.validation_criteria)?;
 			transaction
 				.execute(
 					"INSERT INTO programs (
@@ -264,104 +316,40 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
-			for (entity_id, kind) in [
-				(create.program_id.as_str(), "program"),
-				(create.signal_id.as_str(), "signal"),
-				(create.claim_id.as_str(), "claim"),
-				(create.proposal_id.as_str(), "proposal"),
-				(create.objective_id.as_str(), "objective"),
-				(create.work_item_id.as_str(), "work_item"),
-			] {
 				transaction
 					.execute(
 						"INSERT INTO program_entities (entity_id, program_id, kind)
-					 VALUES (?1, ?2, ?3)",
-						params![entity_id, create.program_id.as_str(), kind],
+						 VALUES (?1, ?1, 'program')",
+						params![create.program_id.as_str()],
 					)
 					.map_err(sql_error)?;
-			}
-			transaction
-				.execute(
-					"INSERT INTO program_signals (
-				 signal_id, program_id, source, summary, observed_at_micros, created_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-					params![
-						create.signal_id.as_str(),
-						create.program_id.as_str(),
-						create.signal_source,
-						create.signal_summary,
-						create.signal_observed_at_micros,
-						now
-					],
-				)
-				.map_err(sql_error)?;
-			transaction
-				.execute(
-					"INSERT INTO program_claims (
-				 claim_id, program_id, signal_id, statement, revision, created_at_micros,
-				 updated_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
-					params![
-						create.claim_id.as_str(),
-						create.program_id.as_str(),
-						create.signal_id.as_str(),
-						create.claim_statement,
-						now
-					],
-				)
-				.map_err(sql_error)?;
-			transaction
-				.execute(
-					"INSERT INTO program_proposals (
-				 proposal_id, program_id, claim_id, summary, expected_effect, risk, evidence_need,
-				 executable, revision, created_at_micros, updated_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, ?8, ?8)",
-					params![
-						create.proposal_id.as_str(),
-						create.program_id.as_str(),
-						create.claim_id.as_str(),
-						create.proposal_summary,
-						create.proposal_expected_effect,
-						create.proposal_risk,
-						create.proposal_evidence_need,
-						now
-					],
-				)
-				.map_err(sql_error)?;
-			transaction
-				.execute(
-					"INSERT INTO program_objectives (
-				 objective_id, program_id, proposal_id, outcome, acceptance_criteria_json,
-				 validation_criteria_json, state, revision, created_at_micros, updated_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', 1, ?7, ?7)",
-					params![
-						create.objective_id.as_str(),
-						create.program_id.as_str(),
-						create.proposal_id.as_str(),
-						create.objective_outcome,
-						acceptance,
-						validation,
-						now
-					],
-				)
-				.map_err(sql_error)?;
-			transaction
-				.execute(
-					"INSERT INTO program_work_items (
-				 work_item_id, program_id, objective_id, title, instructions, working_directory,
-				 state, revision, created_at_micros, updated_at_micros
-				 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'ready', 1, ?7, ?7)",
-					params![
-						create.work_item_id.as_str(),
-						create.program_id.as_str(),
-						create.objective_id.as_str(),
-						create.work_item_title,
-						create.work_item_instructions,
-						create.working_directory,
-						now
-					],
-				)
-				.map_err(sql_error)?;
+				insert_program_step(
+					&transaction,
+					&ProgramStep {
+						program_id: &create.program_id,
+						predecessor_review_id: None,
+						signal_id: &create.signal_id,
+						claim_id: &create.claim_id,
+						proposal_id: &create.proposal_id,
+						objective_id: &create.objective_id,
+						work_item_id: &create.work_item_id,
+						signal_source: &create.signal_source,
+						signal_summary: &create.signal_summary,
+						signal_observed_at_micros: create.signal_observed_at_micros,
+						claim_statement: &create.claim_statement,
+						proposal_summary: &create.proposal_summary,
+						proposal_expected_effect: &create.proposal_expected_effect,
+						proposal_risk: &create.proposal_risk,
+						proposal_evidence_need: &create.proposal_evidence_need,
+						objective_outcome: &create.objective_outcome,
+						acceptance_criteria: &create.acceptance_criteria,
+						validation_criteria: &create.validation_criteria,
+						work_item_title: &create.work_item_title,
+						work_item_instructions: &create.work_item_instructions,
+						working_directory: &create.working_directory,
+					},
+					now,
+				)?;
 			let record = read_program_cycle(&transaction, &create.program_id)?
 				.ok_or_else(|| incompatible("created Program cycle"))?;
 			write_receipt(
@@ -371,6 +359,191 @@ impl SqliteStore {
 				create.program_id.as_str(),
 				&serde_json::to_string(&record)
 					.map_err(|_| incompatible("Program create receipt"))?,
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(record)
+		})
+			.await
+	}
+
+	/// Atomically append one exact next cycle to a reviewed active Program.
+	pub async fn continue_program(
+		&self,
+		command: &CommandIdentity,
+		continuation: &ContinueProgram,
+	) -> Result<ProgramCycleRecord, StoreError> {
+		validate_continuation(continuation)?;
+		let command = command.clone();
+		let continuation = continuation.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				CONTINUE_OPERATION,
+				continuation.signal_id.as_str(),
+			)? {
+				let record = serde_json::from_str(&response)
+					.map_err(|_| incompatible("Program continuation receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(record);
+			}
+
+			let expected_revision = i64::try_from(continuation.expected_revision)
+				.map_err(|_| StoreError::InvalidInput("Program revision is invalid"))?;
+			let current = transaction
+				.query_row(
+					"SELECT state, revision FROM programs WHERE program_id = ?1",
+					params![continuation.program_id.as_str()],
+					|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+				)
+				.optional()
+				.map_err(sql_error)?;
+			let Some((state, actual_revision)) = current else {
+				return Err(StoreError::InvalidInput("Program does not exist"));
+			};
+			if actual_revision != expected_revision {
+				return Err(StoreError::RevisionConflict {
+					entity: format!("program/{}", continuation.program_id),
+					expected: Some(expected_revision),
+					actual: Some(actual_revision),
+				});
+			}
+			if state != "active" {
+				return Err(StoreError::InvalidInput("Program is not active"));
+			}
+			let projection_nodes: i64 = transaction
+				.query_row(
+					"SELECT
+					   (SELECT COUNT(*) FROM program_entities
+					    WHERE program_id = ?1 AND kind != 'program')
+					 + (SELECT COUNT(*) FROM program_work_item_executions AS execution
+					    JOIN program_work_items AS item USING (work_item_id)
+					    WHERE item.program_id = ?1)",
+					params![continuation.program_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			let projection_nodes = usize::try_from(projection_nodes)
+				.map_err(|_| incompatible("Program projection node count"))?;
+			if projection_nodes.saturating_add(COMPLETE_PROGRAM_CYCLE_NODE_COST)
+				> MAX_PROGRAM_PROJECTION_NODES
+			{
+				return Err(StoreError::CapacityExhausted("Program projection"));
+			}
+
+			let unreviewed: i64 = transaction
+				.query_row(
+					"SELECT COUNT(*) FROM program_work_items AS item
+					 LEFT JOIN program_reviews AS review USING (work_item_id)
+					 WHERE item.program_id = ?1 AND review.review_id IS NULL",
+					params![continuation.program_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			if unreviewed != 0 {
+				return Err(StoreError::InvalidInput(
+					"Program already has an unreviewed cycle",
+				));
+			}
+			let terminal_reviews: i64 = transaction
+				.query_row(
+					"SELECT COUNT(*) FROM program_reviews AS review
+					 LEFT JOIN program_signals AS signal
+					   ON signal.predecessor_review_id = review.review_id
+					 WHERE review.program_id = ?1 AND signal.signal_id IS NULL",
+					params![continuation.program_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			if terminal_reviews != 1 {
+				return Err(incompatible("Program terminal Review lineage"));
+			}
+			let predecessor_objective = transaction
+				.query_row(
+					"SELECT item.objective_id FROM program_reviews AS review
+					 JOIN program_work_items AS item USING (work_item_id)
+					 WHERE review.review_id = ?1 AND review.program_id = ?2
+					   AND NOT EXISTS (
+					     SELECT 1 FROM program_signals AS signal
+					     WHERE signal.predecessor_review_id = review.review_id
+					   )",
+					params![
+						continuation.predecessor_review_id.as_str(),
+						continuation.program_id.as_str()
+					],
+					|row| row.get::<_, String>(0),
+				)
+				.optional()
+				.map_err(sql_error)?
+				.ok_or(StoreError::InvalidInput(
+					"Program predecessor is not the terminal Review",
+				))?;
+
+			let now = now_micros()?;
+			if continuation.signal_observed_at_micros > now {
+				return Err(StoreError::InvalidInput("Signal observation is in the future"));
+			}
+			transaction
+				.execute(
+					"UPDATE program_objectives SET state = 'abandoned', revision = revision + 1,
+					 updated_at_micros = ?2 WHERE objective_id = ?1 AND state = 'active'",
+					params![predecessor_objective, now],
+				)
+				.map_err(sql_error)?;
+			insert_program_step(
+				&transaction,
+				&ProgramStep {
+					program_id: &continuation.program_id,
+					predecessor_review_id: Some(&continuation.predecessor_review_id),
+					signal_id: &continuation.signal_id,
+					claim_id: &continuation.claim_id,
+					proposal_id: &continuation.proposal_id,
+					objective_id: &continuation.objective_id,
+					work_item_id: &continuation.work_item_id,
+					signal_source: &continuation.signal_source,
+					signal_summary: &continuation.signal_summary,
+					signal_observed_at_micros: continuation.signal_observed_at_micros,
+					claim_statement: &continuation.claim_statement,
+					proposal_summary: &continuation.proposal_summary,
+					proposal_expected_effect: &continuation.proposal_expected_effect,
+					proposal_risk: &continuation.proposal_risk,
+					proposal_evidence_need: &continuation.proposal_evidence_need,
+					objective_outcome: &continuation.objective_outcome,
+					acceptance_criteria: &continuation.acceptance_criteria,
+					validation_criteria: &continuation.validation_criteria,
+					work_item_title: &continuation.work_item_title,
+					work_item_instructions: &continuation.work_item_instructions,
+					working_directory: &continuation.working_directory,
+				},
+				now,
+			)?;
+			let changed = transaction
+				.execute(
+					"UPDATE programs SET revision = revision + 1, updated_at_micros = ?3
+					 WHERE program_id = ?1 AND revision = ?2 AND state = 'active'",
+					params![continuation.program_id.as_str(), expected_revision, now],
+				)
+				.map_err(sql_error)?;
+			if changed != 1 {
+				return Err(StoreError::RevisionConflict {
+					entity: format!("program/{}", continuation.program_id),
+					expected: Some(expected_revision),
+					actual: None,
+				});
+			}
+			let record = read_program_cycle(&transaction, &continuation.program_id)?
+				.ok_or_else(|| incompatible("continued Program"))?;
+			write_receipt(
+				&transaction,
+				&command,
+				CONTINUE_OPERATION,
+				continuation.signal_id.as_str(),
+				&serde_json::to_string(&record)
+					.map_err(|_| incompatible("Program continuation receipt"))?,
 				now,
 			)?;
 			transaction.commit().map_err(sql_error)?;
@@ -579,6 +752,115 @@ impl SqliteStore {
 	}
 }
 
+fn insert_program_step(
+	transaction: &Transaction<'_>,
+	step: &ProgramStep<'_>,
+	created_at_micros: i64,
+) -> Result<(), StoreError> {
+	let acceptance_criteria_json = encode_list(step.acceptance_criteria)?;
+	let validation_criteria_json = encode_list(step.validation_criteria)?;
+	for (entity_id, kind) in [
+		(step.signal_id.as_str(), "signal"),
+		(step.claim_id.as_str(), "claim"),
+		(step.proposal_id.as_str(), "proposal"),
+		(step.objective_id.as_str(), "objective"),
+		(step.work_item_id.as_str(), "work_item"),
+	] {
+		transaction
+			.execute(
+				"INSERT INTO program_entities (entity_id, program_id, kind)
+				 VALUES (?1, ?2, ?3)",
+				params![entity_id, step.program_id.as_str(), kind],
+			)
+			.map_err(sql_error)?;
+	}
+	transaction
+		.execute(
+			"INSERT INTO program_signals (
+			 signal_id, program_id, predecessor_review_id, source, summary,
+			 observed_at_micros, created_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+			params![
+				step.signal_id.as_str(),
+				step.program_id.as_str(),
+				step.predecessor_review_id.map(ProgramReviewId::as_str),
+				step.signal_source,
+				step.signal_summary,
+				step.signal_observed_at_micros,
+				created_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	transaction
+		.execute(
+			"INSERT INTO program_claims (
+			 claim_id, program_id, signal_id, statement, revision, created_at_micros,
+			 updated_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, 1, ?5, ?5)",
+			params![
+				step.claim_id.as_str(),
+				step.program_id.as_str(),
+				step.signal_id.as_str(),
+				step.claim_statement,
+				created_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	transaction
+		.execute(
+			"INSERT INTO program_proposals (
+			 proposal_id, program_id, claim_id, summary, expected_effect, risk, evidence_need,
+			 executable, revision, created_at_micros, updated_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 0, 1, ?8, ?8)",
+			params![
+				step.proposal_id.as_str(),
+				step.program_id.as_str(),
+				step.claim_id.as_str(),
+				step.proposal_summary,
+				step.proposal_expected_effect,
+				step.proposal_risk,
+				step.proposal_evidence_need,
+				created_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	transaction
+		.execute(
+			"INSERT INTO program_objectives (
+			 objective_id, program_id, proposal_id, outcome, acceptance_criteria_json,
+			 validation_criteria_json, state, revision, created_at_micros, updated_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'active', 1, ?7, ?7)",
+			params![
+				step.objective_id.as_str(),
+				step.program_id.as_str(),
+				step.proposal_id.as_str(),
+				step.objective_outcome,
+				acceptance_criteria_json,
+				validation_criteria_json,
+				created_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	transaction
+		.execute(
+			"INSERT INTO program_work_items (
+			 work_item_id, program_id, objective_id, title, instructions, working_directory,
+			 state, revision, created_at_micros, updated_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'ready', 1, ?7, ?7)",
+			params![
+				step.work_item_id.as_str(),
+				step.program_id.as_str(),
+				step.objective_id.as_str(),
+				step.work_item_title,
+				step.work_item_instructions,
+				step.working_directory,
+				created_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(())
+}
+
 pub(crate) fn bind_program_work_item_execution(
 	transaction: &Transaction<'_>,
 	work_item_id: &WorkItemId,
@@ -636,6 +918,34 @@ fn validate_create(create: &CreateProgramCycle) -> Result<(), StoreError> {
 	validate_list(&create.acceptance_criteria)?;
 	validate_list(&create.validation_criteria)?;
 	if create.signal_observed_at_micros <= 0 || !valid_absolute_path(&create.working_directory) {
+		return Err(StoreError::InvalidInput("Program time or working directory is invalid"));
+	}
+	Ok(())
+}
+
+fn validate_continuation(continuation: &ContinueProgram) -> Result<(), StoreError> {
+	if continuation.expected_revision == 0 {
+		return Err(StoreError::InvalidInput("Program revision is invalid"));
+	}
+	for value in [
+		&continuation.signal_source,
+		&continuation.signal_summary,
+		&continuation.claim_statement,
+		&continuation.proposal_summary,
+		&continuation.proposal_expected_effect,
+		&continuation.proposal_risk,
+		&continuation.proposal_evidence_need,
+		&continuation.objective_outcome,
+	] {
+		validate_text(value, MAX_TEXT_BYTES)?;
+	}
+	validate_text(&continuation.work_item_title, 256)?;
+	validate_text(&continuation.work_item_instructions, MAX_INSTRUCTION_BYTES)?;
+	validate_list(&continuation.acceptance_criteria)?;
+	validate_list(&continuation.validation_criteria)?;
+	if continuation.signal_observed_at_micros <= 0
+		|| !valid_absolute_path(&continuation.working_directory)
+	{
 		return Err(StoreError::InvalidInput("Program time or working directory is invalid"));
 	}
 	Ok(())
@@ -801,7 +1111,8 @@ fn read_program_cycle(
 	};
 	let signals = query_rows(
 		connection,
-		"SELECT signal_id, source, summary, observed_at_micros, created_at_micros
+		"SELECT signal_id, predecessor_review_id, source, summary, observed_at_micros,
+		 created_at_micros
 		 FROM program_signals WHERE program_id = ?1 ORDER BY created_at_micros, signal_id",
 		program_id.as_str(),
 		|row| {
@@ -809,10 +1120,15 @@ fn read_program_cycle(
 				signal_id: ProgramObservationId::new(row.get::<_, String>(0)?)
 					.map_err(|_| rusqlite::Error::InvalidQuery)?,
 				program_id: program_id.clone(),
-				source: row.get(1)?,
-				summary: row.get(2)?,
-				observed_at_micros: row.get(3)?,
-				created_at_micros: row.get(4)?,
+				predecessor_review_id: row
+					.get::<_, Option<String>>(1)?
+					.map(ProgramReviewId::new)
+					.transpose()
+					.map_err(|_| rusqlite::Error::InvalidQuery)?,
+				source: row.get(2)?,
+				summary: row.get(3)?,
+				observed_at_micros: positive_time_sql(row.get(4)?)?,
+				created_at_micros: positive_time_sql(row.get(5)?)?,
 			})
 		},
 	)?;
@@ -1182,6 +1498,38 @@ mod tests {
 		}
 	}
 
+	fn continuation_fixture(
+		create: &CreateProgramCycle,
+		predecessor_review_id: ProgramReviewId,
+		expected_revision: u64,
+	) -> ContinueProgram {
+		ContinueProgram {
+			program_id: create.program_id.clone(),
+			predecessor_review_id,
+			expected_revision,
+			signal_id: id("51000000-0000-4000-8000-000000000001", ProgramObservationId::new),
+			claim_id: id("52000000-0000-4000-8000-000000000001", ProgramClaimId::new),
+			proposal_id: id("53000000-0000-4000-8000-000000000001", ProgramProposalId::new),
+			objective_id: id("54000000-0000-4000-8000-000000000001", ObjectiveId::new),
+			work_item_id: WorkItemId::new("55000000-0000-4000-8000-000000000001")
+				.expect("WorkItem identity"),
+			signal_source: "first cycle Review".to_owned(),
+			signal_summary: "The first cycle exposed the next bounded gap.".to_owned(),
+			signal_observed_at_micros: 1,
+			claim_statement: "A second finite cycle can close that gap.".to_owned(),
+			proposal_summary: "Append one exact next semantic chain.".to_owned(),
+			proposal_expected_effect: "The Program keeps one identity across cycles.".to_owned(),
+			proposal_risk: "A stale client could branch the history.".to_owned(),
+			proposal_evidence_need: "Restart and idempotency evidence.".to_owned(),
+			objective_outcome: "Two ordered cycles survive restart.".to_owned(),
+			acceptance_criteria: vec!["The first cycle remains queryable.".to_owned()],
+			validation_criteria: vec!["A replay creates no second Signal.".to_owned()],
+			work_item_title: "Prove repeatable Program continuation".to_owned(),
+			work_item_instructions: "Implement and verify one exact next cycle.".to_owned(),
+			working_directory: "/tmp/decodex".to_owned(),
+		}
+	}
+
 	#[tokio::test]
 	async fn create_cycle_is_atomic_replayable_and_restart_safe() {
 		let directory = tempdir().expect("temporary directory");
@@ -1259,7 +1607,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn evidence_backed_review_closes_the_cycle_and_reopens_without_replay() {
+	async fn reviewed_program_continues_once_and_reopens_without_replay() {
 		let directory = tempdir().expect("temporary directory");
 		let path = directory.path().join("decodex.sqlite3");
 		let store = SqliteStore::open_test(&path).expect("initialize store");
@@ -1354,8 +1702,8 @@ mod tests {
 				summary: "The bound provider turn settled successfully.".to_owned(),
 				observed_at_micros: 1,
 			},
-			classification: ProgramReviewClassification::CapabilityProgress,
-			rationale: "The closed loop is now a reusable product capability.".to_owned(),
+			classification: ProgramReviewClassification::KnowledgeProgress,
+			rationale: "The first cycle found the next bounded gap.".to_owned(),
 		};
 		let command =
 			CommandIdentity::new("program-review-1", b"program review").expect("review command");
@@ -1367,11 +1715,103 @@ mod tests {
 			store.record_program_review(&command, &review).await.expect("review replay"),
 			reviewed
 		);
+		assert_eq!(reviewed.objectives[0].state, ObjectiveState::Active);
+
+		let continuation = continuation_fixture(
+			&create,
+			review.review_id.clone(),
+			reviewed.program.revision,
+		);
+		let continue_command = CommandIdentity::new("program-continue-1", b"program continue")
+			.expect("continuation command");
+		let continued = store
+			.continue_program(&continue_command, &continuation)
+			.await
+			.expect("continue reviewed Program");
+		assert_eq!(continued.program.revision, 3);
+		assert_eq!(continued.signals.len(), 2);
+		assert_eq!(continued.work_items.len(), 2);
+		assert_eq!(continued.objectives[0].state, ObjectiveState::Abandoned);
+		assert_eq!(continued.objectives[1].state, ObjectiveState::Active);
+		assert_eq!(
+			continued.signals[1].predecessor_review_id.as_ref(),
+			Some(&review.review_id)
+		);
+		assert_eq!(
+			store
+				.continue_program(&continue_command, &continuation)
+				.await
+				.expect("continuation replay"),
+			continued
+		);
+
+		let mut stale = continuation.clone();
+		stale.signal_id = id("61000000-0000-4000-8000-000000000001", ProgramObservationId::new);
+		assert!(matches!(
+			store
+				.continue_program(
+					&CommandIdentity::new("program-continue-stale", b"stale continue")
+						.expect("stale command"),
+					&stale,
+				)
+				.await,
+			Err(StoreError::RevisionConflict { expected: Some(2), actual: Some(3), .. })
+		));
+		let mut parallel = stale;
+		parallel.expected_revision = 3;
+		assert!(matches!(
+			store
+				.continue_program(
+					&CommandIdentity::new("program-continue-parallel", b"parallel continue")
+						.expect("parallel command"),
+					&parallel,
+				)
+				.await,
+			Err(StoreError::InvalidInput("Program already has an unreviewed cycle"))
+		));
+		store
+			.with_connection(|connection| {
+				let mut insert = connection
+					.prepare(
+						"INSERT INTO program_entities (entity_id, program_id, kind)
+						 VALUES (?1, ?2, 'evidence')",
+					)
+					.map_err(|_| crate::DatabaseError::Unavailable)?;
+				for index in 0..106 {
+					insert
+						.execute(params![
+							format!("90000000-0000-4000-8000-{index:012}"),
+							create.program_id.as_str()
+						])
+						.map_err(|_| crate::DatabaseError::Unavailable)?;
+				}
+				Ok(())
+			})
+			.expect("fill the bounded projection fixture");
+		assert_eq!(
+			store
+				.continue_program(&continue_command, &continuation)
+				.await
+				.expect("accepted continuation replay bypasses capacity preflight"),
+			continued
+		);
+		assert!(matches!(
+			store
+				.continue_program(
+					&CommandIdentity::new("program-continue-capacity", b"capacity continue")
+						.expect("capacity command"),
+					&parallel,
+				)
+				.await,
+			Err(StoreError::CapacityExhausted("Program projection"))
+		));
 		store
 			.with_connection(|connection| {
 				connection
 					.execute_batch(
-						"DELETE FROM provider_attempt_positive_evidence
+						"DELETE FROM program_entities
+						 WHERE entity_id LIKE '90000000-0000-4000-8000-%';
+						 DELETE FROM provider_attempt_positive_evidence
 						 WHERE attempt_id = '37000000-0000-4000-8000-000000000001';
 						 DELETE FROM provider_attempts
 						 WHERE attempt_id = '37000000-0000-4000-8000-000000000001';",
@@ -1382,8 +1822,15 @@ mod tests {
 		drop(store);
 		let reopened = SqliteStore::open_test(&path).expect("reopen store");
 		assert_eq!(
-			reopened.program_cycle(&create.program_id).await.expect("read reviewed cycle"),
-			Some(reviewed)
+			reopened.program_cycle(&create.program_id).await.expect("read continued Program"),
+			Some(continued.clone())
+		);
+		assert_eq!(
+			reopened
+				.continue_program(&continue_command, &continuation)
+				.await
+				.expect("continuation replay after restart"),
+			continued
 		);
 	}
 

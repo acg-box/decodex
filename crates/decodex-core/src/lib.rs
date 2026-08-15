@@ -156,8 +156,8 @@ pub use self::{
 	},
 	program::{
 		MAX_OBJECTIVE_CRITERIA, MAX_PROGRAM_CONTEXT_BYTES, MAX_PROGRAM_CONTEXT_DECISIONS,
-		MAX_PROGRAM_NAME_BYTES, MAX_PROGRAM_OBSERVATIONS, MAX_PROGRAM_TEXT_BYTES,
-		MAX_PROGRAM_TIMESTAMP_MICROSECONDS, MAX_REVIEW_CADENCE_DAYS, Objective,
+		MAX_PROGRAM_NAME_BYTES, MAX_PROGRAM_OBSERVATIONS, MAX_PROGRAM_PROJECTION_NODES,
+		MAX_PROGRAM_TEXT_BYTES, MAX_PROGRAM_TIMESTAMP_MICROSECONDS, MAX_REVIEW_CADENCE_DAYS, Objective,
 		ObjectiveCompletionEvidence, ObjectiveEvidenceId, ObjectiveId, ObjectiveState, Program,
 		ProgramClaimId, ProgramContext, ProgramContextDecision, ProgramContextInput,
 		ProgramCorrelationId, ProgramError, ProgramEvidenceId, ProgramEvidenceKind, ProgramId,

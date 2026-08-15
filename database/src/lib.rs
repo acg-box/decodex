@@ -58,7 +58,8 @@ pub use self::{
 		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
 	},
 	program_cycles::{
-		CreateProgramCycle, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
+		ContinueProgram, CreateProgramCycle, ProgramCharterRecord, ProgramClaimRecord,
+		ProgramCycleRecord,
 		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
 		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
 		RecordProgramReview,

@@ -75,6 +75,8 @@ pub const MAX_PROGRAM_TEXT_BYTES: usize = 4_096;
 pub const MAX_OBJECTIVE_CRITERIA: usize = 32;
 /// Maximum metrics or signals on one Program.
 pub const MAX_PROGRAM_OBSERVATIONS: usize = 64;
+/// Maximum nodes in one bounded Program causal projection.
+pub const MAX_PROGRAM_PROJECTION_NODES: usize = 128;
 /// Maximum recent decisions in one compiled Program context.
 pub const MAX_PROGRAM_CONTEXT_DECISIONS: usize = 64;
 /// Maximum deterministic compiled Program-context bytes.
