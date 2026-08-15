@@ -24,8 +24,9 @@ pub use self::{
 	},
 	program_cycle::{
 		MAX_PROGRAM_EDGES, MAX_PROGRAM_LIST_ITEMS, MAX_PROGRAM_LIST_VALUES, MAX_PROGRAM_NODES,
-		ProgramCycleContractError, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
-		ProgramEdgeDto, ProgramEvidenceDraftDto, ProgramListResult, ProgramNodeDto,
+			ProgramContinuationDraftDto, ProgramCycleContractError, ProgramCycleDraftDto,
+			ProgramCycleDto, ProgramCycleResult, ProgramEdgeDto, ProgramEvidenceDraftDto,
+			ProgramListResult, ProgramNodeDto,
 		ProgramNodeFieldDto, ProgramNodeKind, ProgramRelationKind, ProgramReviewClassification,
 		ProgramReviewDraftDto, ProgramState, ProgramSummaryDto,
 	},
@@ -86,7 +87,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 2 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 3 };
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

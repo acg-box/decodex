@@ -52,7 +52,7 @@ fn main() {
 			.open_window(
 				WindowOptions {
 					titlebar: Some(gpui::TitlebarOptions {
-						title: None,
+						title: Some("Decodex".into()),
 						appears_transparent: true,
 						traffic_light_position: Some(point(px(14.0), px(14.0))),
 					}),

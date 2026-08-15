@@ -164,13 +164,20 @@ APIs, and fixtures. The V1 schema persists:
 Large history content continues to use the content-addressed blob owner. SQLite stores a
 bounded inline value or a digest and length.
 
-## Adaptive Factory Spine V1
+## Repeatable Program Loop V1
 
-The current protocol accepts exact V2.2 clients. It adds one bounded Program aggregate
-above the existing Quick Task execution path. The aggregate contains one Program
-charter, one sourced Signal, one Claim, one non-executable Proposal, one finite
-Objective, and one ready WorkItem. One command creates this pre-execution chain in one
-SQLite transaction.
+The current protocol accepts exact V2.3 clients. It adds one bounded, manually repeated
+Program aggregate above the existing Quick Task execution path. The initial command
+creates one Program charter, one sourced Signal, one Claim, one non-executable Proposal,
+one finite Objective, and one ready WorkItem in one SQLite transaction.
+
+After one cycle has an exact terminal Review, `ContinueProgram` can append one next
+Signal, Claim, non-executable Proposal, finite Objective, and ready WorkItem. The command
+must carry the current positive Program revision and the exact predecessor Review. One
+Review can have at most one successor Signal, and one Program can have at most one
+unreviewed cycle. A stale revision, non-terminal predecessor, duplicate successor, or
+parallel unreviewed cycle is rejected. An explicit next Objective marks an unresolved
+prior Objective as `abandoned`; it does not rewrite prior semantic rows.
 
 Starting the WorkItem creates an ordinary Quick Task with an exact WorkItem cause. The
 Conversation and WorkItem binding commit in the same SQLite transaction. The existing
@@ -186,8 +193,10 @@ ProviderAttempt evidence. The accepted classifications are `outcome_progress`,
 
 GPUI reads the aggregate through the retained same-UID protocol. It derives the Program
 pulse, causal graph, inspector, timeline, Evidence view, and Conversation navigation
-from the same stable identities. The graph is a projection. It is not scheduling
-authority or a separate store.
+from the same stable identities. It shows every retained cycle in causal order, derives
+cycle numbers from Signal boundaries, marks the current cycle, and opens the exact
+Conversation bound to the selected WorkItem. The graph is a projection. It is not
+scheduling authority or a separate store.
 
 ## Execution invariants
 
@@ -252,6 +261,13 @@ authority or a separate store.
 25. Positive terminal evidence and Conversation terminalization are restart-safe. If
     only the evidence transaction committed, a later sync finishes the exact pending
     terminalization without another provider request.
+26. Program continuation requires the exact terminal predecessor Review and current
+    Program revision. One Review has at most one successor Signal.
+27. A Program has at most one unreviewed cycle. Continuation appends one complete
+    pre-execution chain atomically and never schedules it.
+28. A continued WorkItem uses the ordinary Quick Task, ProcessGeneration, and
+    ProviderAttempt path. Restart and command replay cannot create a second semantic
+    entity, Conversation, or provider attempt.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -277,9 +293,10 @@ a same-account starting RuntimeSession. Reopening SQLite reconstructs the same p
 plan from migration-owned metadata plus the content-addressed blob. The current Turn is
 not one of the pack sources; it remains the separate final request input.
 
-A daemon restart also reopens the same Program identities, WorkItem binding, Evidence,
-and Review. Reopening or querying a Program does not dispatch a provider request.
-Unknown ProviderAttempt state keeps the existing no-automatic-replay rule.
+A daemon restart also reopens every Program cycle, WorkItem binding, Evidence, and
+Review. It reconstructs cycle order from predecessor Review links. Reopening or querying
+a Program does not dispatch a provider request. Unknown ProviderAttempt state keeps the
+existing no-automatic-replay rule.
 
 ## Credential boundary
 
@@ -320,8 +337,8 @@ Acceptance requires:
 - local-history-first Conversation opening, immediate queued-prompt projection, and
   Turn-level adjacent assistant-fragment coalescing;
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;
-- one restart-safe Program cycle with a bound Quick Task, two Evidence records, a
-  classified Review, and synchronized causal projections;
+- one restart-safe Program with at least three sequential cycles, one bound Quick Task
+  and classified evidence-backed Review per cycle, and synchronized causal projections;
 - archived-thread rejection with retained composer content and no implicit resend;
 - bounded stale-local reconciliation without changing unresolved provider evidence;
 - focused and workspace-wide tests; and
