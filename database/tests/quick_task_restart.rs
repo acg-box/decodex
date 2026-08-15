@@ -89,6 +89,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 			&conversation_command,
 			&CreateQuickTaskConversation {
 				conversation_id: conversation_id.clone(),
+				work_item_id: None,
 				title: "SQLite restart proof".to_owned(),
 				message: "Start the persisted task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
@@ -456,19 +457,20 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 		RoutingControlOutcome::Updated { routing } => routing,
 		other => panic!("account routing did not update: {other:?}"),
 	};
-	assert_eq!(
-		changed_routing.mode,
-		AccountSelectionMode::Fixed(alternate_account_id.clone())
-	);
+	assert_eq!(changed_routing.mode, AccountSelectionMode::Fixed(alternate_account_id.clone()));
 
 	let alternate_conversation_id =
 		ConversationId::new(ALTERNATE_CONVERSATION_ID).expect("alternate conversation identity");
 	reopened
 		.create_quick_task_conversation(
-			&CommandIdentity::new("alternate-quick-task-conversation", b"create alternate conversation")
-				.expect("alternate conversation command"),
+			&CommandIdentity::new(
+				"alternate-quick-task-conversation",
+				b"create alternate conversation",
+			)
+			.expect("alternate conversation command"),
 			&CreateQuickTaskConversation {
 				conversation_id: alternate_conversation_id.clone(),
+				work_item_id: None,
 				title: "Independent account affinity proof".to_owned(),
 				message: "Start an independent task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
@@ -663,9 +665,7 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 	);
 }
 
-async fn import_ready_accounts(
-	store: &SqliteStore,
-) -> (AccountId, CredentialBinding, AccountId) {
+async fn import_ready_accounts(store: &SqliteStore) -> (AccountId, CredentialBinding, AccountId) {
 	let (account_id, credential, primary) = fixture_account_transfer(
 		ACCOUNT_ID,
 		OPERATION_ID,
@@ -721,8 +721,7 @@ fn fixture_account_transfer(
 	payload: &[u8],
 ) -> (AccountId, CredentialBinding, LocalAccountTransfer) {
 	let typed_account_id = AccountId::new(account_id).expect("account identity");
-	let typed_operation_id =
-		AccountOperationId::new(operation_id).expect("operation identity");
+	let typed_operation_id = AccountOperationId::new(operation_id).expect("operation identity");
 	let provider = ProviderIdentity::new(AccountProvider::Chatgpt, provider_account_id)
 		.expect("provider identity");
 	let credential = CredentialBinding {

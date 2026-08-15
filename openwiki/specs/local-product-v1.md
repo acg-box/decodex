@@ -1,14 +1,14 @@
 ---
 type: "Specification"
 title: "Local Product V1 Contract"
-description: "Normative SQLite milestone contract for app-server freshness, Quick Task execution, lifecycle safety, and deferred product capabilities."
-tags: [local-product, sqlite, quick-task, app-server]
+description: "Normative SQLite milestone contract for app-server freshness, Quick Task execution, Adaptive Factory Programs, lifecycle safety, and deferred capabilities."
+tags: [local-product, sqlite, quick-task, adaptive-factory, app-server]
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
-  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/shell.rs]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, database/src/program_cycles.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
@@ -164,6 +164,31 @@ APIs, and fixtures. The V1 schema persists:
 Large history content continues to use the content-addressed blob owner. SQLite stores a
 bounded inline value or a digest and length.
 
+## Adaptive Factory Spine V1
+
+The current protocol accepts exact V2.2 clients. It adds one bounded Program aggregate
+above the existing Quick Task execution path. The aggregate contains one Program
+charter, one sourced Signal, one Claim, one non-executable Proposal, one finite
+Objective, and one ready WorkItem. One command creates this pre-execution chain in one
+SQLite transaction.
+
+Starting the WorkItem creates an ordinary Quick Task with an exact WorkItem cause. The
+Conversation and WorkItem binding commit in the same SQLite transaction. The existing
+Routing Decision, RuntimeSession, ProcessGeneration, ProviderAttempt, history, and
+positive-evidence owners perform the work. The Program path has no second worker engine.
+
+A terminal Program Review command supplies one deterministic Evidence item, one external
+Evidence item, one classification, and one rationale. SQLite accepts the Review only
+when the exact WorkItem is running and its bound Conversation has positive terminal
+ProviderAttempt evidence. The accepted classifications are `outcome_progress`,
+`knowledge_progress`, `capability_progress`, `no_material_change`, `regression`, and
+`unknown`.
+
+GPUI reads the aggregate through the retained same-UID protocol. It derives the Program
+pulse, causal graph, inspector, timeline, Evidence view, and Conversation navigation
+from the same stable identities. The graph is a projection. It is not scheduling
+authority or a separate store.
+
 ## Execution invariants
 
 1. A Routing Decision is the only initial account selector.
@@ -252,6 +277,10 @@ a same-account starting RuntimeSession. Reopening SQLite reconstructs the same p
 plan from migration-owned metadata plus the content-addressed blob. The current Turn is
 not one of the pack sources; it remains the separate final request input.
 
+A daemon restart also reopens the same Program identities, WorkItem binding, Evidence,
+and Review. Reopening or querying a Program does not dispatch a provider request.
+Unknown ProviderAttempt state keeps the existing no-automatic-replay rule.
+
 ## Credential boundary
 
 The `account_credentials` table is physically colocated but logically narrow. General
@@ -272,7 +301,8 @@ The following are outside V1 and must not activate a second store:
 - Reset Card consumption;
 - execution-decision query projections;
 - ManagedRun and automation;
-- ontology and graph projections;
+- a general ontology language, graph editor, or graph database;
+- dynamic multi-agent planning and worker fan-out;
 - remote workers and multi-machine coordination; and
 - cross-conversation app-server process multiplexing.
 
@@ -290,6 +320,8 @@ Acceptance requires:
 - local-history-first Conversation opening, immediate queued-prompt projection, and
   Turn-level adjacent assistant-fragment coalescing;
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;
+- one restart-safe Program cycle with a bound Quick Task, two Evidence records, a
+  classified Review, and synchronized causal projections;
 - archived-thread rejection with retained composer content and no implicit resend;
 - bounded stale-local reconciliation without changing unresolved provider evidence;
 - focused and workspace-wide tests; and

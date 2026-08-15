@@ -21,6 +21,7 @@ mod health_query;
 	)
 )]
 mod history_pager;
+mod programs;
 mod quick_tasks;
 mod settings_surface;
 mod shell;

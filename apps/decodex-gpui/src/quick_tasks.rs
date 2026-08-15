@@ -374,14 +374,34 @@ impl QuickTasks {
 		&self,
 		message: &str,
 	) -> Result<QueuedQuickTaskSubmission, QuickTaskInputError> {
-		let conversation_id = entity_id()?;
 		let working_directory = self
 			.inner
 			.working_directory
 			.clone()
 			.ok_or(QuickTaskInputError::WorkingDirectoryUnavailable)?;
+		self.create_with_cause(message, None, working_directory)
+	}
+
+	/// Create the one ordinary Quick Task that executes an exact persisted Program WorkItem.
+	pub(crate) fn create_for_program_work_item(
+		&self,
+		message: &str,
+		work_item_id: EntityId,
+		working_directory: QuickTaskWorkingDirectory,
+	) -> Result<QueuedQuickTaskSubmission, QuickTaskInputError> {
+		self.create_with_cause(message, Some(work_item_id), working_directory)
+	}
+
+	fn create_with_cause(
+		&self,
+		message: &str,
+		work_item_id: Option<EntityId>,
+		working_directory: QuickTaskWorkingDirectory,
+	) -> Result<QueuedQuickTaskSubmission, QuickTaskInputError> {
+		let conversation_id = entity_id()?;
 		let payload = CommandPayload::CreateQuickTask {
 			conversation_id: conversation_id.clone(),
+			work_item_id,
 			message: message_text(message)?,
 			working_directory,
 			execution: self.lock().execution.clone(),
