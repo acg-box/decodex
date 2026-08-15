@@ -5,6 +5,15 @@ Scope: current v0.2 rationale and historical decisions. For the vNext target, th
 [vNext authority contract](../specs/vnext-authority.md) supersede conflicting product,
 runtime, state, identity, transport, migration, and delivery claims on this page.
 
+For factory work after the current local Quick Task foundation, the
+[adaptive Program and extension architecture](adaptive-program-extension-architecture.md)
+supersedes conflicting product-direction claims on this page. In particular, the new
+direction does not require Linear or Program Intake, allows a visible semantic graph,
+and gives Decodex durable open-ended Program responsibility. It retains the safety rule
+that Signals and MCP calls cannot create authority or prove external effects. Historical
+sections below remain provenance for the frozen runtime and must not be read as current
+implementation evidence.
+
 This page preserves durable "why" decisions that were previously scattered across historical decision records. It is not runtime authority by itself. Current authority lives in source, contracts, tests, checked-in manifests, and local runtime state; this page explains why those authority boundaries exist and where future agents should verify them.
 
 ## Private-artifact retirement rationale
