@@ -9,7 +9,7 @@ openwiki:
   source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-protocol/src/quick_task.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread]
   test_paths: [database/tests/quick_task_restart.rs]
-  invariants: [Exact thread lifecycle readback precedes local archive commit.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
+  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; OutcomeUnknown remains durable until positive evidence exists.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
 
@@ -56,6 +56,26 @@ history or tool-effect authority. V1 therefore does not import arbitrary externa
 turns during lifecycle refresh. A later history-merge contract must define identity,
 completeness, provenance, and effect safety before it can update normalized history.
 
+Current Codex app-server versions can omit `archived` from each returned Thread. A
+missing field is not `false`. Decodex resolves the state through bounded, paginated
+`thread/list` reads for both `archived: true` and `archived: false`, with exact thread-ID
+membership and one account binding. A contradictory field, membership in neither list,
+an invalid cursor, or a scan that exceeds its bound is an invalid result. No local
+archive follows that result.
+
+The sync path can repair a stale local active Turn only when exact Conversation,
+RuntimeSession, and Turn revisions still match and SQLite proves that no unresolved
+ProviderAttempt, non-dead ProcessGeneration, or streaming history item can own an
+effect. It can archive a provider-less `starting` RuntimeSession only when no Codex
+thread, thread-start fence, request, response, active Turn, ProviderAttempt, or non-dead
+ProcessGeneration exists. These transitions use durable command receipts. They do not
+generalize absence into proof.
+
+`OutcomeUnknown` remains a durable uncertainty fact. Lifecycle refresh and lossy
+`thread/read` do not convert it to success or failure. GPUI explains that the provider
+outcome cannot be proved and offers `Start new`; it does not resend into the uncertain
+thread. The old Conversation remains available as evidence.
+
 ## Quick Task execution controls
 
 Every user send carries `QuickTaskExecutionSettings`: an explicit model, reasoning
@@ -67,6 +87,13 @@ that validates the account, working directory, process fence, and provider attem
 before dispatch. A request whose account still owns a live non-dead generation is
 rejected with `RestoreProcessReadiness` before provider effect rather than being
 classified as acceptance ambiguity.
+
+GPUI keeps composer content until the exact Create or Submit command reaches a terminal
+accepted result. Queueing, waiting, transport loss, archived-thread rejection, and
+recovery-required rejection do not clear the text. A later accepted result also cannot
+clear text that the user changed after submission. If refresh removes the selected
+Conversation, selection becomes empty instead of moving the draft to another thread.
+Recovery commands have a separate control and never consume composer text.
 
 Change navigation: the public settings and recovery values are in
 `crates/decodex-protocol/src/quick_task.rs` (`QuickTaskExecutionSettings`,
@@ -132,6 +159,14 @@ bounded inline value or a digest and length.
 15. Provider archive readback can close a local Conversation only when no Turn or
     ProviderAttempt is unresolved and exact Conversation and RuntimeSession revisions
     still match.
+16. A missing per-thread `archived` field requires exact bounded membership in one
+    filtered provider list. Missing or contradictory membership cannot change SQLite.
+17. A stale active Turn can become failed only with exact revisions and proof that no
+    unresolved attempt, live process, or streaming history owner exists.
+18. `OutcomeUnknown` is not retry authority. The safe UI action starts a different
+    Conversation and preserves the uncertain record.
+19. Composer content clears only for the same unchanged message after explicit command
+    acceptance. Rejection and selection removal retain it.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -187,5 +222,7 @@ Acceptance requires:
   thread, with no duplicate ProviderAttempt dispatch;
 - protocol-only GPUI and CLI operation;
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;
+- archived-thread rejection with retained composer content and a safe new-Conversation path;
+- bounded stale-local reconciliation without changing unresolved provider evidence;
 - focused and workspace-wide tests; and
 - current OpenWiki and local database gates.

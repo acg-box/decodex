@@ -56,22 +56,23 @@ use crate::account_launch::{
 	RunnerPermit,
 	protocol::{
 		AccountReadResponse, ClientInfo, ExactThreadListParams, ExactThreadReadParams,
-		InitializeCapabilities, InitializeParams, InitializeResponse, JsonRpcResponse,
-		MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse, ThreadListParams,
-		ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+		ExactThreadStateListParams, InitializeCapabilities, InitializeParams, InitializeResponse,
+		JsonRpcResponse, MAX_APP_SERVER_FRAME_BYTES, ThreadArchiveParams, ThreadArchiveResponse,
+		ThreadListParams, ThreadListResponse, ThreadReadParams, ThreadReadResponse,
+		exact_thread_facts,
 	},
 };
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
-	ExactThreadListResult, ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory,
-	MAX_EXACT_THREAD_LIST_RESULTS, MethodObservation, NormalizedEvent, QuickTaskMessageDelta,
-	QuickTaskThreadResumeRequest, QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest,
-	QuickTaskTurnInterruptResponse, QuickTaskTurnStartRequest, ThreadSummary, TurnStatus,
-	UnavailableReason, decode_quick_task_thread_resume_response,
-	decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
-	decode_quick_task_turn_start_response, normalize_event, project_quick_task_message_delta,
+	CapabilityProfile, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,
+	ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS,
+	MethodObservation, NormalizedEvent, QuickTaskMessageDelta, QuickTaskThreadResumeRequest,
+	QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest, QuickTaskTurnInterruptResponse,
+	QuickTaskTurnStartRequest, ThreadSummary, TurnStatus, UnavailableReason,
+	decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
+	decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
+	normalize_event, project_quick_task_message_delta,
 	schema::{GeneratedSchemaEvidence, MAX_SCHEMA_FILE_BYTES},
 };
 use decodex_core::{
@@ -102,6 +103,7 @@ const STDIO_ONLY_ATTESTED_PLATFORM: &str = "macos-aarch64";
 const PROTOCOL_QUEUE_CAPACITY: usize = 64;
 const MAX_QUICK_TASK_BUFFERED_EVENTS: usize = PROTOCOL_QUEUE_CAPACITY;
 const THREAD_LIST_LIMIT: usize = 100;
+const MAX_EXACT_THREAD_STATE_SCAN_PAGES: usize = 64;
 const THREAD_LIST_PROBE_SEARCH_TERM: &str = "decodex-capability-probe-no-match-6f5aa91b28cf4bc6";
 const MAX_VERSION_OUTPUT_BYTES: u64 = 4 * 1_024;
 const MAX_EXECUTABLE_BYTES: u64 = 512 * 1_024 * 1_024;
@@ -1862,10 +1864,17 @@ impl SupervisedProcess {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
 
+		let archived = filter.archived.as_bool();
 		let threads = response
 			.data
 			.iter()
-			.map(ExactThreadFacts::try_from)
+			.map(|thread| {
+				if thread.archived.is_some_and(|reported| reported != archived) {
+					return Err("Codex thread archived state contradicts its list filter");
+				}
+
+				exact_thread_facts(thread, archived)
+			})
 			.collect::<Result<Vec<_>, _>>()
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
 
@@ -1897,7 +1906,12 @@ impl SupervisedProcess {
 				timeout,
 			)
 			.map_err(ExactReconciliationError::from_rpc)?;
-		let facts = ExactThreadFacts::try_from(&response.thread)
+		let archived = match response.thread.archived {
+			Some(archived) => archived,
+			None =>
+				self.resolve_exact_thread_archived_state(&response.thread, thread_id, timeout)?,
+		};
+		let facts = exact_thread_facts(&response.thread, archived)
 			.map_err(|_| ExactReconciliationError::InvalidResult)?;
 
 		if &facts.id != thread_id {
@@ -1907,6 +1921,77 @@ impl SupervisedProcess {
 		self.re_attest_exact_account(timeout)?;
 
 		Ok(ExactThreadReadResult { facts, history: LossyThreadHistory::IncludeTurnsReadback })
+	}
+
+	fn resolve_exact_thread_archived_state(
+		&mut self,
+		thread: &crate::account_launch::protocol::ProtocolThread,
+		thread_id: &ExactThreadId,
+		timeout: Duration,
+	) -> Result<bool, ExactReconciliationError> {
+		if self.exact_thread_is_listed(thread, thread_id, true, timeout)? {
+			return Ok(true);
+		}
+		if self.exact_thread_is_listed(thread, thread_id, false, timeout)? {
+			return Ok(false);
+		}
+
+		Err(ExactReconciliationError::InvalidResult)
+	}
+
+	fn exact_thread_is_listed(
+		&mut self,
+		thread: &crate::account_launch::protocol::ProtocolThread,
+		thread_id: &ExactThreadId,
+		archived: bool,
+		timeout: Duration,
+	) -> Result<bool, ExactReconciliationError> {
+		let search_term =
+			thread.name.as_deref().or(thread.preview.as_deref()).filter(|title| !title.is_empty());
+		let mut cursor = None;
+
+		for _ in 0..MAX_EXACT_THREAD_STATE_SCAN_PAGES {
+			let response = self
+				.request_rpc::<_, ThreadListResponse>(
+					"thread/list",
+					&ExactThreadStateListParams {
+						search_term,
+						archived,
+						limit: MAX_EXACT_THREAD_LIST_RESULTS as u32,
+						cursor: cursor.as_deref(),
+					},
+					timeout,
+				)
+				.map_err(ExactReconciliationError::from_rpc)?;
+			let matched =
+				response.data.iter().any(|candidate| candidate.id.as_str() == thread_id.as_str());
+
+			if response.data.len() > MAX_EXACT_THREAD_LIST_RESULTS
+				|| response.data.iter().any(|candidate| {
+					candidate.archived.is_some_and(|reported| reported != archived)
+				}) {
+				return Err(ExactReconciliationError::InvalidResult);
+			}
+			if matched {
+				return Ok(true);
+			}
+
+			let next = match response.next_cursor {
+				Some(next) if !next.as_str().is_empty() => next,
+				Some(_) => return Err(ExactReconciliationError::InvalidResult),
+				None => return Ok(false),
+			};
+			if cursor.as_ref().is_some_and(
+				|previous: &crate::account_launch::protocol::SensitiveString| {
+					previous.as_str() == next.as_str()
+				},
+			) {
+				return Err(ExactReconciliationError::InvalidResult);
+			}
+			cursor = Some(next);
+		}
+
+		Err(ExactReconciliationError::InvalidResult)
 	}
 
 	fn reconcile_archive(
@@ -6908,6 +6993,20 @@ mod tests {
 			process.reconcile_archive(&exact, timeout),
 			ArchiveReconciliationOutcome::AlreadyArchived
 		);
+	}
+
+	#[test]
+	fn current_app_server_schema_derives_archive_state_from_the_exact_filtered_list() {
+		let (_temp, mut process) = initialized_bound_process("exact-current-schema");
+		let timeout = Duration::from_secs(2);
+		let exact = exact_thread_id();
+
+		assert!(!process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
+		assert_eq!(
+			process.reconcile_archive(&exact, timeout),
+			ArchiveReconciliationOutcome::Archived
+		);
+		assert!(process.read_exact_thread(&exact, timeout).unwrap().facts.archived);
 	}
 
 	#[test]

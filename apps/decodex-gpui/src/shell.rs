@@ -13,8 +13,8 @@ use decodex_protocol::{
 	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
 	AccountQuotaWindowDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
 	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState, WorkItemBoardCard,
-	WorkItemState,
+	HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary,
+	WorkItemBoardCard, WorkItemState,
 };
 
 use crate::{
@@ -52,6 +52,44 @@ const WB_ACCENT: u32 = ui_theme::ACCENT;
 const WB_BLUE: u32 = ui_theme::BLUE;
 const WB_GREEN: u32 = ui_theme::GREEN;
 const WB_AMBER: u32 = ui_theme::AMBER;
+
+struct PendingComposerSubmission {
+	content: String,
+	result_generation: u64,
+}
+
+fn pending_submission_clear_decision(
+	pending: &PendingComposerSubmission,
+	result_generation: u64,
+	accepted: bool,
+	current_content: &str,
+) -> Option<bool> {
+	(result_generation > pending.result_generation)
+		.then_some(accepted && current_content == pending.content)
+}
+
+fn quick_task_recovery_presentation(task: Option<&QuickTaskSummary>) -> (bool, &'static str) {
+	let recovery_action = task.and_then(|task| task.recovery_action);
+	let outcome_unknown = task.is_some_and(|task| task.state == QuickTaskState::OutcomeUnknown);
+	let executable = outcome_unknown
+		|| recovery_action.is_some_and(|action| {
+			matches!(
+				action,
+				QuickTaskRecoveryAction::ResumeRouting
+					| QuickTaskRecoveryAction::CreateRoutingSuccessor
+					| QuickTaskRecoveryAction::ResumeEstablishment
+					| QuickTaskRecoveryAction::StartNewConversation
+			)
+		});
+	let label = if outcome_unknown
+		|| recovery_action == Some(QuickTaskRecoveryAction::StartNewConversation)
+	{
+		"Start new"
+	} else {
+		"Recover"
+	};
+	(executable, label)
+}
 
 const HEALTH_CORE_COMPONENTS: [DoctorComponent; 8] = [
 	DoctorComponent::Configuration,
@@ -338,6 +376,7 @@ pub(crate) struct Shell {
 	history: Option<HistorySnapshot>,
 	opened_history: Option<EntityId>,
 	creating_new: bool,
+	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
 	titlebar_drag_pending: bool,
 }
@@ -409,6 +448,7 @@ impl Shell {
 			history: None,
 			opened_history: None,
 			creating_new: true,
+			pending_submission: None,
 			input_status: None,
 			titlebar_drag_pending: false,
 		}
@@ -463,6 +503,8 @@ impl Shell {
 		shell.quick = QuickTasksSnapshot {
 			load: QuickTasksLoadState::Ready,
 			command: QuickTaskCommandState::Idle,
+			submission_result_generation: 0,
+			last_submission_accepted: false,
 			refresh: QuickTaskRefreshState::Idle,
 			tasks: vec![
 				task(
@@ -797,6 +839,7 @@ impl Shell {
 			},
 			FactoryEvent::StartCodexConversation { context, message } => {
 				self.quick_tasks.begin_new();
+				self.pending_submission = None;
 				self.creating_new = true;
 				self.opened_history = None;
 				let prompt = format!("Decodex factory context: {context}\n\n{message}");
@@ -991,6 +1034,7 @@ impl Shell {
 			self.quick_tasks.activate();
 		}
 		self.synchronize_quick_tasks();
+		self.reconcile_pending_submission(cx);
 		cx.notify();
 	}
 
@@ -1093,6 +1137,24 @@ impl Shell {
 		self.history = self.history_pager.as_ref().map(HistoryPager::snapshot);
 	}
 
+	fn reconcile_pending_submission(&mut self, cx: &mut Context<Self>) {
+		let Some(pending) = self.pending_submission.as_ref() else {
+			return;
+		};
+		let Some(clear) = pending_submission_clear_decision(
+			pending,
+			self.quick.submission_result_generation,
+			self.quick.last_submission_accepted,
+			self.composer.read(cx).content(),
+		) else {
+			return;
+		};
+		self.pending_submission = None;
+		if clear {
+			self.composer.update(cx, |composer, cx| composer.clear(cx));
+		}
+	}
+
 	fn start_new_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.quick_tasks.begin_new();
 		if let Some(pager) = self.history_pager.as_ref() {
@@ -1132,6 +1194,9 @@ impl Shell {
 	fn submit_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
 		let creating = self.creating_new || self.quick.selected.is_none();
 		let message = self.composer.read(cx).content().to_owned();
+		// Read the controller's current terminal-result fence before queueing. The rendered
+		// Shell snapshot can be one publication behind a just-settled prior submission.
+		let result_generation = self.quick_tasks.snapshot().submission_result_generation;
 		let result = if creating {
 			self.quick_tasks.create(&message)
 		} else {
@@ -1139,12 +1204,31 @@ impl Shell {
 		};
 		match result {
 			Ok(()) => {
-				self.composer.update(cx, |composer, cx| composer.clear(cx));
+				self.pending_submission = Some(PendingComposerSubmission {
+					content: message,
+					result_generation,
+				});
 				self.creating_new = creating;
 				self.input_status = None;
 			},
 			Err(error) => self.input_status = Some(input_error_label(error).into()),
 		}
+		self.synchronize_quick_tasks();
+		self.reconcile_pending_submission(cx);
+		cx.notify();
+	}
+
+	fn recover_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+		let state = self.quick.selected_task().map(|task| task.state);
+		let action = self.quick.selected_task().and_then(|task| task.recovery_action);
+		if state == Some(QuickTaskState::OutcomeUnknown)
+			|| action == Some(QuickTaskRecoveryAction::StartNewConversation)
+		{
+			self.start_new_quick_task(window, cx);
+			return;
+		}
+		self.input_status =
+			self.quick_tasks.recover_selected().err().map(input_error_label).map(Into::into);
 		self.synchronize_quick_tasks();
 		cx.notify();
 	}
@@ -1416,6 +1500,7 @@ fn publish_views(
 		}
 		if quick != shell.quick || history != shell.history {
 			shell.synchronize_quick_tasks();
+			shell.reconcile_pending_submission(cx);
 			cx.notify();
 		}
 		if work != shell.work {
@@ -3886,24 +3971,15 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 
 fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let task = shell.quick.selected_task();
-	let has_pre_session_recovery = task.is_some_and(|task| {
-		matches!(
-			task.recovery_action,
-			Some(
-				QuickTaskRecoveryAction::ResumeRouting
-					| QuickTaskRecoveryAction::CreateRoutingSuccessor
-					| QuickTaskRecoveryAction::ResumeEstablishment
-			)
-		)
-	});
+	let (has_executable_recovery, recovery_label) = quick_task_recovery_presentation(task);
 	let can_continue = shell.creating_new
 		|| task.is_none()
-		|| task.is_some_and(|task| task.state == QuickTaskState::Ready || has_pre_session_recovery);
+		|| task.is_some_and(|task| task.state == QuickTaskState::Ready);
 	let composer = shell.composer.read(cx);
 	let composer_len = composer.len();
 	let has_message = !composer.content().trim().is_empty();
-	let can_send =
-		shell.quick.can_submit && can_continue && (has_message || has_pre_session_recovery);
+	let can_send = shell.quick.can_submit && can_continue && has_message;
+	let can_recover = shell.quick.can_submit && has_executable_recovery;
 	let can_interrupt =
 		shell.quick.can_submit && task.is_some_and(|task| task.state == QuickTaskState::Running);
 	let model_label = shell.quick.execution.model.as_str().to_owned();
@@ -3964,6 +4040,32 @@ fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				}))
 		})
 		.child("Stop");
+	let recover = div()
+		.id("quick-task-recover")
+		.role(Role::Button)
+		.aria_label(recovery_label)
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Run the explicit recovery action")).into())
+		.h(px(23.0))
+		.min_h(px(23.0))
+		.px_3()
+		.flex()
+		.items_center()
+		.justify_center()
+		.rounded(px(7.0))
+		.border_1()
+		.border_color(if can_recover { rgba(0xf59e0b55) } else { rgba(0xffffff10) })
+		.text_size(px(9.5))
+		.text_color(if can_recover { rgb(WB_AMBER) } else { rgb(WB_TEXT_FAINT) })
+		.when(can_recover, |element| {
+			element
+				.cursor_pointer()
+				.hover(|element| element.bg(rgba(0xf59e0b12)))
+				.active(|element| element.opacity(0.72))
+				.on_click(cx.listener(|shell, _, window, cx| {
+					shell.recover_quick_task(window, cx);
+				}))
+		})
+		.child(recovery_label);
 	let model_control = div()
 		.id("quick-task-model")
 		.role(Role::Button)
@@ -4089,6 +4191,7 @@ fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 									)
 								})
 								.child(interrupt)
+								.when(has_executable_recovery, |element| element.child(recover))
 								.child(send),
 						),
 				),
@@ -4109,6 +4212,14 @@ fn quick_tasks_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.as_ref()
 		.map(SharedString::to_string)
 		.or_else(|| command_status(shell.quick.command).map(str::to_owned))
+		.or_else(|| {
+			selected_task
+				.is_some_and(|task| task.state == QuickTaskState::OutcomeUnknown)
+				.then(|| {
+					"Provider outcome cannot be proved. Start new; do not resend into this thread."
+						.to_owned()
+				})
+		})
 		.or_else(|| {
 			selected_task
 				.and_then(|task| task.recovery_action)
@@ -4448,6 +4559,57 @@ mod tests {
 				("Settings", true),
 			]
 		);
+	}
+
+	#[test]
+	fn composer_clears_only_after_exact_submission_acceptance() {
+		let pending = PendingComposerSubmission {
+			content: "Keep this draft until accepted.".to_owned(),
+			result_generation: 7,
+		};
+
+		assert_eq!(
+			pending_submission_clear_decision(&pending, 7, false, &pending.content),
+			None,
+			"queueing or waiting for a result must retain the composer"
+		);
+		assert_eq!(
+			pending_submission_clear_decision(&pending, 8, false, &pending.content),
+			Some(false),
+			"an archived-thread rejection must retain the composer"
+		);
+		assert_eq!(
+			pending_submission_clear_decision(&pending, 8, true, "A newer user edit"),
+			Some(false),
+			"a later accepted result must not erase newer typing"
+		);
+		assert_eq!(
+			pending_submission_clear_decision(&pending, 8, true, &pending.content),
+			Some(true),
+			"only exact accepted content is safe to clear"
+		);
+	}
+
+	#[test]
+	fn outcome_unknown_offers_only_a_safe_new_conversation_path() {
+		let task = QuickTaskSummary::new(
+			EntityId::new("10000000-0000-4000-8000-000000000091")
+				.expect("test conversation identity is canonical"),
+			decodex_protocol::EntityRevision(3),
+			1_786_000_000_000_000,
+			Some(
+				EntityId::new("20000000-0000-4000-8000-000000000091")
+					.expect("test runtime identity is canonical"),
+			),
+			Some(decodex_protocol::EntityRevision(4)),
+			QuickTaskState::OutcomeUnknown,
+			None,
+			None,
+		)
+		.expect("outcome-unknown projection is valid");
+
+		assert_eq!(quick_task_recovery_presentation(Some(&task)), (true, "Start new"));
+		assert_eq!(quick_task_recovery_presentation(None), (false, "Recover"));
 	}
 
 	#[test]

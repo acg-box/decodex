@@ -2320,3 +2320,69 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 		.expect("live lifecycle stops after cancellation");
 	assert_eq!(result, RunResult::Stopped);
 }
+
+#[tokio::test]
+#[ignore = "requires the user's live Decodex daemon and reconciles local projections with Codex"]
+async fn live_daemon_reconciles_archived_quick_tasks() {
+	use crate::quick_tasks::{QuickTaskRefreshState, QuickTasksLoadState};
+
+	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
+	let config =
+		profile.retained_session_config().expect("the live retained session is configured");
+	let mut lifecycle =
+		ClientLifecycle::production(config).expect("the production lifecycle is available");
+	let quick_tasks = lifecycle.quick_tasks();
+	let cancellation = lifecycle.cancellation();
+	quick_tasks.activate();
+
+	let run = lifecycle.run();
+	tokio::pin!(run);
+	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(20);
+	let initial_count = loop {
+		let snapshot = quick_tasks.snapshot();
+		if snapshot.load == QuickTasksLoadState::Ready && snapshot.can_submit {
+			break snapshot.tasks.len();
+		}
+		assert!(tokio::time::Instant::now() < ready_deadline, "Quick Tasks did not become ready");
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before Quick Tasks became ready: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	};
+
+	quick_tasks.refresh_all().expect("the live provider reconciliation starts");
+	let refresh_deadline = tokio::time::Instant::now() + Duration::from_secs(600);
+	let (checked, archived, failed) = loop {
+		let snapshot = quick_tasks.snapshot();
+		match snapshot.refresh {
+			QuickTaskRefreshState::Complete { checked, archived, failed } => {
+				break (checked, archived, failed);
+			},
+			QuickTaskRefreshState::Stopped { checked, total, archived, failed } => panic!(
+				"live provider reconciliation stopped at {checked}/{total}; archived={archived}, failed={failed}"
+			),
+			_ => {},
+		}
+		assert!(
+			tokio::time::Instant::now() < refresh_deadline,
+			"live provider reconciliation did not finish; refresh={:?}",
+			snapshot.refresh,
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped during provider reconciliation: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	};
+	let final_count = quick_tasks.snapshot().tasks.len();
+	eprintln!(
+		"live reconciliation: initial={initial_count}, final={final_count}, checked={checked}, archived={archived}, skipped={failed}"
+	);
+	assert!(checked > 0, "the live database must contain provider-backed conversations");
+	assert!(final_count <= initial_count, "reconciliation must not create conversations");
+
+	cancellation.cancel();
+	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
+		.await
+		.expect("live lifecycle stops after cancellation");
+	assert_eq!(result, RunResult::Stopped);
+}

@@ -18,7 +18,9 @@ impl From<&ProtocolThread> for ThreadSummary {
 	fn from(value: &ProtocolThread) -> Self {
 		Self {
 			id: ThreadId::from_protocol(value.id.as_str()),
-			archived: value.archived,
+			// `thread/list` without an archived filter returns current threads. Newer Codex
+			// app-server versions no longer repeat that query fact on each Thread object.
+			archived: value.archived.unwrap_or(false),
 			parent_thread_id: value.parent_thread_id.as_deref().map(ThreadId::from_protocol),
 		}
 	}
@@ -28,23 +30,30 @@ impl TryFrom<&ProtocolThread> for ExactThreadFacts {
 	type Error = &'static str;
 
 	fn try_from(value: &ProtocolThread) -> Result<Self, Self::Error> {
-		Ok(Self {
-			id: ExactThreadId::new(value.id.as_str())?,
-			provenance: value
-				.thread_source
-				.as_deref()
-				.map(ThreadProvenance::from_protocol)
-				.transpose()?,
-			created_at: ThreadCreatedAt::from_protocol(
-				value.created_at.ok_or("Codex thread creation timestamp is missing")?,
-			)?,
-			title: value.name.as_deref().map(ThreadTitle::from_protocol).transpose()?,
-			cwd: ThreadCwd::from_protocol(
-				value.cwd.as_deref().ok_or("Codex thread cwd is missing")?,
-			)?,
-			archived: value.archived,
-		})
+		let archived = value.archived.ok_or("Codex thread archived state is missing")?;
+
+		exact_thread_facts(value, archived)
 	}
+}
+
+pub(crate) fn exact_thread_facts(
+	value: &ProtocolThread,
+	archived: bool,
+) -> Result<ExactThreadFacts, &'static str> {
+	Ok(ExactThreadFacts {
+		id: ExactThreadId::new(value.id.as_str())?,
+		provenance: value
+			.thread_source
+			.as_deref()
+			.map(ThreadProvenance::from_protocol)
+			.transpose()?,
+		created_at: ThreadCreatedAt::from_protocol(
+			value.created_at.ok_or("Codex thread creation timestamp is missing")?,
+		)?,
+		title: value.name.as_deref().map(ThreadTitle::from_protocol).transpose()?,
+		cwd: ThreadCwd::from_protocol(value.cwd.as_deref().ok_or("Codex thread cwd is missing")?)?,
+		archived,
+	})
 }
 
 /// One independently zeroizing string allocated directly by typed Serde decoding.
@@ -123,12 +132,23 @@ pub struct ExactThreadListParams<'a> {
 	pub limit: u32,
 }
 
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExactThreadStateListParams<'a> {
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub search_term: Option<&'a str>,
+	pub archived: bool,
+	pub limit: u32,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	pub cursor: Option<&'a str>,
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ThreadListResponse {
 	pub data: Vec<ProtocolThread>,
 	#[serde(rename = "nextCursor")]
-	pub _next_cursor: Option<SensitiveString>,
+	pub next_cursor: Option<SensitiveString>,
 }
 
 #[derive(Debug, Serialize)]
@@ -178,10 +198,16 @@ pub struct ProtocolAccount {
 #[serde(rename_all = "camelCase")]
 pub struct ProtocolThread {
 	pub id: SensitiveString,
-	pub archived: bool,
+	/// Legacy app-server versions repeated the list filter on every Thread. Current versions do
+	/// not.
+	#[serde(default)]
+	pub archived: Option<bool>,
 	pub parent_thread_id: Option<SensitiveString>,
 	pub created_at: Option<i64>,
 	pub name: Option<SensitiveString>,
+	/// Current app-server fallback title material when no explicit name exists.
+	#[serde(default)]
+	pub preview: Option<SensitiveString>,
 	pub cwd: Option<SensitiveString>,
 	pub thread_source: Option<SensitiveString>,
 	pub ephemeral: Option<bool>,
@@ -322,6 +348,18 @@ mod tests {
 		assert_eq!(facts.cwd.as_str(), "/tmp/private-repository");
 		assert_eq!(facts.provenance.as_ref().unwrap().as_str(), "decodex.private");
 		assert!(!format!("{facts:?}").contains("private"));
+	}
+
+	#[test]
+	fn current_thread_shape_accepts_filter_owned_archive_state() {
+		let response: ThreadReadResponse = serde_json::from_slice(
+			br#"{"thread":{"id":"thread:current-shape","parentThreadId":null,"createdAt":1784073600,"preview":"Decodex current shape","cwd":"/tmp/private-repository","threadSource":null}}"#,
+		)
+		.unwrap();
+
+		assert_eq!(response.thread.archived, None);
+		let facts = super::exact_thread_facts(&response.thread, true).unwrap();
+		assert!(facts.archived);
 	}
 
 	#[test]

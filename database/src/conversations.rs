@@ -63,6 +63,40 @@ pub enum ArchiveQuickTaskConversationOutcome {
 	Rejected,
 }
 
+/// Exact provider-less starting projection that can be closed without a Codex mutation.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveLocalQuickTaskConversation {
+	pub conversation_id: ConversationId,
+	pub expected_conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub expected_runtime_session_revision: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ArchiveLocalQuickTaskConversationOutcome {
+	Applied(ArchivedQuickTaskConversation),
+	Replayed(ArchivedQuickTaskConversation),
+	Rejected,
+}
+
+/// Exact inactive-owner coordinates for one admitted turn with no possible provider effect.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ReconcileStrandedQuickTaskTurn {
+	pub conversation_id: ConversationId,
+	pub expected_conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub expected_runtime_session_revision: i64,
+	pub turn_id: TurnId,
+	pub expected_turn_revision: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ReconcileStrandedQuickTaskTurnOutcome {
+	Applied { turn_revision: i64 },
+	Replayed { turn_revision: i64 },
+	Rejected,
+}
+
 /// Create a new routing conversation after a waiting or no-route decision.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CreateQuickTaskRoutingSuccessor {
@@ -187,6 +221,7 @@ pub struct OrdinaryTaskConversationReadback {
 	pub runtime_session_state: Option<RuntimeSessionState>,
 	pub has_acknowledged_turn: bool,
 	pub active_turn_id: Option<TurnId>,
+	pub active_turn_revision: Option<i64>,
 	pub has_admitted_user_turn: bool,
 	pub has_active_provider_attempt: bool,
 	pub has_unknown_provider_attempt: bool,
@@ -517,6 +552,197 @@ impl SqliteStore {
 			)?;
 			transaction.commit().map_err(sql_error)?;
 			Ok(ArchiveQuickTaskConversationOutcome::Applied(archived))
+		})
+		.await
+	}
+
+	/// Fail one stale admitted user Turn only when durable authority proves no live process or
+	/// provider attempt can still own an effect.
+	pub async fn reconcile_stranded_quick_task_turn(
+		&self,
+		command: &CommandIdentity,
+		request: &ReconcileStrandedQuickTaskTurn,
+	) -> Result<ReconcileStrandedQuickTaskTurnOutcome, StoreError> {
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision <= 0
+			|| request.expected_turn_revision <= 0
+		{
+			return Err(StoreError::InvalidInput(
+				"stranded Quick Task Turn coordinates are invalid",
+			));
+		}
+		let command = command.clone();
+		let request = request.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				"reconcile_stranded_quick_task_turn",
+				request.turn_id.as_str(),
+			)? {
+				let turn_revision = response
+					.parse::<i64>()
+					.map_err(|_| incompatible("stranded Quick Task Turn receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision });
+			}
+			let now = unix_micros().map_err(StoreError::from)?;
+			let changed = transaction
+				.execute(
+					"UPDATE turns SET status = 'failed', revision = revision + 1,
+					 updated_at_micros = ?7, completed_at_micros = ?7
+					 WHERE turn_id = ?1 AND conversation_id = ?2 AND runtime_session_id = ?3
+					   AND revision = ?6 AND role = 'user' AND status = 'active'
+					   AND EXISTS (
+					     SELECT 1 FROM conversations AS c JOIN runtime_sessions AS s
+					       ON s.conversation_id = c.conversation_id
+					     WHERE c.conversation_id = ?2 AND c.state = 'active' AND c.revision = ?4
+					       AND s.runtime_session_id = ?3 AND s.state IN ('starting', 'active')
+					       AND s.revision = ?5
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM provider_attempts AS p WHERE p.turn_id = ?1
+					       AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM process_generations AS p
+					     WHERE p.runtime_session_id = ?3 AND p.state <> 'dead'
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM history_items AS h
+					     WHERE h.turn_id = ?1 AND h.status = 'streaming'
+					   )",
+					params![
+						request.turn_id.as_str(),
+						request.conversation_id.as_str(),
+						request.runtime_session_id.as_str(),
+						request.expected_conversation_revision,
+						request.expected_runtime_session_revision,
+						request.expected_turn_revision,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			if changed != 1 {
+				return Ok(ReconcileStrandedQuickTaskTurnOutcome::Rejected);
+			}
+			transaction
+				.execute(
+					"UPDATE conversations SET updated_at_micros = ?2
+					 WHERE conversation_id = ?1 AND state = 'active' AND updated_at_micros <= ?2",
+					params![request.conversation_id.as_str(), now],
+				)
+				.map_err(sql_error)?;
+			let turn_revision = request.expected_turn_revision + 1;
+			write_receipt(
+				&transaction,
+				&command,
+				"reconcile_stranded_quick_task_turn",
+				request.turn_id.as_str(),
+				&turn_revision.to_string(),
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision })
+		})
+		.await
+	}
+
+	/// Close one provider-less starting session after all possible external effects are terminal.
+	pub async fn archive_local_quick_task_conversation(
+		&self,
+		command: &CommandIdentity,
+		request: &ArchiveLocalQuickTaskConversation,
+	) -> Result<ArchiveLocalQuickTaskConversationOutcome, StoreError> {
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision <= 0
+		{
+			return Err(StoreError::InvalidInput(
+				"local Quick Task archive coordinates are invalid",
+			));
+		}
+		let command = command.clone();
+		let request = request.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				"archive_local_quick_task_conversation",
+				request.conversation_id.as_str(),
+			)? {
+				let archived = serde_json::from_str(&response)
+					.map_err(|_| incompatible("local Quick Task archive receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(ArchiveLocalQuickTaskConversationOutcome::Replayed(archived));
+			}
+			let now = unix_micros().map_err(StoreError::from)?;
+			let session_changed = transaction
+				.execute(
+					"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
+					 updated_at_micros = ?5, ended_at_micros = ?5
+					 WHERE runtime_session_id = ?1 AND conversation_id = ?2 AND revision = ?4
+					   AND state = 'starting' AND codex_thread_id IS NULL
+					   AND thread_start_fence_key IS NULL AND thread_start_request_id IS NULL
+					   AND thread_start_response_id IS NULL
+					   AND EXISTS (
+					     SELECT 1 FROM conversations AS c WHERE c.conversation_id = ?2
+					       AND c.state = 'active' AND c.revision = ?3
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM turns AS t WHERE t.conversation_id = ?2 AND t.status = 'active'
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM provider_attempts AS p WHERE p.conversation_id = ?2
+					   )
+					   AND NOT EXISTS (
+					     SELECT 1 FROM process_generations AS p
+					     WHERE p.runtime_session_id = ?1 AND p.state <> 'dead'
+					   )",
+					params![
+						request.runtime_session_id.as_str(),
+						request.conversation_id.as_str(),
+						request.expected_conversation_revision,
+						request.expected_runtime_session_revision,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			let conversation_changed = transaction
+				.execute(
+					"UPDATE conversations SET state = 'archived', revision = revision + 1,
+					 updated_at_micros = ?3 WHERE conversation_id = ?1 AND revision = ?2
+					 AND state = 'active'",
+					params![
+						request.conversation_id.as_str(),
+						request.expected_conversation_revision,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			if session_changed != 1 || conversation_changed != 1 {
+				return Ok(ArchiveLocalQuickTaskConversationOutcome::Rejected);
+			}
+			let archived = ArchivedQuickTaskConversation {
+				conversation_id: request.conversation_id,
+				conversation_revision: request.expected_conversation_revision + 1,
+			};
+			write_receipt(
+				&transaction,
+				&command,
+				"archive_local_quick_task_conversation",
+				archived.conversation_id.as_str(),
+				&serde_json::to_string(&archived)
+					.map_err(|_| incompatible("local Quick Task archive receipt"))?,
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(ArchiveLocalQuickTaskConversationOutcome::Applied(archived))
 		})
 		.await
 	}
@@ -1182,11 +1408,16 @@ fn conversation_projection(
 		)
 		.optional()
 		.map_err(sql_error)?;
-	let active_turn = connection.query_row(
-		"SELECT turn_id FROM turns WHERE conversation_id = ?1 AND role = 'user' AND status = 'active'
+	let active_turn = connection
+		.query_row(
+			"SELECT turn_id, revision FROM turns
+		 WHERE conversation_id = ?1 AND role = 'user' AND status = 'active'
 		 ORDER BY sequence DESC LIMIT 1",
-		params![conversation_id.as_str()], |row| row.get::<_, String>(0),
-	).optional().map_err(sql_error)?;
+			params![conversation_id.as_str()],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+		)
+		.optional()
+		.map_err(sql_error)?;
 	let has_admitted_user_turn: bool = connection
 		.query_row(
 			"SELECT EXISTS (SELECT 1 FROM turns WHERE conversation_id = ?1 AND role = 'user')",
@@ -1241,9 +1472,11 @@ fn conversation_projection(
 		runtime_session_state,
 		has_acknowledged_turn,
 		active_turn_id: active_turn
-			.map(TurnId::new)
+			.as_ref()
+			.map(|turn| TurnId::new(turn.0.clone()))
 			.transpose()
 			.map_err(|_| incompatible("active Turn identity"))?,
+		active_turn_revision: active_turn.map(|turn| turn.1),
 		has_admitted_user_turn,
 		has_active_provider_attempt,
 		has_unknown_provider_attempt,
@@ -1964,8 +2197,9 @@ impl SqliteStore {
 							});
 						}
 					},
-					Some(_) =>
-						return Err(StoreError::InvalidInput("history revision must be positive")),
+					Some(_) => {
+						return Err(StoreError::InvalidInput("history revision must be positive"));
+					},
 				}
 				touch_conversation(&transaction, &mutation.conversation_id, now)?;
 				let entry = read_history_entry(&transaction, mutation.history_item_id.as_str())?
@@ -2049,19 +2283,102 @@ impl SqliteStore {
 
 #[cfg(test)]
 mod archive_tests {
-	use decodex_core::{ConversationId, RuntimeSessionId};
+	use decodex_core::{ConversationId, RuntimeSessionId, TurnId};
 	use rusqlite::params;
 	use tempfile::tempdir;
 
 	use super::{
+		ArchiveLocalQuickTaskConversation, ArchiveLocalQuickTaskConversationOutcome,
 		ArchiveQuickTaskConversation, ArchiveQuickTaskConversationOutcome,
 		CreateQuickTaskConversation, OrdinaryTaskConversationProjection,
+		ReconcileStrandedQuickTaskTurn, ReconcileStrandedQuickTaskTurnOutcome,
 	};
 	use crate::{CommandIdentity, SqliteStore, error::sqlite_error};
 
 	const CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000001";
 	const RUNTIME_SESSION_ID: &str = "40000000-0000-4000-8000-000000000001";
+	const TURN_ID: &str = "50000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
+
+	async fn seed_provider_less_starting_task(store: &SqliteStore) {
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+		store
+			.create_quick_task_conversation(
+				&CommandIdentity::new("create-local-fixture", b"create local fixture")
+					.expect("create command"),
+				&CreateQuickTaskConversation {
+					conversation_id,
+					title: "Local fixture".to_owned(),
+					message: "Start this task.".to_owned(),
+					working_directory: "/tmp".to_owned(),
+					model: "gpt-5.6-sol".to_owned(),
+					reasoning_effort: "high".to_owned(),
+					fast: true,
+				},
+			)
+			.await
+			.expect("create conversation");
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO account_identities (account_id, created_at_micros)
+						 VALUES (?1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO accounts (
+						 account_id, display_label, enabled, state, revision, provider,
+						 provider_account_id, created_at_micros, updated_at_micros
+						 ) VALUES (?1, 'Local fixture', 1, 'available', 1, 'chatgpt',
+						 'local-fixture-provider', 1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO runtime_sessions (
+						 runtime_session_id, conversation_id, account_id, account_revision,
+						 account_snapshot_id, account_display_label, account_observed_state,
+						 credential_binding_json, profile_snapshot_id, profile_revision,
+						 profile_role, model, reasoning_effort, instructions, service_tier,
+						 instructions_sha256, state, has_acknowledged_turn, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
+						 'Local fixture', 'available', '{}',
+						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
+						 'high', 'Follow the request.', 'priority',
+						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+						 'starting', 0, 3, 1, 1
+						 )",
+						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed provider-less starting RuntimeSession");
+	}
+
+	fn seed_active_user_turn(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO turns (
+						 turn_id, conversation_id, runtime_session_id, sequence, role,
+						 possible_side_effects, status, revision, created_at_micros,
+						 updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 1, 'user', 'none', 'active', 1, 1, 1)",
+						params![TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed active user Turn");
+	}
 
 	#[tokio::test]
 	async fn verified_archive_atomically_closes_the_projection_and_replays_exactly() {
@@ -2201,5 +2518,141 @@ mod archive_tests {
 		assert_eq!(session.0, "ended");
 		assert_eq!(session.1, 8);
 		assert!(session.2.is_some());
+	}
+
+	#[tokio::test]
+	async fn stranded_turn_reconciliation_requires_exact_inactive_owner_coordinates() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		let request = ReconcileStrandedQuickTaskTurn {
+			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
+			expected_conversation_revision: 1,
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
+				.expect("RuntimeSession ID"),
+			expected_runtime_session_revision: 3,
+			turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
+			expected_turn_revision: 1,
+		};
+		let stale = ReconcileStrandedQuickTaskTurn {
+			expected_runtime_session_revision: 2,
+			..request.clone()
+		};
+		assert_eq!(
+			store
+				.reconcile_stranded_quick_task_turn(
+					&CommandIdentity::new("stale-turn-reconcile", b"stale coordinates")
+						.expect("stale command"),
+					&stale,
+				)
+				.await
+				.expect("reject stale coordinates"),
+			ReconcileStrandedQuickTaskTurnOutcome::Rejected
+		);
+
+		let command = CommandIdentity::new("exact-turn-reconcile", b"exact coordinates")
+			.expect("exact command");
+		assert_eq!(
+			store
+				.reconcile_stranded_quick_task_turn(&command, &request)
+				.await
+				.expect("reconcile stranded Turn"),
+			ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision: 2 }
+		);
+		assert_eq!(
+			store
+				.reconcile_stranded_quick_task_turn(&command, &request)
+				.await
+				.expect("replay reconciliation"),
+			ReconcileStrandedQuickTaskTurnOutcome::Replayed { turn_revision: 2 }
+		);
+		let turn: (String, i64, Option<i64>) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT status, revision, completed_at_micros FROM turns WHERE turn_id = ?1",
+						params![TURN_ID],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read reconciled Turn");
+		assert_eq!(turn.0, "failed");
+		assert_eq!(turn.1, 2);
+		assert!(turn.2.is_some());
+	}
+
+	#[tokio::test]
+	async fn local_archive_rejects_an_active_turn_then_closes_the_safe_projection() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		let archive = ArchiveLocalQuickTaskConversation {
+			conversation_id: ConversationId::new(CONVERSATION_ID).expect("conversation ID"),
+			expected_conversation_revision: 1,
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
+				.expect("RuntimeSession ID"),
+			expected_runtime_session_revision: 3,
+		};
+		assert_eq!(
+			store
+				.archive_local_quick_task_conversation(
+					&CommandIdentity::new("unsafe-local-archive", b"active turn")
+						.expect("unsafe archive command"),
+					&archive,
+				)
+				.await
+				.expect("reject unsafe local archive"),
+			ArchiveLocalQuickTaskConversationOutcome::Rejected
+		);
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE turns SET status = 'failed', revision = 2,
+						 completed_at_micros = 2, updated_at_micros = 2 WHERE turn_id = ?1",
+						params![TURN_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("make the local projection safe");
+		let command = CommandIdentity::new("safe-local-archive", b"no active owner")
+			.expect("safe archive command");
+		let archived = match store
+			.archive_local_quick_task_conversation(&command, &archive)
+			.await
+			.expect("archive safe local projection")
+		{
+			ArchiveLocalQuickTaskConversationOutcome::Applied(archived) => archived,
+			other => panic!("local archive was not applied: {other:?}"),
+		};
+		assert_eq!(archived.conversation_revision, 2);
+		assert!(matches!(
+			store
+				.archive_local_quick_task_conversation(&command, &archive)
+				.await
+				.expect("replay local archive"),
+			ArchiveLocalQuickTaskConversationOutcome::Replayed(ref replayed)
+				if replayed == &archived
+		));
+		let states: (String, String) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT c.state, s.state FROM conversations AS c
+						 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+						 WHERE c.conversation_id = ?1",
+						params![CONVERSATION_ID],
+						|row| Ok((row.get(0)?, row.get(1)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read archived local projection");
+		assert_eq!(states, ("archived".to_owned(), "ended".to_owned()));
 	}
 }
