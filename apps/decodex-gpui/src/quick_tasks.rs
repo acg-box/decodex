@@ -50,6 +50,10 @@ static NEXT_ID: AtomicU64 = AtomicU64::new(0);
 pub(crate) struct QuickTasksSnapshot {
 	pub(crate) load: QuickTasksLoadState,
 	pub(crate) command: QuickTaskCommandState,
+	/// Monotonic terminal result for Create/Submit commands only.
+	pub(crate) submission_result_generation: u64,
+	pub(crate) last_submission_accepted: bool,
+	pub(crate) refresh: QuickTaskRefreshState,
 	pub(crate) tasks: Vec<QuickTaskSummary>,
 	pub(crate) selected: Option<EntityId>,
 	pub(crate) live_deltas: Vec<QuickTaskLiveDelta>,
@@ -85,6 +89,29 @@ pub(crate) enum QuickTaskCommandState {
 	ManualRecovery(QuickTaskRecoveryAction),
 	OutcomeUnknown,
 	Refused,
+}
+
+/// Bounded progress for an explicit sidebar-wide provider reconciliation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum QuickTaskRefreshState {
+	Idle,
+	Refreshing {
+		completed: usize,
+		total: usize,
+		archived: usize,
+		failed: usize,
+	},
+	Complete {
+		checked: usize,
+		archived: usize,
+		failed: usize,
+	},
+	Stopped {
+		checked: usize,
+		total: usize,
+		archived: usize,
+		failed: usize,
+	},
 }
 
 /// One bounded normalized assistant delta already persisted by the daemon.
@@ -259,23 +286,13 @@ impl QuickTasks {
 		state.execution.fast = !state.execution.fast;
 	}
 
-	/// Refresh the selected provider thread, or reload the active list when no task is selected.
-	pub(crate) fn refresh(&self) -> Result<(), QuickTaskInputError> {
-		let mut state = self.lock();
+	/// Re-observe the selected provider thread by exact ID.
+	pub(crate) fn refresh_selected(&self) -> Result<(), QuickTaskInputError> {
+		let state = self.lock();
 		let selected = state.selected_task().cloned();
-		if selected.is_none() {
-			state.next_list_cursor = None;
-			let queued = state.queue_list();
-			drop(state);
-			if queued {
-				self.inner.notify.notify_one();
-				return Ok(());
-			}
-			return Err(QuickTaskInputError::Busy);
-		}
 		drop(state);
-		let task = selected.expect("selected task was checked");
-		if task.state != QuickTaskState::Ready {
+		let task = selected.ok_or(QuickTaskInputError::NoSelection)?;
+		if !task_needs_reconciliation(&task) {
 			return Err(QuickTaskInputError::NotReady);
 		}
 		self.queue_command(
@@ -285,11 +302,83 @@ impl QuickTasks {
 		)
 	}
 
+	/// Reconcile every local provider-backed conversation against Codex, one at a time.
+	pub(crate) fn refresh_all(&self) -> Result<(), QuickTaskInputError> {
+		let mut state = self.lock();
+		if state.session.is_none() {
+			return Err(QuickTaskInputError::Offline);
+		}
+		if state.refresh_batch.is_some()
+			|| state.pending_command.is_some()
+			|| state.in_flight_command.is_some()
+			|| state.in_flight_query.is_some()
+			|| state.command == QuickTaskCommandState::OutcomeUnknown
+		{
+			return Err(QuickTaskInputError::Busy);
+		}
+		if state.load != QuickTasksLoadState::Ready {
+			return Err(QuickTaskInputError::NotReady);
+		}
+
+		// A queued list has not left this controller, so supersede it with the final
+		// list readback that follows the exact provider observations below.
+		state.reset_pagination();
+		let mut commands = state
+			.tasks
+			.iter()
+			.filter(|task| task_needs_reconciliation(task))
+			.map(|task| {
+				pending_command(
+					CommandPayload::RefreshQuickTask {
+						conversation_id: task.conversation_id.clone(),
+					},
+					Some(task.conversation_revision),
+					None,
+				)
+			})
+			.collect::<Result<VecDeque<_>, _>>()?;
+		let total = commands.len();
+		if total == 0 {
+			state.refresh = QuickTaskRefreshState::Complete {
+				checked: 0,
+				archived: 0,
+				failed: 0,
+			};
+			state.next_list_cursor = None;
+			let queued = state.queue_list();
+			drop(state);
+			if queued {
+				self.inner.notify.notify_one();
+			}
+			return Ok(());
+		}
+
+		state.pending_command = commands.pop_front();
+		state.refresh_batch = Some(RefreshBatch {
+			remaining: commands,
+			completed: 0,
+			total,
+			archived: 0,
+			failed: 0,
+			reloading: false,
+		});
+		state.refresh = QuickTaskRefreshState::Refreshing {
+			completed: 0,
+			total,
+			archived: 0,
+			failed: 0,
+		};
+		state.command = QuickTaskCommandState::Sending;
+		drop(state);
+		self.inner.notify.notify_one();
+		Ok(())
+	}
+
 	pub(crate) fn archive_selected(&self) -> Result<(), QuickTaskInputError> {
 		let state = self.lock();
 		let task = state.selected_task().ok_or(QuickTaskInputError::NoSelection)?.clone();
 		drop(state);
-		if task.state != QuickTaskState::Ready {
+		if task.state != QuickTaskState::Ready && !task_has_safe_stale_reconciliation(&task) {
 			return Err(QuickTaskInputError::NotReady);
 		}
 		self.queue_command(
@@ -324,13 +413,10 @@ impl QuickTasks {
 			return Err(QuickTaskInputError::Busy);
 		}
 		let task = state.selected_task().ok_or(QuickTaskInputError::NoSelection)?.clone();
-		if !task_accepts_turn(&task) && task_recovery_command(&task).is_none() {
+		if !task_accepts_turn(&task) {
 			return Err(QuickTaskInputError::NotReady);
 		}
 		drop(state);
-		if let Some(payload) = task_recovery_command(&task) {
-			return self.queue_command(payload, Some(task.conversation_revision), None);
-		}
 		let turn_id = entity_id()?;
 		let message = message_text(message)?;
 		let working_directory = self
@@ -346,6 +432,25 @@ impl QuickTasks {
 			execution: self.lock().execution.clone(),
 		};
 		self.queue_command(payload, Some(task.conversation_revision), None)
+	}
+
+	/// Execute one explicit pre-session recovery action without consuming composer text.
+	pub(crate) fn recover_selected(&self) -> Result<(), QuickTaskInputError> {
+		let state = self.lock();
+		if state.command == QuickTaskCommandState::OutcomeUnknown
+			|| state.pending_command.is_some()
+			|| state.in_flight_command.is_some()
+		{
+			return Err(QuickTaskInputError::Busy);
+		}
+		let task = state.selected_task().ok_or(QuickTaskInputError::NoSelection)?.clone();
+		let payload = task_recovery_command(&task).ok_or(QuickTaskInputError::NotReady)?;
+		drop(state);
+		self.queue_command(payload, Some(task.conversation_revision), None)
+	}
+
+	pub(crate) fn take_history_reload_request(&self) -> Option<EntityId> {
+		self.lock().history_reload_requested.take()
 	}
 
 	pub(crate) fn interrupt(&self) -> Result<(), QuickTaskInputError> {
@@ -376,6 +481,9 @@ impl QuickTasks {
 		if state.pending_command.is_some() || state.in_flight_command.is_some() {
 			return Err(QuickTaskInputError::Busy);
 		}
+		if state.refresh_batch.is_some() {
+			return Err(QuickTaskInputError::Busy);
+		}
 		if state.command == QuickTaskCommandState::OutcomeUnknown {
 			return Err(QuickTaskInputError::Busy);
 		}
@@ -401,6 +509,7 @@ impl QuickTasks {
 			_ => None,
 		};
 		state.outcome_unknown_readback_generation = None;
+		state.refresh = QuickTaskRefreshState::Idle;
 		state.routing_successor_reconciliation = routing_successor_reconciliation;
 		state.pending_command = Some(PendingCommand { envelope, select_after_acceptance });
 		state.command = QuickTaskCommandState::Sending;
@@ -416,6 +525,7 @@ impl QuickTasks {
 			return;
 		}
 		state.latch_in_flight_outcome_unknown();
+		state.cancel_refresh_batch();
 		state.reset_pagination();
 		state.session = Some(binding);
 		state.outcome_unknown_readback_generation = (state.command
@@ -437,6 +547,7 @@ impl QuickTasks {
 			return;
 		}
 		state.latch_in_flight_outcome_unknown();
+		state.cancel_refresh_batch();
 		state.reset_pagination();
 		state.outcome_unknown_readback_generation = None;
 		state.session = None;
@@ -505,6 +616,7 @@ impl QuickTasks {
 		let mut query_queued = false;
 		if matches {
 			state.latch_in_flight_outcome_unknown();
+			state.cancel_refresh_batch();
 			query_queued = state.queue_routing_successor_readback();
 		}
 		drop(state);
@@ -598,6 +710,7 @@ impl QuickTasks {
 		{
 			state.in_flight_query = None;
 			state.load = QuickTasksLoadState::Refused;
+			state.cancel_refresh_batch();
 			return QuickTaskRouteOutcome::Refused;
 		}
 		state.in_flight_query = None;
@@ -645,6 +758,7 @@ impl QuickTasks {
 		{
 			state.in_flight_command = None;
 			state.command = QuickTaskCommandState::OutcomeUnknown;
+			state.cancel_refresh_batch();
 			let query_queued = state.queue_routing_successor_readback();
 			drop(state);
 			if query_queued {
@@ -652,16 +766,32 @@ impl QuickTasks {
 			}
 			return QuickTaskRouteOutcome::Refused;
 		}
-		match receipt.disposition {
+		let submission = is_submission_command(&in_flight.envelope.payload);
+		let dispatch_queued = match receipt.disposition {
 			ReceiptDisposition::Executed | ReceiptDisposition::Duplicate => {
 				state.command = QuickTaskCommandState::AwaitingResult;
+				false
 			},
 			ReceiptDisposition::Refused => {
+				if submission {
+					state.submission_result_generation =
+						state.submission_result_generation.saturating_add(1);
+					state.last_submission_accepted = false;
+				}
 				state.in_flight_command = None;
 				state.routing_successor_reconciliation = None;
 				state.outcome_unknown_readback_generation = None;
-				state.command = QuickTaskCommandState::Refused;
+				if state.refresh_batch.is_some() {
+					state.advance_refresh_batch(false, true)
+				} else {
+					state.command = QuickTaskCommandState::Refused;
+					false
+				}
 			},
+		};
+		drop(state);
+		if dispatch_queued {
+			self.inner.notify.notify_one();
 		}
 		QuickTaskRouteOutcome::Fresh
 	}
@@ -688,11 +818,12 @@ impl QuickTasks {
 		{
 			state.in_flight_command = None;
 			let successor_commit_is_ambiguous = state.routing_successor_reconciliation.is_some();
-			state.command = if successor_commit_is_ambiguous {
+			state.command = if successor_commit_is_ambiguous || state.refresh_batch.is_some() {
 				QuickTaskCommandState::OutcomeUnknown
 			} else {
 				QuickTaskCommandState::Refused
 			};
+			state.cancel_refresh_batch();
 			let query_queued =
 				successor_commit_is_ambiguous && state.queue_routing_successor_readback();
 			drop(state);
@@ -703,31 +834,51 @@ impl QuickTasks {
 		}
 		let in_flight =
 			state.in_flight_command.take().expect("matching Quick Task command remains in flight");
+		let submission = is_submission_command(&in_flight.envelope.payload);
+		if submission {
+			state.submission_result_generation =
+				state.submission_result_generation.saturating_add(1);
+			state.last_submission_accepted = false;
+			state.history_reload_requested =
+				Some(command_conversation_id(&in_flight.envelope.payload));
+		}
 		let select_after_acceptance = in_flight.select_after_acceptance.clone();
 		let select_returned_successor = matches!(
 			&in_flight.envelope.payload,
 			CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
 		);
-		let mut query_queued = false;
+		let batch_refresh = state.refresh_batch.is_some()
+			&& matches!(&in_flight.envelope.payload, CommandPayload::RefreshQuickTask { .. });
+		let mut dispatch_queued = false;
 		let outcome = match result.outcome {
 			CommandOutcome::Succeeded => {
 				if let Some(conversation_id) = accepted_archive_result(&in_flight, result) {
 					state.remove_task(&conversation_id);
 					state.routing_successor_reconciliation = None;
 					state.outcome_unknown_readback_generation = None;
-					state.command = QuickTaskCommandState::Accepted;
+					if batch_refresh {
+						dispatch_queued = state.advance_refresh_batch(true, false);
+					} else {
+						state.command = QuickTaskCommandState::Accepted;
+					}
+					drop(state);
+					if dispatch_queued {
+						self.inner.notify.notify_one();
+					}
 					return QuickTaskRouteOutcome::Fresh;
 				}
 				let task = accepted_result_task(&in_flight, result);
 				let Some(task) = task else {
-					if state.routing_successor_reconciliation.is_some() {
+					if batch_refresh {
+						dispatch_queued = state.advance_refresh_batch(false, true);
+					} else if state.routing_successor_reconciliation.is_some() {
 						state.command = QuickTaskCommandState::OutcomeUnknown;
-						query_queued = state.queue_routing_successor_readback();
+						dispatch_queued = state.queue_routing_successor_readback();
 					} else {
 						state.command = QuickTaskCommandState::Refused;
 					}
 					drop(state);
-					if query_queued {
+					if dispatch_queued {
 						self.inner.notify.notify_one();
 					}
 					return QuickTaskRouteOutcome::Refused;
@@ -746,18 +897,31 @@ impl QuickTasks {
 				}
 				state.routing_successor_reconciliation = None;
 				state.outcome_unknown_readback_generation = None;
-				state.command = QuickTaskCommandState::Accepted;
+				if submission {
+					state.last_submission_accepted = true;
+				}
+				if batch_refresh {
+					dispatch_queued = state.advance_refresh_batch(false, false);
+				} else {
+					state.command = QuickTaskCommandState::Accepted;
+				}
 				QuickTaskRouteOutcome::Fresh
 			},
 			CommandOutcome::AcceptanceUnknown => {
 				state.command = QuickTaskCommandState::OutcomeUnknown;
-				query_queued = state.queue_routing_successor_readback();
+				state.cancel_refresh_batch();
+				dispatch_queued = state.queue_routing_successor_readback();
 				QuickTaskRouteOutcome::Fresh
 			},
 			CommandOutcome::Rejected => {
 				if matches!(result.error.as_ref(), Some(CommandError::AcceptanceUnknown)) {
 					state.command = QuickTaskCommandState::OutcomeUnknown;
-					query_queued = state.queue_routing_successor_readback();
+					state.cancel_refresh_batch();
+					dispatch_queued = state.queue_routing_successor_readback();
+				} else if batch_refresh {
+					state.routing_successor_reconciliation = None;
+					state.outcome_unknown_readback_generation = None;
+					dispatch_queued = state.advance_refresh_batch(false, true);
 				} else {
 					state.routing_successor_reconciliation = None;
 					state.outcome_unknown_readback_generation = None;
@@ -767,12 +931,19 @@ impl QuickTasks {
 						},
 						_ => QuickTaskCommandState::Refused,
 					};
+					if matches!(
+						result.error.as_ref(),
+						Some(CommandError::QuickTaskRecoveryRequired { .. })
+					) {
+						state.reset_pagination();
+						dispatch_queued = state.queue_list();
+					}
 				}
 				QuickTaskRouteOutcome::Fresh
 			},
 		};
 		drop(state);
-		if query_queued {
+		if dispatch_queued {
 			self.inner.notify.notify_one();
 		}
 		outcome
@@ -794,6 +965,11 @@ struct State {
 	active: bool,
 	load: QuickTasksLoadState,
 	command: QuickTaskCommandState,
+	submission_result_generation: u64,
+	last_submission_accepted: bool,
+	history_reload_requested: Option<EntityId>,
+	refresh: QuickTaskRefreshState,
+	refresh_batch: Option<RefreshBatch>,
 	tasks: Vec<QuickTaskSummary>,
 	selected: Option<EntityId>,
 	selection_suppressed: bool,
@@ -821,6 +997,11 @@ impl State {
 			active: false,
 			load: QuickTasksLoadState::NeverRequested,
 			command: QuickTaskCommandState::Idle,
+			submission_result_generation: 0,
+			last_submission_accepted: false,
+			history_reload_requested: None,
+			refresh: QuickTaskRefreshState::Idle,
+			refresh_batch: None,
 			tasks: Vec::new(),
 			selected: None,
 			selection_suppressed: true,
@@ -1017,6 +1198,13 @@ impl State {
 						let tasks = std::mem::take(&mut self.list_accumulator);
 						self.replace_tasks(tasks);
 						self.load = QuickTasksLoadState::Ready;
+						if self
+							.refresh_batch
+							.as_ref()
+							.is_some_and(|batch| batch.reloading)
+						{
+							self.finish_refresh_batch();
+						}
 						if self.routing_successor_reconciliation.is_some()
 							&& self.command == QuickTaskCommandState::OutcomeUnknown
 							&& self.outcome_unknown_readback_generation == Some(generation)
@@ -1040,12 +1228,14 @@ impl State {
 				self.next_list_cursor = None;
 				self.list_accumulator.clear();
 				self.load = QuickTasksLoadState::Unavailable;
+				self.finish_refresh_batch();
 				(QuickTaskRouteOutcome::Fresh, false)
 			},
 			_ => {
 				self.next_list_cursor = None;
 				self.list_accumulator.clear();
 				self.load = QuickTasksLoadState::Refused;
+				self.finish_refresh_batch();
 				(QuickTaskRouteOutcome::Refused, false)
 			},
 		}
@@ -1140,6 +1330,62 @@ impl State {
 		self.tasks.iter().find(|task| &task.conversation_id == selected)
 	}
 
+	fn advance_refresh_batch(&mut self, archived: bool, failed: bool) -> bool {
+		let Some(mut batch) = self.refresh_batch.take() else {
+			return false;
+		};
+		batch.completed = batch.completed.saturating_add(1);
+		batch.archived = batch.archived.saturating_add(usize::from(archived));
+		batch.failed = batch.failed.saturating_add(usize::from(failed));
+		self.refresh = QuickTaskRefreshState::Refreshing {
+			completed: batch.completed,
+			total: batch.total,
+			archived: batch.archived,
+			failed: batch.failed,
+		};
+
+		if let Some(next) = batch.remaining.pop_front() {
+			self.pending_command = Some(next);
+			self.command = QuickTaskCommandState::Sending;
+			self.refresh_batch = Some(batch);
+			return true;
+		}
+
+		self.command = QuickTaskCommandState::Idle;
+		batch.reloading = true;
+		self.refresh_batch = Some(batch);
+		self.next_list_cursor = None;
+		let queued = self.queue_list();
+		if !queued {
+			self.finish_refresh_batch();
+		}
+		queued
+	}
+
+	fn finish_refresh_batch(&mut self) {
+		let Some(batch) = self.refresh_batch.take() else {
+			return;
+		};
+		self.refresh = QuickTaskRefreshState::Complete {
+			checked: batch.completed,
+			archived: batch.archived,
+			failed: batch.failed,
+		};
+	}
+
+	fn cancel_refresh_batch(&mut self) {
+		let Some(batch) = self.refresh_batch.take() else {
+			return;
+		};
+		self.pending_command = None;
+		self.refresh = QuickTaskRefreshState::Stopped {
+			checked: batch.completed,
+			total: batch.total,
+			archived: batch.archived,
+			failed: batch.failed,
+		};
+	}
+
 	fn replace_tasks(&mut self, mut tasks: Vec<QuickTaskSummary>) {
 		for task in &mut tasks {
 			let Some(existing) =
@@ -1228,11 +1474,9 @@ impl State {
 		self.tasks.retain(|task| &task.conversation_id != conversation_id);
 		self.live_deltas.retain(|delta| &delta.conversation_id != conversation_id);
 		if self.selected.as_ref() == Some(conversation_id) {
-			self.selected = if self.selection_suppressed {
-				None
-			} else {
-				self.tasks.first().map(|task| task.conversation_id.clone())
-			};
+			// Never retarget an unsent composer draft to a different provider thread.
+			self.selected = None;
+			self.selection_suppressed = true;
 		}
 	}
 
@@ -1290,10 +1534,14 @@ impl State {
 		QuickTasksSnapshot {
 			load: self.load,
 			command: self.command,
+			submission_result_generation: self.submission_result_generation,
+			last_submission_accepted: self.last_submission_accepted,
+			refresh: self.refresh,
 			tasks: self.tasks.clone(),
 			selected: self.selected.clone(),
 			live_deltas: self.live_deltas.iter().cloned().collect(),
 			can_submit: self.session.is_some()
+				&& self.refresh_batch.is_none()
 				&& self.pending_command.is_none()
 				&& self.in_flight_command.is_none()
 				&& self.command != QuickTaskCommandState::OutcomeUnknown,
@@ -1313,6 +1561,15 @@ fn supported_efforts(model: &str) -> &'static [QuickTaskReasoningEffort] {
 struct PendingCommand {
 	envelope: CommandEnvelope,
 	select_after_acceptance: Option<EntityId>,
+}
+
+struct RefreshBatch {
+	remaining: VecDeque<PendingCommand>,
+	completed: usize,
+	total: usize,
+	archived: usize,
+	failed: usize,
+	reloading: bool,
 }
 
 struct PendingQuery {
@@ -1432,6 +1689,26 @@ struct CommandIdentity {
 	correlation_id: CorrelationId,
 }
 
+fn pending_command(
+	payload: CommandPayload,
+	expected_revision: Option<EntityRevision>,
+	select_after_acceptance: Option<EntityId>,
+) -> Result<PendingCommand, QuickTaskInputError> {
+	let identity = command_identity()?;
+	Ok(PendingCommand {
+		envelope: CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: identity.client_command_id,
+			idempotency_key: identity.idempotency_key,
+			expected_revision,
+			correlation_id: identity.correlation_id,
+			causation_id: None::<CausationId>,
+			payload,
+		},
+		select_after_acceptance,
+	})
+}
+
 fn command_identity() -> Result<CommandIdentity, QuickTaskInputError> {
 	let value = canonical_uuid_v4()?;
 	Ok(CommandIdentity {
@@ -1516,6 +1793,35 @@ fn production_working_directory(
 
 fn task_accepts_turn(task: &QuickTaskSummary) -> bool {
 	task.state == QuickTaskState::Ready
+}
+
+fn task_needs_reconciliation(task: &QuickTaskSummary) -> bool {
+	matches!(task.state, QuickTaskState::Ready | QuickTaskState::Running)
+		|| task_has_safe_stale_reconciliation(task)
+}
+
+fn task_has_safe_stale_reconciliation(task: &QuickTaskSummary) -> bool {
+	matches!(
+		(task.state, task.recovery_action),
+		(
+			QuickTaskState::Establishing,
+			Some(QuickTaskRecoveryAction::ResumeEstablishment),
+		) | (
+			QuickTaskState::ManualRecovery,
+			Some(
+				QuickTaskRecoveryAction::ResolvePriorActiveTurn
+					| QuickTaskRecoveryAction::SelectWorkingDirectory
+					| QuickTaskRecoveryAction::StartNewConversation,
+			),
+		)
+	)
+}
+
+fn is_submission_command(payload: &CommandPayload) -> bool {
+	matches!(
+		payload,
+		CommandPayload::CreateQuickTask { .. } | CommandPayload::SubmitQuickTaskTurn { .. }
+	)
 }
 
 fn task_recovery_command(task: &QuickTaskSummary) -> Option<CommandPayload> {
@@ -1641,7 +1947,11 @@ mod tests {
 			state.tasks = vec![source.clone()];
 			state.selected = Some(source.conversation_id.clone());
 		}
-		assert_eq!(quick_tasks.submit("ignored for typed recovery"), Ok(()));
+		assert_eq!(
+			quick_tasks.submit("must remain in the composer"),
+			Err(QuickTaskInputError::NotReady)
+		);
+		assert_eq!(quick_tasks.recover_selected(), Ok(()));
 		let dispatch = quick_tasks
 			.try_take_dispatch(1, server_id)
 			.expect("routing successor command is dispatchable");
@@ -1795,6 +2105,245 @@ mod tests {
 	}
 
 	#[test]
+	fn definite_working_directory_failure_can_be_reconciled_or_archived_explicitly() {
+		let (quick_tasks, server_id, existing) = connected_quick_tasks();
+		let failed = QuickTaskSummary::new(
+			existing.conversation_id.clone(),
+			existing.conversation_revision,
+			existing.projection_updated_at_micros,
+			existing.runtime_session_id,
+			existing.runtime_session_revision,
+			QuickTaskState::ManualRecovery,
+			None,
+			Some(QuickTaskRecoveryAction::SelectWorkingDirectory),
+		)
+		.expect("working-directory failure projection is valid");
+		{
+			let mut state = quick_tasks.lock();
+			state.tasks = vec![failed.clone()];
+			state.selected = Some(failed.conversation_id.clone());
+		}
+
+		assert_eq!(
+			quick_tasks.submit("this draft must not become a recovery command"),
+			Err(QuickTaskInputError::NotReady)
+		);
+		assert_eq!(quick_tasks.archive_selected(), Ok(()));
+		let archive = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.and_then(|dispatch| dispatch.command().cloned())
+			.expect("the explicit archive is dispatchable");
+		assert!(matches!(
+			archive.payload,
+			CommandPayload::ArchiveQuickTask { conversation_id }
+				if conversation_id == failed.conversation_id
+		));
+	}
+
+	#[test]
+	fn sidebar_refresh_reconciles_each_provider_thread_then_reloads_the_local_list() {
+		let (quick_tasks, server_id, current) = connected_quick_tasks();
+		let archived = QuickTaskSummary::new(
+			EntityId::new("00000000-0000-4000-8000-000000000003").expect("test ID is valid"),
+			EntityRevision(4),
+			4,
+			Some(
+				EntityId::new("00000000-0000-4000-8000-000000000004")
+					.expect("test session ID is valid"),
+			),
+			Some(EntityRevision(4)),
+			QuickTaskState::Ready,
+			None,
+			None,
+		)
+		.expect("archived provider task is valid");
+		let busy = QuickTaskSummary::new(
+			EntityId::new("00000000-0000-4000-8000-000000000005").expect("test ID is valid"),
+			EntityRevision(2),
+			2,
+			Some(
+				EntityId::new("00000000-0000-4000-8000-000000000006")
+					.expect("test session ID is valid"),
+			),
+			Some(EntityRevision(2)),
+			QuickTaskState::Running,
+			Some(
+				EntityId::new("00000000-0000-4000-8000-000000000007")
+					.expect("test turn ID is valid"),
+			),
+			None,
+		)
+		.expect("busy provider task is valid");
+		let establishing = QuickTaskSummary::new(
+			EntityId::new("00000000-0000-4000-8000-000000000008").expect("test ID is valid"),
+			EntityRevision(2),
+			2,
+			Some(
+				EntityId::new("00000000-0000-4000-8000-000000000009")
+					.expect("test session ID is valid"),
+			),
+			Some(EntityRevision(2)),
+			QuickTaskState::Establishing,
+			None,
+			Some(QuickTaskRecoveryAction::ResumeEstablishment),
+		)
+		.expect("establishing task is valid");
+		{
+			let mut state = quick_tasks.lock();
+			state.reset_pagination();
+			state.load = QuickTasksLoadState::Ready;
+			state.tasks =
+				vec![current.clone(), archived.clone(), busy.clone(), establishing.clone()];
+		}
+
+		assert_eq!(quick_tasks.refresh_all(), Ok(()));
+		assert_eq!(
+			quick_tasks.snapshot().refresh,
+			QuickTaskRefreshState::Refreshing {
+				completed: 0,
+				total: 4,
+				archived: 0,
+				failed: 0,
+			}
+		);
+
+		let first = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.expect("first provider refresh is queued");
+		let first_command = first.command().expect("first refresh is a command");
+		assert!(matches!(
+			&first_command.payload,
+			CommandPayload::RefreshQuickTask { conversation_id }
+				if conversation_id == &current.conversation_id
+		));
+		quick_tasks.command_sent(&first);
+		let first_result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: first_command.client_command_id.clone(),
+			idempotency_key: first_command.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(current.conversation_revision),
+			payload: Some(ResultPayload::QuickTaskConversationAccepted {
+				conversation: current.clone(),
+			}),
+			error: None,
+		};
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &first_result),
+			QuickTaskRouteOutcome::Fresh
+		);
+
+		let second = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.expect("second provider refresh is queued");
+		let second_command = second.command().expect("second refresh is a command");
+		assert!(matches!(
+			&second_command.payload,
+			CommandPayload::RefreshQuickTask { conversation_id }
+				if conversation_id == &archived.conversation_id
+		));
+		quick_tasks.command_sent(&second);
+		let archived_revision = EntityRevision(archived.conversation_revision.0 + 1);
+		let second_result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: second_command.client_command_id.clone(),
+			idempotency_key: second_command.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(archived_revision),
+			payload: Some(ResultPayload::QuickTaskArchived {
+				conversation_id: archived.conversation_id.clone(),
+				conversation_revision: archived_revision,
+			}),
+			error: None,
+		};
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &second_result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let third = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.expect("busy provider refresh is still attempted");
+		let third_command = third.command().expect("third refresh is a command");
+		assert!(matches!(
+			&third_command.payload,
+			CommandPayload::RefreshQuickTask { conversation_id }
+				if conversation_id == &busy.conversation_id
+		));
+		quick_tasks.command_sent(&third);
+		let third_result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: third_command.client_command_id.clone(),
+			idempotency_key: third_command.idempotency_key.clone(),
+			outcome: CommandOutcome::Rejected,
+			entity_revision: None,
+			payload: None,
+			error: Some(CommandError::QuickTaskRecoveryRequired {
+				action: QuickTaskRecoveryAction::WaitForCurrentCommand,
+			}),
+		};
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &third_result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let fourth = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.expect("stale establishment refresh is attempted after live work");
+		let fourth_command = fourth.command().expect("fourth refresh is a command");
+		assert!(matches!(
+			&fourth_command.payload,
+			CommandPayload::RefreshQuickTask { conversation_id }
+				if conversation_id == &establishing.conversation_id
+		));
+		quick_tasks.command_sent(&fourth);
+		let establishing_revision = EntityRevision(establishing.conversation_revision.0 + 1);
+		let fourth_result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: fourth_command.client_command_id.clone(),
+			idempotency_key: fourth_command.idempotency_key.clone(),
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(establishing_revision),
+			payload: Some(ResultPayload::QuickTaskArchived {
+				conversation_id: establishing.conversation_id.clone(),
+				conversation_revision: establishing_revision,
+			}),
+			error: None,
+		};
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &fourth_result),
+			QuickTaskRouteOutcome::Fresh
+		);
+
+		let list = quick_tasks
+			.try_take_dispatch(1, &server_id)
+			.and_then(|dispatch| dispatch.query().cloned())
+			.expect("the provider batch ends with authoritative local list readback");
+		let list_result = QueryResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			query_id: list.query_id,
+			payload: QueryResultPayload::QuickTasks(QuickTaskListResult::Available(
+				QuickTaskListPage::new(vec![current.clone(), busy.clone()], None)
+					.expect("final list page is valid"),
+			)),
+		};
+		assert_eq!(
+			quick_tasks.route_query_result(1, &server_id, &list_result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let snapshot = quick_tasks.snapshot();
+		assert_eq!(snapshot.tasks, vec![current, busy]);
+		assert_eq!(
+			snapshot.refresh,
+			QuickTaskRefreshState::Complete { checked: 4, archived: 2, failed: 1 }
+		);
+		assert!(snapshot.can_submit);
+	}
+
+	#[test]
 	fn selected_execution_controls_are_carried_by_each_subsequent_turn() {
 		let (quick_tasks, server_id, task) = connected_quick_tasks();
 		quick_tasks.cycle_model();
@@ -1819,6 +2368,121 @@ mod tests {
 				..
 			} if conversation_id == task.conversation_id && execution == selected
 		));
+	}
+
+	#[test]
+	fn accepted_submission_advances_confirmation_and_requests_exact_history_reload() {
+		let (quick_tasks, server_id, task) = connected_quick_tasks();
+		assert_eq!(quick_tasks.submit("Keep this draft until accepted."), Ok(()));
+		let dispatch =
+			quick_tasks.try_take_dispatch(1, &server_id).expect("submission is dispatchable");
+		let command = dispatch.command().expect("submission dispatch is a command").clone();
+		let turn_id = match &command.payload {
+			CommandPayload::SubmitQuickTaskTurn { turn_id, .. } => turn_id.clone(),
+			other => panic!("unexpected submission command: {other:?}"),
+		};
+		quick_tasks.command_sent(&dispatch);
+		let accepted = QuickTaskSummary::new(
+			task.conversation_id.clone(),
+			EntityRevision(2),
+			2,
+			task.runtime_session_id.clone(),
+			Some(EntityRevision(2)),
+			QuickTaskState::Running,
+			Some(turn_id),
+			None,
+		)
+		.expect("accepted submission projection is valid");
+		let result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: command.client_command_id,
+			idempotency_key: command.idempotency_key,
+			outcome: CommandOutcome::Succeeded,
+			entity_revision: Some(accepted.conversation_revision),
+			payload: Some(ResultPayload::QuickTaskConversationAccepted { conversation: accepted }),
+			error: None,
+		};
+
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let snapshot = quick_tasks.snapshot();
+		assert_eq!(snapshot.submission_result_generation, 1);
+		assert!(snapshot.last_submission_accepted);
+		assert_eq!(quick_tasks.take_history_reload_request(), Some(task.conversation_id));
+		assert_eq!(quick_tasks.take_history_reload_request(), None);
+	}
+
+	#[test]
+	fn archived_submission_rejection_keeps_confirmation_false_and_reloads_authority() {
+		let (quick_tasks, server_id, task) = connected_quick_tasks();
+		assert_eq!(quick_tasks.submit("Do not lose this draft."), Ok(()));
+		let dispatch =
+			quick_tasks.try_take_dispatch(1, &server_id).expect("submission is dispatchable");
+		let command = dispatch.command().expect("submission dispatch is a command").clone();
+		quick_tasks.command_sent(&dispatch);
+		let result = CommandResultEnvelope {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: command.client_command_id,
+			idempotency_key: command.idempotency_key,
+			outcome: CommandOutcome::Rejected,
+			entity_revision: None,
+			payload: None,
+			error: Some(CommandError::QuickTaskRecoveryRequired {
+				action: QuickTaskRecoveryAction::StartNewConversation,
+			}),
+		};
+
+		assert_eq!(
+			quick_tasks.route_command_result(1, &server_id, &result),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let snapshot = quick_tasks.snapshot();
+		assert_eq!(snapshot.submission_result_generation, 1);
+		assert!(!snapshot.last_submission_accepted);
+		assert_eq!(
+			snapshot.command,
+			QuickTaskCommandState::ManualRecovery(QuickTaskRecoveryAction::StartNewConversation)
+		);
+		assert_eq!(quick_tasks.take_history_reload_request(), Some(task.conversation_id));
+		assert!(matches!(
+			quick_tasks.try_take_dispatch(1, &server_id),
+			Some(QuickTaskDispatch::Query(QueryEnvelope {
+				payload: QueryPayload::ListQuickTasks { .. },
+				..
+			}))
+		));
+	}
+
+	#[test]
+	fn definite_submission_receipt_refusal_retains_the_draft_without_waiting_for_a_result() {
+		let (quick_tasks, server_id, _) = connected_quick_tasks();
+		assert_eq!(quick_tasks.submit("Keep this refused draft."), Ok(()));
+		let dispatch =
+			quick_tasks.try_take_dispatch(1, &server_id).expect("submission is dispatchable");
+		let command = dispatch.command().expect("submission dispatch is a command").clone();
+		quick_tasks.command_sent(&dispatch);
+		let receipt = CommandReceipt {
+			version: CURRENT_VERSION,
+			server_id: server_id.clone(),
+			client_command_id: command.client_command_id.clone(),
+			idempotency_key: command.idempotency_key,
+			disposition: ReceiptDisposition::Refused,
+			original_client_command_id: command.client_command_id,
+		};
+
+		assert_eq!(
+			quick_tasks.route_receipt(1, &server_id, &receipt),
+			QuickTaskRouteOutcome::Fresh
+		);
+		let snapshot = quick_tasks.snapshot();
+		assert_eq!(snapshot.command, QuickTaskCommandState::Refused);
+		assert_eq!(snapshot.submission_result_generation, 1);
+		assert!(!snapshot.last_submission_accepted);
+		assert_eq!(quick_tasks.take_history_reload_request(), None);
 	}
 
 	#[test]
@@ -1963,7 +2627,11 @@ mod tests {
 			state.selected = Some(source.conversation_id.clone());
 		}
 
-		assert_eq!(quick_tasks.submit("ignored for typed recovery"), Ok(()));
+		assert_eq!(
+			quick_tasks.submit("must remain in the composer"),
+			Err(QuickTaskInputError::NotReady)
+		);
+		assert_eq!(quick_tasks.recover_selected(), Ok(()));
 		let dispatch = quick_tasks
 			.try_take_dispatch(1, &server_id)
 			.expect("routing successor command is dispatchable");

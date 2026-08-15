@@ -418,6 +418,9 @@ for line in sys.stdin:
             assert message["params"]["limit"] <= 100
             matches_archive = message["params"]["archived"] == exact_thread["archived"]
             data = [dict(exact_thread)] if matches_archive else []
+            if mode == "exact-current-schema":
+                for item in data:
+                    item.pop("archived", None)
             if mode == "exact-malformed-list":
                 data = [{**exact_thread, "createdAt": "not-a-timestamp"}]
             result = {"data": data, "nextCursor": None}
@@ -439,6 +442,8 @@ for line in sys.stdin:
                 sys.stdout.flush()
                 time.sleep(60)
             readback = dict(exact_thread)
+            if mode == "exact-current-schema":
+                readback.pop("archived", None)
             if mode == "exact-mismatched-id" or (mode == "exact-mismatched-post-archive-read" and exact_thread_reads > 1):
                 readback["id"] = "thread:different"
             if mode == "exact-malformed-read":

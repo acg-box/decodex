@@ -719,6 +719,11 @@ impl ClientLifecycle {
 							&self.server_id,
 							&result,
 						);
+						if let Some(conversation_id) =
+							self.quick_tasks.take_history_reload_request()
+						{
+							let _ = self.history_pager.reload_if_open(&conversation_id);
+						}
 						let _ = self.work_items.route_command_result(
 							generation,
 							&self.server_id,
