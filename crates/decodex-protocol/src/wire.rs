@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.2 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.3 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -26,12 +26,12 @@ use crate::{
 	QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskWorkingDirectory, SupportedVersions,
 	VersionRefusal,
 	program_cycle::{
-		ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult, ProgramListResult,
-		ProgramReviewDraftDto,
+		ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
+		ProgramListResult, ProgramReviewDraftDto,
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.2.
+/// Maximum UTF-8 size of any human-readable text carried by V2.3.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -156,7 +156,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded the V2.2 byte limit.
+/// A string-backed wire scalar exceeded the V2.3 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -172,7 +172,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.2 WorkItem board contract.
+/// Closed construction failures for the V2.3 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -274,7 +274,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.2 protocol bound.
+	/// Construct a page size inside the closed V2.3 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -550,7 +550,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.2 resume requires this field. Older hello envelopes can omit it
+	/// A V2.3 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -603,7 +603,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.2 welcome.
+	/// This is present in the exact-current V2.3 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1731,7 +1731,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.2 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.3 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2262,7 +2262,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.2 protocol.
+/// Live queries available through the exact-current V2.3 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2364,7 +2364,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.2 protocol.
+/// Commands available through the exact-current V2.3 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2372,6 +2372,11 @@ pub enum CommandPayload {
 	CreateProgramCycle {
 		/// Complete V1 Program charter and finite causal chain.
 		draft: Box<ProgramCycleDraftDto>,
+	},
+	/// Append one manually accepted next cycle to an exact reviewed Program revision.
+	ContinueProgram {
+		/// Complete next-cycle input with an exact predecessor Review.
+		continuation: Box<ProgramContinuationDraftDto>,
 	},
 	/// Atomically attach required Evidence and one classified Program Review.
 	RecordProgramReview {
@@ -2893,7 +2898,7 @@ pub enum ResultPayload {
 	},
 }
 
-/// Typed live-query results available through the exact-current V2.2 protocol.
+/// Typed live-query results available through the exact-current V2.3 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3830,12 +3835,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.2 wire encoding.
+/// Serialize a message using the only V2.3 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.2 wire encoding.
+/// Parse a client message using the only V2.3 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3880,6 +3885,13 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 		CommandPayload::CreateProgramCycle { draft } => {
 			if command.expected_revision.is_some() || draft.validate().is_err() {
 				Err("Program cycle create contract is invalid")
+			} else {
+				Ok(())
+			}
+		},
+		CommandPayload::ContinueProgram { continuation } => {
+			if !positive_expected || continuation.validate().is_err() {
+				Err("Program continuation contract is invalid")
 			} else {
 				Ok(())
 			}
@@ -4485,7 +4497,8 @@ mod tests {
 		IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
 		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		MAX_WORK_ITEM_BOARD_PAGE_SIZE, ProgramCycleDraftDto, QueryId, QueryResultPayload,
+		MAX_WORK_ITEM_BOARD_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId,
+		QueryResultPayload,
 		QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory,
 		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
 		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage,
@@ -4670,6 +4683,55 @@ mod tests {
 		});
 		let encoded = serde_json::to_string(&message).unwrap();
 		assert_eq!(decode_client_message(&encoded).unwrap(), message);
+
+		let continuation = ProgramContinuationDraftDto {
+			program_id: draft.program_id.clone(),
+			predecessor_review_id: entity("71000000-0000-4000-8000-000000000001"),
+			signal_id: entity("81000000-0000-4000-8000-000000000001"),
+			claim_id: entity("82000000-0000-4000-8000-000000000001"),
+			proposal_id: entity("83000000-0000-4000-8000-000000000001"),
+			objective_id: entity("84000000-0000-4000-8000-000000000001"),
+			work_item_id: entity("85000000-0000-4000-8000-000000000001"),
+			signal_source: text("first cycle Review"),
+			signal_summary: text("The first cycle exposed a bounded next gap"),
+			signal_observed_at_micros: 2,
+			claim_statement: text("One next cycle can close the gap"),
+			proposal_summary: text("Append one exact next cycle"),
+			proposal_expected_effect: text("The Program retains one identity"),
+			proposal_risk: text("A stale append could branch history"),
+			proposal_evidence_need: text("Restart and replay evidence"),
+			objective_outcome: text("Two cycles remain ordered"),
+			acceptance_criteria: vec![text("Prior nodes remain immutable")],
+			validation_criteria: vec![text("Replay creates no duplicate")],
+			work_item_title: text("Continue the Program"),
+			work_item_instructions: text("Execute one finite next step"),
+			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex").unwrap(),
+		};
+		let continuation_message = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("program-continue").unwrap(),
+			idempotency_key: IdempotencyKey::new("program/continue").unwrap(),
+			expected_revision: Some(EntityRevision(2)),
+			correlation_id: CorrelationId::new(ids[0]).unwrap(),
+			causation_id: None,
+			payload: CommandPayload::ContinueProgram {
+				continuation: Box::new(continuation.clone()),
+			},
+		});
+		let encoded = serde_json::to_string(&continuation_message).unwrap();
+		assert_eq!(decode_client_message(&encoded).unwrap(), continuation_message);
+		let missing_revision = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("program-continue-stale").unwrap(),
+			idempotency_key: IdempotencyKey::new("program/continue-stale").unwrap(),
+			expected_revision: None,
+			correlation_id: CorrelationId::new(ids[0]).unwrap(),
+			causation_id: None,
+			payload: CommandPayload::ContinueProgram { continuation: Box::new(continuation) },
+		});
+		assert!(
+			decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err()
+		);
 
 		let mut invalid = draft;
 		invalid.work_item_id = invalid.objective_id.clone();
@@ -4958,7 +5020,7 @@ mod tests {
 			}),
 		);
 		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 1, minor: 5 }));
-		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 3 }));
+		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 4 }));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(
 			serde_json::from_value::<CommandPayload>(serde_json::json!({
@@ -5429,7 +5491,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":2},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":3},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5438,7 +5500,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":2},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":3},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5480,7 +5542,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":2},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":3},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5723,7 +5785,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 3 };
+		let future = crate::ProtocolVersion { major: 2, minor: 4 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

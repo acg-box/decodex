@@ -1,6 +1,7 @@
 //! Application-service seam used by the transport without exposing infrastructure.
 
 use std::{
+	collections::{HashMap, HashSet},
 	future::{self, Future},
 	pin::Pin,
 	sync::Arc,
@@ -21,8 +22,9 @@ use decodex_core::{
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity,
-	CreateProgramCycle as StoreCreateProgramCycle, DatabaseError, HistoryCursor, HistoryEntry,
-	OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+	ContinueProgram as StoreContinueProgram, CreateProgramCycle as StoreCreateProgramCycle,
+	DatabaseError, HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
+	OrdinaryTaskConversationProjection,
 	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
 	ProgramEvidenceInput, ProgramSummaryRecord, RecordProgramReview, RoutingControlOutcome,
 	SqliteStore, StoreError,
@@ -43,9 +45,11 @@ use decodex_protocol::{
 	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
-	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
-	ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto, ProjectListResult,
+	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto,
+	ProgramCycleDto,
+		ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
+		ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
+		ProjectListResult,
 	QueryEnvelope, QueryPayload, QueryResultPayload,
 	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskListCursor,
 	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
@@ -1022,6 +1026,16 @@ impl ServiceApplication {
 				.create_program_cycle(&identity, &store_program_create(draft)?)
 				.await
 				.map_err(program_command_error)?,
+			CommandPayload::ContinueProgram { continuation } => {
+				let expected_revision = command
+					.expected_revision
+					.ok_or_else(|| application_unavailable("Program revision is required"))?;
+				let continuation = store_program_continuation(continuation, expected_revision)?;
+				store
+					.continue_program(&identity, &continuation)
+					.await
+					.map_err(program_command_error)?
+			},
 			CommandPayload::RecordProgramReview { review } => store
 				.record_program_review(&identity, &store_program_review(review)?)
 				.await
@@ -1670,7 +1684,8 @@ impl Application for ServiceApplication {
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
 			CommandPayload::CreateProgramCycle { .. }
-			| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
+				| CommandPayload::ContinueProgram { .. }
+				| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
 			CommandPayload::RegisterProject { .. }
 			| CommandPayload::CreateWorkItem { .. }
 			| CommandPayload::StartWorkItem { .. }
@@ -2133,6 +2148,51 @@ fn store_program_create(
 	})
 }
 
+fn store_program_continuation(
+	continuation: &ProgramContinuationDraftDto,
+	expected_revision: EntityRevision,
+) -> Result<StoreContinueProgram, CommandError> {
+	Ok(StoreContinueProgram {
+		program_id: ProgramId::new(continuation.program_id.as_str())
+			.map_err(|_| application_unavailable("Program identity is invalid"))?,
+		predecessor_review_id: ProgramReviewId::new(continuation.predecessor_review_id.as_str())
+			.map_err(|_| application_unavailable("Review identity is invalid"))?,
+		expected_revision: expected_revision.0,
+		signal_id: ProgramObservationId::new(continuation.signal_id.as_str())
+			.map_err(|_| application_unavailable("Signal identity is invalid"))?,
+		claim_id: ProgramClaimId::new(continuation.claim_id.as_str())
+			.map_err(|_| application_unavailable("Claim identity is invalid"))?,
+		proposal_id: ProgramProposalId::new(continuation.proposal_id.as_str())
+			.map_err(|_| application_unavailable("Proposal identity is invalid"))?,
+		objective_id: ObjectiveId::new(continuation.objective_id.as_str())
+			.map_err(|_| application_unavailable("Objective identity is invalid"))?,
+		work_item_id: WorkItemId::new(continuation.work_item_id.as_str())
+			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
+		signal_source: continuation.signal_source.as_str().to_owned(),
+		signal_summary: continuation.signal_summary.as_str().to_owned(),
+		signal_observed_at_micros: continuation.signal_observed_at_micros,
+		claim_statement: continuation.claim_statement.as_str().to_owned(),
+		proposal_summary: continuation.proposal_summary.as_str().to_owned(),
+		proposal_expected_effect: continuation.proposal_expected_effect.as_str().to_owned(),
+		proposal_risk: continuation.proposal_risk.as_str().to_owned(),
+		proposal_evidence_need: continuation.proposal_evidence_need.as_str().to_owned(),
+		objective_outcome: continuation.objective_outcome.as_str().to_owned(),
+		acceptance_criteria: continuation
+			.acceptance_criteria
+			.iter()
+			.map(|value| value.as_str().to_owned())
+			.collect(),
+		validation_criteria: continuation
+			.validation_criteria
+			.iter()
+			.map(|value| value.as_str().to_owned())
+			.collect(),
+		work_item_title: continuation.work_item_title.as_str().to_owned(),
+		work_item_instructions: continuation.work_item_instructions.as_str().to_owned(),
+		working_directory: continuation.working_directory.as_str().to_owned(),
+	})
+}
+
 fn store_program_review(
 	review: &ProgramReviewDraftDto,
 ) -> Result<RecordProgramReview, CommandError> {
@@ -2174,6 +2234,7 @@ fn program_cycle_dto(
 	record: ProgramCycleRecord,
 	run_states: &[(ConversationId, &'static str)],
 ) -> Result<ProgramCycleDto, ()> {
+	let node_order = program_node_order(&record)?;
 	let program = ProgramSummaryDto {
 		program_id: entity(record.program.program_id.as_str())?,
 		name: wire(record.program.name)?,
@@ -2190,11 +2251,11 @@ fn program_cycle_dto(
 
 	for signal in record.signals {
 		let signal_id = entity(signal.signal_id.as_str())?;
-		edges.push(ProgramEdgeDto {
-			from: program.program_id.clone(),
-			to: signal_id.clone(),
-			kind: ProgramRelationKind::Observes,
-		});
+		let (from, kind) = match signal.predecessor_review_id {
+			Some(review_id) => (entity(review_id.as_str())?, ProgramRelationKind::Continues),
+			None => (program.program_id.clone(), ProgramRelationKind::Observes),
+		};
+		edges.push(ProgramEdgeDto { from, to: signal_id.clone(), kind });
 		nodes.push(ProgramNodeDto {
 			id: signal_id,
 			kind: ProgramNodeKind::Signal,
@@ -2367,7 +2428,131 @@ fn program_cycle_dto(
 		});
 	}
 
+	let positions = node_order
+		.iter()
+		.enumerate()
+		.map(|(index, id)| (id.as_str(), index))
+		.collect::<HashMap<_, _>>();
+	if positions.len() != nodes.len()
+		|| nodes.iter().any(|node| !positions.contains_key(node.id.as_str()))
+	{
+		return Err(());
+	}
+	nodes.sort_by_key(|node| positions[node.id.as_str()]);
 	ProgramCycleDto::new(program, non_goals, review_policy, nodes, edges).map_err(|_| ())
+}
+
+fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
+	let roots = record
+		.signals
+		.iter()
+		.filter(|signal| signal.predecessor_review_id.is_none())
+		.collect::<Vec<_>>();
+	if roots.len() != 1 {
+		return Err(());
+	}
+	let mut successors = HashMap::new();
+	for signal in &record.signals {
+		if let Some(predecessor) = &signal.predecessor_review_id
+			&& successors.insert(predecessor.as_str(), signal).is_some()
+		{
+			return Err(());
+		}
+	}
+	let mut claims = HashMap::new();
+	for claim in &record.claims {
+		if claims.insert(claim.signal_id.as_str(), claim).is_some() {
+			return Err(());
+		}
+	}
+	let mut proposals = HashMap::new();
+	for proposal in &record.proposals {
+		if proposals.insert(proposal.claim_id.as_str(), proposal).is_some() {
+			return Err(());
+		}
+	}
+	let mut objectives = HashMap::new();
+	for objective in &record.objectives {
+		if objectives.insert(objective.proposal_id.as_str(), objective).is_some() {
+			return Err(());
+		}
+	}
+	let mut work_items = HashMap::new();
+	for work_item in &record.work_items {
+		if work_items.insert(work_item.objective_id.as_str(), work_item).is_some() {
+			return Err(());
+		}
+	}
+	let mut reviews = HashMap::new();
+	for review in &record.reviews {
+		if reviews.insert(review.work_item_id.as_str(), review).is_some() {
+			return Err(());
+		}
+	}
+	let mut evidence = HashMap::<&str, Vec<_>>::new();
+	for item in &record.evidence {
+		evidence.entry(item.work_item_id.as_str()).or_default().push(item);
+	}
+
+	let mut order = Vec::new();
+	let mut visited_signals = HashSet::new();
+	let mut signal = roots[0];
+	loop {
+		if !visited_signals.insert(signal.signal_id.as_str()) {
+			return Err(());
+		}
+		order.push(signal.signal_id.as_str().to_owned());
+		let claim = claims.get(signal.signal_id.as_str()).ok_or(())?;
+		order.push(claim.claim_id.as_str().to_owned());
+		let proposal = proposals.get(claim.claim_id.as_str()).ok_or(())?;
+		order.push(proposal.proposal_id.as_str().to_owned());
+		let objective = objectives.get(proposal.proposal_id.as_str()).ok_or(())?;
+		order.push(objective.objective_id.as_str().to_owned());
+		let work_item = work_items.get(objective.objective_id.as_str()).ok_or(())?;
+		order.push(work_item.work_item_id.as_str().to_owned());
+		if let Some(conversation_id) = &work_item.conversation_id {
+			order.push(conversation_id.as_str().to_owned());
+		}
+		let item_evidence = evidence.get(work_item.work_item_id.as_str()).map_or(&[][..], Vec::as_slice);
+		let Some(review) = reviews.get(work_item.work_item_id.as_str()).copied() else {
+			if !item_evidence.is_empty() {
+				return Err(());
+			}
+			break;
+		};
+		let evidence_ids = item_evidence
+			.iter()
+			.map(|item| item.evidence_id.as_str())
+			.collect::<HashSet<_>>();
+		if item_evidence.len() != 2
+			|| !evidence_ids.contains(review.deterministic_evidence_id.as_str())
+			|| !evidence_ids.contains(review.external_evidence_id.as_str())
+		{
+			return Err(());
+		}
+		order.push(review.deterministic_evidence_id.as_str().to_owned());
+		order.push(review.external_evidence_id.as_str().to_owned());
+		order.push(review.review_id.as_str().to_owned());
+		let Some(next) = successors.get(review.review_id.as_str()).copied() else {
+			break;
+		};
+		signal = next;
+	}
+
+	let expected = record.signals.len()
+		+ record.claims.len()
+		+ record.proposals.len()
+		+ record.objectives.len()
+		+ record.work_items.len()
+		+ record.work_items.iter().filter(|item| item.conversation_id.is_some()).count()
+		+ record.evidence.len()
+		+ record.reviews.len();
+	if order.len() != expected
+		|| order.iter().map(String::as_str).collect::<HashSet<_>>().len() != expected
+	{
+		return Err(());
+	}
+	Ok(order)
 }
 
 fn field(label: &str, value: impl Into<String>) -> Result<ProgramNodeFieldDto, ()> {
@@ -2399,6 +2584,15 @@ const fn quick_task_state_text(state: QuickTaskState) -> &'static str {
 fn program_command_error(error: StoreError) -> CommandError {
 	match error {
 		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
+		StoreError::RevisionConflict { expected: Some(expected), actual: Some(actual), .. } => {
+			match (u64::try_from(expected), u64::try_from(actual)) {
+				(Ok(expected), Ok(actual)) => CommandError::ExpectedRevisionMismatch {
+					expected: EntityRevision(expected),
+					actual: EntityRevision(actual),
+				},
+				_ => application_unavailable("Program command conflicts with current state"),
+			}
+		},
 		StoreError::Database(_) | StoreError::Incompatible(_) =>
 			application_unavailable("Program storage is unavailable"),
 		_ => application_unavailable("Program command conflicts with current state"),
@@ -3602,15 +3796,21 @@ mod tests {
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
 		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		ConversationId, ProviderIdentity, RuntimeSessionState,
+		ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
+		ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
+		ProgramReviewClassification, ProgramReviewId, ProgramState, ProviderIdentity,
+		RuntimeSessionState, WorkItemId, WorkItemState,
 	};
 	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
-		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState,
+		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCharterRecord,
+		ProgramClaimRecord, ProgramCycleRecord, ProgramEvidenceRecord, ProgramObjectiveRecord,
+		ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord, ProgramWorkItemRecord,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
-		QuickTaskRecoveryAction, QuickTaskState, ResetCardError, ResetCardOperationResult,
+		ProgramNodeKind, ProgramRelationKind, QuickTaskRecoveryAction, QuickTaskState, ResetCardError,
+		ResetCardOperationResult,
 	};
 
 	use super::{
@@ -3619,8 +3819,217 @@ mod tests {
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
 		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
 		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		protocol_reset_error, quick_task_summary_from_row, quota_dto,
+		program_cycle_dto, protocol_reset_error, quick_task_summary_from_row, quota_dto,
 	};
+
+	#[test]
+	fn repeatable_program_projection_follows_review_lineage() {
+		let program_id = ProgramId::new("30000000-0000-4000-8000-000000000001").unwrap();
+		let signal_1 = ProgramObservationId::new("31000000-0000-4000-8000-000000000001").unwrap();
+		let claim_1 = ProgramClaimId::new("32000000-0000-4000-8000-000000000001").unwrap();
+		let proposal_1 = ProgramProposalId::new("33000000-0000-4000-8000-000000000001").unwrap();
+		let objective_1 = ObjectiveId::new("34000000-0000-4000-8000-000000000001").unwrap();
+		let work_1 = WorkItemId::new("35000000-0000-4000-8000-000000000001").unwrap();
+		let deterministic =
+			ProgramEvidenceId::new("36000000-0000-4000-8000-000000000001").unwrap();
+		let external = ProgramEvidenceId::new("37000000-0000-4000-8000-000000000001").unwrap();
+		let review_1 = ProgramReviewId::new("38000000-0000-4000-8000-000000000001").unwrap();
+		let signal_2 = ProgramObservationId::new("41000000-0000-4000-8000-000000000001").unwrap();
+		let claim_2 = ProgramClaimId::new("42000000-0000-4000-8000-000000000001").unwrap();
+		let proposal_2 = ProgramProposalId::new("43000000-0000-4000-8000-000000000001").unwrap();
+		let objective_2 = ObjectiveId::new("44000000-0000-4000-8000-000000000001").unwrap();
+		let work_2 = WorkItemId::new("45000000-0000-4000-8000-000000000001").unwrap();
+		let record = ProgramCycleRecord {
+			program: ProgramCharterRecord {
+				program_id: program_id.clone(),
+				name: "Repeatable Program".into(),
+				purpose: "Keep one causal identity".into(),
+				non_goals: vec!["No scheduler".into()],
+				review_policy: "Review each finite cycle".into(),
+				state: ProgramState::Active,
+				revision: 3,
+				created_at_micros: 1,
+				updated_at_micros: 3,
+			},
+			signals: vec![
+				ProgramSignalRecord {
+					signal_id: signal_1.clone(),
+					program_id: program_id.clone(),
+					predecessor_review_id: None,
+					source: "operator".into(),
+					summary: "first signal".into(),
+					observed_at_micros: 1,
+					created_at_micros: 1,
+				},
+				ProgramSignalRecord {
+					signal_id: signal_2.clone(),
+					program_id: program_id.clone(),
+					predecessor_review_id: Some(review_1.clone()),
+					source: "review".into(),
+					summary: "second signal".into(),
+					observed_at_micros: 2,
+					created_at_micros: 2,
+				},
+			],
+			claims: vec![
+				ProgramClaimRecord {
+					claim_id: claim_1.clone(),
+					program_id: program_id.clone(),
+					signal_id: signal_1,
+					statement: "first claim".into(),
+					revision: 1,
+					created_at_micros: 1,
+					updated_at_micros: 1,
+				},
+				ProgramClaimRecord {
+					claim_id: claim_2.clone(),
+					program_id: program_id.clone(),
+					signal_id: signal_2.clone(),
+					statement: "second claim".into(),
+					revision: 1,
+					created_at_micros: 2,
+					updated_at_micros: 2,
+				},
+			],
+			proposals: vec![
+				ProgramProposalRecord {
+					proposal_id: proposal_1.clone(),
+					program_id: program_id.clone(),
+					claim_id: claim_1,
+					summary: "first proposal".into(),
+					expected_effect: "first effect".into(),
+					risk: "first risk".into(),
+					evidence_need: "first evidence".into(),
+					revision: 1,
+					created_at_micros: 1,
+					updated_at_micros: 1,
+				},
+				ProgramProposalRecord {
+					proposal_id: proposal_2.clone(),
+					program_id: program_id.clone(),
+					claim_id: claim_2,
+					summary: "second proposal".into(),
+					expected_effect: "second effect".into(),
+					risk: "second risk".into(),
+					evidence_need: "second evidence".into(),
+					revision: 1,
+					created_at_micros: 2,
+					updated_at_micros: 2,
+				},
+			],
+			objectives: vec![
+				ProgramObjectiveRecord {
+					objective_id: objective_1.clone(),
+					program_id: program_id.clone(),
+					proposal_id: proposal_1,
+					outcome: "first outcome".into(),
+					acceptance_criteria: vec!["first acceptance".into()],
+					validation_criteria: vec!["first validation".into()],
+					state: ObjectiveState::Abandoned,
+					revision: 2,
+					created_at_micros: 1,
+					updated_at_micros: 2,
+				},
+				ProgramObjectiveRecord {
+					objective_id: objective_2.clone(),
+					program_id: program_id.clone(),
+					proposal_id: proposal_2,
+					outcome: "second outcome".into(),
+					acceptance_criteria: vec!["second acceptance".into()],
+					validation_criteria: vec!["second validation".into()],
+					state: ObjectiveState::Active,
+					revision: 1,
+					created_at_micros: 2,
+					updated_at_micros: 2,
+				},
+			],
+			work_items: vec![
+				ProgramWorkItemRecord {
+					work_item_id: work_1.clone(),
+					program_id: program_id.clone(),
+					objective_id: objective_1,
+					title: "first work".into(),
+					instructions: "complete first work".into(),
+					working_directory: "/tmp/decodex".into(),
+					state: WorkItemState::Done,
+					revision: 3,
+					conversation_id: None,
+					created_at_micros: 1,
+					updated_at_micros: 2,
+				},
+				ProgramWorkItemRecord {
+					work_item_id: work_2,
+					program_id: program_id.clone(),
+					objective_id: objective_2,
+					title: "second work".into(),
+					instructions: "complete second work".into(),
+					working_directory: "/tmp/decodex".into(),
+					state: WorkItemState::Ready,
+					revision: 1,
+					conversation_id: None,
+					created_at_micros: 2,
+					updated_at_micros: 2,
+				},
+			],
+			evidence: vec![
+				ProgramEvidenceRecord {
+					evidence_id: deterministic.clone(),
+					program_id: program_id.clone(),
+					work_item_id: work_1.clone(),
+					kind: ProgramEvidenceKind::DeterministicValidation,
+					source: "test".into(),
+					summary: "checks passed".into(),
+					observed_at_micros: 2,
+					created_at_micros: 2,
+				},
+				ProgramEvidenceRecord {
+					evidence_id: external.clone(),
+					program_id: program_id.clone(),
+					work_item_id: work_1.clone(),
+					kind: ProgramEvidenceKind::External,
+					source: "provider".into(),
+					summary: "provider settled".into(),
+					observed_at_micros: 2,
+					created_at_micros: 2,
+				},
+			],
+			reviews: vec![ProgramReviewRecord {
+				review_id: review_1.clone(),
+				program_id,
+				work_item_id: work_1,
+				deterministic_evidence_id: deterministic,
+				external_evidence_id: external,
+				classification: ProgramReviewClassification::KnowledgeProgress,
+				rationale: "continue with the next bounded gap".into(),
+				created_at_micros: 2,
+			}],
+		};
+
+		let projection = program_cycle_dto(record, &[]).expect("two-cycle projection");
+		assert_eq!(
+			projection.nodes.iter().map(|node| node.kind).collect::<Vec<_>>(),
+			vec![
+				ProgramNodeKind::Signal,
+				ProgramNodeKind::Claim,
+				ProgramNodeKind::Proposal,
+				ProgramNodeKind::Objective,
+				ProgramNodeKind::WorkItem,
+				ProgramNodeKind::Evidence,
+				ProgramNodeKind::Evidence,
+				ProgramNodeKind::Review,
+				ProgramNodeKind::Signal,
+				ProgramNodeKind::Claim,
+				ProgramNodeKind::Proposal,
+				ProgramNodeKind::Objective,
+				ProgramNodeKind::WorkItem,
+			]
+		);
+		assert!(projection.edges.iter().any(|edge| {
+			edge.from.as_str() == review_1.as_str()
+				&& edge.to.as_str() == signal_2.as_str()
+				&& edge.kind == ProgramRelationKind::Continues
+		}));
+	}
 
 	#[cfg(any())]
 	const BOARD_PROJECT: &str = "10000000-0000-4000-8000-000000000001";

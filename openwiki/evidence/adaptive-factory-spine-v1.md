@@ -14,12 +14,16 @@ openwiki:
 
 # Adaptive Factory Spine V1 Evidence
 
-Status: implemented and locally verified.
+Status: historical implemented baseline; superseded by Repeatable Program Loop V1.
 
 Date: 2026-08-15.
 
 This page contains no credential, account identity, Conversation identity, provider
 thread identity, or provider Turn identity.
+
+This page records the original one-cycle milestone and its V2.2/schema-5 evidence. The
+current V2.3/schema-6 behavior is in
+[Repeatable Program Loop V1 evidence](repeatable-program-loop-v1.md).
 
 ## Delivered boundary
 
