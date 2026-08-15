@@ -1,7 +1,6 @@
 //! Presentation-neutral, bounded ConversationHistory paging for one GPUI view.
 
-#[path = "history_pager/page_cache.rs"]
-mod page_cache;
+#[path = "history_pager/page_cache.rs"] mod page_cache;
 
 use std::{
 	collections::VecDeque,
@@ -184,9 +183,8 @@ impl PageCacheOwner {
 
 	fn ensure_open(&mut self) -> bool {
 		let dormant = match self {
-			Self::Dormant { parent, cache_schema_generation } => {
-				Some((parent.clone(), *cache_schema_generation))
-			},
+			Self::Dormant { parent, cache_schema_generation } =>
+				Some((parent.clone(), *cache_schema_generation)),
 			Self::Enabled(_) => return true,
 			Self::Disabled => return false,
 		};
@@ -225,9 +223,8 @@ impl PageCacheOwner {
 
 		match lookup {
 			CacheLookup::Hit(hit) => PageCacheLookupRead::Hit(hit),
-			CacheLookup::Miss(CacheDiagnostic::NotFound | CacheDiagnostic::Ineligible) => {
-				PageCacheLookupRead::Miss
-			},
+			CacheLookup::Miss(CacheDiagnostic::NotFound | CacheDiagnostic::Ineligible) =>
+				PageCacheLookupRead::Miss,
 			CacheLookup::Miss(diagnostic) => {
 				self.disable(CacheFailure::new(diagnostic));
 				PageCacheLookupRead::Failure
@@ -276,9 +273,8 @@ impl PageCacheOwner {
 			return Err(());
 		}
 		let result = match self {
-			Self::Enabled(cache) => {
-				cache.prepare_publication(&request, &publication.page, admitted_at_unix_seconds)
-			},
+			Self::Enabled(cache) =>
+				cache.prepare_publication(&request, &publication.page, admitted_at_unix_seconds),
 			Self::Dormant { .. } | Self::Disabled => return Err(()),
 		};
 
@@ -343,9 +339,8 @@ impl PageCacheOwner {
 		};
 
 		match result {
-			Ok(CachePublishResult::Published | CachePublishResult::Reinitialized) => {
-				PageCachePublishResult::Stored
-			},
+			Ok(CachePublishResult::Published | CachePublishResult::Reinitialized) =>
+				PageCachePublishResult::Stored,
 			Err(failure) => {
 				self.disable(failure);
 				PageCachePublishResult::Failure
@@ -955,9 +950,8 @@ impl HistoryPager {
 		active.cache_publication_fence = None;
 		match result {
 			PageCachePublishResult::Stored => active.cache_diagnostic = None,
-			PageCachePublishResult::Failure => {
-				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable)
-			},
+			PageCachePublishResult::Failure =>
+				active.cache_diagnostic = Some(HistoryCacheDiagnostic::Unavailable),
 			PageCachePublishResult::Skipped => {},
 		}
 	}
@@ -1038,9 +1032,8 @@ impl CacheOperationIdentity {
 		)?;
 
 		match self.request.key.after.clone() {
-			Some(after) => {
-				CacheRequest::after(&authority, self.request.key.conversation_id.clone(), after)
-			},
+			Some(after) =>
+				CacheRequest::after(&authority, self.request.key.conversation_id.clone(), after),
 			None => CacheRequest::head(&authority, self.request.key.conversation_id.clone()),
 		}
 	}
@@ -1146,7 +1139,8 @@ impl PagerState {
 	}
 
 	fn invalidate(&mut self, conversation_id: EntityId) {
-		if let Some(index) = self.invalidated.iter().position(|current| current == &conversation_id) {
+		if let Some(index) = self.invalidated.iter().position(|current| current == &conversation_id)
+		{
 			self.invalidated.remove(index);
 		}
 		self.invalidated.push_back(conversation_id);
@@ -1156,7 +1150,8 @@ impl PagerState {
 	}
 
 	fn take_invalidated(&mut self, conversation_id: &EntityId) -> bool {
-		let Some(index) = self.invalidated.iter().position(|current| current == conversation_id) else {
+		let Some(index) = self.invalidated.iter().position(|current| current == conversation_id)
+		else {
 			return false;
 		};
 		self.invalidated.remove(index);
@@ -1331,12 +1326,10 @@ impl PagerState {
 			.map(|request| request.request.purpose)
 			.or_else(|| active.pending.as_ref().map(|request| request.purpose));
 		let load = match active.unavailable {
-			Some(HistoryAvailability::Retryable(reason)) => {
-				HistoryLoadState::RetryableUnavailable(reason)
-			},
-			Some(HistoryAvailability::Closed(reason)) => {
-				HistoryLoadState::ClosedUnavailable(reason)
-			},
+			Some(HistoryAvailability::Retryable(reason)) =>
+				HistoryLoadState::RetryableUnavailable(reason),
+			Some(HistoryAvailability::Closed(reason)) =>
+				HistoryLoadState::ClosedUnavailable(reason),
 			None => match (visible.is_some(), current_request) {
 				(false, Some(_)) => HistoryLoadState::InitialLoading,
 				(true, Some(RequestPurpose::Prefetch)) => HistoryLoadState::PrefetchingAdjacent,
@@ -1504,18 +1497,28 @@ impl ActiveView {
 		mut page: ConversationHistoryPage,
 		limits: HistoryPagerLimits,
 	) -> Result<(), HistoryClosedReason> {
+		let replaces_window =
+			request.purpose == RequestPurpose::Visible && request.key.after.is_none();
 		if let Some(next_cursor) = page.next_cursor.as_ref()
 			&& (request.key.after.as_ref() == Some(next_cursor)
-				|| self
-					.pages
-					.iter()
-					.any(|retained| retained.key.after.as_ref() == Some(next_cursor)))
+				|| (!replaces_window
+					&& self
+						.pages
+						.iter()
+						.any(|retained| retained.key.after.as_ref() == Some(next_cursor))))
 		{
 			return Err(HistoryClosedReason::MalformedContinuation);
 		}
-		self.deduplicate_page(&request.key, &mut page)?;
+		self.deduplicate_page(&request.key, &mut page, !replaces_window)?;
 
 		let byte_length = validated_page_byte_length(&page, limits)?;
+		if replaces_window {
+			// A successful fresh head supersedes the old paged topology. Keep that topology
+			// visible while the request is in flight, then rebuild its successor from the new
+			// continuation instead of mistaking the old successor for a cycle.
+			self.pages.clear();
+			self.visible_index = None;
+		}
 
 		let existing = self.pages.iter().position(|retained| retained.key == request.key);
 		let index = if let Some(index) = existing {
@@ -1538,15 +1541,19 @@ impl ActiveView {
 		&self,
 		key: &PageKey,
 		page: &mut ConversationHistoryPage,
+		compare_retained: bool,
 	) -> Result<(), HistoryClosedReason> {
 		let mut accepted = Vec::with_capacity(page.items.len());
 		for item in page.items.drain(..) {
-			let retained = self
-				.pages
-				.iter()
-				.filter(|retained| &retained.key != key)
-				.flat_map(|retained| retained.page.items.iter())
-				.find(|retained| retained.history_item_id == item.history_item_id);
+			let retained = compare_retained
+				.then(|| {
+					self.pages
+						.iter()
+						.filter(|retained| &retained.key != key)
+						.flat_map(|retained| retained.page.items.iter())
+						.find(|retained| retained.history_item_id == item.history_item_id)
+				})
+				.flatten();
 			let duplicate = retained.or_else(|| {
 				accepted.iter().find(|retained: &&decodex_protocol::HistoryItemDto| {
 					retained.history_item_id == item.history_item_id
@@ -1758,18 +1765,14 @@ struct CancelledRequest {
 
 fn history_availability(error: HistoryQueryError) -> HistoryAvailability {
 	match error {
-		HistoryQueryError::InvalidRequest => {
-			HistoryAvailability::Closed(HistoryClosedReason::InvalidRequest)
-		},
-		HistoryQueryError::ResourceExhausted => {
-			HistoryAvailability::Retryable(HistoryRetryReason::ResourceExhausted)
-		},
-		HistoryQueryError::ProductStateUnavailable => {
-			HistoryAvailability::Retryable(HistoryRetryReason::ProductStateUnavailable)
-		},
-		HistoryQueryError::IntegrityUnavailable => {
-			HistoryAvailability::Retryable(HistoryRetryReason::IntegrityUnavailable)
-		},
+		HistoryQueryError::InvalidRequest =>
+			HistoryAvailability::Closed(HistoryClosedReason::InvalidRequest),
+		HistoryQueryError::ResourceExhausted =>
+			HistoryAvailability::Retryable(HistoryRetryReason::ResourceExhausted),
+		HistoryQueryError::ProductStateUnavailable =>
+			HistoryAvailability::Retryable(HistoryRetryReason::ProductStateUnavailable),
+		HistoryQueryError::IntegrityUnavailable =>
+			HistoryAvailability::Retryable(HistoryRetryReason::IntegrityUnavailable),
 	}
 }
 
@@ -2004,9 +2007,9 @@ mod tests {
 		let pager = HistoryPager::production(&cache_parent, TEST_CACHE_SCHEMA_GENERATION);
 
 		pager.bind_session(SESSION_GENERATION, server_id.clone());
-		assert!(!pager
-			.reload_if_open(&conversation_id)
-			.expect("terminal invalidation remains bounded"));
+		assert!(
+			!pager.reload_if_open(&conversation_id).expect("terminal invalidation remains bounded")
+		);
 		pager.open(conversation_id).expect("invalidated conversation view opens");
 
 		let head = pager
@@ -2028,9 +2031,8 @@ mod tests {
 		let replacement = pager
 			.try_take_dispatch(SESSION_GENERATION + 1, &server_id)
 			.expect("replacement session requests a fresh head");
-		let replacement_send = pager
-			.begin_send(&replacement)
-			.expect("replacement head enters the send phase");
+		let replacement_send =
+			pager.begin_send(&replacement).expect("replacement head enters the send phase");
 
 		assert!(pager.finish_send(&replacement_send));
 		pager.lookup_sent_request(&replacement_send);
@@ -2198,6 +2200,67 @@ mod tests {
 				reason: HistoryStaleReason::NavigationChanged,
 			})
 		);
+	}
+
+	#[test]
+	fn refreshed_head_replaces_the_retained_window_before_rebuilding_its_continuation() {
+		let (_temporary, pager, server_id) = open_pager();
+		let head = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("initial request is ready");
+		let _ = pager.route_result(
+			SESSION_GENERATION,
+			&server_id,
+			result(&head, &server_id, ConversationHistoryResult::Page(page(Some("cursor-1")))),
+		);
+		let retained_successor = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("initial continuation prefetch is ready");
+		let _ = pager.route_result(
+			SESSION_GENERATION,
+			&server_id,
+			result(
+				&retained_successor,
+				&server_id,
+				ConversationHistoryResult::Page(page(Some("cursor-2"))),
+			),
+		);
+
+		assert_eq!(pager.snapshot().retained_pages, 2);
+		assert!(
+			pager
+				.reload_if_open(&entity("conversation-a"))
+				.expect("fresh head reload remains bounded")
+		);
+		let refreshed_head = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("fresh head request is ready");
+
+		assert!(matches!(
+			pager.route_result(
+				SESSION_GENERATION,
+				&server_id,
+				result(
+					&refreshed_head,
+					&server_id,
+					ConversationHistoryResult::Page(page(Some("cursor-1"))),
+				),
+			),
+			HistoryRouteOutcome::Fresh
+		));
+		let refreshed = pager.snapshot();
+
+		assert_eq!(refreshed.visible_source, Some(HistoryPageSource::FreshServer));
+		assert_eq!(refreshed.retained_pages, 1);
+		assert_eq!(refreshed.load, HistoryLoadState::PrefetchingAdjacent);
+		let rebuilt_successor = pager
+			.try_take_dispatch(SESSION_GENERATION, &server_id)
+			.expect("fresh continuation prefetch is rebuilt");
+		assert!(matches!(
+			&rebuilt_successor.envelope.payload,
+			QueryPayload::GetConversationHistory { after: Some(after), .. }
+				if after == &cursor("cursor-1")
+		));
 	}
 
 	#[test]

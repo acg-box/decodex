@@ -672,6 +672,7 @@ pub struct QuickTaskTurnStartRequest {
 	model: QuickTaskModel,
 	reasoning_effort: QuickTaskReasoningEffort,
 	fast: bool,
+	client_user_message_id: Option<String>,
 }
 impl QuickTaskTurnStartRequest {
 	/// Accept one bounded turn without selecting or defaulting model settings.
@@ -687,6 +688,7 @@ impl QuickTaskTurnStartRequest {
 			model: QuickTaskModel::new(model)?,
 			reasoning_effort: QuickTaskReasoningEffort::new(reasoning_effort)?,
 			fast: false,
+			client_user_message_id: None,
 		})
 	}
 
@@ -694,6 +696,20 @@ impl QuickTaskTurnStartRequest {
 	pub const fn with_fast(mut self, fast: bool) -> Self {
 		self.fast = fast;
 		self
+	}
+
+	/// Attach one caller-stable correlation identity to the user message.
+	///
+	/// This value is readback correlation only. It grants no retry or replay authority.
+	pub fn with_client_user_message_id(
+		mut self,
+		client_user_message_id: impl Into<String>,
+	) -> Result<Self, QuickTaskContractError> {
+		let client_user_message_id = client_user_message_id.into();
+		validate_exact_id(&client_user_message_id, MAX_EXACT_TURN_ID_BYTES)
+			.map_err(|()| QuickTaskContractError::InvalidTurnId)?;
+		self.client_user_message_id = Some(client_user_message_id);
+		Ok(self)
 	}
 
 	/// Exact target thread.
@@ -721,13 +737,14 @@ impl Serialize for QuickTaskTurnStartRequest {
 	where
 		S: Serializer,
 	{
-		let mut request = serializer.serialize_struct("QuickTaskTurnStartRequest", 5)?;
+		let mut request = serializer.serialize_struct("QuickTaskTurnStartRequest", 6)?;
 
 		request.serialize_field("threadId", self.thread_id.as_str())?;
 		request.serialize_field("input", &QuickTaskTextInputs(self.input.items()))?;
 		request.serialize_field("model", self.model.as_str())?;
 		request.serialize_field("effort", self.reasoning_effort.as_str())?;
 		request.serialize_field("serviceTier", &self.fast.then_some("priority"))?;
+		request.serialize_field("clientUserMessageId", &self.client_user_message_id)?;
 		request.end()
 	}
 }
@@ -1780,10 +1797,9 @@ mod tests {
 	use super::{
 		MAX_QUICK_TASK_RESPONSE_BYTES, QuickTaskContractError, QuickTaskThreadResumeRequest,
 		QuickTaskThreadStartRequest, QuickTaskTurnInput, QuickTaskTurnStartRequest,
-		QuickTaskTurnStatus,
-		decode_quick_task_thread_archive_response, decode_quick_task_thread_resume_response,
-		decode_quick_task_thread_start_response, decode_quick_task_turn_interrupt_response,
-		decode_quick_task_turn_start_response,
+		QuickTaskTurnStatus, decode_quick_task_thread_archive_response,
+		decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
+		decode_quick_task_turn_interrupt_response, decode_quick_task_turn_start_response,
 	};
 
 	fn exact_thread() -> ExactThreadId {
@@ -1880,12 +1896,18 @@ mod tests {
 			"xhigh",
 		)
 		.expect("turn request is valid")
+		.with_client_user_message_id("50000000-0000-4000-8000-000000000001")
+		.expect("client user-message identity is valid")
 		.with_fast(true);
 		let encoded = serde_json::to_value(turn).expect("turn request must serialize");
 
 		assert_eq!(encoded.get("model"), Some(&json!("gpt-5.6-terra")));
 		assert_eq!(encoded.get("effort"), Some(&json!("xhigh")));
 		assert_eq!(encoded.get("serviceTier"), Some(&json!("priority")));
+		assert_eq!(
+			encoded.get("clientUserMessageId"),
+			Some(&json!("50000000-0000-4000-8000-000000000001")),
+		);
 	}
 
 	#[test]

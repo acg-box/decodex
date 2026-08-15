@@ -1,10 +1,11 @@
 //! Ordinary Quick Task conversations, turns, and normalized history.
 
 use decodex_core::{
-	ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
+	AccountId, ArtifactId, BlobHash, BlobStore, ConversationId, HistoryItemId, HistoryItemKind,
 	HistoryMediaType, HistoryMetadata, ItemStatus, MAX_BLOB_BYTES, MAX_CONTEXT_RECENT_ITEMS,
-	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProviderAttemptId, ProviderEvidenceId,
-	ProviderTerminalOutcome, RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
+	MAX_INLINE_HISTORY_BYTES, PossibleSideEffects, ProcessGenerationId, ProviderAttemptId,
+	ProviderEvidenceId, ProviderRequestId, ProviderRequestKey, ProviderTerminalOutcome,
+	RuntimeSessionId, RuntimeSessionState, TurnId, TurnRole, TurnStatus,
 };
 use rusqlite::{OptionalExtension as _, Transaction, TransactionBehavior, params};
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,7 @@ use crate::{
 };
 
 const MAX_PAGE_SIZE: u16 = 100;
+const MAX_RECOVERED_ASSISTANT_BYTES: usize = 256 * 1_024;
 
 /// Create one ordinary Quick Task conversation and retain its original request.
 #[derive(Clone, Debug)]
@@ -95,6 +97,95 @@ pub enum ReconcileStrandedQuickTaskTurnOutcome {
 	Applied { turn_revision: i64 },
 	Replayed { turn_revision: i64 },
 	Rejected,
+}
+
+/// Exact active unknown provider attempt that may be reconciled without replay.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct UnknownQuickTaskAttemptReadback {
+	pub conversation_id: ConversationId,
+	pub conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub runtime_session_revision: i64,
+	pub codex_thread_id: String,
+	pub source_account_id: AccountId,
+	pub source_account_revision: i64,
+	pub user_turn_id: TurnId,
+	pub user_turn_revision: i64,
+	pub user_turn_sequence: i64,
+	pub attempt_id: ProviderAttemptId,
+	pub attempt_revision: i64,
+	pub request_id: ProviderRequestId,
+	pub provider_key: ProviderRequestKey,
+	pub process_generation_id: ProcessGenerationId,
+	pub process_generation_is_dead: bool,
+}
+
+/// Durable positive evidence that still needs the Conversation Turn terminalization transaction.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct PendingQuickTaskTerminalizationReadback {
+	pub conversation_id: ConversationId,
+	pub conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub runtime_session_revision: i64,
+	pub codex_thread_id: String,
+	pub user_turn_id: TurnId,
+	pub user_turn_revision: i64,
+	pub user_turn_sequence: i64,
+	pub attempt_id: ProviderAttemptId,
+	pub attempt_revision: i64,
+	pub evidence_id: ProviderEvidenceId,
+	pub provider_outcome: ProviderTerminalOutcome,
+	pub provider_turn_id: String,
+}
+
+/// Close one product-visible Turn after exact process death, while retaining its unknown attempt.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct RecoverUnknownQuickTaskTurn {
+	pub conversation_id: ConversationId,
+	pub expected_conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub expected_runtime_session_revision: i64,
+	pub user_turn_id: TurnId,
+	pub expected_user_turn_revision: i64,
+	pub attempt_id: ProviderAttemptId,
+	pub expected_attempt_revision: i64,
+	pub process_generation_id: ProcessGenerationId,
+	pub history_item_id: HistoryItemId,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct RecoveredUnknownQuickTaskTurn {
+	pub turn_revision: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum RecoverUnknownQuickTaskTurnOutcome {
+	Applied(RecoveredUnknownQuickTaskTurn),
+	Replayed(RecoveredUnknownQuickTaskTurn),
+	Rejected,
+}
+
+/// Existing assistant prefix for one interrupted active user Turn.
+#[derive(Clone, Eq, PartialEq)]
+pub struct QuickTaskAssistantPrefixReadback {
+	pub turn_id: TurnId,
+	pub turn_revision: i64,
+	pub turn_sequence: i64,
+	pub text: String,
+	pub next_ordinal: i32,
+}
+
+impl std::fmt::Debug for QuickTaskAssistantPrefixReadback {
+	fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		formatter
+			.debug_struct("QuickTaskAssistantPrefixReadback")
+			.field("turn_id", &self.turn_id)
+			.field("turn_revision", &self.turn_revision)
+			.field("turn_sequence", &self.turn_sequence)
+			.field("text_bytes", &self.text.len())
+			.field("next_ordinal", &self.next_ordinal)
+			.finish()
+	}
 }
 
 /// Create a new routing conversation after a waiting or no-route decision.
@@ -445,6 +536,278 @@ impl SqliteStore {
 		.await
 	}
 
+	/// Read one exact active unknown attempt for account-bound, no-replay reconciliation.
+	pub async fn read_unknown_quick_task_attempt_for_recovery(
+		&self,
+		conversation_id: &ConversationId,
+	) -> Result<Option<UnknownQuickTaskAttemptReadback>, StoreError> {
+		let conversation_id = conversation_id.clone();
+		self.run(move |connection| {
+			let mut statement = connection
+				.prepare(
+					"SELECT c.revision, s.runtime_session_id, s.revision, s.codex_thread_id,
+				        s.account_id, s.account_revision, t.turn_id, t.revision, t.sequence,
+				        p.attempt_id, p.revision, p.request_id,
+				        COALESCE(p.provider_idempotency_key, p.provider_correlation_key),
+				        p.process_generation_id,
+				        pg.state = 'dead' AND pg.death_evidence_id IS NOT NULL AND EXISTS (
+				          SELECT 1 FROM process_generation_death_evidence AS d
+				          WHERE d.generation_id = pg.generation_id
+				            AND d.evidence_id = pg.death_evidence_id
+				        )
+				 FROM conversations AS c
+				 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+				 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
+				 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+				   AND p.runtime_session_id = s.runtime_session_id
+				 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
+				 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+				   AND s.state = 'active' AND s.codex_thread_id IS NOT NULL
+				   AND t.role = 'user' AND t.status = 'active' AND p.state = 'unknown'
+				 ORDER BY t.sequence DESC, p.created_at_micros DESC LIMIT 2",
+				)
+				.map_err(sql_error)?;
+			let selected = statement
+				.query_map(params![conversation_id.as_str()], |row| {
+					Ok((
+						row.get::<_, i64>(0)?,
+						row.get::<_, String>(1)?,
+						row.get::<_, i64>(2)?,
+						row.get::<_, String>(3)?,
+						row.get::<_, String>(4)?,
+						row.get::<_, i64>(5)?,
+						row.get::<_, String>(6)?,
+						row.get::<_, i64>(7)?,
+						row.get::<_, i64>(8)?,
+						row.get::<_, String>(9)?,
+						row.get::<_, i64>(10)?,
+						row.get::<_, String>(11)?,
+						row.get::<_, String>(12)?,
+						row.get::<_, String>(13)?,
+						row.get::<_, bool>(14)?,
+					))
+				})
+				.map_err(sql_error)?;
+			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+			if rows.len() > 1 {
+				return Err(incompatible("unknown Quick Task attempt authority"));
+			}
+			let Some(row) = rows.pop() else {
+				return Ok(None);
+			};
+			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.7 <= 0 || row.8 <= 0 || row.10 <= 0 {
+				return Err(incompatible("unknown Quick Task attempt coordinates"));
+			}
+			Ok(Some(UnknownQuickTaskAttemptReadback {
+				conversation_id,
+				conversation_revision: row.0,
+				runtime_session_id: RuntimeSessionId::new(row.1)
+					.map_err(|_| incompatible("RuntimeSession identity"))?,
+				runtime_session_revision: row.2,
+				codex_thread_id: row.3,
+				source_account_id: AccountId::new(row.4)
+					.map_err(|_| incompatible("RuntimeSession account"))?,
+				source_account_revision: row.5,
+				user_turn_id: TurnId::new(row.6)
+					.map_err(|_| incompatible("unknown Turn identity"))?,
+				user_turn_revision: row.7,
+				user_turn_sequence: row.8,
+				attempt_id: ProviderAttemptId::new(row.9)
+					.map_err(|_| incompatible("ProviderAttempt identity"))?,
+				attempt_revision: row.10,
+				request_id: ProviderRequestId::new(row.11)
+					.map_err(|_| incompatible("provider request identity"))?,
+				provider_key: ProviderRequestKey::new(row.12)
+					.map_err(|_| incompatible("provider request key"))?,
+				process_generation_id: ProcessGenerationId::new(row.13)
+					.map_err(|_| incompatible("ProcessGeneration identity"))?,
+				process_generation_is_dead: row.14,
+			}))
+		})
+		.await
+	}
+
+	/// Read one exact positive provider result whose active Turn has not yet terminalized.
+	pub async fn read_pending_quick_task_terminalization(
+		&self,
+		conversation_id: &ConversationId,
+	) -> Result<Option<PendingQuickTaskTerminalizationReadback>, StoreError> {
+		let conversation_id = conversation_id.clone();
+		self.run(move |connection| {
+			let mut statement = connection
+				.prepare(
+					"SELECT c.revision, s.runtime_session_id, s.revision, s.codex_thread_id,
+				        t.turn_id, t.revision, t.sequence, p.attempt_id, p.revision,
+				        e.evidence_id, e.outcome, e.provider_turn_id
+				 FROM conversations AS c
+				 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+				 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
+				 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+				   AND p.runtime_session_id = s.runtime_session_id
+				 JOIN provider_attempt_positive_evidence AS e ON e.attempt_id = p.attempt_id
+				   AND e.evidence_id = p.terminal_evidence_id
+				 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+				   AND s.state = 'active' AND s.codex_thread_id IS NOT NULL
+				   AND t.role = 'user' AND t.status = 'active'
+				   AND p.state IN ('succeeded', 'failed_definitive') AND e.outcome = p.state
+				   AND e.provider_thread_id = s.codex_thread_id AND e.provider_turn_id IS NOT NULL
+				 ORDER BY t.sequence DESC, p.created_at_micros DESC LIMIT 2",
+				)
+				.map_err(sql_error)?;
+			let selected = statement
+				.query_map(params![conversation_id.as_str()], |row| {
+					Ok((
+						row.get::<_, i64>(0)?,
+						row.get::<_, String>(1)?,
+						row.get::<_, i64>(2)?,
+						row.get::<_, String>(3)?,
+						row.get::<_, String>(4)?,
+						row.get::<_, i64>(5)?,
+						row.get::<_, i64>(6)?,
+						row.get::<_, String>(7)?,
+						row.get::<_, i64>(8)?,
+						row.get::<_, String>(9)?,
+						row.get::<_, String>(10)?,
+						row.get::<_, String>(11)?,
+					))
+				})
+				.map_err(sql_error)?;
+			let mut rows = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+			if rows.len() > 1 {
+				return Err(incompatible("pending Quick Task terminalization authority"));
+			}
+			let Some(row) = rows.pop() else {
+				return Ok(None);
+			};
+			if row.0 <= 0 || row.2 <= 0 || row.5 <= 0 || row.6 <= 0 || row.8 <= 0 {
+				return Err(incompatible("pending Quick Task terminalization coordinates"));
+			}
+			Ok(Some(PendingQuickTaskTerminalizationReadback {
+				conversation_id,
+				conversation_revision: row.0,
+				runtime_session_id: RuntimeSessionId::new(row.1)
+					.map_err(|_| incompatible("RuntimeSession identity"))?,
+				runtime_session_revision: row.2,
+				codex_thread_id: row.3,
+				user_turn_id: TurnId::new(row.4)
+					.map_err(|_| incompatible("terminal user Turn identity"))?,
+				user_turn_revision: row.5,
+				user_turn_sequence: row.6,
+				attempt_id: ProviderAttemptId::new(row.7)
+					.map_err(|_| incompatible("ProviderAttempt identity"))?,
+				attempt_revision: row.8,
+				evidence_id: ProviderEvidenceId::new(row.9)
+					.map_err(|_| incompatible("provider evidence identity"))?,
+				provider_outcome: parse_provider_outcome(&row.10)?,
+				provider_turn_id: row.11,
+			}))
+		})
+		.await
+	}
+
+	/// Read the exact durable assistant prefix already captured for one active user Turn.
+	pub async fn read_quick_task_assistant_prefix(
+		&self,
+		blob_store: &BlobStore,
+		conversation_id: &ConversationId,
+		runtime_session_id: &RuntimeSessionId,
+		user_turn_sequence: i64,
+	) -> Result<Option<QuickTaskAssistantPrefixReadback>, StoreError> {
+		if user_turn_sequence <= 0 {
+			return Err(StoreError::InvalidInput("assistant prefix sequence is invalid"));
+		}
+		let assistant_sequence = user_turn_sequence
+			.checked_add(1)
+			.ok_or(StoreError::InvalidInput("assistant prefix sequence is invalid"))?;
+		let conversation_id = conversation_id.clone();
+		let runtime_session_id = runtime_session_id.clone();
+		let row = self
+			.run(move |connection| {
+				let turn = connection
+					.query_row(
+						"SELECT turn_id, revision FROM turns
+						 WHERE conversation_id = ?1 AND runtime_session_id = ?2 AND sequence = ?3
+						   AND role = 'assistant' AND status = 'active'",
+						params![
+							conversation_id.as_str(),
+							runtime_session_id.as_str(),
+							assistant_sequence,
+						],
+						|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+					)
+					.optional()
+					.map_err(sql_error)?;
+				let Some((turn_id, turn_revision)) = turn else {
+					return Ok(None);
+				};
+				let mut statement = connection
+					.prepare(
+						"SELECT kind, status, inline_text, blob_sha256 FROM history_items
+						 WHERE conversation_id = ?1 AND turn_id = ?2
+						 ORDER BY sequence LIMIT ?3",
+					)
+					.map_err(sql_error)?;
+				let selected = statement
+					.query_map(
+						params![
+							conversation_id.as_str(),
+							turn_id,
+							i64::try_from(MAX_CONTEXT_RECENT_ITEMS + 1).unwrap_or(i64::MAX),
+						],
+						|row| {
+							Ok((
+								row.get::<_, String>(0)?,
+								row.get::<_, String>(1)?,
+								Payload { inline_text: row.get(2)?, blob_hash: row.get(3)? },
+							))
+						},
+					)
+					.map_err(sql_error)?;
+				let items = selected.collect::<Result<Vec<_>, _>>().map_err(sql_error)?;
+				if items.is_empty()
+					|| items.len() > MAX_CONTEXT_RECENT_ITEMS
+					|| items.iter().any(|(kind, status, payload)| {
+						kind != "message"
+							|| status != "completed"
+							|| payload.inline_text.is_some() == payload.blob_hash.is_some()
+					}) {
+					return Err(incompatible("assistant recovery prefix"));
+				}
+				Ok(Some((turn_id, turn_revision, items)))
+			})
+			.await?;
+		let Some((turn_id, turn_revision, items)) = row else {
+			return Ok(None);
+		};
+		let mut text = String::new();
+		for (_, _, payload) in &items {
+			let chunk = match (&payload.inline_text, &payload.blob_hash) {
+				(Some(inline), None) => inline.clone(),
+				(None, Some(hash)) => {
+					let hash = BlobHash::parse(hash)
+						.map_err(|_| incompatible("assistant recovery blob identity"))?;
+					String::from_utf8(blob_store.read(hash)?)
+						.map_err(|_| incompatible("assistant recovery blob encoding"))?
+				},
+				_ => return Err(incompatible("assistant recovery payload")),
+			};
+			text.len()
+				.checked_add(chunk.len())
+				.filter(|length| *length <= MAX_RECOVERED_ASSISTANT_BYTES)
+				.ok_or_else(|| incompatible("assistant recovery prefix bound"))?;
+			text.push_str(&chunk);
+		}
+		let next_ordinal =
+			i32::try_from(items.len()).map_err(|_| incompatible("assistant recovery ordinal"))?;
+		Ok(Some(QuickTaskAssistantPrefixReadback {
+			turn_id: TurnId::new(turn_id).map_err(|_| incompatible("assistant Turn identity"))?,
+			turn_revision,
+			turn_sequence: assistant_sequence,
+			text,
+			next_ordinal,
+		}))
+	}
+
 	/// Atomically close one provider-verified archived Conversation and its sole active session.
 	pub async fn archive_quick_task_conversation(
 		&self,
@@ -479,8 +842,10 @@ impl SqliteStore {
 					        EXISTS (SELECT 1 FROM turns AS t WHERE t.conversation_id = c.conversation_id
 					                AND t.status = 'active'),
 					        EXISTS (SELECT 1 FROM provider_attempts AS p
+					                JOIN turns AS pending ON pending.turn_id = p.turn_id
 					                WHERE p.conversation_id = c.conversation_id
-					                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown'))
+					                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown')
+					                  AND pending.status = 'active')
 					 FROM conversations AS c
 					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
 					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
@@ -647,6 +1012,143 @@ impl SqliteStore {
 			)?;
 			transaction.commit().map_err(sql_error)?;
 			Ok(ReconcileStrandedQuickTaskTurnOutcome::Applied { turn_revision })
+		})
+		.await
+	}
+
+	/// Make an unknown Turn usable only after positive death of its exact process generation.
+	///
+	/// The ProviderAttempt intentionally remains `unknown`; this transaction only closes the
+	/// product-visible active Turn and records a concise durable status item.
+	pub async fn recover_unknown_quick_task_turn(
+		&self,
+		command: &CommandIdentity,
+		request: &RecoverUnknownQuickTaskTurn,
+	) -> Result<RecoverUnknownQuickTaskTurnOutcome, StoreError> {
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision <= 0
+			|| request.expected_user_turn_revision <= 0
+			|| request.expected_attempt_revision <= 0
+		{
+			return Err(StoreError::InvalidInput(
+				"unknown Quick Task recovery coordinates are invalid",
+			));
+		}
+		let command = command.clone();
+		let request = request.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				"recover_unknown_quick_task_turn",
+				request.attempt_id.as_str(),
+			)? {
+				let recovered = serde_json::from_str(&response)
+					.map_err(|_| incompatible("unknown Quick Task recovery receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(RecoverUnknownQuickTaskTurnOutcome::Replayed(recovered));
+			}
+			let authority: bool = transaction
+				.query_row(
+					"SELECT EXISTS (
+					 SELECT 1 FROM conversations AS c
+					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+					 JOIN turns AS t ON t.runtime_session_id = s.runtime_session_id
+					 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+					 JOIN process_generations AS pg ON pg.generation_id = p.process_generation_id
+					 JOIN process_generation_death_evidence AS d
+					   ON d.generation_id = pg.generation_id AND d.evidence_id = pg.death_evidence_id
+					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+					   AND c.revision = ?2 AND s.runtime_session_id = ?3 AND s.state = 'active'
+					   AND s.revision = ?4 AND t.turn_id = ?5 AND t.role = 'user'
+					   AND t.status = 'active' AND t.revision = ?6 AND p.attempt_id = ?7
+					   AND p.state = 'unknown' AND p.revision = ?8
+					   AND p.process_generation_id = ?9 AND pg.state = 'dead'
+					   AND NOT EXISTS (
+					     SELECT 1 FROM history_items AS h
+					     WHERE h.turn_id = t.turn_id AND h.status = 'streaming'
+					   )
+					 )",
+					params![
+						request.conversation_id.as_str(),
+						request.expected_conversation_revision,
+						request.runtime_session_id.as_str(),
+						request.expected_runtime_session_revision,
+						request.user_turn_id.as_str(),
+						request.expected_user_turn_revision,
+						request.attempt_id.as_str(),
+						request.expected_attempt_revision,
+						request.process_generation_id.as_str(),
+					],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			if !authority || history_exists(&transaction, &request.history_item_id)? {
+				return Ok(RecoverUnknownQuickTaskTurnOutcome::Rejected);
+			}
+			let now = unix_micros().map_err(StoreError::from)?;
+			let changed = transaction
+				.execute(
+					"UPDATE turns SET status = 'failed', revision = revision + 1,
+					 updated_at_micros = ?4, completed_at_micros = ?4
+					 WHERE turn_id = ?1 AND revision = ?2 AND status = 'active'
+					   AND conversation_id = ?3",
+					params![
+						request.user_turn_id.as_str(),
+						request.expected_user_turn_revision,
+						request.conversation_id.as_str(),
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			if changed != 1 {
+				return Ok(RecoverUnknownQuickTaskTurnOutcome::Rejected);
+			}
+			let history_sequence: i64 = transaction
+				.query_row(
+					"SELECT COALESCE(MAX(sequence), 0) + 1 FROM history_items
+					 WHERE conversation_id = ?1",
+					params![request.conversation_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			transaction
+				.execute(
+					"INSERT INTO history_items (
+					 history_item_id, conversation_id, turn_id, sequence, kind, role, status,
+					 media_type, inline_text, blob_sha256, metadata_json, revision,
+					 created_at_micros, updated_at_micros
+					 ) VALUES (?1, ?2, ?3, ?4, 'status', 'user', 'completed',
+					 'text/plain', ?5, NULL, ?6, 1, ?7, ?7)",
+					params![
+						request.history_item_id.as_str(),
+						request.conversation_id.as_str(),
+						request.user_turn_id.as_str(),
+						history_sequence,
+						"Previous turn was interrupted. You can continue.",
+						metadata_json(&HistoryMetadata::empty())?,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			touch_conversation(&transaction, &request.conversation_id, now)?;
+			let recovered = RecoveredUnknownQuickTaskTurn {
+				turn_revision: request.expected_user_turn_revision + 1,
+			};
+			write_receipt(
+				&transaction,
+				&command,
+				"recover_unknown_quick_task_turn",
+				request.attempt_id.as_str(),
+				&serde_json::to_string(&recovered)
+					.map_err(|_| incompatible("unknown Quick Task recovery receipt"))?,
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(RecoverUnknownQuickTaskTurnOutcome::Applied(recovered))
 		})
 		.await
 	}
@@ -939,8 +1441,6 @@ impl SqliteStore {
 	}
 }
 
-
-
 fn validate_quick_task_conversation(
 	create: &CreateQuickTaskConversation,
 ) -> Result<(), StoreError> {
@@ -958,8 +1458,7 @@ fn validate_quick_task_conversation(
 		|| !matches!(
 			create.reasoning_effort.as_str(),
 			"low" | "medium" | "high" | "xhigh" | "max" | "ultra"
-		)
-	{
+		) {
 		return Err(StoreError::InvalidInput("initial Quick Task Conversation request is invalid"));
 	}
 	credential_negative(&create.title)?;
@@ -1433,10 +1932,16 @@ fn conversation_projection(
 			|row| row.get(0),
 		)
 		.map_err(sql_error)?;
-	let has_unknown_provider_attempt: bool = connection.query_row(
-		"SELECT EXISTS (SELECT 1 FROM provider_attempts WHERE conversation_id = ?1 AND state = 'unknown')",
-		params![conversation_id.as_str()], |row| row.get(0),
-	).map_err(sql_error)?;
+	let has_unknown_provider_attempt: bool = connection
+		.query_row(
+			"SELECT EXISTS (
+		 SELECT 1 FROM provider_attempts AS p JOIN turns AS t ON t.turn_id = p.turn_id
+		 WHERE p.conversation_id = ?1 AND p.state = 'unknown' AND t.status = 'active'
+		 )",
+			params![conversation_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
 	let (
 		runtime_session_id,
 		runtime_session_revision,
@@ -1679,6 +2184,15 @@ const fn provider_outcome_text(value: ProviderTerminalOutcome) -> &'static str {
 		ProviderTerminalOutcome::Succeeded => "succeeded",
 		ProviderTerminalOutcome::FailedDefinitive => "failed_definitive",
 		ProviderTerminalOutcome::NotSubmitted => "not_submitted",
+	}
+}
+
+fn parse_provider_outcome(value: &str) -> Result<ProviderTerminalOutcome, StoreError> {
+	match value {
+		"succeeded" => Ok(ProviderTerminalOutcome::Succeeded),
+		"failed_definitive" => Ok(ProviderTerminalOutcome::FailedDefinitive),
+		"not_submitted" => Ok(ProviderTerminalOutcome::NotSubmitted),
+		_ => Err(incompatible("provider outcome")),
 	}
 }
 
@@ -1985,10 +2499,42 @@ impl SqliteStore {
 		conversation_id: &ConversationId,
 		limit: u16,
 	) -> Result<Vec<HistoryEntry>, StoreError> {
+		self.recent_conversation_history_filtered(blob_store, conversation_id, None, limit).await
+	}
+
+	/// Read recent history without the items owned by one exact Turn.
+	///
+	/// Context Pack fallback uses this after it has durably admitted the successor user Turn. The
+	/// exclusion prevents that new intent from appearing both inside the pack and as the live
+	/// input.
+	pub async fn recent_conversation_history_excluding_turn(
+		&self,
+		blob_store: &BlobStore,
+		conversation_id: &ConversationId,
+		excluded_turn_id: &TurnId,
+		limit: u16,
+	) -> Result<Vec<HistoryEntry>, StoreError> {
+		self.recent_conversation_history_filtered(
+			blob_store,
+			conversation_id,
+			Some(excluded_turn_id),
+			limit,
+		)
+		.await
+	}
+
+	async fn recent_conversation_history_filtered(
+		&self,
+		blob_store: &BlobStore,
+		conversation_id: &ConversationId,
+		excluded_turn_id: Option<&TurnId>,
+		limit: u16,
+	) -> Result<Vec<HistoryEntry>, StoreError> {
 		if limit == 0 || usize::from(limit) > MAX_CONTEXT_RECENT_ITEMS {
 			return Err(StoreError::InvalidInput("recent history bound is invalid"));
 		}
 		let conversation_id = conversation_id.clone();
+		let excluded_turn_id = excluded_turn_id.map(|turn_id| turn_id.as_str().to_owned());
 		let mut entries = self
 			.run(move |connection| {
 				let mut statement = connection
@@ -2000,13 +2546,14 @@ impl SqliteStore {
 				    t.possible_side_effects, h.kind, h.status, h.inline_text, h.blob_sha256,
 				    h.media_type, h.metadata_json, h.revision, h.sequence
 				   FROM history_items AS h JOIN turns AS t USING (turn_id)
-				   WHERE h.conversation_id = ?1 ORDER BY h.sequence DESC LIMIT ?2
+				   WHERE h.conversation_id = ?1 AND (?2 IS NULL OR h.turn_id <> ?2)
+				   ORDER BY h.sequence DESC LIMIT ?3
 				 ) ORDER BY sequence",
 					)
 					.map_err(sql_error)?;
 				let rows = statement
 					.query_map(
-						params![conversation_id.as_str(), i64::from(limit)],
+						params![conversation_id.as_str(), excluded_turn_id, i64::from(limit),],
 						read_history_row,
 					)
 					.map_err(sql_error)?;
@@ -2283,7 +2830,15 @@ impl SqliteStore {
 
 #[cfg(test)]
 mod archive_tests {
-	use decodex_core::{ConversationId, RuntimeSessionId, TurnId};
+	use decodex_core::{
+		BlobStore, ContextPackInput, ContextPackPolicy, ContinuationCommandOutcome,
+		ContinuationPlanKind, ConversationId, DecodexRoot, HistoryItemId, PinnedContextSource,
+		PossibleSideEffects, ProcessExecutionEpochId, ProcessGenerationId, ProviderAttemptConsumer,
+		ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
+		ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
+		ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId, TurnId,
+		compile_context_pack,
+	};
 	use rusqlite::params;
 	use tempfile::tempdir;
 
@@ -2292,13 +2847,23 @@ mod archive_tests {
 		ArchiveQuickTaskConversation, ArchiveQuickTaskConversationOutcome,
 		CreateQuickTaskConversation, OrdinaryTaskConversationProjection,
 		ReconcileStrandedQuickTaskTurn, ReconcileStrandedQuickTaskTurnOutcome,
+		RecoverUnknownQuickTaskTurn, RecoverUnknownQuickTaskTurnOutcome, TerminalizeQuickTaskTurn,
 	};
-	use crate::{CommandIdentity, SqliteStore, error::sqlite_error};
+	use crate::{
+		CommandIdentity, PlanContinuation, PrepareProviderAttemptOutcome,
+		ProviderAttemptMutationOutcome, QuickTaskTerminalizationOutcome, SqliteStore,
+		error::sqlite_error,
+	};
 
 	const CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000001";
 	const RUNTIME_SESSION_ID: &str = "40000000-0000-4000-8000-000000000001";
 	const TURN_ID: &str = "50000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
+	const ATTEMPT_ID: &str = "60000000-0000-4000-8000-000000000001";
+	const GENERATION_ID: &str = "70000000-0000-4000-8000-000000000001";
+	const INTERRUPTION_HISTORY_ID: &str = "80000000-0000-4000-8000-000000000001";
+	const SUCCESSOR_TURN_ID: &str = "50000000-0000-4000-8000-000000000002";
+	const SUCCESSOR_HISTORY_ID: &str = "80000000-0000-4000-8000-000000000002";
 
 	async fn seed_provider_less_starting_task(store: &SqliteStore) {
 		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
@@ -2378,6 +2943,149 @@ mod archive_tests {
 				Ok(())
 			})
 			.expect("seed active user Turn");
+	}
+
+	fn seed_unknown_provider_attempt(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE runtime_sessions SET codex_thread_id = 'codex-thread-unknown',
+						 state = 'active', thread_start_request_id = 1,
+						 thread_start_request_sha256 = ?2, thread_start_response_id = 1,
+						 thread_start_response_sha256 = ?2, has_acknowledged_turn = 1,
+						 revision = 7 WHERE runtime_session_id = ?1",
+						params![RUNTIME_SESSION_ID, "b".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO account_operations (
+						 operation_id, account_id, kind, phase, provider, provider_account_id,
+						 requested_display_label, requested_enabled, created_at_micros,
+						 updated_at_micros, completed_at_micros
+						 ) VALUES ('11000000-0000-4000-8000-000000000001', ?1, 'import',
+						 'committed', 'chatgpt', 'local-fixture-provider', 'Local fixture', 1,
+						 1, 1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO routing_decisions (
+						 routing_decision_id, operation_id, idempotency_key, request_sha256,
+						 authority_shape, conversation_id, turn_id, conversation_revision,
+						 snapshot_id, snapshot_json, decision_kind, account_id, account_revision,
+						 routing_revision, quota_classification, causes_json, exclusions_json,
+						 created_at_micros
+						 ) VALUES (
+						 '21000000-0000-4000-8000-000000000001',
+						 '22000000-0000-4000-8000-000000000001', 'unknown-route', ?4,
+						 'conversation_account_registry', ?1, ?2, 1,
+						 '23000000-0000-4000-8000-000000000001', '{}', 'selected', ?3, 1,
+						 1, 'known_available', '[]', '[]', 1)",
+						params![CONVERSATION_ID, TURN_ID, ACCOUNT_ID, "c".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO continuation_plans (
+						 continuation_plan_id, operation_id, idempotency_key, request_sha256,
+						 conversation_id, turn_id, routing_decision_id,
+						 source_runtime_session_id, source_runtime_session_revision,
+						 selected_account_id, runtime_session_id, kind, created_at_micros
+						 ) VALUES (
+						 '31000000-0000-4000-8000-000000000001',
+						 '32000000-0000-4000-8000-000000000001', 'unknown-plan', ?4,
+						 ?1, ?2, '21000000-0000-4000-8000-000000000001', ?3, 7, ?5, ?3,
+						 'initial_thread', 1)",
+						params![
+							CONVERSATION_ID,
+							TURN_ID,
+							RUNTIME_SESSION_ID,
+							"d".repeat(64),
+							ACCOUNT_ID,
+						],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_execution_epochs (
+						 execution_epoch_id, authorization_sha256, created_at_micros
+						 ) VALUES ('41000000-0000-4000-8000-000000000009', ?1, 1)",
+						params!["e".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_generations (
+						 generation_id, account_id, runtime_session_id, execution_epoch_id,
+						 runner_identity, intended_boot_id, control_kind, isolation_kind,
+						 account_revision, credential_schema_version, credential_version,
+						 credential_fingerprint, credential_writer_operation_id, provider,
+						 provider_account_id, refresh_callback_profile_sha256, state, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, '41000000-0000-4000-8000-000000000009',
+						 'test-runner', 'test-boot', 'stdio_only_best_effort_eof', 'session',
+						 1, 1, 1, ?4, '11000000-0000-4000-8000-000000000001', 'chatgpt',
+						 'local-fixture-provider', ?4, 'starting', 1, 1, 1)",
+						params![GENERATION_ID, ACCOUNT_ID, RUNTIME_SESSION_ID, "f".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO provider_attempts (
+						 attempt_id, conversation_id, turn_id, continuation_plan_id,
+						 routing_decision_id, runtime_session_id, runtime_session_revision,
+						 account_id, process_generation_id, process_generation_revision,
+						 execution_epoch_id, request_id, request_sha256,
+						 provider_correlation_key, state, unknown_reason, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, '31000000-0000-4000-8000-000000000001',
+						 '21000000-0000-4000-8000-000000000001', ?4, 7, ?5, ?6, 1,
+						 '41000000-0000-4000-8000-000000000009',
+						 '61000000-0000-4000-8000-000000000001', ?7,
+						 'app-server:test:1', 'unknown', 'dispatch_outcome_unavailable', 1, 1, 1)",
+						params![
+							ATTEMPT_ID,
+							CONVERSATION_ID,
+							TURN_ID,
+							RUNTIME_SESSION_ID,
+							ACCOUNT_ID,
+							GENERATION_ID,
+							"1".repeat(64),
+						],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed unknown provider attempt");
+	}
+
+	fn record_exact_process_death(store: &SqliteStore) {
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO process_generation_death_evidence (
+						 evidence_id, generation_id, kind, observed_boot_id, witness_sha256,
+						 observed_at_micros
+						 ) VALUES ('71000000-0000-4000-8000-000000000001', ?1,
+						 'spawn_not_created', 'test-boot', ?2, 2)",
+						params![GENERATION_ID, "2".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"UPDATE process_generations SET state = 'dead',
+						 death_evidence_id = '71000000-0000-4000-8000-000000000001',
+						 revision = 2, updated_at_micros = 2 WHERE generation_id = ?1",
+						params![GENERATION_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("record exact process death");
 	}
 
 	#[tokio::test]
@@ -2497,10 +3205,7 @@ mod archive_tests {
 				.is_empty()
 		);
 		assert_eq!(
-			store
-				.read_quick_task_request(&conversation_id)
-				.await
-				.expect("read archived request"),
+			store.read_quick_task_request(&conversation_id).await.expect("read archived request"),
 			None
 		);
 		let session: (String, i64, Option<i64>) = store
@@ -2582,6 +3287,528 @@ mod archive_tests {
 		assert_eq!(turn.0, "failed");
 		assert_eq!(turn.1, 2);
 		assert!(turn.2.is_some());
+	}
+
+	#[tokio::test]
+	async fn unknown_turn_recovery_requires_death_and_keeps_attempt_evidence() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		seed_unknown_provider_attempt(&store);
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+		let before = store
+			.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+			.await
+			.expect("read active unknown attempt")
+			.expect("unknown attempt exists");
+		assert!(!before.process_generation_is_dead);
+		let request = RecoverUnknownQuickTaskTurn {
+			conversation_id: conversation_id.clone(),
+			expected_conversation_revision: 1,
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
+				.expect("RuntimeSession ID"),
+			expected_runtime_session_revision: 7,
+			user_turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
+			expected_user_turn_revision: 1,
+			attempt_id: ProviderAttemptId::new(ATTEMPT_ID).expect("ProviderAttempt ID"),
+			expected_attempt_revision: 1,
+			process_generation_id: ProcessGenerationId::new(GENERATION_ID)
+				.expect("ProcessGeneration ID"),
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("HistoryItem ID"),
+		};
+		let command = CommandIdentity::new("recover-unknown-fixture", b"exact unknown fixture")
+			.expect("recovery command");
+		assert_eq!(
+			store
+				.recover_unknown_quick_task_turn(&command, &request)
+				.await
+				.expect("reject recovery without death evidence"),
+			RecoverUnknownQuickTaskTurnOutcome::Rejected
+		);
+
+		record_exact_process_death(&store);
+		assert!(
+			store
+				.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+				.await
+				.expect("read dead unknown attempt")
+				.expect("unknown attempt remains active")
+				.process_generation_is_dead
+		);
+		let recovered = store
+			.recover_unknown_quick_task_turn(&command, &request)
+			.await
+			.expect("recover exact dead unknown Turn");
+		assert!(matches!(
+			recovered,
+			RecoverUnknownQuickTaskTurnOutcome::Applied(ref readback)
+				if readback.turn_revision == 2
+		));
+		assert!(matches!(
+			store
+				.recover_unknown_quick_task_turn(&command, &request)
+				.await
+				.expect("replay exact recovery"),
+			RecoverUnknownQuickTaskTurnOutcome::Replayed(ref readback)
+				if readback.turn_revision == 2
+		));
+		assert_eq!(
+			store
+				.read_unknown_quick_task_attempt_for_recovery(&conversation_id)
+				.await
+				.expect("read recovered projection"),
+			None
+		);
+		let persisted: (String, i64, String, String, i64) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT t.status, t.revision, p.state, h.inline_text,
+						 COUNT(*) OVER () FROM turns AS t
+						 JOIN provider_attempts AS p ON p.turn_id = t.turn_id
+						 JOIN history_items AS h ON h.turn_id = t.turn_id
+						 WHERE t.turn_id = ?1 AND h.history_item_id = ?2",
+						params![TURN_ID, INTERRUPTION_HISTORY_ID],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read recovered evidence");
+		assert_eq!(persisted.0, "failed");
+		assert_eq!(persisted.1, 2);
+		assert_eq!(persisted.2, "unknown");
+		assert_eq!(persisted.3, "Previous turn was interrupted. You can continue.");
+		assert_eq!(persisted.4, 1);
+		let projection = store
+			.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+			.await
+			.expect("read recovered conversation projection");
+		assert!(matches!(
+			projection.as_slice(),
+			[OrdinaryTaskConversationProjection::Current(row)]
+				if !row.has_unknown_provider_attempt && row.active_turn_id.is_none()
+		));
+	}
+
+	#[tokio::test]
+	async fn positive_evidence_with_an_active_turn_is_durably_terminalizable() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		seed_unknown_provider_attempt(&store);
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+		let evidence_id = ProviderEvidenceId::new("64000000-0000-4000-8000-000000000001")
+			.expect("provider evidence ID");
+		let evidence = ProviderPositiveEvidence::new(
+			evidence_id.clone(),
+			ProviderAttemptId::new(ATTEMPT_ID).expect("ProviderAttempt ID"),
+			ProviderRequestId::new("61000000-0000-4000-8000-000000000001")
+				.expect("provider request ID"),
+			ProviderEvidenceSource::ExactThreadReadback,
+			ProviderTerminalOutcome::Succeeded,
+			ProviderRequestKey::new("app-server:test:1").expect("provider request key"),
+			None,
+			Some("codex-thread-unknown".to_owned()),
+			Some("provider-turn-recovered".to_owned()),
+			"9".repeat(64),
+		)
+		.expect("exact thread readback evidence");
+		assert!(matches!(
+			store
+				.record_provider_attempt_positive_evidence(1, &evidence)
+				.await
+				.expect("record exact provider evidence"),
+			ProviderAttemptMutationOutcome::Applied(ref mutation)
+				if mutation.revision == 2
+		));
+
+		let pending = store
+			.read_pending_quick_task_terminalization(&conversation_id)
+			.await
+			.expect("read pending terminalization")
+			.expect("positive evidence remains terminalizable");
+		assert_eq!(pending.attempt_revision, 2);
+		assert_eq!(pending.provider_outcome, ProviderTerminalOutcome::Succeeded);
+		assert_eq!(pending.provider_turn_id, "provider-turn-recovered");
+		let terminalization = TerminalizeQuickTaskTurn {
+			conversation_id: pending.conversation_id.clone(),
+			expected_conversation_revision: pending.conversation_revision,
+			runtime_session_id: pending.runtime_session_id.clone(),
+			expected_runtime_session_revision: pending.runtime_session_revision,
+			user_turn_id: pending.user_turn_id.clone(),
+			expected_user_turn_revision: pending.user_turn_revision,
+			assistant_turn: None,
+			provider_attempt_id: pending.attempt_id.clone(),
+			expected_provider_attempt_revision: pending.attempt_revision,
+			provider_evidence_id: pending.evidence_id.clone(),
+			provider_outcome: pending.provider_outcome,
+			provider_thread_id: pending.codex_thread_id.clone(),
+			provider_turn_id: pending.provider_turn_id.clone(),
+		};
+		assert!(matches!(
+			store
+				.terminalize_quick_task_turn("pending-terminalization", &terminalization)
+				.await
+				.expect("terminalize from durable evidence"),
+			QuickTaskTerminalizationOutcome::Applied(_)
+		));
+		assert_eq!(
+			store
+				.read_pending_quick_task_terminalization(&conversation_id)
+				.await
+				.expect("read terminalized projection"),
+			None
+		);
+	}
+
+	#[tokio::test]
+	async fn recovered_unknown_turn_uses_one_persisted_same_account_context_fallback() {
+		let directory = tempdir().expect("temporary database directory");
+		let canonical = directory.path().canonicalize().expect("canonical temporary root");
+		let root = DecodexRoot::new(canonical).expect("typed Decodex root");
+		let paths = root.paths();
+		let blob_store = BlobStore::open(paths.clone()).expect("open blob store");
+		let store = SqliteStore::open(&paths).expect("initialize product database");
+		seed_provider_less_starting_task(&store).await;
+		seed_active_user_turn(&store);
+		seed_unknown_provider_attempt(&store);
+		record_exact_process_death(&store);
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+		let recovery = RecoverUnknownQuickTaskTurn {
+			conversation_id: conversation_id.clone(),
+			expected_conversation_revision: 1,
+			runtime_session_id: RuntimeSessionId::new(RUNTIME_SESSION_ID)
+				.expect("RuntimeSession ID"),
+			expected_runtime_session_revision: 7,
+			user_turn_id: TurnId::new(TURN_ID).expect("Turn ID"),
+			expected_user_turn_revision: 1,
+			attempt_id: ProviderAttemptId::new(ATTEMPT_ID).expect("ProviderAttempt ID"),
+			expected_attempt_revision: 1,
+			process_generation_id: ProcessGenerationId::new(GENERATION_ID)
+				.expect("ProcessGeneration ID"),
+			history_item_id: HistoryItemId::new(INTERRUPTION_HISTORY_ID).expect("HistoryItem ID"),
+		};
+		assert!(matches!(
+			store
+				.recover_unknown_quick_task_turn(
+					&CommandIdentity::new("fallback-recover", b"fallback recovery")
+						.expect("recovery command"),
+					&recovery,
+				)
+				.await
+				.expect("recover unknown predecessor"),
+			RecoverUnknownQuickTaskTurnOutcome::Applied(_)
+		));
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO turns (
+						 turn_id, conversation_id, runtime_session_id, sequence, role,
+						 possible_side_effects, status, revision, created_at_micros,
+						 updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 2, 'user', 'unknown', 'active', 1, 3, 3)",
+						params![SUCCESSOR_TURN_ID, CONVERSATION_ID, RUNTIME_SESSION_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO history_items (
+						 history_item_id, conversation_id, turn_id, sequence, kind, role,
+						 status, media_type, inline_text, metadata_json, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (?1, ?2, ?3, 2, 'message', 'user', 'completed',
+						 'text/markdown', 'Continue safely.', '{}', 1, 3, 3)",
+						params![SUCCESSOR_HISTORY_ID, CONVERSATION_ID, SUCCESSOR_TURN_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO routing_decisions (
+						 routing_decision_id, operation_id, idempotency_key, request_sha256,
+						 authority_shape, conversation_id, turn_id, conversation_revision,
+						 source_runtime_session_id, source_runtime_session_revision,
+						 account_snapshot_id, profile_snapshot_id, decision_kind, account_id,
+						 account_revision, routing_revision, quota_classification, causes_json,
+						 exclusions_json, created_at_micros
+						 ) VALUES (
+						 'a1000000-0000-4000-8000-000000000002',
+						 'a2000000-0000-4000-8000-000000000002', 'fallback-route', ?4,
+						 'conversation_continuation', ?1, ?2, 1, ?3, 7,
+						 '41000000-0000-4000-8000-000000000001',
+						 '42000000-0000-4000-8000-000000000001', 'selected', ?5, 1, 1,
+						 'known_available', '[]', '[]', 3)",
+						params![
+							CONVERSATION_ID,
+							SUCCESSOR_TURN_ID,
+							RUNTIME_SESSION_ID,
+							"3".repeat(64),
+							ACCOUNT_ID,
+						],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed successor continuation authority");
+		let fallback_history = store
+			.recent_conversation_history_excluding_turn(
+				&blob_store,
+				&conversation_id,
+				&TurnId::new(SUCCESSOR_TURN_ID).expect("successor Turn ID"),
+				4,
+			)
+			.await
+			.expect("read fallback history before the successor intent");
+		assert!(
+			fallback_history
+				.iter()
+				.any(|entry| entry.history_item_id.as_str() == INTERRUPTION_HISTORY_ID)
+		);
+		assert!(
+			fallback_history
+				.iter()
+				.all(|entry| entry.history_item_id.as_str() != SUCCESSOR_HISTORY_ID)
+		);
+		let context_pack = compile_context_pack(ContextPackInput {
+			conversation_id: conversation_id.clone(),
+			possible_side_effects: PossibleSideEffects::Unknown,
+			policy: ContextPackPolicy::new(4_096, 4).expect("Context Pack policy"),
+			pinned: PinnedContextSource::new(
+				"silent-recovery",
+				1,
+				"The prior provider effect remains unknown. Continue only from this new user intent.",
+			)
+			.expect("pinned Context Pack source"),
+			optional_sources: vec![],
+		})
+		.expect("compile Context Pack");
+		let request = PlanContinuation {
+			operation_id: "a5000000-0000-4000-8000-000000000002".to_owned(),
+			routing_decision_id: "a1000000-0000-4000-8000-000000000002".to_owned(),
+			expected_consumer_revision: 1,
+			plan_id: "a6000000-0000-4000-8000-000000000002".to_owned(),
+			fallback_runtime_session_id: "a7000000-0000-4000-8000-000000000002".to_owned(),
+			fallback_account_snapshot_id: "41000000-0000-4000-8000-000000000001".to_owned(),
+			fallback_context_pack_id: "a8000000-0000-4000-8000-000000000002".to_owned(),
+		};
+		let planned = match store
+			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
+			.await
+			.expect("plan recovered continuation")
+		{
+			ContinuationCommandOutcome::Success(effect) => effect,
+			ContinuationCommandOutcome::Rejected(rejection) => {
+				panic!("recovered continuation was rejected: {rejection:?}")
+			},
+		};
+		assert_eq!(planned.plan.kind, ContinuationPlanKind::ContextPackFallback);
+		assert_eq!(
+			planned.uncertain_predecessor_attempt_id.as_ref().map(ProviderAttemptId::as_str),
+			Some(ATTEMPT_ID)
+		);
+		assert_eq!(
+			planned
+				.runtime_session
+				.as_ref()
+				.map(|session| session.account_snapshot.source_account_id.as_str()),
+			Some(ACCOUNT_ID)
+		);
+		assert_eq!(
+			planned.fallback_context_pack.as_ref().map(|record| record.pack.digest()),
+			Some(context_pack.digest())
+		);
+		let ownership: (String, i64, String, i64, String) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT source.state, source.revision, fallback.state,
+						 fallback.revision, turn.runtime_session_id
+						 FROM runtime_sessions AS source
+						 JOIN runtime_sessions AS fallback ON fallback.runtime_session_id = ?2
+						 JOIN turns AS turn ON turn.turn_id = ?3
+						 WHERE source.runtime_session_id = ?1",
+						params![
+							RUNTIME_SESSION_ID,
+							request.fallback_runtime_session_id,
+							SUCCESSOR_TURN_ID,
+						],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read fallback ownership");
+		assert_eq!(ownership.0, "ended");
+		assert_eq!(ownership.1, 8);
+		assert_eq!(ownership.2, "starting");
+		assert_eq!(ownership.3, 1);
+		assert_eq!(ownership.4, request.fallback_runtime_session_id);
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"UPDATE runtime_sessions SET codex_thread_id = 'fallback-codex-thread',
+						 state = 'active', thread_start_request_id = 2,
+						 thread_start_request_sha256 = ?2, thread_start_response_id = 2,
+						 thread_start_response_sha256 = ?2, revision = 3
+						 WHERE runtime_session_id = ?1 AND state = 'starting' AND revision = 1",
+						params![request.fallback_runtime_session_id, "4".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_execution_epochs (
+						 execution_epoch_id, authorization_sha256, created_at_micros
+						 ) VALUES ('73000000-0000-4000-8000-000000000002', ?1, 4)",
+						params!["5".repeat(64)],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO process_generations (
+						 generation_id, account_id, runtime_session_id, execution_epoch_id,
+						 runner_identity, intended_boot_id, control_kind, isolation_kind,
+						 bound_boot_id, process_id, process_start_id, process_group_id, session_id,
+						 account_revision, credential_schema_version, credential_version,
+						 credential_fingerprint, credential_writer_operation_id, provider,
+						 provider_account_id, refresh_callback_profile_sha256, state, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 '72000000-0000-4000-8000-000000000002', ?1, ?2,
+						 '73000000-0000-4000-8000-000000000002', 'test-runner', 'test-boot',
+						 'stdio_only_best_effort_eof', 'session', 'test-boot', 44,
+						 'fallback-process', 44, 44, 1, 1, 1, ?3,
+						 '11000000-0000-4000-8000-000000000001', 'chatgpt',
+						 'local-fixture-provider', ?3, 'ready', 1, 4, 4)",
+						params![ACCOUNT_ID, request.fallback_runtime_session_id, "6".repeat(64),],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("activate fallback execution authority");
+		let successor_attempt_id = ProviderAttemptId::new("62000000-0000-4000-8000-000000000002")
+			.expect("successor attempt ID");
+		let successor_request_id = ProviderRequestId::new("63000000-0000-4000-8000-000000000002")
+			.expect("successor request ID");
+		let provider_keys = ProviderRequestKeys::new(
+			None,
+			Some(ProviderRequestKey::new("app-server:fallback:1").expect("provider key")),
+		)
+		.expect("provider keys");
+		let preparation = |risk| {
+			ProviderAttemptPreparation::new(
+				successor_attempt_id.clone(),
+				ProviderAttemptConsumer::ConversationTurn {
+					conversation_id: conversation_id.clone(),
+					turn_id: TurnId::new(SUCCESSOR_TURN_ID).expect("successor Turn ID"),
+				},
+				request.plan_id.clone(),
+				successor_request_id.clone(),
+				"7".repeat(64),
+				provider_keys.clone(),
+				risk,
+			)
+			.expect("successor ProviderAttempt preparation")
+		};
+		let fallback_generation_id =
+			ProcessGenerationId::new("72000000-0000-4000-8000-000000000002")
+				.expect("fallback generation ID");
+		let fallback_epoch_id =
+			ProcessExecutionEpochId::new("73000000-0000-4000-8000-000000000002")
+				.expect("fallback execution epoch ID");
+		assert!(matches!(
+			store
+				.prepare_provider_attempt(
+					&preparation(ProviderDuplicateRisk::OriginalIntent),
+					&fallback_generation_id,
+					1,
+					&fallback_epoch_id,
+					None,
+					(Some(1), Some(1)),
+				)
+				.await
+				.expect("reject unacknowledged fallback attempt"),
+			PrepareProviderAttemptOutcome::Rejected { .. }
+		));
+		let predecessor_attempt_id =
+			ProviderAttemptId::new(ATTEMPT_ID).expect("predecessor attempt ID");
+		assert!(matches!(
+			store
+				.prepare_provider_attempt(
+					&preparation(ProviderDuplicateRisk::AcknowledgedSuccessor {
+						predecessor_attempt_id: predecessor_attempt_id.clone(),
+						acknowledgement_digest: "8".repeat(64),
+					}),
+					&fallback_generation_id,
+					1,
+					&fallback_epoch_id,
+					None,
+					(Some(1), Some(1)),
+				)
+				.await
+				.expect("reject forged fallback acknowledgement"),
+			PrepareProviderAttemptOutcome::Rejected { .. }
+		));
+		let acknowledgement_digest = crate::runtime_sessions::digest(&[
+			"silent-recovery-successor",
+			predecessor_attempt_id.as_str(),
+			SUCCESSOR_TURN_ID,
+			&request.plan_id,
+		]);
+		let prepared = store
+			.prepare_provider_attempt(
+				&preparation(ProviderDuplicateRisk::AcknowledgedSuccessor {
+					predecessor_attempt_id: predecessor_attempt_id.clone(),
+					acknowledgement_digest,
+				}),
+				&fallback_generation_id,
+				1,
+				&fallback_epoch_id,
+				None,
+				(Some(1), Some(1)),
+			)
+			.await
+			.expect("prepare acknowledged fallback attempt");
+		assert!(matches!(prepared, PrepareProviderAttemptOutcome::Fresh(_)));
+		let stored_successor = store
+			.read_provider_attempt(&successor_attempt_id)
+			.await
+			.expect("read successor attempt")
+			.expect("successor attempt exists");
+		assert_eq!(stored_successor.state, ProviderAttemptState::Prepared);
+		assert_eq!(
+			stored_successor.duplicate_risk,
+			ProviderDuplicateRisk::AcknowledgedSuccessor {
+				predecessor_attempt_id,
+				acknowledgement_digest: crate::runtime_sessions::digest(&[
+					"silent-recovery-successor",
+					ATTEMPT_ID,
+					SUCCESSOR_TURN_ID,
+					&request.plan_id,
+				]),
+			}
+		);
+
+		drop(store);
+		let reopened = SqliteStore::open(&paths).expect("reopen product database");
+		let replayed = match reopened
+			.plan_continuation(&blob_store, "fallback-plan", &request, &context_pack)
+			.await
+			.expect("replay persisted fallback")
+		{
+			ContinuationCommandOutcome::Success(effect) => effect,
+			ContinuationCommandOutcome::Rejected(rejection) => {
+				panic!("persisted fallback replay was rejected: {rejection:?}")
+			},
+		};
+		assert_eq!(replayed.plan.kind, ContinuationPlanKind::ContextPackFallback);
+		assert_eq!(
+			replayed.fallback_context_pack.expect("replayed Context Pack").pack.digest(),
+			context_pack.digest()
+		);
 	}
 
 	#[tokio::test]

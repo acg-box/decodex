@@ -6,11 +6,11 @@ tags: [local-product, sqlite, evidence, quick-task]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-protocol/src/quick_task.rs, apps/decodex-gpui/src/quick_tasks.rs]
-  symbols: [control_thread, reconcile_archive, QuickTaskExecutionSettings]
-  test_paths: [database/tests/quick_task_restart.rs]
-  invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
-  validation_commands: [cargo make check]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
+  symbols: [control_thread, ExactSubmittedTurnReadback, recover_unknown_quick_task_turn, plan_continuation, QuickTaskExecutionSettings, TranscriptRow]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
+  invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
+  validation_commands: [cargo test -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets, cargo clippy -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets -- -D warnings, python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py]
 ---
 
 # SQLite Local-Product Evidence
@@ -24,7 +24,7 @@ credential fingerprint.
 
 ## Implemented evidence
 
-- `database/` owns one bundled SQLite connection, immutable V1 and V2 migrations, digest ledger,
+- `database/` owns one bundled SQLite connection, four immutable migrations, digest ledger,
   exact schema inventory verification, WAL, full synchronous mode, foreign keys,
   integrity checks, no-follow open, and owner-private file creation.
 - Unit tests cover initialization, reopen, migration tamper refusal, exact credential
@@ -48,6 +48,49 @@ credential fingerprint.
   nextest run, these real cold-start tests reserve all global test threads while retaining their
   20-second startup bound.
 
+## Silent Recovery V1 evidence
+
+Every `turn/start` now serializes the existing Decodex Turn ID as
+`clientUserMessageId`. A focused request test verifies the exact wire field. The bounded
+thread-read projection accepts one matching user-message `clientId`, concatenates only
+that Turn's assistant messages, retains its terminal status and provider Turn ID, and
+computes a SHA-256 witness. Its focused test proves the positive match, a safe absent
+observation, and duplicate-match refusal.
+
+The SQLite recovery test starts with one active user Turn, one `unknown`
+ProviderAttempt, and a non-dead exact ProcessGeneration. Recovery is rejected. After the
+test adds exact process-death evidence, the same command succeeds and replays exactly:
+the user Turn becomes failed, one interrupted activity is appended, the ProviderAttempt
+remains `unknown`, and the Conversation projection no longer exposes an active unknown
+attempt. This is a product-state recovery, not a fabricated provider outcome.
+
+A separate crash-window test records exact positive thread-read evidence while the user
+Turn is still active. The pending-terminalization readback reconstructs the exact
+Conversation, RuntimeSession, Turn, ProviderAttempt, evidence, provider thread, and
+provider Turn coordinates. The normal terminalization command then completes once and
+the pending projection disappears. This proves that a process stop between the evidence
+transaction and the local terminalization transaction does not require another provider
+read or dispatch.
+
+The fallback test then admits a distinct successor user Turn. Planning selects
+`ContextPackFallback`, preserves the exact unknown predecessor identity, ends the source
+RuntimeSession, creates one starting RuntimeSession on the same account, moves the new
+Turn to that session, and stores the compiled Context Pack through migration 0004.
+Reopening SQLite and replaying the plan reconstructs the same Context Pack digest. The
+pre-existing public restart integration still selects `SameThread` after exact terminal
+evidence, so Silent Recovery does not weaken the normal cache-affine path.
+
+The fallback history read excludes the exact successor Turn and its history item. The
+persisted binary Context Pack verifies before `render_model_input` removes its framing
+and returns represented UTF-8 sources. Core tests cover deterministic rendering and
+reject a binary-framing forgery as model text. The current user request therefore enters
+Codex once, after the bounded historical evidence, instead of appearing in both inputs.
+
+GPUI now includes `OutcomeUnknown` in selected and batch readback candidates. The
+recovery action is `Retry sync`, not `Start new`, and the transient presentation says
+that Decodex is checking durable state. The composer remains disabled until that
+readback resolves, so the UI does not turn uncertainty into a duplicate send.
+
 ## Workbench and account-affinity correction
 
 The 2026-08-14 correction restores the accepted transparent GPUI Workbench from its exact
@@ -64,8 +107,8 @@ conversations and do not break the cache affinity of an existing conversation.
 
 The obsolete server-store crate and its compatibility configuration were deleted. A repository
 reverse scan finds no remaining source, configuration, documentation, or dependency reference to
-that removed implementation. The current local-database gate passed with schema version 3, WAL,
-all three migration digests, and the exact 28-table inventory. `cargo test --workspace --all-targets`
+that removed implementation. The accepted pre-Silent-Recovery gate passed with schema version 3,
+WAL, all three migration digests, and the exact 28-table inventory. `cargo test --workspace --all-targets`
 also passed on stable Rust with the Xcode beta Metal toolchain.
 
 ## Signed live acceptance
@@ -112,6 +155,24 @@ Accounts, and Health. The Accounts destination shows bounded account lifecycle, 
 and routing controls. It does not read SQLite or expose credentials. The title bar is 42
 pixels high. Deterministic native captures cover the live Accounts destination and the
 transparent Workbench with the thinner title bar.
+
+The 2026-08-15 transcript correction requests and displays daemon-owned local history
+before it queues selected-thread provider reconciliation on that retained connection.
+It projects each queued prompt immediately and removes the projection only after the
+matching durable user history item is visible. The transcript groups adjacent assistant
+fragments by Turn, keeps tool and system activity as separate low-weight rows, and omits
+redundant actor labels in the single-Codex view. Focused tests cover all three state
+transitions. Strict Clippy passed with warnings denied, the architecture suite passed 10
+tests, and a new deterministic native Workbench capture completed with the Xcode beta
+Metal toolchain.
+
+A real send smoke showed the queued prompt in the first 100 ms capture and rendered the
+terminal assistant text as one response. It also exposed an existing multi-page reload
+defect: a fresh head with an already retained valid successor was treated as a cursor
+cycle. The repair validates the fresh page before it atomically replaces the retained
+window, then rebuilds the successor from the fresh cursor. Its focused regression and
+the pre-existing malformed-cycle tests pass together. After this correction, the
+complete GPUI package passed 120 tests with two live tests ignored.
 
 The client does not activate the deferred WorkItem and Project query surface. Protocol
 V2.1 is strict, and an older daemon can close a retained session when it receives an
@@ -166,12 +227,14 @@ readable by exact ID. Decodex sync changed the active list from four rows to thr
 reported one archive and zero skipped rows, and atomically ended the matching local
 RuntimeSession.
 
-Read-only SQLite inspection after the sync found three active Conversations. Two had
+Read-only SQLite inspection during the earlier lifecycle-refresh milestone found three active Conversations. Two had
 acknowledged successful Turns. The third retained the sole ProviderAttempt with state
 `unknown` and reason `dispatch_outcome_unavailable`. Decodex did not terminalize or
 delete that record because lossy provider history cannot correlate the missing dispatch
-outcome. GPUI presents `Start new` for this state and does not enable resend into the
-uncertain thread.
+outcome. That observation is the migration fixture for Silent Recovery V1: older Turns
+without `clientUserMessageId` cannot produce a positive match, so after exact process
+death they converge to the durable interrupted presentation while retaining the unknown
+attempt.
 
 Focused database tests prove two guarded local repairs. A stranded active user Turn can
 be failed only with exact inactive-owner coordinates and no unresolved ProviderAttempt,
@@ -189,16 +252,20 @@ so typed text cannot become a recovery command.
 
 The generated schema from the installed Codex app-server confirms `thread/read`,
 `thread/archive`, `model/list`, and request-scoped `model`, `effort`, and `serviceTier`
-fields. Fast maps to `serviceTier = "priority"`; Fast off sends an explicit null. The
+fields. It also exposes optional `TurnStartParams.clientUserMessageId` and user-message
+`clientId` readback. Fast maps to `serviceTier = "priority"`; Fast off sends an explicit null. The
 GPUI carries its selected model, reasoning effort, and Fast value on each new or later
-Turn without changing global Codex configuration. External visible turns remain outside
-this lifecycle-refresh milestone because `thread/read(includeTurns=true)` is explicitly
-lossy and cannot prove complete history or tool effects.
+Turn without changing global Codex configuration. Arbitrary external visible turns
+remain outside this lifecycle-refresh milestone because
+`thread/read(includeTurns=true)` is explicitly lossy and cannot prove complete history
+or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
+terminal state and assistant suffix.
 
-Protocol V2.1 carries the new controls and archive event. SQLite schema version 3 adds
-the original Quick Task execution settings. The local database gate passed with all
-three migration digests, WAL, the exact 28-table inventory, and the `model`,
-`reasoning_effort`, and `fast` request columns.
+Protocol V2.1 carries the controls and archive event. SQLite schema version 3 adds the
+original Quick Task execution settings. Schema version 4 adds the migration-owned
+`context_packs` table, for four migration digests and an exact 29-table inventory. The
+schema-4 local database gate passed with WAL, `quick_check`, foreign-key verification,
+all four exact migration digests, and the 29-table inventory.
 
 Focused implementation evidence is split across `crates/decodex-runtime/src/quick_task.rs`
 (exact control sequencing and process retirement),
@@ -209,9 +276,11 @@ presentation). The narrow checks are the Quick Task, process reconciliation, pro
 and database restart suites; use the workspace gate only when a change crosses package
 or generated-schema boundaries.
 
-Final milestone validation passed `cargo test --workspace --all-targets --all-features`,
-strict workspace Clippy, the schema-3 local database gate, and the vNext architecture
-tests. The installed Codex executable also passed the ignored live read-only probe,
+The Silent Recovery affected-package gate passed 560 tests with five intentional live
+or CLI skips. Strict Clippy passed with warnings denied for `decodex-core`,
+`decodex-codex`, `decodex-database`, `decodex-runtime`, and `decodex-gpui`. The vNext
+architecture suite passed 10 tests. The installed Codex executable also passed the
+ignored live read-only probe,
 which negotiates schema/version and read-only RPCs without dispatching a Turn. The
 deterministic native Workbench capture includes the refresh, Archive, model, Fast, and
 reasoning controls without changing the existing shell layout.
@@ -261,9 +330,9 @@ the SQLite local-database gate, and a stable-toolchain workspace check. Every ap
 gate passed. The staged application also passed strict deep code-signature verification before
 the live FFI readback.
 
-## Final repository gates
+## Earlier repository gates
 
-One complete `cargo make check` run finished successfully on the final source. It included:
+One complete `cargo make check` run finished successfully on the pre-Silent-Recovery source. It included:
 
 - exact npm 11.17.0 installation, lock provenance and signature checks, zero high-level npm
   vulnerabilities, site build, and Astro diagnostics with zero errors, warnings, or hints;

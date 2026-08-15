@@ -50,11 +50,13 @@ pub use self::{
 	},
 	protocol::{
 		ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, DecodexThreadSearchTerm,
-		ExactThreadFacts, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,
-		ExactThreadReadResult, LossyThreadHistory, MAX_EXACT_THREAD_ID_BYTES,
-		MAX_EXACT_THREAD_LIST_RESULTS, MAX_THREAD_CWD_BYTES, MAX_THREAD_PROVENANCE_BYTES,
-		MAX_THREAD_SEARCH_TERM_BYTES, MAX_THREAD_TITLE_BYTES, ThreadArchivedFilter,
-		ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance, ThreadSummary, ThreadTitle,
+		ExactSubmittedTurnReadback, ExactThreadFacts, ExactThreadId, ExactThreadListFilter,
+		ExactThreadListResult, ExactThreadReadResult, LossyThreadHistory,
+		MAX_EXACT_THREAD_ID_BYTES, MAX_EXACT_THREAD_LIST_RESULTS, MAX_EXACT_THREAD_READ_ITEMS,
+		MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES, MAX_THREAD_CWD_BYTES,
+		MAX_THREAD_PROVENANCE_BYTES, MAX_THREAD_SEARCH_TERM_BYTES, MAX_THREAD_TITLE_BYTES,
+		ThreadArchivedFilter, ThreadCreatedAt, ThreadCwd, ThreadId, ThreadProvenance,
+		ThreadSummary, ThreadTitle,
 	},
 	quick_task::{
 		ExactTurnId, MAX_EXACT_TURN_ID_BYTES, MAX_QUICK_TASK_INPUT_BYTES,
