@@ -38,6 +38,11 @@ MIGRATIONS = (
         "adaptive_factory_spine",
         ROOT / "database/migrations/0005_adaptive_factory_spine.sql",
     ),
+    (
+        6,
+        "repeatable_program_loop",
+        ROOT / "database/migrations/0006_repeatable_program_loop.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -183,6 +188,10 @@ def inspect_database(path: Path) -> dict[str, object]:
             row[1]: (row[2], row[3], row[4])
             for row in connection.execute("PRAGMA table_info(quick_task_requests)")
         }
+        program_signal_columns = {
+            row[1]: (row[2], row[3], row[4])
+            for row in connection.execute("PRAGMA table_info(program_signals)")
+        }
         tables = frozenset(
             row[0]
             for row in connection.execute(
@@ -207,6 +216,8 @@ def inspect_database(path: Path) -> dict[str, object]:
     for column in ("model", "reasoning_effort", "fast"):
         if column not in quick_task_request_columns:
             raise GateFailure("Quick Task execution settings are missing")
+    if "predecessor_review_id" not in program_signal_columns:
+        raise GateFailure("Program continuation lineage is missing")
     if tables != REQUIRED_TABLES:
         raise GateFailure("SQLite table inventory differs")
     return {
@@ -220,6 +231,7 @@ def inspect_database(path: Path) -> dict[str, object]:
             for column in ("model", "reasoning_effort", "fast")
             if column in quick_task_request_columns
         ),
+        "program_continuation_lineage": "predecessor_review_id",
     }
 
 

@@ -846,7 +846,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.2 client for bounded canonical WorkItem board pages.
+/// Read-only V2.3 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -928,7 +928,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.2 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.3 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1162,7 +1162,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V2.2 lifecycle command exactly once on one connection.
+	/// Execute one V2.3 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1798,12 +1798,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_2_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 2 });
+	fn protocol_constants_expose_only_the_exact_v2_3_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 3 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 2, maximum_minor: 2 },
+			SupportedVersions { major: 2, minimum_minor: 3, maximum_minor: 3 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}

@@ -1,16 +1,16 @@
 # Adaptive Program And Extension Architecture
 
-Status: accepted product direction; Adaptive Factory Spine V1 is implemented.
+Status: accepted product direction; Repeatable Program Loop V1 is implemented.
 
 Date: 2026-08-15.
 
 This decision guides factory work above the local Quick Task foundation. The bounded
-Adaptive Factory Spine V1 is current product capability. Dynamic multi-agent work,
+Repeatable Program Loop V1 is current product capability. Dynamic multi-agent work,
 automation, consequential external actions, and an extension runtime remain target
 direction only. Current implemented behavior is defined by the
 [OpenWiki quickstart](../quickstart.md), the
 [local product V1 contract](../specs/local-product-v1.md), and the
-[Adaptive Factory Spine V1 evidence](../evidence/adaptive-factory-spine-v1.md).
+[Repeatable Program Loop V1 evidence](../evidence/repeatable-program-loop-v1.md).
 
 ## Decision
 
@@ -43,6 +43,12 @@ Proposal, finite Objective, WorkItem, two Evidence records, and classified Revie
 binds the WorkItem to an ordinary Quick Task and derives a synchronized GPUI causal
 graph and timeline. The general WorkItem board, ManagedRun, automation, dynamic agents,
 general ontology tooling, and extensions remain deferred.
+
+Repeatable Program Loop V1 keeps the Program identity and prior cycle records. After an
+exact terminal Review, an operator can append one finite next Signal, Claim, Proposal,
+Objective, and WorkItem. The next WorkItem uses the same Quick Task and provider-safety
+path. Three real cycles now prove this sequential feedback loop. They do not prove an
+extension contract, automatic stewardship, or a benefit from multiple agents.
 
 Implementation must extend this current base. It must not copy the unlanded historical
 PostgreSQL factory branch or reactivate the frozen `apps/decodex` runtime.
@@ -330,7 +336,7 @@ accepted policy and provider-specific safeguards.
 
 ## Delivery sequence
 
-### Milestone 1: Adaptive Factory Spine V1 — implemented
+### Milestone 1: Adaptive Factory Spine and Repeatable Program Loop V1 — implemented
 
 Prove one real closed Program cycle through the existing Codex Quick Task path:
 
@@ -353,6 +359,13 @@ ordinary Quick Task command, one aggregate Review command, and two Program queri
 does not expose a mutation API for each ontology noun. This keeps the first semantic
 spine small and makes partial chain construction impossible.
 
+The repeatable increment adds one `ContinueProgram` aggregate command. It requires the
+exact terminal predecessor Review and expected Program revision. It appends one complete
+pre-execution cycle, permits at most one unreviewed cycle, and keeps the same Program.
+Two additional real provider-backed cycles completed after the original cycle. The
+total ProviderAttempt count increased by exactly two, and a daemon restart did not add
+an entity, Conversation, or attempt.
+
 ### Milestone 2: Extension Contract V1
 
 Extract only the vocabulary proven by two built-in fixtures:
@@ -363,6 +376,10 @@ Extract only the vocabulary proven by two built-in fixtures:
 Add namespaced schema registration, immutable pack versions and digests, declared
 permissions, host-rendered ViewSpecs, and capability inspection. Keep packs built in
 until the contract survives both fixtures.
+
+This is the next candidate milestone. It must remain bounded to two built-in fixtures.
+It must not add a public SDK, registry, scheduler, arbitrary executable plugin host, or
+dynamic multi-agent runtime.
 
 ### Milestone 3: MCP Action Gateway
 
@@ -489,8 +506,12 @@ Reduce or change this direction when repeated real cycles show any of the follow
   time; or
 - GPUI delivery cost prevents the first real closed loop from reaching dogfood.
 
-Review this decision after three complete Decodex dogfood Program cycles and after the
-second built-in Domain Pack. Do not design a public SDK before that review.
+The first review trigger is complete: three Decodex dogfood Program cycles retained one
+Program, used one provider attempt per added cycle, and produced evidence-backed
+Reviews. This supports the sequential Program model. It does not yet validate automatic
+cycle creation, multi-agent execution, or reusable domain extension semantics. Review
+again after the second built-in Domain Pack. Do not design a public SDK before that
+review.
 
 ## Curation note
 

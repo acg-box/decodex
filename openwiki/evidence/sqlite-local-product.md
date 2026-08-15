@@ -24,7 +24,7 @@ credential fingerprint.
 
 ## Implemented evidence
 
-- `database/` owns one bundled SQLite connection, five immutable migrations, digest ledger,
+- `database/` owns one bundled SQLite connection, six immutable migrations, digest ledger,
   exact schema inventory verification, WAL, full synchronous mode, foreign keys,
   integrity checks, no-follow open, and owner-private file creation.
 - Unit tests cover initialization, reopen, migration tamper refusal, exact credential
@@ -175,8 +175,8 @@ the pre-existing malformed-cycle tests pass together. After this correction, the
 complete GPUI package passed 120 tests with two live tests ignored.
 
 The client does not activate the deferred general WorkItem and Project query surface.
-Protocol V2.2 is exact-current. The Adaptive Program controller uses only its bounded
-V2.2 Program commands and queries. The unrelated WorkItem board controller stays
+Protocol V2.3 is exact-current. The Adaptive Program controller uses only its bounded
+V2.3 Program commands and queries. The unrelated WorkItem board controller stays
 dormant. This keeps deferred Factory surfaces from affecting Conversation history or
 the Workbench connection.
 
@@ -260,13 +260,14 @@ remain outside this lifecycle-refresh milestone because
 or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
 terminal state and assistant suffix.
 
-Protocol V2.2 carries the controls, archive event, and bounded Program aggregate. SQLite
+Protocol V2.3 carries the controls, archive event, and bounded Program aggregate. SQLite
 schema version 3 adds the original Quick Task execution settings. Schema version 4 adds
 the migration-owned `context_packs` table. Schema version 5 adds the Program, Signal,
 Claim, Proposal, Objective, WorkItem binding, Evidence, Review, and semantic identity
-tables, for five migration digests and an exact 39-table inventory. The schema-5 local
-database gate passed with WAL, `quick_check`, foreign-key verification, all five exact
-migration digests, and the 39-table inventory.
+tables. Schema version 6 adds exact predecessor Review lineage for continued Signals,
+root and successor uniqueness, and same-Program lineage guards. It retains the exact
+39-table inventory. The schema-6 local database gate passed with WAL, `quick_check`,
+foreign-key verification, all six exact migration digests, and the 39-table inventory.
 
 Focused implementation evidence is split across `crates/decodex-runtime/src/quick_task.rs`
 (exact control sequencing and process retirement),

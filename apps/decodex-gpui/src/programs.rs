@@ -14,10 +14,10 @@ use tokio::sync::Notify;
 use decodex_protocol::{
 	CURRENT_VERSION, CausationId, ClientCommandId, CommandEnvelope, CommandOutcome, CommandPayload,
 	CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId, EventEnvelope, EventPayload,
-	IdempotencyKey, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult, ProgramListResult,
-	ProgramNodeKind, ProgramReviewDraftDto, ProgramSummaryDto, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultEnvelope, QueryResultPayload, ReceiptDisposition, ResultPayload,
-	ServerId,
+	EntityRevision, IdempotencyKey, ProgramContinuationDraftDto, ProgramCycleDraftDto,
+	ProgramCycleDto, ProgramCycleResult, ProgramListResult, ProgramNodeKind, ProgramReviewDraftDto,
+	ProgramSummaryDto, QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope,
+	QueryResultPayload, ReceiptDisposition, ResultPayload, ServerId,
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -161,6 +161,15 @@ impl Programs {
 		let deterministic_id = id("81000000-0000-4000-8000-000000000007");
 		let external_id = id("81000000-0000-4000-8000-000000000008");
 		let review_id = id("81000000-0000-4000-8000-000000000009");
+		let signal_2_id = id("81000000-0000-4000-8000-000000000010");
+		let claim_2_id = id("81000000-0000-4000-8000-000000000011");
+		let proposal_2_id = id("81000000-0000-4000-8000-000000000012");
+		let objective_2_id = id("81000000-0000-4000-8000-000000000013");
+		let work_item_2_id = id("81000000-0000-4000-8000-000000000014");
+		let conversation_2_id = id("10000000-0000-4000-8000-000000000002");
+		let deterministic_2_id = id("81000000-0000-4000-8000-000000000015");
+		let external_2_id = id("81000000-0000-4000-8000-000000000016");
+		let review_2_id = id("81000000-0000-4000-8000-000000000017");
 		let nodes = vec![
 			node(
 				signal_id.clone(),
@@ -264,6 +273,108 @@ impl Programs {
 				Vec::new(),
 				8,
 			),
+			node(
+				signal_2_id.clone(),
+				ProgramNodeKind::Signal,
+				"Signal",
+				"The first loop was safe, but the Program could not continue in place.",
+				"observed",
+				Some("First Program Review"),
+				None,
+				Vec::new(),
+				9,
+			),
+			node(
+				claim_2_id.clone(),
+				ProgramNodeKind::Claim,
+				"Claim",
+				"Review-linked continuation can preserve one durable Program identity.",
+				"current",
+				None,
+				None,
+				Vec::new(),
+				10,
+			),
+			node(
+				proposal_2_id.clone(),
+				ProgramNodeKind::Proposal,
+				"Proposal",
+				"Append one exact next cycle after the terminal Review.",
+				"non_executable",
+				None,
+				None,
+				vec![
+					field("Expected effect", "Repeatable causal progress in one Program"),
+					field("Risk", "Branching or duplicate continuation"),
+				],
+				11,
+			),
+			node(
+				objective_2_id.clone(),
+				ProgramNodeKind::Objective,
+				"Objective",
+				"Continue, execute, review, and reopen a second cycle.",
+				"achieved",
+				None,
+				None,
+				vec![field("Validation", "Exact predecessor, revision, and restart readback")],
+				12,
+			),
+			node(
+				work_item_2_id.clone(),
+				ProgramNodeKind::WorkItem,
+				"Prove Repeatable Program Loop V1",
+				"Exercise one additional cycle through the ordinary Quick Task path.",
+				"done",
+				None,
+				Some(conversation_2_id.clone()),
+				vec![field("Working directory", "/Users/x/code/acg-box/decodex")],
+				13,
+			),
+			node(
+				conversation_2_id.clone(),
+				ProgramNodeKind::Run,
+				"Codex Quick Task",
+				"The second cycle reused the existing app-server worker path.",
+				"ready",
+				None,
+				Some(conversation_2_id.clone()),
+				Vec::new(),
+				14,
+			),
+			node(
+				deterministic_2_id.clone(),
+				ProgramNodeKind::Evidence,
+				"Deterministic validation",
+				"Continuation, projection, and restart checks passed.",
+				"deterministic_validation",
+				Some("Repository gates"),
+				None,
+				Vec::new(),
+				15,
+			),
+			node(
+				external_2_id.clone(),
+				ProgramNodeKind::Evidence,
+				"External evidence",
+				"The exact second Codex conversation remained linked after restart.",
+				"external",
+				Some("Local GPUI dogfood"),
+				None,
+				Vec::new(),
+				16,
+			),
+			node(
+				review_2_id.clone(),
+				ProgramNodeKind::Review,
+				"Program Review",
+				"The Program now preserves repeatable causal progress.",
+				"capability_progress",
+				None,
+				None,
+				Vec::new(),
+				17,
+			),
 		];
 		let edge = |from: EntityId, to: EntityId, kind| ProgramEdgeDto { from, to, kind };
 		let edges = vec![
@@ -277,15 +388,30 @@ impl Programs {
 			edge(work_item_id, external_id.clone(), ProgramRelationKind::Produces),
 			edge(deterministic_id, review_id.clone(), ProgramRelationKind::Supports),
 			edge(external_id, review_id.clone(), ProgramRelationKind::Supports),
-			edge(review_id, program_id.clone(), ProgramRelationKind::Validates),
+			edge(review_id.clone(), program_id.clone(), ProgramRelationKind::Validates),
+			edge(review_id, signal_2_id.clone(), ProgramRelationKind::Continues),
+			edge(signal_2_id, claim_2_id.clone(), ProgramRelationKind::Supports),
+			edge(claim_2_id, proposal_2_id.clone(), ProgramRelationKind::Justifies),
+			edge(proposal_2_id, objective_2_id.clone(), ProgramRelationKind::Proposes),
+			edge(objective_2_id, work_item_2_id.clone(), ProgramRelationKind::DecomposesTo),
+			edge(work_item_2_id.clone(), conversation_2_id, ProgramRelationKind::Executes),
+			edge(
+				work_item_2_id.clone(),
+				deterministic_2_id.clone(),
+				ProgramRelationKind::Produces,
+			),
+			edge(work_item_2_id, external_2_id.clone(), ProgramRelationKind::Produces),
+			edge(deterministic_2_id, review_2_id.clone(), ProgramRelationKind::Supports),
+			edge(external_2_id, review_2_id.clone(), ProgramRelationKind::Supports),
+			edge(review_2_id, program_id.clone(), ProgramRelationKind::Validates),
 		];
 		let program = ProgramSummaryDto {
 			program_id: program_id.clone(),
 			name: text("Adaptive Factory Spine"),
 			purpose: text("Make several Codex tasks one explainable feedback system."),
 			state: ProgramState::Active,
-			revision: EntityRevision(2),
-			updated_at_micros: 1_786_000_000_000_008,
+			revision: EntityRevision(4),
+			updated_at_micros: 1_786_000_000_000_017,
 		};
 		let cycle = ProgramCycleDto::new(
 			program.clone(),
@@ -385,6 +511,19 @@ impl Programs {
 		self.queue_command(
 			CommandPayload::CreateProgramCycle { draft: Box::new(draft) },
 			Some(program_id),
+			None,
+		)
+	}
+
+	pub(crate) fn continue_program(
+		&self,
+		continuation: ProgramContinuationDraftDto,
+		expected_revision: EntityRevision,
+	) -> Result<(), ProgramInputError> {
+		self.queue_command(
+			CommandPayload::ContinueProgram { continuation: Box::new(continuation) },
+			None,
+			Some(expected_revision),
 		)
 	}
 
@@ -392,13 +531,18 @@ impl Programs {
 		&self,
 		review: ProgramReviewDraftDto,
 	) -> Result<(), ProgramInputError> {
-		self.queue_command(CommandPayload::RecordProgramReview { review: Box::new(review) }, None)
+		self.queue_command(
+			CommandPayload::RecordProgramReview { review: Box::new(review) },
+			None,
+			None,
+		)
 	}
 
 	fn queue_command(
 		&self,
 		payload: CommandPayload,
 		selected: Option<EntityId>,
+		expected_revision: Option<EntityRevision>,
 	) -> Result<(), ProgramInputError> {
 		let mut state = self.lock();
 		if state.session.is_none() {
@@ -419,7 +563,7 @@ impl Programs {
 			version: CURRENT_VERSION,
 			client_command_id: identity.client_command_id,
 			idempotency_key: identity.idempotency_key,
-			expected_revision: None,
+			expected_revision,
 			correlation_id: identity.correlation_id,
 			causation_id: None::<CausationId>,
 			payload,
@@ -930,6 +1074,11 @@ fn command_matches_cycle(command: &CommandEnvelope, cycle: &ProgramCycleDto) -> 
 	match &command.payload {
 		CommandPayload::CreateProgramCycle { draft } =>
 			cycle.program.program_id == draft.program_id,
+		CommandPayload::ContinueProgram { continuation } =>
+			cycle.program.program_id == continuation.program_id
+				&& cycle.nodes.iter().any(|node| {
+					node.kind == ProgramNodeKind::Signal && node.id == continuation.signal_id
+				}),
 		CommandPayload::RecordProgramReview { review } =>
 			cycle.program.program_id == review.program_id
 				&& cycle
@@ -1000,7 +1149,8 @@ fn canonical_uuid_v4() -> Result<String, ProgramInputError> {
 #[cfg(test)]
 mod tests {
 	use decodex_protocol::{
-		Channel, Cursor, EntityRevision, ProgramState, QuickTaskState, QuickTaskSummary, WireText,
+		Channel, Cursor, EntityRevision, ProgramState, QuickTaskState, QuickTaskSummary,
+		QuickTaskWorkingDirectory, WireText,
 	};
 
 	use super::*;
@@ -1011,6 +1161,34 @@ mod tests {
 		assert_eq!(id.as_str().len(), 36);
 		assert_eq!(&id.as_str()[14..15], "4");
 		assert!(matches!(&id.as_str()[19..20], "8" | "9" | "a" | "b"));
+	}
+
+	#[cfg(feature = "visual-capture")]
+	#[test]
+	fn visual_program_preserves_two_review_linked_cycles() {
+		let snapshot = Programs::visual_closed_cycle().snapshot();
+		let cycle = snapshot.cycle.expect("visual Program cycle");
+
+		assert_eq!(
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count(),
+			2
+		);
+		assert_eq!(
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Review).count(),
+			2
+		);
+		assert!(cycle.edges.iter().any(|edge| {
+			edge.kind == decodex_protocol::ProgramRelationKind::Continues
+				&& cycle
+					.nodes
+					.iter()
+					.any(|node| node.id == edge.from && node.kind == ProgramNodeKind::Review)
+				&& cycle
+					.nodes
+					.iter()
+					.any(|node| node.id == edge.to && node.kind == ProgramNodeKind::Signal)
+		}));
+		assert_eq!(cycle.program.revision, EntityRevision(4));
 	}
 
 	#[test]
@@ -1033,6 +1211,54 @@ mod tests {
 
 		state.upsert_summary(summary(older, 3));
 		assert_eq!(state.programs[0].program_id.as_str(), older);
+	}
+
+	#[test]
+	fn continuation_dispatch_carries_the_exact_program_revision() {
+		let programs = Programs::production();
+		let server_id = ServerId::new("program-continuation-test").expect("server identity");
+		programs.bind_session(7, server_id.clone());
+		let id = |value: &str| EntityId::new(value).expect("canonical Program identity");
+		let text = |value: &str| WireText::new(value).expect("bounded Program text");
+		let continuation = ProgramContinuationDraftDto {
+			program_id: id("81000000-0000-4000-8000-000000000001"),
+			predecessor_review_id: id("81000000-0000-4000-8000-000000000002"),
+			signal_id: id("81000000-0000-4000-8000-000000000003"),
+			claim_id: id("81000000-0000-4000-8000-000000000004"),
+			proposal_id: id("81000000-0000-4000-8000-000000000005"),
+			objective_id: id("81000000-0000-4000-8000-000000000006"),
+			work_item_id: id("81000000-0000-4000-8000-000000000007"),
+			signal_source: text("Operator review"),
+			signal_summary: text("The first cycle exposed the next finite gap."),
+			signal_observed_at_micros: 1,
+			claim_statement: text("One next cycle can close that gap."),
+			proposal_summary: text("Append one bounded continuation."),
+			proposal_expected_effect: text("The Program advances without losing history."),
+			proposal_risk: text("The next WorkItem might not settle."),
+			proposal_evidence_need: text("A settled run and two evidence classes."),
+			objective_outcome: text("The second cycle is complete."),
+			acceptance_criteria: vec![text("The second cycle is visible.")],
+			validation_criteria: vec![text("Restart readback has no duplicate.")],
+			work_item_title: text("Exercise the second Program cycle"),
+			work_item_instructions: text("Complete one finite local verification task."),
+			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex")
+				.expect("working directory"),
+		};
+
+		programs
+			.continue_program(continuation.clone(), EntityRevision(2))
+			.expect("continuation is queued");
+		let dispatch = programs
+			.try_take_dispatch(7, &server_id)
+			.expect("continuation dispatch is ready");
+		let command = dispatch.command().expect("continuation is a command");
+
+		assert_eq!(command.expected_revision, Some(EntityRevision(2)));
+		assert!(matches!(
+			&command.payload,
+			CommandPayload::ContinueProgram { continuation: queued }
+				if queued.as_ref() == &continuation
+		));
 	}
 
 	#[test]
