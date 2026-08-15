@@ -846,7 +846,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.0 client for bounded canonical WorkItem board pages.
+/// Read-only V2.1 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -928,7 +928,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.0 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.1 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1162,7 +1162,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V2.0 lifecycle command exactly once on one connection.
+	/// Execute one V2.1 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1798,12 +1798,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_0_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 0 });
+	fn protocol_constants_expose_only_the_exact_v2_1_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 1 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 0 },
+			SupportedVersions { major: 2, minimum_minor: 1, maximum_minor: 1 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}
@@ -2202,7 +2202,7 @@ max_entry_bytes = 0
 			),
 			(
 				Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
-					requested: ProtocolVersion { major: 2, minor: 1 },
+					requested: ProtocolVersion { major: 2, minor: 0 },
 					supported: SupportedVersions::current(),
 				}),
 				ClientFailure::ProtocolMinorMismatch,
@@ -2234,7 +2234,7 @@ max_entry_bytes = 0
 		let wrong_version = refusal(
 			"wrong-server",
 			Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor {
-				requested: ProtocolVersion { major: 2, minor: 1 },
+				requested: ProtocolVersion { major: 2, minor: 0 },
 				supported: SupportedVersions::current(),
 			}),
 		);
@@ -2293,7 +2293,7 @@ max_entry_bytes = 0
 		task.await.expect("test operation must succeed");
 
 		let wrong_welcome_version = typed(ServerMessage::Welcome(ServerWelcome {
-			version: ProtocolVersion { major: 2, minor: 1 },
+			version: ProtocolVersion { major: 2, minor: 0 },
 			supported: SupportedVersions::current(),
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			instance_id: None,
@@ -2379,7 +2379,7 @@ max_entry_bytes = 0
 		let encoded = serde_json::to_value(&wrong_report).expect("test operation must succeed");
 		let mut encoded = encoded.as_object().expect("test operation must succeed").clone();
 
-		encoded.insert("version".into(), serde_json::json!({"major": 2, "minor": 1}));
+		encoded.insert("version".into(), serde_json::json!({"major": 2, "minor": 0}));
 
 		wrong_report = serde_json::from_value(encoded.into()).expect("test operation must succeed");
 
@@ -2398,7 +2398,7 @@ max_entry_bytes = 0
 		let mut wrong_snapshot_version = initial(SERVER_ID);
 
 		wrong_snapshot_version[1] = typed(ServerMessage::Snapshot(SnapshotEnvelope {
-			version: ProtocolVersion { major: 2, minor: 1 },
+			version: ProtocolVersion { major: 2, minor: 0 },
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			cursor: Cursor(0),
 			items: Vec::new(),
@@ -2414,7 +2414,7 @@ max_entry_bytes = 0
 		task.await.expect("test operation must succeed");
 
 		let wrong_result_version = typed(ServerMessage::QueryResult(QueryResultEnvelope {
-			version: ProtocolVersion { major: 2, minor: 1 },
+			version: ProtocolVersion { major: 2, minor: 0 },
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			query_id: QueryId::new("decodex-cli-doctor").expect("test operation must succeed"),
 			payload: QueryResultPayload::DoctorStatus(report()),
@@ -2461,7 +2461,7 @@ max_entry_bytes = 0
 	async fn interleaved_events_verify_version_and_identity_and_preserve_valid_order() {
 		for (event, expected) in [
 			(
-				event(ProtocolVersion { major: 2, minor: 1 }, SERVER_ID),
+				event(ProtocolVersion { major: 2, minor: 0 }, SERVER_ID),
 				ClientFailure::ProtocolMinorMismatch,
 			),
 			(event(CURRENT_VERSION, "wrong-server"), ClientFailure::ServerIdentityMismatch),

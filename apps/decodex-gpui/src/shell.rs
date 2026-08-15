@@ -463,6 +463,12 @@ impl Shell {
 			selected: Some(conversation_id.clone()),
 			live_deltas: Vec::new(),
 			can_submit: true,
+			execution: decodex_protocol::QuickTaskExecutionSettings::new(
+				decodex_protocol::QuickTaskModel::new("gpt-5.6-sol")
+					.expect("visual model identifier is valid"),
+				decodex_protocol::QuickTaskReasoningEffort::High,
+				false,
+			),
 		};
 
 		let project_id = WorkItemBoardProjectId::new("40000000-0000-4000-8000-000000000001")
@@ -1049,6 +1055,9 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) {
 		if self.quick_tasks.select(conversation_id.clone()) {
+			// Re-observe the selected app-server thread. SQLite is a local projection and
+			// another app-server client can change the provider state at any time.
+			let _ = self.quick_tasks.refresh();
 			self.creating_new = false;
 			self.opened_history = None;
 			self.synchronize_quick_tasks();
@@ -1086,6 +1095,46 @@ impl Shell {
 		if let Err(error) = self.quick_tasks.interrupt() {
 			self.input_status = Some(input_error_label(error).into());
 		}
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn refresh_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		self.input_status = self
+			.quick_tasks
+			.refresh()
+			.err()
+			.map(input_error_label)
+			.map(Into::into);
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn archive_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
+		self.input_status = self
+			.quick_tasks
+			.archive_selected()
+			.err()
+			.map(input_error_label)
+			.map(Into::into);
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn cycle_quick_task_model(&mut self, cx: &mut Context<Self>) {
+		self.quick_tasks.cycle_model();
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn cycle_quick_task_effort(&mut self, cx: &mut Context<Self>) {
+		self.quick_tasks.cycle_reasoning_effort();
+		self.synchronize_quick_tasks();
+		cx.notify();
+	}
+
+	fn toggle_quick_task_fast(&mut self, cx: &mut Context<Self>) {
+		self.quick_tasks.toggle_fast();
 		self.synchronize_quick_tasks();
 		cx.notify();
 	}
@@ -2559,7 +2608,7 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 	match load {
 		QuickTasksLoadState::NeverRequested => "Quick Tasks have not loaded.",
 		QuickTasksLoadState::Loading => "Loading Quick Tasks",
-		QuickTasksLoadState::Ready => "Codex state is current.",
+		QuickTasksLoadState::Ready => "Local task list loaded. Open or refresh a task for latest Codex state.",
 		QuickTasksLoadState::Offline => "Offline. Retained conversation state remains visible.",
 		QuickTasksLoadState::Unavailable => "Quick Task state is temporarily unavailable.",
 		QuickTasksLoadState::Refused => "Quick Task readback was refused.",
@@ -2575,6 +2624,8 @@ fn bound_work_item<'a>(
 
 fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let selected = shell.quick.selected.clone();
+	let can_control = shell.quick.can_submit
+		&& shell.quick.selected_task().is_some_and(|task| task.state == QuickTaskState::Ready);
 	let rows = shell.quick.tasks.iter().enumerate().map(|(index, task)| {
 		let conversation_id = task.conversation_id.clone();
 		let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
@@ -2674,26 +2725,80 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 				)
 				.child(
 					div()
-						.id("new-quick-task")
-						.role(Role::Button)
-						.aria_label("New conversation")
-						.h(px(27.0))
-						.px_2()
 						.flex()
 						.items_center()
-						.rounded(px(7.0))
-						.border_1()
-						.border_color(rgba(0xffffff14))
-						.text_size(px(8.5))
-						.text_color(rgb(WB_TEXT_MUTED))
-						.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-						.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
-						.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
-						.cursor_pointer()
-						.on_click(cx.listener(|shell, _, window, cx| {
-							shell.start_new_quick_task(window, cx);
-						}))
-						.child("+ New"),
+						.gap_1()
+						.child(
+							div()
+								.id("refresh-quick-task")
+								.role(Role::Button)
+								.aria_label("Refresh selected Codex conversation")
+								.tooltip(|_, cx| {
+									cx.new(|_| ControlTooltip("Refresh selected thread from Codex"))
+										.into()
+								})
+								.size(px(27.0))
+								.flex()
+								.items_center()
+								.justify_center()
+								.rounded(px(7.0))
+								.text_size(px(12.0))
+								.text_color(rgb(WB_TEXT_MUTED))
+								.cursor_pointer()
+								.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+								.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+								.on_click(cx.listener(|shell, _, window, cx| {
+									shell.refresh_quick_task(window, cx);
+								}))
+								.child("↻"),
+						)
+						.child(
+							div()
+								.id("archive-quick-task")
+								.role(Role::Button)
+								.aria_label("Archive selected Codex conversation")
+								.tooltip(|_, cx| cx.new(|_| ControlTooltip("Archive selected thread")).into())
+								.h(px(27.0))
+								.px_2()
+								.flex()
+								.items_center()
+								.rounded(px(7.0))
+								.text_size(px(8.0))
+								.text_color(if can_control { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+								.when(can_control, |element| {
+									element
+										.cursor_pointer()
+										.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+										.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+										.on_click(cx.listener(|shell, _, window, cx| {
+											shell.archive_quick_task(window, cx);
+										}))
+								})
+								.child("Archive"),
+						)
+						.child(
+							div()
+								.id("new-quick-task")
+								.role(Role::Button)
+								.aria_label("New conversation")
+								.h(px(27.0))
+								.px_2()
+								.flex()
+								.items_center()
+								.rounded(px(7.0))
+								.border_1()
+								.border_color(rgba(0xffffff14))
+								.text_size(px(8.5))
+								.text_color(rgb(WB_TEXT_MUTED))
+								.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+								.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+								.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
+								.cursor_pointer()
+								.on_click(cx.listener(|shell, _, window, cx| {
+									shell.start_new_quick_task(window, cx);
+								}))
+								.child("+ New"),
+						),
 				),
 		)
 		.child(
@@ -3535,6 +3640,9 @@ fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		shell.quick.can_submit && can_continue && (has_message || has_pre_session_recovery);
 	let can_interrupt =
 		shell.quick.can_submit && task.is_some_and(|task| task.state == QuickTaskState::Running);
+	let model_label = shell.quick.execution.model.as_str().to_owned();
+	let effort_label = shell.quick.execution.reasoning_effort.as_str().to_uppercase();
+	let fast_enabled = shell.quick.execution.fast;
 
 	let send = div()
 		.id("quick-task-send")
@@ -3590,16 +3698,75 @@ fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 				}))
 		})
 		.child("Stop");
-	let context = task.map_or_else(
-		|| "New local session".to_owned(),
-		|task| {
-			format!(
-				"{} · conversation r{}",
-				quick_task_state_label(task.state),
-				task.conversation_revision.0
-			)
-		},
-	);
+	let model_control = div()
+		.id("quick-task-model")
+		.role(Role::Button)
+		.aria_label(format!("Model {model_label}; select next model"))
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Model · click to cycle")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff10))
+		.bg(rgba(0x00000018))
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(rgb(WB_TEXT_MUTED))
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_quick_task_model(cx)))
+		.child(model_label);
+	let fast_control = div()
+		.id("quick-task-fast")
+		.role(Role::Button)
+		.aria_label(if fast_enabled { "Fast mode on" } else { "Fast mode off" })
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Fast · priority service tier")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.gap_1()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(if fast_enabled { rgba(0xffa45d40) } else { rgba(0xffffff10) })
+		.bg(if fast_enabled { rgba(0xff8a3d16) } else { rgba(0x00000018) })
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(if fast_enabled { rgb(WB_AMBER) } else { rgb(WB_TEXT_MUTED) })
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.toggle_quick_task_fast(cx)))
+		.child(div().size(px(4.0)).rounded_full().bg(if fast_enabled {
+			rgb(WB_AMBER)
+		} else {
+			rgb(WB_TEXT_FAINT)
+		}))
+		.child("Fast");
+	let effort_control = div()
+		.id("quick-task-effort")
+		.role(Role::Button)
+		.aria_label(format!("Reasoning effort {effort_label}; select next effort"))
+		.tooltip(|_, cx| cx.new(|_| ControlTooltip("Reasoning effort · click to cycle")).into())
+		.h(px(23.0))
+		.px_2()
+		.flex()
+		.items_center()
+		.rounded(px(6.0))
+		.border_1()
+		.border_color(rgba(0xffffff10))
+		.bg(rgba(0x00000018))
+		.font_family("SF Mono")
+		.text_size(px(8.0))
+		.text_color(rgb(WB_TEXT_MUTED))
+		.cursor_pointer()
+		.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+		.active(|element| element.opacity(0.72))
+		.on_click(cx.listener(|shell, _, _, cx| shell.cycle_quick_task_effort(cx)))
+		.child(effort_label);
 	div()
 		.min_h(px(88.0))
 		.px_5()
@@ -3636,15 +3803,28 @@ fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								.min_w_0()
 								.flex()
 								.items_center()
-								.gap_2()
-								.text_size(px(8.5))
-								.text_color(rgb(WB_TEXT_FAINT))
-								.child(context)
-								.when(composer_len > 0, |element| {
-									element.child(format!("· {composer_len}/{MAX_COMPOSER_BYTES}"))
-								}),
+								.gap_1()
+								.child(model_control)
+								.child(fast_control)
+								.child(effort_control),
 						)
-						.child(div().flex().gap_2().child(interrupt).child(send)),
+						.child(
+							div()
+								.flex()
+								.items_center()
+								.gap_2()
+								.when(composer_len > 0, |element| {
+									element.child(
+										div()
+											.font_family("SF Mono")
+											.text_size(px(7.5))
+											.text_color(rgb(WB_TEXT_FAINT))
+											.child(format!("{composer_len}/{MAX_COMPOSER_BYTES}")),
+									)
+								})
+								.child(interrupt)
+								.child(send),
+						),
 				),
 		)
 		.into_any_element()

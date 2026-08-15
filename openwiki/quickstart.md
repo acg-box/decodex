@@ -1,3 +1,14 @@
+---
+type: "Reference"
+title: "OpenWiki Quickstart"
+description: "Entry point for Decodex local-product architecture, SQLite authority, Quick Task execution, app-server freshness, operations, and validation."
+tags: [repository, local-product, navigation]
+openwiki:
+  roles: [repository, architecture, workflow]
+  change_kinds: [navigation]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-protocol/src/quick_task.rs, database/src/lib.rs]
+---
+
 # OpenWiki Quickstart
 
 Decodex is a local agent factory above Codex app-server. Codex remains the execution
@@ -33,6 +44,12 @@ one-shot transfer tool.
   attempt, positive-only outcome evidence, and replay prohibition.
 - [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
   sequencer used by Quick Task.
+
+For the current app-server freshness boundary and Quick Task controls, start with the
+[local product contract](specs/local-product-v1.md) and its [SQLite evidence](evidence/sqlite-local-product.md).
+The contract covers exact selected-thread read/archive reconciliation, the deliberately
+lossy history boundary, request-scoped model/effort/Fast settings, and the
+`RestoreProcessReadiness` pre-effect rejection.
 
 ## Current usable slice
 

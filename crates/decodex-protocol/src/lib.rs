@@ -22,9 +22,12 @@ pub use self::{
 		LocalTransportStream,
 	},
 	quick_task::{
-		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError,
+		MAX_QUICK_TASK_LIST_SIZE, MAX_QUICK_TASK_MODEL_BYTES,
+		MAX_QUICK_TASK_WORKING_DIRECTORY_BYTES, QuickTaskContractError,
+		QuickTaskExecutionSettings,
 		QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskListSize,
-		QuickTaskReadError, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskState,
+		QuickTaskModel, QuickTaskReadError, QuickTaskReasoningEffort, QuickTaskRecoveryAction,
+		QuickTaskResult, QuickTaskState,
 		QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskUnavailableReason,
 		QuickTaskWorkingDirectory,
 	},
@@ -77,7 +80,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 0 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 1 };
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated
@@ -173,7 +176,7 @@ mod tests {
 		assert_eq!(CURRENT_VERSION.negotiate(), Ok(CURRENT_VERSION));
 		assert_eq!(PREVIOUS_MINOR_VERSION.negotiate(), Ok(PREVIOUS_MINOR_VERSION));
 		assert!(matches!(
-			ProtocolVersion { major: 2, minor: 1 }.negotiate(),
+			ProtocolVersion { major: 2, minor: 0 }.negotiate(),
 			Err(VersionRefusal::UnsupportedMinor { .. })
 		));
 	}
