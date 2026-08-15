@@ -41,7 +41,7 @@ use decodex_protocol::{
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
 	MAX_HISTORY_PAGE_SIZE, ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
 	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
-	QuickTaskRecoveryAction,
+	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskRecoveryAction,
 	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
 	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
 	ResetCardOperationResult, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem,
@@ -68,7 +68,10 @@ use crate::{
 	},
 	managed_repository_runtime::ManagedRepositoryCapability,
 	quick_task::{
-		CreateQuickTask, QuickTaskCapability, QuickTaskLocalState, QuickTaskManualRecovery,
+		ControlQuickTask, CreateQuickTask, QuickTaskCapability,
+		QuickTaskControlOutcome,
+		QuickTaskExecutionSettings as RuntimeQuickTaskExecutionSettings, QuickTaskLocalState,
+		QuickTaskManualRecovery,
 		QuickTaskOutcome, QuickTaskProjection, QuickTaskReadback, QuickTaskRuntime,
 		QuickTaskTerminalState, RecoverQuickTask, SubmitQuickTaskTurn,
 	},
@@ -1005,7 +1008,8 @@ impl ServiceApplication {
 			.into_iter()
 			.map(|projection| match projection {
 				OrdinaryTaskConversationProjection::Current(row) => Ok(row),
-				OrdinaryTaskConversationProjection::RoutingSuccessorRedirect { .. } => Err(()),
+				OrdinaryTaskConversationProjection::Archived { .. }
+				| OrdinaryTaskConversationProjection::RoutingSuccessorRedirect { .. } => Err(()),
 			})
 			.collect::<Result<Vec<_>, _>>()
 		{
@@ -1098,6 +1102,7 @@ impl ServiceApplication {
 				_ =>
 					QuickTaskResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable },
 			},
+			OrdinaryTaskConversationProjection::Archived { .. } => QuickTaskResult::NotFound,
 		}
 	}
 
@@ -1152,7 +1157,12 @@ impl ServiceApplication {
 		runtime: &QuickTaskRuntime,
 		command: &CommandEnvelope,
 	) -> Result<QuickTaskOutcome, CommandError> {
-		let CommandPayload::CreateQuickTask { conversation_id, message, working_directory } =
+		let CommandPayload::CreateQuickTask {
+			conversation_id,
+			message,
+			working_directory,
+			execution,
+		} =
 			&command.payload
 		else {
 			return Err(quick_task_conflict());
@@ -1170,6 +1180,7 @@ impl ServiceApplication {
 				conversation_id,
 				message: message.as_str().to_owned(),
 				working_directory: working_directory.as_str().to_owned(),
+				execution: runtime_execution_settings(execution),
 			})
 			.await)
 	}
@@ -1238,6 +1249,7 @@ impl ServiceApplication {
 			.map_err(|_| application_unavailable("Quick Task readback is unavailable"))?
 			.ok_or_else(quick_task_conflict)?;
 		match projection {
+			OrdinaryTaskConversationProjection::Archived { .. } => Err(quick_task_conflict()),
 			OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
 				source_conversation_id: redirected_source,
 				source_revision,
@@ -1332,6 +1344,7 @@ impl ServiceApplication {
 			turn_id,
 			message,
 			working_directory,
+			execution,
 		} = &command.payload
 		else {
 			return Err(quick_task_conflict());
@@ -1352,6 +1365,7 @@ impl ServiceApplication {
 				turn_id,
 				message: message.as_str().to_owned(),
 				working_directory: working_directory.as_str().to_owned(),
+				execution: runtime_execution_settings(execution),
 			})
 			.await)
 	}
@@ -1384,6 +1398,72 @@ impl ServiceApplication {
 		Ok(runtime.interrupt(&conversation_id))
 	}
 
+	async fn execute_control_quick_task(
+		&self,
+		runtime: &QuickTaskRuntime,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
+		let (conversation_id, archive) = match &command.payload {
+			CommandPayload::RefreshQuickTask { conversation_id } => (conversation_id, false),
+			CommandPayload::ArchiveQuickTask { conversation_id } => (conversation_id, true),
+			_ => return Err(quick_task_conflict()),
+		};
+		let core_id =
+			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let row = self.quick_task_command_row(&core_id, command.expected_revision).await?;
+		if row.runtime_session_id.is_none()
+			|| row.active_turn_id.is_some()
+			|| row.has_active_provider_attempt
+			|| row.has_unknown_provider_attempt
+		{
+			return Err(quick_task_busy());
+		}
+		match runtime
+			.control_thread(ControlQuickTask {
+				operation_key: command.idempotency_key.as_str().to_owned(),
+				conversation_id: core_id,
+				expected_conversation_revision: row.conversation_revision,
+				archive,
+			})
+			.await
+		{
+			QuickTaskControlOutcome::Current => {
+				let QuickTaskResult::Available(conversation) =
+					self.quick_task_get(conversation_id).await
+				else {
+					return Err(application_unavailable(
+						"Quick Task refresh readback is unavailable",
+					));
+				};
+				quick_task_command_publication(conversation, false)
+			},
+			QuickTaskControlOutcome::Archived { conversation_revision } => {
+				let revision = EntityRevision(
+					u64::try_from(conversation_revision).map_err(|_| quick_task_conflict())?,
+				);
+				Ok(ApplicationPublication {
+					channel: Channel::ConversationStream,
+					entity_id: conversation_id.clone(),
+					entity_revision: revision,
+					result: ResultPayload::QuickTaskArchived {
+						conversation_id: conversation_id.clone(),
+						conversation_revision: revision,
+					},
+					event: EventPayload::QuickTaskArchived {
+						conversation_id: conversation_id.clone(),
+						conversation_revision: revision,
+					},
+				})
+			},
+			QuickTaskControlOutcome::Busy => Err(quick_task_busy()),
+			QuickTaskControlOutcome::Conflict => Err(quick_task_conflict()),
+			QuickTaskControlOutcome::OutcomeUnknown => Err(CommandError::AcceptanceUnknown),
+			QuickTaskControlOutcome::Unavailable => Err(application_unavailable(
+				"Quick Task thread control is unavailable",
+			)),
+		}
+	}
+
 	async fn execute_quick_task(
 		&self,
 		command: &CommandEnvelope,
@@ -1397,6 +1477,12 @@ impl ServiceApplication {
 				return Err(CommandError::QuickTaskUnavailable { unavailable_reason: *reason });
 			},
 		};
+		if matches!(
+			&command.payload,
+			CommandPayload::RefreshQuickTask { .. } | CommandPayload::ArchiveQuickTask { .. }
+		) {
+			return self.execute_control_quick_task(runtime, command).await;
+		}
 		let outcome = match &command.payload {
 			CommandPayload::CreateQuickTask { .. } =>
 				self.execute_create_quick_task(runtime, command).await?,
@@ -1490,6 +1576,8 @@ impl Application for ServiceApplication {
 			| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
 			| CommandPayload::ResumeQuickTaskEstablishment { .. }
 			| CommandPayload::SubmitQuickTaskTurn { .. }
+			| CommandPayload::RefreshQuickTask { .. }
+			| CommandPayload::ArchiveQuickTask { .. }
 			| CommandPayload::InterruptQuickTask { .. } => self.execute_quick_task(command).await,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
@@ -1878,6 +1966,16 @@ fn quick_task_command_publication(
 		result,
 		event: EventPayload::QuickTaskConversationChanged { conversation },
 	})
+}
+
+fn runtime_execution_settings(
+	settings: &QuickTaskExecutionSettingsDto,
+) -> RuntimeQuickTaskExecutionSettings {
+	RuntimeQuickTaskExecutionSettings {
+		model: settings.model.as_str().to_owned(),
+		reasoning_effort: settings.reasoning_effort.as_str().to_owned(),
+		fast: settings.fast,
+	}
 }
 
 fn quick_task_routing_successor_publication(

@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.0 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.1 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -22,11 +22,12 @@ use serde_json::Error;
 
 use crate::{
 	DoctorReport, ProtocolVersion, QuickTaskListCursor, QuickTaskListResult, QuickTaskListSize,
-	QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary, QuickTaskTurnOutcome,
+	QuickTaskExecutionSettings, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary,
+	QuickTaskTurnOutcome,
 	QuickTaskWorkingDirectory, SupportedVersions, VersionRefusal,
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.0.
+/// Maximum UTF-8 size of any human-readable text carried by V2.1.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -151,7 +152,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded the V2.0 byte limit.
+/// A string-backed wire scalar exceeded the V2.1 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -167,7 +168,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.0 WorkItem board contract.
+/// Closed construction failures for the V2.1 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -269,7 +270,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.0 protocol bound.
+	/// Construct a page size inside the closed V2.1 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -546,7 +547,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.0 resume requires this field. Older hello envelopes can omit it
+	/// A V2.1 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -599,7 +600,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.0 welcome.
+	/// This is present in the exact-current V2.1 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1727,7 +1728,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.0 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.1 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2262,7 +2263,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.0 protocol.
+/// Live queries available through the exact-current V2.1 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2357,7 +2358,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.0 protocol.
+/// Commands available through the exact-current V2.1 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2411,6 +2412,8 @@ pub enum CommandPayload {
 		message: HistoryText,
 		/// Untrusted server-host working directory selected for this process lineage.
 		working_directory: QuickTaskWorkingDirectory,
+		/// Explicit execution settings for this user send.
+		execution: QuickTaskExecutionSettings,
 	},
 	/// Resume the sole initial route for one routing-pending Conversation.
 	ResumeQuickTaskRouting {
@@ -2437,6 +2440,18 @@ pub enum CommandPayload {
 		message: HistoryText,
 		/// Untrusted server-host working directory used if the thread must be re-established.
 		working_directory: QuickTaskWorkingDirectory,
+		/// Explicit execution settings for this user send.
+		execution: QuickTaskExecutionSettings,
+	},
+	/// Reconcile one selected Decodex task with its exact Codex archive state.
+	RefreshQuickTask {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+	},
+	/// Archive one selected exact Codex thread and its Decodex projection.
+	ArchiveQuickTask {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
 	},
 	/// Interrupt one exact active Quick Task turn.
 	InterruptQuickTask {
@@ -2648,6 +2663,13 @@ pub enum EventPayload {
 		/// Definite positive or failed outcome.
 		outcome: QuickTaskTurnOutcome,
 	},
+	/// One ordinary Conversation was verified archived and left the active projection.
+	QuickTaskArchived {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+		/// Exact committed archived revision.
+		conversation_revision: EntityRevision,
+	},
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
 		/// Small human-readable foundation status.
@@ -2777,6 +2799,13 @@ pub enum ResultPayload {
 		/// Complete current ordinary projection; completion later returns it to `ready`.
 		conversation: QuickTaskSummary,
 	},
+	/// One explicit refresh or archive verified that the Codex thread is archived.
+	QuickTaskArchived {
+		/// Stable logical Conversation identity.
+		conversation_id: EntityId,
+		/// Exact committed archived revision.
+		conversation_revision: EntityRevision,
+	},
 	/// A foundation system observation was refreshed.
 	SystemObservationRefreshed {
 		/// Small human-readable foundation status.
@@ -2835,7 +2864,7 @@ pub enum ResultPayload {
 	},
 }
 
-/// Typed live-query results available through the exact-current V2.0 protocol.
+/// Typed live-query results available through the exact-current V2.1 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3768,12 +3797,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.0 wire encoding.
+/// Serialize a message using the only V2.1 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.0 wire encoding.
+/// Parse a client message using the only V2.1 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3829,6 +3858,8 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 		| CommandPayload::CreateQuickTaskRoutingSuccessor { .. }
 		| CommandPayload::ResumeQuickTaskEstablishment { .. }
 		| CommandPayload::SubmitQuickTaskTurn { .. }
+		| CommandPayload::RefreshQuickTask { .. }
+		| CommandPayload::ArchiveQuickTask { .. }
 		| CommandPayload::InterruptQuickTask { .. } => validate_quick_task_command(command),
 		CommandPayload::RefreshSystemObservation { .. } => Ok(()),
 		CommandPayload::ConsumeResetCard { account_id, .. } => {
@@ -4041,6 +4072,14 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Ok(())
 			} else {
 				Err("Quick Task interrupt identity or revision is invalid")
+			}
+		},
+		CommandPayload::RefreshQuickTask { conversation_id }
+		| CommandPayload::ArchiveQuickTask { conversation_id } => {
+			if positive_expected && is_canonical_uuid(conversation_id.as_str()) {
+				Ok(())
+			} else {
+				Err("Quick Task control identity or revision is invalid")
 			}
 		},
 		_ => unreachable!("Quick Task validation requires a Quick Task command"),
@@ -4608,6 +4647,11 @@ mod tests {
 			message: HistoryText::new("route this request").expect("bounded message"),
 			working_directory: QuickTaskWorkingDirectory::new("/tmp/work")
 				.expect("bounded working directory"),
+			execution: crate::QuickTaskExecutionSettings::new(
+				crate::QuickTaskModel::new("gpt-5.6-sol").expect("bounded model"),
+				crate::QuickTaskReasoningEffort::High,
+				false,
+			),
 		};
 		assert_eq!(
 			serde_json::to_value(&create).unwrap(),
@@ -4617,6 +4661,11 @@ mod tests {
 					"conversation_id": source.as_str(),
 					"message": "route this request",
 					"working_directory": "/tmp/work",
+					"execution": {
+						"model": "gpt-5.6-sol",
+						"reasoning_effort": "high",
+						"fast": false,
+					},
 				},
 			}),
 		);
@@ -4804,7 +4853,7 @@ mod tests {
 			}),
 		);
 		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 1, minor: 5 }));
-		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 1 }));
+		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 2 }));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(
 			serde_json::from_value::<CommandPayload>(serde_json::json!({
@@ -5275,7 +5324,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":0},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":1},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5284,7 +5333,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":0},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":1},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5326,7 +5375,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":0},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":1},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5569,7 +5618,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 1 };
+		let future = crate::ProtocolVersion { major: 2, minor: 2 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,
