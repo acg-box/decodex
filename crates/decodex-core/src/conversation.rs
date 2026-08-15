@@ -966,6 +966,53 @@ impl ContextPack {
 		&self.bytes
 	}
 
+	/// Render the represented UTF-8 sources as one bounded model input.
+	///
+	/// The length-delimited binary bytes remain the persisted authority. This view removes the
+	/// binary header and framing only after full verification; it never reconstructs omitted data.
+	pub fn render_model_input(&self) -> Result<String, ConversationError> {
+		self.verify()?;
+		let mut cursor = encoded_header_length();
+		let mut output = String::new();
+		for (position, source) in self.source_manifest.iter().enumerate() {
+			if source.included_byte_length == 0 {
+				continue;
+			}
+			let encoded_position = read_u16(&self.bytes, &mut cursor)?;
+			let length = usize::try_from(read_u32(&self.bytes, &mut cursor)?)
+				.map_err(|_| ConversationError::InvalidContextPolicy)?;
+			let end = cursor
+				.checked_add(length)
+				.filter(|end| *end <= self.bytes.len())
+				.ok_or(ConversationError::InvalidContextPolicy)?;
+			if usize::from(encoded_position) != position
+				|| u64::try_from(length).ok() != Some(source.included_byte_length)
+			{
+				return Err(ConversationError::InvalidContextPolicy);
+			}
+			let represented = &self.bytes[cursor..end];
+			let text = match std::str::from_utf8(represented) {
+				Ok(text) => text,
+				Err(error) if error.error_len().is_none() =>
+					std::str::from_utf8(&represented[..error.valid_up_to()])
+						.map_err(|_| ConversationError::InvalidContextPolicy)?,
+				Err(_) => return Err(ConversationError::InvalidContextPolicy),
+			};
+			if text.contains('\0') {
+				return Err(ConversationError::InvalidContextPolicy);
+			}
+			if !output.is_empty() && !text.is_empty() {
+				output.push_str("\n\n");
+			}
+			output.push_str(text);
+			cursor = end;
+		}
+		if cursor != self.bytes.len() || output.is_empty() || output.len() > self.policy.max_bytes {
+			return Err(ConversationError::InvalidContextPolicy);
+		}
+		Ok(output)
+	}
+
 	/// Digest of exact compiled bytes.
 	pub fn digest(&self) -> BlobHash {
 		self.digest
@@ -1703,6 +1750,7 @@ mod tests {
 		assert_eq!(first.source_manifest()[1].disposition(), ContextSourceDisposition::Omitted);
 		assert_ne!(first.source_manifest()[2].disposition(), ContextSourceDisposition::Omitted);
 		assert_ne!(first.source_manifest()[3].disposition(), ContextSourceDisposition::Omitted);
+		assert_eq!(first.render_model_input().unwrap(), "pinned\n\nnewer\n\nnewest");
 	}
 
 	#[test]
@@ -1780,6 +1828,7 @@ mod tests {
 		assert_eq!(pack, conversation::compile_context_pack(input).unwrap());
 
 		pack.verify().unwrap();
+		assert_eq!(pack.render_model_input(), Err(ConversationError::InvalidContextPolicy));
 
 		let mut forged = pack.bytes().to_vec();
 

@@ -12,9 +12,9 @@ use gpui::{
 use decodex_protocol::{
 	AccountDto, AccountLifecycleReadinessDto, AccountObservedStateDto, AccountQuotaStateDto,
 	AccountQuotaWindowDto, AccountSelectionModeDto, AppServerCapability, ClientFailure,
-	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryItemKindDto, HistoryItemStatusDto,
-	HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary,
-	WorkItemBoardCard, WorkItemState,
+	DoctorComponent, DoctorIssue, DoctorStatus, EntityId, HistoryItemDto, HistoryItemKindDto,
+	HistoryItemStatusDto, HistoryPayloadDto, HistoryTurnRole, QuickTaskRecoveryAction,
+	QuickTaskState, QuickTaskSummary, WorkItemBoardCard, WorkItemState,
 };
 
 use crate::{
@@ -29,10 +29,10 @@ use crate::{
 	composer_input::{self, ComposerEvent, ComposerInput, MAX_COMPOSER_BYTES, SubmitComposer},
 	factory_surface::{FactoryEvent, FactoryRoute, FactorySurface, app_icon_path},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
-	history_pager::{HistoryLoadState, HistoryPager, HistorySnapshot},
+	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
 	quick_tasks::{
-		QuickTaskCommandState, QuickTaskInputError, QuickTasks, QuickTasksLoadState,
-		QuickTaskRefreshState, QuickTasksSnapshot,
+		QueuedQuickTaskSubmission, QuickTaskCommandState, QuickTaskInputError,
+		QuickTaskRefreshState, QuickTasks, QuickTasksLoadState, QuickTasksSnapshot,
 	},
 	settings_surface::SettingsSurface,
 	ui_theme,
@@ -53,9 +53,13 @@ const WB_BLUE: u32 = ui_theme::BLUE;
 const WB_GREEN: u32 = ui_theme::GREEN;
 const WB_AMBER: u32 = ui_theme::AMBER;
 
+#[derive(Clone, Debug, Eq, PartialEq)]
 struct PendingComposerSubmission {
 	content: String,
 	result_generation: u64,
+	conversation_id: EntityId,
+	turn_id: Option<EntityId>,
+	accepted: bool,
 }
 
 fn pending_submission_clear_decision(
@@ -66,6 +70,157 @@ fn pending_submission_clear_decision(
 ) -> Option<bool> {
 	(result_generation > pending.result_generation)
 		.then_some(accepted && current_content == pending.content)
+}
+
+fn pending_submission_is_persisted(
+	pending: &PendingComposerSubmission,
+	history: Option<&HistorySnapshot>,
+) -> bool {
+	let Some(history) = history
+		.filter(|history| history.conversation_id.as_ref() == Some(&pending.conversation_id))
+	else {
+		return false;
+	};
+	let Some(page) = history.visible.as_ref() else {
+		return false;
+	};
+
+	page.items.iter().any(|item| {
+		item.turn_role == HistoryTurnRole::User
+			&& item.kind == HistoryItemKindDto::Message
+			&& pending.turn_id.as_ref().map_or_else(
+				|| item.payload.inline_text().is_some_and(|text| text.as_str() == pending.content),
+				|turn_id| &item.turn_id == turn_id,
+			)
+	})
+}
+
+fn deferred_provider_refresh_ready(
+	pending_conversation_id: Option<&EntityId>,
+	selected_conversation_id: Option<&EntityId>,
+	history: Option<&HistorySnapshot>,
+) -> bool {
+	let (Some(pending), Some(selected), Some(history)) =
+		(pending_conversation_id, selected_conversation_id, history)
+	else {
+		return false;
+	};
+
+	pending == selected
+		&& history.conversation_id.as_ref() == Some(selected)
+		&& history.visible.is_some()
+		&& history.visible_source == Some(HistoryPageSource::FreshServer)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum TranscriptRow {
+	Prompt {
+		turn_id: Option<EntityId>,
+		text: String,
+		pending: bool,
+	},
+	Response {
+		turn_id: EntityId,
+		text: String,
+		live: bool,
+	},
+	Activity {
+		history_item_id: EntityId,
+		kind: HistoryItemKindDto,
+		status: HistoryItemStatusDto,
+		text: String,
+	},
+}
+
+fn history_item_text(item: &HistoryItemDto) -> String {
+	match &item.payload {
+		HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
+		HistoryPayloadDto::Blob(reference) => format!(
+			"Stored content: {} bytes; SHA-256 {}...",
+			reference.byte_length.get(),
+			&reference.sha256.as_str()[..12],
+		),
+	}
+}
+
+fn append_response_row(rows: &mut Vec<TranscriptRow>, turn_id: &EntityId, text: &str, live: bool) {
+	if let Some(TranscriptRow::Response {
+		turn_id: existing_turn,
+		text: existing,
+		live: existing_live,
+	}) = rows.last_mut()
+		&& existing_turn == turn_id
+	{
+		existing.push_str(text);
+		*existing_live |= live;
+		return;
+	}
+
+	rows.push(TranscriptRow::Response { turn_id: turn_id.clone(), text: text.to_owned(), live });
+}
+
+fn quick_task_transcript_rows(
+	snapshot: &QuickTasksSnapshot,
+	history: Option<&HistorySnapshot>,
+	pending: Option<&PendingComposerSubmission>,
+) -> Vec<TranscriptRow> {
+	let selected = snapshot.selected.as_ref();
+	let visible_history = history.filter(|history| history.conversation_id.as_ref() == selected);
+	let persisted_inline_ids = visible_history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+		.filter(|item| item.payload.inline_text().is_some())
+		.map(|item| item.history_item_id.clone())
+		.collect::<Vec<_>>();
+	let mut rows = Vec::new();
+
+	for item in visible_history
+		.and_then(|history| history.visible.as_ref())
+		.into_iter()
+		.flat_map(|page| page.items.iter())
+	{
+		let text = history_item_text(item);
+		match (item.turn_role, item.kind) {
+			(HistoryTurnRole::User, HistoryItemKindDto::Message) => {
+				rows.push(TranscriptRow::Prompt {
+					turn_id: Some(item.turn_id.clone()),
+					text,
+					pending: false,
+				});
+			},
+			(HistoryTurnRole::Assistant, HistoryItemKindDto::Message) => {
+				append_response_row(&mut rows, &item.turn_id, &text, false);
+			},
+			_ => rows.push(TranscriptRow::Activity {
+				history_item_id: item.history_item_id.clone(),
+				kind: item.kind,
+				status: item.status,
+				text,
+			}),
+		}
+	}
+
+	let active_conversation = selected.or_else(|| pending.map(|pending| &pending.conversation_id));
+	if let Some(pending) = pending
+		&& active_conversation == Some(&pending.conversation_id)
+		&& !pending_submission_is_persisted(pending, visible_history)
+	{
+		rows.push(TranscriptRow::Prompt {
+			turn_id: pending.turn_id.clone(),
+			text: pending.content.clone(),
+			pending: true,
+		});
+	}
+
+	for delta in snapshot.live_deltas.iter().filter(|delta| {
+		active_conversation == Some(&delta.conversation_id)
+			&& !persisted_inline_ids.iter().any(|persisted| persisted == &delta.history_item_id)
+	}) {
+		append_response_row(&mut rows, &delta.turn_id, delta.text.as_str(), true);
+	}
+
+	rows
 }
 
 fn quick_task_recovery_presentation(task: Option<&QuickTaskSummary>) -> (bool, &'static str) {
@@ -81,9 +236,9 @@ fn quick_task_recovery_presentation(task: Option<&QuickTaskSummary>) -> (bool, &
 					| QuickTaskRecoveryAction::StartNewConversation
 			)
 		});
-	let label = if outcome_unknown
-		|| recovery_action == Some(QuickTaskRecoveryAction::StartNewConversation)
-	{
+	let label = if outcome_unknown {
+		"Retry sync"
+	} else if recovery_action == Some(QuickTaskRecoveryAction::StartNewConversation) {
 		"Start new"
 	} else {
 		"Recover"
@@ -158,7 +313,6 @@ impl Destination {
 		Self::Health,
 		Self::Settings,
 	];
-
 	const CHROME: [Self; 4] = [Self::QuickTasks, Self::Factory, Self::Accounts, Self::Health];
 
 	pub(crate) const fn label(self) -> &'static str {
@@ -235,9 +389,8 @@ fn connection_presentation(view: ConnectionView) -> ConnectionPresentation {
 				CompatibilityReason::InvalidEndpoint => "Selected endpoint is not supported",
 				CompatibilityReason::ProtocolMajor => "Protocol generation does not match",
 				CompatibilityReason::ProtocolMinor => "Protocol revision is not supported",
-				CompatibilityReason::PublicationIdentityUnavailable => {
-					"Publication identity is unavailable"
-				},
+				CompatibilityReason::PublicationIdentityUnavailable =>
+					"Publication identity is unavailable",
 			}
 			.into(),
 			color: 0xef4444,
@@ -268,9 +421,8 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProfileMissing => "Selected server profile is missing",
 		ClientFailure::UnsafeHostPath => "Client configuration path is unsafe",
 		ClientFailure::ServerIdentityUnavailable => "Stable server identity is unavailable",
-		ClientFailure::RemoteMutationUnsupported => {
-			"Reset-card operations require a local pinned profile"
-		},
+		ClientFailure::RemoteMutationUnsupported =>
+			"Reset-card operations require a local pinned profile",
 		ClientFailure::LocalTransportDisabled => "Local daemon transport is disabled",
 		ClientFailure::RemoteTransportDisabled => "Remote daemon transport is disabled",
 		ClientFailure::LocalTransportUnsupported => "Local daemon transport is unsupported",
@@ -375,6 +527,7 @@ pub(crate) struct Shell {
 	history_pager: Option<HistoryPager>,
 	history: Option<HistorySnapshot>,
 	opened_history: Option<EntityId>,
+	deferred_provider_refresh: Option<EntityId>,
 	creating_new: bool,
 	pending_submission: Option<PendingComposerSubmission>,
 	input_status: Option<SharedString>,
@@ -447,6 +600,7 @@ impl Shell {
 			history_pager: None,
 			history: None,
 			opened_history: None,
+			deferred_provider_refresh: None,
 			creating_new: true,
 			pending_submission: None,
 			input_status: None,
@@ -459,8 +613,8 @@ impl Shell {
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		use decodex_protocol::{
 			AccountRoutingControlDto, ConversationHistoryPage, EntityRevision, ProjectSummary,
-			QuickTaskSummary, WireText, WorkItemBoardLeadId, WorkItemBoardProjectId, WorkItemBoardTitle,
-			WorkItemBoardWorkItemId, WorkItemPriority,
+			QuickTaskSummary, WireText, WorkItemBoardLeadId, WorkItemBoardProjectId,
+			WorkItemBoardTitle, WorkItemBoardWorkItemId, WorkItemPriority,
 		};
 
 		use crate::{
@@ -607,57 +761,40 @@ impl Shell {
 			],
 			can_mutate: true,
 		};
-		let visual_account = |id: &str,
-		                      alias: &str,
-		                      used_five_hour: u8,
-		                      used_seven_day: u8,
-		                      revision: u64| AccountDto {
-			account_id: EntityId::new(id).expect("visual account identity is canonical"),
-			alias: WireText::new(alias).expect("visual account alias is bounded"),
-			enabled: true,
-			account_revision: EntityRevision(revision),
-			observed_state: AccountObservedStateDto::Available,
-			lifecycle_readiness: AccountLifecycleReadinessDto::Ready,
-			credential_binding: None,
-			unsettled_operation: None,
-			five_hour_quota: AccountQuotaWindowDto {
-				duration_minutes: 300,
-				observed_at_unix_micros: Some(1_786_000_000_000_000),
-				result: AccountQuotaStateDto::Current {
-					used_percent: used_five_hour,
-					resets_at_unix_micros: 1_786_018_000_000_000,
-				},
-			},
-			seven_day_quota: AccountQuotaWindowDto {
-				duration_minutes: 10_080,
-				observed_at_unix_micros: Some(1_786_000_000_000_000),
-				result: AccountQuotaStateDto::Current {
-					used_percent: used_seven_day,
-					resets_at_unix_micros: 1_786_604_800_000_000,
-				},
-			},
-		};
-		let primary = visual_account(
-			"70000000-0000-4000-8000-000000000001",
-			"Primary",
-			64,
-			28,
-			12,
-		);
-		let reserve = visual_account(
-			"70000000-0000-4000-8000-000000000002",
-			"Build reserve",
-			18,
-			9,
-			7,
-		);
-		let research = visual_account(
-			"70000000-0000-4000-8000-000000000003",
-			"Research reserve",
-			91,
-			55,
-			4,
-		);
+		let visual_account =
+			|id: &str, alias: &str, used_five_hour: u8, used_seven_day: u8, revision: u64| {
+				AccountDto {
+					account_id: EntityId::new(id).expect("visual account identity is canonical"),
+					alias: WireText::new(alias).expect("visual account alias is bounded"),
+					enabled: true,
+					account_revision: EntityRevision(revision),
+					observed_state: AccountObservedStateDto::Available,
+					lifecycle_readiness: AccountLifecycleReadinessDto::Ready,
+					credential_binding: None,
+					unsettled_operation: None,
+					five_hour_quota: AccountQuotaWindowDto {
+						duration_minutes: 300,
+						observed_at_unix_micros: Some(1_786_000_000_000_000),
+						result: AccountQuotaStateDto::Current {
+							used_percent: used_five_hour,
+							resets_at_unix_micros: 1_786_018_000_000_000,
+						},
+					},
+					seven_day_quota: AccountQuotaWindowDto {
+						duration_minutes: 10_080,
+						observed_at_unix_micros: Some(1_786_000_000_000_000),
+						result: AccountQuotaStateDto::Current {
+							used_percent: used_seven_day,
+							resets_at_unix_micros: 1_786_604_800_000_000,
+						},
+					},
+				}
+			};
+		let primary = visual_account("70000000-0000-4000-8000-000000000001", "Primary", 64, 28, 12);
+		let reserve =
+			visual_account("70000000-0000-4000-8000-000000000002", "Build reserve", 18, 9, 7);
+		let research =
+			visual_account("70000000-0000-4000-8000-000000000003", "Research reserve", 91, 55, 4);
 		shell.accounts = AccountsSnapshot {
 			load: AccountsLoadState::Ready,
 			command: AccountCommandState::Idle,
@@ -673,15 +810,11 @@ impl Shell {
 			.into_iter()
 			.map(|component| {
 				let status = match component {
-					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
-						DoctorStatus::Unknown(DoctorIssue::NotProbed)
-					},
-					DoctorComponent::ManagedRepository => {
-						DoctorStatus::Unavailable(DoctorIssue::Disabled)
-					},
-					DoctorComponent::PluginReadiness => {
-						DoctorStatus::Unknown(DoctorIssue::Plugin)
-					},
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
+						DoctorStatus::Unknown(DoctorIssue::NotProbed),
+					DoctorComponent::ManagedRepository =>
+						DoctorStatus::Unavailable(DoctorIssue::Disabled),
+					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
 				decodex_protocol::DoctorCheck::new(component, status)
@@ -840,11 +973,22 @@ impl Shell {
 			FactoryEvent::StartCodexConversation { context, message } => {
 				self.quick_tasks.begin_new();
 				self.pending_submission = None;
+				self.deferred_provider_refresh = None;
 				self.creating_new = true;
 				self.opened_history = None;
 				let prompt = format!("Decodex factory context: {context}\n\n{message}");
+				let result_generation = self.quick_tasks.snapshot().submission_result_generation;
 				match self.quick_tasks.create(&prompt) {
-					Ok(()) => self.input_status = None,
+					Ok(submission) => {
+						self.pending_submission = Some(PendingComposerSubmission {
+							content: prompt,
+							result_generation,
+							conversation_id: submission.conversation_id,
+							turn_id: submission.turn_id,
+							accepted: false,
+						});
+						self.input_status = None;
+					},
 					Err(error) => self.input_status = Some(input_error_label(error).into()),
 				}
 				self.synchronize_quick_tasks();
@@ -852,6 +996,7 @@ impl Shell {
 			},
 			FactoryEvent::OpenWorkItemConversation { conversation_id } => {
 				self.quick_tasks.select_when_available(conversation_id.clone());
+				self.deferred_provider_refresh = Some(conversation_id.clone());
 				self.creating_new = false;
 				self.opened_history = None;
 				self.select_destination(Destination::QuickTasks, cx);
@@ -1120,6 +1265,13 @@ impl Shell {
 	fn synchronize_quick_tasks(&mut self) {
 		let snapshot = self.quick_tasks.snapshot();
 		let selected = snapshot.selected.clone();
+		if selected.is_none()
+			&& self.opened_history.is_some()
+			&& let Some(pager) = self.history_pager.as_ref()
+		{
+			pager.cancel();
+			self.opened_history = None;
+		}
 		let should_open = selected
 			.as_ref()
 			.is_some_and(|conversation_id| self.opened_history.as_ref() != Some(conversation_id));
@@ -1135,12 +1287,25 @@ impl Shell {
 		}
 		self.quick = snapshot;
 		self.history = self.history_pager.as_ref().map(HistoryPager::snapshot);
+		if deferred_provider_refresh_ready(
+			self.deferred_provider_refresh.as_ref(),
+			self.quick.selected.as_ref(),
+			self.history.as_ref(),
+		) {
+			self.deferred_provider_refresh = None;
+			let _ = self.quick_tasks.refresh_selected();
+			self.quick = self.quick_tasks.snapshot();
+		}
 	}
 
 	fn reconcile_pending_submission(&mut self, cx: &mut Context<Self>) {
 		let Some(pending) = self.pending_submission.as_ref() else {
 			return;
 		};
+		if pending.accepted && pending_submission_is_persisted(pending, self.history.as_ref()) {
+			self.pending_submission = None;
+			return;
+		}
 		let Some(clear) = pending_submission_clear_decision(
 			pending,
 			self.quick.submission_result_generation,
@@ -1149,14 +1314,28 @@ impl Shell {
 		) else {
 			return;
 		};
-		self.pending_submission = None;
+		if !self.quick.last_submission_accepted {
+			self.pending_submission = None;
+			return;
+		}
+		if let Some(pending) = self.pending_submission.as_mut() {
+			pending.accepted = true;
+		}
 		if clear {
 			self.composer.update(cx, |composer, cx| composer.clear(cx));
+		}
+		if self
+			.pending_submission
+			.as_ref()
+			.is_some_and(|pending| pending_submission_is_persisted(pending, self.history.as_ref()))
+		{
+			self.pending_submission = None;
 		}
 	}
 
 	fn start_new_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		self.quick_tasks.begin_new();
+		self.deferred_provider_refresh = None;
 		if let Some(pager) = self.history_pager.as_ref() {
 			pager.cancel();
 		}
@@ -1175,9 +1354,9 @@ impl Shell {
 		cx: &mut Context<Self>,
 	) {
 		if self.quick_tasks.select(conversation_id.clone()) {
-			// Re-observe the selected app-server thread. SQLite is a local projection and
-			// another app-server client can change the provider state at any time.
-			let _ = self.quick_tasks.refresh_selected();
+			// The same retained connection serializes provider commands before later queries.
+			// Show daemon-owned SQLite history first, then reconcile the provider in background.
+			self.deferred_provider_refresh = Some(conversation_id);
 			self.creating_new = false;
 			self.opened_history = None;
 			self.synchronize_quick_tasks();
@@ -1203,10 +1382,13 @@ impl Shell {
 			self.quick_tasks.submit(&message)
 		};
 		match result {
-			Ok(()) => {
+			Ok(QueuedQuickTaskSubmission { conversation_id, turn_id }) => {
 				self.pending_submission = Some(PendingComposerSubmission {
 					content: message,
 					result_generation,
+					conversation_id,
+					turn_id,
+					accepted: false,
 				});
 				self.creating_new = creating;
 				self.input_status = None;
@@ -1221,9 +1403,14 @@ impl Shell {
 	fn recover_quick_task(&mut self, window: &mut Window, cx: &mut Context<Self>) {
 		let state = self.quick.selected_task().map(|task| task.state);
 		let action = self.quick.selected_task().and_then(|task| task.recovery_action);
-		if state == Some(QuickTaskState::OutcomeUnknown)
-			|| action == Some(QuickTaskRecoveryAction::StartNewConversation)
-		{
+		if state == Some(QuickTaskState::OutcomeUnknown) {
+			self.input_status =
+				self.quick_tasks.refresh_selected().err().map(input_error_label).map(Into::into);
+			self.synchronize_quick_tasks();
+			cx.notify();
+			return;
+		}
+		if action == Some(QuickTaskRecoveryAction::StartNewConversation) {
 			self.start_new_quick_task(window, cx);
 			return;
 		}
@@ -1242,23 +1429,15 @@ impl Shell {
 	}
 
 	fn refresh_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		self.input_status = self
-			.quick_tasks
-			.refresh_all()
-			.err()
-			.map(input_error_label)
-			.map(Into::into);
+		self.input_status =
+			self.quick_tasks.refresh_all().err().map(input_error_label).map(Into::into);
 		self.synchronize_quick_tasks();
 		cx.notify();
 	}
 
 	fn archive_quick_task(&mut self, _: &mut Window, cx: &mut Context<Self>) {
-		self.input_status = self
-			.quick_tasks
-			.archive_selected()
-			.err()
-			.map(input_error_label)
-			.map(Into::into);
+		self.input_status =
+			self.quick_tasks.archive_selected().err().map(input_error_label).map(Into::into);
 		self.synchronize_quick_tasks();
 		cx.notify();
 	}
@@ -1315,9 +1494,8 @@ const fn input_error_label(error: QuickTaskInputError) -> &'static str {
 		QuickTaskInputError::NotReady => "The selected Quick Task is not ready for this command.",
 		QuickTaskInputError::NotInterruptible => "The selected turn is not running.",
 		QuickTaskInputError::IdentityUnavailable => "A command identity could not be created.",
-		QuickTaskInputError::WorkingDirectoryUnavailable => {
-			"The local Quick Task working directory is unavailable."
-		},
+		QuickTaskInputError::WorkingDirectoryUnavailable =>
+			"The local Quick Task working directory is unavailable.",
 	}
 }
 
@@ -2016,9 +2194,8 @@ fn component_label(component: DoctorComponent) -> &'static str {
 
 fn component_presentation(status: Option<DoctorStatus>) -> HealthPresentation {
 	match status {
-		Some(DoctorStatus::Ready) => {
-			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e }
-		},
+		Some(DoctorStatus::Ready) =>
+			HealthPresentation { label: "Ready", detail: "", color: 0x22c55e },
 		Some(DoctorStatus::Unavailable(DoctorIssue::Disabled))
 		| Some(DoctorStatus::Unknown(DoctorIssue::Disabled)) => HealthPresentation {
 			label: "Disabled",
@@ -2095,22 +2272,17 @@ fn health_component_row(
 		.border_color(rgba(0xffffff0a))
 		.text_size(px(10.5))
 		.text_color(rgb(WB_TEXT_MUTED))
-		.child(
-			div()
-				.min_w_0()
-				.flex()
-				.flex_col()
-				.gap_1()
-				.child(label)
-				.when(!presentation.detail.is_empty(), |element| {
-					element.child(
-						div()
-							.text_size(px(8.0))
-							.text_color(rgb(WB_TEXT_FAINT))
-							.child(presentation.detail),
-					)
-				}),
-		)
+		.child(div().min_w_0().flex().flex_col().gap_1().child(label).when(
+			!presentation.detail.is_empty(),
+			|element| {
+				element.child(
+					div()
+						.text_size(px(8.0))
+						.text_color(rgb(WB_TEXT_FAINT))
+						.child(presentation.detail),
+				)
+			},
+		))
 		.child(
 			div()
 				.w(px(128.0))
@@ -2162,12 +2334,7 @@ fn health_component_section(
 						.text_color(rgb(WB_TEXT))
 						.child(title),
 				)
-				.child(
-					div()
-						.text_size(px(8.0))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.child(detail),
-				),
+				.child(div().text_size(px(8.0)).text_color(rgb(WB_TEXT_FAINT)).child(detail)),
 		)
 		.child(
 			div()
@@ -2615,20 +2782,14 @@ fn account_pool_row(
 				),
 		)
 		.child(
-			div()
-				.flex_1()
-				.min_w_0()
-				.flex()
-				.items_center()
-				.gap_5()
-				.children(
-					[
-						account_quota("5 HOUR", account.five_hour_quota),
-						account_quota("7 DAY", account.seven_day_quota),
-					]
-					.into_iter()
-					.flatten(),
-				),
+			div().flex_1().min_w_0().flex().items_center().gap_5().children(
+				[
+					account_quota("5 HOUR", account.five_hour_quota),
+					account_quota("7 DAY", account.seven_day_quota),
+				]
+				.into_iter()
+				.flatten(),
+			),
 		)
 		.child(
 			div()
@@ -2639,7 +2800,10 @@ fn account_pool_row(
 					div()
 						.id(("account-pin", index))
 						.role(Role::Button)
-						.aria_label(format!("Route new conversations to {}", account.alias.as_str()))
+						.aria_label(format!(
+							"Route new conversations to {}",
+							account.alias.as_str()
+						))
 						.h(px(27.0))
 						.w(px(58.0))
 						.flex()
@@ -2707,40 +2871,34 @@ fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<An
 	};
 	let detail = format!("{used_percent}% used");
 	let used = f32::from(used_percent);
-	let color =
-		if used_percent >= 90 { 0xef4444 } else if used_percent >= 70 { WB_AMBER } else { WB_BLUE };
+	let color = if used_percent >= 90 {
+		0xef4444
+	} else if used_percent >= 70 {
+		WB_AMBER
+	} else {
+		WB_BLUE
+	};
 	Some(
 		div()
-		.w(px(122.0))
-		.flex()
-		.flex_col()
-		.gap_1()
-		.child(
-			div()
-				.flex()
-				.items_center()
-				.justify_between()
-				.font_family("SF Mono")
-				.text_size(px(7.5))
-				.text_color(rgb(WB_TEXT_FAINT))
-				.child(label)
-				.child(detail),
-		)
-		.child(
-			div()
-				.h(px(3.0))
-				.w_full()
-				.rounded_full()
-				.bg(rgba(0xffffff0c))
-				.child(
-					div()
-						.h_full()
-						.w(px(used.clamp(0.0, 100.0) * 1.22))
-						.rounded_full()
-						.bg(rgb(color)),
-				),
-		)
-		.into_any_element(),
+			.w(px(122.0))
+			.flex()
+			.flex_col()
+			.gap_1()
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.font_family("SF Mono")
+					.text_size(px(7.5))
+					.text_color(rgb(WB_TEXT_FAINT))
+					.child(label)
+					.child(detail),
+			)
+			.child(div().h(px(3.0)).w_full().rounded_full().bg(rgba(0xffffff0c)).child(
+				div().h_full().w(px(used.clamp(0.0, 100.0) * 1.22)).rounded_full().bg(rgb(color)),
+			))
+			.into_any_element(),
 	)
 }
 
@@ -2788,9 +2946,8 @@ fn account_command_label(command: AccountCommandState) -> Option<&'static str> {
 		AccountCommandState::Sending => Some("Sending account command…"),
 		AccountCommandState::AwaitingResult => Some("Waiting for durable account result…"),
 		AccountCommandState::Accepted => Some("Account pool updated."),
-		AccountCommandState::OutcomeUnknown => {
-			Some("Outcome is unknown. Refresh readback before another account change.")
-		},
+		AccountCommandState::OutcomeUnknown =>
+			Some("Outcome is unknown. Refresh readback before another account change."),
 		AccountCommandState::Refused => Some("The account change was refused. Refresh and retry."),
 	}
 }
@@ -2815,7 +2972,7 @@ fn quick_task_state_label(state: QuickTaskState) -> &'static str {
 		QuickTaskState::Ready => "Ready",
 		QuickTaskState::Running => "Running",
 		QuickTaskState::ManualRecovery => "Action required",
-		QuickTaskState::OutcomeUnknown => "Outcome unknown",
+		QuickTaskState::OutcomeUnknown => "Recovering",
 	}
 }
 
@@ -2827,7 +2984,8 @@ fn quick_task_state_color(state: QuickTaskState) -> u32 {
 		| QuickTaskState::EstablishmentPending
 		| QuickTaskState::QuotaExhausted
 		| QuickTaskState::NoRoute => 0xf59e0b,
-		QuickTaskState::ManualRecovery | QuickTaskState::OutcomeUnknown => 0xef4444,
+		QuickTaskState::ManualRecovery => 0xef4444,
+		QuickTaskState::OutcomeUnknown => 0xf59e0b,
 	}
 }
 
@@ -2838,9 +2996,8 @@ fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
 		QuickTaskCommandState::AwaitingResult => Some("Waiting for durable result"),
 		QuickTaskCommandState::Accepted => Some("Command accepted"),
 		QuickTaskCommandState::ManualRecovery(action) => Some(recovery_action_label(action)),
-		QuickTaskCommandState::OutcomeUnknown => {
-			Some("Outcome unknown. Readback will resume after reconnect; do not resend.")
-		},
+		QuickTaskCommandState::OutcomeUnknown =>
+			Some("Connection interrupted. Decodex will check durable state before continuing."),
 		QuickTaskCommandState::Refused => Some("The command was refused."),
 	}
 }
@@ -2848,51 +3005,37 @@ fn command_status(command: QuickTaskCommandState) -> Option<&'static str> {
 fn recovery_action_label(action: QuickTaskRecoveryAction) -> &'static str {
 	match action {
 		QuickTaskRecoveryAction::ResumeRouting => "Resume the pending account route.",
-		QuickTaskRecoveryAction::CreateRoutingSuccessor => {
-			"Create a new conversation and route it explicitly."
-		},
-		QuickTaskRecoveryAction::ResumeEstablishment => {
-			"Resume the selected account session establishment."
-		},
+		QuickTaskRecoveryAction::CreateRoutingSuccessor =>
+			"Create a new conversation and route it explicitly.",
+		QuickTaskRecoveryAction::ResumeEstablishment =>
+			"Resume the selected account session establishment.",
 		QuickTaskRecoveryAction::ConfigureAccount => "Configure an account before continuing.",
 		QuickTaskRecoveryAction::EnableAccount => "Enable the selected account before continuing.",
-		QuickTaskRecoveryAction::EnrollCredentials => {
-			"Enroll account credentials before continuing."
-		},
-		QuickTaskRecoveryAction::ResolveAccountOperation => {
-			"Resolve the unsettled account operation before continuing."
-		},
-		QuickTaskRecoveryAction::RepairCredentialStore => {
-			"Repair the protected credential store before continuing."
-		},
-		QuickTaskRecoveryAction::RestoreProviderAgreement => {
-			"Restore provider account agreement before continuing."
-		},
+		QuickTaskRecoveryAction::EnrollCredentials =>
+			"Enroll account credentials before continuing.",
+		QuickTaskRecoveryAction::ResolveAccountOperation =>
+			"Resolve the unsettled account operation before continuing.",
+		QuickTaskRecoveryAction::RepairCredentialStore =>
+			"Repair the protected credential store before continuing.",
+		QuickTaskRecoveryAction::RestoreProviderAgreement =>
+			"Restore provider account agreement before continuing.",
 		QuickTaskRecoveryAction::RefreshQuota => "Refresh account quota before continuing.",
-		QuickTaskRecoveryAction::UpgradeCodex => {
-			"Use a Codex build with the required app-server methods."
-		},
-		QuickTaskRecoveryAction::SelectWorkingDirectory => {
-			"Select an owned local working directory before continuing."
-		},
-		QuickTaskRecoveryAction::StartNewConversation => {
-			"This thread cannot resume. Start a new conversation."
-		},
-		QuickTaskRecoveryAction::ResolvePriorActiveTurn => {
-			"Resolve the prior active turn before continuing."
-		},
-		QuickTaskRecoveryAction::ResolvePriorAttempt => {
-			"Resolve the prior provider attempt before continuing."
-		},
-		QuickTaskRecoveryAction::RestoreProcessReadiness => {
-			"Restore process readiness before continuing."
-		},
-		QuickTaskRecoveryAction::WaitForCurrentCommand => {
-			"Wait for the current command or turn to settle."
-		},
-		QuickTaskRecoveryAction::RefreshConversation => {
-			"Refresh this conversation before continuing."
-		},
+		QuickTaskRecoveryAction::UpgradeCodex =>
+			"Use a Codex build with the required app-server methods.",
+		QuickTaskRecoveryAction::SelectWorkingDirectory =>
+			"Select an owned local working directory before continuing.",
+		QuickTaskRecoveryAction::StartNewConversation =>
+			"This thread cannot resume. Start a new conversation.",
+		QuickTaskRecoveryAction::ResolvePriorActiveTurn =>
+			"Resolve the prior active turn before continuing.",
+		QuickTaskRecoveryAction::ResolvePriorAttempt =>
+			"Resolve the prior provider attempt before continuing.",
+		QuickTaskRecoveryAction::RestoreProcessReadiness =>
+			"Restore process readiness before continuing.",
+		QuickTaskRecoveryAction::WaitForCurrentCommand =>
+			"Wait for the current command or turn to settle.",
+		QuickTaskRecoveryAction::RefreshConversation =>
+			"Refresh this conversation before continuing.",
 	}
 }
 
@@ -2900,7 +3043,8 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 	match load {
 		QuickTasksLoadState::NeverRequested => "Quick Tasks have not loaded.",
 		QuickTasksLoadState::Loading => "Loading Quick Tasks",
-		QuickTasksLoadState::Ready => "Local task list loaded. Open or refresh a task for latest Codex state.",
+		QuickTasksLoadState::Ready =>
+			"Local task list loaded. Open or refresh a task for latest Codex state.",
 		QuickTasksLoadState::Offline => "Offline. Retained conversation state remains visible.",
 		QuickTasksLoadState::Unavailable => "Quick Task state is temporarily unavailable.",
 		QuickTasksLoadState::Refused => "Quick Task readback was refused.",
@@ -2910,15 +3054,12 @@ fn quick_task_load_status(load: QuickTasksLoadState) -> &'static str {
 fn quick_task_refresh_status(refresh: QuickTaskRefreshState) -> Option<String> {
 	match refresh {
 		QuickTaskRefreshState::Idle => None,
-		QuickTaskRefreshState::Refreshing { completed, total, archived, failed } => Some(format!(
-			"Syncing {completed}/{total} · {archived} archived · {failed} skipped"
-		)),
-		QuickTaskRefreshState::Complete { checked, archived, failed } => Some(format!(
-			"{checked} checked · {archived} archived · {failed} skipped"
-		)),
-		QuickTaskRefreshState::Stopped { checked, total, archived, failed } => Some(format!(
-			"Stopped {checked}/{total} · {archived} archived · {failed} skipped"
-		)),
+		QuickTaskRefreshState::Refreshing { completed, total, archived, failed } =>
+			Some(format!("Syncing {completed}/{total} · {archived} archived · {failed} skipped")),
+		QuickTaskRefreshState::Complete { checked, archived, failed } =>
+			Some(format!("{checked} checked · {archived} archived · {failed} skipped")),
+		QuickTaskRefreshState::Stopped { checked, total, archived, failed } =>
+			Some(format!("Stopped {checked}/{total} · {archived} archived · {failed} skipped")),
 	}
 }
 
@@ -2941,12 +3082,12 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 		},
 		_ => "↻".to_owned(),
 	};
-	let refresh_text_size = if matches!(shell.quick.refresh, QuickTaskRefreshState::Refreshing { .. })
-	{
-		8.0
-	} else {
-		12.0
-	};
+	let refresh_text_size =
+		if matches!(shell.quick.refresh, QuickTaskRefreshState::Refreshing { .. }) {
+			8.0
+		} else {
+			12.0
+		};
 	let rows = shell.quick.tasks.iter().enumerate().map(|(index, task)| {
 		let conversation_id = task.conversation_id.clone();
 		let short_id = task.conversation_id.as_str().chars().take(8).collect::<String>();
@@ -3108,19 +3249,29 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 								.id("archive-quick-task")
 								.role(Role::Button)
 								.aria_label("Archive selected Codex conversation")
-								.tooltip(|_, cx| cx.new(|_| ControlTooltip("Archive selected thread")).into())
+								.tooltip(|_, cx| {
+									cx.new(|_| ControlTooltip("Archive selected thread")).into()
+								})
 								.h(px(27.0))
 								.px_2()
 								.flex()
 								.items_center()
 								.rounded(px(7.0))
 								.text_size(px(8.0))
-								.text_color(if can_control { rgb(WB_TEXT_MUTED) } else { rgb(WB_TEXT_FAINT) })
+								.text_color(if can_control {
+									rgb(WB_TEXT_MUTED)
+								} else {
+									rgb(WB_TEXT_FAINT)
+								})
 								.when(can_control, |element| {
 									element
 										.cursor_pointer()
-										.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
-										.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
+										.hover(|element| {
+											element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
+										})
+										.active(|element| {
+											element.bg(rgba(0xffffff18)).opacity(0.82)
+										})
 										.on_click(cx.listener(|shell, _, window, cx| {
 											shell.archive_quick_task(window, cx);
 										}))
@@ -3141,7 +3292,9 @@ fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElem
 								.border_color(rgba(0xffffff14))
 								.text_size(px(8.5))
 								.text_color(rgb(WB_TEXT_MUTED))
-								.hover(|element| element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT)))
+								.hover(|element| {
+									element.bg(rgba(0xffffff0a)).text_color(rgb(WB_TEXT))
+								})
 								.active(|element| element.bg(rgba(0xffffff18)).opacity(0.82))
 								.focus_visible(|element| element.border_color(rgb(WB_BLUE)))
 								.cursor_pointer()
@@ -3718,147 +3871,104 @@ fn workbench_inspector(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 fn quick_task_transcript(
 	snapshot: &QuickTasksSnapshot,
 	history: Option<&HistorySnapshot>,
+	pending: Option<&PendingComposerSubmission>,
 ) -> AnyElement {
-	let selected = snapshot.selected.as_ref();
-	let persisted_inline_ids = history
-		.and_then(|history| history.visible.as_ref())
-		.into_iter()
-		.flat_map(|page| page.items.iter())
-		.filter(|item| item.payload.inline_text().is_some())
-		.map(|item| &item.history_item_id)
-		.collect::<Vec<_>>();
-	let history_rows = history
-		.and_then(|history| history.visible.as_ref())
-		.into_iter()
-		.flat_map(|page| page.items.iter())
-		.map(|item| {
-			let text = match &item.payload {
-				HistoryPayloadDto::Inline { text } => text.as_str().to_owned(),
-				HistoryPayloadDto::Blob(reference) => format!(
-					"Stored content: {} bytes; SHA-256 {}...",
-					reference.byte_length.get(),
-					&reference.sha256.as_str()[..12],
-				),
-			};
-			let content = match item.turn_role {
-				HistoryTurnRole::User => div()
-					.w_full()
-					.flex()
-					.justify_end()
-					.child(
-						div()
-							.max_w(px(560.0))
-							.px_3()
-							.py_2()
-							.rounded(px(10.0))
-							.bg(rgba(0xffffff0e))
-							.border_1()
-							.border_color(rgba(0xffffff0b))
-							.text_size(px(11.0))
-							.text_color(rgb(WB_TEXT))
-							.whitespace_normal()
-							.child(text),
-					)
-					.into_any_element(),
-				HistoryTurnRole::Assistant if item.kind == HistoryItemKindDto::Message => div()
-					.w_full()
-					.flex()
-					.flex_col()
-					.gap_2()
-					.child(
-						div()
-							.text_size(px(9.0))
-							.font_weight(FontWeight::MEDIUM)
-							.text_color(rgb(WB_TEXT_FAINT))
-							.child("CODEX"),
-					)
-					.child(
-						div()
-							.text_size(px(11.0))
-							.text_color(rgb(WB_TEXT))
-							.whitespace_normal()
-							.child(text),
-					)
-					.into_any_element(),
-				HistoryTurnRole::Tool | HistoryTurnRole::System | HistoryTurnRole::Assistant => {
-					div()
-						.w_full()
-						.h(px(26.0))
-						.px_2()
-						.flex()
-						.items_center()
-						.gap_2()
-						.rounded(px(6.0))
-						.text_size(px(9.0))
-						.text_color(rgb(WB_TEXT_FAINT))
-						.child(
-							div()
-								.font_family("SF Mono")
-								.text_size(px(8.5))
-								.text_color(rgb(if item.status == HistoryItemStatusDto::Failed {
-									WB_AMBER
-								} else {
-									WB_TEXT_FAINT
-								}))
-								.child(history_kind_label(item.kind, item.status)),
-						)
-						.child(
-							div()
-								.min_w_0()
-								.overflow_hidden()
-								.whitespace_nowrap()
-								.text_ellipsis()
-								.child(text),
-						)
-						.into_any_element()
-				},
-			};
-			div()
+	let rows = quick_task_transcript_rows(snapshot, history, pending);
+	let has_rows = !rows.is_empty();
+	let rendered_rows = rows.into_iter().map(|row| {
+		let content = match row {
+			TranscriptRow::Prompt { text, pending, .. } => div()
 				.w_full()
-				.py_2()
 				.flex()
-				.justify_center()
-				.child(div().w_full().max_w(px(760.0)).child(content))
-		});
-	let live_rows = snapshot
-		.live_deltas
-		.iter()
-		.filter(|delta| {
-			selected == Some(&delta.conversation_id)
-				&& !persisted_inline_ids.contains(&&delta.history_item_id)
-		})
-		.map(|delta| {
-			div().w_full().py_2().flex().justify_center().child(
-				div()
-					.w_full()
-					.max_w(px(760.0))
-					.flex()
-					.flex_col()
-					.gap_2()
-					.child(
-						div().text_size(px(9.0)).text_color(rgb(WB_ACCENT)).child("CODEX · LIVE"),
-					)
-					.child(
-						div()
-							.text_size(px(11.0))
-							.text_color(rgb(WB_TEXT))
-							.whitespace_normal()
-							.child(delta.text.as_str().to_owned()),
-					),
-			)
-		});
-	let history_status =
-		history.map_or("Conversation history is not connected.", |history| match history.load {
-			HistoryLoadState::Inactive => "Select a conversation or start a new conversation.",
-			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible => {
-				"Loading conversation history"
-			},
-			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => "",
-			HistoryLoadState::RetryableUnavailable(_) => {
-				"History is temporarily unavailable. Reconnect or retry."
-			},
-			HistoryLoadState::ClosedUnavailable(_) => "History readback was refused.",
-		});
+				.justify_end()
+				.child(
+					div()
+						.max_w(px(620.0))
+						.px_3()
+						.py_2()
+						.rounded(px(8.0))
+						.bg(rgba(0xffffff0a))
+						.border_1()
+						.border_color(rgba(if pending { 0x7aa2ff32 } else { 0xffffff0b }))
+						.text_size(px(11.0))
+						.text_color(rgb(WB_TEXT))
+						.whitespace_normal()
+						.child(text),
+				)
+				.into_any_element(),
+			TranscriptRow::Response { text, live, .. } => div()
+				.w_full()
+				.flex()
+				.gap_3()
+				.when(live, |element| {
+					element.child(div().mt(px(5.0)).size(px(5.0)).rounded_full().bg(rgb(WB_ACCENT)))
+				})
+				.child(
+					div()
+						.flex_1()
+						.min_w_0()
+						.text_size(px(11.0))
+						.text_color(rgb(WB_TEXT))
+						.whitespace_normal()
+						.child(text),
+				)
+				.into_any_element(),
+			TranscriptRow::Activity { kind, status, text, .. } => div()
+				.w_full()
+				.h(px(26.0))
+				.px_2()
+				.flex()
+				.items_center()
+				.gap_2()
+				.rounded(px(6.0))
+				.text_size(px(9.0))
+				.text_color(rgb(WB_TEXT_FAINT))
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(8.5))
+						.text_color(rgb(if status == HistoryItemStatusDto::Failed {
+							WB_AMBER
+						} else {
+							WB_TEXT_FAINT
+						}))
+						.child(history_kind_label(kind, status)),
+				)
+				.child(
+					div()
+						.min_w_0()
+						.overflow_hidden()
+						.whitespace_nowrap()
+						.text_ellipsis()
+						.child(text),
+				)
+				.into_any_element(),
+		};
+
+		div()
+			.w_full()
+			.py_2()
+			.flex()
+			.justify_center()
+			.child(div().w_full().max_w(px(760.0)).child(content))
+	});
+	let history_status = history.map_or_else(
+		|| (!has_rows).then_some("Conversation history is not connected."),
+		|history| match history.load {
+			HistoryLoadState::Inactive =>
+				(!has_rows).then_some("Select a conversation or start a new conversation."),
+			HistoryLoadState::InitialLoading | HistoryLoadState::RefreshingVisible =>
+				Some(if has_rows {
+					"Syncing earlier context"
+				} else {
+					"Loading conversation history"
+				}),
+			HistoryLoadState::PrefetchingAdjacent | HistoryLoadState::Visible => None,
+			HistoryLoadState::RetryableUnavailable(_) =>
+				Some("History is temporarily unavailable. Reconnect or retry."),
+			HistoryLoadState::ClosedUnavailable(_) => Some("History readback was refused."),
+		},
+	);
 
 	div()
 		.id("quick-task-transcript")
@@ -3869,7 +3979,7 @@ fn quick_task_transcript(
 		.overflow_y_scroll()
 		.px_5()
 		.py_5()
-		.when(!history_status.is_empty(), |element| {
+		.when_some(history_status, |element, history_status| {
 			element.child(
 				div().w_full().flex().justify_center().child(
 					div()
@@ -3882,8 +3992,7 @@ fn quick_task_transcript(
 				),
 			)
 		})
-		.children(history_rows)
-		.children(live_rows)
+		.children(rendered_rows)
 		.into_any_element()
 }
 
@@ -4215,10 +4324,7 @@ fn quick_tasks_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.or_else(|| {
 			selected_task
 				.is_some_and(|task| task.state == QuickTaskState::OutcomeUnknown)
-				.then(|| {
-					"Provider outcome cannot be proved. Start new; do not resend into this thread."
-						.to_owned()
-				})
+				.then(|| "Checking the interrupted turn before continuing.".to_owned())
 		})
 		.or_else(|| {
 			selected_task
@@ -4287,7 +4393,11 @@ fn quick_tasks_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 								)
 								.child(history_page_controls(shell, cx)),
 						)
-						.child(quick_task_transcript(&shell.quick, shell.history.as_ref()))
+						.child(quick_task_transcript(
+							&shell.quick,
+							shell.history.as_ref(),
+							shell.pending_submission.as_ref(),
+						))
 						.child(quick_task_composer(shell, cx)),
 				)
 				.when(shell.inspector_mounted, |content| {
@@ -4525,8 +4635,10 @@ mod tests {
 	use gpui::{TestAppContext, VisualTestContext, size};
 
 	use super::*;
-	use crate::client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery};
-	use crate::work_items::WorkItemsLoadState;
+	use crate::{
+		client_lifecycle::{CompatibilityReason, QuarantineReason, QuarantineRecovery},
+		work_items::WorkItemsLoadState,
+	};
 
 	fn open_shell(cx: &mut TestAppContext) -> (gpui::Entity<Shell>, &mut VisualTestContext) {
 		cx.update(bind_keys);
@@ -4563,9 +4675,17 @@ mod tests {
 
 	#[test]
 	fn composer_clears_only_after_exact_submission_acceptance() {
+		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000080")
+			.expect("test conversation identity is canonical");
 		let pending = PendingComposerSubmission {
 			content: "Keep this draft until accepted.".to_owned(),
 			result_generation: 7,
+			conversation_id,
+			turn_id: Some(
+				EntityId::new("20000000-0000-4000-8000-000000000080")
+					.expect("test turn identity is canonical"),
+			),
+			accepted: false,
 		};
 
 		assert_eq!(
@@ -4590,8 +4710,196 @@ mod tests {
 		);
 	}
 
+	fn transcript_snapshot(
+		conversation_id: &EntityId,
+		live_deltas: Vec<crate::quick_tasks::QuickTaskLiveDelta>,
+	) -> QuickTasksSnapshot {
+		QuickTasksSnapshot {
+			load: QuickTasksLoadState::Ready,
+			command: QuickTaskCommandState::AwaitingResult,
+			submission_result_generation: 0,
+			last_submission_accepted: false,
+			refresh: QuickTaskRefreshState::Idle,
+			tasks: Vec::new(),
+			selected: Some(conversation_id.clone()),
+			live_deltas,
+			can_submit: false,
+			execution: decodex_protocol::QuickTaskExecutionSettings::new(
+				decodex_protocol::QuickTaskModel::new("gpt-5.6-sol").expect("test model is valid"),
+				decodex_protocol::QuickTaskReasoningEffort::High,
+				false,
+			),
+		}
+	}
+
+	fn history_item(
+		history_item_id: &str,
+		turn_id: &str,
+		role: &str,
+		text: &str,
+	) -> HistoryItemDto {
+		serde_json::from_value(serde_json::json!({
+			"history_item_id": history_item_id,
+			"turn_id": turn_id,
+			"runtime_session_id": "30000000-0000-4000-8000-000000000080",
+			"turn_role": role,
+			"possible_side_effects": "none",
+			"kind": "message",
+			"status": "completed",
+			"payload": {"kind": "inline", "data": {"text": text}},
+			"media_type": "text/markdown",
+			"metadata": {},
+			"revision": 1
+		}))
+		.expect("test history item is valid")
+	}
+
+	fn history_snapshot(
+		conversation_id: &EntityId,
+		items: Vec<HistoryItemDto>,
+		load: HistoryLoadState,
+		source: Option<HistoryPageSource>,
+	) -> HistorySnapshot {
+		HistorySnapshot {
+			conversation_id: Some(conversation_id.clone()),
+			view_generation: 1,
+			load,
+			visible: source
+				.map(|_| decodex_protocol::ConversationHistoryPage { items, next_cursor: None }),
+			visible_source: source,
+			next_cursor: None,
+			cursor: crate::history_pager::HistoryCursorObservation::NoContinuationObserved,
+			cache_diagnostic: None,
+			retained_pages: 1,
+			retained_items: 0,
+			retained_bytes: 0,
+			can_show_previous: false,
+			can_show_next: false,
+			can_retry: false,
+			last_stale_cancellation: None,
+		}
+	}
+
 	#[test]
-	fn outcome_unknown_offers_only_a_safe_new_conversation_path() {
+	fn pending_prompt_is_visible_before_the_daemon_command_finishes() {
+		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000081")
+			.expect("test conversation identity is canonical");
+		let turn_id = EntityId::new("20000000-0000-4000-8000-000000000081")
+			.expect("test turn identity is canonical");
+		let snapshot = transcript_snapshot(&conversation_id, Vec::new());
+		let pending = PendingComposerSubmission {
+			content: "Show this immediately.".to_owned(),
+			result_generation: 0,
+			conversation_id,
+			turn_id: Some(turn_id.clone()),
+			accepted: false,
+		};
+
+		assert_eq!(
+			quick_task_transcript_rows(&snapshot, None, Some(&pending)),
+			vec![TranscriptRow::Prompt {
+				turn_id: Some(turn_id),
+				text: "Show this immediately.".to_owned(),
+				pending: true,
+			}]
+		);
+	}
+
+	#[test]
+	fn assistant_chunks_coalesce_into_one_response_per_turn() {
+		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000082")
+			.expect("test conversation identity is canonical");
+		let live_turn = EntityId::new("20000000-0000-4000-8000-000000000083")
+			.expect("test live turn identity is canonical");
+		let live = |item: &str, text: &str| crate::quick_tasks::QuickTaskLiveDelta {
+			history_item_id: EntityId::new(item).expect("test history identity is canonical"),
+			conversation_id: conversation_id.clone(),
+			turn_id: live_turn.clone(),
+			text: decodex_protocol::HistoryText::new(text).expect("test live delta is bounded"),
+		};
+		let snapshot = transcript_snapshot(
+			&conversation_id,
+			vec![
+				live("40000000-0000-4000-8000-000000000083", "Streaming "),
+				live("40000000-0000-4000-8000-000000000084", "response."),
+			],
+		);
+		let history = history_snapshot(
+			&conversation_id,
+			vec![
+				history_item(
+					"40000000-0000-4000-8000-000000000081",
+					"20000000-0000-4000-8000-000000000082",
+					"assistant",
+					"Durable ",
+				),
+				history_item(
+					"40000000-0000-4000-8000-000000000082",
+					"20000000-0000-4000-8000-000000000082",
+					"assistant",
+					"response.",
+				),
+			],
+			HistoryLoadState::Visible,
+			Some(HistoryPageSource::FreshServer),
+		);
+
+		assert_eq!(
+			quick_task_transcript_rows(&snapshot, Some(&history), None),
+			vec![
+				TranscriptRow::Response {
+					turn_id: EntityId::new("20000000-0000-4000-8000-000000000082")
+						.expect("test turn identity is canonical"),
+					text: "Durable response.".to_owned(),
+					live: false,
+				},
+				TranscriptRow::Response {
+					turn_id: live_turn,
+					text: "Streaming response.".to_owned(),
+					live: true,
+				},
+			]
+		);
+	}
+
+	#[test]
+	fn provider_refresh_waits_until_fresh_local_history_is_visible() {
+		let conversation_id = EntityId::new("10000000-0000-4000-8000-000000000084")
+			.expect("test conversation identity is canonical");
+		let loading =
+			history_snapshot(&conversation_id, Vec::new(), HistoryLoadState::InitialLoading, None);
+		let cached = history_snapshot(
+			&conversation_id,
+			Vec::new(),
+			HistoryLoadState::RefreshingVisible,
+			Some(HistoryPageSource::CachedUnverified),
+		);
+		let fresh = history_snapshot(
+			&conversation_id,
+			Vec::new(),
+			HistoryLoadState::Visible,
+			Some(HistoryPageSource::FreshServer),
+		);
+
+		assert!(!deferred_provider_refresh_ready(
+			Some(&conversation_id),
+			Some(&conversation_id),
+			Some(&loading)
+		));
+		assert!(!deferred_provider_refresh_ready(
+			Some(&conversation_id),
+			Some(&conversation_id),
+			Some(&cached)
+		));
+		assert!(deferred_provider_refresh_ready(
+			Some(&conversation_id),
+			Some(&conversation_id),
+			Some(&fresh)
+		));
+	}
+
+	#[test]
+	fn outcome_unknown_offers_safe_readback_instead_of_discarding_the_conversation() {
 		let task = QuickTaskSummary::new(
 			EntityId::new("10000000-0000-4000-8000-000000000091")
 				.expect("test conversation identity is canonical"),
@@ -4608,7 +4916,7 @@ mod tests {
 		)
 		.expect("outcome-unknown projection is valid");
 
-		assert_eq!(quick_task_recovery_presentation(Some(&task)), (true, "Start new"));
+		assert_eq!(quick_task_recovery_presentation(Some(&task)), (true, "Retry sync"));
 		assert_eq!(quick_task_recovery_presentation(None), (false, "Recover"));
 	}
 
@@ -4721,15 +5029,11 @@ mod tests {
 			.into_iter()
 			.map(|component| {
 				let status = match component {
-					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity => {
-						DoctorStatus::Unknown(DoctorIssue::NotProbed)
-					},
-					DoctorComponent::ManagedRepository => {
-						DoctorStatus::Unavailable(DoctorIssue::Disabled)
-					},
-					DoctorComponent::PluginReadiness => {
-						DoctorStatus::Unknown(DoctorIssue::Plugin)
-					},
+					DoctorComponent::AppServerCapability(_) | DoctorComponent::BlobIntegrity =>
+						DoctorStatus::Unknown(DoctorIssue::NotProbed),
+					DoctorComponent::ManagedRepository =>
+						DoctorStatus::Unavailable(DoctorIssue::Disabled),
+					DoctorComponent::PluginReadiness => DoctorStatus::Unknown(DoctorIssue::Plugin),
 					_ => DoctorStatus::Ready,
 				};
 				decodex_protocol::DoctorCheck::new(component, status)

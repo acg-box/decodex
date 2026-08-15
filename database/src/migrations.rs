@@ -6,7 +6,7 @@ use sha2::{Digest as _, Sha256};
 use crate::{DatabaseError, error::sqlite_error};
 
 pub(crate) const APPLICATION_ID: i64 = 0x4443_5831;
-const CURRENT_SCHEMA_VERSION: i64 = 3;
+const CURRENT_SCHEMA_VERSION: i64 = 4;
 
 struct Migration {
 	version: i64,
@@ -29,6 +29,11 @@ const MIGRATIONS: &[Migration] = &[
 		version: 3,
 		name: "quick_task_execution_controls",
 		sql: include_str!("../migrations/0003_quick_task_execution_controls.sql"),
+	},
+	Migration {
+		version: 4,
+		name: "context_pack_fallback",
+		sql: include_str!("../migrations/0004_context_pack_fallback.sql"),
 	},
 ];
 

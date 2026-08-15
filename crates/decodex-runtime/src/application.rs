@@ -40,8 +40,8 @@ use decodex_protocol::{
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
 	MAX_HISTORY_PAGE_SIZE, ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
-	QuickTaskListCursor, QuickTaskListPage, QuickTaskListResult, QuickTaskReadError,
-	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskRecoveryAction,
+	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskListCursor,
+	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
 	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
 	ResetCardDescriptorDto, ResetCardError, ResetCardInventoryResult, ResetCardObservationDto,
 	ResetCardOperationResult, ResetCardOutcome, ResultPayload, Sha256Digest, SnapshotItem,
@@ -68,12 +68,10 @@ use crate::{
 	},
 	managed_repository_runtime::ManagedRepositoryCapability,
 	quick_task::{
-		ControlQuickTask, CreateQuickTask, QuickTaskCapability,
-		QuickTaskControlOutcome,
+		ControlQuickTask, CreateQuickTask, QuickTaskCapability, QuickTaskControlOutcome,
 		QuickTaskExecutionSettings as RuntimeQuickTaskExecutionSettings, QuickTaskLocalState,
-		QuickTaskManualRecovery,
-		QuickTaskOutcome, QuickTaskProjection, QuickTaskReadback, QuickTaskRuntime,
-		QuickTaskTerminalState, RecoverQuickTask, SubmitQuickTaskTurn,
+		QuickTaskManualRecovery, QuickTaskOutcome, QuickTaskProjection, QuickTaskReadback,
+		QuickTaskRuntime, QuickTaskTerminalState, RecoverQuickTask, SubmitQuickTaskTurn,
 	},
 	routing_orchestration::{ExecutionCoordinator, RoutingSuccessorExecutionCommand},
 };
@@ -1162,8 +1160,7 @@ impl ServiceApplication {
 			message,
 			working_directory,
 			execution,
-		} =
-			&command.payload
+		} = &command.payload
 		else {
 			return Err(quick_task_conflict());
 		};
@@ -1411,7 +1408,7 @@ impl ServiceApplication {
 		let core_id =
 			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
 		let row = self.quick_task_command_row(&core_id, command.expected_revision).await?;
-		if row.has_active_provider_attempt || row.has_unknown_provider_attempt {
+		if row.has_active_provider_attempt {
 			return Err(quick_task_busy());
 		}
 		if row.active_turn_id.is_some() != row.active_turn_revision.is_some() {
@@ -1464,9 +1461,8 @@ impl ServiceApplication {
 			QuickTaskControlOutcome::Busy => Err(quick_task_busy()),
 			QuickTaskControlOutcome::Conflict => Err(quick_task_conflict()),
 			QuickTaskControlOutcome::OutcomeUnknown => Err(CommandError::AcceptanceUnknown),
-			QuickTaskControlOutcome::Unavailable => Err(application_unavailable(
-				"Quick Task thread control is unavailable",
-			)),
+			QuickTaskControlOutcome::Unavailable =>
+				Err(application_unavailable("Quick Task thread control is unavailable")),
 		}
 	}
 
@@ -1665,7 +1661,8 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
-			QueryPayload::ListProjects => QueryResultPayload::Projects(ProjectListResult::Unavailable),
+			QueryPayload::ListProjects =>
+				QueryResultPayload::Projects(ProjectListResult::Unavailable),
 			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
 				self.quick_task_list(after.as_ref(), page_size.get()).await,
 			),

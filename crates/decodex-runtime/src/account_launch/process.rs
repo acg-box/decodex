@@ -65,9 +65,11 @@ use crate::account_launch::{
 #[cfg(test)] use decodex_codex::schema::SchemaMarker;
 use decodex_codex::{
 	ArchiveReconciliationOutcome, ArchiveUnverifiedReason, BuildId, Capability, CapabilityCache,
-	CapabilityProfile, ExactThreadId, ExactThreadListFilter, ExactThreadListResult,
-	ExactThreadReadResult, LiveMethodOutcome, LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS,
-	MethodObservation, NormalizedEvent, QuickTaskMessageDelta, QuickTaskThreadResumeRequest,
+	CapabilityProfile, ExactSubmittedTurnReadback, ExactThreadId, ExactThreadListFilter,
+	ExactThreadListResult, ExactThreadReadResult, ExactTurnId, LiveMethodOutcome,
+	LossyThreadHistory, MAX_EXACT_THREAD_LIST_RESULTS, MAX_EXACT_THREAD_READ_ITEMS,
+	MAX_EXACT_THREAD_READ_TURNS, MAX_EXACT_TURN_ASSISTANT_BYTES, MethodObservation,
+	NormalizedEvent, QuickTaskMessageDelta, QuickTaskThreadResumeRequest,
 	QuickTaskThreadStartRequest, QuickTaskTurnInterruptRequest, QuickTaskTurnInterruptResponse,
 	QuickTaskTurnStartRequest, ThreadSummary, TurnStatus, UnavailableReason,
 	decode_quick_task_thread_resume_response, decode_quick_task_thread_start_response,
@@ -78,7 +80,7 @@ use decodex_codex::{
 use decodex_core::{
 	AccountId, ProcessBootIdentity, ProcessControlKind, ProcessExecutionAuthorization,
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationIntent,
-	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId,
+	ProcessIsolationKind, ProcessRunnerIdentity, ProviderAttemptId, TurnId,
 };
 use decodex_database::{
 	BindRuntimeSessionThread, CodexAccountCapabilityAttestation, FreshProviderDispatchFence,
@@ -1009,6 +1011,18 @@ impl AttestedProcessChild {
 			.map_err(|_| QuickTaskProcessError::Unavailable)
 	}
 
+	/// Read one exact thread and correlate one caller-stable user-message identity.
+	pub(crate) fn read_exact_ordinary_submitted_turn(
+		&mut self,
+		thread_id: &ExactThreadId,
+		client_user_message_id: &TurnId,
+	) -> Result<ExactThreadReadResult, QuickTaskProcessError> {
+		self.require_ordinary_turns_initialized()?;
+		self.process
+			.read_exact_thread_for_client(thread_id, client_user_message_id.as_str(), self.timeout)
+			.map_err(|_| QuickTaskProcessError::Unavailable)
+	}
+
 	/// Reconcile one exact archive mutation through same-process pre/post readback.
 	pub(crate) fn archive_exact_ordinary_thread(
 		&mut self,
@@ -1897,6 +1911,24 @@ impl SupervisedProcess {
 		thread_id: &ExactThreadId,
 		timeout: Duration,
 	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
+		self.read_exact_thread_observing(thread_id, None, timeout)
+	}
+
+	fn read_exact_thread_for_client(
+		&mut self,
+		thread_id: &ExactThreadId,
+		client_user_message_id: &str,
+		timeout: Duration,
+	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
+		self.read_exact_thread_observing(thread_id, Some(client_user_message_id), timeout)
+	}
+
+	fn read_exact_thread_observing(
+		&mut self,
+		thread_id: &ExactThreadId,
+		client_user_message_id: Option<&str>,
+		timeout: Duration,
+	) -> Result<ExactThreadReadResult, ExactReconciliationError> {
 		self.re_attest_exact_account(timeout)?;
 
 		let response = self
@@ -1917,10 +1949,18 @@ impl SupervisedProcess {
 		if &facts.id != thread_id {
 			return Err(ExactReconciliationError::InvalidResult);
 		}
+		let submitted_turn = client_user_message_id
+			.map(|client_id| project_exact_submitted_turn(&response.thread, client_id))
+			.transpose()?
+			.flatten();
 
 		self.re_attest_exact_account(timeout)?;
 
-		Ok(ExactThreadReadResult { facts, history: LossyThreadHistory::IncludeTurnsReadback })
+		Ok(ExactThreadReadResult {
+			facts,
+			history: LossyThreadHistory::IncludeTurnsReadback,
+			submitted_turn,
+		})
 	}
 
 	fn resolve_exact_thread_archived_state(
@@ -2073,6 +2113,88 @@ impl SupervisedProcess {
 
 		if in_string { Err(()) } else { Ok(()) }
 	}
+}
+
+fn project_exact_submitted_turn(
+	thread: &crate::account_launch::protocol::ProtocolThread,
+	client_user_message_id: &str,
+) -> Result<Option<ExactSubmittedTurnReadback>, ExactReconciliationError> {
+	TurnId::new(client_user_message_id.to_owned())
+		.map_err(|_| ExactReconciliationError::InvalidResult)?;
+	if thread.turns.len() > MAX_EXACT_THREAD_READ_TURNS {
+		return Err(ExactReconciliationError::InvalidResult);
+	}
+	let mut item_count = 0_usize;
+	let mut matched = None;
+	for turn in &thread.turns {
+		item_count = item_count
+			.checked_add(turn.items.len())
+			.filter(|count| *count <= MAX_EXACT_THREAD_READ_ITEMS)
+			.ok_or(ExactReconciliationError::InvalidResult)?;
+		let client_matches = turn
+			.items
+			.iter()
+			.filter(|item| {
+				item.kind.as_str() == "userMessage"
+					&& item
+						.client_id
+						.as_ref()
+						.is_some_and(|id| id.as_str() == client_user_message_id)
+			})
+			.count();
+		if client_matches == 0 {
+			continue;
+		}
+		if client_matches != 1 || matched.is_some() {
+			return Err(ExactReconciliationError::InvalidResult);
+		}
+		matched = Some(turn);
+	}
+	let Some(turn) = matched else {
+		return Ok(None);
+	};
+	let provider_turn_id = ExactTurnId::new(turn.id.as_str().to_owned())
+		.map_err(|_| ExactReconciliationError::InvalidResult)?;
+	let status = turn.status.into_quick_task();
+	let mut assistant_text = String::new();
+	for item in &turn.items {
+		if item.kind.as_str() != "agentMessage" {
+			continue;
+		}
+		let text = item.text.as_ref().ok_or(ExactReconciliationError::InvalidResult)?.as_str();
+		assistant_text
+			.len()
+			.checked_add(text.len())
+			.filter(|length| *length <= MAX_EXACT_TURN_ASSISTANT_BYTES)
+			.ok_or(ExactReconciliationError::InvalidResult)?;
+		assistant_text.push_str(text);
+	}
+	let mut witness = Sha256::new();
+	for part in [
+		"decodex/exact-submitted-turn/v1",
+		thread.id.as_str(),
+		client_user_message_id,
+		provider_turn_id.as_str(),
+		match status {
+			decodex_codex::QuickTaskTurnStatus::Completed => "completed",
+			decodex_codex::QuickTaskTurnStatus::Interrupted => "interrupted",
+			decodex_codex::QuickTaskTurnStatus::Failed => "failed",
+			decodex_codex::QuickTaskTurnStatus::InProgress => "in_progress",
+		},
+		assistant_text.as_str(),
+	] {
+		witness.update(part.len().to_be_bytes());
+		witness.update(part.as_bytes());
+	}
+	let witness_digest = hex_digest(&witness.finalize());
+	ExactSubmittedTurnReadback::from_protocol(
+		provider_turn_id,
+		status,
+		assistant_text,
+		witness_digest,
+	)
+	.map(Some)
+	.map_err(|_| ExactReconciliationError::InvalidResult)
 }
 
 fn decode_quick_task_process_event(
@@ -4768,7 +4890,7 @@ mod tests {
 		},
 		protocol::{
 			self, ClientInfo, InitializeCapabilities, InitializeParams, InitializeResponse,
-			JsonRpcResponse,
+			JsonRpcResponse, ProtocolThread,
 		},
 	};
 	use decodex_codex::{
@@ -4779,7 +4901,7 @@ mod tests {
 	use decodex_core::{
 		AccountId, AccountOperationId, AccountProvider, CredentialBinding, CredentialFingerprint,
 		CredentialStoreSchemaVersion, CredentialVersion, ProcessGenerationAccountBinding,
-		ProviderIdentity,
+		ProviderIdentity, TurnId,
 	};
 
 	struct TestCapacity {
@@ -7130,6 +7252,55 @@ mod tests {
 				"mode {mode} unexpectedly succeeded"
 			);
 		}
+	}
+
+	#[test]
+	fn exact_submitted_turn_projection_requires_one_stable_client_identity() {
+		let client_id = "50000000-0000-4000-8000-000000000001";
+		let thread: ProtocolThread = serde_json::from_value(serde_json::json!({
+			"id": "thread-1",
+			"turns": [
+				{
+					"id": "provider-turn-1",
+					"status": "completed",
+					"items": [
+						{"type": "userMessage", "clientId": client_id},
+						{"type": "agentMessage", "text": "Hello "},
+						{"type": "agentMessage", "text": "world"}
+					]
+				}
+			]
+		}))
+		.expect("decode exact submitted Turn fixture");
+		let matched = super::project_exact_submitted_turn(&thread, client_id)
+			.expect("project exact submitted Turn")
+			.expect("stable client identity is present");
+		assert_eq!(matched.provider_turn_id().as_str(), "provider-turn-1");
+		assert_eq!(matched.status(), decodex_codex::QuickTaskTurnStatus::Completed);
+		assert_eq!(matched.assistant_text(), "Hello world");
+		assert_eq!(matched.witness_digest().len(), 64);
+
+		let absent =
+			TurnId::new("50000000-0000-4000-8000-000000000002").expect("absent client identity");
+		assert_eq!(
+			super::project_exact_submitted_turn(&thread, absent.as_str())
+				.expect("absence is a valid lossy observation"),
+			None
+		);
+
+		let duplicate: ProtocolThread = serde_json::from_value(serde_json::json!({
+			"id": "thread-1",
+			"turns": [
+				{"id": "provider-turn-1", "status": "completed", "items": [
+					{"type": "userMessage", "clientId": client_id}
+				]},
+				{"id": "provider-turn-2", "status": "completed", "items": [
+					{"type": "userMessage", "clientId": client_id}
+				]}
+			]
+		}))
+		.expect("decode duplicate submitted Turn fixture");
+		assert!(super::project_exact_submitted_turn(&duplicate, client_id).is_err());
 	}
 
 	#[test]
