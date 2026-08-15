@@ -140,12 +140,16 @@ old cached page cannot become visible after this invalidation.
 
 ## App-server freshness and execution controls
 
-The selected-thread refresh boundary treats Codex Desktop and Decodex as app-server
-clients. It does not synchronize the two UIs. An exact account-bound `thread/read`
-re-observes the selected thread lifecycle. External archive readback atomically archives
-the local Conversation and ends its RuntimeSession. A Decodex archive uses same-process
-pre-read, `thread/archive`, and post-read before the local transition. The active SQLite
-list no longer retains rows absent from a complete current local page.
+The thread-refresh boundary treats Codex Desktop and Decodex as app-server clients. It
+does not synchronize the two UIs. An exact account-bound `thread/read` re-observes one
+thread lifecycle. Opening a Conversation uses that path for the selected thread. The
+sidebar sync executes the same command sequentially for every local provider-backed
+Conversation and performs a final SQLite list readback. External archive readback
+atomically archives the local Conversation and ends its RuntimeSession. Definite busy
+or recovery refusals are counted as skipped; ambiguous transport outcomes stop the
+batch. A Decodex archive uses same-process pre-read, `thread/archive`, and post-read
+before the local transition. The active SQLite list no longer retains rows absent from
+a complete current local page.
 
 The generated schema from the installed Codex app-server confirms `thread/read`,
 `thread/archive`, `model/list`, and request-scoped `model`, `effort`, and `serviceTier`
@@ -175,6 +179,12 @@ tests. The installed Codex executable also passed the ignored live read-only pro
 which negotiates schema/version and read-only RPCs without dispatching a Turn. The
 deterministic native Workbench capture includes the refresh, Archive, model, Fast, and
 reasoning controls without changing the existing shell layout.
+
+The Health destination separates required core services, deferred app-server probes,
+and optional capabilities. The summary reports core readiness only. `NotProbed`,
+`Disabled`, and unconfigured plugin inventory render as `Not checked`, `Disabled`, and
+`Not configured`; they do not appear as generic failures. A deterministic native Health
+capture and focused GPUI tests cover this presentation contract.
 
 ## Desktop account surfaces and atomic packaging
 
