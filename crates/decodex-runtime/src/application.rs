@@ -13,15 +13,19 @@ use decodex_core::{
 	AccountOperationPhase, AccountQuotaDisposition, AccountQuotaObservationError,
 	AccountQuotaWindowObservation, AccountRecord, AccountRoutingControl, AccountSelectionMode,
 	AccountSelectionRecovery, AccountState, Availability, BlobStore, ConversationId,
-	HistoryItemKind, ItemStatus, PossibleSideEffects, ProductState, ResetCardConsumeOutcome,
-	ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId, TurnRole, WorkItemState,
+	HistoryItemKind, ItemStatus, ObjectiveId, PossibleSideEffects, ProductState, ProgramClaimId,
+	ProgramEvidenceId, ProgramId, ProgramObservationId, ProgramProposalId, ProgramReviewId,
+	ResetCardConsumeOutcome, ResetCardDescriptor, ResetCardTimestamp, RuntimeSessionState, TurnId,
+	TurnRole, WorkItemId, WorkItemState,
 };
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity, DatabaseError,
-	HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
-	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
-	OrdinaryTaskPreSessionState, RoutingControlOutcome, SqliteStore, StoreError,
+	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity,
+	CreateProgramCycle as StoreCreateProgramCycle, DatabaseError, HistoryCursor, HistoryEntry,
+	OrdinaryTaskConversationCursor, OrdinaryTaskConversationProjection,
+	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
+	ProgramEvidenceInput, ProgramSummaryRecord, RecordProgramReview, RoutingControlOutcome,
+	SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -39,7 +43,10 @@ use decodex_protocol::{
 	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
+	MAX_HISTORY_PAGE_SIZE, ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult,
+	ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto, ProgramNodeKind,
+	ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto, ProjectListResult,
+	QueryEnvelope, QueryPayload, QueryResultPayload,
 	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskListCursor,
 	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
 	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
@@ -948,6 +955,94 @@ impl ServiceApplication {
 		WorkItemBoardResult::Unavailable { error: WorkItemBoardQueryError::ProductStateUnavailable }
 	}
 
+	async fn program_list(&self) -> ProgramListResult {
+		let ProductStore::Available(store) = &self.store else {
+			return ProgramListResult::Unavailable;
+		};
+		match store.list_programs(64).await {
+			Ok(programs) => programs
+				.into_iter()
+				.map(program_summary_dto)
+				.collect::<Result<Vec<_>, _>>()
+				.map_or(ProgramListResult::Unavailable, ProgramListResult::Available),
+			Err(_) => ProgramListResult::Unavailable,
+		}
+	}
+
+	async fn program_cycle(&self, program_id: &EntityId) -> ProgramCycleResult {
+		let ProductStore::Available(store) = &self.store else {
+			return ProgramCycleResult::Unavailable;
+		};
+		let Ok(program_id) = ProgramId::new(program_id.as_str()) else {
+			return ProgramCycleResult::Unavailable;
+		};
+		match store.program_cycle(&program_id).await {
+			Ok(Some(record)) => self
+				.program_cycle_dto(record)
+				.await
+				.map_or(ProgramCycleResult::Unavailable, |cycle| {
+					ProgramCycleResult::Available(Box::new(cycle))
+				}),
+			Ok(None) => ProgramCycleResult::NotFound,
+			Err(_) => ProgramCycleResult::Unavailable,
+		}
+	}
+
+	async fn program_cycle_dto(&self, record: ProgramCycleRecord) -> Result<ProgramCycleDto, ()> {
+		let mut run_states = Vec::new();
+		for work_item in &record.work_items {
+			let Some(conversation_id) = work_item.conversation_id.as_ref() else {
+				continue;
+			};
+			let entity_id = EntityId::new(conversation_id.as_str()).map_err(|_| ())?;
+			let state = match self.quick_task_get(&entity_id).await {
+				QuickTaskResult::Available(summary) => quick_task_state_text(summary.state),
+				QuickTaskResult::RoutingSuccessorRedirect { .. } => "routing_successor",
+				QuickTaskResult::NotFound => "archived",
+				QuickTaskResult::Unavailable { .. } => "unavailable",
+			};
+			run_states.push((conversation_id.clone(), state));
+		}
+		program_cycle_dto(record, &run_states)
+	}
+
+	async fn execute_program_command(
+		&self,
+		command: &CommandEnvelope,
+	) -> Result<ApplicationPublication, CommandError> {
+		let ProductStore::Available(store) = &self.store else {
+			return Err(application_unavailable("Program storage is unavailable"));
+		};
+		let request = serde_json::to_vec(&command.payload)
+			.map_err(|_| application_unavailable("Program command is invalid"))?;
+		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
+			.map_err(program_command_error)?;
+		let record = match &command.payload {
+			CommandPayload::CreateProgramCycle { draft } => store
+				.create_program_cycle(&identity, &store_program_create(draft)?)
+				.await
+				.map_err(program_command_error)?,
+			CommandPayload::RecordProgramReview { review } => store
+				.record_program_review(&identity, &store_program_review(review)?)
+				.await
+				.map_err(program_command_error)?,
+			_ => return Err(application_unavailable("Program command is invalid")),
+		};
+		let cycle = self
+			.program_cycle_dto(record)
+			.await
+			.map_err(|_| application_unavailable("Program projection is unavailable"))?;
+		let entity_id = cycle.program.program_id.clone();
+		let entity_revision = cycle.program.revision;
+		Ok(ApplicationPublication {
+			channel: Channel::ProjectWork,
+			entity_id,
+			entity_revision,
+			result: ResultPayload::ProgramCycleChanged { cycle: Box::new(cycle.clone()) },
+			event: EventPayload::ProgramCycleChanged { cycle: Box::new(cycle) },
+		})
+	}
+
 	async fn quick_task_row(
 		&self,
 		conversation_id: &ConversationId,
@@ -1157,6 +1252,7 @@ impl ServiceApplication {
 	) -> Result<QuickTaskOutcome, CommandError> {
 		let CommandPayload::CreateQuickTask {
 			conversation_id,
+			work_item_id,
 			message,
 			working_directory,
 			execution,
@@ -1169,12 +1265,18 @@ impl ServiceApplication {
 		}
 		let conversation_id =
 			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
+		let work_item_id = work_item_id
+			.as_ref()
+			.map(|work_item_id| WorkItemId::new(work_item_id.as_str()))
+			.transpose()
+			.map_err(|_| quick_task_conflict())?;
 		Ok(runtime
 			.create(CreateQuickTask {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				correlation_id: command.correlation_id.as_str().to_owned(),
 				causation_id: command.causation_id.as_ref().map(|id| id.as_str().to_owned()),
 				conversation_id,
+				work_item_id,
 				message: message.as_str().to_owned(),
 				working_directory: working_directory.as_str().to_owned(),
 				execution: runtime_execution_settings(execution),
@@ -1567,6 +1669,8 @@ impl Application for ServiceApplication {
 		command: &'a CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
+			CommandPayload::CreateProgramCycle { .. }
+			| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
 			CommandPayload::RegisterProject { .. }
 			| CommandPayload::CreateWorkItem { .. }
 			| CommandPayload::StartWorkItem { .. }
@@ -1661,6 +1765,9 @@ impl Application for ServiceApplication {
 
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
+			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
+			QueryPayload::GetProgramCycle { program_id } =>
+				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
 			QueryPayload::ListProjects =>
 				QueryResultPayload::Projects(ProjectListResult::Unavailable),
 			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
@@ -1978,6 +2085,323 @@ fn runtime_execution_settings(
 		model: settings.model.as_str().to_owned(),
 		reasoning_effort: settings.reasoning_effort.as_str().to_owned(),
 		fast: settings.fast,
+	}
+}
+
+fn store_program_create(
+	draft: &ProgramCycleDraftDto,
+) -> Result<StoreCreateProgramCycle, CommandError> {
+	Ok(StoreCreateProgramCycle {
+		program_id: ProgramId::new(draft.program_id.as_str())
+			.map_err(|_| application_unavailable("Program identity is invalid"))?,
+		signal_id: ProgramObservationId::new(draft.signal_id.as_str())
+			.map_err(|_| application_unavailable("Signal identity is invalid"))?,
+		claim_id: ProgramClaimId::new(draft.claim_id.as_str())
+			.map_err(|_| application_unavailable("Claim identity is invalid"))?,
+		proposal_id: ProgramProposalId::new(draft.proposal_id.as_str())
+			.map_err(|_| application_unavailable("Proposal identity is invalid"))?,
+		objective_id: ObjectiveId::new(draft.objective_id.as_str())
+			.map_err(|_| application_unavailable("Objective identity is invalid"))?,
+		work_item_id: WorkItemId::new(draft.work_item_id.as_str())
+			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
+		name: draft.name.as_str().to_owned(),
+		purpose: draft.purpose.as_str().to_owned(),
+		non_goals: draft.non_goals.iter().map(|value| value.as_str().to_owned()).collect(),
+		review_policy: draft.review_policy.as_str().to_owned(),
+		signal_source: draft.signal_source.as_str().to_owned(),
+		signal_summary: draft.signal_summary.as_str().to_owned(),
+		signal_observed_at_micros: draft.signal_observed_at_micros,
+		claim_statement: draft.claim_statement.as_str().to_owned(),
+		proposal_summary: draft.proposal_summary.as_str().to_owned(),
+		proposal_expected_effect: draft.proposal_expected_effect.as_str().to_owned(),
+		proposal_risk: draft.proposal_risk.as_str().to_owned(),
+		proposal_evidence_need: draft.proposal_evidence_need.as_str().to_owned(),
+		objective_outcome: draft.objective_outcome.as_str().to_owned(),
+		acceptance_criteria: draft
+			.acceptance_criteria
+			.iter()
+			.map(|value| value.as_str().to_owned())
+			.collect(),
+		validation_criteria: draft
+			.validation_criteria
+			.iter()
+			.map(|value| value.as_str().to_owned())
+			.collect(),
+		work_item_title: draft.work_item_title.as_str().to_owned(),
+		work_item_instructions: draft.work_item_instructions.as_str().to_owned(),
+		working_directory: draft.working_directory.as_str().to_owned(),
+	})
+}
+
+fn store_program_review(
+	review: &ProgramReviewDraftDto,
+) -> Result<RecordProgramReview, CommandError> {
+	let evidence = |draft: &decodex_protocol::ProgramEvidenceDraftDto| {
+		Ok(ProgramEvidenceInput {
+			evidence_id: ProgramEvidenceId::new(draft.evidence_id.as_str())
+				.map_err(|_| application_unavailable("Evidence identity is invalid"))?,
+			source: draft.source.as_str().to_owned(),
+			summary: draft.summary.as_str().to_owned(),
+			observed_at_micros: draft.observed_at_micros,
+		})
+	};
+	Ok(RecordProgramReview {
+		review_id: ProgramReviewId::new(review.review_id.as_str())
+			.map_err(|_| application_unavailable("Review identity is invalid"))?,
+		program_id: ProgramId::new(review.program_id.as_str())
+			.map_err(|_| application_unavailable("Program identity is invalid"))?,
+		work_item_id: WorkItemId::new(review.work_item_id.as_str())
+			.map_err(|_| application_unavailable("WorkItem identity is invalid"))?,
+		deterministic: evidence(&review.deterministic)?,
+		external: evidence(&review.external)?,
+		classification: review.classification,
+		rationale: review.rationale.as_str().to_owned(),
+	})
+}
+
+fn program_summary_dto(record: ProgramSummaryRecord) -> Result<ProgramSummaryDto, ()> {
+	Ok(ProgramSummaryDto {
+		program_id: entity(record.program_id.as_str())?,
+		name: wire(record.name)?,
+		purpose: wire(record.purpose)?,
+		state: record.state,
+		revision: EntityRevision(record.revision),
+		updated_at_micros: record.updated_at_micros,
+	})
+}
+
+fn program_cycle_dto(
+	record: ProgramCycleRecord,
+	run_states: &[(ConversationId, &'static str)],
+) -> Result<ProgramCycleDto, ()> {
+	let program = ProgramSummaryDto {
+		program_id: entity(record.program.program_id.as_str())?,
+		name: wire(record.program.name)?,
+		purpose: wire(record.program.purpose)?,
+		state: record.program.state,
+		revision: EntityRevision(record.program.revision),
+		updated_at_micros: record.program.updated_at_micros,
+	};
+	let non_goals =
+		record.program.non_goals.into_iter().map(wire).collect::<Result<Vec<_>, _>>()?;
+	let review_policy = wire(record.program.review_policy)?;
+	let mut nodes = Vec::new();
+	let mut edges = Vec::new();
+
+	for signal in record.signals {
+		let signal_id = entity(signal.signal_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: program.program_id.clone(),
+			to: signal_id.clone(),
+			kind: ProgramRelationKind::Observes,
+		});
+		nodes.push(ProgramNodeDto {
+			id: signal_id,
+			kind: ProgramNodeKind::Signal,
+			title: wire("Signal")?,
+			summary: wire(signal.summary)?,
+			state: wire("observed")?,
+			source: Some(wire(signal.source)?),
+			observed_at_micros: Some(signal.observed_at_micros),
+			conversation_id: None,
+			fields: Vec::new(),
+		});
+	}
+	for claim in record.claims {
+		let claim_id = entity(claim.claim_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: entity(claim.signal_id.as_str())?,
+			to: claim_id.clone(),
+			kind: ProgramRelationKind::Supports,
+		});
+		nodes.push(ProgramNodeDto {
+			id: claim_id,
+			kind: ProgramNodeKind::Claim,
+			title: wire("Claim")?,
+			summary: wire(claim.statement)?,
+			state: wire("current")?,
+			source: None,
+			observed_at_micros: Some(claim.updated_at_micros),
+			conversation_id: None,
+			fields: Vec::new(),
+		});
+	}
+	for proposal in record.proposals {
+		let proposal_id = entity(proposal.proposal_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: entity(proposal.claim_id.as_str())?,
+			to: proposal_id.clone(),
+			kind: ProgramRelationKind::Justifies,
+		});
+		nodes.push(ProgramNodeDto {
+			id: proposal_id,
+			kind: ProgramNodeKind::Proposal,
+			title: wire("Proposal")?,
+			summary: wire(proposal.summary)?,
+			state: wire("non_executable")?,
+			source: None,
+			observed_at_micros: Some(proposal.updated_at_micros),
+			conversation_id: None,
+			fields: vec![
+				field("Expected effect", proposal.expected_effect)?,
+				field("Risk", proposal.risk)?,
+				field("Evidence need", proposal.evidence_need)?,
+			],
+		});
+	}
+	for objective in record.objectives {
+		let objective_id = entity(objective.objective_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: entity(objective.proposal_id.as_str())?,
+			to: objective_id.clone(),
+			kind: ProgramRelationKind::Proposes,
+		});
+		nodes.push(ProgramNodeDto {
+			id: objective_id,
+			kind: ProgramNodeKind::Objective,
+			title: wire("Objective")?,
+			summary: wire(objective.outcome)?,
+			state: wire(objective.state.as_str())?,
+			source: None,
+			observed_at_micros: Some(objective.updated_at_micros),
+			conversation_id: None,
+			fields: vec![
+				field("Acceptance criteria", objective.acceptance_criteria.join(" · "))?,
+				field("Validation criteria", objective.validation_criteria.join(" · "))?,
+			],
+		});
+	}
+	for work_item in record.work_items {
+		let work_item_id = entity(work_item.work_item_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: entity(work_item.objective_id.as_str())?,
+			to: work_item_id.clone(),
+			kind: ProgramRelationKind::DecomposesTo,
+		});
+		nodes.push(ProgramNodeDto {
+			id: work_item_id.clone(),
+			kind: ProgramNodeKind::WorkItem,
+			title: wire(work_item.title)?,
+			summary: wire(work_item.instructions)?,
+			state: wire(work_item.state.as_str())?,
+			source: None,
+			observed_at_micros: Some(work_item.updated_at_micros),
+			conversation_id: work_item
+				.conversation_id
+				.as_ref()
+				.map(|id| entity(id.as_str()))
+				.transpose()?,
+			fields: vec![field("Working directory", work_item.working_directory)?],
+		});
+		if let Some(conversation_id) = work_item.conversation_id {
+			let run_id = entity(conversation_id.as_str())?;
+			let state = run_states
+				.iter()
+				.find(|(id, _)| id == &conversation_id)
+				.map_or("unavailable", |(_, state)| *state);
+			edges.push(ProgramEdgeDto {
+				from: work_item_id,
+				to: run_id.clone(),
+				kind: ProgramRelationKind::Executes,
+			});
+			nodes.push(ProgramNodeDto {
+				id: run_id.clone(),
+				kind: ProgramNodeKind::Run,
+				title: wire("Codex Quick Task")?,
+				summary: wire("Execution through the existing Codex app-server worker path")?,
+				state: wire(state)?,
+				source: None,
+				observed_at_micros: None,
+				conversation_id: Some(run_id),
+				fields: Vec::new(),
+			});
+		}
+	}
+	for evidence in record.evidence {
+		let evidence_id = entity(evidence.evidence_id.as_str())?;
+		edges.push(ProgramEdgeDto {
+			from: entity(evidence.work_item_id.as_str())?,
+			to: evidence_id.clone(),
+			kind: ProgramRelationKind::Produces,
+		});
+		nodes.push(ProgramNodeDto {
+			id: evidence_id,
+			kind: ProgramNodeKind::Evidence,
+			title: wire(match evidence.kind {
+				decodex_core::ProgramEvidenceKind::DeterministicValidation =>
+					"Deterministic validation",
+				decodex_core::ProgramEvidenceKind::External => "External evidence",
+			})?,
+			summary: wire(evidence.summary)?,
+			state: wire(evidence.kind.as_str())?,
+			source: Some(wire(evidence.source)?),
+			observed_at_micros: Some(evidence.observed_at_micros),
+			conversation_id: None,
+			fields: Vec::new(),
+		});
+	}
+	for review in record.reviews {
+		let review_id = entity(review.review_id.as_str())?;
+		for evidence_id in [&review.deterministic_evidence_id, &review.external_evidence_id] {
+			edges.push(ProgramEdgeDto {
+				from: entity(evidence_id.as_str())?,
+				to: review_id.clone(),
+				kind: ProgramRelationKind::Supports,
+			});
+		}
+		edges.push(ProgramEdgeDto {
+			from: review_id.clone(),
+			to: program.program_id.clone(),
+			kind: ProgramRelationKind::Validates,
+		});
+		nodes.push(ProgramNodeDto {
+			id: review_id,
+			kind: ProgramNodeKind::Review,
+			title: wire("Program Review")?,
+			summary: wire(review.rationale)?,
+			state: wire(review.classification.as_str())?,
+			source: None,
+			observed_at_micros: Some(review.created_at_micros),
+			conversation_id: None,
+			fields: Vec::new(),
+		});
+	}
+
+	ProgramCycleDto::new(program, non_goals, review_policy, nodes, edges).map_err(|_| ())
+}
+
+fn field(label: &str, value: impl Into<String>) -> Result<ProgramNodeFieldDto, ()> {
+	Ok(ProgramNodeFieldDto { label: wire(label)?, value: wire(value)? })
+}
+
+fn entity(value: &str) -> Result<EntityId, ()> {
+	EntityId::new(value.to_owned()).map_err(|_| ())
+}
+
+fn wire(value: impl Into<String>) -> Result<WireText, ()> {
+	WireText::new(value).map_err(|_| ())
+}
+
+const fn quick_task_state_text(state: QuickTaskState) -> &'static str {
+	match state {
+		QuickTaskState::RoutingPending => "routing_pending",
+		QuickTaskState::EstablishmentPending => "establishment_pending",
+		QuickTaskState::QuotaExhausted => "quota_exhausted",
+		QuickTaskState::NoRoute => "no_route",
+		QuickTaskState::Establishing => "establishing",
+		QuickTaskState::Ready => "ready",
+		QuickTaskState::Running => "running",
+		QuickTaskState::ManualRecovery => "manual_recovery",
+		QuickTaskState::OutcomeUnknown => "outcome_unknown",
+	}
+}
+
+fn program_command_error(error: StoreError) -> CommandError {
+	match error {
+		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
+		StoreError::Database(_) | StoreError::Incompatible(_) =>
+			application_unavailable("Program storage is unavailable"),
+		_ => application_unavailable("Program command conflicts with current state"),
 	}
 }
 

@@ -30,6 +30,7 @@ use crate::{
 	factory_surface::{FactoryEvent, FactoryRoute, FactorySurface, app_icon_path},
 	health_query::{HealthLoadState, HealthQuery, HealthSnapshot},
 	history_pager::{HistoryLoadState, HistoryPageSource, HistoryPager, HistorySnapshot},
+	programs::{Programs, ProgramsSnapshot},
 	quick_tasks::{
 		QueuedQuickTaskSubmission, QuickTaskCommandState, QuickTaskInputError,
 		QuickTaskRefreshState, QuickTasks, QuickTasksLoadState, QuickTasksSnapshot,
@@ -522,6 +523,8 @@ pub(crate) struct Shell {
 	health: HealthSnapshot,
 	quick_tasks: QuickTasks,
 	quick: QuickTasksSnapshot,
+	programs: Programs,
+	program: ProgramsSnapshot,
 	work_items: WorkItems,
 	work: WorkItemsSnapshot,
 	history_pager: Option<HistoryPager>,
@@ -567,9 +570,12 @@ impl Shell {
 		let quick_tasks = QuickTasks::production();
 		quick_tasks.activate();
 		let quick = quick_tasks.snapshot();
+		let programs = Programs::production();
+		let program = programs.snapshot();
 		let work_items = WorkItems::production();
 		let work = work_items.snapshot();
 		factory.update(cx, |factory, cx| factory.bind_work_items(work_items.clone(), cx));
+		factory.update(cx, |factory, cx| factory.bind_programs(programs.clone(), cx));
 		window.focus(&root_focus, cx);
 
 		Self {
@@ -595,6 +601,8 @@ impl Shell {
 			health,
 			quick_tasks,
 			quick,
+			programs,
+			program,
 			work_items,
 			work,
 			history_pager: None,
@@ -933,6 +941,10 @@ impl Shell {
 			can_retry: false,
 			last_stale_cancellation: None,
 		});
+		let programs = Programs::visual_closed_cycle();
+		shell.program = programs.snapshot();
+		shell.programs = programs.clone();
+		shell.factory.update(cx, |factory, cx| factory.bind_programs(programs, cx));
 		shell.opened_history = Some(conversation_id);
 		shell.creating_new = false;
 		shell
@@ -994,6 +1006,36 @@ impl Shell {
 				self.synchronize_quick_tasks();
 				self.select_destination(Destination::QuickTasks, cx);
 			},
+			FactoryEvent::StartProgramWorkItem { work_item_id, message, working_directory } => {
+				self.quick_tasks.begin_new();
+				self.pending_submission = None;
+				self.deferred_provider_refresh = None;
+				self.creating_new = true;
+				self.opened_history = None;
+				let prompt =
+					format!("Decodex Program WorkItem {}\n\n{}", work_item_id.as_str(), message);
+				let result_generation = self.quick_tasks.snapshot().submission_result_generation;
+				match self.quick_tasks.create_for_program_work_item(
+					&prompt,
+					work_item_id.clone(),
+					working_directory.clone(),
+				) {
+					Ok(submission) => {
+						self.programs.expect_execution(submission.conversation_id.clone());
+						self.pending_submission = Some(PendingComposerSubmission {
+							content: prompt,
+							result_generation,
+							conversation_id: submission.conversation_id,
+							turn_id: submission.turn_id,
+							accepted: false,
+						});
+						self.input_status = None;
+					},
+					Err(error) => self.input_status = Some(input_error_label(error).into()),
+				}
+				self.synchronize_quick_tasks();
+				self.select_destination(Destination::QuickTasks, cx);
+			},
 			FactoryEvent::OpenWorkItemConversation { conversation_id } => {
 				self.quick_tasks.select_when_available(conversation_id.clone());
 				self.deferred_provider_refresh = Some(conversation_id.clone());
@@ -1038,6 +1080,9 @@ impl Shell {
 		if self.selected == Destination::QuickTasks {
 			self.quick_tasks.deactivate();
 		}
+		if self.selected == Destination::Factory {
+			self.programs.deactivate();
+		}
 		if self.selected == Destination::Accounts {
 			self.accounts_controller.deactivate();
 		}
@@ -1048,6 +1093,10 @@ impl Shell {
 		}
 		if destination == Destination::QuickTasks {
 			self.quick_tasks.activate();
+		}
+		if destination == Destination::Factory {
+			self.programs.activate();
+			self.synchronize_programs(cx);
 		}
 		if destination == Destination::Accounts {
 			self.accounts_controller.activate();
@@ -1190,6 +1239,16 @@ impl Shell {
 		self.synchronize_work_items(cx);
 	}
 
+	fn bind_programs(&mut self, programs: Programs, cx: &mut Context<Self>) {
+		self.programs.deactivate();
+		self.programs = programs;
+		if self.selected == Destination::Factory {
+			self.programs.activate();
+		}
+		self.factory.update(cx, |factory, cx| factory.bind_programs(self.programs.clone(), cx));
+		self.synchronize_programs(cx);
+	}
+
 	fn bind_accounts(&mut self, accounts: AccountsController, cx: &mut Context<Self>) {
 		self.accounts_controller.deactivate();
 		self.accounts_controller = accounts;
@@ -1260,6 +1319,12 @@ impl Shell {
 			self.select_destination(Destination::QuickTasks, cx);
 			self.synchronize_quick_tasks();
 		}
+	}
+
+	fn synchronize_programs(&mut self, cx: &mut Context<Self>) {
+		self.program = self.programs.snapshot();
+		self.factory.update(cx, FactorySurface::synchronize_programs);
+		cx.notify();
 	}
 
 	fn synchronize_quick_tasks(&mut self) {
@@ -1589,12 +1654,14 @@ pub(crate) fn retain_lifecycle(
 	let accounts = lifecycle.accounts();
 	let health_query = lifecycle.health_query();
 	let quick_tasks = lifecycle.quick_tasks();
+	let programs = lifecycle.programs();
 	let work_items = lifecycle.work_items();
 	let history_pager = lifecycle.history_pager();
 	shell.update(cx, |shell, cx| {
 		shell.bind_accounts(accounts, cx);
 		shell.bind_health_query(health_query, cx);
 		shell.bind_quick_tasks(quick_tasks, history_pager, cx);
+		shell.bind_programs(programs, cx);
 		shell.bind_work_items(work_items, cx);
 	});
 	let shell = shell.downgrade();
@@ -1665,6 +1732,7 @@ fn publish_views(
 		let accounts = shell.accounts_controller.snapshot();
 		let health = shell.health_query.snapshot();
 		let quick = shell.quick_tasks.snapshot();
+		let program = shell.programs.snapshot();
 		let work = shell.work_items.snapshot();
 		let history = shell.history_pager.as_ref().map(HistoryPager::snapshot);
 
@@ -1680,6 +1748,9 @@ fn publish_views(
 			shell.synchronize_quick_tasks();
 			shell.reconcile_pending_submission(cx);
 			cx.notify();
+		}
+		if program != shell.program {
+			shell.synchronize_programs(cx);
 		}
 		if work != shell.work {
 			shell.synchronize_work_items(cx);

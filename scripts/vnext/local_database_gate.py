@@ -33,6 +33,11 @@ MIGRATIONS = (
         "context_pack_fallback",
         ROOT / "database/migrations/0004_context_pack_fallback.sql",
     ),
+    (
+        5,
+        "adaptive_factory_spine",
+        ROOT / "database/migrations/0005_adaptive_factory_spine.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831
@@ -70,6 +75,16 @@ REQUIRED_TABLES = frozenset(
         "provider_attempts",
         "provider_attempt_positive_evidence",
         "context_packs",
+        "programs",
+        "program_entities",
+        "program_signals",
+        "program_claims",
+        "program_proposals",
+        "program_objectives",
+        "program_work_items",
+        "program_work_item_executions",
+        "program_evidence",
+        "program_reviews",
     }
 )
 

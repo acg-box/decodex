@@ -7,6 +7,9 @@ mod composer_input;
 #[path = "../factory_surface.rs"]
 mod factory_surface;
 #[allow(dead_code)]
+#[path = "../programs.rs"]
+mod programs;
+#[allow(dead_code)]
 #[path = "../ui_theme.rs"]
 mod ui_theme;
 #[allow(dead_code)]
@@ -17,8 +20,7 @@ use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};
 
-use crate::factory_surface::FactorySurface;
-use crate::work_items::WorkItems;
+use crate::{factory_surface::FactorySurface, programs::Programs, work_items::WorkItems};
 
 fn main() -> gpui::Result<()> {
 	let output = std::env::var_os("DECODEX_VISUAL_OUTPUT")
@@ -37,10 +39,17 @@ fn main() -> gpui::Result<()> {
 		cx.new(|cx| {
 			let mut surface = FactorySurface::new(cx);
 			surface.bind_work_items(WorkItems::visual_no_projects(), cx);
+			surface.bind_programs(Programs::visual_closed_cycle(), cx);
 			surface
 		})
 	})?;
 	cx.run_until_parked();
+	cx.update_window(window.into(), |_, window, _| window.refresh())?;
+	cx.run_until_parked();
+	cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
+	std::thread::sleep(ui_theme::MOTION_PANEL + std::time::Duration::from_millis(40));
+	cx.advance_clock(std::time::Duration::from_millis(16));
+	cx.update_window(window.into(), |_, window, cx| window.draw(cx).clear())?;
 	cx.update_window(window.into(), |_, window, _| window.refresh())?;
 	cx.run_until_parked();
 

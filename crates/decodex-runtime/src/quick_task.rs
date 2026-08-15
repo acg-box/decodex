@@ -36,7 +36,7 @@ use decodex_core::{
 	ProviderAttemptId, ProviderAttemptPreparation, ProviderAttemptState, ProviderDuplicateRisk,
 	ProviderEvidenceId, ProviderEvidenceSource, ProviderPositiveEvidence, ProviderRequestId,
 	ProviderRequestKey, ProviderRequestKeys, ProviderTerminalOutcome, RuntimeSessionId,
-	RuntimeSessionState, TurnId, TurnRole, compile_context_pack,
+	RuntimeSessionState, TurnId, TurnRole, WorkItemId, compile_context_pack,
 };
 use decodex_database::{
 	AdmitInitialQuickTaskTurn, ArchiveLocalQuickTaskConversation,
@@ -307,6 +307,7 @@ pub(crate) struct CreateQuickTask {
 	pub correlation_id: String,
 	pub causation_id: Option<String>,
 	pub conversation_id: ConversationId,
+	pub work_item_id: Option<WorkItemId>,
 	pub message: String,
 	pub working_directory: String,
 	pub execution: QuickTaskExecutionSettings,
@@ -785,6 +786,7 @@ impl QuickTaskRuntime {
 			correlation_id: command.correlation_id,
 			causation_id: command.causation_id,
 			conversation_id: command.conversation_id,
+			work_item_id: None,
 			message: request.message,
 			working_directory: request.working_directory,
 			execution: QuickTaskExecutionSettings {
@@ -821,6 +823,7 @@ impl QuickTaskRuntime {
 				correlation_id: command.correlation_id,
 				causation_id: command.causation_id,
 				conversation_id: command.conversation_id,
+				work_item_id: None,
 				message: request.message,
 				working_directory: request.working_directory,
 				execution: QuickTaskExecutionSettings {
@@ -870,6 +873,7 @@ impl QuickTaskRuntime {
 				&command.execution.model,
 				&command.execution.reasoning_effort,
 				if command.execution.fast { "priority" } else { "default" },
+				command.work_item_id.as_ref().map_or("ordinary", WorkItemId::as_str),
 			],
 		) {
 			Ok(command) => command,
@@ -882,6 +886,7 @@ impl QuickTaskRuntime {
 				&conversation_command,
 				&CreateQuickTaskConversation {
 					conversation_id: command.conversation_id.clone(),
+					work_item_id: command.work_item_id.clone(),
 					title: "Quick Task".to_owned(),
 					message: command.message.clone(),
 					working_directory: command.working_directory.clone(),

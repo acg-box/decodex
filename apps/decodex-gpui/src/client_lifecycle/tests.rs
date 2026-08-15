@@ -100,16 +100,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_1() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_2() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.1");
+		.expect("production lifecycle constructs at protocol V2.2");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 1);
+	assert_eq!(CURRENT_VERSION.minor, 2);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -811,9 +811,8 @@ async fn run_with_io_dispatches_history_and_restarts_from_head_after_reconnect()
 	let routes = queries
 		.iter()
 		.map(|query| match &query.payload {
-			QueryPayload::GetConversationHistory { conversation_id, after, .. } => {
-				(conversation_id.clone(), after.clone())
-			},
+			QueryPayload::GetConversationHistory { conversation_id, after, .. } =>
+				(conversation_id.clone(), after.clone()),
 			_ => panic!("history pager sends only ConversationHistory queries"),
 		})
 		.collect::<Vec<_>>();
@@ -1663,10 +1662,7 @@ async fn resume_reuses_only_the_attested_checkpoint_and_fallback_rebuilds_state(
 				None,
 			),
 			connected(
-				vec![
-					SessionAction::Event(Box::new(event(8, "system", 4))),
-					SessionAction::Cancel,
-				],
+				vec![SessionAction::Event(Box::new(event(8, "system", 4))), SessionAction::Cancel],
 				Some(checkpoint(INSTANCE, 7)),
 			),
 		],
@@ -2117,7 +2113,8 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 	use crate::quick_tasks::{QuickTaskCommandState, QuickTasksLoadState};
 
 	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
-	let config = profile.retained_session_config().expect("the live retained session is configured");
+	let config =
+		profile.retained_session_config().expect("the live retained session is configured");
 	let mut lifecycle =
 		ClientLifecycle::production(config).expect("the production lifecycle is available");
 	let quick_tasks = lifecycle.quick_tasks();
@@ -2193,7 +2190,8 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 		let history_items = loop {
 			let snapshot = history.snapshot();
 			let visible_items = snapshot.visible.as_ref().map_or(0, |page| page.items.len());
-			if snapshot.visible_source == Some(HistoryPageSource::FreshServer) && visible_items > 0 {
+			if snapshot.visible_source == Some(HistoryPageSource::FreshServer) && visible_items > 0
+			{
 				match snapshot.cursor {
 					HistoryCursorObservation::NoContinuationObserved => {
 						assert_eq!(snapshot.conversation_id, Some(conversation_id.clone()));
@@ -2256,8 +2254,7 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 				&& task
 					.runtime_session_revision
 					.is_some_and(|revision| revision > baseline_session_revision)
-		})
-		{
+		}) {
 			break;
 		}
 		assert!(
@@ -2273,9 +2270,7 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 		}
 	}
 
-	history
-		.open(first_conversation.clone())
-		.expect("the rehydrated conversation history opens");
+	history.open(first_conversation.clone()).expect("the rehydrated conversation history opens");
 	let continuation_history_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
 	let mut advanced_visible_items = 0;
 	loop {

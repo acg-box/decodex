@@ -62,6 +62,10 @@ stable_id!(ObjectiveId, InvalidObjectiveId, "Objective");
 stable_id!(ObjectiveEvidenceId, InvalidEvidenceId, "Objective evidence");
 stable_id!(ProgramCorrelationId, InvalidCorrelationId, "Program correlation");
 stable_id!(ProgramObservationId, InvalidObservationId, "Program observation");
+stable_id!(ProgramClaimId, InvalidClaimId, "Program claim");
+stable_id!(ProgramProposalId, InvalidProposalId, "Program proposal");
+stable_id!(ProgramEvidenceId, InvalidProgramEvidenceId, "Program evidence");
+stable_id!(ProgramReviewId, InvalidReviewId, "Program review");
 
 /// Maximum bytes in a Program or Objective display name.
 pub const MAX_PROGRAM_NAME_BYTES: usize = 256;
@@ -93,6 +97,14 @@ pub enum ProgramError {
 	InvalidCorrelationId,
 	/// Metric, signal, or context-decision identity was not canonical UUID-v4 text.
 	InvalidObservationId,
+	/// Claim identity was not canonical UUID-v4 text.
+	InvalidClaimId,
+	/// Proposal identity was not canonical UUID-v4 text.
+	InvalidProposalId,
+	/// Program Evidence identity was not canonical UUID-v4 text.
+	InvalidProgramEvidenceId,
+	/// Program Review identity was not canonical UUID-v4 text.
+	InvalidReviewId,
 	/// A bounded ordinary text value was empty, oversized, or contained controls.
 	InvalidText,
 	/// A symbolic key was not canonical lowercase snake case.
@@ -124,6 +136,10 @@ impl Display for ProgramError {
 			Self::InvalidEvidenceId => "invalid Objective evidence identity",
 			Self::InvalidCorrelationId => "invalid Program correlation identity",
 			Self::InvalidObservationId => "invalid Program observation identity",
+			Self::InvalidClaimId => "invalid Program claim identity",
+			Self::InvalidProposalId => "invalid Program proposal identity",
+			Self::InvalidProgramEvidenceId => "invalid Program evidence identity",
+			Self::InvalidReviewId => "invalid Program review identity",
 			Self::InvalidText => "invalid bounded Program text",
 			Self::InvalidSymbol => "invalid canonical Program symbol",
 			Self::InvalidCollection => "invalid bounded Program collection",
@@ -216,6 +232,56 @@ pub enum ObjectiveState {
 	Achieved,
 	/// Outcome ended intentionally without achievement.
 	Abandoned,
+}
+
+/// Closed evidence kinds required by the first Program review loop.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramEvidenceKind {
+	/// Reproducible validation with a deterministic command, check, or equivalent witness.
+	DeterministicValidation,
+	/// Observation from outside the produced artifact or model response.
+	External,
+}
+impl ProgramEvidenceKind {
+	/// Canonical persistence spelling.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::DeterministicValidation => "deterministic_validation",
+			Self::External => "external",
+		}
+	}
+}
+
+/// Evidence-backed classification recorded by one Program review.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProgramReviewClassification {
+	/// An external or user-visible result improved.
+	OutcomeProgress,
+	/// Material uncertainty decreased.
+	KnowledgeProgress,
+	/// A reusable ability or validation mechanism improved.
+	CapabilityProgress,
+	/// The cycle produced no material delta.
+	NoMaterialChange,
+	/// Evidence shows that the state became worse.
+	Regression,
+	/// Evidence is missing, stale, ambiguous, or contradictory.
+	Unknown,
+}
+impl ProgramReviewClassification {
+	/// Canonical persistence spelling.
+	pub const fn as_str(self) -> &'static str {
+		match self {
+			Self::OutcomeProgress => "outcome_progress",
+			Self::KnowledgeProgress => "knowledge_progress",
+			Self::CapabilityProgress => "capability_progress",
+			Self::NoMaterialChange => "no_material_change",
+			Self::Regression => "regression",
+			Self::Unknown => "unknown",
+		}
+	}
 }
 impl ObjectiveState {
 	/// Canonical persistence spelling.
