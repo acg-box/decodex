@@ -54,7 +54,6 @@ const PUBLICATION_INSTANCE_MINIMUM_VERSION: ProtocolVersion =
 
 const fn supports_publication_instance(version: ProtocolVersion) -> bool {
 	version.major == PUBLICATION_INSTANCE_MINIMUM_VERSION.major
-		&& version.minor == PUBLICATION_INSTANCE_MINIMUM_VERSION.minor
 }
 
 type WebSocket = WebSocketStream<LocalTransportStream>;

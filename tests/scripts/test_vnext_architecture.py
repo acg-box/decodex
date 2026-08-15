@@ -58,10 +58,16 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertRegex(migration, rf"CREATE TABLE {re.escape(table)}\s*\(")
         migrations = read("database/src/migrations.rs")
         repair = read("database/migrations/0002_nonempty_task_instructions.sql")
+        execution_controls = read(
+            "database/migrations/0003_quick_task_execution_controls.sql"
+        )
         self.assertIn("schema_migrations", migrations)
         self.assertIn("0002_nonempty_task_instructions.sql", migrations)
+        self.assertIn("0003_quick_task_execution_controls.sql", migrations)
         self.assertIn("BETWEEN 1 AND 65536", repair)
         self.assertIn("Follow the user request for this task.", repair)
+        for column in ("model", "reasoning_effort", "fast"):
+            self.assertIn(f"ADD COLUMN {column}", execution_controls)
         self.assertIn("TransactionBehavior::Immediate", migrations)
         self.assertIn("PRAGMA foreign_keys = ON", migrations)
         self.assertIn("PRAGMA synchronous = FULL", migrations)

@@ -92,6 +92,9 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 				title: "SQLite restart proof".to_owned(),
 				message: "Start the persisted task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
+				model: "gpt-5.6-sol".to_owned(),
+				reasoning_effort: "high".to_owned(),
+				fast: false,
 			},
 		)
 		.await
@@ -469,6 +472,9 @@ async fn quick_task_continues_on_the_same_thread_after_sqlite_reopen_without_dup
 				title: "Independent account affinity proof".to_owned(),
 				message: "Start an independent task.".to_owned(),
 				working_directory: temporary.path().display().to_string(),
+				model: "gpt-5.6-sol".to_owned(),
+				reasoning_effort: "high".to_owned(),
+				fast: false,
 			},
 		)
 		.await

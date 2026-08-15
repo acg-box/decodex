@@ -25,6 +25,9 @@ pub struct CreateQuickTaskConversation {
 	pub title: String,
 	pub message: String,
 	pub working_directory: String,
+	pub model: String,
+	pub reasoning_effort: String,
+	pub fast: bool,
 }
 
 /// Immutable original request coordinates.
@@ -32,6 +35,32 @@ pub struct CreateQuickTaskConversation {
 pub struct QuickTaskRequest {
 	pub message: String,
 	pub working_directory: String,
+	pub model: String,
+	pub reasoning_effort: String,
+	pub fast: bool,
+}
+
+/// Exact active projection that may be closed after provider archive verification.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ArchiveQuickTaskConversation {
+	pub conversation_id: ConversationId,
+	pub expected_conversation_revision: i64,
+	pub runtime_session_id: RuntimeSessionId,
+	pub expected_runtime_session_revision: i64,
+}
+
+/// Durable archived projection returned by the atomic local close.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ArchivedQuickTaskConversation {
+	pub conversation_id: ConversationId,
+	pub conversation_revision: i64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ArchiveQuickTaskConversationOutcome {
+	Applied(ArchivedQuickTaskConversation),
+	Replayed(ArchivedQuickTaskConversation),
+	Rejected,
 }
 
 /// Create a new routing conversation after a waiting or no-route decision.
@@ -169,6 +198,10 @@ pub struct OrdinaryTaskConversationReadback {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum OrdinaryTaskConversationProjection {
 	Current(OrdinaryTaskConversationReadback),
+	Archived {
+		conversation_id: ConversationId,
+		conversation_revision: i64,
+	},
 	RoutingSuccessorRedirect {
 		source_conversation_id: ConversationId,
 		source_revision: i64,
@@ -313,15 +346,18 @@ impl SqliteStore {
 				.execute(
 					"INSERT INTO quick_task_requests (
 				   conversation_id, operation_key, correlation_id, initial_turn_id,
-				   message, working_directory, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6)",
+					 message, working_directory, model, reasoning_effort, fast, created_at_micros
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
 					params![
 						create.conversation_id.as_str(),
 						command.key,
 						initial_turn_id,
 						create.message,
 						create.working_directory,
-						now
+						create.model,
+						create.reasoning_effort,
+						create.fast,
+						now,
 					],
 				)
 				.map_err(sql_error)?;
@@ -353,7 +389,7 @@ impl SqliteStore {
 		self.run(move |connection| {
 			connection
 				.query_row(
-					"SELECT q.message, q.working_directory
+					"SELECT q.message, q.working_directory, q.model, q.reasoning_effort, q.fast
 				 FROM quick_task_requests AS q
 				 JOIN conversations AS c USING (conversation_id)
 				 WHERE q.conversation_id = ?1 AND c.state = 'active'",
@@ -362,11 +398,125 @@ impl SqliteStore {
 						Ok(QuickTaskRequest {
 							message: row.get(0)?,
 							working_directory: row.get(1)?,
+							model: row.get(2)?,
+							reasoning_effort: row.get(3)?,
+							fast: row.get(4)?,
 						})
 					},
 				)
 				.optional()
 				.map_err(sql_error)
+		})
+		.await
+	}
+
+	/// Atomically close one provider-verified archived Conversation and its sole active session.
+	pub async fn archive_quick_task_conversation(
+		&self,
+		command: &CommandIdentity,
+		request: &ArchiveQuickTaskConversation,
+	) -> Result<ArchiveQuickTaskConversationOutcome, StoreError> {
+		if request.expected_conversation_revision <= 0
+			|| request.expected_runtime_session_revision <= 0
+		{
+			return Err(StoreError::InvalidInput("Quick Task archive coordinates are invalid"));
+		}
+		let command = command.clone();
+		let request = request.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				"archive_quick_task_conversation",
+				request.conversation_id.as_str(),
+			)? {
+				let archived = serde_json::from_str(&response)
+					.map_err(|_| incompatible("Quick Task archive receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(ArchiveQuickTaskConversationOutcome::Replayed(archived));
+			}
+			let authority = transaction
+				.query_row(
+					"SELECT c.revision, s.revision,
+					        EXISTS (SELECT 1 FROM turns AS t WHERE t.conversation_id = c.conversation_id
+					                AND t.status = 'active'),
+					        EXISTS (SELECT 1 FROM provider_attempts AS p
+					                WHERE p.conversation_id = c.conversation_id
+					                  AND p.state IN ('prepared', 'dispatch_authorized', 'unknown'))
+					 FROM conversations AS c
+					 JOIN runtime_sessions AS s ON s.conversation_id = c.conversation_id
+					 WHERE c.conversation_id = ?1 AND c.kind = 'ordinary_task' AND c.state = 'active'
+					   AND s.runtime_session_id = ?2 AND s.state = 'active'",
+					params![request.conversation_id.as_str(), request.runtime_session_id.as_str()],
+					|row| {
+						Ok((
+							row.get::<_, i64>(0)?,
+							row.get::<_, i64>(1)?,
+							row.get::<_, bool>(2)?,
+							row.get::<_, bool>(3)?,
+						))
+					},
+				)
+				.optional()
+				.map_err(sql_error)?;
+			let Some((conversation_revision, session_revision, active_turn, active_attempt)) =
+				authority
+			else {
+				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+			};
+			if conversation_revision != request.expected_conversation_revision
+				|| session_revision != request.expected_runtime_session_revision
+				|| active_turn
+				|| active_attempt
+			{
+				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+			}
+			let now = unix_micros().map_err(StoreError::from)?;
+			let session_changed = transaction
+				.execute(
+					"UPDATE runtime_sessions SET state = 'ended', revision = revision + 1,
+					 updated_at_micros = ?3, ended_at_micros = ?3
+					 WHERE runtime_session_id = ?1 AND revision = ?2 AND state = 'active'",
+					params![
+						request.runtime_session_id.as_str(),
+						request.expected_runtime_session_revision,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			let conversation_changed = transaction
+				.execute(
+					"UPDATE conversations SET state = 'archived', revision = revision + 1,
+					 updated_at_micros = ?3 WHERE conversation_id = ?1 AND revision = ?2
+					 AND state = 'active'",
+					params![
+						request.conversation_id.as_str(),
+						request.expected_conversation_revision,
+						now,
+					],
+				)
+				.map_err(sql_error)?;
+			if session_changed != 1 || conversation_changed != 1 {
+				return Ok(ArchiveQuickTaskConversationOutcome::Rejected);
+			}
+			let archived = ArchivedQuickTaskConversation {
+				conversation_id: request.conversation_id,
+				conversation_revision: request.expected_conversation_revision + 1,
+			};
+			write_receipt(
+				&transaction,
+				&command,
+				"archive_quick_task_conversation",
+				archived.conversation_id.as_str(),
+				&serde_json::to_string(&archived)
+					.map_err(|_| incompatible("Quick Task archive receipt"))?,
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(ArchiveQuickTaskConversationOutcome::Applied(archived))
 		})
 		.await
 	}
@@ -402,7 +552,8 @@ impl SqliteStore {
 				return Ok(QuickTaskRoutingSuccessorOutcome::Replayed(successor));
 			}
 			let source = transaction.query_row(
-				"SELECT c.title, q.message, q.working_directory, d.routing_decision_id,
+				"SELECT c.title, q.message, q.working_directory, q.model, q.reasoning_effort,
+				        q.fast, d.routing_decision_id,
 				        d.decision_kind, c.revision
 				 FROM conversations AS c
 				 JOIN quick_task_requests AS q USING (conversation_id)
@@ -412,10 +563,11 @@ impl SqliteStore {
 				params![request.source_conversation_id.as_str()],
 				|row| Ok((
 					row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?,
-					row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, i64>(5)?,
+					row.get::<_, String>(3)?, row.get::<_, String>(4)?, row.get::<_, bool>(5)?,
+					row.get::<_, String>(6)?, row.get::<_, String>(7)?, row.get::<_, i64>(8)?,
 				)),
 			).optional().map_err(sql_error)?;
-			let Some((title, message, working_directory, routing_decision_id, decision_kind, revision)) = source else {
+			let Some((title, message, working_directory, model, reasoning_effort, fast, routing_decision_id, decision_kind, revision)) = source else {
 				return Ok(QuickTaskRoutingSuccessorOutcome::Rejected {
 					code: "source_authority_unavailable".to_owned(), replayed: false,
 				});
@@ -441,9 +593,9 @@ impl SqliteStore {
 			transaction.execute(
 				"INSERT INTO quick_task_requests (
 				 conversation_id, operation_key, correlation_id, causation_id, initial_turn_id,
-				 message, working_directory, created_at_micros
-				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7)",
-				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, now],
+				 message, working_directory, model, reasoning_effort, fast, created_at_micros
+				 ) VALUES (?1, ?2, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+				params![successor_id, key, request.source_conversation_id.as_str(), initial_turn_id, message, working_directory, model, reasoning_effort, fast, now],
 			).map_err(sql_error)?;
 			transaction.execute(
 				"INSERT INTO conversation_routing_successors (
@@ -561,6 +713,8 @@ impl SqliteStore {
 	}
 }
 
+
+
 fn validate_quick_task_conversation(
 	create: &CreateQuickTaskConversation,
 ) -> Result<(), StoreError> {
@@ -572,6 +726,13 @@ fn validate_quick_task_conversation(
 		|| create.working_directory.len() > 4_096
 		|| !create.working_directory.starts_with('/')
 		|| create.working_directory.chars().any(char::is_control)
+		|| create.model.is_empty()
+		|| create.model.len() > 128
+		|| create.model.chars().any(char::is_control)
+		|| !matches!(
+			create.reasoning_effort.as_str(),
+			"low" | "medium" | "high" | "xhigh" | "max" | "ultra"
+		)
 	{
 		return Err(StoreError::InvalidInput("initial Quick Task Conversation request is invalid"));
 	}
@@ -975,15 +1136,20 @@ fn conversation_projection(
 				|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
 			)
 			.optional()
-			.map_err(sql_error)?
-			.ok_or_else(|| incompatible("routing successor redirect"))?;
-		return Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
-			source_conversation_id: conversation_id,
-			source_revision: row.2,
-			successor_conversation_id: ConversationId::new(successor.0)
-				.map_err(|_| incompatible("routing successor identity"))?,
-			successor_conversation_revision: successor.1,
-		});
+			.map_err(sql_error)?;
+		return match successor {
+			Some(successor) => Ok(OrdinaryTaskConversationProjection::RoutingSuccessorRedirect {
+				source_conversation_id: conversation_id,
+				source_revision: row.2,
+				successor_conversation_id: ConversationId::new(successor.0)
+					.map_err(|_| incompatible("routing successor identity"))?,
+				successor_conversation_revision: successor.1,
+			}),
+			None => Ok(OrdinaryTaskConversationProjection::Archived {
+				conversation_id,
+				conversation_revision: row.2,
+			}),
+		};
 	}
 	if row.1 != "active" || row.2 <= 0 || row.3 <= 0 {
 		return Err(incompatible("ordinary Task Conversation lifecycle"));
@@ -1878,5 +2044,162 @@ impl SqliteStore {
 			Ok(revision)
 		})
 		.await
+	}
+}
+
+#[cfg(test)]
+mod archive_tests {
+	use decodex_core::{ConversationId, RuntimeSessionId};
+	use rusqlite::params;
+	use tempfile::tempdir;
+
+	use super::{
+		ArchiveQuickTaskConversation, ArchiveQuickTaskConversationOutcome,
+		CreateQuickTaskConversation, OrdinaryTaskConversationProjection,
+	};
+	use crate::{CommandIdentity, SqliteStore, error::sqlite_error};
+
+	const CONVERSATION_ID: &str = "30000000-0000-4000-8000-000000000001";
+	const RUNTIME_SESSION_ID: &str = "40000000-0000-4000-8000-000000000001";
+	const ACCOUNT_ID: &str = "10000000-0000-4000-8000-000000000001";
+
+	#[tokio::test]
+	async fn verified_archive_atomically_closes_the_projection_and_replays_exactly() {
+		let directory = tempdir().expect("temporary database directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize database");
+		let conversation_id = ConversationId::new(CONVERSATION_ID).expect("conversation ID");
+		let runtime_session_id =
+			RuntimeSessionId::new(RUNTIME_SESSION_ID).expect("RuntimeSession ID");
+		store
+			.create_quick_task_conversation(
+				&CommandIdentity::new("create-archive-fixture", b"create archive fixture")
+					.expect("create command"),
+				&CreateQuickTaskConversation {
+					conversation_id: conversation_id.clone(),
+					title: "Archive fixture".to_owned(),
+					message: "Archive this task.".to_owned(),
+					working_directory: "/tmp".to_owned(),
+					model: "gpt-5.6-sol".to_owned(),
+					reasoning_effort: "high".to_owned(),
+					fast: true,
+				},
+			)
+			.await
+			.expect("create conversation");
+		store
+			.with_connection(|connection| {
+				connection
+					.execute(
+						"INSERT INTO account_identities (account_id, created_at_micros)
+						 VALUES (?1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO accounts (
+						 account_id, display_label, enabled, state, revision, provider,
+						 provider_account_id, created_at_micros, updated_at_micros
+						 ) VALUES (?1, 'Archive fixture', 1, 'available', 1, 'chatgpt',
+						 'archive-fixture-provider', 1, 1)",
+						params![ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				connection
+					.execute(
+						"INSERT INTO runtime_sessions (
+						 runtime_session_id, conversation_id, account_id, account_revision,
+						 account_snapshot_id, account_display_label, account_observed_state,
+						 credential_binding_json, profile_snapshot_id, profile_revision,
+						 profile_role, model, reasoning_effort, instructions, service_tier,
+						 instructions_sha256, codex_thread_id, state, thread_start_request_id,
+						 thread_start_request_sha256, thread_start_response_id,
+						 thread_start_response_sha256, has_acknowledged_turn, revision,
+						 created_at_micros, updated_at_micros
+						 ) VALUES (
+						 ?1, ?2, ?3, 1, '41000000-0000-4000-8000-000000000001',
+						 'Archive fixture', 'available', '{}',
+						 '42000000-0000-4000-8000-000000000001', 1, 'task', 'gpt-5.6-sol',
+						 'high', 'Follow the request.', 'priority',
+						 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+						 'codex-thread-1', 'active', 1,
+						 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb', 1,
+						 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
+						 1, 7, 1, 1
+						 )",
+						params![RUNTIME_SESSION_ID, CONVERSATION_ID, ACCOUNT_ID],
+					)
+					.map_err(sqlite_error)?;
+				Ok(())
+			})
+			.expect("seed active RuntimeSession");
+
+		let archive = ArchiveQuickTaskConversation {
+			conversation_id: conversation_id.clone(),
+			expected_conversation_revision: 1,
+			runtime_session_id: runtime_session_id.clone(),
+			expected_runtime_session_revision: 7,
+		};
+		let command =
+			CommandIdentity::new("archive-fixture", b"archive fixture").expect("archive command");
+		let archived = match store
+			.archive_quick_task_conversation(&command, &archive)
+			.await
+			.expect("archive verified conversation")
+		{
+			ArchiveQuickTaskConversationOutcome::Applied(archived) => archived,
+			other => panic!("archive was not applied: {other:?}"),
+		};
+		assert_eq!(archived.conversation_revision, 2);
+		assert!(matches!(
+			store
+				.archive_quick_task_conversation(&command, &archive)
+				.await
+				.expect("replay archive command"),
+			ArchiveQuickTaskConversationOutcome::Replayed(ref replayed)
+				if replayed == &archived
+		));
+
+		let exact = store
+			.read_ordinary_task_conversations(Some(&conversation_id), None, 1)
+			.await
+			.expect("read exact archived projection");
+		assert!(matches!(
+			exact.as_slice(),
+			[OrdinaryTaskConversationProjection::Archived {
+				conversation_id: exact_id,
+				conversation_revision: 2,
+			}] if exact_id == &conversation_id
+		));
+		assert!(
+			store
+				.read_ordinary_task_conversations(None, None, 65)
+				.await
+				.expect("list active projections")
+				.is_empty()
+		);
+		assert_eq!(
+			store
+				.read_quick_task_request(&conversation_id)
+				.await
+				.expect("read archived request"),
+			None
+		);
+		let session: (String, i64, Option<i64>) = store
+			.with_connection(|connection| {
+				connection
+					.query_row(
+						"SELECT state, revision, ended_at_micros FROM runtime_sessions
+						 WHERE runtime_session_id = ?1",
+						params![RUNTIME_SESSION_ID],
+						|row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+					)
+					.map_err(sqlite_error)
+			})
+			.expect("read ended RuntimeSession");
+		assert_eq!(session.0, "ended");
+		assert_eq!(session.1, 8);
+		assert!(session.2.is_some());
 	}
 }

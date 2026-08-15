@@ -1,3 +1,18 @@
+---
+type: "Evidence"
+title: "SQLite Local-Product Evidence"
+description: "Accepted automated and live evidence for the bundled SQLite product, app-server freshness boundary, Quick Task controls, and process retirement."
+tags: [local-product, sqlite, evidence, quick-task]
+openwiki:
+  roles: [testing, architecture, workflow]
+  change_kinds: [lifecycle, public-api, validation]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-protocol/src/quick_task.rs, apps/decodex-gpui/src/quick_tasks.rs]
+  symbols: [control_thread, reconcile_archive, QuickTaskExecutionSettings]
+  test_paths: [database/tests/quick_task_restart.rs]
+  invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
+  validation_commands: [cargo make check]
+---
+
 # SQLite Local-Product Evidence
 
 Status: accepted implementation and signed live-cutover evidence.
@@ -49,8 +64,8 @@ conversations and do not break the cache affinity of an existing conversation.
 
 The obsolete server-store crate and its compatibility configuration were deleted. A repository
 reverse scan finds no remaining source, configuration, documentation, or dependency reference to
-that removed implementation. The current local-database gate passed with schema version 2, WAL,
-both migration digests, and the exact 28-table inventory. `cargo test --workspace --all-targets`
+that removed implementation. The current local-database gate passed with schema version 3, WAL,
+all three migration digests, and the exact 28-table inventory. `cargo test --workspace --all-targets`
 also passed on stable Rust with the Xcode beta Metal toolchain.
 
 ## Signed live acceptance
@@ -99,7 +114,7 @@ pixels high. Deterministic native captures cover the live Accounts destination a
 transparent Workbench with the thinner title bar.
 
 The client does not activate the deferred WorkItem and Project query surface. Protocol
-V2.0 is strict, and an older daemon can close a retained session when it receives an
+V2.1 is strict, and an older daemon can close a retained session when it receives an
 unknown `ListProjects` query. The WorkItem controller stays dormant until a later
 capability-negotiation contract exists. This prevents the deferred factory surface from
 making Conversation history stay in loading state or making the whole Workbench appear
@@ -123,6 +138,44 @@ Conversation is open, the pager records a bounded invalidation. The next open by
 the cached head and waits for a fresh server page. A deterministic test proves that the
 old cached page cannot become visible after this invalidation.
 
+## App-server freshness and execution controls
+
+The selected-thread refresh boundary treats Codex Desktop and Decodex as app-server
+clients. It does not synchronize the two UIs. An exact account-bound `thread/read`
+re-observes the selected thread lifecycle. External archive readback atomically archives
+the local Conversation and ends its RuntimeSession. A Decodex archive uses same-process
+pre-read, `thread/archive`, and post-read before the local transition. The active SQLite
+list no longer retains rows absent from a complete current local page.
+
+The generated schema from the installed Codex app-server confirms `thread/read`,
+`thread/archive`, `model/list`, and request-scoped `model`, `effort`, and `serviceTier`
+fields. Fast maps to `serviceTier = "priority"`; Fast off sends an explicit null. The
+GPUI carries its selected model, reasoning effort, and Fast value on each new or later
+Turn without changing global Codex configuration. External visible turns remain outside
+this lifecycle-refresh milestone because `thread/read(includeTurns=true)` is explicitly
+lossy and cannot prove complete history or tool effects.
+
+Protocol V2.1 carries the new controls and archive event. SQLite schema version 3 adds
+the original Quick Task execution settings. The local database gate passed with all
+three migration digests, WAL, the exact 28-table inventory, and the `model`,
+`reasoning_effort`, and `fast` request columns.
+
+Focused implementation evidence is split across `crates/decodex-runtime/src/quick_task.rs`
+(exact control sequencing and process retirement),
+`crates/decodex-runtime/src/account_launch/process.rs` (thread read/archive readback),
+`crates/decodex-protocol/src/quick_task.rs` (wire settings and recovery action), and
+`apps/decodex-gpui/src/quick_tasks.rs` (bounded list, settings, and archive command
+presentation). The narrow checks are the Quick Task, process reconciliation, protocol,
+and database restart suites; use the workspace gate only when a change crosses package
+or generated-schema boundaries.
+
+Final milestone validation passed `cargo test --workspace --all-targets --all-features`,
+strict workspace Clippy, the schema-3 local database gate, and the vNext architecture
+tests. The installed Codex executable also passed the ignored live read-only probe,
+which negotiates schema/version and read-only RPCs without dispatching a Turn. The
+deterministic native Workbench capture includes the refresh, Archive, model, Fast, and
+reasoning controls without changing the existing shell layout.
+
 ## Final repository gates
 
 One complete `cargo make check` run finished successfully on the final source. It included:
@@ -131,7 +184,7 @@ One complete `cargo make check` run finished successfully on the final source. I
   vulnerabilities, site build, and Astro diagnostics with zero errors, warnings, or hints;
 - all-feature, all-target workspace compilation, Rust formatting, Taplo formatting, and strict
   Clippy checks for all 12 active Rust packages;
-- the schema-V2 local database gate with both immutable migration digests, WAL, foreign keys,
+- the schema-V3 local database gate with all three immutable migration digests, WAL, foreign keys,
   integrity checks, owner-private mode, and the exact 28-table inventory;
 - 833 passed nextest tests with three declared skips, including the globally isolated
   full-daemon signal tests; and
