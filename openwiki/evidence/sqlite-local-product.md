@@ -17,7 +17,7 @@ openwiki:
 
 Status: accepted implementation and signed live-cutover evidence.
 
-Date: 2026-08-14.
+Date: 2026-08-15.
 
 This page contains no credential value, email address, provider-account identifier, or
 credential fingerprint.
@@ -151,6 +151,42 @@ batch. A Decodex archive uses same-process pre-read, `thread/archive`, and post-
 before the local transition. The active SQLite list no longer retains rows absent from
 a complete current local page.
 
+The installed `codex-cli 0.148.0-alpha.9` omits `archived` from the current Thread JSON
+shape. The runtime now treats that field as optional and derives lifecycle state only
+from exact membership in bounded `thread/list` scans for the current and archived
+filters. The fixture suite covers the current schema, conflicting list facts, missing
+results, wrong correlation, malformed pages, pagination bounds, and archive readback.
+
+The 2026-08-15 live check created two Conversations in an empty owner-private project,
+completed both, returned to the first Conversation, completed a later Turn on the same
+RuntimeSession, and read a larger fresh server history. It then archived the second
+Codex thread through an independent app-server client. Provider readback proved that the
+exact thread was absent from the current list, present in the archived list, and still
+readable by exact ID. Decodex sync changed the active list from four rows to three,
+reported one archive and zero skipped rows, and atomically ended the matching local
+RuntimeSession.
+
+Read-only SQLite inspection after the sync found three active Conversations. Two had
+acknowledged successful Turns. The third retained the sole ProviderAttempt with state
+`unknown` and reason `dispatch_outcome_unavailable`. Decodex did not terminalize or
+delete that record because lossy provider history cannot correlate the missing dispatch
+outcome. GPUI presents `Start new` for this state and does not enable resend into the
+uncertain thread.
+
+Focused database tests prove two guarded local repairs. A stranded active user Turn can
+be failed only with exact inactive-owner coordinates and no unresolved ProviderAttempt,
+non-dead ProcessGeneration, or streaming history. A provider-less starting Conversation
+can be archived only when no thread-start or external-effect evidence exists. Both
+operations replay through exact durable receipts. The sidebar batch includes only states
+that can use these guards; pre-session establishment recovery remains an explicit
+`Recover` action.
+
+The composer now has a confirmation fence. It retains text while a submission is queued
+or awaiting a result, after archived-thread or recovery-required rejection, and after a
+selection disappears. It clears only when the exact submitted content receives a newer
+accepted terminal result and the user has not edited it. Recovery has a separate button,
+so typed text cannot become a recovery command.
+
 The generated schema from the installed Codex app-server confirms `thread/read`,
 `thread/archive`, `model/list`, and request-scoped `model`, `effort`, and `serviceTier`
 fields. Fast maps to `serviceTier = "priority"`; Fast off sends an explicit null. The
@@ -185,6 +221,13 @@ and optional capabilities. The summary reports core readiness only. `NotProbed`,
 `Disabled`, and unconfigured plugin inventory render as `Not checked`, `Disabled`, and
 `Not configured`; they do not appear as generic failures. A deterministic native Health
 capture and focused GPUI tests cover this presentation contract.
+
+The final live doctor report had all eight required core components in `Ready` state.
+Managed repository was explicitly disabled. Blob integrity and eight app-server
+capabilities were `NotProbed`, and plugin readiness was unconfigured. The Health UI
+therefore reports `Core ready` and preserves these deferred states as `Not checked`,
+`Disabled`, or `Not configured`; it does not turn schema evidence into a live readiness
+claim.
 
 ## Desktop account surfaces and atomic packaging
 

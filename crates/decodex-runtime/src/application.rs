@@ -1411,18 +1411,24 @@ impl ServiceApplication {
 		let core_id =
 			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
 		let row = self.quick_task_command_row(&core_id, command.expected_revision).await?;
-		if row.runtime_session_id.is_none()
-			|| row.active_turn_id.is_some()
-			|| row.has_active_provider_attempt
-			|| row.has_unknown_provider_attempt
-		{
+		if row.has_active_provider_attempt || row.has_unknown_provider_attempt {
 			return Err(quick_task_busy());
 		}
+		if row.active_turn_id.is_some() != row.active_turn_revision.is_some() {
+			return Err(quick_task_conflict());
+		}
+		let runtime_session_id = row.runtime_session_id.ok_or_else(quick_task_conflict)?;
+		let runtime_session_revision =
+			row.runtime_session_revision.ok_or_else(quick_task_conflict)?;
 		match runtime
 			.control_thread(ControlQuickTask {
 				operation_key: command.idempotency_key.as_str().to_owned(),
 				conversation_id: core_id,
 				expected_conversation_revision: row.conversation_revision,
+				runtime_session_id,
+				expected_runtime_session_revision: runtime_session_revision,
+				active_turn_id: row.active_turn_id,
+				active_turn_revision: row.active_turn_revision,
 				archive,
 			})
 			.await
@@ -3264,6 +3270,7 @@ mod tests {
 			runtime_session_state: None,
 			has_acknowledged_turn: false,
 			active_turn_id: None,
+			active_turn_revision: None,
 			has_admitted_user_turn: false,
 			has_active_provider_attempt: false,
 			has_unknown_provider_attempt: false,
@@ -3311,6 +3318,7 @@ mod tests {
 			runtime_session_state: Some(RuntimeSessionState::Ended),
 			has_acknowledged_turn: true,
 			active_turn_id: None,
+			active_turn_revision: None,
 			has_admitted_user_turn: true,
 			has_active_provider_attempt: false,
 			has_unknown_provider_attempt: false,
