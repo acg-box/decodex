@@ -2335,8 +2335,14 @@ fn account_pool_row(
 				.flex()
 				.items_center()
 				.gap_5()
-				.child(account_quota("5 HOUR", account.five_hour_quota))
-				.child(account_quota("7 DAY", account.seven_day_quota)),
+				.children(
+					[
+						account_quota("5 HOUR", account.five_hour_quota),
+						account_quota("7 DAY", account.seven_day_quota),
+					]
+					.into_iter()
+					.flatten(),
+				),
 		)
 		.child(
 			div()
@@ -2409,17 +2415,16 @@ fn account_pool_row(
 		.into_any_element()
 }
 
-fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> AnyElement {
-	let (detail, used, color) = match quota.result {
-		AccountQuotaStateDto::Current { used_percent, .. } => (
-			format!("{used_percent}% used"),
-			f32::from(used_percent),
-			if used_percent >= 90 { 0xef4444 } else if used_percent >= 70 { WB_AMBER } else { WB_BLUE },
-		),
-		AccountQuotaStateDto::Unknown => ("Unknown".to_owned(), 0.0, WB_TEXT_FAINT),
-		AccountQuotaStateDto::Error { .. } => ("Unavailable".to_owned(), 0.0, WB_TEXT_FAINT),
+fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> Option<AnyElement> {
+	let AccountQuotaStateDto::Current { used_percent, .. } = quota.result else {
+		return None;
 	};
-	div()
+	let detail = format!("{used_percent}% used");
+	let used = f32::from(used_percent);
+	let color =
+		if used_percent >= 90 { 0xef4444 } else if used_percent >= 70 { WB_AMBER } else { WB_BLUE };
+	Some(
+		div()
 		.w(px(122.0))
 		.flex()
 		.flex_col()
@@ -2449,7 +2454,8 @@ fn account_quota(label: &'static str, quota: AccountQuotaWindowDto) -> AnyElemen
 						.bg(rgb(color)),
 				),
 		)
-		.into_any_element()
+		.into_any_element(),
+	)
 }
 
 fn account_state_color(account: &AccountDto) -> u32 {
@@ -4218,6 +4224,44 @@ mod tests {
 			let view = ConnectionView::Incompatible(CompatibilityReason::Startup(failure));
 			assert_eq!(connection_presentation(view).detail, detail);
 		}
+	}
+
+	#[test]
+	fn account_quota_renders_only_a_current_provider_window() {
+		let quota = |result| AccountQuotaWindowDto {
+			duration_minutes: 300,
+			observed_at_unix_micros: None,
+			result,
+		};
+
+		assert!(account_quota("5 HOUR", quota(AccountQuotaStateDto::Unknown)).is_none());
+		assert!(
+			account_quota(
+				"5 HOUR",
+				AccountQuotaWindowDto {
+					observed_at_unix_micros: Some(1),
+					result: AccountQuotaStateDto::Error {
+						error: decodex_protocol::AccountQuotaErrorDto::UnsupportedWindow,
+					},
+					..quota(AccountQuotaStateDto::Unknown)
+				},
+			)
+			.is_none()
+		);
+		assert!(
+			account_quota(
+				"5 HOUR",
+				AccountQuotaWindowDto {
+					observed_at_unix_micros: Some(1),
+					result: AccountQuotaStateDto::Current {
+						used_percent: 42,
+						resets_at_unix_micros: 2,
+					},
+					..quota(AccountQuotaStateDto::Unknown)
+				},
+			)
+			.is_some()
+		);
 	}
 
 	#[test]
