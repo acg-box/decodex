@@ -176,6 +176,38 @@ which negotiates schema/version and read-only RPCs without dispatching a Turn. T
 deterministic native Workbench capture includes the refresh, Archive, model, Fast, and
 reasoning controls without changing the existing shell layout.
 
+## Desktop account surfaces and atomic packaging
+
+GPUI and the Swift menu-bar companion remain separate same-UID processes. Both use the
+daemon-owned account model through the current typed Rust protocol. Swift reaches that
+protocol only through its embedded `decodex-app-client-ffi` library; neither UI reads the
+SQLite database or credential bytes.
+
+A live failure probe found that the separately installed menu-bar bundle was one protocol
+minor behind the running daemon. Its embedded FFI returned `protocol_minor_mismatch` for
+`list_accounts`, while the current source bridge returned all six account rows. The GPUI
+staging path now builds the Swift companion from the same checkout and embeds it at
+`Contents/Library/LoginItems/DecodexMenuBar.app`. The companion has the fixed bundle identity
+`box.acg.decodex.menubar`, which is the identity controlled by GPUI Settings. This makes the
+two desktop surfaces one release artifact without combining their process or authority
+boundaries.
+
+Quota presentation follows one rule on both surfaces: render a window only when the provider
+has supplied a current value. An absent, unknown, unsupported, or failed five-hour observation
+does not create a synthetic `5 HOUR` row. It remains a typed protocol fact for routing and
+diagnostics.
+
+The staged nested bundle passed strict deep code-signature verification. A direct call through
+its embedded FFI negotiated the running daemon, returned `available`, and read six accounts.
+The older installed FFI remained the negative control and continued to return the typed minor
+version mismatch.
+
+Final acceptance from the task checkout included 983 Rust tests with five intentional skips,
+215 Swift tests, 30 desktop architecture and contract tests, the two real CLI diagnostics tests,
+the SQLite local-database gate, and a stable-toolchain workspace check. Every applicable test and
+gate passed. The staged application also passed strict deep code-signature verification before
+the live FFI readback.
+
 ## Final repository gates
 
 One complete `cargo make check` run finished successfully on the final source. It included:
