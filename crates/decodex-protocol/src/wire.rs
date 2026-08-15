@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.1 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.2 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -21,13 +21,17 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as 
 use serde_json::Error;
 
 use crate::{
-	DoctorReport, ProtocolVersion, QuickTaskListCursor, QuickTaskListResult, QuickTaskListSize,
-	QuickTaskExecutionSettings, QuickTaskRecoveryAction, QuickTaskResult, QuickTaskSummary,
-	QuickTaskTurnOutcome,
-	QuickTaskWorkingDirectory, SupportedVersions, VersionRefusal,
+	DoctorReport, ProtocolVersion, QuickTaskExecutionSettings, QuickTaskListCursor,
+	QuickTaskListResult, QuickTaskListSize, QuickTaskRecoveryAction, QuickTaskResult,
+	QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskWorkingDirectory, SupportedVersions,
+	VersionRefusal,
+	program_cycle::{
+		ProgramCycleDraftDto, ProgramCycleDto, ProgramCycleResult, ProgramListResult,
+		ProgramReviewDraftDto,
+	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.1.
+/// Maximum UTF-8 size of any human-readable text carried by V2.2.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -152,7 +156,7 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded the V2.1 byte limit.
+/// A string-backed wire scalar exceeded the V2.2 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
@@ -168,7 +172,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.1 WorkItem board contract.
+/// Closed construction failures for the V2.2 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -270,7 +274,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.1 protocol bound.
+	/// Construct a page size inside the closed V2.2 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -435,9 +439,8 @@ impl Display for IdempotencyKeyError {
 		formatter.write_str(match self {
 			Self::Empty => "idempotency key is empty",
 			Self::TooLong => "idempotency key exceeds the 256-byte maximum",
-			Self::SurroundingWhitespace => {
-				"idempotency key contains leading or trailing whitespace"
-			},
+			Self::SurroundingWhitespace =>
+				"idempotency key contains leading or trailing whitespace",
 			Self::ControlCharacter => "idempotency key contains a control character",
 		})
 	}
@@ -547,7 +550,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.1 resume requires this field. Older hello envelopes can omit it
+	/// A V2.2 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -600,7 +603,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.1 welcome.
+	/// This is present in the exact-current V2.2 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1728,7 +1731,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.1 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.2 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -1998,12 +2001,10 @@ impl Serialize for AccountInitialSelectionResult {
 
 		validate_initial_selection_result(self).map_err(S::Error::custom)?;
 		let raw = match self {
-			Self::Selected { account_id, account_revision } => {
-				RawResult::Selected { account_id, account_revision: *account_revision }
-			},
-			Self::RecoveryRequired { account_id, action } => {
-				RawResult::RecoveryRequired { account_id, action: *action }
-			},
+			Self::Selected { account_id, account_revision } =>
+				RawResult::Selected { account_id, account_revision: *account_revision },
+			Self::RecoveryRequired { account_id, action } =>
+				RawResult::RecoveryRequired { account_id, action: *action },
 			Self::Unavailable => RawResult::Unavailable,
 		};
 		raw.serialize(serializer)
@@ -2023,12 +2024,10 @@ impl<'de> Deserialize<'de> for AccountInitialSelectionResult {
 		}
 
 		let result = match RawResult::deserialize(deserializer)? {
-			RawResult::Selected { account_id, account_revision } => {
-				Self::Selected { account_id, account_revision }
-			},
-			RawResult::RecoveryRequired { account_id, action } => {
-				Self::RecoveryRequired { account_id, action }
-			},
+			RawResult::Selected { account_id, account_revision } =>
+				Self::Selected { account_id, account_revision },
+			RawResult::RecoveryRequired { account_id, action } =>
+				Self::RecoveryRequired { account_id, action },
 			RawResult::Unavailable => Self::Unavailable,
 		};
 		validate_initial_selection_result(&result).map_err(D::Error::custom)?;
@@ -2263,10 +2262,17 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.1 protocol.
+/// Live queries available through the exact-current V2.2 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
+	/// List bounded current Programs for the Factory selector.
+	ListPrograms,
+	/// Read one complete current Program causal projection.
+	GetProgramCycle {
+		/// Stable Program identity.
+		program_id: EntityId,
+	},
 	/// List active internal Projects available to the WorkItem board.
 	ListProjects,
 	/// List one bounded deterministic page of ordinary Task conversations.
@@ -2358,10 +2364,20 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.1 protocol.
+/// Commands available through the exact-current V2.2 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
+	/// Atomically create one bounded pre-execution Program semantic chain.
+	CreateProgramCycle {
+		/// Complete V1 Program charter and finite causal chain.
+		draft: Box<ProgramCycleDraftDto>,
+	},
+	/// Atomically attach required Evidence and one classified Program Review.
+	RecordProgramReview {
+		/// Complete terminal review input.
+		review: Box<ProgramReviewDraftDto>,
+	},
 	/// Register one current local repository as an active Project and canonical Lead.
 	RegisterProject {
 		/// Caller-generated Project identity used when this repository is new.
@@ -2408,6 +2424,9 @@ pub enum CommandPayload {
 	CreateQuickTask {
 		/// Caller-generated stable logical Conversation identity.
 		conversation_id: EntityId,
+		/// Optional exact causal WorkItem binding for a Factory execution.
+		#[serde(default, skip_serializing_if = "Option::is_none")]
+		work_item_id: Option<EntityId>,
 		/// Bounded user-authored message.
 		message: HistoryText,
 		/// Untrusted server-host working directory selected for this process lineage.
@@ -2630,6 +2649,11 @@ pub enum Channel {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum EventPayload {
+	/// One complete Program causal projection changed.
+	ProgramCycleChanged {
+		/// Current authoritative projection.
+		cycle: Box<ProgramCycleDto>,
+	},
 	/// One active Project became available to the local Factory.
 	ProjectChanged {
 		/// Complete bounded selector projection.
@@ -2763,6 +2787,11 @@ pub enum CommandOutcome {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ResultPayload {
+	/// One Program semantic command committed.
+	ProgramCycleChanged {
+		/// Current authoritative projection.
+		cycle: Box<ProgramCycleDto>,
+	},
 	/// One local repository is registered as an active Project.
 	ProjectRegistered {
 		/// Complete bounded selector projection.
@@ -2864,10 +2893,14 @@ pub enum ResultPayload {
 	},
 }
 
-/// Typed live-query results available through the exact-current V2.1 protocol.
+/// Typed live-query results available through the exact-current V2.2 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
+	/// Bounded current Program selector projection.
+	Programs(ProgramListResult),
+	/// One exact complete Program causal projection.
+	ProgramCycle(ProgramCycleResult),
 	/// Active internal Project selector contents.
 	Projects(ProjectListResult),
 	/// Bounded current Quick Task destination projection.
@@ -3797,12 +3830,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.1 wire encoding.
+/// Serialize a message using the only V2.2 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.1 wire encoding.
+/// Parse a client message using the only V2.2 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3816,30 +3849,25 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 		ClientMessage::Hello(hello)
 			if hello.version == crate::CURRENT_VERSION
 				&& hello.resume.as_ref().is_some_and(|resume| resume.instance_id.is_none()) =>
-		{
-			Err("current protocol resume requires a publication instance")
-		},
+			Err("current protocol resume requires a publication instance"),
 		ClientMessage::Hello(_) => Ok(()),
 		ClientMessage::Query(query) => match &query.payload {
+			QueryPayload::GetProgramCycle { program_id }
+				if !is_canonical_uuid(program_id.as_str()) =>
+				Err("Program query identity is not canonical"),
 			QueryPayload::ListQuickTasks { after, .. }
 				if after.as_ref().is_some_and(|cursor| {
 					!is_canonical_uuid(cursor.conversation_id().as_str())
 				}) =>
-			{
-				Err("Quick Task list cursor identity is not canonical")
-			},
+				Err("Quick Task list cursor identity is not canonical"),
 			QueryPayload::GetQuickTask { conversation_id }
 				if !is_canonical_uuid(conversation_id.as_str()) =>
-			{
-				Err("Quick Task conversation identity is not canonical")
-			},
+				Err("Quick Task conversation identity is not canonical"),
 			QueryPayload::GetResetCards { account_id }
 			| QueryPayload::InspectAccount { account_id }
 			| QueryPayload::GetAccountProfile { account_id, .. }
 				if !is_canonical_uuid(account_id.as_str()) =>
-			{
-				Err("account query identity is not canonical")
-			},
+				Err("account query identity is not canonical"),
 			_ => Ok(()),
 		},
 		ClientMessage::Command(command) => validate_account_command(command),
@@ -3849,6 +3877,20 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
+		CommandPayload::CreateProgramCycle { draft } => {
+			if command.expected_revision.is_some() || draft.validate().is_err() {
+				Err("Program cycle create contract is invalid")
+			} else {
+				Ok(())
+			}
+		},
+		CommandPayload::RecordProgramReview { review } => {
+			if command.expected_revision.is_some() || review.validate().is_err() {
+				Err("Program Review contract is invalid")
+			} else {
+				Ok(())
+			}
+		},
 		CommandPayload::RegisterProject { .. } => validate_project_command(command),
 		CommandPayload::CreateWorkItem { .. }
 		| CommandPayload::StartWorkItem { .. }
@@ -3869,13 +3911,12 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("reset-card account identity or revision is invalid")
 			}
 		},
-		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } => {
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } =>
 			validate_account_install_command(
 				operation_id,
 				account_id,
 				command.expected_revision.is_none(),
-			)
-		},
+			),
 		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
@@ -3932,9 +3973,8 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			}
 			Ok(())
 		},
-		CommandPayload::SetBalancedAccountSelection => {
-			positive_expected.then_some(()).ok_or("account routing revision is required")
-		},
+		CommandPayload::SetBalancedAccountSelection =>
+			positive_expected.then_some(()).ok_or("account routing revision is required"),
 		CommandPayload::SetAccountOrder { order } => {
 			if !positive_expected
 				|| order.len() > 512
@@ -3996,7 +4036,7 @@ fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static 
 				Ok(())
 			}
 		},
-		CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } => {
+		CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } =>
 			if positive_expected
 				&& is_canonical_uuid(work_item_id.as_str())
 				&& is_canonical_uuid(project_id.as_str())
@@ -4005,8 +4045,7 @@ fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static 
 				Ok(())
 			} else {
 				Err("WorkItem start identity or revision is invalid")
-			}
-		},
+			},
 		CommandPayload::AcceptWorkItem {
 			work_item_id,
 			project_id,
@@ -4034,9 +4073,12 @@ fn validate_work_item_command(command: &CommandEnvelope) -> Result<(), &'static 
 fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
-		CommandPayload::CreateQuickTask { conversation_id, message, .. } => {
+		CommandPayload::CreateQuickTask { conversation_id, work_item_id, message, .. } => {
 			if command.expected_revision.is_some()
 				|| !is_canonical_uuid(conversation_id.as_str())
+				|| work_item_id
+					.as_ref()
+					.is_some_and(|work_item_id| !is_canonical_uuid(work_item_id.as_str()))
 				|| message.as_str().trim().is_empty()
 			{
 				Err("Quick Task create identity, revision, or message is invalid")
@@ -4053,7 +4095,7 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Err("Quick Task recovery identity or revision is invalid")
 			}
 		},
-		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } => {
+		CommandPayload::SubmitQuickTaskTurn { conversation_id, turn_id, message, .. } =>
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
 				&& is_canonical_uuid(turn_id.as_str())
@@ -4062,8 +4104,7 @@ fn validate_quick_task_command(command: &CommandEnvelope) -> Result<(), &'static
 				Ok(())
 			} else {
 				Err("Quick Task turn identity, revision, or message is invalid")
-			}
-		},
+			},
 		CommandPayload::InterruptQuickTask { conversation_id, turn_id } => {
 			if positive_expected
 				&& is_canonical_uuid(conversation_id.as_str())
@@ -4146,9 +4187,8 @@ fn validate_initial_selection_result(
 				.then_some(())
 				.ok_or("selected account revision is not positive")
 		},
-		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } => {
-			account_id.as_ref().map_or(Ok(()), validate_canonical_account)
-		},
+		AccountInitialSelectionResult::RecoveryRequired { account_id, .. } =>
+			account_id.as_ref().map_or(Ok(()), validate_canonical_account),
 		AccountInitialSelectionResult::Unavailable => Ok(()),
 	}
 }
@@ -4420,9 +4460,7 @@ fn validate_quota_window(
 		(None, AccountQuotaStateDto::Unknown) => Ok(()),
 		(Some(observed), AccountQuotaStateDto::Current { used_percent, resets_at_unix_micros })
 			if observed > 0 && used_percent <= 100 && resets_at_unix_micros > observed =>
-		{
-			Ok(())
-		},
+			Ok(()),
 		(Some(observed), AccountQuotaStateDto::Error { .. }) if observed > 0 => Ok(()),
 		_ => Err("account quota observation shape is invalid"),
 	}
@@ -4447,11 +4485,12 @@ mod tests {
 		IdempotencyKey, MAX_HISTORY_INLINE_BYTES, MAX_HISTORY_METADATA_FIELDS,
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
 		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
-		MAX_WORK_ITEM_BOARD_PAGE_SIZE, QueryId, QueryResultPayload, QuickTaskRecoveryAction,
-		QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory, ResetCardDescriptorDto,
-		ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId, Sha256Digest, WireText,
-		WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage, WorkItemBoardPageSize,
-		WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
+		MAX_WORK_ITEM_BOARD_PAGE_SIZE, ProgramCycleDraftDto, QueryId, QueryResultPayload,
+		QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory,
+		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
+		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage,
+		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
+		WorkItemBoardWorkItemId, WorkItemState,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
@@ -4582,6 +4621,71 @@ mod tests {
 	}
 
 	#[test]
+	fn program_cycle_command_round_trips_and_rejects_duplicate_semantic_identity() {
+		let ids = [
+			"11000000-0000-4000-8000-000000000001",
+			"21000000-0000-4000-8000-000000000001",
+			"31000000-0000-4000-8000-000000000001",
+			"41000000-0000-4000-8000-000000000001",
+			"51000000-0000-4000-8000-000000000001",
+			"61000000-0000-4000-8000-000000000001",
+		];
+		let entity = |value: &str| EntityId::new(value).expect("canonical Program identity");
+		let text = |value: &str| WireText::new(value).expect("bounded Program text");
+		let draft = ProgramCycleDraftDto {
+			program_id: entity(ids[0]),
+			signal_id: entity(ids[1]),
+			claim_id: entity(ids[2]),
+			proposal_id: entity(ids[3]),
+			objective_id: entity(ids[4]),
+			work_item_id: entity(ids[5]),
+			name: text("Adaptive Factory V1"),
+			purpose: text("Prove one closed coordination cycle"),
+			non_goals: vec![text("Do not add multi-agent fan-out")],
+			review_policy: text("Review after the bound Codex run settles"),
+			signal_source: text("operator observation"),
+			signal_summary: text("Unrelated Codex tasks lose causal context"),
+			signal_observed_at_micros: 1,
+			claim_statement: text("A durable causal spine reduces coordination loss"),
+			proposal_summary: text("Run one bounded Program cycle"),
+			proposal_expected_effect: text("One restart-safe closed loop"),
+			proposal_risk: text("The loop may not close"),
+			proposal_evidence_need: text("Deterministic and external evidence"),
+			objective_outcome: text("One closed cycle is visible in GPUI"),
+			acceptance_criteria: vec![text("The causal cycle reopens after restart")],
+			validation_criteria: vec![text("The Quick Task request is not replayed")],
+			work_item_title: text("Implement the bounded slice"),
+			work_item_instructions: text("Return one deterministic result"),
+			working_directory: QuickTaskWorkingDirectory::new("/tmp/decodex")
+				.expect("canonical working directory"),
+		};
+		let message = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("program-create").unwrap(),
+			idempotency_key: IdempotencyKey::new("program/create").unwrap(),
+			expected_revision: None,
+			correlation_id: CorrelationId::new(ids[0]).unwrap(),
+			causation_id: None,
+			payload: CommandPayload::CreateProgramCycle { draft: Box::new(draft.clone()) },
+		});
+		let encoded = serde_json::to_string(&message).unwrap();
+		assert_eq!(decode_client_message(&encoded).unwrap(), message);
+
+		let mut invalid = draft;
+		invalid.work_item_id = invalid.objective_id.clone();
+		let invalid = ClientMessage::Command(CommandEnvelope {
+			version: CURRENT_VERSION,
+			client_command_id: ClientCommandId::new("program-create-invalid").unwrap(),
+			idempotency_key: IdempotencyKey::new("program/create-invalid").unwrap(),
+			expected_revision: None,
+			correlation_id: CorrelationId::new(ids[0]).unwrap(),
+			causation_id: None,
+			payload: CommandPayload::CreateProgramCycle { draft: Box::new(invalid) },
+		});
+		assert!(decode_client_message(&serde_json::to_string(&invalid).unwrap()).is_err());
+	}
+
+	#[test]
 	fn project_registration_is_one_strict_local_repository_command() {
 		let payload = CommandPayload::RegisterProject {
 			project_id: WorkItemBoardProjectId::new(BOARD_PROJECT).unwrap(),
@@ -4644,6 +4748,7 @@ mod tests {
 			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical successor ID");
 		let create = CommandPayload::CreateQuickTask {
 			conversation_id: source.clone(),
+			work_item_id: None,
 			message: HistoryText::new("route this request").expect("bounded message"),
 			working_directory: QuickTaskWorkingDirectory::new("/tmp/work")
 				.expect("bounded working directory"),
@@ -4853,7 +4958,7 @@ mod tests {
 			}),
 		);
 		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 1, minor: 5 }));
-		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 2 }));
+		assert!(!command.is_supported_in(crate::ProtocolVersion { major: 2, minor: 3 }));
 		assert!(command.is_supported_in(CURRENT_VERSION));
 		assert!(
 			serde_json::from_value::<CommandPayload>(serde_json::json!({
@@ -5324,7 +5429,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":1},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":2},"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);
@@ -5333,7 +5438,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":1},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":2},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5375,7 +5480,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":1},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":2},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5618,7 +5723,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 2 };
+		let future = crate::ProtocolVersion { major: 2, minor: 3 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

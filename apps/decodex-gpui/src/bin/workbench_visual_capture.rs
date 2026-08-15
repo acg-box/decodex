@@ -22,6 +22,9 @@ mod health_query;
 #[path = "../history_pager.rs"]
 mod history_pager;
 #[allow(dead_code)]
+#[path = "../programs.rs"]
+mod programs;
+#[allow(dead_code)]
 #[path = "../quick_tasks.rs"]
 mod quick_tasks;
 #[allow(dead_code)]

@@ -1,14 +1,16 @@
 # Adaptive Program And Extension Architecture
 
-Status: accepted product direction; not implemented product capability.
+Status: accepted product direction; Adaptive Factory Spine V1 is implemented.
 
 Date: 2026-08-15.
 
-This decision guides factory work after the current local Quick Task foundation. It does
-not claim that Program feedback, ontology projections, managed work, automation, or an
-extension runtime is available now. Current implemented behavior remains defined by the
-[OpenWiki quickstart](../quickstart.md) and the
-[local product V1 contract](../specs/local-product-v1.md).
+This decision guides factory work above the local Quick Task foundation. The bounded
+Adaptive Factory Spine V1 is current product capability. Dynamic multi-agent work,
+automation, consequential external actions, and an extension runtime remain target
+direction only. Current implemented behavior is defined by the
+[OpenWiki quickstart](../quickstart.md), the
+[local product V1 contract](../specs/local-product-v1.md), and the
+[Adaptive Factory Spine V1 evidence](../evidence/adaptive-factory-spine-v1.md).
 
 ## Decision
 
@@ -32,14 +34,15 @@ is authorized, and what should happen next.
 
 ## Current baseline
 
-The current supported slice is the local multi-turn Quick Task path. SQLite owns product
+The current supported base is the local multi-turn Quick Task path. SQLite owns product
 state, `decodexd` owns mutations, Codex app-server owns one worker thread, and
 ProcessGeneration plus ProviderAttempt preserve restart and uncertain-effect safety.
 
-The source tree contains structural Program, Objective, WorkItem, and ManagedRun domain
-types. These types are design donors and compile-time foundations. They are not current
-product capability evidence. Current Managed Factory commands return typed unavailable
-results, and ontology, graph, automation, and extension projections remain deferred.
+Adaptive Factory Spine V1 adds one persisted Program, Signal, Claim, non-executable
+Proposal, finite Objective, WorkItem, two Evidence records, and classified Review. It
+binds the WorkItem to an ordinary Quick Task and derives a synchronized GPUI causal
+graph and timeline. The general WorkItem board, ManagedRun, automation, dynamic agents,
+general ontology tooling, and extensions remain deferred.
 
 Implementation must extend this current base. It must not copy the unlanded historical
 PostgreSQL factory branch or reactivate the frozen `apps/decodex` runtime.
@@ -327,7 +330,7 @@ accepted policy and provider-specific safeguards.
 
 ## Delivery sequence
 
-### Milestone 1: Adaptive Factory Spine V1
+### Milestone 1: Adaptive Factory Spine V1 — implemented
 
 Prove one real closed Program cycle through the existing Codex Quick Task path:
 
@@ -344,6 +347,11 @@ Prove one real closed Program cycle through the existing Codex Quick Task path:
 
 This milestone does not add a public extension system, arbitrary workflow builder,
 automatic endless loop, graph database, cross-project scheduler, or real-money action.
+
+The delivered V1 uses one aggregate creation command, one optional WorkItem cause on the
+ordinary Quick Task command, one aggregate Review command, and two Program queries. It
+does not expose a mutation API for each ontology noun. This keeps the first semantic
+spine small and makes partial chain construction impossible.
 
 ### Milestone 2: Extension Contract V1
 

@@ -6,7 +6,7 @@ tags: [local-product, sqlite, evidence, quick-task]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [control_thread, ExactSubmittedTurnReadback, recover_unknown_quick_task_turn, plan_continuation, QuickTaskExecutionSettings, TranscriptRow]
   test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
   invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
@@ -24,7 +24,7 @@ credential fingerprint.
 
 ## Implemented evidence
 
-- `database/` owns one bundled SQLite connection, four immutable migrations, digest ledger,
+- `database/` owns one bundled SQLite connection, five immutable migrations, digest ledger,
   exact schema inventory verification, WAL, full synchronous mode, foreign keys,
   integrity checks, no-follow open, and owner-private file creation.
 - Unit tests cover initialization, reopen, migration tamper refusal, exact credential
@@ -174,12 +174,11 @@ window, then rebuilds the successor from the fresh cursor. Its focused regressio
 the pre-existing malformed-cycle tests pass together. After this correction, the
 complete GPUI package passed 120 tests with two live tests ignored.
 
-The client does not activate the deferred WorkItem and Project query surface. Protocol
-V2.1 is strict, and an older daemon can close a retained session when it receives an
-unknown `ListProjects` query. The WorkItem controller stays dormant until a later
-capability-negotiation contract exists. This prevents the deferred factory surface from
-making Conversation history stay in loading state or making the whole Workbench appear
-offline.
+The client does not activate the deferred general WorkItem and Project query surface.
+Protocol V2.2 is exact-current. The Adaptive Program controller uses only its bounded
+V2.2 Program commands and queries. The unrelated WorkItem board controller stays
+dormant. This keeps deferred Factory surfaces from affecting Conversation history or
+the Workbench connection.
 
 One ignored live integration test connected to the installed signed daemon and completed
 two new real Conversations in sequence. It then returned to the first Conversation,
@@ -261,11 +260,13 @@ remain outside this lifecycle-refresh milestone because
 or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
 terminal state and assistant suffix.
 
-Protocol V2.1 carries the controls and archive event. SQLite schema version 3 adds the
-original Quick Task execution settings. Schema version 4 adds the migration-owned
-`context_packs` table, for four migration digests and an exact 29-table inventory. The
-schema-4 local database gate passed with WAL, `quick_check`, foreign-key verification,
-all four exact migration digests, and the 29-table inventory.
+Protocol V2.2 carries the controls, archive event, and bounded Program aggregate. SQLite
+schema version 3 adds the original Quick Task execution settings. Schema version 4 adds
+the migration-owned `context_packs` table. Schema version 5 adds the Program, Signal,
+Claim, Proposal, Objective, WorkItem binding, Evidence, Review, and semantic identity
+tables, for five migration digests and an exact 39-table inventory. The schema-5 local
+database gate passed with WAL, `quick_check`, foreign-key verification, all five exact
+migration digests, and the 39-table inventory.
 
 Focused implementation evidence is split across `crates/decodex-runtime/src/quick_task.rs`
 (exact control sequencing and process retirement),
