@@ -21,13 +21,13 @@ use decodex_core::{
 };
 use decodex_database::{
 	AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-	AccountCommandReceiptLease, AccountLifecycleRejection, CommandIdentity,
+	AccountCommandReceiptLease, AccountLifecycleRejection,
+	BindProgramDomainPack as StoreBindProgramDomainPack, CommandIdentity,
 	ContinueProgram as StoreContinueProgram, CreateProgramCycle as StoreCreateProgramCycle,
-	DatabaseError, HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
-	OrdinaryTaskConversationProjection,
-	OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCycleRecord,
-	ProgramEvidenceInput, ProgramSummaryRecord, RecordProgramReview, RoutingControlOutcome,
-	SqliteStore, StoreError,
+	DatabaseError, DomainPackIdentity, HistoryCursor, HistoryEntry, OrdinaryTaskConversationCursor,
+	OrdinaryTaskConversationProjection, OrdinaryTaskConversationReadback,
+	OrdinaryTaskPreSessionState, ProgramCycleRecord, ProgramEvidenceInput, ProgramSummaryRecord,
+	RecordProgramReview, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
@@ -45,12 +45,10 @@ use decodex_protocol::{
 	HistoryArtifactReference, HistoryArtifactRevision, HistoryBlobLength, HistoryBlobReference,
 	HistoryCursorToken, HistoryItemDto, HistoryItemKindDto, HistoryItemStatusDto,
 	HistoryPayloadDto, HistoryQueryError, HistorySideEffectState, HistoryText, HistoryTurnRole,
-	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto,
-	ProgramCycleDto,
-		ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
-		ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
-		ProjectListResult,
-	QueryEnvelope, QueryPayload, QueryResultPayload,
+	MAX_HISTORY_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramCycleDto,
+	ProgramCycleResult, ProgramEdgeDto, ProgramListResult, ProgramNodeDto, ProgramNodeFieldDto,
+	ProgramNodeKind, ProgramRelationKind, ProgramReviewDraftDto, ProgramSummaryDto,
+	ProjectListResult, QueryEnvelope, QueryPayload, QueryResultPayload,
 	QuickTaskExecutionSettings as QuickTaskExecutionSettingsDto, QuickTaskListCursor,
 	QuickTaskListPage, QuickTaskListResult, QuickTaskReadError, QuickTaskRecoveryAction,
 	QuickTaskResult, QuickTaskState, QuickTaskSummary, QuickTaskTurnOutcome,
@@ -77,6 +75,7 @@ use crate::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
 		AccountService, CodexAuthProjectionInspection, stable_account_alias,
 	},
+	domain_packs::{self, DomainPackError, QUICK_TASK_CAPABILITY},
 	managed_repository_runtime::ManagedRepositoryCapability,
 	quick_task::{
 		ControlQuickTask, CreateQuickTask, QuickTaskCapability, QuickTaskControlOutcome,
@@ -249,11 +248,13 @@ impl ProductStore {
 		match store.revalidate().await {
 			Ok(()) => DoctorStatus::Ready,
 			Err(error) => DoctorStatus::Unavailable(match error {
-				DatabaseError::Incompatible | DatabaseError::Corrupt =>
-					DoctorIssue::DatabaseIncompatible,
+				DatabaseError::Incompatible | DatabaseError::Corrupt => {
+					DoctorIssue::DatabaseIncompatible
+				},
 				DatabaseError::UnsafePath => DoctorIssue::UnsafeHostPath,
-				DatabaseError::Unavailable | DatabaseError::Closed =>
-					DoctorIssue::DatabaseUnreachable,
+				DatabaseError::Unavailable | DatabaseError::Closed => {
+					DoctorIssue::DatabaseUnreachable
+				},
 				DatabaseError::Conflict
 				| DatabaseError::NotFound
 				| DatabaseError::AlreadyExists => DoctorIssue::Integrity,
@@ -431,11 +432,13 @@ impl ServiceApplication {
 				match result {
 					(Ok(account_id), Ok(account_revision), Ok(projection_digest))
 						if account_revision.0 > 0 =>
+					{
 						CodexAuthProjectionResult::Current {
 							account_id,
 							account_revision,
 							projection_digest,
-						},
+						}
+					},
 					_ => CodexAuthProjectionResult::Unavailable,
 				}
 			},
@@ -465,19 +468,22 @@ impl ServiceApplication {
 				.unwrap_or_else(|()| {
 					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
 				}),
-			AccountProfileRuntimeResult::Cached { profile, refresh_error } =>
+			AccountProfileRuntimeResult::Cached { profile, refresh_error } => {
 				match account_profile_dto(profile) {
 					Ok(profile) => AccountProfileResult::Cached {
 						profile: Box::new(profile),
 						refresh_error: account_profile_error_dto(refresh_error),
 					},
-					Err(()) =>
-						unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable),
-				},
-			AccountProfileRuntimeResult::Unavailable { claims, error } =>
+					Err(()) => {
+						unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
+					},
+				}
+			},
+			AccountProfileRuntimeResult::Unavailable { claims, error } => {
 				account_profile_unavailable_dto(claims, error).unwrap_or_else(|()| {
 					unavailable_account_profile(AccountProfileErrorDto::ProductStateUnavailable)
-				}),
+				})
+			},
 		}
 	}
 
@@ -493,8 +499,9 @@ impl ServiceApplication {
 				EntityId::new(selected.account.account_id.as_str().to_owned()),
 				u64::try_from(selected.account.revision).map(EntityRevision),
 			) {
-				(Ok(account_id), Ok(account_revision)) =>
-					AccountInitialSelectionResult::Selected { account_id, account_revision },
+				(Ok(account_id), Ok(account_revision)) => {
+					AccountInitialSelectionResult::Selected { account_id, account_revision }
+				},
 				_ => AccountInitialSelectionResult::Unavailable,
 			},
 			Err(failure) => {
@@ -659,10 +666,12 @@ impl ServiceApplication {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
 				let action = match action {
-					AccountManualRecoveryActionDto::ReconcileExactStoreState =>
-						AccountManualRecoveryAction::ReconcileExactStoreState,
-					AccountManualRecoveryActionDto::CancelBeforeEffect =>
-						AccountManualRecoveryAction::CancelBeforeEffect,
+					AccountManualRecoveryActionDto::ReconcileExactStoreState => {
+						AccountManualRecoveryAction::ReconcileExactStoreState
+					},
+					AccountManualRecoveryActionDto::CancelBeforeEffect => {
+						AccountManualRecoveryAction::CancelBeforeEffect
+					},
 				};
 				let publication_operation_id = operation_id.clone();
 				service
@@ -706,8 +715,9 @@ impl ServiceApplication {
 										)
 									})
 									.and_then(account_changed_publication),
-								AccountAdministrationOutcome::Rejected { rejection, revision } =>
-									Err(lifecycle_rejection(*rejection, *revision)),
+								AccountAdministrationOutcome::Rejected { rejection, revision } => {
+									Err(lifecycle_rejection(*rejection, *revision))
+								},
 							};
 							encode_account_command_receipt(&result)
 						},
@@ -863,8 +873,9 @@ impl ServiceApplication {
 					},
 				}
 			},
-			Err(error) =>
-				ResetCardInventoryResult::Unavailable { error: protocol_reset_error(error) },
+			Err(error) => {
+				ResetCardInventoryResult::Unavailable { error: protocol_reset_error(error) }
+			},
 		}
 	}
 
@@ -923,25 +934,28 @@ impl ServiceApplication {
 					.transpose();
 
 				match (items, next_cursor) {
-					(Ok(items), Ok(next_cursor)) =>
+					(Ok(items), Ok(next_cursor)) => {
 						ConversationHistoryResult::Page(ConversationHistoryPage {
 							items,
 							next_cursor,
-						}),
+						})
+					},
 					_ => ConversationHistoryResult::Unavailable {
 						error: HistoryQueryError::IntegrityUnavailable,
 					},
 				}
 			},
-			Err(StoreError::InvalidInput(_)) =>
-				ConversationHistoryResult::Unavailable { error: HistoryQueryError::InvalidRequest },
+			Err(StoreError::InvalidInput(_)) => {
+				ConversationHistoryResult::Unavailable { error: HistoryQueryError::InvalidRequest }
+			},
 			Err(StoreError::CapacityExhausted(_)) => ConversationHistoryResult::Unavailable {
 				error: HistoryQueryError::ResourceExhausted,
 			},
-			Err(StoreError::Blob(_) | StoreError::Incompatible(_)) =>
+			Err(StoreError::Blob(_) | StoreError::Incompatible(_)) => {
 				ConversationHistoryResult::Unavailable {
 					error: HistoryQueryError::IntegrityUnavailable,
-				},
+				}
+			},
 			Err(_) => ConversationHistoryResult::Unavailable {
 				error: HistoryQueryError::ProductStateUnavailable,
 			},
@@ -993,6 +1007,7 @@ impl ServiceApplication {
 	}
 
 	async fn program_cycle_dto(&self, record: ProgramCycleRecord) -> Result<ProgramCycleDto, ()> {
+		let domain_pack = domain_packs::projection(&record).map_err(|_| ())?;
 		let mut run_states = Vec::new();
 		for work_item in &record.work_items {
 			let Some(conversation_id) = work_item.conversation_id.as_ref() else {
@@ -1007,7 +1022,11 @@ impl ServiceApplication {
 			};
 			run_states.push((conversation_id.clone(), state));
 		}
-		program_cycle_dto(record, &run_states)
+		let cycle = program_cycle_dto(record, &run_states)?;
+		match domain_pack {
+			Some(domain_pack) => cycle.with_domain_pack(domain_pack).map_err(|_| ()),
+			None => Ok(cycle),
+		}
 	}
 
 	async fn execute_program_command(
@@ -1022,10 +1041,30 @@ impl ServiceApplication {
 		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
 			.map_err(program_command_error)?;
 		let record = match &command.payload {
-			CommandPayload::CreateProgramCycle { draft } => store
-				.create_program_cycle(&identity, &store_program_create(draft)?)
-				.await
-				.map_err(program_command_error)?,
+			CommandPayload::CreateProgramCycle { draft } => {
+				let domain_pack = domain_packs::resolve_identity(draft.domain_pack_id.as_str())
+					.map_err(domain_pack_command_error)?;
+				store
+					.create_program_cycle(&identity, &store_program_create(draft, domain_pack)?)
+					.await
+					.map_err(program_command_error)?
+			},
+			CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+				let expected_revision = command
+					.expected_revision
+					.ok_or_else(|| application_unavailable("Program revision is required"))?;
+				let binding = StoreBindProgramDomainPack {
+					program_id: ProgramId::new(program_id.as_str())
+						.map_err(|_| application_unavailable("Program identity is invalid"))?,
+					expected_revision: expected_revision.0,
+					domain_pack: domain_packs::resolve_identity(domain_pack_id.as_str())
+						.map_err(domain_pack_command_error)?,
+				};
+				store
+					.bind_program_domain_pack(&identity, &binding)
+					.await
+					.map_err(program_command_error)?
+			},
 			CommandPayload::ContinueProgram { continuation } => {
 				let expected_revision = command
 					.expected_revision
@@ -1161,8 +1200,9 @@ impl ServiceApplication {
 			QuickTaskListPage::new(conversations, next_cursor).map_err(|_| ())
 		}) {
 			Ok(page) => QuickTaskListResult::Available(page),
-			Err(()) =>
-				QuickTaskListResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable },
+			Err(()) => {
+				QuickTaskListResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable }
+			},
 		}
 	}
 
@@ -1199,15 +1239,17 @@ impl ServiceApplication {
 				EntityId::new(successor_conversation_id.as_str()),
 				u64::try_from(successor_conversation_revision),
 			) {
-				(Ok(source), Ok(source_revision), Ok(successor), Ok(successor_revision)) =>
+				(Ok(source), Ok(source_revision), Ok(successor), Ok(successor_revision)) => {
 					QuickTaskResult::RoutingSuccessorRedirect {
 						source_conversation_id: source,
 						source_conversation_revision: EntityRevision(source_revision),
 						successor_conversation_id: successor,
 						successor_conversation_revision: EntityRevision(successor_revision),
-					},
-				_ =>
-					QuickTaskResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable },
+					}
+				},
+				_ => {
+					QuickTaskResult::Unavailable { error: QuickTaskReadError::IntegrityUnavailable }
+				},
 			},
 			OrdinaryTaskConversationProjection::Archived { .. } => QuickTaskResult::NotFound,
 		}
@@ -1312,10 +1354,11 @@ impl ServiceApplication {
 			ConversationId::new(conversation_id.as_str()).map_err(|_| quick_task_conflict())?;
 		let row = self.quick_task_command_row(&conversation_id, command.expected_revision).await?;
 		let recoverable = match &command.payload {
-			CommandPayload::ResumeQuickTaskRouting { .. } =>
+			CommandPayload::ResumeQuickTaskRouting { .. } => {
 				row.runtime_session_id.is_none()
-					&& row.pre_session_state == Some(OrdinaryTaskPreSessionState::RoutingPending),
-			CommandPayload::ResumeQuickTaskEstablishment { .. } =>
+					&& row.pre_session_state == Some(OrdinaryTaskPreSessionState::RoutingPending)
+			},
+			CommandPayload::ResumeQuickTaskEstablishment { .. } => {
 				(row.runtime_session_id.is_none()
 					&& row.pre_session_state
 						== Some(OrdinaryTaskPreSessionState::EstablishmentPending))
@@ -1325,7 +1368,8 @@ impl ServiceApplication {
 						&& !row.has_acknowledged_turn
 						&& !row.has_active_provider_attempt
 						&& !row.has_unknown_provider_attempt
-						&& (!row.has_admitted_user_turn || row.active_turn_id.is_some())),
+						&& (!row.has_admitted_user_turn || row.active_turn_id.is_some()))
+			},
 			_ => false,
 		};
 		if !recoverable {
@@ -1340,8 +1384,9 @@ impl ServiceApplication {
 		};
 		Ok(match &command.payload {
 			CommandPayload::ResumeQuickTaskRouting { .. } => runtime.resume_routing(recovery).await,
-			CommandPayload::ResumeQuickTaskEstablishment { .. } =>
-				runtime.resume_establishment(recovery).await,
+			CommandPayload::ResumeQuickTaskEstablishment { .. } => {
+				runtime.resume_establishment(recovery).await
+			},
 			_ => return Err(quick_task_conflict()),
 		})
 	}
@@ -1577,8 +1622,9 @@ impl ServiceApplication {
 			QuickTaskControlOutcome::Busy => Err(quick_task_busy()),
 			QuickTaskControlOutcome::Conflict => Err(quick_task_conflict()),
 			QuickTaskControlOutcome::OutcomeUnknown => Err(CommandError::AcceptanceUnknown),
-			QuickTaskControlOutcome::Unavailable =>
-				Err(application_unavailable("Quick Task thread control is unavailable")),
+			QuickTaskControlOutcome::Unavailable => {
+				Err(application_unavailable("Quick Task thread control is unavailable"))
+			},
 		}
 	}
 
@@ -1588,6 +1634,13 @@ impl ServiceApplication {
 	) -> Result<ApplicationPublication, CommandError> {
 		if matches!(&command.payload, CommandPayload::CreateQuickTaskRoutingSuccessor { .. }) {
 			return self.execute_quick_task_routing_successor(command).await;
+		}
+		if let CommandPayload::CreateQuickTask { work_item_id: Some(work_item_id), .. } =
+			&command.payload
+		{
+			let work_item_id =
+				WorkItemId::new(work_item_id.as_str()).map_err(|_| quick_task_conflict())?;
+			authorize_program_capability(&self.store, &work_item_id, QUICK_TASK_CAPABILITY).await?;
 		}
 		let runtime = match &self.quick_tasks {
 			QuickTaskCapability::Ready(runtime) => runtime,
@@ -1602,15 +1655,19 @@ impl ServiceApplication {
 			return self.execute_control_quick_task(runtime, command).await;
 		}
 		let outcome = match &command.payload {
-			CommandPayload::CreateQuickTask { .. } =>
-				self.execute_create_quick_task(runtime, command).await?,
+			CommandPayload::CreateQuickTask { .. } => {
+				self.execute_create_quick_task(runtime, command).await?
+			},
 			CommandPayload::ResumeQuickTaskRouting { .. }
-			| CommandPayload::ResumeQuickTaskEstablishment { .. } =>
-				self.execute_quick_task_recovery(runtime, command).await?,
-			CommandPayload::SubmitQuickTaskTurn { .. } =>
-				self.execute_submit_quick_task_turn(runtime, command).await?,
-			CommandPayload::InterruptQuickTask { .. } =>
-				self.execute_interrupt_quick_task(runtime, command).await?,
+			| CommandPayload::ResumeQuickTaskEstablishment { .. } => {
+				self.execute_quick_task_recovery(runtime, command).await?
+			},
+			CommandPayload::SubmitQuickTaskTurn { .. } => {
+				self.execute_submit_quick_task_turn(runtime, command).await?
+			},
+			CommandPayload::InterruptQuickTask { .. } => {
+				self.execute_interrupt_quick_task(runtime, command).await?
+			},
 			_ => return Err(quick_task_conflict()),
 		};
 		let (conversation_id, interrupt) = quick_task_command_projection(outcome)?;
@@ -1622,6 +1679,23 @@ impl ServiceApplication {
 		};
 		quick_task_command_publication(conversation, interrupt)
 	}
+}
+
+async fn authorize_program_capability(
+	store: &ProductStore,
+	work_item_id: &WorkItemId,
+	capability: &str,
+) -> Result<(), CommandError> {
+	let ProductStore::Available(store) = store else {
+		return Err(application_unavailable("Program storage is unavailable"));
+	};
+	let owner = store
+		.program_domain_pack_for_work_item(work_item_id)
+		.await
+		.map_err(|_| application_unavailable("Program Domain Pack is unavailable"))?
+		.ok_or_else(|| application_unavailable("Program WorkItem is unavailable"))?;
+	domain_packs::authorize(owner.domain_pack.as_ref(), capability)
+		.map_err(domain_pack_command_error)
 }
 
 impl Application for ServiceApplication {
@@ -1684,8 +1758,9 @@ impl Application for ServiceApplication {
 	) -> Result<ApplicationPublication, CommandError> {
 		match &command.payload {
 			CommandPayload::CreateProgramCycle { .. }
-				| CommandPayload::ContinueProgram { .. }
-				| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
+			| CommandPayload::BindProgramDomainPack { .. }
+			| CommandPayload::ContinueProgram { .. }
+			| CommandPayload::RecordProgramReview { .. } => self.execute_program_command(command).await,
 			CommandPayload::RegisterProject { .. }
 			| CommandPayload::CreateWorkItem { .. }
 			| CommandPayload::StartWorkItem { .. }
@@ -1716,13 +1791,14 @@ impl Application for ServiceApplication {
 				self.request_account_observation_refresh();
 				Ok(publication)
 			},
-			CommandPayload::RefreshSystemObservation { .. } =>
+			CommandPayload::RefreshSystemObservation { .. } => {
 				Err(CommandError::ApplicationUnavailable {
 					message: WireText::new(
 						"foundation refresh is superseded by typed doctor/status",
 					)
 					.expect("service message is bounded"),
-				}),
+				})
+			},
 			CommandPayload::ConsumeResetCard { account_id, descriptor } => {
 				let Some(runtime) = &self.reset_cards else {
 					return Err(application_unavailable(
@@ -1781,44 +1857,57 @@ impl Application for ServiceApplication {
 	async fn query<'a>(&'a self, query: &'a QueryEnvelope) -> QueryResultPayload {
 		match &query.payload {
 			QueryPayload::ListPrograms => QueryResultPayload::Programs(self.program_list().await),
-			QueryPayload::GetProgramCycle { program_id } =>
-				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await),
-			QueryPayload::ListProjects =>
-				QueryResultPayload::Projects(ProjectListResult::Unavailable),
+			QueryPayload::GetProgramCycle { program_id } => {
+				QueryResultPayload::ProgramCycle(self.program_cycle(program_id).await)
+			},
+			QueryPayload::ListProjects => {
+				QueryResultPayload::Projects(ProjectListResult::Unavailable)
+			},
 			QueryPayload::ListQuickTasks { after, page_size } => QueryResultPayload::QuickTasks(
 				self.quick_task_list(after.as_ref(), page_size.get()).await,
 			),
-			QueryPayload::GetQuickTask { conversation_id } =>
-				QueryResultPayload::QuickTask(self.quick_task_get(conversation_id).await),
-			QueryPayload::GetDoctorStatus =>
-				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await),
-			QueryPayload::GetExecutionDecision { decision_id } =>
-				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await),
-			QueryPayload::GetConversationHistory { conversation_id, after, page_size } =>
+			QueryPayload::GetQuickTask { conversation_id } => {
+				QueryResultPayload::QuickTask(self.quick_task_get(conversation_id).await)
+			},
+			QueryPayload::GetDoctorStatus => {
+				QueryResultPayload::DoctorStatus(self.refreshed_doctor().await)
+			},
+			QueryPayload::GetExecutionDecision { decision_id } => {
+				QueryResultPayload::ExecutionDecision(self.execution_decision(decision_id).await)
+			},
+			QueryPayload::GetConversationHistory { conversation_id, after, page_size } => {
 				QueryResultPayload::ConversationHistory(
 					self.conversation_history(conversation_id, after.as_ref(), *page_size).await,
-				),
-			QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size } =>
+				)
+			},
+			QueryPayload::GetWorkItemBoardPage { project_id, state, after, page_size } => {
 				QueryResultPayload::WorkItemBoard(
 					self.work_item_board_page(project_id, *state, after.as_ref(), *page_size).await,
-				),
-			QueryPayload::GetResetCards { account_id } =>
-				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await),
-			QueryPayload::GetResetCardOperation { idempotency_key } =>
+				)
+			},
+			QueryPayload::GetResetCards { account_id } => {
+				QueryResultPayload::ResetCards(self.reset_card_inventory(account_id).await)
+			},
+			QueryPayload::GetResetCardOperation { idempotency_key } => {
 				QueryResultPayload::ResetCardOperation(
 					self.reset_card_operation(idempotency_key.as_str()).await,
-				),
+				)
+			},
 			QueryPayload::ListAccounts => QueryResultPayload::Accounts(self.account_list().await),
-			QueryPayload::InspectAccount { account_id } =>
-				QueryResultPayload::Account(self.account_inspect(account_id).await),
-			QueryPayload::GetAccountProfile { account_id, include_email } =>
+			QueryPayload::InspectAccount { account_id } => {
+				QueryResultPayload::Account(self.account_inspect(account_id).await)
+			},
+			QueryPayload::GetAccountProfile { account_id, include_email } => {
 				QueryResultPayload::AccountProfile(
 					self.account_profile(account_id, *include_email).await,
-				),
-			QueryPayload::GetInitialAccountSelection =>
-				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await),
-			QueryPayload::GetCodexAuthProjection =>
-				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await),
+				)
+			},
+			QueryPayload::GetInitialAccountSelection => {
+				QueryResultPayload::InitialAccountSelection(self.initial_account_selection().await)
+			},
+			QueryPayload::GetCodexAuthProjection => {
+				QueryResultPayload::CodexAuthProjection(self.codex_auth_projection().await)
+			},
 			QueryPayload::WaitForAccountObservation { after_generation, request_refresh } => {
 				if request_refresh == &Some(true) {
 					self.request_account_observation_refresh();
@@ -1845,8 +1934,9 @@ impl Application for ServiceApplication {
 fn quick_task_read_error(error: &StoreError) -> QuickTaskReadError {
 	match error {
 		StoreError::InvalidInput(_) => QuickTaskReadError::InvalidRequest,
-		StoreError::Incompatible(_) | StoreError::CredentialRejected =>
-			QuickTaskReadError::IntegrityUnavailable,
+		StoreError::Incompatible(_) | StoreError::CredentialRejected => {
+			QuickTaskReadError::IntegrityUnavailable
+		},
 		_ => QuickTaskReadError::ProductStateUnavailable,
 	}
 }
@@ -1873,14 +1963,18 @@ fn quick_task_summary_from_row(
 	}
 	if let Some(pre_session_state) = row.pre_session_state {
 		let (state, recovery_action) = match pre_session_state {
-			OrdinaryTaskPreSessionState::RoutingPending =>
-				(QuickTaskState::RoutingPending, QuickTaskRecoveryAction::ResumeRouting),
-			OrdinaryTaskPreSessionState::EstablishmentPending =>
-				(QuickTaskState::EstablishmentPending, QuickTaskRecoveryAction::ResumeEstablishment),
-			OrdinaryTaskPreSessionState::QuotaExhausted =>
-				(QuickTaskState::QuotaExhausted, QuickTaskRecoveryAction::CreateRoutingSuccessor),
-			OrdinaryTaskPreSessionState::NoRoute =>
-				(QuickTaskState::NoRoute, QuickTaskRecoveryAction::CreateRoutingSuccessor),
+			OrdinaryTaskPreSessionState::RoutingPending => {
+				(QuickTaskState::RoutingPending, QuickTaskRecoveryAction::ResumeRouting)
+			},
+			OrdinaryTaskPreSessionState::EstablishmentPending => {
+				(QuickTaskState::EstablishmentPending, QuickTaskRecoveryAction::ResumeEstablishment)
+			},
+			OrdinaryTaskPreSessionState::QuotaExhausted => {
+				(QuickTaskState::QuotaExhausted, QuickTaskRecoveryAction::CreateRoutingSuccessor)
+			},
+			OrdinaryTaskPreSessionState::NoRoute => {
+				(QuickTaskState::NoRoute, QuickTaskRecoveryAction::CreateRoutingSuccessor)
+			},
 		};
 		return QuickTaskSummary::new(
 			EntityId::new(row.conversation_id.as_str().to_owned()).map_err(|_| ())?,
@@ -1930,8 +2024,9 @@ fn quick_task_summary_from_row(
 				None,
 				Some(QuickTaskRecoveryAction::StartNewConversation),
 			),
-			RuntimeSessionState::Active if row.has_acknowledged_turn =>
-				(QuickTaskState::Ready, None, None),
+			RuntimeSessionState::Active if row.has_acknowledged_turn => {
+				(QuickTaskState::Ready, None, None)
+			},
 			RuntimeSessionState::Active => (
 				QuickTaskState::ManualRecovery,
 				None,
@@ -2001,10 +2096,12 @@ fn quick_task_summary_from_readback(
 			.map_err(|_| ())?,
 		match state {
 			QuickTaskState::RoutingPending => Some(QuickTaskRecoveryAction::ResumeRouting),
-			QuickTaskState::EstablishmentPending =>
-				Some(QuickTaskRecoveryAction::ResumeEstablishment),
-			QuickTaskState::QuotaExhausted | QuickTaskState::NoRoute =>
-				Some(QuickTaskRecoveryAction::CreateRoutingSuccessor),
+			QuickTaskState::EstablishmentPending => {
+				Some(QuickTaskRecoveryAction::ResumeEstablishment)
+			},
+			QuickTaskState::QuotaExhausted | QuickTaskState::NoRoute => {
+				Some(QuickTaskRecoveryAction::CreateRoutingSuccessor)
+			},
 			_ => recovery.map(quick_task_recovery_action),
 		},
 	)
@@ -2015,25 +2112,33 @@ const fn quick_task_recovery_action(action: QuickTaskManualRecovery) -> QuickTas
 	match action {
 		QuickTaskManualRecovery::EnableAccount => QuickTaskRecoveryAction::EnableAccount,
 		QuickTaskManualRecovery::EnrollCredentials => QuickTaskRecoveryAction::EnrollCredentials,
-		QuickTaskManualRecovery::ResolveAccountOperation =>
-			QuickTaskRecoveryAction::ResolveAccountOperation,
-		QuickTaskManualRecovery::RepairCredentialStore =>
-			QuickTaskRecoveryAction::RepairCredentialStore,
-		QuickTaskManualRecovery::RestoreProviderAgreement =>
-			QuickTaskRecoveryAction::RestoreProviderAgreement,
+		QuickTaskManualRecovery::ResolveAccountOperation => {
+			QuickTaskRecoveryAction::ResolveAccountOperation
+		},
+		QuickTaskManualRecovery::RepairCredentialStore => {
+			QuickTaskRecoveryAction::RepairCredentialStore
+		},
+		QuickTaskManualRecovery::RestoreProviderAgreement => {
+			QuickTaskRecoveryAction::RestoreProviderAgreement
+		},
 		QuickTaskManualRecovery::RefreshQuota => QuickTaskRecoveryAction::RefreshQuota,
-		QuickTaskManualRecovery::SelectedAccountDrift =>
-			QuickTaskRecoveryAction::StartNewConversation,
-		QuickTaskManualRecovery::SelectedAccountReadiness =>
-			QuickTaskRecoveryAction::ConfigureAccount,
+		QuickTaskManualRecovery::SelectedAccountDrift => {
+			QuickTaskRecoveryAction::StartNewConversation
+		},
+		QuickTaskManualRecovery::SelectedAccountReadiness => {
+			QuickTaskRecoveryAction::ConfigureAccount
+		},
 		QuickTaskManualRecovery::UpgradeCodex => QuickTaskRecoveryAction::UpgradeCodex,
-		QuickTaskManualRecovery::SelectWorkingDirectory =>
-			QuickTaskRecoveryAction::SelectWorkingDirectory,
+		QuickTaskManualRecovery::SelectWorkingDirectory => {
+			QuickTaskRecoveryAction::SelectWorkingDirectory
+		},
 		QuickTaskManualRecovery::PriorActiveTurn => QuickTaskRecoveryAction::ResolvePriorActiveTurn,
-		QuickTaskManualRecovery::PriorAttemptUnresolved =>
-			QuickTaskRecoveryAction::ResolvePriorAttempt,
-		QuickTaskManualRecovery::ProcessUnavailable =>
-			QuickTaskRecoveryAction::RestoreProcessReadiness,
+		QuickTaskManualRecovery::PriorAttemptUnresolved => {
+			QuickTaskRecoveryAction::ResolvePriorAttempt
+		},
+		QuickTaskManualRecovery::ProcessUnavailable => {
+			QuickTaskRecoveryAction::RestoreProcessReadiness
+		},
 		QuickTaskManualRecovery::MissingLocalProcess
 		| QuickTaskManualRecovery::MissingThread
 		| QuickTaskManualRecovery::IncompatibleThread => QuickTaskRecoveryAction::StartNewConversation,
@@ -2105,10 +2210,12 @@ fn runtime_execution_settings(
 
 fn store_program_create(
 	draft: &ProgramCycleDraftDto,
+	domain_pack: DomainPackIdentity,
 ) -> Result<StoreCreateProgramCycle, CommandError> {
 	Ok(StoreCreateProgramCycle {
 		program_id: ProgramId::new(draft.program_id.as_str())
 			.map_err(|_| application_unavailable("Program identity is invalid"))?,
+		domain_pack: Some(domain_pack),
 		signal_id: ProgramObservationId::new(draft.signal_id.as_str())
 			.map_err(|_| application_unavailable("Signal identity is invalid"))?,
 		claim_id: ProgramClaimId::new(draft.claim_id.as_str())
@@ -2389,8 +2496,9 @@ fn program_cycle_dto(
 			id: evidence_id,
 			kind: ProgramNodeKind::Evidence,
 			title: wire(match evidence.kind {
-				decodex_core::ProgramEvidenceKind::DeterministicValidation =>
-					"Deterministic validation",
+				decodex_core::ProgramEvidenceKind::DeterministicValidation => {
+					"Deterministic validation"
+				},
 				decodex_core::ProgramEvidenceKind::External => "External evidence",
 			})?,
 			summary: wire(evidence.summary)?,
@@ -2513,17 +2621,16 @@ fn program_node_order(record: &ProgramCycleRecord) -> Result<Vec<String>, ()> {
 		if let Some(conversation_id) = &work_item.conversation_id {
 			order.push(conversation_id.as_str().to_owned());
 		}
-		let item_evidence = evidence.get(work_item.work_item_id.as_str()).map_or(&[][..], Vec::as_slice);
+		let item_evidence =
+			evidence.get(work_item.work_item_id.as_str()).map_or(&[][..], Vec::as_slice);
 		let Some(review) = reviews.get(work_item.work_item_id.as_str()).copied() else {
 			if !item_evidence.is_empty() {
 				return Err(());
 			}
 			break;
 		};
-		let evidence_ids = item_evidence
-			.iter()
-			.map(|item| item.evidence_id.as_str())
-			.collect::<HashSet<_>>();
+		let evidence_ids =
+			item_evidence.iter().map(|item| item.evidence_id.as_str()).collect::<HashSet<_>>();
 		if item_evidence.len() != 2
 			|| !evidence_ids.contains(review.deterministic_evidence_id.as_str())
 			|| !evidence_ids.contains(review.external_evidence_id.as_str())
@@ -2593,10 +2700,23 @@ fn program_command_error(error: StoreError) -> CommandError {
 				_ => application_unavailable("Program command conflicts with current state"),
 			}
 		},
-		StoreError::Database(_) | StoreError::Incompatible(_) =>
-			application_unavailable("Program storage is unavailable"),
+		StoreError::Database(_) | StoreError::Incompatible(_) => {
+			application_unavailable("Program storage is unavailable")
+		},
 		_ => application_unavailable("Program command conflicts with current state"),
 	}
+}
+
+fn domain_pack_command_error(error: DomainPackError) -> CommandError {
+	application_unavailable(match error {
+		DomainPackError::UnknownPack => "Domain Pack is not built in",
+		DomainPackError::BindingMissing => "Program Domain Pack is not bound",
+		DomainPackError::BindingMismatch => "Program Domain Pack binding is incompatible",
+		DomainPackError::CapabilityDenied => "Domain Pack does not grant this capability",
+		DomainPackError::RegistryInvalid | DomainPackError::ProjectionInvalid => {
+			"Domain Pack registry is unavailable"
+		},
+	})
 }
 
 fn quick_task_routing_successor_publication(
@@ -2873,8 +2993,9 @@ fn execution_decision_dto(readback: ExecutionDecisionReadback) -> Result<Executi
 			causes,
 			quota_exclusions,
 		},
-		RoutingDecisionKind::WaitingReconciliation =>
-			ExecutionRouteDto::WaitingReconciliation { causes },
+		RoutingDecisionKind::WaitingReconciliation => {
+			ExecutionRouteDto::WaitingReconciliation { causes }
+		},
 		RoutingDecisionKind::NoRoute if !causes.is_empty() => ExecutionRouteDto::NoRoute { causes },
 		RoutingDecisionKind::NoRoute => return Err(()),
 	};
@@ -3061,17 +3182,22 @@ fn profile_wire_text(value: String, maximum: usize) -> Result<WireText, ()> {
 
 const fn account_profile_error_dto(error: AccountProfileRuntimeError) -> AccountProfileErrorDto {
 	match error {
-		AccountProfileRuntimeError::AccountUnavailable =>
-			AccountProfileErrorDto::AccountUnavailable,
-		AccountProfileRuntimeError::ProductStateUnavailable =>
-			AccountProfileErrorDto::ProductStateUnavailable,
-		AccountProfileRuntimeError::CredentialUnavailable =>
-			AccountProfileErrorDto::CredentialUnavailable,
+		AccountProfileRuntimeError::AccountUnavailable => {
+			AccountProfileErrorDto::AccountUnavailable
+		},
+		AccountProfileRuntimeError::ProductStateUnavailable => {
+			AccountProfileErrorDto::ProductStateUnavailable
+		},
+		AccountProfileRuntimeError::CredentialUnavailable => {
+			AccountProfileErrorDto::CredentialUnavailable
+		},
 		AccountProfileRuntimeError::Unauthorized => AccountProfileErrorDto::Unauthorized,
-		AccountProfileRuntimeError::ProviderUnavailable =>
-			AccountProfileErrorDto::ProviderUnavailable,
-		AccountProfileRuntimeError::ProtocolUnavailable =>
-			AccountProfileErrorDto::ProtocolUnavailable,
+		AccountProfileRuntimeError::ProviderUnavailable => {
+			AccountProfileErrorDto::ProviderUnavailable
+		},
+		AccountProfileRuntimeError::ProtocolUnavailable => {
+			AccountProfileErrorDto::ProtocolUnavailable
+		},
 		AccountProfileRuntimeError::AccountChanged => AccountProfileErrorDto::AccountChanged,
 	}
 }
@@ -3113,11 +3239,13 @@ fn account_dto(account: AccountRecord) -> Result<AccountDto, ()> {
 				},
 				phase: match operation.phase {
 					AccountOperationPhase::Prepared => AccountOperationPhaseDto::Prepared,
-					AccountOperationPhase::ProviderEffectPending =>
-						AccountOperationPhaseDto::ProviderEffectPending,
+					AccountOperationPhase::ProviderEffectPending => {
+						AccountOperationPhaseDto::ProviderEffectPending
+					},
 					AccountOperationPhase::StoreApplied => AccountOperationPhaseDto::StoreApplied,
-					AccountOperationPhase::RecoveryRequired =>
-						AccountOperationPhaseDto::RecoveryRequired,
+					AccountOperationPhase::RecoveryRequired => {
+						AccountOperationPhaseDto::RecoveryRequired
+					},
 					AccountOperationPhase::Committed | AccountOperationPhase::Cancelled => {
 						return Err(());
 					},
@@ -3174,34 +3302,44 @@ const fn lifecycle_readiness_dto(
 ) -> AccountLifecycleReadinessDto {
 	match readiness {
 		AccountLifecycleReadiness::Ready => AccountLifecycleReadinessDto::Ready,
-		AccountLifecycleReadiness::CredentialAbsent =>
-			AccountLifecycleReadinessDto::CredentialAbsent,
-		AccountLifecycleReadiness::StoreUnavailable =>
-			AccountLifecycleReadinessDto::StoreUnavailable,
+		AccountLifecycleReadiness::CredentialAbsent => {
+			AccountLifecycleReadinessDto::CredentialAbsent
+		},
+		AccountLifecycleReadiness::StoreUnavailable => {
+			AccountLifecycleReadinessDto::StoreUnavailable
+		},
 		AccountLifecycleReadiness::StoreMismatch => AccountLifecycleReadinessDto::StoreMismatch,
-		AccountLifecycleReadiness::ProviderMismatch =>
-			AccountLifecycleReadinessDto::ProviderMismatch,
-		AccountLifecycleReadiness::OperationUnsettled =>
-			AccountLifecycleReadinessDto::OperationUnsettled,
-		AccountLifecycleReadiness::CallbackCapabilityUnready =>
-			AccountLifecycleReadinessDto::CallbackCapabilityUnready,
+		AccountLifecycleReadiness::ProviderMismatch => {
+			AccountLifecycleReadinessDto::ProviderMismatch
+		},
+		AccountLifecycleReadiness::OperationUnsettled => {
+			AccountLifecycleReadinessDto::OperationUnsettled
+		},
+		AccountLifecycleReadiness::CallbackCapabilityUnready => {
+			AccountLifecycleReadinessDto::CallbackCapabilityUnready
+		},
 		AccountLifecycleReadiness::Tombstoned => AccountLifecycleReadinessDto::Tombstoned,
 	}
 }
 
 const fn selection_recovery_dto(recovery: AccountSelectionRecovery) -> AccountSelectionRecoveryDto {
 	match recovery {
-		AccountSelectionRecovery::ConfigureFixedAccount =>
-			AccountSelectionRecoveryDto::ConfigureFixedAccount,
+		AccountSelectionRecovery::ConfigureFixedAccount => {
+			AccountSelectionRecoveryDto::ConfigureFixedAccount
+		},
 		AccountSelectionRecovery::EnableAccount => AccountSelectionRecoveryDto::EnableAccount,
-		AccountSelectionRecovery::EnrollCredentials =>
-			AccountSelectionRecoveryDto::EnrollCredentials,
-		AccountSelectionRecovery::ResolveCredentialOperation =>
-			AccountSelectionRecoveryDto::ResolveCredentialOperation,
-		AccountSelectionRecovery::RepairCredentialStore =>
-			AccountSelectionRecoveryDto::RepairCredentialStore,
-		AccountSelectionRecovery::RestoreProviderAgreement =>
-			AccountSelectionRecoveryDto::RestoreProviderAgreement,
+		AccountSelectionRecovery::EnrollCredentials => {
+			AccountSelectionRecoveryDto::EnrollCredentials
+		},
+		AccountSelectionRecovery::ResolveCredentialOperation => {
+			AccountSelectionRecoveryDto::ResolveCredentialOperation
+		},
+		AccountSelectionRecovery::RepairCredentialStore => {
+			AccountSelectionRecoveryDto::RepairCredentialStore
+		},
+		AccountSelectionRecovery::RestoreProviderAgreement => {
+			AccountSelectionRecoveryDto::RestoreProviderAgreement
+		},
 		AccountSelectionRecovery::RefreshQuota => AccountSelectionRecoveryDto::RefreshQuota,
 		AccountSelectionRecovery::UpgradeCodex => AccountSelectionRecoveryDto::UpgradeCodex,
 	}
@@ -3225,28 +3363,39 @@ fn account_command_descriptor(
 		})
 		.transpose()?;
 	let descriptor = match &command.payload {
-		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } =>
-			(AccountCommandKind::Enroll, account_id.as_str()),
-		CommandPayload::ImportAccountCredentialFile { account_id, .. } =>
-			(AccountCommandKind::Import, account_id.as_str()),
-		CommandPayload::SetAccountEnabled { account_id, .. } =>
-			(AccountCommandKind::SetEnabled, account_id.as_str()),
-		CommandPayload::UseAccountInCodex { account_id } =>
-			(AccountCommandKind::UseInCodex, account_id.as_str()),
-		CommandPayload::LogoutAccount { account_id, .. } =>
-			(AccountCommandKind::Logout, account_id.as_str()),
-		CommandPayload::SetFixedAccountSelection { .. } =>
-			(AccountCommandKind::SetFixedSelection, "account-routing"),
-		CommandPayload::SetBalancedAccountSelection =>
-			(AccountCommandKind::SetBalancedSelection, "account-routing"),
-		CommandPayload::SetAccountOrder { .. } =>
-			(AccountCommandKind::SetAccountOrder, "account-routing"),
-		CommandPayload::RefreshAccount { account_id, .. } =>
-			(AccountCommandKind::Refresh, account_id.as_str()),
-		CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. } =>
-			(AccountCommandKind::Refresh, account_id.as_str()),
-		CommandPayload::RecoverAccountOperation { operation_id, .. } =>
-			(AccountCommandKind::Recover, operation_id.as_str()),
+		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } => {
+			(AccountCommandKind::Enroll, account_id.as_str())
+		},
+		CommandPayload::ImportAccountCredentialFile { account_id, .. } => {
+			(AccountCommandKind::Import, account_id.as_str())
+		},
+		CommandPayload::SetAccountEnabled { account_id, .. } => {
+			(AccountCommandKind::SetEnabled, account_id.as_str())
+		},
+		CommandPayload::UseAccountInCodex { account_id } => {
+			(AccountCommandKind::UseInCodex, account_id.as_str())
+		},
+		CommandPayload::LogoutAccount { account_id, .. } => {
+			(AccountCommandKind::Logout, account_id.as_str())
+		},
+		CommandPayload::SetFixedAccountSelection { .. } => {
+			(AccountCommandKind::SetFixedSelection, "account-routing")
+		},
+		CommandPayload::SetBalancedAccountSelection => {
+			(AccountCommandKind::SetBalancedSelection, "account-routing")
+		},
+		CommandPayload::SetAccountOrder { .. } => {
+			(AccountCommandKind::SetAccountOrder, "account-routing")
+		},
+		CommandPayload::RefreshAccount { account_id, .. } => {
+			(AccountCommandKind::Refresh, account_id.as_str())
+		},
+		CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. } => {
+			(AccountCommandKind::Refresh, account_id.as_str())
+		},
+		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
+			(AccountCommandKind::Recover, operation_id.as_str())
+		},
 		_ => return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
 	};
 	Ok((descriptor.0, descriptor.1.to_owned(), expected))
@@ -3420,14 +3569,16 @@ fn routing_command_result(
 			AccountCommandRejectionDto::StaleAccount,
 			u64::try_from(*revision).ok().map(EntityRevision),
 		)),
-		RoutingControlOutcome::AccountMissing =>
-			Err(account_rejection(AccountCommandRejectionDto::AccountNotFound, None)),
+		RoutingControlOutcome::AccountMissing => {
+			Err(account_rejection(AccountCommandRejectionDto::AccountNotFound, None))
+		},
 		RoutingControlOutcome::InvalidOrder { revision } => Err(account_rejection(
 			AccountCommandRejectionDto::RoutingOrderInvalid,
 			u64::try_from(*revision).ok().map(EntityRevision),
 		)),
-		RoutingControlOutcome::InvalidRequest =>
-			Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None)),
+		RoutingControlOutcome::InvalidRequest => {
+			Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
+		},
 	}
 }
 
@@ -3447,8 +3598,9 @@ fn account_recovery_publication(
 	let outcome = match outcome {
 		AccountManualRecoveryOutcome::Committed => AccountManualRecoveryOutcomeDto::Committed,
 		AccountManualRecoveryOutcome::Cancelled => AccountManualRecoveryOutcomeDto::Cancelled,
-		AccountManualRecoveryOutcome::StillRequiresRecovery =>
-			AccountManualRecoveryOutcomeDto::StillRequiresRecovery,
+		AccountManualRecoveryOutcome::StillRequiresRecovery => {
+			AccountManualRecoveryOutcomeDto::StillRequiresRecovery
+		},
 	};
 	Ok(ApplicationPublication {
 		channel: Channel::AccountsHealth,
@@ -3472,16 +3624,19 @@ fn account_rejection(
 fn lifecycle_rejection(rejection: AccountLifecycleRejection, revision: i64) -> CommandError {
 	let reason = match rejection {
 		AccountLifecycleRejection::IdentityConflict => AccountCommandRejectionDto::ProviderMismatch,
-		AccountLifecycleRejection::OperationUnsettled =>
-			AccountCommandRejectionDto::OperationUnsettled,
+		AccountLifecycleRejection::OperationUnsettled => {
+			AccountCommandRejectionDto::OperationUnsettled
+		},
 		AccountLifecycleRejection::InvalidRequest => AccountCommandRejectionDto::InvalidRequest,
 		AccountLifecycleRejection::AccountMissing => AccountCommandRejectionDto::AccountNotFound,
 		AccountLifecycleRejection::StaleAccount => AccountCommandRejectionDto::StaleAccount,
 		AccountLifecycleRejection::AccountInUse => AccountCommandRejectionDto::AccountInUse,
-		AccountLifecycleRejection::OperationMissing =>
-			AccountCommandRejectionDto::OperationNotFound,
-		AccountLifecycleRejection::StaleOperation =>
-			AccountCommandRejectionDto::ManualRecoveryRequired,
+		AccountLifecycleRejection::OperationMissing => {
+			AccountCommandRejectionDto::OperationNotFound
+		},
+		AccountLifecycleRejection::StaleOperation => {
+			AccountCommandRejectionDto::ManualRecoveryRequired
+		},
 	};
 	account_rejection(
 		reason,
@@ -3492,34 +3647,48 @@ fn lifecycle_rejection(rejection: AccountLifecycleRejection, revision: i64) -> C
 fn account_lifecycle_command_error(error: AccountLifecycleError) -> CommandError {
 	match error {
 		AccountLifecycleError::OperationRejected(rejection) => lifecycle_rejection(rejection, 0),
-		AccountLifecycleError::AccountMissing =>
-			account_rejection(AccountCommandRejectionDto::AccountNotFound, None),
-		AccountLifecycleError::CredentialAbsent =>
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
-		AccountLifecycleError::ProviderMismatch =>
-			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
-		AccountLifecycleError::StaleAccount =>
-			account_rejection(AccountCommandRejectionDto::StaleAccount, None),
-		AccountLifecycleError::InvalidOperation =>
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) =>
-			account_rejection(AccountCommandRejectionDto::OperationUnsettled, None),
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) =>
-			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None),
-		AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) =>
-			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None),
-		AccountLifecycleError::NotReady(_) =>
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
-		AccountLifecycleError::AccountDisabled =>
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
-		AccountLifecycleError::CredentialStore(_) =>
-			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None),
-		AccountLifecycleError::CredentialImport =>
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
-		AccountLifecycleError::Refresh(_) =>
-			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
-		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable =>
-			application_unavailable("account service is unavailable"),
+		AccountLifecycleError::AccountMissing => {
+			account_rejection(AccountCommandRejectionDto::AccountNotFound, None)
+		},
+		AccountLifecycleError::CredentialAbsent => {
+			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None)
+		},
+		AccountLifecycleError::ProviderMismatch => {
+			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None)
+		},
+		AccountLifecycleError::StaleAccount => {
+			account_rejection(AccountCommandRejectionDto::StaleAccount, None)
+		},
+		AccountLifecycleError::InvalidOperation => {
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+		},
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::OperationUnsettled) => {
+			account_rejection(AccountCommandRejectionDto::OperationUnsettled, None)
+		},
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::CredentialAbsent) => {
+			account_rejection(AccountCommandRejectionDto::CredentialAbsent, None)
+		},
+		AccountLifecycleError::NotReady(AccountLifecycleReadiness::ProviderMismatch) => {
+			account_rejection(AccountCommandRejectionDto::ProviderMismatch, None)
+		},
+		AccountLifecycleError::NotReady(_) => {
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
+		},
+		AccountLifecycleError::AccountDisabled => {
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
+		},
+		AccountLifecycleError::CredentialStore(_) => {
+			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None)
+		},
+		AccountLifecycleError::CredentialImport => {
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+		},
+		AccountLifecycleError::Refresh(_) => {
+			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
+		},
+		AccountLifecycleError::Persistence(_) | AccountLifecycleError::CoordinatorUnavailable => {
+			application_unavailable("account service is unavailable")
+		},
 	}
 }
 
@@ -3532,10 +3701,12 @@ fn account_operation_command_error(_error: AccountLifecycleError) -> CommandErro
 fn map_account_store_command_error(error: StoreError) -> CommandError {
 	match error {
 		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
-		StoreError::InvalidInput(_) | StoreError::CredentialRejected =>
-			account_rejection(AccountCommandRejectionDto::InvalidRequest, None),
-		StoreError::CapacityExhausted(_) =>
-			application_unavailable("account command receipt capacity is unavailable"),
+		StoreError::InvalidInput(_) | StoreError::CredentialRejected => {
+			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+		},
+		StoreError::CapacityExhausted(_) => {
+			application_unavailable("account command receipt capacity is unavailable")
+		},
 		StoreError::Database(_) | StoreError::OwnershipLost(_) => CommandError::AcceptanceUnknown,
 		_ => application_unavailable("account command receipt store is unavailable"),
 	}
@@ -3576,17 +3747,20 @@ fn decode_account_command_receipt(
 			entity_revision,
 			result,
 			event,
-		} if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA && entity_revision.0 > 0 =>
+		} if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA && entity_revision.0 > 0 => {
 			Ok(Ok(ApplicationPublication {
 				channel: Channel::AccountsHealth,
 				entity_id,
 				entity_revision,
 				result: *result,
 				event: *event,
-			})),
+			}))
+		},
 		StoredAccountCommandOutcome::Rejected { schema, error }
 			if schema == ACCOUNT_COMMAND_RECEIPT_SCHEMA =>
-			Ok(Err(error)),
+		{
+			Ok(Err(error))
+		},
 		_ => Err(()),
 	}
 }
@@ -3606,14 +3780,18 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 			observation.observed_at_unix_micros,
 			AccountQuotaStateDto::Error {
 				error: match error {
-					AccountQuotaObservationError::ProviderUnavailable =>
-						AccountQuotaErrorDto::ProviderUnavailable,
-					AccountQuotaObservationError::ProtocolUnavailable =>
-						AccountQuotaErrorDto::ProtocolUnavailable,
-					AccountQuotaObservationError::AccountMismatch =>
-						AccountQuotaErrorDto::AccountMismatch,
-					AccountQuotaObservationError::UnsupportedWindow =>
-						AccountQuotaErrorDto::UnsupportedWindow,
+					AccountQuotaObservationError::ProviderUnavailable => {
+						AccountQuotaErrorDto::ProviderUnavailable
+					},
+					AccountQuotaObservationError::ProtocolUnavailable => {
+						AccountQuotaErrorDto::ProtocolUnavailable
+					},
+					AccountQuotaObservationError::AccountMismatch => {
+						AccountQuotaErrorDto::AccountMismatch
+					},
+					AccountQuotaObservationError::UnsupportedWindow => {
+						AccountQuotaErrorDto::UnsupportedWindow
+					},
 				},
 			},
 		),
@@ -3631,11 +3809,12 @@ fn quota_dto(observation: AccountQuotaWindowObservation) -> Result<AccountQuotaW
 
 fn command_reset_error(error: ResetCardServiceError, expected: EntityRevision) -> CommandError {
 	match error {
-		ResetCardServiceError::ExpectedRevisionMismatch { actual } if actual >= 0 =>
+		ResetCardServiceError::ExpectedRevisionMismatch { actual } if actual >= 0 => {
 			CommandError::ExpectedRevisionMismatch {
 				expected,
 				actual: EntityRevision(u64::try_from(actual).unwrap_or(0)),
-			},
+			}
+		},
 		ResetCardServiceError::IdempotencyConflict => CommandError::IdempotencyConflict,
 		ResetCardServiceError::AcceptanceUnknown => CommandError::AcceptanceUnknown,
 		_ => application_unavailable(reset_error_message(error)),
@@ -3652,13 +3831,15 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 	match error {
 		ResetCardServiceError::InvalidRequest => "reset-card request is invalid",
 		ResetCardServiceError::AccountNotFound => "reset-card account is not configured",
-		ResetCardServiceError::AccountStateRejected =>
-			"reset-card account state rejects manual use",
+		ResetCardServiceError::AccountStateRejected => {
+			"reset-card account state rejects manual use"
+		},
 		ResetCardServiceError::AccountChanged
 		| ResetCardServiceError::ExpectedRevisionMismatch { .. } => "reset-card account revision changed",
 		ResetCardServiceError::VaultUnavailable => "reset-card credential vault is unavailable",
-		ResetCardServiceError::SchemaUnsupported =>
-			"stored reset-card result is incompatible with the current provider API",
+		ResetCardServiceError::SchemaUnsupported => {
+			"stored reset-card result is incompatible with the current provider API"
+		},
 		ResetCardServiceError::ProviderUnavailable => "reset-card provider is unavailable",
 		ResetCardServiceError::InventoryIncomplete => "reset-card inventory is incomplete",
 		ResetCardServiceError::InventoryChanged => "selected reset card changed",
@@ -3666,8 +3847,9 @@ const fn reset_error_message(error: ResetCardServiceError) -> &'static str {
 		ResetCardServiceError::ResourceExhausted => "reset-card process capacity is exhausted",
 		ResetCardServiceError::ProductStateUnavailable => "reset-card product state is unavailable",
 		ResetCardServiceError::IdempotencyConflict => "reset-card idempotency key conflicts",
-		ResetCardServiceError::AcceptanceUnknown =>
-			"reset-card durable acceptance could not be established",
+		ResetCardServiceError::AcceptanceUnknown => {
+			"reset-card durable acceptance could not be established"
+		},
 	}
 }
 
@@ -3705,10 +3887,12 @@ const fn operation_result(status: ResetCardOperationStatus) -> ResetCardOperatio
 		ResetCardOperationStatus::NotFound => ResetCardOperationResult::NotFound,
 		ResetCardOperationStatus::Prepared => ResetCardOperationResult::Prepared,
 		ResetCardOperationStatus::EffectAmbiguous => ResetCardOperationResult::EffectAmbiguous,
-		ResetCardOperationStatus::Completed(outcome) =>
-			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) },
-		ResetCardOperationStatus::FailedBeforeEffect(error) =>
-			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) },
+		ResetCardOperationStatus::Completed(outcome) => {
+			ResetCardOperationResult::Completed { outcome: protocol_outcome(outcome) }
+		},
+		ResetCardOperationStatus::FailedBeforeEffect(error) => {
+			ResetCardOperationResult::FailedBeforeEffect { error: failure_reset_error(error) }
+		},
 	}
 }
 
@@ -3744,8 +3928,9 @@ fn history_dto(entry: HistoryEntry) -> Result<HistoryItemDto, ()> {
 		})
 		.transpose()?;
 	let payload = match (entry.inline_text, entry.blob_hash, entry.blob_byte_length) {
-		(Some(text), None, None) =>
-			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? },
+		(Some(text), None, None) => {
+			HistoryPayloadDto::Inline { text: HistoryText::new(text).map_err(|_| ())? }
+		},
 		(None, Some(hash), Some(byte_length)) => HistoryPayloadDto::Blob(HistoryBlobReference {
 			sha256: Sha256Digest::new(hash.to_hex()).map_err(|_| ())?,
 			byte_length: HistoryBlobLength::new(byte_length).map_err(|_| ())?,
@@ -3796,31 +3981,167 @@ mod tests {
 		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
 		AccountOperationPhase, AccountOperationStatus, AccountProvider, AccountQuotaDisposition,
 		AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord, AccountState,
-		ConversationId, ObjectiveId, ObjectiveState, ProgramClaimId, ProgramEvidenceId,
-		ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
+		ConversationId, DecodexRoot, ObjectiveId, ObjectiveState, ProgramClaimId,
+		ProgramEvidenceId, ProgramEvidenceKind, ProgramId, ProgramObservationId, ProgramProposalId,
 		ProgramReviewClassification, ProgramReviewId, ProgramState, ProviderIdentity,
 		RuntimeSessionState, WorkItemId, WorkItemState,
 	};
 	use decodex_database::{
 		AccountLifecycleRejection, AccountProfileDailyUsage, AccountProfileSnapshot,
-		OrdinaryTaskConversationReadback, OrdinaryTaskPreSessionState, ProgramCharterRecord,
-		ProgramClaimRecord, ProgramCycleRecord, ProgramEvidenceRecord, ProgramObjectiveRecord,
-		ProgramProposalRecord, ProgramReviewRecord, ProgramSignalRecord, ProgramWorkItemRecord,
+		CommandIdentity, CreateProgramCycle, DomainPackIdentity, OrdinaryTaskConversationReadback,
+		OrdinaryTaskPreSessionState, ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord,
+		ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord, ProgramReviewRecord,
+		ProgramSignalRecord, ProgramWorkItemRecord, SqliteStore,
 	};
 	use decodex_protocol::{
 		AccountCommandRejectionDto, AccountProfileEmailDto, AccountQuotaStateDto, CommandError,
-		ProgramNodeKind, ProgramRelationKind, QuickTaskRecoveryAction, QuickTaskState, ResetCardError,
-		ResetCardOperationResult,
+		ProgramNodeKind, ProgramRelationKind, QuickTaskRecoveryAction, QuickTaskState,
+		ResetCardError, ResetCardOperationResult,
 	};
 
 	use super::{
 		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
-		AccountProfileRuntimeError, AccountProfileView, ResetCardServiceError,
+		AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
-		account_profile_dto, account_profile_unavailable_dto, decode_account_command_receipt,
-		encode_account_command_receipt, lifecycle_rejection, operation_query_result,
-		program_cycle_dto, protocol_reset_error, quick_task_summary_from_row, quota_dto,
+		account_profile_dto, account_profile_unavailable_dto, authorize_program_capability,
+		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
+		operation_query_result, program_cycle_dto, protocol_reset_error,
+		quick_task_summary_from_row, quota_dto,
 	};
+	use crate::domain_packs::{QUICK_TASK_CAPABILITY, resolve_identity};
+
+	fn program_preflight_fixture(
+		sequence: u64,
+		domain_pack: Option<DomainPackIdentity>,
+		working_directory: &str,
+	) -> CreateProgramCycle {
+		let id = |prefix: u8| format!("{prefix:02x}000000-0000-4000-8000-{sequence:012x}");
+		CreateProgramCycle {
+			program_id: ProgramId::new(id(0x91)).expect("Program identity"),
+			domain_pack,
+			signal_id: ProgramObservationId::new(id(0x92)).expect("Signal identity"),
+			claim_id: ProgramClaimId::new(id(0x93)).expect("Claim identity"),
+			proposal_id: ProgramProposalId::new(id(0x94)).expect("Proposal identity"),
+			objective_id: ObjectiveId::new(id(0x95)).expect("Objective identity"),
+			work_item_id: WorkItemId::new(id(0x96)).expect("WorkItem identity"),
+			name: format!("Pack preflight fixture {sequence}"),
+			purpose: "Prove capability rejection before provider execution.".to_owned(),
+			non_goals: vec!["Do not contact a provider.".to_owned()],
+			review_policy: "Require deterministic and external evidence.".to_owned(),
+			signal_source: "runtime test".to_owned(),
+			signal_summary: "A Program requests one bounded Quick Task.".to_owned(),
+			signal_observed_at_micros: 1,
+			claim_statement: "Pack admission must precede worker admission.".to_owned(),
+			proposal_summary: "Run the deny-by-default preflight.".to_owned(),
+			proposal_expected_effect: "Rejected Packs create no provider attempt.".to_owned(),
+			proposal_risk: "Late validation could dispatch unauthorized work.".to_owned(),
+			proposal_evidence_need: "Inspect the provider-attempt store.".to_owned(),
+			objective_outcome: "One exact admission result is returned.".to_owned(),
+			acceptance_criteria: vec!["No ProviderAttempt row exists.".to_owned()],
+			validation_criteria: vec!["SQLite readback remains empty.".to_owned()],
+			work_item_title: "Exercise Pack preflight".to_owned(),
+			work_item_instructions: "Reject invalid Pack authority without provider work."
+				.to_owned(),
+			working_directory: working_directory.to_owned(),
+		}
+	}
+
+	#[tokio::test]
+	async fn pack_preflight_rejections_happen_before_provider_attempt_creation() {
+		let directory = tempfile::tempdir().expect("temporary Decodex root");
+		let root =
+			DecodexRoot::new(directory.path().canonicalize().expect("canonical temporary root"))
+				.expect("typed Decodex root");
+		let store = SqliteStore::open(&root.paths()).expect("SQLite product store");
+		let product_store = ProductStore::Available(store.clone());
+		let valid = resolve_identity(decodex_protocol::DEVELOPMENT_DOMAIN_PACK_ID)
+			.expect("built-in Development Pack");
+		let cases = [
+			(None, "Program Domain Pack is not bound"),
+			(
+				Some(DomainPackIdentity {
+					pack_id: "decodex.unknown".to_owned(),
+					pack_version: "1.0.0".to_owned(),
+					pack_digest: "1".repeat(64),
+				}),
+				"Domain Pack is not built in",
+			),
+			(
+				Some(DomainPackIdentity { pack_digest: "0".repeat(64), ..valid.clone() }),
+				"Program Domain Pack binding is incompatible",
+			),
+		];
+
+		for (index, (binding, expected)) in cases.into_iter().enumerate() {
+			let fixture = program_preflight_fixture(
+				u64::try_from(index + 1).expect("bounded sequence"),
+				binding,
+				directory.path().to_str().expect("UTF-8 temporary path"),
+			);
+			store
+				.create_program_cycle(
+					&CommandIdentity::new(
+						format!("pack-preflight-{index}"),
+						&[u8::try_from(index).expect("bounded request")],
+					)
+					.expect("command identity"),
+					&fixture,
+				)
+				.await
+				.expect("persist Program fixture");
+			let error = authorize_program_capability(
+				&product_store,
+				&fixture.work_item_id,
+				QUICK_TASK_CAPABILITY,
+			)
+			.await
+			.expect_err("Pack preflight must reject");
+			assert!(matches!(
+				error,
+				CommandError::ApplicationUnavailable { message } if message.as_str() == expected
+			));
+			assert!(
+				store
+					.read_provider_attempt_page(None, None, None, 1)
+					.await
+					.expect("ProviderAttempt readback")
+					.is_empty()
+			);
+		}
+
+		let fixture = program_preflight_fixture(
+			4,
+			Some(valid),
+			directory.path().to_str().expect("UTF-8 temporary path"),
+		);
+		store
+			.create_program_cycle(
+				&CommandIdentity::new("pack-preflight-undeclared", b"undeclared capability")
+					.expect("command identity"),
+				&fixture,
+			)
+			.await
+			.expect("persist declared Pack fixture");
+		let error = authorize_program_capability(
+			&product_store,
+			&fixture.work_item_id,
+			"finance.place_order",
+		)
+		.await
+		.expect_err("undeclared capability must be denied");
+		assert!(matches!(
+			error,
+			CommandError::ApplicationUnavailable { message }
+				if message.as_str() == "Domain Pack does not grant this capability"
+		));
+		assert!(
+			store
+				.read_provider_attempt_page(None, None, None, 1)
+				.await
+				.expect("ProviderAttempt readback")
+				.is_empty()
+		);
+	}
 
 	#[test]
 	fn repeatable_program_projection_follows_review_lineage() {
@@ -3830,8 +4151,7 @@ mod tests {
 		let proposal_1 = ProgramProposalId::new("33000000-0000-4000-8000-000000000001").unwrap();
 		let objective_1 = ObjectiveId::new("34000000-0000-4000-8000-000000000001").unwrap();
 		let work_1 = WorkItemId::new("35000000-0000-4000-8000-000000000001").unwrap();
-		let deterministic =
-			ProgramEvidenceId::new("36000000-0000-4000-8000-000000000001").unwrap();
+		let deterministic = ProgramEvidenceId::new("36000000-0000-4000-8000-000000000001").unwrap();
 		let external = ProgramEvidenceId::new("37000000-0000-4000-8000-000000000001").unwrap();
 		let review_1 = ProgramReviewId::new("38000000-0000-4000-8000-000000000001").unwrap();
 		let signal_2 = ProgramObservationId::new("41000000-0000-4000-8000-000000000001").unwrap();
@@ -3851,6 +4171,7 @@ mod tests {
 				created_at_micros: 1,
 				updated_at_micros: 3,
 			},
+			domain_pack: None,
 			signals: vec![
 				ProgramSignalRecord {
 					signal_id: signal_1.clone(),

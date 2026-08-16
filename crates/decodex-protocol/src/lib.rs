@@ -3,6 +3,7 @@
 
 mod client;
 mod doctor;
+mod domain_pack;
 mod local_transport;
 mod program_cycle;
 mod quick_task;
@@ -17,6 +18,13 @@ pub use self::{
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
 		DoctorReport, DoctorStatus, MAX_DOCTOR_CHECKS,
+	},
+	domain_pack::{
+		DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
+		DomainPackCapabilityStatus, DomainPackContractError, DomainPackDescriptorDto,
+		DomainPackProjectionDto, DomainPackViewKind, DomainRelationDto,
+		DEVELOPMENT_DOMAIN_PACK_ID, PAPER_INVESTMENT_DOMAIN_PACK_ID,
+		MAX_DOMAIN_PACK_CAPABILITIES, MAX_DOMAIN_PACK_ENTITIES, MAX_DOMAIN_PACK_RELATIONS,
 	},
 	local_transport::{
 		LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
@@ -87,7 +95,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 3 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 4 };
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

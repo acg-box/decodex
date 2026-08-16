@@ -13,11 +13,11 @@ use tokio::sync::Notify;
 
 use decodex_protocol::{
 	CURRENT_VERSION, CausationId, ClientCommandId, CommandEnvelope, CommandOutcome, CommandPayload,
-	CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId, EventEnvelope, EventPayload,
-	EntityRevision, IdempotencyKey, ProgramContinuationDraftDto, ProgramCycleDraftDto,
+	CommandReceipt, CommandResultEnvelope, CorrelationId, EntityId, EntityRevision, EventEnvelope,
+	EventPayload, IdempotencyKey, ProgramContinuationDraftDto, ProgramCycleDraftDto,
 	ProgramCycleDto, ProgramCycleResult, ProgramListResult, ProgramNodeKind, ProgramReviewDraftDto,
 	ProgramSummaryDto, QueryEnvelope, QueryId, QueryPayload, QueryResultEnvelope,
-	QueryResultPayload, ReceiptDisposition, ResultPayload, ServerId,
+	QueryResultPayload, ReceiptDisposition, ResultPayload, ServerId, WireText,
 };
 
 static NEXT_ID: AtomicU64 = AtomicU64::new(0);
@@ -122,8 +122,11 @@ impl Programs {
 	#[cfg(feature = "visual-capture")]
 	pub(crate) fn visual_closed_cycle() -> Self {
 		use decodex_protocol::{
-			EntityRevision, ProgramEdgeDto, ProgramNodeDto, ProgramNodeFieldDto,
-			ProgramRelationKind, ProgramState, WireText,
+			DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,
+			DomainPackCapabilityStatus, DomainPackDescriptorDto, DomainPackProjectionDto,
+			DomainPackViewKind, DomainRelationDto, EntityRevision, PAPER_INVESTMENT_DOMAIN_PACK_ID,
+			ProgramEdgeDto, ProgramNodeDto, ProgramNodeFieldDto, ProgramRelationKind, ProgramState,
+			Sha256Digest, WireText,
 		};
 
 		let id = |value: &str| EntityId::new(value).expect("visual Program identity is valid");
@@ -395,11 +398,7 @@ impl Programs {
 			edge(proposal_2_id, objective_2_id.clone(), ProgramRelationKind::Proposes),
 			edge(objective_2_id, work_item_2_id.clone(), ProgramRelationKind::DecomposesTo),
 			edge(work_item_2_id.clone(), conversation_2_id, ProgramRelationKind::Executes),
-			edge(
-				work_item_2_id.clone(),
-				deterministic_2_id.clone(),
-				ProgramRelationKind::Produces,
-			),
+			edge(work_item_2_id.clone(), deterministic_2_id.clone(), ProgramRelationKind::Produces),
 			edge(work_item_2_id, external_2_id.clone(), ProgramRelationKind::Produces),
 			edge(deterministic_2_id, review_2_id.clone(), ProgramRelationKind::Supports),
 			edge(external_2_id, review_2_id.clone(), ProgramRelationKind::Supports),
@@ -421,6 +420,96 @@ impl Programs {
 			edges,
 		)
 		.expect("visual Program cycle is valid");
+		let domain_id = |value: &str| id(value);
+		let domain_field = |label: &str, value: &str| DomainEntityFieldDto {
+			label: text(label),
+			value: text(value),
+		};
+		let two_year = domain_id("91000000-0000-4000-8000-000000000001");
+		let ten_year = domain_id("91000000-0000-4000-8000-000000000002");
+		let thesis = domain_id("91000000-0000-4000-8000-000000000003");
+		let scenario = domain_id("91000000-0000-4000-8000-000000000004");
+		let domain_pack = DomainPackProjectionDto::new(
+			DomainPackDescriptorDto {
+				id: text(PAPER_INVESTMENT_DOMAIN_PACK_ID),
+				version: text("1.0.0"),
+				digest: Sha256Digest::new(
+					"996a5133a30bc968d27a16835bdbdb34736777c9d11ca2a5ed87d221c957e9eb",
+				)
+				.expect("visual Pack digest"),
+				name: text("Paper Investment Research"),
+				namespace: text("finance"),
+				view: DomainPackViewKind::GraphInspector,
+				capabilities: vec![DomainPackCapabilityDto {
+					id: text("codex.quick_task"),
+					status: DomainPackCapabilityStatus::Granted,
+				}],
+				entity_types: vec![
+					text("finance.asset"),
+					text("finance.thesis"),
+					text("finance.scenario"),
+				],
+				relation_types: vec![
+					text("finance.compared_with"),
+					text("finance.informs"),
+					text("finance.tests"),
+				],
+			},
+			vec![
+				DomainEntityDto {
+					id: two_year.clone(),
+					kind: text("finance.asset"),
+					title: text("U.S. Treasury 2-Year"),
+					summary: text("June 2025 month-end par yield was 3.72%."),
+					state: text("observed"),
+					source: Some(text("U.S. Treasury frozen June 2025 fixture")),
+					fields: vec![domain_field("Last", "3.72%")],
+				},
+				DomainEntityDto {
+					id: ten_year.clone(),
+					kind: text("finance.asset"),
+					title: text("U.S. Treasury 10-Year"),
+					summary: text("June 2025 month-end par yield was 4.24%."),
+					state: text("observed"),
+					source: Some(text("U.S. Treasury frozen June 2025 fixture")),
+					fields: vec![domain_field("Last", "4.24%")],
+				},
+				DomainEntityDto {
+					id: thesis.clone(),
+					kind: text("finance.thesis"),
+					title: text("Positive 2s10s slope"),
+					summary: text("The frozen sample supports a positive 2s10s slope."),
+					state: text("supported"),
+					source: None,
+					fields: vec![domain_field("Last spread", "52 bp")],
+				},
+				DomainEntityDto {
+					id: scenario.clone(),
+					kind: text("finance.scenario"),
+					title: text("June spread range"),
+					summary: text("The spread stayed within 44-56 basis points."),
+					state: text("bounded"),
+					source: None,
+					fields: vec![domain_field("Observations", "20")],
+				},
+			],
+			vec![
+				DomainRelationDto {
+					from: two_year.clone(),
+					to: ten_year,
+					kind: text("finance.compared_with"),
+				},
+				DomainRelationDto {
+					from: two_year,
+					to: thesis.clone(),
+					kind: text("finance.informs"),
+				},
+				DomainRelationDto { from: thesis, to: scenario, kind: text("finance.tests") },
+			],
+			&program_id,
+		)
+		.expect("visual Domain Pack is valid");
+		let cycle = cycle.with_domain_pack(domain_pack).expect("visual Pack attaches");
 		let programs = Self::production();
 		{
 			let mut state = programs.lock();
@@ -512,6 +601,19 @@ impl Programs {
 			CommandPayload::CreateProgramCycle { draft: Box::new(draft) },
 			Some(program_id),
 			None,
+		)
+	}
+
+	pub(crate) fn bind_domain_pack(
+		&self,
+		program_id: EntityId,
+		domain_pack_id: WireText,
+		expected_revision: EntityRevision,
+	) -> Result<(), ProgramInputError> {
+		self.queue_command(
+			CommandPayload::BindProgramDomainPack { program_id, domain_pack_id },
+			None,
+			Some(expected_revision),
 		)
 	}
 
@@ -1072,19 +1174,29 @@ struct InFlightCommand {
 
 fn command_matches_cycle(command: &CommandEnvelope, cycle: &ProgramCycleDto) -> bool {
 	match &command.payload {
-		CommandPayload::CreateProgramCycle { draft } =>
-			cycle.program.program_id == draft.program_id,
-		CommandPayload::ContinueProgram { continuation } =>
+		CommandPayload::CreateProgramCycle { draft } => {
+			cycle.program.program_id == draft.program_id
+		},
+		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+			cycle.program.program_id == *program_id
+				&& cycle
+					.domain_pack
+					.as_ref()
+					.is_some_and(|projection| projection.descriptor.id == *domain_pack_id)
+		},
+		CommandPayload::ContinueProgram { continuation } => {
 			cycle.program.program_id == continuation.program_id
 				&& cycle.nodes.iter().any(|node| {
 					node.kind == ProgramNodeKind::Signal && node.id == continuation.signal_id
-				}),
-		CommandPayload::RecordProgramReview { review } =>
+				})
+		},
+		CommandPayload::RecordProgramReview { review } => {
 			cycle.program.program_id == review.program_id
 				&& cycle
 					.nodes
 					.iter()
-					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id),
+					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id)
+		},
 		_ => false,
 	}
 }
@@ -1149,8 +1261,8 @@ fn canonical_uuid_v4() -> Result<String, ProgramInputError> {
 #[cfg(test)]
 mod tests {
 	use decodex_protocol::{
-		Channel, Cursor, EntityRevision, ProgramState, QuickTaskState, QuickTaskSummary,
-		QuickTaskWorkingDirectory, WireText,
+		Channel, Cursor, EntityRevision, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramState,
+		QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory, WireText,
 	};
 
 	use super::*;
@@ -1189,6 +1301,39 @@ mod tests {
 					.any(|node| node.id == edge.to && node.kind == ProgramNodeKind::Signal)
 		}));
 		assert_eq!(cycle.program.revision, EntityRevision(4));
+		let pack = cycle.domain_pack.expect("visual Domain Pack");
+		assert_eq!(pack.descriptor.id.as_str(), PAPER_INVESTMENT_DOMAIN_PACK_ID);
+		assert_eq!(pack.entities.len(), 4);
+		assert!(
+			pack.relations
+				.iter()
+				.any(|relation| { relation.kind.as_str() == "finance.compared_with" })
+		);
+	}
+
+	#[test]
+	fn legacy_pack_binding_dispatch_is_revision_fenced_and_exact() {
+		let programs = Programs::production();
+		let server_id = ServerId::new("program-pack-binding-test").expect("server identity");
+		programs.bind_session(9, server_id.clone());
+		let program_id =
+			EntityId::new("81000000-0000-4000-8000-000000000001").expect("Program identity");
+		programs
+			.bind_domain_pack(
+				program_id.clone(),
+				WireText::new(PAPER_INVESTMENT_DOMAIN_PACK_ID).expect("Pack identity"),
+				EntityRevision(7),
+			)
+			.expect("binding queues");
+		let dispatch = programs.try_take_dispatch(9, &server_id).expect("binding dispatch");
+		let command = dispatch.command().expect("binding command");
+		assert_eq!(command.expected_revision, Some(EntityRevision(7)));
+		assert!(matches!(
+			&command.payload,
+			CommandPayload::BindProgramDomainPack { program_id: queued, domain_pack_id }
+				if queued == &program_id
+					&& domain_pack_id.as_str() == PAPER_INVESTMENT_DOMAIN_PACK_ID
+		));
 	}
 
 	#[test]
@@ -1248,9 +1393,8 @@ mod tests {
 		programs
 			.continue_program(continuation.clone(), EntityRevision(2))
 			.expect("continuation is queued");
-		let dispatch = programs
-			.try_take_dispatch(7, &server_id)
-			.expect("continuation dispatch is ready");
+		let dispatch =
+			programs.try_take_dispatch(7, &server_id).expect("continuation dispatch is ready");
 		let command = dispatch.command().expect("continuation is a command");
 
 		assert_eq!(command.expected_revision, Some(EntityRevision(2)));

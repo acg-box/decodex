@@ -101,7 +101,6 @@ aggregate command was enough to make the long-lived Program operational.
 
 This evidence does not validate automatic continuation, background stewardship,
 dynamic multi-agent execution, a general WorkItem board, MCP actions, a public Extension
-SDK, a registry, or a programmatic plugin host. The next candidate milestone is the
-bounded Extension Contract V1 pressure test with two built-in domain fixtures. It must
-reuse this Program and provider-safety kernel and remain built in until both fixtures
-prove one shared contract.
+SDK, a registry, or a programmatic plugin host. Its next bounded pressure test is now
+implemented. The Development and Paper Investment result is recorded in the
+[Built-in Domain Pack Pressure Test V1 evidence](builtin-domain-pack-pressure-test-v1.md).

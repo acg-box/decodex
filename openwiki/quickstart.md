@@ -45,11 +45,14 @@ one-shot transfer tool.
 - [Execution coordination](specs/execution-coordinator-authority.md): the small stateless
   sequencer used by Quick Task.
 - [Adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md):
-  the implemented repeatable Program loop, plus the accepted direction for dynamic
-  agents, bounded external actions, and future Domain Packs.
+  the implemented repeatable Program loop and built-in Domain Packs, plus the accepted
+  direction for dynamic agents and bounded external actions.
 - [Repeatable Program Loop V1 evidence](evidence/repeatable-program-loop-v1.md): the
   continuation contract, restart and replay proof, repeated GPUI projection, and live
   three-cycle dogfood record.
+- [Built-in Domain Pack Pressure Test V1 evidence](evidence/builtin-domain-pack-pressure-test-v1.md):
+  immutable Pack binding, namespaced domain projections, frozen Treasury provenance,
+  fail-before-attempt capability checks, GPUI evidence, and two-domain live restart proof.
 - [Adaptive Factory Spine V1 evidence](evidence/adaptive-factory-spine-v1.md): the exact
   historical first-cycle boundary, causal projection, restart proof, and local dogfood
   record.
@@ -109,6 +112,21 @@ user supplies deterministic and external Evidence. An explicit continuation bind
 exact prior Review and Program revision. It appends one finite next cycle and permits at
 most one unreviewed cycle. No timer or automatic continuation exists.
 
+Each new Program selects one of two built-in declarative Domain Packs. The Development
+Pack derives Repository, Change, and Validation entities from the existing Program
+aggregate. The Paper Investment Pack derives Asset, Thesis, and Scenario entities from
+one embedded official U.S. Treasury June 2025 fixture. A legacy Program can receive one
+revision-fenced Pack binding. The binding is immutable after creation. `decodexd`
+validates the exact built-in Pack version and digest and derives stable entity identities
+on readback. GPUI renders both Packs with the same host-owned graph, cards, inspector,
+capability state, evidence, timeline, and Conversation controls.
+
+The Pack contract adds vocabulary and a projection. It does not add a scheduler, worker,
+graph store, arbitrary executable extension, live market feed, or action gateway. A
+Program WorkItem must have one exact Pack that grants `codex.quick_task` before it can
+enter the existing Quick Task runtime. Missing, unknown, drifted, and undeclared Pack
+authority stops before a ProviderAttempt can exist.
+
 ## Deferred product surfaces
 
 ManagedRepository, the general WorkItem board, Reset Card consumption, execution-decision
@@ -116,10 +134,10 @@ queries, automation, ManagedRun, remote workers, and multi-machine deployment ar
 partially ported. Their current protocol surfaces remain typed unavailable where a
 surface exists. They do not activate a legacy storage fallback.
 
-Ontology and graph engineering are now present only as the small closed Program
-vocabulary and derived causal projection above proven conversation/runtime facts. A
-general ontology language, graph editor, graph database, dynamic agent topology, and
-cross-Program planning remain deferred.
+Ontology and graph engineering are present as the small closed Program vocabulary,
+derived causal projection, and two bounded namespaced Domain Pack projections above
+proven conversation/runtime facts. A general ontology language, graph editor, graph
+database, dynamic agent topology, and cross-Program planning remain deferred.
 
 The accepted [adaptive Program and extension architecture](decisions/adaptive-program-extension-architecture.md)
 defines the delivered first spine and the later product order. It keeps SQLite,
@@ -135,9 +153,12 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 - `crates/decodex-core/` owns mechanism-neutral domain types and fixed local paths.
 - `crates/decodex-codex/` owns Codex app-server and direct provider contracts.
 - `crates/decodex-runtime/` owns service composition, account/process/provider services,
-  Quick Task orchestration, and the bounded Program application projection.
+  Quick Task orchestration, the built-in Pack registry, and bounded Program/domain
+  projections.
 - `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
 - `database/src/program_cycles.rs` owns the atomic Program aggregate and Review rules.
+- `crates/decodex-runtime/domain_packs/` owns the two exact built-in declarative manifests.
+- `crates/decodex-runtime/fixtures/` owns frozen offline Pack data and source metadata.
 - `apps/decodexd/` is the only server composition root.
 - `apps/decodex-cli/` and `apps/decodex-gpui/` are protocol-only clients.
 

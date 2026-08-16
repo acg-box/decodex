@@ -2,14 +2,14 @@
 type: "Specification"
 title: "Local Product V1 Contract"
 description: "Normative SQLite milestone contract for app-server freshness, Quick Task execution, Adaptive Factory Programs, lifecycle safety, and deferred capabilities."
-tags: [local-product, sqlite, quick-task, adaptive-factory, app-server]
+tags: [local-product, sqlite, quick-task, adaptive-factory, domain-pack, app-server]
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
-  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, database/src/program_cycles.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
-  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
+  invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
 
@@ -166,7 +166,7 @@ bounded inline value or a digest and length.
 
 ## Repeatable Program Loop V1
 
-The current protocol accepts exact V2.3 clients. It adds one bounded, manually repeated
+The current protocol accepts exact V2.4 clients. It adds one bounded, manually repeated
 Program aggregate above the existing Quick Task execution path. The initial command
 creates one Program charter, one sourced Signal, one Claim, one non-executable Proposal,
 one finite Objective, and one ready WorkItem in one SQLite transaction.
@@ -197,6 +197,44 @@ from the same stable identities. It shows every retained cycle in causal order, 
 cycle numbers from Signal boundaries, marks the current cycle, and opens the exact
 Conversation bound to the selected WorkItem. The graph is a projection. It is not
 scheduling authority or a separate store.
+
+## Built-in Domain Pack Pressure Test V1
+
+Each new Program carries one required built-in Domain Pack ID. `decodexd` resolves this
+ID to one exact version and manifest digest before the Program transaction starts.
+SQLite schema 7 stores only this immutable Program-to-Pack identity. It does not store a
+generic domain graph or a second copy of Program facts. One existing legacy Program can
+receive one exact revision-fenced binding. SQLite triggers reject later update or delete.
+
+The built-in Pack registry currently contains exactly two declarations:
+
+- `decodex.dev` version `1.0.0` declares the `dev` namespace and derives Repository,
+  Change, and Validation entities from current Program records and evidence.
+- `decodex.paper-investment` version `1.0.0` declares the `finance` namespace and
+  derives two Asset entities, one Thesis, and one Scenario from the embedded June 2025
+  U.S. Treasury yield-curve fixture.
+
+The runtime validates bounded namespaced entity and relation types, declared
+capabilities, exact manifest digests, and the frozen fixture SHA-256. It derives each
+domain entity ID from the Program ID, Pack digest, and local entity key. Therefore the
+same authoritative Program read produces the same domain identities after restart.
+
+Both Packs declare only `codex.quick_task`. Capabilities not present in the exact
+manifest are denied. For a Program WorkItem, Pack admission runs before Quick Task
+runtime selection. A missing binding, unknown Pack, version or digest mismatch, or
+undeclared capability returns a closed error before a Conversation or ProviderAttempt
+can be created. An ordinary Quick Task without a Program WorkItem keeps its existing
+path.
+
+GPUI owns all Pack rendering and interaction. It shows Pack identity, version, digest,
+namespace, capability state, domain entities, domain relations, evidence, causal graph,
+timeline, and the existing Conversation path with host-owned primitives. A Pack cannot
+inject GPUI code, run SQL, start a thread, read a credential, or grant itself a
+capability.
+
+This pressure test does not expose a public Extension SDK, registry, store, dynamic
+loader, ontology authoring language, MCP Action Gateway, live market data, paper order,
+or real-money action.
 
 ## Execution invariants
 
@@ -268,6 +306,14 @@ scheduling authority or a separate store.
 28. A continued WorkItem uses the ordinary Quick Task, ProcessGeneration, and
     ProviderAttempt path. Restart and command replay cannot create a second semantic
     entity, Conversation, or provider attempt.
+29. A Program has at most one immutable built-in Domain Pack identity. Pack resolution
+    and digest validation happen before Program creation or first legacy binding.
+30. Domain entity identities derive from Program identity, exact Pack digest, and one
+    local entity key. A daemon restart cannot change them or create stored duplicates.
+31. Program WorkItem capability admission happens before Quick Task runtime selection.
+    A rejected Pack or capability leaves the ProviderAttempt store unchanged.
+32. Domain projections are bounded read models. They have no SQLite, scheduling,
+    provider, credential, or visual-injection authority.
 
 An absent or stale quota fact represents unknown capacity. Fixed routing admits an
 otherwise-ready account unless a current fact proves depletion. Balanced routing prefers
@@ -297,6 +343,11 @@ A daemon restart also reopens every Program cycle, WorkItem binding, Evidence, a
 Review. It reconstructs cycle order from predecessor Review links. Reopening or querying
 a Program does not dispatch a provider request. Unknown ProviderAttempt state keeps the
 existing no-automatic-replay rule.
+
+The same restart reopens each immutable Program Pack binding. `decodexd` rejects an
+unknown or digest-drifted binding instead of projecting a replacement. A valid binding
+reconstructs the same bounded domain entities and relations without storing them or
+creating a Conversation or ProviderAttempt.
 
 ## Credential boundary
 
@@ -339,6 +390,10 @@ Acceptance requires:
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;
 - one restart-safe Program with at least three sequential cycles, one bound Quick Task
   and classified evidence-backed Review per cycle, and synchronized causal projections;
+- one Development Pack projection over the retained three-cycle dogfood Program and one
+  Paper Investment Pack Program that completes through the ordinary Quick Task path;
+- exact Pack and derived-entity readback after daemon restart with no duplicate
+  Conversation or ProviderAttempt;
 - archived-thread rejection with retained composer content and no implicit resend;
 - bounded stale-local reconciliation without changing unresolved provider evidence;
 - focused and workspace-wide tests; and
