@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	QuickTaskWorkingDirectory,
+	domain_pack::{DomainPackProjectionDto, is_namespaced_symbol},
 	wire::{EntityId, EntityRevision, MAX_WIRE_TEXT_BYTES, WireText},
 };
 
@@ -34,6 +35,7 @@ pub enum ProgramCycleContractError {
 #[serde(deny_unknown_fields)]
 pub struct ProgramCycleDraftDto {
 	pub program_id: EntityId,
+	pub domain_pack_id: WireText,
 	pub signal_id: EntityId,
 	pub claim_id: EntityId,
 	pub proposal_id: EntityId,
@@ -71,6 +73,9 @@ impl ProgramCycleDraftDto {
 		];
 		if ids.iter().copied().collect::<HashSet<_>>().len() != ids.len() {
 			return Err(ProgramCycleContractError::InvalidIdentity);
+		}
+		if !is_namespaced_symbol(self.domain_pack_id.as_str()) {
+			return Err(ProgramCycleContractError::InvalidText);
 		}
 		for value in [
 			&self.name,
@@ -300,6 +305,7 @@ pub struct ProgramCycleDto {
 	pub program: ProgramSummaryDto,
 	pub non_goals: Vec<WireText>,
 	pub review_policy: WireText,
+	pub domain_pack: Option<DomainPackProjectionDto>,
 	pub nodes: Vec<ProgramNodeDto>,
 	pub edges: Vec<ProgramEdgeDto>,
 }
@@ -333,7 +339,22 @@ impl ProgramCycleDto {
 		}) {
 			return Err(ProgramCycleContractError::InvalidProjection);
 		}
-		Ok(Self { program, non_goals, review_policy, nodes, edges })
+		Ok(Self { program, non_goals, review_policy, domain_pack: None, nodes, edges })
+	}
+
+	pub fn with_domain_pack(
+		mut self,
+		domain_pack: DomainPackProjectionDto,
+	) -> Result<Self, ProgramCycleContractError> {
+		let domain_pack = DomainPackProjectionDto::new(
+			domain_pack.descriptor,
+			domain_pack.entities,
+			domain_pack.relations,
+			&self.program.program_id,
+		)
+		.map_err(|_| ProgramCycleContractError::InvalidProjection)?;
+		self.domain_pack = Some(domain_pack);
+		Ok(self)
 	}
 }
 

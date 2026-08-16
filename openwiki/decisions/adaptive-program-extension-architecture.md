@@ -1,6 +1,7 @@
 # Adaptive Program And Extension Architecture
 
-Status: accepted product direction; Repeatable Program Loop V1 is implemented.
+Status: accepted product direction; Repeatable Program Loop V1 and the built-in Domain
+Pack pressure test are implemented.
 
 Date: 2026-08-15.
 
@@ -10,7 +11,9 @@ automation, consequential external actions, and an extension runtime remain targ
 direction only. Current implemented behavior is defined by the
 [OpenWiki quickstart](../quickstart.md), the
 [local product V1 contract](../specs/local-product-v1.md), and the
-[Repeatable Program Loop V1 evidence](../evidence/repeatable-program-loop-v1.md).
+[Repeatable Program Loop V1 evidence](../evidence/repeatable-program-loop-v1.md). The
+two-domain result is recorded in the
+[Built-in Domain Pack Pressure Test V1 evidence](../evidence/builtin-domain-pack-pressure-test-v1.md).
 
 ## Decision
 
@@ -366,20 +369,29 @@ Two additional real provider-backed cycles completed after the original cycle. T
 total ProviderAttempt count increased by exactly two, and a daemon restart did not add
 an entity, Conversation, or attempt.
 
-### Milestone 2: Extension Contract V1
+### Milestone 2: Built-in Domain Pack Pressure Test V1 — implemented
 
-Extract only the vocabulary proven by two built-in fixtures:
+Extract only the internal vocabulary proven by two built-in fixtures:
 
 - the Development Pack uses the real Decodex dogfood cycle; and
 - a Paper Investment Pack uses public or provided data and simulation only.
 
-Add namespaced schema registration, immutable pack versions and digests, declared
-permissions, host-rendered ViewSpecs, and capability inspection. Keep packs built in
-until the contract survives both fixtures.
+The delivered slice adds exact namespaced entity and relation declarations, immutable
+Pack versions and digests, deny-by-default declared capabilities, stable derived entity
+IDs, host-rendered graph and inspector primitives, and capability inspection. One
+additive SQLite table stores only the immutable Program binding. The domain graph remains
+a read projection of the normal Program authority.
 
-This is the next candidate milestone. It must remain bounded to two built-in fixtures.
-It must not add a public SDK, registry, scheduler, arbitrary executable plugin host, or
-dynamic multi-agent runtime.
+The Development Pack projects the real three-cycle Decodex dogfood Program. The Paper
+Investment Pack uses one frozen official U.S. Treasury June 2025 fixture and completed
+one real paper-only Program through the ordinary Quick Task and ProviderAttempt path.
+Daemon restart retained both exact Pack identities, all seven derived domain entity
+identities, and the exact attempt count.
+
+This result supports one shared internal declarative Pack contract. It does not prove a
+public SDK, third-party compatibility, installation or upgrade UX, a registry, an
+arbitrary executable plugin host, or a dynamic multi-agent runtime. Keep Packs built in
+until a concrete third consumer or external authoring need justifies a public contract.
 
 ### Milestone 3: MCP Action Gateway
 
@@ -508,10 +520,12 @@ Reduce or change this direction when repeated real cycles show any of the follow
 
 The first review trigger is complete: three Decodex dogfood Program cycles retained one
 Program, used one provider attempt per added cycle, and produced evidence-backed
-Reviews. This supports the sequential Program model. It does not yet validate automatic
-cycle creation, multi-agent execution, or reusable domain extension semantics. Review
-again after the second built-in Domain Pack. Do not design a public SDK before that
-review.
+Reviews. The second review trigger is also complete: Development and Paper Investment
+used the same Program, Quick Task, ProviderAttempt, capability, protocol, and GPUI host
+boundaries without adding domain nouns to the kernel. This supports the small internal
+declarative Pack contract. It does not validate automatic cycle creation, dynamic
+multi-agent execution, public extension compatibility, or consequential external
+actions. Do not design a public SDK only from these two built-in implementations.
 
 ## Curation note
 
