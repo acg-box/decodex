@@ -58,11 +58,11 @@ pub use self::{
 		ProcessGenerationMutationOutcome, ProcessGenerationRejection,
 	},
 	program_cycles::{
-		ContinueProgram, CreateProgramCycle, ProgramCharterRecord, ProgramClaimRecord,
-		ProgramCycleRecord,
+		BindProgramDomainPack, ContinueProgram, CreateProgramCycle, DomainPackIdentity,
+		ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord, ProgramDomainPackBinding,
 		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
 		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
-		RecordProgramReview,
+		ProgramWorkItemDomainPack, RecordProgramReview,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,

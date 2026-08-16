@@ -9,7 +9,7 @@ use std::{
 		Arc, Mutex,
 		atomic::{AtomicUsize, Ordering},
 	},
-	time::Duration,
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use tempfile::TempDir;
@@ -18,9 +18,11 @@ use decodex_protocol::{
 	CURRENT_VERSION, Channel, ClientProfile, CommandEnvelope, ConversationHistoryPage,
 	ConversationHistoryResult, CorrelationId, Cursor, DoctorReport, EntityId, EntityRevision,
 	EventEnvelope, EventPayload, HistoryCursorToken, QueryEnvelope, QueryPayload,
-	QueryResultEnvelope, QueryResultPayload, QuickTaskState, RetainedSessionConfig,
-	RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint, SnapshotEnvelope,
-	SnapshotItem, WireText,
+	PAPER_INVESTMENT_DOMAIN_PACK_ID, DEVELOPMENT_DOMAIN_PACK_ID, ProgramCycleDraftDto,
+	ProgramEvidenceDraftDto, ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto,
+	QueryResultEnvelope, QueryResultPayload, QuickTaskState, QuickTaskWorkingDirectory,
+	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerInstanceId, SessionCheckpoint,
+	SnapshotEnvelope, SnapshotItem, WireText,
 };
 
 use crate::{
@@ -100,16 +102,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_3() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_4() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.3");
+		.expect("production lifecycle constructs at protocol V2.4");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 3);
+	assert_eq!(CURRENT_VERSION.minor, 4);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
@@ -2313,6 +2315,405 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
 		.await
 		.expect("live lifecycle stops after cancellation");
+	assert_eq!(result, RunResult::Stopped);
+}
+
+#[tokio::test]
+#[ignore = "requires the user's live Decodex daemon; binds the dogfood Pack and creates one paper-only Program conversation"]
+async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
+	use crate::{
+		programs::{ProgramCommandState, ProgramsLoadState},
+		quick_tasks::{QuickTaskCommandState, QuickTasksLoadState},
+	};
+
+	const PAPER_PROGRAM_ID: &str = "d1000000-0000-4000-8000-000000000001";
+	const PAPER_SIGNAL_ID: &str = "d2000000-0000-4000-8000-000000000001";
+	const PAPER_CLAIM_ID: &str = "d3000000-0000-4000-8000-000000000001";
+	const PAPER_PROPOSAL_ID: &str = "d4000000-0000-4000-8000-000000000001";
+	const PAPER_OBJECTIVE_ID: &str = "d5000000-0000-4000-8000-000000000001";
+	const PAPER_WORK_ITEM_ID: &str = "d6000000-0000-4000-8000-000000000001";
+	const PAPER_REVIEW_ID: &str = "e1000000-0000-4000-8000-000000000001";
+	const PAPER_DETERMINISTIC_EVIDENCE_ID: &str =
+		"e2000000-0000-4000-8000-000000000001";
+	const PAPER_EXTERNAL_EVIDENCE_ID: &str = "e3000000-0000-4000-8000-000000000001";
+
+	fn text(value: &str) -> WireText {
+		WireText::new(value).expect("live pressure-test text is bounded")
+	}
+
+	fn entity(value: &str) -> EntityId {
+		EntityId::new(value).expect("live pressure-test identity is canonical")
+	}
+
+	fn now_micros() -> i64 {
+		i64::try_from(
+			SystemTime::now()
+				.duration_since(UNIX_EPOCH)
+				.expect("system time follows the Unix epoch")
+				.as_micros(),
+		)
+		.expect("current time fits SQLite")
+	}
+
+	let working_directory = std::env::current_dir()
+		.expect("live test working directory exists")
+		.canonicalize()
+		.expect("live test working directory canonicalizes");
+	let working_directory = QuickTaskWorkingDirectory::new(
+		working_directory
+			.to_str()
+			.expect("live test working directory is UTF-8")
+			.to_owned(),
+	)
+	.expect("live test working directory is accepted");
+	let profile = ClientProfile::load_default(None).expect("the live profile is configured");
+	let config =
+		profile.retained_session_config().expect("the live retained session is configured");
+	let mut lifecycle =
+		ClientLifecycle::production(config).expect("the production lifecycle is available");
+	let programs = lifecycle.programs();
+	let quick_tasks = lifecycle.quick_tasks();
+	let cancellation = lifecycle.cancellation();
+	programs.activate();
+	quick_tasks.activate();
+
+	let run = lifecycle.run();
+	tokio::pin!(run);
+	let ready_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	loop {
+		let program_snapshot = programs.snapshot();
+		let task_snapshot = quick_tasks.snapshot();
+		if program_snapshot.load == ProgramsLoadState::Ready
+			&& task_snapshot.load == QuickTasksLoadState::Ready
+			&& task_snapshot.can_submit
+		{
+			break;
+		}
+		assert!(
+			tokio::time::Instant::now() < ready_deadline,
+			"live Program and Quick Task controllers did not become ready: programs={:?}, tasks={:?}",
+			program_snapshot.load,
+			task_snapshot.load,
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before pressure-test readiness: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	let development = programs
+		.snapshot()
+		.programs
+		.into_iter()
+		.find(|program| program.name.as_str() == "Adaptive Factory Spine V1 Live Proof")
+		.expect("the three-cycle Development dogfood Program exists");
+	assert!(programs.select(development.program_id.clone()));
+	let development_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	loop {
+		let snapshot = programs.snapshot();
+		if let Some(cycle) = snapshot
+			.cycle
+			.as_ref()
+			.filter(|cycle| cycle.program.program_id == development.program_id)
+		{
+			match cycle.domain_pack.as_ref() {
+				None => programs
+					.bind_domain_pack(
+						development.program_id.clone(),
+						text(DEVELOPMENT_DOMAIN_PACK_ID),
+						cycle.program.revision,
+					)
+					.expect("legacy Development Pack binding queues"),
+				Some(pack)
+					if pack.descriptor.id.as_str() == DEVELOPMENT_DOMAIN_PACK_ID
+						&& pack.entities.len() == 3
+						&& pack.relations.len() == 2 =>
+				{
+					assert_eq!(
+						pack.entities
+							.iter()
+							.map(|entity| entity.id.as_str())
+							.collect::<Vec<_>>(),
+						vec![
+							"4ab46bd9-8378-494b-aa14-db4408b814ef",
+							"19639395-365c-4060-b160-9833783a33d4",
+							"665cac94-4178-4230-9580-813e8fa70c16",
+						],
+					);
+					break;
+				}
+				Some(_) => {}
+			}
+		}
+		assert!(
+			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			"Development Pack binding did not settle: {:?}",
+			snapshot.command,
+		);
+		assert!(
+			tokio::time::Instant::now() < development_deadline,
+			"Development Pack projection did not become ready",
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped during Development Pack binding: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	let paper_program_id = entity(PAPER_PROGRAM_ID);
+	if !programs
+		.snapshot()
+		.programs
+		.iter()
+		.any(|program| program.program_id == paper_program_id)
+	{
+		programs
+			.create(ProgramCycleDraftDto {
+				program_id: paper_program_id.clone(),
+				domain_pack_id: text(PAPER_INVESTMENT_DOMAIN_PACK_ID),
+				signal_id: entity(PAPER_SIGNAL_ID),
+				claim_id: entity(PAPER_CLAIM_ID),
+				proposal_id: entity(PAPER_PROPOSAL_ID),
+				objective_id: entity(PAPER_OBJECTIVE_ID),
+				work_item_id: entity(PAPER_WORK_ITEM_ID),
+				name: text("June Treasury Curve Research"),
+				purpose: text(
+					"Evaluate one reproducible 2s10s yield-curve thesis through a bounded Program loop.",
+				),
+				non_goals: vec![text(
+					"Do not fetch live market data or place any paper or real order.",
+				)],
+				review_policy: text(
+					"Review after Codex verifies the frozen fixture and cites deterministic results.",
+				),
+				signal_source: text("Frozen official U.S. Treasury June 2025 fixture"),
+				signal_summary: text(
+					"The June 2025 2-year and 10-year par yields provide a finite curve sample.",
+				),
+				signal_observed_at_micros: now_micros(),
+				claim_statement: text(
+					"The sample can test whether the 2s10s slope stayed positive during the month.",
+				),
+				proposal_summary: text(
+					"Have Codex independently verify the frozen observations and spread bounds.",
+				),
+				proposal_expected_effect: text(
+					"Produce a cited, reproducible conclusion for the June 2025 2s10s slope.",
+				),
+				proposal_risk: text(
+					"An incorrect parser or unit conversion could fabricate the spread bounds.",
+				),
+				proposal_evidence_need: text(
+					"A settled Codex run, deterministic fixture checks, and exact SQLite readback.",
+				),
+				objective_outcome: text(
+					"Produce a cited, reproducible conclusion for the June 2025 2s10s slope.",
+				),
+				acceptance_criteria: vec![text(
+					"The conclusion reports 20 observations and the exact first, last, minimum, maximum, and range spreads.",
+				)],
+				validation_criteria: vec![text(
+					"The bound Quick Task settles without live data or an external action.",
+				)],
+				work_item_title: text("Verify the June 2025 Treasury 2s10s thesis"),
+				work_item_instructions: text(
+					"Inspect crates/decodex-runtime/fixtures/us_treasury_yield_curve_2025_06.csv. Recompute observation count, first and last spread, minimum, maximum, and range. Report whether the slope remained positive. Do not use live data or take any external action.",
+				),
+				working_directory: working_directory.clone(),
+			})
+			.expect("paper Program creation queues");
+	} else {
+		assert!(programs.select(paper_program_id.clone()));
+	}
+
+	let paper_projection_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	let mut paper_cycle = loop {
+		let snapshot = programs.snapshot();
+		if let Some(cycle) = snapshot
+			.cycle
+			.filter(|cycle| cycle.program.program_id == paper_program_id)
+		{
+			let pack = cycle.domain_pack.as_ref().expect("paper Program has an immutable Pack");
+			assert_eq!(pack.descriptor.id.as_str(), PAPER_INVESTMENT_DOMAIN_PACK_ID);
+			assert_eq!(pack.entities.len(), 4);
+			assert_eq!(pack.relations.len(), 3);
+			assert_eq!(
+				pack.entities.iter().map(|entity| entity.id.as_str()).collect::<Vec<_>>(),
+				vec![
+					"b8fde6ee-1aaf-4674-b356-b72e3223e21e",
+					"78ccfe77-dd4c-49f2-8b2e-9eee80150aeb",
+					"d0cd787c-52e8-470b-945e-b22c5dd2e046",
+					"1017c447-35e2-4975-877b-0ad2fe13bd6b",
+				],
+			);
+			break cycle;
+		}
+		assert!(
+			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			"paper Program command did not settle: {:?}",
+			snapshot.command,
+		);
+		assert!(
+			tokio::time::Instant::now() < paper_projection_deadline,
+			"paper Program projection did not become ready",
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before paper projection: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	};
+
+	if !paper_cycle.nodes.iter().any(|node| node.kind == ProgramNodeKind::Review) {
+		let work_item = paper_cycle
+			.nodes
+			.iter()
+			.find(|node| node.id.as_str() == PAPER_WORK_ITEM_ID)
+			.expect("paper WorkItem is projected")
+			.clone();
+		let conversation_id = if let Some(conversation_id) = work_item.conversation_id.clone() {
+			quick_tasks.select_when_available(conversation_id.clone());
+			conversation_id
+		} else {
+			quick_tasks.begin_new();
+			let submission = quick_tasks
+				.create_for_program_work_item(
+					&format!(
+						"Decodex Program WorkItem {}\n\n{}",
+						work_item.id.as_str(),
+						work_item.summary.as_str(),
+					),
+					work_item.id.clone(),
+					working_directory.clone(),
+				)
+				.expect("paper WorkItem Quick Task queues");
+			programs.expect_execution(submission.conversation_id.clone());
+			submission.conversation_id
+		};
+
+		let execution_deadline = tokio::time::Instant::now() + Duration::from_secs(180);
+		loop {
+			let snapshot = quick_tasks.snapshot();
+			match snapshot.command {
+				QuickTaskCommandState::ManualRecovery(action) => {
+					panic!("paper Quick Task requested manual recovery: {action:?}")
+				},
+				QuickTaskCommandState::OutcomeUnknown => {
+					panic!("paper Quick Task acceptance remained unknown")
+				},
+				QuickTaskCommandState::Refused => panic!("paper Quick Task was refused"),
+				_ => {},
+			}
+			if snapshot.tasks.iter().any(|task| {
+				task.conversation_id == conversation_id && task.state == QuickTaskState::Ready
+			}) {
+				break;
+			}
+			assert!(
+				tokio::time::Instant::now() < execution_deadline,
+				"paper Quick Task did not reach terminal ready state: {:?}",
+				snapshot
+					.tasks
+					.iter()
+					.find(|task| task.conversation_id == conversation_id)
+					.map(|task| task.state),
+			);
+			tokio::select! {
+				result = &mut run => panic!("live lifecycle stopped during paper execution: {result:?}"),
+				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			}
+		}
+
+		let review_ready_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+		loop {
+			let snapshot = programs.snapshot();
+			if let Some(cycle) = snapshot.cycle.as_ref().filter(|cycle| {
+				cycle.program.program_id == paper_program_id
+					&& cycle.nodes.iter().any(|node| {
+						node.id.as_str() == PAPER_WORK_ITEM_ID
+							&& node.conversation_id.as_ref() == Some(&conversation_id)
+					})
+			}) {
+				paper_cycle = cycle.clone();
+				break;
+			}
+			let _ = programs.refresh_selected();
+			assert!(
+				tokio::time::Instant::now() < review_ready_deadline,
+				"paper Program did not observe its terminal Conversation",
+			);
+			tokio::select! {
+				result = &mut run => panic!("live lifecycle stopped before paper Review: {result:?}"),
+				() = tokio::time::sleep(Duration::from_millis(50)) => {},
+			}
+		}
+
+		let observed_at_micros = now_micros();
+		programs
+			.record_review(ProgramReviewDraftDto {
+				review_id: entity(PAPER_REVIEW_ID),
+				program_id: paper_program_id.clone(),
+				work_item_id: entity(PAPER_WORK_ITEM_ID),
+				deterministic: ProgramEvidenceDraftDto {
+					evidence_id: entity(PAPER_DETERMINISTIC_EVIDENCE_ID),
+					source: text("Repository fixture and runtime gates"),
+					summary: text(
+						"The frozen fixture has 20 observations; 2s10s first and last are 52 bp, minimum 44 bp, maximum 56 bp, range 12 bp, and every spread is positive.",
+					),
+					observed_at_micros,
+				},
+				external: ProgramEvidenceDraftDto {
+					evidence_id: entity(PAPER_EXTERNAL_EVIDENCE_ID),
+					source: text("Codex app-server and SQLite readback"),
+					summary: text(
+						"The bound paper-only Codex Quick Task reached positive terminal evidence through the ordinary ProviderAttempt path.",
+					),
+					observed_at_micros,
+				},
+				classification: ProgramReviewClassification::KnowledgeProgress,
+				rationale: text(
+					"The same Program kernel produced one reproducible domain conclusion without a second scheduler, live data, or an external action.",
+				),
+			})
+			.expect("paper Program Review queues");
+	}
+
+	let review_deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+	loop {
+		let snapshot = programs.snapshot();
+		if let Some(cycle) = snapshot.cycle.as_ref().filter(|cycle| {
+			cycle.program.program_id == paper_program_id
+				&& cycle.program.revision == EntityRevision(2)
+				&& cycle.nodes.iter().any(|node| {
+					node.kind == ProgramNodeKind::Review && node.id.as_str() == PAPER_REVIEW_ID
+				})
+		}) {
+			let pack = cycle.domain_pack.as_ref().expect("completed paper Pack projection");
+			assert_eq!(pack.descriptor.id.as_str(), PAPER_INVESTMENT_DOMAIN_PACK_ID);
+			assert!(pack.relations.iter().any(|relation| {
+				relation.kind.as_str() == "finance.compared_with"
+			}));
+			break;
+		}
+		assert!(
+			!matches!(snapshot.command, ProgramCommandState::OutcomeUnknown | ProgramCommandState::Refused),
+			"paper Review did not settle: {:?}; prior cycle revision was {}",
+			snapshot.command,
+			paper_cycle.program.revision.0,
+		);
+		assert!(
+			tokio::time::Instant::now() < review_deadline,
+			"paper Review did not become authoritative",
+		);
+		tokio::select! {
+			result = &mut run => panic!("live lifecycle stopped before paper Review readback: {result:?}"),
+			() = tokio::time::sleep(Duration::from_millis(50)) => {},
+		}
+	}
+
+	cancellation.cancel();
+	let result = tokio::time::timeout(Duration::from_secs(5), &mut run)
+		.await
+		.expect("live lifecycle stops after pressure-test cancellation");
 	assert_eq!(result, RunResult::Stopped);
 }
 
