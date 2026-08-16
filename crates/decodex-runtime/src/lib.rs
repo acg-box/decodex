@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.3 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.4 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
@@ -13,6 +13,7 @@ mod account_service;
 mod application;
 mod auth_projection;
 mod bootstrap;
+mod domain_packs;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;

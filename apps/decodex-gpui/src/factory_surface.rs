@@ -12,9 +12,11 @@ use gpui::{
 };
 
 use decodex_protocol::{
-	EntityId, MAX_PROGRAM_NODES, ProgramContinuationDraftDto, ProgramCycleDraftDto, ProgramNodeDto,
-	ProgramNodeKind, ProgramReviewClassification, ProgramReviewDraftDto, QuickTaskWorkingDirectory,
-	WireText, WorkItemBoardCard, WorkItemBoardProjectId, WorkItemState,
+	DEVELOPMENT_DOMAIN_PACK_ID, DomainEntityDto, DomainPackCapabilityStatus, EntityId,
+	MAX_PROGRAM_NODES, PAPER_INVESTMENT_DOMAIN_PACK_ID, ProgramContinuationDraftDto,
+	ProgramCycleDraftDto, ProgramNodeDto, ProgramNodeKind, ProgramReviewClassification,
+	ProgramReviewDraftDto, QuickTaskWorkingDirectory, WireText, WorkItemBoardCard,
+	WorkItemBoardProjectId, WorkItemState,
 };
 
 use crate::{
@@ -170,6 +172,44 @@ enum GateState {
 	Approved,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ProgramPackChoice {
+	Development,
+	PaperInvestment,
+}
+
+impl ProgramPackChoice {
+	const ALL: [Self; 2] = [Self::Development, Self::PaperInvestment];
+
+	const fn id(self) -> &'static str {
+		match self {
+			Self::Development => DEVELOPMENT_DOMAIN_PACK_ID,
+			Self::PaperInvestment => PAPER_INVESTMENT_DOMAIN_PACK_ID,
+		}
+	}
+
+	const fn name(self) -> &'static str {
+		match self {
+			Self::Development => "Software Development",
+			Self::PaperInvestment => "Paper Investment Research",
+		}
+	}
+
+	const fn summary(self) -> &'static str {
+		match self {
+			Self::Development => "Repository · change · validation",
+			Self::PaperInvestment => "Asset · thesis · scenario",
+		}
+	}
+
+	const fn color(self) -> u32 {
+		match self {
+			Self::Development => BLUE,
+			Self::PaperInvestment => GREEN,
+		}
+	}
+}
+
 struct ProgramCreationInputs {
 	name: Entity<ComposerInput>,
 	purpose: Entity<ComposerInput>,
@@ -296,7 +336,12 @@ impl ProgramContinuationInputs {
 			cx.new(|cx| ComposerInput::with_placeholder(index, placeholder, label, cx))
 		};
 		Self {
-			signal_source: input(20, "Review, observation, or external source", "Signal source", cx),
+			signal_source: input(
+				20,
+				"Review, observation, or external source",
+				"Signal source",
+				cx,
+			),
 			signal: input(21, "What changed since the prior Review", "Signal summary", cx),
 			claim: input(22, "What the new signal implies", "Claim", cx),
 			proposal: input(23, "Finite proposed response", "Proposal", cx),
@@ -346,6 +391,7 @@ pub(crate) struct FactorySurface {
 	programs: Option<Programs>,
 	programs_snapshot: Option<ProgramsSnapshot>,
 	program_selection: Option<EntityId>,
+	program_pack: ProgramPackChoice,
 	program_inputs: ProgramCreationInputs,
 	program_review_inputs: ProgramReviewInputs,
 	program_continuation_inputs: ProgramContinuationInputs,
@@ -425,6 +471,7 @@ impl FactorySurface {
 			programs: None,
 			programs_snapshot: None,
 			program_selection: None,
+			program_pack: ProgramPackChoice::Development,
 			program_inputs,
 			program_review_inputs,
 			program_continuation_inputs,
@@ -472,14 +519,21 @@ impl FactorySurface {
 			self.program_selection = None;
 			return;
 		};
-		if self
-			.program_selection
-			.as_ref()
-			.is_some_and(|selected| cycle.nodes.iter().any(|node| &node.id == selected))
-		{
+		if self.program_selection.as_ref().is_some_and(|selected| {
+			cycle.nodes.iter().any(|node| &node.id == selected)
+				|| cycle
+					.domain_pack
+					.as_ref()
+					.is_some_and(|pack| pack.entities.iter().any(|entity| &entity.id == selected))
+		}) {
 			return;
 		}
-		self.program_selection = cycle.nodes.first().map(|node| node.id.clone());
+		self.program_selection = cycle
+			.domain_pack
+			.as_ref()
+			.and_then(|pack| pack.entities.first())
+			.map(|entity| entity.id.clone())
+			.or_else(|| cycle.nodes.first().map(|node| node.id.clone()));
 	}
 
 	pub(crate) fn bind_work_items(&mut self, work_items: WorkItems, cx: &mut Context<Self>) {
@@ -597,6 +651,8 @@ impl FactorySurface {
 			.map_err(|_| ProgramInputError::InvalidDraft)?;
 			Ok(ProgramCycleDraftDto {
 				program_id: entity_id()?,
+				domain_pack_id: WireText::new(self.program_pack.id())
+					.expect("built-in Domain Pack identifier is bounded"),
 				signal_id: entity_id()?,
 				claim_id: entity_id()?,
 				proposal_id: entity_id()?,
@@ -642,6 +698,79 @@ impl FactorySurface {
 		cx.notify();
 	}
 
+	fn select_program_pack(&mut self, pack: ProgramPackChoice, cx: &mut Context<Self>) {
+		self.program_pack = pack;
+		self.program_status = None;
+		cx.notify();
+	}
+
+	fn load_paper_example(&mut self, cx: &mut Context<Self>) {
+		self.program_pack = ProgramPackChoice::PaperInvestment;
+		for (input, value) in [
+			(&self.program_inputs.name, "June Treasury Curve Research"),
+			(
+				&self.program_inputs.purpose,
+				"Evaluate one reproducible 2s10s yield-curve thesis through a bounded Program loop.",
+			),
+			(
+				&self.program_inputs.non_goal,
+				"Do not fetch live market data or place any paper or real order.",
+			),
+			(
+				&self.program_inputs.review_policy,
+				"Review after Codex verifies the frozen fixture and cites deterministic results.",
+			),
+			(&self.program_inputs.signal_source, "Frozen official U.S. Treasury June 2025 fixture"),
+			(
+				&self.program_inputs.signal,
+				"The June 2025 2-year and 10-year par yields provide a finite curve sample.",
+			),
+			(
+				&self.program_inputs.claim,
+				"The sample can test whether the 2s10s slope stayed positive during the month.",
+			),
+			(
+				&self.program_inputs.proposal,
+				"Have Codex independently verify the frozen observations and spread bounds.",
+			),
+			(
+				&self.program_inputs.objective,
+				"Produce a cited, reproducible conclusion for the June 2025 2s10s slope.",
+			),
+			(&self.program_inputs.work_item_title, "Verify the June 2025 Treasury 2s10s thesis"),
+			(
+				&self.program_inputs.work_item_instructions,
+				"Inspect the bundled June 2025 U.S. Treasury fixture. Recompute observation count, first and last spread, minimum, maximum, and range. Report whether the slope remained positive. Do not use live data or take any external action.",
+			),
+		] {
+			input.update(cx, |input, cx| input.set_content(value, cx));
+		}
+		self.program_status = Some("Example loaded. Choose an absolute working directory.".into());
+		cx.notify();
+	}
+
+	fn bind_selected_domain_pack(&mut self, pack: ProgramPackChoice, cx: &mut Context<Self>) {
+		let Some(programs) = self.programs.as_ref() else {
+			return;
+		};
+		let Some(cycle) =
+			self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
+		else {
+			return;
+		};
+		let result = programs.bind_domain_pack(
+			cycle.program.program_id.clone(),
+			WireText::new(pack.id()).expect("built-in Domain Pack identifier is bounded"),
+			cycle.program.revision,
+		);
+		self.program_status = Some(match result {
+			Ok(()) => format!("Binding {}…", pack.name()).into(),
+			Err(error) => program_error_label(error).into(),
+		});
+		self.programs_snapshot = Some(programs.snapshot());
+		cx.notify();
+	}
+
 	fn select_program(&mut self, program_id: EntityId, cx: &mut Context<Self>) {
 		let Some(programs) = self.programs.as_ref() else {
 			return;
@@ -659,15 +788,18 @@ impl FactorySurface {
 		let Some(programs) = self.programs.as_ref() else {
 			return;
 		};
-		let Some(cycle) = self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
+		let Some(cycle) =
+			self.programs_snapshot.as_ref().and_then(|snapshot| snapshot.cycle.as_ref())
 		else {
 			self.program_status = Some("No Program cycle is selected.".into());
 			cx.notify();
 			return;
 		};
-		let Some(predecessor) = cycle.nodes.last().filter(|node| node.kind == ProgramNodeKind::Review)
+		let Some(predecessor) =
+			cycle.nodes.last().filter(|node| node.kind == ProgramNodeKind::Review)
 		else {
-			self.program_status = Some("The current cycle needs a Review before continuation.".into());
+			self.program_status =
+				Some("The current cycle needs a Review before continuation.".into());
 			cx.notify();
 			return;
 		};
@@ -758,11 +890,10 @@ impl FactorySurface {
 		else {
 			return;
 		};
-		let Some(work_item) = cycle
-			.nodes
-			.iter()
-			.rev()
-			.find(|node| node.kind == ProgramNodeKind::WorkItem && node.state.as_str() == "ready")
+		let Some(work_item) =
+			cycle.nodes.iter().rev().find(|node| {
+				node.kind == ProgramNodeKind::WorkItem && node.state.as_str() == "ready"
+			})
 		else {
 			self.program_status = Some("The Program WorkItem is not ready to start.".into());
 			cx.notify();
@@ -1266,7 +1397,14 @@ impl FactorySurface {
 			.program_selection
 			.as_ref()
 			.and_then(|selected| cycle.nodes.iter().find(|node| &node.id == selected));
-		let latest_work_item = cycle.nodes.iter().rev().find(|node| node.kind == ProgramNodeKind::WorkItem);
+		let selected_domain = self.program_selection.as_ref().and_then(|selected| {
+			cycle
+				.domain_pack
+				.as_ref()
+				.and_then(|pack| pack.entities.iter().find(|entity| &entity.id == selected))
+		});
+		let latest_work_item =
+			cycle.nodes.iter().rev().find(|node| node.kind == ProgramNodeKind::WorkItem);
 		let latest_run = latest_work_item
 			.and_then(|work_item| work_item.conversation_id.as_ref())
 			.and_then(|conversation_id| {
@@ -1339,14 +1477,27 @@ impl FactorySurface {
 									.child("SQLITE AUTHORITY · LIVE PROJECTION"),
 							),
 					)
+					.child(self.program_domain_graph(cycle, cx))
 					.child(self.program_graph(cycle, cx)),
 			)
-			.child(self.program_inspector(selected_node, cycle, can_review, can_continue, cx))
+			.child(self.program_inspector(
+				selected_node,
+				selected_domain,
+				cycle,
+				can_review,
+				can_continue,
+				cx,
+			))
 			.into_any_element()
 	}
 
 	fn program_intake(&self, snapshot: &ProgramsSnapshot, cx: &mut Context<Self>) -> AnyElement {
 		let inputs = self.program_inputs.all();
+		let selected_pack = self.program_pack;
+		let pack_choices = ProgramPackChoice::ALL
+			.into_iter()
+			.map(|pack| program_pack_choice(pack, pack == selected_pack, cx))
+			.collect::<Vec<_>>();
 		let labels = [
 			"PROGRAM NAME",
 			"PURPOSE",
@@ -1414,8 +1565,35 @@ impl FactorySurface {
 									.child(program_load_label(snapshot.load)),
 							),
 						)
-					.child(
-						div()
+						.child(
+							div()
+								.flex()
+								.flex_col()
+								.gap_2()
+								.child(
+									div()
+										.font_family("SF Mono")
+										.text_size(px(8.0))
+										.text_color(rgb(TEXT_FAINT))
+										.child("DOMAIN PACK · IMMUTABLE AFTER CREATE"),
+								)
+								.child(div().grid().grid_cols(2).gap_3().children(pack_choices)),
+						)
+						.when(
+							self.program_pack == ProgramPackChoice::PaperInvestment,
+							|form| {
+								form.child(program_action_button(
+									"load-paper-example",
+									"LOAD TREASURY EXAMPLE",
+									GREEN,
+									true,
+									cx,
+									|surface, cx| surface.load_paper_example(cx),
+								))
+							},
+						)
+						.child(
+							div()
 							.grid()
 							.grid_cols(2)
 							.gap_3()
@@ -1456,19 +1634,13 @@ impl FactorySurface {
 		snapshot: &ProgramsSnapshot,
 		cx: &mut Context<Self>,
 	) -> AnyElement {
-		let current_work_item = cycle
-			.nodes
-			.iter()
-			.rev()
-			.find(|node| node.kind == ProgramNodeKind::WorkItem);
-		let work_item_ready =
-			current_work_item.is_some_and(|node| node.state.as_str() == "ready");
+		let current_work_item =
+			cycle.nodes.iter().rev().find(|node| node.kind == ProgramNodeKind::WorkItem);
+		let work_item_ready = current_work_item.is_some_and(|node| node.state.as_str() == "ready")
+			&& cycle.domain_pack.is_some();
 		let conversation_id = current_work_item.and_then(|node| node.conversation_id.clone());
-		let cycle_count = cycle
-			.nodes
-			.iter()
-			.filter(|node| node.kind == ProgramNodeKind::Signal)
-			.count();
+		let cycle_count =
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count();
 		div()
 			.id("program-pulse")
 			.w(px(258.0))
@@ -1517,6 +1689,10 @@ impl FactorySurface {
 			.child(program_pulse_section(
 				"NON-GOAL",
 				cycle.non_goals.first().map_or("None", WireText::as_str),
+			))
+			.child(program_pulse_section(
+				"DOMAIN PACK",
+				cycle.domain_pack.as_ref().map_or("UNBOUND", |pack| pack.descriptor.name.as_str()),
 			))
 			.child(
 				div()
@@ -1567,11 +1743,8 @@ impl FactorySurface {
 		cx: &mut Context<Self>,
 	) -> AnyElement {
 		let selected = self.program_selection.clone();
-		let cycle_count = cycle
-			.nodes
-			.iter()
-			.filter(|node| node.kind == ProgramNodeKind::Signal)
-			.count();
+		let cycle_count =
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count();
 		let mut current_cycle = 0;
 		let mut graph = div()
 			.id("program-graph-strip")
@@ -1597,19 +1770,145 @@ impl FactorySurface {
 			}
 			if node.kind == ProgramNodeKind::Signal {
 				current_cycle += 1;
-				graph = graph.child(program_cycle_boundary(
-					current_cycle,
-					current_cycle == cycle_count,
-				));
+				graph = graph
+					.child(program_cycle_boundary(current_cycle, current_cycle == cycle_count));
 			}
 			graph = graph.child(program_node_card(node, selected.as_ref() == Some(&node.id), cx));
 		}
 		graph.into_any_element()
 	}
 
+	fn program_domain_graph(
+		&self,
+		cycle: &decodex_protocol::ProgramCycleDto,
+		cx: &mut Context<Self>,
+	) -> AnyElement {
+		let Some(pack) = cycle.domain_pack.as_ref() else {
+			return div()
+				.id("program-domain-unbound")
+				.h(px(86.0))
+				.min_h(px(86.0))
+				.px_4()
+				.flex()
+				.items_center()
+				.justify_between()
+				.border_1()
+				.border_color(rgba(0xf0a64a35))
+				.rounded(px(10.0))
+				.bg(rgba(0xf0a64a0a))
+				.child(
+					div()
+						.flex()
+						.flex_col()
+						.gap_1()
+						.child(
+							div()
+								.font_family("SF Mono")
+								.text_size(px(8.0))
+								.text_color(rgb(AMBER))
+								.child("LEGACY PROGRAM · DOMAIN PACK UNBOUND"),
+						)
+						.child(div().text_size(px(9.0)).text_color(rgb(TEXT_MUTED)).child(
+							"Bind one built-in Pack once to enable a domain projection and Program execution.",
+						)),
+				)
+				.into_any_element();
+		};
+		let selected = self.program_selection.clone();
+		let capability = pack
+			.descriptor
+			.capabilities
+			.first()
+			.map(|capability| {
+				format!(
+					"{} · {}",
+					capability.id.as_str(),
+					match capability.status {
+						DomainPackCapabilityStatus::Granted => "GRANTED",
+						DomainPackCapabilityStatus::Unavailable => "UNAVAILABLE",
+					}
+				)
+			})
+			.unwrap_or_else(|| "NO CAPABILITIES".to_owned());
+		let mut graph = div()
+			.id("program-domain-graph")
+			.h(px(206.0))
+			.min_h(px(206.0))
+			.p_3()
+			.flex()
+			.flex_col()
+			.gap_2()
+			.border_1()
+			.border_color(rgba(0xffffff16))
+			.rounded(px(12.0))
+			.bg(rgba(ui_theme::SURFACE_MATERIAL))
+			.child(
+				div()
+					.flex()
+					.items_center()
+					.justify_between()
+					.child(
+						div()
+							.flex()
+							.items_center()
+							.gap_2()
+							.child(
+								div()
+									.font_family("SF Mono")
+									.text_size(px(8.0))
+									.text_color(rgb(BLUE))
+									.child("DOMAIN LENS"),
+							)
+							.child(
+								div()
+									.text_size(px(10.0))
+									.font_weight(FontWeight::SEMIBOLD)
+									.child(pack.descriptor.name.as_str().to_owned()),
+							)
+							.child(
+								div()
+									.font_family("SF Mono")
+									.text_size(px(7.0))
+									.text_color(rgb(TEXT_FAINT))
+									.child(format!("v{}", pack.descriptor.version.as_str())),
+							),
+					)
+					.child(
+						div()
+							.font_family("SF Mono")
+							.text_size(px(7.0))
+							.text_color(rgb(GREEN))
+							.child(capability),
+					),
+			);
+		let mut strip = div()
+			.id("program-domain-entity-strip")
+			.flex_1()
+			.min_h_0()
+			.flex()
+			.items_center()
+			.overflow_x_scroll();
+		for (index, entity) in pack.entities.iter().enumerate() {
+			if index > 0 {
+				let relation = pack
+					.relations
+					.iter()
+					.find(|relation| relation.to == entity.id)
+					.map(|relation| domain_relation_label(relation.kind.as_str()))
+					.unwrap_or_else(|| "relates".to_owned());
+				strip = strip.child(program_edge(&relation));
+			}
+			strip =
+				strip.child(domain_entity_card(entity, selected.as_ref() == Some(&entity.id), cx));
+		}
+		graph = graph.child(strip);
+		graph.into_any_element()
+	}
+
 	fn program_inspector(
 		&self,
 		selected: Option<&ProgramNodeDto>,
+		selected_domain: Option<&DomainEntityDto>,
 		cycle: &decodex_protocol::ProgramCycleDto,
 		can_review: bool,
 		can_continue: bool,
@@ -1684,6 +1983,101 @@ impl FactorySurface {
 				));
 			}
 		}
+		if let Some(entity) = selected_domain {
+			let color = domain_entity_color(entity.kind.as_str());
+			panel = panel
+				.child(
+					div()
+						.flex()
+						.items_center()
+						.gap_2()
+						.child(div().size(px(8.0)).rounded_full().bg(rgb(color)))
+						.child(
+							div()
+								.text_size(px(13.0))
+								.font_weight(FontWeight::SEMIBOLD)
+								.child(entity.title.as_str().to_owned()),
+						),
+				)
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(8.0))
+						.text_color(rgb(color))
+						.child(format!("{} · {}", entity.kind.as_str(), entity.state.as_str())),
+				)
+				.child(
+					div()
+						.text_size(px(10.0))
+						.text_color(rgb(TEXT_MUTED))
+						.child(entity.summary.as_str().to_owned()),
+				)
+				.when_some(entity.source.as_ref(), |panel, source| {
+					panel.child(program_pulse_section("SOURCE", source.as_str()))
+				});
+			for field in &entity.fields {
+				panel =
+					panel.child(program_pulse_section(field.label.as_str(), field.value.as_str()));
+			}
+		}
+		if let Some(pack) = cycle.domain_pack.as_ref() {
+			panel = panel
+				.child(
+					div()
+						.mt_2()
+						.pt_3()
+						.border_t_1()
+						.border_color(rgba(0xffffff12))
+						.font_family("SF Mono")
+						.text_size(px(8.0))
+						.text_color(rgb(TEXT_FAINT))
+						.child("DOMAIN PACK CONTRACT"),
+				)
+				.child(program_pulse_section("PACK", pack.descriptor.id.as_str()))
+				.child(program_pulse_section("VERSION", pack.descriptor.version.as_str()))
+				.child(program_pulse_section("DIGEST", &pack.descriptor.digest.as_str()[..12]))
+				.child(program_pulse_section(
+					"SCHEMA",
+					&format!(
+						"{} entity types · {} relation types",
+						pack.descriptor.entity_types.len(),
+						pack.descriptor.relation_types.len()
+					),
+				));
+			for capability in &pack.descriptor.capabilities {
+				let state = match capability.status {
+					DomainPackCapabilityStatus::Granted => "GRANTED",
+					DomainPackCapabilityStatus::Unavailable => "UNAVAILABLE",
+				};
+				panel = panel.child(program_pulse_section(capability.id.as_str(), state));
+			}
+			panel = panel.child(program_pulse_section("UNDECLARED CAPABILITIES", "DENIED"));
+		} else {
+			let can_bind =
+				self.programs_snapshot.as_ref().is_some_and(|snapshot| snapshot.can_mutate);
+			panel = panel
+				.child(program_pulse_section("DOMAIN PACK", "UNBOUND LEGACY PROGRAM"))
+				.child(program_action_button(
+					"bind-development-pack",
+					"BIND DEVELOPMENT PACK",
+					BLUE,
+					can_bind,
+					cx,
+					|surface, cx| {
+						surface.bind_selected_domain_pack(ProgramPackChoice::Development, cx);
+					},
+				))
+				.child(program_action_button(
+					"bind-paper-pack",
+					"BIND PAPER PACK",
+					GREEN,
+					can_bind,
+					cx,
+					|surface, cx| {
+						surface.bind_selected_domain_pack(ProgramPackChoice::PaperInvestment, cx);
+					},
+				));
+		}
 		if can_review {
 			panel = panel.child(self.program_review_form(cycle, cx));
 		}
@@ -1722,19 +2116,12 @@ impl FactorySurface {
 			"CODEX INSTRUCTIONS",
 			"WORKING DIRECTORY",
 		];
-		let fields = self
-			.program_continuation_inputs
-			.all()
-			.into_iter()
-			.zip(labels)
-			.enumerate()
-			.map(|(index, (input, label))| program_input_field(index + 20, label, input.clone()));
-		let next_cycle = cycle
-			.nodes
-			.iter()
-			.filter(|node| node.kind == ProgramNodeKind::Signal)
-			.count()
-			+ 1;
+		let fields =
+			self.program_continuation_inputs.all().into_iter().zip(labels).enumerate().map(
+				|(index, (input, label))| program_input_field(index + 20, label, input.clone()),
+			);
+		let next_cycle =
+			cycle.nodes.iter().filter(|node| node.kind == ProgramNodeKind::Signal).count() + 1;
 		div()
 			.mt_3()
 			.pt_4()
@@ -1762,12 +2149,9 @@ impl FactorySurface {
 							.child(format!("REV {}", cycle.program.revision.0)),
 					),
 			)
-			.child(
-				div()
-					.text_size(px(8.5))
-					.text_color(rgb(TEXT_FAINT))
-					.child("Manual continuation preserves the prior Review and replaces any unresolved Objective."),
-			)
+			.child(div().text_size(px(8.5)).text_color(rgb(TEXT_FAINT)).child(
+				"Manual continuation preserves the prior Review and replaces any unresolved Objective.",
+			))
 			.children(fields)
 			.child(program_action_button(
 				"append-program-cycle",
@@ -3509,8 +3893,9 @@ const fn program_error_label(error: ProgramInputError) -> &'static str {
 	match error {
 		ProgramInputError::Offline => "Program authority is offline.",
 		ProgramInputError::Busy => "Wait for the current Program operation.",
-		ProgramInputError::InvalidDraft =>
-			"Complete every field with bounded credential-free text.",
+		ProgramInputError::InvalidDraft => {
+			"Complete every field with bounded credential-free text."
+		},
 		ProgramInputError::NoSelection => "Select one Program first.",
 		ProgramInputError::IdentityUnavailable => "A stable Program identity could not be created.",
 	}
@@ -3778,6 +4163,139 @@ fn program_node_card(
 				.child(node.summary.as_str().to_owned()),
 		)
 		.into_any_element()
+}
+
+fn program_pack_choice(
+	pack: ProgramPackChoice,
+	selected: bool,
+	cx: &mut Context<FactorySurface>,
+) -> AnyElement {
+	let color = pack.color();
+	div()
+		.id(format!("program-pack/{}", pack.id()))
+		.role(Role::RadioButton)
+		.aria_label(format!("Select {} Domain Pack", pack.name()))
+		.aria_selected(selected)
+		.min_h(px(76.0))
+		.p_3()
+		.flex()
+		.items_center()
+		.gap_3()
+		.border_1()
+		.border_color(if selected { rgb(color) } else { rgba(0xffffff14) })
+		.rounded(px(10.0))
+		.bg(if selected { rgba(0xffffff0d) } else { rgba(0x00000000) })
+		.cursor_pointer()
+		.hover(|style| style.border_color(rgba(0xffffff32)).bg(rgba(0xffffff09)))
+		.on_click(cx.listener(move |surface, _, _, cx| {
+			surface.select_program_pack(pack, cx);
+		}))
+		.child(
+			div()
+				.size(px(10.0))
+				.rounded_full()
+				.border_1()
+				.border_color(rgb(color))
+				.when(selected, |dot| dot.bg(rgb(color))),
+		)
+		.child(
+			div()
+				.flex()
+				.flex_col()
+				.gap_1()
+				.child(
+					div().text_size(px(11.0)).font_weight(FontWeight::SEMIBOLD).child(pack.name()),
+				)
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(7.5))
+						.text_color(rgb(color))
+						.child(pack.id()),
+				)
+				.child(div().text_size(px(8.5)).text_color(rgb(TEXT_MUTED)).child(pack.summary())),
+		)
+		.into_any_element()
+}
+
+fn domain_entity_card(
+	entity: &DomainEntityDto,
+	selected: bool,
+	cx: &mut Context<FactorySurface>,
+) -> AnyElement {
+	let entity_id = entity.id.clone();
+	let color = domain_entity_color(entity.kind.as_str());
+	div()
+		.id(format!("domain-entity/{}", entity.id.as_str()))
+		.role(Role::Button)
+		.aria_label(format!("Inspect {} {}", entity.kind.as_str(), entity.title.as_str()))
+		.w(px(178.0))
+		.min_w(px(178.0))
+		.min_h(px(126.0))
+		.p_3()
+		.flex()
+		.flex_col()
+		.gap_2()
+		.border_1()
+		.border_color(if selected { rgb(color) } else { rgba(0xffffff16) })
+		.rounded(px(10.0))
+		.bg(if selected {
+			rgba(ui_theme::SURFACE_RAISED_MATERIAL)
+		} else {
+			rgba(ui_theme::SURFACE_MATERIAL)
+		})
+		.cursor_pointer()
+		.hover(|style| style.border_color(rgba(0xffffff34)))
+		.on_click(cx.listener(move |surface, _, _, cx| {
+			surface.select_program_node(entity_id.clone(), cx);
+		}))
+		.child(
+			div()
+				.flex()
+				.items_center()
+				.justify_between()
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(7.0))
+						.text_color(rgb(color))
+						.child(domain_kind_label(entity.kind.as_str())),
+				)
+				.child(
+					div()
+						.font_family("SF Mono")
+						.text_size(px(7.0))
+						.text_color(rgb(TEXT_FAINT))
+						.child(entity.state.as_str().to_owned()),
+				),
+		)
+		.child(
+			div()
+				.text_size(px(11.0))
+				.font_weight(FontWeight::SEMIBOLD)
+				.child(entity.title.as_str().to_owned()),
+		)
+		.child(
+			div()
+				.max_h(px(48.0))
+				.overflow_hidden()
+				.text_size(px(8.5))
+				.text_color(rgb(TEXT_MUTED))
+				.child(entity.summary.as_str().to_owned()),
+		)
+		.into_any_element()
+}
+
+fn domain_kind_label(kind: &str) -> String {
+	kind.rsplit('.').next().unwrap_or(kind).replace('_', " ").to_uppercase()
+}
+
+fn domain_relation_label(kind: &str) -> String {
+	kind.rsplit('.').next().unwrap_or(kind).replace('_', " ")
+}
+
+fn domain_entity_color(kind: &str) -> u32 {
+	if kind.starts_with("finance.") { GREEN } else { BLUE }
 }
 
 const fn program_node_color(kind: ProgramNodeKind) -> u32 {
@@ -4251,6 +4769,26 @@ mod tests {
 			window.resize(size(px(1_490.0), px(1_092.0)));
 			window.draw(cx).clear();
 		});
+	}
+
+	#[gpui::test]
+	fn paper_example_selects_the_pack_and_prefills_the_bounded_intake(cx: &mut TestAppContext) {
+		let (surface, visual) = open_factory(cx);
+		surface.update(visual, |surface, cx| surface.load_paper_example(cx));
+		let (pack, name, instructions, working_directory) =
+			surface.read_with(visual, |surface, cx| {
+				(
+					surface.program_pack,
+					surface.program_inputs.name.read(cx).content().to_owned(),
+					surface.program_inputs.work_item_instructions.read(cx).content().to_owned(),
+					surface.program_inputs.working_directory.read(cx).content().to_owned(),
+				)
+			});
+		assert_eq!(pack, ProgramPackChoice::PaperInvestment);
+		assert_eq!(name, "June Treasury Curve Research");
+		assert!(instructions.contains("Do not use live data"));
+		assert!(working_directory.is_empty());
+		visual.update(|window, cx| window.draw(cx).clear());
 	}
 
 	#[test]

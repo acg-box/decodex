@@ -1,0 +1,17 @@
+{
+  "schema": "decodex/domain-pack/1",
+  "id": "decodex.paper-investment",
+  "version": "1.0.0",
+  "name": "Paper Investment Research",
+  "namespace": "finance",
+  "capabilities": ["codex.quick_task"],
+  "entity_types": ["finance.asset", "finance.thesis", "finance.scenario"],
+  "relation_types": ["finance.compared_with", "finance.informs", "finance.tests"],
+  "view": "graph_inspector",
+  "dataset": {
+    "source": "https://home.treasury.gov/resource-center/data-chart-center/interest-rates/pages/xml?data=daily_treasury_yield_curve&field_tdr_date_value_month=202506",
+    "period": "2025-06",
+    "fields": ["date", "2_year", "10_year"],
+    "sha256": "1736087dfc077c238d8ab206629c4ccf9a2cb127e21b0cd91a53e5d0d4b0daf7"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "schema": "decodex/domain-pack/1",
+  "id": "decodex.dev",
+  "version": "1.0.0",
+  "name": "Software Development",
+  "namespace": "dev",
+  "capabilities": ["codex.quick_task"],
+  "entity_types": ["dev.repository", "dev.change", "dev.validation"],
+  "relation_types": ["dev.contains", "dev.validated_by"],
+  "view": "graph_inspector"
+}

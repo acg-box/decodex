@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use crate::{CommandIdentity, SqliteStore, StoreError};
 
 const CREATE_OPERATION: &str = "create_program_cycle";
+const BIND_PACK_OPERATION: &str = "bind_program_domain_pack";
 const CONTINUE_OPERATION: &str = "continue_program";
 const REVIEW_OPERATION: &str = "record_program_review";
 const MAX_LIST_ITEMS: usize = 32;
@@ -28,6 +29,7 @@ const COMPLETE_PROGRAM_CYCLE_NODE_COST: usize = 9;
 #[derive(Clone, Debug)]
 pub struct CreateProgramCycle {
 	pub program_id: ProgramId,
+	pub domain_pack: Option<DomainPackIdentity>,
 	pub signal_id: ProgramObservationId,
 	pub claim_id: ProgramClaimId,
 	pub proposal_id: ProgramProposalId,
@@ -51,6 +53,38 @@ pub struct CreateProgramCycle {
 	pub work_item_title: String,
 	pub work_item_instructions: String,
 	pub working_directory: String,
+}
+
+/// Exact identity selected from the daemon-owned built-in Domain Pack registry.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct DomainPackIdentity {
+	pub pack_id: String,
+	pub pack_version: String,
+	pub pack_digest: String,
+}
+
+/// Exact immutable identity of one built-in Domain Pack bound to a Program.
+#[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
+pub struct ProgramDomainPackBinding {
+	pub pack_id: String,
+	pub pack_version: String,
+	pub pack_digest: String,
+	pub bound_at_micros: i64,
+}
+
+/// One exact first binding for an existing legacy Program.
+#[derive(Clone, Debug)]
+pub struct BindProgramDomainPack {
+	pub program_id: ProgramId,
+	pub expected_revision: u64,
+	pub domain_pack: DomainPackIdentity,
+}
+
+/// WorkItem ownership and optional immutable Domain Pack binding.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProgramWorkItemDomainPack {
+	pub program_id: ProgramId,
+	pub domain_pack: Option<ProgramDomainPackBinding>,
 }
 
 /// One exact next semantic cycle appended to an existing reviewed Program.
@@ -226,6 +260,7 @@ pub struct ProgramReviewRecord {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 pub struct ProgramCycleRecord {
 	pub program: ProgramCharterRecord,
+	pub domain_pack: Option<ProgramDomainPackBinding>,
 	pub signals: Vec<ProgramSignalRecord>,
 	pub claims: Vec<ProgramClaimRecord>,
 	pub proposals: Vec<ProgramProposalRecord>,
@@ -316,6 +351,14 @@ impl SqliteStore {
 					],
 				)
 				.map_err(sql_error)?;
+			if let Some(domain_pack) = &create.domain_pack {
+				insert_domain_pack_binding(
+					&transaction,
+					&create.program_id,
+					domain_pack,
+					now,
+				)?;
+			}
 				transaction
 					.execute(
 						"INSERT INTO program_entities (entity_id, program_id, kind)
@@ -365,6 +408,103 @@ impl SqliteStore {
 			Ok(record)
 		})
 			.await
+	}
+
+	/// Bind one built-in Domain Pack to an existing Program exactly once.
+	pub async fn bind_program_domain_pack(
+		&self,
+		command: &CommandIdentity,
+		binding: &BindProgramDomainPack,
+	) -> Result<ProgramCycleRecord, StoreError> {
+		validate_pack_identity(&binding.domain_pack)?;
+		if binding.expected_revision == 0 {
+			return Err(StoreError::InvalidInput("Program revision is invalid"));
+		}
+		let command = command.clone();
+		let binding = binding.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			if let Some(response) = read_receipt(
+				&transaction,
+				&command,
+				BIND_PACK_OPERATION,
+				binding.program_id.as_str(),
+			)? {
+				let record = serde_json::from_str(&response)
+					.map_err(|_| incompatible("Program Domain Pack binding receipt"))?;
+				transaction.commit().map_err(sql_error)?;
+				return Ok(record);
+			}
+			let expected_revision = i64::try_from(binding.expected_revision)
+				.map_err(|_| StoreError::InvalidInput("Program revision is invalid"))?;
+			let current = transaction
+				.query_row(
+					"SELECT revision FROM programs WHERE program_id = ?1",
+					params![binding.program_id.as_str()],
+					|row| row.get::<_, i64>(0),
+				)
+				.optional()
+				.map_err(sql_error)?;
+			let Some(actual_revision) = current else {
+				return Err(StoreError::InvalidInput("Program does not exist"));
+			};
+			if actual_revision != expected_revision {
+				return Err(StoreError::RevisionConflict {
+					entity: format!("program/{}", binding.program_id),
+					expected: Some(expected_revision),
+					actual: Some(actual_revision),
+				});
+			}
+			let already_bound: bool = transaction
+				.query_row(
+					"SELECT EXISTS (
+					 SELECT 1 FROM program_domain_pack_bindings WHERE program_id = ?1
+					)",
+					params![binding.program_id.as_str()],
+					|row| row.get(0),
+				)
+				.map_err(sql_error)?;
+			if already_bound {
+				return Err(StoreError::InvalidInput("Program Domain Pack is already bound"));
+			}
+			let now = now_micros()?;
+			insert_domain_pack_binding(
+				&transaction,
+				&binding.program_id,
+				&binding.domain_pack,
+				now,
+			)?;
+			let changed = transaction
+				.execute(
+					"UPDATE programs SET revision = revision + 1, updated_at_micros = ?3
+					 WHERE program_id = ?1 AND revision = ?2",
+					params![binding.program_id.as_str(), expected_revision, now],
+				)
+				.map_err(sql_error)?;
+			if changed != 1 {
+				return Err(StoreError::RevisionConflict {
+					entity: format!("program/{}", binding.program_id),
+					expected: Some(expected_revision),
+					actual: None,
+				});
+			}
+			let record = read_program_cycle(&transaction, &binding.program_id)?
+				.ok_or_else(|| incompatible("bound Program Domain Pack"))?;
+			write_receipt(
+				&transaction,
+				&command,
+				BIND_PACK_OPERATION,
+				binding.program_id.as_str(),
+				&serde_json::to_string(&record)
+					.map_err(|_| incompatible("Program Domain Pack binding receipt"))?,
+				now,
+			)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(record)
+		})
+		.await
 	}
 
 	/// Atomically append one exact next cycle to a reviewed active Program.
@@ -561,6 +701,50 @@ impl SqliteStore {
 		self.run(move |connection| read_program_cycle(connection, &program_id)).await
 	}
 
+	/// Read the Program owner and immutable Pack binding for one WorkItem.
+	pub async fn program_domain_pack_for_work_item(
+		&self,
+		work_item_id: &WorkItemId,
+	) -> Result<Option<ProgramWorkItemDomainPack>, StoreError> {
+		let work_item_id = work_item_id.clone();
+		self.run(move |connection| {
+			let row = connection
+				.query_row(
+					"SELECT item.program_id, binding.pack_id, binding.pack_version,
+					 binding.pack_digest, binding.bound_at_micros
+					 FROM program_work_items AS item
+					 LEFT JOIN program_domain_pack_bindings AS binding USING (program_id)
+					 WHERE item.work_item_id = ?1",
+					params![work_item_id.as_str()],
+					|row| {
+						Ok((
+							row.get::<_, String>(0)?,
+							row.get::<_, Option<String>>(1)?,
+							row.get::<_, Option<String>>(2)?,
+							row.get::<_, Option<String>>(3)?,
+							row.get::<_, Option<i64>>(4)?,
+						))
+					},
+				)
+				.optional()
+				.map_err(sql_error)?;
+			let Some((program_id, pack_id, pack_version, pack_digest, bound_at_micros)) = row
+			else {
+				return Ok(None);
+			};
+			let program_id =
+				ProgramId::new(program_id).map_err(|_| incompatible("Program identity"))?;
+			let domain_pack = optional_pack_binding(
+				pack_id,
+				pack_version,
+				pack_digest,
+				bound_at_micros,
+			)?;
+			Ok(Some(ProgramWorkItemDomainPack { program_id, domain_pack }))
+		})
+		.await
+	}
+
 	/// List a bounded most-recent-first Program selector projection.
 	pub async fn list_programs(
 		&self,
@@ -752,6 +936,30 @@ impl SqliteStore {
 	}
 }
 
+fn insert_domain_pack_binding(
+	transaction: &Transaction<'_>,
+	program_id: &ProgramId,
+	identity: &DomainPackIdentity,
+	bound_at_micros: i64,
+) -> Result<(), StoreError> {
+	validate_pack_identity(identity)?;
+	transaction
+		.execute(
+			"INSERT INTO program_domain_pack_bindings (
+			 program_id, pack_id, pack_version, pack_digest, bound_at_micros
+			 ) VALUES (?1, ?2, ?3, ?4, ?5)",
+			params![
+				program_id.as_str(),
+				identity.pack_id,
+				identity.pack_version,
+				identity.pack_digest,
+				bound_at_micros
+			],
+		)
+		.map_err(sql_error)?;
+	Ok(())
+}
+
 fn insert_program_step(
 	transaction: &Transaction<'_>,
 	step: &ProgramStep<'_>,
@@ -897,6 +1105,9 @@ pub(crate) fn bind_program_work_item_execution(
 }
 
 fn validate_create(create: &CreateProgramCycle) -> Result<(), StoreError> {
+	if let Some(domain_pack) = &create.domain_pack {
+		validate_pack_identity(domain_pack)?;
+	}
 	validate_text(&create.name, 256)?;
 	for value in [
 		&create.purpose,
@@ -919,6 +1130,36 @@ fn validate_create(create: &CreateProgramCycle) -> Result<(), StoreError> {
 	validate_list(&create.validation_criteria)?;
 	if create.signal_observed_at_micros <= 0 || !valid_absolute_path(&create.working_directory) {
 		return Err(StoreError::InvalidInput("Program time or working directory is invalid"));
+	}
+	Ok(())
+}
+
+fn validate_pack_identity(identity: &DomainPackIdentity) -> Result<(), StoreError> {
+	let valid_symbol = |value: &str| {
+		value.len() >= 3
+			&& value.len() <= 128
+			&& value.as_bytes().first().is_some_and(u8::is_ascii_lowercase)
+			&& value.as_bytes().last().is_some_and(u8::is_ascii_alphanumeric)
+			&& value
+				.bytes()
+				.all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || b".-".contains(&byte))
+			&& value.contains('.')
+			&& !value.contains("..")
+	};
+	let version_parts = identity.pack_version.split('.').collect::<Vec<_>>();
+	let valid_version = version_parts.len() == 3
+		&& version_parts.iter().all(|part| {
+			!part.is_empty()
+				&& part.bytes().all(|byte| byte.is_ascii_digit())
+				&& (part == &"0" || !part.starts_with('0'))
+		});
+	let valid_digest = identity.pack_digest.len() == 64
+		&& identity
+			.pack_digest
+			.bytes()
+			.all(|byte| byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'));
+	if !valid_symbol(&identity.pack_id) || !valid_version || !valid_digest {
+		return Err(StoreError::InvalidInput("Domain Pack identity is invalid"));
 	}
 	Ok(())
 }
@@ -1109,6 +1350,25 @@ fn read_program_cycle(
 		created_at_micros: positive_time(created)?,
 		updated_at_micros: positive_time(updated)?,
 	};
+	let domain_pack = connection
+		.query_row(
+			"SELECT pack_id, pack_version, pack_digest, bound_at_micros
+			 FROM program_domain_pack_bindings WHERE program_id = ?1",
+			params![program_id.as_str()],
+			|row| {
+				Ok(ProgramDomainPackBinding {
+					pack_id: row.get(0)?,
+					pack_version: row.get(1)?,
+					pack_digest: row.get(2)?,
+					bound_at_micros: row.get(3)?,
+				})
+			},
+		)
+		.optional()
+		.map_err(sql_error)?;
+	if let Some(binding) = &domain_pack {
+		validate_persisted_pack_binding(binding)?;
+	}
 	let signals = query_rows(
 		connection,
 		"SELECT signal_id, predecessor_review_id, source, summary, observed_at_micros,
@@ -1277,6 +1537,7 @@ fn read_program_cycle(
 	)?;
 	Ok(Some(ProgramCycleRecord {
 		program,
+		domain_pack,
 		signals,
 		claims,
 		proposals,
@@ -1285,6 +1546,41 @@ fn read_program_cycle(
 		evidence,
 		reviews,
 	}))
+}
+
+fn optional_pack_binding(
+	pack_id: Option<String>,
+	pack_version: Option<String>,
+	pack_digest: Option<String>,
+	bound_at_micros: Option<i64>,
+) -> Result<Option<ProgramDomainPackBinding>, StoreError> {
+	match (pack_id, pack_version, pack_digest, bound_at_micros) {
+		(None, None, None, None) => Ok(None),
+		(Some(pack_id), Some(pack_version), Some(pack_digest), Some(bound_at_micros)) => {
+			let binding = ProgramDomainPackBinding {
+				pack_id,
+				pack_version,
+				pack_digest,
+				bound_at_micros,
+			};
+			validate_persisted_pack_binding(&binding)?;
+			Ok(Some(binding))
+		},
+		_ => Err(incompatible("Program Domain Pack binding")),
+	}
+}
+
+fn validate_persisted_pack_binding(
+	binding: &ProgramDomainPackBinding,
+) -> Result<(), StoreError> {
+	validate_pack_identity(&DomainPackIdentity {
+		pack_id: binding.pack_id.clone(),
+		pack_version: binding.pack_version.clone(),
+		pack_digest: binding.pack_digest.clone(),
+	})
+	.map_err(|_| incompatible("Program Domain Pack identity"))?;
+	positive_time(binding.bound_at_micros)?;
+	Ok(())
 }
 
 fn query_rows<T>(
@@ -1471,6 +1767,13 @@ mod tests {
 	fn create_fixture() -> CreateProgramCycle {
 		CreateProgramCycle {
 			program_id: id("30000000-0000-4000-8000-000000000001", ProgramId::new),
+			domain_pack: Some(DomainPackIdentity {
+				pack_id: "decodex.dev".to_owned(),
+				pack_version: "1.0.0".to_owned(),
+				pack_digest:
+					"1111111111111111111111111111111111111111111111111111111111111111"
+						.to_owned(),
+			}),
 			signal_id: id("31000000-0000-4000-8000-000000000001", ProgramObservationId::new),
 			claim_id: id("32000000-0000-4000-8000-000000000001", ProgramClaimId::new),
 			proposal_id: id("33000000-0000-4000-8000-000000000001", ProgramProposalId::new),
@@ -1541,10 +1844,111 @@ mod tests {
 		let created = store.create_program_cycle(&command, &create).await.expect("create cycle");
 		assert_eq!(created.work_items[0].state, WorkItemState::Ready);
 		assert_eq!(created.signals.len(), 1);
+		assert_eq!(
+			created.domain_pack.as_ref().map(|binding| binding.pack_id.as_str()),
+			Some("decodex.dev")
+		);
+		assert_eq!(
+			store
+				.program_domain_pack_for_work_item(&create.work_item_id)
+				.await
+				.expect("read WorkItem Pack")
+				.expect("WorkItem exists")
+				.domain_pack
+				.as_ref()
+				.map(|binding| binding.pack_digest.as_str()),
+			create.domain_pack.as_ref().map(|identity| identity.pack_digest.as_str())
+		);
 		assert_eq!(store.create_program_cycle(&command, &create).await.expect("replay"), created);
 		drop(store);
 		let reopened = SqliteStore::open_test(&path).expect("reopen store");
 		assert_eq!(reopened.program_cycle(&create.program_id).await.expect("read"), Some(created));
+	}
+
+	#[tokio::test]
+	async fn legacy_program_accepts_one_immutable_pack_binding() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let mut create = create_fixture();
+		create.domain_pack = None;
+		store
+			.create_program_cycle(
+				&CommandIdentity::new("program-create-legacy", b"legacy create")
+					.expect("command identity"),
+				&create,
+			)
+			.await
+			.expect("create legacy Program");
+		let identity = DomainPackIdentity {
+			pack_id: "decodex.dev".to_owned(),
+			pack_version: "1.0.0".to_owned(),
+			pack_digest:
+				"2222222222222222222222222222222222222222222222222222222222222222"
+					.to_owned(),
+		};
+		let binding = BindProgramDomainPack {
+			program_id: create.program_id.clone(),
+			expected_revision: 1,
+			domain_pack: identity.clone(),
+		};
+		let command =
+			CommandIdentity::new("program-bind-pack", b"bind pack").expect("command identity");
+		let bound = store
+			.bind_program_domain_pack(&command, &binding)
+			.await
+			.expect("bind Pack");
+		assert_eq!(bound.program.revision, 2);
+		assert_eq!(bound.domain_pack.as_ref().map(|pack| pack.pack_id.as_str()), Some("decodex.dev"));
+		assert_eq!(
+			store.bind_program_domain_pack(&command, &binding).await.expect("replay"),
+			bound
+		);
+		let second = BindProgramDomainPack {
+			program_id: create.program_id.clone(),
+			expected_revision: 2,
+			domain_pack: identity,
+		};
+		assert!(matches!(
+			store
+				.bind_program_domain_pack(
+					&CommandIdentity::new("program-bind-pack-again", b"bind again")
+						.expect("command identity"),
+					&second,
+				)
+				.await,
+			Err(StoreError::InvalidInput("Program Domain Pack is already bound"))
+		));
+		store
+			.with_connection(|connection| {
+				assert!(
+					connection
+						.execute(
+							"UPDATE program_domain_pack_bindings SET pack_digest = ?2
+							 WHERE program_id = ?1",
+							params![
+								create.program_id.as_str(),
+								"3333333333333333333333333333333333333333333333333333333333333333"
+							],
+						)
+						.is_err()
+				);
+				Ok(())
+			})
+			.expect("verify immutable trigger");
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+		assert_eq!(
+			reopened
+				.program_cycle(&create.program_id)
+				.await
+				.expect("read")
+				.expect("Program")
+				.domain_pack
+				.as_ref()
+				.map(|pack| pack.pack_digest.as_str()),
+			Some("2222222222222222222222222222222222222222222222222222222222222222")
+		);
 	}
 
 	#[tokio::test]

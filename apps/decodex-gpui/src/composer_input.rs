@@ -146,6 +146,13 @@ impl ComposerInput {
 		self.changed(cx);
 	}
 
+	pub(crate) fn set_content(&mut self, value: &str, cx: &mut Context<Self>) {
+		if self.content == value {
+			return;
+		}
+		self.replace_bytes(0..self.content.len(), value, false, None, cx);
+	}
+
 	fn changed(&mut self, cx: &mut Context<Self>) {
 		cx.notify();
 		cx.emit(ComposerEvent::Changed);
