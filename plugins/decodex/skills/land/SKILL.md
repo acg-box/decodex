@@ -8,7 +8,8 @@ description: Use when Decodex must land a human PR.
 Land a human-driven PR through `decodex land`. Read `../../references/routing.md` for
 full landing and recovery boundaries.
 
-1. Confirm PR, base, head, mergeability, and checks.
+1. Confirm the exact PR, base OID, head OID, and reviewed local validation evidence.
+   Do not read, require, or wait for CI status.
 2. Run `decodex land --authority <ISSUE> --pr <URL> "<summary>"`, or
    `decodex land --manual-authority --pr <URL> "<summary>"` for non-issue work.
    For the standalone upstream automation, run:
@@ -17,7 +18,8 @@ full landing and recovery boundaries.
    This local manual-authority form does not contact Decodex server or runtime. It
    requires an exact clean task worktree for an open PR. Decodex owns the signed
    merge, server-enforced base compare-and-swap, readback, primary sync, and exact
-   lane cleanup.
+   lane cleanup. It uses `gh pr view` only for PR identity and merge readback. It
+   does not call `gh pr checks`, read a status rollup, or wait for a workflow.
    Issue-authority landing writes final landing/closeout state only through the
    lifecycle kernel and runtime state adapter; tracker comments and local receipts
    are projections.

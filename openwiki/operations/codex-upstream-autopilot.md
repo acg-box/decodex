@@ -115,15 +115,16 @@ nonterminal `handed_off` outcome. Only an exact signed merge readback is
     trailer `Upstream-Codex-Head: <oid>` when applicable.
 11. Remove the temporary worktree only after the remote PR state is read back.
 
-A failed check, stale base, Reviewer request, or required base repair is ordinary
-autonomous work on the same PR and its one linked dependency repair. The
-Maintainer updates those PRs and does not create a parallel workflow record.
+A failed local validation, stale base, Reviewer request, or required base repair
+is ordinary autonomous work on the same PR and its one linked dependency repair.
+The Maintainer updates those PRs and does not create a parallel workflow record.
 
 ## Reviewer Run
 
 1. Enumerate open PRs with the upstream trailer and deterministic branch, plus
    directly linked `upstream-dependency-repair` PRs.
-2. Read the complete diff, upstream evidence, review history, and check results.
+2. Read the complete diff, upstream evidence, and review history. Do not query CI
+   status.
    Read exactly one detection marker. Require RFC3339 UTC, require that it is
    not later than PR creation, and calculate detection-to-PR latency. A missing,
    duplicate, malformed, non-UTC, or post-creation marker blocks landing.
@@ -131,7 +132,7 @@ Maintainer updates those PRs and does not create a parallel workflow record.
    head.
 4. Review independently for correctness, scope, removed obsolete support,
    security, and test quality.
-5. Run the focused tests and the appropriate repository gate.
+5. Run the focused tests and the appropriate local repository gate.
 6. When a defect exists, submit precise GitHub review feedback with a required
    outcome. A detection-marker repair identifies the earliest authoritative
    evidence and requires exact body readback. Leave the PR open for Maintainer
@@ -149,7 +150,8 @@ decodex land --manual-authority --pr <url> \
 9. Remove the review worktree.
 
 Exact base/head arguments and merge readback make a retry adopt the same result
-instead of creating a second landing effect.
+instead of creating a second landing effect. CI status is neither read nor used as
+landing authority; local validation from step 5 is the validation evidence.
 
 ## Manager Run
 
