@@ -120,6 +120,7 @@ impl Programs {
 	}
 
 	#[cfg(feature = "visual-capture")]
+	#[allow(clippy::too_many_lines)] // Keep one deterministic visual-cycle fixture together.
 	pub(crate) fn visual_closed_cycle() -> Self {
 		use decodex_protocol::{
 			DomainEntityDto, DomainEntityFieldDto, DomainPackCapabilityDto,

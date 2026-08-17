@@ -1059,6 +1059,7 @@ impl FactorySurface {
 		cx.notify();
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one cohesive Factory toolbar composition together.
 	fn embedded_toolbar(&self, cx: &mut Context<Self>) -> AnyElement {
 		if self.programs_snapshot.is_some() {
 			return self.program_toolbar(cx);
@@ -1491,6 +1492,7 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one cohesive Program intake form together.
 	fn program_intake(&self, snapshot: &ProgramsSnapshot, cx: &mut Context<Self>) -> AnyElement {
 		let inputs = self.program_inputs.all();
 		let selected_pack = self.program_pack;
@@ -1905,6 +1907,7 @@ impl FactorySurface {
 		graph.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one closed Program inspector projection together.
 	fn program_inspector(
 		&self,
 		selected: Option<&ProgramNodeDto>,
@@ -2245,6 +2248,7 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one synchronized Factory canvas composition together.
 	fn live_factory_canvas(&self, cx: &mut Context<Self>) -> AnyElement {
 		let snapshot = self
 			.work_items_snapshot
@@ -2551,6 +2555,7 @@ impl FactorySurface {
 		)
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one cohesive parallel-work cell together.
 	fn parallel_cell(&self, cx: &mut Context<Self>) -> AnyElement {
 		let branch = |id: &'static str, top: f32, children: Vec<AnyElement>| {
 			div()
@@ -2850,6 +2855,7 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one closed gate decision sheet together.
 	fn gate_sheet(&self, cx: &mut Context<Self>) -> AnyElement {
 		let approved = self.gate == GateState::Approved;
 		let state = if approved { "Approved" } else { "Needs decision" };
@@ -3004,6 +3010,7 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one replay evidence panel together.
 	fn replay_panel(&self, cx: &mut Context<Self>) -> AnyElement {
 		let events = [
 			(ReplayMoment::Brief, 210.0, "15:42", "Goal accepted", TEXT),
@@ -3355,6 +3362,7 @@ impl FactorySurface {
 			.into_any_element()
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one Conversation drawer composition together.
 	fn conversation_drawer(
 		&self,
 		target: ConversationTarget,
@@ -3665,6 +3673,7 @@ fn live_lane(
 		.into_any_element()
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete WorkItem card and actions together.
 fn live_work_item_card(
 	card: WorkItemBoardCard,
 	color: u32,

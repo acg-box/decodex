@@ -16,6 +16,13 @@ mod ui_theme;
 #[path = "../work_items.rs"]
 mod work_items;
 
+use libc as _;
+use objc2_app_kit as _;
+use objc2_foundation as _;
+use serde as _;
+use serde_json as _;
+#[cfg(test)] use tempfile as _;
+
 use std::path::PathBuf;
 
 use gpui::{AppContext as _, VisualTestAppContext, px, size};

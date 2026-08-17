@@ -28,6 +28,9 @@ mod shell;
 mod ui_theme;
 mod work_items;
 
+use objc2_app_kit as _;
+use objc2_foundation as _;
+
 use gpui::{
 	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
 	px, size,

@@ -2111,6 +2111,7 @@ fn test_fixture_uses_only_typed_bounded_cache_content() {
 
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon and creates two conversations plus one later turn"]
+#[allow(clippy::too_many_lines)] // Keep one complete live sequential-task proof together.
 async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 	use crate::quick_tasks::{QuickTaskCommandState, QuickTasksLoadState};
 
@@ -2320,6 +2321,7 @@ async fn live_daemon_accepts_sequential_quick_tasks_and_returns_history() {
 
 #[tokio::test]
 #[ignore = "requires the user's live Decodex daemon; binds the dogfood Pack and creates one paper-only Program conversation"]
+#[allow(clippy::too_many_lines)] // Keep one complete live Domain Pack pressure proof together.
 async fn live_daemon_completes_the_builtin_domain_pack_pressure_test() {
 	use crate::{
 		programs::{ProgramCommandState, ProgramsLoadState},
