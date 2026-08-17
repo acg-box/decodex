@@ -102,6 +102,11 @@ cargo test -p decodexd
 cargo make check
 ```
 
+These checks run locally. This repository does not keep a tracked GitHub Actions CI
+workflow; future Actions are limited to tag/release publication. `decodex land`
+does not read or wait for CI status. Landing instead uses exact reviewed base/head
+object IDs and authoritative merge readback.
+
 On the current macOS development host, use the Xcode beta developer directory for the
 complete GPUI gate because the default Command Line Tools selection does not include the
 Metal compiler:

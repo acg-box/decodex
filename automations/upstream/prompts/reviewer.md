@@ -31,15 +31,16 @@ Workflow:
 5. Create a detached worktree at the exact head OID. Independently inspect the upstream delta or gate
    repair and the Decodex diff. Check protocol, config, auth, sandbox, MCP, collaboration, removed
    behavior, tests, docs, scope, and obsolete support.
-6. Run focused tests and the required repository gate. Verify that the PR does not hide unrelated or
-   generated state and does not weaken validation.
+6. Run focused tests and the appropriate local repository gate. Verify that the PR does not hide
+   unrelated or generated state and does not weaken validation.
 7. If there is a finding, submit one concise GitHub review with file/line evidence, expected behavior,
    and a repair acceptance test. Leave the PR open for Maintainer; this is a nonterminal handoff.
    For a missing, duplicate, malformed, non-UTC, or post-creation detection marker, the repair brief must
    state the observed body evidence, the exact required marker, the authoritative first-detection evidence
    to restore without resetting it to refresh time, and exact body-readback plus latency acceptance checks.
    Ordinary findings never require human attention, and a marker finding blocks landing.
-8. If ready, require all mandatory checks to pass. A parent with an open or stale dependency is not ready.
+8. If ready, require the local validation from step 6 to pass.
+   Do not query, require, or wait for CI. A parent with an open or stale dependency is not ready.
    Re-read the exact base and head OIDs immediately before landing.
 9. Run `decodex land --manual-authority --pr <url> --expected-base-oid <base> --expected-head-oid
    <head> "<summary>"`.
@@ -55,9 +56,9 @@ Success:
   the native current-task contract cannot archive another task. Never archive before evidence is complete.
 
 Stop conditions:
-- Keep the current task visible when validation, a test, a check, landing, or definition repair failed;
+- Keep the current task visible when local validation, a test, landing, or definition repair failed;
   authority or OAuth is missing; an external effect is ambiguous or unknown; safety state is damaged; a
   user decision is unresolved; or any required action is not durably handed off.
-- A test, check, code finding, or dependency handoff stays visible until the next owner reads it back;
+- A test, code finding, or dependency handoff stays visible until the next owner reads it back;
   stale bases and defects return to Maintainer. Report PR URL, reviewed base/head, dependency decision,
-  detection-to-PR latency, findings or merge OID, checks, next owner, and zero X API spend.
+  detection-to-PR latency, findings or merge OID, local validation, next owner, and zero X API spend.

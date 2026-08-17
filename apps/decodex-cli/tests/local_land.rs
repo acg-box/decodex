@@ -21,7 +21,7 @@ const PR_URL: &str = "https://github.com/acg-box/decodex/pull/123";
 const PR_BRANCH: &str = "xv/exact-land";
 
 #[test]
-fn local_land_binary_merges_syncs_and_cleans_the_exact_lane() {
+fn local_land_binary_merges_syncs_and_cleans_the_exact_lane_without_ci() {
 	let fixture = Fixture::new();
 	let merge = fixture.run_land();
 
@@ -294,7 +294,14 @@ fn write_fake_gh(fake_bin: &Path, origin: &Path, reported_merge: &Path, base: &s
 			.expect("Git executable path should be UTF-8"),
 	);
 	let body = format!(
-		"#!/bin/sh\nset -eu\nremote=$({git} --git-dir={origin} rev-parse refs/heads/main)\n\
+		"#!/bin/sh\nset -eu\n\
+		 if [ \"$#\" -ne 5 ] || [ \"$1\" != pr ] || [ \"$2\" != view ] || \
+		 [ \"$3\" != \"{PR_URL}\" ] || [ \"$4\" != --json ] || \
+		 [ \"$5\" != url,state,isDraft,isCrossRepository,baseRefName,baseRefOid,headRefName,headRefOid,mergeCommit ]; then\n\
+		 printf '%s\\n' 'unexpected gh invocation; CI and status commands are forbidden' >&2\n\
+		 exit 64\n\
+		 fi\n\
+		 remote=$({git} --git-dir={origin} rev-parse refs/heads/main)\n\
 		 if [ -f {reported_merge} ]; then\n\
 		 merge=$(cat {reported_merge})\n\
 		 printf '{{\"url\":\"{PR_URL}\",\"state\":\"MERGED\",\"isDraft\":false,\
