@@ -75,6 +75,13 @@ struct RepositoryLayout {
 	is_primary: bool,
 }
 
+struct WorktreeEntry {
+	path: PathBuf,
+	branch: Option<String>,
+	bare: bool,
+	prunable: bool,
+}
+
 pub(crate) fn execute_commit(command: &CommitCommand) -> Result<String, String> {
 	require_manual_authority(command.manual_authority)?;
 	let summary = normalized_summary(&command.summary)?;
@@ -208,30 +215,120 @@ fn commit_record(summary: &str, landed: bool) -> Result<String, String> {
 }
 
 fn repository_layout(cwd: &Path) -> Result<RepositoryLayout, String> {
-	let checkout = PathBuf::from(git_stdout(cwd, &["rev-parse", "--show-toplevel"])?);
-	let common_dir = PathBuf::from(git_stdout(
+	let checkout = canonical_git_path(cwd, &["rev-parse", "--show-toplevel"], "checkout")?;
+	let common_dir = canonical_git_path(
 		&checkout,
 		&["rev-parse", "--path-format=absolute", "--git-common-dir"],
-	)?);
-	let primary = common_dir
-		.parent()
-		.ok_or_else(|| String::from("Git common directory has no repository root"))?
-		.to_path_buf();
-	let checkout = checkout
-		.canonicalize()
-		.map_err(|error| format!("checkout path cannot be canonicalized: {error}"))?;
-	let primary = primary
+		"Git common directory",
+	)?;
+	let inventory = worktree_inventory(&checkout)?;
+	let primary_entry =
+		inventory.first().ok_or_else(|| String::from("Git worktree inventory is empty"))?;
+
+	if primary_entry.bare || primary_entry.prunable {
+		return Err(String::from("Git main worktree is not an available checkout"));
+	}
+
+	let primary = primary_entry
+		.path
 		.canonicalize()
 		.map_err(|error| format!("primary path cannot be canonicalized: {error}"))?;
-	let is_primary = checkout == primary;
+	let primary_top_level =
+		canonical_git_path(&primary, &["rev-parse", "--show-toplevel"], "primary checkout")?;
+	let primary_common_dir = canonical_git_path(
+		&primary,
+		&["rev-parse", "--path-format=absolute", "--git-common-dir"],
+		"primary Git common directory",
+	)?;
 
-	if !is_primary {
-		checkout
-			.strip_prefix(primary.join(".worktrees"))
-			.map_err(|_| String::from("task worktree is outside `<repo>/.worktrees`"))?;
+	if primary_top_level != primary || primary_common_dir != common_dir {
+		return Err(String::from(
+			"Git main worktree and checkout do not share one exact repository",
+		));
+	}
+
+	let matching_entries = inventory
+		.iter()
+		.enumerate()
+		.filter_map(|(index, entry)| {
+			entry.path.canonicalize().ok().filter(|path| path == &checkout).map(|_| (index, entry))
+		})
+		.collect::<Vec<_>>();
+
+	if matching_entries.len() != 1 {
+		return Err(String::from(
+			"checkout is not one exact registered Git worktree of this repository",
+		));
+	}
+
+	let (checkout_index, checkout_entry) = matching_entries[0];
+
+	if checkout_entry.bare || checkout_entry.prunable {
+		return Err(String::from("registered Git worktree is not an available checkout"));
+	}
+
+	let is_primary = checkout_index == 0;
+
+	if is_primary != (checkout == primary) {
+		return Err(String::from("Git worktree inventory primary identity mismatch"));
 	}
 
 	Ok(RepositoryLayout { checkout, primary, is_primary })
+}
+
+fn canonical_git_path(cwd: &Path, args: &[&str], label: &str) -> Result<PathBuf, String> {
+	PathBuf::from(git_stdout(cwd, args)?)
+		.canonicalize()
+		.map_err(|error| format!("{label} path cannot be canonicalized: {error}"))
+}
+
+fn worktree_inventory(cwd: &Path) -> Result<Vec<WorktreeEntry>, String> {
+	let output = command_output("git", cwd, &["worktree", "list", "--porcelain", "-z"])?;
+	let stdout = String::from_utf8(output.stdout)
+		.map_err(|error| format!("Git worktree inventory is not UTF-8: {error}"))?;
+	let mut inventory = Vec::new();
+	let mut current: Option<WorktreeEntry> = None;
+
+	for field in stdout.split('\0') {
+		if field.is_empty() {
+			if let Some(entry) = current.take() {
+				inventory.push(entry);
+			}
+			continue;
+		}
+
+		if let Some(path) = field.strip_prefix("worktree ") {
+			if current.is_some() || path.is_empty() || !Path::new(path).is_absolute() {
+				return Err(String::from("Git worktree inventory is malformed"));
+			}
+			current = Some(WorktreeEntry {
+				path: PathBuf::from(path),
+				branch: None,
+				bare: false,
+				prunable: false,
+			});
+			continue;
+		}
+
+		let entry =
+			current.as_mut().ok_or_else(|| String::from("Git worktree inventory is malformed"))?;
+
+		if let Some(branch) = field.strip_prefix("branch ") {
+			if entry.branch.replace(branch.to_owned()).is_some() {
+				return Err(String::from("Git worktree inventory branch is duplicated"));
+			}
+		} else if field == "bare" {
+			entry.bare = true;
+		} else if field == "prunable" || field.starts_with("prunable ") {
+			entry.prunable = true;
+		}
+	}
+
+	if current.is_some() {
+		return Err(String::from("Git worktree inventory record is unterminated"));
+	}
+
+	Ok(inventory)
 }
 
 fn require_staged_only_changes(checkout: &Path) -> Result<(), String> {
@@ -609,16 +706,11 @@ fn preflight_lane_cleanup(
 	expected_head_oid: &str,
 ) -> Result<(), String> {
 	let branch_ref = format!("refs/heads/{branch}");
-	let worktree_inventory = git_stdout(&layout.primary, &["worktree", "list", "--porcelain"])?;
-	let mut current_worktree: Option<&str> = None;
 
-	for line in worktree_inventory.lines() {
-		if let Some(path) = line.strip_prefix("worktree ") {
-			current_worktree = Some(path);
-		} else if line == format!("branch {branch_ref}") {
-			let path = current_worktree
-				.ok_or_else(|| String::from("task branch worktree inventory is malformed"))?;
-			let observed = Path::new(path)
+	for entry in worktree_inventory(&layout.primary)? {
+		if entry.branch.as_deref() == Some(&branch_ref) {
+			let observed = entry
+				.path
 				.canonicalize()
 				.map_err(|_| String::from("task branch worktree cannot be canonicalized"))?;
 
