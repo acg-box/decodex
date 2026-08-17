@@ -40,6 +40,7 @@ mod ui_theme;
 #[path = "../work_items.rs"]
 mod work_items;
 
+// Included GPUI modules use these macOS packages through the visual harness.
 use objc2_app_kit as _;
 use objc2_foundation as _;
 

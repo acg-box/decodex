@@ -28,6 +28,7 @@ mod shell;
 mod ui_theme;
 mod work_items;
 
+// GPUI platform composition uses these macOS packages through downstream modules.
 use objc2_app_kit as _;
 use objc2_foundation as _;
 
