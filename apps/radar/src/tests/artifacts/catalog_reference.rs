@@ -58,7 +58,6 @@ fn current_multi_agent_v2_references_do_not_require_assign_task() {
 		"README.md",
 		"apps/decodex/src",
 		"automations/radar/skills",
-		"plugins/decodex/skills",
 		"scripts",
 		".agent/automations/radar/cache/site-content/signals",
 		".agent/automations/radar/cache/generated",

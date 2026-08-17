@@ -198,8 +198,7 @@ be fulfilled by different Codex threads over time.
 ## Extension architecture
 
 The user-facing term is **Extension**. **Domain Pack** and **Connector** are specific
-extension kinds. The existing repository `plugins/decodex` package remains a Codex
-plugin and must not be confused with the Decodex product extension system.
+extension kinds. They are Decodex product contracts, not Codex-installed capabilities.
 
 ### Domain Pack
 

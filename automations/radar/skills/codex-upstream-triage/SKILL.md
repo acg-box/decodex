@@ -9,8 +9,8 @@ Use this skill before deep analysis. Its job is to route the deterministic upstr
 review queue: group upstream Codex commits correctly, identify likely surfaces, and
 choose the next artifact without deciding final impact.
 
-This is a Decodex repository-development instruction surface, not an installable
-Decodex plugin skill.
+This is a Decodex repository-development instruction surface, not an installed runtime
+capability.
 
 ## Read Before Triage
 

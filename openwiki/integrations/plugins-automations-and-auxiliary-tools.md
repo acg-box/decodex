@@ -1,60 +1,7 @@
-# Plugins, Automations, And Auxiliary Tools
+# Automations And Auxiliary Tools
 
-This page covers repository areas that support the runtime but are not the core scheduler. It is especially important because plugin and automation guardrails can affect future coding agents.
-
-## Installable Decodex plugin
-
-The installable plugin lives under `plugins/decodex/`. Its manifest describes a narrow scope: Decodex runtime and operator workflows for planning, ops, commit, and landing (`plugins/decodex/.codex-plugin/plugin.json`). It contains only Decodex-owned guidance and does not route, bundle, or manage companion plugins.
-
-Core files:
-
-- `plugins/decodex/.codex-plugin/plugin.json`: plugin metadata, display text, skills path.
-- `plugins/decodex/skills/decodex/SKILL.md`: route Decodex work to planning, ops, commit, or land surfaces.
-- `plugins/decodex/references/routing.md`: first reads and runtime/landing/MCP boundaries.
-- `plugins/decodex/hooks/hooks.json`: PreToolUse hook registration.
-- `plugins/decodex/scripts/decodex_lifecycle_hook`: Python guardrail for raw Git/GitHub commands in Decodex scope.
-
-The plugin is not runtime authority. Runtime policy lives in source, project contracts, and runtime DB records; this page only explains those boundaries.
-
-## Lifecycle hook guardrails
-
-Recent git history added lifecycle hook guardrails. `hooks.json` registers a PreToolUse hook for Bash/Shell/exec tool use and calls the installed `decodex_lifecycle_hook` (`plugins/decodex/hooks/hooks.json`). The hook script:
-
-- Parses command payloads from tool input.
-- Splits shell segments and unwraps shell/env/command wrappers.
-- Detects Decodex-owned scope by this repository shape or registered Decodex project repo/worktree paths.
-- Blocks raw `git commit` inside Decodex scope and instructs use of `decodex commit`.
-- Blocks raw `gh pr merge` inside Decodex scope and instructs use of `decodex land`.
-
-Explicit GitHub selectors recognize canonical `acg-box/decodex` and the transferred
-`hack-ink/decodex` redirect alias, so an old link cannot bypass the landing guard.
-
-This protects high-risk history and landing surfaces from bypassing Decodex authority. Future changes should preserve scoped behavior: outside Decodex-owned paths, the hook should not become a generic Git policy.
-
-Watchpoint: `hooks.json` currently hardcodes the plugin path version `0.2.0`, while `scripts/config/sync_installable_plugins.py` derives install version from root `Cargo.toml`. Tests currently assert the `0.2.0` install path (`tests/scripts/test_sync_installable_plugins.py`), so update hook path, manifest version, workspace version, and tests together during version changes.
-
-## Plugin installation
-
-The installer is `scripts/config/sync_installable_plugins.py`. It finds the repo root, reads the workspace version from root `Cargo.toml`, discovers plugins under `plugins/*/.codex-plugin/plugin.json`, and copies each plugin to:
-
-```text
-$CODEX_HOME/plugins/cache/acg-box/<plugin>/<version>
-```
-
-Each plugin manifest declares `package.include` and `package.exclude`. The sync
-script materializes only that runtime package contract. Repository-only plugin
-tests live under `tests/scripts/`, outside the physical runtime root. The sync
-tests require every file under `plugins/*` to match its package contract.
-
-Commands:
-
-```sh
-python3 scripts/config/sync_installable_plugins.py
-python3 scripts/config/sync_installable_plugins.py --apply
-python3 scripts/config/sync_installable_plugins.py --apply --clean-repo-local-skills
-```
-
-`--clean-repo-local-skills` removes global `$CODEX_HOME/skills/<skill>` entries only when they are exact copies of repo-local `automations/*/skills/*`; it refuses modified global skills (`scripts/config/sync_installable_plugins.py`, `tests/scripts/test_sync_installable_plugins.py`).
+This page covers repository areas that support the runtime but are not the core scheduler.
+Runtime policy remains in source, project contracts, and runtime database records.
 
 ## Codex App automations
 
@@ -294,7 +241,6 @@ OpenWiki should document where generated state belongs, not copy generated artif
 
 ## Change guidance
 
-- Plugin routing or hook changes: inspect `plugins/decodex/`, update sync tests, and run `python3 -m unittest tests/scripts/test_sync_installable_plugins.py`.
 - Automation manifest changes: run sync/evaluation scripts for both Decodex and Radar manifests.
 - Radar artifact/schema changes: update Radar validation tests and relevant automation README boundaries.
 - Publisher schema changes: update `apps/decodex-publisher/src/social_validation*` tests and social workflow docs.

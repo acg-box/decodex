@@ -209,7 +209,7 @@ mod tests {
 	fn root_tests_remain_authority_surfaces() {
 		assert_eq!(
 			path_classification::architecture_recovery_surfaces_for_path(
-				"tests/scripts/test_sync_installable_plugins.py"
+				"tests/scripts/test_vnext_architecture.py"
 			),
 			vec![AuthorityBoundarySurface::Tests]
 		);
@@ -225,7 +225,6 @@ mod tests {
 			".prettierrc",
 			".taplo.toml",
 			".rustfmt.toml",
-			".agents/plugins/marketplace.json",
 			"assets/decodex/icon.json",
 			"site/.prettierrc",
 		] {

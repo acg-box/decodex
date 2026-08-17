@@ -135,8 +135,6 @@ Current shape:
 - Stdio MCP defaults to the `admin` profile for local desktop/CLI use; Streamable HTTP defaults to `observe`, binds to loopback by default, validates origins, manages MCP sessions, and requires bearer authorization for unsafe direct exposure or elevated profiles (`apps/decodex/src/mcp.rs`, `apps/decodex/src/mcp/types.rs`).
 - Capability profiles are `observe`, `plan`, `operate`, and `admin`; mutating tools require the appropriate profile and explicit authority inputs (`apps/decodex/src/mcp/types.rs`, `apps/decodex/src/mcp/tools.rs`).
 - The tool catalog is deliberately small: observe, plan, intake/autonomy surfaces, lane control, and project control route through existing runtime guards instead of mirroring every CLI command (`apps/decodex/src/mcp/tools.rs`).
-- Plugin skills remain the installable policy pack and are checked by plugin surface tests (`apps/decodex/src/plugin_surface_tests.rs`, `plugins/decodex/.codex-plugin/plugin.json`).
-
 Do not make MCP a new source of truth, expose raw private evidence by default, or add broad mutation tools that bypass Decision Contract, lane-control, review, landing, tracker, project-enable, or runtime-state checks.
 
 ## Static public site boundary

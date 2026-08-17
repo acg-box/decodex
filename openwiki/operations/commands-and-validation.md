@@ -330,7 +330,7 @@ change quota or routing policy as part of a credential-vault acceptance run.
 - `apps/decodex/`: frozen v0.2 provenance only.
 - `spikes/vnext-storage/`: historical feasibility source only; no executable schema or
   validation owner.
-- `site/`, Radar, Publisher, plugins, and automations: auxiliary surfaces with their own
+- `site/`, Radar, Publisher, and automations: auxiliary surfaces with their own
   checks.
 
 ## Targeted Rust checks
@@ -415,11 +415,9 @@ spawn, without a fixed Codex release/version allowlist. Raw protocol handles do 
 ProcessSupervisor. The live probe remains
 read-only and does not establish global title discovery or product dispatch.
 
-## Plugin and automation checks
+## Automation checks
 
 ```sh
-python3 scripts/config/sync_installable_plugins.py
-python3 -m unittest tests/scripts/test_sync_installable_plugins.py
 python3 automations/decodex/scripts/config/render_automation_plan.py --json
 python3 automations/decodex/scripts/config/evaluate_automations.py --repo-only --json
 cargo make test-automations
@@ -482,6 +480,6 @@ schema owner.
 - Account change: test secret-negative storage/protocol and Registry/store/service
   authority.
 - Public projection change: test bounds, redaction, and public/private split.
-- Plugin, automation, site, or app change: run that surface's own checks.
+- Automation, site, or app change: run that surface's own checks.
 - Completion claim: name exact source revision, exact implemented command names, gate
   scope, and any remaining source drift.

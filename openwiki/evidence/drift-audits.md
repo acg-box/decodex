@@ -24,10 +24,10 @@ The OpenWiki and README claims for `decodex mcp serve --transport streamable-htt
 
 ## Reverse checks and drift-audit method
 
-Use reverse checks when changing MCP, README MCP claims, plugin skills, operator-control docs, or remote-control examples:
+Use reverse checks when changing MCP, README MCP claims, operator-control docs, or remote-control examples:
 
 ```sh
-git grep -n -E "bearer|Authorization|allow-origin|capability-profile|streamable-http|Mcp-Session-Id|decodex_lane_control|decodex_project_control|manual_attention|retained_resume" -- README.md apps/decodex/src apps/decodex/tests openwiki plugins/decodex
+git grep -n -E "bearer|Authorization|allow-origin|capability-profile|streamable-http|Mcp-Session-Id|decodex_lane_control|decodex_project_control|manual_attention|retained_resume" -- README.md apps/decodex/src apps/decodex/tests openwiki
 
 git grep -n -E "streamable_http|mcp_streamable_http_process|observe_profile|bearer_auth|elevated_profile|bind_guard|Mcp-Session-Id" -- apps/decodex/src/mcp apps/decodex/tests/mcp_stdio
 ```

@@ -180,7 +180,7 @@ They produce or use `decodex/commit/2` records. The commit schema contains only 
 Decodex app-server runs inherit active-run commit context in their environment. That lets the owning active lane use `decodex commit "<summary>" --authority <ISSUE>` from its worktree during the handoff phase after validation, while the same command remains blocked for unrelated manual processes when the lane still has a live runtime claim.
 The active-run bypass is issue-scoped: the requested commit authority must match the lane issue identifier, so `--manual-authority` and mismatched issue authorities remain blocked inside claimed lane worktrees.
 
-Use `decodex land` rather than raw `gh pr merge` for Decodex-owned landing. The installable plugin hook blocks raw `git commit` and `gh pr merge` in Decodex-owned scope and tells the operator to use the Decodex commands (`plugins/decodex/scripts/decodex_lifecycle_hook`).
+Use `decodex land` rather than raw `gh pr merge` for Decodex-owned landing.
 
 ## MCP gateway
 

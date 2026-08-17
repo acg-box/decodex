@@ -39,10 +39,6 @@ const docs = [
     title: "Project workflow",
     href: `${decodexGitHubUrl}/blob/main/openwiki/architecture/runtime-architecture.md`,
   },
-  {
-    title: "Decodex plugin",
-    href: `${decodexGitHubUrl}/tree/main/plugins/decodex`,
-  },
 ];
 
 export { commands, decodexGitHubUrl, docs, productLoops };
