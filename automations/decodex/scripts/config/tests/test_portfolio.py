@@ -82,6 +82,22 @@ class PortfolioTests(unittest.TestCase):
         self.assertIn("marker finding blocks landing", rendered["codex-upstream-reviewer"])
         self.assertIn("as `unknown`", rendered["codex-upstream-health"])
 
+    def test_upstream_landing_uses_local_validation_without_ci(self) -> None:
+        rendered = {item["id"]: item["prompt"] for item in portfolio.rendered_automations()}
+        maintainer = rendered["codex-upstream-maintainer"]
+        reviewer = rendered["codex-upstream-reviewer"]
+
+        self.assertIn(
+            "Do not create PR, `merge_group`, or branch-push GitHub Actions",
+            maintainer,
+        )
+        self.assertIn("Do not query or wait for CI", maintainer)
+        self.assertIn("Do not query, require, or wait for CI", reviewer)
+        self.assertIn("local validation from step 6", reviewer)
+        for prompt in (maintainer, reviewer):
+            self.assertNotIn("mandatory checks", prompt)
+            self.assertNotIn("check results", prompt)
+
     def test_runtime_evaluation_requires_metadata_and_rejects_extra_managed_ids(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             codex_home = Path(directory)

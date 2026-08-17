@@ -79,9 +79,10 @@ never weakens the 24-hour landing requirement.
 
 A compatibility PR adds `Decodex-Blocked-By: <url>` while a required repair is
 open. A dependency repair must be directly required by its parent or by a
-current repository gate, and its body must state the exact repair scope. These
-markers select work; the Reviewer still proves signatures, scope, base/head,
-tests, and checks. A marker never authorizes an unrelated PR.
+current local repository gate, and its body must state the exact repair scope.
+These markers select work; the Reviewer still proves signatures, scope,
+base/head, and local test evidence. CI status is not landing authority. A
+marker never authorizes an unrelated PR.
 
 The Reviewer processes dependency repairs first, then a parent whose dependencies
 are landed. An open PR, review finding, stale base, or unresolved dependency is a
@@ -114,7 +115,8 @@ handoffs, not successful Maintainer runs and not archive candidates.
 
 The Reviewer independently reads the PR diff and its upstream evidence. It
 checks out the exact remote head in a temporary review worktree, reruns the
-required tests, and verifies the signed commit chain.
+required local tests, and verifies the signed commit chain. It does not query or
+wait for CI.
 
 Defects become precise GitHub review feedback for the Maintainer; this is a
 nonterminal handoff. An accepted head lands only when every dependency is landed
