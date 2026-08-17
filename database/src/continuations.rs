@@ -262,6 +262,7 @@ impl SqliteStore {
 
 	/// Plan same-thread continuation from exact terminal evidence, or atomically replace the
 	/// RuntimeSession with a same-account Context Pack when a recovered predecessor is uncertain.
+	#[allow(clippy::too_many_lines)] // Keep one atomic continuation and fallback transaction together.
 	pub async fn plan_continuation(
 		&self,
 		blob_store: &BlobStore,
@@ -577,6 +578,7 @@ impl SqliteStore {
 	}
 }
 
+#[allow(clippy::too_many_lines)] // Keep exact plan readback and integrity checks together.
 fn read_plan_effect(
 	connection: &rusqlite::Connection,
 	plan_id: &str,

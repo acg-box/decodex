@@ -1029,6 +1029,7 @@ impl SqliteStore {
 	///
 	/// The ProviderAttempt intentionally remains `unknown`; this transaction only closes the
 	/// product-visible active Turn and records a concise durable status item.
+	#[allow(clippy::too_many_lines)] // Keep positive-death checks and one recovery transaction together.
 	pub async fn recover_unknown_quick_task_turn(
 		&self,
 		command: &CommandIdentity,
@@ -3099,6 +3100,7 @@ mod archive_tests {
 	}
 
 	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // Keep one complete archive and replay proof together.
 	async fn verified_archive_atomically_closes_the_projection_and_replays_exactly() {
 		let directory = tempdir().expect("temporary database directory");
 		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
@@ -3477,6 +3479,7 @@ mod archive_tests {
 	}
 
 	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // Keep one complete recovery and Context Pack proof together.
 	async fn recovered_unknown_turn_uses_one_persisted_same_account_context_fallback() {
 		let directory = tempdir().expect("temporary database directory");
 		let canonical = directory.path().canonicalize().expect("canonical temporary root");

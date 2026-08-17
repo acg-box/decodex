@@ -68,15 +68,12 @@ enum MenuBarControlFailure {
 impl MenuBarControlFailure {
 	const fn detail(self) -> &'static str {
 		match self {
-			Self::BundlePathUnavailable => {
-				"The embedded menu bar bundle path is not representable on this host."
-			},
-			Self::BundleNotInstalled => {
-				"The menu bar surface is included only in a staged Decodex application bundle."
-			},
-			Self::TerminationRefused => {
-				"macOS did not accept the companion's normal termination request."
-			},
+			Self::BundlePathUnavailable =>
+				"The embedded menu bar bundle path is not representable on this host.",
+			Self::BundleNotInstalled =>
+				"The menu bar surface is included only in a staged Decodex application bundle.",
+			Self::TerminationRefused =>
+				"macOS did not accept the companion's normal termination request.",
 			#[cfg(not(target_os = "macos"))]
 			Self::UnsupportedPlatform => "The menu bar surface is available only on macOS.",
 		}

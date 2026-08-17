@@ -23,10 +23,15 @@ pub const MAX_PROGRAM_LIST_VALUES: usize = 32;
 /// Closed Program-cycle contract refusal.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProgramCycleContractError {
+	/// One or more stable identities are invalid or duplicated.
 	InvalidIdentity,
+	/// A bounded text field is empty or contains invalid data.
 	InvalidText,
+	/// A bounded collection is empty, oversized, or duplicated.
 	InvalidCollection,
+	/// A required observation time is not positive.
 	InvalidTime,
+	/// A causal projection violates its closed graph contract.
 	InvalidProjection,
 }
 
@@ -34,30 +39,55 @@ pub enum ProgramCycleContractError {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramCycleDraftDto {
+	/// Stable identity for the new Program.
 	pub program_id: EntityId,
+	/// Exact built-in Domain Pack selected for the Program.
 	pub domain_pack_id: WireText,
+	/// Stable identity for the first Signal.
 	pub signal_id: EntityId,
+	/// Stable identity for the first Claim.
 	pub claim_id: EntityId,
+	/// Stable identity for the first Proposal.
 	pub proposal_id: EntityId,
+	/// Stable identity for the first Objective.
 	pub objective_id: EntityId,
+	/// Stable identity for the first WorkItem.
 	pub work_item_id: EntityId,
+	/// User-visible Program name.
 	pub name: WireText,
+	/// Bounded Program purpose.
 	pub purpose: WireText,
+	/// Explicit Program non-goals.
 	pub non_goals: Vec<WireText>,
+	/// Review policy for Program cycles.
 	pub review_policy: WireText,
+	/// Source label for the first Signal.
 	pub signal_source: WireText,
+	/// Bounded summary of the first Signal.
 	pub signal_summary: WireText,
+	/// Observation time for the first Signal, in Unix microseconds.
 	pub signal_observed_at_micros: i64,
+	/// Statement asserted by the first Claim.
 	pub claim_statement: WireText,
+	/// Summary of the first Proposal.
 	pub proposal_summary: WireText,
+	/// Expected effect of the first Proposal.
 	pub proposal_expected_effect: WireText,
+	/// Risk declared for the first Proposal.
 	pub proposal_risk: WireText,
+	/// Evidence required by the first Proposal.
 	pub proposal_evidence_need: WireText,
+	/// Intended outcome of the first Objective.
 	pub objective_outcome: WireText,
+	/// Acceptance criteria for the first Objective.
 	pub acceptance_criteria: Vec<WireText>,
+	/// Validation criteria for the first Objective.
 	pub validation_criteria: Vec<WireText>,
+	/// User-visible title of the first WorkItem.
 	pub work_item_title: WireText,
+	/// Bounded execution instructions for the first WorkItem.
 	pub work_item_instructions: WireText,
+	/// Server-host working directory for the first WorkItem.
 	pub working_directory: QuickTaskWorkingDirectory,
 }
 
@@ -112,26 +142,47 @@ impl ProgramCycleDraftDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramContinuationDraftDto {
+	/// Stable identity of the existing Program.
 	pub program_id: EntityId,
+	/// Exact terminal Review that authorizes this continuation.
 	pub predecessor_review_id: EntityId,
+	/// Stable identity for the next Signal.
 	pub signal_id: EntityId,
+	/// Stable identity for the next Claim.
 	pub claim_id: EntityId,
+	/// Stable identity for the next Proposal.
 	pub proposal_id: EntityId,
+	/// Stable identity for the next Objective.
 	pub objective_id: EntityId,
+	/// Stable identity for the next WorkItem.
 	pub work_item_id: EntityId,
+	/// Source label for the next Signal.
 	pub signal_source: WireText,
+	/// Bounded summary of the next Signal.
 	pub signal_summary: WireText,
+	/// Observation time for the next Signal, in Unix microseconds.
 	pub signal_observed_at_micros: i64,
+	/// Statement asserted by the next Claim.
 	pub claim_statement: WireText,
+	/// Summary of the next Proposal.
 	pub proposal_summary: WireText,
+	/// Expected effect of the next Proposal.
 	pub proposal_expected_effect: WireText,
+	/// Risk declared for the next Proposal.
 	pub proposal_risk: WireText,
+	/// Evidence required by the next Proposal.
 	pub proposal_evidence_need: WireText,
+	/// Intended outcome of the next Objective.
 	pub objective_outcome: WireText,
+	/// Acceptance criteria for the next Objective.
 	pub acceptance_criteria: Vec<WireText>,
+	/// Validation criteria for the next Objective.
 	pub validation_criteria: Vec<WireText>,
+	/// User-visible title of the next WorkItem.
 	pub work_item_title: WireText,
+	/// Bounded execution instructions for the next WorkItem.
 	pub work_item_instructions: WireText,
+	/// Server-host working directory for the next WorkItem.
 	pub working_directory: QuickTaskWorkingDirectory,
 }
 
@@ -180,9 +231,13 @@ impl ProgramContinuationDraftDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramEvidenceDraftDto {
+	/// Stable identity for the proposed Evidence.
 	pub evidence_id: EntityId,
+	/// Bounded Evidence source label.
 	pub source: WireText,
+	/// Bounded Evidence summary.
 	pub summary: WireText,
+	/// Evidence observation time, in Unix microseconds.
 	pub observed_at_micros: i64,
 }
 
@@ -190,12 +245,19 @@ pub struct ProgramEvidenceDraftDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramReviewDraftDto {
+	/// Stable identity for the terminal Review.
 	pub review_id: EntityId,
+	/// Stable identity of the reviewed Program.
 	pub program_id: EntityId,
+	/// Stable identity of the reviewed WorkItem.
 	pub work_item_id: EntityId,
+	/// Required deterministic Evidence.
 	pub deterministic: ProgramEvidenceDraftDto,
+	/// Required external Evidence.
 	pub external: ProgramEvidenceDraftDto,
+	/// Closed terminal Review classification.
 	pub classification: ProgramReviewClassification,
+	/// Bounded rationale for the Review classification.
 	pub rationale: WireText,
 }
 
@@ -229,11 +291,17 @@ impl ProgramReviewDraftDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramSummaryDto {
+	/// Stable Program identity.
 	pub program_id: EntityId,
+	/// User-visible Program name.
 	pub name: WireText,
+	/// Bounded Program purpose.
 	pub purpose: WireText,
+	/// Current Program state.
 	pub state: ProgramState,
+	/// Current Program revision.
 	pub revision: EntityRevision,
+	/// Last update time, in Unix microseconds.
 	pub updated_at_micros: i64,
 }
 
@@ -241,13 +309,21 @@ pub struct ProgramSummaryDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgramNodeKind {
+	/// An observed Program input.
 	Signal,
+	/// A statement derived from a Signal.
 	Claim,
+	/// A proposed action and its expected effect.
 	Proposal,
+	/// An accepted outcome to pursue.
 	Objective,
+	/// One executable unit of Program work.
 	WorkItem,
+	/// Runtime execution bound to a WorkItem.
 	Run,
+	/// Deterministic or external validation material.
 	Evidence,
+	/// Terminal evaluation of one Program cycle.
 	Review,
 }
 
@@ -255,7 +331,9 @@ pub enum ProgramNodeKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramNodeFieldDto {
+	/// User-visible field label.
 	pub label: WireText,
+	/// Bounded field value.
 	pub value: WireText,
 }
 
@@ -263,14 +341,23 @@ pub struct ProgramNodeFieldDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramNodeDto {
+	/// Stable node identity.
 	pub id: EntityId,
+	/// Closed semantic node kind.
 	pub kind: ProgramNodeKind,
+	/// User-visible node title.
 	pub title: WireText,
+	/// Bounded node summary.
 	pub summary: WireText,
+	/// Current closed or domain-defined node state.
 	pub state: WireText,
+	/// Optional source label for the node fact.
 	pub source: Option<WireText>,
+	/// Optional observation time, in Unix microseconds.
 	pub observed_at_micros: Option<i64>,
+	/// Optional Conversation bound to this node.
 	pub conversation_id: Option<EntityId>,
+	/// Small inspector fields for this node.
 	pub fields: Vec<ProgramNodeFieldDto>,
 }
 
@@ -278,14 +365,23 @@ pub struct ProgramNodeDto {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProgramRelationKind {
+	/// A Signal continues a terminal Review.
 	Continues,
+	/// A Claim observes a Signal.
 	Observes,
+	/// Evidence supports a Claim.
 	Supports,
+	/// A Claim justifies a Proposal.
 	Justifies,
+	/// A Proposal creates an Objective.
 	Proposes,
+	/// An Objective decomposes into a WorkItem.
 	DecomposesTo,
+	/// A WorkItem executes through a Run.
 	Executes,
+	/// A Run produces Evidence.
 	Produces,
+	/// Evidence validates a Review.
 	Validates,
 }
 
@@ -293,8 +389,11 @@ pub enum ProgramRelationKind {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramEdgeDto {
+	/// Source Program or node identity.
 	pub from: EntityId,
+	/// Target Program or node identity.
 	pub to: EntityId,
+	/// Closed causal relation kind.
 	pub kind: ProgramRelationKind,
 }
 
@@ -302,15 +401,22 @@ pub struct ProgramEdgeDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct ProgramCycleDto {
+	/// Current Program summary.
 	pub program: ProgramSummaryDto,
+	/// Explicit Program non-goals.
 	pub non_goals: Vec<WireText>,
+	/// Review policy for Program cycles.
 	pub review_policy: WireText,
+	/// Optional derived projection from the bound Domain Pack.
 	pub domain_pack: Option<DomainPackProjectionDto>,
+	/// Bounded causal graph nodes.
 	pub nodes: Vec<ProgramNodeDto>,
+	/// Bounded causal graph edges.
 	pub edges: Vec<ProgramEdgeDto>,
 }
 
 impl ProgramCycleDto {
+	/// Validate and construct one causal Program projection.
 	pub fn new(
 		program: ProgramSummaryDto,
 		non_goals: Vec<WireText>,
@@ -342,6 +448,7 @@ impl ProgramCycleDto {
 		Ok(Self { program, non_goals, review_policy, domain_pack: None, nodes, edges })
 	}
 
+	/// Validate and attach one derived Domain Pack projection.
 	pub fn with_domain_pack(
 		mut self,
 		domain_pack: DomainPackProjectionDto,
@@ -362,7 +469,9 @@ impl ProgramCycleDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProgramListResult {
+	/// The bounded Program selector returned current rows.
 	Available(Vec<ProgramSummaryDto>),
+	/// Program selection authority is unavailable.
 	Unavailable,
 }
 
@@ -370,8 +479,11 @@ pub enum ProgramListResult {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ProgramCycleResult {
+	/// The exact Program and causal projection are available.
 	Available(Box<ProgramCycleDto>),
+	/// The exact Program does not exist.
 	NotFound,
+	/// Program read authority is unavailable.
 	Unavailable,
 }
 

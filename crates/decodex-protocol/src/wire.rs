@@ -3886,6 +3886,7 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 	}
 }
 
+#[allow(clippy::too_many_lines)] // Keep the exhaustive account command contract in one match.
 fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static str> {
 	let positive_expected = command.expected_revision.is_some_and(|revision| revision.0 > 0);
 	match &command.payload {
@@ -3896,7 +3897,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Ok(())
 			}
 		},
-		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } =>
 			if !positive_expected
 				|| !is_canonical_uuid(program_id.as_str())
 				|| !crate::domain_pack::is_namespaced_symbol(domain_pack_id.as_str())
@@ -3904,8 +3905,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				Err("Program Domain Pack binding contract is invalid")
 			} else {
 				Ok(())
-			}
-		},
+			},
 		CommandPayload::ContinueProgram { continuation } => {
 			if !positive_expected || continuation.validate().is_err() {
 				Err("Program continuation contract is invalid")
@@ -4515,12 +4515,11 @@ mod tests {
 		MAX_HISTORY_METADATA_KEY_BYTES, MAX_HISTORY_METADATA_VALUE_BYTES, MAX_HISTORY_PAGE_SIZE,
 		MAX_IDEMPOTENCY_KEY_BYTES, MAX_RESET_CARD_ITEMS, MAX_WIRE_TEXT_BYTES,
 		MAX_WORK_ITEM_BOARD_PAGE_SIZE, ProgramContinuationDraftDto, ProgramCycleDraftDto, QueryId,
-		QueryResultPayload,
-		QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary, QuickTaskWorkingDirectory,
-		ResetCardDescriptorDto, ResetCardOutcome, ResultPayload, ServerId, ServerInstanceId,
-		Sha256Digest, WireText, WorkItemBoardContractError, WorkItemBoardLeadId, WorkItemBoardPage,
-		WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
-		WorkItemBoardWorkItemId, WorkItemState,
+		QueryResultPayload, QuickTaskRecoveryAction, QuickTaskState, QuickTaskSummary,
+		QuickTaskWorkingDirectory, ResetCardDescriptorDto, ResetCardOutcome, ResultPayload,
+		ServerId, ServerInstanceId, Sha256Digest, WireText, WorkItemBoardContractError,
+		WorkItemBoardLeadId, WorkItemBoardPage, WorkItemBoardPageSize, WorkItemBoardProjectId,
+		WorkItemBoardResult, WorkItemBoardWorkItemId, WorkItemState,
 		wire::{
 			ClientHello, ClientMessage, CommandEnvelope, CommandPayload, Cursor, EntityRevision,
 			QueryEnvelope, QueryPayload, ResetCardInventoryResult, ResetCardOperationResult,
@@ -4747,9 +4746,7 @@ mod tests {
 			causation_id: None,
 			payload: CommandPayload::ContinueProgram { continuation: Box::new(continuation) },
 		});
-		assert!(
-			decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err()
-		);
+		assert!(decode_client_message(&serde_json::to_string(&missing_revision).unwrap()).is_err());
 
 		let mut invalid = draft;
 		invalid.work_item_id = invalid.objective_id.clone();

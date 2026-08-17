@@ -2871,6 +2871,7 @@ impl QuickTaskRuntime {
 	}
 
 	/// Refresh or archive one exact selected Codex thread without dispatching a model turn.
+	#[allow(clippy::too_many_lines)] // Keep the exact read, archive, and recovery state machine together.
 	pub(crate) async fn control_thread(
 		&self,
 		command: ControlQuickTask,

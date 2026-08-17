@@ -763,9 +763,8 @@ impl ClientCache {
 		ensure_absolute_normalized(root)?;
 
 		match fs::symlink_metadata(root) {
-			Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() => {
-				Err(CacheError::UnsafeRoot)
-			},
+			Ok(metadata) if metadata.file_type().is_symlink() || !metadata.is_dir() =>
+				Err(CacheError::UnsafeRoot),
 			Ok(_) => {
 				validate_existing_directory_chain(root)?;
 

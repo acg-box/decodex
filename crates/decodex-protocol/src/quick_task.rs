@@ -79,8 +79,7 @@ impl QuickTaskModel {
 			|| value.chars().any(|character| {
 				character.is_control()
 					|| !(character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.'))
-			})
-		{
+			}) {
 			return Err(QuickTaskContractError::InvalidModel);
 		}
 		Ok(Self(value))
@@ -104,11 +103,17 @@ impl<'de> Deserialize<'de> for QuickTaskModel {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum QuickTaskReasoningEffort {
+	/// Use low reasoning effort.
 	Low,
+	/// Use medium reasoning effort.
 	Medium,
+	/// Use high reasoning effort.
 	High,
+	/// Use extra-high reasoning effort.
 	XHigh,
+	/// Use maximum reasoning effort.
 	Max,
+	/// Use ultra reasoning effort.
 	Ultra,
 }
 impl QuickTaskReasoningEffort {
@@ -129,13 +134,20 @@ impl QuickTaskReasoningEffort {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct QuickTaskExecutionSettings {
+	/// Exact Codex model for this send.
 	pub model: QuickTaskModel,
+	/// Reasoning effort for this send.
 	pub reasoning_effort: QuickTaskReasoningEffort,
 	/// `true` maps to Codex's request-scoped `priority` service tier.
 	pub fast: bool,
 }
 impl QuickTaskExecutionSettings {
-	pub fn new(model: QuickTaskModel, reasoning_effort: QuickTaskReasoningEffort, fast: bool) -> Self {
+	/// Construct explicit request-scoped execution settings.
+	pub fn new(
+		model: QuickTaskModel,
+		reasoning_effort: QuickTaskReasoningEffort,
+		fast: bool,
+	) -> Self {
 		Self { model, reasoning_effort, fast }
 	}
 }

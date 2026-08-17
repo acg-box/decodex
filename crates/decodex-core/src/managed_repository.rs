@@ -1,9 +1,10 @@
 //! Pure, mechanism-neutral managed-repository decisions.
 //!
 //! Every fact, view, and decision in this module is forgeable data. None establishes durable
-//! freshness, permits an external effect, or authorizes persistence. durable-store must load current
-//! facts inside its transaction and owns checkpoints, global operation assignment, append-only
-//! evidence, CAS, transaction completeness, restart loads, and private post-commit dispatch.
+//! freshness, permits an external effect, or authorizes persistence. durable-store must load
+//! current facts inside its transaction and owns checkpoints, global operation assignment,
+//! append-only evidence, CAS, transaction completeness, restart loads, and private post-commit
+//! dispatch.
 //!
 //! Admission observations support exact comparison of path, layout, external identity, base, and
 //! currently observable object metadata. They do not prove uninterrupted historical object
@@ -1347,8 +1348,8 @@ pub enum CommitEvidence {
 	Unavailable,
 }
 
-/// Proposed terminal aggregate projection update. durable-store alone applies it and issues its next
-/// checkpoint.
+/// Proposed terminal aggregate projection update. durable-store alone applies it and issues its
+/// next checkpoint.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct RepositoryProjectionUpdate {
 	/// Proposed terminal lifecycle.

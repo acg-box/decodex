@@ -1174,29 +1174,25 @@ struct InFlightCommand {
 
 fn command_matches_cycle(command: &CommandEnvelope, cycle: &ProgramCycleDto) -> bool {
 	match &command.payload {
-		CommandPayload::CreateProgramCycle { draft } => {
-			cycle.program.program_id == draft.program_id
-		},
-		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } => {
+		CommandPayload::CreateProgramCycle { draft } =>
+			cycle.program.program_id == draft.program_id,
+		CommandPayload::BindProgramDomainPack { program_id, domain_pack_id } =>
 			cycle.program.program_id == *program_id
 				&& cycle
 					.domain_pack
 					.as_ref()
-					.is_some_and(|projection| projection.descriptor.id == *domain_pack_id)
-		},
-		CommandPayload::ContinueProgram { continuation } => {
+					.is_some_and(|projection| projection.descriptor.id == *domain_pack_id),
+		CommandPayload::ContinueProgram { continuation } =>
 			cycle.program.program_id == continuation.program_id
 				&& cycle.nodes.iter().any(|node| {
 					node.kind == ProgramNodeKind::Signal && node.id == continuation.signal_id
-				})
-		},
-		CommandPayload::RecordProgramReview { review } => {
+				}),
+		CommandPayload::RecordProgramReview { review } =>
 			cycle.program.program_id == review.program_id
 				&& cycle
 					.nodes
 					.iter()
-					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id)
-		},
+					.any(|node| node.kind == ProgramNodeKind::Review && node.id == review.review_id),
 		_ => false,
 	}
 }

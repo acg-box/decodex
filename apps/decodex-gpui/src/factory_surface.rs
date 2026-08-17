@@ -3893,9 +3893,8 @@ const fn program_error_label(error: ProgramInputError) -> &'static str {
 	match error {
 		ProgramInputError::Offline => "Program authority is offline.",
 		ProgramInputError::Busy => "Wait for the current Program operation.",
-		ProgramInputError::InvalidDraft => {
-			"Complete every field with bounded credential-free text."
-		},
+		ProgramInputError::InvalidDraft =>
+			"Complete every field with bounded credential-free text.",
 		ProgramInputError::NoSelection => "Select one Program first.",
 		ProgramInputError::IdentityUnavailable => "A stable Program identity could not be created.",
 	}
