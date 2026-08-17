@@ -21,8 +21,29 @@ const PR_URL: &str = "https://github.com/acg-box/decodex/pull/123";
 const PR_BRANCH: &str = "xv/exact-land";
 
 #[test]
-fn local_land_binary_merges_syncs_and_cleans_the_exact_lane_without_ci() {
-	let fixture = Fixture::new();
+fn local_land_keeps_in_repository_worktree_compatibility() {
+	assert_exact_land(WorktreeLocation::InRepository);
+}
+
+#[test]
+fn local_land_accepts_and_cleans_an_external_native_style_registered_worktree() {
+	assert_exact_land(WorktreeLocation::ExternalNative);
+}
+
+#[test]
+fn local_land_rejects_the_primary_checkout_before_mutation() {
+	let fixture = Fixture::new(WorktreeLocation::InRepository);
+	let output = fixture.land_output(&fixture.primary);
+
+	assert_failure_contains(&output, "must be landed from its isolated task worktree");
+	assert_eq!(git(&fixture.primary, &["rev-parse", "HEAD"]), fixture.base);
+	assert_eq!(bare_git(&fixture.origin, &["rev-parse", "refs/heads/main"]), fixture.base);
+	assert!(fixture.checkout.exists(), "task worktree must remain");
+	assert!(!fixture.hook_marker.exists(), "pre-push hook must not run");
+}
+
+fn assert_exact_land(location: WorktreeLocation) {
+	let fixture = Fixture::new(location);
 	let merge = fixture.run_land();
 
 	assert_eq!(merge.len(), 40);
@@ -49,7 +70,7 @@ fn local_land_binary_merges_syncs_and_cleans_the_exact_lane_without_ci() {
 
 #[test]
 fn local_land_recovers_when_remote_main_advanced_after_the_exact_merge() {
-	let fixture = Fixture::new();
+	let fixture = Fixture::new(WorktreeLocation::InRepository);
 	let tree = git(&fixture.checkout, &["rev-parse", &format!("{}^{{tree}}", fixture.head)]);
 	let record = r#"{"schema":"decodex/commit/2","change":"Land Exact integration candidate","authority":"manual","impact":"compatible"}"#;
 	let merge = git(
@@ -95,6 +116,12 @@ fn local_land_recovers_when_remote_main_advanced_after_the_exact_merge() {
 	assert!(fixture.hook_marker.is_file(), "pre-push hook should execute");
 }
 
+#[derive(Clone, Copy)]
+enum WorktreeLocation {
+	InRepository,
+	ExternalNative,
+}
+
 struct Fixture {
 	_temp: TempDir,
 	origin: PathBuf,
@@ -107,11 +134,14 @@ struct Fixture {
 	head: String,
 }
 impl Fixture {
-	fn new() -> Self {
+	fn new(location: WorktreeLocation) -> Self {
 		let temp = TempDir::new().expect("temporary directory should create");
 		let origin = temp.path().join("origin.git");
 		let primary = temp.path().join("repo");
-		let checkout = primary.join(".worktrees/exact-land");
+		let checkout = match location {
+			WorktreeLocation::InRepository => primary.join(".worktrees/exact-land"),
+			WorktreeLocation::ExternalNative => temp.path().join(".codex/worktrees/c3d4/decodex"),
+		};
 		let fake_bin = temp.path().join("bin");
 		let reported_merge = temp.path().join("reported-merge");
 		let hooks = temp.path().join("hooks");
@@ -156,6 +186,8 @@ impl Fixture {
 			&primary,
 			&["remote", "set-url", "origin", "git@github.com:acg-box/decodex.git"],
 		);
+		fs::create_dir_all(checkout.parent().expect("checkout should have a parent"))
+			.expect("checkout parent should create");
 		git_checked(
 			&primary,
 			&[
@@ -197,8 +229,23 @@ impl Fixture {
 
 	fn run_land(&self) -> String {
 		self.reset_hook_marker();
-		let output = Command::new(env!("CARGO_BIN_EXE_decodex"))
-			.current_dir(&self.checkout)
+		let output = self.land_output(&self.checkout);
+
+		assert_success(&output);
+		let stdout = String::from_utf8(output.stdout).expect("Decodex output should be UTF-8");
+		let prefix = format!("land ok: pr={PR_URL} merge_commit=");
+		let suffix = " default_branch=main local_default_branch_synced=true\n";
+
+		stdout
+			.strip_prefix(&prefix)
+			.and_then(|value| value.strip_suffix(suffix))
+			.expect("Decodex should emit the stable landing receipt")
+			.to_owned()
+	}
+
+	fn land_output(&self, cwd: &Path) -> Output {
+		Command::new(env!("CARGO_BIN_EXE_decodex"))
+			.current_dir(cwd)
 			.env("PATH", self.command_path())
 			.args([
 				"land",
@@ -212,18 +259,7 @@ impl Fixture {
 				&self.head,
 			])
 			.output()
-			.expect("Decodex binary should start");
-
-		assert_success(&output);
-		let stdout = String::from_utf8(output.stdout).expect("Decodex output should be UTF-8");
-		let prefix = format!("land ok: pr={PR_URL} merge_commit=");
-		let suffix = " default_branch=main local_default_branch_synced=true\n";
-
-		stdout
-			.strip_prefix(&prefix)
-			.and_then(|value| value.strip_suffix(suffix))
-			.expect("Decodex should emit the stable landing receipt")
-			.to_owned()
+			.expect("Decodex binary should start")
 	}
 
 	fn reset_hook_marker(&self) {
@@ -400,5 +436,18 @@ fn assert_success(output: &Output) {
 		"command failed with stdout `{}` and stderr `{}`",
 		String::from_utf8_lossy(&output.stdout),
 		String::from_utf8_lossy(&output.stderr)
+	);
+}
+
+fn assert_failure_contains(output: &Output, expected: &str) {
+	assert!(
+		!output.status.success(),
+		"command unexpectedly succeeded with stdout `{}`",
+		String::from_utf8_lossy(&output.stdout),
+	);
+	assert!(
+		String::from_utf8_lossy(&output.stderr).contains(expected),
+		"command failure did not contain `{expected}`; stderr was `{}`",
+		String::from_utf8_lossy(&output.stderr),
 	);
 }
