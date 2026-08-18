@@ -1,10 +1,10 @@
-import AppKit
 import SwiftUI
 
 struct AccountReauthenticationView: View {
 	private enum FocusedAction: Hashable {
 		case browser
 		case deviceCode
+		case codeCard
 		case cancel
 	}
 
@@ -12,8 +12,6 @@ struct AccountReauthenticationView: View {
 	@Environment(\.accessibilityReduceMotion) private var reduceMotion
 	@Environment(\.colorScheme) private var colorScheme
 	@FocusState private var focusedAction: FocusedAction?
-	@State private var copyFeedback = false
-	@State private var openFeedback = false
 
 	var body: some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.section) {
@@ -64,6 +62,9 @@ struct AccountReauthenticationView: View {
 	) -> FocusedAction? {
 		if presentation.isSelectingMethod {
 			return .browser
+		}
+		if presentation.prompt != nil {
+			return .codeCard
 		}
 		if presentation.canRequestCancellation
 			|| presentation.canCloseWithoutCancellation
@@ -204,51 +205,40 @@ struct AccountReauthenticationView: View {
 	private func promptContent(
 		_ prompt: AccountReauthenticationPrompt
 	) -> some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.related) {
-			Text(prompt.verificationURL.absoluteString)
-				.font(PanelFont.tertiary)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.textSelection(.enabled)
-				.fixedSize(horizontal: false, vertical: true)
-
+		Button {
+			activate(prompt)
+		} label: {
 			Text(prompt.userCode)
 				.font(.system(size: 20, weight: .semibold, design: .monospaced))
 				.tracking(1.1)
 				.foregroundStyle(PanelPalette.primaryText(colorScheme))
-				.textSelection(.enabled)
-				.accessibilityLabel("One-time login code \(prompt.userCode)")
-
-			HStack(spacing: PanelSpacing.related) {
-				Button(copyFeedback ? "Copied" : "Copy code") {
-					copy(prompt.userCode)
+				.frame(maxWidth: .infinity, minHeight: 56)
+				.background {
+					RoundedRectangle(cornerRadius: 9, style: .continuous)
+						.fill(PanelPalette.actionBlue(colorScheme).opacity(0.12))
 				}
-				.buttonStyle(.bordered)
-
-				Button(openFeedback ? "Opened" : "Open") {
-					open(prompt.verificationURL)
+				.overlay {
+					RoundedRectangle(cornerRadius: 9, style: .continuous)
+						.stroke(
+							PanelPalette.actionBlue(colorScheme).opacity(0.42),
+							lineWidth: 1
+						)
 				}
-				.buttonStyle(.bordered)
-			}
+		}
+		.buttonStyle(PanelPressButtonStyle(pressedScale: 0.98))
+		.keyboardShortcut(.defaultAction)
+		.focused($focusedAction, equals: .codeCard)
+		.contentShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+		.help("Copy the code and open the sign-in page")
+		.accessibilityLabel("One-time login code \(prompt.userCode)")
+		.accessibilityHint("Activation copies the code and opens the sign-in page")
+		.accessibilityAction(named: Text("Copy code and open sign-in page")) {
+			activate(prompt)
 		}
 	}
 
-	private func copy(_ code: String) {
-		NSPasteboard.general.clearContents()
-		NSPasteboard.general.setString(code, forType: .string)
-		copyFeedback = true
-		Task { @MainActor in
-			try? await Task.sleep(for: .milliseconds(850))
-			copyFeedback = false
-		}
-	}
-
-	private func open(_ url: URL) {
-		openFeedback = true
-		NSWorkspace.shared.open(url)
-		Task { @MainActor in
-			try? await Task.sleep(for: .milliseconds(650))
-			openFeedback = false
-		}
+	private func activate(_ prompt: AccountReauthenticationPrompt) {
+		store.activateAccountLoginPrompt(prompt)
 	}
 
 	private var phaseTransitionAnimation: Animation? {

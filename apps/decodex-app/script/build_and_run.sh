@@ -8,6 +8,7 @@ NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib"
 BUNDLE_ID="${DECODEX_APP_BUNDLE_ID:-space.decodex.app}"
 BUNDLE_DISPLAY_NAME="${DECODEX_APP_DISPLAY_NAME:-Decodex}"
 MIN_SYSTEM_VERSION="27.0"
+NATIVE_CLIENT_MIN_SYSTEM_VERSION="11.0"
 DEFAULT_SIGN_IDENTITY="x@acg.box"
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -35,6 +36,8 @@ BUILD_BINARY=""
 NATIVE_CLIENT_BINARY=""
 RESOLVED_SIGN_IDENTITY=""
 RUST_PROFILE="release"
+RUST_HOST=""
+RUST_LLD=""
 
 if [[ "${DECODEX_APP_CARGO_LOCKED:-0}" == "1" ]]; then
 	RUST_BUILD_FLAGS+=(--locked)
@@ -184,13 +187,23 @@ stage_app_bundle() {
 	ensure_macos_swiftui_macro_toolchain
 	BUILD_ROOT="$(swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --show-bin-path)"
 	BUILD_BINARY="$BUILD_ROOT/$EXECUTABLE_NAME"
-	RUST_TARGET_DIR="$WORKTREE_ROOT/target/decodex-app-native-client"
+	RUST_TARGET_DIR="$WORKTREE_ROOT/target/decodex-app-native-client-lld-macos11"
+	RUST_HOST="$(rustc -vV | sed -n 's/^host: //p')"
+	RUST_LLD="$(rustc --print sysroot)/lib/rustlib/$RUST_HOST/bin/rust-lld"
+	if [[ -z "$RUST_HOST" || ! -x "$RUST_LLD" ]]; then
+		echo "error: the active stable Rust toolchain does not provide rust-lld for its host." >&2
+		exit 1
+	fi
 
 	swift build --package-path "$ROOT_DIR" "${SWIFT_BUILD_FLAGS[@]}" --product "$EXECUTABLE_NAME"
-	CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo build \
+	MACOSX_DEPLOYMENT_TARGET="$NATIVE_CLIENT_MIN_SYSTEM_VERSION" \
+		CARGO_TARGET_DIR="$RUST_TARGET_DIR" cargo rustc \
 		-p decodex-app-client-ffi \
 		--lib \
-		"${RUST_BUILD_FLAGS[@]}"
+		"${RUST_BUILD_FLAGS[@]}" \
+		-- \
+		-C "linker=$RUST_LLD" \
+		-C linker-flavor=ld64.lld
 
 	NATIVE_CLIENT_BINARY="$RUST_TARGET_DIR/$RUST_PROFILE/$NATIVE_CLIENT_NAME"
 

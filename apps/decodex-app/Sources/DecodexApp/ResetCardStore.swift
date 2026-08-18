@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Observation
 
@@ -378,7 +379,8 @@ final class ResetCardStore {
 	@ObservationIgnored private let observationSignalReconnectDelays: [Duration]
 	@ObservationIgnored private let accountReauthenticationPollInterval: Duration
 	@ObservationIgnored private let accountObservationRetryDelays: [Duration]
-	@ObservationIgnored private let resolveCodexExecutable: @MainActor @Sendable () throws -> String
+	@ObservationIgnored private let copyLoginCode: @MainActor @Sendable (String) -> Void
+	@ObservationIgnored private let openLoginURL: @MainActor @Sendable (URL) -> Void
 	@ObservationIgnored private var startupTask: Task<Void, Never>?
 	@ObservationIgnored private var accountObservationTask: Task<Void, Never>?
 	@ObservationIgnored private var priorityObservationTask: Task<Void, Never>?
@@ -413,8 +415,12 @@ final class ResetCardStore {
 		accountReauthenticationPollInterval: Duration = .seconds(1),
 		accountObservationRetryDelays: [Duration] = ResetCardStore
 			.defaultAccountObservationRetryDelays,
-		resolveCodexExecutable: @escaping @MainActor @Sendable () throws -> String = {
-			try CodexExecutableResolver.resolve()
+		copyLoginCode: @escaping @MainActor @Sendable (String) -> Void = { code in
+			NSPasteboard.general.clearContents()
+			NSPasteboard.general.setString(code, forType: .string)
+		},
+		openLoginURL: @escaping @MainActor @Sendable (URL) -> Void = { url in
+			_ = NSWorkspace.shared.open(url)
 		}
 	) {
 		self.client = client
@@ -428,7 +434,8 @@ final class ResetCardStore {
 		self.observationSignalReconnectDelays = observationSignalReconnectDelays
 		self.accountReauthenticationPollInterval = accountReauthenticationPollInterval
 		self.accountObservationRetryDelays = accountObservationRetryDelays
-		self.resolveCodexExecutable = resolveCodexExecutable
+		self.copyLoginCode = copyLoginCode
+		self.openLoginURL = openLoginURL
 		let pendingLoad = pendingStore.load()
 		pendingAttempts = pendingLoad.attempts
 		pendingStatuses = Dictionary(
@@ -1604,7 +1611,8 @@ final class ResetCardStore {
 			authority: authority,
 			phase: .selectingMethod,
 			loginMethod: nil,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 		pendingAccountLoginStart = PendingAccountLoginStart(
 			start: .reauthentication(
@@ -1644,7 +1652,8 @@ final class ResetCardStore {
 			authority: authority,
 			phase: .selectingMethod,
 			loginMethod: nil,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 		pendingAccountLoginStart = PendingAccountLoginStart(
 			start: .enrollment(enabled: enabled),
@@ -1673,9 +1682,12 @@ final class ResetCardStore {
 			accountLabel: presentation.accountLabel,
 			sessionID: presentation.sessionID,
 			authority: presentation.authority,
-			phase: .resolvingCodex,
+			phase: loginMethod == .browserRedirect
+				? .openingBrowser
+				: .requestingCode,
 			loginMethod: loginMethod,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 		accountReauthenticationTask = Task { [weak self] in
 			await self?.runAccountLogin(
@@ -1688,6 +1700,14 @@ final class ResetCardStore {
 				loginMethod: loginMethod
 			)
 		}
+	}
+
+	func activateAccountLoginPrompt(_ prompt: AccountReauthenticationPrompt) {
+		guard accountReauthentication?.prompt == prompt else {
+			return
+		}
+		copyLoginCode(prompt.userCode)
+		openLoginURL(prompt.verificationURL)
 	}
 
 	func cancelAccountReauthentication() async {
@@ -2987,14 +3007,6 @@ final class ResetCardStore {
 		loginMethod: AccountLoginMethod
 	) async {
 		do {
-			let codexBin = try resolveCodexExecutable()
-			guard accountReauthentication?.sessionID == sessionID else {
-				return
-			}
-			setAccountReauthenticationPhase(
-				loginMethod == .browserRedirect ? .openingBrowser : .requestingCode,
-				sessionID: sessionID
-			)
 			let accountID: String
 			var status: AccountReauthenticationStatus
 			switch start {
@@ -3013,7 +3025,6 @@ final class ResetCardStore {
 					accountID: accountID,
 					enabled: enabled,
 					idempotencyKey: idempotencyKey,
-					codexBin: codexBin,
 					loginMethod: loginMethod
 				)
 			case .reauthentication(let account, let recoveryOperationID):
@@ -3026,7 +3037,6 @@ final class ResetCardStore {
 					expectedRevision: account.accountRevision,
 					recoveryOperationID: recoveryOperationID,
 					idempotencyKey: idempotencyKey,
-					codexBin: codexBin,
 					loginMethod: loginMethod
 				)
 			}
@@ -3041,7 +3051,13 @@ final class ResetCardStore {
 				) {
 					return
 				}
-				try await Task.sleep(for: accountReauthenticationPollInterval)
+				let pollDelay: Duration = switch status.state {
+				case .openingBrowser, .requestingCode:
+					.milliseconds(25)
+				case .waitingForBrowser, .installing, .completed, .failed, .cancelled:
+					accountReauthenticationPollInterval
+				}
+				try await Task.sleep(for: pollDelay)
 				status = try await client.pollAccountReauthentication(
 					authority: authority,
 					sessionID: sessionID
@@ -3110,10 +3126,16 @@ final class ResetCardStore {
 			)
 			return false
 		case .waitingForBrowser:
+			if let authorizationURL = status.authorizationURL,
+				authorizationURL != presentation.authorizationURL
+			{
+				openLoginURL(authorizationURL)
+			}
 			setAccountReauthenticationPhase(
 				.waitingForBrowser,
 				sessionID: sessionID,
-				prompt: status.prompt
+				prompt: status.prompt,
+				authorizationURL: status.authorizationURL
 			)
 			return false
 		case .installing:
@@ -3155,22 +3177,27 @@ final class ResetCardStore {
 		}
 		switch status.state {
 		case .requestingCode:
-			return loginMethod == .deviceCode && status.prompt == nil
+			return loginMethod == .deviceCode
+				&& status.prompt == nil
+				&& status.authorizationURL == nil
 		case .openingBrowser:
-			return loginMethod == .browserRedirect && status.prompt == nil
+			return loginMethod == .browserRedirect
+				&& status.prompt == nil
+				&& status.authorizationURL == nil
 		case .waitingForBrowser:
 			return loginMethod == .deviceCode
-				? status.prompt != nil
-				: status.prompt == nil
+				? status.prompt != nil && status.authorizationURL == nil
+				: status.prompt == nil && status.authorizationURL != nil
 		case .installing, .completed, .failed, .cancelled:
-			return status.prompt == nil
+			return status.prompt == nil && status.authorizationURL == nil
 		}
 	}
 
 	private func setAccountReauthenticationPhase(
 		_ phase: AccountReauthenticationPhase,
 		sessionID: String,
-		prompt: AccountReauthenticationPrompt? = nil
+		prompt: AccountReauthenticationPrompt? = nil,
+		authorizationURL: URL? = nil
 	) {
 		guard let presentation = accountReauthentication,
 			presentation.sessionID == sessionID
@@ -3185,7 +3212,8 @@ final class ResetCardStore {
 			authority: presentation.authority,
 			phase: phase,
 			loginMethod: presentation.loginMethod,
-			prompt: prompt
+			prompt: prompt,
+			authorizationURL: authorizationURL
 		)
 	}
 

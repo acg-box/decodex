@@ -6,7 +6,7 @@ tags: [local-product, sqlite, quick-task, adaptive-factory, domain-pack, app-ser
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
   test_paths: [database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
   invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
@@ -362,21 +362,26 @@ account record and checks schema version, monotonic credential version, fingerpr
 writer operation, provider, and provider-account binding.
 
 The menu-bar Add Account action first offers automatic browser redirect or manual device
-code. The default browser choice lets the official Codex CLI open its redirect flow. The
-manual choice displays the official URL and one-time code and opens the URL only after an
-explicit user action. Both choices use one login-method strategy in the existing manager,
-one owner-private temporary Codex home, and one cleanup path. After login, the daemon reads
-that exact private credential file through a typed enrollment command, creates the account
-through the ordinary operation journal and credential store, and the manager removes the
-temporary home. The normal shared `~/.codex/auth.json` is unchanged by enrollment. Swift
-never receives a credential value or auth-file path.
+code. Both choices call one repository-owned login adapter in process. The adapter is derived
+from official `openai/codex` login source at peeled commit
+`9392c3fa5bcda342b5b96a1a04d67b2f781617c2`, which is tag
+`rust-v0.148.0-alpha.9`. It does not resolve or run a Codex executable, app-server, PTY,
+terminal reader, or prompt parser.
 
-The browser-login child keeps ordinary stdout and stderr pipes. The device-code child uses
-an owner-only pseudo-terminal only for stdout so the official Codex CLI flushes its prompt;
-stderr remains a drained pipe. Both pseudo-terminal descriptors are close-on-exec, and the
-existing process-group cancellation and terminal cleanup close every descriptor. Before the
-existing strict URL and code scan, the manager removes only bounded ANSI CSI SGR sequences
-that can wrap terminal-styled prompt text.
+For browser login, the adapter binds one loopback callback on the official allowed port,
+builds the PKCE/state authorize URL, and returns that URL through the typed credential-negative
+status. Swift opens it once. For device login, the adapter requests and polls the official
+structured endpoints and returns only the verification URL and one-time code. The compact code
+card is one native button; one activation copies the code and opens the verification URL. Both
+methods use the same Manager, owner-private temporary home, bounded HTTP client, token exchange,
+mode-0600 `auth.json` persistence, timeout, cancellation, daemon install command, and cleanup
+path. The normal shared `~/.codex/auth.json` is unchanged. Swift never receives a credential
+value or auth-file path.
+
+The adapter records its exact upstream files and functions in its source and third-party notice.
+Any upstream pin change requires a source diff of those named functions, dependency and advisory
+review, deterministic browser and device parity tests, final graph/build-size measurement, and
+installed-App live acceptance. A failed parity review cannot fall back to a CLI child.
 
 The unique provider-account binding remains the duplicate-enrollment authority. If the
 device-login page selects a provider identity that another Decodex account already owns,

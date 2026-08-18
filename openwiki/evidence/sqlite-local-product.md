@@ -6,7 +6,7 @@ tags: [local-product, sqlite, evidence, quick-task]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [control_thread, ExactSubmittedTurnReadback, recover_unknown_quick_task_turn, plan_continuation, QuickTaskExecutionSettings, TranscriptRow]
   test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
   invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
@@ -341,38 +341,38 @@ the live FFI readback.
 
 ## Dual-method account enrollment acceptance
 
-The account enrollment repair keeps one native login manager and one daemon enrollment
-command. The menu-bar App offers automatic browser redirect by default and a manual device
-code alternative. The manual alternative displays the official URL and one-time code and
-does not open a browser until the user selects Open. Both alternatives use the same private
-temporary Codex home, operation journal, command receipt, credential-store authority, and
-terminal cleanup.
+The current candidate keeps one native login Manager and one daemon enrollment command. It
+replaces the former Codex CLI, PTY, output readers, ANSI normalization, and terminal parser with
+one bounded in-process adapter derived from official `openai/codex` commit
+`9392c3fa5bcda342b5b96a1a04d67b2f781617c2` (`rust-v0.148.0-alpha.9`). The checked-in source
+header, third-party notice, Apache-2.0 license, and architecture test pin the reviewed upstream
+files and functions.
 
-The command choices match official Codex source at `openai/codex` commits
-`9392c3fa5bcda342b5b96a1a04d67b2f781617c2` and
-`5ee6baee2fcc0b6ffd413d9611f5538dad40d0f2`. The default command uses `codex login`; the
-manual command adds `--device-auth`. Repository history at
-`419535e159edadaa978e527e8f88b838b7e4ca66` supplied the earlier bounded device-code
-presentation and cleanup evidence. The repair does not restore its separate state machine.
+Deterministic local issuer tests prove the complete browser callback and structured device-code
+paths, exact PKCE and authorize parameters, shared token exchange, mode-0600 four-field
+`auth.json`, state-mismatch rejection, typed browser and device cancellation, timeout, bounded
+provider responses, and no auth-file creation on failure. Negative architecture tests reject
+every executable, child-process, PTY, argv, reader, terminal-parser, and logging marker in the
+active login path. FFI tests retain the unrevisioned enrollment command, revision-fenced refresh,
+typed duplicate-provider rejection, outcome-unknown cleanup rule, and strict start wire without
+`codex_bin`.
 
-A later installed-App regression showed that current Codex did not flush its device prompt
-while stdout was a pipe. The native manager now attaches only the device-code child's stdout
-to an owner-only pseudo-terminal and continues to drain stderr through a pipe. A regression
-child proves that its prompt is observable before exit only when stdout is a terminal; separate
-tests retain the browser pipe and exact argv. The current terminal prompt wraps the code in
-ANSI SGR, so the bounded parser removes only CSI SGR before applying its existing URL, code
-shape, and token-boundary checks. An installed-FFI probe against Codex 0.148.0-alpha.9 moved
-from `requesting_code` to `waiting_for_browser` with a prompt in 707 milliseconds. Typed cancel
-then removed the child process and private login home without exposing the code.
+The App defaults to browser login and opens the typed authorize URL once. Device login returns a
+structured prompt. Its second page has only the concise header and one prominent monospace code
+card; activating that one native button copies the code and opens the verification URL. Focused
+Swift tests cover the strict wire, URL handoff, method selection, common polling/cancellation,
+duplicate-provider presentation, hidden prompt-page status copy, accessibility markers, and the
+absence of an executable resolver.
 
-Focused acceptance passed 38 native FFI tests and 80 Swift login-flow tests. The signed
-installed App matched the tested candidate. Its FFI negotiated protocol V2.5 and artifact
-cohort 1 with the running daemon and read seven account rows. The new account was ready and
-available, its redacted profile was current, and the enrollment operation and receipt were
-committed and succeeded with no unsettled enrollment operation. No login child or private
-temporary login home remained. Enrollment did not issue a shared Codex projection command.
-A later, separate user route action selected the new account through the ordinary typed
-projection and fixed-routing commands.
+The older signed acceptance remains historical evidence for the account count, daemon install
+authority, operation receipt, and routing separation. Its CLI/PTY prompt implementation is
+superseded and is not an allowed fallback. The signed source-level App passed strict codesign,
+real native-library load and ABI checks, then an App-only atomic installation. Installed-FFI
+smoke read seven accounts before and after, reached the typed browser authorization state, reached
+the structured device prompt without printing the code, cancelled both sessions, and left no
+login process or private-home residue. This is live acceptance through the exact user-action
+boundary; a real provider login and successful source-level credential installation remain
+unverified until a user explicitly completes either official sign-in method.
 
 ## Earlier repository gates
 

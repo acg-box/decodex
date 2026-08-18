@@ -409,7 +409,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			accountID: accountID,
 			enabled: true,
 			idempotencyKey: idempotencyKey,
-			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex",
 			loginMethod: .browserRedirect
 		)
 
@@ -420,7 +419,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			Set(object.keys),
 			[
 				"schema", "operation", "session_id", "operation_id",
-				"account_id", "enabled", "idempotency_key", "codex_bin",
+				"account_id", "enabled", "idempotency_key",
 				"login_method",
 			]
 		)
@@ -431,10 +430,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(object["enabled"] as? Bool, true)
 		XCTAssertEqual(object["idempotency_key"] as? String, idempotencyKey)
 		XCTAssertEqual(object["login_method"] as? String, "browser_redirect")
-		XCTAssertEqual(
-			object["codex_bin"] as? String,
-			"/Applications/ChatGPT.app/Contents/Resources/codex"
-		)
+		XCTAssertNil(object["codex_bin"])
 		XCTAssertEqual(request.authority, authority)
 	}
 
@@ -519,7 +515,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRevision: 7,
 			recoveryOperationID: recoveryOperationID,
 			idempotencyKey: idempotencyKey,
-			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex",
 			loginMethod: .deviceCode
 		)
 		let polled = try await client.pollAccountReauthentication(
@@ -550,7 +545,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			[
 				"schema", "operation", "session_id", "operation_id",
 				"account_id", "expected_revision", "recovery_operation_id",
-				"idempotency_key", "codex_bin", "login_method",
+				"idempotency_key", "login_method",
 			]
 		)
 		XCTAssertEqual(requests[0]["session_id"] as? String, sessionID)
@@ -560,10 +555,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			requests[0]["recovery_operation_id"] as? String,
 			recoveryOperationID
 		)
-		XCTAssertEqual(
-			requests[0]["codex_bin"] as? String,
-			"/Applications/ChatGPT.app/Contents/Resources/codex"
-		)
+		XCTAssertNil(requests[0]["codex_bin"])
 		XCTAssertEqual(requests[0]["login_method"] as? String, "device_code")
 		XCTAssertEqual(
 			Set(requests[1].keys),
@@ -634,6 +626,17 @@ final class AccountControlNativeClientTests: XCTestCase {
 		let sessionID = "55555555-5555-4555-8555-555555555555"
 		let malformed = [
 			"""
+			{"session_id":"\(sessionID)","state":"waiting_for_browser"}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"waiting_for_browser",
+			 "authorization_url":"http://auth.openai.com/oauth/authorize?fixture=true"}
+			""",
+			"""
+			{"session_id":"\(sessionID)","state":"waiting_for_browser",
+			 "authorization_url":"https://auth.openai.com/codex/device"}
+			""",
+			"""
 			{"session_id":"\(sessionID)","state":"waiting_for_browser",
 			 "prompt":{"verification_url":"http://auth.openai.com/codex/device",
 			 "user_code":"AB12-CDE34"}}
@@ -681,6 +684,33 @@ final class AccountControlNativeClientTests: XCTestCase {
 				XCTFail("Unexpected error: \(error)")
 			}
 		}
+	}
+
+	func testBrowserWaitingStatusCarriesOneClosedAuthorizationURL() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let authorizationURL =
+			"https://auth.openai.com/oauth/authorize?response_type=code&fixture=true"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"waiting_for_browser",
+					 "authorization_url":"\(authorizationURL)"}
+					"""
+			)
+		}
+
+		let status = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(status.state, .waitingForBrowser)
+		XCTAssertEqual(status.authorizationURL?.absoluteString, authorizationURL)
+		XCTAssertNil(status.prompt)
+		XCTAssertNil(status.failure)
 	}
 }
 

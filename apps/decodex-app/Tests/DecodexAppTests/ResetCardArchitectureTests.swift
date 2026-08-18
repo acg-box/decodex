@@ -693,6 +693,15 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: appURL.appendingPathComponent("script/build_and_run.sh"),
 			encoding: .utf8
 		)
+		let repositoryURL = appURL
+			.deletingLastPathComponent()
+			.deletingLastPathComponent()
+		let stageTest = try String(
+			contentsOf: repositoryURL.appendingPathComponent(
+				"scripts/macos/test_decodex_app_stage.sh"
+			),
+			encoding: .utf8
+		)
 
 		XCTAssertTrue(
 			script.contains(#"NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib""#)
@@ -703,6 +712,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 			)
 		)
 		XCTAssertTrue(script.contains("-p decodex-app-client-ffi"))
+		XCTAssertTrue(script.contains("cargo rustc"))
+		XCTAssertTrue(script.contains("rust-lld"))
+		XCTAssertTrue(script.contains("linker-flavor=ld64.lld"))
+		XCTAssertTrue(script.contains("NATIVE_CLIENT_MIN_SYSTEM_VERSION=\"11.0\""))
+		XCTAssertTrue(stageTest.contains("dlopen"))
+		XCTAssertTrue(stageTest.contains("decodex_app_native_client_abi_version"))
 		XCTAssertTrue(
 			script.contains(#"cp "$NATIVE_CLIENT_BINARY" "$APP_NATIVE_CLIENT""#)
 		)
@@ -789,6 +804,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 			contentsOf: sourceURL.appendingPathComponent("DecodexNativeClient.swift"),
 			encoding: .utf8
 		)
+		let store = try String(
+			contentsOf: sourceURL.appendingPathComponent("ResetCardStore.swift"),
+			encoding: .utf8
+		)
 
 		XCTAssertTrue(view.contains(#"Image(systemName: "xmark")"#))
 		XCTAssertFalse(view.contains(#"Image(systemName: "safari")"#))
@@ -801,10 +820,18 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(view.contains("presentation.showsStatusText"))
 		XCTAssertTrue(view.contains("headerAction(presentation)"))
 		XCTAssertTrue(view.contains(".frame(width: 28, height: 28)"))
-		XCTAssertTrue(view.contains("Copy code"))
-		XCTAssertTrue(view.contains("prompt.verificationURL.absoluteString"))
+		XCTAssertFalse(view.contains(#"Button("Copy"#))
+		XCTAssertFalse(view.contains("Button(copyFeedback"))
+		XCTAssertFalse(view.contains("Button(openFeedback"))
+		XCTAssertFalse(view.contains(#"Button("Open"#))
+		XCTAssertFalse(view.contains("prompt.verificationURL.absoluteString"))
 		XCTAssertTrue(view.contains("prompt.userCode"))
-		XCTAssertTrue(view.contains("NSWorkspace.shared.open(url)"))
+		XCTAssertTrue(view.contains("activate(prompt)"))
+		XCTAssertTrue(view.contains("store.activateAccountLoginPrompt(prompt)"))
+		XCTAssertTrue(store.contains("copyLoginCode(prompt.userCode)"))
+		XCTAssertTrue(store.contains("openLoginURL(prompt.verificationURL)"))
+		XCTAssertTrue(view.contains("copies the code and opens the sign-in page"))
+		XCTAssertTrue(view.contains("Copy code and open sign-in page"))
 		XCTAssertTrue(view.contains(".keyboardShortcut(.defaultAction)"))
 		XCTAssertTrue(view.contains(".keyboardShortcut(.cancelAction)"))
 		XCTAssertTrue(view.contains(".frame(width: 220)"))
@@ -845,6 +872,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertTrue(accountControl.contains("startAccountEnrollment("))
 		XCTAssertTrue(accountControl.contains(#"operation: "start_account_enrollment""#))
+		XCTAssertFalse(accountControl.contains("codexBin"))
+		XCTAssertFalse(native.contains(#"case codexBin = "codex_bin""#))
+		XCTAssertFalse(store.contains("resolveCodexExecutable"))
+		XCTAssertFalse(store.contains("CodexExecutableResolver"))
+		XCTAssertFalse(store.contains(".resolvingCodex"))
 		XCTAssertTrue(native.contains(#"case loginMethod = "login_method""#))
 		XCTAssertTrue(native.contains("library.destroy(handle)"))
 		XCTAssertTrue(native.contains("decodexNativeArtifactCohort: UInt32 = 1"))

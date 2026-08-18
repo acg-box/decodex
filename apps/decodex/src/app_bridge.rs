@@ -6,7 +6,7 @@ mod request;
 use std::{io, path::PathBuf};
 
 use crate::{
-	accounts::{self, AccountListResponse, AccountLoginRequest, AccountUseRequest},
+	accounts::{self, AccountListResponse, AccountUseRequest},
 	app_bridge::{event::AppBridgeEvent, request::AppBridgeRequest},
 	codex_config,
 	prelude::{Result, eyre},
@@ -23,7 +23,7 @@ pub fn run() -> Result<()> {
 	match handle_request(request) {
 		Ok(()) => Ok(()),
 		Err(error) => {
-			let event: AppBridgeEvent<'_, ()> =
+			let event: AppBridgeEvent<()> =
 				AppBridgeEvent::Error { message: error.to_string() };
 
 			event::emit_event(&event)?;
@@ -58,18 +58,6 @@ fn handle_request(request: AppBridgeRequest) -> Result<()> {
 				auth_json_path: auth_json_path.map(Into::into),
 				json: true,
 			})?),
-		AppBridgeRequest::Login { codex_bin, keep_temp_home, include_usage } => {
-			let response = accounts::account_login(
-				&AccountLoginRequest { codex_bin, keep_temp_home },
-				|chunk| {
-					let event: AppBridgeEvent<'_, ()> = AppBridgeEvent::Output { text: chunk };
-
-					event::emit_event(&event)
-				},
-			)?;
-
-			emit_account_list_result(response, include_usage)
-		},
 		AppBridgeRequest::FastModeStatus => event::emit_result(&codex_config::fast_mode_status()?),
 		AppBridgeRequest::FastModeSet { enabled } =>
 			event::emit_result(&codex_config::set_fast_mode(enabled)?),

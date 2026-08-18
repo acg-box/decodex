@@ -156,6 +156,8 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
   Quick Task orchestration, the built-in Pack registry, and bounded Program/domain
   projections.
 - `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
+- `crates/decodex-app-client-ffi/src/source_login_adapter.rs` owns the bounded in-process
+  browser/device account-login adapter and private auth-file persistence before daemon handoff.
 - `database/src/program_cycles.rs` owns the atomic Program aggregate and Review rules.
 - `crates/decodex-runtime/domain_packs/` owns the two exact built-in declarative manifests.
 - `crates/decodex-runtime/fixtures/` owns frozen offline Pack data and source metadata.
