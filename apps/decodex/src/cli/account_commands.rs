@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use clap::{Args, Subcommand};
 
 use crate::{
-	accounts::{self, AccountImportRequest, AccountLoginRequest, AccountUseRequest},
+	accounts::{self, AccountImportRequest, AccountUseRequest},
 	prelude::Result,
 };
 
@@ -32,10 +32,6 @@ impl AccountCommand {
 				selector: args.selector.clone(),
 				auth_json_path: args.auth_json.clone(),
 				json: args.json,
-			}),
-			AccountSubcommand::Login(args) => accounts::run_account_login(&AccountLoginRequest {
-				codex_bin: args.codex_bin.clone(),
-				keep_temp_home: args.keep_temp_home,
 			}),
 		}
 	}
@@ -96,16 +92,6 @@ pub(super) struct AccountUseCommand {
 	pub(super) json: bool,
 }
 
-#[derive(Debug, Args)]
-pub(super) struct AccountLoginCommand {
-	/// Codex CLI binary used for isolated device login.
-	#[arg(long, default_value = "codex")]
-	pub(super) codex_bin: String,
-	/// Keep the temporary Codex home after login for manual inspection.
-	#[arg(long, hide = true)]
-	pub(super) keep_temp_home: bool,
-}
-
 #[derive(Debug, Subcommand)]
 pub(super) enum AccountSubcommand {
 	/// List configured Codex accounts without printing token material.
@@ -120,6 +106,4 @@ pub(super) enum AccountSubcommand {
 	ImportAuth(AccountImportCommand),
 	/// Force Codex to use one stored account by overwriting its `auth.json`.
 	Use(AccountUseCommand),
-	/// Run Codex device login in an isolated temporary home, then import it.
-	Login(AccountLoginCommand),
 }

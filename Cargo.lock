@@ -1451,13 +1451,21 @@ checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 name = "decodex-app-client-ffi"
 version = "0.2.0"
 dependencies = [
+ "base64",
  "decodex-protocol",
+ "getrandom 0.4.2",
+ "httparse",
  "libc",
+ "reqwest",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "tempfile",
+ "time",
  "tokio",
  "toml_edit 0.22.27",
+ "url",
+ "zeroize",
 ]
 
 [[package]]

@@ -180,7 +180,6 @@ enum AccountLoginMethod: String, Encodable, Equatable, Sendable {
 }
 
 enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
-	case codexUnavailable = "codex_unavailable"
 	case loginFailed = "login_failed"
 	case loginTimedOut = "login_timed_out"
 	case accountMismatch = "account_mismatch"
@@ -196,8 +195,6 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 
 	var presentation: String {
 		switch self {
-		case .codexUnavailable:
-			return "The Codex login tool is unavailable."
 		case .loginFailed:
 			return "Codex could not complete the login."
 		case .loginTimedOut:
@@ -237,6 +234,7 @@ struct AccountReauthenticationStatus: Equatable, Sendable {
 	let sessionID: String
 	let state: AccountReauthenticationState
 	let prompt: AccountReauthenticationPrompt?
+	let authorizationURL: URL?
 	let failure: AccountReauthenticationFailure?
 }
 
@@ -309,7 +307,6 @@ protocol AccountControlClient: ResetCardClient {
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus
 
@@ -320,7 +317,6 @@ protocol AccountControlClient: ResetCardClient {
 		accountID: String,
 		enabled: Bool,
 		idempotencyKey: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus
 
@@ -343,7 +339,6 @@ extension AccountControlClient {
 		accountID _: String,
 		enabled _: Bool,
 		idempotencyKey _: String,
-		codexBin _: String,
 		loginMethod _: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		throw AccountControlError.applicationUnavailable
@@ -357,7 +352,6 @@ extension AccountControlClient {
 		expectedRevision _: UInt64,
 		recoveryOperationID _: String?,
 		idempotencyKey _: String,
-		codexBin _: String,
 		loginMethod _: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		throw AccountControlError.applicationUnavailable
@@ -606,7 +600,6 @@ extension DecodexNativeClient: AccountControlClient {
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		try Self.validateAccountControlInput(
@@ -618,8 +611,7 @@ extension DecodexNativeClient: AccountControlClient {
 		)
 		guard Self.isCanonicalUUID(sessionID),
 			recoveryOperationID.map(Self.isCanonicalUUID) ?? true,
-			recoveryOperationID != operationID,
-			Self.isValidCodexExecutablePath(codexBin)
+			recoveryOperationID != operationID
 		else {
 			throw AccountControlError.invalidInput
 		}
@@ -632,7 +624,6 @@ extension DecodexNativeClient: AccountControlClient {
 				operationID: operationID,
 				recoveryOperationID: recoveryOperationID,
 				sessionID: sessionID,
-				codexBin: codexBin,
 				loginMethod: loginMethod
 			),
 			authority: authority,
@@ -647,7 +638,6 @@ extension DecodexNativeClient: AccountControlClient {
 		accountID: String,
 		enabled: Bool,
 		idempotencyKey: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		try Self.validateAccountControlInput(
@@ -657,9 +647,7 @@ extension DecodexNativeClient: AccountControlClient {
 			expectedRevision: nil,
 			idempotencyKey: idempotencyKey
 		)
-		guard Self.isCanonicalUUID(sessionID),
-			Self.isValidCodexExecutablePath(codexBin)
-		else {
+		guard Self.isCanonicalUUID(sessionID) else {
 			throw AccountControlError.invalidInput
 		}
 		return try await executeAccountReauthentication(
@@ -669,7 +657,6 @@ extension DecodexNativeClient: AccountControlClient {
 				idempotencyKey: idempotencyKey,
 				operationID: operationID,
 				sessionID: sessionID,
-				codexBin: codexBin,
 				loginMethod: loginMethod,
 				enabled: enabled
 			),
@@ -715,17 +702,6 @@ extension DecodexNativeClient: AccountControlClient {
 		else {
 			throw AccountControlError.invalidInput
 		}
-	}
-
-	private static func isValidCodexExecutablePath(_ value: String) -> Bool {
-		guard value.utf8.count <= 4_096,
-			value.utf8.contains(0) == false
-		else {
-			return false
-		}
-		let url = URL(fileURLWithPath: value)
-		return url.path.hasPrefix("/")
-			&& url.standardizedFileURL.path == value
 	}
 
 	private func accountReauthenticationSessionRequest(
@@ -814,7 +790,9 @@ private struct AccountReauthenticationWire: Decodable {
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(
 			in: decoder,
-			allowed: ["session_id", "state", "prompt", "failure"]
+			allowed: [
+				"session_id", "state", "prompt", "authorization_url", "failure",
+			]
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		let sessionID = try container.decode(String.self, forKey: .sessionID)
@@ -826,12 +804,23 @@ private struct AccountReauthenticationWire: Decodable {
 			PromptWire.self,
 			forKey: .prompt
 		)?.value
+		let authorizationURLText = try container.decodeIfPresent(
+			String.self,
+			forKey: .authorizationURL
+		)
+		let authorizationURL = authorizationURLText.flatMap(URL.init(string:))
 		let failure = try container.decodeIfPresent(
 			AccountReauthenticationFailure.self,
 			forKey: .failure
 		)
 		guard DecodexNativeClient.isCanonicalUUID(sessionID),
-			Self.hasValidShape(state: state, prompt: prompt, failure: failure)
+			authorizationURLText == nil || authorizationURL != nil,
+			Self.hasValidShape(
+				state: state,
+				prompt: prompt,
+				authorizationURL: authorizationURL,
+				failure: failure
+			)
 		else {
 			throw AccountControlError.invalidResponse
 		}
@@ -839,6 +828,7 @@ private struct AccountReauthenticationWire: Decodable {
 			sessionID: sessionID,
 			state: state,
 			prompt: prompt,
+			authorizationURL: authorizationURL,
 			failure: failure
 		)
 	}
@@ -846,16 +836,35 @@ private struct AccountReauthenticationWire: Decodable {
 	private static func hasValidShape(
 		state: AccountReauthenticationState,
 		prompt: AccountReauthenticationPrompt?,
+		authorizationURL: URL?,
 		failure: AccountReauthenticationFailure?
 	) -> Bool {
 		switch state {
 		case .requestingCode, .openingBrowser, .installing, .completed, .cancelled:
-			return prompt == nil && failure == nil
+			return prompt == nil && authorizationURL == nil && failure == nil
 		case .waitingForBrowser:
 			return failure == nil
+				&& (prompt != nil) != (authorizationURL != nil)
+				&& authorizationURL.map(Self.isValidAuthorizationURL) ?? true
 		case .failed:
-			return prompt == nil && failure != nil
+			return prompt == nil && authorizationURL == nil && failure != nil
 		}
+	}
+
+	private static func isValidAuthorizationURL(_ value: URL) -> Bool {
+		guard value.absoluteString.utf8.count <= 8 * 1_024,
+			let components = URLComponents(url: value, resolvingAgainstBaseURL: false)
+		else {
+			return false
+		}
+		return components.scheme == "https"
+			&& components.host?.lowercased() == "auth.openai.com"
+			&& components.port == nil
+			&& components.user == nil
+			&& components.password == nil
+			&& components.path == "/oauth/authorize"
+			&& components.fragment == nil
+			&& components.queryItems?.isEmpty == false
 	}
 
 	private struct PromptWire: Decodable {
@@ -886,7 +895,7 @@ private struct AccountReauthenticationWire: Decodable {
 
 		private static func isValidUserCode(_ value: String) -> Bool {
 			let bytes = Array(value.utf8)
-			guard bytes.count == 10, bytes[4] == 0x2d else {
+			guard (9 ... 10).contains(bytes.count), bytes[4] == 0x2d else {
 				return false
 			}
 			return bytes.enumerated().allSatisfy { index, byte in
@@ -908,6 +917,7 @@ private struct AccountReauthenticationWire: Decodable {
 		case sessionID = "session_id"
 		case state
 		case prompt
+		case authorizationURL = "authorization_url"
 		case failure
 	}
 }

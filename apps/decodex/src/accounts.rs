@@ -2,7 +2,6 @@ mod auth_json;
 mod commands;
 mod file_security;
 mod identity;
-mod login;
 mod output;
 mod random_names;
 mod record;
@@ -18,10 +17,9 @@ pub(crate) use self::{
 		run_account_logout, run_account_select, run_account_use,
 	},
 	file_security::secure_account_file,
-	login::{account_login, run_account_login},
 	types::{
-		AccountIdentitySummary, AccountImportRequest, AccountListResponse, AccountLoginRequest,
-		AccountSummary, AccountUseRequest, AccountUseResponse,
+		AccountIdentitySummary, AccountImportRequest, AccountListResponse, AccountSummary,
+		AccountUseRequest, AccountUseResponse,
 	},
 };
 

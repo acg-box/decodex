@@ -2311,7 +2311,7 @@ fn program_summary_dto(record: ProgramSummaryRecord) -> Result<ProgramSummaryDto
 	})
 }
 
-#[allow(clippy::too_many_lines)] // Keep one closed causal projection construction together.
+#[allow(clippy::too_many_lines)] // Keep one complete Program cycle projection together.
 fn program_cycle_dto(
 	record: ProgramCycleRecord,
 	run_states: &[(ConversationId, &'static str)],

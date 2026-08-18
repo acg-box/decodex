@@ -258,21 +258,23 @@ contradictory runtime evidence. This source capability can satisfy `AccountLifec
 `MacDogfoodReady`, and runner readiness only when the runtime executable, generated schema,
 and live callback preflights pass. Initial token projection alone is insufficient.
 
-The supported macOS bridge can launch one explicit official Codex device-login in an
-owner-private temporary home without changing ambient `~/.codex`. It publishes only the
-official URL, one-time code, and closed session state to Swift. On successful login, the
-daemon opens that private `auth.json`, verifies the exact provider identity and current
-account revision, journals an existing-account `Refresh`, and applies only the immediate
-next HostCredentialStore version by compare-and-swap. The temporary home is removed on
-success, failure, cancellation, timeout, or bridge destruction. Ambient `Use in Codex`
-remains a separate explicit projection command; neither action implies the other.
+The supported macOS bridge runs one bounded source-derived login adapter in process. It offers
+automatic browser redirect and structured device code without launching a Codex CLI or
+app-server child. Both methods use one owner-private temporary home without changing ambient
+`~/.codex`. Swift receives only the browser authorize URL, or the device verification URL and
+one-time code, plus closed session state. On successful login, the daemon opens that private
+`auth.json`, verifies the exact provider identity and current account revision, journals an
+existing-account `Refresh`, and applies only the immediate next HostCredentialStore version by
+compare-and-swap. The temporary home is removed on success, failure, cancellation, timeout, or
+bridge destruction. Ambient `Use in Codex` remains a separate explicit projection command;
+neither action implies the other.
 An acceptance-unknown install replays only the same operation and idempotency key while
 the private source exists. Prepared-operation startup and command replay compare both the
 expected and target bindings; only an exact expected binding can prove that cancellation
 is safe, and ambiguous store state becomes `RecoveryRequired`.
 
 A targetless `Refresh` in `RecoveryRequired` can be replaced only by another successful
-official device login that names that exact recovery operation. The new target-backed
+source-level browser or device login that names that exact recovery operation. The new target-backed
 `Refresh` must retain the same account revision, expected credential binding, and provider
 identity. It can coexist with only that one ambiguity while it performs the ordinary
 HostCredentialStore compare-and-swap. The old operation remains `RecoveryRequired`, keeps

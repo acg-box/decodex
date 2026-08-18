@@ -25,7 +25,6 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var operationID: String? = nil
 	var recoveryOperationID: String? = nil
 	var sessionID: String? = nil
-	var codexBin: String? = nil
 	var loginMethod: AccountLoginMethod? = nil
 	var enabled: Bool? = nil
 
@@ -46,7 +45,6 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case operationID = "operation_id"
 		case recoveryOperationID = "recovery_operation_id"
 		case sessionID = "session_id"
-		case codexBin = "codex_bin"
 		case loginMethod = "login_method"
 		case enabled
 	}

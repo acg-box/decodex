@@ -3905,7 +3905,7 @@ mod tests {
 	}
 
 	#[tokio::test]
-	#[allow(clippy::too_many_lines)] // Keep one complete duplicate-provider cancellation and receipt replay proof together.
+	#[allow(clippy::too_many_lines)] // Keep one complete duplicate-provider cancellation and replay proof together.
 	async fn duplicate_provider_enrollment_is_cancelled_and_replays_its_typed_receipt() {
 		let directory = tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))

@@ -7,11 +7,10 @@ use crate::prelude::Result;
 
 #[derive(Serialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub(in crate::app_bridge) enum AppBridgeEvent<'a, T = Value>
+pub(in crate::app_bridge) enum AppBridgeEvent<T = Value>
 where
 	T: Serialize,
 {
-	Output { text: &'a str },
 	Result { payload: T },
 	Error { message: String },
 }
@@ -23,7 +22,7 @@ where
 	emit_event(&AppBridgeEvent::Result { payload })
 }
 
-pub(in crate::app_bridge) fn emit_event<T>(event: &AppBridgeEvent<'_, T>) -> Result<()>
+pub(in crate::app_bridge) fn emit_event<T>(event: &AppBridgeEvent<T>) -> Result<()>
 where
 	T: Serialize,
 {
