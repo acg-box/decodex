@@ -141,6 +141,20 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 		return profileUnavailable?.error == .unauthorized
 			|| profile?.refreshError == .unauthorized
+			|| loginRefreshRecoveryOperationID != nil
+	}
+
+	var loginRefreshRecoveryOperationID: String? {
+		guard account.lifecycleReadiness == .operationUnsettled,
+			let operation = account.unsettledOperation,
+			operation.kind == .refresh,
+			operation.phase == .recoveryRequired,
+			operation.recoveryCode == "provider_refresh_ambiguous"
+				|| operation.recoveryCode == "provider_refresh_outcome_unknown"
+		else {
+			return nil
+		}
+		return operation.operationID
 	}
 }
 
@@ -1554,6 +1568,7 @@ final class ResetCardStore {
 		let operationID = Self.newCanonicalUUID()
 		let idempotencyKey = Self.newCanonicalUUID()
 		let account = state.account
+		let recoveryOperationID = state.loginRefreshRecoveryOperationID
 		let authority = account.authority ?? establishedAuthority
 		accountControlActivities[accountID] = .loginRefresh
 		clearStaleControlError()
@@ -1576,6 +1591,7 @@ final class ResetCardStore {
 				account: account,
 				sessionID: sessionID,
 				operationID: operationID,
+				recoveryOperationID: recoveryOperationID,
 				idempotencyKey: idempotencyKey
 			)
 		}
@@ -2872,6 +2888,7 @@ final class ResetCardStore {
 		account: ResetCardAccountRecord,
 		sessionID: String,
 		operationID: String,
+		recoveryOperationID: String?,
 		idempotencyKey: String
 	) async {
 		do {
@@ -2889,6 +2906,7 @@ final class ResetCardStore {
 				operationID: operationID,
 				accountID: account.accountID,
 				expectedRevision: account.accountRevision,
+				recoveryOperationID: recoveryOperationID,
 				idempotencyKey: idempotencyKey,
 				codexBin: codexBin
 			)

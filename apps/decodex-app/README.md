@@ -128,9 +128,12 @@ preserved and blocks new use.
 
 The panel also exposes current daemon-owned account controls: enroll the
 currently signed-in shared Codex login, enable or disable, log out, and select
-fixed or balanced routing. An account with a provider-confirmed unauthorized
-profile shows `Refresh login`; this official device-login flow is the app's only
-interactive credential-replacement surface. The native app ABI has no direct
+fixed or balanced routing. An account with a provider-confirmed unauthorized profile, or
+with one targetless provider-refresh ambiguity, shows `Refresh login`; this official
+device-login flow is the app's only interactive credential-replacement surface. For the
+ambiguous case, Swift passes only the exact recovery operation identity. The daemon keeps
+the old ambiguity fenced until the verified replacement credential commits and never
+relabels it as a definite cancellation. The native app ABI has no direct
 credential-refresh operation. The action presents the official device code
 with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
 account after the daemon completes the exact credential replacement. The app

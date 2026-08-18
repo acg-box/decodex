@@ -486,6 +486,13 @@ and does not own provider observation. After successful login replacement, bound
 readback waits for the daemon's new revision-scoped observation instead of accepting an
 old unauthorized value.
 
+The same `Refresh login` action is available for one targetless ambiguous refresh. Swift
+passes only the exact recovery operation identity through the existing typed Rust bridge.
+The database keeps the old ambiguity admission-blocking while the new target-backed login
+operation performs its existing compare-and-swap. Only the new operation's atomic account
+commit links and supersedes the old fence. A pre-commit failure leaves the original
+`RecoveryRequired` fact unchanged and does not claim cancellation.
+
 Candidate-5 changes must preserve this current-main observation/cache and UI/backend
 behavior exactly.
 

@@ -138,6 +138,7 @@ enum Request {
 		operation_id: String,
 		account_id: String,
 		expected_revision: u64,
+		recovery_operation_id: Option<String>,
 		idempotency_key: String,
 		codex_bin: String,
 	},
@@ -704,6 +705,7 @@ async fn execute_request(
 			operation_id,
 			account_id,
 			expected_revision,
+			recovery_operation_id,
 			idempotency_key,
 			codex_bin,
 			..
@@ -715,6 +717,7 @@ async fn execute_request(
 				operation_id,
 				account_id,
 				expected_revision,
+				recovery_operation_id,
 				idempotency_key,
 				codex_bin,
 			},
@@ -740,6 +743,7 @@ struct AccountReauthenticationInput {
 	operation_id: String,
 	account_id: String,
 	expected_revision: u64,
+	recovery_operation_id: Option<String>,
 	idempotency_key: String,
 	codex_bin: String,
 }
@@ -827,11 +831,18 @@ fn start_account_reauthentication(
 	{
 		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
 	}
+	let operation_id = entity_id(&input.operation_id)?;
+	let recovery_operation_id =
+		input.recovery_operation_id.map(|operation_id| entity_id(&operation_id)).transpose()?;
+	if recovery_operation_id.as_ref() == Some(&operation_id) {
+		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
+	}
 	let start = account_reauthentication::Start {
 		session_id: input.session_id,
-		operation_id: entity_id(&input.operation_id)?,
+		operation_id,
 		account_id: entity_id(&input.account_id)?,
 		expected_revision: revision(input.expected_revision)?,
+		recovery_operation_id,
 		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
 		codex_bin: PathBuf::from(input.codex_bin),
 	};
@@ -1207,8 +1218,9 @@ mod tests {
 	fn account_reauthentication_requests_are_exact_and_revision_fenced() {
 		let session_id = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
 		let operation_id = "038f0f9e-7b6e-4a31-8f4c-1d2e3f405164";
+		let recovery_operation_id = "048f0f9e-7b6e-4a31-8f4c-1d2e3f405165";
 		let start = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"recovery_operation_id":"{recovery_operation_id}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
 		))
 		.expect("start request must decode");
 		let poll = serde_json::from_str::<Request>(&format!(
@@ -1221,6 +1233,13 @@ mod tests {
 		.expect("cancel request must decode");
 
 		assert_eq!(start.operation(), "start_account_reauthentication");
+		assert!(matches!(
+			start,
+			Request::StartAccountReauthentication {
+				recovery_operation_id: Some(ref actual),
+				..
+			} if actual == recovery_operation_id
+		));
 		assert_eq!(poll.operation(), "poll_account_reauthentication");
 		assert_eq!(cancel.operation(), "cancel_account_reauthentication");
 		assert!(

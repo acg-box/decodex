@@ -46,6 +46,7 @@ use crate::{
 const REFRESH_ENDPOINT: &str = "https://auth.openai.com/oauth/token";
 const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
+const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
 const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v2\0";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
@@ -396,6 +397,7 @@ struct ReauthenticationCommandInput<'a> {
 	operation_id: AccountOperationId,
 	account_id: &'a AccountId,
 	expected_account_revision: i64,
+	recovery_operation_id: Option<&'a AccountOperationId>,
 	source_descriptor: &'a str,
 	account: &'a AccountRecord,
 }
@@ -1022,6 +1024,7 @@ impl AccountService {
 		operation_id: AccountOperationId,
 		account_id: &AccountId,
 		expected_account_revision: i64,
+		recovery_operation_id: Option<&AccountOperationId>,
 		source_descriptor: &str,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
@@ -1045,6 +1048,7 @@ impl AccountService {
 					&operation_id,
 					account_id,
 					expected_account_revision,
+					recovery_operation_id,
 					&operation,
 					build_response,
 				)
@@ -1054,18 +1058,21 @@ impl AccountService {
 			operation_id,
 			account_id,
 			expected_account_revision,
+			recovery_operation_id,
 			source_descriptor,
 			account: &account,
 		};
 		self.continue_reauthentication_command(lease, input, build_response).await
 	}
 
+	#[allow(clippy::too_many_arguments)] // Replay needs the receipt, operation identity, account fence, recovery identity, and response owner together.
 	async fn complete_reauthentication_replay<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
 		operation_id: &AccountOperationId,
 		account_id: &AccountId,
 		expected_account_revision: i64,
+		recovery_operation_id: Option<&AccountOperationId>,
 		operation: &AccountOperation,
 		build_response: F,
 	) -> Result<Value, AccountLifecycleError>
@@ -1078,6 +1085,7 @@ impl AccountService {
 			operation,
 			account_id,
 			expected_account_revision,
+			recovery_operation_id,
 		) {
 			Ok(disposition) => disposition,
 			Err(error) => {
@@ -1140,10 +1148,16 @@ impl AccountService {
 		operation: &AccountOperation,
 		account_id: &AccountId,
 		expected_account_revision: i64,
+		recovery_operation_id: Option<&AccountOperationId>,
 	) -> Result<ReauthenticationReplayDisposition, AccountLifecycleError> {
 		self.require_operation_identity(operation, account_id, AccountOperationKind::Refresh)?;
 		if operation.expected_account_revision != Some(expected_account_revision) {
 			return Err(AccountLifecycleError::StaleAccount);
+		}
+		if operation.recovery_operation_id.as_ref() != recovery_operation_id
+			|| operation.superseded_by_operation_id.is_some()
+		{
+			return Err(AccountLifecycleError::InvalidOperation);
 		}
 		Ok(classify_reauthentication_replay(
 			operation.phase,
@@ -1168,6 +1182,7 @@ impl AccountService {
 			operation_id,
 			account_id,
 			expected_account_revision,
+			recovery_operation_id,
 			source_descriptor,
 			account,
 		} = input;
@@ -1194,7 +1209,14 @@ impl AccountService {
 			target: Some(target.clone()),
 			provider: imported.provider.clone(),
 		};
-		let phase = match self.store.prepare_account_operation(&preparation).await? {
+		let preparation_outcome = match recovery_operation_id {
+			Some(recovery_operation_id) =>
+				self.store
+					.prepare_account_reauthentication_takeover(&preparation, recovery_operation_id)
+					.await?,
+			None => self.store.prepare_account_operation(&preparation).await?,
+		};
+		let phase = match preparation_outcome {
 			AccountLifecycleMutationOutcome::Applied(mutation)
 			| AccountLifecycleMutationOutcome::Replayed(mutation) => mutation.phase,
 			AccountLifecycleMutationOutcome::Rejected { rejection, .. } => {
@@ -2280,9 +2302,24 @@ impl AccountService {
 	pub async fn reconcile_startup(
 		&self,
 	) -> Result<StartupAccountReconciliation, AccountLifecycleError> {
-		let operations = self.store.read_unsettled_account_operations(MAX_ACCOUNT_READ).await?;
+		let operations = self
+			.store
+			.read_unsettled_account_operations(MAX_UNSETTLED_ACCOUNT_OPERATION_READ)
+			.await?;
 		let mut summary = StartupAccountReconciliation::default();
-		for operation in operations {
+		for discovered in operations {
+			let Some(operation) =
+				self.store.read_account_operation(&discovered.operation_id).await?
+			else {
+				continue;
+			};
+			if operation.superseded_by_operation_id.is_some()
+				|| matches!(
+					operation.phase,
+					AccountOperationPhase::Committed | AccountOperationPhase::Cancelled
+				) {
+				continue;
+			}
 			let lock = self.lock_for(&operation.account_id)?;
 			let _guard = lock.lock().await;
 			match self.reconcile_operation(&operation).await? {
@@ -2313,6 +2350,9 @@ impl AccountService {
 			.read_account_operation(operation_id)
 			.await?
 			.ok_or(AccountLifecycleError::InvalidOperation)?;
+		if operation.superseded_by_operation_id.is_some() {
+			return Err(AccountLifecycleError::InvalidOperation);
+		}
 		let lock = self.lock_for(&operation.account_id)?;
 		let _guard = lock.lock().await;
 		let operation = self
@@ -2320,6 +2360,9 @@ impl AccountService {
 			.read_account_operation(operation_id)
 			.await?
 			.ok_or(AccountLifecycleError::InvalidOperation)?;
+		if operation.superseded_by_operation_id.is_some() {
+			return Err(AccountLifecycleError::InvalidOperation);
+		}
 		let replayed = match (operation.phase, action) {
 			(
 				AccountOperationPhase::Committed,
@@ -2387,6 +2430,15 @@ impl AccountService {
 				)
 				.await;
 		};
+		if operation.superseded_by_operation_id.is_some() {
+			return self
+				.complete_recovery_command_error(
+					lease,
+					AccountLifecycleError::InvalidOperation,
+					build_response.take().expect("builder is retained"),
+				)
+				.await;
+		}
 		let terminal_replay = match (operation.phase, action) {
 			(
 				AccountOperationPhase::Committed,
@@ -2450,6 +2502,11 @@ impl AccountService {
 					self.credentials.read_exact(&operation.account_id, expected).is_ok()
 				}),
 				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
+					operation.expected.as_ref().is_some_and(|expected| {
+						self.credentials.read_exact(&operation.account_id, expected).is_ok()
+					}),
+				(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
+					if operation.recovery_operation_id.is_some() =>
 					operation.expected.as_ref().is_some_and(|expected| {
 						self.credentials.read_exact(&operation.account_id, expected).is_ok()
 					}),
@@ -2972,6 +3029,11 @@ impl AccountService {
 				)
 			}),
 			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Logout) =>
+				operation.expected.as_ref().is_some_and(|expected| {
+					self.credentials.read_exact(&operation.account_id, expected).is_ok()
+				}),
+			(AccountOperationPhase::RecoveryRequired, AccountOperationKind::Refresh)
+				if operation.recovery_operation_id.is_some() =>
 				operation.expected.as_ref().is_some_and(|expected| {
 					self.credentials.read_exact(&operation.account_id, expected).is_ok()
 				}),
@@ -3577,32 +3639,53 @@ impl From<CredentialImportError> for AccountLifecycleError {
 mod tests {
 	use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 	use decodex_core::{
-		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationPhase,
-		AccountProvider, AccountQuotaWindow, AccountQuotaWindowObservation, AccountRecord,
-		AccountState, CredentialBinding, CredentialFingerprint, CredentialStoreSchemaVersion,
-		CredentialVersion, ProviderIdentity,
+		AccountId, AccountLifecycleReadiness, AccountOperationId, AccountOperationKind,
+		AccountOperationPhase, AccountProvider, AccountQuotaWindow, AccountQuotaWindowObservation,
+		AccountRecord, AccountState, CredentialBinding, CredentialFingerprint,
+		CredentialStoreSchemaVersion, CredentialVersion, DecodexRoot, ProviderIdentity,
+	};
+	use decodex_database::{
+		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
+		AccountOperationPreparation, CommandIdentity, SqliteStore,
 	};
 	use serde_json::json;
 
 	use super::{
-		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, CredentialImportError, CredentialRefreshError,
-		CredentialSecretBundle, ImportedCredential, PROVIDER_REFRESH_OUTCOME_UNKNOWN,
-		PreparedRefreshReconciliation, ReauthenticationReplayDisposition, RefreshResponse,
-		UseInCodexProjectionError, access_token_needs_refresh, account_lock_for,
-		classify_prepared_refresh_reconciliation, classify_reauthentication_replay,
-		codex_auth_projection_digest, credential_refresh_result, matching_shared_refresh,
-		projection_binding, reauthentication_current, reauthentication_target,
-		refreshed_credential_target, require_refreshed_access_token_for_observation,
-		resolve_reauthentication_store_effect, stable_account_alias, use_in_codex_receipt_result,
+		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountService, CredentialImportError,
+		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
+		CredentialSecretBundle, HostCredentialStore, ImportedCredential,
+		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
+		ReauthenticationReplayDisposition, RefreshResponse, UseInCodexProjectionError,
+		access_token_needs_refresh, account_lock_for, classify_prepared_refresh_reconciliation,
+		classify_reauthentication_replay, codex_auth_projection_digest, credential_refresh_result,
+		matching_shared_refresh, projection_binding, reauthentication_current,
+		reauthentication_target, refreshed_credential_target,
+		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
+		stable_account_alias, use_in_codex_receipt_result,
 	};
 	use std::{
 		collections::{HashMap, HashSet},
+		fs,
+		os::unix::fs::PermissionsExt as _,
 		sync::{Arc, Mutex},
 		time::Duration,
 	};
+	use tempfile::tempdir;
 	use tokio::time;
 
+	use crate::host_credentials::SqliteCredentialStore;
+
 	const OBSERVED_AT_MICROS: i64 = 1_000_000;
+
+	struct UnusedCredentialRefresher;
+	impl CredentialRefreshPort for UnusedCredentialRefresher {
+		fn refresh(
+			&self,
+			_current: &CredentialSecretBundle,
+		) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+			panic!("verified reauthentication must not call the provider refresh adapter")
+		}
+	}
 
 	#[test]
 	fn observation_refreshes_only_when_the_access_token_cannot_cover_the_process_deadline() {
@@ -3688,6 +3771,188 @@ mod tests {
 			Err(AccountLifecycleError::StaleAccount)
 		));
 		assert_eq!(account.credential.as_ref(), Some(&current));
+	}
+
+	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // One full cross-store takeover regression keeps every safety boundary visible together.
+	async fn verified_device_login_takes_over_targetless_refresh_ambiguity_end_to_end() {
+		let directory = tempdir().expect("temporary product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let service = AccountService::new(
+			store.clone(),
+			Arc::clone(&credentials),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let account_id =
+			AccountId::new("21000000-0000-4000-8000-000000000001").expect("account identity");
+		let enrollment_id = AccountOperationId::new("22000000-0000-4000-8000-000000000001")
+			.expect("enrollment identity");
+		let ambiguity_id = AccountOperationId::new("22000000-0000-4000-8000-000000000002")
+			.expect("ambiguity identity");
+		let takeover_id = AccountOperationId::new("22000000-0000-4000-8000-000000000003")
+			.expect("takeover identity");
+		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "old-provider-account")
+			.expect("provider identity");
+		let current_bundle = current_bundle();
+		let current = current_bundle
+			.binding_for(
+				&account_id,
+				&enrollment_id,
+				CredentialVersion::new(1).expect("initial version"),
+				&provider,
+			)
+			.expect("initial credential binding");
+		assert!(matches!(
+			store
+				.prepare_account_operation(&AccountOperationPreparation {
+					operation_id: enrollment_id.clone(),
+					account_id: account_id.clone(),
+					kind: AccountOperationKind::Enroll,
+					display_label: Some("Primary".to_owned()),
+					enabled: Some(true),
+					expected_account_revision: None,
+					expected: None,
+					target: Some(current.clone()),
+					provider: provider.clone(),
+				})
+				.await
+				.expect("prepare enrollment"),
+			AccountLifecycleMutationOutcome::Applied(_)
+		));
+		credentials
+			.create(&account_id, &current, current_bundle)
+			.expect("write initial credential");
+		store
+			.advance_account_operation(
+				&enrollment_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record initial credential");
+		store
+			.advance_account_operation(
+				&enrollment_id,
+				AccountOperationPhase::StoreApplied,
+				AccountOperationPhase::Committed,
+				None,
+			)
+			.await
+			.expect("commit initial account");
+		store
+			.prepare_account_operation(&AccountOperationPreparation {
+				operation_id: ambiguity_id.clone(),
+				account_id: account_id.clone(),
+				kind: AccountOperationKind::Refresh,
+				display_label: None,
+				enabled: None,
+				expected_account_revision: Some(1),
+				expected: Some(current.clone()),
+				target: None,
+				provider: provider.clone(),
+			})
+			.await
+			.expect("prepare provider refresh");
+		store
+			.advance_account_operation(
+				&ambiguity_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::ProviderEffectPending,
+				None,
+			)
+			.await
+			.expect("record possible provider effect");
+		store
+			.advance_account_operation(
+				&ambiguity_id,
+				AccountOperationPhase::ProviderEffectPending,
+				AccountOperationPhase::RecoveryRequired,
+				Some("provider_refresh_ambiguous"),
+			)
+			.await
+			.expect("preserve provider ambiguity");
+
+		let login_directory = tempdir().expect("private login directory");
+		let login_root = fs::canonicalize(login_directory.path()).expect("canonical login root");
+		let auth_path = login_root.join("auth.json");
+		let access_payload = URL_SAFE_NO_PAD
+			.encode(serde_json::to_vec(&json!({"exp": 4_000_000_000_i64})).expect("access claims"));
+		fs::write(
+			&auth_path,
+			serde_json::to_vec(&json!({
+				"auth_mode": "chatgpt",
+				"OPENAI_API_KEY": null,
+				"tokens": {
+					"id_token": identity_token(
+						"old-provider-account",
+						"verified@example.test",
+						"team"
+					),
+					"access_token": format!("header.{access_payload}.signature"),
+					"refresh_token": "verified-refresh",
+					"account_id": "old-provider-account"
+				},
+				"last_refresh": null
+			}))
+			.expect("login document"),
+		)
+		.expect("write login document");
+		fs::set_permissions(&auth_path, fs::Permissions::from_mode(0o600))
+			.expect("private login document");
+		let command = CommandIdentity::new("verified-login-takeover", b"exact takeover request")
+			.expect("command identity");
+		let lease = match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Refresh,
+				account_id.as_str(),
+				Some(1),
+			)
+			.await
+			.expect("reserve takeover command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("new takeover command replayed"),
+		};
+		let response = service
+			.reauthenticate_from_credential_file_command(
+				lease,
+				takeover_id.clone(),
+				&account_id,
+				1,
+				Some(&ambiguity_id),
+				auth_path.to_string_lossy().as_ref(),
+				|result| {
+					Ok(match result {
+						Ok(account) => json!({"outcome": "applied", "revision": account.revision}),
+						Err(_) => json!({"outcome": "rejected"}),
+					})
+				},
+			)
+			.await
+			.expect("complete verified login takeover");
+
+		assert_eq!(response, json!({"outcome": "applied", "revision": 2}));
+		let account = service.inspect(&account_id).await.expect("inspect settled account");
+		assert_eq!(account.account.revision, 2);
+		assert!(account.account.unsettled_operation.is_none());
+		let target = account.account.credential.expect("replacement binding");
+		assert_eq!(target.version.get(), 2);
+		assert_eq!(target.writer_operation_id, takeover_id.clone());
+		credentials.read_exact(&account_id, &target).expect("read exact replacement credential");
+		let ambiguity = store
+			.read_account_operation(&ambiguity_id)
+			.await
+			.expect("read ambiguity")
+			.expect("ambiguity remains recorded");
+		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
+		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
+		assert_eq!(ambiguity.superseded_by_operation_id, Some(takeover_id));
 	}
 
 	#[test]

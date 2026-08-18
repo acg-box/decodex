@@ -177,6 +177,7 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	case accountMismatch = "account_mismatch"
 	case accountChanged = "account_changed"
 	case accountUnavailable = "account_unavailable"
+	case recoveryChanged = "recovery_changed"
 	case credentialStoreUnavailable = "credential_store_unavailable"
 	case serviceUnavailable = "service_unavailable"
 	case outcomeUnknown = "outcome_unknown"
@@ -197,6 +198,8 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 			return "The account changed. Close this login and try again."
 		case .accountUnavailable:
 			return "This account is not available for login."
+		case .recoveryChanged:
+			return "This login recovery changed. Refresh the account and try again."
 		case .credentialStoreUnavailable:
 			return "The credential store is unavailable."
 		case .serviceUnavailable:
@@ -284,6 +287,7 @@ protocol AccountControlClient: ResetCardClient {
 		operationID: String,
 		accountID: String,
 		expectedRevision: UInt64,
+		recoveryOperationID: String?,
 		idempotencyKey: String,
 		codexBin: String
 	) async throws -> AccountReauthenticationStatus
@@ -306,6 +310,7 @@ extension AccountControlClient {
 		operationID _: String,
 		accountID _: String,
 		expectedRevision _: UInt64,
+		recoveryOperationID _: String?,
 		idempotencyKey _: String,
 		codexBin _: String
 	) async throws -> AccountReauthenticationStatus {
@@ -553,6 +558,7 @@ extension DecodexNativeClient: AccountControlClient {
 		operationID: String,
 		accountID: String,
 		expectedRevision: UInt64,
+		recoveryOperationID: String?,
 		idempotencyKey: String,
 		codexBin: String
 	) async throws -> AccountReauthenticationStatus {
@@ -564,6 +570,8 @@ extension DecodexNativeClient: AccountControlClient {
 			idempotencyKey: idempotencyKey
 		)
 		guard Self.isCanonicalUUID(sessionID),
+			recoveryOperationID.map(Self.isCanonicalUUID) ?? true,
+			recoveryOperationID != operationID,
 			Self.isValidCodexExecutablePath(codexBin)
 		else {
 			throw AccountControlError.invalidInput
@@ -575,6 +583,7 @@ extension DecodexNativeClient: AccountControlClient {
 				expectedRevision: expectedRevision,
 				idempotencyKey: idempotencyKey,
 				operationID: operationID,
+				recoveryOperationID: recoveryOperationID,
 				sessionID: sessionID,
 				codexBin: codexBin
 			),
