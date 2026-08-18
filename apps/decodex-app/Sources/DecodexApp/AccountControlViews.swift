@@ -210,7 +210,9 @@ struct AccountRefreshLoginButton: View {
 				state.account.accountID,
 				activity: .loginRefresh
 			),
-			help: "Sign in to this account with the official Codex device login."
+			help: state.loginRefreshRecoveryOperationID == nil
+				? "Sign in to this account with the official Codex device login."
+				: "Sign in again to safely replace an uncertain account update."
 		) {
 			store.beginAccountReauthentication(for: state.account.accountID)
 		}
