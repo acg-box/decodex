@@ -254,6 +254,12 @@ pub struct AccountOperation {
 	pub expected: Option<CredentialBinding>,
 	/// Exact credential binding after the effect, when known.
 	pub target: Option<CredentialBinding>,
+	/// Stable reason that required manual recovery, when present.
+	pub recovery_code: Option<String>,
+	/// Exact ambiguous refresh that this verified reauthentication can replace.
+	pub recovery_operation_id: Option<AccountOperationId>,
+	/// Exact verified reauthentication that replaced this ambiguity.
+	pub superseded_by_operation_id: Option<AccountOperationId>,
 }
 
 /// Credential-negative unsettled operation state rendered with one account row.

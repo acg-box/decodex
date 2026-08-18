@@ -22,6 +22,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var order: [String]? = nil
 	var idempotencyKey: String? = nil
 	var operationID: String? = nil
+	var recoveryOperationID: String? = nil
 	var sessionID: String? = nil
 	var codexBin: String? = nil
 	var enabled: Bool? = nil
@@ -41,6 +42,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case order
 		case idempotencyKey = "idempotency_key"
 		case operationID = "operation_id"
+		case recoveryOperationID = "recovery_operation_id"
 		case sessionID = "session_id"
 		case codexBin = "codex_bin"
 		case enabled

@@ -383,6 +383,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 	func testAccountReauthenticationUsesExactStartPollAndCancelRequests() async throws {
 		let authority = authority
 		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let recoveryOperationID = "66666666-6666-4666-8666-666666666666"
 		let recorder = NativeRequestRecorder()
 		let client = DecodexNativeClient { request, requestedAuthority in
 			recorder.append(request, authority: requestedAuthority)
@@ -418,6 +419,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			operationID: operationID,
 			accountID: accountID,
 			expectedRevision: 7,
+			recoveryOperationID: recoveryOperationID,
 			idempotencyKey: idempotencyKey,
 			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex"
 		)
@@ -447,12 +449,17 @@ final class AccountControlNativeClientTests: XCTestCase {
 			Set(requests[0].keys),
 			[
 				"schema", "operation", "session_id", "operation_id",
-				"account_id", "expected_revision", "idempotency_key", "codex_bin",
+				"account_id", "expected_revision", "recovery_operation_id",
+				"idempotency_key", "codex_bin",
 			]
 		)
 		XCTAssertEqual(requests[0]["session_id"] as? String, sessionID)
 		XCTAssertEqual(requests[0]["account_id"] as? String, accountID)
 		XCTAssertEqual(requests[0]["expected_revision"] as? NSNumber, 7)
+		XCTAssertEqual(
+			requests[0]["recovery_operation_id"] as? String,
+			recoveryOperationID
+		)
 		XCTAssertEqual(
 			requests[0]["codex_bin"] as? String,
 			"/Applications/ChatGPT.app/Contents/Resources/codex"

@@ -95,7 +95,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 4 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 5 };
 /// The lower bound of the exact-current protocol window.
 ///
 /// This equals [`CURRENT_VERSION`]. The name remains to avoid an unrelated

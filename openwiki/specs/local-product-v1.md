@@ -166,7 +166,7 @@ bounded inline value or a digest and length.
 
 ## Repeatable Program Loop V1
 
-The current protocol accepts exact V2.4 clients. It adds one bounded, manually repeated
+The current protocol accepts exact V2.5 clients. It retains the bounded, manually repeated
 Program aggregate above the existing Quick Task execution path. The initial command
 creates one Program charter, one sourced Signal, one Claim, one non-executable Proposal,
 one finite Objective, and one ready WorkItem in one SQLite transaction.

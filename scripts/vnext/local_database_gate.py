@@ -48,6 +48,11 @@ MIGRATIONS = (
         "builtin_domain_pack_binding",
         ROOT / "database/migrations/0007_builtin_domain_pack_binding.sql",
     ),
+    (
+        8,
+        "account_reauthentication_takeover",
+        ROOT / "database/migrations/0008_account_reauthentication_takeover.sql",
+    ),
 )
 DATABASE_RELATIVE_PATH = Path("server/decodex.sqlite3")
 APPLICATION_ID = 0x4443_5831

@@ -175,8 +175,8 @@ the pre-existing malformed-cycle tests pass together. After this correction, the
 complete GPUI package passed 120 tests with two live tests ignored.
 
 The client does not activate the deferred general WorkItem and Project query surface.
-Protocol V2.4 is exact-current. The Adaptive Program controller uses only its bounded
-V2.4 Program and built-in Domain Pack commands and queries. The unrelated WorkItem board
+Protocol V2.5 is exact-current. The Adaptive Program controller uses only its bounded
+Program and built-in Domain Pack commands and queries. The unrelated WorkItem board
 controller stays dormant. This keeps deferred Factory surfaces from affecting
 Conversation history or the Workbench connection.
 
@@ -260,16 +260,19 @@ remain outside this lifecycle-refresh milestone because
 or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
 terminal state and assistant suffix.
 
-Protocol V2.4 carries the controls, archive event, bounded Program aggregate, and
-built-in Domain Pack projection. SQLite
+Protocol V2.5 carries the controls, archive event, bounded Program aggregate, built-in
+Domain Pack projection, and the optional exact recovery-operation identity for official
+device-login takeover. It carries no credential value. SQLite
 schema version 3 adds the original Quick Task execution settings. Schema version 4 adds
 the migration-owned `context_packs` table. Schema version 5 adds the Program, Signal,
 Claim, Proposal, Objective, WorkItem binding, Evidence, Review, and semantic identity
 tables. Schema version 6 adds exact predecessor Review lineage for continued Signals,
 root and successor uniqueness, and same-Program lineage guards. Schema version 7 adds
-one immutable Program-to-Pack binding table. It retains the exact 40-table inventory.
-The schema-7 local database gate passed with WAL, `quick_check`, foreign-key
-verification, all seven exact migration digests, and the 40-table inventory. The exact
+one immutable Program-to-Pack binding table. Schema version 8 adds two account-operation
+takeover links and replacement indexes. It does not add another table or rewrite an
+ambiguity as cancellation. It retains the exact 40-table inventory. The schema-8 local
+database gate passed with WAL, `quick_check`, foreign-key verification, all eight exact
+migration digests, and the 40-table inventory. The exact
 two-domain result is in the
 [Built-in Domain Pack Pressure Test V1 evidence](builtin-domain-pack-pressure-test-v1.md).
 

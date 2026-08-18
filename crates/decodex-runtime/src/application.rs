@@ -640,10 +640,13 @@ impl ServiceApplication {
 			CommandPayload::ReauthenticateAccountFromCredentialFile {
 				operation_id,
 				account_id,
+				recovery_operation_id,
 				source_descriptor,
 			} => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
+				let recovery_operation_id =
+					recovery_operation_id.as_ref().map(operation_id_from_wire).transpose()?;
 				let expected = required_expected_revision(command)?;
 				service
 					.reauthenticate_from_credential_file_command(
@@ -651,6 +654,7 @@ impl ServiceApplication {
 						operation_id,
 						&account_id,
 						expected,
+						recovery_operation_id.as_ref(),
 						source_descriptor.as_str(),
 						|result| {
 							encode_account_command_receipt(
@@ -3422,10 +3426,17 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 		CommandPayload::ReauthenticateAccountFromCredentialFile {
 			operation_id,
 			account_id,
+			recovery_operation_id,
 			source_descriptor,
 		} => {
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
+			if recovery_operation_id.as_ref().is_some_and(|recovery| recovery == operation_id) {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
+			}
+			if let Some(recovery_operation_id) = recovery_operation_id {
+				let _ = operation_id_from_wire(recovery_operation_id)?;
+			}
 			let _ = required_expected_revision(command)?;
 			let source = source_descriptor.as_str();
 			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {

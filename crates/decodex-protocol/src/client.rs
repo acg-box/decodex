@@ -846,7 +846,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.4 client for bounded canonical WorkItem board pages.
+/// Read-only V2.5 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -928,7 +928,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.4 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.5 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1162,7 +1162,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V2.4 lifecycle command exactly once on one connection.
+	/// Execute one V2.5 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1798,12 +1798,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_4_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 4 });
+	fn protocol_constants_expose_only_the_exact_v2_5_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 5 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 4, maximum_minor: 4 },
+			SupportedVersions { major: 2, minimum_minor: 5, maximum_minor: 5 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}
@@ -2971,6 +2971,7 @@ max_entry_bytes = 0
 			operation_id: EntityId::new("43234567-89ab-4def-8123-456789abcdef")
 				.expect("canonical operation ID"),
 			account_id: account_id.clone(),
+			recovery_operation_id: None,
 			source_descriptor: crate::WireText::new("/private/tmp/login/auth.json")
 				.expect("bounded source descriptor"),
 		};
