@@ -398,6 +398,22 @@ where
 				return SessionTaskCompletion::unregistered(connection_id);
 			},
 		};
+		if hello.artifact_cohort != Some(decodex_protocol::CURRENT_ARTIFACT_COHORT) {
+			let _ = self
+				.send_direct(
+					&mut socket,
+					ServerMessage::Refusal(RefusalEnvelope {
+						server_id: self.inner.server_id.clone(),
+						refusal: Refusal::ArtifactCohortMismatch {
+							expected: decodex_protocol::CURRENT_ARTIFACT_COHORT,
+							actual: hello.artifact_cohort,
+						},
+					}),
+				)
+				.await;
+
+			return SessionTaskCompletion::unregistered(connection_id);
+		}
 
 		if let Some(expected) = hello.expected_server_id.as_ref()
 			&& expected != &self.inner.server_id
@@ -2207,6 +2223,7 @@ where
 			0,
 			ServerMessage::Welcome(ServerWelcome {
 				version: snapshot.version,
+				artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 				supported: SupportedVersions::current(),
 				server_id: self.server.inner.server_id.clone(),
 				instance_id: supports_publication_instance(snapshot.version)

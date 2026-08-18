@@ -10,8 +10,8 @@ use serde::Serialize;
 use tokio as _;
 
 use decodex_protocol::{
-	AppServerCapability, ClientFailure, ClientProfile, DoctorClient, DoctorComponent, DoctorIssue,
-	DoctorReport, DoctorStatus, ProfileKind, ServerId,
+	AppServerCapability, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientFailure, ClientProfile,
+	DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 
 mod account;
@@ -105,9 +105,19 @@ struct FailureDocument {
 	failure: ClientFailure,
 }
 
+#[derive(Serialize)]
+struct ArtifactCohortDocument {
+	schema: &'static str,
+	artifact_cohort: u32,
+	protocol: decodex_protocol::ProtocolVersion,
+}
+
 /// Supported daemon and local Git operations.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
+	/// Print the exact local artifact/protocol cohort without contacting the daemon.
+	#[command(hide = true)]
+	ArtifactCohort,
 	/// Summarize daemon readiness while retaining every typed check.
 	Status,
 	/// Render the complete authoritative diagnostic report.
@@ -115,7 +125,7 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V2.1 protocol.
+	/// Manage daemon-owned accounts through the same-UID V2.5 protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
 	/// Read or update the current user's local Codex Fast mode setting.
@@ -158,6 +168,7 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
 
 	let command = match command {
+		Command::ArtifactCohort => return render_artifact_cohort(output),
 		Command::Account(command) => {
 			return account::execute(
 				command,
@@ -206,6 +217,20 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 	};
 
 	render_report(command, output, client.profile().kind(), &report)
+}
+
+fn render_artifact_cohort(format: OutputFormat) -> CommandOutput {
+	let document = ArtifactCohortDocument {
+		schema: "decodex/artifact-cohort/1",
+		artifact_cohort: CURRENT_ARTIFACT_COHORT,
+		protocol: CURRENT_VERSION,
+	};
+	let text = match format {
+		OutputFormat::Json => serde_json::to_string(&document),
+		OutputFormat::Human => serde_json::to_string_pretty(&document),
+	}
+	.expect("artifact cohort output serialization cannot fail");
+	CommandOutput { text, exit_code: 0, error_stream: false }
 }
 
 fn load_client_profile(
@@ -570,6 +595,9 @@ mod tests {
 		let git_hook =
 			Cli::try_parse_from(["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"])
 				.expect("test operation must succeed");
+		let artifact_cohort =
+			Cli::try_parse_from(["decodex", "--output", "json", "artifact-cohort"])
+				.expect("artifact cohort command must parse");
 
 		assert_eq!(doctor.command, Command::Doctor);
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
@@ -591,7 +619,25 @@ mod tests {
 						== "2222222222222222222222222222222222222222"
 		));
 		assert!(matches!(git_hook.command, Command::GitHook(_)));
+		assert_eq!(artifact_cohort.command, Command::ArtifactCohort);
 		assert!(Cli::try_parse_from(["decodex", "diagnose"]).is_err());
+	}
+
+	#[test]
+	fn artifact_cohort_output_is_exact_and_daemon_independent() {
+		let output = crate::render_artifact_cohort(OutputFormat::Json);
+		let value: serde_json::Value =
+			serde_json::from_str(output.text()).expect("artifact cohort JSON");
+
+		assert_eq!(output.exit_code(), 0);
+		assert_eq!(
+			value,
+			serde_json::json!({
+				"schema": "decodex/artifact-cohort/1",
+				"artifact_cohort": decodex_protocol::CURRENT_ARTIFACT_COHORT,
+				"protocol": decodex_protocol::CURRENT_VERSION,
+			}),
+		);
 	}
 
 	#[test]
@@ -706,6 +752,7 @@ mod tests {
 			ClientFailure::ProtocolTimeout,
 			ClientFailure::ProtocolMajorMismatch,
 			ClientFailure::ProtocolMinorMismatch,
+			ClientFailure::ArtifactCohortMismatch,
 			ClientFailure::ServerIdentityMismatch,
 			ClientFailure::ProtocolMalformed,
 			ClientFailure::ProtocolViolation,

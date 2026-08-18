@@ -9,9 +9,11 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-clap            = { workspace = true }
-decodex-runtime = { workspace = true }
-tokio           = { workspace = true }
+clap             = { workspace = true }
+decodex-protocol = { workspace = true }
+decodex-runtime  = { workspace = true }
+serde_json       = { workspace = true }
+tokio            = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

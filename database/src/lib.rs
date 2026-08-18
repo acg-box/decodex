@@ -303,6 +303,7 @@ mod tests {
 	const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
 	const OPERATION_ONE: &str = "20000000-0000-4000-8000-000000000001";
 	const OPERATION_TWO: &str = "20000000-0000-4000-8000-000000000002";
+	const OPERATION_THREE: &str = "20000000-0000-4000-8000-000000000003";
 	const DIGEST_ONE: &str = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 	const DIGEST_TWO: &str = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
 
@@ -433,6 +434,84 @@ mod tests {
 		assert_eq!(revision, 2);
 		assert_eq!(instructions, "Follow the user request for this task.");
 		assert!(table_sql.contains("BETWEEN 1 AND 65536"));
+	}
+
+	#[tokio::test]
+	async fn upgrades_v7_refresh_ambiguity_without_settling_or_rewriting_it() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let connection = Connection::open(&path).expect("open V7 fixture");
+		migrations::configure(&connection).expect("configure V7 fixture");
+		let sources = [
+			("local_product", include_str!("../migrations/0001_local_product.sql")),
+			(
+				"nonempty_task_instructions",
+				include_str!("../migrations/0002_nonempty_task_instructions.sql"),
+			),
+			(
+				"quick_task_execution_controls",
+				include_str!("../migrations/0003_quick_task_execution_controls.sql"),
+			),
+			("context_pack_fallback", include_str!("../migrations/0004_context_pack_fallback.sql")),
+			(
+				"adaptive_factory_spine",
+				include_str!("../migrations/0005_adaptive_factory_spine.sql"),
+			),
+			(
+				"repeatable_program_loop",
+				include_str!("../migrations/0006_repeatable_program_loop.sql"),
+			),
+			(
+				"builtin_domain_pack_binding",
+				include_str!("../migrations/0007_builtin_domain_pack_binding.sql"),
+			),
+		];
+		let digests = migrations::expected_migration_digests();
+		for (index, (name, source)) in sources.into_iter().enumerate() {
+			connection.execute_batch(source).expect("apply V7 migration fixture");
+			connection
+				.execute(
+					"INSERT INTO schema_migrations (version, name, sha256, applied_at_micros)
+					 VALUES (?1, ?2, ?3, ?4)",
+					rusqlite::params![(index + 1) as i64, name, digests[index], (index + 1) as i64],
+				)
+				.expect("record V7 migration fixture");
+		}
+		connection
+			.pragma_update(None, "application_id", migrations::APPLICATION_ID)
+			.expect("set application identity");
+		connection.pragma_update(None, "user_version", 7).expect("set V7 version");
+		connection
+			.execute(
+				"INSERT INTO account_identities (account_id, created_at_micros) VALUES (?1, 1)",
+				rusqlite::params![ACCOUNT],
+			)
+			.expect("seed account identity");
+		connection
+			.execute(
+				"INSERT INTO account_operations (
+				   operation_id, account_id, kind, phase, expected_account_revision,
+				   provider, provider_account_id, recovery_code, created_at_micros,
+				   updated_at_micros
+				 ) VALUES (?1, ?2, 'refresh', 'recovery_required', 1, 'chatgpt',
+				           'provider-account', 'provider_refresh_ambiguous', 1, 1)",
+				rusqlite::params![OPERATION_TWO, ACCOUNT],
+			)
+			.expect("seed refresh ambiguity");
+		drop(connection);
+
+		let store = SqliteStore::open_test(&path).expect("upgrade V7 fixture");
+		let ambiguity = store
+			.read_account_operation(
+				&AccountOperationId::new(OPERATION_TWO).expect("operation identity"),
+			)
+			.await
+			.expect("read upgraded ambiguity")
+			.expect("ambiguity remains present");
+		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
+		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
+		assert!(ambiguity.recovery_operation_id.is_none());
+		assert!(ambiguity.superseded_by_operation_id.is_none());
 	}
 
 	#[test]
@@ -709,6 +788,197 @@ mod tests {
 				.await,
 			Err(StoreError::InvalidInput(_))
 		));
+	}
+
+	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // One complete persisted takeover regression is easier to audit than split fixture phases.
+	async fn verified_reauthentication_can_replace_a_targetless_ambiguous_refresh() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let (account_id, enrollment_id, provider, current) = account_fixture();
+
+		store
+			.prepare_account_operation(&AccountOperationPreparation {
+				operation_id: enrollment_id.clone(),
+				account_id: account_id.clone(),
+				kind: AccountOperationKind::Enroll,
+				display_label: Some("Primary".to_owned()),
+				enabled: Some(true),
+				expected_account_revision: None,
+				expected: None,
+				target: Some(current.clone()),
+				provider: provider.clone(),
+			})
+			.await
+			.expect("prepare enrollment");
+		store
+			.create_credential(CredentialRecord {
+				key: fixture_key(1, DIGEST_ONE, OPERATION_ONE),
+				payload: Zeroizing::new(b"opaque-current-bundle".to_vec()),
+			})
+			.expect("write current credential");
+		store
+			.advance_account_operation(
+				&enrollment_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record enrollment store effect");
+		store
+			.advance_account_operation(
+				&enrollment_id,
+				AccountOperationPhase::StoreApplied,
+				AccountOperationPhase::Committed,
+				None,
+			)
+			.await
+			.expect("commit enrollment");
+
+		let ambiguous_id = AccountOperationId::new(OPERATION_TWO).expect("ambiguous operation");
+		store
+			.prepare_account_operation(&AccountOperationPreparation {
+				operation_id: ambiguous_id.clone(),
+				account_id: account_id.clone(),
+				kind: AccountOperationKind::Refresh,
+				display_label: None,
+				enabled: None,
+				expected_account_revision: Some(1),
+				expected: Some(current.clone()),
+				target: None,
+				provider: provider.clone(),
+			})
+			.await
+			.expect("prepare provider refresh");
+		store
+			.advance_account_operation(
+				&ambiguous_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::ProviderEffectPending,
+				None,
+			)
+			.await
+			.expect("record possible provider effect");
+		store
+			.advance_account_operation(
+				&ambiguous_id,
+				AccountOperationPhase::ProviderEffectPending,
+				AccountOperationPhase::RecoveryRequired,
+				Some("provider_refresh_ambiguous"),
+			)
+			.await
+			.expect("preserve ambiguous provider effect");
+
+		let reauthentication_id =
+			AccountOperationId::new(OPERATION_THREE).expect("reauthentication operation");
+		let target = CredentialBinding {
+			schema_version: CredentialStoreSchemaVersion::V1,
+			version: CredentialVersion::new(2).expect("successor credential version"),
+			fingerprint: CredentialFingerprint::new(DIGEST_TWO).expect("target fingerprint"),
+			provider: provider.clone(),
+			writer_operation_id: reauthentication_id.clone(),
+		};
+		let prepared = store
+			.prepare_account_reauthentication_takeover(
+				&AccountOperationPreparation {
+					operation_id: reauthentication_id.clone(),
+					account_id,
+					kind: AccountOperationKind::Refresh,
+					display_label: None,
+					enabled: None,
+					expected_account_revision: Some(1),
+					expected: Some(current),
+					target: Some(target.clone()),
+					provider,
+				},
+				&ambiguous_id,
+			)
+			.await
+			.expect("prepare verified reauthentication");
+
+		assert!(matches!(
+			prepared,
+			AccountLifecycleMutationOutcome::Applied(ref mutation)
+				if mutation.phase == AccountOperationPhase::Prepared
+		));
+		let ambiguity_before_effect = store
+			.read_account_operation(&ambiguous_id)
+			.await
+			.expect("read pre-effect ambiguity")
+			.expect("pre-effect ambiguity remains durable");
+		assert!(ambiguity_before_effect.superseded_by_operation_id.is_none());
+		assert!(
+			store
+				.read_account_registry(None, 512)
+				.await
+				.expect("read pre-effect account")
+				.pop()
+				.expect("pre-effect account remains present")
+				.unsettled_operation
+				.is_some()
+		);
+		store
+			.rotate_credential(
+				&fixture_key(1, DIGEST_ONE, OPERATION_ONE),
+				CredentialRecord {
+					key: fixture_key(2, DIGEST_TWO, OPERATION_THREE),
+					payload: Zeroizing::new(b"opaque-verified-bundle".to_vec()),
+				},
+			)
+			.expect("replace exact current credential");
+		store
+			.advance_account_operation(
+				&reauthentication_id,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record verified credential effect");
+		store
+			.advance_account_operation(
+				&reauthentication_id,
+				AccountOperationPhase::StoreApplied,
+				AccountOperationPhase::Committed,
+				None,
+			)
+			.await
+			.expect("commit verified reauthentication");
+
+		let ambiguity = store
+			.read_account_operation(&ambiguous_id)
+			.await
+			.expect("read ambiguity")
+			.expect("ambiguity remains durable");
+		assert_eq!(ambiguity.phase, AccountOperationPhase::RecoveryRequired);
+		assert_eq!(ambiguity.recovery_code.as_deref(), Some("provider_refresh_ambiguous"));
+		assert_eq!(ambiguity.target, None);
+		assert_eq!(ambiguity.superseded_by_operation_id, Some(reauthentication_id.clone()));
+		let takeover = store
+			.read_account_operation(&reauthentication_id)
+			.await
+			.expect("read takeover")
+			.expect("takeover remains durable");
+		assert_eq!(takeover.recovery_operation_id, Some(ambiguous_id));
+		assert_eq!(takeover.target, Some(target.clone()));
+		let account = store
+			.read_account_registry(None, 512)
+			.await
+			.expect("read settled account")
+			.pop()
+			.expect("account remains present");
+		assert_eq!(account.revision, 2);
+		assert_eq!(account.credential, Some(target));
+		assert!(account.unsettled_operation.is_none());
+		assert!(
+			store
+				.read_unsettled_account_operations(512)
+				.await
+				.expect("read unsettled operations")
+				.is_empty()
+		);
 	}
 
 	#[test]

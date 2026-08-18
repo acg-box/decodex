@@ -1082,7 +1082,8 @@ impl ClientLifecycle {
 
 				Some(RunResult::Incompatible)
 			},
-			RetainedSessionFailure::ProtocolMinorMismatch => {
+			RetainedSessionFailure::ProtocolMinorMismatch
+			| RetainedSessionFailure::ArtifactCohortMismatch => {
 				self.set_view(ConnectionView::Incompatible(CompatibilityReason::ProtocolMinor));
 
 				Some(RunResult::Incompatible)

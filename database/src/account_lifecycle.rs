@@ -19,6 +19,7 @@ const ACCOUNT_COMMAND_PROTOCOL: &str = "decodex/account-command/1";
 const CLAIM_LIFETIME_MICROS: i64 = 5 * 60 * 1_000_000;
 const QUOTA_FRESHNESS_MICROS: i64 = 5 * 60 * 1_000_000;
 const MAX_ACCOUNT_COUNT: usize = 512;
+const MAX_UNSETTLED_ACCOUNT_OPERATION_COUNT: usize = MAX_ACCOUNT_COUNT * 2;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AccountOperationPreparation {
@@ -228,7 +229,33 @@ impl SqliteStore {
 			let transaction = connection
 				.transaction_with_behavior(TransactionBehavior::Immediate)
 				.map_err(sql_error)?;
-			let outcome = prepare_operation_sync(&transaction, &preparation)?;
+			let outcome = prepare_operation_sync(&transaction, &preparation, None)?;
+			transaction.commit().map_err(sql_error)?;
+			Ok(outcome)
+		})
+		.await
+	}
+
+	/// Prepare a verified credential replacement beside one exact ambiguous refresh.
+	pub async fn prepare_account_reauthentication_takeover(
+		&self,
+		preparation: &AccountOperationPreparation,
+		recovery_operation_id: &AccountOperationId,
+	) -> Result<AccountLifecycleMutationOutcome, StoreError> {
+		validate_preparation(preparation)?;
+		if preparation.operation_id == *recovery_operation_id {
+			return Err(StoreError::InvalidInput(
+				"account reauthentication recovery identity is invalid",
+			));
+		}
+		let preparation = preparation.clone();
+		let recovery_operation_id = recovery_operation_id.clone();
+		self.run(move |connection| {
+			let transaction = connection
+				.transaction_with_behavior(TransactionBehavior::Immediate)
+				.map_err(sql_error)?;
+			let outcome =
+				prepare_operation_sync(&transaction, &preparation, Some(&recovery_operation_id))?;
 			transaction.commit().map_err(sql_error)?;
 			Ok(outcome)
 		})
@@ -336,13 +363,19 @@ impl SqliteStore {
 		&self,
 		limit: u16,
 	) -> Result<Vec<AccountOperation>, StoreError> {
-		validate_limit(limit, "account operation limit must be between 1 and 512")?;
+		validate_bounded_limit(
+			limit,
+			MAX_UNSETTLED_ACCOUNT_OPERATION_COUNT,
+			"account operation limit must be between 1 and 1024",
+		)?;
 		self.run(move |connection| {
 			let mut statement = connection
 				.prepare(
 					"SELECT operation_id FROM account_operations
 					 WHERE phase NOT IN ('committed', 'cancelled')
-					 ORDER BY created_at_micros, operation_id LIMIT ?1",
+					   AND superseded_by_operation_id IS NULL
+					 ORDER BY recovery_operation_id IS NULL, created_at_micros, operation_id
+					 LIMIT ?1",
 				)
 				.map_err(sql_error)?;
 			let rows = statement
@@ -879,6 +912,7 @@ fn finish_command_sync(
 fn prepare_operation_sync(
 	connection: &Connection,
 	preparation: &AccountOperationPreparation,
+	recovery_operation_id: Option<&AccountOperationId>,
 ) -> Result<AccountLifecycleMutationOutcome, StoreError> {
 	if let Some(existing) = read_operation_sync(connection, &preparation.operation_id)? {
 		let descriptor_matches = existing.account_id == preparation.account_id
@@ -887,7 +921,8 @@ fn prepare_operation_sync(
 			&& existing.requested_display_label == preparation.display_label
 			&& existing.requested_enabled == preparation.enabled
 			&& existing.expected == preparation.expected
-			&& existing.target == preparation.target;
+			&& existing.target == preparation.target
+			&& existing.recovery_operation_id.as_ref() == recovery_operation_id;
 		let actual = mutation_for(connection, &existing.account_id, existing.phase)?;
 		return if descriptor_matches {
 			Ok(AccountLifecycleMutationOutcome::Replayed(actual))
@@ -899,10 +934,17 @@ fn prepare_operation_sync(
 		};
 	}
 
-	if let Some((phase, account_id)) = connection
+	if let Some(recovery_operation_id) = recovery_operation_id {
+		if let Some(rejection) =
+			validate_reauthentication_takeover_sync(connection, preparation, recovery_operation_id)?
+		{
+			return Ok(rejection);
+		}
+	} else if let Some((phase, account_id)) = connection
 		.query_row(
 			"SELECT phase, account_id FROM account_operations
-			 WHERE account_id = ?1 AND phase NOT IN ('committed', 'cancelled') LIMIT 1",
+			 WHERE account_id = ?1 AND phase NOT IN ('committed', 'cancelled')
+			   AND superseded_by_operation_id IS NULL LIMIT 1",
 			params![preparation.account_id.as_str()],
 			|row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
 		)
@@ -960,9 +1002,11 @@ fn prepare_operation_sync(
 			   operation_id, account_id, kind, phase, expected_account_revision,
 			   expected_credential_json, target_credential_json, provider,
 			   provider_account_id, requested_display_label, requested_enabled,
-			   recovery_code, created_at_micros, updated_at_micros, completed_at_micros
+			   recovery_code, created_at_micros, updated_at_micros, completed_at_micros,
+			   recovery_operation_id, superseded_by_operation_id
 			 ) VALUES (
-			   ?1, ?2, ?3, 'prepared', ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?11, NULL
+			   ?1, ?2, ?3, 'prepared', ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?11,
+			   NULL, ?12, NULL
 			 )",
 			params![
 				preparation.operation_id.as_str(),
@@ -976,6 +1020,7 @@ fn prepare_operation_sync(
 				preparation.display_label,
 				preparation.enabled,
 				now,
+				recovery_operation_id.map(AccountOperationId::as_str),
 			],
 		)
 		.map_err(sql_error)?;
@@ -983,6 +1028,60 @@ fn prepare_operation_sync(
 		account_revision: account.map_or(0, |value| value.revision),
 		phase: AccountOperationPhase::Prepared,
 	}))
+}
+
+fn validate_reauthentication_takeover_sync(
+	connection: &Connection,
+	preparation: &AccountOperationPreparation,
+	recovery_operation_id: &AccountOperationId,
+) -> Result<Option<AccountLifecycleMutationOutcome>, StoreError> {
+	let Some(recovery) = read_operation_sync(connection, recovery_operation_id)? else {
+		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
+			rejection: AccountLifecycleRejection::OperationMissing,
+			actual: AccountLifecycleMutation {
+				account_revision: 0,
+				phase: AccountOperationPhase::RecoveryRequired,
+			},
+		}));
+	};
+	let actual = mutation_for(connection, &recovery.account_id, recovery.phase)?;
+	let exact_ambiguity = preparation.kind == AccountOperationKind::Refresh
+		&& preparation.target.is_some()
+		&& recovery.account_id == preparation.account_id
+		&& recovery.kind == AccountOperationKind::Refresh
+		&& recovery.phase == AccountOperationPhase::RecoveryRequired
+		&& recovery.target.is_none()
+		&& recovery.recovery_code.is_some()
+		&& recovery.recovery_operation_id.is_none()
+		&& recovery.superseded_by_operation_id.is_none()
+		&& recovery.expected_account_revision == preparation.expected_account_revision
+		&& recovery.expected == preparation.expected;
+	if !exact_ambiguity {
+		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
+			rejection: AccountLifecycleRejection::StaleOperation,
+			actual,
+		}));
+	}
+	let active_takeover = connection
+		.query_row(
+			"SELECT phase FROM account_operations
+			 WHERE recovery_operation_id = ?1
+			   AND phase NOT IN ('committed', 'cancelled') LIMIT 1",
+			params![recovery_operation_id.as_str()],
+			|row| row.get::<_, String>(0),
+		)
+		.optional()
+		.map_err(sql_error)?;
+	if let Some(phase) = active_takeover {
+		return Ok(Some(AccountLifecycleMutationOutcome::Rejected {
+			rejection: AccountLifecycleRejection::OperationUnsettled,
+			actual: AccountLifecycleMutation {
+				account_revision: actual.account_revision,
+				phase: parse_operation_phase(&phase)?,
+			},
+		}));
+	}
+	Ok(None)
 }
 
 fn advance_operation_sync(
@@ -1003,7 +1102,10 @@ fn advance_operation_sync(
 	if operation.phase == target {
 		return Ok(AccountLifecycleMutationOutcome::Replayed(actual));
 	}
-	if operation.phase != expected || !allowed_operation_transition(expected, target) {
+	if operation.superseded_by_operation_id.is_some()
+		|| operation.phase != expected
+		|| !allowed_operation_transition(expected, target)
+	{
 		return Ok(AccountLifecycleMutationOutcome::Rejected {
 			rejection: AccountLifecycleRejection::StaleOperation,
 			actual,
@@ -1043,11 +1145,15 @@ fn advance_operation_sync(
 	)?))
 }
 
+#[allow(clippy::too_many_lines)] // Keep every account-operation commit and its takeover linkage in one transaction boundary.
 fn commit_account_operation(
 	connection: &Connection,
 	operation: &AccountOperation,
 ) -> Result<Option<AccountLifecycleRejection>, StoreError> {
 	let now = unix_micros().map_err(StoreError::from)?;
+	if let Some(rejection) = validate_reauthentication_takeover_commit(connection, operation)? {
+		return Ok(Some(rejection));
+	}
 	match operation.kind {
 		AccountOperationKind::Enroll | AccountOperationKind::Import => {
 			let Some(target) = operation.target.as_ref() else {
@@ -1166,7 +1272,53 @@ fn commit_account_operation(
 			bump_routing_revision(connection, now)?;
 		},
 	}
+	record_reauthentication_supersession(connection, operation, now)?;
 	Ok(None)
+}
+
+fn validate_reauthentication_takeover_commit(
+	connection: &Connection,
+	operation: &AccountOperation,
+) -> Result<Option<AccountLifecycleRejection>, StoreError> {
+	let Some(recovery_operation_id) = operation.recovery_operation_id.as_ref() else {
+		return Ok(None);
+	};
+	let Some(recovery) = read_operation_sync(connection, recovery_operation_id)? else {
+		return Ok(Some(AccountLifecycleRejection::OperationMissing));
+	};
+	let exact_ambiguity = operation.kind == AccountOperationKind::Refresh
+		&& recovery.account_id == operation.account_id
+		&& recovery.kind == AccountOperationKind::Refresh
+		&& recovery.phase == AccountOperationPhase::RecoveryRequired
+		&& recovery.target.is_none()
+		&& recovery.recovery_code.is_some()
+		&& recovery.recovery_operation_id.is_none()
+		&& recovery.superseded_by_operation_id.is_none()
+		&& recovery.expected_account_revision == operation.expected_account_revision
+		&& recovery.expected == operation.expected;
+	Ok((!exact_ambiguity).then_some(AccountLifecycleRejection::StaleOperation))
+}
+
+fn record_reauthentication_supersession(
+	connection: &Connection,
+	operation: &AccountOperation,
+	now: i64,
+) -> Result<(), StoreError> {
+	let Some(recovery_operation_id) = operation.recovery_operation_id.as_ref() else {
+		return Ok(());
+	};
+	let changed = connection
+		.execute(
+			"UPDATE account_operations
+			 SET superseded_by_operation_id = ?1, updated_at_micros = ?2
+			 WHERE operation_id = ?3 AND phase = 'recovery_required'
+			   AND target_credential_json IS NULL
+			   AND recovery_operation_id IS NULL
+			   AND superseded_by_operation_id IS NULL",
+			params![operation.operation_id.as_str(), now, recovery_operation_id.as_str()],
+		)
+		.map_err(sql_error)?;
+	if changed == 1 { Ok(()) } else { Err(incompatible("account reauthentication supersession")) }
 }
 
 fn set_operation_target_sync(
@@ -1189,6 +1341,7 @@ fn set_operation_target_sync(
 	}
 	if operation.phase != AccountOperationPhase::ProviderEffectPending
 		|| operation.target.is_some()
+		|| operation.superseded_by_operation_id.is_some()
 		|| target.writer_operation_id != *operation_id
 	{
 		return Ok(AccountLifecycleMutationOutcome::Rejected {
@@ -1219,7 +1372,8 @@ fn read_operation_sync(
 		.query_row(
 			"SELECT account_id, kind, phase, expected_account_revision,
 			        requested_display_label, requested_enabled,
-			        expected_credential_json, target_credential_json
+			        expected_credential_json, target_credential_json, recovery_code,
+			        recovery_operation_id, superseded_by_operation_id
 			 FROM account_operations WHERE operation_id = ?1",
 			params![operation_id.as_str()],
 			|row| {
@@ -1232,25 +1386,51 @@ fn read_operation_sync(
 					row.get::<_, Option<bool>>(5)?,
 					row.get::<_, Option<String>>(6)?,
 					row.get::<_, Option<String>>(7)?,
+					row.get::<_, Option<String>>(8)?,
+					row.get::<_, Option<String>>(9)?,
+					row.get::<_, Option<String>>(10)?,
 				))
 			},
 		)
 		.optional()
 		.map_err(sql_error)?
-		.map(|(account_id, kind, phase, revision, label, enabled, expected, target)| {
-			Ok(AccountOperation {
-				operation_id: operation_id.clone(),
-				account_id: AccountId::new(account_id)
-					.map_err(|_| incompatible("account identity"))?,
-				kind: parse_operation_kind(&kind)?,
-				phase: parse_operation_phase(&phase)?,
-				expected_account_revision: revision,
-				requested_display_label: label,
-				requested_enabled: enabled,
-				expected: parse_binding_json(expected.as_deref())?,
-				target: parse_binding_json(target.as_deref())?,
-			})
-		})
+		.map(
+			|(
+				account_id,
+				kind,
+				phase,
+				revision,
+				label,
+				enabled,
+				expected,
+				target,
+				recovery_code,
+				recovery_operation_id,
+				superseded_by_operation_id,
+			)| {
+				Ok(AccountOperation {
+					operation_id: operation_id.clone(),
+					account_id: AccountId::new(account_id)
+						.map_err(|_| incompatible("account identity"))?,
+					kind: parse_operation_kind(&kind)?,
+					phase: parse_operation_phase(&phase)?,
+					expected_account_revision: revision,
+					requested_display_label: label,
+					requested_enabled: enabled,
+					expected: parse_binding_json(expected.as_deref())?,
+					target: parse_binding_json(target.as_deref())?,
+					recovery_code,
+					recovery_operation_id: recovery_operation_id
+						.map(AccountOperationId::new)
+						.transpose()
+						.map_err(|_| incompatible("account recovery operation identity"))?,
+					superseded_by_operation_id: superseded_by_operation_id
+						.map(AccountOperationId::new)
+						.transpose()
+						.map_err(|_| incompatible("account superseding operation identity"))?,
+				})
+			},
+		)
 		.transpose()
 }
 
@@ -1431,7 +1611,10 @@ fn unsettled_operation_sync(
 	connection
 		.query_row(
 			"SELECT operation_id, kind, phase, recovery_code FROM account_operations
-			 WHERE account_id = ?1 AND phase NOT IN ('committed', 'cancelled') LIMIT 1",
+			 WHERE account_id = ?1 AND phase NOT IN ('committed', 'cancelled')
+			   AND superseded_by_operation_id IS NULL
+			 ORDER BY recovery_operation_id IS NULL, created_at_micros, operation_id
+			 LIMIT 1",
 			params![account_id.as_str()],
 			|row| {
 				Ok((
@@ -1864,7 +2047,15 @@ fn validate_preparation(preparation: &AccountOperationPreparation) -> Result<(),
 }
 
 fn validate_limit(limit: u16, reason: &'static str) -> Result<(), StoreError> {
-	if limit == 0 || usize::from(limit) > MAX_ACCOUNT_COUNT {
+	validate_bounded_limit(limit, MAX_ACCOUNT_COUNT, reason)
+}
+
+fn validate_bounded_limit(
+	limit: u16,
+	maximum: usize,
+	reason: &'static str,
+) -> Result<(), StoreError> {
+	if limit == 0 || usize::from(limit) > maximum {
 		Err(StoreError::InvalidInput(reason))
 	} else {
 		Ok(())

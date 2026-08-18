@@ -1,4 +1,4 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.4 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.5 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.

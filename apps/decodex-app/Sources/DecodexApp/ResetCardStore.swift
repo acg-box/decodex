@@ -141,6 +141,20 @@ struct ResetCardAccountState: Identifiable, Equatable {
 		}
 		return profileUnavailable?.error == .unauthorized
 			|| profile?.refreshError == .unauthorized
+			|| loginRefreshRecoveryOperationID != nil
+	}
+
+	var loginRefreshRecoveryOperationID: String? {
+		guard account.lifecycleReadiness == .operationUnsettled,
+			let operation = account.unsettledOperation,
+			operation.kind == .refresh,
+			operation.phase == .recoveryRequired,
+			operation.recoveryCode == "provider_refresh_ambiguous"
+				|| operation.recoveryCode == "provider_refresh_outcome_unknown"
+		else {
+			return nil
+		}
+		return operation.operationID
 	}
 }
 
@@ -252,6 +266,22 @@ enum AccountControlActivity: Equatable {
 	case route
 }
 
+private enum AccountLoginStart {
+	case enrollment(enabled: Bool)
+	case reauthentication(
+		account: ResetCardAccountRecord,
+		recoveryOperationID: String?
+	)
+}
+
+private struct PendingAccountLoginStart {
+	let start: AccountLoginStart
+	let authority: ResetCardAuthority?
+	let sessionID: String
+	let operationID: String
+	let idempotencyKey: String
+}
+
 private enum ResetCardDispatchOutcome {
 	case state(ResetCardOperationState)
 	case error(ResetCardClientError)
@@ -359,6 +389,7 @@ final class ResetCardStore {
 	@ObservationIgnored private var lastPriorityObservationRequestAt: Date?
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
+	@ObservationIgnored private var pendingAccountLoginStart: PendingAccountLoginStart?
 	@ObservationIgnored private var postUseReconciliationTasks = [
 		String: Task<Void, Never>
 	]()
@@ -550,6 +581,7 @@ final class ResetCardStore {
 		pendingRecoveryTask = nil
 		accountReauthenticationTask?.cancel()
 		accountReauthenticationTask = nil
+		pendingAccountLoginStart = nil
 		for task in inFlightPostUseReconciliationTasks {
 			task.cancel()
 		}
@@ -1534,12 +1566,13 @@ final class ResetCardStore {
 	func beginAccountReauthentication(for accountID: String) {
 		guard accountReauthentication == nil,
 			accountReauthenticationTask == nil,
+			pendingAccountLoginStart == nil,
 			let state = accounts.first(where: {
 				$0.account.accountID == accountID
 			}),
 				state.requiresLoginRefresh,
 				state.account.credentialBinding != nil,
-				let accountControlClient,
+				accountControlClient != nil,
 				canPerformDirectAccountControl,
 			accountControlActivities[accountID] == nil,
 			isEnrollingAccount == false,
@@ -1554,10 +1587,12 @@ final class ResetCardStore {
 		let operationID = Self.newCanonicalUUID()
 		let idempotencyKey = Self.newCanonicalUUID()
 		let account = state.account
+		let recoveryOperationID = state.loginRefreshRecoveryOperationID
 		let authority = account.authority ?? establishedAuthority
 		accountControlActivities[accountID] = .loginRefresh
 		clearStaleControlError()
 		accountReauthentication = AccountReauthenticationPresentation(
+			mode: .reauthentication,
 			accountID: accountID,
 			accountLabel: AccountIdentityPresentation(
 				alias: account.alias,
@@ -1567,29 +1602,105 @@ final class ResetCardStore {
 			).text,
 			sessionID: sessionID,
 			authority: authority,
-			phase: .resolvingCodex
+			phase: .selectingMethod,
+			loginMethod: nil,
+			prompt: nil
+		)
+		pendingAccountLoginStart = PendingAccountLoginStart(
+			start: .reauthentication(
+					account: account,
+					recoveryOperationID: recoveryOperationID
+			),
+			authority: authority,
+			sessionID: sessionID,
+			operationID: operationID,
+			idempotencyKey: idempotencyKey
+		)
+	}
+
+	func beginAccountEnrollment(enabled: Bool = true) {
+		guard accountReauthentication == nil,
+			accountReauthenticationTask == nil,
+			pendingAccountLoginStart == nil,
+			canBeginEnrollment,
+			submittingKey == nil
+		else {
+			presentAccountControlUnavailable()
+			return
+		}
+
+		let sessionID = Self.newCanonicalUUID()
+		let operationID = Self.newCanonicalUUID()
+		let accountID = Self.newCanonicalUUID()
+		let idempotencyKey = Self.newCanonicalUUID()
+		let authority = establishedAuthority
+		isEnrollingAccount = true
+		clearStaleControlError()
+		accountReauthentication = AccountReauthenticationPresentation(
+			mode: .enrollment,
+			accountID: accountID,
+			accountLabel: "New account",
+			sessionID: sessionID,
+			authority: authority,
+			phase: .selectingMethod,
+			loginMethod: nil,
+			prompt: nil
+		)
+		pendingAccountLoginStart = PendingAccountLoginStart(
+			start: .enrollment(enabled: enabled),
+			authority: authority,
+			sessionID: sessionID,
+			operationID: operationID,
+			idempotencyKey: idempotencyKey
+		)
+	}
+
+	func selectAccountLoginMethod(_ loginMethod: AccountLoginMethod) {
+		guard accountReauthenticationTask == nil,
+			let pending = pendingAccountLoginStart,
+			let presentation = accountReauthentication,
+			presentation.sessionID == pending.sessionID,
+			presentation.isSelectingMethod,
+			let accountControlClient
+		else {
+			return
+		}
+
+		pendingAccountLoginStart = nil
+		accountReauthentication = AccountReauthenticationPresentation(
+			mode: presentation.mode,
+			accountID: presentation.accountID,
+			accountLabel: presentation.accountLabel,
+			sessionID: presentation.sessionID,
+			authority: presentation.authority,
+			phase: .resolvingCodex,
+			loginMethod: loginMethod,
+			prompt: nil
 		)
 		accountReauthenticationTask = Task { [weak self] in
-			await self?.runAccountReauthentication(
+			await self?.runAccountLogin(
 				client: accountControlClient,
-				authority: authority,
-				account: account,
-				sessionID: sessionID,
-				operationID: operationID,
-				idempotencyKey: idempotencyKey
+				authority: pending.authority,
+				start: pending.start,
+				sessionID: pending.sessionID,
+				operationID: pending.operationID,
+				idempotencyKey: pending.idempotencyKey,
+				loginMethod: loginMethod
 			)
 		}
 	}
 
 	func cancelAccountReauthentication() async {
-		guard let presentation = accountReauthentication,
-			let accountControlClient,
-			presentation.canRequestCancellation
-		else {
+		guard let presentation = accountReauthentication else {
 			return
 		}
 		if presentation.canCloseWithoutCancellation {
 			closeAccountReauthentication()
+			return
+		}
+		guard let accountControlClient,
+			presentation.canRequestCancellation
+		else {
 			return
 		}
 
@@ -1626,7 +1737,7 @@ final class ResetCardStore {
 						?? AccountControlError.invalidResponse.localizedDescription,
 					failure: status.failure
 				)
-			case .openingBrowser, .waitingForBrowser, .installing:
+			case .requestingCode, .openingBrowser, .waitingForBrowser, .installing:
 				setAccountReauthenticationPhase(
 					.cancellationFailed(
 						"The login is still active. Choose Cancel again."
@@ -2866,13 +2977,14 @@ final class ResetCardStore {
 		accounts.first(where: { $0.account.accountID == accountID })?.account
 	}
 
-	private func runAccountReauthentication(
+	private func runAccountLogin(
 		client: any AccountControlClient,
 		authority: ResetCardAuthority?,
-		account: ResetCardAccountRecord,
+		start: AccountLoginStart,
 		sessionID: String,
 		operationID: String,
-		idempotencyKey: String
+		idempotencyKey: String,
+		loginMethod: AccountLoginMethod
 	) async {
 		do {
 			let codexBin = try resolveCodexExecutable()
@@ -2880,25 +2992,51 @@ final class ResetCardStore {
 				return
 			}
 			setAccountReauthenticationPhase(
-				.openingBrowser,
+				loginMethod == .browserRedirect ? .openingBrowser : .requestingCode,
 				sessionID: sessionID
 			)
-			var status = try await client.startAccountReauthentication(
-				authority: authority,
-				sessionID: sessionID,
-				operationID: operationID,
-				accountID: account.accountID,
-				expectedRevision: account.accountRevision,
-				idempotencyKey: idempotencyKey,
-				codexBin: codexBin
-			)
+			let accountID: String
+			var status: AccountReauthenticationStatus
+			switch start {
+			case .enrollment(let enabled):
+				guard let presentation = accountReauthentication,
+					presentation.sessionID == sessionID,
+					presentation.mode == .enrollment
+				else {
+					return
+				}
+				accountID = presentation.accountID
+				status = try await client.startAccountEnrollment(
+					authority: authority,
+					sessionID: sessionID,
+					operationID: operationID,
+					accountID: accountID,
+					enabled: enabled,
+					idempotencyKey: idempotencyKey,
+					codexBin: codexBin,
+					loginMethod: loginMethod
+				)
+			case .reauthentication(let account, let recoveryOperationID):
+				accountID = account.accountID
+				status = try await client.startAccountReauthentication(
+					authority: authority,
+					sessionID: sessionID,
+					operationID: operationID,
+					accountID: accountID,
+					expectedRevision: account.accountRevision,
+					recoveryOperationID: recoveryOperationID,
+					idempotencyKey: idempotencyKey,
+					codexBin: codexBin,
+					loginMethod: loginMethod
+				)
+			}
 
 			while Task.isCancelled == false,
 				accountReauthentication?.sessionID == sessionID
 			{
 				if await applyAccountReauthenticationStatus(
 					status,
-					accountID: account.accountID,
+					accountID: accountID,
 					sessionID: sessionID
 				) {
 					return
@@ -2912,7 +3050,9 @@ final class ResetCardStore {
 		} catch is CancellationError {
 			return
 		} catch {
-			guard accountReauthentication?.sessionID == sessionID else {
+			guard let presentation = accountReauthentication,
+				presentation.sessionID == sessionID
+			else {
 				return
 			}
 			if let cancellationStatus = try? await client.cancelAccountReauthentication(
@@ -2921,14 +3061,14 @@ final class ResetCardStore {
 			),
 				await applyAccountReauthenticationStatus(
 					cancellationStatus,
-					accountID: account.accountID,
+					accountID: presentation.accountID,
 					sessionID: sessionID
 				)
 			{
 				return
 			}
 			await failAccountReauthentication(
-				accountID: account.accountID,
+				accountID: presentation.accountID,
 				sessionID: sessionID,
 				message: Self.accountControlMessage(error)
 			)
@@ -2941,7 +3081,12 @@ final class ResetCardStore {
 		sessionID: String
 	) async -> Bool {
 		guard status.sessionID == sessionID,
-			accountReauthentication?.sessionID == sessionID
+			let presentation = accountReauthentication,
+			presentation.sessionID == sessionID,
+			Self.isValidAccountLoginStatus(
+				status,
+				loginMethod: presentation.loginMethod
+			)
 		else {
 			await failAccountReauthentication(
 				accountID: accountID,
@@ -2952,6 +3097,12 @@ final class ResetCardStore {
 		}
 
 		switch status.state {
+		case .requestingCode:
+			setAccountReauthenticationPhase(
+				.requestingCode,
+				sessionID: sessionID
+			)
+			return false
 		case .openingBrowser:
 			setAccountReauthenticationPhase(
 				.openingBrowser,
@@ -2961,7 +3112,8 @@ final class ResetCardStore {
 		case .waitingForBrowser:
 			setAccountReauthenticationPhase(
 				.waitingForBrowser,
-				sessionID: sessionID
+				sessionID: sessionID,
+				prompt: status.prompt
 			)
 			return false
 		case .installing:
@@ -2994,9 +3146,31 @@ final class ResetCardStore {
 		}
 	}
 
+	nonisolated private static func isValidAccountLoginStatus(
+		_ status: AccountReauthenticationStatus,
+		loginMethod: AccountLoginMethod?
+	) -> Bool {
+		guard let loginMethod else {
+			return false
+		}
+		switch status.state {
+		case .requestingCode:
+			return loginMethod == .deviceCode && status.prompt == nil
+		case .openingBrowser:
+			return loginMethod == .browserRedirect && status.prompt == nil
+		case .waitingForBrowser:
+			return loginMethod == .deviceCode
+				? status.prompt != nil
+				: status.prompt == nil
+		case .installing, .completed, .failed, .cancelled:
+			return status.prompt == nil
+		}
+	}
+
 	private func setAccountReauthenticationPhase(
 		_ phase: AccountReauthenticationPhase,
-		sessionID: String
+		sessionID: String,
+		prompt: AccountReauthenticationPrompt? = nil
 	) {
 		guard let presentation = accountReauthentication,
 			presentation.sessionID == sessionID
@@ -3004,11 +3178,14 @@ final class ResetCardStore {
 			return
 		}
 		accountReauthentication = AccountReauthenticationPresentation(
+			mode: presentation.mode,
 			accountID: presentation.accountID,
 			accountLabel: presentation.accountLabel,
 			sessionID: sessionID,
 			authority: presentation.authority,
-			phase: phase
+			phase: phase,
+			loginMethod: presentation.loginMethod,
+			prompt: prompt
 		)
 	}
 
@@ -3016,21 +3193,62 @@ final class ResetCardStore {
 		accountID: String,
 		sessionID: String
 	) async {
-		guard accountReauthentication?.sessionID == sessionID else {
+		guard let presentation = accountReauthentication,
+			presentation.sessionID == sessionID
+		else {
 			return
 		}
 		accountControlActivities.removeValue(forKey: accountID)
-		message = ResetCardStoreMessage(
-			tone: .success,
-			text: "Account login refreshed."
-		)
+		if presentation.mode == .enrollment {
+			isEnrollingAccount = false
+		}
 		accountReauthentication = nil
-		await refreshReauthenticatedAccountAuthority(
-			accountID,
-			retryDelays: accountObservationRetryDelays
-		)
 		accountReauthenticationTask = nil
 		scheduleRefreshCoordinator()
+
+		switch presentation.mode {
+		case .enrollment:
+			message = ResetCardStoreMessage(tone: .success, text: "Account added.")
+			await refreshEnrolledAccountAuthority(
+				accountID,
+				retryDelays: accountObservationRetryDelays
+			)
+		case .reauthentication:
+			message = ResetCardStoreMessage(
+				tone: .success,
+				text: "Account login refreshed."
+			)
+			await refreshReauthenticatedAccountAuthority(
+				accountID,
+				retryDelays: accountObservationRetryDelays
+			)
+		}
+	}
+
+	private func refreshEnrolledAccountAuthority(
+		_ accountID: String,
+		retryDelays: [Duration]
+	) async {
+		await waitForAccountSkeletonRefresh()
+		if accountRecord(accountID) != nil {
+			await refreshAccountDetails(accountID)
+			return
+		}
+		for delay in retryDelays {
+			guard Task.isCancelled == false else {
+				return
+			}
+			do {
+				try await Task.sleep(for: delay)
+			} catch {
+				return
+			}
+			await waitForAccountSkeletonRefresh()
+			if accountRecord(accountID) != nil {
+				await refreshAccountDetails(accountID)
+				return
+			}
+		}
 	}
 
 	private func refreshReauthenticatedAccountAuthority(
@@ -3067,17 +3285,31 @@ final class ResetCardStore {
 		message: String,
 		failure: AccountReauthenticationFailure? = nil
 	) async {
-		guard accountReauthentication?.sessionID == sessionID else {
+		guard let presentation = accountReauthentication,
+			presentation.sessionID == sessionID
+		else {
 			return
 		}
 		accountControlActivities.removeValue(forKey: accountID)
+		pendingAccountLoginStart = nil
+		if presentation.mode == .enrollment {
+			isEnrollingAccount = false
+		}
 		accountReauthenticationTask = nil
 		setAccountReauthenticationPhase(
 			.failed(message),
 			sessionID: sessionID
 		)
 		if failure == .outcomeUnknown {
-			await refreshReauthenticatedAccountAuthority(accountID)
+			switch presentation.mode {
+			case .enrollment:
+				await refreshEnrolledAccountAuthority(
+					accountID,
+					retryDelays: accountObservationRetryDelays
+				)
+			case .reauthentication:
+				await refreshReauthenticatedAccountAuthority(accountID)
+			}
 		}
 		scheduleRefreshCoordinator()
 	}
@@ -3086,12 +3318,18 @@ final class ResetCardStore {
 		accountID: String,
 		sessionID: String
 	) {
-		guard accountReauthentication?.sessionID == sessionID else {
+		guard let presentation = accountReauthentication,
+			presentation.sessionID == sessionID
+		else {
 			return
 		}
 		accountReauthenticationTask?.cancel()
 		accountReauthenticationTask = nil
+		pendingAccountLoginStart = nil
 		accountControlActivities.removeValue(forKey: accountID)
+		if presentation.mode == .enrollment {
+			isEnrollingAccount = false
+		}
 		accountReauthentication = nil
 		scheduleRefreshCoordinator()
 	}

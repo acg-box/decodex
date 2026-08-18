@@ -18,11 +18,11 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope, CommandReceipt,
-	CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReconnectMode,
-	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
-	ServerWelcome, SnapshotEnvelope, VersionRefusal,
+	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope,
+	CommandReceipt, CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority,
+	LocalTransportRefusal, LocalTransportStream, ProtocolVersion, QueryEnvelope,
+	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, VersionRefusal,
 };
 
 type Socket = WebSocketStream<LocalTransportStream>;
@@ -206,6 +206,7 @@ impl RetainedSession {
 			.map_err(map_connect_error)?;
 		let hello = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(config.expected_server_id.clone()),
 			resume: checkpoint.as_ref().map(SessionCheckpoint::as_resume_cursor),
 		});
@@ -569,6 +570,8 @@ pub enum RetainedSessionFailure {
 	ProtocolMajorMismatch,
 	/// The server did not negotiate the exact current minor revision.
 	ProtocolMinorMismatch,
+	/// The daemon and retained client are from different artifact cohorts.
+	ArtifactCohortMismatch,
 	/// The stable server identity did not match the explicit pin.
 	ServerIdentityMismatch,
 	/// Current protocol negotiation omitted publication-instance identity.
@@ -604,6 +607,7 @@ impl Display for RetainedSessionFailure {
 			Self::Disconnected => "retained session disconnected",
 			Self::ProtocolMajorMismatch => "retained session protocol major does not match",
 			Self::ProtocolMinorMismatch => "retained session protocol minor is unsupported",
+			Self::ArtifactCohortMismatch => "retained session artifact cohort does not match",
 			Self::ServerIdentityMismatch => "retained session server identity does not match",
 			Self::PublicationIdentityUnavailable =>
 				"retained session publication identity is unavailable",
@@ -631,6 +635,9 @@ fn verify_welcome(
 		|| welcome.supported != crate::SupportedVersions::current()
 	{
 		return Err(version_failure(welcome.version));
+	}
+	if welcome.artifact_cohort != Some(CURRENT_ARTIFACT_COHORT) {
+		return Err(RetainedSessionFailure::ArtifactCohortMismatch);
 	}
 	if &welcome.server_id != expected_server_id {
 		return Err(RetainedSessionFailure::ServerIdentityMismatch);
@@ -670,6 +677,7 @@ fn refusal_failure(
 			RetainedSessionFailure::ProtocolMajorMismatch,
 		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
 			RetainedSessionFailure::ProtocolMinorMismatch,
+		Refusal::ArtifactCohortMismatch { .. } => RetainedSessionFailure::ArtifactCohortMismatch,
 		Refusal::ServerIdentityMismatch { .. } => RetainedSessionFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => RetainedSessionFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => RetainedSessionFailure::Backpressure,
@@ -962,6 +970,7 @@ mod tests {
 	) -> ServerMessage {
 		ServerMessage::Welcome(ServerWelcome {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(crate::CURRENT_ARTIFACT_COHORT),
 			supported: SupportedVersions::current(),
 			server_id: server_id(server),
 			instance_id: instance.map(instance_id),

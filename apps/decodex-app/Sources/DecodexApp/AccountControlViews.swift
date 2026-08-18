@@ -210,7 +210,9 @@ struct AccountRefreshLoginButton: View {
 				state.account.accountID,
 				activity: .loginRefresh
 			),
-			help: "Sign in to this account with the official Codex device login."
+			help: state.loginRefreshRecoveryOperationID == nil
+				? "Sign in to this account with the official Codex device login."
+				: "Sign in again to safely replace an uncertain account update."
 		) {
 			store.beginAccountReauthentication(for: state.account.accountID)
 		}
@@ -296,45 +298,5 @@ private struct CompactAccountActionButton: View {
 
 	private var controlStateAnimation: Animation? {
 		reduceMotion ? nil : PanelMotion.controlState
-	}
-}
-
-struct AccountEnrollmentView: View {
-	let store: ResetCardStore
-	let dismiss: () -> Void
-
-	var body: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.section) {
-			Text("Add Codex login")
-				.font(PanelFont.transientTitle)
-
-			Text(
-				"Import the account currently signed in to Codex. "
-					+ "Decodex assigns a stable account alias."
-			)
-			.font(PanelFont.transientBody)
-			.foregroundStyle(.secondary)
-			.fixedSize(horizontal: false, vertical: true)
-
-			HStack {
-				Button("Cancel", action: dismiss)
-					.keyboardShortcut(.cancelAction)
-
-				Spacer()
-
-				Button("Add") {
-					Task {
-						await store.enrollFromSharedCodex()
-						if store.message?.tone != .error {
-							dismiss()
-						}
-					}
-				}
-				.keyboardShortcut(.defaultAction)
-				.disabled(store.canBeginEnrollment == false)
-			}
-		}
-		.frame(width: 260)
-		.padding(PanelSpacing.popoverInset)
 	}
 }

@@ -61,7 +61,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
 use crate::{
-	ProcessGenerationControl, ProviderAttemptControl,
+	CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
 	account_launch::{
 		ApiResetCardRuntime, ResetCardFailureCode, ResetCardInventoryObservation,
 		ResetCardOperationStatus, ResetCardServiceError,
@@ -576,6 +576,31 @@ impl ServiceApplication {
 					)
 					.await
 			},
+			CommandPayload::EnrollAccountFromCredentialFile {
+				operation_id,
+				account_id,
+				enabled,
+				source_descriptor,
+			} => {
+				let operation_id = operation_id_from_wire(operation_id)?;
+				let account_id = account_id_from_wire(account_id)?;
+				service
+					.enroll_from_credential_file_command(
+						lease,
+						operation_id,
+						account_id,
+						*enabled,
+						source_descriptor.as_str(),
+						|result| {
+							encode_account_command_receipt(
+								&result.map_err(account_lifecycle_command_error).and_then(
+									|account| account_changed_publication(account.clone()),
+								),
+							)
+						},
+					)
+					.await
+			},
 			CommandPayload::ImportAccountCredentialFile {
 				operation_id,
 				account_id,
@@ -632,10 +657,13 @@ impl ServiceApplication {
 			CommandPayload::ReauthenticateAccountFromCredentialFile {
 				operation_id,
 				account_id,
+				recovery_operation_id,
 				source_descriptor,
 			} => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
+				let recovery_operation_id =
+					recovery_operation_id.as_ref().map(operation_id_from_wire).transpose()?;
 				let expected = required_expected_revision(command)?;
 				service
 					.reauthenticate_from_credential_file_command(
@@ -643,6 +671,7 @@ impl ServiceApplication {
 						operation_id,
 						&account_id,
 						expected,
+						recovery_operation_id.as_ref(),
 						source_descriptor.as_str(),
 						|result| {
 							encode_account_command_receipt(
@@ -1750,6 +1779,7 @@ impl Application for ServiceApplication {
 			| CommandPayload::ArchiveQuickTask { .. }
 			| CommandPayload::InterruptQuickTask { .. } => self.execute_quick_task(command).await,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
+			| CommandPayload::EnrollAccountFromCredentialFile { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
 			| CommandPayload::SetAccountEnabled { .. }
 			| CommandPayload::LogoutAccount { .. }
@@ -3288,6 +3318,8 @@ fn account_command_descriptor(
 	let descriptor = match &command.payload {
 		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } =>
 			(AccountCommandKind::Enroll, account_id.as_str()),
+		CommandPayload::EnrollAccountFromCredentialFile { account_id, .. } =>
+			(AccountCommandKind::Enroll, account_id.as_str()),
 		CommandPayload::ImportAccountCredentialFile { account_id, .. } =>
 			(AccountCommandKind::Import, account_id.as_str()),
 		CommandPayload::SetAccountEnabled { account_id, .. } =>
@@ -3315,10 +3347,28 @@ fn account_command_descriptor(
 
 fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), CommandError> {
 	match &command.payload {
-		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. }
-		| CommandPayload::ImportAccountCredentialFile { operation_id, account_id, .. } => {
+		CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, .. } => {
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
+		},
+		CommandPayload::EnrollAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+			..
+		}
+		| CommandPayload::ImportAccountCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+			..
+		} => {
+			let _ = operation_id_from_wire(operation_id)?;
+			let _ = account_id_from_wire(account_id)?;
+			let source = source_descriptor.as_str();
+			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
+			}
 		},
 		CommandPayload::SetAccountEnabled { account_id, .. }
 		| CommandPayload::UseAccountInCodex { account_id } => {
@@ -3334,10 +3384,17 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 		CommandPayload::ReauthenticateAccountFromCredentialFile {
 			operation_id,
 			account_id,
+			recovery_operation_id,
 			source_descriptor,
 		} => {
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
+			if recovery_operation_id.as_ref().is_some_and(|recovery| recovery == operation_id) {
+				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
+			}
+			if let Some(recovery_operation_id) = recovery_operation_id {
+				let _ = operation_id_from_wire(recovery_operation_id)?;
+			}
 			let _ = required_expected_revision(command)?;
 			let source = source_descriptor.as_str();
 			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
@@ -3573,6 +3630,8 @@ fn account_lifecycle_command_error(error: AccountLifecycleError) -> CommandError
 			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
 		AccountLifecycleError::AccountDisabled =>
 			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None),
+		AccountLifecycleError::CredentialStore(CredentialStoreError::DuplicateProvider) =>
+			account_rejection(AccountCommandRejectionDto::ProviderAlreadyEnrolled, None),
 		AccountLifecycleError::CredentialStore(_) =>
 			account_rejection(AccountCommandRejectionDto::CredentialStoreUnavailable, None),
 		AccountLifecycleError::CredentialImport =>
@@ -4570,6 +4629,38 @@ mod tests {
 
 		assert!(decode_account_command_receipt(unknown_envelope).is_err());
 		assert!(decode_account_command_receipt(unknown_result).is_err());
+	}
+
+	#[test]
+	fn duplicate_provider_is_not_reported_as_credential_store_unavailable() {
+		let error = account_lifecycle_command_error(AccountLifecycleError::CredentialStore(
+			crate::CredentialStoreError::DuplicateProvider,
+		));
+
+		assert_eq!(
+			error.clone(),
+			CommandError::AccountCommandRejected {
+				rejection: AccountCommandRejectionDto::ProviderAlreadyEnrolled,
+				actual_revision: None,
+			}
+		);
+		let encoded = encode_account_command_receipt(&Err(error.clone()))
+			.expect("typed duplicate-provider rejection must encode");
+		assert_eq!(
+			encoded,
+			serde_json::json!({
+				"outcome": "rejected",
+				"data": {
+					"schema": "decodex/account-command-result/1",
+					"error": {
+						"reason": "account_command_rejected",
+						"rejection": "provider_already_enrolled",
+					},
+				},
+			}),
+		);
+		assert_eq!(decode_account_command_receipt(encoded.clone()), Ok(Err(error.clone())));
+		assert_eq!(decode_account_command_receipt(encoded), Ok(Err(error)));
 	}
 
 	#[test]

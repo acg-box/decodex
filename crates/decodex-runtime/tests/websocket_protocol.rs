@@ -334,7 +334,12 @@ async fn connect(transport: &LocalTransportAuthority, version: ProtocolVersion) 
 
 	send(
 		&mut client,
-		ClientMessage::Hello(ClientHello { version, expected_server_id: None, resume: None }),
+		ClientMessage::Hello(ClientHello {
+			version,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
+			expected_server_id: None,
+			resume: None,
+		}),
 	)
 	.await;
 
@@ -356,6 +361,7 @@ async fn reconnect(
 		&mut client,
 		ClientMessage::Hello(ClientHello {
 			version,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: None,
 			resume: Some(cursor),
 		}),
@@ -477,7 +483,7 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 
 	drop(client);
 
-	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 5 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 6 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected minor-version refusal");
 	};
@@ -495,8 +501,8 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 4);
-	assert_eq!(welcome.supported.maximum_minor, 4);
+	assert_eq!(welcome.supported.minimum_minor, 5);
+	assert_eq!(welcome.supported.maximum_minor, 5);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
@@ -519,7 +525,7 @@ async fn post_negotiation_payload_envelopes_require_exact_current_version() {
 	send(
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
-			version: ProtocolVersion { major: 2, minor: 5 },
+			version: ProtocolVersion { major: 2, minor: 6 },
 			query_id: QueryId::new("future-query").expect("bounded query ID"),
 			payload: QueryPayload::GetDoctorStatus,
 		}),

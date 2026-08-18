@@ -65,6 +65,13 @@ class ProcessRecord:
 
 
 @dataclass(frozen=True)
+class ArtifactCohort:
+    artifact_cohort: int
+    protocol_major: int
+    protocol_minor: int
+
+
+@dataclass(frozen=True)
 class ServiceObservation:
     loaded: bool
     active_process_id: Optional[int]
@@ -597,6 +604,8 @@ def verify_daemon_executable(
         )
         if arguments != [str(paths.decodexd), "serve"]:
             raise InstallError("LaunchAgent daemon identity differs")
+        if launch_agent.get("WorkingDirectory") != str(paths.root):
+            raise InstallError("LaunchAgent working directory differs")
     return current
 
 
@@ -613,7 +622,7 @@ def render_launch_agent(paths: InstallPaths) -> bytes:
         "ExitTimeOut": 60,
         "ThrottleInterval": 5,
         "ProcessType": "Background",
-        "WorkingDirectory": str(paths.repository),
+        "WorkingDirectory": str(paths.root),
         "StandardOutPath": str(paths.service_log),
         "StandardErrorPath": str(paths.service_log),
     }
@@ -1106,7 +1115,7 @@ def query_accounts(paths: InstallPaths) -> Optional[dict[str, Any]]:
                 "account",
                 "list",
             ],
-            cwd=paths.repository,
+            cwd=paths.root,
             capture=True,
             check=False,
             timeout=45,
@@ -1250,7 +1259,7 @@ def query_doctor(paths: InstallPaths) -> bool:
                 "json",
                 "doctor",
             ],
-            cwd=paths.repository,
+            cwd=paths.root,
             capture=True,
             check=False,
             timeout=30,
@@ -1297,7 +1306,7 @@ def initialize_local_database(paths: InstallPaths) -> None:
                 "--root",
                 str(paths.root),
             ],
-            cwd=paths.repository,
+            cwd=paths.root,
             capture=True,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
@@ -1313,7 +1322,7 @@ def validate_local_database(paths: InstallPaths) -> None:
                 "--root",
                 str(paths.root),
             ],
-            cwd=paths.repository,
+            cwd=paths.root,
             capture=True,
         )
     except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
@@ -1339,7 +1348,7 @@ def transfer_retired_accounts(
                 "--root",
                 str(paths.root),
             ],
-            cwd=paths.repository,
+            cwd=paths.root,
             input_bytes=snapshot,
             capture=True,
         )
@@ -1391,6 +1400,62 @@ def validate_host(paths: InstallPaths) -> int:
     ):
         require_regular_executable(path, name)
     return uid
+
+
+def read_artifact_cohort(
+    command: list[str],
+    name: str,
+    paths: InstallPaths,
+) -> ArtifactCohort:
+    failure = f"{name} artifact cohort is unavailable"
+    try:
+        completed = run(
+            command,
+            cwd=paths.root,
+            capture=True,
+            check=False,
+            timeout=30,
+        )
+        document = json.loads(completed.stdout)
+    except (OSError, subprocess.TimeoutExpired, json.JSONDecodeError) as error:
+        raise InstallError(failure) from error
+    protocol = document.get("protocol") if isinstance(document, dict) else None
+    if (
+        completed.returncode != 0
+        or not isinstance(document, dict)
+        or set(document) != {"schema", "artifact_cohort", "protocol"}
+        or document.get("schema") != "decodex/artifact-cohort/1"
+        or type(document.get("artifact_cohort")) is not int
+        or document["artifact_cohort"] <= 0
+        or not isinstance(protocol, dict)
+        or set(protocol) != {"major", "minor"}
+        or type(protocol.get("major")) is not int
+        or protocol["major"] <= 0
+        or type(protocol.get("minor")) is not int
+        or protocol["minor"] < 0
+    ):
+        raise InstallError(failure)
+    return ArtifactCohort(
+        artifact_cohort=document["artifact_cohort"],
+        protocol_major=protocol["major"],
+        protocol_minor=protocol["minor"],
+    )
+
+
+def verify_artifact_cohort(paths: InstallPaths) -> ArtifactCohort:
+    daemon = read_artifact_cohort(
+        [str(paths.decodexd), "artifact-cohort"],
+        "Decodex daemon",
+        paths,
+    )
+    cli = read_artifact_cohort(
+        [str(paths.decodex_cli), "--output", "json", "artifact-cohort"],
+        "Decodex CLI",
+        paths,
+    )
+    if daemon != cli:
+        raise InstallError("Decodex artifact cohort differs")
+    return daemon
 
 
 def install_under_namespace_lock(
@@ -1448,6 +1513,7 @@ def install_under_namespace_lock(
     namespace_lock.verify()
     verify_daemon_executable(paths, daemon_executable, require_launch_agent=True)
     verify_signed_peer(paths.decodex_cli, "Decodex CLI", team_identifier)
+    verify_artifact_cohort(paths)
     return transferred_accounts
 
 
@@ -1461,6 +1527,7 @@ def main(argv: Optional[list[str]] = None) -> int:
         raise InstallError("Decodex daemon signing identity is invalid")
     verify_signed_peer(paths.decodex_cli, "Decodex CLI", team_identifier)
     ensure_installer_namespace_layout(paths, uid)
+    artifact_cohort = verify_artifact_cohort(paths)
 
     account_snapshot = capture_retired_account_snapshot(paths, uid)
     bootout_service(paths, uid)
@@ -1495,6 +1562,11 @@ def main(argv: Optional[list[str]] = None) -> int:
                     "completed" if account_snapshot is not None else "not_required"
                 ),
                 "retired_sources_retained": True,
+                "artifact_cohort": artifact_cohort.artifact_cohort,
+                "protocol": {
+                    "major": artifact_cohort.protocol_major,
+                    "minor": artifact_cohort.protocol_minor,
+                },
                 "launch_agent": LAUNCH_AGENT_LABEL,
                 "launched": launch,
             },

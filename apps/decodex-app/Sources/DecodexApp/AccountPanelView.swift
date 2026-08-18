@@ -23,7 +23,6 @@ struct AccountPanelView: View {
 	@State private var accountCardFrames = [String: CGRect]()
 	@State private var accountReorderInteraction: AccountReorderInteraction?
 	@State private var hoveredAccountID: String?
-	@State private var isPresentingEnrollment = false
 	@State private var detailedAccountID: String?
 	@State private var fastMode: FastModeStore
 	@AppStorage("decodex.operator.accountPrivacy") private var accountPrivacy = AccountPrivacy.hidden
@@ -80,11 +79,6 @@ struct AccountPanelView: View {
 		// Re-key the singleton panel, rather than every repeated card, when
 		// system appearance changes.
 		.id(colorScheme == .dark ? "account-panel-dark" : "account-panel-light")
-		.sheet(isPresented: $isPresentingEnrollment) {
-			AccountEnrollmentView(store: store) {
-				isPresentingEnrollment = false
-			}
-		}
 		.animation(panelLayoutAnimation, value: store.accountReauthentication != nil)
 		.task {
 			guard loadsExternalState else {
@@ -222,13 +216,14 @@ struct AccountPanelView: View {
 				symbol: "plus",
 				tint: PanelPalette.actionBlue(colorScheme),
 				isActive: false,
+				isDisabled: store.canBeginEnrollment == false,
 				isSubtle: true,
 				isPrimary: true,
 				size: 24,
 				action: {
-					isPresentingEnrollment = true
+					store.beginAccountEnrollment()
 				},
-				help: "Add Codex login"
+				help: "Add account"
 			)
 
 			Menu {

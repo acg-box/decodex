@@ -12,7 +12,7 @@ import, or runtime scheduling.
 
 The app has one account authority: the Decodex daemon. Its in-process Rust
 client connects to the daemon through the owner-only Unix transport. When the
-user explicitly refreshes an expired login, the Rust bridge starts one finite
+user adds an account or explicitly refreshes an expired login, the Rust bridge starts one finite
 official Codex device-login child in an owner-private temporary home. It shows
 Swift only the official URL, one-time code, and closed session state. The daemon
 verifies and installs the exact account credential, and the bridge removes the
@@ -126,14 +126,21 @@ replacement, file and directory synchronization, exact readback, private file
 modes, and one cross-process dispatch lock. A malformed or unsafe journal is
 preserved and blocks new use.
 
-The panel also exposes current daemon-owned account controls: enroll the
-currently signed-in shared Codex login, enable or disable, log out, and select
-fixed or balanced routing. An account with a provider-confirmed unauthorized
-profile shows `Refresh login`; this official device-login flow is the app's only
-interactive credential-replacement surface. The native app ABI has no direct
-credential-refresh operation. The action presents the official device code
-with fixed-size Copy, Open, and Cancel icon controls, then refreshes only that
-account after the daemon completes the exact credential replacement. The app
+The panel also exposes current daemon-owned account controls: add an account through
+official Codex login, enable or disable, log out, and select fixed or balanced routing.
+Add Account first offers automatic browser login or manual device-code login. Both
+choices use the same native manager, owner-private temporary Codex home, typed daemon
+enrollment command, and cleanup path. Add Account does not import the normal shared
+Codex login or change `~/.codex/auth.json`. An account with a provider-confirmed unauthorized profile, or
+with one targetless provider-refresh ambiguity, shows `Refresh login`; this official
+device-login flow is the app's only interactive credential-replacement surface. For the
+ambiguous case, Swift passes only the exact recovery operation identity. The daemon keeps
+the old ambiguity fenced until the verified replacement credential commits and never
+relabels it as a definite cancellation. The native app ABI has no direct
+credential-refresh operation. The action uses the same login-method selector. Manual
+device-code login presents fixed-size Copy, Open, and Cancel controls. Automatic browser
+login opens the official redirect flow. The app then refreshes only that account after
+the daemon completes the exact credential replacement. The app
 then performs bounded short-interval daemon readback until the new background
 observation replaces any old unauthorized value. Each
 account row has one `Route` control. It first projects that exact daemon-owned login to shared
