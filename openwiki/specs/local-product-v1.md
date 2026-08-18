@@ -371,6 +371,13 @@ through the ordinary operation journal and credential store, and the manager rem
 temporary home. The normal shared `~/.codex/auth.json` is unchanged by enrollment. Swift
 never receives a credential value or auth-file path.
 
+The browser-login child keeps ordinary stdout and stderr pipes. The device-code child uses
+an owner-only pseudo-terminal only for stdout so the official Codex CLI flushes its prompt;
+stderr remains a drained pipe. Both pseudo-terminal descriptors are close-on-exec, and the
+existing process-group cancellation and terminal cleanup close every descriptor. Before the
+existing strict URL and code scan, the manager removes only bounded ANSI CSI SGR sequences
+that can wrap terminal-styled prompt text.
+
 The unique provider-account binding remains the duplicate-enrollment authority. If the
 device-login page selects a provider identity that another Decodex account already owns,
 enrollment cancels the new operation and durably records `provider_already_enrolled`.

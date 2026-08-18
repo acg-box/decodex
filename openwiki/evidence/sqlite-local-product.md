@@ -355,6 +355,16 @@ manual command adds `--device-auth`. Repository history at
 `419535e159edadaa978e527e8f88b838b7e4ca66` supplied the earlier bounded device-code
 presentation and cleanup evidence. The repair does not restore its separate state machine.
 
+A later installed-App regression showed that current Codex did not flush its device prompt
+while stdout was a pipe. The native manager now attaches only the device-code child's stdout
+to an owner-only pseudo-terminal and continues to drain stderr through a pipe. A regression
+child proves that its prompt is observable before exit only when stdout is a terminal; separate
+tests retain the browser pipe and exact argv. The current terminal prompt wraps the code in
+ANSI SGR, so the bounded parser removes only CSI SGR before applying its existing URL, code
+shape, and token-boundary checks. An installed-FFI probe against Codex 0.148.0-alpha.9 moved
+from `requesting_code` to `waiting_for_browser` with a prompt in 707 milliseconds. Typed cancel
+then removed the child process and private login home without exposing the code.
+
 Focused acceptance passed 38 native FFI tests and 80 Swift login-flow tests. The signed
 installed App matched the tested candidate. Its FFI negotiated protocol V2.5 and artifact
 cohort 1 with the running daemon and read seven account rows. The new account was ready and
