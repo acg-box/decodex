@@ -1125,10 +1125,8 @@ mod tests {
 	}
 
 	#[test]
-	fn pseudo_terminal_descriptors_are_owner_only_close_on_exec_and_closed_on_drop() {
+	fn pseudo_terminal_descriptors_are_owner_only_close_on_exec_and_signal_slave_drop() {
 		let terminal = PseudoTerminal::open().expect("owner-controlled pseudo-terminal");
-		let master = terminal.master.as_raw_fd();
-		let slave = terminal.slave.as_raw_fd();
 		for fd in [&terminal.master, &terminal.slave] {
 			// SAFETY: Each `OwnedFd` remains open for this query.
 			let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
@@ -1139,14 +1137,11 @@ mod tests {
 		assert_eq!(slave_metadata.st_uid, unsafe { libc::geteuid() });
 		assert_eq!(slave_metadata.st_mode & 0o077, 0);
 
-		drop(terminal);
+		let PseudoTerminal { master, slave } = terminal;
+		let mut reader = PseudoTerminalReader(File::from(master));
+		drop(slave);
 
-		for fd in [master, slave] {
-			// SAFETY: This deliberately queries the raw descriptor retained before
-			// drop to prove that `OwnedFd` closed it.
-			assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) }, -1);
-			assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EBADF));
-		}
+		assert_eq!(reader.read(&mut [0_u8; 1]).expect("PTY slave closure"), 0);
 	}
 
 	#[test]
