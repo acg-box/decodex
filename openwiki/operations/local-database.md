@@ -29,6 +29,14 @@ key check.
 Normal `decodexd serve` opens and verifies the same database. It does not start or contact
 a database server.
 
+Schema version 8 adds two nullable self-references to the existing account-operation
+journal. They bind one verified reauthentication to one targetless refresh ambiguity and
+record the successful supersession without changing the old operation's recovery phase or
+reason. The migration is additive, preserves existing rows, and replaces the unsettled
+operation indexes atomically. A binary rollback across this schema boundary must retain a
+matching pre-upgrade private database backup; an older daemon does not accept a newer
+migration ledger.
+
 ## Fresh installation
 
 Build one signed, team-consistent local-service set before installation:

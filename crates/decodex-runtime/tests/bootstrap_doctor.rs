@@ -360,7 +360,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
-			version: ProtocolVersion { major: 2, minor: 5 },
+			version: ProtocolVersion { major: 2, minor: 6 },
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
@@ -390,7 +390,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut current,
 		ClientMessage::Query(doctor_query(
-			ProtocolVersion { major: 2, minor: 5 },
+			ProtocolVersion { major: 2, minor: 6 },
 			"future-query-on-current-session",
 		)),
 	)

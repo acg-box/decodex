@@ -271,6 +271,16 @@ the private source exists. Prepared-operation startup and command replay compare
 expected and target bindings; only an exact expected binding can prove that cancellation
 is safe, and ambiguous store state becomes `RecoveryRequired`.
 
+A targetless `Refresh` in `RecoveryRequired` can be replaced only by another successful
+official device login that names that exact recovery operation. The new target-backed
+`Refresh` must retain the same account revision, expected credential binding, and provider
+identity. It can coexist with only that one ambiguity while it performs the ordinary
+HostCredentialStore compare-and-swap. The old operation remains `RecoveryRequired`, keeps
+its recovery code, and continues to fence admission until the new credential reaches
+`StoreApplied` and the registry commit atomically records which new operation superseded
+it. Cancellation or failure before that commit leaves the old ambiguity and fence intact.
+This takeover is not evidence that the earlier provider effect did or did not occur.
+
 ## ProcessGeneration binding
 
 The owning [ProcessGeneration authority](process-generation-authority.md) must extend

@@ -1316,6 +1316,7 @@ final class AccountControlStoreTests: XCTestCase {
 		let request = try XCTUnwrap(recordedRequest)
 		XCTAssertEqual(request.accountID, accountID)
 		XCTAssertEqual(request.expectedRevision, 7)
+		XCTAssertNil(request.recoveryOperationID)
 		XCTAssertEqual(
 			request.codexBin,
 			"/Applications/ChatGPT.app/Contents/Resources/codex"
@@ -1327,6 +1328,59 @@ final class AccountControlStoreTests: XCTestCase {
 		let reads = await client.readCounts()
 		XCTAssertGreaterThanOrEqual(reads.snapshot, 3)
 		XCTAssertGreaterThanOrEqual(reads.inventory, 4)
+	}
+
+	func testAmbiguousRefreshUsesLoginTakeoverWithTheExactRecoveryOperation() async throws {
+		let recoveryOperationID = "77777777-7777-4777-8777-777777777777"
+		let account = accountRecord(
+			observedState: .available,
+			lifecycleReadiness: .operationUnsettled,
+			unsettledOperation: AccountUnsettledOperation(
+				operationID: recoveryOperationID,
+				kind: .refresh,
+				phase: .recoveryRequired,
+				recoveryCode: "provider_refresh_ambiguous"
+			)
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [.waitingForBrowser, .completed]
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .zero,
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
+		)
+		await store.refresh()
+
+		XCTAssertTrue(store.accounts.first?.requiresLoginRefresh == true)
+		XCTAssertEqual(
+			store.accounts.first?.loginRefreshRecoveryOperationID,
+			recoveryOperationID
+		)
+		store.beginAccountReauthentication(for: accountID)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication == nil,
+				store.accounts.first?.account.accountRevision == 8
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let recordedRequest = await client.reauthenticationStartRequest()
+		let request = try XCTUnwrap(recordedRequest)
+		XCTAssertEqual(request.recoveryOperationID, recoveryOperationID)
+		XCTAssertEqual(store.accounts.first?.account.lifecycleReadiness, .ready)
+		XCTAssertNil(store.accounts.first?.account.unsettledOperation)
+		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
 	}
 
 	func testBrowserLoginRemainsActiveUntilExplicitCancel() async throws {
@@ -1419,6 +1473,7 @@ final class AccountControlStoreTests: XCTestCase {
 		enabled: Bool = true,
 		observedState: ResetCardObservedState = .available,
 		lifecycleReadiness: ResetCardLifecycleReadiness = .ready,
+		unsettledOperation: AccountUnsettledOperation? = nil,
 		sevenDayQuota: ResetCardQuotaWindow = .unknown(durationMinutes: 10_080)
 	) -> ResetCardAccountRecord {
 		let accountID = accountID ?? self.accountID
@@ -1437,6 +1492,7 @@ final class AccountControlStoreTests: XCTestCase {
 				provider: .chatGPT,
 				providerAccountID: accountID == self.accountID ? "provider-a" : "provider-b"
 			),
+			unsettledOperation: unsettledOperation,
 			fiveHourQuota: .unknown(durationMinutes: 300),
 			sevenDayQuota: sevenDayQuota
 		)
@@ -1495,6 +1551,7 @@ private struct AccountControlStoreLogoutRequest: Equatable, Sendable {
 private struct AccountControlStoreReauthenticationRequest: Equatable, Sendable {
 	let accountID: String
 	let expectedRevision: UInt64
+	let recoveryOperationID: String?
 	let codexBin: String
 }
 
@@ -2052,6 +2109,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		operationID _: String,
 		accountID: String,
 		expectedRevision: UInt64,
+		recoveryOperationID: String?,
 		idempotencyKey _: String,
 		codexBin: String
 	) async throws -> AccountReauthenticationStatus {
@@ -2062,6 +2120,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		lastReauthenticationStartRequest = AccountControlStoreReauthenticationRequest(
 			accountID: accountID,
 			expectedRevision: expectedRevision,
+			recoveryOperationID: recoveryOperationID,
 			codexBin: codexBin
 		)
 		return reauthenticationStatus(

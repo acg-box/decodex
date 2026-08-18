@@ -40,6 +40,7 @@ pub(crate) enum Failure {
 	AccountMismatch,
 	AccountChanged,
 	AccountUnavailable,
+	RecoveryChanged,
 	CredentialStoreUnavailable,
 	ServiceUnavailable,
 	OutcomeUnknown,
@@ -101,6 +102,7 @@ pub(crate) struct Start {
 	pub operation_id: EntityId,
 	pub account_id: EntityId,
 	pub expected_revision: EntityRevision,
+	pub recovery_operation_id: Option<EntityId>,
 	pub idempotency_key: IdempotencyKey,
 	pub codex_bin: PathBuf,
 }
@@ -479,6 +481,7 @@ async fn install_credential(
 				CommandPayload::ReauthenticateAccountFromCredentialFile {
 					operation_id: start.operation_id.clone(),
 					account_id: start.account_id.clone(),
+					recovery_operation_id: start.recovery_operation_id.clone(),
 					source_descriptor: source_descriptor.clone(),
 				},
 				Some(start.expected_revision),
@@ -522,11 +525,11 @@ fn map_command_error(error: &CommandError) -> Failure {
 			| AccountCommandRejectionDto::CredentialAbsent
 			| AccountCommandRejectionDto::LifecycleUnready
 			| AccountCommandRejectionDto::OperationUnsettled
-			| AccountCommandRejectionDto::OperationNotFound
-			| AccountCommandRejectionDto::ManualRecoveryRequired
 			| AccountCommandRejectionDto::InvalidRequest
 			| AccountCommandRejectionDto::AccountInUse
 			| AccountCommandRejectionDto::RoutingOrderInvalid => Failure::AccountUnavailable,
+			AccountCommandRejectionDto::OperationNotFound
+			| AccountCommandRejectionDto::ManualRecoveryRequired => Failure::RecoveryChanged,
 			AccountCommandRejectionDto::StaleRoutingControl => Failure::AccountChanged,
 		},
 		CommandError::IdempotencyConflict

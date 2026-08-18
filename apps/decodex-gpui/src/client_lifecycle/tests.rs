@@ -102,16 +102,16 @@ fn production_cache_parent_normalizes_only_fixed_platform_prefix() {
 }
 
 #[test]
-fn production_client_cache_authority_is_valid_at_protocol_v2_4() {
+fn production_client_cache_authority_is_valid_at_protocol_v2_5() {
 	let temporary = TempDir::new().expect("temporary directory is available");
 	let fixture_temp_dir =
 		temporary.path().canonicalize().expect("fixture temporary directory canonicalizes");
 	let config = retained_config(&fixture_temp_dir.join("config-cache-parent"), SERVER);
 	let lifecycle = ClientLifecycle::production_with_temp_dir(config, &fixture_temp_dir)
-		.expect("production lifecycle constructs at protocol V2.4");
+		.expect("production lifecycle constructs at protocol V2.5");
 
 	assert_eq!(CURRENT_VERSION.major, 2);
-	assert_eq!(CURRENT_VERSION.minor, 4);
+	assert_eq!(CURRENT_VERSION.minor, 5);
 	assert_eq!(CLIENT_CACHE_SCHEMA_GENERATION, 1);
 	assert!(lifecycle.cache.is_some(), "the production client cache opens");
 	let encoded =
