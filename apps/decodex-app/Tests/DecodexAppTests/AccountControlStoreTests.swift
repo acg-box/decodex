@@ -785,6 +785,33 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.message?.text, "Account added.")
 	}
 
+	func testEnrollmentPickerClosesBeforeStartingNativeLogin() async {
+		let client = AccountControlStoreClient(
+			account: accountRecord(),
+			authority: authority
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+		await store.refresh()
+
+		store.beginAccountEnrollment()
+		XCTAssertEqual(store.accountReauthentication?.phase, .selectingMethod)
+
+		store.closeAccountReauthentication()
+
+		XCTAssertNil(store.accountReauthentication)
+		XCTAssertFalse(store.isEnrollingAccount)
+		let startRequest = await client.enrollmentLoginStartRequest()
+		let cancelCount = await client.reauthenticationCancelCount()
+		XCTAssertNil(startRequest)
+		XCTAssertEqual(cancelCount, 0)
+	}
+
 	func testDeviceEnrollmentDuplicateProviderKeepsExistingAccount() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(

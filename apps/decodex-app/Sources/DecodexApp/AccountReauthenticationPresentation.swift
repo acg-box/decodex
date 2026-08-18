@@ -100,6 +100,17 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		mode.title
 	}
 
+	var headerAccountLabel: String? {
+		guard mode == .reauthentication else {
+			return nil
+		}
+		let label = accountLabel.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard label.isEmpty == false, label != title else {
+			return nil
+		}
+		return label
+	}
+
 	var accessibilityLabel: String {
 		mode.accessibilityLabel
 	}
@@ -124,6 +135,10 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 
 	var isSelectingMethod: Bool {
 		phase == .selectingMethod
+	}
+
+	var showsStatusText: Bool {
+		isSelectingMethod == false
 	}
 
 	var showsProgress: Bool {
