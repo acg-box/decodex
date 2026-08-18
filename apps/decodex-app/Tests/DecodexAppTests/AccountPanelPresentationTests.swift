@@ -260,7 +260,9 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertFalse(presentation.canRequestCancellation)
 		XCTAssertFalse(presentation.canCloseWithoutCancellation)
 		XCTAssertEqual(presentation.title, "Refresh login")
+		XCTAssertEqual(presentation.headerAccountLabel, "Val")
 		XCTAssertEqual(presentation.statusText, "Saving login")
+		XCTAssertTrue(presentation.showsStatusText)
 	}
 
 	func testEnrollmentPresentationUsesAddAccountLabels() {
@@ -276,6 +278,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		)
 
 		XCTAssertEqual(presentation.title, "Add account")
+		XCTAssertNil(presentation.headerAccountLabel)
 		XCTAssertEqual(presentation.accessibilityLabel, "Add account")
 		XCTAssertEqual(presentation.statusText, "Adding account")
 		XCTAssertEqual(presentation.cancelActionLabel, "Cancel adding account")
@@ -312,9 +315,11 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertTrue(selecting.canCloseWithoutCancellation)
 		XCTAssertFalse(selecting.canRequestCancellation)
 		XCTAssertEqual(selecting.statusText, "Choose a sign-in method")
+		XCTAssertFalse(selecting.showsStatusText)
 		XCTAssertFalse(selecting.showsProgress)
 		XCTAssertEqual(device.prompt, prompt)
 		XCTAssertEqual(device.statusText, "Waiting for browser sign-in")
+		XCTAssertTrue(device.showsStatusText)
 		XCTAssertFalse(device.showsProgress)
 	}
 
