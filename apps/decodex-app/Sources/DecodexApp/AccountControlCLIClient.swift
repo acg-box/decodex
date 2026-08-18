@@ -73,6 +73,7 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 	case operationNotFound = "operation_not_found"
 	case credentialAbsent = "credential_absent"
 	case credentialStoreUnavailable = "credential_store_unavailable"
+	case providerAlreadyEnrolled = "provider_already_enrolled"
 	case providerMismatch = "provider_mismatch"
 	case lifecycleUnready = "lifecycle_unready"
 	case routingOrderInvalid = "routing_order_invalid"
@@ -98,6 +99,8 @@ enum AccountControlRejection: String, Decodable, Equatable, Sendable {
 			return "The account has no credentials."
 		case .credentialStoreUnavailable:
 			return "The credential store is unavailable."
+		case .providerAlreadyEnrolled:
+			return "This Codex login is already added. Choose a different account on the login page, then try again."
 		case .providerMismatch:
 			return "The provider account does not match."
 		case .lifecycleUnready:
@@ -162,12 +165,18 @@ enum AccountControlError: Error, Equatable, LocalizedError, Sendable {
 }
 
 enum AccountReauthenticationState: String, Decodable, Equatable, Sendable {
+	case requestingCode = "requesting_code"
 	case openingBrowser = "opening_browser"
 	case waitingForBrowser = "waiting_for_browser"
 	case installing
 	case completed
 	case failed
 	case cancelled
+}
+
+enum AccountLoginMethod: String, Encodable, Equatable, Sendable {
+	case browserRedirect = "browser_redirect"
+	case deviceCode = "device_code"
 }
 
 enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
@@ -178,6 +187,7 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	case accountChanged = "account_changed"
 	case accountUnavailable = "account_unavailable"
 	case recoveryChanged = "recovery_changed"
+	case providerAlreadyEnrolled = "provider_already_enrolled"
 	case credentialStoreUnavailable = "credential_store_unavailable"
 	case serviceUnavailable = "service_unavailable"
 	case outcomeUnknown = "outcome_unknown"
@@ -191,7 +201,7 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 		case .loginFailed:
 			return "Codex could not complete the login."
 		case .loginTimedOut:
-			return "The browser login timed out. Try again."
+			return "The login timed out. Try again."
 		case .accountMismatch:
 			return "This login belongs to a different account."
 		case .accountChanged:
@@ -200,6 +210,8 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 			return "This account is not available for login."
 		case .recoveryChanged:
 			return "This login recovery changed. Refresh the account and try again."
+		case .providerAlreadyEnrolled:
+			return "This Codex login is already added. Choose a different account on the login page, then try again."
 		case .credentialStoreUnavailable:
 			return "The credential store is unavailable."
 		case .serviceUnavailable:
@@ -214,9 +226,17 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	}
 }
 
+struct AccountReauthenticationPrompt: Equatable, Sendable {
+	static let verificationURL = URL(string: "https://auth.openai.com/codex/device")!
+
+	let verificationURL: URL
+	let userCode: String
+}
+
 struct AccountReauthenticationStatus: Equatable, Sendable {
 	let sessionID: String
 	let state: AccountReauthenticationState
+	let prompt: AccountReauthenticationPrompt?
 	let failure: AccountReauthenticationFailure?
 }
 
@@ -289,7 +309,19 @@ protocol AccountControlClient: ResetCardClient {
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey: String,
-		codexBin: String
+		codexBin: String,
+		loginMethod: AccountLoginMethod
+	) async throws -> AccountReauthenticationStatus
+
+	func startAccountEnrollment(
+		authority: ResetCardAuthority?,
+		sessionID: String,
+		operationID: String,
+		accountID: String,
+		enabled: Bool,
+		idempotencyKey: String,
+		codexBin: String,
+		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus
 
 	func pollAccountReauthentication(
@@ -304,6 +336,19 @@ protocol AccountControlClient: ResetCardClient {
 }
 
 extension AccountControlClient {
+	func startAccountEnrollment(
+		authority _: ResetCardAuthority?,
+		sessionID _: String,
+		operationID _: String,
+		accountID _: String,
+		enabled _: Bool,
+		idempotencyKey _: String,
+		codexBin _: String,
+		loginMethod _: AccountLoginMethod
+	) async throws -> AccountReauthenticationStatus {
+		throw AccountControlError.applicationUnavailable
+	}
+
 	func startAccountReauthentication(
 		authority _: ResetCardAuthority?,
 		sessionID _: String,
@@ -312,7 +357,8 @@ extension AccountControlClient {
 		expectedRevision _: UInt64,
 		recoveryOperationID _: String?,
 		idempotencyKey _: String,
-		codexBin _: String
+		codexBin _: String,
+		loginMethod _: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		throw AccountControlError.applicationUnavailable
 	}
@@ -560,7 +606,8 @@ extension DecodexNativeClient: AccountControlClient {
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey: String,
-		codexBin: String
+		codexBin: String,
+		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		try Self.validateAccountControlInput(
 			authority: authority,
@@ -585,7 +632,46 @@ extension DecodexNativeClient: AccountControlClient {
 				operationID: operationID,
 				recoveryOperationID: recoveryOperationID,
 				sessionID: sessionID,
-				codexBin: codexBin
+				codexBin: codexBin,
+				loginMethod: loginMethod
+			),
+			authority: authority,
+			expectedSessionID: sessionID
+		)
+	}
+
+	func startAccountEnrollment(
+		authority: ResetCardAuthority?,
+		sessionID: String,
+		operationID: String,
+		accountID: String,
+		enabled: Bool,
+		idempotencyKey: String,
+		codexBin: String,
+		loginMethod: AccountLoginMethod
+	) async throws -> AccountReauthenticationStatus {
+		try Self.validateAccountControlInput(
+			authority: authority,
+			accountID: accountID,
+			operationID: operationID,
+			expectedRevision: nil,
+			idempotencyKey: idempotencyKey
+		)
+		guard Self.isCanonicalUUID(sessionID),
+			Self.isValidCodexExecutablePath(codexBin)
+		else {
+			throw AccountControlError.invalidInput
+		}
+		return try await executeAccountReauthentication(
+			request: DecodexNativeRequest(
+				operation: "start_account_enrollment",
+				accountID: accountID,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID,
+				sessionID: sessionID,
+				codexBin: codexBin,
+				loginMethod: loginMethod,
+				enabled: enabled
 			),
 			authority: authority,
 			expectedSessionID: sessionID
@@ -728,7 +814,7 @@ private struct AccountReauthenticationWire: Decodable {
 	init(from decoder: Decoder) throws {
 		try rejectUnknownFields(
 			in: decoder,
-			allowed: ["session_id", "state", "failure"]
+			allowed: ["session_id", "state", "prompt", "failure"]
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
 		let sessionID = try container.decode(String.self, forKey: .sessionID)
@@ -736,38 +822,92 @@ private struct AccountReauthenticationWire: Decodable {
 			AccountReauthenticationState.self,
 			forKey: .state
 		)
+		let prompt = try container.decodeIfPresent(
+			PromptWire.self,
+			forKey: .prompt
+		)?.value
 		let failure = try container.decodeIfPresent(
 			AccountReauthenticationFailure.self,
 			forKey: .failure
 		)
 		guard DecodexNativeClient.isCanonicalUUID(sessionID),
-			Self.hasValidShape(state: state, failure: failure)
+			Self.hasValidShape(state: state, prompt: prompt, failure: failure)
 		else {
 			throw AccountControlError.invalidResponse
 		}
 		value = AccountReauthenticationStatus(
 			sessionID: sessionID,
 			state: state,
+			prompt: prompt,
 			failure: failure
 		)
 	}
 
 	private static func hasValidShape(
 		state: AccountReauthenticationState,
+		prompt: AccountReauthenticationPrompt?,
 		failure: AccountReauthenticationFailure?
 	) -> Bool {
 		switch state {
-		case .openingBrowser, .waitingForBrowser, .installing,
-			.completed, .cancelled:
+		case .requestingCode, .openingBrowser, .installing, .completed, .cancelled:
+			return prompt == nil && failure == nil
+		case .waitingForBrowser:
 			return failure == nil
 		case .failed:
-			return failure != nil
+			return prompt == nil && failure != nil
+		}
+	}
+
+	private struct PromptWire: Decodable {
+		let value: AccountReauthenticationPrompt
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(
+				in: decoder,
+				expected: ["verification_url", "user_code"]
+			)
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			let verificationURLText = try container.decode(
+				String.self,
+				forKey: .verificationURL
+			)
+			let userCode = try container.decode(String.self, forKey: .userCode)
+			guard let verificationURL = URL(string: verificationURLText),
+				verificationURL == AccountReauthenticationPrompt.verificationURL,
+				Self.isValidUserCode(userCode)
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			value = AccountReauthenticationPrompt(
+				verificationURL: verificationURL,
+				userCode: userCode
+			)
+		}
+
+		private static func isValidUserCode(_ value: String) -> Bool {
+			let bytes = Array(value.utf8)
+			guard bytes.count == 10, bytes[4] == 0x2d else {
+				return false
+			}
+			return bytes.enumerated().allSatisfy { index, byte in
+				if index == 4 {
+					return true
+				}
+				return (byte >= 0x30 && byte <= 0x39)
+					|| (byte >= 0x41 && byte <= 0x5a)
+			}
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case verificationURL = "verification_url"
+			case userCode = "user_code"
 		}
 	}
 
 	private enum CodingKeys: String, CodingKey {
 		case sessionID = "session_id"
 		case state
+		case prompt
 		case failure
 	}
 }

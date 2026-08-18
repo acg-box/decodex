@@ -52,12 +52,15 @@ signature is rejected because it has no TeamIdentifier.
 
 The macOS installer:
 
-1. verifies signed binaries and the expected team;
+1. verifies signed binaries, the expected team, and exact daemon/CLI artifact-cohort
+   agreement before it stops the running service;
 2. creates owner-only directories and configuration;
 3. initializes and validates SQLite;
-4. installs a LaunchAgent that invokes `decodexd serve` directly;
+4. installs a LaunchAgent that invokes `decodexd serve` directly with
+   `~/.decodex` as its stable working directory;
 5. starts the daemon; and
-6. runs doctor and account-list readback.
+6. runs doctor and account-list readback through the installed CLI, which proves the
+   running daemon uses the same V2.5 artifact cohort.
 
 It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.
@@ -90,6 +93,8 @@ and an accepted observation window.
 ## Validation commands
 
 ```sh
+decodexd artifact-cohort
+decodex --output json artifact-cohort
 python3 scripts/vnext/local_database_gate.py
 python3 -m unittest tests/scripts/test_vnext_architecture.py
 python3 -m unittest tests/scripts/test_install_decodex_local_service.py

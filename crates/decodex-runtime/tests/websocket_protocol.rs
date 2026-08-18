@@ -334,7 +334,12 @@ async fn connect(transport: &LocalTransportAuthority, version: ProtocolVersion) 
 
 	send(
 		&mut client,
-		ClientMessage::Hello(ClientHello { version, expected_server_id: None, resume: None }),
+		ClientMessage::Hello(ClientHello {
+			version,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
+			expected_server_id: None,
+			resume: None,
+		}),
 	)
 	.await;
 
@@ -356,6 +361,7 @@ async fn reconnect(
 		&mut client,
 		ClientMessage::Hello(ClientHello {
 			version,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: None,
 			resume: Some(cursor),
 		}),

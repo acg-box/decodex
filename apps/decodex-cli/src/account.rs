@@ -1,4 +1,4 @@
-//! Operator account client over the same-UID V2.1 daemon protocol.
+//! Operator account client over the same-UID V2.5 daemon protocol.
 
 use std::path::{Path, PathBuf};
 
@@ -455,16 +455,35 @@ fn invalid_input() -> CommandOutput {
 mod tests {
 	use clap::Parser as _;
 	use decodex_protocol::{
-		AccountProfileDailyUsageDto, AccountProfileDto, AccountProfileEmailDto,
-		AccountProfileErrorDto, AccountProfileResult, EntityId, EntityRevision, WireText,
+		AccountCommandRejectionDto, AccountCommandResponse, AccountProfileDailyUsageDto,
+		AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
+		CommandError, EntityId, EntityRevision, WireText,
 	};
 
-	use crate::{Cli, Command};
+	use crate::{Cli, Command, OutputFormat};
 
-	use super::{ACCOUNT_OUTPUT_SCHEMA, AccountCommand, OutputDocument};
+	use super::{ACCOUNT_OUTPUT_SCHEMA, AccountCommand, OutputDocument, render_command};
 
 	const OPERATION_ID: &str = "40000000-0000-4000-8000-000000000001";
 	const ACCOUNT_ID: &str = "40000000-0000-4000-8000-000000000002";
+
+	#[test]
+	fn duplicate_provider_rejection_keeps_its_typed_cli_result() {
+		let output = render_command(
+			OutputFormat::Json,
+			Ok(AccountCommandResponse::Rejected {
+				error: CommandError::AccountCommandRejected {
+					rejection: AccountCommandRejectionDto::ProviderAlreadyEnrolled,
+					actual_revision: None,
+				},
+			}),
+		);
+		let value: serde_json::Value = serde_json::from_str(output.text()).unwrap();
+
+		assert_eq!(output.exit_code(), 1);
+		assert_eq!(value["outcome"], "rejected");
+		assert_eq!(value["result"]["data"]["error"]["rejection"], "provider_already_enrolled");
+	}
 
 	#[test]
 	fn enroll_and_import_accept_explicit_false_without_changing_the_true_default() {

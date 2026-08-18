@@ -262,6 +262,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		&mut wrong,
 		ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(ServerId::new("wrong-server").expect("bounded wrong ID")),
 			resume: None,
 		}),
@@ -283,6 +284,7 @@ async fn doctor_crosses_the_daemon_protocol_and_wrong_server_is_refused() {
 		&mut client,
 		ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
@@ -343,6 +345,7 @@ async fn assert_exact_current_doctor_queries(
 		&mut legacy,
 		ClientMessage::Hello(ClientHello {
 			version: ProtocolVersion { major: 1, minor: 5 },
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
@@ -361,6 +364,7 @@ async fn assert_exact_current_doctor_queries(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
 			version: ProtocolVersion { major: 2, minor: 6 },
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
@@ -374,11 +378,34 @@ async fn assert_exact_current_doctor_queries(
 		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. })
 	));
 
+	let mut stale_cohort = connect_local(transport).await;
+	send(
+		&mut stale_cohort,
+		ClientMessage::Hello(ClientHello {
+			version: CURRENT_VERSION,
+			artifact_cohort: None,
+			expected_server_id: Some(server_id.clone()),
+			resume: None,
+		}),
+	)
+	.await;
+	let ServerMessage::Refusal(refusal) = receive(&mut stale_cohort).await else {
+		panic!("expected artifact-cohort refusal");
+	};
+	assert!(matches!(
+		refusal.refusal,
+		Refusal::ArtifactCohortMismatch {
+			expected: decodex_protocol::CURRENT_ARTIFACT_COHORT,
+			actual: None,
+		}
+	));
+
 	let mut current = connect_local(transport).await;
 	send(
 		&mut current,
 		ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
 		}),
