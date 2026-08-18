@@ -434,6 +434,7 @@ const fn startup_failure(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProtocolTimeout => "Daemon protocol timed out",
 		ClientFailure::ProtocolMajorMismatch => "Protocol generation does not match",
 		ClientFailure::ProtocolMinorMismatch => "Protocol revision is not supported",
+		ClientFailure::ArtifactCohortMismatch => "Installed Decodex artifacts do not match",
 		ClientFailure::ServerIdentityMismatch => "Stable server identity does not match",
 		ClientFailure::ProtocolMalformed => "Daemon response is malformed",
 		ClientFailure::ProtocolViolation => "Daemon protocol ordering was refused",

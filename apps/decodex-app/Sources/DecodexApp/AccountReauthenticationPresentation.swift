@@ -1,7 +1,59 @@
 import Foundation
 
+enum AccountLoginMode: Equatable {
+	case enrollment
+	case reauthentication
+
+	var title: String {
+		switch self {
+		case .enrollment:
+			return "Add account"
+		case .reauthentication:
+			return "Refresh login"
+		}
+	}
+
+	var accessibilityLabel: String {
+		switch self {
+		case .enrollment:
+			return "Add account"
+		case .reauthentication:
+			return "Refresh login"
+		}
+	}
+
+	var cancelActionLabel: String {
+		switch self {
+		case .enrollment:
+			return "Cancel adding account"
+		case .reauthentication:
+			return "Cancel login"
+		}
+	}
+
+	var closeActionLabel: String {
+		switch self {
+		case .enrollment:
+			return "Close add account"
+		case .reauthentication:
+			return "Close login"
+		}
+	}
+
+	var installingLabel: String {
+		switch self {
+		case .enrollment:
+			return "Adding account"
+		case .reauthentication:
+			return "Saving login"
+		}
+	}
+}
+
 enum AccountReauthenticationPhase: Equatable {
+	case selectingMethod
 	case resolvingCodex
+	case requestingCode
 	case openingBrowser
 	case waitingForBrowser
 	case installing
@@ -10,11 +62,14 @@ enum AccountReauthenticationPhase: Equatable {
 }
 
 struct AccountReauthenticationPresentation: Identifiable, Equatable {
+	let mode: AccountLoginMode
 	let accountID: String
 	let accountLabel: String
 	let sessionID: String
 	let authority: ResetCardAuthority?
 	let phase: AccountReauthenticationPhase
+	let loginMethod: AccountLoginMethod?
+	let prompt: AccountReauthenticationPrompt?
 
 	var id: String {
 		sessionID
@@ -22,14 +77,18 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 
 	var statusText: String {
 		switch phase {
+		case .selectingMethod:
+			return "Choose a sign-in method"
 		case .resolvingCodex:
 			return "Finding Codex"
+		case .requestingCode:
+			return "Requesting a one-time code"
 		case .openingBrowser:
 			return "Opening browser sign-in"
 		case .waitingForBrowser:
 			return "Waiting for browser sign-in"
 		case .installing:
-			return "Saving this login"
+			return mode.installingLabel
 		case .failed:
 			return "Login failed"
 		case .cancellationFailed:
@@ -37,12 +96,46 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		}
 	}
 
+	var title: String {
+		mode.title
+	}
+
+	var accessibilityLabel: String {
+		mode.accessibilityLabel
+	}
+
+	var cancelActionLabel: String {
+		mode.cancelActionLabel
+	}
+
+	var closeActionLabel: String {
+		mode.closeActionLabel
+	}
+
 	var failureText: String? {
 		switch phase {
 		case .failed(let message), .cancellationFailed(let message):
 			return message
-		case .resolvingCodex, .openingBrowser, .waitingForBrowser, .installing:
+		case .selectingMethod, .resolvingCodex, .requestingCode, .openingBrowser,
+			.waitingForBrowser, .installing:
 			return nil
+		}
+	}
+
+	var isSelectingMethod: Bool {
+		phase == .selectingMethod
+	}
+
+	var showsProgress: Bool {
+		guard prompt == nil else {
+			return false
+		}
+		switch phase {
+		case .selectingMethod, .failed, .cancellationFailed:
+			return false
+		case .resolvingCodex, .requestingCode, .openingBrowser,
+			.waitingForBrowser, .installing:
+			return true
 		}
 	}
 
@@ -50,10 +143,16 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		if case .failed = phase {
 			return true
 		}
+		if case .selectingMethod = phase {
+			return true
+		}
 		return false
 	}
 
 	var canRequestCancellation: Bool {
+		if case .selectingMethod = phase {
+			return false
+		}
 		if case .installing = phase {
 			return false
 		}

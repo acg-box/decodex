@@ -25,6 +25,7 @@ codesign --verify --deep --strict "$app_path"
 codesign --verify --strict "$native_client"
 for symbol in \
   _decodex_app_native_client_abi_version \
+  _decodex_app_native_client_artifact_cohort \
   _decodex_app_native_client_create \
   _decodex_app_native_client_request \
   _decodex_app_native_client_free \

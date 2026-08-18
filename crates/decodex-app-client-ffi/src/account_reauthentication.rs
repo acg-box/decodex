@@ -21,9 +21,10 @@ use decodex_protocol::{
 	ClientProfile, CommandError, CommandPayload, EntityId, EntityRevision, IdempotencyKey,
 	ResultPayload, WireText,
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio::runtime::Handle;
 
+const DEVICE_LOGIN_URL: &str = "https://auth.openai.com/codex/device";
 const FILE_AUTH_STORE_CONFIG: &str = r#"cli_auth_credentials_store="file""#;
 const LOGIN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 const CHILD_POLL_INTERVAL: Duration = Duration::from_millis(40);
@@ -40,6 +41,7 @@ pub(crate) enum Failure {
 	AccountMismatch,
 	AccountChanged,
 	AccountUnavailable,
+	ProviderAlreadyEnrolled,
 	RecoveryChanged,
 	CredentialStoreUnavailable,
 	ServiceUnavailable,
@@ -52,6 +54,7 @@ pub(crate) enum Failure {
 #[serde(rename_all = "snake_case")]
 enum State {
 	OpeningBrowser,
+	RequestingCode,
 	WaitingForBrowser,
 	Installing,
 	Completed,
@@ -59,37 +62,56 @@ enum State {
 	Cancelled,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum LoginMethod {
+	BrowserRedirect,
+	DeviceCode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub(crate) struct Prompt {
+	verification_url: &'static str,
+	user_code: String,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub(crate) struct Status {
 	session_id: String,
 	state: State,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	prompt: Option<Prompt>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	failure: Option<Failure>,
 }
 
 impl Status {
 	fn opening_browser(session_id: String) -> Self {
-		Self { session_id, state: State::OpeningBrowser, failure: None }
+		Self { session_id, state: State::OpeningBrowser, prompt: None, failure: None }
 	}
 
-	fn waiting(session_id: String) -> Self {
-		Self { session_id, state: State::WaitingForBrowser, failure: None }
+	fn requesting_code(session_id: String) -> Self {
+		Self { session_id, state: State::RequestingCode, prompt: None, failure: None }
+	}
+
+	fn waiting_for_browser(session_id: String, prompt: Option<Prompt>) -> Self {
+		Self { session_id, state: State::WaitingForBrowser, prompt, failure: None }
 	}
 
 	fn installing(session_id: String) -> Self {
-		Self { session_id, state: State::Installing, failure: None }
+		Self { session_id, state: State::Installing, prompt: None, failure: None }
 	}
 
 	fn completed(session_id: String) -> Self {
-		Self { session_id, state: State::Completed, failure: None }
+		Self { session_id, state: State::Completed, prompt: None, failure: None }
 	}
 
 	fn failed(session_id: String, failure: Failure) -> Self {
-		Self { session_id, state: State::Failed, failure: Some(failure) }
+		Self { session_id, state: State::Failed, prompt: None, failure: Some(failure) }
 	}
 
 	fn cancelled(session_id: String) -> Self {
-		Self { session_id, state: State::Cancelled, failure: None }
+		Self { session_id, state: State::Cancelled, prompt: None, failure: None }
 	}
 
 	fn is_terminal(&self) -> bool {
@@ -97,14 +119,24 @@ impl Status {
 	}
 }
 
+pub(crate) enum InstallMode {
+	Reauthenticate {
+		expected_revision: EntityRevision,
+		recovery_operation_id: Option<EntityId>,
+	},
+	Enroll {
+		enabled: bool,
+	},
+}
+
 pub(crate) struct Start {
 	pub session_id: String,
 	pub operation_id: EntityId,
 	pub account_id: EntityId,
-	pub expected_revision: EntityRevision,
-	pub recovery_operation_id: Option<EntityId>,
 	pub idempotency_key: IdempotencyKey,
 	pub codex_bin: PathBuf,
+	pub login_method: LoginMethod,
+	pub install_mode: InstallMode,
 }
 
 struct Shared {
@@ -113,9 +145,13 @@ struct Shared {
 }
 
 impl Shared {
-	fn new(session_id: String) -> Self {
+	fn new(session_id: String, login_method: LoginMethod) -> Self {
+		let status = match login_method {
+			LoginMethod::BrowserRedirect => Status::opening_browser(session_id),
+			LoginMethod::DeviceCode => Status::requesting_code(session_id),
+		};
 		Self {
-			status: Mutex::new(Status::opening_browser(session_id)),
+			status: Mutex::new(status),
 			cancel_requested: AtomicBool::new(false),
 		}
 	}
@@ -166,7 +202,7 @@ impl Manager {
 				return Status::failed(start.session_id, Failure::Busy);
 			}
 		}
-		let shared = Arc::new(Shared::new(start.session_id.clone()));
+		let shared = Arc::new(Shared::new(start.session_id.clone(), start.login_method));
 		let worker_shared = Arc::clone(&shared);
 		let worker = match thread::Builder::new()
 			.name("decodex-account-login".to_owned())
@@ -306,11 +342,14 @@ fn run_login_in_home(
 	login_home: &Path,
 ) -> Status {
 	let session_id = start.session_id.clone();
-	let mut child = match browser_login_command(&codex_bin, login_home).spawn() {
+	let login_method = start.login_method;
+	let mut child = match login_command(&codex_bin, login_home, login_method).spawn() {
 		Ok(child) => child,
 		Err(_) => return Status::failed(session_id, Failure::CodexUnavailable),
 	};
-	shared.set_status(Status::waiting(session_id.clone()));
+	if login_method == LoginMethod::BrowserRedirect {
+		shared.set_status(Status::waiting_for_browser(session_id.clone(), None));
+	}
 	let Some(stdout) = child.stdout.take() else {
 		terminate_child(&mut child);
 		return Status::failed(session_id, Failure::LoginFailed);
@@ -342,11 +381,15 @@ fn run_login_in_home(
 		stdout_reader,
 		stderr_reader,
 		&session_id,
+		login_method,
 	) {
 		Ok(output) => output,
 		Err(status) => return status,
 	};
-	if output.reader_failed || !output.exit.success() {
+	if output.reader_failed
+		|| !output.exit.success()
+		|| (login_method == LoginMethod::DeviceCode && !output.prompt_published)
+	{
 		return Status::failed(session_id, Failure::LoginFailed);
 	}
 	if shared.cancel_requested.load(Ordering::Acquire) {
@@ -364,10 +407,13 @@ fn run_login_in_home(
 	}
 }
 
-fn browser_login_command(codex_bin: &Path, login_home: &Path) -> Command {
+fn login_command(codex_bin: &Path, login_home: &Path, login_method: LoginMethod) -> Command {
 	let mut command = Command::new(codex_bin);
+	command.arg("login");
+	if login_method == LoginMethod::DeviceCode {
+		command.arg("--device-auth");
+	}
 	command
-		.arg("login")
 		.arg("-c")
 		.arg(FILE_AUTH_STORE_CONFIG)
 		.current_dir(login_home)
@@ -389,6 +435,7 @@ fn browser_login_command(codex_bin: &Path, login_home: &Path) -> Command {
 struct LoginChildOutput {
 	exit: ExitStatus,
 	reader_failed: bool,
+	prompt_published: bool,
 }
 
 fn collect_login_child(
@@ -398,10 +445,12 @@ fn collect_login_child(
 	stdout_reader: JoinHandle<()>,
 	stderr_reader: JoinHandle<()>,
 	session_id: &str,
+	login_method: LoginMethod,
 ) -> Result<LoginChildOutput, Status> {
 	let deadline = Instant::now() + LOGIN_TIMEOUT;
 	let mut output = Vec::new();
 	let mut reader_failed = false;
+	let mut prompt_published = false;
 	let mut open_readers = 2_u8;
 	let mut exit = None;
 	loop {
@@ -416,12 +465,20 @@ fn collect_login_child(
 			return Err(Status::failed(session_id.to_owned(), Failure::LoginTimedOut));
 		}
 		match receiver.recv_timeout(CHILD_POLL_INTERVAL) {
-			Ok(PipeEvent::Bytes(bytes)) =>
+			Ok(PipeEvent::Bytes(bytes)) => {
 				if append_output(&mut output, &bytes).is_err() {
 					terminate_child(child);
 					join_readers(stdout_reader, stderr_reader);
 					return Err(Status::failed(session_id.to_owned(), Failure::LoginFailed));
-				},
+				}
+				publish_device_prompt(
+					shared,
+					&output,
+					login_method,
+					session_id,
+					&mut prompt_published,
+				);
+			},
 			Ok(PipeEvent::Closed { failed }) => {
 				reader_failed |= failed;
 				open_readers = open_readers.saturating_sub(1);
@@ -453,18 +510,42 @@ fn collect_login_child(
 			join_readers(stdout_reader, stderr_reader);
 			for event in receiver.try_iter() {
 				match event {
-					PipeEvent::Bytes(bytes) =>
+					PipeEvent::Bytes(bytes) => {
 						if append_output(&mut output, &bytes).is_err() {
 							return Err(Status::failed(
 								session_id.to_owned(),
 								Failure::LoginFailed,
 							));
-						},
+						}
+						publish_device_prompt(
+							shared,
+							&output,
+							login_method,
+							session_id,
+							&mut prompt_published,
+						);
+					},
 					PipeEvent::Closed { failed } => reader_failed |= failed,
 				}
 			}
-			return Ok(LoginChildOutput { exit, reader_failed });
+			return Ok(LoginChildOutput { exit, reader_failed, prompt_published });
 		}
+	}
+}
+
+fn publish_device_prompt(
+	shared: &Shared,
+	output: &[u8],
+	login_method: LoginMethod,
+	session_id: &str,
+	prompt_published: &mut bool,
+) {
+	if login_method != LoginMethod::DeviceCode || *prompt_published {
+		return;
+	}
+	if let Some(prompt) = parse_device_prompt(output) {
+		shared.set_status(Status::waiting_for_browser(session_id.to_owned(), Some(prompt)));
+		*prompt_published = true;
 	}
 }
 
@@ -475,18 +556,10 @@ async fn install_credential(
 ) -> Result<(), Failure> {
 	let source_descriptor = WireText::new(auth_path.to_string_lossy().into_owned())
 		.map_err(|_| Failure::LoginFailed)?;
+	let (payload, expected_revision) = install_command(&start, source_descriptor);
 	for attempt in 0..INSTALL_DISPATCH_ATTEMPTS {
 		let response = AccountClient::new(profile.clone())
-			.execute(
-				CommandPayload::ReauthenticateAccountFromCredentialFile {
-					operation_id: start.operation_id.clone(),
-					account_id: start.account_id.clone(),
-					recovery_operation_id: start.recovery_operation_id.clone(),
-					source_descriptor: source_descriptor.clone(),
-				},
-				Some(start.expected_revision),
-				start.idempotency_key.clone(),
-			)
+			.execute(payload.clone(), expected_revision, start.idempotency_key.clone())
 			.await
 			.map_err(map_client_failure)?;
 		match response {
@@ -509,6 +582,32 @@ async fn install_credential(
 	Err(Failure::OutcomeUnknown)
 }
 
+fn install_command(
+	start: &Start,
+	source_descriptor: WireText,
+) -> (CommandPayload, Option<EntityRevision>) {
+	match &start.install_mode {
+		InstallMode::Reauthenticate { expected_revision, recovery_operation_id } => (
+			CommandPayload::ReauthenticateAccountFromCredentialFile {
+				operation_id: start.operation_id.clone(),
+				account_id: start.account_id.clone(),
+				recovery_operation_id: recovery_operation_id.clone(),
+				source_descriptor,
+			},
+			Some(*expected_revision),
+		),
+		InstallMode::Enroll { enabled } => (
+			CommandPayload::EnrollAccountFromCredentialFile {
+				operation_id: start.operation_id.clone(),
+				account_id: start.account_id.clone(),
+				enabled: *enabled,
+				source_descriptor,
+			},
+			None,
+		),
+	}
+}
+
 fn map_client_failure(_failure: ClientFailure) -> Failure {
 	Failure::ServiceUnavailable
 }
@@ -518,6 +617,7 @@ fn map_command_error(error: &CommandError) -> Failure {
 		CommandError::ExpectedRevisionMismatch { .. } => Failure::AccountChanged,
 		CommandError::AccountCommandRejected { rejection, .. } => match rejection {
 			AccountCommandRejectionDto::ProviderMismatch => Failure::AccountMismatch,
+			AccountCommandRejectionDto::ProviderAlreadyEnrolled => Failure::ProviderAlreadyEnrolled,
 			AccountCommandRejectionDto::StaleAccount => Failure::AccountChanged,
 			AccountCommandRejectionDto::CredentialStoreUnavailable =>
 				Failure::CredentialStoreUnavailable,
@@ -630,6 +730,52 @@ fn append_output(output: &mut Vec<u8>, bytes: &[u8]) -> Result<(), ()> {
 	Ok(())
 }
 
+fn parse_device_prompt(output: &[u8]) -> Option<Prompt> {
+	contains_device_url(output).then_some(())?;
+	Some(Prompt { verification_url: DEVICE_LOGIN_URL, user_code: parse_device_code(output)? })
+}
+
+fn contains_device_url(output: &[u8]) -> bool {
+	output.windows(DEVICE_LOGIN_URL.len()).any(|window| window == DEVICE_LOGIN_URL.as_bytes())
+}
+
+fn parse_device_code(output: &[u8]) -> Option<String> {
+	for suffix_length in [4_usize, 5] {
+		let code_length = 5 + suffix_length;
+		if output.len() < code_length {
+			continue;
+		}
+		for start in 0..=output.len() - code_length {
+			let end = start + code_length;
+			let candidate = &output[start..end];
+			if candidate[4] != b'-' {
+				continue;
+			}
+			if !candidate[..4]
+				.iter()
+				.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+				|| !candidate[5..]
+					.iter()
+					.all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+			{
+				continue;
+			}
+			if start > 0 && is_device_code_token_byte(output[start - 1]) {
+				continue;
+			}
+			if end < output.len() && is_device_code_token_byte(output[end]) {
+				continue;
+			}
+			return String::from_utf8(candidate.to_vec()).ok();
+		}
+	}
+	None
+}
+
+fn is_device_code_token_byte(byte: u8) -> bool {
+	byte.is_ascii_alphanumeric() || byte == b'-'
+}
+
 struct LoginHome {
 	path: PathBuf,
 	device: u64,
@@ -706,16 +852,162 @@ impl Drop for LoginHome {
 mod tests {
 	use super::*;
 
+	fn entity_id(value: &str) -> EntityId {
+		EntityId::new(value).expect("fixture entity ID")
+	}
+
+	fn start(install_mode: InstallMode) -> Start {
+		start_with_login_method(install_mode, LoginMethod::BrowserRedirect)
+	}
+
+	fn start_with_login_method(install_mode: InstallMode, login_method: LoginMethod) -> Start {
+		Start {
+			session_id: "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned(),
+			operation_id: entity_id("028f0f9e-7b6e-4a31-8f4c-1d2e3f405163"),
+			account_id: entity_id("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164"),
+			idempotency_key: IdempotencyKey::new("account-login-fixture")
+				.expect("fixture idempotency key"),
+			codex_bin: PathBuf::from("/Applications/Codex.app/Contents/Resources/codex"),
+			login_method,
+			install_mode,
+		}
+	}
+
 	#[test]
-	fn browser_login_forces_the_private_file_credential_store() {
-		let command = browser_login_command(
+	fn login_methods_select_exact_argv_and_the_private_file_credential_store() {
+		let browser = login_command(
 			Path::new("/Applications/ChatGPT.app/Contents/Resources/codex"),
 			Path::new("/private/tmp/decodex-login"),
+			LoginMethod::BrowserRedirect,
 		);
-		let args =
-			command.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
+		let browser_args =
+			browser.get_args().map(|arg| arg.to_string_lossy().into_owned()).collect::<Vec<_>>();
+		let device_code = login_command(
+			Path::new("/Applications/ChatGPT.app/Contents/Resources/codex"),
+			Path::new("/private/tmp/decodex-login"),
+			LoginMethod::DeviceCode,
+		);
+		let device_code_args = device_code
+			.get_args()
+			.map(|arg| arg.to_string_lossy().into_owned())
+			.collect::<Vec<_>>();
 
-		assert_eq!(args, ["login", "-c", r#"cli_auth_credentials_store="file""#]);
+		assert_eq!(browser_args, ["login", "-c", r#"cli_auth_credentials_store="file""#]);
+		assert_eq!(
+			device_code_args,
+			["login", "--device-auth", "-c", r#"cli_auth_credentials_store="file""#],
+		);
+	}
+
+	#[test]
+	fn login_methods_start_in_distinct_closed_states() {
+		let session_id = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+		let browser = Shared::new(session_id.to_owned(), LoginMethod::BrowserRedirect).status();
+		let device_code = Shared::new(session_id.to_owned(), LoginMethod::DeviceCode).status();
+
+		assert_eq!(browser.state, State::OpeningBrowser);
+		assert_eq!(browser.prompt, None);
+		assert_eq!(device_code.state, State::RequestingCode);
+		assert_eq!(device_code.prompt, None);
+	}
+
+	#[test]
+	fn parser_accepts_current_and_historical_bounded_device_prompts() {
+		let current =
+			b"\x1b[32mOpen https://auth.openai.com/codex/device\x1b[0m\nCode: ABCD-EFGH\n";
+		let historical = b"Open https://auth.openai.com/codex/device\nCode: AB12-CDE34\n";
+
+		assert_eq!(
+			parse_device_prompt(current),
+			Some(Prompt {
+				verification_url: DEVICE_LOGIN_URL,
+				user_code: "ABCD-EFGH".to_owned(),
+			}),
+		);
+		assert_eq!(parse_device_code(historical).as_deref(), Some("AB12-CDE34"));
+	}
+
+	#[test]
+	fn parser_rejects_unbounded_or_noncanonical_device_prompts() {
+		for output in [
+			b"Open https://auth.openai.com/codex/device\nCode: abcd-efgh".as_slice(),
+			b"Open https://auth.openai.com/codex/device\nCode: ABC-EFGH".as_slice(),
+			b"Open https://auth.openai.com/codex/device\nCode: ABCD_EFGH".as_slice(),
+			b"Open https://auth.openai.com/codex/device\nCode: XABCD-EFGHY".as_slice(),
+			b"Open https://auth.openai.com/codex/device\nCode: ABCD-EFGHIJ".as_slice(),
+			b"Open http://auth.openai.com/codex/device\nCode: ABCD-EFGH".as_slice(),
+		] {
+			assert_eq!(parse_device_prompt(output), None);
+		}
+	}
+
+	#[test]
+	fn enrollment_installs_with_the_typed_unrevisioned_command() {
+		for login_method in [LoginMethod::BrowserRedirect, LoginMethod::DeviceCode] {
+			let start =
+				start_with_login_method(InstallMode::Enroll { enabled: true }, login_method);
+			let source_descriptor =
+				WireText::new("/private/tmp/device-login/auth.json").expect("fixture source");
+
+			let (command, expected_revision) = install_command(&start, source_descriptor.clone());
+
+			assert_eq!(expected_revision, None);
+			assert_eq!(
+				command,
+				CommandPayload::EnrollAccountFromCredentialFile {
+					operation_id: start.operation_id,
+					account_id: start.account_id,
+					enabled: true,
+					source_descriptor,
+				}
+			);
+		}
+	}
+
+	#[test]
+	fn reauthentication_retains_its_revision_and_recovery_fences() {
+		let recovery_operation_id = entity_id("048f0f9e-7b6e-4a31-8f4c-1d2e3f405165");
+		let start = start(InstallMode::Reauthenticate {
+			expected_revision: EntityRevision(7),
+			recovery_operation_id: Some(recovery_operation_id.clone()),
+		});
+		let source_descriptor =
+			WireText::new("/private/tmp/device-login/auth.json").expect("fixture source");
+
+		let (command, expected_revision) = install_command(&start, source_descriptor.clone());
+
+		assert_eq!(expected_revision, Some(EntityRevision(7)));
+		assert_eq!(
+			command,
+			CommandPayload::ReauthenticateAccountFromCredentialFile {
+				operation_id: start.operation_id,
+				account_id: start.account_id,
+				recovery_operation_id: Some(recovery_operation_id),
+				source_descriptor,
+			}
+		);
+	}
+
+	#[test]
+	fn duplicate_provider_is_a_closed_enrollment_failure() {
+		let error = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::ProviderAlreadyEnrolled,
+			actual_revision: None,
+		};
+
+		assert_eq!(map_command_error(&error), Failure::ProviderAlreadyEnrolled);
+		assert_eq!(
+			serde_json::to_value(Status::failed(
+				"058f0f9e-7b6e-4a31-8f4c-1d2e3f405166".to_owned(),
+				Failure::ProviderAlreadyEnrolled,
+			))
+			.expect("status must encode"),
+			serde_json::json!({
+				"session_id": "058f0f9e-7b6e-4a31-8f4c-1d2e3f405166",
+				"state": "failed",
+				"failure": "provider_already_enrolled",
+			}),
+		);
 	}
 
 	#[test]
@@ -848,7 +1140,8 @@ mod tests {
 	fn cancel_waits_for_worker_terminal_cleanup() {
 		let manager = Manager::default();
 		let session_id = "078f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
-		let shared = Arc::new(Shared::new(session_id.clone()));
+		let shared =
+			Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = session_id.clone();
 		let worker = thread::spawn(move || {
@@ -870,7 +1163,8 @@ mod tests {
 	fn shutdown_closes_start_fence_and_joins_installing_worker() {
 		let manager = Manager::default();
 		let session_id = "088f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
-		let shared = Arc::new(Shared::new(session_id.clone()));
+		let shared =
+			Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
 		shared.set_status(Status::installing(session_id.clone()));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = session_id.clone();
@@ -893,7 +1187,8 @@ mod tests {
 
 	fn pipe_holding_login_manager(session_id: &str) -> (Manager, Arc<Shared>, tempfile::TempDir) {
 		let manager = Manager::default();
-		let shared = Arc::new(Shared::new(session_id.to_owned()));
+		let shared =
+			Arc::new(Shared::new(session_id.to_owned(), LoginMethod::BrowserRedirect));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = session_id.to_owned();
 		let fixture = tempfile::tempdir().expect("fixture directory");
@@ -926,9 +1221,10 @@ mod tests {
 				&mut child,
 				receiver,
 				stdout_reader,
-				stderr_reader,
-				&worker_session_id,
-			) {
+					stderr_reader,
+					&worker_session_id,
+					LoginMethod::BrowserRedirect,
+				) {
 				Ok(output) if output.exit.success() && !output.reader_failed =>
 					Status::completed(worker_session_id),
 				Ok(_) => Status::failed(worker_session_id, Failure::LoginFailed),
