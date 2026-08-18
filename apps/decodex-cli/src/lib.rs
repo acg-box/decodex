@@ -10,7 +10,7 @@ use serde::Serialize;
 use tokio as _;
 
 use decodex_protocol::{
-	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, AppServerCapability, ClientFailure, ClientProfile,
+	AppServerCapability, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientFailure, ClientProfile,
 	DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 

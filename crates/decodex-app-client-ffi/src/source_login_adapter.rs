@@ -4,10 +4,8 @@
 // 9392c3fa5bcda342b5b96a1a04d67b2f781617c2 (tag rust-v0.148.0-alpha.9).
 // Reviewed source functions:
 // - login/src/pkce.rs: generate_pkce
-// - login/src/server.rs: build_authorize_url, exchange_code_for_tokens,
-//   persist_tokens_async
-// - login/src/device_code_auth.rs: request_device_code,
-//   complete_device_code_login
+// - login/src/server.rs: build_authorize_url, exchange_code_for_tokens, persist_tokens_async
+// - login/src/device_code_auth.rs: request_device_code, complete_device_code_login
 // - login/src/auth/storage.rs: FileAuthStorage::save
 //
 // Decodex modifications: one closed error surface; strict request/response
@@ -181,9 +179,8 @@ pub(crate) fn run(
 		.map_err(|_| Error::Unavailable)?;
 	let deadline = Instant::now() + config.login_timeout;
 	match method {
-		LoginMethod::BrowserRedirect => {
-			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish)
-		},
+		LoginMethod::BrowserRedirect =>
+			run_browser(config, &client, login_home, runtime, cancellation, deadline, publish),
 		LoginMethod::DeviceCode => runtime.block_on(run_device(
 			config,
 			&client,
@@ -1217,8 +1214,9 @@ mod tests {
 		let metadata = fs::symlink_metadata(&path).expect("auth metadata");
 		let value: serde_json::Value =
 			serde_json::from_slice(&fs::read(path).expect("auth bytes")).expect("auth JSON");
-		let keys =
+		let mut keys =
 			value.as_object().expect("auth object").keys().map(String::as_str).collect::<Vec<_>>();
+		keys.sort_unstable();
 		assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 		assert_eq!(keys, ["OPENAI_API_KEY", "auth_mode", "last_refresh", "tokens"]);
 		assert!(value["OPENAI_API_KEY"].is_null());

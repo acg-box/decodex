@@ -801,26 +801,22 @@ impl State {
 						self.selected_project = Some(project.project_id().clone());
 						ReconciliationEvidence::Committed
 					},
-					None if self.projects.len() < MAX_PROJECT_LIST_ITEMS => {
-						ReconciliationEvidence::RetryExact
-					},
+					None if self.projects.len() < MAX_PROJECT_LIST_ITEMS =>
+						ReconciliationEvidence::RetryExact,
 					None => ReconciliationEvidence::Conflicted,
 				}
 			},
-			CommandPayload::CreateWorkItem { work_item_id, project_id, title, description } => {
+			CommandPayload::CreateWorkItem { work_item_id, project_id, title, description } =>
 				match self.cards.iter().find(|card| card.work_item_id() == work_item_id) {
 					Some(card)
 						if card.project_id() == project_id
 							&& card.title() == title
 							&& card.description() == description =>
-					{
-						ReconciliationEvidence::Committed
-					},
+						ReconciliationEvidence::Committed,
 					Some(_) => ReconciliationEvidence::Conflicted,
 					None => ReconciliationEvidence::RetryExact,
-				}
-			},
-			CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } => {
+				},
+			CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id } =>
 				match self.cards.iter().find(|card| card.work_item_id() == work_item_id) {
 					Some(card)
 						if card.project_id() == project_id
@@ -830,36 +826,27 @@ impl State {
 								WorkItemState::Running
 									| WorkItemState::Review | WorkItemState::Done
 							) =>
-					{
-						ReconciliationEvidence::Committed
-					},
+						ReconciliationEvidence::Committed,
 					Some(card)
 						if card.project_id() == project_id
 							&& card.state() == WorkItemState::Ready
 							&& card.conversation_id().is_none()
 							&& Some(card.revision()) == expected_revision =>
-					{
-						ReconciliationEvidence::RetryExact
-					},
+						ReconciliationEvidence::RetryExact,
 					_ => ReconciliationEvidence::Conflicted,
-				}
-			},
+				},
 			CommandPayload::AcceptWorkItem { work_item_id, project_id, .. } => {
 				match self.cards.iter().find(|card| card.work_item_id() == work_item_id) {
 					Some(card)
 						if card.project_id() == project_id
 							&& card.state() == WorkItemState::Done
 							&& card.accepted_revision() == expected_revision =>
-					{
-						ReconciliationEvidence::Committed
-					},
+						ReconciliationEvidence::Committed,
 					Some(card)
 						if card.project_id() == project_id
 							&& card.state() == WorkItemState::Review
 							&& Some(card.revision()) == expected_revision =>
-					{
-						ReconciliationEvidence::RetryExact
-					},
+						ReconciliationEvidence::RetryExact,
 					_ => ReconciliationEvidence::Conflicted,
 				}
 			},
@@ -953,9 +940,7 @@ fn accepted_result(
 		) if work_item.work_item_id() == work_item_id
 			&& work_item.project_id() == project_id
 			&& work_item.state() == WorkItemState::Ready =>
-		{
-			(work_item, None)
-		},
+			(work_item, None),
 		(
 			CommandPayload::StartWorkItem { work_item_id, project_id, conversation_id },
 			Some(ResultPayload::WorkItemStarted { work_item, conversation }),
@@ -964,25 +949,18 @@ fn accepted_result(
 			&& work_item.state() == WorkItemState::Running
 			&& work_item.conversation_id() == Some(conversation_id)
 			&& conversation.conversation_id == *conversation_id =>
-		{
-			(work_item, Some(conversation.clone()))
-		},
+			(work_item, Some(conversation.clone())),
 		(
 			CommandPayload::AcceptWorkItem { work_item_id, project_id, .. },
 			Some(ResultPayload::WorkItemChanged { work_item }),
 		) if work_item.work_item_id() == work_item_id
 			&& work_item.project_id() == project_id
 			&& work_item.state() == WorkItemState::Done =>
-		{
-			(work_item, None)
-		},
+			(work_item, None),
 		_ => return None,
 	};
 	(result.entity_revision == Some(work_item.revision()))
-		.then(|| AcceptedResult::WorkItem {
-			work_item: Box::new(work_item.clone()),
-			conversation,
-		})
+		.then(|| AcceptedResult::WorkItem { work_item: Box::new(work_item.clone()), conversation })
 }
 
 fn normalize_repository_root(value: &str) -> Result<String, WorkItemInputError> {

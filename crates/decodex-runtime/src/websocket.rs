@@ -782,11 +782,7 @@ where
 	) -> bool {
 		let (reply, result) = oneshot::channel();
 		if actor_sender
-			.send(PublicationRequest::Enqueue {
-				connection_id,
-				message: Box::new(message),
-				reply,
-			})
+			.send(PublicationRequest::Enqueue { connection_id, message: Box::new(message), reply })
 			.await
 			.is_err()
 		{

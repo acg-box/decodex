@@ -164,13 +164,8 @@ impl Status {
 }
 
 pub(crate) enum InstallMode {
-	Reauthenticate {
-		expected_revision: EntityRevision,
-		recovery_operation_id: Option<EntityId>,
-	},
-	Enroll {
-		enabled: bool,
-	},
+	Reauthenticate { expected_revision: EntityRevision, recovery_operation_id: Option<EntityId> },
+	Enroll { enabled: bool },
 }
 
 pub(crate) struct Start {
@@ -393,12 +388,11 @@ fn run_login_in_home(
 			LoginEvent::BrowserAuthorization { authorization_url } => shared.set_status(
 				Status::browser_authorization(event_session_id.clone(), authorization_url),
 			),
-			LoginEvent::DeviceAuthorization { verification_url, user_code } => shared.set_status(
-				Status::device_authorization(
+			LoginEvent::DeviceAuthorization { verification_url, user_code } =>
+				shared.set_status(Status::device_authorization(
 					event_session_id.clone(),
 					Prompt { verification_url, user_code },
-				),
-			),
+				)),
 		},
 	);
 	if let Err(error) = result {
@@ -832,8 +826,7 @@ mod tests {
 	fn cancel_waits_for_worker_terminal_cleanup() {
 		let manager = Manager::default();
 		let session_id = "078f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
-		let shared =
-			Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
+		let shared = Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = session_id.clone();
 		let worker = thread::spawn(move || {
@@ -855,8 +848,7 @@ mod tests {
 	fn shutdown_closes_start_fence_and_joins_installing_worker() {
 		let manager = Manager::default();
 		let session_id = "088f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
-		let shared =
-			Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
+		let shared = Arc::new(Shared::new(session_id.clone(), LoginMethod::BrowserRedirect));
 		shared.set_status(Status::installing(session_id.clone()));
 		let worker_shared = Arc::clone(&shared);
 		let worker_session_id = session_id.clone();
@@ -876,5 +868,4 @@ mod tests {
 		assert_eq!(shared.status().state, State::Completed);
 		assert!(manager.lock_session().as_ref().is_some_and(|session| session.worker.is_none()));
 	}
-
 }

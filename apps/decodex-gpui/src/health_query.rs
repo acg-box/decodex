@@ -239,9 +239,7 @@ impl HealthQuery {
 					&& report.version() == CURRENT_VERSION
 					&& report.server_id() == server_id
 					&& report.has_current_component_set() =>
-			{
-				Some(report.clone())
-			},
+				Some(report.clone()),
 			_ => None,
 		};
 

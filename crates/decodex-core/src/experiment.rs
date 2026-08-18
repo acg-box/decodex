@@ -77,7 +77,8 @@ impl CodexExperimentObservationKind {
 /// Revisioned preparation effect returned by durable-store.
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CodexExperimentPrepared {
-	/// Complete mechanism-neutral identity whose provenance durable-store must independently verify.
+	/// Complete mechanism-neutral identity whose provenance durable-store must independently
+	/// verify.
 	pub identity: CodexExperimentIdentity,
 	/// Positive experiment revision returned for the initial prepared state; fixed to revision
 	/// one.

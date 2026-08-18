@@ -19,11 +19,10 @@ use tokio_tungstenite::{
 
 use crate::{
 	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientHello, ClientMessage, CommandEnvelope,
-	CommandReceipt,
-	CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority, LocalTransportRefusal,
-	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReconnectMode,
-	Refusal, RefusalEnvelope, ResumeCursor, ServerId, ServerInstanceId, ServerMessage,
-	ServerWelcome, SnapshotEnvelope, VersionRefusal,
+	CommandReceipt, CommandResultEnvelope, Cursor, EventEnvelope, LocalTransportAuthority,
+	LocalTransportRefusal, LocalTransportStream, ProtocolVersion, QueryEnvelope,
+	QueryResultEnvelope, ReconnectMode, Refusal, RefusalEnvelope, ResumeCursor, ServerId,
+	ServerInstanceId, ServerMessage, ServerWelcome, SnapshotEnvelope, VersionRefusal,
 };
 
 type Socket = WebSocketStream<LocalTransportStream>;

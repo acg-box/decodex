@@ -553,6 +553,7 @@ impl ClientLifecycle {
 		}
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one connection-generation state machine together.
 	async fn run_connected_session<I>(
 		&mut self,
 		io: &mut I,

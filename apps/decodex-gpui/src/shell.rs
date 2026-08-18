@@ -619,6 +619,7 @@ impl Shell {
 
 	#[cfg(feature = "visual-capture")]
 	#[allow(dead_code)]
+	#[allow(clippy::too_many_lines)] // Keep one deterministic visual Workbench fixture together.
 	pub(crate) fn visual_workbench(window: &mut Window, cx: &mut Context<Self>) -> Self {
 		use decodex_protocol::{
 			AccountRoutingControlDto, ConversationHistoryPage, EntityRevision, ProjectSummary,
@@ -1830,6 +1831,7 @@ fn compact_identity(value: &str) -> String {
 	if value.chars().count() > 8 { format!("{prefix}…") } else { prefix }
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete Workbench top bar together.
 fn workbench_topbar(
 	shell: &Shell,
 	presentation: &ConnectionPresentation,
@@ -2574,6 +2576,7 @@ fn placeholder_content(selected: Destination) -> AnyElement {
 		.into_any_element()
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete account-management surface together.
 fn accounts_content(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let snapshot = &shell.accounts;
 	let fixed = snapshot.routing.as_ref().and_then(|routing| match &routing.mode {
@@ -2791,6 +2794,7 @@ fn account_mode_button(
 		.into_any_element()
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete account row and controls together.
 fn account_pool_row(
 	account: &AccountDto,
 	index: usize,
@@ -3142,6 +3146,7 @@ fn bound_work_item<'a>(
 	shell.work.cards.iter().find(|card| card.conversation_id() == Some(conversation_id))
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete Quick Task sidebar together.
 fn quick_task_session_sidebar(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let selected = shell.quick.selected.clone();
 	let can_control = shell.quick.can_submit
@@ -3562,6 +3567,7 @@ fn inspector_metadata_row(label: &'static str, value: String) -> AnyElement {
 		.into_any_element()
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete WorkItem inspector together.
 fn work_item_inspector_content(shell: &Shell) -> AnyElement {
 	let selected_id = shell.quick.selected.as_ref();
 	let card = selected_id.and_then(|conversation_id| bound_work_item(shell, conversation_id));
@@ -4150,6 +4156,7 @@ fn history_page_controls(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 		.into_any_element()
 }
 
+#[allow(clippy::too_many_lines)] // Keep one complete Quick Task composer together.
 fn quick_task_composer(shell: &Shell, cx: &mut Context<Shell>) -> AnyElement {
 	let task = shell.quick.selected_task();
 	let (has_executable_recovery, recovery_label) = quick_task_recovery_presentation(task);

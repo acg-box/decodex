@@ -1,3 +1,24 @@
+//! Architecture checks for the bounded in-process Codex login source adapter.
+
+// This integration-test target validates source boundaries and therefore uses the package
+// dependency graph indirectly.
+use base64 as _;
+use decodex_app_client_ffi as _;
+use decodex_protocol as _;
+use getrandom as _;
+use httparse as _;
+#[cfg(unix)] use libc as _;
+use reqwest as _;
+use serde as _;
+use serde_json as _;
+use sha2 as _;
+use tempfile as _;
+use time as _;
+use tokio as _;
+use toml_edit as _;
+use url as _;
+use zeroize as _;
+
 use std::{fs, path::PathBuf};
 
 fn crate_source(file: &str) -> String {

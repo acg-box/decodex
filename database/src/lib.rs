@@ -61,8 +61,8 @@ pub use self::{
 		BindProgramDomainPack, ContinueProgram, CreateProgramCycle, DomainPackIdentity,
 		ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord, ProgramDomainPackBinding,
 		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
-		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
-		ProgramWorkItemDomainPack, RecordProgramReview,
+		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemDomainPack,
+		ProgramWorkItemRecord, RecordProgramReview,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,

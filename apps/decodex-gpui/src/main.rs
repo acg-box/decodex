@@ -28,6 +28,10 @@ mod shell;
 mod ui_theme;
 mod work_items;
 
+// GPUI platform composition uses these macOS packages through downstream modules.
+use objc2_app_kit as _;
+use objc2_foundation as _;
+
 use gpui::{
 	App, AppContext as _, Bounds, WindowBackgroundAppearance, WindowBounds, WindowOptions, point,
 	px, size,

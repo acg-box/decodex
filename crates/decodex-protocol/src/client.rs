@@ -20,14 +20,13 @@ use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountObservationSignal,
 	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
 	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
-	CodexAuthProjectionResult,
-	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
-	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
-	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
-	ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult, ResultPayload,
-	RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage, VersionRefusal,
-	WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult, WorkItemBoardWorkItemId,
-	WorkItemState,
+	CodexAuthProjectionResult, CommandEnvelope, CommandError, CommandOutcome, CommandPayload,
+	CorrelationId, DoctorReport, EntityId, EntityRevision, IdempotencyKey, ProtocolVersion,
+	QueryEnvelope, QueryId, QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal,
+	RefusalEnvelope, ResetCardDescriptorDto, ResetCardInventoryResult, ResetCardOperationResult,
+	ResultPayload, RetainedSessionConfig, RetainedSessionFailure, ServerId, ServerMessage,
+	VersionRefusal, WorkItemBoardPageSize, WorkItemBoardProjectId, WorkItemBoardResult,
+	WorkItemBoardWorkItemId, WorkItemState,
 	local_transport::{LocalTransportAuthority, LocalTransportRefusal, LocalTransportStream},
 };
 use decodex_core::{
@@ -1566,8 +1565,7 @@ mod tests {
 	use crate::{
 		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
 		AccountProfileResult, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel, ClientCommandId,
-		ClientFailure,
-		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
+		ClientFailure, ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
 		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
 		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
 		EventPayload, IdempotencyKey, LocalTransportAuthority, PREVIOUS_MINOR_VERSION, ProfileKind,
@@ -2228,10 +2226,7 @@ max_entry_bytes = 0
 				ClientFailure::ProtocolMinorMismatch,
 			),
 			(
-				Refusal::ArtifactCohortMismatch {
-					expected: CURRENT_ARTIFACT_COHORT,
-					actual: None,
-				},
+				Refusal::ArtifactCohortMismatch { expected: CURRENT_ARTIFACT_COHORT, actual: None },
 				ClientFailure::ArtifactCohortMismatch,
 			),
 			(

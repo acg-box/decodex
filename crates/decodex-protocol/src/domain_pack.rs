@@ -21,7 +21,9 @@ pub const MAX_DOMAIN_PACK_CAPABILITIES: usize = 16;
 /// Closed built-in Domain Pack projection failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomainPackContractError {
+	/// The Pack descriptor has an invalid identity, vocabulary, or capability set.
 	InvalidDescriptor,
+	/// The derived entity or relation projection violates the Pack contract.
 	InvalidProjection,
 }
 
@@ -29,6 +31,7 @@ pub enum DomainPackContractError {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DomainPackViewKind {
+	/// Render the projection with the host graph and inspector surface.
 	GraphInspector,
 }
 
@@ -36,7 +39,9 @@ pub enum DomainPackViewKind {
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DomainPackCapabilityStatus {
+	/// The exact Pack grants this capability.
 	Granted,
+	/// The host cannot use this declared capability.
 	Unavailable,
 }
 
@@ -44,7 +49,9 @@ pub enum DomainPackCapabilityStatus {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackCapabilityDto {
+	/// Stable namespaced capability identifier.
 	pub id: WireText,
+	/// Current host disposition for the capability.
 	pub status: DomainPackCapabilityStatus,
 }
 
@@ -52,14 +59,23 @@ pub struct DomainPackCapabilityDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackDescriptorDto {
+	/// Stable namespaced Pack identifier.
 	pub id: WireText,
+	/// Exact semantic version of the Pack.
 	pub version: WireText,
+	/// Content digest of the immutable Pack definition.
 	pub digest: Sha256Digest,
+	/// User-visible Pack name.
 	pub name: WireText,
+	/// Namespace used by the Pack entity and relation vocabulary.
 	pub namespace: WireText,
+	/// Host-owned visual primitive for this Pack.
 	pub view: DomainPackViewKind,
+	/// Closed capabilities declared by the Pack.
 	pub capabilities: Vec<DomainPackCapabilityDto>,
+	/// Closed entity kinds declared by the Pack.
 	pub entity_types: Vec<WireText>,
+	/// Closed relation kinds declared by the Pack.
 	pub relation_types: Vec<WireText>,
 }
 
@@ -67,7 +83,9 @@ pub struct DomainPackDescriptorDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainEntityFieldDto {
+	/// User-visible field label.
 	pub label: WireText,
+	/// Bounded field value.
 	pub value: WireText,
 }
 
@@ -75,12 +93,19 @@ pub struct DomainEntityFieldDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainEntityDto {
+	/// Stable derived entity identity.
 	pub id: EntityId,
+	/// Namespaced entity kind declared by the Pack.
 	pub kind: WireText,
+	/// User-visible entity title.
 	pub title: WireText,
+	/// Bounded entity summary.
 	pub summary: WireText,
+	/// Closed Pack-defined entity state.
 	pub state: WireText,
+	/// Optional source label for the derived fact.
 	pub source: Option<WireText>,
+	/// Small host-rendered entity fields.
 	pub fields: Vec<DomainEntityFieldDto>,
 }
 
@@ -88,8 +113,11 @@ pub struct DomainEntityDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainRelationDto {
+	/// Source Program or entity identity.
 	pub from: EntityId,
+	/// Target entity identity.
 	pub to: EntityId,
+	/// Namespaced relation kind declared by the Pack.
 	pub kind: WireText,
 }
 
@@ -97,12 +125,16 @@ pub struct DomainRelationDto {
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct DomainPackProjectionDto {
+	/// Immutable Pack identity and host contract.
 	pub descriptor: DomainPackDescriptorDto,
+	/// Bounded derived entities.
 	pub entities: Vec<DomainEntityDto>,
+	/// Bounded derived relations.
 	pub relations: Vec<DomainRelationDto>,
 }
 
 impl DomainPackProjectionDto {
+	/// Validate and construct one complete Pack projection for a Program.
 	pub fn new(
 		descriptor: DomainPackDescriptorDto,
 		entities: Vec<DomainEntityDto>,

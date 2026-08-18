@@ -808,6 +808,7 @@ impl QuickTasks {
 		QuickTaskRouteOutcome::Fresh
 	}
 
+	#[allow(clippy::too_many_lines)] // Keep one exhaustive Quick Task result router together.
 	pub(crate) fn route_command_result(
 		&self,
 		generation: u64,
@@ -2158,6 +2159,7 @@ mod tests {
 	}
 
 	#[test]
+	#[allow(clippy::too_many_lines)] // Keep one complete sidebar reconciliation proof together.
 	fn sidebar_refresh_reconciles_each_provider_thread_then_reloads_the_local_list() {
 		let (quick_tasks, server_id, current) = connected_quick_tasks();
 		let archived = QuickTaskSummary::new(

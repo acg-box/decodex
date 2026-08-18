@@ -7,7 +7,14 @@
 use std::path::{Path, PathBuf};
 
 use gpui::{
-	Context, Render, Role, SharedString, Window, accesskit::Toggled, div, prelude::*, px, rgb, rgba,
+	Context, Render, Role, SharedString, Window,
+	accesskit::Toggled,
+	div,
+	prelude::{
+		FluentBuilder, InteractiveElement, IntoElement, ParentElement, StatefulInteractiveElement,
+		Styled,
+	},
+	px, rgb, rgba,
 };
 
 use crate::ui_theme;
@@ -68,15 +75,12 @@ enum MenuBarControlFailure {
 impl MenuBarControlFailure {
 	const fn detail(self) -> &'static str {
 		match self {
-			Self::BundlePathUnavailable => {
-				"The embedded menu bar bundle path is not representable on this host."
-			},
-			Self::BundleNotInstalled => {
-				"The menu bar surface is included only in a staged Decodex application bundle."
-			},
-			Self::TerminationRefused => {
-				"macOS did not accept the companion's normal termination request."
-			},
+			Self::BundlePathUnavailable =>
+				"The embedded menu bar bundle path is not representable on this host.",
+			Self::BundleNotInstalled =>
+				"The menu bar surface is included only in a staged Decodex application bundle.",
+			Self::TerminationRefused =>
+				"macOS did not accept the companion's normal termination request.",
 			#[cfg(not(target_os = "macos"))]
 			Self::UnsupportedPlatform => "The menu bar surface is available only on macOS.",
 		}
@@ -236,6 +240,7 @@ impl SettingsSurface {
 }
 
 impl Render for SettingsSurface {
+	#[allow(clippy::too_many_lines)] // Keep one complete product settings surface together.
 	fn render(&mut self, _: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
 		let runtime_color = self.runtime.color();
 		div()

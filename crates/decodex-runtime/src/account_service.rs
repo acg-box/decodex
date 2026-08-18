@@ -3814,7 +3814,8 @@ mod tests {
 	}
 
 	#[tokio::test]
-	async fn device_login_enrollment_commits_one_credential_bound_account_and_replays_its_receipt() {
+	async fn device_login_enrollment_commits_one_credential_bound_account_and_replays_its_receipt()
+	{
 		let directory = tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
@@ -3845,10 +3846,8 @@ mod tests {
 			AccountCommandReceiptClaim::Owned(lease) => lease,
 			AccountCommandReceiptClaim::Replayed(_) => panic!("new enrollment command replayed"),
 		};
-		let (_source_directory, source_descriptor) = owner_private_shared_codex_auth(
-			"device-login-provider",
-			"device-login@example.test",
-		);
+		let (_source_directory, source_descriptor) =
+			owner_private_shared_codex_auth("device-login-provider", "device-login@example.test");
 		let response = service
 			.enroll_from_credential_file_command(
 				lease,
@@ -3906,6 +3905,7 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // Keep one complete duplicate-provider cancellation and replay proof together.
 	async fn duplicate_provider_enrollment_is_cancelled_and_replays_its_typed_receipt() {
 		let directory = tempdir().expect("temporary product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
@@ -3923,9 +3923,8 @@ mod tests {
 				.expect("provider identity");
 		let existing_account =
 			AccountId::new("21000000-0000-4000-8000-000000000010").expect("existing account");
-		let existing_operation =
-			AccountOperationId::new("22000000-0000-4000-8000-000000000010")
-				.expect("existing operation");
+		let existing_operation = AccountOperationId::new("22000000-0000-4000-8000-000000000010")
+			.expect("existing operation");
 		let existing_bundle = shared_bundle(provider.account_id(), "existing-access", 3_000_000);
 		let existing_binding = existing_bundle
 			.binding_for(
@@ -3976,8 +3975,8 @@ mod tests {
 
 		let account_id =
 			AccountId::new("21000000-0000-4000-8000-000000000011").expect("new account");
-		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000011")
-			.expect("new operation");
+		let operation_id =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000011").expect("new operation");
 		let command = CommandIdentity::new("duplicate-provider-enroll", b"exact duplicate request")
 			.expect("command identity");
 		let lease = match store
@@ -3993,10 +3992,8 @@ mod tests {
 			AccountCommandReceiptClaim::Owned(lease) => lease,
 			AccountCommandReceiptClaim::Replayed(_) => panic!("new enrollment command replayed"),
 		};
-		let (_source_directory, source_descriptor) = owner_private_shared_codex_auth(
-			provider.account_id(),
-			"duplicate@example.test",
-		);
+		let (_source_directory, source_descriptor) =
+			owner_private_shared_codex_auth(provider.account_id(), "duplicate@example.test");
 		let response = service
 			.enroll_from_credential_file_command(
 				lease,
@@ -4443,8 +4440,8 @@ mod tests {
 		let directory = tempdir().expect("temporary device-login home");
 		let root = fs::canonicalize(directory.path()).expect("canonical device-login home");
 		let path = root.join("auth.json");
-		let access_payload = URL_SAFE_NO_PAD
-			.encode(serde_json::to_vec(&json!({"exp": 2_000_000_000_i64})).unwrap());
+		let access_payload =
+			URL_SAFE_NO_PAD.encode(serde_json::to_vec(&json!({"exp": 2_000_000_000_i64})).unwrap());
 		let access_token = format!("header.{access_payload}.signature");
 		let value = json!({
 			"auth_mode": "chatgpt",
