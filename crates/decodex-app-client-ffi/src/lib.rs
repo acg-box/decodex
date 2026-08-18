@@ -1,18 +1,18 @@
 //! In-process C ABI for the native Decodex app.
 //!
 //! The bridge is a credential-negative client of the one local `decodexd`
-//! service. It reuses the typed Rust protocol clients directly. Its only child
-//! process is one bounded official Codex device-login session; Swift never
-//! receives credential bytes or a credential-file path.
+//! service. It reuses the typed Rust protocol clients directly. Account login
+//! runs through one bounded in-process source adapter; Swift never receives
+//! credential bytes or a credential-file path.
 
 mod account_reauthentication;
 mod fast_mode;
+mod source_login_adapter;
 
 use std::{
 	collections::HashMap,
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
-	path::PathBuf,
 	ptr, slice,
 	sync::{
 		Arc, Mutex, OnceLock,
@@ -139,7 +139,6 @@ enum Request {
 		account_id: String,
 		enabled: bool,
 		idempotency_key: String,
-		codex_bin: String,
 		login_method: account_reauthentication::LoginMethod,
 	},
 	StartAccountReauthentication {
@@ -150,7 +149,6 @@ enum Request {
 		expected_revision: u64,
 		recovery_operation_id: Option<String>,
 		idempotency_key: String,
-		codex_bin: String,
 		login_method: account_reauthentication::LoginMethod,
 	},
 	PollAccountReauthentication {
@@ -725,7 +723,6 @@ async fn execute_request(
 			account_id,
 			enabled,
 			idempotency_key,
-			codex_bin,
 			login_method,
 			..
 		} => start_account_enrollment(
@@ -737,7 +734,6 @@ async fn execute_request(
 				account_id,
 				enabled,
 				idempotency_key,
-				codex_bin,
 				login_method,
 			},
 		),
@@ -748,7 +744,6 @@ async fn execute_request(
 			expected_revision,
 			recovery_operation_id,
 			idempotency_key,
-			codex_bin,
 			login_method,
 			..
 		} => start_account_reauthentication(
@@ -761,7 +756,6 @@ async fn execute_request(
 				expected_revision,
 				recovery_operation_id,
 				idempotency_key,
-				codex_bin,
 				login_method,
 			},
 		),
@@ -788,7 +782,6 @@ struct AccountReauthenticationInput {
 	expected_revision: u64,
 	recovery_operation_id: Option<String>,
 	idempotency_key: String,
-	codex_bin: String,
 	login_method: account_reauthentication::LoginMethod,
 }
 
@@ -798,7 +791,6 @@ struct AccountEnrollmentInput {
 	account_id: String,
 	enabled: bool,
 	idempotency_key: String,
-	codex_bin: String,
 	login_method: account_reauthentication::LoginMethod,
 }
 
@@ -878,7 +870,7 @@ fn start_account_reauthentication(
 	profile: ClientProfile,
 	input: AccountReauthenticationInput,
 ) -> Result<Value, RequestFailure> {
-	validate_login_start(&input.session_id, &input.codex_bin)?;
+	validate_session_id(&input.session_id)?;
 	let operation_id = entity_id(&input.operation_id)?;
 	let recovery_operation_id =
 		input.recovery_operation_id.map(|operation_id| entity_id(&operation_id)).transpose()?;
@@ -890,7 +882,6 @@ fn start_account_reauthentication(
 		operation_id,
 		account_id: entity_id(&input.account_id)?,
 		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
-		codex_bin: PathBuf::from(input.codex_bin),
 		login_method: input.login_method,
 		install_mode: account_reauthentication::InstallMode::Reauthenticate {
 			expected_revision: revision(input.expected_revision)?,
@@ -909,13 +900,12 @@ fn start_account_enrollment(
 	profile: ClientProfile,
 	input: AccountEnrollmentInput,
 ) -> Result<Value, RequestFailure> {
-	validate_login_start(&input.session_id, &input.codex_bin)?;
+	validate_session_id(&input.session_id)?;
 	let start = account_reauthentication::Start {
 		session_id: input.session_id,
 		operation_id: entity_id(&input.operation_id)?,
 		account_id: entity_id(&input.account_id)?,
 		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
-		codex_bin: PathBuf::from(input.codex_bin),
 		login_method: input.login_method,
 		install_mode: account_reauthentication::InstallMode::Enroll { enabled: input.enabled },
 	};
@@ -924,17 +914,6 @@ fn start_account_enrollment(
 		profile,
 		tokio::runtime::Handle::current(),
 	))
-}
-
-fn validate_login_start(session_id: &str, codex_bin: &str) -> Result<(), RequestFailure> {
-	if !is_canonical_uuid(session_id)
-		|| codex_bin.is_empty()
-		|| codex_bin.len() > 4_096
-		|| codex_bin.chars().any(char::is_control)
-	{
-		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
-	}
-	Ok(())
 }
 
 fn poll_account_reauthentication(
@@ -1313,7 +1292,7 @@ mod tests {
 		let operation_id = "038f0f9e-7b6e-4a31-8f4c-1d2e3f405164";
 		let recovery_operation_id = "048f0f9e-7b6e-4a31-8f4c-1d2e3f405165";
 		let start = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"recovery_operation_id":"{recovery_operation_id}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"browser_redirect"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"recovery_operation_id":"{recovery_operation_id}","idempotency_key":"{operation_id}","login_method":"browser_redirect"}}"#
 		))
 		.expect("start request must decode");
 		let poll = serde_json::from_str::<Request>(&format!(
@@ -1336,6 +1315,13 @@ mod tests {
 		));
 		assert_eq!(poll.operation(), "poll_account_reauthentication");
 		assert_eq!(cancel.operation(), "cancel_account_reauthentication");
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","expected_revision":7,"recovery_operation_id":"{recovery_operation_id}","idempotency_key":"{operation_id}","login_method":"browser_redirect","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+			))
+			.is_err(),
+			"the source-level login boundary must reject executable paths",
+		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
 				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_reauthentication","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"browser_redirect"}}"#
@@ -1361,7 +1347,7 @@ mod tests {
 		let session_id = "058f0f9e-7b6e-4a31-8f4c-1d2e3f405166";
 		let operation_id = "068f0f9e-7b6e-4a31-8f4c-1d2e3f405167";
 		let start = serde_json::from_str::<Request>(&format!(
-			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex","login_method":"device_code"}}"#
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","login_method":"device_code"}}"#
 		))
 		.expect("account enrollment start must decode");
 
@@ -1375,6 +1361,13 @@ mod tests {
 				..
 			}
 		));
+		assert!(
+			serde_json::from_str::<Request>(&format!(
+				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","enabled":true,"idempotency_key":"{operation_id}","login_method":"device_code","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#
+			))
+			.is_err(),
+			"the source-level login boundary must reject executable paths",
+		);
 		assert!(
 			serde_json::from_str::<Request>(&format!(
 				r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"start_account_enrollment","session_id":"{session_id}","operation_id":"{operation_id}","account_id":"{ACCOUNT_ID}","idempotency_key":"{operation_id}","codex_bin":"/Applications/Codex.app/Contents/Resources/codex"}}"#

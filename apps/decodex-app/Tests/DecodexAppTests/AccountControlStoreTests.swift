@@ -733,9 +733,7 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
 			accountReauthenticationPollInterval: .zero,
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			openLoginURL: { _ in }
 		)
 
 		let refreshTask = Task { await store.refresh() }
@@ -812,6 +810,48 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(cancelCount, 0)
 	}
 
+	func testDeviceCodeCardActionCopiesTheCodeAndOpensItsVerificationURLOnce() async throws {
+		let client = AccountControlStoreClient(
+			account: accountRecord(),
+			authority: authority,
+			reauthenticationStates: [.waitingForBrowser]
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let codeRecorder = LoginCodeRecorder()
+		let urlRecorder = LoginURLRecorder()
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .seconds(60),
+			copyLoginCode: { codeRecorder.copy($0) },
+			openLoginURL: { urlRecorder.open($0) }
+		)
+		await store.refresh()
+		store.beginAccountEnrollment()
+		store.selectAccountLoginMethod(.deviceCode)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication?.prompt != nil {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		let prompt = try XCTUnwrap(store.accountReauthentication?.prompt)
+
+		store.activateAccountLoginPrompt(prompt)
+		store.activateAccountLoginPrompt(
+			AccountReauthenticationPrompt(
+				verificationURL: prompt.verificationURL,
+				userCode: "STAL-E123"
+			)
+		)
+
+		XCTAssertEqual(codeRecorder.codes, [prompt.userCode])
+		XCTAssertEqual(urlRecorder.urls, [prompt.verificationURL])
+		await store.cancelAccountReauthentication()
+	}
+
 	func testDeviceEnrollmentDuplicateProviderKeepsExistingAccount() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -826,10 +866,7 @@ final class AccountControlStoreTests: XCTestCase {
 			client: client,
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
-			accountReauthenticationPollInterval: .zero,
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			accountReauthenticationPollInterval: .zero
 		)
 
 		await store.refresh()
@@ -1378,15 +1415,14 @@ final class AccountControlStoreTests: XCTestCase {
 		)
 		let fixture = pendingFixture()
 		defer { fixture.remove() }
+		let loginURLRecorder = LoginURLRecorder()
 		let store = ResetCardStore(
 			client: client,
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
 			accountReauthenticationPollInterval: .zero,
 			accountObservationRetryDelays: [.zero, .zero],
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			openLoginURL: { loginURLRecorder.open($0) }
 		)
 		await store.refresh()
 		XCTAssertTrue(store.accounts.first?.requiresLoginRefresh == true)
@@ -1416,8 +1452,8 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(request.recoveryOperationID)
 		XCTAssertEqual(request.loginMethod, .browserRedirect)
 		XCTAssertEqual(
-			request.codexBin,
-			"/Applications/ChatGPT.app/Contents/Resources/codex"
+			loginURLRecorder.urls,
+			[URL(string: "https://auth.openai.com/oauth/authorize?fixture=true")!]
 		)
 		let pollCount = await client.reauthenticationPollCount()
 		let cancelCount = await client.reauthenticationCancelCount()
@@ -1451,10 +1487,7 @@ final class AccountControlStoreTests: XCTestCase {
 			client: client,
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
-			accountReauthenticationPollInterval: .zero,
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			accountReauthenticationPollInterval: .zero
 		)
 		await store.refresh()
 
@@ -1497,9 +1530,7 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
 			accountReauthenticationPollInterval: .seconds(60),
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			openLoginURL: { _ in }
 		)
 		await store.refresh()
 
@@ -1537,9 +1568,7 @@ final class AccountControlStoreTests: XCTestCase {
 			pendingStore: fixture.store,
 			startupRetryDelays: [],
 			accountReauthenticationPollInterval: .seconds(60),
-			resolveCodexExecutable: {
-				"/Applications/ChatGPT.app/Contents/Resources/codex"
-			}
+			openLoginURL: { _ in }
 		)
 		await store.refresh()
 
@@ -1654,14 +1683,12 @@ private struct AccountControlStoreReauthenticationRequest: Equatable, Sendable {
 	let accountID: String
 	let expectedRevision: UInt64
 	let recoveryOperationID: String?
-	let codexBin: String
 	let loginMethod: AccountLoginMethod
 }
 
 private struct AccountControlStoreEnrollmentLoginRequest: Equatable, Sendable {
 	let accountID: String
 	let enabled: Bool
-	let codexBin: String
 	let loginMethod: AccountLoginMethod
 }
 
@@ -2244,7 +2271,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey _: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		guard reauthenticationStates.isEmpty == false else {
@@ -2256,7 +2282,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			accountID: accountID,
 			expectedRevision: expectedRevision,
 			recoveryOperationID: recoveryOperationID,
-			codexBin: codexBin,
 			loginMethod: loginMethod
 		)
 		let state = reauthenticationStates.removeFirst()
@@ -2276,15 +2301,13 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		accountID: String,
 		enabled: Bool,
 		idempotencyKey: String,
-		codexBin: String,
 		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		guard reauthenticationStates.isEmpty == false,
 			DecodexNativeClient.isCanonicalUUID(sessionID),
 			DecodexNativeClient.isCanonicalUUID(operationID),
 			DecodexNativeClient.isCanonicalUUID(accountID),
-			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
-			codexBin.hasPrefix("/")
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey)
 		else {
 			throw AccountControlError.invalidInput
 		}
@@ -2297,7 +2320,6 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		lastEnrollmentLoginStartRequest = AccountControlStoreEnrollmentLoginRequest(
 			accountID: accountID,
 			enabled: enabled,
-			codexBin: codexBin,
 			loginMethod: loginMethod
 		)
 		let state = reauthenticationStates.removeFirst()
@@ -2373,6 +2395,10 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 					userCode: "AB12-CDE34"
 				)
 				: nil,
+			authorizationURL: state == .waitingForBrowser
+				&& activeLogin?.loginMethod == .browserRedirect
+				? URL(string: "https://auth.openai.com/oauth/authorize?fixture=true")
+				: nil,
 			failure: failure ?? (state == .failed ? accountLoginFailure : nil)
 		)
 	}
@@ -2424,6 +2450,24 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 			fiveHourQuota: account.fiveHourQuota,
 			sevenDayQuota: account.sevenDayQuota
 		)
+	}
+}
+
+@MainActor
+private final class LoginURLRecorder {
+	private(set) var urls = [URL]()
+
+	func open(_ url: URL) {
+		urls.append(url)
+	}
+}
+
+@MainActor
+private final class LoginCodeRecorder {
+	private(set) var codes = [String]()
+
+	func copy(_ code: String) {
+		codes.append(code)
 	}
 }
 

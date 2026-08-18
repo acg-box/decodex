@@ -254,7 +254,8 @@ final class AccountPanelPresentationTests: XCTestCase {
 			authority: nil,
 			phase: .installing,
 			loginMethod: .browserRedirect,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 
 		XCTAssertFalse(presentation.canRequestCancellation)
@@ -274,7 +275,8 @@ final class AccountPanelPresentationTests: XCTestCase {
 			authority: nil,
 			phase: .installing,
 			loginMethod: .deviceCode,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 
 		XCTAssertEqual(presentation.title, "Add account")
@@ -285,7 +287,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertEqual(presentation.closeActionLabel, "Close add account")
 	}
 
-	func testLoginMethodSelectorIsLocalAndDevicePromptIsVisible() {
+	func testLoginMethodSelectorIsLocalAndDevicePromptHidesStatusCopy() {
 		let selecting = AccountReauthenticationPresentation(
 			mode: .enrollment,
 			accountID: "10000000-0000-4000-8000-000000000001",
@@ -294,7 +296,8 @@ final class AccountPanelPresentationTests: XCTestCase {
 			authority: nil,
 			phase: .selectingMethod,
 			loginMethod: nil,
-			prompt: nil
+			prompt: nil,
+			authorizationURL: nil
 		)
 		let prompt = AccountReauthenticationPrompt(
 			verificationURL: AccountReauthenticationPrompt.verificationURL,
@@ -308,7 +311,8 @@ final class AccountPanelPresentationTests: XCTestCase {
 			authority: nil,
 			phase: .waitingForBrowser,
 			loginMethod: .deviceCode,
-			prompt: prompt
+			prompt: prompt,
+			authorizationURL: nil
 		)
 
 		XCTAssertTrue(selecting.isSelectingMethod)
@@ -319,7 +323,7 @@ final class AccountPanelPresentationTests: XCTestCase {
 		XCTAssertFalse(selecting.showsProgress)
 		XCTAssertEqual(device.prompt, prompt)
 		XCTAssertEqual(device.statusText, "Waiting for browser sign-in")
-		XCTAssertTrue(device.showsStatusText)
+		XCTAssertFalse(device.showsStatusText)
 		XCTAssertFalse(device.showsProgress)
 	}
 

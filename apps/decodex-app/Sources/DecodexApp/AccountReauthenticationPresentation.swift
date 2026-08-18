@@ -52,7 +52,6 @@ enum AccountLoginMode: Equatable {
 
 enum AccountReauthenticationPhase: Equatable {
 	case selectingMethod
-	case resolvingCodex
 	case requestingCode
 	case openingBrowser
 	case waitingForBrowser
@@ -70,6 +69,7 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 	let phase: AccountReauthenticationPhase
 	let loginMethod: AccountLoginMethod?
 	let prompt: AccountReauthenticationPrompt?
+	let authorizationURL: URL?
 
 	var id: String {
 		sessionID
@@ -79,8 +79,6 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		switch phase {
 		case .selectingMethod:
 			return "Choose a sign-in method"
-		case .resolvingCodex:
-			return "Finding Codex"
 		case .requestingCode:
 			return "Requesting a one-time code"
 		case .openingBrowser:
@@ -127,7 +125,7 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		switch phase {
 		case .failed(let message), .cancellationFailed(let message):
 			return message
-		case .selectingMethod, .resolvingCodex, .requestingCode, .openingBrowser,
+		case .selectingMethod, .requestingCode, .openingBrowser,
 			.waitingForBrowser, .installing:
 			return nil
 		}
@@ -138,7 +136,7 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 	}
 
 	var showsStatusText: Bool {
-		isSelectingMethod == false
+		isSelectingMethod == false && prompt == nil
 	}
 
 	var showsProgress: Bool {
@@ -148,7 +146,7 @@ struct AccountReauthenticationPresentation: Identifiable, Equatable {
 		switch phase {
 		case .selectingMethod, .failed, .cancellationFailed:
 			return false
-		case .resolvingCodex, .requestingCode, .openingBrowser,
+		case .requestingCode, .openingBrowser,
 			.waitingForBrowser, .installing:
 			return true
 		}
