@@ -45,6 +45,7 @@ getrandom          = { version = "=0.4.2" }
 globset            = { version = "0.4" }
 gpui               = { git = "https://github.com/zed-industries/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false }
 gpui_platform      = { git = "https://github.com/zed-industries/zed.git", rev = "92f315647f776854053fc334b73110d97964bc5f", default-features = false, features = ["font-kit"] }
+httparse           = { version = "1.10" }
 libc               = { version = "0.2" }
 redb               = { version = "=4.1.0", default-features = false }
 regex              = { version = "1.12" }
@@ -65,6 +66,7 @@ toml_edit          = { version = "0.25" }
 tracing            = { version = "0.1" }
 tracing-appender   = { version = "0.2" }
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+url                = { version = "2.5" }
 vergen-gitcl       = { version = "10.0", features = ["cargo"] }
 wait-timeout       = { version = "0.2.1" }
 zeroize            = { version = "1.9" }

@@ -23,6 +23,27 @@ test -f "$app_path/Contents/Resources/StatusBarIcon.png"
 
 codesign --verify --deep --strict "$app_path"
 codesign --verify --strict "$native_client"
+
+loader_dir="$(mktemp -d "${TMPDIR:-/tmp}/decodex-native-loader.XXXXXX")"
+trap 'rm -rf "$loader_dir"' EXIT
+cat >"$loader_dir/main.swift" <<'SWIFT'
+import Darwin
+
+guard CommandLine.arguments.count == 2,
+      let handle = dlopen(CommandLine.arguments[1], RTLD_NOW | RTLD_LOCAL),
+      let symbol = dlsym(handle, "decodex_app_native_client_abi_version")
+else {
+    exit(1)
+}
+defer { dlclose(handle) }
+typealias ABIVersion = @convention(c) () -> UInt32
+let abiVersion = unsafeBitCast(symbol, to: ABIVersion.self)
+guard abiVersion() == 1 else {
+    exit(1)
+}
+SWIFT
+xcrun swiftc "$loader_dir/main.swift" -o "$loader_dir/native-loader"
+"$loader_dir/native-loader" "$native_client"
 for symbol in \
   _decodex_app_native_client_abi_version \
   _decodex_app_native_client_artifact_cohort \

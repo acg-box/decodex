@@ -7,11 +7,6 @@ use crate::{
 	state::{CodexAccountProfileDailyUsageSummary, CodexAccountResetCreditSummary},
 };
 
-pub(crate) struct AccountLoginRequest {
-	pub(crate) codex_bin: String,
-	pub(crate) keep_temp_home: bool,
-}
-
 pub(crate) struct AccountImportRequest {
 	pub(crate) auth_json_path: PathBuf,
 	pub(crate) json: bool,
