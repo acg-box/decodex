@@ -25,6 +25,30 @@ fn version_exits_without_starting_the_daemon() {
 }
 
 #[test]
+fn artifact_cohort_exits_without_starting_the_daemon() {
+	let home = TempDir::new().expect("create isolated home");
+	let output = Command::new(env!("CARGO_BIN_EXE_decodexd"))
+		.arg("artifact-cohort")
+		.env("HOME", home.path())
+		.output()
+		.expect("run artifact cohort");
+	let value: serde_json::Value =
+		serde_json::from_slice(&output.stdout).expect("artifact cohort output is JSON");
+
+	assert!(output.status.success());
+	assert_eq!(
+		value,
+		serde_json::json!({
+			"schema": "decodex/artifact-cohort/1",
+			"artifact_cohort": decodex_protocol::CURRENT_ARTIFACT_COHORT,
+			"protocol": decodex_protocol::CURRENT_VERSION,
+		}),
+	);
+	assert!(output.stderr.is_empty());
+	assert!(!home.path().join(".decodex").exists());
+}
+
+#[test]
 fn help_exits_without_starting_the_daemon() {
 	let home = TempDir::new().expect("create isolated home");
 	let output = Command::new(env!("CARGO_BIN_EXE_decodexd"))

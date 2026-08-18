@@ -247,15 +247,75 @@ final class AccountPanelPresentationTests: XCTestCase {
 
 	func testInstallingLoginCannotBeCancelledOrClosed() {
 		let presentation = AccountReauthenticationPresentation(
+			mode: .reauthentication,
 			accountID: "10000000-0000-4000-8000-000000000001",
 			accountLabel: "Val",
 			sessionID: "20000000-0000-4000-8000-000000000001",
 			authority: nil,
-			phase: .installing
+			phase: .installing,
+			loginMethod: .browserRedirect,
+			prompt: nil
 		)
 
 		XCTAssertFalse(presentation.canRequestCancellation)
 		XCTAssertFalse(presentation.canCloseWithoutCancellation)
+		XCTAssertEqual(presentation.title, "Refresh login")
+		XCTAssertEqual(presentation.statusText, "Saving login")
+	}
+
+	func testEnrollmentPresentationUsesAddAccountLabels() {
+		let presentation = AccountReauthenticationPresentation(
+			mode: .enrollment,
+			accountID: "10000000-0000-4000-8000-000000000001",
+			accountLabel: "New account",
+			sessionID: "20000000-0000-4000-8000-000000000001",
+			authority: nil,
+			phase: .installing,
+			loginMethod: .deviceCode,
+			prompt: nil
+		)
+
+		XCTAssertEqual(presentation.title, "Add account")
+		XCTAssertEqual(presentation.accessibilityLabel, "Add account")
+		XCTAssertEqual(presentation.statusText, "Adding account")
+		XCTAssertEqual(presentation.cancelActionLabel, "Cancel adding account")
+		XCTAssertEqual(presentation.closeActionLabel, "Close add account")
+	}
+
+	func testLoginMethodSelectorIsLocalAndDevicePromptIsVisible() {
+		let selecting = AccountReauthenticationPresentation(
+			mode: .enrollment,
+			accountID: "10000000-0000-4000-8000-000000000001",
+			accountLabel: "New account",
+			sessionID: "20000000-0000-4000-8000-000000000001",
+			authority: nil,
+			phase: .selectingMethod,
+			loginMethod: nil,
+			prompt: nil
+		)
+		let prompt = AccountReauthenticationPrompt(
+			verificationURL: AccountReauthenticationPrompt.verificationURL,
+			userCode: "AB12-CDE34"
+		)
+		let device = AccountReauthenticationPresentation(
+			mode: .enrollment,
+			accountID: selecting.accountID,
+			accountLabel: selecting.accountLabel,
+			sessionID: selecting.sessionID,
+			authority: nil,
+			phase: .waitingForBrowser,
+			loginMethod: .deviceCode,
+			prompt: prompt
+		)
+
+		XCTAssertTrue(selecting.isSelectingMethod)
+		XCTAssertTrue(selecting.canCloseWithoutCancellation)
+		XCTAssertFalse(selecting.canRequestCancellation)
+		XCTAssertEqual(selecting.statusText, "Choose a sign-in method")
+		XCTAssertFalse(selecting.showsProgress)
+		XCTAssertEqual(device.prompt, prompt)
+		XCTAssertEqual(device.statusText, "Waiting for browser sign-in")
+		XCTAssertFalse(device.showsProgress)
 	}
 
 	func testMissingAccountLabelDoesNotExposeAccountID() {

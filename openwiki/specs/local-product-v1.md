@@ -171,6 +171,11 @@ Program aggregate above the existing Quick Task execution path. The initial comm
 creates one Program charter, one sourced Signal, one Claim, one non-executable Proposal,
 one finite Objective, and one ready WorkItem in one SQLite transaction.
 
+Every local V2.5 hello and welcome also carries the exact artifact cohort. The daemon,
+CLI, retained clients, and App FFI fail before application work when the cohort is absent
+or differs. This is one compatibility fence inside the existing protocol. It does not add
+a second version service or runtime authority.
+
 After one cycle has an exact terminal Review, `ContinueProgram` can append one next
 Signal, Claim, non-executable Proposal, finite Objective, and ready WorkItem. The command
 must carry the current positive Program revision and the exact predecessor Review. One
@@ -356,6 +361,21 @@ account queries never select its payload. The daemon adapter reads or writes one
 account record and checks schema version, monotonic credential version, fingerprint,
 writer operation, provider, and provider-account binding.
 
+The menu-bar Add Account action first offers automatic browser redirect or manual device
+code. The default browser choice lets the official Codex CLI open its redirect flow. The
+manual choice displays the official URL and one-time code and opens the URL only after an
+explicit user action. Both choices use one login-method strategy in the existing manager,
+one owner-private temporary Codex home, and one cleanup path. After login, the daemon reads
+that exact private credential file through a typed enrollment command, creates the account
+through the ordinary operation journal and credential store, and the manager removes the
+temporary home. The normal shared `~/.codex/auth.json` is unchanged by enrollment. Swift
+never receives a credential value or auth-file path.
+
+The unique provider-account binding remains the duplicate-enrollment authority. If the
+device-login page selects a provider identity that another Decodex account already owns,
+enrollment cancels the new operation and durably records `provider_already_enrolled`.
+The rejection does not expose an email address or provider identity.
+
 The SQLite file is plaintext owner-private storage, consistent with the source Codex
 authentication file and the explicit local-device threat model. No credential value can
 appear in Debug output, protocol data, logs, migration output, or transfer reports.
@@ -385,6 +405,7 @@ Acceptance requires:
 - a daemon restart followed by a later response on the same Conversation and Codex
   thread, with no duplicate ProviderAttempt dispatch;
 - protocol-only GPUI and CLI operation;
+- one matching artifact cohort across the running daemon, CLI, and App FFI;
 - local-history-first Conversation opening, immediate queued-prompt projection, and
   Turn-level adjacent assistant-fragment coalescing;
 - exact selected-thread refresh, verified archive, and request-scoped execution controls;

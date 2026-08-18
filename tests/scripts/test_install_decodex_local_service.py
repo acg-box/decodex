@@ -171,6 +171,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertEqual(set(launch_agent["EnvironmentVariables"]), {"HOME", "PATH"})
         self.assertEqual(launch_agent["KeepAlive"], {"SuccessfulExit": False})
         self.assertEqual(launch_agent["ExitTimeOut"], 60)
+        self.assertEqual(launch_agent["WorkingDirectory"], str(paths.root))
+        self.assertNotEqual(launch_agent["WorkingDirectory"], str(paths.repository))
         serialized = config + plistlib.dumps(launch_agent)
         for secret_projection in (
             b"access_token",
@@ -366,6 +368,55 @@ class LocalServiceInstallerTests(unittest.TestCase):
             ],
         )
 
+    def test_artifact_cohort_requires_exact_daemon_cli_agreement(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            paths = self.paths(Path(temp))
+            cohort = {
+                "schema": "decodex/artifact-cohort/1",
+                "artifact_cohort": 1,
+                "protocol": {"major": 2, "minor": 5},
+            }
+            responses = [
+                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
+                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
+            ]
+            with mock.patch.object(self.module, "run", side_effect=responses) as run:
+                self.assertEqual(
+                    self.module.verify_artifact_cohort(paths),
+                    self.module.ArtifactCohort(1, 2, 5),
+                )
+            self.assertEqual(
+                [call.args[0] for call in run.call_args_list],
+                [
+                    [str(paths.decodexd), "artifact-cohort"],
+                    [str(paths.decodex_cli), "--output", "json", "artifact-cohort"],
+                ],
+            )
+            self.assertTrue(
+                all(call.kwargs["cwd"] == paths.root for call in run.call_args_list)
+            )
+
+            stale_cli = dict(cohort)
+            stale_cli["artifact_cohort"] = 2
+            responses = [
+                subprocess.CompletedProcess([], 0, json.dumps(cohort), ""),
+                subprocess.CompletedProcess([], 0, json.dumps(stale_cli), ""),
+            ]
+            with mock.patch.object(self.module, "run", side_effect=responses):
+                with self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "artifact cohort differs",
+                ):
+                    self.module.verify_artifact_cohort(paths)
+
+            old_target = subprocess.CompletedProcess([], 2, "", "old command")
+            with mock.patch.object(self.module, "run", return_value=old_target):
+                with self.assertRaisesRegex(
+                    self.module.InstallError,
+                    "daemon artifact cohort is unavailable",
+                ):
+                    self.module.verify_artifact_cohort(paths)
+
     def test_fresh_and_transfer_install_paths_are_separate(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             paths = self.paths(Path(temp))
@@ -381,6 +432,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                     mock.patch.object(self.module, "ensure_directories"),
                     mock.patch.object(self.module, "verify_daemon_executable"),
                     mock.patch.object(self.module, "verify_signed_peer"),
+                    mock.patch.object(self.module, "verify_artifact_cohort"),
                     mock.patch.object(self.module, "initialize_local_database") as initialize,
                     mock.patch.object(self.module, "transfer_retired_accounts", return_value=6) as transfer,
                     mock.patch.object(self.module, "validate_local_database"),
@@ -471,6 +523,11 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 mock.patch.object(self.module, "ensure_installer_namespace_layout"),
                 mock.patch.object(
                     self.module,
+                    "verify_artifact_cohort",
+                    return_value=self.module.ArtifactCohort(1, 2, 5),
+                ),
+                mock.patch.object(
+                    self.module,
                     "capture_retired_account_snapshot",
                     return_value=b"snapshot",
                 ),
@@ -500,6 +557,8 @@ class LocalServiceInstallerTests(unittest.TestCase):
         self.assertEqual(result["account_count"], 1)
         self.assertEqual(result["account_transfer"], "completed")
         self.assertTrue(result["retired_sources_retained"])
+        self.assertEqual(result["artifact_cohort"], 1)
+        self.assertEqual(result["protocol"], {"major": 2, "minor": 5})
         self.assertTrue(result["launched"])
         self.assertTrue(namespace_lock.closed)
 

@@ -339,6 +339,31 @@ the SQLite local-database gate, and a stable-toolchain workspace check. Every ap
 gate passed. The staged application also passed strict deep code-signature verification before
 the live FFI readback.
 
+## Dual-method account enrollment acceptance
+
+The account enrollment repair keeps one native login manager and one daemon enrollment
+command. The menu-bar App offers automatic browser redirect by default and a manual device
+code alternative. The manual alternative displays the official URL and one-time code and
+does not open a browser until the user selects Open. Both alternatives use the same private
+temporary Codex home, operation journal, command receipt, credential-store authority, and
+terminal cleanup.
+
+The command choices match official Codex source at `openai/codex` commits
+`9392c3fa5bcda342b5b96a1a04d67b2f781617c2` and
+`5ee6baee2fcc0b6ffd413d9611f5538dad40d0f2`. The default command uses `codex login`; the
+manual command adds `--device-auth`. Repository history at
+`419535e159edadaa978e527e8f88b838b7e4ca66` supplied the earlier bounded device-code
+presentation and cleanup evidence. The repair does not restore its separate state machine.
+
+Focused acceptance passed 38 native FFI tests and 80 Swift login-flow tests. The signed
+installed App matched the tested candidate. Its FFI negotiated protocol V2.5 and artifact
+cohort 1 with the running daemon and read seven account rows. The new account was ready and
+available, its redacted profile was current, and the enrollment operation and receipt were
+committed and succeeded with no unsettled enrollment operation. No login child or private
+temporary login home remained. Enrollment did not issue a shared Codex projection command.
+A later, separate user route action selected the new account through the ordinary typed
+projection and fixed-routing commands.
+
 ## Earlier repository gates
 
 One complete `cargo make check` run finished successfully on the pre-Silent-Recovery source. It included:

@@ -536,6 +536,9 @@ pub struct EntityRevision(pub u64);
 pub struct ClientHello {
 	/// Client protocol revision.
 	pub version: ProtocolVersion,
+	/// Exact local artifact cohort. Absence represents a pre-cohort client.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub artifact_cohort: Option<u32>,
 	/// Optional stable server-host identity pin. It is enforced before status or commands.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub expected_server_id: Option<ServerId>,
@@ -597,6 +600,9 @@ pub struct QueryEnvelope {
 pub struct ServerWelcome {
 	/// Negotiated protocol revision.
 	pub version: ProtocolVersion,
+	/// Exact local artifact cohort. Absence represents a pre-cohort server.
+	#[serde(default, skip_serializing_if = "Option::is_none")]
+	pub artifact_cohort: Option<u32>,
 	/// Server compatibility window.
 	pub supported: SupportedVersions,
 	/// Stable identity of this server host.
@@ -2512,6 +2518,17 @@ pub enum CommandPayload {
 		/// Initial administrative admission switch.
 		enabled: bool,
 	},
+	/// Enroll one account from an owner-private Codex device-login auth file.
+	EnrollAccountFromCredentialFile {
+		/// Stable finite lifecycle operation identity.
+		operation_id: EntityId,
+		/// Canonical new account identity.
+		account_id: EntityId,
+		/// Initial administrative admission switch.
+		enabled: bool,
+		/// Owner-private Codex auth path descriptor opened by the daemon.
+		source_descriptor: WireText,
+	},
 	/// Import one owner-private daemon-opened credential file without carrying secret bytes.
 	ImportAccountCredentialFile {
 		/// Stable finite lifecycle operation identity.
@@ -3810,6 +3827,8 @@ pub enum AccountCommandRejectionDto {
 	CredentialAbsent,
 	/// The host credential store could not complete the request.
 	CredentialStoreUnavailable,
+	/// Another Decodex account already owns the current shared provider login.
+	ProviderAlreadyEnrolled,
 	/// Provider identities do not agree.
 	ProviderMismatch,
 	/// Another lifecycle gate prevents the request.
@@ -3826,6 +3845,13 @@ pub enum AccountCommandRejectionDto {
 pub enum Refusal {
 	/// The requested version falls outside the compatibility window.
 	UnsupportedVersion(VersionRefusal),
+	/// The client and daemon were not built for the same local artifact cohort.
+	ArtifactCohortMismatch {
+		/// Cohort required by the daemon.
+		expected: u32,
+		/// Cohort supplied by the client, or absent for a pre-cohort client.
+		actual: Option<u32>,
+	},
 	/// The client pinned a different stable server host.
 	ServerIdentityMismatch {
 		/// Identity required by the client profile.
@@ -3949,7 +3975,13 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				account_id,
 				command.expected_revision.is_none(),
 			),
-		CommandPayload::ImportAccountCredentialFile {
+		CommandPayload::EnrollAccountFromCredentialFile {
+			operation_id,
+			account_id,
+			source_descriptor,
+			..
+		}
+		| CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
 			source_descriptor,
@@ -5035,6 +5067,87 @@ mod tests {
 			serde_json::to_value(stale_account).unwrap(),
 			serde_json::to_value(stale_routing).unwrap(),
 		);
+
+		let duplicate_provider = CommandError::AccountCommandRejected {
+			rejection: AccountCommandRejectionDto::ProviderAlreadyEnrolled,
+			actual_revision: None,
+		};
+		let encoded = serde_json::to_value(&duplicate_provider).unwrap();
+		assert_eq!(
+			encoded,
+			serde_json::json!({
+				"reason": "account_command_rejected",
+				"rejection": "provider_already_enrolled",
+			}),
+		);
+		assert_eq!(serde_json::from_value::<CommandError>(encoded).unwrap(), duplicate_provider);
+	}
+
+	#[test]
+	fn device_login_enrollment_is_a_strict_revisionless_path_only_command() {
+		let operation_id =
+			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
+		let account_id =
+			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let payload = CommandPayload::EnrollAccountFromCredentialFile {
+			operation_id: operation_id.clone(),
+			account_id: account_id.clone(),
+			enabled: true,
+			source_descriptor: WireText::new("/private/tmp/decodex-enroll/auth.json")
+				.expect("bounded source descriptor"),
+		};
+		let encoded_payload = serde_json::to_value(&payload).expect("command must encode");
+		assert_eq!(
+			encoded_payload,
+			serde_json::json!({
+				"name": "enroll_account_from_credential_file",
+				"arguments": {
+					"operation_id": operation_id.as_str(),
+					"account_id": account_id.as_str(),
+					"enabled": true,
+					"source_descriptor": "/private/tmp/decodex-enroll/auth.json",
+				},
+			}),
+		);
+		assert_eq!(
+			serde_json::from_value::<CommandPayload>(encoded_payload).expect("command must decode"),
+			payload,
+		);
+
+		let message = |payload, expected_revision| {
+			ClientMessage::Command(CommandEnvelope {
+				version: CURRENT_VERSION,
+				client_command_id: ClientCommandId::new("device-enroll-command").unwrap(),
+				idempotency_key: IdempotencyKey::new("device-enroll-key").unwrap(),
+				expected_revision,
+				correlation_id: CorrelationId::new("device-enroll-command").unwrap(),
+				causation_id: None,
+				payload,
+			})
+		};
+		assert!(
+			decode_client_message(&serde_json::to_string(&message(payload.clone(), None)).unwrap())
+				.is_ok()
+		);
+		assert!(
+			decode_client_message(
+				&serde_json::to_string(&message(payload, Some(EntityRevision(1)))).unwrap()
+			)
+			.is_err()
+		);
+		assert!(
+			serde_json::from_value::<CommandPayload>(serde_json::json!({
+				"name": "enroll_account_from_credential_file",
+				"arguments": {
+					"operation_id": operation_id.as_str(),
+					"account_id": account_id.as_str(),
+					"enabled": true,
+					"source_descriptor": "/private/tmp/decodex-enroll/auth.json",
+					"access_token": "forbidden",
+				},
+			}))
+			.is_err()
+		);
 	}
 
 	#[test]
@@ -5542,6 +5655,7 @@ mod tests {
 	fn hello_wire_shape_is_a_stable_json_golden() {
 		let message = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(crate::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: None,
 			resume: Some(ResumeCursor {
 				server_id: ServerId::new("server-a").expect("bounded fixture ID"),
@@ -5556,6 +5670,7 @@ mod tests {
 			serde_json::to_string(&message).unwrap(),
 			concat!(
 				r#"{"type":"hello","body":{"version":{"major":2,"minor":5},"#,
+				r#""artifact_cohort":1,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);

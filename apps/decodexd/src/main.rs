@@ -15,6 +15,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
+	/// Print the exact local artifact/protocol cohort without starting the daemon.
+	#[command(hide = true)]
+	ArtifactCohort,
 	/// Serve the same-UID Decodex vNext protocol.
 	Serve,
 	/// Initialize or upgrade the bundled SQLite product database.
@@ -35,6 +38,17 @@ enum Command {
 async fn main() -> Result<(), Box<dyn Error>> {
 	match Cli::parse().command {
 		None | Some(Command::Serve) => serve().await,
+		Some(Command::ArtifactCohort) => {
+			println!(
+				"{}",
+				serde_json::json!({
+					"schema": "decodex/artifact-cohort/1",
+					"artifact_cohort": decodex_protocol::CURRENT_ARTIFACT_COHORT,
+					"protocol": decodex_protocol::CURRENT_VERSION,
+				})
+			);
+			Ok(())
+		},
 		Some(Command::InitializeLocalDatabase { root }) =>
 			ServiceComposition::initialize_local_database(DecodexRoot::new(root)?)
 				.await

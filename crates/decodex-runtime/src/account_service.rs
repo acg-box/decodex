@@ -654,6 +654,46 @@ impl AccountService {
 		.await
 	}
 
+	/// Enroll from one owner-private Codex device-login auth file and retain the terminal result in
+	/// the logical-command journal.
+	#[allow(clippy::too_many_arguments)] // The journal, operation, account, source, and response owner are independent authority inputs.
+	pub(crate) async fn enroll_from_credential_file_command<F>(
+		&self,
+		lease: AccountCommandReceiptLease,
+		operation_id: AccountOperationId,
+		account_id: AccountId,
+		enabled: bool,
+		source_descriptor: &str,
+		build_response: F,
+	) -> Result<Value, AccountLifecycleError>
+	where
+		F: FnOnce(Result<&AccountRecord, AccountLifecycleError>) -> Result<Value, StoreError>
+			+ Send
+			+ 'static,
+	{
+		let imported = match read_explicit_shared_codex_credential_file(source_descriptor) {
+			Ok(imported) => imported,
+			Err(error) => {
+				return self
+					.complete_account_command_error(lease, error.into(), build_response)
+					.await;
+			},
+		};
+		let alias = stable_account_alias(&imported.provider);
+		self.install_credentials_command(
+			lease,
+			operation_id,
+			account_id,
+			AccountOperationKind::Enroll,
+			alias,
+			enabled,
+			imported.provider,
+			imported.bundle,
+			build_response,
+		)
+		.await
+	}
+
 	/// Import through the logical-command journal and atomically retain the final registry result.
 	#[allow(clippy::too_many_arguments)] // The journal, operation, account, input, and response owner are independent authority inputs.
 	pub(crate) async fn import_credential_file_command<F>(
@@ -3653,7 +3693,7 @@ mod tests {
 	use super::{
 		ACCOUNT_ALIAS_WORDS, AccountLifecycleError, AccountService, CredentialImportError,
 		CredentialRefreshError, CredentialRefreshPort, CredentialRefreshResult,
-		CredentialSecretBundle, HostCredentialStore, ImportedCredential,
+		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
 		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
 		ReauthenticationReplayDisposition, RefreshResponse, UseInCodexProjectionError,
 		access_token_needs_refresh, account_lock_for, classify_prepared_refresh_reconciliation,
@@ -3771,6 +3811,245 @@ mod tests {
 			Err(AccountLifecycleError::StaleAccount)
 		));
 		assert_eq!(account.credential.as_ref(), Some(&current));
+	}
+
+	#[tokio::test]
+	async fn device_login_enrollment_commits_one_credential_bound_account_and_replays_its_receipt() {
+		let directory = tempdir().expect("temporary product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let service = AccountService::new(
+			store.clone(),
+			Arc::clone(&credentials),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let account_id =
+			AccountId::new("21000000-0000-4000-8000-000000000008").expect("new account");
+		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000008")
+			.expect("enrollment operation");
+		let command = CommandIdentity::new("device-login-enroll", b"exact device enrollment")
+			.expect("command identity");
+		let lease = match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Enroll,
+				account_id.as_str(),
+				None,
+			)
+			.await
+			.expect("reserve enrollment command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("new enrollment command replayed"),
+		};
+		let (_source_directory, source_descriptor) = owner_private_shared_codex_auth(
+			"device-login-provider",
+			"device-login@example.test",
+		);
+		let response = service
+			.enroll_from_credential_file_command(
+				lease,
+				operation_id.clone(),
+				account_id.clone(),
+				true,
+				&source_descriptor,
+				|result| {
+					Ok(match result {
+						Ok(account) => json!({
+							"outcome": "succeeded",
+							"account_revision": account.revision,
+						}),
+						Err(_) => json!({"outcome": "unexpected"}),
+					})
+				},
+			)
+			.await
+			.expect("complete device-login enrollment");
+
+		assert_eq!(response, json!({"outcome": "succeeded", "account_revision": 1}));
+		let accounts = service.list().await.expect("list enrolled account");
+		assert_eq!(accounts.len(), 1);
+		assert_eq!(accounts[0].account.account_id, account_id);
+		assert_eq!(accounts[0].readiness, AccountLifecycleReadiness::CallbackCapabilityUnready);
+		let binding = accounts[0]
+			.account
+			.credential
+			.as_ref()
+			.expect("enrollment commits a credential binding");
+		assert_eq!(binding.provider.account_id(), "device-login-provider");
+		credentials
+			.read_exact(&account_id, binding)
+			.expect("daemon credential store owns the enrolled bundle");
+		let operation = store
+			.read_account_operation(&operation_id)
+			.await
+			.expect("read enrollment operation")
+			.expect("enrollment operation remains recorded");
+		assert_eq!(operation.kind, AccountOperationKind::Enroll);
+		assert_eq!(operation.phase, AccountOperationPhase::Committed);
+		match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Enroll,
+				account_id.as_str(),
+				None,
+			)
+			.await
+			.expect("replay enrollment command")
+		{
+			AccountCommandReceiptClaim::Replayed(replayed) => assert_eq!(replayed, response),
+			AccountCommandReceiptClaim::Owned(_) => panic!("completed enrollment did not replay"),
+		}
+	}
+
+	#[tokio::test]
+	async fn duplicate_provider_enrollment_is_cancelled_and_replays_its_typed_receipt() {
+		let directory = tempdir().expect("temporary product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let service = AccountService::new(
+			store.clone(),
+			Arc::clone(&credentials),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let provider =
+			ProviderIdentity::new(AccountProvider::Chatgpt, "duplicate-provider-account")
+				.expect("provider identity");
+		let existing_account =
+			AccountId::new("21000000-0000-4000-8000-000000000010").expect("existing account");
+		let existing_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000010")
+				.expect("existing operation");
+		let existing_bundle = shared_bundle(provider.account_id(), "existing-access", 3_000_000);
+		let existing_binding = existing_bundle
+			.binding_for(
+				&existing_account,
+				&existing_operation,
+				CredentialVersion::new(1).expect("initial version"),
+				&provider,
+			)
+			.expect("existing binding");
+		assert!(matches!(
+			store
+				.prepare_account_operation(&AccountOperationPreparation {
+					operation_id: existing_operation.clone(),
+					account_id: existing_account.clone(),
+					kind: AccountOperationKind::Enroll,
+					display_label: Some(stable_account_alias(&provider)),
+					enabled: Some(true),
+					expected_account_revision: None,
+					expected: None,
+					target: Some(existing_binding.clone()),
+					provider: provider.clone(),
+				})
+				.await
+				.expect("prepare existing enrollment"),
+			AccountLifecycleMutationOutcome::Applied(_)
+		));
+		credentials
+			.create(&existing_account, &existing_binding, existing_bundle)
+			.expect("write existing credential");
+		store
+			.advance_account_operation(
+				&existing_operation,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record existing credential");
+		store
+			.advance_account_operation(
+				&existing_operation,
+				AccountOperationPhase::StoreApplied,
+				AccountOperationPhase::Committed,
+				None,
+			)
+			.await
+			.expect("commit existing account");
+
+		let account_id =
+			AccountId::new("21000000-0000-4000-8000-000000000011").expect("new account");
+		let operation_id = AccountOperationId::new("22000000-0000-4000-8000-000000000011")
+			.expect("new operation");
+		let command = CommandIdentity::new("duplicate-provider-enroll", b"exact duplicate request")
+			.expect("command identity");
+		let lease = match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Enroll,
+				account_id.as_str(),
+				None,
+			)
+			.await
+			.expect("reserve enrollment command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("new enrollment command replayed"),
+		};
+		let (_source_directory, source_descriptor) = owner_private_shared_codex_auth(
+			provider.account_id(),
+			"duplicate@example.test",
+		);
+		let response = service
+			.enroll_from_credential_file_command(
+				lease,
+				operation_id.clone(),
+				account_id.clone(),
+				true,
+				&source_descriptor,
+				|result| {
+					Ok(match result {
+						Err(AccountLifecycleError::CredentialStore(
+							CredentialStoreError::DuplicateProvider,
+						)) => json!({
+							"outcome": "rejected",
+							"rejection": "provider_already_enrolled",
+						}),
+						_ => json!({"outcome": "unexpected"}),
+					})
+				},
+			)
+			.await
+			.expect("complete duplicate enrollment");
+
+		assert_eq!(
+			response,
+			json!({"outcome": "rejected", "rejection": "provider_already_enrolled"})
+		);
+		assert!(matches!(
+			credentials.read_exact(&account_id, &existing_binding),
+			Err(CredentialStoreError::NotFound)
+		));
+		let operation = store
+			.read_account_operation(&operation_id)
+			.await
+			.expect("read duplicate operation")
+			.expect("duplicate operation remains recorded");
+		assert_eq!(operation.phase, AccountOperationPhase::Cancelled);
+		match store
+			.reserve_account_command(
+				&command,
+				AccountCommandKind::Enroll,
+				account_id.as_str(),
+				None,
+			)
+			.await
+			.expect("replay enrollment command")
+		{
+			AccountCommandReceiptClaim::Replayed(replayed) => assert_eq!(replayed, response),
+			AccountCommandReceiptClaim::Owned(_) => panic!("completed enrollment did not replay"),
+		}
+		credentials
+			.read_exact(&existing_account, &existing_binding)
+			.expect("existing credential remains authoritative");
+		assert_eq!(service.list().await.expect("list accounts").len(), 1);
 	}
 
 	#[tokio::test]
@@ -4155,6 +4434,33 @@ mod tests {
 		});
 		let payload = URL_SAFE_NO_PAD.encode(serde_json::to_vec(&claims).unwrap());
 		format!("header.{payload}.signature")
+	}
+
+	fn owner_private_shared_codex_auth(
+		provider_account_id: &str,
+		email: &str,
+	) -> (tempfile::TempDir, String) {
+		let directory = tempdir().expect("temporary device-login home");
+		let root = fs::canonicalize(directory.path()).expect("canonical device-login home");
+		let path = root.join("auth.json");
+		let access_payload = URL_SAFE_NO_PAD
+			.encode(serde_json::to_vec(&json!({"exp": 2_000_000_000_i64})).unwrap());
+		let access_token = format!("header.{access_payload}.signature");
+		let value = json!({
+			"auth_mode": "chatgpt",
+			"OPENAI_API_KEY": null,
+			"tokens": {
+				"id_token": identity_token(provider_account_id, email, "pro"),
+				"access_token": access_token,
+				"refresh_token": "device-login-refresh",
+				"account_id": provider_account_id,
+			},
+			"last_refresh": null,
+		});
+		fs::write(&path, serde_json::to_vec(&value).unwrap()).expect("write device-login auth");
+		fs::set_permissions(&path, fs::Permissions::from_mode(0o600))
+			.expect("protect device-login auth");
+		(directory, path.to_string_lossy().into_owned())
 	}
 
 	fn current_bundle() -> CredentialSecretBundle {

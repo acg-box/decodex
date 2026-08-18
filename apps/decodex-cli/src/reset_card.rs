@@ -791,6 +791,7 @@ const fn client_failure_code(failure: ClientFailure) -> &'static str {
 		ClientFailure::ProtocolTimeout => "protocol_timeout",
 		ClientFailure::ProtocolMajorMismatch => "protocol_major_mismatch",
 		ClientFailure::ProtocolMinorMismatch => "protocol_minor_mismatch",
+		ClientFailure::ArtifactCohortMismatch => "artifact_cohort_mismatch",
 		ClientFailure::ServerIdentityMismatch => "server_identity_mismatch",
 		ClientFailure::ProtocolMalformed => "protocol_malformed",
 		ClientFailure::ProtocolViolation => "protocol_violation",
