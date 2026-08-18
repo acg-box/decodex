@@ -1607,8 +1607,10 @@ name = "decodexd"
 version = "0.2.0"
 dependencies = [
  "clap",
+ "decodex-protocol",
  "decodex-runtime",
  "libc",
+ "serde_json",
  "tempfile",
  "tokio",
 ]

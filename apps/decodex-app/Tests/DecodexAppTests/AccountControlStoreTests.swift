@@ -724,14 +724,18 @@ final class AccountControlStoreTests: XCTestCase {
 			account: account,
 			authority: authority,
 			suspendsInventory: true,
-			allowsEnrollment: true
+			reauthenticationStates: [.completed]
 		)
 		let fixture = pendingFixture()
 		defer { fixture.remove() }
 		let store = ResetCardStore(
 			client: client,
 			pendingStore: fixture.store,
-			startupRetryDelays: []
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .zero,
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
 		)
 
 		let refreshTask = Task { await store.refresh() }
@@ -748,16 +752,81 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertFalse(store.isInitialLoading)
 		XCTAssertTrue(store.canBeginEnrollment)
 
-		await store.enrollFromSharedCodex()
+		store.beginAccountEnrollment()
+		XCTAssertEqual(store.accountReauthentication?.phase, .selectingMethod)
+		let requestBeforeSelection = await client.enrollmentLoginStartRequest()
+		XCTAssertNil(requestBeforeSelection)
+		store.selectAccountLoginMethod(.browserRedirect)
+		for _ in 0 ..< 200 {
+			if await client.enrollmentLoginStartRequest() != nil {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
 
-		let enrollmentRequestCount = await client.enrollmentRequestCount()
+		let enrollmentRequest = await client.enrollmentLoginStartRequest()
+		let sharedImportRequestCount = await client.enrollmentRequestCount()
 		XCTAssertTrue(store.isRefreshing)
-		XCTAssertEqual(enrollmentRequestCount, 1)
-		XCTAssertEqual(store.message?.tone, .success)
+		XCTAssertNotNil(enrollmentRequest)
+		XCTAssertEqual(enrollmentRequest?.loginMethod, .browserRedirect)
+		XCTAssertEqual(sharedImportRequestCount, 0)
 
 		await client.releaseInventory()
 		await refreshTask.value
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication == nil, store.accounts.count == 2 {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
 		XCTAssertFalse(store.isRefreshing)
+		XCTAssertEqual(store.accounts.count, 2)
+		XCTAssertEqual(store.message?.tone, .success)
+		XCTAssertEqual(store.message?.text, "Account added.")
+	}
+
+	func testDeviceEnrollmentDuplicateProviderKeepsExistingAccount() async throws {
+		let account = accountRecord()
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			reauthenticationStates: [.failed],
+			accountLoginFailure: .providerAlreadyEnrolled
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .zero,
+			resolveCodexExecutable: {
+				"/Applications/ChatGPT.app/Contents/Resources/codex"
+			}
+		)
+
+		await store.refresh()
+		store.beginAccountEnrollment()
+		store.selectAccountLoginMethod(.deviceCode)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication?.failureText != nil {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let enrollmentRequest = await client.enrollmentLoginStartRequest()
+		let sharedImportRequestCount = await client.enrollmentRequestCount()
+		XCTAssertNotNil(enrollmentRequest)
+		XCTAssertEqual(enrollmentRequest?.loginMethod, .deviceCode)
+		XCTAssertEqual(sharedImportRequestCount, 0)
+		XCTAssertEqual(store.accounts.map { $0.account.accountID }, [accountID])
+		XCTAssertEqual(store.accountReauthentication?.mode, .enrollment)
+		XCTAssertFalse(store.isEnrollingAccount)
+		XCTAssertEqual(
+			store.accountReauthentication?.failureText,
+			"This Codex login is already added. Choose a different account on the login page, then try again."
+		)
 	}
 
 	func testSkeletonPublishesWhileProjectionReadIsPending() async throws {
@@ -1296,6 +1365,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertTrue(store.accounts.first?.requiresLoginRefresh == true)
 
 		store.beginAccountReauthentication(for: accountID)
+		store.selectAccountLoginMethod(.browserRedirect)
 		for _ in 0 ..< 200 {
 			if store.accountReauthentication == nil,
 				store.accounts.first?.account.accountRevision == 8,
@@ -1317,6 +1387,7 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(request.accountID, accountID)
 		XCTAssertEqual(request.expectedRevision, 7)
 		XCTAssertNil(request.recoveryOperationID)
+		XCTAssertEqual(request.loginMethod, .browserRedirect)
 		XCTAssertEqual(
 			request.codexBin,
 			"/Applications/ChatGPT.app/Contents/Resources/codex"
@@ -1366,6 +1437,7 @@ final class AccountControlStoreTests: XCTestCase {
 			recoveryOperationID
 		)
 		store.beginAccountReauthentication(for: accountID)
+		store.selectAccountLoginMethod(.deviceCode)
 		for _ in 0 ..< 200 {
 			if store.accountReauthentication == nil,
 				store.accounts.first?.account.accountRevision == 8
@@ -1378,6 +1450,7 @@ final class AccountControlStoreTests: XCTestCase {
 		let recordedRequest = await client.reauthenticationStartRequest()
 		let request = try XCTUnwrap(recordedRequest)
 		XCTAssertEqual(request.recoveryOperationID, recoveryOperationID)
+		XCTAssertEqual(request.loginMethod, .deviceCode)
 		XCTAssertEqual(store.accounts.first?.account.lifecycleReadiness, .ready)
 		XCTAssertNil(store.accounts.first?.account.unsettledOperation)
 		XCTAssertFalse(store.accounts.first?.requiresLoginRefresh ?? true)
@@ -1404,6 +1477,7 @@ final class AccountControlStoreTests: XCTestCase {
 		await store.refresh()
 
 		store.beginAccountReauthentication(for: accountID)
+		store.selectAccountLoginMethod(.deviceCode)
 		for _ in 0 ..< 200 {
 			if store.accountReauthentication?.phase == .waitingForBrowser {
 				break
@@ -1443,6 +1517,7 @@ final class AccountControlStoreTests: XCTestCase {
 		await store.refresh()
 
 		store.beginAccountReauthentication(for: accountID)
+		store.selectAccountLoginMethod(.browserRedirect)
 		for _ in 0 ..< 200 {
 			if store.accountReauthentication?.phase == .waitingForBrowser {
 				break
@@ -1553,6 +1628,26 @@ private struct AccountControlStoreReauthenticationRequest: Equatable, Sendable {
 	let expectedRevision: UInt64
 	let recoveryOperationID: String?
 	let codexBin: String
+	let loginMethod: AccountLoginMethod
+}
+
+private struct AccountControlStoreEnrollmentLoginRequest: Equatable, Sendable {
+	let accountID: String
+	let enabled: Bool
+	let codexBin: String
+	let loginMethod: AccountLoginMethod
+}
+
+private enum AccountControlStoreActiveLogin: Equatable, Sendable {
+	case enrollment(accountID: String, enabled: Bool, loginMethod: AccountLoginMethod)
+	case reauthentication(loginMethod: AccountLoginMethod)
+
+	var loginMethod: AccountLoginMethod {
+		switch self {
+		case .enrollment(_, _, let loginMethod), .reauthentication(let loginMethod):
+			return loginMethod
+		}
+	}
 }
 
 private struct AccountControlStoreOrderRequest: Equatable, Sendable {
@@ -1586,6 +1681,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var inventoryRevisionsByAccountID = [String: UInt64]()
 	private var resetCardStatus: ResetCardOperationState = .notFound
 	private let allowsEnrollment: Bool
+	private let enrollmentError: AccountControlError?
 	private var routing: AccountRoutingControl
 	private var fixedSelectionError: AccountControlError?
 	private let accountOrderError: AccountControlError?
@@ -1611,7 +1707,10 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var deliveredObservationGenerationValue: UInt64?
 	private var enrollmentRequests = 0
 	private var reauthenticationStates: [AccountReauthenticationState]
+	private let accountLoginFailure: AccountReauthenticationFailure?
 	private var lastReauthenticationStartRequest: AccountControlStoreReauthenticationRequest?
+	private var lastEnrollmentLoginStartRequest: AccountControlStoreEnrollmentLoginRequest?
+	private var activeLogin: AccountControlStoreActiveLogin?
 	private var reauthenticationPolls = 0
 	private var reauthenticationCancels = 0
 	private var reauthenticationSessionID: String?
@@ -1632,12 +1731,14 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		inventoryRevisionOverride: UInt64? = nil,
 		maxSuccessfulInventoryReads: Int? = nil,
 		allowsEnrollment: Bool = false,
+		enrollmentError: AccountControlError? = nil,
 		routing: AccountRoutingControl? = nil,
 		fixedSelectionError: AccountControlError? = nil,
 		accountOrderError: AccountControlError? = nil,
 		useAccountError: AccountControlError? = nil,
 		projection: CodexAuthProjection = .unmanaged,
 		reauthenticationStates: [AccountReauthenticationState] = [],
+		accountLoginFailure: AccountReauthenticationFailure? = nil,
 		reauthenticationObservationDelayReads: Int = 0,
 		cancelReauthenticationWithOutcomeUnknown: Bool = false
 	) {
@@ -1654,6 +1755,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.inventoryRevisionOverride = inventoryRevisionOverride
 		self.maxSuccessfulInventoryReads = maxSuccessfulInventoryReads
 		self.allowsEnrollment = allowsEnrollment
+		self.enrollmentError = enrollmentError
 		self.routing = routing
 			?? AccountRoutingControl(
 				revision: 9,
@@ -1664,6 +1766,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.accountOrderError = accountOrderError
 		self.useAccountError = useAccountError
 		self.reauthenticationStates = reauthenticationStates
+		self.accountLoginFailure = accountLoginFailure
 		self.reauthenticationObservationDelayReads = reauthenticationObservationDelayReads
 		self.cancelReauthenticationWithOutcomeUnknown =
 			cancelReauthenticationWithOutcomeUnknown
@@ -1909,6 +2012,9 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		}
 		enrollmentRequests += 1
 		await enrollmentGate?.wait()
+		if let enrollmentError {
+			throw enrollmentError
+		}
 		return .accountChanged(account)
 	}
 
@@ -2111,22 +2217,67 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		expectedRevision: UInt64,
 		recoveryOperationID: String?,
 		idempotencyKey _: String,
-		codexBin: String
+		codexBin: String,
+		loginMethod: AccountLoginMethod
 	) async throws -> AccountReauthenticationStatus {
 		guard reauthenticationStates.isEmpty == false else {
 			throw AccountControlError.applicationUnavailable
 		}
+		activeLogin = .reauthentication(loginMethod: loginMethod)
 		reauthenticationSessionID = sessionID
 		lastReauthenticationStartRequest = AccountControlStoreReauthenticationRequest(
 			accountID: accountID,
 			expectedRevision: expectedRevision,
 			recoveryOperationID: recoveryOperationID,
-			codexBin: codexBin
+			codexBin: codexBin,
+			loginMethod: loginMethod
 		)
+		let state = reauthenticationStates.removeFirst()
+		if state == .completed {
+			markAccountLoginCompleted()
+		}
 		return reauthenticationStatus(
-			state: reauthenticationStates.removeFirst(),
+			state: state,
 			sessionID: sessionID
 		)
+	}
+
+	func startAccountEnrollment(
+		authority _: ResetCardAuthority?,
+		sessionID: String,
+		operationID: String,
+		accountID: String,
+		enabled: Bool,
+		idempotencyKey: String,
+		codexBin: String,
+		loginMethod: AccountLoginMethod
+	) async throws -> AccountReauthenticationStatus {
+		guard reauthenticationStates.isEmpty == false,
+			DecodexNativeClient.isCanonicalUUID(sessionID),
+			DecodexNativeClient.isCanonicalUUID(operationID),
+			DecodexNativeClient.isCanonicalUUID(accountID),
+			DecodexNativeClient.isCanonicalUUID(idempotencyKey),
+			codexBin.hasPrefix("/")
+		else {
+			throw AccountControlError.invalidInput
+		}
+		activeLogin = .enrollment(
+			accountID: accountID,
+			enabled: enabled,
+			loginMethod: loginMethod
+		)
+		reauthenticationSessionID = sessionID
+		lastEnrollmentLoginStartRequest = AccountControlStoreEnrollmentLoginRequest(
+			accountID: accountID,
+			enabled: enabled,
+			codexBin: codexBin,
+			loginMethod: loginMethod
+		)
+		let state = reauthenticationStates.removeFirst()
+		if state == .completed {
+			markAccountLoginCompleted()
+		}
+		return reauthenticationStatus(state: state, sessionID: sessionID)
 	}
 
 	func pollAccountReauthentication(
@@ -2141,7 +2292,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		reauthenticationPolls += 1
 		let state = reauthenticationStates.removeFirst()
 		if state == .completed {
-			markReauthenticationCompleted()
+			markAccountLoginCompleted()
 		}
 		return reauthenticationStatus(state: state, sessionID: sessionID)
 	}
@@ -2155,7 +2306,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		}
 		reauthenticationCancels += 1
 		if cancelReauthenticationWithOutcomeUnknown {
-			markReauthenticationCompleted()
+			markAccountLoginCompleted()
 			return reauthenticationStatus(
 				state: .failed,
 				sessionID: sessionID,
@@ -2167,6 +2318,10 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 
 	func reauthenticationStartRequest() -> AccountControlStoreReauthenticationRequest? {
 		lastReauthenticationStartRequest
+	}
+
+	func enrollmentLoginStartRequest() -> AccountControlStoreEnrollmentLoginRequest? {
+		lastEnrollmentLoginStartRequest
 	}
 
 	func reauthenticationPollCount() -> Int {
@@ -2185,11 +2340,49 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		return AccountReauthenticationStatus(
 			sessionID: sessionID,
 			state: state,
-			failure: failure
+			prompt: state == .waitingForBrowser && activeLogin?.loginMethod == .deviceCode
+				? AccountReauthenticationPrompt(
+					verificationURL: AccountReauthenticationPrompt.verificationURL,
+					userCode: "AB12-CDE34"
+				)
+				: nil,
+			failure: failure ?? (state == .failed ? accountLoginFailure : nil)
 		)
 	}
 
-	private func markReauthenticationCompleted() {
+	private func markAccountLoginCompleted() {
+		switch activeLogin {
+		case .enrollment(let accountID, let enabled, _):
+			secondaryAccount = ResetCardAccountRecord(
+				authority: account.authority,
+				accountID: accountID,
+				alias: "Account added",
+				accountRevision: 1,
+				enabled: enabled,
+				observedState: .available,
+				lifecycleReadiness: .ready,
+				credentialBinding: AccountCredentialBinding(
+					schemaVersion: 1,
+					version: 1,
+					fingerprintSHA256: String(repeating: "c", count: 64),
+					provider: .chatGPT,
+					providerAccountID: "provider-added"
+				),
+				unsettledOperation: nil,
+				fiveHourQuota: .unknown(durationMinutes: 300),
+				sevenDayQuota: .unknown(durationMinutes: 10_080)
+			)
+			if routing.order.contains(accountID) == false {
+				routing = AccountRoutingControl(
+					revision: routing.revision + 1,
+					mode: routing.mode,
+					order: routing.order + [accountID]
+				)
+			}
+			return
+		case .reauthentication, .none:
+			break
+		}
 		reauthenticationCompleted = true
 		account = ResetCardAccountRecord(
 			authority: account.authority,

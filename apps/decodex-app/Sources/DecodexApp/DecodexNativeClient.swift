@@ -5,6 +5,7 @@ let decodexNativeClientSchema = "decodex/app-native-client/1"
 
 private let decodexNativeClientConfigSchema = "decodex/app-native-client-config/1"
 private let decodexNativeClientABIVersion: UInt32 = 1
+private let decodexNativeArtifactCohort: UInt32 = 1
 private let decodexNativeClientResponseLimit = 8 * 1024 * 1024
 
 struct DecodexNativeRequest: Encodable, Sendable {
@@ -25,6 +26,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 	var recoveryOperationID: String? = nil
 	var sessionID: String? = nil
 	var codexBin: String? = nil
+	var loginMethod: AccountLoginMethod? = nil
 	var enabled: Bool? = nil
 
 	enum CodingKeys: String, CodingKey {
@@ -45,6 +47,7 @@ struct DecodexNativeRequest: Encodable, Sendable {
 		case recoveryOperationID = "recovery_operation_id"
 		case sessionID = "session_id"
 		case codexBin = "codex_bin"
+		case loginMethod = "login_method"
 		case enabled
 	}
 }
@@ -100,6 +103,7 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 	case protocolTimeout = "protocol_timeout"
 	case protocolMajorMismatch = "protocol_major_mismatch"
 	case protocolMinorMismatch = "protocol_minor_mismatch"
+	case artifactCohortMismatch = "artifact_cohort_mismatch"
 	case serverIdentityMismatch = "server_identity_mismatch"
 	case protocolMalformed = "protocol_malformed"
 	case protocolViolation = "protocol_violation"
@@ -128,7 +132,8 @@ enum DecodexNativeFailure: String, Decodable, Sendable {
 			return .transportDisconnected
 		case .protocolBackpressure:
 			return .transportBackpressured
-		case .runtimeUnavailable, .invalidHandle, .internalFailure:
+		case .runtimeUnavailable, .invalidHandle, .internalFailure,
+			.artifactCohortMismatch:
 			return .nativeClientUnavailable
 		case .applicationAcceptanceUnknown:
 			return .usePotentiallyDispatched
@@ -446,6 +451,7 @@ private struct DecodexNativeConfig: Encodable {
 
 private final class DecodexNativeLibrary: @unchecked Sendable {
 	typealias ABIVersion = @convention(c) () -> UInt32
+	typealias ArtifactCohort = @convention(c) () -> UInt32
 	typealias Create = @convention(c) (
 		UnsafePointer<UInt8>?,
 		Int,
@@ -490,6 +496,13 @@ private final class DecodexNativeLibrary: @unchecked Sendable {
 				named: "decodex_app_native_client_abi_version"
 			)
 			guard abi() == decodexNativeClientABIVersion else {
+				throw ResetCardClientError.nativeClientUnavailable
+			}
+			let artifactCohort: ArtifactCohort = try Self.symbol(
+				image,
+				named: "decodex_app_native_client_artifact_cohort"
+			)
+			guard artifactCohort() == decodexNativeArtifactCohort else {
 				throw ResetCardClientError.nativeClientUnavailable
 			}
 			create = try Self.symbol(

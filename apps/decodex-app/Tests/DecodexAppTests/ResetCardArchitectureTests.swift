@@ -356,7 +356,13 @@ final class ResetCardArchitectureTests: XCTestCase {
 			),
 			encoding: .utf8
 		)
-		let source = panel + controls + login
+		let loginPresentation = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountReauthenticationPresentation.swift"
+			),
+			encoding: .utf8
+		)
+		let source = panel + controls + login + loginPresentation
 
 		for canonicalLabel in [
 			"Show email addresses",
@@ -368,8 +374,11 @@ final class ResetCardArchitectureTests: XCTestCase {
 			"Enable account",
 			"Log out",
 			"Refresh login",
+			"Add account",
 			"Cancel login",
 			"Close login",
+			"Cancel adding account",
+			"Close add account",
 		] {
 			XCTAssertTrue(
 				source.contains("\"\(canonicalLabel)"),
@@ -477,7 +486,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		let addControlEnd = try XCTUnwrap(
 			accountPanel.range(
-				of: "help: \"Add Codex login\"",
+					of: "help: \"Add account\"",
 				range: addControlStart.lowerBound ..< accountPanel.endIndex
 			)
 		)
@@ -511,7 +520,9 @@ final class ResetCardArchitectureTests: XCTestCase {
 				"@AppStorage(PanelCardMaterial.storageKey) private var panelCardMaterialRawValue = PanelCardMaterial.thin.rawValue"
 			)
 		)
-		XCTAssertFalse(addControl.contains("isDisabled:"))
+		XCTAssertTrue(
+			addControl.contains("isDisabled: store.canBeginEnrollment == false")
+		)
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 18)"))
 		XCTAssertTrue(accountPanel.contains(".panelCardSurface(cornerRadius: 16)"))
 		XCTAssertFalse(accountPanel.contains(".panelCardSurface(cornerRadius: 20"))
@@ -519,9 +530,7 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(accountControls.contains("\"Use in Codex\""))
 		XCTAssertTrue(accountControls.contains("await store.routeAccount("))
 		XCTAssertFalse(accountControls.contains("await store.useAccountInCodex("))
-		XCTAssertTrue(
-			accountControls.contains(".disabled(store.canBeginEnrollment == false)")
-		)
+		XCTAssertFalse(accountControls.contains("canBeginEnrollment"))
 		XCTAssertFalse(resetCards.contains(".panelCardSurface(cornerRadius: 6"))
 		XCTAssertFalse(resetCards.contains(".enumerated()"))
 		XCTAssertFalse(resetCards.contains("ordinal"))
@@ -784,17 +793,25 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(view.contains(#"Image(systemName: "xmark")"#))
 		XCTAssertFalse(view.contains(#"Image(systemName: "safari")"#))
 		XCTAssertFalse(view.contains("doc.on.doc"))
-		XCTAssertFalse(view.contains("one-time code"))
-		XCTAssertFalse(view.contains("verificationURL"))
+		XCTAssertTrue(view.contains("Continue in browser"))
+		XCTAssertTrue(view.contains("Use device code"))
+		XCTAssertTrue(view.contains("Copy code"))
+		XCTAssertTrue(view.contains("prompt.verificationURL.absoluteString"))
+		XCTAssertTrue(view.contains("prompt.userCode"))
+		XCTAssertTrue(view.contains("NSWorkspace.shared.open(url)"))
+		XCTAssertTrue(view.contains(".keyboardShortcut(.defaultAction)"))
 		XCTAssertTrue(view.contains(".keyboardShortcut(.cancelAction)"))
 		XCTAssertTrue(view.contains(".frame(width: 220)"))
 		XCTAssertTrue(view.contains(".padding(PanelSpacing.popoverInset)"))
-		XCTAssertFalse(view.contains("Enter this one-time code"))
 		XCTAssertFalse(view.contains("Divider()"))
 		XCTAssertFalse(view.contains(".interactiveDismissDisabled"))
 		XCTAssertFalse(view.contains(".onDisappear"))
 		XCTAssertFalse(view.contains(".onChange(of:"))
 		XCTAssertTrue(panel.contains("reauthenticationOverlay"))
+		XCTAssertTrue(panel.contains("store.beginAccountEnrollment()"))
+		XCTAssertFalse(panel.contains("enrollFromSharedCodex"))
+		XCTAssertFalse(panel.contains("AccountEnrollmentView"))
+		XCTAssertFalse(controls.contains("struct AccountEnrollmentView"))
 		XCTAssertTrue(panel.contains(".disabled(store.accountReauthentication != nil)"))
 		XCTAssertTrue(panel.contains(".allowsHitTesting(store.accountReauthentication == nil)"))
 		XCTAssertTrue(panel.contains(".accessibilityHidden(store.accountReauthentication != nil)"))
@@ -814,7 +831,21 @@ final class ResetCardArchitectureTests: XCTestCase {
 		)
 		XCTAssertTrue(app.contains("await DecodexNativeClient.shutdownSharedSession()"))
 		XCTAssertTrue(native.contains("sharedSession.shutdown()"))
+		let accountControl = try String(
+			contentsOf: sourceURL.appendingPathComponent(
+				"AccountControlCLIClient.swift"
+			),
+			encoding: .utf8
+		)
+		XCTAssertTrue(accountControl.contains("startAccountEnrollment("))
+		XCTAssertTrue(accountControl.contains(#"operation: "start_account_enrollment""#))
+		XCTAssertTrue(native.contains(#"case loginMethod = "login_method""#))
 		XCTAssertTrue(native.contains("library.destroy(handle)"))
+		XCTAssertTrue(native.contains("decodexNativeArtifactCohort: UInt32 = 1"))
+		XCTAssertTrue(native.contains("decodex_app_native_client_artifact_cohort"))
+		XCTAssertTrue(
+			native.contains("artifactCohort() == decodexNativeArtifactCohort")
+		)
 	}
 
 	func testAccountDataUsesDaemonObservationSignalsWithoutAUiRefreshClock() throws {

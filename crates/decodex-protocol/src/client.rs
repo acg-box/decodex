@@ -19,7 +19,8 @@ use tokio_tungstenite::{
 use crate::{
 	AccountInitialSelectionResult, AccountInspectResult, AccountObservationSignal,
 	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
-	CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage, CodexAuthProjectionResult,
+	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
+	CodexAuthProjectionResult,
 	CommandEnvelope, CommandError, CommandOutcome, CommandPayload, CorrelationId, DoctorReport,
 	EntityId, EntityRevision, IdempotencyKey, ProtocolVersion, QueryEnvelope, QueryId,
 	QueryPayload, QueryResultPayload, ReceiptDisposition, Refusal, RefusalEnvelope,
@@ -252,6 +253,7 @@ impl DoctorClient {
 		.map_err(map_connect_error)?;
 		let hello = ClientMessage::Hello(ClientHello {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(self.profile.expected_server_id.clone()),
 			resume: None,
 		});
@@ -268,6 +270,9 @@ impl DoctorClient {
 			|| welcome.supported != crate::SupportedVersions::current()
 		{
 			return Err(version_failure(welcome.version));
+		}
+		if welcome.artifact_cohort != Some(CURRENT_ARTIFACT_COHORT) {
+			return Err(ClientFailure::ArtifactCohortMismatch);
 		}
 
 		self.verify_server(&welcome.server_id)?;
@@ -743,6 +748,7 @@ impl ResetCardClient {
 			&mut socket,
 			ClientMessage::Hello(ClientHello {
 				version: CURRENT_VERSION,
+				artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 				expected_server_id: Some(self.profile.expected_server_id.clone()),
 				resume: None,
 			}),
@@ -763,6 +769,9 @@ impl ResetCardClient {
 		}
 		if welcome.supported != crate::SupportedVersions::current() {
 			return Err(ClientFailure::ProtocolMinorMismatch);
+		}
+		if welcome.artifact_cohort != Some(CURRENT_ARTIFACT_COHORT) {
+			return Err(ClientFailure::ArtifactCohortMismatch);
 		}
 
 		self.verify_version_and_server(welcome.version, &welcome.server_id)?;
@@ -1173,6 +1182,7 @@ impl AccountClient {
 		if !matches!(
 			&payload,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
+				| CommandPayload::EnrollAccountFromCredentialFile { .. }
 				| CommandPayload::ImportAccountCredentialFile { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
@@ -1313,6 +1323,10 @@ fn account_result_matches(
 			ResultPayload::AccountChanged { account },
 		)
 		| (
+			CommandPayload::EnrollAccountFromCredentialFile { account_id, .. },
+			ResultPayload::AccountChanged { account },
+		)
+		| (
 			CommandPayload::ImportAccountCredentialFile { account_id, .. },
 			ResultPayload::AccountChanged { account },
 		)
@@ -1403,6 +1417,8 @@ pub enum ClientFailure {
 	ProtocolMajorMismatch,
 	/// The server did not support the requested current minor.
 	ProtocolMinorMismatch,
+	/// The daemon and client artifacts are not from the same build/protocol cohort.
+	ArtifactCohortMismatch,
 	/// The server did not match the selected stable identity pin.
 	ServerIdentityMismatch,
 	/// A server response was not a valid expected typed envelope.
@@ -1436,6 +1452,7 @@ impl Display for ClientFailure {
 			Self::ProtocolTimeout => "daemon protocol timed out",
 			Self::ProtocolMajorMismatch => "daemon protocol major version does not match",
 			Self::ProtocolMinorMismatch => "daemon protocol minor version is unsupported",
+			Self::ArtifactCohortMismatch => "daemon and client artifact cohorts do not match",
 			Self::ServerIdentityMismatch => "stable server identity does not match",
 			Self::ProtocolMalformed => "daemon protocol response is malformed",
 			Self::ProtocolViolation => "daemon refused the protocol operation",
@@ -1521,6 +1538,7 @@ fn map_refusal(refusal: Refusal) -> ClientFailure {
 			ClientFailure::ProtocolMajorMismatch,
 		Refusal::UnsupportedVersion(VersionRefusal::UnsupportedMinor { .. }) =>
 			ClientFailure::ProtocolMinorMismatch,
+		Refusal::ArtifactCohortMismatch { .. } => ClientFailure::ArtifactCohortMismatch,
 		Refusal::ServerIdentityMismatch { .. } => ClientFailure::ServerIdentityMismatch,
 		Refusal::ProtocolViolation { .. } => ClientFailure::ProtocolViolation,
 		Refusal::Backpressure { .. } => ClientFailure::ProtocolBackpressure,
@@ -1547,7 +1565,8 @@ mod tests {
 
 	use crate::{
 		AccountClient, AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto,
-		AccountProfileResult, CURRENT_VERSION, Channel, ClientCommandId, ClientFailure,
+		AccountProfileResult, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, Channel, ClientCommandId,
+		ClientFailure,
 		ClientMessage, ClientProfile, CommandError, CommandOutcome, CommandReceipt,
 		CommandResultEnvelope, CorrelationId, Cursor, DoctorCheck, DoctorClient, DoctorComponent,
 		DoctorIssue, DoctorReport, DoctorStatus, EntityId, EntityRevision, EventEnvelope,
@@ -1573,6 +1592,7 @@ mod tests {
 		vec![
 			typed(ServerMessage::Welcome(ServerWelcome {
 				version: CURRENT_VERSION,
+				artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 				supported: SupportedVersions::current(),
 				server_id: server_id.clone(),
 				instance_id: None,
@@ -2208,6 +2228,13 @@ max_entry_bytes = 0
 				ClientFailure::ProtocolMinorMismatch,
 			),
 			(
+				Refusal::ArtifactCohortMismatch {
+					expected: CURRENT_ARTIFACT_COHORT,
+					actual: None,
+				},
+				ClientFailure::ArtifactCohortMismatch,
+			),
+			(
 				Refusal::ServerIdentityMismatch {
 					expected: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 					actual: ServerId::new("wrong-server").expect("test operation must succeed"),
@@ -2294,6 +2321,7 @@ max_entry_bytes = 0
 
 		let wrong_welcome_version = typed(ServerMessage::Welcome(ServerWelcome {
 			version: ProtocolVersion { major: 2, minor: 0 },
+			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 			supported: SupportedVersions::current(),
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			instance_id: None,
@@ -2309,8 +2337,27 @@ max_entry_bytes = 0
 
 		task.await.expect("test operation must succeed");
 
+		let missing_cohort = typed(ServerMessage::Welcome(ServerWelcome {
+			version: CURRENT_VERSION,
+			artifact_cohort: None,
+			supported: SupportedVersions::current(),
+			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
+			instance_id: None,
+			cursor: Cursor(0),
+			reconnect: ReconnectMode::Snapshot,
+		}));
+		let (profile, task, _temp) = fixture(vec![missing_cohort], Vec::new()).await;
+
+		assert_eq!(
+			DoctorClient::new(profile).query().await.unwrap_err(),
+			ClientFailure::ArtifactCohortMismatch,
+		);
+
+		task.await.expect("test operation must succeed");
+
 		let widened_welcome = typed(ServerMessage::Welcome(ServerWelcome {
 			version: CURRENT_VERSION,
+			artifact_cohort: Some(CURRENT_ARTIFACT_COHORT),
 			supported: SupportedVersions { major: 2, minimum_minor: 0, maximum_minor: 2 },
 			server_id: ServerId::new(SERVER_ID).expect("test operation must succeed"),
 			instance_id: None,
@@ -3004,6 +3051,50 @@ max_entry_bytes = 0
 
 		assert!(super::account_result_matches(&command, EntityRevision(12), &exact));
 		assert!(!super::account_result_matches(&command, EntityRevision(12), &stale));
+	}
+
+	#[test]
+	fn device_login_enrollment_result_requires_exact_new_account_and_revision() {
+		let account_id =
+			EntityId::new("44234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
+		let command = crate::CommandPayload::EnrollAccountFromCredentialFile {
+			operation_id: EntityId::new("45234567-89ab-4def-8123-456789abcdef")
+				.expect("canonical operation ID"),
+			account_id: account_id.clone(),
+			enabled: true,
+			source_descriptor: crate::WireText::new("/private/tmp/login/auth.json")
+				.expect("bounded source descriptor"),
+		};
+		let account = serde_json::from_value::<crate::AccountDto>(serde_json::json!({
+			"account_id": account_id.as_str(),
+			"alias": "Val",
+			"enabled": true,
+			"account_revision": 1,
+			"observed_state": "unknown",
+			"lifecycle_readiness": "credential_absent",
+			"five_hour_quota": {
+				"duration_minutes": 300,
+				"observed_at_unix_micros": null,
+				"result": {"state": "unknown"}
+			},
+			"seven_day_quota": {
+				"duration_minutes": 10080,
+				"observed_at_unix_micros": null,
+				"result": {"state": "unknown"}
+			}
+		}))
+		.expect("account fixture is valid");
+		let exact = ResultPayload::AccountChanged { account: Box::new(account.clone()) };
+		let other_account = ResultPayload::AccountChanged {
+			account: Box::new(crate::AccountDto {
+				account_id: EntityId::new("46234567-89ab-4def-8123-456789abcdef")
+					.expect("canonical account ID"),
+				..account
+			}),
+		};
+
+		assert!(super::account_result_matches(&command, EntityRevision(1), &exact));
+		assert!(!super::account_result_matches(&command, EntityRevision(1), &other_account));
 	}
 
 	#[tokio::test]

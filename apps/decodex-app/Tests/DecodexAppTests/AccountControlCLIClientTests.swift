@@ -342,6 +342,102 @@ final class AccountControlNativeClientTests: XCTestCase {
 		}
 	}
 
+	func testSharedImportDuplicateUsesTypedEnrollmentRejectionAndExactRequest() async throws {
+		let authority = authority
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "enroll_account",
+				authority: authority,
+				data: """
+				{"outcome":"rejected","data":{"error":{
+				  "reason":"account_command_rejected",
+				  "rejection":"provider_already_enrolled"
+				}}}
+				"""
+			)
+		}
+
+		do {
+			_ = try await client.enrollFromSharedCodex(
+				authority: authority,
+				operationID: operationID,
+				accountID: accountID,
+				enabled: true,
+				idempotencyKey: idempotencyKey
+			)
+			XCTFail("A duplicate shared login must not appear applied")
+		} catch let error as AccountControlError {
+			XCTAssertEqual(
+				error,
+				.rejected(.providerAlreadyEnrolled, actualRevision: nil)
+			)
+			XCTAssertEqual(
+				error.localizedDescription,
+				"This Codex login is already added. Choose a different account on the login page, then try again."
+			)
+		}
+
+		let request = try XCTUnwrap(recorder.requests.first)
+		let object = try nativeJSONObject(request.data)
+		XCTAssertEqual(object["operation"] as? String, "enroll_account")
+		XCTAssertEqual(object["operation_id"] as? String, operationID)
+		XCTAssertEqual(object["account_id"] as? String, accountID)
+		XCTAssertEqual(request.authority, authority)
+	}
+
+	func testAccountEnrollmentUsesExactNativeStartRequest() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "start_account_enrollment",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"opening_browser"}
+					"""
+			)
+		}
+
+		let status = try await client.startAccountEnrollment(
+			authority: authority,
+			sessionID: sessionID,
+			operationID: operationID,
+			accountID: accountID,
+			enabled: true,
+			idempotencyKey: idempotencyKey,
+			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex",
+			loginMethod: .browserRedirect
+		)
+
+		XCTAssertEqual(status.state, .openingBrowser)
+		let request = try XCTUnwrap(recorder.requests.first)
+		let object = try nativeJSONObject(request.data)
+		XCTAssertEqual(
+			Set(object.keys),
+			[
+				"schema", "operation", "session_id", "operation_id",
+				"account_id", "enabled", "idempotency_key", "codex_bin",
+				"login_method",
+			]
+		)
+		XCTAssertEqual(object["operation"] as? String, "start_account_enrollment")
+		XCTAssertEqual(object["session_id"] as? String, sessionID)
+		XCTAssertEqual(object["operation_id"] as? String, operationID)
+		XCTAssertEqual(object["account_id"] as? String, accountID)
+		XCTAssertEqual(object["enabled"] as? Bool, true)
+		XCTAssertEqual(object["idempotency_key"] as? String, idempotencyKey)
+		XCTAssertEqual(object["login_method"] as? String, "browser_redirect")
+		XCTAssertEqual(
+			object["codex_bin"] as? String,
+			"/Applications/ChatGPT.app/Contents/Resources/codex"
+		)
+		XCTAssertEqual(request.authority, authority)
+	}
+
 	func testAccountCommandRejectsUnknownAndContradictoryAppliedResults() async throws {
 		let authority = authority
 		let accountID = accountID
@@ -393,11 +489,13 @@ final class AccountControlNativeClientTests: XCTestCase {
 			switch operation {
 			case "start_account_reauthentication":
 				data = """
-					{"session_id":"\(sessionID)","state":"opening_browser"}
+					{"session_id":"\(sessionID)","state":"requesting_code"}
 					"""
 			case "poll_account_reauthentication":
 				data = """
-					{"session_id":"\(sessionID)","state":"waiting_for_browser"}
+					{"session_id":"\(sessionID)","state":"waiting_for_browser",
+					 "prompt":{"verification_url":"https://auth.openai.com/codex/device",
+					 "user_code":"AB12-CDE34"}}
 					"""
 			case "cancel_account_reauthentication":
 				data = """
@@ -421,7 +519,8 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRevision: 7,
 			recoveryOperationID: recoveryOperationID,
 			idempotencyKey: idempotencyKey,
-			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex"
+			codexBin: "/Applications/ChatGPT.app/Contents/Resources/codex",
+			loginMethod: .deviceCode
 		)
 		let polled = try await client.pollAccountReauthentication(
 			authority: authority,
@@ -432,8 +531,9 @@ final class AccountControlNativeClientTests: XCTestCase {
 			sessionID: sessionID
 		)
 
-		XCTAssertEqual(started.state, .openingBrowser)
+		XCTAssertEqual(started.state, .requestingCode)
 		XCTAssertEqual(polled.state, .waitingForBrowser)
+		XCTAssertEqual(polled.prompt?.userCode, "AB12-CDE34")
 		XCTAssertEqual(cancelled.state, .cancelled)
 
 		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
@@ -450,7 +550,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			[
 				"schema", "operation", "session_id", "operation_id",
 				"account_id", "expected_revision", "recovery_operation_id",
-				"idempotency_key", "codex_bin",
+				"idempotency_key", "codex_bin", "login_method",
 			]
 		)
 		XCTAssertEqual(requests[0]["session_id"] as? String, sessionID)
@@ -464,6 +564,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 			requests[0]["codex_bin"] as? String,
 			"/Applications/ChatGPT.app/Contents/Resources/codex"
 		)
+		XCTAssertEqual(requests[0]["login_method"] as? String, "device_code")
 		XCTAssertEqual(
 			Set(requests[1].keys),
 			["schema", "operation", "session_id"]
@@ -499,6 +600,33 @@ final class AccountControlNativeClientTests: XCTestCase {
 
 		XCTAssertEqual(status.state, .failed)
 		XCTAssertEqual(status.failure, .accountMismatch)
+	}
+
+	func testAccountEnrollmentDecodesDuplicateProviderFailure() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"failed",
+					 "failure":"provider_already_enrolled"}
+					"""
+			)
+		}
+
+		let status = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(status.state, .failed)
+		XCTAssertEqual(status.failure, .providerAlreadyEnrolled)
+		XCTAssertEqual(
+			status.failure?.presentation,
+			"This Codex login is already added. Choose a different account on the login page, then try again."
+		)
 	}
 
 	func testAccountReauthenticationRejectsMalformedOrUnexpectedPromptState() async {
