@@ -3,7 +3,7 @@ import SwiftUI
 
 struct AccountReauthenticationView: View {
 	private enum FocusedAction: Hashable {
-		case continueInBrowser
+		case browser
 		case deviceCode
 		case cancel
 	}
@@ -21,6 +21,13 @@ struct AccountReauthenticationView: View {
 				let desiredFocus = desiredFocus(for: presentation)
 
 				header(presentation)
+					.task(id: desiredFocus) {
+						await Task.yield()
+						guard Task.isCancelled == false else {
+							return
+						}
+						focusedAction = desiredFocus
+					}
 
 				if presentation.isSelectingMethod {
 					methodSelector
@@ -36,58 +43,6 @@ struct AccountReauthenticationView: View {
 						.foregroundStyle(PanelPalette.destructive(colorScheme))
 						.fixedSize(horizontal: false, vertical: true)
 						.transition(.panelInline)
-				}
-
-				HStack(spacing: PanelSpacing.section) {
-					if presentation.canCloseWithoutCancellation
-						|| presentation.canRequestCancellation
-					{
-						let actionLabel = presentation.isSelectingMethod
-							? presentation.cancelActionLabel
-							: presentation.canCloseWithoutCancellation
-							? presentation.closeActionLabel
-							: presentation.cancelActionLabel
-						Button {
-							if presentation.canCloseWithoutCancellation {
-								store.closeAccountReauthentication()
-							} else {
-								Task {
-									await store.cancelAccountReauthentication()
-								}
-							}
-						} label: {
-							Image(systemName: "xmark")
-								.frame(width: 22, height: 18)
-						}
-						.buttonStyle(.bordered)
-						.keyboardShortcut(.cancelAction)
-						.focused($focusedAction, equals: .cancel)
-						.help(actionLabel)
-						.accessibilityLabel(actionLabel)
-						.transition(
-							.opacity.combined(
-								with: .scale(scale: 0.94, anchor: .leading)
-							)
-						)
-					} else {
-						ProgressView()
-							.controlSize(.mini)
-							.frame(width: 38, height: 24)
-							.help(presentation.mode.installingLabel)
-							.accessibilityLabel(presentation.mode.installingLabel)
-							.transition(
-								.opacity.combined(
-									with: .scale(scale: 0.9)
-								)
-							)
-					}
-				}
-				.task(id: desiredFocus) {
-					await Task.yield()
-					guard Task.isCancelled == false else {
-						return
-					}
-					focusedAction = desiredFocus
 				}
 			}
 		}
@@ -108,7 +63,7 @@ struct AccountReauthenticationView: View {
 		for presentation: AccountReauthenticationPresentation
 	) -> FocusedAction? {
 		if presentation.isSelectingMethod {
-			return .continueInBrowser
+			return .browser
 		}
 		if presentation.canRequestCancellation
 			|| presentation.canCloseWithoutCancellation
@@ -122,60 +77,127 @@ struct AccountReauthenticationView: View {
 		_ presentation: AccountReauthenticationPresentation
 	) -> some View {
 		VStack(alignment: .leading, spacing: PanelSpacing.micro) {
-			HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.related) {
-				Text(presentation.title)
-					.font(PanelFont.transientTitle)
-					.foregroundStyle(PanelPalette.primaryText(colorScheme))
+			HStack(alignment: .center, spacing: PanelSpacing.related) {
+				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
+					Text(presentation.title)
+						.font(PanelFont.transientTitle)
+						.foregroundStyle(PanelPalette.primaryText(colorScheme))
+
+					if let accountLabel = presentation.headerAccountLabel {
+						Text(accountLabel)
+							.font(PanelFont.tertiary)
+							.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+							.lineLimit(1)
+							.truncationMode(.middle)
+					}
+				}
+				.accessibilityElement(children: .combine)
+				.accessibilityLabel(
+					presentation.headerAccountLabel.map {
+						"\(presentation.accessibilityLabel) for \($0)"
+					} ?? presentation.accessibilityLabel
+				)
 
 				Spacer(minLength: 6)
 
+				headerAction(presentation)
+			}
+
+			if presentation.showsStatusText {
 				HStack(alignment: .firstTextBaseline, spacing: PanelSpacing.micro) {
-					if presentation.showsProgress {
+					if presentation.showsProgress
+						&& presentation.canRequestCancellation
+					{
 						ProgressView()
 							.controlSize(.mini)
 							.transition(.opacity)
 							.accessibilityHidden(true)
 					}
 
-					Text(presentation.accountLabel)
-						.font(PanelFont.tertiary)
+					Text(presentation.statusText)
+						.font(PanelFont.transientBody)
 						.foregroundStyle(PanelPalette.secondaryText(colorScheme))
 						.lineLimit(1)
-						.truncationMode(.middle)
+						.truncationMode(.tail)
+						.contentTransition(.opacity)
+						.accessibilityLabel(presentation.statusText)
 				}
+				.transition(.panelInline)
 			}
-			.accessibilityElement(children: .combine)
-			.accessibilityLabel(
-				presentation.mode == .enrollment
-					? presentation.accessibilityLabel
-					: "\(presentation.accessibilityLabel) for \(presentation.accountLabel)"
-			)
+		}
+	}
 
-			Text(presentation.statusText)
-				.font(PanelFont.transientBody)
-				.foregroundStyle(PanelPalette.secondaryText(colorScheme))
-				.contentTransition(.opacity)
-				.lineLimit(1)
-				.truncationMode(.tail)
-				.accessibilityLabel(presentation.statusText)
+	@ViewBuilder
+	private func headerAction(
+		_ presentation: AccountReauthenticationPresentation
+	) -> some View {
+		if presentation.canCloseWithoutCancellation
+			|| presentation.canRequestCancellation
+		{
+			let actionLabel = presentation.canCloseWithoutCancellation
+				? presentation.closeActionLabel
+				: presentation.cancelActionLabel
+			Button {
+				if presentation.canCloseWithoutCancellation {
+					store.closeAccountReauthentication()
+				} else {
+					Task {
+						await store.cancelAccountReauthentication()
+					}
+				}
+			} label: {
+				Image(systemName: "xmark")
+					.font(PanelFont.tertiary)
+					.frame(width: 28, height: 28)
+					.contentShape(Rectangle())
+			}
+			.buttonStyle(PanelPressButtonStyle(pressedScale: 0.9))
+			.foregroundStyle(PanelPalette.secondaryText(colorScheme))
+			.keyboardShortcut(.cancelAction)
+			.focused($focusedAction, equals: .cancel)
+			.help(actionLabel)
+			.accessibilityLabel(actionLabel)
+			.transition(
+				.opacity.combined(
+					with: .scale(scale: 0.94, anchor: .trailing)
+				)
+			)
+		} else {
+			ProgressView()
+				.controlSize(.mini)
+				.frame(width: 28, height: 28)
+				.help(presentation.mode.installingLabel)
+				.accessibilityLabel(presentation.mode.installingLabel)
+				.transition(
+					.opacity.combined(
+						with: .scale(scale: 0.9)
+					)
+				)
 		}
 	}
 
 	private var methodSelector: some View {
-		VStack(alignment: .leading, spacing: PanelSpacing.related) {
-			Button("Continue in browser") {
+		HStack(spacing: PanelSpacing.related) {
+			Button {
 				store.selectAccountLoginMethod(.browserRedirect)
+			} label: {
+				Text("Browser")
+					.frame(maxWidth: .infinity)
 			}
 			.buttonStyle(.borderedProminent)
 			.keyboardShortcut(.defaultAction)
-			.focused($focusedAction, equals: .continueInBrowser)
-			.frame(maxWidth: .infinity, alignment: .leading)
+			.focused($focusedAction, equals: .browser)
+			.frame(maxWidth: .infinity)
 
-			Button("Use device code") {
+			Button {
 				store.selectAccountLoginMethod(.deviceCode)
+			} label: {
+				Text("Device code")
+					.frame(maxWidth: .infinity)
 			}
 			.buttonStyle(.bordered)
 			.focused($focusedAction, equals: .deviceCode)
+			.frame(maxWidth: .infinity)
 		}
 	}
 
