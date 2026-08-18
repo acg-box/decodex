@@ -1,12 +1,15 @@
 use std::{
-	fs,
+	fs::{self, File},
 	io::Read,
-	os::unix::{
-		fs::{MetadataExt as _, PermissionsExt as _},
-		process::CommandExt as _,
+	os::{
+		fd::{AsRawFd as _, FromRawFd as _, OwnedFd},
+		unix::{
+			fs::{MetadataExt as _, PermissionsExt as _},
+			process::CommandExt as _,
+		},
 	},
 	path::{Path, PathBuf},
-	process::{Child, Command, ExitStatus, Stdio},
+	process::{Child, ChildStderr, ChildStdout, Command, ExitStatus, Stdio},
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, Ordering},
@@ -335,21 +338,17 @@ fn run_login_in_home(
 ) -> Status {
 	let session_id = start.session_id.clone();
 	let login_method = start.login_method;
-	let mut child = match login_command(&codex_bin, login_home, login_method).spawn() {
-		Ok(child) => child,
-		Err(_) => return Status::failed(session_id, Failure::CodexUnavailable),
+	let spawned = match spawn_login_process(
+		login_command(&codex_bin, login_home, login_method),
+		login_method,
+	) {
+		Ok(spawned) => spawned,
+		Err(failure) => return Status::failed(session_id, failure),
 	};
+	let SpawnedLoginProcess { mut child, stdout, stderr } = spawned;
 	if login_method == LoginMethod::BrowserRedirect {
 		shared.set_status(Status::waiting_for_browser(session_id.clone(), None));
 	}
-	let Some(stdout) = child.stdout.take() else {
-		terminate_child(&mut child);
-		return Status::failed(session_id, Failure::LoginFailed);
-	};
-	let Some(stderr) = child.stderr.take() else {
-		terminate_child(&mut child);
-		return Status::failed(session_id, Failure::LoginFailed);
-	};
 	let (sender, receiver) = mpsc::channel();
 	let stdout_reader = match spawn_reader(stdout, sender.clone()) {
 		Ok(reader) => reader,
@@ -418,10 +417,141 @@ fn login_command(codex_bin: &Path, login_home: &Path, login_method: LoginMethod)
 		.env("CODEX_HOME", login_home)
 		.env("CODEX_SQLITE_HOME", login_home)
 		.stdin(Stdio::null())
-		.stdout(Stdio::piped())
 		.stderr(Stdio::piped())
 		.process_group(0);
 	command
+}
+
+struct SpawnedLoginProcess {
+	child: Child,
+	stdout: LoginStdout,
+	stderr: ChildStderr,
+}
+
+enum LoginStdout {
+	Pipe(ChildStdout),
+	PseudoTerminal(PseudoTerminalReader),
+}
+
+impl Read for LoginStdout {
+	fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+		match self {
+			Self::Pipe(reader) => reader.read(buffer),
+			Self::PseudoTerminal(reader) => reader.read(buffer),
+		}
+	}
+}
+
+struct PseudoTerminalReader(File);
+
+impl Read for PseudoTerminalReader {
+	fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+		match self.0.read(buffer) {
+			Err(error) if error.raw_os_error() == Some(libc::EIO) => Ok(0),
+			result => result,
+		}
+	}
+}
+
+struct PseudoTerminal {
+	master: OwnedFd,
+	slave: OwnedFd,
+}
+
+impl PseudoTerminal {
+	fn open() -> Result<Self, ()> {
+		let mut master = -1;
+		let mut slave = -1;
+		// SAFETY: `openpty` initializes both output descriptors on success. The
+		// optional name, termios, and window-size pointers are intentionally null.
+		if unsafe {
+			libc::openpty(
+				&raw mut master,
+				&raw mut slave,
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+				std::ptr::null_mut(),
+			)
+		} == -1
+		{
+			return Err(());
+		}
+		// SAFETY: A successful `openpty` returned two new descriptors owned by
+		// this process. `OwnedFd` closes every subsequent error and drop path.
+		let master = unsafe { OwnedFd::from_raw_fd(master) };
+		// SAFETY: Same ownership proof as the master descriptor above.
+		let slave = unsafe { OwnedFd::from_raw_fd(slave) };
+		set_close_on_exec(&master)?;
+		set_close_on_exec(&slave)?;
+		// SAFETY: `slave` is a valid open PTY descriptor owned by this process.
+		if unsafe { libc::fchmod(slave.as_raw_fd(), 0o600) } == -1 {
+			return Err(());
+		}
+		let metadata = fd_metadata(&slave)?;
+		if metadata.st_uid != unsafe { libc::geteuid() } || metadata.st_mode & 0o077 != 0 {
+			return Err(());
+		}
+		Ok(Self { master, slave })
+	}
+}
+
+fn set_close_on_exec(fd: &OwnedFd) -> Result<(), ()> {
+	// SAFETY: `fd` owns a valid open descriptor for both `fcntl` operations.
+	let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+	if flags == -1 {
+		return Err(());
+	}
+	// SAFETY: The same descriptor remains open, and `F_SETFD` accepts the
+	// existing flags with `FD_CLOEXEC` added.
+	if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, flags | libc::FD_CLOEXEC) } == -1 {
+		return Err(());
+	}
+	Ok(())
+}
+
+fn fd_metadata(fd: &OwnedFd) -> Result<libc::stat, ()> {
+	let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
+	// SAFETY: `fd` is valid and `metadata` points to writable storage for one
+	// `stat` value. A successful call initializes that value completely.
+	if unsafe { libc::fstat(fd.as_raw_fd(), metadata.as_mut_ptr()) } == -1 {
+		return Err(());
+	}
+	// SAFETY: The successful `fstat` above initialized the value.
+	Ok(unsafe { metadata.assume_init() })
+}
+
+fn spawn_login_process(
+	mut command: Command,
+	login_method: LoginMethod,
+) -> Result<SpawnedLoginProcess, Failure> {
+	let mut pseudo_terminal_reader = None;
+	match login_method {
+		LoginMethod::BrowserRedirect => {
+			command.stdout(Stdio::piped());
+		},
+		LoginMethod::DeviceCode => {
+			let PseudoTerminal { master, slave } =
+				PseudoTerminal::open().map_err(|()| Failure::ServiceUnavailable)?;
+			command.stdout(Stdio::from(slave));
+			pseudo_terminal_reader = Some(PseudoTerminalReader(File::from(master)));
+		},
+	};
+	let mut child = command.spawn().map_err(|_| Failure::CodexUnavailable)?;
+	let stdout = match pseudo_terminal_reader {
+		Some(reader) => LoginStdout::PseudoTerminal(reader),
+		None => {
+			let Some(stdout) = child.stdout.take() else {
+				terminate_child(&mut child);
+				return Err(Failure::LoginFailed);
+			};
+			LoginStdout::Pipe(stdout)
+		},
+	};
+	let Some(stderr) = child.stderr.take() else {
+		terminate_child(&mut child);
+		return Err(Failure::LoginFailed);
+	};
+	Ok(SpawnedLoginProcess { child, stdout, stderr })
 }
 
 struct LoginChildOutput {
@@ -723,8 +853,32 @@ fn append_output(output: &mut Vec<u8>, bytes: &[u8]) -> Result<(), ()> {
 }
 
 fn parse_device_prompt(output: &[u8]) -> Option<Prompt> {
-	contains_device_url(output).then_some(())?;
-	Some(Prompt { verification_url: DEVICE_LOGIN_URL, user_code: parse_device_code(output)? })
+	let normalized = strip_sgr_sequences(output);
+	contains_device_url(&normalized).then_some(())?;
+	Some(Prompt { verification_url: DEVICE_LOGIN_URL, user_code: parse_device_code(&normalized)? })
+}
+
+fn strip_sgr_sequences(output: &[u8]) -> Vec<u8> {
+	let mut normalized = Vec::with_capacity(output.len());
+	let mut offset = 0;
+	while offset < output.len() {
+		if output[offset..].starts_with(b"\x1b[") {
+			let mut cursor = offset + 2;
+			while cursor < output.len() && (0x30..=0x3f).contains(&output[cursor]) {
+				cursor += 1;
+			}
+			while cursor < output.len() && (0x20..=0x2f).contains(&output[cursor]) {
+				cursor += 1;
+			}
+			if output.get(cursor) == Some(&b'm') {
+				offset = cursor + 1;
+				continue;
+			}
+		}
+		normalized.push(output[offset]);
+		offset += 1;
+	}
+	normalized
 }
 
 fn contains_device_url(output: &[u8]) -> bool {
@@ -842,6 +996,8 @@ impl Drop for LoginHome {
 mod tests {
 	use super::*;
 
+	const TTY_BUFFERING_FIXTURE: &str = "DECODEX_TTY_BUFFERING_FIXTURE";
+
 	fn entity_id(value: &str) -> EntityId {
 		EntityId::new(value).expect("fixture entity ID")
 	}
@@ -902,16 +1058,119 @@ mod tests {
 	}
 
 	#[test]
+	fn device_prompt_is_observable_before_a_tty_buffered_child_exits() {
+		let mut fixture = Command::new(std::env::current_exe().expect("current test executable"));
+		fixture
+			.arg("tty_buffering_fixture_child")
+			.arg("--nocapture")
+			.env(TTY_BUFFERING_FIXTURE, "1")
+			.stdin(Stdio::null())
+			.stderr(Stdio::piped())
+			.process_group(0);
+		let spawned =
+			spawn_login_process(fixture, LoginMethod::DeviceCode).expect("TTY login fixture");
+		assert!(matches!(&spawned.stdout, LoginStdout::PseudoTerminal(_)));
+		let SpawnedLoginProcess { mut child, stdout, stderr } = spawned;
+		let (sender, receiver) = mpsc::channel();
+		let stdout_reader = spawn_reader(stdout, sender.clone()).expect("fixture stdout reader");
+		let stderr_reader = spawn_reader(stderr, sender).expect("fixture stderr reader");
+		let deadline = Instant::now() + Duration::from_secs(2);
+		let mut output = Vec::new();
+		let mut observed_prompt = false;
+		while Instant::now() < deadline {
+			match receiver.recv_timeout(CHILD_POLL_INTERVAL) {
+				Ok(PipeEvent::Bytes(bytes)) => {
+					append_output(&mut output, &bytes).expect("bounded fixture output");
+					if parse_device_prompt(&output).is_some() {
+						observed_prompt = true;
+						break;
+					}
+				},
+				Ok(PipeEvent::Closed { .. }) | Err(RecvTimeoutError::Disconnected) => break,
+				Err(RecvTimeoutError::Timeout) => {},
+			}
+		}
+		assert!(matches!(child.try_wait(), Ok(None)), "fixture must still be running");
+		terminate_child(&mut child);
+		join_readers(stdout_reader, stderr_reader);
+
+		assert!(observed_prompt, "TTY stdout must publish the device prompt before child exit");
+	}
+
+	#[test]
+	fn browser_login_stdout_remains_an_ordinary_pipe() {
+		let mut fixture = Command::new("/usr/bin/true");
+		fixture.stdin(Stdio::null()).stderr(Stdio::piped()).process_group(0);
+
+		let spawned =
+			spawn_login_process(fixture, LoginMethod::BrowserRedirect).expect("browser fixture");
+
+		assert!(matches!(&spawned.stdout, LoginStdout::Pipe(_)));
+		let SpawnedLoginProcess { mut child, stdout, stderr } = spawned;
+		drop((stdout, stderr));
+		assert!(child.wait().expect("browser fixture exit").success());
+	}
+
+	#[test]
+	fn pseudo_terminal_descriptors_are_owner_only_close_on_exec_and_closed_on_drop() {
+		let terminal = PseudoTerminal::open().expect("owner-controlled pseudo-terminal");
+		let master = terminal.master.as_raw_fd();
+		let slave = terminal.slave.as_raw_fd();
+		for fd in [&terminal.master, &terminal.slave] {
+			// SAFETY: Each `OwnedFd` remains open for this query.
+			let flags = unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_GETFD) };
+			assert_ne!(flags, -1);
+			assert_ne!(flags & libc::FD_CLOEXEC, 0);
+		}
+		let slave_metadata = fd_metadata(&terminal.slave).expect("PTY slave metadata");
+		assert_eq!(slave_metadata.st_uid, unsafe { libc::geteuid() });
+		assert_eq!(slave_metadata.st_mode & 0o077, 0);
+
+		drop(terminal);
+
+		for fd in [master, slave] {
+			// SAFETY: This deliberately queries the raw descriptor retained before
+			// drop to prove that `OwnedFd` closed it.
+			assert_eq!(unsafe { libc::fcntl(fd, libc::F_GETFD) }, -1);
+			assert_eq!(std::io::Error::last_os_error().raw_os_error(), Some(libc::EBADF));
+		}
+	}
+
+	#[test]
+	fn tty_buffering_fixture_child() {
+		if std::env::var_os(TTY_BUFFERING_FIXTURE).is_none() {
+			return;
+		}
+		let prompt = format!("Open {DEVICE_LOGIN_URL}\\nCode: ABCD-EFGH\\n");
+		// SAFETY: `STDOUT_FILENO` is open for the child. The fixture deliberately
+		// makes its pre-exit prompt conditional on the same terminal boundary that
+		// selects line buffering in the official Codex child.
+		if unsafe { libc::isatty(libc::STDOUT_FILENO) } == 1 {
+			// SAFETY: `prompt` supplies exactly `len` readable bytes for this write.
+			let written =
+				unsafe { libc::write(libc::STDOUT_FILENO, prompt.as_ptr().cast(), prompt.len()) };
+			assert_eq!(written, prompt.len() as isize);
+		}
+		thread::sleep(Duration::from_secs(30));
+	}
+
+	#[test]
 	fn parser_accepts_current_and_historical_bounded_device_prompts() {
 		let current =
 			b"\x1b[32mOpen https://auth.openai.com/codex/device\x1b[0m\nCode: ABCD-EFGH\n";
 		let historical = b"Open https://auth.openai.com/codex/device\nCode: AB12-CDE34\n";
+		let terminal =
+			b"Open https://auth.openai.com/codex/device\r\nCode: \x1b[94mABCD-12345\x1b[0m\r\n";
 
 		assert_eq!(
 			parse_device_prompt(current),
 			Some(Prompt { verification_url: DEVICE_LOGIN_URL, user_code: "ABCD-EFGH".to_owned() }),
 		);
 		assert_eq!(parse_device_code(historical).as_deref(), Some("AB12-CDE34"));
+		assert_eq!(
+			parse_device_prompt(terminal).map(|prompt| prompt.user_code),
+			Some("ABCD-12345".to_owned()),
+		);
 	}
 
 	#[test]
@@ -922,6 +1181,7 @@ mod tests {
 			b"Open https://auth.openai.com/codex/device\nCode: ABCD_EFGH".as_slice(),
 			b"Open https://auth.openai.com/codex/device\nCode: XABCD-EFGHY".as_slice(),
 			b"Open https://auth.openai.com/codex/device\nCode: ABCD-EFGHIJ".as_slice(),
+			b"Open https://auth.openai.com/codex/device\nCode: X\x1b[1mABCD-EFGH\x1b[0m".as_slice(),
 			b"Open http://auth.openai.com/codex/device\nCode: ABCD-EFGH".as_slice(),
 		] {
 			assert_eq!(parse_device_prompt(output), None);
