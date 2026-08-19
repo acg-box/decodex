@@ -394,6 +394,14 @@ Repository-wide formatting and enhanced lint remain blocked by pre-existing unre
 findings. Signed installation and two real provider completions remain pending and must be
 appended before this repair is called live-accepted.
 
+The first cohort-2 installation exposed a separate App packaging regression before account
+readback. The daemon, CLI, and embedded native library reported cohort 2, but the Swift App loader
+still required cohort 1. The validly signed App therefore rejected its own native library and
+reported that the native client was unavailable. A red Swift architecture test now requires one
+shared native-compatibility source. Both the App loader and the staging verifier use that source
+for ABI 1 and cohort 2. The signed staging gate compiles the shared check and loads the actual
+staged dylib, so an App/FFI cohort mismatch now fails before installation.
+
 ## Earlier repository gates
 
 One complete `cargo make check` run finished successfully on the pre-Silent-Recovery source. It included:

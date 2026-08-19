@@ -9,8 +9,10 @@ fi
 ./apps/decodex-app/script/build_and_run.sh stage
 
 common_root="$(cd "$(git rev-parse --git-common-dir)/.." && pwd)"
+worktree_root="$(git rev-parse --show-toplevel)"
 stage_dir="${DECODEX_APP_STAGE_DIR:-$common_root/target/decodex-app}"
 app_path="$stage_dir/Decodex.app"
+compatibility_source="$worktree_root/apps/decodex-app/Sources/DecodexApp/DecodexNativeCompatibility.swift"
 
 test -d "$app_path"
 test -x "$app_path/Contents/MacOS/DecodexApp"
@@ -28,21 +30,21 @@ loader_dir="$(mktemp -d "${TMPDIR:-/tmp}/decodex-native-loader.XXXXXX")"
 trap 'rm -rf "$loader_dir"' EXIT
 cat >"$loader_dir/main.swift" <<'SWIFT'
 import Darwin
+import Foundation
 
-guard CommandLine.arguments.count == 2,
-      let handle = dlopen(CommandLine.arguments[1], RTLD_NOW | RTLD_LOCAL),
-      let symbol = dlsym(handle, "decodex_app_native_client_abi_version")
-else {
+guard CommandLine.arguments.count == 2 else {
     exit(1)
 }
-defer { dlclose(handle) }
-typealias ABIVersion = @convention(c) () -> UInt32
-let abiVersion = unsafeBitCast(symbol, to: ABIVersion.self)
-guard abiVersion() == 1 else {
+do {
+    let handle = try DecodexNativeCompatibility.openLibrary(
+        at: URL(fileURLWithPath: CommandLine.arguments[1])
+    )
+    dlclose(handle)
+} catch {
     exit(1)
 }
 SWIFT
-xcrun swiftc "$loader_dir/main.swift" -o "$loader_dir/native-loader"
+xcrun swiftc "$compatibility_source" "$loader_dir/main.swift" -o "$loader_dir/native-loader"
 "$loader_dir/native-loader" "$native_client"
 for symbol in \
   _decodex_app_native_client_abi_version \

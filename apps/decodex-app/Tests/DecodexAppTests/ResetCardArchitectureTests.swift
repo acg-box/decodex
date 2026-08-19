@@ -702,6 +702,12 @@ final class ResetCardArchitectureTests: XCTestCase {
 			),
 			encoding: .utf8
 		)
+		let compatibility = try String(
+			contentsOf: appURL.appendingPathComponent(
+				"Sources/DecodexApp/DecodexNativeCompatibility.swift"
+			),
+			encoding: .utf8
+		)
 
 		XCTAssertTrue(
 			script.contains(#"NATIVE_CLIENT_NAME="libdecodex_app_client_ffi.dylib""#)
@@ -716,8 +722,24 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertTrue(script.contains("rust-lld"))
 		XCTAssertTrue(script.contains("linker-flavor=ld64.lld"))
 		XCTAssertTrue(script.contains("NATIVE_CLIENT_MIN_SYSTEM_VERSION=\"11.0\""))
-		XCTAssertTrue(stageTest.contains("dlopen"))
-		XCTAssertTrue(stageTest.contains("decodex_app_native_client_abi_version"))
+		XCTAssertTrue(
+			compatibility.contains("decodexNativeClientABIVersion: UInt32 = 1")
+		)
+		XCTAssertTrue(
+			compatibility.contains("decodexNativeArtifactCohort: UInt32 = 2")
+		)
+		XCTAssertTrue(
+			compatibility.contains("static func openLibrary(at libraryURL: URL)")
+		)
+		XCTAssertTrue(
+			stageTest.contains(#"compatibility_source="$worktree_root/apps/decodex-app/Sources/DecodexApp/DecodexNativeCompatibility.swift""#)
+		)
+		XCTAssertTrue(
+			stageTest.contains(#"xcrun swiftc "$compatibility_source" "$loader_dir/main.swift""#)
+		)
+		XCTAssertTrue(
+			stageTest.contains("DecodexNativeCompatibility.openLibrary")
+		)
 		XCTAssertTrue(
 			script.contains(#"cp "$NATIVE_CLIENT_BINARY" "$APP_NATIVE_CLIENT""#)
 		)
@@ -879,11 +901,10 @@ final class ResetCardArchitectureTests: XCTestCase {
 		XCTAssertFalse(store.contains(".resolvingCodex"))
 		XCTAssertTrue(native.contains(#"case loginMethod = "login_method""#))
 		XCTAssertTrue(native.contains("library.destroy(handle)"))
-		XCTAssertTrue(native.contains("decodexNativeArtifactCohort: UInt32 = 1"))
-		XCTAssertTrue(native.contains("decodex_app_native_client_artifact_cohort"))
 		XCTAssertTrue(
-			native.contains("artifactCohort() == decodexNativeArtifactCohort")
+			native.contains("DecodexNativeCompatibility.openLibrary(at: libraryURL)")
 		)
+		XCTAssertFalse(native.contains("decodexNativeArtifactCohort"))
 	}
 
 	func testAccountDataUsesDaemonObservationSignalsWithoutAUiRefreshClock() throws {

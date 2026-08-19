@@ -4,8 +4,6 @@ import Foundation
 let decodexNativeClientSchema = "decodex/app-native-client/1"
 
 private let decodexNativeClientConfigSchema = "decodex/app-native-client-config/1"
-private let decodexNativeClientABIVersion: UInt32 = 1
-private let decodexNativeArtifactCohort: UInt32 = 1
 private let decodexNativeClientResponseLimit = 8 * 1024 * 1024
 
 struct DecodexNativeRequest: Encodable, Sendable {
@@ -448,8 +446,6 @@ private struct DecodexNativeConfig: Encodable {
 }
 
 private final class DecodexNativeLibrary: @unchecked Sendable {
-	typealias ABIVersion = @convention(c) () -> UInt32
-	typealias ArtifactCohort = @convention(c) () -> UInt32
 	typealias Create = @convention(c) (
 		UnsafePointer<UInt8>?,
 		Int,
@@ -483,26 +479,15 @@ private final class DecodexNativeLibrary: @unchecked Sendable {
 			"libdecodex_app_client_ffi.dylib",
 			isDirectory: false
 		)
-		guard let image = dlopen(libraryURL.path, RTLD_NOW | RTLD_LOCAL) else {
+		let image: UnsafeMutableRawPointer
+		do {
+			image = try DecodexNativeCompatibility.openLibrary(at: libraryURL)
+		} catch {
 			throw ResetCardClientError.nativeClientUnavailable
 		}
 		self.image = image
 
 		do {
-			let abi: ABIVersion = try Self.symbol(
-				image,
-				named: "decodex_app_native_client_abi_version"
-			)
-			guard abi() == decodexNativeClientABIVersion else {
-				throw ResetCardClientError.nativeClientUnavailable
-			}
-			let artifactCohort: ArtifactCohort = try Self.symbol(
-				image,
-				named: "decodex_app_native_client_artifact_cohort"
-			)
-			guard artifactCohort() == decodexNativeArtifactCohort else {
-				throw ResetCardClientError.nativeClientUnavailable
-			}
 			create = try Self.symbol(
 				image,
 				named: "decodex_app_native_client_create"

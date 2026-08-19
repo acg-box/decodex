@@ -41,7 +41,10 @@ The account-login restoration repair adds no schema migration. Artifact cohort 2
 strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
 `StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
 proved orphan credential and cancels that operation. Installation therefore upgrades the signed
-daemon, CLI, and App FFI as one cohort while retaining the pre-install database rollback copy.
+daemon, CLI, App executable, and App FFI as one cohort while retaining the pre-install database
+rollback copy. The App and the staging verifier use one Swift compatibility source for the native
+ABI and artifact cohort. The staging gate must load the actual signed staged dylib through that
+shared check before installation.
 
 ## Fresh installation
 
