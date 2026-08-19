@@ -235,6 +235,22 @@ one exact store version through the same journal. Metadata deletion is allowed o
 after logout and creates a tombstone. Historical UUIDs, receipts, and execution
 references remain.
 
+A later enrollment with the same exact provider binding restores that tombstoned Account
+UUID. It does not create a second provider owner or reuse the client's provisional new UUID.
+The daemon resolves the provider only after it reads the owner-private login file, fences the
+current tombstone revision, restores the immediate successor credential version, clears the
+tombstone, increments the Account revision, and appends the original UUID to routing order.
+The typed result carries both the provisional request UUID and the resolved Account projection so
+strict clients refresh the restored row. An active non-tombstoned provider owner still produces
+the durable `provider_already_enrolled` rejection.
+
+Startup recognizes only the exact pre-repair collision shape: a `StoreApplied` version-one
+enrollment has no Account row, its exact credential provider belongs to one retained tombstone,
+and the provisional identity has no routing, quota, profile, or fixed-selection reference. The
+daemon deletes that exact orphan credential and journals the old enrollment as cancelled before
+it accepts a fresh restoration login. Any mismatch remains manual recovery; this is not a general
+credential cleanup or fallback.
+
 ## Runtime-negotiated account capability
 
 `AccountLifecycle` readiness is positive runtime evidence, not a release allowlist or a
@@ -268,6 +284,10 @@ existing-account `Refresh`, and applies only the immediate next HostCredentialSt
 compare-and-swap. The temporary home is removed on success, failure, cancellation, timeout, or
 bridge destruction. Ambient `Use in Codex` remains a separate explicit projection command;
 neither action implies the other.
+Device polling reads one bounded structured error response. Only the closed pending-code set can
+continue polling; another structured 403 or 404 is a terminal typed device-authorization
+rejection, not permission to wait until the session timeout. The native failure tells the user to
+check ChatGPT Security and retry without exposing provider text.
 An acceptance-unknown install replays only the same operation and idempotency key while
 the private source exists. Prepared-operation startup and command replay compare both the
 expected and target bindings; only an exact expected binding can prove that cancellation

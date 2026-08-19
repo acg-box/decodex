@@ -6,10 +6,10 @@ tags: [local-product, sqlite, evidence, quick-task]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-app-client-ffi/src/account_reauthentication.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/account_lifecycle.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [control_thread, ExactSubmittedTurnReadback, recover_unknown_quick_task_turn, plan_continuation, QuickTaskExecutionSettings, TranscriptRow]
-  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
-  invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
+  invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.; A provider binding can have only one active Account and re-enrollment restores its tombstoned UUID.; A structured terminal device denial cannot remain pending.]
   validation_commands: [cargo test -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets, cargo clippy -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets -- -D warnings, python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py]
 ---
 
@@ -17,7 +17,7 @@ openwiki:
 
 Status: accepted implementation and signed live-cutover evidence.
 
-Date: 2026-08-15.
+Date: 2026-08-18.
 
 This page contains no credential value, email address, provider-account identifier, or
 credential fingerprint.
@@ -373,6 +373,26 @@ the structured device prompt without printing the code, cancelled both sessions,
 login process or private-home residue. This is live acceptance through the exact user-action
 boundary; a real provider login and successful source-level credential installation remain
 unverified until a user explicitly completes either official sign-in method.
+
+The 2026-08-18 repair started with two independent red tests. A structured terminal device poll
+response at HTTP 403 was incorrectly treated as pending until timeout. A successful browser
+provider handoff after logout wrote a version-one credential under the provisional UUID, left the
+enrollment journal at `StoreApplied`, then failed the unique provider Account insert while the
+visible list remained empty. The repaired tests prove immediate typed device rejection and the
+complete logout-to-restoration path: original Account UUID, Account revision increment, immediate
+successor credential version, routing re-entry, exact command replay, and SQLite reopen.
+
+The same runtime test constructs the exact pre-repair `StoreApplied` collision. Startup proves
+that the provisional identity has no Account, routing, quota, profile, or fixed-selection
+reference, deletes only its exact orphan credential, and durably cancels the old operation. A new
+login then restores the tombstoned UUID. Protocol tests bind `AccountRestored` to both the
+provisional request UUID and restored projection. FFI and Swift tests bind terminal completion to
+the daemon-resolved UUID. The full workspace gate passed 1,093 Rust tests with nine intentional
+skips, both live CLI diagnostics, the local database and architecture gates, and all 223 Swift
+tests. The full workspace type-check and strict Clippy for every changed package also passed.
+Repository-wide formatting and enhanced lint remain blocked by pre-existing unrelated baseline
+findings. Signed installation and two real provider completions remain pending and must be
+appended before this repair is called live-accepted.
 
 ## Earlier repository gates
 

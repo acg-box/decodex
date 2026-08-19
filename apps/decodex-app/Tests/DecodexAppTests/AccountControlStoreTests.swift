@@ -783,6 +783,52 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertEqual(store.message?.text, "Account added.")
 	}
 
+	func testBrowserEnrollmentRefreshesTheRestoredAccountIdentityAfterLogout() async throws {
+		let restoredAccountID = "22222222-2222-4222-8222-222222222222"
+		let client = AccountControlStoreClient(
+			account: accountRecord(),
+			authority: authority,
+			reauthenticationStates: [.completed],
+			restoredEnrollmentAccountID: restoredAccountID
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: [],
+			accountReauthenticationPollInterval: .zero,
+			accountObservationRetryDelays: [],
+			openLoginURL: { _ in }
+		)
+
+		await store.refresh()
+		store.beginAccountEnrollment()
+		store.selectAccountLoginMethod(.browserRedirect)
+		for _ in 0 ..< 200 {
+			if store.accountReauthentication == nil,
+				store.accounts.contains(where: { $0.account.accountID == restoredAccountID })
+			{
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+
+		let enrollmentRequest = await client.enrollmentLoginStartRequest()
+		let requestedAccountID = try XCTUnwrap(enrollmentRequest?.accountID)
+		XCTAssertNotEqual(requestedAccountID, restoredAccountID)
+		XCTAssertTrue(store.accounts.contains(where: {
+			$0.account.accountID == restoredAccountID
+				&& $0.account.accountRevision == 3
+				&& $0.account.credentialBinding?.version == 2
+		}))
+		XCTAssertFalse(store.accounts.contains(where: {
+			$0.account.accountID == requestedAccountID
+		}))
+		XCTAssertEqual(store.message?.tone, .success)
+		XCTAssertEqual(store.message?.text, "Account added.")
+	}
+
 	func testEnrollmentPickerClosesBeforeStartingNativeLogin() async {
 		let client = AccountControlStoreClient(
 			account: accountRecord(),
@@ -1771,6 +1817,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var reauthenticationCompleted = false
 	private var reauthenticationObservationDelayReads: Int
 	private let cancelReauthenticationWithOutcomeUnknown: Bool
+	private let restoredEnrollmentAccountID: String?
 
 	init(
 		account: ResetCardAccountRecord,
@@ -1794,7 +1841,8 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		reauthenticationStates: [AccountReauthenticationState] = [],
 		accountLoginFailure: AccountReauthenticationFailure? = nil,
 		reauthenticationObservationDelayReads: Int = 0,
-		cancelReauthenticationWithOutcomeUnknown: Bool = false
+		cancelReauthenticationWithOutcomeUnknown: Bool = false,
+		restoredEnrollmentAccountID: String? = nil
 	) {
 		self.account = account
 		self.secondaryAccount = secondaryAccount
@@ -1824,6 +1872,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		self.reauthenticationObservationDelayReads = reauthenticationObservationDelayReads
 		self.cancelReauthenticationWithOutcomeUnknown =
 			cancelReauthenticationWithOutcomeUnknown
+		self.restoredEnrollmentAccountID = restoredEnrollmentAccountID
 	}
 
 	func accountSnapshot(
@@ -2386,6 +2435,18 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		sessionID: String,
 		failure: AccountReauthenticationFailure? = nil
 	) -> AccountReauthenticationStatus {
+		let resolvedAccountID: String? = if state == .completed {
+			switch activeLogin {
+			case .enrollment(let accountID, _, _):
+				restoredEnrollmentAccountID ?? accountID
+			case .reauthentication:
+				account.accountID
+			case .none:
+				nil
+			}
+		} else {
+			nil
+		}
 		return AccountReauthenticationStatus(
 			sessionID: sessionID,
 			state: state,
@@ -2399,24 +2460,26 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 				&& activeLogin?.loginMethod == .browserRedirect
 				? URL(string: "https://auth.openai.com/oauth/authorize?fixture=true")
 				: nil,
-			failure: failure ?? (state == .failed ? accountLoginFailure : nil)
+			failure: failure ?? (state == .failed ? accountLoginFailure : nil),
+			resolvedAccountID: resolvedAccountID
 		)
 	}
 
 	private func markAccountLoginCompleted() {
 		switch activeLogin {
-		case .enrollment(let accountID, let enabled, _):
+		case .enrollment(let requestedAccountID, let enabled, _):
+			let accountID = restoredEnrollmentAccountID ?? requestedAccountID
 			secondaryAccount = ResetCardAccountRecord(
 				authority: account.authority,
 				accountID: accountID,
 				alias: "Account added",
-				accountRevision: 1,
+				accountRevision: restoredEnrollmentAccountID == nil ? 1 : 3,
 				enabled: enabled,
 				observedState: .available,
 				lifecycleReadiness: .ready,
 				credentialBinding: AccountCredentialBinding(
 					schemaVersion: 1,
-					version: 1,
+					version: restoredEnrollmentAccountID == nil ? 1 : 2,
 					fingerprintSHA256: String(repeating: "c", count: 64),
 					provider: .chatGPT,
 					providerAccountID: "provider-added"

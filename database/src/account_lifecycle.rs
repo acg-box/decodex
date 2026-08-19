@@ -60,6 +60,17 @@ pub enum AccountLifecycleMutationOutcome {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AccountEnrollmentResolution {
+	Fresh { account_id: AccountId },
+	Restore {
+		account_id: AccountId,
+		account_revision: i64,
+		previous_credential: CredentialBinding,
+	},
+	AlreadyEnrolled { account_id: AccountId, account_revision: i64 },
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum AccountAdministrationOutcome {
 	Updated { revision: i64 },
 	Rejected { rejection: AccountLifecycleRejection, revision: i64 },
@@ -163,6 +174,19 @@ impl SqliteStore {
 			let routing = read_routing_control_sync(connection)?;
 			validate_registry_snapshot(&accounts, &routing)?;
 			Ok((accounts, routing))
+		})
+		.await
+	}
+
+	pub async fn resolve_account_enrollment(
+		&self,
+		requested_account_id: &AccountId,
+		provider: &ProviderIdentity,
+	) -> Result<AccountEnrollmentResolution, StoreError> {
+		let requested_account_id = requested_account_id.clone();
+		let provider = provider.clone();
+		self.run(move |connection| {
+			resolve_account_enrollment_sync(connection, &requested_account_id, &provider)
 		})
 		.await
 	}
@@ -400,6 +424,17 @@ impl SqliteStore {
 	) -> Result<Option<AccountOperation>, StoreError> {
 		let operation_id = operation_id.clone();
 		self.run(move |connection| read_operation_sync(connection, &operation_id)).await
+	}
+
+	pub async fn is_legacy_tombstone_enrollment_collision(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<bool, StoreError> {
+		let operation = operation.clone();
+		self.run(move |connection| {
+			is_legacy_tombstone_enrollment_collision_sync(connection, &operation)
+		})
+		.await
 	}
 
 	pub async fn set_account_enabled(
@@ -961,9 +996,8 @@ fn prepare_operation_sync(
 
 	let account = account_base_sync(connection, &preparation.account_id)?;
 	let rejection = match preparation.kind {
-		AccountOperationKind::Enroll | AccountOperationKind::Import if account.is_some() =>
-			Some(AccountLifecycleRejection::IdentityConflict),
-		AccountOperationKind::Enroll | AccountOperationKind::Import => None,
+		AccountOperationKind::Enroll | AccountOperationKind::Import =>
+			enrollment_rejection_sync(connection, preparation, account.as_ref())?,
 		AccountOperationKind::Refresh | AccountOperationKind::Logout => match account {
 			None => Some(AccountLifecycleRejection::AccountMissing),
 			Some(ref account) if account.tombstoned =>
@@ -1028,6 +1062,45 @@ fn prepare_operation_sync(
 		account_revision: account.map_or(0, |value| value.revision),
 		phase: AccountOperationPhase::Prepared,
 	}))
+}
+
+fn enrollment_rejection_sync(
+	connection: &Connection,
+	preparation: &AccountOperationPreparation,
+	account: Option<&AccountBase>,
+) -> Result<Option<AccountLifecycleRejection>, StoreError> {
+	let Some(account) = account else {
+		return Ok(preparation
+			.expected_account_revision
+			.is_some()
+			.then_some(AccountLifecycleRejection::StaleAccount));
+	};
+	if !account.tombstoned {
+		return Ok(Some(AccountLifecycleRejection::IdentityConflict));
+	}
+	if preparation.expected_account_revision != Some(account.revision)
+		|| provider_text(preparation.provider.provider()) != account.provider
+		|| preparation.provider.account_id() != account.provider_account_id
+		|| credential_binding_sync(connection, &preparation.account_id)?.is_some()
+	{
+		return Ok(Some(AccountLifecycleRejection::StaleAccount));
+	}
+	let previous = tombstone_predecessor_credential_sync(
+		connection,
+		&preparation.account_id,
+		account.revision,
+		&preparation.provider,
+	)?;
+	let successor = previous
+		.version
+		.successor()
+		.map_err(|_| StoreError::InvalidInput("credential version is exhausted"))?;
+	let target = preparation
+		.target
+		.as_ref()
+		.ok_or(StoreError::InvalidInput("account operation target is absent"))?;
+	Ok((target.version != successor || target.provider != previous.provider)
+		.then_some(AccountLifecycleRejection::StaleAccount))
 }
 
 fn validate_reauthentication_takeover_sync(
@@ -1170,23 +1243,71 @@ fn commit_account_operation(
 			let enabled = operation
 				.requested_enabled
 				.ok_or(StoreError::InvalidInput("account enablement is absent"))?;
-			connection
-				.execute(
-					"INSERT INTO accounts (
-					   account_id, display_label, enabled, state, revision, provider,
-					   provider_account_id, credential_store_observation,
-					   created_at_micros, updated_at_micros, tombstoned_at_micros
-					 ) VALUES (?1, ?2, ?3, 'available', 1, ?4, ?5, 'exact', ?6, ?6, NULL)",
-					params![
-						operation.account_id.as_str(),
-						label,
-						enabled,
-						provider_text(target.provider.provider()),
-						target.provider.account_id(),
-						now,
-					],
-				)
-				.map_err(sql_error)?;
+			match account_base_sync(connection, &operation.account_id)? {
+				None => {
+					if operation.expected_account_revision.is_some() || target.version.get() != 1 {
+						return Ok(Some(AccountLifecycleRejection::StaleAccount));
+					}
+					connection
+						.execute(
+							"INSERT INTO accounts (
+							   account_id, display_label, enabled, state, revision, provider,
+							   provider_account_id, credential_store_observation,
+							   created_at_micros, updated_at_micros, tombstoned_at_micros
+							 ) VALUES (?1, ?2, ?3, 'available', 1, ?4, ?5, 'exact', ?6, ?6, NULL)",
+							params![
+								operation.account_id.as_str(),
+								label,
+								enabled,
+								provider_text(target.provider.provider()),
+								target.provider.account_id(),
+								now,
+							],
+						)
+						.map_err(sql_error)?;
+				},
+				Some(account) if account.tombstoned => {
+					if operation.expected_account_revision != Some(account.revision)
+						|| provider_text(target.provider.provider()) != account.provider
+						|| target.provider.account_id() != account.provider_account_id
+					{
+						return Ok(Some(AccountLifecycleRejection::StaleAccount));
+					}
+					let previous = tombstone_predecessor_credential_sync(
+						connection,
+						&operation.account_id,
+						account.revision,
+						&target.provider,
+					)?;
+					if previous.version.successor().ok() != Some(target.version) {
+						return Ok(Some(AccountLifecycleRejection::StaleAccount));
+					}
+					let changed = connection
+						.execute(
+							"UPDATE accounts
+							 SET display_label = ?1, enabled = ?2, state = 'available',
+							     revision = revision + 1, provider = ?3, provider_account_id = ?4,
+							     credential_store_observation = 'exact', updated_at_micros = ?5,
+							     tombstoned_at_micros = NULL
+							 WHERE account_id = ?6 AND revision = ?7
+							   AND tombstoned_at_micros IS NOT NULL",
+							params![
+								label,
+								enabled,
+								provider_text(target.provider.provider()),
+								target.provider.account_id(),
+								now,
+								operation.account_id.as_str(),
+								account.revision,
+							],
+						)
+						.map_err(sql_error)?;
+					if changed != 1 {
+						return Ok(Some(AccountLifecycleRejection::StaleAccount));
+					}
+				},
+				Some(_) => return Ok(Some(AccountLifecycleRejection::IdentityConflict)),
+			}
 			let position: i64 = connection
 				.query_row("SELECT COUNT(*) FROM account_routing_order", [], |row| row.get(0))
 				.map_err(sql_error)?;
@@ -1573,6 +1694,160 @@ fn account_base_sync(
 		)
 		.optional()
 		.map_err(sql_error)
+}
+
+fn resolve_account_enrollment_sync(
+	connection: &Connection,
+	requested_account_id: &AccountId,
+	provider: &ProviderIdentity,
+) -> Result<AccountEnrollmentResolution, StoreError> {
+	let existing = connection
+		.query_row(
+			"SELECT account_id FROM accounts
+			 WHERE provider = ?1 AND provider_account_id = ?2",
+			params![provider_text(provider.provider()), provider.account_id()],
+			|row| row.get::<_, String>(0),
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let Some(existing) = existing else {
+		return Ok(AccountEnrollmentResolution::Fresh {
+			account_id: requested_account_id.clone(),
+		});
+	};
+	let account_id =
+		AccountId::new(existing).map_err(|_| incompatible("account identity"))?;
+	let account = account_base_sync(connection, &account_id)?
+		.ok_or_else(|| incompatible("account enrollment resolution"))?;
+	if !account.tombstoned {
+		return Ok(AccountEnrollmentResolution::AlreadyEnrolled {
+			account_id,
+			account_revision: account.revision,
+		});
+	}
+	if let Some(current) = credential_binding_sync(connection, &account_id)? {
+		let unsettled = unsettled_operation_sync(connection, &account_id)?
+			.ok_or_else(|| incompatible("tombstoned account credential state"))?;
+		let operation = read_operation_sync(connection, &unsettled.operation_id)?
+			.ok_or_else(|| incompatible("tombstoned account operation state"))?;
+		if !matches!(operation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import)
+			|| operation.target.as_ref() != Some(&current)
+			|| operation.expected_account_revision != Some(account.revision)
+		{
+			return Err(incompatible("tombstoned account enrollment state"));
+		}
+	}
+	let previous_credential = tombstone_predecessor_credential_sync(
+		connection,
+		&account_id,
+		account.revision,
+		provider,
+	)?;
+	Ok(AccountEnrollmentResolution::Restore {
+		account_id,
+		account_revision: account.revision,
+		previous_credential,
+	})
+}
+
+fn is_legacy_tombstone_enrollment_collision_sync(
+	connection: &Connection,
+	operation: &AccountOperation,
+) -> Result<bool, StoreError> {
+	const RECOVERY_CODE: &str = "tombstone_enrollment_collision";
+	if !matches!(operation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import)
+		|| !matches!(
+			operation.phase,
+			AccountOperationPhase::StoreApplied | AccountOperationPhase::RecoveryRequired
+		)
+		|| (operation.phase == AccountOperationPhase::RecoveryRequired
+			&& operation.recovery_code.as_deref() != Some(RECOVERY_CODE))
+		|| operation.expected_account_revision.is_some()
+		|| operation.expected.is_some()
+		|| operation.requested_display_label.is_none()
+		|| operation.requested_enabled.is_none()
+	{
+		return Ok(false);
+	}
+	let Some(target) = operation.target.as_ref() else { return Ok(false) };
+	if target.version.get() != 1
+		|| account_base_sync(connection, &operation.account_id)?.is_some()
+	{
+		return Ok(false);
+	}
+	if credential_binding_sync(connection, &operation.account_id)?
+		.as_ref()
+		.is_some_and(|binding| binding != target)
+	{
+		return Ok(false);
+	}
+	let tombstone = connection
+		.query_row(
+			"SELECT account_id, revision FROM accounts
+			 WHERE provider = ?1 AND provider_account_id = ?2
+			   AND tombstoned_at_micros IS NOT NULL",
+			params![
+				provider_text(target.provider.provider()),
+				target.provider.account_id(),
+			],
+			|row| Ok((row.get::<_, String>(0)?, row.get::<_, i64>(1)?)),
+		)
+		.optional()
+		.map_err(sql_error)?;
+	let Some((tombstone_id, tombstone_revision)) = tombstone else { return Ok(false) };
+	let tombstone_id =
+		AccountId::new(tombstone_id).map_err(|_| incompatible("account identity"))?;
+	let _ = tombstone_predecessor_credential_sync(
+		connection,
+		&tombstone_id,
+		tombstone_revision,
+		&target.provider,
+	)?;
+	let referenced: bool = connection
+		.query_row(
+			"SELECT EXISTS (
+			   SELECT 1 FROM account_routing_order WHERE account_id = ?1
+			   UNION ALL SELECT 1 FROM account_quota_facts WHERE account_id = ?1
+			   UNION ALL SELECT 1 FROM account_profile_snapshots WHERE account_id = ?1
+			   UNION ALL SELECT 1 FROM account_routing_control WHERE fixed_account_id = ?1
+			 )",
+			params![operation.account_id.as_str()],
+			|row| row.get(0),
+		)
+		.map_err(sql_error)?;
+	Ok(!referenced)
+}
+
+fn tombstone_predecessor_credential_sync(
+	connection: &Connection,
+	account_id: &AccountId,
+	account_revision: i64,
+	provider: &ProviderIdentity,
+) -> Result<CredentialBinding, StoreError> {
+	let predecessor = connection
+		.query_row(
+			"SELECT expected_credential_json, expected_account_revision
+			 FROM account_operations
+			 WHERE account_id = ?1 AND kind = 'logout' AND phase = 'committed'
+			 ORDER BY expected_account_revision DESC, completed_at_micros DESC,
+			          operation_id DESC LIMIT 1",
+			params![account_id.as_str()],
+			|row| Ok((row.get::<_, Option<String>>(0)?, row.get::<_, Option<i64>>(1)?)),
+		)
+		.optional()
+		.map_err(sql_error)?
+		.ok_or_else(|| incompatible("tombstoned account logout history"))?;
+	let (binding, predecessor_revision) = predecessor;
+	let binding = parse_binding_json(binding.as_deref())?
+		.ok_or_else(|| incompatible("tombstoned account credential history"))?;
+	let predecessor_revision = predecessor_revision
+		.ok_or_else(|| incompatible("tombstoned account revision history"))?;
+	if predecessor_revision.checked_add(1) != Some(account_revision)
+		|| binding.provider != *provider
+	{
+		return Err(incompatible("tombstoned account binding history"));
+	}
+	Ok(binding)
 }
 
 fn credential_binding_sync(
@@ -2012,13 +2287,19 @@ fn validate_preparation(preparation: &AccountOperationPreparation) -> Result<(),
 	let new =
 		matches!(preparation.kind, AccountOperationKind::Enroll | AccountOperationKind::Import);
 	if new
-		!= (preparation.display_label.is_some()
-			&& preparation.enabled.is_some()
-			&& preparation.expected_account_revision.is_none()
-			&& preparation.expected.is_none()
-			&& preparation.target.is_some())
+		&& (preparation.display_label.is_none()
+			|| preparation.enabled.is_none()
+			|| preparation.expected.is_some()
+			|| preparation.target.is_none())
 	{
 		return Err(StoreError::InvalidInput("account operation shape is invalid"));
+	}
+	if new {
+		let target = preparation.target.as_ref().expect("new operation target is present");
+		let fresh = preparation.expected_account_revision.is_none();
+		if fresh != (target.version.get() == 1) {
+			return Err(StoreError::InvalidInput("account operation version is invalid"));
+		}
 	}
 	if !new
 		&& (preparation.display_label.is_some()

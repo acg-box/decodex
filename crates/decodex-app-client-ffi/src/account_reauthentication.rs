@@ -28,6 +28,7 @@ const INSTALL_REPLAY_DELAY: Duration = Duration::from_millis(100);
 pub(crate) enum Failure {
 	LoginFailed,
 	LoginTimedOut,
+	DeviceAuthorizationRejected,
 	AccountMismatch,
 	AccountChanged,
 	AccountUnavailable,
@@ -75,6 +76,8 @@ pub(crate) struct Status {
 	authorization_url: Option<String>,
 	#[serde(skip_serializing_if = "Option::is_none")]
 	failure: Option<Failure>,
+	#[serde(skip_serializing_if = "Option::is_none")]
+	resolved_account_id: Option<String>,
 }
 
 impl Status {
@@ -85,6 +88,7 @@ impl Status {
 			prompt: None,
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
@@ -95,6 +99,7 @@ impl Status {
 			prompt: None,
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
@@ -105,6 +110,7 @@ impl Status {
 			prompt: None,
 			authorization_url: Some(authorization_url),
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
@@ -115,6 +121,7 @@ impl Status {
 			prompt: Some(prompt),
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
@@ -125,16 +132,18 @@ impl Status {
 			prompt: None,
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
-	fn completed(session_id: String) -> Self {
+	fn completed(session_id: String, resolved_account_id: EntityId) -> Self {
 		Self {
 			session_id,
 			state: State::Completed,
 			prompt: None,
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: Some(resolved_account_id.as_str().to_owned()),
 		}
 	}
 
@@ -145,6 +154,7 @@ impl Status {
 			prompt: None,
 			authorization_url: None,
 			failure: Some(failure),
+			resolved_account_id: None,
 		}
 	}
 
@@ -155,6 +165,7 @@ impl Status {
 			prompt: None,
 			authorization_url: None,
 			failure: None,
+			resolved_account_id: None,
 		}
 	}
 
@@ -414,7 +425,7 @@ fn run_login_in_home(
 	shared.set_status(Status::installing(session_id.clone()));
 	let outcome = runtime.block_on(install_credential(profile, start, auth_path));
 	match outcome {
-		Ok(()) => Status::completed(session_id),
+		Ok(resolved_account_id) => Status::completed(session_id, resolved_account_id),
 		Err(failure) => Status::failed(session_id, failure),
 	}
 }
@@ -423,6 +434,8 @@ fn map_adapter_error(error: source_login_adapter::Error) -> Failure {
 	match error {
 		source_login_adapter::Error::Cancelled => Failure::LoginFailed,
 		source_login_adapter::Error::TimedOut => Failure::LoginTimedOut,
+		source_login_adapter::Error::DeviceAuthorizationRejected =>
+			Failure::DeviceAuthorizationRejected,
 		source_login_adapter::Error::Unavailable
 		| source_login_adapter::Error::Rejected
 		| source_login_adapter::Error::InvalidResponse => Failure::LoginFailed,
@@ -434,7 +447,7 @@ async fn install_credential(
 	profile: ClientProfile,
 	start: Start,
 	auth_path: PathBuf,
-) -> Result<(), Failure> {
+) -> Result<EntityId, Failure> {
 	let source_descriptor = WireText::new(auth_path.to_string_lossy().into_owned())
 		.map_err(|_| Failure::LoginFailed)?;
 	let (payload, expected_revision) = install_command(&start, source_descriptor);
@@ -447,7 +460,12 @@ async fn install_credential(
 			AccountCommandResponse::Applied { result, .. } => match result.as_ref() {
 				ResultPayload::AccountChanged { account }
 					if account.account_id == start.account_id =>
-					return Ok(()),
+					return Ok(account.account_id.clone()),
+				ResultPayload::AccountRestored { requested_account_id, account }
+					if matches!(&start.install_mode, InstallMode::Enroll { .. })
+						&& requested_account_id == &start.account_id
+						&& account.account_id != start.account_id =>
+					return Ok(account.account_id.clone()),
 				_ => return Err(Failure::ServiceUnavailable),
 			},
 			AccountCommandResponse::Rejected { error } => return Err(map_command_error(&error)),
@@ -649,6 +667,18 @@ mod tests {
 	}
 
 	#[test]
+	fn completed_status_names_the_daemon_resolved_account() {
+		let session_id = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+		let account_id = entity_id("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164");
+		let status = Status::completed(session_id.to_owned(), account_id.clone());
+		let value = serde_json::to_value(status).expect("completed status");
+
+		assert_eq!(value["state"], "completed");
+		assert_eq!(value["resolved_account_id"], account_id.as_str());
+		assert_eq!(value.as_object().expect("status object").len(), 3);
+	}
+
+	#[test]
 	fn structured_login_events_publish_closed_browser_and_device_status() {
 		let session_id = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162".to_owned();
 		let browser = Status::browser_authorization(
@@ -794,7 +824,10 @@ mod tests {
 		let status = finalize_login_status(
 			&mut home,
 			session_id.to_owned(),
-			Status::completed(session_id.to_owned()),
+			Status::completed(
+				session_id.to_owned(),
+				entity_id("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164"),
+			),
 		);
 
 		assert_eq!(status.state, State::Failed);
@@ -862,7 +895,10 @@ mod tests {
 		let worker_session_id = session_id.clone();
 		let worker = thread::spawn(move || {
 			thread::sleep(Duration::from_millis(5));
-			worker_shared.set_status(Status::completed(worker_session_id));
+			worker_shared.set_status(Status::completed(
+				worker_session_id,
+				entity_id("038f0f9e-7b6e-4a31-8f4c-1d2e3f405164"),
+			));
 		});
 		*manager.lock_session() = Some(Session {
 			session_id: session_id.clone(),

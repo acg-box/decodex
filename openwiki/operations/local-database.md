@@ -37,6 +37,12 @@ operation indexes atomically. A binary rollback across this schema boundary must
 matching pre-upgrade private database backup; an older daemon does not accept a newer
 migration ledger.
 
+The account-login restoration repair adds no schema migration. Artifact cohort 2 changes the
+strict local result/FFI shape. On startup, the daemon can compensate only the exact pre-repair
+`StoreApplied` enrollment collision described by the account-lifecycle contract; it deletes the
+proved orphan credential and cancels that operation. Installation therefore upgrades the signed
+daemon, CLI, and App FFI as one cohort while retaining the pre-install database rollback copy.
+
 ## Fresh installation
 
 Build one signed, team-consistent local-service set before installation:

@@ -21,9 +21,9 @@ mod transfers;
 pub use self::{
 	account_lifecycle::{
 		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
-		AccountCommandReceiptLease, AccountLifecycleMutation, AccountLifecycleMutationOutcome,
-		AccountLifecycleRejection, AccountOperationPreparation, AccountStoreObservation,
-		CodexAccountCapabilityAttestation, RoutingControlOutcome,
+		AccountCommandReceiptLease, AccountEnrollmentResolution, AccountLifecycleMutation,
+		AccountLifecycleMutationOutcome, AccountLifecycleRejection, AccountOperationPreparation,
+		AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome,
 	},
 	account_profiles::{
 		AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
