@@ -175,6 +175,15 @@ pub trait HostCredentialStore: Send + Sync {
 		bundle: CredentialSecretBundle,
 	) -> Result<(), CredentialStoreError>;
 
+	/// Recreate an absent bundle only at the immediate successor of the last deleted binding.
+	fn restore_absent(
+		&self,
+		account_id: &AccountId,
+		previous: &CredentialBinding,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError>;
+
 	/// Read only when schema, version, fingerprint, and provider all agree.
 	fn read_exact(
 		&self,

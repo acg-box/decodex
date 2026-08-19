@@ -12,8 +12,9 @@
 //
 // Decodex modifications: one closed error surface; strict request/response
 // bounds; loopback-only callback binding; typed cancellation; no logging;
-// no browser launcher, terminal, executable, or child process; and an exact
-// four-field auth document accepted by the daemon-owned import authority.
+// terminal device-poll classification; no browser launcher, terminal,
+// executable, or child process; and an exact four-field auth document accepted
+// by the daemon-owned import authority.
 
 use std::{
 	collections::HashMap,
@@ -66,6 +67,7 @@ pub(crate) enum Error {
 	TimedOut,
 	Unavailable,
 	Rejected,
+	DeviceAuthorizationRejected,
 	InvalidResponse,
 	Persistence,
 }
@@ -299,6 +301,11 @@ async fn run_device(
 					.await;
 			},
 			403 | 404 => {
+				let failure: DevicePollFailure =
+					read_bounded_json(response, cancellation, deadline).await?;
+				if !failure.is_pending() {
+					return Err(Error::DeviceAuthorizationRejected);
+				}
 				sleep_cancellable(cancellation, deadline, grant.interval).await?;
 			},
 			_ => return Err(Error::Rejected),
@@ -360,7 +367,11 @@ fn handle_callback_request(
 	);
 	match result {
 		Ok(()) => {
-			respond_text(&mut stream, 200, "Sign-in completed. You can close this window.")?;
+			respond_text(
+				&mut stream,
+				200,
+				"Browser sign-in completed. Return to Decodex to finish.",
+			)?;
 			Ok(CallbackOutcome::Completed)
 		},
 		Err(error) => {
@@ -789,6 +800,27 @@ struct DevicePollRequest<'a> {
 }
 
 #[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DevicePollFailure {
+	error: DevicePollError,
+}
+
+impl DevicePollFailure {
+	fn is_pending(&self) -> bool {
+		matches!(
+			self.error.code.as_str(),
+			"authorization_pending"
+				| "deviceauth_authorization_pending"
+				| "deviceauth_authorization_unknown"
+		)
+	}
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
+struct DevicePollError {
+	code: String,
+}
+
+#[derive(Deserialize, Zeroize, ZeroizeOnDrop)]
 struct DeviceCodeSuccess {
 	authorization_code: String,
 	code_challenge: String,
@@ -1150,7 +1182,22 @@ mod tests {
 						value.get("device_auth_id").and_then(serde_json::Value::as_str).is_some()
 					);
 					assert!(value.get("user_code").and_then(serde_json::Value::as_str).is_some());
-					if pending { (403, "{}".to_owned()) } else { (200, fixture_device_success()) }
+					if pending {
+						(
+							403,
+							serde_json::json!({
+								"error": {
+									"code": "deviceauth_authorization_pending",
+									"message": "fixture pending",
+									"param": null,
+									"type": "authorization_error",
+								},
+							})
+							.to_string(),
+						)
+					} else {
+						(200, fixture_device_success())
+					}
 				},
 				"/oauth/token" => {
 					let fields =
@@ -1158,6 +1205,36 @@ mod tests {
 					assert_eq!(fields.len(), 5);
 					(200, fixture_token_response())
 				},
+				_ => (404, "{}".to_owned()),
+			}
+		})
+	}
+
+	fn terminal_device_rejection_issuer() -> MockIssuer {
+		MockIssuer::start(|request| {
+			assert_eq!(request.method, "POST");
+			match request.target.as_str() {
+				"/api/accounts/deviceauth/usercode" => (
+					200,
+					serde_json::json!({
+						"device_auth_id": "fixture-device",
+						"user_code": "FIXT-URE1",
+						"interval": "1",
+					})
+					.to_string(),
+				),
+				"/api/accounts/deviceauth/token" => (
+					403,
+					serde_json::json!({
+						"error": {
+							"code": "deviceauth_authorization_denied",
+							"message": "fixture terminal denial",
+							"param": null,
+							"type": "authorization_error",
+						},
+					})
+					.to_string(),
+				),
 				_ => (404, "{}".to_owned()),
 			}
 		})
@@ -1217,8 +1294,9 @@ mod tests {
 		let metadata = fs::symlink_metadata(&path).expect("auth metadata");
 		let value: serde_json::Value =
 			serde_json::from_slice(&fs::read(path).expect("auth bytes")).expect("auth JSON");
-		let keys =
+		let mut keys =
 			value.as_object().expect("auth object").keys().map(String::as_str).collect::<Vec<_>>();
+		keys.sort_unstable();
 		assert_eq!(metadata.permissions().mode() & 0o777, 0o600);
 		assert_eq!(keys, ["OPENAI_API_KEY", "auth_mode", "last_refresh", "tokens"]);
 		assert!(value["OPENAI_API_KEY"].is_null());
@@ -1282,6 +1360,10 @@ mod tests {
 			.send()
 			.expect("callback response");
 		assert_eq!(response.status().as_u16(), 200);
+		assert_eq!(
+			response.text().expect("callback response body"),
+			"Browser sign-in completed. Return to Decodex to finish."
+		);
 		let result = worker.join().expect("browser adapter worker");
 
 		assert!(result.is_ok());
@@ -1311,6 +1393,26 @@ mod tests {
 		assert_eq!(events.len(), 1);
 		assert!(matches!(events.first(), Some(LoginEvent::DeviceAuthorization { .. })));
 		assert!(home_path.join("auth.json").is_file());
+	}
+
+	#[test]
+	fn terminal_device_poll_rejection_does_not_wait_for_the_login_timeout() {
+		let issuer = terminal_device_rejection_issuer();
+		let config = Config::test(issuer.issuer.clone(), 0, Duration::from_millis(80))
+			.expect("device config");
+		let (_home, home_path) = canonical_temp_home();
+		let runtime = runtime();
+		let result = run(
+			&config,
+			LoginMethod::DeviceCode,
+			&home_path,
+			runtime.handle(),
+			&Cancellation::default(),
+			|_| {},
+		);
+
+		assert!(matches!(result, Err(Error::DeviceAuthorizationRejected)));
+		assert!(!home_path.join("auth.json").exists());
 	}
 
 	#[test]

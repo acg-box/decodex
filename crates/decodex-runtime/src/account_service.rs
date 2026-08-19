@@ -18,9 +18,9 @@ use decodex_core::{
 	ProcessGenerationAccountBinding, ProcessGenerationId, ProcessGenerationState, ProviderIdentity,
 };
 use decodex_database::{
-	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountLifecycleMutationOutcome,
-	AccountOperationPreparation, AccountStoreObservation, CodexAccountCapabilityAttestation,
-	RoutingControlOutcome, SqliteStore, StoreError,
+	AccountAdministrationOutcome, AccountCommandReceiptLease, AccountEnrollmentResolution,
+	AccountLifecycleMutationOutcome, AccountOperationPreparation, AccountStoreObservation,
+	CodexAccountCapabilityAttestation, RoutingControlOutcome, SqliteStore, StoreError,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -48,6 +48,7 @@ const CHATGPT_OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
 const MAX_ACCOUNT_READ: u16 = 512;
 const MAX_UNSETTLED_ACCOUNT_OPERATION_READ: u16 = 1_024;
 const PROVIDER_REFRESH_OUTCOME_UNKNOWN: &str = "provider_refresh_outcome_unknown";
+const TOMBSTONE_ENROLLMENT_COLLISION: &str = "tombstone_enrollment_collision";
 const ACCOUNT_ALIAS_DOMAIN: &[u8] = b"decodex/account-alias/v2\0";
 const CODEX_AUTH_PROJECTION_DOMAIN: &[u8] = b"decodex/codex-auth-projection/v1\0";
 const ACCOUNT_ALIAS_WORDS: [&str; 44] = [
@@ -733,7 +734,7 @@ impl AccountService {
 		.await
 	}
 
-	#[allow(clippy::too_many_arguments)]
+	#[allow(clippy::too_many_arguments, clippy::too_many_lines)] // Keep provider resolution, credential effect, and journal completion in one auditable sequence.
 	async fn install_credentials_command<F>(
 		&self,
 		lease: AccountCommandReceiptLease,
@@ -751,21 +752,55 @@ impl AccountService {
 			+ Send
 			+ 'static,
 	{
-		let lock = self.lock_for(&account_id)?;
+		let resolution = self.store.resolve_account_enrollment(&account_id, &provider).await?;
+		let (resolved_account_id, expected_account_revision, previous_credential) =
+			match &resolution {
+				AccountEnrollmentResolution::Fresh { account_id } =>
+					(account_id.clone(), None, None),
+				AccountEnrollmentResolution::Restore {
+					account_id,
+					account_revision,
+					previous_credential,
+				} => (
+					account_id.clone(),
+					Some(*account_revision),
+					Some(previous_credential.clone()),
+				),
+				AccountEnrollmentResolution::AlreadyEnrolled { .. } =>
+					(account_id.clone(), None, None),
+			};
+		let lock = self.lock_for(&resolved_account_id)?;
 		let _guard = lock.lock().await;
+		if self.store.resolve_account_enrollment(&account_id, &provider).await? != resolution {
+			return self
+				.complete_account_command_error(
+					lease,
+					AccountLifecycleError::StaleAccount,
+					build_response,
+				)
+				.await;
+		}
+		let target_version = match previous_credential.as_ref() {
+			Some(previous) => previous
+				.version
+				.successor()
+				.map_err(|_| AccountLifecycleError::InvalidOperation)?,
+			None =>
+				CredentialVersion::new(1).map_err(|_| AccountLifecycleError::InvalidOperation)?,
+		};
 		let target = bundle.binding_for(
-			&account_id,
+			&resolved_account_id,
 			&operation_id,
-			CredentialVersion::new(1).map_err(|_| AccountLifecycleError::InvalidOperation)?,
+			target_version,
 			&provider,
 		)?;
 		let preparation = AccountOperationPreparation {
 			operation_id: operation_id.clone(),
-			account_id,
+			account_id: resolved_account_id,
 			kind,
 			display_label: Some(alias),
 			enabled: Some(enabled),
-			expected_account_revision: None,
+			expected_account_revision,
 			expected: None,
 			target: Some(target.clone()),
 			provider,
@@ -784,7 +819,16 @@ impl AccountService {
 			},
 		};
 		if phase == AccountOperationPhase::Prepared {
-			if let Err(error) = self.credentials.create(&preparation.account_id, &target, bundle)
+			let store_result = match previous_credential.as_ref() {
+				Some(previous) => self.credentials.restore_absent(
+					&preparation.account_id,
+					previous,
+					&target,
+					bundle,
+				),
+				None => self.credentials.create(&preparation.account_id, &target, bundle),
+			};
+			if let Err(error) = store_result
 				&& (error != CredentialStoreError::AlreadyExists
 					|| self.credentials.read_exact(&preparation.account_id, &target).is_err())
 			{
@@ -800,7 +844,11 @@ impl AccountService {
 						&operation_id,
 						AccountOperationPhase::Prepared,
 						terminal,
-						ambiguous.then_some("credential_create_failed"),
+						ambiguous.then_some(if previous_credential.is_some() {
+							"credential_restore_failed"
+						} else {
+							"credential_create_failed"
+						}),
 						error.into(),
 						build_response,
 					)
@@ -3114,6 +3162,11 @@ impl AccountService {
 		&self,
 		operation: &AccountOperation,
 	) -> Result<Option<ReconciliationDisposition>, AccountLifecycleError> {
+		if let Some(disposition) =
+			self.reconcile_legacy_tombstone_enrollment_collision(operation).await?
+		{
+			return Ok(Some(disposition));
+		}
 		match operation.phase {
 			AccountOperationPhase::Committed => Ok(Some(ReconciliationDisposition::Committed)),
 			AccountOperationPhase::Cancelled => Ok(Some(ReconciliationDisposition::Cancelled)),
@@ -3125,6 +3178,74 @@ impl AccountService {
 			AccountOperationPhase::Prepared | AccountOperationPhase::ProviderEffectPending =>
 				Ok(None),
 		}
+	}
+
+	async fn reconcile_legacy_tombstone_enrollment_collision(
+		&self,
+		operation: &AccountOperation,
+	) -> Result<Option<ReconciliationDisposition>, AccountLifecycleError> {
+		if !self.store.is_legacy_tombstone_enrollment_collision(operation).await? {
+			return Ok(None);
+		}
+		let target = operation.target.as_ref().ok_or(AccountLifecycleError::InvalidOperation)?;
+		match self.credentials.read_exact(&operation.account_id, target) {
+			Ok(_) => {
+				if self.credentials.delete(&operation.account_id, target).is_err() {
+					if operation.phase == AccountOperationPhase::StoreApplied {
+						accepted_phase(
+							self.store
+								.advance_account_operation(
+									&operation.operation_id,
+									AccountOperationPhase::StoreApplied,
+									AccountOperationPhase::RecoveryRequired,
+									Some(TOMBSTONE_ENROLLMENT_COLLISION),
+								)
+								.await?,
+						)?;
+					}
+					return Ok(Some(ReconciliationDisposition::Manual));
+				}
+			},
+			Err(CredentialStoreError::NotFound) => {},
+			Err(_) => {
+				if operation.phase == AccountOperationPhase::StoreApplied {
+					accepted_phase(
+						self.store
+							.advance_account_operation(
+								&operation.operation_id,
+								AccountOperationPhase::StoreApplied,
+								AccountOperationPhase::RecoveryRequired,
+								Some(TOMBSTONE_ENROLLMENT_COLLISION),
+							)
+							.await?,
+					)?;
+				}
+				return Ok(Some(ReconciliationDisposition::Manual));
+			},
+		}
+		if operation.phase == AccountOperationPhase::StoreApplied {
+			accepted_phase(
+				self.store
+					.advance_account_operation(
+						&operation.operation_id,
+						AccountOperationPhase::StoreApplied,
+						AccountOperationPhase::RecoveryRequired,
+						Some(TOMBSTONE_ENROLLMENT_COLLISION),
+					)
+					.await?,
+			)?;
+		}
+		accepted_phase(
+			self.store
+				.advance_account_operation(
+					&operation.operation_id,
+					AccountOperationPhase::RecoveryRequired,
+					AccountOperationPhase::Cancelled,
+					None,
+				)
+				.await?,
+		)?;
+		Ok(Some(ReconciliationDisposition::Cancelled))
 	}
 
 	async fn reconcile_import_operation(
@@ -3906,8 +4027,11 @@ mod tests {
 	}
 
 	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // The existing-provider setup and exact durable rejection remain one end-to-end boundary.
 	async fn duplicate_provider_enrollment_is_cancelled_and_replays_its_typed_receipt() {
 		let directory = tempdir().expect("temporary product root");
+		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+			.expect("private product root");
 		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
 			.expect("typed product root");
 		let store = SqliteStore::open(&root.paths()).expect("open product store");
@@ -4050,6 +4174,263 @@ mod tests {
 			.read_exact(&existing_account, &existing_binding)
 			.expect("existing credential remains authoritative");
 		assert_eq!(service.list().await.expect("list accounts").len(), 1);
+	}
+
+	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // One regression proves legacy cleanup, restoration, replay, routing, and reopen together.
+	async fn logged_out_provider_enrollment_restores_the_original_account_and_receipt() {
+		let directory = tempdir().expect("temporary product root");
+		fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+			.expect("private product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let service = AccountService::new(
+			store.clone(),
+			Arc::clone(&credentials),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let provider =
+			ProviderIdentity::new(AccountProvider::Chatgpt, "restored-provider-account")
+				.expect("provider identity");
+		let original_account =
+			AccountId::new("21000000-0000-4000-8000-000000000020").expect("original account");
+		let enrollment_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000020")
+				.expect("enrollment operation");
+		let enrollment_command =
+			CommandIdentity::new("restore-provider-enroll", b"initial enrollment")
+				.expect("enrollment command");
+		let enrollment_lease = match store
+			.reserve_account_command(
+				&enrollment_command,
+				AccountCommandKind::Enroll,
+				original_account.as_str(),
+				None,
+			)
+			.await
+			.expect("reserve initial enrollment")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("initial enrollment replayed"),
+		};
+		let (_initial_source, initial_descriptor) = owner_private_shared_codex_auth(
+			provider.account_id(),
+			"initial@example.test",
+		);
+		let initial = service
+			.enroll_from_credential_file_command(
+				enrollment_lease,
+				enrollment_operation,
+				original_account.clone(),
+				true,
+				&initial_descriptor,
+				|result| {
+					Ok(match result {
+						Ok(account) => json!({
+							"outcome": "succeeded",
+							"account_id": account.account_id.as_str(),
+							"account_revision": account.revision,
+						}),
+						Err(_) => json!({"outcome": "unexpected"}),
+					})
+				},
+			)
+			.await
+			.expect("complete initial enrollment");
+		assert_eq!(
+			initial,
+			json!({
+				"outcome": "succeeded",
+				"account_id": original_account.as_str(),
+				"account_revision": 1,
+			})
+		);
+
+		let logout_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000021")
+				.expect("logout operation");
+		let tombstone = service
+			.logout(logout_operation, &original_account, 1)
+			.await
+			.expect("logout original account");
+		assert!(tombstone.tombstoned);
+		assert_eq!(tombstone.revision, 2);
+		assert!(service.list().await.expect("list after logout").is_empty());
+
+		let legacy_account =
+			AccountId::new("21000000-0000-4000-8000-000000000022").expect("legacy account");
+		let legacy_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000022")
+				.expect("legacy operation");
+		let legacy_bundle = shared_bundle(provider.account_id(), "legacy-access", 3_000_000);
+		let legacy_target = legacy_bundle
+			.binding_for(
+				&legacy_account,
+				&legacy_operation,
+				CredentialVersion::new(1).expect("legacy version"),
+				&provider,
+			)
+			.expect("legacy target");
+		assert!(matches!(
+			store
+				.prepare_account_operation(&AccountOperationPreparation {
+					operation_id: legacy_operation.clone(),
+					account_id: legacy_account.clone(),
+					kind: AccountOperationKind::Enroll,
+					display_label: Some(stable_account_alias(&provider)),
+					enabled: Some(true),
+					expected_account_revision: None,
+					expected: None,
+					target: Some(legacy_target.clone()),
+					provider: provider.clone(),
+				})
+				.await
+				.expect("prepare legacy collision"),
+			AccountLifecycleMutationOutcome::Applied(_)
+		));
+		credentials
+			.create(&legacy_account, &legacy_target, legacy_bundle)
+			.expect("write legacy credential");
+		store
+			.advance_account_operation(
+				&legacy_operation,
+				AccountOperationPhase::Prepared,
+				AccountOperationPhase::StoreApplied,
+				None,
+			)
+			.await
+			.expect("record legacy store effect");
+		let startup = service.reconcile_startup().await.expect("reconcile legacy collision");
+		assert_eq!(startup.cancelled, 1);
+		assert_eq!(startup.committed, 0);
+		assert!(startup.manual_recovery.is_empty());
+		assert!(matches!(
+			credentials.read_exact(&legacy_account, &legacy_target),
+			Err(CredentialStoreError::NotFound)
+		));
+		let legacy = store
+			.read_account_operation(&legacy_operation)
+			.await
+			.expect("read legacy collision")
+			.expect("legacy collision is retained");
+		assert_eq!(legacy.phase, AccountOperationPhase::Cancelled);
+
+		let requested_account =
+			AccountId::new("21000000-0000-4000-8000-000000000023").expect("requested account");
+		let restore_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000023")
+				.expect("restore operation");
+		let restore_command =
+			CommandIdentity::new("restore-provider-reenroll", b"restore enrollment")
+				.expect("restore command");
+		let restore_lease = match store
+			.reserve_account_command(
+				&restore_command,
+				AccountCommandKind::Enroll,
+				requested_account.as_str(),
+				None,
+			)
+			.await
+			.expect("reserve restore enrollment")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("restore enrollment replayed"),
+		};
+		let (_restore_source, restore_descriptor) = owner_private_shared_codex_auth(
+			provider.account_id(),
+			"restored@example.test",
+		);
+		let restored = service
+			.enroll_from_credential_file_command(
+				restore_lease,
+				restore_operation.clone(),
+				requested_account.clone(),
+				true,
+				&restore_descriptor,
+				|result| {
+					Ok(match result {
+						Ok(account) => json!({
+							"outcome": "succeeded",
+							"account_id": account.account_id.as_str(),
+							"account_revision": account.revision,
+						}),
+						Err(_) => json!({"outcome": "unexpected"}),
+					})
+				},
+			)
+			.await;
+		if restored.is_err() {
+			let operation = store
+				.read_account_operation(&restore_operation)
+				.await
+				.expect("read failed restore operation")
+				.expect("failed restore operation is journaled");
+			assert_eq!(operation.phase, AccountOperationPhase::StoreApplied);
+			let target = operation.target.expect("failed restore retains its target binding");
+			credentials
+				.read_exact(&requested_account, &target)
+				.expect("failed restore wrote the requested account credential");
+			assert!(service.list().await.expect("list after failed restore").is_empty());
+		}
+		let restored = restored.expect("restore logged-out provider");
+
+		assert_eq!(
+			restored,
+			json!({
+				"outcome": "succeeded",
+				"account_id": original_account.as_str(),
+				"account_revision": 3,
+			})
+		);
+		let accounts = service.list().await.expect("list restored account");
+		assert_eq!(accounts.len(), 1);
+		assert_eq!(accounts[0].account.account_id, original_account);
+		let binding = accounts[0]
+			.account
+			.credential
+			.as_ref()
+			.expect("restored credential binding");
+		assert_eq!(binding.version.get(), 2);
+		assert_eq!(binding.writer_operation_id, restore_operation);
+		credentials
+			.read_exact(&accounts[0].account.account_id, binding)
+			.expect("restored credential is authoritative");
+		let restored_account_id = accounts[0].account.account_id.clone();
+		let restored_binding = binding.clone();
+		assert!(matches!(
+			store
+				.reserve_account_command(
+					&restore_command,
+					AccountCommandKind::Enroll,
+					requested_account.as_str(),
+					None,
+				)
+				.await
+				.expect("replay restore enrollment"),
+			AccountCommandReceiptClaim::Replayed(replayed) if replayed == restored
+		));
+
+		drop(accounts);
+		drop(service);
+		drop(credentials);
+		drop(store);
+		let reopened = SqliteStore::open(&root.paths()).expect("reopen product store");
+		let reopened_credentials = SqliteCredentialStore::new(reopened.clone());
+		reopened_credentials
+			.read_exact(&restored_account_id, &restored_binding)
+			.expect("restored credential survives reopen");
+		let reopened_service = AccountService::new(
+			reopened,
+			Arc::new(reopened_credentials),
+			Arc::new(UnusedCredentialRefresher),
+		);
+		let reopened_accounts = reopened_service.list().await.expect("list restored after reopen");
+		assert_eq!(reopened_accounts.len(), 1);
+		assert_eq!(reopened_accounts[0].account.account_id, restored_account_id);
+		assert_eq!(reopened_accounts[0].account.credential.as_ref(), Some(&restored_binding));
 	}
 
 	#[tokio::test]

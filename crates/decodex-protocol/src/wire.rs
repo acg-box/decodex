@@ -2895,6 +2895,13 @@ pub enum ResultPayload {
 		/// Complete credential-negative account projection.
 		account: Box<AccountDto>,
 	},
+	/// A new enrollment request restored the one tombstoned account with the same provider binding.
+	AccountRestored {
+		/// New account identity proposed by the client before the provider binding was known.
+		requested_account_id: EntityId,
+		/// Restored canonical account projection and original stable identity.
+		account: Box<AccountDto>,
+	},
 	/// One account logout completed with an exact tombstone revision.
 	AccountLoggedOut {
 		/// Canonical logged-out account identity.
@@ -5670,7 +5677,7 @@ mod tests {
 			serde_json::to_string(&message).unwrap(),
 			concat!(
 				r#"{"type":"hello","body":{"version":{"major":2,"minor":5},"#,
-				r#""artifact_cohort":1,"#,
+				r#""artifact_cohort":2,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
 		);

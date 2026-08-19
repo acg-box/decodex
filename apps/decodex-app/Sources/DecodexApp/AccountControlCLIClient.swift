@@ -182,6 +182,7 @@ enum AccountLoginMethod: String, Encodable, Equatable, Sendable {
 enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 	case loginFailed = "login_failed"
 	case loginTimedOut = "login_timed_out"
+	case deviceAuthorizationRejected = "device_authorization_rejected"
 	case accountMismatch = "account_mismatch"
 	case accountChanged = "account_changed"
 	case accountUnavailable = "account_unavailable"
@@ -199,6 +200,8 @@ enum AccountReauthenticationFailure: String, Decodable, Equatable, Sendable {
 			return "Codex could not complete the login."
 		case .loginTimedOut:
 			return "The login timed out. Try again."
+		case .deviceAuthorizationRejected:
+			return "Device-code approval failed. Check ChatGPT Security, then try again."
 		case .accountMismatch:
 			return "This login belongs to a different account."
 		case .accountChanged:
@@ -236,6 +239,23 @@ struct AccountReauthenticationStatus: Equatable, Sendable {
 	let prompt: AccountReauthenticationPrompt?
 	let authorizationURL: URL?
 	let failure: AccountReauthenticationFailure?
+	let resolvedAccountID: String?
+
+	init(
+		sessionID: String,
+		state: AccountReauthenticationState,
+		prompt: AccountReauthenticationPrompt?,
+		authorizationURL: URL?,
+		failure: AccountReauthenticationFailure?,
+		resolvedAccountID: String? = nil
+	) {
+		self.sessionID = sessionID
+		self.state = state
+		self.prompt = prompt
+		self.authorizationURL = authorizationURL
+		self.failure = failure
+		self.resolvedAccountID = resolvedAccountID
+	}
 }
 
 protocol AccountControlClient: ResetCardClient {
@@ -396,8 +416,8 @@ extension DecodexNativeClient: AccountControlClient {
 				enabled: enabled
 			),
 			authority: authority,
-			expected: .accountChanged(
-				accountID: accountID,
+			expected: .accountEnrollment(
+				requestedAccountID: accountID,
 				enabled: enabled
 			)
 		)
@@ -792,6 +812,7 @@ private struct AccountReauthenticationWire: Decodable {
 			in: decoder,
 			allowed: [
 				"session_id", "state", "prompt", "authorization_url", "failure",
+				"resolved_account_id",
 			]
 		)
 		let container = try decoder.container(keyedBy: CodingKeys.self)
@@ -813,13 +834,19 @@ private struct AccountReauthenticationWire: Decodable {
 			AccountReauthenticationFailure.self,
 			forKey: .failure
 		)
+		let resolvedAccountID = try container.decodeIfPresent(
+			String.self,
+			forKey: .resolvedAccountID
+		)
 		guard DecodexNativeClient.isCanonicalUUID(sessionID),
 			authorizationURLText == nil || authorizationURL != nil,
+			resolvedAccountID.map(DecodexNativeClient.isCanonicalUUID) ?? true,
 			Self.hasValidShape(
 				state: state,
 				prompt: prompt,
 				authorizationURL: authorizationURL,
-				failure: failure
+				failure: failure,
+				resolvedAccountID: resolvedAccountID
 			)
 		else {
 			throw AccountControlError.invalidResponse
@@ -829,7 +856,8 @@ private struct AccountReauthenticationWire: Decodable {
 			state: state,
 			prompt: prompt,
 			authorizationURL: authorizationURL,
-			failure: failure
+			failure: failure,
+			resolvedAccountID: resolvedAccountID
 		)
 	}
 
@@ -837,17 +865,24 @@ private struct AccountReauthenticationWire: Decodable {
 		state: AccountReauthenticationState,
 		prompt: AccountReauthenticationPrompt?,
 		authorizationURL: URL?,
-		failure: AccountReauthenticationFailure?
+		failure: AccountReauthenticationFailure?,
+		resolvedAccountID: String?
 	) -> Bool {
 		switch state {
-		case .requestingCode, .openingBrowser, .installing, .completed, .cancelled:
+		case .completed:
 			return prompt == nil && authorizationURL == nil && failure == nil
+				&& resolvedAccountID != nil
+		case .requestingCode, .openingBrowser, .installing, .cancelled:
+			return prompt == nil && authorizationURL == nil && failure == nil
+				&& resolvedAccountID == nil
 		case .waitingForBrowser:
 			return failure == nil
 				&& (prompt != nil) != (authorizationURL != nil)
-				&& authorizationURL.map(Self.isValidAuthorizationURL) ?? true
+				&& (authorizationURL.map(Self.isValidAuthorizationURL) ?? true)
+				&& resolvedAccountID == nil
 		case .failed:
 			return prompt == nil && authorizationURL == nil && failure != nil
+				&& resolvedAccountID == nil
 		}
 	}
 
@@ -919,10 +954,12 @@ private struct AccountReauthenticationWire: Decodable {
 		case prompt
 		case authorizationURL = "authorization_url"
 		case failure
+		case resolvedAccountID = "resolved_account_id"
 	}
 }
 private enum AccountControlExpectedResult {
 	case accountChanged(accountID: String, enabled: Bool?)
+	case accountEnrollment(requestedAccountID: String, enabled: Bool)
 	case accountLoggedOut(accountID: String)
 	case routing(mode: AccountRoutingMode)
 	case routingOrder([String])
@@ -1104,6 +1141,7 @@ private enum AccountControlWireResponse: Decodable {
 
 private enum AccountControlResultPayloadWire: Decodable {
 	case accountChanged(ResetCardAccountWire)
+	case accountRestored(requestedAccountID: String, account: ResetCardAccountWire)
 	case accountLoggedOut(accountID: String, tombstoneRevision: UInt64)
 	case routingChanged(AccountRoutingWire)
 	case codexAuthProjected(accountID: String, accountRevision: UInt64, projectionDigest: String)
@@ -1115,6 +1153,16 @@ private enum AccountControlResultPayloadWire: Decodable {
 			try requireExactFields(in: decoder, expected: ["name", "data"])
 			let data = try container.decode(AccountChangedData.self, forKey: .data)
 			self = .accountChanged(data.account)
+		case "account_restored":
+			try requireExactFields(in: decoder, expected: ["name", "data"])
+			let data = try container.decode(AccountRestoredData.self, forKey: .data)
+			guard DecodexNativeClient.isCanonicalAccountID(data.requestedAccountID) else {
+				throw AccountControlError.invalidResponse
+			}
+			self = .accountRestored(
+				requestedAccountID: data.requestedAccountID,
+				account: data.account
+			)
 		case "account_logged_out":
 			try requireExactFields(in: decoder, expected: ["name", "data"])
 			let data = try container.decode(AccountLoggedOutData.self, forKey: .data)
@@ -1183,6 +1231,31 @@ private enum AccountControlResultPayloadWire: Decodable {
 				)
 			)
 		case (
+			.accountChanged(let wire),
+			.accountEnrollment(let requestedAccountID, let expectedEnabled)
+		):
+			let decoded = try wire.record()
+			guard decoded.accountID == requestedAccountID,
+				decoded.accountRevision == entityRevision,
+				decoded.enabled == expectedEnabled
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			return .accountChanged(decoded.withAuthority(authority))
+		case (
+			.accountRestored(let requestedAccountID, let wire),
+			.accountEnrollment(let expectedRequestedID, let expectedEnabled)
+		):
+			let decoded = try wire.record()
+			guard requestedAccountID == expectedRequestedID,
+				decoded.accountID != requestedAccountID,
+				decoded.accountRevision == entityRevision,
+				decoded.enabled == expectedEnabled
+			else {
+				throw AccountControlError.invalidResponse
+			}
+			return .accountChanged(decoded.withAuthority(authority))
+		case (
 			.accountLoggedOut(let accountID, let tombstoneRevision),
 			.accountLoggedOut(let expectedID)
 		):
@@ -1235,6 +1308,26 @@ private enum AccountControlResultPayloadWire: Decodable {
 		}
 
 		private enum CodingKeys: String, CodingKey {
+			case account
+		}
+	}
+
+	private struct AccountRestoredData: Decodable {
+		let requestedAccountID: String
+		let account: ResetCardAccountWire
+
+		init(from decoder: Decoder) throws {
+			try requireExactFields(
+				in: decoder,
+				expected: ["requested_account_id", "account"]
+			)
+			let container = try decoder.container(keyedBy: CodingKeys.self)
+			requestedAccountID = try container.decode(String.self, forKey: .requestedAccountID)
+			account = try container.decode(ResetCardAccountWire.self, forKey: .account)
+		}
+
+		private enum CodingKeys: String, CodingKey {
+			case requestedAccountID = "requested_account_id"
 			case account
 		}
 	}
@@ -1302,6 +1395,24 @@ private enum AccountControlResultPayloadWire: Decodable {
 	private enum CodingKeys: String, CodingKey {
 		case name
 		case data
+	}
+}
+
+private extension ResetCardAccountRecord {
+	func withAuthority(_ authority: ResetCardAuthority?) -> ResetCardAccountRecord {
+		ResetCardAccountRecord(
+			authority: authority,
+			accountID: accountID,
+			alias: alias,
+			accountRevision: accountRevision,
+			enabled: enabled,
+			observedState: observedState,
+			lifecycleReadiness: lifecycleReadiness,
+			credentialBinding: credentialBinding,
+			unsettledOperation: unsettledOperation,
+			fiveHourQuota: fiveHourQuota,
+			sevenDayQuota: sevenDayQuota
+		)
 	}
 }
 

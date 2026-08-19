@@ -568,16 +568,22 @@ impl ServiceApplication {
 			CommandPayload::EnrollAccountFromSharedCodex { operation_id, account_id, enabled } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
+				let requested_account_id = account_id.clone();
 				service
 					.enroll_from_shared_codex_command(
 						lease,
 						operation_id,
 						account_id,
 						*enabled,
-						|result| {
+						move |result| {
 							encode_account_command_receipt(
 								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| account_changed_publication(account.clone()),
+									|account| {
+										account_enrollment_publication(
+											&requested_account_id,
+											account.clone(),
+										)
+									},
 								),
 							)
 						},
@@ -592,6 +598,7 @@ impl ServiceApplication {
 			} => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
+				let requested_account_id = account_id.clone();
 				service
 					.enroll_from_credential_file_command(
 						lease,
@@ -599,10 +606,15 @@ impl ServiceApplication {
 						account_id,
 						*enabled,
 						source_descriptor.as_str(),
-						|result| {
+						move |result| {
 							encode_account_command_receipt(
 								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| account_changed_publication(account.clone()),
+									|account| {
+										account_enrollment_publication(
+											&requested_account_id,
+											account.clone(),
+										)
+									},
 								),
 							)
 						},
@@ -617,6 +629,7 @@ impl ServiceApplication {
 			} => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let account_id = account_id_from_wire(account_id)?;
+				let requested_account_id = account_id.clone();
 				service
 					.import_credential_file_command(
 						lease,
@@ -624,10 +637,15 @@ impl ServiceApplication {
 						account_id,
 						*enabled,
 						source_descriptor.as_str(),
-						|result| {
+						move |result| {
 							encode_account_command_receipt(
 								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| account_changed_publication(account.clone()),
+									|account| {
+										account_enrollment_publication(
+											&requested_account_id,
+											account.clone(),
+										)
+									},
 								),
 							)
 						},
@@ -3543,6 +3561,29 @@ fn account_changed_publication(
 		entity_id: account.account_id.clone(),
 		entity_revision: account.account_revision,
 		result: ResultPayload::AccountChanged { account: Box::new(account.clone()) },
+		event: EventPayload::AccountChanged { account: Box::new(account) },
+	})
+}
+
+fn account_enrollment_publication(
+	requested_account_id: &AccountId,
+	account: AccountRecord,
+) -> Result<ApplicationPublication, CommandError> {
+	if &account.account_id == requested_account_id {
+		return account_changed_publication(account);
+	}
+	let requested_account_id = EntityId::new(requested_account_id.as_str().to_owned())
+		.map_err(|_| application_unavailable("account enrollment result is incompatible"))?;
+	let account = account_dto(account)
+		.map_err(|_| application_unavailable("account enrollment result is incompatible"))?;
+	Ok(ApplicationPublication {
+		channel: Channel::AccountsHealth,
+		entity_id: account.account_id.clone(),
+		entity_revision: account.account_revision,
+		result: ResultPayload::AccountRestored {
+			requested_account_id,
+			account: Box::new(account.clone()),
+		},
 		event: EventPayload::AccountChanged { account: Box::new(account) },
 	})
 }

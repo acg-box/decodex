@@ -1343,6 +1343,15 @@ fn account_result_matches(
 			ResultPayload::AccountChanged { account },
 		) => account_id == &account.account_id && entity_revision == account.account_revision,
 		(
+			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
+			| CommandPayload::EnrollAccountFromCredentialFile { account_id, .. }
+			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
+			ResultPayload::AccountRestored { requested_account_id, account },
+		) =>
+			account_id == requested_account_id
+				&& account.account_id != *requested_account_id
+				&& entity_revision == account.account_revision,
+		(
 			CommandPayload::LogoutAccount { account_id, .. },
 			ResultPayload::AccountLoggedOut { account_id: result_id, tombstone_revision },
 		) => account_id == result_id && *tombstone_revision == entity_revision,
@@ -3054,7 +3063,7 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn device_login_enrollment_result_requires_exact_new_account_and_revision() {
+	fn device_login_enrollment_result_requires_exact_requested_or_restored_account_and_revision() {
 		let account_id =
 			EntityId::new("44234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let command = crate::CommandPayload::EnrollAccountFromCredentialFile {
@@ -3089,12 +3098,37 @@ max_entry_bytes = 0
 			account: Box::new(crate::AccountDto {
 				account_id: EntityId::new("46234567-89ab-4def-8123-456789abcdef")
 					.expect("canonical account ID"),
+				..account.clone()
+			}),
+		};
+		let restored_account_id =
+			EntityId::new("47234567-89ab-4def-8123-456789abcdef").expect("restored account ID");
+		let restored = ResultPayload::AccountRestored {
+			requested_account_id: account_id.clone(),
+			account: Box::new(crate::AccountDto {
+				account_id: restored_account_id,
+				account_revision: EntityRevision(3),
 				..account
 			}),
+		};
+		let wrong_request = ResultPayload::AccountRestored {
+			requested_account_id: EntityId::new("48234567-89ab-4def-8123-456789abcdef")
+				.expect("wrong requested account ID"),
+			account: match &restored {
+				ResultPayload::AccountRestored { account, .. } => account.clone(),
+				_ => unreachable!(),
+			},
 		};
 
 		assert!(super::account_result_matches(&command, EntityRevision(1), &exact));
 		assert!(!super::account_result_matches(&command, EntityRevision(1), &other_account));
+		assert!(super::account_result_matches(&command, EntityRevision(3), &restored));
+		assert!(!super::account_result_matches(
+			&command,
+			EntityRevision(3),
+			&wrong_request
+		));
+		assert!(!super::account_result_matches(&command, EntityRevision(2), &restored));
 	}
 
 	#[tokio::test]

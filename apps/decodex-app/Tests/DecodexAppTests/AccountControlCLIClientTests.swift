@@ -387,6 +387,44 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(request.authority, authority)
 	}
 
+	func testSharedEnrollmentAcceptsOnlyTheResolvedTombstonedAccountResult() async throws {
+		let authority = authority
+		let requestedAccountID = accountID
+		let restoredAccountID = secondAccountID
+		let recorder = NativeRequestRecorder()
+		let client = DecodexNativeClient { request, requestedAuthority in
+			recorder.append(request, authority: requestedAuthority)
+			return nativeSuccess(
+				operation: "enroll_account",
+				authority: authority,
+				data: """
+				{"outcome":"applied","data":{"entity_revision":3,
+				  "result":{"name":"account_restored","data":{
+				    "requested_account_id":"\(requestedAccountID)","account":
+				    \(controlAccountJSON(accountID: restoredAccountID, alias: "Iris", revision: 3, enabled: true))
+				  }}}}
+				"""
+			)
+		}
+
+		let result = try await client.enrollFromSharedCodex(
+			authority: authority,
+			operationID: operationID,
+			accountID: accountID,
+			enabled: true,
+			idempotencyKey: idempotencyKey
+		)
+		guard case .accountChanged(let restored) = result else {
+			return XCTFail("Restoration must return the authoritative account")
+		}
+		XCTAssertEqual(restored.accountID, secondAccountID)
+		XCTAssertEqual(restored.accountRevision, 3)
+		let request = try XCTUnwrap(recorder.requests.first)
+		let object = try nativeJSONObject(request.data)
+		XCTAssertEqual(object["account_id"] as? String, accountID)
+		XCTAssertEqual(request.authority, authority)
+	}
+
 	func testAccountEnrollmentUsesExactNativeStartRequest() async throws {
 		let authority = authority
 		let sessionID = "55555555-5555-4555-8555-555555555555"
@@ -594,6 +632,57 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(status.failure, .accountMismatch)
 	}
 
+	func testDeviceAuthorizationRejectionIsActionableAndClosed() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"failed",
+					 "failure":"device_authorization_rejected"}
+					"""
+			)
+		}
+
+		let status = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(status.state, .failed)
+		XCTAssertEqual(status.failure, .deviceAuthorizationRejected)
+		XCTAssertEqual(
+			status.failure?.presentation,
+			"Device-code approval failed. Check ChatGPT Security, then try again."
+		)
+	}
+
+	func testCompletedLoginCarriesTheDaemonResolvedAccountIdentity() async throws {
+		let authority = authority
+		let sessionID = "55555555-5555-4555-8555-555555555555"
+		let restoredAccountID = "66666666-6666-4666-8666-666666666666"
+		let client = DecodexNativeClient { _, _ in
+			nativeSuccess(
+				operation: "poll_account_reauthentication",
+				authority: authority,
+				data: """
+					{"session_id":"\(sessionID)","state":"completed",
+					 "resolved_account_id":"\(restoredAccountID)"}
+					"""
+			)
+		}
+
+		let status = try await client.pollAccountReauthentication(
+			authority: authority,
+			sessionID: sessionID
+		)
+
+		XCTAssertEqual(status.state, .completed)
+		XCTAssertEqual(status.resolvedAccountID, restoredAccountID)
+	}
+
 	func testAccountEnrollmentDecodesDuplicateProviderFailure() async throws {
 		let authority = authority
 		let sessionID = "55555555-5555-4555-8555-555555555555"
@@ -625,6 +714,9 @@ final class AccountControlNativeClientTests: XCTestCase {
 		let authority = authority
 		let sessionID = "55555555-5555-4555-8555-555555555555"
 		let malformed = [
+			"""
+			{"session_id":"\(sessionID)","state":"completed"}
+			""",
 			"""
 			{"session_id":"\(sessionID)","state":"waiting_for_browser"}
 			""",

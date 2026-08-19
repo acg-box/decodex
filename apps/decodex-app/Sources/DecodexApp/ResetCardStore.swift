@@ -1743,8 +1743,20 @@ final class ResetCardStore {
 			case .completed:
 				accountReauthenticationTask?.cancel()
 				accountReauthenticationTask = nil
+				guard let resolvedAccountID = status.resolvedAccountID,
+					presentation.mode == .enrollment
+						|| resolvedAccountID == presentation.accountID
+				else {
+					await failAccountReauthentication(
+						accountID: presentation.accountID,
+						sessionID: presentation.sessionID,
+						message: AccountControlError.invalidResponse.localizedDescription
+					)
+					return
+				}
 				await completeAccountReauthentication(
-					accountID: presentation.accountID,
+					requestedAccountID: presentation.accountID,
+					resolvedAccountID: resolvedAccountID,
 					sessionID: presentation.sessionID
 				)
 			case .failed:
@@ -3145,8 +3157,19 @@ final class ResetCardStore {
 			)
 			return false
 		case .completed:
+			guard let resolvedAccountID = status.resolvedAccountID,
+				presentation.mode == .enrollment || resolvedAccountID == accountID
+			else {
+				await failAccountReauthentication(
+					accountID: accountID,
+					sessionID: sessionID,
+					message: AccountControlError.invalidResponse.localizedDescription
+				)
+				return true
+			}
 			await completeAccountReauthentication(
-				accountID: accountID,
+				requestedAccountID: accountID,
+				resolvedAccountID: resolvedAccountID,
 				sessionID: sessionID
 			)
 			return true
@@ -3180,16 +3203,22 @@ final class ResetCardStore {
 			return loginMethod == .deviceCode
 				&& status.prompt == nil
 				&& status.authorizationURL == nil
+				&& status.resolvedAccountID == nil
 		case .openingBrowser:
 			return loginMethod == .browserRedirect
 				&& status.prompt == nil
 				&& status.authorizationURL == nil
+				&& status.resolvedAccountID == nil
 		case .waitingForBrowser:
-			return loginMethod == .deviceCode
+			return status.resolvedAccountID == nil && (loginMethod == .deviceCode
 				? status.prompt != nil && status.authorizationURL == nil
-				: status.prompt == nil && status.authorizationURL != nil
-		case .installing, .completed, .failed, .cancelled:
+				: status.prompt == nil && status.authorizationURL != nil)
+		case .completed:
 			return status.prompt == nil && status.authorizationURL == nil
+				&& status.resolvedAccountID != nil
+		case .installing, .failed, .cancelled:
+			return status.prompt == nil && status.authorizationURL == nil
+				&& status.resolvedAccountID == nil
 		}
 	}
 
@@ -3218,7 +3247,8 @@ final class ResetCardStore {
 	}
 
 	private func completeAccountReauthentication(
-		accountID: String,
+		requestedAccountID: String,
+		resolvedAccountID: String,
 		sessionID: String
 	) async {
 		guard let presentation = accountReauthentication,
@@ -3226,7 +3256,7 @@ final class ResetCardStore {
 		else {
 			return
 		}
-		accountControlActivities.removeValue(forKey: accountID)
+		accountControlActivities.removeValue(forKey: requestedAccountID)
 		if presentation.mode == .enrollment {
 			isEnrollingAccount = false
 		}
@@ -3238,7 +3268,7 @@ final class ResetCardStore {
 		case .enrollment:
 			message = ResetCardStoreMessage(tone: .success, text: "Account added.")
 			await refreshEnrolledAccountAuthority(
-				accountID,
+				resolvedAccountID,
 				retryDelays: accountObservationRetryDelays
 			)
 		case .reauthentication:
@@ -3247,7 +3277,7 @@ final class ResetCardStore {
 				text: "Account login refreshed."
 			)
 			await refreshReauthenticatedAccountAuthority(
-				accountID,
+				resolvedAccountID,
 				retryDelays: accountObservationRetryDelays
 			)
 		}

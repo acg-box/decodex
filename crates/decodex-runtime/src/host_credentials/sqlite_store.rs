@@ -72,6 +72,41 @@ impl HostCredentialStore for SqliteCredentialStore {
 			.map_err(map_create_error)
 	}
 
+	fn restore_absent(
+		&self,
+		account_id: &AccountId,
+		previous: &CredentialBinding,
+		target: &CredentialBinding,
+		bundle: CredentialSecretBundle,
+	) -> Result<(), CredentialStoreError> {
+		let next =
+			previous.version.successor().map_err(|_| CredentialStoreError::VersionConflict)?;
+		if target.version != next || target.provider != previous.provider {
+			return Err(CredentialStoreError::VersionConflict);
+		}
+		match self.store.read_credential(account_id.as_str()) {
+			Err(DatabaseError::NotFound) => {},
+			Ok(_) => return Err(CredentialStoreError::AlreadyExists),
+			Err(error) => return Err(map_read_error(error)),
+		}
+		let persisted = PersistedCredentialV1::new(
+			account_id,
+			&target.writer_operation_id,
+			next,
+			&target.provider,
+			bundle,
+		);
+		let bytes = encode(&persisted)?;
+		let binding = persisted.binding(fingerprint(&bytes)?)?;
+		enforce_exact(&binding, target)?;
+		self.store
+			.create_credential(CredentialRecord {
+				key: credential_key(target, account_id),
+				payload: bytes,
+			})
+			.map_err(map_create_error)
+	}
+
 	fn read_exact(
 		&self,
 		account_id: &AccountId,
