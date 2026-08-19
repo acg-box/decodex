@@ -2,7 +2,7 @@
 
 ## OpenAI Codex login source
 
-The bounded account-login adapter in `src/source_login_adapter.rs` is derived from the
+The bounded account-login engine in `src/lib.rs` is derived from the
 Apache-2.0-licensed OpenAI Codex repository:
 
 - repository: `https://github.com/openai/codex`

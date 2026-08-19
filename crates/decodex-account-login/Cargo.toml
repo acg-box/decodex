@@ -1,0 +1,26 @@
+[package]
+authors.workspace    = true
+description          = "Bounded source-derived OpenAI Codex account-login engine for decodexd."
+edition.workspace    = true
+homepage.workspace   = true
+license.workspace    = true
+name                 = "decodex-account-login"
+repository.workspace = true
+version.workspace    = true
+
+[dependencies]
+base64     = { workspace = true }
+getrandom  = { workspace = true }
+httparse   = { workspace = true }
+libc       = { workspace = true }
+reqwest    = { workspace = true }
+serde      = { workspace = true }
+serde_json = { workspace = true }
+sha2       = { workspace = true }
+time       = { workspace = true }
+tokio      = { workspace = true }
+url        = { workspace = true }
+zeroize    = { workspace = true, features = ["derive", "serde"] }
+
+[dev-dependencies]
+tempfile = { workspace = true }

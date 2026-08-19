@@ -31,6 +31,7 @@ use decodex_database::{
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
+	AccountLoginRequest, AccountLoginStatus,
 	AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
 	AccountManualRecoveryActionDto, AccountManualRecoveryOutcomeDto, AccountObservedStateDto,
 	AccountOperationKindDto, AccountOperationPhaseDto, AccountProfileDailyUsageDto,
@@ -141,6 +142,14 @@ pub trait Application: Send + Sync + 'static {
 		&'a self,
 		query: &'a QueryEnvelope,
 	) -> impl Future<Output = QueryResultPayload> + Send + 'a;
+
+	/// Execute one transient account-login operation without publication or retained state.
+	fn account_login<'a>(
+		&'a self,
+		request: &'a AccountLoginRequest,
+	) -> impl Future<Output = AccountLoginStatus> + Send + 'a {
+		future::ready(crate::account_login::unavailable_status(request))
+	}
 
 	/// Wait for one application-owned publication that completes after its initiating command.
 	fn next_publication(&self) -> impl Future<Output = Option<ApplicationEventPublication>> + Send {
@@ -282,6 +291,7 @@ pub(crate) struct ServiceApplication {
 	accounts: Option<Arc<AccountService>>,
 	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
+	account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
 	quick_tasks: QuickTaskCapability,
 	doctor: DoctorReport,
 }
@@ -307,6 +317,7 @@ impl ServiceApplication {
 			accounts: None,
 			reset_cards: None,
 			account_observations: None,
+			account_login: None,
 			quick_tasks,
 			doctor,
 		}
@@ -329,6 +340,15 @@ impl ServiceApplication {
 		account_observations: Option<AccountObservationService>,
 	) -> Self {
 		self.account_observations = account_observations;
+
+		self
+	}
+
+	pub(crate) fn with_account_login(
+		mut self,
+		account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
+	) -> Self {
+		self.account_login = account_login;
 
 		self
 	}
@@ -590,37 +610,6 @@ impl ServiceApplication {
 					)
 					.await
 			},
-			CommandPayload::EnrollAccountFromCredentialFile {
-				operation_id,
-				account_id,
-				enabled,
-				source_descriptor,
-			} => {
-				let operation_id = operation_id_from_wire(operation_id)?;
-				let account_id = account_id_from_wire(account_id)?;
-				let requested_account_id = account_id.clone();
-				service
-					.enroll_from_credential_file_command(
-						lease,
-						operation_id,
-						account_id,
-						*enabled,
-						source_descriptor.as_str(),
-						move |result| {
-							encode_account_command_receipt(
-								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| {
-										account_enrollment_publication(
-											&requested_account_id,
-											account.clone(),
-										)
-									},
-								),
-							)
-						},
-					)
-					.await
-			},
 			CommandPayload::ImportAccountCredentialFile {
 				operation_id,
 				account_id,
@@ -678,35 +667,6 @@ impl ServiceApplication {
 								.and_then(|account| account_changed_publication(account.clone())),
 						)
 					})
-					.await
-			},
-			CommandPayload::ReauthenticateAccountFromCredentialFile {
-				operation_id,
-				account_id,
-				recovery_operation_id,
-				source_descriptor,
-			} => {
-				let operation_id = operation_id_from_wire(operation_id)?;
-				let account_id = account_id_from_wire(account_id)?;
-				let recovery_operation_id =
-					recovery_operation_id.as_ref().map(operation_id_from_wire).transpose()?;
-				let expected = required_expected_revision(command)?;
-				service
-					.reauthenticate_from_credential_file_command(
-						lease,
-						operation_id,
-						&account_id,
-						expected,
-						recovery_operation_id.as_ref(),
-						source_descriptor.as_str(),
-						|result| {
-							encode_account_command_receipt(
-								&result.map_err(account_lifecycle_command_error).and_then(
-									|account| account_changed_publication(account.clone()),
-								),
-							)
-						},
-					)
 					.await
 			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
@@ -1751,6 +1711,9 @@ impl Application for ServiceApplication {
 	}
 
 	fn begin_shutdown(&self) {
+		if let Some(manager) = &self.account_login {
+			manager.begin_shutdown();
+		}
 		if let Some(runtime) = self.quick_tasks.runtime() {
 			runtime.begin_shutdown();
 		}
@@ -1760,6 +1723,9 @@ impl Application for ServiceApplication {
 	}
 
 	async fn wait_for_shutdown(&self) {
+		if let Some(manager) = &self.account_login {
+			manager.wait_for_shutdown().await;
+		}
 		if let Some(runtime) = self.quick_tasks.runtime() {
 			runtime.wait_for_shutdown().await;
 		}
@@ -1799,6 +1765,16 @@ impl Application for ServiceApplication {
 		}])
 	}
 
+	async fn account_login<'a>(&'a self, request: &'a AccountLoginRequest) -> AccountLoginStatus {
+		let Some(manager) = &self.account_login else {
+			return crate::account_login::unavailable_status(request);
+		};
+		let Ok(runtime) = tokio::runtime::Handle::try_current() else {
+			return crate::account_login::unavailable_status(request);
+		};
+		manager.handle(request, runtime).await
+	}
+
 	async fn execute<'a>(
 		&'a self,
 		command: &'a CommandEnvelope,
@@ -1823,7 +1799,6 @@ impl Application for ServiceApplication {
 			| CommandPayload::ArchiveQuickTask { .. }
 			| CommandPayload::InterruptQuickTask { .. } => self.execute_quick_task(command).await,
 			CommandPayload::EnrollAccountFromSharedCodex { .. }
-			| CommandPayload::EnrollAccountFromCredentialFile { .. }
 			| CommandPayload::ImportAccountCredentialFile { .. }
 			| CommandPayload::SetAccountEnabled { .. }
 			| CommandPayload::LogoutAccount { .. }
@@ -1831,7 +1806,6 @@ impl Application for ServiceApplication {
 			| CommandPayload::SetBalancedAccountSelection
 			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
-			| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 			| CommandPayload::RecoverAccountOperation { .. }
 			| CommandPayload::UseAccountInCodex { .. } => {
 				let publication = self.execute_account_command(command).await?;
@@ -3414,9 +3388,6 @@ fn account_command_descriptor(
 		CommandPayload::EnrollAccountFromSharedCodex { account_id, .. } => {
 			(AccountCommandKind::Enroll, account_id.as_str())
 		},
-		CommandPayload::EnrollAccountFromCredentialFile { account_id, .. } => {
-			(AccountCommandKind::Enroll, account_id.as_str())
-		},
 		CommandPayload::ImportAccountCredentialFile { account_id, .. } => {
 			(AccountCommandKind::Import, account_id.as_str())
 		},
@@ -3441,9 +3412,6 @@ fn account_command_descriptor(
 		CommandPayload::RefreshAccount { account_id, .. } => {
 			(AccountCommandKind::Refresh, account_id.as_str())
 		},
-		CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. } => {
-			(AccountCommandKind::Refresh, account_id.as_str())
-		},
 		CommandPayload::RecoverAccountOperation { operation_id, .. } => {
 			(AccountCommandKind::Recover, operation_id.as_str())
 		},
@@ -3458,13 +3426,7 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 		},
-		CommandPayload::EnrollAccountFromCredentialFile {
-			operation_id,
-			account_id,
-			source_descriptor,
-			..
-		}
-		| CommandPayload::ImportAccountCredentialFile {
+		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
 			source_descriptor,
@@ -3487,26 +3449,6 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
-		},
-		CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id,
-			account_id,
-			recovery_operation_id,
-			source_descriptor,
-		} => {
-			let _ = operation_id_from_wire(operation_id)?;
-			let _ = account_id_from_wire(account_id)?;
-			if recovery_operation_id.as_ref().is_some_and(|recovery| recovery == operation_id) {
-				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
-			}
-			if let Some(recovery_operation_id) = recovery_operation_id {
-				let _ = operation_id_from_wire(recovery_operation_id)?;
-			}
-			let _ = required_expected_revision(command)?;
-			let source = source_descriptor.as_str();
-			if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
-				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
-			}
 		},
 		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
 			let _ = account_id_from_wire(account_id)?;
@@ -3551,7 +3493,7 @@ fn required_expected_revision(command: &CommandEnvelope) -> Result<i64, CommandE
 		.ok_or_else(|| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))
 }
 
-fn account_changed_publication(
+pub(crate) fn account_changed_publication(
 	account: AccountRecord,
 ) -> Result<ApplicationPublication, CommandError> {
 	let account = account_dto(account)
@@ -3565,7 +3507,7 @@ fn account_changed_publication(
 	})
 }
 
-fn account_enrollment_publication(
+pub(crate) fn account_enrollment_publication(
 	requested_account_id: &AccountId,
 	account: AccountRecord,
 ) -> Result<ApplicationPublication, CommandError> {
@@ -3743,7 +3685,7 @@ fn lifecycle_rejection(rejection: AccountLifecycleRejection, revision: i64) -> C
 	)
 }
 
-fn account_lifecycle_command_error(error: AccountLifecycleError) -> CommandError {
+pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> CommandError {
 	match error {
 		AccountLifecycleError::OperationRejected(rejection) => lifecycle_rejection(rejection, 0),
 		AccountLifecycleError::AccountMissing => {
@@ -3800,7 +3742,7 @@ fn account_operation_command_error(_error: AccountLifecycleError) -> CommandErro
 	CommandError::AcceptanceUnknown
 }
 
-fn map_account_store_command_error(error: StoreError) -> CommandError {
+pub(crate) fn map_account_store_command_error(error: StoreError) -> CommandError {
 	match error {
 		StoreError::IdempotencyConflict => CommandError::IdempotencyConflict,
 		StoreError::InvalidInput(_) | StoreError::CredentialRejected => {
@@ -3832,14 +3774,14 @@ fn stored_account_command_outcome(
 	}
 }
 
-fn encode_account_command_receipt(
+pub(crate) fn encode_account_command_receipt(
 	result: &Result<ApplicationPublication, CommandError>,
 ) -> Result<serde_json::Value, StoreError> {
 	serde_json::to_value(stored_account_command_outcome(result))
 		.map_err(|_| StoreError::Incompatible("account command result is incompatible".into()))
 }
 
-fn decode_account_command_receipt(
+pub(crate) fn decode_account_command_receipt(
 	value: serde_json::Value,
 ) -> Result<Result<ApplicationPublication, CommandError>, ()> {
 	match serde_json::from_value(value).map_err(|_| ())? {

@@ -125,7 +125,7 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V2.5 protocol.
+	/// Manage daemon-owned accounts through the same-UID V2.6 protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
 	/// Read or update the current user's local Codex Fast mode setting.

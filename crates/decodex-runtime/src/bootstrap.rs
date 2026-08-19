@@ -168,6 +168,16 @@ impl ServiceBootstrap {
 				)),
 			_ => None,
 		};
+		let account_login = match (&store, &accounts) {
+			(ProductStore::Available(store), Some(accounts)) => Some(Arc::new(
+				crate::account_login::AccountLoginManager::new(
+					store.clone(),
+					Arc::clone(accounts),
+					account_observations.clone(),
+				),
+			)),
+			_ => None,
+		};
 		let server = ProtocolServer::new(
 			server_id,
 			ServiceApplication::new(
@@ -182,7 +192,8 @@ impl ServiceBootstrap {
 			)
 			.with_accounts(accounts)
 			.with_reset_cards(reset_cards)
-			.with_account_observations(account_observations),
+			.with_account_observations(account_observations)
+			.with_account_login(account_login),
 			config,
 		);
 		Ok(server.bind_listener(listener))

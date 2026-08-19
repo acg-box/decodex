@@ -1,6 +1,8 @@
 //! Production Decodex GPUI macOS composition root.
 
 mod accounts;
+#[allow(dead_code, reason = "account login presentation is composed by the existing MenuBar app")]
+mod account_login;
 #[cfg_attr(
 	not(test),
 	allow(

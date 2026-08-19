@@ -351,7 +351,9 @@ impl RetainedSession {
 			},
 			ServerMessage::Refusal(refusal) =>
 				Err(refusal_failure(&self.expected_server_id, refusal)),
-			ServerMessage::Welcome(_) | ServerMessage::Snapshot(_) =>
+			ServerMessage::Welcome(_)
+			| ServerMessage::Snapshot(_)
+			| ServerMessage::AccountLogin(_) =>
 				Err(RetainedSessionFailure::Malformed),
 		}
 		.inspect_err(|_| {

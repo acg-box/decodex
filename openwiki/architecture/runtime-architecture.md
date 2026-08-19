@@ -15,6 +15,7 @@ not database upgrades.
 - the owner-only same-UID Unix WebSocket listener;
 - former server store runtime connections and product-state adapters;
 - Account Service and sole daemon-owned HostCredentialStore access;
+- the singleton daemon-owned account-login manager and private provider engine;
 - Codex app-server child processes;
 - ProcessSupervisor and ProviderAttemptService;
 - repository and worktree effects;
@@ -417,6 +418,13 @@ The account system has three owners:
    Codex app-server is reserved for Quick Task execution; it is not an account-health
    or quota transport.
 
+`decodexd` also owns one singleton `AccountLoginManager`. It runs the private
+`decodex-account-login` browser/device provider engine, then installs the resulting
+credential through daemon-internal Account Service functions. The dedicated same-UID
+Start/Status/Cancel exchange is memory-only and uses one-shot protocol clients; it never
+enters retained snapshots, events, command receipts, or client caches. See
+[Daemon-owned account login authority](../specs/account-login-authority.md).
+
 On macOS, `RedbCredentialStore` is the only normal HostCredentialStore adapter. Core
 opens `~/.decodex/server/credentials.redb` through the typed no-follow private-file
 boundary and runtime passes that open file to `redb`. Immediate transactions provide
@@ -480,11 +488,12 @@ work; only the explicit priority observation request schedules daemon-owned work
 
 The macOS UI uses its existing in-process Rust protocol client. `Refresh login` is its
 only credential-replacement surface, and the native app ABI has no separate direct
-credential-refresh command. Account Service and HostCredentialStore retain credential
-verification, mutation, and refresh ownership. Swift does not stage or read credentials
-and does not own provider observation. After successful login replacement, bounded
-readback waits for the daemon's new revision-scoped observation instead of accepting an
-old unauthorized value.
+credential-refresh or credential-file command. Swift opens the browser, copies a device
+code, and renders transient status; it does not run provider HTTP, own a callback listener,
+stage or read credentials, or receive a daemon credential path. Account Service and
+HostCredentialStore retain credential verification, mutation, and refresh ownership.
+After successful login replacement, bounded readback waits for the daemon's new
+revision-scoped observation instead of accepting an old unauthorized value.
 
 The same `Refresh login` action is available for one targetless ambiguous refresh. Swift
 passes only the exact recovery operation identity through the existing typed Rust bridge.

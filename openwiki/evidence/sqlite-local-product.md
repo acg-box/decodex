@@ -6,9 +6,9 @@ tags: [local-product, sqlite, evidence, quick-task]
 openwiki:
   roles: [testing, architecture, workflow]
   change_kinds: [lifecycle, public-api, validation]
-  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-app-client-ffi/src/account_reauthentication.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/account_lifecycle.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-account-login/src/lib.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-app-client-ffi/src/lib.rs, apps/decodex-gpui/src/account_login.rs, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/account_launch/process.rs, crates/decodex-codex/src/quick_task.rs, database/src/account_lifecycle.rs, database/src/conversations.rs, database/src/continuations.rs, database/src/program_cycles.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [control_thread, ExactSubmittedTurnReadback, recover_unknown_quick_task_turn, plan_continuation, QuickTaskExecutionSettings, TranscriptRow]
-  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
+  test_paths: [database/tests/quick_task_restart.rs, database/src/conversations.rs, tests/scripts/test_account_login_architecture.py, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/account_launch/process.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, apps/decodex-gpui/src/quick_tasks.rs, apps/decodex-gpui/src/shell.rs]
   invariants: [Lossy external thread turns are not imported during lifecycle refresh.; Stable client Turn identity permits positive correlation but never replay.; Inconclusive recovery requires positive exact process death.; A successor Context Pack excludes its own Turn.; Durable positive evidence survives an interrupted local terminalization.; Archive commits only after positive post-readback.; RestoreProcessReadiness is pre-effect.; A provider binding can have only one active Account and re-enrollment restores its tombstoned UUID.; A structured terminal device denial cannot remain pending.]
   validation_commands: [cargo test -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets, cargo clippy -p decodex-core -p decodex-codex -p decodex-database -p decodex-runtime -p decodex-gpui --all-targets -- -D warnings, python3 scripts/vnext/local_database_gate.py, python3 -m unittest tests/scripts/test_vnext_architecture.py]
 ---
@@ -175,7 +175,7 @@ the pre-existing malformed-cycle tests pass together. After this correction, the
 complete GPUI package passed 120 tests with two live tests ignored.
 
 The client does not activate the deferred general WorkItem and Project query surface.
-Protocol V2.5 is exact-current. The Adaptive Program controller uses only its bounded
+Protocol 2.6 is exact-current. The Adaptive Program controller uses only its bounded
 Program and built-in Domain Pack commands and queries. The unrelated WorkItem board
 controller stays dormant. This keeps deferred Factory surfaces from affecting
 Conversation history or the Workbench connection.
@@ -260,7 +260,7 @@ remain outside this lifecycle-refresh milestone because
 or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
 terminal state and assistant suffix.
 
-Protocol V2.5 carries the controls, archive event, bounded Program aggregate, built-in
+Protocol 2.6 carries the controls, archive event, bounded Program aggregate, built-in
 Domain Pack projection, and the optional exact recovery-operation identity for official
 device-login takeover. It carries no credential value. SQLite
 schema version 3 adds the original Quick Task execution settings. Schema version 4 adds
@@ -341,21 +341,21 @@ the live FFI readback.
 
 ## Dual-method account enrollment acceptance
 
-The current candidate keeps one native login Manager and one daemon enrollment command. It
-replaces the former Codex CLI, PTY, output readers, ANSI normalization, and terminal parser with
-one bounded in-process adapter derived from official `openai/codex` commit
-`9392c3fa5bcda342b5b96a1a04d67b2f781617c2` (`rust-v0.148.0-alpha.9`). The checked-in source
-header, third-party notice, Apache-2.0 license, and architecture test pin the reviewed upstream
-files and functions.
+The current implementation keeps one singleton `AccountLoginManager` in `decodexd`. Its private
+`decodex-account-login` Rust library replaces the former Codex CLI, PTY, output readers, ANSI
+normalization, terminal parser, and FFI-owned adapter. The provider engine derives from official
+`openai/codex` commit `9392c3fa5bcda342b5b96a1a04d67b2f781617c2`
+(`rust-v0.148.0-alpha.9`). The owner crate's checked-in source header, third-party notice,
+Apache-2.0 license, and architecture test pin the reviewed upstream files and functions.
 
 Deterministic local issuer tests prove the complete browser callback and structured device-code
 paths, exact PKCE and authorize parameters, shared token exchange, mode-0600 four-field
 `auth.json`, state-mismatch rejection, typed browser and device cancellation, timeout, bounded
 provider responses, and no auth-file creation on failure. Negative architecture tests reject
 every executable, child-process, PTY, argv, reader, terminal-parser, and logging marker in the
-active login path. FFI tests retain the unrevisioned enrollment command, revision-fenced refresh,
-typed duplicate-provider rejection, outcome-unknown cleanup rule, and strict start wire without
-`codex_bin`.
+active login path. Runtime, protocol, FFI, and Swift tests retain unrevisioned enrollment,
+revision-fenced refresh, typed duplicate-provider rejection, outcome-unknown cleanup, and the
+strict start wire without `codex_bin` or a credential-file path.
 
 The App defaults to browser login and opens the typed authorize URL once. Device login returns a
 structured prompt. Its second page has only the concise header and one prominent monospace code
@@ -364,15 +364,18 @@ Swift tests cover the strict wire, URL handoff, method selection, common polling
 duplicate-provider presentation, hidden prompt-page status copy, accessibility markers, and the
 absence of an executable resolver.
 
-The older signed acceptance remains historical evidence for the account count, daemon install
-authority, operation receipt, and routing separation. Its CLI/PTY prompt implementation is
-superseded and is not an allowed fallback. The signed source-level App passed strict codesign,
-real native-library load and ABI checks, then an App-only atomic installation. Installed-FFI
-smoke read seven accounts before and after, reached the typed browser authorization state, reached
-the structured device prompt without printing the code, cancelled both sessions, and left no
-login process or private-home residue. This is live acceptance through the exact user-action
-boundary; a real provider login and successful source-level credential installation remain
-unverified until a user explicitly completes either official sign-in method.
+The older signed acceptance remains historical evidence for daemon install authority, operation
+receipts, and routing separation. Its CLI/PTY prompt implementation is superseded and is not an
+allowed fallback. The current signed daemon, CLI, transfer tool, App executable, and App FFI were
+installed from one checkout. Strict code-signature, native-library load, ABI 1, artifact cohort 2,
+and protocol 2.6 readback passed. The installed FFI read eight accounts before and after the live
+credential-negative smoke. Browser login reached `opening_browser` then `waiting_for_browser` with
+a valid bounded authorization prompt. Device login reached `requesting_code` then
+`waiting_for_browser` with a valid nonempty structured prompt. Both sessions returned terminal
+`cancelled`, left zero daemon login homes, and preserved the exact account inventory. No browser
+was opened and no URL, code, token, or auth document was printed or persisted. A real provider
+login and daemon credential installation remain unverified until a user explicitly completes an
+official sign-in method.
 
 The 2026-08-18 repair started with two independent red tests. A structured terminal device poll
 response at HTTP 403 was incorrectly treated as pending until timeout. A successful browser
@@ -387,12 +390,12 @@ that the provisional identity has no Account, routing, quota, profile, or fixed-
 reference, deletes only its exact orphan credential, and durably cancels the old operation. A new
 login then restores the tombstoned UUID. Protocol tests bind `AccountRestored` to both the
 provisional request UUID and restored projection. FFI and Swift tests bind terminal completion to
-the daemon-resolved UUID. The full workspace gate passed 1,093 Rust tests with nine intentional
+the daemon-resolved UUID. The full workspace gate passed 1,087 Rust tests with nine intentional
 skips, both live CLI diagnostics, the local database and architecture gates, and all 223 Swift
 tests. The full workspace type-check and strict Clippy for every changed package also passed.
 Repository-wide formatting and enhanced lint remain blocked by pre-existing unrelated baseline
-findings. Signed installation and two real provider completions remain pending and must be
-appended before this repair is called live-accepted.
+findings. Signed installation and credential-negative acceptance are complete. Real browser and
+device provider completions remain pending and must not be claimed until the user completes them.
 
 The first cohort-2 installation exposed a separate App packaging regression before account
 readback. The daemon, CLI, and embedded native library reported cohort 2, but the Swift App loader

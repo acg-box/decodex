@@ -6,9 +6,9 @@ tags: [local-product, sqlite, quick-task, adaptive-factory, domain-pack, app-ser
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-app-client-ffi/src/account_reauthentication.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, database/src/account_lifecycle.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-app-client-ffi/src/lib.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, database/src/account_lifecycle.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
-  test_paths: [crates/decodex-app-client-ffi/src/source_login_adapter.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
+  test_paths: [tests/scripts/test_account_login_architecture.py, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
   invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Re-enrollment restores the sole tombstoned provider owner and returns its resolved UUID.; A structured terminal device denial cannot remain pending.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
@@ -166,12 +166,12 @@ bounded inline value or a digest and length.
 
 ## Repeatable Program Loop V1
 
-The current protocol accepts exact V2.5 clients. It retains the bounded, manually repeated
+The current protocol accepts only exact 2.6 clients. It retains the bounded, manually repeated
 Program aggregate above the existing Quick Task execution path. The initial command
 creates one Program charter, one sourced Signal, one Claim, one non-executable Proposal,
 one finite Objective, and one ready WorkItem in one SQLite transaction.
 
-Every local V2.5 hello and welcome also carries the exact artifact cohort. The daemon,
+Every local 2.6 hello and welcome also carries the exact artifact cohort. The daemon,
 CLI, retained clients, and App FFI fail before application work when the cohort is absent
 or differs. This is one compatibility fence inside the existing protocol. It does not add
 a second version service or runtime authority.
@@ -362,23 +362,34 @@ account record and checks schema version, monotonic credential version, fingerpr
 writer operation, provider, and provider-account binding.
 
 The menu-bar Add Account action first offers automatic browser redirect or manual device
-code. Both choices call one repository-owned login adapter in process. The adapter is derived
-from official `openai/codex` login source at peeled commit
+code. Both choices use the stable native JSON/ABI bridge, which maps to a short-lived
+`AccountLoginClient`; neither the Swift app nor the FFI owns a login worker. `decodexd`
+owns one global `AccountLoginManager` and is the only runtime that calls the private
+`decodex-account-login` provider engine. That engine is derived from official
+`openai/codex` login source at peeled commit
 `9392c3fa5bcda342b5b96a1a04d67b2f781617c2`, which is tag
 `rust-v0.148.0-alpha.9`. It does not resolve or run a Codex executable, app-server, PTY,
 terminal reader, or prompt parser.
 
-For browser login, the adapter binds one loopback callback on the official allowed port,
-builds the PKCE/state authorize URL, and returns that URL through the typed credential-negative
-status. Swift opens it once. The loopback success page reports only that browser sign-in finished
-and sends the user back to Decodex for daemon installation; it does not claim that the account was
-added. For device login, the adapter requests and polls the official
-structured endpoints and returns only the verification URL and one-time code. The compact code
-card is one native button; one activation copies the code and opens the verification URL. Both
-methods use the same Manager, owner-private temporary home, bounded HTTP client, token exchange,
-mode-0600 `auth.json` persistence, timeout, cancellation, daemon install command, and cleanup
-path. The normal shared `~/.codex/auth.json` is unchanged. Swift never receives a credential
-value or auth-file path.
+For browser login, the provider engine binds one loopback callback on the official allowed
+port and builds the PKCE/state authorize URL. Swift alone opens the transient URL. The
+loopback success page reports only that browser sign-in finished and sends the user back to
+Decodex for daemon installation; it does not claim that the account was added. For device
+login, the provider engine requests and polls the official structured endpoints. Swift alone
+copies the one-time code and opens the verification URL. Authorization and verification URLs
+use an exact 8 KiB protocol bound. The dedicated Start/Status/Cancel service and all prompt
+values remain daemon-memory-only; they never enter SQLite, retained snapshots/events, command
+receipts, retained client caches, logs, or OpenWiki fixtures.
+
+Both methods use the same singleton manager, owner-private temporary home, bounded HTTP
+client, token exchange, mode-0600 temporary `auth.json`, timeout, cancellation, daemon-internal
+Account Service installation, and exact cleanup path. Cancel returns terminal status only
+after the provider worker has joined off the Tokio runtime and cleanup has completed.
+`begin_shutdown` only signals; bounded shutdown waiting owns the off-runtime join. The normal
+shared `~/.codex/auth.json` is unchanged. Swift never receives a credential value or auth-file
+path. The former public `EnrollAccountFromCredentialFile` and
+`ReauthenticateAccountFromCredentialFile` commands are removed; private Account Service
+file-import functions remain only for daemon-internal installation.
 
 The device poll consumes a bounded nested provider error and continues only for the closed
 pending-code set. A different structured 403 or 404 terminates as
@@ -399,7 +410,7 @@ prevented the Account insert. Only after proving the orphan target and the absen
 routing, quota, profile, and fixed-selection references does the daemon delete that exact
 credential and cancel the old enrollment. Every other ambiguity remains recovery-required.
 
-The adapter records its exact upstream files and functions in its source and third-party notice.
+The provider crate records its exact upstream files and functions in its source and third-party notice.
 Any upstream pin change requires a source diff of those named functions, dependency and advisory
 review, deterministic browser and device parity tests, final graph/build-size measurement, and
 installed-App live acceptance. A failed parity review cannot fall back to a CLI child.

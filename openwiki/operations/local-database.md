@@ -69,7 +69,7 @@ The macOS installer:
    `~/.decodex` as its stable working directory;
 5. starts the daemon; and
 6. runs doctor and account-list readback through the installed CLI, which proves the
-   running daemon uses the same V2.5 artifact cohort.
+   running daemon uses the same protocol 2.6 and artifact cohort 2.
 
 It does not install former server store, create roles or databases, manage a socket directory, or
 resolve a database password.
