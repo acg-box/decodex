@@ -58,9 +58,10 @@ Additional self-bootstrap guardrails:
 - Validate with the workflow-required commands for the touched surface; for repository-level readiness use `cargo make fmt` and `cargo make test`, or the broader `cargo make check` gate when claiming aggregate release or pilot health (`Makefile.toml`).
 - Stop when project registration is missing or stale, `project.toml`/`WORKFLOW.md` readiness is unclear, probe fails, dry-run selection is absent or surprising, status/evidence cannot tie the run to the intended issue/head, retained worktree or PR lineage is ambiguous, validation fails, secrets or credentials are missing, or the next step would require guessing operator authority.
 
-## GitHub operations
+## Historical v0.2 GitHub operations
 
-Use Decodex-owned lifecycle commands for Decodex repository history:
+The following commands are frozen v0.2 provenance from `apps/decodex`. They are not
+active vNext `apps/decodex-cli` commands:
 
 ```sh
 decodex commit "summary" --authority XY-123
@@ -69,11 +70,18 @@ decodex land "summary" --authority XY-123
 decodex land "summary" --manual-authority --pr <URL>
 ```
 
-The commit subject must be a single-line `decodex/commit/2` JSON object. It describes the tree change only. Do not encode PR URL, branch, validation, CI, landing, or closeout state into the commit subject.
+The historical commit subject is a single-line `decodex/commit/2` JSON object. It
+describes the tree change only. Do not treat these commands or this subject contract as
+active vNext CLI guidance.
 
 If landing is blocked, inspect PR state, review state, merge state, landing mode,
-branch freshness, and Decodex lifecycle records before using any manual GitHub
-fallback. Prefer Decodex lifecycle commands for repository history and retained-lane authority. Use `gh` or `gh api` only for the GitHub operations Decodex delegates there, such as repository/PR inspection, admin merge with head matching, status reads/writes, review state queries, comments, and remote branch cleanup. Keep local Git operations local when they mutate worktrees, default-branch sync, or branch cleanup.
+branch freshness, and the retained v0.2 lifecycle records before using any GitHub
+fallback. Active vNext repository history and landing use the approved Git/GitHub
+workflow because `apps/decodex-cli` has no `commit` or `land` command. Use `gh` or
+`gh api` only for the GitHub operations delegated by that workflow, such as
+repository/PR inspection, admin merge with head matching, status reads/writes, review
+state queries, comments, and remote branch cleanup. Keep local Git operations local
+when they mutate worktrees, default-branch sync, or branch cleanup.
 
 Manual fallback should be evidence-preserving and fail-closed. Do not bypass Decodex just because a status is slow, a review request is pending, a lifecycle row is stale, or the GitHub CLI path is ambiguous; resolve the authority problem or stop for operator attention.
 

@@ -113,9 +113,10 @@ Boundaries:
 
 After recovery, rerun diagnosis and `decodex status`. If status reports review repair, `decodex run <ISSUE> --dry-run` should plan the retained repair path; if it reports no eligible issue, treat that as a dispatch/runtime problem, not as permission to add queue labels or reuse the worktree manually.
 
-## GitHub operation boundaries
+## Historical v0.2 GitHub operation boundaries
 
-Prefer Decodex lifecycle commands for repository history and retained-lane authority:
+The following commands are frozen v0.2 provenance from `apps/decodex`. The active vNext
+`apps/decodex-cli` does not provide `commit` or `land` commands:
 
 ```sh
 decodex commit "summary" --authority XY-123
@@ -124,7 +125,9 @@ decodex land "summary" --authority XY-123
 decodex land "summary" --manual-authority --pr <URL>
 ```
 
-The `decodex/commit/2` subject describes the tree change only. Keep PR URL, branch, validation receipts, CI, landing, and closeout state out of the commit subject; those belong in runtime/GitHub/tracker evidence.
+The historical `decodex/commit/2` subject describes the tree change only. Keep PR URL,
+branch, validation receipts, CI, landing, and closeout state out of that historical
+commit subject; those belong in runtime/GitHub/tracker evidence.
 
 Use `gh` or `gh api` only for operations Decodex delegates to GitHub: repository and PR inspection, status reads/writes, review state queries, comments, remote branch cleanup, and admin merge with an exact head precondition. Keep local Git worktree mutation, default-branch sync, and local branch cleanup local. If `gh` resolution is ambiguous, inspect the configured GitHub CLI authority before proceeding; source for the operator readback is `apps/decodex/src/orchestrator/status/github_cli_authority.rs`.
 

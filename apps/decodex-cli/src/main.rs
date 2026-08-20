@@ -1,4 +1,4 @@
-//! Decodex vNext diagnostics and local Git command-line composition root.
+//! Decodex vNext command-line client composition root.
 
 use std::{
 	io::{self, Write as _},

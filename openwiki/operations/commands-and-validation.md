@@ -23,11 +23,12 @@ cargo make check
 
 Repository validation runs locally. The repository intentionally has no tracked
 GitHub Actions workflow. Future Actions may automate tag/release publication, but
-must not run on pull requests, `merge_group`, or branch pushes. The current
-`apps/decodex-cli` landing path does not read, require, or wait for CI. Local
-validation evidence and landing authority are separate: landing uses the exact PR
-identity, base/head object IDs, clean task worktree, signed merge, compare-and-swap
-push, and final readback.
+must not run on pull requests, `merge_group`, or branch pushes. The active
+`apps/decodex-cli` does not provide repository commit, landing, or Git-hook commands and
+does not read, require, or wait for CI. Local validation evidence and landing authority
+are separate: the reviewed Git/GitHub workflow uses the exact PR identity, base/head
+object IDs, clean task worktree, signed merge, compare-and-swap push, and final readback
+where required.
 
 For a documentation-only or narrow source change, run the smallest relevant check and
 state the narrowed scope. The agent automation gate for hosts without full Xcode remains:
@@ -373,6 +374,10 @@ double; it does not use the live redb vault.
 
 The active vNext CLI source starts in `apps/decodex-cli/src/lib.rs`. Current supported
 account and Reset Card discovery includes:
+
+The exact active root command inventory is `artifact-cohort` (hidden), `status`,
+`doctor`, `reset-card`, `account`, and `fast-mode`. `commit`, `land`, and `git-hook`
+are not active vNext CLI commands.
 
 ```sh
 decodex account list

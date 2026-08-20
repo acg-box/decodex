@@ -26,10 +26,11 @@ The upstream operating loop has three explicit owners:
 
 - Maintainer researches official Codex changes, creates one deterministic branch and
   PR per upstream head, and uses one ephemeral Sol/max subagent in a temporary task
-  worktree for implementation. It uses `decodex commit` for signed commits.
+  worktree for implementation. It uses the repository's standard Git workflow for
+  signed commits; the active vNext CLI has no repository commit command.
 - Reviewer independently reviews and tests the exact GitHub PR head. It sends defects
-  back through PR feedback and uses only `decodex land` for signed landing with exact
-  base/head and merge-tree readback.
+  back through PR feedback and uses the approved GitHub landing workflow with exact
+  base/head and merge-tree readback; the active vNext CLI has no `land` command.
 - Manager audits all five native definitions, upstream latency, PR outcomes, content
   and X results, repeated failure causes, and configuration drift. It archives only
   completed successful tasks through native task tools.
@@ -43,10 +44,11 @@ The content loop has two explicit owners:
   `publish-next` or `observe-due`. Publisher alone invokes xurl and enforces exact
   account, daily limit, budget, uncertain-write, and readback boundaries.
 
-None of these tasks uses Decodex server, runtime, queue, planner, or MCP. The Decodex
-CLI is used only for commit and landing. All schedules use the primary checkout;
-temporary worktrees are per-run resources. GitHub PRs, refs, signed commits, merge
-readback, native task state, and Publisher X evidence are sufficient workflow state.
+None of these tasks uses Decodex server, runtime, queue, planner, or MCP. The active
+vNext CLI is not a repository commit or landing boundary. All schedules use the
+primary checkout; temporary worktrees are per-run resources. GitHub PRs, refs, signed
+commits, merge readback, native task state, and Publisher X evidence are sufficient
+workflow state.
 
 Do not copy full automation prompts into OpenWiki. Summarize boundaries and link to source files when a task needs details.
 

@@ -164,9 +164,11 @@ Validate recovery by rerunning the diagnosis and `decodex status`. For review re
 
 Future agents changing recovery must preserve explicit evidence requirements and add tests under the matching `apps/decodex/src/orchestrator/tests/recovery_*` or `apps/decodex/src/recovery/tests/` area.
 
-## Commit and landing
+## Frozen v0.2 commit and landing provenance
 
-Manual Git lifecycle helpers are in `apps/decodex/src/cli/manual_commands.rs`:
+The following manual Git lifecycle helpers belong to frozen v0.2 `apps/decodex`
+provenance. They are not part of the active vNext `apps/decodex-cli`; the active CLI
+does not provide `commit` or `land` commands:
 
 ```sh
 decodex commit "summary" --authority XY-123
@@ -175,12 +177,11 @@ decodex land "summary" --authority XY-123
 decodex land "summary" --manual-authority --pr <URL>
 ```
 
-They produce or use `decodex/commit/2` records. The commit schema contains only `schema`, `change`, `authority`, and `impact`; PR URLs, branches, validation receipts, landing status, and closeout state belong elsewhere (`openwiki/specs/contracts-and-data.md`).
-
-Decodex app-server runs inherit active-run commit context in their environment. That lets the owning active lane use `decodex commit "<summary>" --authority <ISSUE>` from its worktree during the handoff phase after validation, while the same command remains blocked for unrelated manual processes when the lane still has a live runtime claim.
-The active-run bypass is issue-scoped: the requested commit authority must match the lane issue identifier, so `--manual-authority` and mismatched issue authorities remain blocked inside claimed lane worktrees.
-
-Use `decodex land` rather than raw `gh pr merge` for Decodex-owned landing.
+They produce or use `decodex/commit/2` records in the frozen v0.2 implementation. The
+commit schema contains only `schema`, `change`, `authority`, and `impact`; PR URLs,
+branches, validation receipts, landing status, and closeout state belong elsewhere
+(`openwiki/specs/contracts-and-data.md`). Do not use this frozen section as active
+vNext command guidance.
 
 ## MCP gateway
 
