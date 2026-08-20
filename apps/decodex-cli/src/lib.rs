@@ -1,4 +1,4 @@
-//! Bounded Decodex daemon clients plus local commit and landing authority.
+//! Bounded Decodex daemon and local product command clients.
 
 use std::{
 	fmt::{Debug, Formatter},
@@ -10,20 +10,17 @@ use serde::Serialize;
 use tokio as _;
 
 use decodex_protocol::{
-	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, AppServerCapability, ClientFailure, ClientProfile,
+	AppServerCapability, CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientFailure, ClientProfile,
 	DoctorClient, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, ProfileKind, ServerId,
 };
 
 mod account;
 mod fast_mode;
-mod git_hook;
-mod local_git;
 mod reset_card;
 
 const OUTPUT_SCHEMA: &str = "decodex/cli-diagnostics/1";
-const LOCAL_OUTPUT_SCHEMA: &str = "decodex/local-git/1";
 
-/// Decodex daemon and local Git command client.
+/// Decodex daemon and local product command client.
 #[derive(Parser)]
 #[command(name = "decodex", version, about)]
 pub struct Cli {
@@ -39,7 +36,7 @@ pub struct Cli {
 	/// Select human-readable or stable structured output.
 	#[arg(long, global = true, value_enum, default_value_t = OutputFormat::Human)]
 	output: OutputFormat,
-	/// Selected daemon or local Git operation.
+	/// Selected Decodex operation.
 	#[command(subcommand)]
 	command: Command,
 }
@@ -112,7 +109,7 @@ struct ArtifactCohortDocument {
 	protocol: decodex_protocol::ProtocolVersion,
 }
 
-/// Supported daemon and local Git operations.
+/// Supported Decodex operations.
 #[derive(Clone, Debug, Eq, PartialEq, Subcommand)]
 pub enum Command {
 	/// Print the exact local artifact/protocol cohort without contacting the daemon.
@@ -131,12 +128,6 @@ pub enum Command {
 	/// Read or update the current user's local Codex Fast mode setting.
 	#[command(subcommand)]
 	FastMode(fast_mode::FastModeCommand),
-	/// Enforce the local Git commit and push policy without contacting the Decodex server.
-	GitHook(git_hook::GitHookCommand),
-	/// Create one signed local commit without contacting the Decodex server.
-	Commit(local_git::CommitCommand),
-	/// Land one reviewed pull request without contacting the Decodex server.
-	Land(local_git::LandCommand),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -163,7 +154,7 @@ enum OverallStatus {
 	Unknown,
 }
 
-/// Execute one daemon-client or local Git command.
+/// Execute one Decodex client command.
 pub async fn execute(cli: Cli) -> CommandOutput {
 	let Cli { profile, root, expected_server_id, output, command } = cli;
 
@@ -191,15 +182,6 @@ pub async fn execute(cli: Cli) -> CommandOutput {
 		},
 		Command::FastMode(command) => {
 			return fast_mode::execute(command, output);
-		},
-		Command::GitHook(command) => {
-			return render_git_hook_result(output, git_hook::execute(&command));
-		},
-		Command::Commit(command) => {
-			return render_local_result("commit", output, local_git::execute_commit(&command));
-		},
-		Command::Land(command) => {
-			return render_local_result("land", output, local_git::execute_land(&command));
 		},
 		Command::Status => DiagnosticCommand::Status,
 		Command::Doctor => DiagnosticCommand::Doctor,
@@ -294,77 +276,6 @@ fn render_report(
 		text,
 		exit_code: u8::from(overall != OverallStatus::Ready),
 		error_stream: false,
-	}
-}
-
-fn render_git_hook_result(format: OutputFormat, result: Result<(), String>) -> CommandOutput {
-	match (format, result) {
-		(OutputFormat::Human, Ok(())) =>
-			CommandOutput { text: String::new(), exit_code: 0, error_stream: false },
-		(OutputFormat::Human, Err(error)) => CommandOutput {
-			text: format!("decodex git-hook failed: {error}"),
-			exit_code: 2,
-			error_stream: true,
-		},
-		(OutputFormat::Json, Ok(())) => CommandOutput {
-			text: serde_json::to_string(&serde_json::json!({
-				"schema": LOCAL_OUTPUT_SCHEMA,
-				"command": "git_hook",
-				"outcome": "success",
-			}))
-			.expect("bounded local hook result serialization cannot fail"),
-			exit_code: 0,
-			error_stream: false,
-		},
-		(OutputFormat::Json, Err(error)) => CommandOutput {
-			text: serde_json::to_string(&serde_json::json!({
-				"schema": LOCAL_OUTPUT_SCHEMA,
-				"command": "git_hook",
-				"outcome": "failure",
-				"error": error,
-			}))
-			.expect("bounded local hook failure serialization cannot fail"),
-			exit_code: 2,
-			error_stream: false,
-		},
-	}
-}
-
-fn render_local_result(
-	command: &'static str,
-	format: OutputFormat,
-	result: Result<String, String>,
-) -> CommandOutput {
-	match (format, result) {
-		(OutputFormat::Human, Ok(text)) =>
-			CommandOutput { text, exit_code: 0, error_stream: false },
-		(OutputFormat::Human, Err(error)) => CommandOutput {
-			text: format!("decodex {command} failed: {error}"),
-			exit_code: 2,
-			error_stream: true,
-		},
-		(OutputFormat::Json, Ok(result)) => CommandOutput {
-			text: serde_json::to_string(&serde_json::json!({
-				"schema": LOCAL_OUTPUT_SCHEMA,
-				"command": command,
-				"outcome": "success",
-				"result": result,
-			}))
-			.expect("bounded local result serialization cannot fail"),
-			exit_code: 0,
-			error_stream: false,
-		},
-		(OutputFormat::Json, Err(error)) => CommandOutput {
-			text: serde_json::to_string(&serde_json::json!({
-				"schema": LOCAL_OUTPUT_SCHEMA,
-				"command": command,
-				"outcome": "failure",
-				"error": error,
-			}))
-			.expect("bounded local failure serialization cannot fail"),
-			exit_code: 2,
-			error_stream: false,
-		},
 	}
 }
 
@@ -569,32 +480,20 @@ mod tests {
 	}
 
 	#[test]
-	fn command_surface_is_multi_command_without_aliases() {
-		Cli::command().debug_assert();
+	fn command_surface_is_exact_without_aliases() {
+		let command = Cli::command();
+		command.clone().debug_assert();
+		let commands =
+			command.get_subcommands().map(|command| command.get_name()).collect::<Vec<_>>();
+		assert_eq!(
+			commands,
+			["artifact-cohort", "status", "doctor", "reset-card", "account", "fast-mode"]
+		);
 
 		let doctor = Cli::try_parse_from(["decodex", "--profile", "remote", "doctor"])
 			.expect("test operation must succeed");
 		let status = Cli::try_parse_from(["decodex", "status", "--output", "json"])
 			.expect("test operation must succeed");
-		let commit =
-			Cli::try_parse_from(["decodex", "commit", "Exact candidate", "--manual-authority"])
-				.expect("test operation must succeed");
-		let land = Cli::try_parse_from([
-			"decodex",
-			"land",
-			"Exact candidate",
-			"--manual-authority",
-			"--pr",
-			"https://github.com/acg-box/decodex/pull/123",
-			"--expected-base-oid",
-			"1111111111111111111111111111111111111111",
-			"--expected-head-oid",
-			"2222222222222222222222222222222222222222",
-		])
-		.expect("test operation must succeed");
-		let git_hook =
-			Cli::try_parse_from(["decodex", "git-hook", "commit-msg", ".git/COMMIT_EDITMSG"])
-				.expect("test operation must succeed");
 		let artifact_cohort =
 			Cli::try_parse_from(["decodex", "--output", "json", "artifact-cohort"])
 				.expect("artifact cohort command must parse");
@@ -603,23 +502,10 @@ mod tests {
 		assert_eq!(doctor.profile.as_deref(), Some("remote"));
 		assert_eq!(status.command, Command::Status);
 		assert_eq!(status.output, OutputFormat::Json);
-		assert!(matches!(
-			commit.command,
-			Command::Commit(command)
-				if command.manual_authority && command.summary == "Exact candidate"
-		));
-		assert!(matches!(
-			land.command,
-			Command::Land(command)
-				if command.manual_authority
-					&& command.pr == "https://github.com/acg-box/decodex/pull/123"
-					&& command.expected_base_oid
-						== "1111111111111111111111111111111111111111"
-					&& command.expected_head_oid
-						== "2222222222222222222222222222222222222222"
-		));
-		assert!(matches!(git_hook.command, Command::GitHook(_)));
 		assert_eq!(artifact_cohort.command, Command::ArtifactCohort);
+		assert!(Cli::try_parse_from(["decodex", "commit"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "land"]).is_err());
+		assert!(Cli::try_parse_from(["decodex", "git-hook"]).is_err());
 		assert!(Cli::try_parse_from(["decodex", "diagnose"]).is_err());
 	}
 

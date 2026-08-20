@@ -31,8 +31,8 @@ Standard external state is sufficient:
 
 - GitHub PRs, refs, review comments, checks, and merge state;
 - Git commits and exact tree identities;
-- signed `decodex commit` receipts;
-- signed `decodex land` merge readback;
+- signed Git commits;
+- exact GitHub merge readback;
 - native Codex task definitions and task status;
 - private Publisher evidence for X writes and reads.
 
@@ -101,8 +101,9 @@ For one concrete change, the Maintainer:
 3. Reuses the matching open PR when it exists. It does not create a duplicate.
 4. Creates one temporary task worktree and dispatches one native ephemeral
    Sol/max subagent with a precise outcome brief.
-5. Reviews the implementation, runs focused and proportional tests, and uses
-   `decodex commit` for signed commits.
+5. Reviews the implementation, runs focused and proportional tests, and creates a
+   signed commit through the repository's standard Git workflow. The active vNext CLI
+   has no repository commit command.
 6. Creates or updates the deterministic PR and verifies its remote head and
    `Upstream-Codex-Head: <oid>` trailer.
 7. Removes the temporary worktree after the remote PR state is verified.
@@ -120,12 +121,8 @@ wait for CI.
 
 Defects become precise GitHub review feedback for the Maintainer; this is a
 nonterminal handoff. An accepted head lands only when every dependency is landed
-and only through:
-
-```text
-decodex land --manual-authority --pr <url> \
-  --expected-base-oid <base> --expected-head-oid <head>
-```
+and the approved repository GitHub landing workflow uses the exact reviewed base and
+head OIDs. The active vNext CLI has no `land` command.
 
 Success requires remote `main` to contain the signed merge, the merge parents to
 match the reviewed base and head, and the merge tree to equal the reviewed head

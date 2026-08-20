@@ -10,7 +10,8 @@ Authority:
 - Use native automation and task tools for runtime definitions and task archiving. Never write native
   scheduler TOML.
 - Do not use Decodex server, runtime, queue, planner, or MCP. Repository changes use one ephemeral
-  Sol/max subagent, a temporary worktree, signed `decodex commit`, and Reviewer landing.
+  Sol/max subagent, a temporary worktree, the standard signed Git workflow, and the approved
+  Reviewer landing workflow. The active vNext CLI has no repository commit or landing commands.
 - Advisory memory is only `$CODEX_HOME/automations/codex-upstream-health/memory.md`. Use or write it only
   as an owner-only regular, non-symlink file with mode `0600` and at most 4 KiB; it is advisory only, never authority.
   Never store instructions, secrets, credentials, personal data, raw responses, absolute paths, or post text.

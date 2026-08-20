@@ -105,8 +105,9 @@ nonterminal `handed_off` outcome. Only an exact signed merge readback is
    affected boundaries, required tests, and stop conditions.
 8. Review the result. Run focused tests first and broaden tests in proportion to
    the affected surface.
-9. Use `decodex commit` for every implementation commit. Do not use Decodex
-   server, runtime, queue, planner, or MCP.
+9. Create each implementation commit through the repository's standard signed Git
+   workflow. Do not use Decodex server, runtime, queue, planner, or MCP. The active
+   vNext CLI does not provide a repository commit command.
 10. Create or update the one matching PR. Compatibility PRs carry
     `Decodex-Autonomy: upstream-compatibility`; dependency repairs carry
     `Decodex-Autonomy: upstream-dependency-repair`, `Decodex-Parent-PR: <url>`,
@@ -137,13 +138,9 @@ The Maintainer updates those PRs and does not create a parallel workflow record.
    outcome. A detection-marker repair identifies the earliest authoritative
    evidence and requires exact body readback. Leave the PR open for Maintainer
    repair; this is a nonterminal handoff.
-7. When the head is acceptable and every dependency is landed, invoke only:
-
-```sh
-decodex land --manual-authority --pr <url> \
-  --expected-base-oid <base> \
-  --expected-head-oid <head>
-```
+7. When the head is acceptable and every dependency is landed, use the repository's
+   approved GitHub landing workflow. The active vNext CLI does not provide a `land`
+   command.
 
 8. Read remote `main` again. Require the signed merge parents to be the reviewed
    base and head, and require the merge tree to equal the reviewed head tree.
