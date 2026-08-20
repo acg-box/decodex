@@ -40,7 +40,8 @@ use tokio_tungstenite::{
 use crate::{Application, ApplicationEventPublication, ApplicationPublication};
 use decodex_core::ServerIdentity;
 use decodex_protocol::{
-	self, CausationId, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
+	self, AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, CausationId, ClientCommandId,
+	ClientHello, ClientMessage, CommandEnvelope, CommandError,
 	CommandOutcome, CommandReceipt, CommandResultEnvelope, CorrelationId, Cursor, EventEnvelope,
 	IdempotencyKey, LocalTransportAuthority, LocalTransportListener, LocalTransportRefusal,
 	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryResultEnvelope, ReceiptDisposition,
@@ -510,6 +511,15 @@ where
 
 				InitialHello::Failed
 			},
+			Ok(ClientMessage::AccountLogin(_)) => {
+				let refusal = protocol_refusal(
+					&self.inner.server_id,
+					"hello is required before account login",
+				);
+				let _ = self.send_direct(socket, refusal).await;
+
+				InitialHello::Failed
+			},
 			Err(_) => {
 				let refusal = protocol_refusal(
 					&self.inner.server_id,
@@ -719,6 +729,35 @@ where
 						));
 					}
 				},
+				ClientMessage::AccountLogin(request) => {
+					if request.version != negotiated || request.request.validate().is_err() {
+						if !self
+							.enqueue(
+								actor_sender,
+								connection_id,
+								protocol_refusal(
+									&self.inner.server_id,
+									"account login is unavailable in the negotiated protocol version",
+								),
+							)
+							.await
+						{
+							return SessionReaderCompletion::Reason(
+								session_ingress_failure_reason(&stop),
+							);
+						}
+
+						continue;
+					}
+					if !self
+						.execute_account_login(actor_sender, connection_id, request, negotiated)
+						.await
+					{
+						return SessionReaderCompletion::Reason(session_ingress_failure_reason(
+							&stop,
+						));
+					}
+				},
 			}
 		}
 	}
@@ -739,6 +778,32 @@ where
 		};
 
 		self.enqueue(actor_sender, connection_id, ServerMessage::QueryResult(result)).await
+	}
+
+	async fn execute_account_login(
+		&self,
+		actor_sender: &mpsc::Sender<PublicationRequest>,
+		connection_id: u64,
+		request: AccountLoginRequestEnvelope,
+		version: ProtocolVersion,
+	) -> bool {
+		let status = self.inner.application.account_login(&request.request).await;
+		if status.validate().is_err() {
+			return self
+				.enqueue(
+					actor_sender,
+					connection_id,
+					protocol_refusal(&self.inner.server_id, "account login returned invalid status"),
+				)
+				.await;
+		}
+		let result = AccountLoginResponseEnvelope {
+			version,
+			server_id: self.inner.server_id.clone(),
+			request_id: request.request_id,
+			status,
+		};
+		self.enqueue(actor_sender, connection_id, ServerMessage::AccountLogin(result)).await
 	}
 
 	async fn submit_command(

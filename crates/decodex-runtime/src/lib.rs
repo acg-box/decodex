@@ -1,10 +1,11 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.5 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.6 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
 
 mod account_api;
 mod account_import;
+mod account_login;
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
 mod account_observation;

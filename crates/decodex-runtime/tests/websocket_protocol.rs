@@ -21,8 +21,10 @@ use tokio_tungstenite::{
 
 use decodex_core::{DecodexRoot, LocalTrustPolicy};
 use decodex_protocol::{
-	AccountsResult, CURRENT_VERSION, CausationId, Channel, ClientCommandId, ClientHello,
-	ClientMessage, CommandEnvelope, CommandError, CommandPayload, CorrelationId, Cursor,
+	AccountLoginInstallMode, AccountLoginMethod, AccountLoginRequest, AccountLoginRequestEnvelope,
+	AccountLoginStart, AccountLoginState, AccountLoginStatus, AccountsResult, CURRENT_VERSION,
+	CausationId, Channel, ClientCommandId, ClientHello, ClientMessage, CommandEnvelope, CommandError,
+	CommandPayload, CorrelationId, Cursor,
 	DoctorCheck, DoctorComponent, DoctorIssue, DoctorReport, DoctorStatus, EntityId,
 	EntityRevision, EventPayload, IdempotencyKey, LocalTransportAuthority, LocalTransportRefusal,
 	LocalTransportStream, ProtocolVersion, QueryEnvelope, QueryId, QueryPayload,
@@ -58,6 +60,10 @@ impl FixtureApplication {
 
 	fn attempts(&self) -> u64 {
 		self.state.lock().expect("test state mutex poisoned").attempts
+	}
+
+	fn login_requests(&self) -> u64 {
+		self.state.lock().expect("test state mutex poisoned").login_requests
 	}
 
 	fn with_status(status: WireText) -> Self {
@@ -227,6 +233,30 @@ impl Application for FixtureApplication {
 
 		future::ready(result)
 	}
+
+	async fn account_login<'a>(
+		&'a self,
+		request: &'a AccountLoginRequest,
+	) -> AccountLoginStatus {
+		self.state.lock().expect("test state mutex poisoned").login_requests += 1;
+		let state = match request {
+			AccountLoginRequest::Start { start } => match start.method {
+				AccountLoginMethod::BrowserRedirect => AccountLoginState::OpeningBrowser,
+				AccountLoginMethod::DeviceCode => AccountLoginState::RequestingCode,
+			},
+			AccountLoginRequest::Status { .. } | AccountLoginRequest::Cancel { .. } => {
+				AccountLoginState::Cancelled
+			},
+		};
+		AccountLoginStatus {
+			session_id: request.session_id().clone(),
+			state,
+			prompt: None,
+			authorization_url: None,
+			failure: None,
+			resolved_account_id: None,
+		}
+	}
 }
 
 struct FixtureState {
@@ -234,6 +264,7 @@ struct FixtureState {
 	executions: u64,
 	attempts: u64,
 	queries: u64,
+	login_requests: u64,
 	acceptance_unknown_remaining: u64,
 	status: WireText,
 }
@@ -244,6 +275,7 @@ impl Default for FixtureState {
 			executions: 0,
 			attempts: 0,
 			queries: 0,
+			login_requests: 0,
 			acceptance_unknown_remaining: 0,
 			status: WireText::new("").expect("empty fixture status is bounded"),
 		}
@@ -304,6 +336,29 @@ fn doctor_query_for(version: ProtocolVersion, number: u64) -> ClientMessage {
 		version,
 		query_id: QueryId::new(format!("query-{number}")).expect("bounded fixture query ID"),
 		payload: QueryPayload::GetDoctorStatus,
+	})
+}
+
+fn account_login_start() -> ClientMessage {
+	ClientMessage::AccountLogin(AccountLoginRequestEnvelope {
+		version: CURRENT_VERSION,
+		request_id: QueryId::new("account-login-request").expect("bounded fixture query ID"),
+		request: AccountLoginRequest::Start {
+			start: Box::new(AccountLoginStart {
+				session_id: EntityId::new("10000000-0000-4000-8000-000000000001")
+					.expect("canonical fixture session ID"),
+				method: AccountLoginMethod::BrowserRedirect,
+				install_mode: AccountLoginInstallMode::Enroll {
+					operation_id: EntityId::new("20000000-0000-4000-8000-000000000001")
+						.expect("canonical fixture operation ID"),
+					account_id: EntityId::new("30000000-0000-4000-8000-000000000001")
+						.expect("canonical fixture account ID"),
+					enabled: true,
+					idempotency_key: IdempotencyKey::new("account-login-install")
+						.expect("bounded fixture idempotency key"),
+				},
+			}),
+		},
 	})
 }
 
@@ -483,7 +538,7 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 
 	drop(client);
 
-	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 6 }).await;
+	let mut client = connect(&transport, ProtocolVersion { major: 2, minor: 5 }).await;
 	let ServerMessage::Refusal(refusal) = receive(&mut client).await else {
 		panic!("expected minor-version refusal");
 	};
@@ -501,8 +556,8 @@ async fn exact_current_and_pre_payload_version_refusals_use_real_websockets() {
 		panic!("expected welcome");
 	};
 	assert_eq!(welcome.version, CURRENT_VERSION);
-	assert_eq!(welcome.supported.minimum_minor, 5);
-	assert_eq!(welcome.supported.maximum_minor, 5);
+	assert_eq!(welcome.supported.minimum_minor, 6);
+	assert_eq!(welcome.supported.maximum_minor, 6);
 	assert!(welcome.instance_id.is_some());
 	assert!(matches!(receive(&mut client).await, ServerMessage::Snapshot(_)));
 	execute_and_receive_event(&mut client, CURRENT_VERSION, 1).await;
@@ -525,7 +580,7 @@ async fn post_negotiation_payload_envelopes_require_exact_current_version() {
 	send(
 		&mut client,
 		ClientMessage::Query(QueryEnvelope {
-			version: ProtocolVersion { major: 2, minor: 6 },
+			version: ProtocolVersion { major: 2, minor: 5 },
 			query_id: QueryId::new("future-query").expect("bounded query ID"),
 			payload: QueryPayload::GetDoctorStatus,
 		}),
@@ -550,6 +605,45 @@ async fn post_negotiation_payload_envelopes_require_exact_current_version() {
 
 	drop(client);
 	bound.shutdown().await.expect("shutdown exact-current feature-gate server");
+}
+
+#[tokio::test]
+async fn account_login_exchange_does_not_advance_or_enter_retained_state() {
+	let (_temp, transport) = local_transport();
+	let application = FixtureApplication::default();
+	let mut bound = server("ephemeral-account-login", application.clone(), ServerConfig::default())
+		.bind(transport.clone())
+		.await
+		.expect("bind ephemeral account-login server");
+	let mut first = connect(&transport, CURRENT_VERSION).await;
+
+	assert!(matches!(receive(&mut first).await, ServerMessage::Welcome(_)));
+	let ServerMessage::Snapshot(before) = receive(&mut first).await else {
+		panic!("expected initial snapshot");
+	};
+	send(&mut first, account_login_start()).await;
+	let ServerMessage::AccountLogin(response) = receive(&mut first).await else {
+		panic!("expected dedicated account-login response");
+	};
+	assert_eq!(response.version, CURRENT_VERSION);
+	assert_eq!(response.status.state, AccountLoginState::OpeningBrowser);
+	assert_eq!(application.login_requests(), 1);
+	assert_eq!((application.queries(), application.executions()), (0, 0));
+	drop(first);
+
+	let mut second = connect(&transport, CURRENT_VERSION).await;
+	assert!(matches!(receive(&mut second).await, ServerMessage::Welcome(_)));
+	let ServerMessage::Snapshot(after) = receive(&mut second).await else {
+		panic!("expected fresh snapshot");
+	};
+	assert_eq!(after.cursor, before.cursor);
+	assert_eq!(after.items, before.items);
+	assert!(!serde_json::to_string(&after)
+		.expect("serialize credential-negative snapshot")
+		.contains(response.status.session_id.as_str()));
+
+	drop(second);
+	bound.shutdown().await.expect("shutdown ephemeral account-login server");
 }
 
 #[tokio::test]

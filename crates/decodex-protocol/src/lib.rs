@@ -1,6 +1,7 @@
 //! Typed vNext wire contracts and same-UID local transport shared by clients and
 //! `decodexd`.
 
+mod account_login;
 mod client;
 mod doctor;
 mod domain_pack;
@@ -11,9 +12,15 @@ mod retained_session;
 mod wire;
 
 pub use self::{
+	account_login::{
+		AccountLoginContractError, AccountLoginFailure, AccountLoginInstallMode,
+		AccountLoginMethod, AccountLoginPrompt, AccountLoginRequest, AccountLoginRequestEnvelope,
+		AccountLoginResponseEnvelope, AccountLoginStart, AccountLoginState, AccountLoginStatus,
+		AccountLoginUrl, MAX_ACCOUNT_LOGIN_URL_BYTES,
+	},
 	client::{
-		AccountClient, AccountCommandResponse, ClientFailure, ClientProfile, DoctorClient,
-		ProfileKind, ResetCardClient, ResetCardConsumeResponse, WorkItemBoardClient,
+		AccountClient, AccountCommandResponse, AccountLoginClient, ClientFailure, ClientProfile,
+		DoctorClient, ProfileKind, ResetCardClient, ResetCardConsumeResponse, WorkItemBoardClient,
 	},
 	doctor::{
 		AppServerCapability, DoctorCheck, DoctorComponent, DoctorContractError, DoctorIssue,
@@ -95,7 +102,7 @@ use serde::{Deserialize, Serialize};
 use decodex_core::FoundationStatus;
 
 /// The only protocol generation and revision accepted by this build.
-pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 5 };
+pub const CURRENT_VERSION: ProtocolVersion = ProtocolVersion { major: 2, minor: 6 };
 /// Build/protocol cohort that must agree across the daemon and every local consumer.
 pub const CURRENT_ARTIFACT_COHORT: u32 = 2;
 /// The lower bound of the exact-current protocol window.

@@ -1448,11 +1448,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "be1e0bca6c3637f992fc1cc7cbc52a78c1ef6db076dbf1059c4323d6a2048376"
 
 [[package]]
-name = "decodex-app-client-ffi"
+name = "decodex-account-login"
 version = "0.2.0"
 dependencies = [
  "base64",
- "decodex-protocol",
  "getrandom 0.4.2",
  "httparse",
  "libc",
@@ -1463,9 +1462,21 @@ dependencies = [
  "tempfile",
  "time",
  "tokio",
- "toml_edit 0.22.27",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "decodex-app-client-ffi"
+version = "0.2.0"
+dependencies = [
+ "decodex-protocol",
+ "libc",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "tokio",
+ "toml_edit 0.22.27",
 ]
 
 [[package]]
@@ -1593,6 +1604,7 @@ version = "0.2.0"
 dependencies = [
  "base64",
  "core-foundation 0.10.0",
+ "decodex-account-login",
  "decodex-codex",
  "decodex-core",
  "decodex-database",

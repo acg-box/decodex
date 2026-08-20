@@ -9,21 +9,22 @@ repository.workspace = true
 version.workspace    = true
 
 [dependencies]
-base64            = { workspace = true }
-decodex-codex     = { workspace = true }
-decodex-core      = { workspace = true }
-decodex-database  = { workspace = true }
-decodex-protocol  = { workspace = true }
-futures-util      = { workspace = true }
-libc              = { workspace = true }
-reqwest           = { workspace = true }
-serde             = { workspace = true }
-serde_json        = { workspace = true }
-sha2              = { workspace = true }
-tempfile          = { workspace = true }
-tokio             = { workspace = true }
-tokio-tungstenite = { workspace = true }
-zeroize           = { workspace = true, features = ["derive", "serde"] }
+base64                = { workspace = true }
+decodex-account-login = { workspace = true }
+decodex-codex         = { workspace = true }
+decodex-core          = { workspace = true }
+decodex-database      = { workspace = true }
+decodex-protocol      = { workspace = true }
+futures-util          = { workspace = true }
+libc                  = { workspace = true }
+reqwest               = { workspace = true }
+serde                 = { workspace = true }
+serde_json            = { workspace = true }
+sha2                  = { workspace = true }
+tempfile              = { workspace = true }
+tokio                 = { workspace = true }
+tokio-tungstenite     = { workspace = true }
+zeroize               = { workspace = true, features = ["derive", "serde"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation    = { workspace = true }

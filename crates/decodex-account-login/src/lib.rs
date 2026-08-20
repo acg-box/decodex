@@ -1,4 +1,4 @@
-// Source-derived account login adapter.
+//! Source-derived account-login engine and owner-private temporary-home lifecycle.
 //
 // Upstream provenance: OpenAI Codex, Apache-2.0, peeled commit
 // 9392c3fa5bcda342b5b96a1a04d67b2f781617c2 (tag rust-v0.148.0-alpha.9).
@@ -23,7 +23,7 @@ use std::{
 	io::{ErrorKind, Read as _, Write as _},
 	net::{Shutdown, TcpListener, TcpStream},
 	os::unix::fs::{MetadataExt as _, OpenOptionsExt as _, PermissionsExt as _},
-	path::Path,
+	path::{Path, PathBuf},
 	sync::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
@@ -40,8 +40,6 @@ use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 use tokio::{runtime::Handle, sync::Notify};
 use url::Url;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
-
-use crate::account_reauthentication::LoginMethod;
 
 const DEFAULT_ISSUER: &str = "https://auth.openai.com";
 const OAUTH_CLIENT_ID: &str = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -60,36 +58,70 @@ const MAX_RESPONSE_BYTES: usize = 256 * 1_024;
 const MAX_TOKEN_BYTES: usize = 128 * 1_024;
 const MAX_DEVICE_VALUE_BYTES: usize = 1_024;
 const MAX_DEVICE_POLL_INTERVAL_SECONDS: u64 = 60;
+const LOGIN_ROOT_PREFIX: &str = "decodexd-account-login-";
+const LOGIN_HOME_PREFIX: &str = "session-";
+const MAX_STALE_LOGIN_HOMES: usize = 32;
 
+/// Provider authorization method selected by the UI and executed by the daemon owner.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub(crate) enum Error {
+pub enum LoginMethod {
+	/// Loopback browser redirect with PKCE and a bounded callback listener.
+	BrowserRedirect,
+	/// Structured device-code authorization without a browser callback listener.
+	DeviceCode,
+}
+
+/// Closed failures returned by the private provider engine.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Error {
+	/// Cooperative cancellation was observed.
 	Cancelled,
+	/// The bounded login deadline elapsed.
 	TimedOut,
+	/// Required local or provider machinery was unavailable.
 	Unavailable,
+	/// The provider rejected browser authorization.
 	Rejected,
+	/// The provider terminated device authorization with a closed rejection.
 	DeviceAuthorizationRejected,
+	/// A provider or callback response violated the reviewed contract.
 	InvalidResponse,
+	/// Private temporary-home persistence or cleanup failed.
 	Persistence,
 }
 
-pub(crate) enum LoginEvent {
-	BrowserAuthorization { authorization_url: String },
-	DeviceAuthorization { verification_url: String, user_code: String },
+/// Transient authorization material delivered only to the daemon manager.
+pub enum LoginEvent {
+	/// Browser authorization is ready for the UI to open.
+	BrowserAuthorization {
+		/// Bounded provider authorization URL.
+		authorization_url: String,
+	},
+	/// Device authorization is ready for the UI to present.
+	DeviceAuthorization {
+		/// Bounded provider verification URL.
+		verification_url: String,
+		/// Bounded one-time device code.
+		user_code: String,
+	},
 }
 
+/// Cloneable cooperative cancellation signal for one provider flow.
 #[derive(Clone, Default)]
-pub(crate) struct Cancellation {
+pub struct Cancellation {
 	cancelled: Arc<AtomicBool>,
 	notify: Arc<Notify>,
 }
 
 impl Cancellation {
-	pub(crate) fn cancel(&self) {
+	/// Request cooperative termination of the provider flow.
+	pub fn cancel(&self) {
 		self.cancelled.store(true, Ordering::Release);
 		self.notify.notify_one();
 	}
 
-	pub(crate) fn is_cancelled(&self) -> bool {
+	/// Whether cancellation has been requested.
+	pub fn is_cancelled(&self) -> bool {
 		self.cancelled.load(Ordering::Acquire)
 	}
 
@@ -103,8 +135,9 @@ impl Cancellation {
 	}
 }
 
+/// Exact reviewed provider configuration owned by the daemon.
 #[derive(Clone)]
-pub(crate) struct Config {
+pub struct Config {
 	issuer: Url,
 	client_id: String,
 	callback_ports: Vec<u16>,
@@ -113,7 +146,8 @@ pub(crate) struct Config {
 }
 
 impl Config {
-	pub(crate) fn production() -> Result<Self, Error> {
+	/// Build the exact reviewed production provider configuration.
+	pub fn production() -> Result<Self, Error> {
 		let issuer = Url::parse(DEFAULT_ISSUER).map_err(|_| Error::Unavailable)?;
 		let config = Self {
 			issuer,
@@ -162,7 +196,177 @@ impl Config {
 	}
 }
 
-pub(crate) fn run(
+/// Exact owner-private temporary home for one daemon login session.
+pub struct LoginHome {
+	path: PathBuf,
+	device: u64,
+	inode: u64,
+	cleaned: bool,
+}
+
+impl LoginHome {
+	/// Create one fresh private home below the daemon-specific temporary root.
+	pub fn create(session_id: &str) -> Result<Self, Error> {
+		let root = login_root_path()?;
+		Self::create_under(&root, session_id)
+	}
+
+	fn create_under(root: &Path, session_id: &str) -> Result<Self, Error> {
+		if !is_canonical_uuid(session_id) {
+			return Err(Error::Persistence);
+		}
+		let path = root.join(format!("{LOGIN_HOME_PREFIX}{session_id}"));
+		fs::create_dir(&path).map_err(|_| Error::Persistence)?;
+		if fs::set_permissions(&path, fs::Permissions::from_mode(0o700)).is_err() {
+			let _ = fs::remove_dir(&path);
+			return Err(Error::Persistence);
+		}
+		let metadata = match private_directory_metadata(&path) {
+			Ok(metadata) => metadata,
+			Err(error) => {
+				let _ = fs::remove_dir(&path);
+				return Err(error);
+			},
+		};
+		Ok(Self { path, device: metadata.dev(), inode: metadata.ino(), cleaned: false })
+	}
+
+	/// Borrow the private directory used by the provider engine.
+	pub fn path(&self) -> &Path {
+		&self.path
+	}
+
+	/// Resolve and verify the exact private auth document produced by the engine.
+	pub fn credential_path(&self) -> Result<PathBuf, Error> {
+		let expected = self.path.join("auth.json");
+		let canonical = fs::canonicalize(&expected).map_err(|_| Error::Persistence)?;
+		if canonical != expected {
+			return Err(Error::Persistence);
+		}
+		let metadata = fs::symlink_metadata(&expected).map_err(|_| Error::Persistence)?;
+		if !metadata.file_type().is_file()
+			|| metadata.uid() != effective_uid()
+			|| metadata.permissions().mode() & 0o077 != 0
+		{
+			return Err(Error::Persistence);
+		}
+		Ok(canonical)
+	}
+
+	/// Remove this exact inode-owned home and prove its absence.
+	pub fn cleanup(&mut self) -> Result<(), Error> {
+		if self.cleaned {
+			return Ok(());
+		}
+		let metadata = match fs::symlink_metadata(&self.path) {
+			Ok(metadata) => metadata,
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				self.cleaned = true;
+				return Ok(());
+			},
+			Err(_) => return Err(Error::Persistence),
+		};
+		if !metadata.file_type().is_dir()
+			|| metadata.uid() != effective_uid()
+			|| metadata.dev() != self.device
+			|| metadata.ino() != self.inode
+		{
+			return Err(Error::Persistence);
+		}
+		fs::remove_dir_all(&self.path).map_err(|_| Error::Persistence)?;
+		match fs::symlink_metadata(&self.path) {
+			Err(error) if error.kind() == ErrorKind::NotFound => {
+				self.cleaned = true;
+				Ok(())
+			},
+			Ok(_) | Err(_) => Err(Error::Persistence),
+		}
+	}
+}
+
+impl Drop for LoginHome {
+	fn drop(&mut self) {
+		let _ = self.cleanup();
+	}
+}
+
+/// Remove only bounded, exact daemon-owned stale login homes after singleton acquisition.
+pub fn cleanup_stale_login_homes() -> Result<(), Error> {
+	let root = login_root_path()?;
+	cleanup_stale_login_homes_in(&root)
+}
+
+fn cleanup_stale_login_homes_in(root: &Path) -> Result<(), Error> {
+	let entries = fs::read_dir(root).map_err(|_| Error::Persistence)?;
+	for (index, entry) in entries.enumerate() {
+		if index >= MAX_STALE_LOGIN_HOMES {
+			return Err(Error::Persistence);
+		}
+		let entry = entry.map_err(|_| Error::Persistence)?;
+		let name = entry.file_name();
+		let name = name.to_str().ok_or(Error::Persistence)?;
+		let session_id = name.strip_prefix(LOGIN_HOME_PREFIX).ok_or(Error::Persistence)?;
+		if !is_canonical_uuid(session_id) || entry.path() != root.join(name) {
+			return Err(Error::Persistence);
+		}
+		let metadata = private_directory_metadata(&entry.path())?;
+		if metadata.permissions().mode() & 0o777 != 0o700 {
+			return Err(Error::Persistence);
+		}
+		fs::remove_dir_all(entry.path()).map_err(|_| Error::Persistence)?;
+		if fs::symlink_metadata(root.join(name)).is_ok() {
+			return Err(Error::Persistence);
+		}
+	}
+	Ok(())
+}
+
+fn login_root_path() -> Result<PathBuf, Error> {
+	let base = fs::canonicalize(std::env::temp_dir()).map_err(|_| Error::Persistence)?;
+	let root = base.join(format!("{LOGIN_ROOT_PREFIX}{}", effective_uid()));
+	match fs::create_dir(&root) {
+		Ok(()) => {
+			if fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).is_err() {
+				let _ = fs::remove_dir(&root);
+				return Err(Error::Persistence);
+			}
+		},
+		Err(error) if error.kind() == ErrorKind::AlreadyExists => {},
+		Err(_) => return Err(Error::Persistence),
+	}
+	let metadata = private_directory_metadata(&root)?;
+	if metadata.permissions().mode() & 0o777 != 0o700 {
+		return Err(Error::Persistence);
+	}
+	Ok(root)
+}
+
+fn private_directory_metadata(path: &Path) -> Result<fs::Metadata, Error> {
+	let metadata = fs::symlink_metadata(path).map_err(|_| Error::Persistence)?;
+	if !metadata.file_type().is_dir()
+		|| metadata.uid() != effective_uid()
+		|| metadata.permissions().mode() & 0o077 != 0
+	{
+		return Err(Error::Persistence);
+	}
+	Ok(metadata)
+}
+
+fn effective_uid() -> u32 {
+	// SAFETY: `geteuid` has no preconditions and returns the current effective user ID.
+	unsafe { libc::geteuid() }
+}
+
+fn is_canonical_uuid(value: &str) -> bool {
+	value.len() == 36
+		&& value.bytes().enumerate().all(|(index, byte)| match index {
+			8 | 13 | 18 | 23 => byte == b'-',
+			_ => byte.is_ascii_digit() || matches!(byte, b'a'..=b'f'),
+		})
+}
+
+/// Run one bounded provider authorization into an owner-private login home.
+pub fn run(
 	config: &Config,
 	method: LoginMethod,
 	login_home: &Path,
@@ -1559,5 +1763,62 @@ mod tests {
 		bytes.extend_from_slice(b"\r\n");
 
 		assert!(matches!(parse_callback_head(&bytes), Err(CallbackParseFailure::TooManyHeaders)));
+	}
+
+	#[test]
+	fn login_home_is_private_and_removed_on_drop() {
+		let root = tempfile::tempdir().expect("temporary owner root");
+		let session_id = "018f0f9e-7b6e-4a31-8f4c-1d2e3f405162";
+		let home = LoginHome::create_under(root.path(), session_id).expect("private login home");
+		let path = home.path().to_owned();
+		let metadata = fs::metadata(&path).expect("login home metadata");
+
+		assert_eq!(metadata.permissions().mode() & 0o777, 0o700);
+		drop(home);
+		assert!(!path.exists());
+	}
+
+	#[test]
+	fn login_home_cleanup_rejects_identity_drift() {
+		let root = tempfile::tempdir().expect("temporary owner root");
+		let session_id = "028f0f9e-7b6e-4a31-8f4c-1d2e3f405163";
+		let mut home = LoginHome::create_under(root.path(), session_id).expect("private login home");
+		let path = home.path().to_owned();
+		let moved = path.with_extension("moved");
+		fs::rename(&path, &moved).expect("move original home");
+		fs::create_dir(&path).expect("replacement home");
+
+		assert!(matches!(home.cleanup(), Err(Error::Persistence)));
+		assert!(path.exists());
+
+		fs::remove_dir(&path).expect("remove replacement");
+		fs::rename(&moved, &path).expect("restore original");
+		home.cleanup().expect("cleanup restored home");
+	}
+
+	#[test]
+	fn startup_cleanup_removes_only_exact_bounded_stale_homes() {
+		let root = tempfile::tempdir().expect("temporary owner root");
+		let session_id = "038f0f9e-7b6e-4a31-8f4c-1d2e3f405164";
+		let home = LoginHome::create_under(root.path(), session_id).expect("private login home");
+		let path = home.path().to_owned();
+		std::mem::forget(home);
+
+		cleanup_stale_login_homes_in(root.path()).expect("bounded startup cleanup");
+
+		assert!(!path.exists());
+	}
+
+	#[test]
+	fn startup_cleanup_refuses_unknown_entries() {
+		let root = tempfile::tempdir().expect("temporary owner root");
+		let unknown = root.path().join("unowned-entry");
+		fs::create_dir(&unknown).expect("unknown entry");
+
+		assert!(matches!(
+			cleanup_stale_login_homes_in(root.path()),
+			Err(Error::Persistence)
+		));
+		assert!(unknown.exists());
 	}
 }

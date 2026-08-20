@@ -363,7 +363,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut future,
 		ClientMessage::Hello(ClientHello {
-			version: ProtocolVersion { major: 2, minor: 6 },
+			version: ProtocolVersion { major: 2, minor: 7 },
 			artifact_cohort: Some(decodex_protocol::CURRENT_ARTIFACT_COHORT),
 			expected_server_id: Some(server_id.clone()),
 			resume: None,
@@ -371,7 +371,7 @@ async fn assert_exact_current_doctor_queries(
 	)
 	.await;
 	let ServerMessage::Refusal(refusal) = receive(&mut future).await else {
-		panic!("expected V2.5 minor-version refusal");
+		panic!("expected V2.7 minor-version refusal");
 	};
 	assert!(matches!(
 		refusal.refusal,
@@ -417,7 +417,7 @@ async fn assert_exact_current_doctor_queries(
 	send(
 		&mut current,
 		ClientMessage::Query(doctor_query(
-			ProtocolVersion { major: 2, minor: 6 },
+			ProtocolVersion { major: 2, minor: 7 },
 			"future-query-on-current-session",
 		)),
 	)

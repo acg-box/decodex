@@ -28,6 +28,8 @@ one-shot transfer tool.
 
 ## Start here
 
+- [Daemon-owned account login authority](specs/account-login-authority.md): the single `decodexd`
+  owner, private provider engine, transient protocol, AccountService installation, and protocol-only UI seams.
 - [SQLite local-product decision](decisions/sqlite-local-product.md): why the desktop
   product uses SQLite now and when a server database can be reconsidered.
 - [Local product V1 contract](specs/local-product-v1.md): supported data, ownership,
@@ -155,9 +157,14 @@ base. It does not make deferred extension or multi-agent surfaces partially avai
 - `crates/decodex-runtime/` owns service composition, account/process/provider services,
   Quick Task orchestration, the built-in Pack registry, and bounded Program/domain
   projections.
-- `crates/decodex-protocol/` owns the owner-only same-UID client protocol.
-- `crates/decodex-app-client-ffi/src/source_login_adapter.rs` owns the bounded in-process
-  browser/device account-login adapter and private auth-file persistence before daemon handoff.
+- `crates/decodex-protocol/` owns the owner-only same-UID client protocol, including the
+  dedicated transient account-login exchange.
+- `crates/decodex-account-login/` owns the private plain Rust browser/device provider engine
+  and temporary login-home lifecycle; only `crates/decodex-runtime/` depends on it.
+- `crates/decodex-runtime/src/account_login.rs` owns the singleton daemon login manager,
+  memory-only Start/Status/Cancel service, cancellation joins, and AccountService installation.
+- `crates/decodex-app-client-ffi/src/lib.rs` and `apps/decodex-gpui/src/account_login.rs`
+  are protocol-only presentation seams; they never receive credential paths or bytes.
 - `database/src/program_cycles.rs` owns the atomic Program aggregate and Review rules.
 - `crates/decodex-runtime/domain_packs/` owns the two exact built-in declarative manifests.
 - `crates/decodex-runtime/fixtures/` owns frozen offline Pack data and source metadata.

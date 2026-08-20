@@ -2,12 +2,10 @@
 //!
 //! The bridge is a credential-negative client of the one local `decodexd`
 //! service. It reuses the typed Rust protocol clients directly. Account login
-//! runs through one bounded in-process source adapter; Swift never receives
-//! credential bytes or a credential-file path.
+//! is a short-lived protocol exchange; Swift never receives credential bytes
+//! or a credential-file path.
 
-mod account_reauthentication;
 mod fast_mode;
-mod source_login_adapter;
 
 use std::{
 	collections::HashMap,
@@ -21,9 +19,10 @@ use std::{
 };
 
 use decodex_protocol::{
-	AccountClient, AccountCommandResponse, ClientFailure, ClientProfile, CommandPayload, EntityId,
-	EntityRevision, IdempotencyKey, ResetCardClient, ResetCardConsumeResponse,
-	ResetCardDescriptorDto, ResetCardOperationResult, ServerId,
+	AccountClient, AccountCommandResponse, AccountLoginClient, AccountLoginInstallMode,
+	AccountLoginMethod, AccountLoginStart, AccountLoginState, AccountLoginStatus, ClientFailure,
+	ClientProfile, CommandPayload, EntityId, EntityRevision, IdempotencyKey, ResetCardClient,
+	ResetCardConsumeResponse, ResetCardDescriptorDto, ResetCardOperationResult, ServerId,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -39,7 +38,33 @@ static NEXT_CLIENT_ID: AtomicUsize = AtomicUsize::new(1);
 
 struct NativeClient {
 	profile: ClientProfile,
-	account_reauthentication: account_reauthentication::Manager,
+	active_login_session: Mutex<Option<EntityId>>,
+}
+
+impl NativeClient {
+	fn record_login_status(&self, status: &AccountLoginStatus) {
+		let mut active = self
+			.active_login_session
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner);
+		if matches!(
+			status.state,
+			AccountLoginState::Completed | AccountLoginState::Failed | AccountLoginState::Cancelled
+		) {
+			if active.as_ref() == Some(&status.session_id) {
+				*active = None;
+			}
+		} else {
+			*active = Some(status.session_id.clone());
+		}
+	}
+
+	fn take_active_login_session(&self) -> Option<EntityId> {
+		self.active_login_session
+			.lock()
+			.unwrap_or_else(std::sync::PoisonError::into_inner)
+			.take()
+	}
 }
 
 #[derive(Deserialize)]
@@ -139,7 +164,7 @@ enum Request {
 		account_id: String,
 		enabled: bool,
 		idempotency_key: String,
-		login_method: account_reauthentication::LoginMethod,
+		login_method: AccountLoginMethod,
 	},
 	StartAccountReauthentication {
 		schema: String,
@@ -149,7 +174,7 @@ enum Request {
 		expected_revision: u64,
 		recovery_operation_id: Option<String>,
 		idempotency_key: String,
-		login_method: account_reauthentication::LoginMethod,
+		login_method: AccountLoginMethod,
 	},
 	PollAccountReauthentication {
 		schema: String,
@@ -387,8 +412,14 @@ pub extern "C" fn decodex_app_native_client_destroy(client: *mut c_void) {
 		Ok(mut clients) => clients.remove(&client_id),
 		Err(poisoned) => poisoned.into_inner().remove(&client_id),
 	};
-	if let Some(client) = client {
-		client.account_reauthentication.shutdown();
+	if let Some(client) = client
+		&& let Some(session_id) = client.take_active_login_session()
+		&& let Ok(runtime) = runtime()
+	{
+		let profile = client.profile.clone();
+		runtime.spawn(async move {
+			let _ = AccountLoginClient::new(profile).cancel(session_id).await;
+		});
 	}
 }
 
@@ -534,10 +565,7 @@ fn create_client(
 	};
 
 	let client_id = next_client_id();
-	let client = Arc::new(NativeClient {
-		profile,
-		account_reauthentication: account_reauthentication::Manager::default(),
-	});
+	let client = Arc::new(NativeClient { profile, active_login_session: Mutex::new(None) });
 	match clients().lock() {
 		Ok(mut clients) => {
 			clients.insert(client_id, client);
@@ -725,18 +753,21 @@ async fn execute_request(
 			idempotency_key,
 			login_method,
 			..
-		} => start_account_enrollment(
-			&native_client,
-			profile,
-			AccountEnrollmentInput {
-				session_id,
-				operation_id,
-				account_id,
-				enabled,
-				idempotency_key,
-				login_method,
-			},
-		),
+		} => {
+			start_account_enrollment(
+				&native_client,
+				profile,
+				AccountEnrollmentInput {
+					session_id,
+					operation_id,
+					account_id,
+					enabled,
+					idempotency_key,
+					login_method,
+				},
+			)
+			.await
+		},
 		Request::StartAccountReauthentication {
 			session_id,
 			operation_id,
@@ -746,23 +777,26 @@ async fn execute_request(
 			idempotency_key,
 			login_method,
 			..
-		} => start_account_reauthentication(
-			&native_client,
-			profile,
-			AccountReauthenticationInput {
-				session_id,
-				operation_id,
-				account_id,
-				expected_revision,
-				recovery_operation_id,
-				idempotency_key,
-				login_method,
-			},
-		),
+		} => {
+			start_account_reauthentication(
+				&native_client,
+				profile,
+				AccountReauthenticationInput {
+					session_id,
+					operation_id,
+					account_id,
+					expected_revision,
+					recovery_operation_id,
+					idempotency_key,
+					login_method,
+				},
+			)
+			.await
+		},
 		Request::PollAccountReauthentication { session_id, .. } =>
-			poll_account_reauthentication(&native_client, session_id),
+			poll_account_reauthentication(&native_client, profile, session_id).await,
 		Request::CancelAccountReauthentication { session_id, .. } =>
-			cancel_account_reauthentication(&native_client, session_id),
+			cancel_account_reauthentication(&native_client, profile, session_id).await,
 		Request::UseAccountInCodex { account_id, expected_revision, idempotency_key, .. } =>
 			use_account_in_codex(profile, account_id, expected_revision, idempotency_key).await,
 		Request::FastModeStatus { .. } => fast_mode_status(),
@@ -782,7 +816,7 @@ struct AccountReauthenticationInput {
 	expected_revision: u64,
 	recovery_operation_id: Option<String>,
 	idempotency_key: String,
-	login_method: account_reauthentication::LoginMethod,
+	login_method: AccountLoginMethod,
 }
 
 struct AccountEnrollmentInput {
@@ -791,7 +825,7 @@ struct AccountEnrollmentInput {
 	account_id: String,
 	enabled: bool,
 	idempotency_key: String,
-	login_method: account_reauthentication::LoginMethod,
+	login_method: AccountLoginMethod,
 }
 
 async fn list_accounts(profile: ClientProfile) -> Result<Value, RequestFailure> {
@@ -865,79 +899,83 @@ async fn logout_account(
 		.await
 }
 
-fn start_account_reauthentication(
+async fn start_account_reauthentication(
 	native_client: &NativeClient,
 	profile: ClientProfile,
 	input: AccountReauthenticationInput,
 ) -> Result<Value, RequestFailure> {
-	validate_session_id(&input.session_id)?;
 	let operation_id = entity_id(&input.operation_id)?;
 	let recovery_operation_id =
 		input.recovery_operation_id.map(|operation_id| entity_id(&operation_id)).transpose()?;
 	if recovery_operation_id.as_ref() == Some(&operation_id) {
 		return Err(RequestFailure::Bridge(BridgeFailure::InvalidInput));
 	}
-	let start = account_reauthentication::Start {
-		session_id: input.session_id,
-		operation_id,
-		account_id: entity_id(&input.account_id)?,
-		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
-		login_method: input.login_method,
-		install_mode: account_reauthentication::InstallMode::Reauthenticate {
+	let start = AccountLoginStart {
+		session_id: entity_id(&input.session_id)?,
+		method: input.login_method,
+		install_mode: AccountLoginInstallMode::Reauthenticate {
+			operation_id,
+			account_id: entity_id(&input.account_id)?,
 			expected_revision: revision(input.expected_revision)?,
 			recovery_operation_id,
+			idempotency_key: parse_idempotency_key(input.idempotency_key)?,
 		},
 	};
-	to_value(native_client.account_reauthentication.start(
-		start,
-		profile,
-		tokio::runtime::Handle::current(),
-	))
+	let status = AccountLoginClient::new(profile)
+		.start(start)
+		.await
+		.map_err(RequestFailure::Client)?;
+	native_client.record_login_status(&status);
+	to_value(status)
 }
 
-fn start_account_enrollment(
+async fn start_account_enrollment(
 	native_client: &NativeClient,
 	profile: ClientProfile,
 	input: AccountEnrollmentInput,
 ) -> Result<Value, RequestFailure> {
-	validate_session_id(&input.session_id)?;
-	let start = account_reauthentication::Start {
-		session_id: input.session_id,
-		operation_id: entity_id(&input.operation_id)?,
-		account_id: entity_id(&input.account_id)?,
-		idempotency_key: parse_idempotency_key(input.idempotency_key)?,
-		login_method: input.login_method,
-		install_mode: account_reauthentication::InstallMode::Enroll { enabled: input.enabled },
+	let start = AccountLoginStart {
+		session_id: entity_id(&input.session_id)?,
+		method: input.login_method,
+		install_mode: AccountLoginInstallMode::Enroll {
+			operation_id: entity_id(&input.operation_id)?,
+			account_id: entity_id(&input.account_id)?,
+			enabled: input.enabled,
+			idempotency_key: parse_idempotency_key(input.idempotency_key)?,
+		},
 	};
-	to_value(native_client.account_reauthentication.start(
-		start,
-		profile,
-		tokio::runtime::Handle::current(),
-	))
+	let status = AccountLoginClient::new(profile)
+		.start(start)
+		.await
+		.map_err(RequestFailure::Client)?;
+	native_client.record_login_status(&status);
+	to_value(status)
 }
 
-fn poll_account_reauthentication(
+async fn poll_account_reauthentication(
 	native_client: &NativeClient,
+	profile: ClientProfile,
 	session_id: String,
 ) -> Result<Value, RequestFailure> {
-	validate_session_id(&session_id)?;
-	to_value(native_client.account_reauthentication.poll(&session_id))
+	let status = AccountLoginClient::new(profile)
+		.status(entity_id(&session_id)?)
+		.await
+		.map_err(RequestFailure::Client)?;
+	native_client.record_login_status(&status);
+	to_value(status)
 }
 
-fn cancel_account_reauthentication(
+async fn cancel_account_reauthentication(
 	native_client: &NativeClient,
+	profile: ClientProfile,
 	session_id: String,
 ) -> Result<Value, RequestFailure> {
-	validate_session_id(&session_id)?;
-	to_value(native_client.account_reauthentication.cancel(&session_id))
-}
-
-fn validate_session_id(session_id: &str) -> Result<(), RequestFailure> {
-	if is_canonical_uuid(session_id) {
-		Ok(())
-	} else {
-		Err(RequestFailure::Bridge(BridgeFailure::InvalidInput))
-	}
+	let status = AccountLoginClient::new(profile)
+		.cancel(entity_id(&session_id)?)
+		.await
+		.map_err(RequestFailure::Client)?;
+	native_client.record_login_status(&status);
+	to_value(status)
 }
 
 fn fast_mode_status() -> Result<Value, RequestFailure> {
@@ -1309,7 +1347,7 @@ mod tests {
 			start,
 			Request::StartAccountReauthentication {
 				recovery_operation_id: Some(ref actual),
-				login_method: account_reauthentication::LoginMethod::BrowserRedirect,
+				login_method: AccountLoginMethod::BrowserRedirect,
 				..
 			} if actual == recovery_operation_id
 		));
@@ -1357,7 +1395,7 @@ mod tests {
 			start,
 			Request::StartAccountEnrollment {
 				enabled: true,
-				login_method: account_reauthentication::LoginMethod::DeviceCode,
+				login_method: AccountLoginMethod::DeviceCode,
 				..
 			}
 		));

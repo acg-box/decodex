@@ -1,4 +1,4 @@
-//! Structured JSON envelopes for the exact-current V2.5 WebSocket connection.
+//! Structured JSON envelopes for the exact-current V2.6 WebSocket connection.
 
 pub use decodex_core::{
 	HistoryMediaType, HistoryMetadata, HistoryMetadataValue, MAX_HISTORY_METADATA_FIELDS,
@@ -21,7 +21,8 @@ use serde::{Deserialize, Deserializer, Serialize, de::Error as _, ser::Error as 
 use serde_json::Error;
 
 use crate::{
-	DoctorReport, ProtocolVersion, QuickTaskExecutionSettings, QuickTaskListCursor,
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, DoctorReport, ProtocolVersion,
+	QuickTaskExecutionSettings, QuickTaskListCursor,
 	QuickTaskListResult, QuickTaskListSize, QuickTaskRecoveryAction, QuickTaskResult,
 	QuickTaskSummary, QuickTaskTurnOutcome, QuickTaskWorkingDirectory, SupportedVersions,
 	VersionRefusal,
@@ -31,7 +32,7 @@ use crate::{
 	},
 };
 
-/// Maximum UTF-8 size of any human-readable text carried by V2.5.
+/// Maximum UTF-8 size of any human-readable text carried by V2.6.
 pub const MAX_WIRE_TEXT_BYTES: usize = 4_096;
 /// Maximum UTF-8 size of one logical-command idempotency key.
 pub const MAX_IDEMPOTENCY_KEY_BYTES: usize = 256;
@@ -156,11 +157,16 @@ impl<'de> Deserialize<'de> for HistoryCursorToken {
 	}
 }
 
-/// A string-backed wire scalar exceeded the V2.5 byte limit.
+/// A string-backed wire scalar exceeded its V2.6 byte limit.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct WireScalarTooLong {
 	actual_bytes: usize,
 	maximum_bytes: usize,
+}
+impl WireScalarTooLong {
+	pub(crate) fn new(actual_bytes: usize, maximum_bytes: usize) -> Self {
+		Self { actual_bytes, maximum_bytes }
+	}
 }
 impl Display for WireScalarTooLong {
 	fn fmt(&self, formatter: &mut Formatter<'_>) -> std::fmt::Result {
@@ -172,7 +178,7 @@ impl Display for WireScalarTooLong {
 	}
 }
 
-/// Closed construction failures for the V2.5 WorkItem board contract.
+/// Closed construction failures for the V2.6 WorkItem board contract.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum WorkItemBoardContractError {
 	/// An identity was not canonical lowercase RFC 9562 UUID-v4 text.
@@ -274,7 +280,7 @@ impl<'de> Deserialize<'de> for WorkItemBoardTitle {
 #[serde(transparent)]
 pub struct WorkItemBoardPageSize(u16);
 impl WorkItemBoardPageSize {
-	/// Construct a page size inside the closed V2.5 protocol bound.
+	/// Construct a page size inside the closed V2.6 protocol bound.
 	pub const fn new(value: u16) -> Result<Self, WorkItemBoardContractError> {
 		if value == 0 || value > MAX_WORK_ITEM_BOARD_PAGE_SIZE {
 			Err(WorkItemBoardContractError::InvalidPageSize)
@@ -553,7 +559,7 @@ pub struct ResumeCursor {
 	pub server_id: ServerId,
 	/// Ephemeral publication epoch that issued the cursor.
 	///
-	/// A V2.5 resume requires this field. Older hello envelopes can omit it
+	/// A V2.6 resume requires this field. Older hello envelopes can omit it
 	/// only so negotiation can return a typed version refusal.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
@@ -609,7 +615,7 @@ pub struct ServerWelcome {
 	pub server_id: ServerId,
 	/// Ephemeral identity of the in-memory publication epoch.
 	///
-	/// This is present in the exact-current V2.5 welcome.
+	/// This is present in the exact-current V2.6 welcome.
 	#[serde(skip_serializing_if = "Option::is_none")]
 	pub instance_id: Option<ServerInstanceId>,
 	/// Informational server high-water mark; never a client resume checkpoint by itself.
@@ -1334,6 +1340,8 @@ pub enum ClientMessage {
 	Command(CommandEnvelope),
 	/// Observe current typed state after negotiation without creating a receipt.
 	Query(QueryEnvelope),
+	/// Execute one memory-only account-login Start, Status, or Cancel exchange.
+	AccountLogin(AccountLoginRequestEnvelope),
 }
 
 const fn version_supports_current(version: ProtocolVersion) -> bool {
@@ -1737,7 +1745,7 @@ impl<'de> Deserialize<'de> for AccountProfileResult {
 /// One required independently observed quota duration.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct AccountQuotaWindowDto {
-	/// Exact window duration. The V2.5 account contract accepts 300 and 10080 minutes only.
+	/// Exact window duration. The V2.6 account contract accepts 300 and 10080 minutes only.
 	pub duration_minutes: u32,
 	/// Exact observation time, absent only when state is unknown.
 	pub observed_at_unix_micros: Option<i64>,
@@ -2268,7 +2276,7 @@ impl AccountObservationSignal {
 	}
 }
 
-/// Live queries available through the exact-current V2.5 protocol.
+/// Live queries available through the exact-current V2.6 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryPayload {
@@ -2370,7 +2378,7 @@ impl QueryPayload {
 	}
 }
 
-/// Commands available through the exact-current V2.5 protocol.
+/// Commands available through the exact-current V2.6 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "arguments", rename_all = "snake_case", deny_unknown_fields)]
 pub enum CommandPayload {
@@ -2518,17 +2526,6 @@ pub enum CommandPayload {
 		/// Initial administrative admission switch.
 		enabled: bool,
 	},
-	/// Enroll one account from an owner-private Codex device-login auth file.
-	EnrollAccountFromCredentialFile {
-		/// Stable finite lifecycle operation identity.
-		operation_id: EntityId,
-		/// Canonical new account identity.
-		account_id: EntityId,
-		/// Initial administrative admission switch.
-		enabled: bool,
-		/// Owner-private Codex auth path descriptor opened by the daemon.
-		source_descriptor: WireText,
-	},
 	/// Import one owner-private daemon-opened credential file without carrying secret bytes.
 	ImportAccountCredentialFile {
 		/// Stable finite lifecycle operation identity.
@@ -2575,18 +2572,6 @@ pub enum CommandPayload {
 		/// Canonical account identity.
 		account_id: EntityId,
 	},
-	/// Replace one exact account credential from an owner-private Codex auth file.
-	ReauthenticateAccountFromCredentialFile {
-		/// Stable finite lifecycle operation identity.
-		operation_id: EntityId,
-		/// Canonical existing account identity.
-		account_id: EntityId,
-		/// Exact ambiguous refresh replaced only after this verified login commits.
-		#[serde(skip_serializing_if = "Option::is_none")]
-		recovery_operation_id: Option<EntityId>,
-		/// Owner-private Codex auth path descriptor opened by the daemon.
-		source_descriptor: WireText,
-	},
 	/// Project one exact daemon-owned account into the normal Codex shared auth file.
 	UseAccountInCodex {
 		/// Canonical account identity.
@@ -2624,6 +2609,8 @@ pub enum ServerMessage {
 	CommandResult(CommandResultEnvelope),
 	/// Fresh result of one live query observation.
 	QueryResult(QueryResultEnvelope),
+	/// Current memory-only account-login status for one one-shot exchange.
+	AccountLogin(AccountLoginResponseEnvelope),
 	/// Explicit protocol refusal.
 	Refusal(RefusalEnvelope),
 }
@@ -2932,7 +2919,7 @@ pub enum ResultPayload {
 	},
 }
 
-/// Typed live-query results available through the exact-current V2.5 protocol.
+/// Typed live-query results available through the exact-current V2.6 protocol.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "name", content = "data", rename_all = "snake_case", deny_unknown_fields)]
 pub enum QueryResultPayload {
@@ -3878,12 +3865,12 @@ pub enum Refusal {
 	},
 }
 
-/// Serialize a message using the only V2.5 wire encoding.
+/// Serialize a message using the only V2.6 wire encoding.
 pub fn encode_server_message(message: &ServerMessage) -> Result<String, Error> {
 	serde_json::to_string(message)
 }
 
-/// Parse a client message using the only V2.5 wire encoding.
+/// Parse a client message using the only V2.6 wire encoding.
 pub fn decode_client_message(message: &str) -> Result<ClientMessage, Error> {
 	let decoded = serde_json::from_str(message)?;
 	validate_client_message(&decoded).map_err(|reason| {
@@ -3919,6 +3906,13 @@ fn validate_client_message(message: &ClientMessage) -> Result<(), &'static str> 
 			_ => Ok(()),
 		},
 		ClientMessage::Command(command) => validate_account_command(command),
+		ClientMessage::AccountLogin(request) => {
+			if request.version != crate::CURRENT_VERSION || request.request.validate().is_err() {
+				Err("account login request contract is invalid")
+			} else {
+				Ok(())
+			}
+		},
 	}
 }
 
@@ -3982,13 +3976,7 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 				account_id,
 				command.expected_revision.is_none(),
 			),
-		CommandPayload::EnrollAccountFromCredentialFile {
-			operation_id,
-			account_id,
-			source_descriptor,
-			..
-		}
-		| CommandPayload::ImportAccountCredentialFile {
+		CommandPayload::ImportAccountCredentialFile {
 			operation_id,
 			account_id,
 			source_descriptor,
@@ -4016,18 +4004,6 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-		CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id,
-			account_id,
-			recovery_operation_id,
-			source_descriptor,
-		} => validate_account_reauthentication_command(
-			operation_id,
-			account_id,
-			recovery_operation_id.as_ref(),
-			source_descriptor,
-			positive_expected,
-		),
 		CommandPayload::UseAccountInCodex { account_id } => {
 			validate_canonical_account(account_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
@@ -4047,31 +4023,6 @@ fn validate_account_command(command: &CommandEnvelope) -> Result<(), &'static st
 			validate_canonical_operation(operation_id)?;
 			positive_expected.then_some(()).ok_or("account revision is required")
 		},
-	}
-}
-
-fn validate_account_reauthentication_command(
-	operation_id: &EntityId,
-	account_id: &EntityId,
-	recovery_operation_id: Option<&EntityId>,
-	source_descriptor: &WireText,
-	positive_expected: bool,
-) -> Result<(), &'static str> {
-	validate_canonical_operation(operation_id)?;
-	validate_canonical_account(account_id)?;
-	if recovery_operation_id.is_some_and(|recovery| {
-		recovery == operation_id || validate_canonical_operation(recovery).is_err()
-	}) {
-		return Err("account recovery operation identity is invalid");
-	}
-	if !positive_expected {
-		return Err("account revision is required");
-	}
-	let source = source_descriptor.as_str();
-	if source.is_empty() || source.len() > 4096 || source.chars().any(char::is_control) {
-		Err("account credential source descriptor is invalid")
-	} else {
-		Ok(())
 	}
 }
 
@@ -4719,6 +4670,23 @@ mod tests {
 	}
 
 	#[test]
+	fn retired_credential_file_command_names_do_not_decode() {
+		for retired_name in [
+			"enroll_account_from_credential_file",
+			"reauthenticate_account_from_credential_file",
+		] {
+			assert!(
+				serde_json::from_value::<CommandPayload>(serde_json::json!({
+					"name": retired_name,
+					"arguments": {},
+				}))
+				.is_err(),
+				"retired public command {retired_name} must not decode",
+			);
+		}
+	}
+
+	#[test]
 	fn program_cycle_command_round_trips_and_rejects_duplicate_semantic_identity() {
 		let ids = [
 			"11000000-0000-4000-8000-000000000001",
@@ -5091,73 +5059,6 @@ mod tests {
 	}
 
 	#[test]
-	fn device_login_enrollment_is_a_strict_revisionless_path_only_command() {
-		let operation_id =
-			EntityId::new("11234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
-		let account_id =
-			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let payload = CommandPayload::EnrollAccountFromCredentialFile {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			enabled: true,
-			source_descriptor: WireText::new("/private/tmp/decodex-enroll/auth.json")
-				.expect("bounded source descriptor"),
-		};
-		let encoded_payload = serde_json::to_value(&payload).expect("command must encode");
-		assert_eq!(
-			encoded_payload,
-			serde_json::json!({
-				"name": "enroll_account_from_credential_file",
-				"arguments": {
-					"operation_id": operation_id.as_str(),
-					"account_id": account_id.as_str(),
-					"enabled": true,
-					"source_descriptor": "/private/tmp/decodex-enroll/auth.json",
-				},
-			}),
-		);
-		assert_eq!(
-			serde_json::from_value::<CommandPayload>(encoded_payload).expect("command must decode"),
-			payload,
-		);
-
-		let message = |payload, expected_revision| {
-			ClientMessage::Command(CommandEnvelope {
-				version: CURRENT_VERSION,
-				client_command_id: ClientCommandId::new("device-enroll-command").unwrap(),
-				idempotency_key: IdempotencyKey::new("device-enroll-key").unwrap(),
-				expected_revision,
-				correlation_id: CorrelationId::new("device-enroll-command").unwrap(),
-				causation_id: None,
-				payload,
-			})
-		};
-		assert!(
-			decode_client_message(&serde_json::to_string(&message(payload.clone(), None)).unwrap())
-				.is_ok()
-		);
-		assert!(
-			decode_client_message(
-				&serde_json::to_string(&message(payload, Some(EntityRevision(1)))).unwrap()
-			)
-			.is_err()
-		);
-		assert!(
-			serde_json::from_value::<CommandPayload>(serde_json::json!({
-				"name": "enroll_account_from_credential_file",
-				"arguments": {
-					"operation_id": operation_id.as_str(),
-					"account_id": account_id.as_str(),
-					"enabled": true,
-					"source_descriptor": "/private/tmp/decodex-enroll/auth.json",
-					"access_token": "forbidden",
-				},
-			}))
-			.is_err()
-		);
-	}
-
-	#[test]
 	fn use_account_in_codex_is_a_separate_credential_negative_command() {
 		let account_id =
 			EntityId::new("21234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
@@ -5198,71 +5099,6 @@ mod tests {
 				},
 			}))
 			.is_err(),
-		);
-	}
-
-	#[test]
-	fn account_reauthentication_is_revision_fenced_and_path_only() {
-		let account_id =
-			EntityId::new("31234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let operation_id =
-			EntityId::new("32234567-89ab-4def-8123-456789abcdef").expect("canonical operation ID");
-		let payload = CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			recovery_operation_id: Some(
-				EntityId::new("33234567-89ab-4def-8123-456789abcdef")
-					.expect("canonical recovery operation ID"),
-			),
-			source_descriptor: WireText::new("/private/tmp/decodex-login/auth.json")
-				.expect("bounded source descriptor"),
-		};
-		let message = |payload, expected_revision| {
-			ClientMessage::Command(CommandEnvelope {
-				version: CURRENT_VERSION,
-				client_command_id: ClientCommandId::new("reauth-command").unwrap(),
-				idempotency_key: IdempotencyKey::new("reauth-key").unwrap(),
-				expected_revision,
-				correlation_id: CorrelationId::new("reauth-command").unwrap(),
-				causation_id: None,
-				payload,
-			})
-		};
-		let encoded =
-			serde_json::to_string(&message(payload.clone(), Some(EntityRevision(7)))).unwrap();
-
-		assert!(decode_client_message(&encoded).is_ok());
-		assert!(encoded.contains("\"name\":\"reauthenticate_account_from_credential_file\""));
-		assert!(!encoded.contains("access_token"));
-		assert!(
-			decode_client_message(&serde_json::to_string(&message(payload.clone(), None)).unwrap())
-				.is_err()
-		);
-		let self_recovery = CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id: operation_id.clone(),
-			account_id: account_id.clone(),
-			recovery_operation_id: Some(operation_id.clone()),
-			source_descriptor: WireText::new("/private/tmp/decodex-login/auth.json").unwrap(),
-		};
-		assert!(
-			decode_client_message(
-				&serde_json::to_string(&message(self_recovery, Some(EntityRevision(7)))).unwrap()
-			)
-			.is_err()
-		);
-		let invalid = CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id,
-			account_id,
-			recovery_operation_id: None,
-			source_descriptor: WireText::new("relative/auth.json").unwrap(),
-		};
-		// Absolute-path enforcement belongs to the daemon's no-follow source reader.
-		// The public wire still rejects empty and control-bearing descriptors.
-		assert!(
-			decode_client_message(
-				&serde_json::to_string(&message(invalid, Some(EntityRevision(7)))).unwrap()
-			)
-			.is_ok()
 		);
 	}
 
@@ -5676,7 +5512,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"hello","body":{"version":{"major":2,"minor":5},"#,
+				r#"{"type":"hello","body":{"version":{"major":2,"minor":6},"#,
 				r#""artifact_cohort":2,"#,
 				r#""resume":{"server_id":"server-a","instance_id":"instance-a","cursor":42}}}"#,
 			)
@@ -5686,7 +5522,7 @@ mod tests {
 	#[test]
 	fn exact_current_resume_requires_a_publication_instance() {
 		let current_without_instance = concat!(
-			r#"{"type":"hello","body":{"version":{"major":2,"minor":5},"#,
+			r#"{"type":"hello","body":{"version":{"major":2,"minor":6},"#,
 			r#""resume":{"server_id":"server-a","cursor":42}}}"#,
 		);
 		let old_hello = concat!(
@@ -5728,7 +5564,7 @@ mod tests {
 		assert_eq!(
 			serde_json::to_string(&message).unwrap(),
 			concat!(
-				r#"{"type":"command","body":{"version":{"major":2,"minor":5},"#,
+				r#"{"type":"command","body":{"version":{"major":2,"minor":6},"#,
 				r#""client_command_id":"reset-card-use:key-1","idempotency_key":"key-1","#,
 				r#""expected_revision":9,"correlation_id":"reset-card-use:key-1","#,
 				r#""causation_id":null,"payload":{"name":"consume_reset_card","arguments":{"#,
@@ -5971,7 +5807,7 @@ mod tests {
 			EntityId::new("01234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
 		let descriptor = ResetCardDescriptorDto::new(100, 200).expect("valid descriptor");
 		let legacy = crate::ProtocolVersion { major: 1, minor: 5 };
-		let future = crate::ProtocolVersion { major: 2, minor: 6 };
+		let future = crate::ProtocolVersion { major: 2, minor: 7 };
 		let query = QueryPayload::GetAccountProfile {
 			account_id: account_id.clone(),
 			include_email: false,

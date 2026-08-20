@@ -17,7 +17,9 @@ use tokio_tungstenite::{
 };
 
 use crate::{
-	AccountInitialSelectionResult, AccountInspectResult, AccountObservationSignal,
+	AccountInitialSelectionResult, AccountInspectResult, AccountLoginRequest,
+	AccountLoginRequestEnvelope, AccountLoginResponseEnvelope, AccountLoginStart,
+	AccountLoginStatus, AccountObservationSignal,
 	AccountProfileEmailDto, AccountProfileResult, AccountSelectionModeDto, AccountsResult,
 	CURRENT_ARTIFACT_COHORT, CURRENT_VERSION, ClientCommandId, ClientHello, ClientMessage,
 	CodexAuthProjectionResult,
@@ -855,7 +857,7 @@ impl ResetCardClient {
 	}
 }
 
-/// Read-only V2.5 client for bounded canonical WorkItem board pages.
+/// Read-only V2.6 client for bounded canonical WorkItem board pages.
 pub struct WorkItemBoardClient {
 	transport: ResetCardClient,
 }
@@ -914,6 +916,122 @@ impl WorkItemBoardClient {
 	}
 }
 
+/// Short-lived local client for the daemon-owned memory-only account-login service.
+pub struct AccountLoginClient {
+	transport: ResetCardClient,
+}
+
+impl AccountLoginClient {
+	/// Build a client that never uses the retained-session or client-cache path.
+	pub const fn new(profile: ClientProfile) -> Self {
+		Self { transport: ResetCardClient::new(profile) }
+	}
+
+	/// Start or idempotently read one exact daemon-owned login session.
+	pub async fn start(&self, start: AccountLoginStart) -> Result<AccountLoginStatus, ClientFailure> {
+		let expected_session_id = start.session_id.clone();
+		self.exchange(
+			"decodex-account-login-start",
+			AccountLoginRequest::Start { start: Box::new(start) },
+			&expected_session_id,
+		)
+		.await
+	}
+
+	/// Read one daemon-lifetime login status without retaining it in a client cache.
+	pub async fn status(
+		&self,
+		session_id: EntityId,
+	) -> Result<AccountLoginStatus, ClientFailure> {
+		let expected_session_id = session_id.clone();
+		self.exchange(
+			"decodex-account-login-status",
+			AccountLoginRequest::Status { session_id },
+			&expected_session_id,
+		)
+		.await
+	}
+
+	/// Cancel one session and wait for daemon-owned terminal cleanup.
+	pub async fn cancel(
+		&self,
+		session_id: EntityId,
+	) -> Result<AccountLoginStatus, ClientFailure> {
+		let expected_session_id = session_id.clone();
+		self.exchange(
+			"decodex-account-login-cancel",
+			AccountLoginRequest::Cancel { session_id },
+			&expected_session_id,
+		)
+		.await
+	}
+
+	async fn exchange(
+		&self,
+		request_identity: &'static str,
+		request: AccountLoginRequest,
+		expected_session_id: &EntityId,
+	) -> Result<AccountLoginStatus, ClientFailure> {
+		self.transport.require_local_profile()?;
+		if request.validate().is_err() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		let completed = time::timeout(
+			self.transport.timeout,
+			self.exchange_inner(request_identity, request),
+		)
+		.await
+		.map_err(|_| ClientFailure::ProtocolTimeout)??;
+		close_one_shot_socket(completed.socket).await;
+		let status = completed.value.status;
+		if status.session_id != *expected_session_id || status.validate().is_err() {
+			return Err(ClientFailure::ProtocolMalformed);
+		}
+		Ok(status)
+	}
+
+	async fn exchange_inner(
+		&self,
+		request_identity: &'static str,
+		request: AccountLoginRequest,
+	) -> Result<CompletedOneShot<AccountLoginResponseEnvelope>, ClientFailure> {
+		let mut socket = self.transport.connect().await?;
+		let request_id = QueryId::new(request_identity)
+			.expect("fixed account-login request identity is bounded and nonempty");
+		self.transport
+			.send(
+				&mut socket,
+				ClientMessage::AccountLogin(AccountLoginRequestEnvelope {
+					version: CURRENT_VERSION,
+					request_id: request_id.clone(),
+					request,
+				}),
+			)
+			.await?;
+
+		for _ in 0..MAX_INTERLEAVED_MESSAGES {
+			match self.transport.receive(&mut socket).await? {
+				ServerMessage::AccountLogin(response) => {
+					self.transport
+						.verify_version_and_server(response.version, &response.server_id)?;
+					if response.request_id != request_id || response.status.validate().is_err() {
+						return Err(ClientFailure::ProtocolMalformed);
+					}
+					return Ok(CompletedOneShot::new(response, socket));
+				},
+				ServerMessage::Event(event) => self
+					.transport
+					.verify_version_and_server(event.version, &event.server_id)?,
+				ServerMessage::Refusal(refusal) => {
+					return Err(self.transport.refusal_failure(refusal));
+				},
+				_ => return Err(ClientFailure::ProtocolMalformed),
+			}
+		}
+		Err(ClientFailure::ProtocolBackpressure)
+	}
+}
+
 /// Verified response to one versioned daemon-owned account command.
 #[derive(Clone, Debug, Eq, PartialEq, Deserialize, Serialize)]
 #[serde(tag = "outcome", content = "data", rename_all = "snake_case")]
@@ -937,7 +1055,7 @@ pub enum AccountCommandResponse {
 	},
 }
 
-/// Same-UID V2.5 client for daemon-owned account queries and lifecycle commands.
+/// Same-UID V2.6 client for daemon-owned account queries and lifecycle commands.
 pub struct AccountClient {
 	transport: ResetCardClient,
 }
@@ -1171,7 +1289,7 @@ impl AccountClient {
 		.await
 	}
 
-	/// Execute one V2.5 lifecycle command exactly once on one connection.
+	/// Execute one V2.6 lifecycle command exactly once on one connection.
 	pub async fn execute(
 		&self,
 		payload: CommandPayload,
@@ -1180,17 +1298,15 @@ impl AccountClient {
 	) -> Result<AccountCommandResponse, ClientFailure> {
 		self.transport.require_local_profile()?;
 		if !matches!(
-			&payload,
-			CommandPayload::EnrollAccountFromSharedCodex { .. }
-				| CommandPayload::EnrollAccountFromCredentialFile { .. }
-				| CommandPayload::ImportAccountCredentialFile { .. }
+				&payload,
+				CommandPayload::EnrollAccountFromSharedCodex { .. }
+					| CommandPayload::ImportAccountCredentialFile { .. }
 				| CommandPayload::SetAccountEnabled { .. }
 				| CommandPayload::LogoutAccount { .. }
 				| CommandPayload::SetFixedAccountSelection { .. }
 				| CommandPayload::SetBalancedAccountSelection
 				| CommandPayload::SetAccountOrder { .. }
 				| CommandPayload::RefreshAccount { .. }
-				| CommandPayload::ReauthenticateAccountFromCredentialFile { .. }
 				| CommandPayload::UseAccountInCodex { .. }
 				| CommandPayload::RecoverAccountOperation { .. }
 		) {
@@ -1323,10 +1439,6 @@ fn account_result_matches(
 			ResultPayload::AccountChanged { account },
 		)
 		| (
-			CommandPayload::EnrollAccountFromCredentialFile { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		)
-		| (
 			CommandPayload::ImportAccountCredentialFile { account_id, .. },
 			ResultPayload::AccountChanged { account },
 		)
@@ -1338,13 +1450,9 @@ fn account_result_matches(
 			CommandPayload::RefreshAccount { account_id, .. },
 			ResultPayload::AccountChanged { account },
 		)
-		| (
-			CommandPayload::ReauthenticateAccountFromCredentialFile { account_id, .. },
-			ResultPayload::AccountChanged { account },
-		) => account_id == &account.account_id && entity_revision == account.account_revision,
+			=> account_id == &account.account_id && entity_revision == account.account_revision,
 		(
 			CommandPayload::EnrollAccountFromSharedCodex { account_id, .. }
-			| CommandPayload::EnrollAccountFromCredentialFile { account_id, .. }
 			| CommandPayload::ImportAccountCredentialFile { account_id, .. },
 			ResultPayload::AccountRestored { requested_account_id, account },
 		) =>
@@ -1827,12 +1935,12 @@ max_entry_bytes = 0
 	}
 
 	#[test]
-	fn protocol_constants_expose_only_the_exact_v2_5_window() {
-		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 5 });
+	fn protocol_constants_expose_only_the_exact_v2_6_window() {
+		assert_eq!(CURRENT_VERSION, ProtocolVersion { major: 2, minor: 6 });
 		assert_eq!(PREVIOUS_MINOR_VERSION, CURRENT_VERSION);
 		assert_eq!(
 			SupportedVersions::current(),
-			SupportedVersions { major: 2, minimum_minor: 5, maximum_minor: 5 },
+			SupportedVersions { major: 2, minimum_minor: 6, maximum_minor: 6 },
 		);
 		assert!(WireText::new("bounded").is_ok());
 	}
@@ -3017,118 +3125,6 @@ max_entry_bytes = 0
 
 		assert!(super::account_result_matches(&command, EntityRevision(11), &exact));
 		assert!(!super::account_result_matches(&command, EntityRevision(11), &stale));
-	}
-
-	#[test]
-	fn reauthentication_result_requires_exact_account_and_revision() {
-		let account_id =
-			EntityId::new("42234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let command = crate::CommandPayload::ReauthenticateAccountFromCredentialFile {
-			operation_id: EntityId::new("43234567-89ab-4def-8123-456789abcdef")
-				.expect("canonical operation ID"),
-			account_id: account_id.clone(),
-			recovery_operation_id: None,
-			source_descriptor: crate::WireText::new("/private/tmp/login/auth.json")
-				.expect("bounded source descriptor"),
-		};
-		let account = serde_json::from_value::<crate::AccountDto>(serde_json::json!({
-			"account_id": account_id.as_str(),
-			"alias": "Val",
-			"enabled": true,
-			"account_revision": 12,
-			"observed_state": "unknown",
-			"lifecycle_readiness": "credential_absent",
-			"five_hour_quota": {
-				"duration_minutes": 300,
-				"observed_at_unix_micros": null,
-				"result": {"state": "unknown"}
-			},
-			"seven_day_quota": {
-				"duration_minutes": 10080,
-				"observed_at_unix_micros": null,
-				"result": {"state": "unknown"}
-			}
-		}))
-		.expect("account fixture is valid");
-		let exact = ResultPayload::AccountChanged { account: Box::new(account.clone()) };
-		let stale = ResultPayload::AccountChanged {
-			account: Box::new(crate::AccountDto {
-				account_revision: EntityRevision(11),
-				..account
-			}),
-		};
-
-		assert!(super::account_result_matches(&command, EntityRevision(12), &exact));
-		assert!(!super::account_result_matches(&command, EntityRevision(12), &stale));
-	}
-
-	#[test]
-	fn device_login_enrollment_result_requires_exact_requested_or_restored_account_and_revision() {
-		let account_id =
-			EntityId::new("44234567-89ab-4def-8123-456789abcdef").expect("canonical account ID");
-		let command = crate::CommandPayload::EnrollAccountFromCredentialFile {
-			operation_id: EntityId::new("45234567-89ab-4def-8123-456789abcdef")
-				.expect("canonical operation ID"),
-			account_id: account_id.clone(),
-			enabled: true,
-			source_descriptor: crate::WireText::new("/private/tmp/login/auth.json")
-				.expect("bounded source descriptor"),
-		};
-		let account = serde_json::from_value::<crate::AccountDto>(serde_json::json!({
-			"account_id": account_id.as_str(),
-			"alias": "Val",
-			"enabled": true,
-			"account_revision": 1,
-			"observed_state": "unknown",
-			"lifecycle_readiness": "credential_absent",
-			"five_hour_quota": {
-				"duration_minutes": 300,
-				"observed_at_unix_micros": null,
-				"result": {"state": "unknown"}
-			},
-			"seven_day_quota": {
-				"duration_minutes": 10080,
-				"observed_at_unix_micros": null,
-				"result": {"state": "unknown"}
-			}
-		}))
-		.expect("account fixture is valid");
-		let exact = ResultPayload::AccountChanged { account: Box::new(account.clone()) };
-		let other_account = ResultPayload::AccountChanged {
-			account: Box::new(crate::AccountDto {
-				account_id: EntityId::new("46234567-89ab-4def-8123-456789abcdef")
-					.expect("canonical account ID"),
-				..account.clone()
-			}),
-		};
-		let restored_account_id =
-			EntityId::new("47234567-89ab-4def-8123-456789abcdef").expect("restored account ID");
-		let restored = ResultPayload::AccountRestored {
-			requested_account_id: account_id.clone(),
-			account: Box::new(crate::AccountDto {
-				account_id: restored_account_id,
-				account_revision: EntityRevision(3),
-				..account
-			}),
-		};
-		let wrong_request = ResultPayload::AccountRestored {
-			requested_account_id: EntityId::new("48234567-89ab-4def-8123-456789abcdef")
-				.expect("wrong requested account ID"),
-			account: match &restored {
-				ResultPayload::AccountRestored { account, .. } => account.clone(),
-				_ => unreachable!(),
-			},
-		};
-
-		assert!(super::account_result_matches(&command, EntityRevision(1), &exact));
-		assert!(!super::account_result_matches(&command, EntityRevision(1), &other_account));
-		assert!(super::account_result_matches(&command, EntityRevision(3), &restored));
-		assert!(!super::account_result_matches(
-			&command,
-			EntityRevision(3),
-			&wrong_request
-		));
-		assert!(!super::account_result_matches(&command, EntityRevision(2), &restored));
 	}
 
 	#[tokio::test]
