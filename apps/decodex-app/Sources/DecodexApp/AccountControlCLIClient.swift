@@ -319,6 +319,14 @@ protocol AccountControlClient: ResetCardClient {
 		idempotencyKey: String
 	) async throws -> AccountControlResult
 
+	func refreshAccountCredentials(
+		authority: ResetCardAuthority?,
+		operationID: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey: String
+	) async throws -> AccountControlResult
+
 	func startAccountReauthentication(
 		authority: ResetCardAuthority?,
 		sessionID: String,
@@ -352,6 +360,16 @@ protocol AccountControlClient: ResetCardClient {
 }
 
 extension AccountControlClient {
+	func refreshAccountCredentials(
+		authority _: ResetCardAuthority?,
+		operationID _: String,
+		accountID _: String,
+		expectedRevision _: UInt64,
+		idempotencyKey _: String
+	) async throws -> AccountControlResult {
+		throw AccountControlError.applicationUnavailable
+	}
+
 	func startAccountEnrollment(
 		authority _: ResetCardAuthority?,
 		sessionID _: String,
@@ -609,6 +627,36 @@ extension DecodexNativeClient: AccountControlClient {
 			),
 			authority: authority,
 			expected: .routingOrder(order)
+		)
+	}
+
+	func refreshAccountCredentials(
+		authority: ResetCardAuthority?,
+		operationID: String,
+		accountID: String,
+		expectedRevision: UInt64,
+		idempotencyKey: String
+	) async throws -> AccountControlResult {
+		try Self.validateAccountControlInput(
+			authority: authority,
+			accountID: accountID,
+			operationID: operationID,
+			expectedRevision: expectedRevision,
+			idempotencyKey: idempotencyKey
+		)
+		return try await executeAccountControl(
+			request: DecodexNativeRequest(
+				operation: "refresh_account",
+				accountID: accountID,
+				expectedRevision: expectedRevision,
+				idempotencyKey: idempotencyKey,
+				operationID: operationID
+			),
+			authority: authority,
+			expected: .accountChanged(
+				accountID: accountID,
+				enabled: nil
+			)
 		)
 	}
 

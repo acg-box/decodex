@@ -6,9 +6,9 @@ tags: [local-product, sqlite, quick-task, adaptive-factory, domain-pack, app-ser
 openwiki:
   roles: [architecture, domain, workflow]
   change_kinds: [lifecycle, public-api, runtime]
-  source_paths: [crates/decodex-app-client-ffi/src/lib.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, database/src/account_lifecycle.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
+  source_paths: [crates/decodex-app-client-ffi/src/lib.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/auth_projection.rs, crates/decodex-runtime/src/host_credentials/sqlite_store.rs, database/src/account_lifecycle.rs, apps/decodex-app/Sources/DecodexApp/AccountControlCLIClient.swift, apps/decodex-app/Sources/DecodexApp/ResetCardStore.swift, crates/decodex-runtime/src/quick_task.rs, crates/decodex-runtime/src/application.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/domain_packs/decodex.dev-1.0.0.json, crates/decodex-runtime/domain_packs/decodex.paper-investment-1.0.0.json, crates/decodex-codex/src/quick_task.rs, crates/decodex-protocol/src/domain_pack.rs, database/migrations/0007_builtin_domain_pack_binding.sql, database/src/program_cycles.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/shell.rs]
   symbols: [QuickTaskExecutionSettings, QuickTaskRecoveryAction, control_thread, ExactSubmittedTurnReadback, UnknownQuickTaskAttemptReadback, TranscriptRow]
-  test_paths: [tests/scripts/test_account_login_architecture.py, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
+  test_paths: [tests/scripts/test_account_login_architecture.py, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/client.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/auth_projection.rs, crates/decodex-app-client-ffi/src/lib.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlCLIClientTests.swift, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift, database/tests/quick_task_restart.rs, database/src/program_cycles.rs, crates/decodex-protocol/src/domain_pack.rs, crates/decodex-runtime/src/domain_packs.rs, crates/decodex-runtime/src/application.rs, apps/decodex-gpui/src/programs.rs, apps/decodex-gpui/src/factory_surface.rs, apps/decodex-gpui/src/client_lifecycle/tests.rs]
   invariants: [Exact thread lifecycle readback precedes local archive commit.; Missing per-thread archive fields require exact filtered-list membership.; Composer content clears only after explicit submission acceptance.; A queued prompt remains visible until durable history contains it.; Adjacent assistant fragments with the same Turn identity render as one response.; A validated fresh history head replaces the old retained page window before its continuation is rebuilt.; Unknown ProviderAttempt evidence is never replay authority.; An inconclusive Turn becomes product-usable only after positive exact process death.; A successor Context Pack excludes the successor Turn itself.; Durable terminal evidence can finish an interrupted local Turn terminalization.; Fast is request-scoped and never mutates global Codex configuration.; A live account process generation rejects a second request before provider effect.; Re-enrollment restores the sole tombstoned provider owner and returns its resolved UUID.; A structured terminal device denial cannot remain pending.; Each Program has at most one immutable built-in Domain Pack identity.; Domain entity identities are derived from the Program and exact Pack digest.; Program capability admission precedes QuickTaskRuntime and ProviderAttempt creation.; GPUI alone renders bounded Pack projections.]
   validation_commands: [cargo test --workspace --all-targets]
 ---
@@ -423,6 +423,38 @@ The rejection does not expose an email address or provider identity.
 The SQLite file is plaintext owner-private storage, consistent with the source Codex
 authentication file and the explicit local-device threat model. No credential value can
 appear in Debug output, protocol data, logs, migration output, or transfer reports.
+
+## Menu-bar Route preparation
+
+The Swift menu-bar `Route` action composes three existing typed commands in this order:
+
+1. `RefreshAccount` reconciles and persists the target account credential.
+2. `UseAccountInCodex` projects the exact persisted latest bundle to shared
+   `~/.codex/auth.json` with the returned Account revision.
+3. `SetFixedAccountSelection` uses that same Account revision and the captured routing
+   revision.
+
+Before a provider refresh, Account Service performs one bounded shared-auth read. It can
+absorb that bundle only when the decoded provider identity is exact, the bundle is valid,
+and its access-token expiry is later than both the current time and the stored bundle. If
+the provider rejects refresh, the service performs one more bounded shared-auth read. A
+newer exact-identity bundle can complete the existing journal and credential CAS. Any
+unreadable, unchanged, older, expired, or different-identity bundle leaves the rejection
+terminal. Swift does not project auth or change fixed routing after that rejection.
+
+After a successful credential CAS, SQLite commits the Account operation and revision.
+Account Service then reads the exact persisted successor bundle and conditionally re-projects
+it only when the current shared-auth identity still matches. A shared-identity read failure
+does not authorize an overwrite. A conditional projection write failure also cannot relabel
+the committed provider effect or strand its refresh receipt. The separate
+`UseAccountInCodex` command is the mandatory fail-closed projection boundary for Route, so
+fixed routing cannot advance until the safe writer succeeds.
+
+Swift validates that the refresh result advances both the Account revision and credential
+version by one without changing provider identity. It retains the exact refresh operation,
+refresh idempotency key, prepared revision, and projection idempotency key across uncertain
+or partial outcomes. A retry resumes at the first incomplete step instead of repeating a
+proved refresh or selecting a fixed route over stale auth.
 
 ## Deferred capabilities
 

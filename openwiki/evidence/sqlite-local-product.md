@@ -328,6 +328,34 @@ has supplied a current value. An absent, unknown, unsupported, or failed five-ho
 does not create a synthetic `5 HOUR` row. It remains a typed protocol fact for routing and
 diagnostics.
 
+### Menu-bar Route preparation evidence
+
+The 2026-08-21 focused repair restores credential preparation before the Swift menu-bar
+Route changes fixed routing. Deterministic store tests prove `RefreshAccount`, exact latest
+projection, and fixed selection in that order. They also prove Account and credential-version
+advancement, no projection or routing after refresh rejection, no fixed routing after
+projection failure, exact projection-receipt reuse, fixed-only retry after later partial
+success, and serialized cross-account Route actions.
+
+Account Service tests prove that only a valid newer same-identity shared bundle is absorbed,
+including the one bounded read after provider rejection. Different identity, unreadable auth,
+unchanged data, older data, and expired data remain fail-closed. A committed-refresh fixture
+starts at `StoreApplied`, forces conditional shared projection failure, and proves that the
+Account operation commits and its refresh command receipt remains terminal and replayable.
+The safe projection writer also proves that a later bundle replaces stale shared auth for the
+same provider identity.
+
+Focused validation passed 30 Account Service tests, the exact later-projection Rust test, the
+native FFI refresh-request test, 17 Swift native-client tests, and 33 Swift account-control
+store tests. The affected-package gate then passed all 22 FFI tests, 212 runtime unit tests
+with one intentional installed-Codex skip, every runtime integration and doc test, strict
+Clippy with warnings denied, and all 225 Swift tests. Both account-login and vNext architecture
+gates passed, and the SwiftPM production build completed with the same Xcode toolchain. The
+first Swift attempt under the active Command Line Tools directory failed
+before source compilation because `SwiftUIMacros` was unavailable. The supported rerun used
+`/Applications/Xcode-beta.app` with Swift 6.4 and passed; the initial toolchain failure is not
+product evidence.
+
 The staged nested bundle passed strict deep code-signature verification. A direct call through
 its embedded FFI negotiated the running daemon, returned `available`, and read six accounts.
 The older installed FFI remained the negative control and continued to return the typed minor

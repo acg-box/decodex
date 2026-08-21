@@ -157,6 +157,13 @@ enum Request {
 		expected_routing_revision: u64,
 		idempotency_key: String,
 	},
+	RefreshAccount {
+		schema: String,
+		operation_id: String,
+		account_id: String,
+		expected_revision: u64,
+		idempotency_key: String,
+	},
 	StartAccountEnrollment {
 		schema: String,
 		session_id: String,
@@ -216,6 +223,7 @@ impl Request {
 			Self::SetFixedSelection { .. } => "set_fixed_selection",
 			Self::SetBalancedSelection { .. } => "set_balanced_selection",
 			Self::SetAccountOrder { .. } => "set_account_order",
+			Self::RefreshAccount { .. } => "refresh_account",
 			Self::StartAccountEnrollment { .. } => "start_account_enrollment",
 			Self::StartAccountReauthentication { .. } => "start_account_reauthentication",
 			Self::PollAccountReauthentication { .. } => "poll_account_reauthentication",
@@ -242,6 +250,7 @@ impl Request {
 			| Self::SetFixedSelection { schema, .. }
 			| Self::SetBalancedSelection { schema, .. }
 			| Self::SetAccountOrder { schema, .. }
+			| Self::RefreshAccount { schema, .. }
 			| Self::StartAccountEnrollment { schema, .. }
 			| Self::StartAccountReauthentication { schema, .. }
 			| Self::PollAccountReauthentication { schema, .. }
@@ -745,6 +754,15 @@ async fn execute_request(
 			set_balanced_selection(profile, expected_routing_revision, idempotency_key).await,
 		Request::SetAccountOrder { order, expected_routing_revision, idempotency_key, .. } =>
 			set_account_order(profile, order, expected_routing_revision, idempotency_key).await,
+		Request::RefreshAccount {
+			operation_id,
+			account_id,
+			expected_revision,
+			idempotency_key,
+			..
+		} =>
+			refresh_account(profile, operation_id, account_id, expected_revision, idempotency_key)
+				.await,
 		Request::StartAccountEnrollment {
 			session_id,
 			operation_id,
@@ -892,6 +910,21 @@ async fn logout_account(
 	idempotency_key: String,
 ) -> Result<Value, RequestFailure> {
 	let payload = CommandPayload::LogoutAccount {
+		operation_id: entity_id(&operation_id)?,
+		account_id: entity_id(&account_id)?,
+	};
+	execute_account_command(profile, payload, Some(revision(expected_revision)?), idempotency_key)
+		.await
+}
+
+async fn refresh_account(
+	profile: ClientProfile,
+	operation_id: String,
+	account_id: String,
+	expected_revision: u64,
+	idempotency_key: String,
+) -> Result<Value, RequestFailure> {
+	let payload = CommandPayload::RefreshAccount {
 		operation_id: entity_id(&operation_id)?,
 		account_id: entity_id(&account_id)?,
 	};
@@ -1286,8 +1319,22 @@ mod tests {
 			))
 			.is_err()
 		);
-		assert!(serde_json::from_str::<Request>(&format!(
+	}
+
+	#[test]
+	fn refresh_request_is_operation_and_account_revision_fenced() {
+		let request = serde_json::from_str::<Request>(&format!(
 			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"refresh-test"}}"#
+		))
+		.expect("refresh request must decode");
+
+		assert_eq!(request.operation(), "refresh_account");
+		assert!(serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","account_id":"{ACCOUNT_ID}","expected_revision":7,"idempotency_key":"refresh-test"}}"#
+		))
+		.is_err());
+		assert!(serde_json::from_str::<Request>(&format!(
+			r#"{{"schema":"{RESPONSE_SCHEMA}","operation":"refresh_account","operation_id":"028f0f9e-7b6e-4a31-8f4c-1d2e3f405163","account_id":"{ACCOUNT_ID}","idempotency_key":"refresh-test"}}"#
 		))
 		.is_err());
 	}

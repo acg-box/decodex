@@ -102,6 +102,9 @@ pub(crate) struct CredentialRefreshResult {
 	bundle: CredentialSecretBundle,
 }
 
+type SharedAuthReprojector =
+	fn(&CredentialBinding, &CredentialSecretBundle) -> Result<(), AccountLifecycleError>;
+
 /// Credential-negative readback of the normal shared Codex auth projection.
 pub(crate) enum CodexAuthProjectionInspection {
 	Current { account_id: AccountId, account_revision: i64, projection_digest: String },
@@ -408,6 +411,7 @@ pub struct AccountService {
 	store: SqliteStore,
 	credentials: Arc<dyn HostCredentialStore>,
 	refresher: Arc<dyn CredentialRefreshPort>,
+	shared_auth_reprojector: SharedAuthReprojector,
 	account_locks: Mutex<HashMap<AccountId, Arc<AsyncMutex<()>>>>,
 	callback_ready: AtomicBool,
 	callback_profile_sha256: Mutex<Option<String>>,
@@ -423,10 +427,17 @@ impl AccountService {
 			store,
 			credentials,
 			refresher,
+			shared_auth_reprojector: reproject_shared_codex_auth_if_current,
 			account_locks: Mutex::new(HashMap::new()),
 			callback_ready: AtomicBool::new(false),
 			callback_profile_sha256: Mutex::new(None),
 		}
+	}
+
+	#[cfg(test)]
+	fn with_shared_auth_reprojector(mut self, reprojector: SharedAuthReprojector) -> Self {
+		self.shared_auth_reprojector = reprojector;
+		self
 	}
 
 	fn set_callback_capability(&self, profile_sha256: String, ready: bool) {
@@ -925,6 +936,30 @@ impl AccountService {
 		.await
 	}
 
+	async fn refresh_or_reconcile_shared(
+		&self,
+		current: &CredentialBinding,
+		stored: StoredCredential,
+	) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+		if let Some(shared) = matching_shared_refresh_now(current, stored.bundle()) {
+			return Ok(shared);
+		}
+
+		let refresher = Arc::clone(&self.refresher);
+		let (result, stored) = tokio::task::spawn_blocking(move || {
+			let result = refresher.refresh(stored.bundle());
+			(result, stored)
+		})
+		.await
+		.map_err(|_| CredentialRefreshError::Ambiguous)?;
+
+		match result {
+			Err(CredentialRefreshError::Rejected) =>
+				recover_rejected_refresh_from_shared_now(current, stored.bundle()),
+			result => result,
+		}
+	}
+
 	#[allow(clippy::too_many_lines)] // Keep the generation-bound refresh state machine auditable as one sequence.
 	async fn refresh_while_locked(
 		&self,
@@ -1019,21 +1054,7 @@ impl AccountService {
 					.await?,
 			)?;
 		}
-		let refresher = Arc::clone(&self.refresher);
-		let refreshed =
-			match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await {
-				Ok(refreshed) => refreshed,
-				Err(_) => {
-					self.recover_or_cancel(
-						&operation_id,
-						AccountOperationPhase::ProviderEffectPending,
-						"provider_refresh_ambiguous",
-						true,
-					)
-					.await?;
-					return Err(AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous));
-				},
-			};
+		let refreshed = self.refresh_or_reconcile_shared(current, stored).await;
 		let refreshed = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(CredentialRefreshError::Rejected) => {
@@ -1073,7 +1094,6 @@ impl AccountService {
 				Err(error) => return Err(error),
 			};
 		accepted_phase(self.store.set_account_operation_target(&operation_id, &target).await?)?;
-		let projection_bundle = refreshed.bundle.clone();
 		if let Err(error) =
 			self.credentials.compare_and_swap_rotate(account_id, current, &target, refreshed.bundle)
 		{
@@ -1096,12 +1116,12 @@ impl AccountService {
 				)
 				.await?,
 		)?;
-		self.commit_store_applied(&operation_id).await?;
-		if let Some((generation_id, process_binding)) = callback_generation {
-			self.require_active_callback_generation(account_id, generation_id, process_binding)
-				.await?;
-		}
-		Ok(projection(&target, &projection_bundle))
+		self.commit_and_project_refresh_result(
+			&operation_id,
+			account_id,
+			callback_generation,
+		)
+		.await
 	}
 
 	/// Replace one exact account credential from a private Codex auth file.
@@ -1447,6 +1467,8 @@ impl AccountService {
 			}
 			match operation.phase {
 				AccountOperationPhase::Committed | AccountOperationPhase::StoreApplied => {
+					self.commit_and_project_refresh_result(&operation_id, account_id, None)
+						.await?;
 					return self
 						.complete_account_operation_success(
 							lease,
@@ -1539,6 +1561,8 @@ impl AccountService {
 							)
 							.await?,
 					)?;
+					self.commit_and_project_refresh_result(&operation_id, account_id, None)
+						.await?;
 					return self
 						.complete_account_operation_success(
 							lease,
@@ -1572,18 +1596,6 @@ impl AccountService {
 					.await;
 			},
 		};
-		let now_unix_micros = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.ok()
-			.and_then(|duration| i64::try_from(duration.as_micros()).ok());
-		let shared_refresh = now_unix_micros.and_then(|now_unix_micros| {
-			matching_shared_refresh(
-				&current,
-				stored.bundle(),
-				now_unix_micros,
-				read_shared_codex_credential(),
-			)
-		});
 		let preparation = AccountOperationPreparation {
 			operation_id: operation_id.clone(),
 			account_id: account_id.clone(),
@@ -1628,29 +1640,7 @@ impl AccountService {
 				)
 				.await?,
 		)?;
-		let refreshed = match shared_refresh {
-			Some(refreshed) => Ok(refreshed),
-			None => {
-				let refresher = Arc::clone(&self.refresher);
-				match tokio::task::spawn_blocking(move || refresher.refresh(stored.bundle())).await
-				{
-					Ok(refreshed) => refreshed,
-					Err(_) => {
-						return self
-							.complete_account_operation_error(
-								lease,
-								&operation_id,
-								AccountOperationPhase::ProviderEffectPending,
-								AccountOperationPhase::RecoveryRequired,
-								Some("provider_refresh_ambiguous"),
-								AccountLifecycleError::Refresh(CredentialRefreshError::Ambiguous),
-								build_response.take().expect("builder is retained"),
-							)
-							.await;
-					},
-				}
-			},
-		};
+		let refreshed = self.refresh_or_reconcile_shared(&current, stored).await;
 		let refreshed = match refreshed {
 			Ok(refreshed) => refreshed,
 			Err(error @ CredentialRefreshError::Rejected) => {
@@ -1727,6 +1717,8 @@ impl AccountService {
 				)
 				.await?,
 		)?;
+		self.commit_and_project_refresh_result(&operation_id, account_id, None)
+			.await?;
 		self.complete_account_operation_success(
 			lease,
 			&operation_id,
@@ -1743,12 +1735,31 @@ impl AccountService {
 		binding: &CredentialBinding,
 		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
 	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
-		let projection = self.project_exact(account_id, binding)?;
+		let stored = self.credentials.read_exact(account_id, binding)?;
+		// Credential rotation and its receipt stay authoritative even when the replaceable shared
+		// Codex projection cannot be written. Route owns the explicit retryable projection command
+		// and cannot advance fixed routing until that separate command succeeds.
+		let _shared_auth_projection = (self.shared_auth_reprojector)(binding, stored.bundle());
+		// A later refresh of the same binding retries this conditional projection. Explicit Route
+		// always follows with UseAccountInCodex, whose exact writer and receipt provide the immediate
+		// retry-convergence boundary without misclassifying the provider effect.
 		if let Some((generation_id, process_binding)) = callback_generation {
 			self.require_active_callback_generation(account_id, generation_id, process_binding)
 				.await?;
 		}
-		Ok(projection)
+		Ok(projection(binding, stored.bundle()))
+	}
+
+	async fn commit_and_project_refresh_result(
+		&self,
+		operation_id: &AccountOperationId,
+		account_id: &AccountId,
+		callback_generation: Option<(&ProcessGenerationId, &ProcessGenerationAccountBinding)>,
+	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
+		self.commit_store_applied(operation_id).await?;
+		let account = self.load_account(account_id).await?;
+		let binding = account.credential.as_ref().ok_or(AccountLifecycleError::CredentialAbsent)?;
+		self.project_refresh_result(account_id, binding, callback_generation).await
 	}
 
 	async fn require_active_callback_generation(
@@ -3409,15 +3420,6 @@ impl AccountService {
 			.ok_or(AccountLifecycleError::AccountMissing)
 	}
 
-	fn project_exact(
-		&self,
-		account_id: &AccountId,
-		binding: &CredentialBinding,
-	) -> Result<ChatgptTokenProjection, AccountLifecycleError> {
-		let stored = self.credentials.read_exact(account_id, binding)?;
-		Ok(projection(binding, stored.bundle()))
-	}
-
 	fn lock_for(
 		&self,
 		account_id: &AccountId,
@@ -3557,12 +3559,83 @@ fn matching_shared_refresh(
 		Ok(imported)
 			if imported.provider == current.provider
 				&& imported.bundle.access_token_expires_at_unix_micros() > now_unix_micros
+				&& imported.bundle.access_token_expires_at_unix_micros()
+					> current_bundle.access_token_expires_at_unix_micros()
 				&& !same_refresh_bundle(current_bundle, &imported.bundle) =>
 			Some(CredentialRefreshResult {
 				returned_provider: imported.provider,
 				bundle: imported.bundle,
 			}),
 		Ok(_) | Err(_) => None,
+	}
+}
+
+fn matching_shared_refresh_now(
+	current: &CredentialBinding,
+	current_bundle: &CredentialSecretBundle,
+) -> Option<CredentialRefreshResult> {
+	current_unix_micros().ok().and_then(|now_unix_micros| {
+		matching_shared_refresh(
+			current,
+			current_bundle,
+			now_unix_micros,
+			read_shared_codex_credential(),
+		)
+	})
+}
+
+fn recover_rejected_refresh_from_shared(
+	current: &CredentialBinding,
+	current_bundle: &CredentialSecretBundle,
+	now_unix_micros: i64,
+	shared: Result<ImportedCredential, CredentialImportError>,
+) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+	matching_shared_refresh(current, current_bundle, now_unix_micros, shared)
+		.ok_or(CredentialRefreshError::Rejected)
+}
+
+fn recover_rejected_refresh_from_shared_now(
+	current: &CredentialBinding,
+	current_bundle: &CredentialSecretBundle,
+) -> Result<CredentialRefreshResult, CredentialRefreshError> {
+	let now_unix_micros = current_unix_micros().map_err(|_| CredentialRefreshError::Rejected)?;
+	recover_rejected_refresh_from_shared(
+		current,
+		current_bundle,
+		now_unix_micros,
+		read_shared_codex_credential(),
+	)
+}
+
+fn reproject_shared_codex_auth_if_current(
+	binding: &CredentialBinding,
+	bundle: &CredentialSecretBundle,
+) -> Result<(), AccountLifecycleError> {
+	reproject_shared_codex_auth_if_current_with(
+		binding,
+		bundle,
+		read_shared_codex_auth_identity,
+		project_shared_codex_auth,
+	)
+}
+
+fn reproject_shared_codex_auth_if_current_with<ReadIdentity, Project>(
+	binding: &CredentialBinding,
+	bundle: &CredentialSecretBundle,
+	read_identity: ReadIdentity,
+	project: Project,
+) -> Result<(), AccountLifecycleError>
+where
+	ReadIdentity: FnOnce() -> Result<SharedCodexAuthIdentity, CodexAuthProjectionError>,
+	Project: FnOnce(&CredentialSecretBundle, &str) -> Result<(), CodexAuthProjectionError>,
+{
+	match read_identity() {
+		Ok(SharedCodexAuthIdentity::Chatgpt { provider_account_id })
+			if binding.provider.provider() == AccountProvider::Chatgpt
+				&& provider_account_id == binding.provider.account_id() =>
+			project(bundle, binding.provider.account_id()).map_err(projection_error),
+		Ok(SharedCodexAuthIdentity::Chatgpt { .. } | SharedCodexAuthIdentity::Unmanaged)
+		| Err(_) => Ok(()),
 	}
 }
 
@@ -3817,18 +3890,25 @@ mod tests {
 		CredentialSecretBundle, CredentialStoreError, HostCredentialStore, ImportedCredential,
 		PROVIDER_REFRESH_OUTCOME_UNKNOWN, PreparedRefreshReconciliation,
 		ReauthenticationReplayDisposition, RefreshResponse, UseInCodexProjectionError,
-		access_token_needs_refresh, account_lock_for, classify_prepared_refresh_reconciliation,
+		accepted_phase, access_token_needs_refresh, account_lock_for,
+		classify_prepared_refresh_reconciliation,
 		classify_reauthentication_replay, codex_auth_projection_digest, credential_refresh_result,
 		matching_shared_refresh, projection_binding, reauthentication_current,
 		reauthentication_target, refreshed_credential_target,
+		recover_rejected_refresh_from_shared,
+		reproject_shared_codex_auth_if_current_with,
 		require_refreshed_access_token_for_observation, resolve_reauthentication_store_effect,
 		stable_account_alias, use_in_codex_receipt_result,
 	};
 	use std::{
+		cell::Cell,
 		collections::{HashMap, HashSet},
 		fs,
 		os::unix::fs::PermissionsExt as _,
-		sync::{Arc, Mutex},
+		sync::{
+			Arc, Mutex,
+			atomic::{AtomicUsize, Ordering},
+		},
 		time::Duration,
 	};
 	use tempfile::tempdir;
@@ -3846,6 +3926,16 @@ mod tests {
 		) -> Result<CredentialRefreshResult, CredentialRefreshError> {
 			panic!("verified reauthentication must not call the provider refresh adapter")
 		}
+	}
+
+	static FAILED_SHARED_REPROJECTIONS: AtomicUsize = AtomicUsize::new(0);
+
+	fn fail_shared_auth_reprojection(
+		_binding: &CredentialBinding,
+		_bundle: &CredentialSecretBundle,
+	) -> Result<(), AccountLifecycleError> {
+		FAILED_SHARED_REPROJECTIONS.fetch_add(1, Ordering::Relaxed);
+		Err(AccountLifecycleError::CoordinatorUnavailable)
 	}
 
 	#[test]
@@ -3889,6 +3979,196 @@ mod tests {
 				&& bytes[0].is_ascii_uppercase()
 				&& bytes[1..].iter().all(u8::is_ascii_lowercase)
 		}));
+	}
+
+	#[tokio::test]
+	#[allow(clippy::too_many_lines)] // The precommitted refresh fixture and receipt readback form one crash-window proof.
+	async fn committed_refresh_finishes_its_receipt_when_shared_reprojection_fails() {
+		FAILED_SHARED_REPROJECTIONS.store(0, Ordering::Relaxed);
+		let directory = tempdir().expect("temporary product root");
+		let root = DecodexRoot::new(fs::canonicalize(directory.path()).expect("canonical root"))
+			.expect("typed product root");
+		let store = SqliteStore::open(&root.paths()).expect("open product store");
+		let credentials: Arc<dyn HostCredentialStore> =
+			Arc::new(SqliteCredentialStore::new(store.clone()));
+		let provider = ProviderIdentity::new(AccountProvider::Chatgpt, "receipt-provider-account")
+			.expect("provider identity");
+		let account_id =
+			AccountId::new("21000000-0000-4000-8000-000000000031").expect("account identity");
+		let enrollment_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000031")
+				.expect("enrollment operation");
+		let initial_bundle = shared_bundle(provider.account_id(), "initial-access", 2_000_000);
+		let initial_binding = initial_bundle
+			.binding_for(
+				&account_id,
+				&enrollment_operation,
+				CredentialVersion::new(1).expect("initial version"),
+				&provider,
+			)
+			.expect("initial binding");
+		accepted_phase(
+			store
+				.prepare_account_operation(&AccountOperationPreparation {
+					operation_id: enrollment_operation.clone(),
+					account_id: account_id.clone(),
+					kind: AccountOperationKind::Enroll,
+					display_label: Some(stable_account_alias(&provider)),
+					enabled: Some(true),
+					expected_account_revision: None,
+					expected: None,
+					target: Some(initial_binding.clone()),
+					provider: provider.clone(),
+				})
+				.await
+				.expect("prepare enrollment"),
+		)
+		.expect("accept enrollment preparation");
+		credentials
+			.create(&account_id, &initial_binding, initial_bundle)
+			.expect("create initial credential");
+		accepted_phase(
+			store
+				.advance_account_operation(
+					&enrollment_operation,
+					AccountOperationPhase::Prepared,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await
+				.expect("record enrollment store effect"),
+		)
+		.expect("accept enrollment store effect");
+		accepted_phase(
+			store
+				.advance_account_operation(
+					&enrollment_operation,
+					AccountOperationPhase::StoreApplied,
+					AccountOperationPhase::Committed,
+					None,
+				)
+				.await
+				.expect("commit enrollment"),
+		)
+		.expect("accept enrollment commit");
+
+		let refresh_operation =
+			AccountOperationId::new("22000000-0000-4000-8000-000000000032")
+				.expect("refresh operation");
+		let refreshed_bundle = shared_bundle(provider.account_id(), "refreshed-access", 3_000_000);
+		let refreshed_binding = refreshed_bundle
+			.binding_for(
+				&account_id,
+				&refresh_operation,
+				CredentialVersion::new(2).expect("refreshed version"),
+				&provider,
+			)
+			.expect("refreshed binding");
+		accepted_phase(
+			store
+				.prepare_account_operation(&AccountOperationPreparation {
+					operation_id: refresh_operation.clone(),
+					account_id: account_id.clone(),
+					kind: AccountOperationKind::Refresh,
+					display_label: None,
+					enabled: None,
+					expected_account_revision: Some(1),
+					expected: Some(initial_binding.clone()),
+					target: None,
+					provider: provider.clone(),
+				})
+				.await
+				.expect("prepare refresh"),
+		)
+		.expect("accept refresh preparation");
+		accepted_phase(
+			store
+				.advance_account_operation(
+					&refresh_operation,
+					AccountOperationPhase::Prepared,
+					AccountOperationPhase::ProviderEffectPending,
+					None,
+				)
+				.await
+				.expect("record provider effect boundary"),
+		)
+		.expect("accept provider effect boundary");
+		accepted_phase(
+			store
+				.set_account_operation_target(&refresh_operation, &refreshed_binding)
+				.await
+				.expect("record refresh target"),
+		)
+		.expect("accept refresh target");
+		credentials
+			.compare_and_swap_rotate(
+				&account_id,
+				&initial_binding,
+				&refreshed_binding,
+				refreshed_bundle,
+			)
+			.expect("persist refreshed credential");
+		accepted_phase(
+			store
+				.advance_account_operation(
+					&refresh_operation,
+					AccountOperationPhase::ProviderEffectPending,
+					AccountOperationPhase::StoreApplied,
+					None,
+				)
+				.await
+				.expect("record refresh store effect"),
+		)
+		.expect("accept refresh store effect");
+
+		let command = CommandIdentity::new("refresh-reprojection-receipt", b"exact refresh replay")
+			.expect("command identity");
+		let lease = match store
+			.reserve_account_command(&command, AccountCommandKind::Refresh, account_id.as_str(), Some(1))
+			.await
+			.expect("reserve refresh command")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Replayed(_) => panic!("new refresh command replayed"),
+		};
+		let service = AccountService::new(
+			store.clone(),
+			Arc::clone(&credentials),
+			Arc::new(UnusedCredentialRefresher),
+		)
+		.with_shared_auth_reprojector(fail_shared_auth_reprojection);
+		let response = service
+			.refresh_command(lease, refresh_operation.clone(), &account_id, 1, |result| {
+				Ok(match result {
+					Ok(account) => json!({
+						"outcome": "succeeded",
+						"account_revision": account.revision,
+					}),
+					Err(_) => json!({"outcome": "unexpected"}),
+				})
+			})
+			.await
+			.expect("complete committed refresh command");
+
+		assert_eq!(response, json!({"outcome": "succeeded", "account_revision": 2}));
+		assert_eq!(FAILED_SHARED_REPROJECTIONS.load(Ordering::Relaxed), 1);
+		let refreshed = service.inspect(&account_id).await.expect("read refreshed account").account;
+		assert_eq!(refreshed.revision, 2);
+		assert_eq!(refreshed.credential.as_ref(), Some(&refreshed_binding));
+		let operation = store
+			.read_account_operation(&refresh_operation)
+			.await
+			.expect("read refresh operation")
+			.expect("refresh operation exists");
+		assert_eq!(operation.phase, AccountOperationPhase::Committed);
+		match store
+			.reserve_account_command(&command, AccountCommandKind::Refresh, account_id.as_str(), Some(1))
+			.await
+			.expect("replay refresh command")
+		{
+			AccountCommandReceiptClaim::Replayed(replayed) => assert_eq!(replayed, response),
+			AccountCommandReceiptClaim::Owned(_) => panic!("committed refresh receipt was not terminal"),
+		}
 	}
 
 	#[test]
@@ -4981,6 +5261,99 @@ mod tests {
 	}
 
 	#[test]
+	fn matching_shared_identity_reprojects_the_exact_persisted_refresh_bundle() {
+		let binding = binding("projected-provider-account", 8);
+		let persisted = shared_bundle(binding.provider.account_id(), "persisted-access", 4_000_000);
+		let projected = Cell::new(false);
+
+		reproject_shared_codex_auth_if_current_with(
+			&binding,
+			&persisted,
+			|| {
+				Ok(super::SharedCodexAuthIdentity::Chatgpt {
+					provider_account_id: binding.provider.account_id().to_owned(),
+				})
+			},
+			|bundle, provider_account_id| {
+				assert_eq!(provider_account_id, binding.provider.account_id());
+				assert!(super::same_refresh_bundle(bundle, &persisted));
+				projected.set(true);
+				Ok(())
+			},
+		)
+		.unwrap();
+
+		assert!(projected.get());
+	}
+
+	#[test]
+	fn mismatched_shared_identity_cannot_trigger_refresh_reprojection() {
+		let binding = binding("expected-provider-account", 8);
+		let persisted = shared_bundle(binding.provider.account_id(), "persisted-access", 4_000_000);
+
+		reproject_shared_codex_auth_if_current_with(
+			&binding,
+			&persisted,
+			|| {
+				Ok(super::SharedCodexAuthIdentity::Chatgpt {
+					provider_account_id: "different-provider-account".to_owned(),
+				})
+			},
+			|_, _| panic!("mismatched shared auth must not be overwritten"),
+		)
+		.unwrap();
+	}
+
+	#[test]
+	fn shared_identity_read_failure_does_not_authorize_refresh_reprojection() {
+		let binding = binding("expected-provider-account", 8);
+		let persisted = shared_bundle(binding.provider.account_id(), "persisted-access", 4_000_000);
+
+		reproject_shared_codex_auth_if_current_with(
+			&binding,
+			&persisted,
+			|| Err(super::CodexAuthProjectionError::Unavailable),
+			|_, _| panic!("unreadable shared auth must not be overwritten"),
+		)
+		.unwrap();
+	}
+
+	#[test]
+	fn rejected_provider_refresh_recovers_only_from_a_newer_matching_shared_bundle() {
+		let provider_account_id = "expected-provider-account";
+		let current = binding(provider_account_id, 7);
+		let current_bundle = shared_bundle(provider_account_id, "current-access", 2_000_000);
+
+		let recovered = recover_rejected_refresh_from_shared(
+			&current,
+			&current_bundle,
+			OBSERVED_AT_MICROS,
+			Ok(imported(provider_account_id, "newer-access", 3_000_000)),
+		)
+		.expect("newer exact-identity shared auth must recover provider rejection");
+		assert_eq!(recovered.returned_provider, current.provider);
+
+		assert!(matches!(
+			recover_rejected_refresh_from_shared(
+				&current,
+				&current_bundle,
+				OBSERVED_AT_MICROS,
+				Ok(imported("different-provider-account", "different-access", 3_000_000)),
+			),
+			Err(CredentialRefreshError::Rejected)
+		));
+		assert!(matches!(
+			recover_rejected_refresh_from_shared(
+				&current,
+				&current_bundle,
+				OBSERVED_AT_MICROS,
+				Ok(imported(provider_account_id, "older-access", 1_500_000)),
+			),
+			Err(CredentialRefreshError::Rejected)
+		));
+	}
+
+	#[test]
 	fn mismatched_shared_provider_preserves_provider_refresh_fallback() {
 		let current = binding("expected-provider-account", 7);
 
@@ -5011,7 +5384,7 @@ mod tests {
 	}
 
 	#[test]
-	fn unchanged_or_expired_shared_credential_preserves_provider_refresh_fallback() {
+	fn unchanged_not_newer_or_expired_shared_credential_preserves_provider_refresh_fallback() {
 		let provider_account_id = "expected-provider-account";
 		let current = binding(provider_account_id, 7);
 		let current_bundle = shared_bundle(provider_account_id, "same-access", 3_000_000);
@@ -5022,6 +5395,15 @@ mod tests {
 				&current_bundle,
 				OBSERVED_AT_MICROS,
 				Ok(imported(provider_account_id, "same-access", 3_000_000)),
+			)
+			.is_none()
+		);
+		assert!(
+			matching_shared_refresh(
+				&current,
+				&current_bundle,
+				OBSERVED_AT_MICROS,
+				Ok(imported(provider_account_id, "different-access", 2_500_000)),
 			)
 			.is_none()
 		);
