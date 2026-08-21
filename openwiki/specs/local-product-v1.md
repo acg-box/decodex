@@ -426,26 +426,35 @@ appear in Debug output, protocol data, logs, migration output, or transfer repor
 
 ## Menu-bar Route preparation
 
-The Swift menu-bar `Route` action composes two existing typed commands in this order:
+The Swift menu-bar `Route` action composes three existing typed commands in this order:
 
-1. `UseAccountInCodex` projects the daemon's already persisted current bundle to shared
-   `~/.codex/auth.json` with the published Account revision.
-2. `SetFixedAccountSelection` uses that same Account revision and the captured routing
+1. `RefreshAccount` reconciles and persists the target account credential.
+2. `UseAccountInCodex` projects the exact persisted latest bundle to shared
+   `~/.codex/auth.json` with the returned Account revision.
+3. `SetFixedAccountSelection` uses that same Account revision and the captured routing
    revision.
 
-The daemon's 15-second Account Service observation remains the provider-refresh owner. After
-a successful credential CAS, SQLite commits the Account operation and revision. Account Service
-then reads the exact persisted successor bundle and conditionally re-projects it only when the
-current shared-auth identity still matches. A shared-identity read failure does not authorize an
-overwrite. This background projection behavior is independent of Route.
+Before a provider refresh, Account Service performs one bounded shared-auth read. It can
+absorb that bundle only when the decoded provider identity is exact, the bundle is valid,
+and its access-token expiry is later than both the current time and the stored bundle. If
+the provider rejects refresh, the service performs one more bounded shared-auth read. A
+newer exact-identity bundle can complete the existing journal and credential CAS. Any
+unreadable, unchanged, older, expired, or different-identity bundle leaves the rejection
+terminal. Swift does not project auth or change fixed routing after that rejection.
 
-`UseAccountInCodex` is the mandatory fail-closed projection boundary for Route, so fixed routing
-cannot advance until the safe writer succeeds. Route does not apply an account-change result;
-the visible account record, quota, profile, and Total source state remain unchanged while the
-projection is pending. An uncertain projection retains only its idempotency key and expected
-Account revision. A retry reuses that key, and a changed Account revision fences it out before a
-new projection attempt. Route never starts provider refresh work or selects fixed routing over
-stale auth.
+After a successful credential CAS, SQLite commits the Account operation and revision.
+Account Service then reads the exact persisted successor bundle and conditionally re-projects
+it only when the current shared-auth identity still matches. A shared-identity read failure
+does not authorize an overwrite. A conditional projection write failure also cannot relabel
+the committed provider effect or strand its refresh receipt. The separate
+`UseAccountInCodex` command is the mandatory fail-closed projection boundary for Route, so
+fixed routing cannot advance until the safe writer succeeds.
+
+Swift validates that the refresh result advances both the Account revision and credential
+version by one without changing provider identity. It retains the exact refresh operation,
+refresh idempotency key, prepared revision, and projection idempotency key across uncertain
+or partial outcomes. A retry resumes at the first incomplete step instead of repeating a
+proved refresh or selecting a fixed route over stale auth.
 
 ## Deferred capabilities
 

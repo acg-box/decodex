@@ -137,22 +137,21 @@ device-login flow is the app's only interactive credential-replacement surface. 
 ambiguous case, Swift passes only the exact recovery operation identity. The daemon keeps
 the old ambiguity fenced until the verified replacement credential commits and never
 relabels it as a definite cancellation. The native app exposes the existing
-background account observation owns provider credential refresh; it is not a
-Route-side interactive action. Refresh login uses the same login-method selector. Manual
+revision-fenced credential refresh only as one step of Route; it is not a standalone
+interactive action. Refresh login uses the same login-method selector. Manual
 device-code login presents fixed-size Copy, Open, and Cancel controls. Automatic browser
 login opens the official redirect flow. The app then refreshes only that account after
 the daemon completes the exact credential replacement. The app
 then performs bounded short-interval daemon readback until the new background
 observation replaces any old unauthorized value. Each
-account row has one `Route` control. Route uses the daemon's already persisted current
-credential with `UseAccountInCodex`, carrying the published Account revision into the exact
+account row has one `Route` control. Route first asks Account Service to reconcile a valid
+newer shared Codex login for the exact same provider identity or run its journaled provider
+refresh. It then carries the committed account and credential revisions into the exact
 `~/.codex/auth.json` projection for future Codex launches. Only after projection succeeds does
-it select the same account as the fixed Decodex route. Route does not refresh credentials or
-apply an account-change result, so the visible account, quota, profile, and Total source state
-remain stable while projection is pending. The underlying typed commands remain independently
-fenced. An uncertain projection keeps only its idempotency key and Account revision; a retry
-reuses that key until the revision changes. Background account observation remains the refresh
-owner, and its later successful refresh of the projected account reprojects shared Codex auth. The
+it select the same account as the fixed Decodex route. A rejected refresh without a newer exact
+shared login does not write shared auth or change fixed routing. The underlying typed commands
+remain independently fenced. Route retains an uncertain refresh receipt and a prepared account
+revision so a retry resumes at the first incomplete step. The
 Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
 The overflow menu contains only `Refresh all`, the material selector, and Quit.
