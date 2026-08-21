@@ -1262,6 +1262,139 @@ final class AccountControlStoreTests: XCTestCase {
 		XCTAssertNil(store.message)
 	}
 
+	func testRouteAccountPreservesPresentationUntilGatedProjectionSucceeds() async throws {
+		let fiveHourQuota = ResetCardQuotaWindow(
+			durationMinutes: 300,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 25,
+				resetsAtUnixMicros: 2_000_000
+			)
+		)
+		let sevenDayQuota = ResetCardQuotaWindow(
+			durationMinutes: 10_080,
+			observedAtUnixMicros: 1_000_000,
+			state: .current(
+				usedPercent: 50,
+				resetsAtUnixMicros: 3_000_000
+			)
+		)
+		let account = accountRecord(
+			fiveHourQuota: fiveHourQuota,
+			sevenDayQuota: sevenDayQuota
+		)
+		let profile = AccountProfileObservation(
+			accountID: accountID,
+			accountRevision: account.accountRevision,
+			observedAtUnixMicros: 1_785_276_000_000_000,
+			email: "iris@example.com",
+			planType: "pro",
+			displayName: "Iris",
+			username: "iris",
+			snapshot: AccountProfileSnapshot(
+				lifetimeTokens: 9_001,
+				peakDailyTokens: 4_000,
+				longestTaskSeconds: 125,
+				currentStreakDays: 3,
+				longestStreakDays: 8,
+				dailyUsage: [
+					AccountProfileDailyUsage(date: "2026-07-28", tokens: 4_000),
+				]
+			),
+			freshness: .cached(refreshError: .providerUnavailable)
+		)
+		let profileUnavailable = AccountProfileUnavailable(
+			error: .providerUnavailable,
+			claims: AccountProfileClaims(email: "iris@example.com", planType: "pro")
+		)
+		let client = AccountControlStoreClient(
+			account: account,
+			authority: authority,
+			suspendsUseAccount: true,
+			profileResults: [
+				.available(profile),
+				.unavailable(profileUnavailable),
+			]
+		)
+		let fixture = pendingFixture()
+		defer { fixture.remove() }
+		let store = ResetCardStore(
+			client: client,
+			pendingStore: fixture.store,
+			startupRetryDelays: []
+		)
+
+		await store.refresh()
+		await store.refresh()
+		let beforeRoute = try XCTUnwrap(store.accounts.first)
+		let priorTotal = AccountProfileAggregate.make(
+			store.accounts.compactMap { $0.profile?.snapshot }
+		)
+		XCTAssertNotNil(beforeRoute.profile)
+		XCTAssertNotNil(beforeRoute.profileUnavailable)
+
+		let routeTask = Task {
+			await store.routeAccount(accountID)
+		}
+		for _ in 0 ..< 200 {
+			if await client.useAccountIsPending() {
+				break
+			}
+			try await Task.sleep(for: .milliseconds(5))
+		}
+		guard await client.useAccountIsPending() else {
+			await client.releaseUseAccount()
+			await routeTask.value
+			return XCTFail("UseAccountInCodex did not enter the pending state.")
+		}
+
+		let whileProjectionIsPending = try XCTUnwrap(store.accounts.first)
+		XCTAssertEqual(whileProjectionIsPending.account.accountRevision, 8)
+		XCTAssertEqual(whileProjectionIsPending.account.credentialBinding?.version, 4)
+		XCTAssertEqual(whileProjectionIsPending.inventory, beforeRoute.inventory)
+		XCTAssertFalse(whileProjectionIsPending.inventoryIsCurrent)
+		XCTAssertTrue(whileProjectionIsPending.targets.isEmpty)
+		XCTAssertEqual(whileProjectionIsPending.fiveHourQuota, beforeRoute.fiveHourQuota)
+		XCTAssertEqual(whileProjectionIsPending.sevenDayQuota, beforeRoute.sevenDayQuota)
+		XCTAssertEqual(whileProjectionIsPending.profile, beforeRoute.profile)
+		XCTAssertEqual(
+			whileProjectionIsPending.profileUnavailable,
+			beforeRoute.profileUnavailable
+		)
+		XCTAssertEqual(whileProjectionIsPending.profileError, beforeRoute.profileError)
+		XCTAssertEqual(
+			whileProjectionIsPending.profileDegradationText,
+			beforeRoute.profileDegradationText
+		)
+		XCTAssertEqual(
+			AccountProfileAggregate.make(
+				store.accounts.compactMap { $0.profile?.snapshot }
+			),
+			priorTotal,
+			"The aggregate Total source must remain available while Route projection is pending."
+		)
+		XCTAssertFalse(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .balanced)
+		let pendingControlSequence = await client.controlSequence()
+		let pendingFixedRequest = await client.fixedRequest()
+		XCTAssertEqual(
+			pendingControlSequence,
+			[.credentialRefresh, .codexProjection]
+		)
+		XCTAssertNil(pendingFixedRequest)
+
+		await client.releaseUseAccount()
+		await routeTask.value
+
+		XCTAssertTrue(store.isCodexProjection(accountID))
+		XCTAssertEqual(store.routing?.mode, .fixed(accountID: accountID))
+		let completedControlSequence = await client.controlSequence()
+		XCTAssertEqual(
+			completedControlSequence,
+			[.credentialRefresh, .codexProjection, .fixedRouting]
+		)
+	}
+
 	func testRouteAccountDoesNotProjectOrChangeRoutingWhenRefreshFails() async throws {
 		let account = accountRecord()
 		let client = AccountControlStoreClient(
@@ -1723,6 +1856,7 @@ final class AccountControlStoreTests: XCTestCase {
 		observedState: ResetCardObservedState = .available,
 		lifecycleReadiness: ResetCardLifecycleReadiness = .ready,
 		unsettledOperation: AccountUnsettledOperation? = nil,
+		fiveHourQuota: ResetCardQuotaWindow = .unknown(durationMinutes: 300),
 		sevenDayQuota: ResetCardQuotaWindow = .unknown(durationMinutes: 10_080)
 	) -> ResetCardAccountRecord {
 		let accountID = accountID ?? self.accountID
@@ -1742,7 +1876,7 @@ final class AccountControlStoreTests: XCTestCase {
 				providerAccountID: accountID == self.accountID ? "provider-a" : "provider-b"
 			),
 			unsettledOperation: unsettledOperation,
-			fiveHourQuota: .unknown(durationMinutes: 300),
+			fiveHourQuota: fiveHourQuota,
 			sevenDayQuota: sevenDayQuota
 		)
 	}
@@ -1849,7 +1983,8 @@ private struct AccountControlStoreCounts: Equatable, Sendable {
 	let projection: Int
 }
 
-private actor AccountControlStoreClient: AccountControlClient, AccountObservationClient {
+private actor AccountControlStoreClient: AccountControlClient, AccountObservationClient,
+	AccountProfileClient {
 	private var account: ResetCardAccountRecord
 	private var secondaryAccount: ResetCardAccountRecord?
 	private let authority: ResetCardAuthority
@@ -1861,6 +1996,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private let enrollmentGate: AccountControlReadGate?
 	private let inventoryRevisionOverride: UInt64?
 	private let maxSuccessfulInventoryReads: Int?
+	private let useAccountGate: AccountControlReadGate?
 	private var inventoryRevisionsByAccountID = [String: UInt64]()
 	private var resetCardStatus: ResetCardOperationState = .notFound
 	private let allowsEnrollment: Bool
@@ -1883,6 +2019,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 	private var projection: CodexAuthProjection
 	private var projectionError: AccountControlError?
 	private var projectionReads = 0
+	private var profileResults: [AccountProfileRead]
 	private var snapshotReadCount = 0
 	private var inventoryReadCount = 0
 	private var observationGenerations = [UInt64]()
@@ -1917,6 +2054,8 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		suspendsEnrollment: Bool = false,
 		inventoryRevisionOverride: UInt64? = nil,
 		maxSuccessfulInventoryReads: Int? = nil,
+		suspendsUseAccount: Bool = false,
+		profileResults: [AccountProfileRead] = [],
 		allowsEnrollment: Bool = false,
 		enrollmentError: AccountControlError? = nil,
 		routing: AccountRoutingControl? = nil,
@@ -1943,6 +2082,8 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		enrollmentGate = suspendsEnrollment ? AccountControlReadGate() : nil
 		self.inventoryRevisionOverride = inventoryRevisionOverride
 		self.maxSuccessfulInventoryReads = maxSuccessfulInventoryReads
+		useAccountGate = suspendsUseAccount ? AccountControlReadGate() : nil
+		self.profileResults = profileResults
 		self.allowsEnrollment = allowsEnrollment
 		self.enrollmentError = enrollmentError
 		self.routing = routing
@@ -2255,6 +2396,29 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		await projectionGate?.release()
 	}
 
+	func profile(
+		for _: ResetCardAccountRecord,
+		includeEmail _: Bool
+	) async throws -> AccountProfileRead {
+		guard profileResults.isEmpty == false else {
+			throw ResetCardClientError.invalidResponse
+		}
+		return profileResults.count == 1
+			? profileResults[0]
+			: profileResults.removeFirst()
+	}
+
+	func useAccountIsPending() async -> Bool {
+		guard let useAccountGate else {
+			return false
+		}
+		return await useAccountGate.isPending()
+	}
+
+	func releaseUseAccount() async {
+		await useAccountGate?.release()
+	}
+
 	func useAccountInCodex(
 		authority: ResetCardAuthority?,
 		accountID: String,
@@ -2275,6 +2439,7 @@ private actor AccountControlStoreClient: AccountControlClient, AccountObservatio
 		if let useAccountError {
 			throw useAccountError
 		}
+		await useAccountGate?.wait()
 		let digest = String(repeating: "c", count: 64)
 		projection = .current(
 			accountID: accountID,
