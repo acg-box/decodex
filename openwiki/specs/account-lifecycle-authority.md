@@ -200,6 +200,12 @@ The projection affects future Codex launches and new app-server processes. It do
 claim to hot-switch an already running Codex process. There is no watcher, backup,
 per-account Codex home, token environment projection, legacy helper, or fallback.
 
+The commands remain independent protocol authorities, but the Swift menu-bar `Route`
+control composes them with credential refresh. Route must receive the committed successor
+Account revision, project that exact latest credential, and only then set fixed routing.
+Projection failure leaves fixed routing unchanged. Retry state retains the exact refresh
+receipt or the proved prepared revision so a completed credential effect is not repeated.
+
 ## Account operations
 
 Cross-store changes use one finite per-account operation journal:
@@ -222,12 +228,23 @@ use one operation-scoped private temporary home. It is removed after verified im
 recovery and never becomes a runner home. Import accepts a daemon-opened owner-private
 source descriptor, not credential bytes in the public protocol.
 
-Refresh reads one exact credential version, records `provider_effect_pending` before
-the provider call, validates the returned provider identity, and writes the complete
-rotated bundle with one compare-and-swap. Concurrent callers serialize on that
-operation. After restart, an exact store write can be committed. A provider request with
-no proved store write is not replayed unless the provider has an accepted idempotent
-result-readback contract. Otherwise, the account becomes `reauth_required`.
+Refresh reads one exact credential version and records `provider_effect_pending` before
+the provider call. Immediately before provider work, it can absorb only a valid shared
+Codex bundle with the exact provider identity and a later expiry than the stored bundle.
+It validates the returned or reconciled provider identity and writes the complete rotated
+bundle with one compare-and-swap. Concurrent callers serialize on that operation. After
+provider rejection, one bounded shared-auth read can still supply that exact newer bundle;
+otherwise the operation is cancelled and the rejection remains terminal. After restart,
+an exact store write can be committed. A provider request with no proved store write is
+not replayed unless the provider has an accepted idempotent result-readback contract.
+Otherwise, the account becomes `reauth_required`.
+
+Every committed refresh reads the exact persisted successor bundle. When the current
+shared-auth identity still names the same provider account, Account Service attempts to
+re-project that bundle. An unreadable identity is not overwrite authority. Projection
+failure does not undo or make the provider effect ambiguous, and the terminal refresh
+receipt still completes. Explicit `UseAccountInCodex` owns retryable fail-closed projection
+for menu-bar Route.
 
 Logout disables new launch admission and rejects with `account_in_use` while an active
 ProcessGeneration or unsettled ProviderAttempt is bound to the account. It then deletes

@@ -987,6 +987,20 @@ mod tests {
 	}
 
 	#[test]
+	fn later_projection_replaces_a_stale_bundle_for_the_same_provider_identity() {
+		let home = fixture_home();
+		let directory = open_codex_directory(home.path()).unwrap();
+		let initial = bundle(Some("id-one"), "one");
+		let rotated = bundle(Some("id-two"), "two");
+		project_to_directory(&directory, &initial, "provider-one").unwrap();
+
+		project_to_directory(&directory, &rotated, "provider-one").unwrap();
+
+		assert!(current_auth_matches(&directory, &rotated, "id-two", "provider-one").unwrap());
+		assert!(!current_auth_matches(&directory, &initial, "id-one", "provider-one").unwrap());
+	}
+
+	#[test]
 	fn projection_atomically_replaces_another_account() {
 		let home = fixture_home();
 		let directory = open_codex_directory(home.path()).unwrap();

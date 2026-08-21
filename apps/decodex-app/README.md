@@ -136,17 +136,22 @@ with one targetless provider-refresh ambiguity, shows `Refresh login`; this offi
 device-login flow is the app's only interactive credential-replacement surface. For the
 ambiguous case, Swift passes only the exact recovery operation identity. The daemon keeps
 the old ambiguity fenced until the verified replacement credential commits and never
-relabels it as a definite cancellation. The native app ABI has no direct
-credential-refresh operation. The action uses the same login-method selector. Manual
+relabels it as a definite cancellation. The native app exposes the existing
+revision-fenced credential refresh only as one step of Route; it is not a standalone
+interactive action. Refresh login uses the same login-method selector. Manual
 device-code login presents fixed-size Copy, Open, and Cancel controls. Automatic browser
 login opens the official redirect flow. The app then refreshes only that account after
 the daemon completes the exact credential replacement. The app
 then performs bounded short-interval daemon readback until the new background
 observation replaces any old unauthorized value. Each
-account row has one `Route` control. It first projects that exact daemon-owned login to shared
-`~/.codex/auth.json` for future Codex launches, then selects the same account as
-the fixed Decodex route. The underlying typed commands remain independently
-fenced, and retrying the control completes whichever step is not current. The
+account row has one `Route` control. Route first asks Account Service to reconcile a valid
+newer shared Codex login for the exact same provider identity or run its journaled provider
+refresh. It then carries the committed account and credential revisions into the exact
+`~/.codex/auth.json` projection for future Codex launches. Only after projection succeeds does
+it select the same account as the fixed Decodex route. A rejected refresh without a newer exact
+shared login does not write shared auth or change fixed routing. The underlying typed commands
+remain independently fenced. Route retains an uncertain refresh receipt and a prepared account
+revision so a retry resumes at the first incomplete step. The
 Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
 The overflow menu contains only `Refresh all`, the material selector, and Quit.
