@@ -201,14 +201,10 @@ claim to hot-switch an already running Codex process. There is no watcher, backu
 per-account Codex home, token environment projection, legacy helper, or fallback.
 
 The commands remain independent protocol authorities, but the Swift menu-bar `Route`
-control composes `UseAccountInCodex` with fixed routing. Route uses the daemon's already
-persisted credential and the current published Account revision; it does not start provider
-refresh or apply an `accountChanged` result. It projects that exact credential first and only
-then sets fixed routing. Projection failure leaves fixed routing unchanged. Retry state retains
-only the projection idempotency key fenced by the Account revision, so an uncertain projection
-retry converges without repeating a provider effect. Background Account Service observation
-remains the refresh owner; a later successful refresh of the projected account reprojects the
-shared Codex auth file.
+control composes them with credential refresh. Route must receive the committed successor
+Account revision, project that exact latest credential, and only then set fixed routing.
+Projection failure leaves fixed routing unchanged. Retry state retains the exact refresh
+receipt or the proved prepared revision so a completed credential effect is not repeated.
 
 ## Account operations
 
