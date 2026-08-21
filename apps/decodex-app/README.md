@@ -151,7 +151,10 @@ refresh. It then carries the committed account and credential revisions into the
 it select the same account as the fixed Decodex route. A rejected refresh without a newer exact
 shared login does not write shared auth or change fixed routing. The underlying typed commands
 remain independently fenced. Route retains an uncertain refresh receipt and a prepared account
-revision so a retry resumes at the first incomplete step. The
+revision so a retry resumes at the first incomplete step. While a committed refresh waits for
+projection, the row keeps its last-known inventory, quota bars, profile, and profile degradation
+facts visible. That inventory remains display-only until the matching account revision arrives,
+so stale Reset Card actions stay fenced. The
 Fast control updates only the current Codex `[features].fast_mode` preference
 through the in-process native client.
 The overflow menu contains only `Refresh all`, the material selector, and Quit.

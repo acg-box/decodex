@@ -345,11 +345,20 @@ Account operation commits and its refresh command receipt remains terminal and r
 The safe projection writer also proves that a later bundle replaces stale shared auth for the
 same provider identity.
 
+The focused Swift Route presentation test gates `UseAccountInCodex` after a successful credential
+refresh. It proves that the Account revision and credential version advance before projection,
+the last-known inventory and both quota windows remain visible, the profile and its degradation
+facts remain available, and the aggregate profile Total stays equal. The retained inventory is
+not current for the successor revision, so its Reset Card targets remain fenced. Fixed routing
+stays unchanged until projection succeeds, and the control sequence remains credential refresh,
+Codex projection, then fixed routing. The existing refresh-rejection test continues to prove
+fail-closed behavior.
+
 Focused validation passed 30 Account Service tests, the exact later-projection Rust test, the
-native FFI refresh-request test, 17 Swift native-client tests, and 33 Swift account-control
+native FFI refresh-request test, 17 Swift native-client tests, and 34 Swift account-control
 store tests. The affected-package gate then passed all 22 FFI tests, 212 runtime unit tests
 with one intentional installed-Codex skip, every runtime integration and doc test, strict
-Clippy with warnings denied, and all 225 Swift tests. Both account-login and vNext architecture
+Clippy with warnings denied, and all 226 Swift tests. Both account-login and vNext architecture
 gates passed, and the SwiftPM production build completed with the same Xcode toolchain. The
 first Swift attempt under the active Command Line Tools directory failed
 before source compilation because `SwiftUIMacros` was unavailable. The supported rerun used

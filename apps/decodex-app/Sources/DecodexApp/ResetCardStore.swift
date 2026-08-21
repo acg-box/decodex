@@ -1444,6 +1444,14 @@ final class ResetCardStore {
 			successMessage: nil,
 			operation: {
 				var routedAccount = account
+				var shouldReconcileRouteAccount = false
+				defer {
+					if shouldReconcileRouteAccount {
+						scheduleAccountControlFollowUp(
+							.account(accountID, refreshInventory: true)
+						)
+					}
+				}
 				if needsCodexProjection {
 					var preparation = pendingAccountRoutePreparations[accountID]
 					if let refreshedRevision = preparation?.refreshedAccountRevision,
@@ -1503,7 +1511,15 @@ final class ResetCardStore {
 							else {
 								throw AccountControlError.invalidResponse
 							}
-							_ = applyAccountControlResult(refreshResult)
+							guard applyImmediateRouteAccountRefresh(
+								refreshedAccount,
+								accountID: accountID,
+								expectedAccountRevision: preparation.expectedAccountRevision,
+								expectedCredentialBinding: preparation.expectedCredentialBinding
+							) else {
+								throw AccountControlError.invalidResponse
+							}
+							shouldReconcileRouteAccount = true
 							preparation.refreshedAccountRevision = refreshedAccount
 								.accountRevision
 							pendingAccountRoutePreparations[accountID] = preparation
@@ -1575,6 +1591,46 @@ final class ResetCardStore {
 			&& refreshedBinding.version == expectedCredentialVersion
 			&& refreshedBinding.provider == expectedCredentialBinding.provider
 			&& refreshedBinding.providerAccountID == expectedCredentialBinding.providerAccountID
+	}
+
+	private func applyImmediateRouteAccountRefresh(
+		_ refreshedAccount: ResetCardAccountRecord,
+		accountID: String,
+		expectedAccountRevision: UInt64,
+		expectedCredentialBinding: AccountCredentialBinding
+	) -> Bool {
+		guard Self.isImmediateRouteRefresh(
+			accountID: accountID,
+			expectedAccountRevision: expectedAccountRevision,
+			expectedCredentialBinding: expectedCredentialBinding,
+			to: refreshedAccount
+		), let index = accounts.firstIndex(where: {
+			$0.account.accountID == accountID
+		}) else {
+			return false
+		}
+
+		let existing = accounts[index]
+		let authority = refreshedAccount.authority
+			?? existing.account.authority
+			?? existing.inventory?.authority
+		let bound = Self.account(refreshedAccount, authority: authority)
+		accounts[index] = ResetCardAccountState(
+			account: bound,
+			inventory: existing.inventory,
+			error: nil,
+			isRefreshing: true,
+			profile: existing.profile,
+			profileUnavailable: existing.profileUnavailable,
+			profileError: existing.profileError,
+			isProfileRefreshing: accountProfileClient != nil
+		)
+		reconcileAccountSkeletonRevisionTargets()
+		invalidateCodexProjectionAfterRevisionChange(
+			accountID: bound.accountID,
+			accountRevision: bound.accountRevision
+		)
+		return true
 	}
 
 	nonisolated private static func routeRefreshCanReuseReceipt(after error: Error) -> Bool {
