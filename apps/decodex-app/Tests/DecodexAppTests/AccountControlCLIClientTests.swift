@@ -175,13 +175,6 @@ final class AccountControlNativeClientTests: XCTestCase {
 			expectedRoutingRevision: 9,
 			idempotencyKey: idempotencyKey
 		)
-		_ = try await client.refreshAccountCredentials(
-			authority: authority,
-			operationID: operationID,
-			accountID: accountID,
-			expectedRevision: 7,
-			idempotencyKey: idempotencyKey
-		)
 		let requests = try recorder.requests.map { try nativeJSONObject($0.data) }
 		XCTAssertEqual(
 			requests.compactMap { $0["operation"] as? String },
@@ -189,7 +182,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 				"enroll_account", "get_codex_auth_projection", "use_account_in_codex",
 				"disable_account",
 				"logout_account", "set_fixed_selection",
-				"set_balanced_selection", "set_account_order", "refresh_account",
+				"set_balanced_selection", "set_account_order",
 			]
 		)
 		XCTAssertEqual(
@@ -216,13 +209,7 @@ final class AccountControlNativeClientTests: XCTestCase {
 		XCTAssertEqual(Set(requests[7].keys), [
 			"schema", "operation", "order", "expected_routing_revision", "idempotency_key",
 		])
-		XCTAssertEqual(Set(requests[8].keys), [
-			"schema", "operation", "operation_id", "account_id", "expected_revision",
-			"idempotency_key",
-		])
-		XCTAssertEqual(requests[8]["operation_id"] as? String, operationID)
-		XCTAssertEqual(requests[8]["expected_revision"] as? NSNumber, 7)
-		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 9))
+		XCTAssertEqual(recorder.requests.map(\.authority), Array(repeating: authority, count: 8))
 	}
 
 	func testAccountOrderRejectsAContradictoryAppliedOrder() async throws {
