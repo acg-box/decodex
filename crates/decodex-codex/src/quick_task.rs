@@ -997,6 +997,8 @@ struct QuickTaskThreadResponseWire {
 	section: Option<QuickTaskThreadSectionWire>,
 	#[serde(default)]
 	section_entered_at: Option<i64>,
+	#[serde(default)]
+	project_id: Option<String>,
 	turns: Vec<QuickTaskForbiddenValueWire>,
 }
 
@@ -1576,6 +1578,7 @@ const THREAD_RESPONSE_FIELDS: &[&str] = &[
 	"name",
 	"section",
 	"sectionEnteredAt",
+	"projectId",
 	"turns",
 ];
 const THREAD_RESPONSE_REQUIRED_FIELDS: &[&str] = &[
@@ -1984,6 +1987,47 @@ mod tests {
 				"thread/resume must accept {case} section fields",
 			);
 		}
+	}
+
+	#[test]
+	fn current_thread_project_id_decodes_when_omitted_null_or_populated() {
+		let canonical = thread_response("thread-1", "gpt-5", "/workspace");
+		let omitted = canonical.clone();
+
+		let mut null = canonical.clone();
+		null["thread"]["projectId"] = Value::Null;
+
+		let mut populated = canonical;
+		populated["thread"]["projectId"] = json!("project-1");
+
+		for (case, response) in [("omitted", omitted), ("null", null), ("populated", populated)] {
+			let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+			assert!(
+				decode_quick_task_thread_start_response(&start_request(), &bytes).is_ok(),
+				"thread/start must accept {case} projectId",
+			);
+			assert!(
+				decode_quick_task_thread_resume_response(&resume_request(), &bytes).is_ok(),
+				"thread/resume must accept {case} projectId",
+			);
+		}
+	}
+
+	#[test]
+	fn malformed_thread_project_id_is_rejected() {
+		let mut response = thread_response("thread-1", "gpt-5", "/workspace");
+		response["thread"]["projectId"] = json!({"unexpected": true});
+		let bytes = serde_json::to_vec(&response).expect("fixture response must serialize");
+
+		assert_eq!(
+			decode_quick_task_thread_start_response(&start_request(), &bytes).map(|_| ()),
+			Err(QuickTaskContractError::MalformedResponse),
+		);
+		assert_eq!(
+			decode_quick_task_thread_resume_response(&resume_request(), &bytes).map(|_| ()),
+			Err(QuickTaskContractError::MalformedResponse),
+		);
 	}
 
 	#[test]
