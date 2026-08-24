@@ -83,6 +83,7 @@ class LocalServiceInstallerTests(unittest.TestCase):
                 "outcome": "available",
                 "data": {
                     "accounts": accounts,
+                    "pending_route": None,
                     "routing": {
                         "revision": 1,
                         "mode": {"mode": "balanced"},
@@ -278,6 +279,21 @@ class LocalServiceInstallerTests(unittest.TestCase):
         document = self.account_document([first, second])
         self.assertEqual(self.module.account_ids_from_result(document), [first, second])
         document["result"]["data"]["routing"]["order"] = [second, first]
+        self.assertIsNone(self.module.account_ids_from_result(document))
+
+    def test_account_list_parser_accepts_only_exact_pending_route_projection(self) -> None:
+        first = "10000000-0000-4000-8000-000000000001"
+        second = "10000000-0000-4000-8000-000000000002"
+        operation = "20000000-0000-4000-8000-000000000001"
+        document = self.account_document([first, second])
+        document["result"]["data"]["pending_route"] = {
+            "operation_id": operation,
+            "account_id": second,
+            "routing_revision": 1,
+        }
+        self.assertEqual(self.module.account_ids_from_result(document), [first, second])
+
+        document["result"]["data"]["pending_route"]["routing_revision"] = 2
         self.assertIsNone(self.module.account_ids_from_result(document))
 
     def test_retired_snapshot_is_captured_only_before_sqlite_exists(self) -> None:

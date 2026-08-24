@@ -1,13 +1,13 @@
-//! `decodexd` lifecycle assembly and the same-UID V2.6 local connection owner.
+//! `decodexd` lifecycle assembly and the same-UID V2.9 local connection owner.
 //!
 //! Account-process and routing composition remain crate-private. The ordinary Quick Task owner
 //! composes them without exporting raw process, routing, or provider-dispatch facades.
 
 mod account_api;
 mod account_import;
-mod account_login;
 #[expect(dead_code, reason = "dormant until a later explicit product authority enables routing")]
 mod account_launch;
+mod account_login;
 mod account_observation;
 mod account_profile;
 mod account_service;
@@ -18,12 +18,14 @@ mod domain_packs;
 #[expect(dead_code, reason = "sealed until the accepted GitHub-effect composition owner")]
 pub(crate) mod github_effects;
 mod host_credentials;
-#[path = "managed_repository_disabled.rs"] mod managed_repository_runtime;
+#[path = "managed_repository_disabled.rs"]
+mod managed_repository_runtime;
 mod process_platform;
 mod process_supervisor;
 mod provider_attempt_service;
 mod quick_task;
 mod routing_orchestration;
+mod shared_auth_coordinator;
 mod supervised_validation;
 mod websocket;
 
@@ -63,7 +65,8 @@ pub use websocket::{
 	ServerConfig, ServerError, SpawnId, TerminationPrimary, TerminationReceipt,
 };
 
-#[cfg(test)] use {tempfile as _, tokio_tungstenite as _};
+#[cfg(test)]
+use {tempfile as _, tokio_tungstenite as _};
 
 /// The vNext service assembly selected by the `decodexd` composition root.
 #[derive(Clone, Copy, Debug)]

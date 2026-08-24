@@ -9,7 +9,7 @@ openwiki:
   source_paths: [crates/decodex-account-login/src/lib.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-runtime/src/bootstrap.rs, crates/decodex-protocol/src/account_login.rs, crates/decodex-protocol/src/lib.rs, crates/decodex-protocol/src/client.rs, crates/decodex-protocol/src/wire.rs, crates/decodex-app-client-ffi/src/lib.rs, apps/decodex-gpui/src/account_login.rs]
   symbols: [AccountLoginManager, AccountLoginInstallAuthority, AccountService, AccountLoginClient, AccountLoginController, CURRENT_VERSION, CURRENT_ARTIFACT_COHORT, LoginHome]
   test_paths: [tests/scripts/test_account_login_architecture.py, crates/decodex-account-login/src/lib.rs, crates/decodex-protocol/src/account_login.rs, crates/decodex-runtime/src/account_login.rs, crates/decodex-runtime/tests/websocket_protocol.rs, apps/decodex-app/Tests/DecodexAppTests/AccountControlStoreTests.swift]
-  invariants: ["decodexd is the only runtime owner of provider authorization and credential installation.", "The login exchange is transient and memory-only; login status is not retained in database snapshots, events, or command payloads.", "Clients must negotiate exact protocol 2.6 and artifact cohort 2.", "Cancellation waits for provider cleanup and the worker join before returning terminal status."]
+  invariants: ["decodexd is the only runtime owner of provider authorization and credential installation.", "The login exchange is transient and memory-only; login status is not retained in database snapshots, events, or command payloads.", "Clients must negotiate exact protocol 2.9 and artifact cohort 5.", "Cancellation waits for provider cleanup and the worker join before returning terminal status."]
   validation_commands: ["python3 tests/scripts/test_account_login_architecture.py", "cargo test -p decodex-account-login", "cargo test -p decodex-protocol", "cargo test -p decodex-runtime", "cargo test -p decodex-app-client-ffi"]
 ---
 
@@ -65,14 +65,14 @@ The client implementation is `AccountLoginClient` in `crates/decodex-protocol/sr
 
 ## Protocol negotiation
 
-The current wire contract is protocol `2.6` exactly:
+The current wire contract is protocol `2.9` exactly:
 
-- `CURRENT_VERSION` is `{ major: 2, minor: 6 }`.
-- `CURRENT_ARTIFACT_COHORT` remains `2` and must match between daemon and every local consumer.
+- `CURRENT_VERSION` is `{ major: 2, minor: 9 }`.
+- `CURRENT_ARTIFACT_COHORT` is `5` and must match between daemon and every local consumer.
 - Negotiation accepts only the exact current version. A major mismatch and an unsupported minor are distinct refusals; the nominal `PREVIOUS_MINOR_VERSION` is intentionally equal to the current version for the clean break.
-- A welcome with a missing or different artifact cohort is refused. Do not reintroduce pre-2.6 compatibility when documenting or changing the current protocol.
+- A welcome with a missing or different artifact cohort is refused. Do not reintroduce pre-2.9 compatibility when documenting or changing the current protocol.
 
-The version and cohort definitions live in `crates/decodex-protocol/src/lib.rs`; handshake and cohort checks are exercised by `crates/decodex-protocol/src/client.rs`, `retained_session.rs`, and `wire.rs` tests. Account-login additions must preserve both the exact negotiation rule and unchanged cohort 2.
+The version and cohort definitions live in `crates/decodex-protocol/src/lib.rs`; handshake and cohort checks are exercised by `crates/decodex-protocol/src/client.rs`, `retained_session.rs`, and `wire.rs` tests. Account-login additions must preserve both the exact negotiation rule and cohort 5.
 
 ## AccountService installation
 
@@ -101,7 +101,7 @@ These are protocol-only FFI and GPUI seams. They must not depend on `decodex-acc
 
 **Changing provider behavior:** edit `crates/decodex-account-login/src/lib.rs` and its focused tests. Preserve bounded response/callback parsing, no process execution, no logging, cancellation checks, and private-home cleanup. Then validate the runtime consumer and architecture gate; do not add provider dependencies to FFI or GPUI.
 
-**Changing the wire contract:** edit `crates/decodex-protocol/src/account_login.rs`, `client.rs`, and `wire.rs` together. Preserve exact 2.6 negotiation, cohort 2, 8 KiB URL bounds, `deny_unknown_fields`, canonical UUID validation, and exclusion from durable wire types. Run protocol account-login tests and the architecture gate before any broader package check.
+**Changing the wire contract:** edit `crates/decodex-protocol/src/account_login.rs`, `client.rs`, and `wire.rs` together. Preserve exact 2.9 negotiation, cohort 5, 8 KiB URL bounds, `deny_unknown_fields`, canonical UUID validation, and exclusion from durable wire types. Run protocol account-login tests and the architecture gate before any broader package check.
 
 **Changing installation or lifecycle:** start at `AccountLoginManager`, `AccountLoginInstallAuthority`, and `AccountService`. Update focused runtime tests for initial, completed, failed, same-session, busy, cancellation, replacement, shutdown, revision mismatch, and exact UUID restoration behavior. Escalate to runtime bootstrap and websocket tests only when composition or transport wiring changes.
 

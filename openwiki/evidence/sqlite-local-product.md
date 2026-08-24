@@ -175,7 +175,7 @@ the pre-existing malformed-cycle tests pass together. After this correction, the
 complete GPUI package passed 120 tests with two live tests ignored.
 
 The client does not activate the deferred general WorkItem and Project query surface.
-Protocol 2.6 is exact-current. The Adaptive Program controller uses only its bounded
+Protocol 2.7 is exact-current. The Adaptive Program controller uses only its bounded
 Program and built-in Domain Pack commands and queries. The unrelated WorkItem board
 controller stays dormant. This keeps deferred Factory surfaces from affecting
 Conversation history or the Workbench connection.
@@ -260,7 +260,7 @@ remain outside this lifecycle-refresh milestone because
 or tool effects. Only one positively client-ID-correlated Decodex Turn may repair its own
 terminal state and assistant suffix.
 
-Protocol 2.6 carries the controls, archive event, bounded Program aggregate, built-in
+Protocol 2.7 carries the controls, archive event, bounded Program aggregate, built-in
 Domain Pack projection, and the optional exact recovery-operation identity for official
 device-login takeover. It carries no credential value. SQLite
 schema version 3 adds the original Quick Task execution settings. Schema version 4 adds
@@ -328,42 +328,42 @@ has supplied a current value. An absent, unknown, unsupported, or failed five-ho
 does not create a synthetic `5 HOUR` row. It remains a typed protocol fact for routing and
 diagnostics.
 
-### Menu-bar Route preparation evidence
+### Daemon-owned Route evidence
 
-The 2026-08-21 focused repair restores credential preparation before the Swift menu-bar
-Route changes fixed routing. Deterministic store tests prove `RefreshAccount`, exact latest
-projection, and fixed selection in that order. They also prove Account and credential-version
-advancement, no projection or routing after refresh rejection, no fixed routing after
-projection failure, exact projection-receipt reuse, fixed-only retry after later partial
-success, and serialized cross-account Route actions.
+The 2026-08-23 Route repair replaces the Swift three-command workflow with one exact
+`RouteAccount` command and one `AccountRouted` result. Protocol, FFI, CLI, GPUI, and Swift use
+the same command. The former public projection and fixed-selection commands are absent.
 
-Account Service tests prove that only a valid newer same-identity shared bundle is absorbed,
-including the one bounded read after provider rejection. Different identity, unreadable auth,
-unchanged data, older data, and expired data remain fail-closed. A committed-refresh fixture
-starts at `StoreApplied`, forces conditional shared projection failure, and proves that the
-Account operation commits and its refresh command receipt remains terminal and replayable.
-The safe projection writer also proves that a later bundle replaces stale shared auth for the
-same provider identity.
+Account Service tests construct two enrolled accounts and a newer shared source bundle. They
+prove that cross-account Route stores the source successor before target refresh, suppresses
+intermediate Route writes, passes the exact persisted source bundle to the final projector, and
+commits the target Account and fixed routing under one receipt. The same fixture proves that a
+stale routing revision completes without another projection effect.
 
-The focused Swift Route presentation test gates `UseAccountInCodex` after a successful credential
-refresh. It proves that the Account revision and credential version advance before projection,
-the last-known inventory and both quota windows remain visible, the profile and its degradation
-facts remain available, and the aggregate profile Total stays equal. The retained inventory is
-not current for the successor revision, so its Reset Card targets remain fenced. Fixed routing
-stays unchanged until projection succeeds, and the control sequence remains credential refresh,
-Codex projection, then fixed routing. The existing refresh-rejection test continues to prove
-fail-closed behavior.
+The auth projection test starts from source A, conditionally replaces it with target B, then
+installs concurrent source C. Repeating the A-to-B conditional write returns `SourceChanged` and
+leaves C intact. Existing projection tests continue to prove mode-0600 temporary creation,
+atomic rename, exact readback, parent synchronization, idempotent target replay, unsafe-path
+rejection, and post-rename outcome-unknown classification.
 
-Focused validation passed 30 Account Service tests, the exact later-projection Rust test, the
-native FFI refresh-request test, 17 Swift native-client tests, and 34 Swift account-control
-store tests. The affected-package gate then passed all 22 FFI tests, 212 runtime unit tests
-with one intentional installed-Codex skip, every runtime integration and doc test, strict
-Clippy with warnings denied, and all 226 Swift tests. Both account-login and vNext architecture
-gates passed, and the SwiftPM production build completed with the same Xcode toolchain. The
-first Swift attempt under the active Command Line Tools directory failed
-before source compilation because `SwiftUIMacros` was unavailable. The supported rerun used
-`/Applications/Xcode-beta.app` with Swift 6.4 and passed; the initial toolchain failure is not
-product evidence.
+The SQLite restart test retains the credential-negative Route payload in migration-9 command
+receipts, reopens the database, releases the prior daemon lease, reclaims the exact command, and
+completes it once. Bootstrap performs this release and one recovery pass before it constructs the
+protocol server. The retained websocket disconnect test proves that an admitted command continues
+after its presentation connection closes.
+
+Swift tests prove one request with both Account and routing revisions, one authoritative result,
+serialized Route presentation, no-op behavior only when routing and exact projection are current,
+and unchanged state after a rejected Route. Source architecture tests reject the removed Route
+preparation structure, refresh/projection/fixed client calls, and the old Total-preservation
+helper. The complete Swift suite passed all 222 tests with Xcode beta.
+
+Final validation included the complete Rust workspace, the final 216-test runtime package with
+its integration targets, the 73-test protocol library and six local-transport tests, strict
+workspace Clippy with warnings denied, the schema-9 local database gate, 16 vNext and account-login
+architecture tests, the explicit disconnected-command continuation test, all 222 Swift tests, and
+the Swift production build. Existing live daemon and installed-Codex tests remained intentionally
+ignored.
 
 The staged nested bundle passed strict deep code-signature verification. A direct call through
 its embedded FFI negotiated the running daemon, returned `available`, and read six accounts.

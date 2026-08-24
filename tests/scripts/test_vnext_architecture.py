@@ -94,6 +94,29 @@ class LocalSqliteArchitectureTests(unittest.TestCase):
                 self.assertNotIn("rusqlite", dependencies)
                 self.assertNotIn("redb", dependencies)
 
+    def test_shared_auth_coordinator_is_read_only_until_quiescent_cutover(self) -> None:
+        coordinator = read(
+            "crates/decodex-runtime/src/shared_auth_coordinator.rs"
+        )
+        application = read("crates/decodex-runtime/src/application.rs")
+        account_service = read("crates/decodex-runtime/src/account_service.rs")
+        self.assertIn("proc_listpids", coordinator)
+        self.assertIn("proc_pidpath", coordinator)
+        self.assertIn("CodexLiveness::MayBeRunning", coordinator)
+        self.assertIn("project_shared_codex_auth_cas", coordinator)
+        for forbidden in (
+            "std::process::Command",
+            "libc::kill",
+            "SIGTERM",
+            "SIGKILL",
+        ):
+            self.assertNotIn(forbidden, coordinator)
+        self.assertLess(
+            application.index("shared_auth_may_be_running"),
+            application.index("reclaim_account_route_command"),
+        )
+        self.assertNotIn("reproject_shared", account_service)
+
     def test_credentials_are_narrow_and_daemon_private(self) -> None:
         credentials = read("database/src/credentials.rs")
         adapter = read("crates/decodex-runtime/src/host_credentials/sqlite_store.rs")

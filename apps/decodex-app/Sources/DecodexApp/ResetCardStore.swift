@@ -267,15 +267,6 @@ enum AccountControlActivity: Equatable {
 	case route
 }
 
-private struct PendingAccountRoutePreparation {
-	let expectedAccountRevision: UInt64
-	let expectedCredentialBinding: AccountCredentialBinding
-	let refreshOperationID: String
-	let refreshIdempotencyKey: String
-	let projectionIdempotencyKey: String
-	var refreshedAccountRevision: UInt64?
-}
-
 private enum AccountLoginStart {
 	case enrollment(enabled: Bool)
 	case reauthentication(
@@ -360,6 +351,7 @@ final class ResetCardStore {
 
 	private(set) var accounts = [ResetCardAccountState]()
 	private(set) var routing: AccountRoutingControl?
+	private(set) var pendingRoute: AccountRoutePending?
 	private(set) var codexAuthProjection: CodexAuthProjection?
 	private(set) var isRefreshing = false
 	private(set) var refreshSkeletonIsPublished = false
@@ -401,9 +393,6 @@ final class ResetCardStore {
 	@ObservationIgnored private var pendingRecoveryTask: Task<Void, Never>?
 	@ObservationIgnored private var accountReauthenticationTask: Task<Void, Never>?
 	@ObservationIgnored private var pendingAccountLoginStart: PendingAccountLoginStart?
-	@ObservationIgnored private var pendingAccountRoutePreparations = [
-		String: PendingAccountRoutePreparation
-	]()
 	@ObservationIgnored private var postUseReconciliationTasks = [
 		String: Task<Void, Never>
 	]()
@@ -483,6 +472,7 @@ final class ResetCardStore {
 
 	var canBeginEnrollment: Bool {
 		accountControlClient != nil
+			&& pendingRoute == nil
 			&& canPerformDirectAccountControl
 			&& isAccountControlInProgress == false
 	}
@@ -493,6 +483,7 @@ final class ResetCardStore {
 		}
 		let accountIDs = accounts.map { $0.account.accountID }
 		return accountControlClient != nil
+			&& pendingRoute == nil
 			&& accountIDs.count > 1
 			&& accountIDs.count == routing.order.count
 			&& Set(accountIDs) == Set(routing.order)
@@ -937,6 +928,7 @@ final class ResetCardStore {
 				{
 					routing = snapshotRouting
 				}
+				pendingRoute = snapshot.pendingRoute
 				discovered = snapshot.accounts
 			} else {
 				discovered = try await client.accounts(authority: retainedAuthority)
@@ -1298,6 +1290,9 @@ final class ResetCardStore {
 	}
 
 	func canRouteAccount(_ accountID: String) -> Bool {
+		guard pendingRoute?.accountID != accountID else {
+			return false
+		}
 		guard let state = accounts.first(where: { $0.account.accountID == accountID }) else {
 			return false
 		}
@@ -1340,7 +1335,8 @@ final class ResetCardStore {
 		_ accountID: String,
 		enabled: Bool
 	) async {
-		guard let account = accountRecord(accountID),
+		guard pendingRoute == nil,
+			let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1364,7 +1360,8 @@ final class ResetCardStore {
 	}
 
 	func logoutAccount(_ accountID: String) async {
-		guard let account = accountRecord(accountID),
+		guard pendingRoute == nil,
+			let account = accountRecord(accountID),
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1389,32 +1386,6 @@ final class ResetCardStore {
 		)
 	}
 
-	func selectFixedAccount(_ accountID: String) async {
-		guard let account = accountRecord(accountID),
-			canRouteAccount(accountID),
-			let routing,
-			routing.order.contains(accountID),
-			let accountControlClient
-		else {
-			presentAccountControlUnavailable()
-			return
-		}
-		await performAccountControl(
-			isRoutingControl: true,
-			allowsDuringRefresh: true,
-			successMessage: nil,
-			operation: {
-				try await accountControlClient.setFixedSelection(
-					authority: account.authority ?? establishedAuthority,
-					accountID: accountID,
-					expectedAccountRevision: account.accountRevision,
-					expectedRoutingRevision: routing.revision,
-					idempotencyKey: Self.newCanonicalUUID()
-				)
-			}
-		)
-	}
-
 	func routeAccount(_ accountID: String) async {
 		guard let account = accountRecord(accountID),
 			canRouteAccount(accountID),
@@ -1432,7 +1403,8 @@ final class ResetCardStore {
 		} else {
 			needsFixedRouting = true
 		}
-		guard needsCodexProjection || needsFixedRouting else {
+		let replacesPendingRoute = pendingRoute != nil
+		guard needsCodexProjection || needsFixedRouting || replacesPendingRoute else {
 			return
 		}
 
@@ -1443,116 +1415,11 @@ final class ResetCardStore {
 			allowsDuringRefresh: true,
 			successMessage: nil,
 			operation: {
-				var routedAccount = account
-				var shouldReconcileRouteAccount = false
-				defer {
-					if shouldReconcileRouteAccount {
-						scheduleAccountControlFollowUp(
-							.account(accountID, refreshInventory: true)
-						)
-					}
-				}
-				if needsCodexProjection {
-					var preparation = pendingAccountRoutePreparations[accountID]
-					if let refreshedRevision = preparation?.refreshedAccountRevision,
-						refreshedRevision != account.accountRevision
-					{
-						pendingAccountRoutePreparations.removeValue(forKey: accountID)
-						preparation = nil
-					}
-					if preparation == nil {
-						guard let credentialBinding = account.credentialBinding else {
-							throw AccountControlError.invalidResponse
-						}
-						preparation = PendingAccountRoutePreparation(
-							expectedAccountRevision: account.accountRevision,
-							expectedCredentialBinding: credentialBinding,
-							refreshOperationID: Self.newCanonicalUUID(),
-							refreshIdempotencyKey: Self.newCanonicalUUID(),
-							projectionIdempotencyKey: Self.newCanonicalUUID(),
-							refreshedAccountRevision: nil
-						)
-						pendingAccountRoutePreparations[accountID] = preparation
-					}
-					guard var preparation else {
-						throw AccountControlError.invalidResponse
-					}
-
-					if preparation.refreshedAccountRevision == nil {
-						do {
-							let refreshResult = try await accountControlClient
-								.refreshAccountCredentials(
-									authority: account.authority ?? establishedAuthority,
-									operationID: preparation.refreshOperationID,
-									accountID: accountID,
-									expectedRevision: preparation.expectedAccountRevision,
-									idempotencyKey: preparation.refreshIdempotencyKey
-								)
-							let currentRouteRevision = accountRecord(accountID)?.accountRevision
-								?? account.accountRevision
-							guard refreshedAccountRevisionIsCurrent(
-								refreshResult,
-								currentAccountRevision: currentRouteRevision
-							) else {
-								throw AccountControlError.expectedRevisionMismatch(
-									expected: preparation.expectedAccountRevision,
-									actual: currentRouteRevision
-								)
-							}
-							guard case .accountChanged(let refreshedAccount) = refreshResult,
-								Self.isImmediateRouteRefresh(
-									accountID: accountID,
-									expectedAccountRevision: preparation
-										.expectedAccountRevision,
-									expectedCredentialBinding: preparation
-										.expectedCredentialBinding,
-									to: refreshedAccount
-								)
-							else {
-								throw AccountControlError.invalidResponse
-							}
-							guard applyImmediateRouteAccountRefresh(
-								refreshedAccount,
-								accountID: accountID,
-								expectedAccountRevision: preparation.expectedAccountRevision,
-								expectedCredentialBinding: preparation.expectedCredentialBinding
-							) else {
-								throw AccountControlError.invalidResponse
-							}
-							shouldReconcileRouteAccount = true
-							preparation.refreshedAccountRevision = refreshedAccount
-								.accountRevision
-							pendingAccountRoutePreparations[accountID] = preparation
-							routedAccount = refreshedAccount
-						} catch {
-							if Self.routeRefreshCanReuseReceipt(after: error) == false {
-								pendingAccountRoutePreparations.removeValue(forKey: accountID)
-							}
-							throw error
-						}
-					} else {
-						routedAccount = account
-					}
-
-					let result = try await accountControlClient.useAccountInCodex(
-						authority: routedAccount.authority ?? establishedAuthority,
-						accountID: accountID,
-						expectedRevision: routedAccount.accountRevision,
-						idempotencyKey: preparation.projectionIdempotencyKey
-					)
-					_ = applyAccountControlResult(result)
-					pendingAccountRoutePreparations.removeValue(forKey: accountID)
-					if needsFixedRouting == false {
-						return result
-					}
-				} else {
-					pendingAccountRoutePreparations.removeValue(forKey: accountID)
-				}
-
-				return try await accountControlClient.setFixedSelection(
-					authority: routedAccount.authority ?? establishedAuthority,
+				try await accountControlClient.routeAccount(
+					authority: account.authority ?? establishedAuthority,
+					operationID: Self.newCanonicalUUID(),
 					accountID: accountID,
-					expectedAccountRevision: routedAccount.accountRevision,
+					expectedAccountRevision: account.accountRevision,
 					expectedRoutingRevision: routing.revision,
 					idempotencyKey: Self.newCanonicalUUID()
 				)
@@ -1560,94 +1427,9 @@ final class ResetCardStore {
 		)
 	}
 
-	private func refreshedAccountRevisionIsCurrent(
-		_ result: AccountControlResult,
-		currentAccountRevision: UInt64
-	) -> Bool {
-		guard case .accountChanged(let refreshedAccount) = result else {
-			return false
-		}
-		return refreshedAccount.accountRevision >= currentAccountRevision
-	}
-
-	nonisolated private static func isImmediateRouteRefresh(
-		accountID: String,
-		expectedAccountRevision: UInt64,
-		expectedCredentialBinding: AccountCredentialBinding,
-		to refreshed: ResetCardAccountRecord
-	) -> Bool {
-		let (refreshedAccountRevision, accountRevisionOverflow) = expectedAccountRevision
-			.addingReportingOverflow(1)
-		guard accountRevisionOverflow == false,
-			refreshed.accountID == accountID,
-			refreshed.accountRevision == refreshedAccountRevision,
-			let refreshedBinding = refreshed.credentialBinding
-		else {
-			return false
-		}
-		let (expectedCredentialVersion, credentialVersionOverflow) = expectedCredentialBinding.version
-			.addingReportingOverflow(1)
-		return credentialVersionOverflow == false
-			&& refreshedBinding.version == expectedCredentialVersion
-			&& refreshedBinding.provider == expectedCredentialBinding.provider
-			&& refreshedBinding.providerAccountID == expectedCredentialBinding.providerAccountID
-	}
-
-	private func applyImmediateRouteAccountRefresh(
-		_ refreshedAccount: ResetCardAccountRecord,
-		accountID: String,
-		expectedAccountRevision: UInt64,
-		expectedCredentialBinding: AccountCredentialBinding
-	) -> Bool {
-		guard Self.isImmediateRouteRefresh(
-			accountID: accountID,
-			expectedAccountRevision: expectedAccountRevision,
-			expectedCredentialBinding: expectedCredentialBinding,
-			to: refreshedAccount
-		), let index = accounts.firstIndex(where: {
-			$0.account.accountID == accountID
-		}) else {
-			return false
-		}
-
-		let existing = accounts[index]
-		let authority = refreshedAccount.authority
-			?? existing.account.authority
-			?? existing.inventory?.authority
-		let bound = Self.account(refreshedAccount, authority: authority)
-		accounts[index] = ResetCardAccountState(
-			account: bound,
-			inventory: existing.inventory,
-			error: nil,
-			isRefreshing: true,
-			profile: existing.profile,
-			profileUnavailable: existing.profileUnavailable,
-			profileError: existing.profileError,
-			isProfileRefreshing: accountProfileClient != nil
-		)
-		reconcileAccountSkeletonRevisionTargets()
-		invalidateCodexProjectionAfterRevisionChange(
-			accountID: bound.accountID,
-			accountRevision: bound.accountRevision
-		)
-		return true
-	}
-
-	nonisolated private static func routeRefreshCanReuseReceipt(after error: Error) -> Bool {
-		guard let error = error as? AccountControlError else {
-			return true
-		}
-		switch error {
-		case .invalidInput, .invalidResponse, .expectedRevisionMismatch, .idempotencyConflict,
-			.idempotencyCapacityExceeded, .rejected:
-			return false
-		case .client, .applicationUnavailable, .acceptanceUnknown, .potentiallyDispatched:
-			return true
-		}
-	}
-
 	func selectBalancedAccounts() async {
-		guard let routing,
+		guard pendingRoute == nil,
+			let routing,
 			let accountControlClient
 		else {
 			presentAccountControlUnavailable()
@@ -1988,29 +1770,6 @@ final class ResetCardStore {
 		finishAccountReauthentication(
 			accountID: presentation.accountID,
 			sessionID: presentation.sessionID
-		)
-	}
-
-	func useAccountInCodex(_ accountID: String) async {
-		guard let account = accountRecord(accountID),
-			let accountControlClient
-		else {
-			presentAccountControlUnavailable()
-			return
-		}
-		await performAccountControl(
-			accountID: accountID,
-			activity: .route,
-			allowsDuringRefresh: true,
-			successMessage: nil,
-			operation: {
-				try await accountControlClient.useAccountInCodex(
-					authority: account.authority ?? establishedAuthority,
-					accountID: accountID,
-					expectedRevision: account.accountRevision,
-					idempotencyKey: Self.newCanonicalUUID()
-				)
-			}
 		)
 	}
 
@@ -2525,6 +2284,7 @@ final class ResetCardStore {
 			if let snapshotRouting = snapshot.routing {
 				routing = snapshotRouting
 			}
+			pendingRoute = snapshot.pendingRoute
 			var accountsNeedingDetails = [(
 				accountID: String,
 				refreshInventory: Bool
@@ -3687,20 +3447,26 @@ final class ResetCardStore {
 		_ result: AccountControlResult
 	) -> AccountControlFollowUp {
 		switch result {
-		case .codexAuthProjected(let accountID, let accountRevision, let projectionDigest):
-			codexProjectionRequestGeneration &+= 1
-			codexAuthProjection = .current(
-				accountID: accountID,
-				accountRevision: accountRevision,
-				projectionDigest: projectionDigest
-			)
-			return .none
 		case .routingChanged(let routing):
 			self.routing = routing
 			_ = reorderAccountStates(to: routing.order)
 			return .none
+		case .routed(let account, let routing, let projectionDigest):
+			let followUp = applyAccountChange(account)
+			self.routing = routing
+			pendingRoute = nil
+			_ = reorderAccountStates(to: routing.order)
+			codexProjectionRequestGeneration &+= 1
+			codexAuthProjection = .current(
+				accountID: account.accountID,
+				accountRevision: account.accountRevision,
+				projectionDigest: projectionDigest
+			)
+			return followUp
+		case .routePending(let pending):
+			pendingRoute = pending
+			return .none
 		case .accountLoggedOut(let accountID, _):
-			pendingAccountRoutePreparations.removeValue(forKey: accountID)
 			if case .current(let projectedID, _, _) = codexAuthProjection,
 				projectedID == accountID
 			{
@@ -3716,38 +3482,40 @@ final class ResetCardStore {
 			}
 			return .skeleton
 		case .accountChanged(let account):
-			guard let index = accounts.firstIndex(where: {
-				$0.account.accountID == account.accountID
-			}) else {
-				return .skeleton
-			}
-			let existing = accounts[index]
-			let authority = account.authority
-				?? existing.account.authority
-				?? existing.inventory?.authority
-			let bound = Self.account(account, authority: authority)
-			let sameRevision = existing.account.accountRevision == bound.accountRevision
-			accounts[index] = ResetCardAccountState(
-				account: bound,
-				inventory: existing.inventory,
-				error: nil,
-				isRefreshing: sameRevision == false,
-				profile: sameRevision ? existing.profile : nil,
-				profileUnavailable: sameRevision ? existing.profileUnavailable : nil,
-				profileError: nil,
-				isProfileRefreshing: sameRevision == false && accountProfileClient != nil
-			)
-			reconcileAccountSkeletonRevisionTargets()
-			if sameRevision == false {
-				invalidateCodexProjectionAfterRevisionChange(
-					accountID: account.accountID,
-					accountRevision: bound.accountRevision
-				)
-			}
-			return sameRevision
-				? .none
-				: .account(account.accountID, refreshInventory: true)
+			return applyAccountChange(account)
 		}
+	}
+
+	private func applyAccountChange(_ account: ResetCardAccountRecord) -> AccountControlFollowUp {
+		guard let index = accounts.firstIndex(where: {
+			$0.account.accountID == account.accountID
+		}) else {
+			return .skeleton
+		}
+		let existing = accounts[index]
+		let authority = account.authority
+			?? existing.account.authority
+			?? existing.inventory?.authority
+		let bound = Self.account(account, authority: authority)
+		let sameRevision = existing.account.accountRevision == bound.accountRevision
+		accounts[index] = ResetCardAccountState(
+			account: bound,
+			inventory: existing.inventory,
+			error: nil,
+			isRefreshing: sameRevision == false,
+			profile: sameRevision ? existing.profile : nil,
+			profileUnavailable: sameRevision ? existing.profileUnavailable : nil,
+			profileError: nil,
+			isProfileRefreshing: sameRevision == false && accountProfileClient != nil
+		)
+		reconcileAccountSkeletonRevisionTargets()
+		if sameRevision == false {
+			invalidateCodexProjectionAfterRevisionChange(
+				accountID: account.accountID,
+				accountRevision: bound.accountRevision
+			)
+		}
+		return sameRevision ? .none : .account(account.accountID, refreshInventory: true)
 	}
 
 	@discardableResult

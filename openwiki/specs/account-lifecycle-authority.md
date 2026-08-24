@@ -1,3 +1,18 @@
+---
+type: "Reference"
+title: "Account Lifecycle Authority"
+description: "Daemon-owned account lifecycle contract, including Route coordination and shared Codex authentication authority."
+tags: [accounts, routing, shared-auth, daemon]
+openwiki:
+  roles: [architecture, domain, integration, workflow]
+  change_kinds: [lifecycle, public-api, persistence]
+  source_paths: [crates/decodex-runtime/src/shared_auth_coordinator.rs, crates/decodex-runtime/src/account_service.rs, crates/decodex-runtime/src/application.rs, database/migrations/0010_pending_account_route_progress.sql]
+  symbols: [SharedAuthCoordinator, AccountService::route_account_command, AccountService::follow_shared_auth_once, recover_pending_account_routes_once]
+  test_paths: [crates/decodex-runtime/src/shared_auth_coordinator.rs, crates/decodex-runtime/src/account_service.rs]
+  invariants: ["One SharedAuthCoordinator owns stable shared-auth reads, Codex liveness observation, and conditional projection decisions in decodexd.", "A Route projection write is allowed only after natural Codex quiescence and an exact-source compare-and-swap check.", "UI clients submit Route intents and render authoritative results; they do not control Codex processes."]
+  validation_commands: ["cargo test -p decodex-runtime account_service::tests::pending_route_waits_for_natural_quiescence_then_commits_from_the_same_receipt", "cargo test -p decodex-runtime shared_auth_coordinator::tests"]
+---
+
 # Account Lifecycle Authority
 
 Status: historical account-domain contract. Its durable lifecycle and exact-binding
@@ -159,14 +174,15 @@ The commands are deterministic:
 | --- | --- |
 | `enable_account` | If the expected account revision is current, set `enabled=true`. Change only the account revision when the value changes. |
 | `disable_account` | If the expected account revision is current, set `enabled=false`. Block new admission immediately. Do not terminate or rebind existing work. |
-| `set_fixed_selection` | If the expected routing revision and target account revision are current, set mode `fixed` and the exact target Account UUID. Preserve account order. |
+| `route_account` | Under current routing and target Account revisions, preserve a valid changed known shared source credential whose expiry is not earlier, refresh the target, and either commit fixed mode plus the Route receipt or retain one schema-10 pending receipt until natural Codex quiescence permits the exact-source CAS cutover. Preserve account order. |
 | `set_balanced_selection` | If the expected routing revision is current, set mode `balanced` and clear the fixed target. Preserve account order. |
 | `set_account_order` | If the expected routing revision is current, replace the order with one complete duplicate-free permutation of all non-tombstoned Account UUIDs. Preserve mode and a valid fixed target. |
 
-A fresh command whose desired value already matches returns a terminal no-change
-receipt at the same revision. Any real change increments exactly one owning revision.
-No command changes observed health, quota, credentials, ProcessGeneration, or
-ProviderAttempt state as a side effect.
+A fresh policy command whose desired value already matches returns a terminal no-change
+receipt at the same revision. Any real policy change increments exactly one owning revision.
+Policy commands do not change observed health, quota, credentials, ProcessGeneration, or
+ProviderAttempt state. `route_account` is the explicit compound exception: its journaled
+credential work can advance source or target Account revisions before it commits routing.
 
 For a new task, `fixed` considers only its target. An ineligible fixed target returns a
 typed no-route result. `balanced` selects the first fully eligible account in canonical
@@ -180,31 +196,65 @@ for an explicit retry. Routing Snapshot remains the complete policy/evidence own
 Routing Decision remains the sole selection owner. Their broader automatic-routing
 behavior is accepted later.
 
-## Explicit Use in Codex
+## Daemon-owned Route and shared Codex auth
 
-`UseAccountInCodex` projects one exact ready account to the normal shared
-`~/.codex/auth.json`. It is independent from routing: projection does not change routing,
-and routing does not project auth. The command checks the current Account revision and
-the exact HostCredentialStore version, fingerprint, and provider binding. Tokens remain
-inside the daemon.
+`RouteAccount` is the only public fixed-account action. It is coordinated by one daemon-wide
+`SharedAuthCoordinator`, installed in `AccountService`; no second coordinator or client-side
+Route state machine exists. The coordinator owns Codex liveness observation, two-equal-metadata
+stable reads, and the conditional shared-auth projection seam. It checks the routing revision,
+the target Account revision, and exact HostCredentialStore bindings. On macOS, liveness ignores
+inaccessible unrelated PIDs and Decodex-owned, attested app-server descendants, but blocks an
+external ChatGPT process or Codex writer; a named candidate with inaccessible identity remains
+fail-closed. Non-macOS production liveness remains conservative and does not authorize projection. It can use the existing
+refresh journal for both the current shared source Account and the target Account. Tokens
+remain inside the daemon. Balanced selection and account order remain separate policy commands.
 
-The host write rejects an ambiguous `CODEX_HOME`, symbolic links, path drift, wrong
-ownership, wrong link count, and group- or other-writable ancestors. It creates one
-same-directory mode-`0600` temporary file, synchronizes it, atomically renames it over
-the exact target, reads back the exact account binding, and synchronizes the parent.
-Same-binding replay is successful without rewriting the file. The read-only result is
-`current`, `unmanaged`, or `unavailable` and exposes only Account UUID, Account revision,
-and a credential-negative projection digest.
+While Codex may be running, the coordinator is read-only with respect to the stable shared auth:
+it may observe stable metadata and import a known newer managed source rotation into the daemon
+credential store, but it does not write `~/.codex/auth.json`. An ordinary Decodex refresh first
+attempts that stable read. If Codex may be running and no valid newer rotation was absorbed,
+`CredentialRefreshError::OwnerBusy` is returned before any provider call. This includes absent or
+unmanaged shared auth; those states are not an unsettled refresh-owner condition. Uncertain
+liveness, unstable metadata, or an unavailable stable read therefore fails closed through the
+same pre-provider guard.
 
-The projection affects future Codex launches and new app-server processes. It does not
-claim to hot-switch an already running Codex process. There is no watcher, backup,
-per-account Codex home, token environment projection, legacy helper, or fallback.
+A blocked Route returns `AccountRoutePending`, a confirmed typed success rather than an error.
+The result is backed by one durable schema-10 `route_account` receipt retaining the
+credential-negative request and optional progress. The receipt is replayable by the same command
+identity and can later become terminal when recovery completes; pending work is not a second
+command and does not authorize a client to retry its own workflow. A stale routing revision can
+settle it without writing shared auth, while restart-transient account readiness, liveness, or
+stable-read prerequisites keep the receipt pending until recovery can prove the next step.
 
-The commands remain independent protocol authorities, but the Swift menu-bar `Route`
-control composes them with credential refresh. Route must receive the committed successor
-Account revision, project that exact latest credential, and only then set fixed routing.
-Projection failure leaves fixed routing unchanged. Retry state retains the exact refresh
-receipt or the proved prepared revision so a completed credential effect is not repeated.
+A newer explicit Route target atomically supersedes the older pending target under the routing
+lock. The newer target remains the authoritative pending target; replaying the old command returns
+the typed `route_superseded` rejection. This does not make other eligible accounts unavailable:
+Swift and GPUI keep other ready targets selectable while a pending Route exists, and submit a new
+explicit Route when the operator changes target. If the operator wants to retain the current fixed
+target, that current row remains actionable as `Keep` and supersedes the other pending target.
+
+After natural Codex exit, `decodexd` rechecks the exact stable source stamp and snapshot, repeats
+the source/target revision and provider-binding fences, and refreshes the target under its
+`ProvedInactive` Route policy before projecting it with an exact-source compare-and-swap. When
+shared auth already names the target and its exact credential bundle is already stored, the daemon
+may reconcile credentials and routing without rewriting `auth.json`, even while Codex runs. This
+same-target exception does not permit a cross-account write: changing `auth.json` to another
+account still requires natural external Codex quiescence because running Codex caches account auth. The
+host write rejects an ambiguous `CODEX_HOME`, symbolic links, path drift, wrong ownership, wrong
+link count, and group- or other-writable ancestors. It creates one same-directory mode-`0600`
+temporary file, synchronizes it, atomically renames it over the exact target, reads back the
+exact account binding, and synchronizes the parent. Same-binding replay is successful without
+rewriting the file. Fixed routing is committed only after the target refresh and exact-source
+cutover succeed; `OwnerBusy` is not a normal post-quiescence Route outcome.
+
+The projection affects future Codex launches and new app-server processes. It does not claim to
+hot-switch an already running Codex process. The Swift menu-bar, GPUI, and CLI are UI/protocol-only
+clients: they submit one Route intent and apply one authoritative result. They do not read
+credentials, write shared auth, refresh providers, own retry state, or control Codex processes.
+`decodexd` never starts, stops, signals, rebinds, or otherwise controls the Codex process. There
+is no watcher, backup, per-account Codex home, token environment projection, legacy helper, or
+fallback. Startup recovery replays the same derived account operation and converges before the
+listener accepts new commands.
 
 ## Account operations
 
@@ -230,7 +280,9 @@ source descriptor, not credential bytes in the public protocol.
 
 Refresh reads one exact credential version and records `provider_effect_pending` before
 the provider call. Immediately before provider work, it can absorb only a valid shared
-Codex bundle with the exact provider identity and a later expiry than the stored bundle.
+Codex bundle with the exact provider identity and an expiry that is not earlier than the stored
+bundle. Equal-expiry token rotation is valid because Codex can rotate the refresh token without
+changing the access-token expiry.
 It validates the returned or reconciled provider identity and writes the complete rotated
 bundle with one compare-and-swap. Concurrent callers serialize on that operation. After
 provider rejection, one bounded shared-auth read can still supply that exact newer bundle;
@@ -239,12 +291,12 @@ an exact store write can be committed. A provider request with no proved store w
 not replayed unless the provider has an accepted idempotent result-readback contract.
 Otherwise, the account becomes `reauth_required`.
 
-Every committed refresh reads the exact persisted successor bundle. When the current
-shared-auth identity still names the same provider account, Account Service attempts to
-re-project that bundle. An unreadable identity is not overwrite authority. Projection
-failure does not undo or make the provider effect ambiguous, and the terminal refresh
-receipt still completes. Explicit `UseAccountInCodex` owns retryable fail-closed projection
-for menu-bar Route.
+Every ordinary committed refresh reads the exact persisted successor bundle. Route-internal
+refreshes suppress any intermediate shared-auth write: the single `SharedAuthCoordinator` owns
+stable readback and the compound Route owns one final fail-closed conditional projection after
+natural Codex quiescence. An unreadable or changed identity is not overwrite authority. Projection
+failure does not undo or make the provider effect ambiguous, but a Route projection failure keeps
+the Route receipt pending rather than committing fixed routing.
 
 Logout disables new launch admission and rejects with `account_in_use` while an active
 ProcessGeneration or unsettled ProviderAttempt is bound to the account. It then deletes
@@ -371,6 +423,7 @@ reconciliation also remain readable after a gate changes. They cannot start a ne
 ## Daemon account observation
 
 `decodexd` owns the provider-observation cadence through the lifecycle composition described
+<!-- openwiki: broken internal link [../architecture/runtime-architecture.md#account-lifecycle-and-credential-authority] heading anchor "account-lifecycle-and-credential-authority" does not exist in "../architecture/runtime-architecture.md". Fix the href or restore the target, then delete this comment. -->
 in [Runtime architecture](../architecture/runtime-architecture.md#account-lifecycle-and-credential-authority).
 Its account observer starts immediately, repeats every 15 seconds, and wakes after a
 successful account command or when a durable Reset Card worker claim settles. Each round

@@ -122,7 +122,7 @@ pub enum Command {
 	/// Observe and consume reset cards through the common daemon authority.
 	#[command(subcommand)]
 	ResetCard(reset_card::ResetCardCommand),
-	/// Manage daemon-owned accounts through the same-UID V2.6 protocol.
+	/// Manage daemon-owned accounts through the same-UID V2.9 protocol.
 	#[command(subcommand)]
 	Account(account::AccountCommand),
 	/// Read or update the current user's local Codex Fast mode setting.
@@ -295,8 +295,9 @@ fn render_failure(
 			.expect("closed failure serialization cannot fail"),
 			false,
 		),
-		OutputFormat::Human =>
-			(format!("decodex {} failed: {failure}", command_name(command)), true),
+		OutputFormat::Human => {
+			(format!("decodex {} failed: {failure}", command_name(command)), true)
+		},
 	};
 
 	CommandOutput { text, exit_code: 2, error_stream }
@@ -323,14 +324,15 @@ fn render_human(
 	);
 
 	match command {
-		DiagnosticCommand::Doctor =>
+		DiagnosticCommand::Doctor => {
 			for check in report.checks() {
 				output.push_str(&format!(
 					"\n{}: {}",
 					component_name(check.component),
 					status_name(check.status),
 				));
-			},
+			}
+		},
 		DiagnosticCommand::Status => {
 			output.push_str("\nstates:");
 
@@ -599,8 +601,9 @@ mod tests {
 	#[test]
 	fn status_retains_ready_unavailable_and_unknown_states() {
 		let statuses = DoctorComponent::ALL.map(|component| match component {
-			DoctorComponent::ProductStore =>
-				DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable),
+			DoctorComponent::ProductStore => {
+				DoctorStatus::Unavailable(DoctorIssue::DatabaseUnreachable)
+			},
 			DoctorComponent::QuickTask => DoctorStatus::Unknown(DoctorIssue::NotProbed),
 			_ => DoctorStatus::Ready,
 		});

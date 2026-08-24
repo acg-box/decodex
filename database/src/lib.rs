@@ -23,7 +23,8 @@ pub use self::{
 		AccountAdministrationOutcome, AccountCommandKind, AccountCommandReceiptClaim,
 		AccountCommandReceiptLease, AccountEnrollmentResolution, AccountLifecycleMutation,
 		AccountLifecycleMutationOutcome, AccountLifecycleRejection, AccountOperationPreparation,
-		AccountStoreObservation, CodexAccountCapabilityAttestation, RoutingControlOutcome,
+		AccountStoreObservation, CodexAccountCapabilityAttestation, PendingAccountRouteCommand,
+		RoutingControlOutcome,
 	},
 	account_profiles::{
 		AccountProfileDailyUsage, AccountProfileObservation, AccountProfileObservationOutcome,
@@ -61,8 +62,8 @@ pub use self::{
 		BindProgramDomainPack, ContinueProgram, CreateProgramCycle, DomainPackIdentity,
 		ProgramCharterRecord, ProgramClaimRecord, ProgramCycleRecord, ProgramDomainPackBinding,
 		ProgramEvidenceInput, ProgramEvidenceRecord, ProgramObjectiveRecord, ProgramProposalRecord,
-		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemRecord,
-		ProgramWorkItemDomainPack, RecordProgramReview,
+		ProgramReviewRecord, ProgramSignalRecord, ProgramSummaryRecord, ProgramWorkItemDomainPack,
+		ProgramWorkItemRecord, RecordProgramReview,
 	},
 	provider_attempts::{
 		AuthorizeProviderDispatchOutcome, FreshPreparedProviderAttempt, FreshProviderDispatchFence,
@@ -93,7 +94,8 @@ pub use self::{
 	},
 };
 
-#[cfg(unix)] use std::os::unix::fs::MetadataExt as _;
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt as _;
 use std::{
 	fs::File,
 	path::{Path, PathBuf},
@@ -231,7 +233,8 @@ impl SqliteStore {
 	#[cfg(test)]
 	fn open_test(path: &Path) -> Result<Self, DatabaseError> {
 		use std::fs::OpenOptions;
-		#[cfg(unix)] use std::os::unix::fs::OpenOptionsExt as _;
+		#[cfg(unix)]
+		use std::os::unix::fs::OpenOptionsExt as _;
 
 		let mut options = OpenOptions::new();
 		options.read(true).write(true).create(true);
@@ -279,7 +282,8 @@ pub(crate) fn unix_micros() -> Result<i64, DatabaseError> {
 #[cfg(test)]
 mod tests {
 	use std::fs;
-	#[cfg(unix)] use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
+	#[cfg(unix)]
+	use std::os::unix::fs::{MetadataExt as _, PermissionsExt as _, symlink};
 
 	use rusqlite::Connection;
 	use serde_json::json;
@@ -296,8 +300,8 @@ mod tests {
 	use super::{
 		AccountCommandKind, AccountCommandReceiptClaim, AccountLifecycleMutationOutcome,
 		AccountOperationPreparation, CodexAccountCapabilityAttestation, CommandIdentity,
-		CredentialKey, CredentialRecord, DatabaseError, SqliteStore, StoreError, migrations,
-		unix_micros,
+		CredentialKey, CredentialRecord, DatabaseError, RoutingControlOutcome, SqliteStore,
+		StoreError, migrations, unix_micros,
 	};
 
 	const ACCOUNT: &str = "10000000-0000-4000-8000-000000000001";
@@ -727,7 +731,9 @@ mod tests {
 			.expect("reserve command")
 		{
 			AccountCommandReceiptClaim::Owned(lease) => lease,
-			AccountCommandReceiptClaim::Replayed(_) => panic!("new command replayed"),
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("new command replayed")
+			},
 		};
 		let response = json!({ "status": "ok", "revision": 1 });
 		store.complete_account_command(lease, &response).await.expect("complete command");
@@ -742,7 +748,9 @@ mod tests {
 			.expect("replay command")
 		{
 			AccountCommandReceiptClaim::Replayed(actual) => assert_eq!(actual, response),
-			AccountCommandReceiptClaim::Owned(_) => panic!("completed command was reclaimed"),
+			AccountCommandReceiptClaim::Owned(_) | AccountCommandReceiptClaim::Pending(_) => {
+				panic!("completed command was reclaimed")
+			},
 		}
 		let conflicting = CommandIdentity::new("account-command-one", b"disable primary")
 			.expect("conflicting command identity");
@@ -769,6 +777,175 @@ mod tests {
 			AccountQuotaDisposition::Current(fact) if fact.used_percent == 25
 		));
 		assert_eq!(routing.mode, AccountSelectionMode::Fixed(account_id));
+	}
+
+	#[tokio::test]
+	async fn durable_route_receipt_retains_its_request_and_reclaims_after_restart() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_ONE}","account_id":"{ACCOUNT}","expected_account_revision":7}}}}"#,
+		);
+		let command = CommandIdentity::new("durable-route", request.as_bytes())
+			.expect("Route command identity");
+		let lease = match store
+			.reserve_account_route_command(&command, 9, &request)
+			.await
+			.expect("reserve Route")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("new Route replayed")
+			},
+		};
+		let progress = json!({
+			"status": "pending",
+			"account_id": ACCOUNT,
+			"operation_id": OPERATION_ONE,
+		});
+		store.defer_account_route_command(lease, &progress).await.expect("defer Route");
+		let pending =
+			store.read_pending_account_route_commands(8).await.expect("read pending Route");
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].request_json, request);
+		assert_eq!(pending[0].expected_routing_revision, 9);
+		assert_eq!(pending[0].progress.as_ref(), Some(&progress));
+		drop(store);
+
+		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+		assert_eq!(
+			reopened
+				.release_interrupted_account_route_claims()
+				.await
+				.expect("release interrupted Route claim"),
+			1
+		);
+		let pending =
+			reopened.read_pending_account_route_commands(8).await.expect("read restarted Route");
+		assert!(matches!(
+			reopened
+				.reserve_account_route_command(&command, 9, &request)
+				.await
+				.expect("replay deferred Route"),
+			AccountCommandReceiptClaim::Pending(value) if value == progress
+		));
+		let lease = match reopened
+			.reclaim_account_route_command(&pending[0])
+			.await
+			.expect("reclaim interrupted Route")
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("pending Route was already completed")
+			},
+		};
+		reopened
+			.complete_account_command(lease, &json!({"status": "routed"}))
+			.await
+			.expect("complete reclaimed Route");
+		assert!(
+			reopened
+				.read_pending_account_route_commands(8)
+				.await
+				.expect("read completed Routes")
+				.is_empty()
+		);
+	}
+
+	#[tokio::test]
+	async fn newer_route_atomically_supersedes_the_deferred_receipt() {
+		let directory = tempdir().expect("temporary directory");
+		let path = directory.path().join("decodex.sqlite3");
+		let store = SqliteStore::open_test(&path).expect("initialize store");
+		let routing = store.read_account_routing_control().await.expect("read routing");
+		let first_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_ONE}","account_id":"{ACCOUNT}","expected_account_revision":1}}}}"#,
+		);
+		let first = CommandIdentity::new("first-pending-route", first_request.as_bytes()).unwrap();
+		let first_lease = match store
+			.reserve_account_route_command(&first, routing.revision, &first_request)
+			.await
+			.unwrap()
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("first Route replayed")
+			},
+		};
+		store
+			.defer_account_route_command(first_lease, &json!({"status": "pending-first"}))
+			.await
+			.unwrap();
+
+		let second_account = "10000000-0000-4000-8000-000000000002";
+		let second_request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_TWO}","account_id":"{second_account}","expected_account_revision":1}}}}"#,
+		);
+		let second = CommandIdentity::new("second-pending-route", second_request.as_bytes()).unwrap();
+		let superseded = json!({"outcome": "rejected", "reason": "route_superseded"});
+		assert!(matches!(
+			store
+				.reserve_replacing_account_route_command(
+					&second,
+					routing.revision,
+					&second_request,
+					&superseded,
+				)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Owned(_)
+		));
+		assert!(matches!(
+			store
+				.reserve_account_route_command(&first, routing.revision, &first_request)
+				.await
+				.unwrap(),
+			AccountCommandReceiptClaim::Replayed(value) if value == superseded
+		));
+		let pending = store.read_pending_account_route_commands(8).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].idempotency_key, "second-pending-route");
+		assert_eq!(pending[0].request_json, second_request);
+
+		drop(store);
+		let reopened = SqliteStore::open_test(&path).expect("reopen store");
+		let pending = reopened.read_pending_account_route_commands(8).await.unwrap();
+		assert_eq!(pending.len(), 1);
+		assert_eq!(pending[0].idempotency_key, "second-pending-route");
+	}
+
+	#[tokio::test]
+	async fn pending_route_fences_balanced_and_order_revision_changes() {
+		let directory = tempdir().expect("temporary directory");
+		let store = SqliteStore::open_test(&directory.path().join("decodex.sqlite3"))
+			.expect("initialize store");
+		let routing = store.read_account_routing_control().await.expect("read routing");
+		let request = format!(
+			r#"{{"name":"route_account","arguments":{{"operation_id":"{OPERATION_ONE}","account_id":"{ACCOUNT}","expected_account_revision":1}}}}"#,
+		);
+		let command = CommandIdentity::new("routing-fence", request.as_bytes()).unwrap();
+		let lease = match store
+			.reserve_account_route_command(&command, routing.revision, &request)
+			.await
+			.unwrap()
+		{
+			AccountCommandReceiptClaim::Owned(lease) => lease,
+			AccountCommandReceiptClaim::Pending(_) | AccountCommandReceiptClaim::Replayed(_) => {
+				panic!("new Route replayed")
+			},
+		};
+		store.defer_account_route_command(lease, &json!({"status": "pending"})).await.unwrap();
+
+		assert_eq!(
+			store.set_balanced_account_selection(routing.revision).await.unwrap(),
+			RoutingControlOutcome::InvalidRequest,
+		);
+		assert_eq!(
+			store.set_account_order(routing.revision, &[]).await.unwrap(),
+			RoutingControlOutcome::InvalidRequest,
+		);
+		assert_eq!(store.read_account_routing_control().await.unwrap(), routing);
 	}
 
 	#[tokio::test]

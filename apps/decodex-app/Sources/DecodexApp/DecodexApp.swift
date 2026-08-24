@@ -8,6 +8,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 	private var terminationIsPending = false
 
 	func applicationDidFinishLaunching(_ notification: Notification) {
+		ProcessInfo.processInfo.automaticTerminationSupportEnabled = false
+		ProcessInfo.processInfo.disableAutomaticTermination(
+			"Decodex owns a persistent menu bar status item."
+		)
+		ProcessInfo.processInfo.disableSuddenTermination()
 		NSApp.setActivationPolicy(.accessory)
 		let store = ResetCardStore()
 		self.store = store
@@ -26,6 +31,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 			sender.reply(toApplicationShouldTerminate: true)
 		}
 		return .terminateLater
+	}
+
+	func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+		false
 	}
 }
 

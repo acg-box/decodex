@@ -5,7 +5,7 @@ use std::{
 	future::{self, Future},
 	pin::Pin,
 	sync::Arc,
-	time::{SystemTime, UNIX_EPOCH},
+	time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use decodex_codex::CodexAdapter;
@@ -31,12 +31,12 @@ use decodex_database::{
 };
 use decodex_protocol::{
 	AccountCommandRejectionDto, AccountCredentialBindingDto, AccountDto,
-	AccountLoginRequest, AccountLoginStatus,
 	AccountInitialSelectionResult, AccountInspectResult, AccountLifecycleReadinessDto,
-	AccountManualRecoveryActionDto, AccountManualRecoveryOutcomeDto, AccountObservedStateDto,
-	AccountOperationKindDto, AccountOperationPhaseDto, AccountProfileDailyUsageDto,
-	AccountProfileDto, AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult,
-	AccountProviderDto, AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto,
+	AccountLoginRequest, AccountLoginStatus, AccountManualRecoveryActionDto,
+	AccountManualRecoveryOutcomeDto, AccountObservedStateDto, AccountOperationKindDto,
+	AccountOperationPhaseDto, AccountProfileDailyUsageDto, AccountProfileDto,
+	AccountProfileEmailDto, AccountProfileErrorDto, AccountProfileResult, AccountProviderDto,
+	AccountQuotaErrorDto, AccountQuotaStateDto, AccountQuotaWindowDto, AccountRoutePendingDto,
 	AccountRoutingControlDto, AccountSelectionModeDto, AccountSelectionRecoveryDto,
 	AccountUnsettledOperationDto, AccountsResult, CausationId, Channel, CodexAuthProjectionResult,
 	CommandEnvelope, CommandError, CommandPayload, ConversationHistoryPage,
@@ -59,7 +59,10 @@ use decodex_protocol::{
 	WorkItemBoardResult, WorkItemBoardWorkItemId,
 };
 use serde::{Deserialize, Serialize};
-use tokio::sync::watch;
+use tokio::{
+	sync::{Mutex as AsyncMutex, broadcast, watch},
+	time,
+};
 
 use crate::{
 	CredentialStoreError, ProcessGenerationControl, ProviderAttemptControl,
@@ -74,7 +77,8 @@ use crate::{
 	},
 	account_service::{
 		AccountLifecycleError, AccountManualRecoveryAction, AccountManualRecoveryOutcome,
-		AccountService, CodexAuthProjectionInspection, stable_account_alias,
+		AccountRouteCommit, AccountRouteCompletion, AccountRouteFailure, AccountRoutePending,
+		AccountRouteResult, AccountService, CodexAuthProjectionInspection, stable_account_alias,
 	},
 	domain_packs::{self, DomainPackError, QUICK_TASK_CAPABILITY},
 	managed_repository_runtime::ManagedRepositoryCapability,
@@ -289,6 +293,8 @@ pub(crate) struct ServiceApplication {
 	_codex: CodexAdapter,
 	blob_store: Option<BlobStore>,
 	accounts: Option<Arc<AccountService>>,
+	account_route_events: Option<AsyncMutex<broadcast::Receiver<AccountRouteCompletion>>>,
+	publication_stop: watch::Sender<bool>,
 	reset_cards: Option<ApiResetCardRuntime>,
 	account_observations: Option<AccountObservationService>,
 	account_login: Option<Arc<crate::account_login::AccountLoginManager>>,
@@ -307,6 +313,7 @@ impl ServiceApplication {
 		quick_tasks: QuickTaskCapability,
 		doctor: DoctorReport,
 	) -> Self {
+		let (publication_stop, _) = watch::channel(false);
 		Self {
 			store,
 			_managed_repositories: managed_repositories,
@@ -315,6 +322,8 @@ impl ServiceApplication {
 			_codex: codex,
 			blob_store,
 			accounts: None,
+			account_route_events: None,
+			publication_stop,
 			reset_cards: None,
 			account_observations: None,
 			account_login: None,
@@ -324,6 +333,8 @@ impl ServiceApplication {
 	}
 
 	pub(crate) fn with_accounts(mut self, accounts: Option<Arc<AccountService>>) -> Self {
+		self.account_route_events =
+			accounts.as_ref().map(|accounts| AsyncMutex::new(accounts.subscribe_route_events()));
 		self.accounts = accounts;
 
 		self
@@ -394,6 +405,122 @@ impl ServiceApplication {
 	}
 }
 
+pub(crate) async fn recover_pending_account_routes_once(
+	accounts: Arc<AccountService>,
+	store: &SqliteStore,
+	observations: Option<&AccountObservationService>,
+) {
+	if let Ok(Some(account)) = accounts.follow_shared_auth_once().await
+		&& let Some(observations) = observations
+	{
+		observations.invalidate_account(&account.account_id).await;
+		observations.request_refresh();
+	}
+	if let Ok(pending) = store.read_pending_account_route_commands(64).await {
+		let codex_may_be_running = accounts.shared_auth_may_be_running();
+		for pending_command in pending {
+			let _route_guard = accounts.lock_route_command().await;
+			let routing_is_stale =
+				store.read_account_routing_control().await.ok().is_some_and(|routing| {
+					routing.revision != pending_command.expected_routing_revision
+				});
+			let Ok(CommandPayload::RouteAccount {
+				operation_id,
+				account_id,
+				expected_account_revision,
+			}) = serde_json::from_str::<CommandPayload>(&pending_command.request_json)
+			else {
+				continue;
+			};
+			let (Ok(operation_id), Ok(account_id), Ok(expected_account_revision)) = (
+				AccountOperationId::new(operation_id.as_str()),
+				AccountId::new(account_id.as_str()),
+				i64::try_from(expected_account_revision.0),
+			) else {
+				continue;
+			};
+			if !routing_is_stale
+				&& accounts.inspect(&account_id).await.ok().is_some_and(|inspection| {
+					matches!(
+						inspection.readiness,
+						AccountLifecycleReadiness::CallbackCapabilityUnready
+							| AccountLifecycleReadiness::StoreUnavailable
+							| AccountLifecycleReadiness::StoreMismatch
+							| AccountLifecycleReadiness::OperationUnsettled
+					)
+				})
+			{
+				continue;
+			}
+			if codex_may_be_running
+				&& !routing_is_stale
+				&& !accounts.shared_auth_is_current_for(&account_id).await
+			{
+				continue;
+			}
+			let lease = match store.reclaim_account_route_command(&pending_command).await {
+				Ok(AccountCommandReceiptClaim::Owned(lease)) => lease,
+				Ok(
+					AccountCommandReceiptClaim::Pending(_)
+					| AccountCommandReceiptClaim::Replayed(_),
+				)
+				| Err(_) => continue,
+			};
+			let result = accounts
+				.route_account_command(
+					lease,
+					operation_id,
+					&account_id,
+					expected_account_revision,
+					pending_command.expected_routing_revision,
+					true,
+					|result| encode_account_command_receipt(&account_route_result(result)),
+				)
+				.await;
+			let committed = account_route_receipt_committed(result);
+			if committed && let Some(observations) = observations {
+				observations.invalidate_account(&account_id).await;
+				observations.request_refresh();
+			}
+		}
+	}
+}
+
+fn account_route_receipt_committed(
+	result: Result<serde_json::Value, AccountLifecycleError>,
+) -> bool {
+	result.ok().is_some_and(|value| {
+		decode_account_command_receipt(value).ok().and_then(Result::ok).is_some_and(|publication| {
+			matches!(publication.result, ResultPayload::AccountRouted { .. })
+		})
+	})
+}
+
+async fn recover_pending_account_routes(
+	accounts: Arc<AccountService>,
+	store: SqliteStore,
+	observations: Option<AccountObservationService>,
+	mut stop: watch::Receiver<bool>,
+) {
+	loop {
+		if *stop.borrow() {
+			return;
+		}
+		recover_pending_account_routes_once(Arc::clone(&accounts), &store, observations.as_ref())
+			.await;
+
+		tokio::select! {
+			biased;
+			changed = stop.changed() => {
+				if changed.is_err() || *stop.borrow() {
+					return;
+				}
+			},
+			() = time::sleep(Duration::from_secs(1)) => {},
+		}
+	}
+}
+
 impl ServiceApplication {
 	async fn account_list(&self) -> AccountsResult {
 		let Some(service) = &self.accounts else {
@@ -411,8 +538,19 @@ impl ServiceApplication {
 			.collect::<Result<Vec<_>, _>>();
 		let routing =
 			service.routing_control().await.ok().and_then(|routing| routing_dto(routing).ok());
+		let pending_route = match &self.store {
+			ProductStore::Available(store) => match store
+				.read_pending_account_route_commands(2)
+				.await
+			{
+				Ok(pending) if pending.is_empty() => None,
+				Ok(pending) if pending.len() == 1 => pending_account_route_dto(&pending[0]).ok(),
+				Ok(_) | Err(_) => return AccountsResult::Unavailable,
+			},
+			ProductStore::Unavailable(_) => None,
+		};
 		match accounts {
-			Ok(accounts) => AccountsResult::Available { accounts, routing },
+			Ok(accounts) => AccountsResult::Available { accounts, routing, pending_route },
 			Err(_) => AccountsResult::Unavailable,
 		}
 	}
@@ -545,10 +683,15 @@ impl ServiceApplication {
 		command: &CommandEnvelope,
 	) -> Result<ApplicationPublication, CommandError> {
 		validate_account_command_envelope(command)?;
-		if self.accounts.is_none() {
+		let Some(service) = self.accounts.as_ref() else {
 			return Err(application_unavailable("account service is unavailable"));
-		}
+		};
 		let (kind, entity_id, expected_revision) = account_command_descriptor(command)?;
+		let _route_guard = if kind == AccountCommandKind::Route {
+			Some(service.lock_route_command().await)
+		} else {
+			None
+		};
 		let ProductStore::Available(store) = &self.store else {
 			return Err(application_unavailable("account product state is unavailable"));
 		};
@@ -556,17 +699,35 @@ impl ServiceApplication {
 			.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))?;
 		let identity = CommandIdentity::new(command.idempotency_key.as_str(), &request)
 			.map_err(map_account_store_command_error)?;
-		let reserved = match store
-			.reserve_account_command(&identity, kind, &entity_id, expected_revision)
-			.await
-			.map_err(map_account_store_command_error)?
-		{
+		let claim = if kind == AccountCommandKind::Route {
+			let request_json = std::str::from_utf8(&request)
+				.map_err(|_| account_rejection(AccountCommandRejectionDto::InvalidRequest, None))?;
+			let superseded_response = encode_account_command_receipt(&Err(account_rejection(
+				AccountCommandRejectionDto::RouteSuperseded,
+				None,
+			)))
+			.map_err(map_account_store_command_error)?;
+			store
+				.reserve_replacing_account_route_command(
+					&identity,
+					expected_revision.ok_or_else(|| {
+						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+					})?,
+					request_json,
+					&superseded_response,
+				)
+				.await
+		} else {
+			store.reserve_account_command(&identity, kind, &entity_id, expected_revision).await
+		};
+		let reserved = match claim.map_err(map_account_store_command_error)? {
 			AccountCommandReceiptClaim::Owned(lease) => ReservedAccountCommand::Owned(lease),
-			AccountCommandReceiptClaim::Replayed(value) => ReservedAccountCommand::Replayed(
-				Box::new(decode_account_command_receipt(value).map_err(|_| {
+			AccountCommandReceiptClaim::Pending(value)
+			| AccountCommandReceiptClaim::Replayed(value) => ReservedAccountCommand::Replayed(Box::new(
+				decode_account_command_receipt(value).map_err(|_| {
 					application_unavailable("account command receipt is incompatible")
-				})?),
-			),
+				})?,
+			)),
 		};
 		let lease = match reserved {
 			ReservedAccountCommand::Owned(lease) => lease,
@@ -669,6 +830,30 @@ impl ServiceApplication {
 					})
 					.await
 			},
+			CommandPayload::RouteAccount {
+				operation_id,
+				account_id,
+				expected_account_revision,
+			} => {
+				let operation_id = operation_id_from_wire(operation_id)?;
+				let account_id = account_id_from_wire(account_id)?;
+				let expected_routing_revision = required_expected_revision(command)?;
+				let expected_account_revision = i64::try_from(expected_account_revision.0)
+					.map_err(|_| {
+						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+					})?;
+				service
+					.route_account_command(
+						lease,
+						operation_id,
+						&account_id,
+						expected_account_revision,
+						expected_routing_revision,
+						false,
+						|result| encode_account_command_receipt(&account_route_result(result)),
+					)
+					.await
+			},
 			CommandPayload::RecoverAccountOperation { operation_id, action } => {
 				let operation_id = operation_id_from_wire(operation_id)?;
 				let expected = required_expected_revision(command)?;
@@ -728,43 +913,6 @@ impl ServiceApplication {
 							};
 							encode_account_command_receipt(&result)
 						},
-					)
-					.await
-			},
-			CommandPayload::UseAccountInCodex { account_id } => {
-				let account_id = account_id_from_wire(account_id)?;
-				let publication_account_id = account_id.clone();
-				let expected = required_expected_revision(command)?;
-				service
-					.use_account_in_codex_command(lease, &account_id, expected, move |result| {
-						encode_account_command_receipt(
-							&result.map_err(account_lifecycle_command_error).and_then(
-								|(revision, digest)| {
-									codex_auth_projection_publication(
-										publication_account_id,
-										revision,
-										digest,
-									)
-								},
-							),
-						)
-					})
-					.await
-			},
-			CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
-				let expected_routing_revision = required_expected_revision(command)?;
-				let account_id = account_id_from_wire(account_id)?;
-				let expected_account_revision = i64::try_from(expected_account_revision.0)
-					.map_err(|_| {
-						account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
-					})?;
-				service
-					.set_fixed_selection_command(
-						lease,
-						expected_routing_revision,
-						&account_id,
-						expected_account_revision,
-						|outcome| encode_account_command_receipt(&routing_command_result(outcome)),
 					)
 					.await
 			},
@@ -1707,10 +1855,11 @@ async fn authorize_program_capability(
 
 impl Application for ServiceApplication {
 	fn has_publication_source(&self) -> bool {
-		self.quick_tasks.runtime().is_some()
+		self.quick_tasks.runtime().is_some() || self.account_route_events.is_some()
 	}
 
 	fn begin_shutdown(&self) {
+		self.publication_stop.send_replace(true);
 		if let Some(manager) = &self.account_login {
 			manager.begin_shutdown();
 		}
@@ -1744,6 +1893,14 @@ impl Application for ServiceApplication {
 		}
 		if let Some(control) = &self.provider_attempts {
 			tasks.push(Box::pin(control.reconciliation_task(stop.clone())));
+		}
+		if let (Some(accounts), ProductStore::Available(store)) = (&self.accounts, &self.store) {
+			tasks.push(Box::pin(recover_pending_account_routes(
+				Arc::clone(accounts),
+				store.clone(),
+				self.account_observations.clone(),
+				stop.clone(),
+			)));
 		}
 
 		if let Some(runtime) = &self.reset_cards {
@@ -1802,12 +1959,11 @@ impl Application for ServiceApplication {
 			| CommandPayload::ImportAccountCredentialFile { .. }
 			| CommandPayload::SetAccountEnabled { .. }
 			| CommandPayload::LogoutAccount { .. }
-			| CommandPayload::SetFixedAccountSelection { .. }
+			| CommandPayload::RouteAccount { .. }
 			| CommandPayload::SetBalancedAccountSelection
 			| CommandPayload::SetAccountOrder { .. }
 			| CommandPayload::RefreshAccount { .. }
-			| CommandPayload::RecoverAccountOperation { .. }
-			| CommandPayload::UseAccountInCodex { .. } => {
+			| CommandPayload::RecoverAccountOperation { .. } => {
 				let publication = self.execute_account_command(command).await?;
 				self.invalidate_account_observation(&publication.entity_id).await;
 				self.request_account_observation_refresh();
@@ -1943,12 +2099,67 @@ impl Application for ServiceApplication {
 	}
 
 	async fn next_publication(&self) -> Option<ApplicationEventPublication> {
-		let runtime = self.quick_tasks.runtime()?;
+		match (self.quick_tasks.runtime(), self.account_route_events.as_ref()) {
+			(None, None) => None,
+			(Some(runtime), None) => loop {
+				let outcome = runtime.next_event().await?;
+				if let Some(publication) = self.quick_task_event_publication(outcome).await {
+					return Some(publication);
+				}
+			},
+			(None, Some(_)) => self.next_account_route_publication().await,
+			(Some(runtime), Some(_)) => loop {
+				tokio::select! {
+					outcome = runtime.next_event() => {
+						let Some(outcome) = outcome else {
+							return self.next_account_route_publication().await;
+						};
+						if let Some(publication) = self.quick_task_event_publication(outcome).await {
+							return Some(publication);
+						}
+					},
+					publication = self.next_account_route_publication() => {
+						return publication;
+					},
+				}
+			},
+		}
+	}
+}
+
+impl ServiceApplication {
+	async fn next_account_route_publication(&self) -> Option<ApplicationEventPublication> {
+		let receiver = self.account_route_events.as_ref()?;
+		let mut receiver = receiver.lock().await;
+		let mut stop = self.publication_stop.subscribe();
+		if *stop.borrow() {
+			return None;
+		}
 		loop {
-			let outcome = runtime.next_event().await?;
-			if let Some(publication) = self.quick_task_event_publication(outcome).await {
-				return Some(publication);
-			}
+			let completion = tokio::select! {
+				result = receiver.recv() => match result {
+					Ok(completion) => completion,
+					Err(broadcast::error::RecvError::Lagged(_)) => continue,
+					Err(broadcast::error::RecvError::Closed) => return None,
+				},
+				changed = stop.changed() => {
+					if changed.is_err() || *stop.borrow() {
+						return None;
+					}
+					continue;
+				},
+			};
+			let publication = account_routed_publication(completion.commit).ok()?;
+			let correlation_id =
+				CorrelationId::new(completion.operation_id.as_str().to_owned()).ok()?;
+			return Some(ApplicationEventPublication {
+				correlation_id,
+				causation_id: None,
+				channel: publication.channel,
+				entity_id: publication.entity_id,
+				entity_revision: publication.entity_revision,
+				event: publication.event,
+			});
 		}
 	}
 }
@@ -3394,15 +3605,10 @@ fn account_command_descriptor(
 		CommandPayload::SetAccountEnabled { account_id, .. } => {
 			(AccountCommandKind::SetEnabled, account_id.as_str())
 		},
-		CommandPayload::UseAccountInCodex { account_id } => {
-			(AccountCommandKind::UseInCodex, account_id.as_str())
-		},
 		CommandPayload::LogoutAccount { account_id, .. } => {
 			(AccountCommandKind::Logout, account_id.as_str())
 		},
-		CommandPayload::SetFixedAccountSelection { .. } => {
-			(AccountCommandKind::SetFixedSelection, "account-routing")
-		},
+		CommandPayload::RouteAccount { .. } => (AccountCommandKind::Route, "account-routing"),
 		CommandPayload::SetBalancedAccountSelection => {
 			(AccountCommandKind::SetBalancedSelection, "account-routing")
 		},
@@ -3439,8 +3645,7 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 				return Err(account_rejection(AccountCommandRejectionDto::InvalidRequest, None));
 			}
 		},
-		CommandPayload::SetAccountEnabled { account_id, .. }
-		| CommandPayload::UseAccountInCodex { account_id } => {
+		CommandPayload::SetAccountEnabled { account_id, .. } => {
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
@@ -3450,7 +3655,8 @@ fn validate_account_command_envelope(command: &CommandEnvelope) -> Result<(), Co
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 		},
-		CommandPayload::SetFixedAccountSelection { account_id, expected_account_revision } => {
+		CommandPayload::RouteAccount { operation_id, account_id, expected_account_revision } => {
+			let _ = operation_id_from_wire(operation_id)?;
 			let _ = account_id_from_wire(account_id)?;
 			let _ = required_expected_revision(command)?;
 			if expected_account_revision.0 == 0 {
@@ -3530,34 +3736,6 @@ pub(crate) fn account_enrollment_publication(
 	})
 }
 
-fn codex_auth_projection_publication(
-	account_id: AccountId,
-	account_revision: i64,
-	projection_digest: String,
-) -> Result<ApplicationPublication, CommandError> {
-	let account_revision = u64::try_from(account_revision)
-		.ok()
-		.filter(|revision| *revision > 0)
-		.map(EntityRevision)
-		.ok_or_else(|| application_unavailable("account result is incompatible"))?;
-	let account_id = EntityId::new(account_id.as_str().to_owned())
-		.map_err(|_| application_unavailable("account result is incompatible"))?;
-	let projection_digest = Sha256Digest::new(projection_digest)
-		.map_err(|_| application_unavailable("account result is incompatible"))?;
-
-	Ok(ApplicationPublication {
-		channel: Channel::AccountsHealth,
-		entity_id: account_id.clone(),
-		entity_revision: account_revision,
-		result: ResultPayload::CodexAuthProjected {
-			account_id: account_id.clone(),
-			account_revision,
-			projection_digest: projection_digest.clone(),
-		},
-		event: EventPayload::CodexAuthProjected { account_id, account_revision, projection_digest },
-	})
-}
-
 fn account_logout_publication(
 	account: AccountRecord,
 ) -> Result<ApplicationPublication, CommandError> {
@@ -3592,6 +3770,91 @@ fn account_routing_publication(
 		entity_revision: routing.revision,
 		result: ResultPayload::AccountRoutingChanged { routing: routing.clone() },
 		event: EventPayload::AccountRoutingChanged { routing },
+	})
+}
+
+fn account_routed_publication(
+	commit: AccountRouteCommit,
+) -> Result<ApplicationPublication, CommandError> {
+	let account = account_dto(commit.account)
+		.map_err(|_| application_unavailable("account Route result is incompatible"))?;
+	let routing = routing_dto(commit.routing)
+		.map_err(|_| application_unavailable("account Route result is incompatible"))?;
+	if routing.mode != decodex_protocol::AccountSelectionModeDto::Fixed(account.account_id.clone())
+	{
+		return Err(application_unavailable("account Route result is incompatible"));
+	}
+	let projection_digest = Sha256Digest::new(commit.projection_digest)
+		.map_err(|_| application_unavailable("account Route result is incompatible"))?;
+	let entity_id = EntityId::new("account-routing").expect("account routing entity is bounded");
+	Ok(ApplicationPublication {
+		channel: Channel::AccountsHealth,
+		entity_id,
+		entity_revision: routing.revision,
+		result: ResultPayload::AccountRouted {
+			account: Box::new(account.clone()),
+			routing: routing.clone(),
+			projection_digest: projection_digest.clone(),
+		},
+		event: EventPayload::AccountRouted {
+			account: Box::new(account),
+			routing,
+			projection_digest,
+		},
+	})
+}
+
+fn account_route_pending_publication(
+	pending: AccountRoutePending,
+) -> Result<ApplicationPublication, CommandError> {
+	let pending = AccountRoutePendingDto {
+		operation_id: EntityId::new(pending.operation_id.as_str().to_owned())
+			.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
+		account_id: EntityId::new(pending.account_id.as_str().to_owned())
+			.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
+		routing_revision: EntityRevision(
+			u64::try_from(pending.routing_revision)
+				.map_err(|_| application_unavailable("account Route progress is incompatible"))?,
+		),
+	};
+	let entity_id = EntityId::new("account-routing").expect("account routing entity is bounded");
+	Ok(ApplicationPublication {
+		channel: Channel::AccountsHealth,
+		entity_id,
+		entity_revision: pending.routing_revision,
+		result: ResultPayload::AccountRoutePending { pending: pending.clone() },
+		event: EventPayload::AccountRoutePending { pending },
+	})
+}
+
+fn account_route_result(
+	result: Result<AccountRouteResult, AccountRouteFailure>,
+) -> Result<ApplicationPublication, CommandError> {
+	match result {
+		Ok(AccountRouteResult::Pending(pending)) => account_route_pending_publication(pending),
+		Ok(AccountRouteResult::Committed(commit)) => account_routed_publication(*commit),
+		Err(AccountRouteFailure::Lifecycle(error)) => Err(account_lifecycle_command_error(error)),
+		Err(AccountRouteFailure::Routing(outcome)) => match routing_command_result(&outcome) {
+			Err(error) => Err(error),
+			Ok(_) => Err(application_unavailable("account Route result is incompatible")),
+		},
+	}
+}
+
+fn pending_account_route_dto(
+	pending: &decodex_database::PendingAccountRouteCommand,
+) -> Result<AccountRoutePendingDto, ()> {
+	let CommandPayload::RouteAccount { operation_id, account_id, .. } =
+		serde_json::from_str::<CommandPayload>(&pending.request_json).map_err(|_| ())?
+	else {
+		return Err(());
+	};
+	Ok(AccountRoutePendingDto {
+		operation_id,
+		account_id,
+		routing_revision: EntityRevision(
+			u64::try_from(pending.expected_routing_revision).map_err(|_| ())?,
+		),
 	})
 }
 
@@ -3726,6 +3989,9 @@ pub(crate) fn account_lifecycle_command_error(error: AccountLifecycleError) -> C
 		},
 		AccountLifecycleError::CredentialImport => {
 			account_rejection(AccountCommandRejectionDto::InvalidRequest, None)
+		},
+		AccountLifecycleError::Refresh(crate::CredentialRefreshError::OwnerBusy) => {
+			account_rejection(AccountCommandRejectionDto::SharedAuthOwnerBusy, None)
 		},
 		AccountLifecycleError::Refresh(_) => {
 			account_rejection(AccountCommandRejectionDto::LifecycleUnready, None)
@@ -4047,11 +4313,13 @@ mod tests {
 		ACCOUNT_COMMAND_RECEIPT_SCHEMA, AccountLifecycleError, AccountProfileClaimsView,
 		AccountProfileRuntimeError, AccountProfileView, ProductStore, ResetCardServiceError,
 		StoredAccountCommandOutcome, account_dto, account_lifecycle_command_error,
-		account_profile_dto, account_profile_unavailable_dto, authorize_program_capability,
+		account_profile_dto, account_profile_unavailable_dto, account_route_pending_publication,
+		account_route_receipt_committed, authorize_program_capability,
 		decode_account_command_receipt, encode_account_command_receipt, lifecycle_rejection,
 		operation_query_result, program_cycle_dto, protocol_reset_error,
 		quick_task_summary_from_row, quota_dto,
 	};
+	use crate::account_service::AccountRoutePending;
 	use crate::domain_packs::{QUICK_TASK_CAPABILITY, resolve_identity};
 
 	fn program_preflight_fixture(
@@ -4715,6 +4983,19 @@ mod tests {
 				error: ResetCardError::InventoryChanged,
 			},
 		);
+	}
+
+	#[test]
+	fn pending_route_receipt_does_not_trigger_committed_account_observation_work() {
+		let pending = AccountRoutePending {
+			operation_id: AccountOperationId::new("22000000-0000-4000-8000-0000000000a1").unwrap(),
+			account_id: AccountId::new("21000000-0000-4000-8000-0000000000a1").unwrap(),
+			routing_revision: 7,
+		};
+		let publication = account_route_pending_publication(pending).unwrap();
+		let encoded = encode_account_command_receipt(&Ok(publication)).unwrap();
+
+		assert!(!account_route_receipt_committed(Ok(encoded)));
 	}
 
 	#[test]
